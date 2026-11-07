@@ -1,14 +1,19 @@
-// worktreelist_test.go covers the porcelain worktree-list parser.
-// It covers the bare-repo rejection and the Main-on-first-entry behavior.
+// worktreelist_test.go covers List: the Main-on-first-entry behavior and prunable entries.
+// It also covers the bare-repo rejection and the errors.
+// It covers the read with no git process beside the porcelain fallback for a reftable repository.
 
 package fabricengine_test
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -160,30 +165,118 @@ func TestList_ParsesPrunable(t *testing.T) {
 	}
 }
 
-// TestList_NotAGitRepo asserts that List fails on a directory outside any git repository.
-// The error carries local context (the source directory and git's exit code) and git's own explanation.
-// The local context says where the failure happened, and git's own explanation says why.
+// TestList_Errors asserts that List fails on two directories.
+// One is outside any repository, and one does not exist inside one.
+// The error names the source directory and why.
 //
-//testtiming:keep List outside any git repository failing with both the local context and git's own explanation; coverage of its blocks by other tests does not show an assertion of this
-func TestList_NotAGitRepo(t *testing.T) {
+//testtiming:keep List failing with the source directory and the reason in its error; coverage of its blocks by other tests does not show an assertion of this
+func TestList_Errors(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	notARepo := t.TempDir()
+	tests := []struct {
+		name string
+		// sourceDir returns the directory List is given.
+		sourceDir func(t *testing.T) string
+		// wantReason is the error text naming why, empty when wantErrIs names it.
+		wantReason string
+		wantErrIs  error
+	}{
+		{
+			name:       "OutsideAnyRepository",
+			sourceDir:  func(t *testing.T) string { return t.TempDir() },
+			wantReason: "not a git repository",
+		},
+		{
+			name: "MissingDirectoryInsideARepository",
+			sourceDir: func(t *testing.T) string {
+				repo := t.TempDir()
+				gitkit.Git(t, repo, "init")
+				return filepath.Join(repo, "gone")
+			},
+			wantErrIs: fs.ErrNotExist,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			sourceDir := tt.sourceDir(t)
 
-	entries, err := fabricengine.List(notARepo)
-	if err == nil {
-		t.Fatalf("List(%q) error = nil; want error (not a git repository)", notARepo)
+			entries, err := fabricengine.List(sourceDir)
+			if err == nil {
+				t.Fatalf("List(%q) error = nil; want an error", sourceDir)
+			}
+			if want := fmt.Sprintf("%q", sourceDir); !strings.Contains(err.Error(), want) {
+				t.Errorf("List(%q) error = %q; want substring %q", sourceDir, err.Error(), want)
+			}
+			if tt.wantReason != "" && !strings.Contains(err.Error(), tt.wantReason) {
+				t.Errorf("List(%q) error = %q; want substring %q", sourceDir, err.Error(), tt.wantReason)
+			}
+			if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
+				t.Errorf("List(%q) error = %v; want one wrapping %v", sourceDir, err, tt.wantErrIs)
+			}
+			if entries != nil {
+				t.Errorf("List(%q) entries = %v; want nil", sourceDir, entries)
+			}
+		})
 	}
-	wantSubstr := fmt.Sprintf("%q", notARepo)
-	if !strings.Contains(err.Error(), wantSubstr) {
-		t.Errorf("List(%q) error = %q; want substring %q (source dir)", notARepo, err.Error(), wantSubstr)
+}
+
+// TestList_RefStorage lists a repository with one linked worktree from its root and from a subdirectory.
+// A files-backed repository is read with no git on PATH, so List starts no git process;
+// a reftable repository is listed through `git worktree list --porcelain`.
+// It runs serially: the files-backed row empties PATH, which is process-global.
+func TestList_RefStorage(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	tests := []struct {
+		name string
+		// initArgs are the `git init` arguments that create the repository.
+		initArgs []string
+		// noGit empties PATH before List runs.
+		noGit bool
+		// minimumGit is the oldest git that can create the repository, empty for any.
+		minimumGit string
+	}{
+		{name: "FilesBackendStartsNoGit", initArgs: []string{"init"}, noGit: true},
+		{name: "ReftableBackendFallsBackToGit", initArgs: []string{"init", "--ref-format=reftable"}, minimumGit: "2.45"},
 	}
-	if !strings.Contains(err.Error(), "not a git repository") {
-		t.Errorf("List(%q) error = %q; want git's own explanation included, not just an exit code",
-			notARepo, err.Error())
-	}
-	if entries != nil {
-		t.Errorf("List(%q) entries = %v; want nil", notARepo, entries)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.minimumGit != "" {
+				gitkit.SkipBelowGitVersion(t, tt.minimumGit, "git init --ref-format=reftable")
+			}
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatalf("resolve temp dir: %v", err)
+			}
+			repo := filepath.Join(root, "repo")
+			gitkit.Git(t, root, append(tt.initArgs, repo)...)
+			head := gitkit.CommitFile(t, repo, "a.txt", "one", "first")
+			branch := gitkit.CurrentBranch(t, repo)
+			side := filepath.Join(root, "side")
+			gitkit.Git(t, repo, "worktree", "add", "-b", "side", side)
+			subdirectory := filepath.Join(side, "sub")
+			if err := os.MkdirAll(subdirectory, 0o755); err != nil {
+				t.Fatalf("mkdir %s: %v", subdirectory, err)
+			}
+			if tt.noGit {
+				t.Setenv("PATH", "")
+			}
+
+			want := []fabricengine.WorktreeEntry{
+				{Path: repo, Head: head, Branch: branch, Main: true},
+				{Path: side, Head: head, Branch: "side"},
+			}
+			for _, sourceDir := range []string{repo, subdirectory} {
+				got, err := fabricengine.List(sourceDir)
+				if err != nil {
+					t.Fatalf("List(%q) error = %v; want nil", sourceDir, err)
+				}
+				if diff := cmp.Diff(want, got); diff != "" {
+					t.Errorf("List(%q) mismatch (-want +got):\n%s", sourceDir, diff)
+				}
+			}
+		})
 	}
 }

@@ -285,7 +285,7 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 	t.Run("UnresolvablePrimeFailsBeforeCommitting", func(t *testing.T) {
 		f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
 		recorder := fabricengine.SwapPushRecorderForTest(t)
-		// An anchor naming a subdirectory absent from the worktree makes `git worktree list` fail in the anchor path.
+		// An anchor naming a subdirectory absent from the worktree makes the worktree list read fail in the anchor path.
 		writeFabricAnchor(t, warpPath, "absent/subdir")
 		headBefore := gitkit.RevParse(t, warpPath, "HEAD")
 		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")

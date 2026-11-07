@@ -100,7 +100,12 @@ It spawns no process: each caller runs `journalctl` itself and wraps the clause 
 
 Imports only the standard library.
 It is the sole `.git` parser: git dir, common dir, the repository test and the walk-up to a worktree root.
+It also parses a repository's worktree list:
+each `worktrees/<id>/` entry's `gitdir`, `HEAD` and `locked` files,
+the loose refs and `packed-refs` a `HEAD` resolves through,
+and the `core.bare`, `core.ignorecase`, `extensions.refStorage` and `extensions.objectFormat` settings of its `config`.
 It parses in-process and spawns nothing.
+A repository whose ref storage is not `files` is refused with a named error, and its callers ask git instead.
 It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lymcwd`.
 A `lymcwd` import of `gitrepo` would therefore close a cycle.
 

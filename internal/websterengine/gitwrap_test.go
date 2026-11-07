@@ -34,11 +34,64 @@ func gitwrapNewScratchRepo(t *testing.T) string {
 	return dir
 }
 
+// TestOtherWorktrees names, from either side of a worktree pair, the one other worktree of the repository.
+// A files-backed repository is read with no git on PATH, so the read starts no git process;
+// a reftable repository is read through `git worktree list --porcelain`.
+// It runs serially: the files-backed row empties PATH, which is process-global.
+func TestOtherWorktrees(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	tests := []struct {
+		name string
+		// initArgs are the `git init` arguments that create the repository.
+		initArgs []string
+		// noGit empties PATH before the read.
+		noGit bool
+		// minimumGit is the oldest git that can create the repository, empty for any.
+		minimumGit string
+	}{
+		{name: "files backend read with no git process", initArgs: []string{"init"}, noGit: true},
+		{name: "reftable backend falls back to git", initArgs: []string{"init", "--ref-format=reftable"}, minimumGit: "2.45"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.minimumGit != "" {
+				gitkit.SkipBelowGitVersion(t, tt.minimumGit, "git init --ref-format=reftable")
+			}
+			dir := t.TempDir()
+			gitkit.Git(t, dir, tt.initArgs...)
+			gitkit.CommitFile(t, dir, "a.txt", "one", "first")
+			added := filepath.Join(t.TempDir(), "added")
+			gitkit.Git(t, dir, "worktree", "add", added)
+			mainCanon, err := canonicalPath(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			addedCanon, err := canonicalPath(added)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.noGit {
+				t.Setenv("PATH", "")
+			}
+
+			for _, side := range []struct{ from, want string }{{dir, addedCanon}, {added, mainCanon}} {
+				got, err := otherWorktrees(side.from)
+				if err != nil {
+					t.Fatalf("otherWorktrees(%s): %v", side.from, err)
+				}
+				if !slices.Equal(got, []string{side.want}) {
+					t.Errorf("otherWorktrees(%s) = %v; want [%s]", side.from, got, side.want)
+				}
+			}
+		})
+	}
+}
+
 // TestRepositoryProbes walks one scratch repository through the real-git probes:
-// headSHA returns the commit just made; dirty is false on a clean tree and true once an untracked file appears;
-// otherWorktrees names, from either side, the one other worktree of the repository.
+// headSHA returns the commit just made; dirty is false on a clean tree and true once an untracked file appears.
 //
-//testtiming:keep pins the real-git head, dirty and worktree-list probes' own return values, an untracked file counting as dirty, and both sides of a worktree pair; the covering verb tests observe them only through verb outcomes
+//testtiming:keep pins the real-git head and dirty probes' own return values and an untracked file counting as dirty; the covering verb tests observe them only through verb outcomes
 func TestRepositoryProbes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -63,28 +116,6 @@ func TestRepositoryProbes(t *testing.T) {
 		}
 		if isDirty {
 			t.Errorf("dirty() = true right after a commit with no other changes; want false")
-		}
-	})
-
-	t.Run("otherWorktrees names the other side", func(t *testing.T) {
-		added := filepath.Join(t.TempDir(), "added")
-		gitkit.Git(t, dir, "worktree", "add", added)
-		mainCanon, err := canonicalPath(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		addedCanon, err := canonicalPath(added)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, side := range []struct{ from, want string }{{dir, addedCanon}, {added, mainCanon}} {
-			got, err := otherWorktrees(side.from)
-			if err != nil {
-				t.Fatalf("otherWorktrees(%s): %v", side.from, err)
-			}
-			if len(got) != 1 || got[0] != side.want {
-				t.Errorf("otherWorktrees(%s) = %v; want [%s]", side.from, got, side.want)
-			}
 		}
 	})
 

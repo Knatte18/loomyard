@@ -1195,6 +1195,8 @@
 // commit existence and ancestry, ignore rules, linked worktrees and blobs.
 // Geometry.Git carries it, and nil means the real repository,
 // so no production caller sets it and the helpers in gitwrap.go stay the one place webster runs git.
+// The linked-worktree read goes through internal/dotgit.
+// It runs git only for a repository whose refs are not files, such as a reftable one.
 // A test that asserts on webster's own records, warnings and verdicts sets a fake and spawns nothing;
 // a test whose behavior is git itself builds a real scratch repository under the `integration` tag.
 // Such behavior includes merge commits, ignore rules, blobs and the verify gate.

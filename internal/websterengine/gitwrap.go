@@ -1,6 +1,7 @@
 // gitwrap.go holds webster's git queries: HEAD, merge-state, parent-merge and suspect-path checks.
 // Helpers here go through gitrepo.Repo, except dirty and the probes gitrepo has no method for.
 // Those wrap the checked gitexec.Run directly, and they stay in this file so no other webster file runs git.
+// The worktree list is read through dotgit, and through git only for a repository whose refs are not files.
 
 package websterengine
 
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/dotgit"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
@@ -325,17 +327,13 @@ func otherWorktrees(worktree string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	stdout, err := gitexec.Run([]string{"worktree", "list", "--porcelain"}, worktree)
+	roots, err := worktreeRoots(worktree)
 	if err != nil {
-		return nil, fmt.Errorf("websterengine: list worktrees of %s: %w", worktree, err)
+		return nil, err
 	}
 	var others []string
-	for _, line := range strings.Split(stdout, "\n") {
-		path, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "worktree ")
-		if !ok {
-			continue
-		}
-		canon, err := canonicalPath(path)
+	for _, root := range roots {
+		canon, err := canonicalPath(root)
 		if err != nil {
 			return nil, err
 		}
@@ -344,6 +342,38 @@ func otherWorktrees(worktree string) ([]string, error) {
 		}
 	}
 	return others, nil
+}
+
+// worktreeRoots returns the root of every worktree of worktree's repository, read in-process with no git process.
+// A repository whose refs are not files is read from `git worktree list --porcelain` instead.
+func worktreeRoots(worktree string) ([]string, error) {
+	worktrees, err := dotgit.ListWorktrees(worktree)
+	if errors.Is(err, dotgit.ErrRefStorage) {
+		return porcelainWorktreeRoots(worktree)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: list worktrees of %s: %w", worktree, err)
+	}
+	roots := make([]string, len(worktrees))
+	for i, listed := range worktrees {
+		roots[i] = listed.Path
+	}
+	return roots, nil
+}
+
+// porcelainWorktreeRoots returns the path of each `worktree` line of `git worktree list --porcelain` run in worktree.
+func porcelainWorktreeRoots(worktree string) ([]string, error) {
+	stdout, err := gitexec.Run([]string{"worktree", "list", "--porcelain"}, worktree)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: list worktrees of %s: %w", worktree, err)
+	}
+	var roots []string
+	for _, line := range strings.Split(stdout, "\n") {
+		if path, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "worktree "); ok {
+			roots = append(roots, path)
+		}
+	}
+	return roots, nil
 }
 
 // worktreePathDiffers reports whether path differs from base in worktree: a changed tracked file or an untracked new one.

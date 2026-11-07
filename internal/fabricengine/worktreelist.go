@@ -1,12 +1,15 @@
-// worktreelist.go parses `git worktree list --porcelain` into structured entries for fabric's worktree lookups.
+// worktreelist.go lists a repository's worktrees for fabric's worktree lookups:
+// in-process through dotgit, or from `git worktree list --porcelain` for a repository whose refs are not files.
 
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/dotgit"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -15,7 +18,7 @@ import (
 // detachedBranch is the branch name recorded for a worktree whose HEAD is detached.
 const detachedBranch = "(detached)"
 
-// WorktreeEntry represents a single git worktree in the output of `git worktree list`.
+// WorktreeEntry represents a single worktree of a repository, as `git worktree list` reports it.
 type WorktreeEntry struct {
 	Path     string `json:"path"`
 	Head     string `json:"head"`
@@ -24,15 +27,43 @@ type WorktreeEntry struct {
 	Prunable bool   `json:"prunable"`
 }
 
-// List returns every worktree of the repository at sourceDir.
-// The first block of the porcelain output, the main worktree, is marked Main=true;
-// all others have Main=false.
+// List returns every worktree of the repository holding sourceDir, an absolute path anywhere inside a worktree.
+// The main worktree comes first with Main=true; all others have Main=false.
+// It reads the repository's files and starts no git process.
+// A repository whose refs are not files is the exception: it lists through `git worktree list --porcelain`.
+// A sourceDir that does not exist, a bare repository and a directory in no repository are errors.
 func List(sourceDir string) ([]WorktreeEntry, error) {
-	stdout, err := gitexec.Run([]string{"worktree", "list", "--porcelain"}, sourceDir)
+	worktrees, err := dotgit.ListWorktrees(sourceDir)
+	if errors.Is(err, dotgit.ErrRefStorage) {
+		return listFromPorcelain(sourceDir)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("list git worktrees in %q: %w", sourceDir, err)
 	}
 
+	entries := make([]WorktreeEntry, len(worktrees))
+	for i, worktree := range worktrees {
+		branch := detachedBranch
+		if worktree.Branch != "" {
+			branch = strings.TrimPrefix(worktree.Branch, "refs/heads/")
+		}
+		entries[i] = WorktreeEntry{
+			Path:     worktree.Path,
+			Head:     worktree.Head,
+			Branch:   branch,
+			Main:     i == 0,
+			Prunable: worktree.Prunable,
+		}
+	}
+	return entries, nil
+}
+
+// listFromPorcelain lists the worktrees of the repository holding sourceDir through `git worktree list --porcelain`.
+func listFromPorcelain(sourceDir string) ([]WorktreeEntry, error) {
+	stdout, err := gitexec.Run([]string{"worktree", "list", "--porcelain"}, sourceDir)
+	if err != nil {
+		return nil, fmt.Errorf("list git worktrees in %q: %w", sourceDir, err)
+	}
 	return parseWorktreePorcelain(stdout)
 }
 
@@ -135,8 +166,8 @@ func OpenParent(l *lymcwd.Location, parentBranch string) (*Fabric, error) {
 	return f, nil
 }
 
-// PrimeName returns the base name of l's main worktree, the Main entry of `git worktree list --porcelain`.
-// It runs git on every call, so a caller resolves the name when it needs it.
+// PrimeName returns the base name of l's main worktree, the Main entry List returns.
+// It reads the worktree list on every call, so a caller resolves the name when it needs it.
 func PrimeName(l *lymcwd.Location) (string, error) {
 	entries, err := List(l.AnchorPath())
 	if err != nil {

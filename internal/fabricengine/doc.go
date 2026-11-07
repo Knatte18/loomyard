@@ -1255,7 +1255,11 @@
 // The verb-level `RemoteSkippedReason` on `CleanupResult` and `RemoveResult` carries it, not a per-branch error field.
 // `cleanup` and `remove` therefore give the same verdict for the same configuration.
 //
-// `Reconcile` reads `git worktree list` once, before its per-pair loop,
+// `List` reads the worktree list in-process through `internal/dotgit` and starts no git process.
+// `dotgit` refuses a repository whose refs are not files, such as a reftable one,
+// and `List` then parses `git worktree list --porcelain` instead.
+//
+// `Reconcile` reads the worktree list once, before its per-pair loop,
 // so a concurrent `remove` or `prune` can delete a pair's directory before the loop reaches it.
 // `ReconcileActionVanishedMidWalk` names that race and sets no `Error`, because nothing failed to reconcile:
 // the pair stopped existing.

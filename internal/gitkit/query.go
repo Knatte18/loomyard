@@ -122,6 +122,46 @@ func CommitFileOnBranch(tb testing.TB, dir, branch, rel, content, msg string) st
 	return CommitFile(tb, dir, rel, content, msg)
 }
 
+// SkipBelowGitVersion skips tb when the git on PATH is older than minimum, a dotted version such as "2.48".
+// The skip names the version found, minimum and needs, the feature that wants it.
+func SkipBelowGitVersion(tb testing.TB, minimum, needs string) {
+	tb.Helper()
+
+	found := parseGitVersion(Git(tb, tb.TempDir(), "version"))
+	if compareDottedVersions(found, minimum) < 0 {
+		tb.Skipf("git %s is below %s, which %s needs", found, minimum, needs)
+	}
+}
+
+// parseGitVersion returns the dotted numeric version in `git version` output, without any vendor suffix.
+// "git version 2.47.1.windows.1" yields "2.47.1" and "git version 2.39.5 (Apple Git-154)" yields "2.39.5".
+func parseGitVersion(output string) string {
+	found := strings.TrimPrefix(strings.TrimSpace(output), "git version ")
+	if end := strings.IndexFunc(found, func(r rune) bool { return r != '.' && (r < '0' || r > '9') }); end >= 0 {
+		found = found[:end]
+	}
+	return strings.TrimRight(found, ".")
+}
+
+// compareDottedVersions compares two dotted numeric versions component by component, a missing component counting as 0.
+func compareDottedVersions(a, b string) int {
+	as, bs := strings.Split(a, "."), strings.Split(b, ".")
+	for i := range max(len(as), len(bs)) {
+		if diff := dottedComponent(as, i) - dottedComponent(bs, i); diff != 0 {
+			return diff
+		}
+	}
+	return 0
+}
+
+func dottedComponent(parts []string, i int) int {
+	if i >= len(parts) {
+		return 0
+	}
+	n, _ := strconv.Atoi(parts[i])
+	return n
+}
+
 // nonBlankLines splits s into lines and drops the blank ones.
 func nonBlankLines(s string) []string {
 	var lines []string
