@@ -1,5 +1,6 @@
 // outbound.go is the relay's read of its own mailbox: it posts the orchs' and programs' mail to the channel.
-// Each message for `<shortname>:SLACK` is posted at least once, and never twice for one acknowledged read.
+// Each message for `<shortname>:SLACK` is posted at least once.
+// Once Slack accepted a message, the relay posts it no more within one relay process.
 
 package slackengine
 
@@ -8,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -34,9 +36,6 @@ const (
 // creel then releases the read with the rest unposted.
 var errReadBudget = errors.New("slack: the posting budget of one read ended; the rest waits for the next read")
 
-// errOutboxWrite marks a failed write of the outbox file.
-var errOutboxWrite = errors.New("slack: write the outbox file")
-
 // outboxRecord is the outbox file's content.
 // Handled holds the IDs of the messages a read has handled and not yet acknowledged.
 // Refusals counts how often Slack refused each message that is not yet handled.
@@ -54,6 +53,11 @@ type outbound struct {
 	slack   SlackClient
 	clock   Clock
 	wait    *loopWait
+	// unsaved is the outbox record a failed write left unstored;
+	// while set it stands in for the file, so a message Slack accepted is not posted again.
+	unsaved *outboxRecord
+	// saveFault is the first failed write of the outbox record in the current read.
+	saveFault error
 }
 
 func newOutbound(geom Geometry, mailbox Mailbox, slack SlackClient, clock Clock, floor *sharedFloor) *outbound {
@@ -66,6 +70,8 @@ func newOutbound(geom Geometry, mailbox Mailbox, slack SlackClient, clock Clock,
 // The mail is acknowledged only when creel confirms it.
 // Until then the outbox record keeps each handled message, so a redelivered read posts nothing twice.
 // A failed post returns its error with the read released; the record stays until a confirmed acknowledgement clears it.
+// A post Slack accepted counts as done whatever fails after it.
+// A record that fails to write stays in memory in the file's place, and the read returns the write's error once it ends.
 func (out *outbound) read(ctx context.Context) (time.Duration, error) {
 	setup, found, err := ReadSetup(out.geom.SetupPath)
 	if err != nil {
@@ -74,6 +80,7 @@ func (out *outbound) read(ctx context.Context) (time.Duration, error) {
 	if !found {
 		return out.wait.afterIdle(), fmt.Errorf("slack: the setup file %s is gone; way forward: run `lym slack setup --channel <id> --operator <user-id>` from the operator's terminal", out.geom.SetupPath)
 	}
+	out.saveFault = nil
 	handlerRan := false
 	err = out.mailbox.ReadWait(outboundReadTimeout, func(messages []creelengine.Message) error {
 		handlerRan = true
@@ -81,12 +88,14 @@ func (out *outbound) read(ctx context.Context) (time.Duration, error) {
 	})
 	switch {
 	case err == nil:
-		return out.wait.afterActivity(), writeOutbox(out.geom, outboxRecord{})
+		out.save(outboxRecord{})
+		return out.wait.afterActivity(), out.saveFault
 	case errors.Is(err, errReadBudget):
-		return out.wait.afterActivity(), nil
+		return out.wait.afterActivity(), out.saveFault
 	case errors.Is(err, creelengine.ErrWaitTimeout) && !handlerRan:
 		return out.wait.afterIdle(), nil
 	}
+	err = errors.Join(err, out.saveFault)
 	if limit, ok := isRateLimit(err); ok {
 		return out.wait.afterRateLimit(limit), err
 	}
@@ -102,15 +111,14 @@ func (out *outbound) read(ctx context.Context) (time.Duration, error) {
 // so the line survives a failed read.
 // A line that fails to post stays counted in the record for the next read;
 // its failure is returned only when the messages themselves posted.
-// The line waits for the next read when the read ended on a rate limit, a further call only prolonging it;
-// it also waits when the record failed to write, since that would let the line post twice.
+// The line waits for the next read when the read ended on a rate limit, a further call only prolonging it.
 func (out *outbound) post(ctx context.Context, setup Setup, messages []creelengine.Message) error {
-	record, err := readOutbox(out.geom)
+	record, err := out.loadOutbox()
 	if err != nil {
 		return err
 	}
 	postErr := out.postMessages(ctx, setup, &record, messages)
-	if _, limited := isRateLimit(postErr); limited || errors.Is(postErr, errOutboxWrite) {
+	if _, limited := isRateLimit(postErr); limited {
 		return postErr
 	}
 	reportErr := out.reportStale(ctx, setup, &record)
@@ -123,7 +131,7 @@ func (out *outbound) post(ctx context.Context, setup Setup, messages []creelengi
 	return reportErr
 }
 
-// reportStale posts the line naming the stale mail the record counts, then clears the count in the record and writes it.
+// reportStale posts the line naming the stale mail the record counts, then clears the count in the record and saves it.
 // It posts nothing when the record counts none, and on a failed post leaves the count in place.
 func (out *outbound) reportStale(ctx context.Context, setup Setup, record *outboxRecord) error {
 	if record.Stale == 0 {
@@ -134,12 +142,13 @@ func (out *outbound) reportStale(ctx context.Context, setup Setup, record *outbo
 		return fmt.Errorf("slack: post the line about stale mail: %w", err)
 	}
 	record.Stale = 0
-	return writeOutbox(out.geom, *record)
+	out.save(*record)
+	return nil
 }
 
-// postMessages posts each message not yet in record, oldest first, and writes the record after each one it handles.
+// postMessages posts each message not yet in record, oldest first, and saves the record after each one it handles.
 // Mail older than staleMailAge is counted in the record instead of posted.
-// It returns errReadBudget once the posting budget ends, and the error of a failed post or write.
+// It returns errReadBudget once the posting budget ends, and the error of a failed post.
 func (out *outbound) postMessages(ctx context.Context, setup Setup, record *outboxRecord, messages []creelengine.Message) error {
 	messages = slices.Clone(messages)
 	slices.SortFunc(messages, func(a, b creelengine.Message) int { return cmp.Compare(a.ID, b.ID) })
@@ -163,14 +172,12 @@ func (out *outbound) postMessages(ctx context.Context, setup Setup, record *outb
 		}
 		record.Handled = append(record.Handled, message.ID)
 		delete(record.Refusals, message.ID)
-		if err := writeOutbox(out.geom, *record); err != nil {
-			return err
-		}
+		out.save(*record)
 	}
 	return nil
 }
 
-// refused counts Slack's refusal of message in the record and writes it.
+// refused counts Slack's refusal of message in the record and saves it.
 // Once the count reaches refusalCap, it posts one line naming the message and reports whether it drops the message.
 // A failure that is no refusal, a transport failure, a server error or a rate limit, counts toward no cap;
 // otherwise it returns err so the read is released with the message queued.
@@ -183,9 +190,7 @@ func (out *outbound) refused(ctx context.Context, setup Setup, record *outboxRec
 	}
 	record.Refusals[message.ID]++
 	if record.Refusals[message.ID] < refusalCap {
-		if writeErr := writeOutbox(out.geom, *record); writeErr != nil {
-			return false, errors.Join(err, writeErr)
-		}
+		out.save(*record)
 		return false, err
 	}
 	line := fmt.Sprintf("message %d from %s was refused by Slack %d times and is dropped; read it with `lym creel log --to %s`", message.ID, message.From, refusalCap, out.relayName())
@@ -235,19 +240,34 @@ func programSlug(from, shortname, name string) string {
 	return slug
 }
 
-// readOutbox returns the outbox record, empty when none is written.
-func readOutbox(geom Geometry) (outboxRecord, error) {
-	record, _, err := state.ReadJSON[outboxRecord](geom.OutboxPath, recordLockPath(geom.OutboxPath))
+// loadOutbox returns the outbox record: the one a failed write left in memory, otherwise the file's.
+func (out *outbound) loadOutbox() (outboxRecord, error) {
+	if out.unsaved != nil {
+		return cloneOutbox(*out.unsaved), nil
+	}
+	record, _, err := state.ReadJSON[outboxRecord](out.geom.OutboxPath, recordLockPath(out.geom.OutboxPath))
 	if err != nil {
-		return outboxRecord{}, fmt.Errorf("slack: read the outbox file %s: %w", geom.OutboxPath, err)
+		return outboxRecord{}, fmt.Errorf("slack: read the outbox file %s: %w", out.geom.OutboxPath, err)
 	}
 	return record, nil
 }
 
-// writeOutbox stores record in the outbox file.
-func writeOutbox(geom Geometry, record outboxRecord) error {
-	if err := state.WriteJSON(geom.OutboxPath, recordLockPath(geom.OutboxPath), record); err != nil {
-		return fmt.Errorf("%w %s: %w", errOutboxWrite, geom.OutboxPath, err)
+// save stores record in the outbox file.
+// A failed write keeps a copy of record in memory in the file's place and keeps the error for the read to return,
+// so the write never turns a message Slack accepted into one to post again.
+func (out *outbound) save(record outboxRecord) {
+	if err := state.WriteJSON(out.geom.OutboxPath, recordLockPath(out.geom.OutboxPath), record); err != nil {
+		unsaved := cloneOutbox(record)
+		out.unsaved = &unsaved
+		if out.saveFault == nil {
+			out.saveFault = fmt.Errorf("slack: write the outbox file %s; the relay keeps the record in memory: %w", out.geom.OutboxPath, err)
+		}
+		return
 	}
-	return nil
+	out.unsaved = nil
+}
+
+// cloneOutbox returns a copy of record that shares no slice or map with it.
+func cloneOutbox(record outboxRecord) outboxRecord {
+	return outboxRecord{Handled: slices.Clone(record.Handled), Refusals: maps.Clone(record.Refusals), Stale: record.Stale}
 }

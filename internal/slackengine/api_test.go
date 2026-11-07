@@ -69,19 +69,124 @@ func answerJSON(w http.ResponseWriter, body string) {
 	_, _ = w.Write([]byte(body))
 }
 
+// documentedAnswers holds, by request path, the example answer Slack's API reference shows for each method lym calls.
+// The answers keep Slack's shapes.
+// chat.postMessage sends `channel` as an id string, while conversations.info sends it as an object.
+var documentedAnswers = map[string]string{
+	"/auth.test": `{
+		"ok": true,
+		"url": "https://subarachnoid.slack.com/",
+		"team": "Subarachnoid Workspace",
+		"user": "grace",
+		"team_id": "T12345678",
+		"user_id": "W12345678"
+	}`,
+	"/conversations.info": `{
+		"ok": true,
+		"channel": {
+			"id": "C012AB3CD",
+			"name": "general",
+			"is_channel": true,
+			"is_group": false,
+			"is_im": false,
+			"is_mpim": false,
+			"is_private": false,
+			"created": 1654868334,
+			"is_archived": false,
+			"is_general": true,
+			"unlinked": 0,
+			"name_normalized": "general",
+			"is_shared": false,
+			"is_org_shared": false,
+			"is_pending_ext_shared": false,
+			"pending_shared": [],
+			"context_team_id": "T123ABCDEF",
+			"updated": 1723215202803,
+			"parent_conversation": null,
+			"creator": "U123ABCDEF",
+			"is_ext_shared": false,
+			"shared_team_ids": ["T123ABCDEF"],
+			"pending_connected_team_ids": [],
+			"is_member": true,
+			"last_read": "1723215190.639619",
+			"topic": {"value": "", "creator": "", "last_set": 0},
+			"purpose": {"value": "This is the one channel that will always include everyone.", "creator": "U123ABCDEF", "last_set": 1654868334},
+			"previous_names": []
+		}
+	}`,
+	"/conversations.history": `{
+		"ok": true,
+		"messages": [
+			{"type": "message", "user": "U123ABC456", "text": "I find you punny and would like to smell your nose letter", "ts": "1512085950.000216"},
+			{"type": "message", "user": "U222BBB222", "text": "What, you want to smell my shoes better?", "ts": "1512104434.000490"}
+		],
+		"has_more": true,
+		"pin_count": 0,
+		"response_metadata": {"next_cursor": "bmV4dF90czoxNTEyMDg1ODYxMDAwNTQz"}
+	}`,
+	"/users.info": `{
+		"ok": true,
+		"user": {
+			"id": "W012A3CDE",
+			"team_id": "T012AB3C4",
+			"name": "spengler",
+			"deleted": false,
+			"color": "9f69e7",
+			"real_name": "Egon Spengler",
+			"tz": "America/Los_Angeles",
+			"tz_label": "Pacific Daylight Time",
+			"tz_offset": -25200,
+			"profile": {
+				"avatar_hash": "ge3b51ca72de",
+				"status_text": "Print is dead",
+				"status_emoji": ":books:",
+				"real_name": "Egon Spengler",
+				"display_name": "spengler",
+				"real_name_normalized": "Egon Spengler",
+				"display_name_normalized": "spengler",
+				"email": "spengler@ghostbusters.example.com",
+				"team": "T012AB3C4"
+			},
+			"is_admin": true,
+			"is_owner": false,
+			"is_primary_owner": false,
+			"is_restricted": false,
+			"is_ultra_restricted": false,
+			"is_bot": false,
+			"updated": 1502138686,
+			"is_app_user": false,
+			"has_2fa": false
+		}
+	}`,
+	"/chat.postMessage": `{
+		"ok": true,
+		"channel": "C123ABC456",
+		"ts": "1503435956.000247",
+		"message": {
+			"text": "Here's a message for you",
+			"username": "ecto1",
+			"bot_id": "B123ABC456",
+			"attachments": [{"text": "This is an attachment", "id": 1, "fallback": "This is an attachment's fallback"}],
+			"type": "message",
+			"subtype": "bot_message",
+			"ts": "1503435956.000247"
+		}
+	}`,
+}
+
 func TestAPI(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	ctx := context.Background()
 
-	t.Run("EachMethodSendsItsPathBearerAndFormFields", func(t *testing.T) {
+	t.Run("EachMethodSendsItsRequestAndDecodesSlacksDocumentedAnswer", func(t *testing.T) {
 		t.Parallel()
 		fake := newFakeSlackAPI(t, func(request recordedRequest, w http.ResponseWriter) {
-			if request.path == "/conversations.info" {
-				answerJSON(w, `{"ok":true,"channel":{"id":"C1","name":"ops","is_member":true,"is_private":true}}`)
+			if request.form.Get("cursor") != "" {
+				answerJSON(w, `{"ok":true,"messages":[],"has_more":false}`)
 				return
 			}
-			answerJSON(w, `{"ok":true,"messages":[{"ts":"5.000001"}]}`)
+			answerJSON(w, documentedAnswers[request.path])
 		})
 		api := fake.api()
 		if err := api.AuthTest(ctx); err != nil {
@@ -91,7 +196,7 @@ func TestAPI(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ConversationInfo = %v", err)
 		}
-		if want := (slackengine.ChannelInfo{ID: "C1", Name: "ops", IsMember: true, IsPrivate: true}); info != want {
+		if want := (slackengine.ChannelInfo{ID: "C012AB3CD", Name: "general", IsMember: true}); info != want {
 			t.Errorf("ConversationInfo = %+v; want %+v", info, want)
 		}
 		if err := api.UserInfo(ctx, "U1"); err != nil {
@@ -100,15 +205,27 @@ func TestAPI(t *testing.T) {
 		if err := api.PostMessage(ctx, "C1", "hello"); err != nil {
 			t.Fatalf("PostMessage = %v", err)
 		}
-		if _, err := api.History(ctx, "C1", "4.0"); err != nil {
+		messages, err := api.History(ctx, "C1", "4.0")
+		if err != nil {
 			t.Fatalf("History = %v", err)
 		}
+		wantMessages := []slackengine.Message{
+			{TS: "1512085950.000216", User: "U123ABC456", Text: "I find you punny and would like to smell your nose letter"},
+			{TS: "1512104434.000490", User: "U222BBB222", Text: "What, you want to smell my shoes better?"},
+		}
+		if diff := cmp.Diff(wantMessages, messages); diff != "" {
+			t.Errorf("History() mismatch (-want +got):\n%s", diff)
+		}
+		historyForm := url.Values{"channel": {"C1"}, "oldest": {"4.0"}, "limit": {"200"}}
 		want := []recordedRequest{
 			{path: "/auth.test", form: url.Values{}},
 			{path: "/conversations.info", form: url.Values{"channel": {"C1"}}},
 			{path: "/users.info", form: url.Values{"user": {"U1"}}},
 			{path: "/chat.postMessage", form: url.Values{"channel": {"C1"}, "text": {"hello"}}},
-			{path: "/conversations.history", form: url.Values{"channel": {"C1"}, "oldest": {"4.0"}, "limit": {"200"}}},
+			{path: "/conversations.history", form: historyForm},
+			{path: "/conversations.history", form: url.Values{
+				"channel": {"C1"}, "oldest": {"4.0"}, "limit": {"200"}, "cursor": {"bmV4dF90czoxNTEyMDg1ODYxMDAwNTQz"},
+			}},
 		}
 		got := fake.recorded()
 		if len(got) != len(want) {

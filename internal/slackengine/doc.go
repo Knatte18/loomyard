@@ -24,6 +24,9 @@
 //
 // `API` is the Web API client, over `net/http` alone.
 // Each call posts a form to the method's URL with the bot token as a bearer header and a bounded timeout.
+// Every answer is read first for its `ok` and `error` alone;
+// each method then decodes only the fields it uses, in the shape that method's answer has.
+// `PostMessage` reads nothing past `ok`, so a post Slack accepted never reads as a failure.
 // No error or log line carries the token.
 // A call Slack refused for its rate limit is a `*RateLimitError` carrying the wait Slack asked for.
 // Any other `ok: false` is an `*APIError` carrying Slack's code.
@@ -39,9 +42,12 @@
 // The relay then answers in Slack and moves past it.
 //
 // The outbound read waits on the relay's own mailbox and posts mail from the hub's orchs and programs to the channel.
-// Posting is at least once and never twice for one acknowledged read.
+// Posting is at least once, and a message Slack accepted is not posted again.
 // An outbox record keeps each message already posted.
 // It also keeps the count of stale mail whose line is not yet posted, until creel confirms the acknowledgement.
+// A record that fails to write stays in memory in the file's place:
+// the read still acknowledges the mail, and the relay log names the failed write.
+// That record is lost when the relay process ends, so a restart before a good write can post that mail again.
 // A read stops posting before creel's acknowledgement window ends and releases the rest.
 // Mail over a day old is acknowledged unposted.
 // A message Slack refuses with an error code five times is dropped with a line that names it.

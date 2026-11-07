@@ -97,60 +97,78 @@ func (e *RateLimitError) Error() string {
 	return fmt.Sprintf("slack: %s rate limited; retry after %s", e.Method, e.RetryAfter)
 }
 
-// response is the part of a Slack answer the client reads, whatever the method.
-type response struct {
-	OK               bool          `json:"ok"`
-	Error            string        `json:"error"`
-	Messages         []Message     `json:"messages"`
-	HasMore          bool          `json:"has_more"`
-	Channel          ChannelInfo   `json:"channel"`
-	ResponseMetadata responseCurse `json:"response_metadata"`
+// envelope is the part of every Slack answer that says whether Slack accepted the call.
+type envelope struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error"`
 }
 
-// responseCurse holds the cursor of the next page of a paginated answer.
-type responseCurse struct {
+// conversationInfoAnswer is the part of a conversations.info answer the client reads.
+type conversationInfoAnswer struct {
+	Channel ChannelInfo `json:"channel"`
+}
+
+// historyAnswer is the part of a conversations.history answer the client reads: one page and the cursor of the next.
+type historyAnswer struct {
+	Messages         []Message      `json:"messages"`
+	HasMore          bool           `json:"has_more"`
+	ResponseMetadata responseCursor `json:"response_metadata"`
+}
+
+// responseCursor holds the cursor of the next page of a paginated answer.
+type responseCursor struct {
 	NextCursor string `json:"next_cursor"`
 }
 
-// call posts form to method and decodes Slack's answer.
+// call posts form to method and returns the body of Slack's answer once Slack accepted the call.
+// It reads only the answer's `ok` and `error`, so a call Slack accepted never fails on the shape of the rest.
 // An HTTP 429 and an ok-false `ratelimited` are a *RateLimitError.
 // Any other ok false is an *APIError, and a transport failure, a 5xx or an unreadable answer is a plain error.
 // No error carries the token.
-func (a *API) call(ctx context.Context, method string, form url.Values) (response, error) {
+func (a *API) call(ctx context.Context, method string, form url.Values) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+method, strings.NewReader(form.Encode()))
 	if err != nil {
-		return response{}, fmt.Errorf("slack: build the %s request: %w", method, err)
+		return nil, fmt.Errorf("slack: build the %s request: %w", method, err)
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("Authorization", "Bearer "+a.token)
 	httpResponse, err := a.client.Do(request)
 	if err != nil {
-		return response{}, fmt.Errorf("slack: call %s: %w", method, err)
+		return nil, fmt.Errorf("slack: call %s: %w", method, err)
 	}
 	defer httpResponse.Body.Close()
 	switch {
 	case httpResponse.StatusCode == http.StatusTooManyRequests:
-		return response{}, &RateLimitError{Method: method, RetryAfter: retryAfter(httpResponse)}
+		return nil, &RateLimitError{Method: method, RetryAfter: retryAfter(httpResponse)}
 	case httpResponse.StatusCode >= http.StatusInternalServerError:
-		return response{}, fmt.Errorf("slack: %s answered HTTP %d", method, httpResponse.StatusCode)
+		return nil, fmt.Errorf("slack: %s answered HTTP %d", method, httpResponse.StatusCode)
 	}
 	body, err := io.ReadAll(httpResponse.Body)
 	if err != nil {
-		return response{}, fmt.Errorf("slack: read the %s answer: %w", method, err)
+		return nil, fmt.Errorf("slack: read the %s answer: %w", method, err)
 	}
-	var decoded response
-	if err := json.Unmarshal(body, &decoded); err != nil {
-		return response{}, fmt.Errorf("slack: decode the %s answer: %w", method, err)
+	answer, err := decodeAnswer[envelope](method, body)
+	if err != nil {
+		return nil, err
 	}
-	if decoded.OK {
-		return decoded, nil
+	if answer.OK {
+		return body, nil
 	}
-	if decoded.Error == rateLimitedCode {
-		return response{}, &RateLimitError{Method: method, RetryAfter: retryAfter(httpResponse)}
+	if answer.Error == rateLimitedCode {
+		return nil, &RateLimitError{Method: method, RetryAfter: retryAfter(httpResponse)}
 	}
-	return response{}, &APIError{Method: method, Code: decoded.Error}
+	return nil, &APIError{Method: method, Code: answer.Error}
+}
+
+// decodeAnswer decodes body, the answer Slack gave to method, into the shape T.
+func decodeAnswer[T any](method string, body []byte) (T, error) {
+	var answer T
+	if err := json.Unmarshal(body, &answer); err != nil {
+		return answer, fmt.Errorf("slack: decode the %s answer: %w", method, err)
+	}
+	return answer, nil
 }
 
 // retryAfter reads the Retry-After header of httpResponse in seconds;
@@ -172,7 +190,12 @@ func (a *API) AuthTest(ctx context.Context) error {
 
 // ConversationInfo reads the channel with conversations.info.
 func (a *API) ConversationInfo(ctx context.Context, channel string) (ChannelInfo, error) {
-	answer, err := a.call(ctx, "conversations.info", url.Values{"channel": {channel}})
+	const method = "conversations.info"
+	body, err := a.call(ctx, method, url.Values{"channel": {channel}})
+	if err != nil {
+		return ChannelInfo{}, err
+	}
+	answer, err := decodeAnswer[conversationInfoAnswer](method, body)
 	if err != nil {
 		return ChannelInfo{}, err
 	}
@@ -195,7 +218,7 @@ func (a *API) History(ctx context.Context, channel, oldest string) ([]Message, e
 		if cursor != "" {
 			form.Set("cursor", cursor)
 		}
-		page, err := a.call(ctx, "conversations.history", form)
+		page, err := a.history(ctx, form)
 		if err != nil {
 			return nil, err
 		}
@@ -211,7 +234,7 @@ func (a *API) History(ctx context.Context, channel, oldest string) ([]Message, e
 
 // Latest returns the timestamp of the channel's newest message, and reports found false for an empty channel.
 func (a *API) Latest(ctx context.Context, channel string) (string, bool, error) {
-	page, err := a.call(ctx, "conversations.history", url.Values{"channel": {channel}, "limit": {"1"}})
+	page, err := a.history(ctx, url.Values{"channel": {channel}, "limit": {"1"}})
 	if err != nil {
 		return "", false, err
 	}
@@ -221,7 +244,19 @@ func (a *API) Latest(ctx context.Context, channel string) (string, bool, error) 
 	return page.Messages[0].TS, true, nil
 }
 
+// history reads one page of conversations.history for form.
+func (a *API) history(ctx context.Context, form url.Values) (historyAnswer, error) {
+	const method = "conversations.history"
+	body, err := a.call(ctx, method, form)
+	if err != nil {
+		return historyAnswer{}, err
+	}
+	return decodeAnswer[historyAnswer](method, body)
+}
+
 // PostMessage posts text to the channel with chat.postMessage.
+// It returns nil once Slack accepted the post and reads nothing more of the answer,
+// so a post Slack accepted never reads as a failure that would post it again.
 func (a *API) PostMessage(ctx context.Context, channel, text string) error {
 	_, err := a.call(ctx, "chat.postMessage", url.Values{"channel": {channel}, "text": {text}})
 	return err

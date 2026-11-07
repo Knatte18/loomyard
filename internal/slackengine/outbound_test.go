@@ -257,6 +257,146 @@ func TestOutboundRead(t *testing.T) {
 		}
 	})
 
+	t.Run("OutboxWriteFailingAfterAnAcceptedPostAcknowledgesTheMailAndNeverRepostsIt", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name string
+			// ackRefused makes creel refuse the first read's acknowledgement, so the batch is delivered again.
+			ackRefused bool
+		}{
+			{"AcknowledgementConfirmed", false},
+			{"AcknowledgementRefusedAndTheBatchRedelivered", true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newOutboundHarness(t)
+				// A directory in the outbox file's place makes every write of the record fail once Slack accepted the post.
+				h.slack.onPost = func() {
+					if err := os.MkdirAll(h.geom.OutboxPath, 0o700); err != nil {
+						t.Errorf("MkdirAll = %v", err)
+					}
+				}
+				batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "once")}
+				steps := []readStep{{messages: batch}}
+				if tt.ackRefused {
+					steps = []readStep{{messages: batch, ackErr: errors.New("daemon refused")}, {messages: batch}}
+				}
+				h.mailbox.scriptReadWait(steps...)
+				for i := range steps {
+					if _, err := h.read(); err == nil || !strings.Contains(err.Error(), "outbox file") {
+						t.Errorf("Read #%d = %v; want the failed write of the outbox file", i+1, err)
+					}
+				}
+				h.wantAnswers("[ly:orch] once")
+				h.wantAcks([]int64{1})
+			})
+		}
+	})
+
+	t.Run("StaleMailLineIsPostedOnceWhenTheOutboxWriteFails", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		// The directory appears at the first post, before any write, so every write of the record fails.
+		h.slack.onPost = func() {
+			if err := os.MkdirAll(h.geom.OutboxPath, 0o700); err != nil {
+				t.Errorf("MkdirAll = %v", err)
+			}
+		}
+		old1, old2 := h.mailFrom(2, "ly:orch", "old"), h.mailFrom(3, "ly:orch", "older")
+		old1.Posted, old2.Posted = h.clock.Now().Add(-25*time.Hour), h.clock.Now().Add(-48*time.Hour)
+		batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "fresh"), old1, old2}
+		h.mailbox.scriptReadWait(readStep{messages: batch, ackErr: errors.New("daemon refused")}, readStep{messages: batch})
+		for i := range 2 {
+			if _, err := h.read(); err == nil || !strings.Contains(err.Error(), "outbox file") {
+				t.Errorf("Read #%d = %v; want the failed write of the outbox file", i+1, err)
+			}
+		}
+		lines := 0
+		for _, text := range h.slack.texts() {
+			if strings.Contains(text, "2 messages") && strings.Contains(text, "lym creel log --to ly:SLACK") {
+				lines++
+			}
+		}
+		if lines != 1 {
+			t.Errorf("count lines = %d in %q; want 1", lines, h.slack.texts())
+		}
+		h.wantAcks([]int64{1, 2, 3})
+	})
+
+	t.Run("OutboxWriteFailureRidesAlongWithAFailedPostAndWithTheEndedBudget", func(t *testing.T) {
+		t.Parallel()
+		slackDown := errors.New("slack down")
+		tests := []struct {
+			name string
+			// advance is how far each post moves the clock.
+			advance time.Duration
+			// failures are the answers of the first posts.
+			failures []error
+			// wantPostFailure is whether the read's error must also carry the failed post.
+			wantPostFailure bool
+		}{
+			{"FailedPost", 0, []error{nil, slackDown}, true},
+			{"PostingBudgetEnded", 15 * time.Second, nil, false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newOutboundHarness(t)
+				h.slack.onPost = func() {
+					h.clock.Advance(tt.advance)
+					if err := os.MkdirAll(h.geom.OutboxPath, 0o700); err != nil {
+						t.Errorf("MkdirAll = %v", err)
+					}
+				}
+				h.slack.failPosts(tt.failures...)
+				batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "one"), h.mailFrom(2, "ly:orch", "two"), h.mailFrom(3, "ly:orch", "three")}
+				h.mailbox.scriptReadWait(readStep{messages: batch})
+				_, err := h.read()
+				if err == nil || !strings.Contains(err.Error(), "outbox file") {
+					t.Fatalf("Read = %v; want the failed write of the outbox file", err)
+				}
+				if tt.wantPostFailure && !errors.Is(err, slackDown) {
+					t.Errorf("Read = %v; want it to carry the failed post too", err)
+				}
+			})
+		}
+	})
+
+	t.Run("OutboxFileWritableAgainStandsInPlaceOfTheRecordHeldInMemory", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		h.slack.onPost = func() {
+			if err := os.MkdirAll(h.geom.OutboxPath, 0o700); err != nil {
+				t.Errorf("MkdirAll = %v", err)
+			}
+		}
+		rest := []creelengine.Message{h.mailFrom(2, "ly:orch", "two"), h.mailFrom(3, "ly:orch", "three"), h.mailFrom(4, "ly:orch", "four")}
+		h.mailbox.scriptReadWait(
+			readStep{messages: []creelengine.Message{h.mailFrom(1, "ly:orch", "one")}},
+			readStep{messages: rest},
+			readStep{messages: rest},
+		)
+		if _, err := h.read(); err == nil {
+			t.Fatalf("Read = nil; want the failed write of the outbox file")
+		}
+		if err := os.Remove(h.geom.OutboxPath); err != nil {
+			t.Fatalf("Remove = %v", err)
+		}
+		// The second read ends on the posting budget, so it leaves the record in the file instead of clearing it.
+		h.slack.onPost = func() { h.clock.Advance(15 * time.Second) }
+		if _, err := h.read(); err != nil {
+			t.Fatalf("Read = %v; want nil once the file is writable again", err)
+		}
+		record, err := os.ReadFile(h.geom.OutboxPath)
+		if err != nil || !strings.Contains(string(record), "handled") {
+			t.Errorf("outbox record = %q, %v; want the file to hold the handled messages", record, err)
+		}
+		// With the file standing in for memory again, the third read skips the messages the second one handled.
+		h.mustRead()
+		h.wantAnswers("[ly:orch] one", "[ly:orch] two", "[ly:orch] three", "[ly:orch] four")
+	})
+
 	t.Run("RefusedAcknowledgementKeepsTheRecordSoNothingIsRepostedTwice", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)

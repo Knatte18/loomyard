@@ -867,7 +867,7 @@ User-facing modules each get one `lym <module>` namespace:
   `login` stores the app's bot token in a machine credential file and `setup` records the hub's channel and its one operator, each after Slack confirms it;
   only the operator's terminal may run them,
   and an orch's pane may run `start`, `stop`, `away` and `back`.
-  The relay forwards the operator's top-level channel messages to the hub's orchs as `[slack]` creel mail from `<shortname>:SLACK`, answers `away`, `back` and `status` in the channel, and posts the mail the orchs and programs leave for `SLACK` to the channel, at least once and never twice for one acknowledged read.
+  The relay forwards the operator's top-level channel messages to the hub's orchs as `[slack]` creel mail from `<shortname>:SLACK`, answers `away`, `back` and `status` in the channel, and posts the mail the orchs and programs leave for `SLACK` to the channel, at least once, and a message Slack accepted is not posted again within one relay process.
   It starts through a double fork, so no pane's tree holds it, and its files sit in the hub's `.lym/slack/` directory.
   While the presence is `slack`, each worktree's dobby leaves `SLACK` one line for a run waiting at PR-Review or Sampler-Session, every `remind_after_min` minutes of the wait.
   ✅ Implemented. See the `internal/slackengine` and `internal/slackcli` package documentation.
