@@ -18,8 +18,8 @@ const TrustedHubsRepositoryReinterpretation = "creel-trusted-hubs-repository"
 // RewriteShortnamesToRepositories returns the reinterpretation of a hub's creel.yaml.
 // resolve answers the repository name, owner/repo, of the hub a shortname names on the machine that runs the rewrite.
 // An entry holding a "/" is already a repository name and is kept.
-// Every other entry is a shortname: it is rewritten to its repository name, or dropped when resolve fails,
-// and each gets one line naming it.
+// Every other entry is a shortname.
+// It is rewritten to its repository name, or dropped when resolve fails, and each such entry gets one line naming it.
 // A repository listed twice is kept once.
 // The rewrite takes no worktree root or anchored directory, since trusted_hubs names no path.
 // A document that does not parse returns an error marked configengine.ErrInvalid.

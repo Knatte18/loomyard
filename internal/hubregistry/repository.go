@@ -10,8 +10,8 @@ import (
 )
 
 // RepositoryName answers the full name, owner/repo, of the GitHub repository the hub at hubPath works on.
-// It reads the origin remote of the hub's prime worktree, so a name reused on another machine or by a later hub
-// still names the repository and never the shortname.
+// It reads the origin remote of the hub's prime worktree.
+// A name reused on another machine or by a later hub therefore still names the repository, never the shortname.
 // A hub with no readable origin remote, and one whose origin is no GitHub repository, are refused with the reason.
 func RepositoryName(hubPath string) (string, error) {
 	url, err := fabricengine.HubOriginURL(hubPath)

@@ -16,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRewriteShortnamesToRepositories pins that each shortname becomes its repository name or is dropped with a line,
-// that a repository name is kept, that a second run changes nothing and that a malformed file is refused.
+// TestRewriteShortnamesToRepositories pins that each shortname becomes its repository name or is dropped with a line.
+// It also pins that a repository name is kept, that a second run changes nothing and that a malformed file is refused.
 func TestRewriteShortnamesToRepositories(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

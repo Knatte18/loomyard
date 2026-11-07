@@ -2,15 +2,15 @@
 
 // Package creelconfig owns the hub-wide creel.yaml: which other hubs' orch this hub obeys.
 //
-// The module's one key, trusted_hubs, lists the repository names, owner/repo, of the trusted hubs,
-// as read from each hub's origin remote.
+// The module's one key, trusted_hubs, lists the trusted hubs by repository name, owner/repo.
+// Each name is read from the hub's origin remote.
 // The key is classified guard, since it grants authority over this hub's agents.
 // A worktree's local override therefore cannot set it.
 //
 // The key once listed hub shortnames.
-// RewriteShortnamesToRepositories carries a hub's file across that change once, as a config reinterpretation:
-// it rewrites each shortname to the repository name it resolves to on the machine that runs it,
-// and drops one that resolves to none.
+// RewriteShortnamesToRepositories carries a hub's file across that change once, as a config reinterpretation.
+// It rewrites each shortname to the repository name it resolves to on the machine that runs it.
+// It drops a shortname that resolves to none.
 // The caller tells it the resolver, so the module imports neither the machine record nor git.
 //
 // LoadConfig degrades to the template when the hub holds no creel.yaml, so a hub with no file trusts no hub.

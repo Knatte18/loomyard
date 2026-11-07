@@ -94,7 +94,8 @@ const (
 )
 
 // HubStamp returns the stamp of a message from another hub, and the empty string for a local message.
-// The sending hub's repository name, when it had one, leads the stamp, so the line names the repository beside the sender.
+// The sending hub's repository name, when it had one, leads the stamp.
+// The line then names the repository beside the sender.
 func (m Message) HubStamp() string {
 	if m.SendingHub == "" {
 		return ""

@@ -108,8 +108,8 @@
 // A wait is never resumed once a ring reached it.
 // A waiter costs one idle process per live strand, blocked on its socket.
 // The hub directory in this package implements the engine's HubDirectory seam.
-// It works over the machine record of hubs, the other hubs' geometries and repository names,
-// the daemon spawn and the hub's creel.yaml.
+// It works over the machine record of hubs and the other hubs' geometries and repository names.
+// It also works over the daemon spawn and the hub's creel.yaml.
 // The machine record sits in the per-user state directory.
 // The `trusted_hubs` list of creel.yaml is read at each call, so a changed list applies with no daemon restart.
 // A per-user state directory that cannot be read leaves the daemon serving its own strands.
