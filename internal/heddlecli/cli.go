@@ -57,8 +57,9 @@ the system prompt of the Claude sessions launched in the hub: claude-prompt to
 every one, orch-prompt to an orch session alone. A hub whose heddle.yaml sets
 lym_override may override a shipped entry's text with set --layer lym.
 
-set and remove change the store under the Bolt write lock and start the board's
-detached Bolt sync, which commits and pushes the saved file. A worktree takes a
+set and remove change the store under the Bolt write lock, render HEDDLE.md,
+the overview of every entry, beside it, and start the board's detached Bolt
+sync, which commits and pushes both. A worktree takes a
 change only when lym makes the worktree, at a take-in render or at a hand
 render; a Claude session takes it at its launch or adoption, or at its next
 compaction after a file render. Every verb runs from a code worktree of a hub.`,

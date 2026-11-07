@@ -13,10 +13,36 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// The members the derived agent-defaults entry adds to the settings object while no hub agents.yaml sets an effort.
+// derivedBesideEnvA is the same pair with the env object also holding the key "A".
+const (
+	derivedEffort     = `"effortLevel": "medium"`
+	derivedEnv        = `"` + agentconfig.SubagentEffortEnv + `": "medium"`
+	derivedSettings   = derivedEffort + `, "env": {` + derivedEnv + `}`
+	derivedBesideEnvA = derivedEffort + `, "env": {"A": "1", ` + derivedEnv + `}`
+)
+
+// invalidAgentsConfig is an agents.yaml whose efforts table has no default, so it fails to load.
+const invalidAgentsConfig = "efforts:\n  haiku: low\n"
+
+// writeAgentsConfig writes content as the hub's agents.yaml in the Bolt checkout at bolt.
+func writeAgentsConfig(t *testing.T, bolt, content string) {
+	t.Helper()
+	path := configengine.ConfigFile(bolt, agentconfig.ModuleName)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // settingsStore returns a repository store holding one claude-settings entry per text, in order, each set through Set.
 func settingsStore(t *testing.T, texts ...string) Store {
@@ -56,6 +82,8 @@ func TestRenderClaudeSettings(t *testing.T) {
 	tests := []struct {
 		name    string
 		shipped string
+		// agents is the hub's agents.yaml; empty leaves none, so the template's efforts apply.
+		agents string
 		// file is the settings file present before the first render; empty leaves none.
 		file string
 		// earlier holds the entry texts of a render before the checked one; nil renders once.
@@ -79,61 +107,66 @@ func TestRenderClaudeSettings(t *testing.T) {
 		{
 			name: "NoFileTakesTheEntriesFoldedInOrder", shipped: shipped,
 			texts: []string{`{"permissions": {"deny": ["Artifact", "Workflow"]}}`, `{"attribution": {"commit": "Made by us"}, "permissions": {"deny": ["Artifact"]}}`},
-			want:  `{"permissions": {"deny": ["Workflow", "Artifact"]}, "attribution": {"commit": "Made by us"}}`, wantWritten: true,
+			want:  `{"permissions": {"deny": ["Workflow", "Artifact"]}, "attribution": {"commit": "Made by us"}, ` + derivedSettings + `}`, wantWritten: true,
+		},
+		{
+			name: "RepositoryEntryWinsOverTheDerivedEffort", shipped: noShipped,
+			texts: []string{`{"effortLevel": "high"}`},
+			want:  `{"effortLevel": "high", "env": {` + derivedEnv + `}}`, wantWritten: true,
 		},
 		{
 			name: "FileKeysStayAndHeddleScalarsWin", shipped: shipped,
 			file: `{"model": "opus", "permissions": {"allow": ["Bash"], "deny": ["Mine"]}, "attribution": {"commit": "old", "pr": "old"}}`,
-			want: `{"model": "opus", "permissions": {"allow": ["Bash"], "deny": ["Mine", "Workflow"]}, "attribution": {"commit": "", "pr": "old"}}`, wantWritten: true,
+			want: `{"model": "opus", "permissions": {"allow": ["Bash"], "deny": ["Mine", "Workflow"]}, "attribution": {"commit": "", "pr": "old"}, ` + derivedSettings + `}`, wantWritten: true,
 		},
 		{
 			name: "WhatNoEntrySetsAnyMoreIsTakenOut", shipped: shipped,
 			file:    `{"permissions": {"allow": ["Bash"]}}`,
 			earlier: []string{`{"permissions": {"deny": ["Artifact"]}, "env": {"A": "1"}}`},
-			want:    `{"permissions": {"allow": ["Bash"], "deny": ["Workflow"]}, "attribution": {"commit": ""}}`, wantWritten: true,
+			want:    `{"permissions": {"allow": ["Bash"], "deny": ["Workflow"]}, "attribution": {"commit": ""}, ` + derivedSettings + `}`, wantWritten: true,
 		},
 		{
-			name: "NoEntryLeftRemovesTheFileTheTakingOutEmpties", shipped: noShipped,
-			earlier: []string{`{"env": {"A": "1"}}`}, wantRemoved: true,
+			name: "NoEntryLeftRemovesTheFileTheTakingOutEmpties", shipped: noShipped, agents: invalidAgentsConfig,
+			earlier: []string{`{"env": {"A": "1"}}`}, wantRemoved: true, wantWarning: "effort defaults",
 		},
 		{
 			name: "NoEntryLeftKeepsTheKeysHeddleNeverSet", shipped: noShipped,
 			file:    `{"model": "opus"}`,
 			earlier: []string{`{"env": {"A": "1"}}`},
-			want:    `{"model": "opus"}`, wantWritten: true,
+			want:    `{"model": "opus", ` + derivedSettings + `}`, wantWritten: true,
 		},
 		{
 			name: "ScalarChangedSinceStaysWhenNoEntrySetsIt", shipped: noShipped,
 			earlier:     []string{`{"attribution": {"commit": ""}}`},
 			editBetween: `{"attribution": {"commit": "mine"}}`,
-			want:        `{"attribution": {"commit": "mine"}}`, wantWritten: true,
+			want:        `{"attribution": {"commit": "mine"}, ` + derivedSettings + `}`, wantWritten: true,
 		},
 		{
 			name: "UserItemInAListHeddleOwnsStaysWhenTheEntryGoes", shipped: noShipped,
 			file:    `{"permissions": {"deny": ["Mine"]}}`,
 			earlier: []string{`{"permissions": {"deny": ["Artifact"]}}`},
-			want:    `{"permissions": {"deny": ["Mine"]}}`, wantWritten: true,
+			want:    `{"permissions": {"deny": ["Mine"]}, ` + derivedSettings + `}`, wantWritten: true,
 		},
 		{
-			name: "NoEntryAndNoRecordTouchesNothing", shipped: noShipped,
-			file: `{"model": "opus"}`, want: `{"model": "opus"}`,
+			name: "NoEntryAndNoRecordTouchesNothing", shipped: noShipped, agents: invalidAgentsConfig,
+			file: `{"model": "opus"}`, want: `{"model": "opus"}`, wantWarning: "effort defaults",
 		},
 		{
 			name: "BlankFileTakesTheEntries", shipped: shipped,
 			file: "  \n",
-			want: `{"permissions": {"deny": ["Workflow"]}, "attribution": {"commit": ""}}`, wantWritten: true,
+			want: `{"permissions": {"deny": ["Workflow"]}, "attribution": {"commit": ""}, ` + derivedSettings + `}`, wantWritten: true,
 		},
 		{
 			name: "RecordHoldingNoObjectTakesNothingOut", shipped: shipped,
 			earlier:         []string{`{"env": {"A": "1"}}`},
 			recordOverwrite: `["not", "an", "object"]`,
-			want:            `{"env": {"A": "1"}, "permissions": {"deny": ["Workflow"]}, "attribution": {"commit": ""}}`, wantWritten: true,
+			want:            `{"permissions": {"deny": ["Workflow"]}, "attribution": {"commit": ""}, ` + derivedBesideEnvA + `}`, wantWritten: true,
 		},
 		{
 			name: "EntryHoldingNoObjectKeepsWhatTheLastRenderSet", shipped: noShipped,
 			earlier:     []string{`{"env": {"A": "1"}}`},
 			invalidText: "not json",
-			want:        `{"env": {"A": "1"}}`, wantWritten: true, wantWarning: "holds no JSON object",
+			want:        `{` + derivedBesideEnvA + `}`, wantWritten: true, wantWarning: "holds no JSON object",
 		},
 		{
 			name: "FileHoldingNoObjectIsLeftAlone", shipped: shipped,
@@ -150,6 +183,9 @@ func TestRenderClaudeSettings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			useShippedLayer(t, tt.shipped)
 			f := newRenderFixture(t, settingsStore(t, tt.earlier...))
+			if tt.agents != "" {
+				writeAgentsConfig(t, f.bolt, tt.agents)
+			}
 			if tt.excluded != nil {
 				f.excluded = tt.excluded
 			}
@@ -213,18 +249,19 @@ func TestRenderClaudeSettingsDropsTheRecordWithTheLastEntry(t *testing.T) {
 	mustRender(t, f)
 	saveStore(t, f.bolt, Store{})
 	mustRender(t, f)
-	requireJSON(t, ClaudeSettingsFile, f.readAnchor(t, ClaudeSettingsFile), `{"model": "opus"}`)
+	requireJSON(t, ClaudeSettingsFile, f.readAnchor(t, ClaudeSettingsFile), `{"model": "opus", `+derivedSettings+`}`)
 
 	f.writeAnchor(t, ClaudeSettingsFile, `{"model": "opus", "env": {"A": "1"}}`)
 	saveStore(t, f.bolt, settingsStore(t, `{"attribution": {"commit": "x"}}`))
 	mustRender(t, f)
 
 	requireJSON(t, ClaudeSettingsFile, f.readAnchor(t, ClaudeSettingsFile),
-		`{"model": "opus", "env": {"A": "1"}, "attribution": {"commit": "x"}}`)
+		`{"model": "opus", "attribution": {"commit": "x"}, `+derivedBesideEnvA+`}`)
 }
 
-// TestShippedClaudeSettings pins the Claude settings the shipped layer sets in every worktree,
-// and that a first render writes them as Show prints them.
+// TestShippedClaudeSettings pins the Claude settings the shipped layer sets in every worktree.
+// It also pins the effort defaults derived from the template's agents.yaml.
+// It pins that a first render writes them as Show prints them.
 func TestShippedClaudeSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -240,11 +277,66 @@ func TestShippedClaudeSettings(t *testing.T) {
   "extraKnownMarketplaces": {"scribe": {"source": {"source": "github", "repo": "Knatte18/scribe"}}},
   "permissions": {"deny": ["Artifact", "Workflow", "ReportFindings", "ScheduleWakeup", "SendFeedback",
     "CronCreate", "CronDelete", "CronList", "RemoteTrigger", "DesignSync", "NotebookEdit",
-    "EnterWorktree", "ExitWorktree", "Skill(dataviz)"]}
+    "EnterWorktree", "ExitWorktree", "Skill(dataviz)"]},
+  "disableClaudeAiConnectors": true,
+  "disableBundledSkills": true,
+  "disableWorkflows": true,
+  "promptSuggestionEnabled": false,
+  `+derivedSettings+`
 }`)
 
 	mustRender(t, f)
 	if got := f.readAnchor(t, ClaudeSettingsFile); got != shown {
 		t.Errorf("%s = %q; want the text Show printed, %q", ClaudeSettingsFile, got, shown)
+	}
+}
+
+// TestClaudeSettingsCarryTheAgentDefaults pins the effortLevel and subagent effort variable of Show and Render.
+// Both hold the efforts table's default of the hub's agents.yaml.
+// An agents.yaml which fails to load leaves both out and makes Render warn.
+func TestClaudeSettingsCarryTheAgentDefaults(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name   string
+		agents string
+		// wantEffort is the effort both keys hold; empty wants both left out and a warning.
+		wantEffort string
+	}{
+		{"NoAgentsFileTakesTheTemplateDefault", "", "medium"},
+		{"HubAgentsFileDefaultWins", "efforts:\n  default: high\n", "high"},
+		{"UnloadableAgentsFileLeavesTheDefaultsOut", invalidAgentsConfig, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newRenderFixture(t, Store{})
+			if tt.agents != "" {
+				writeAgentsConfig(t, f.bolt, tt.agents)
+			}
+			shown, err := Renderer{}.Show(f.bolt, claudeSettingsTarget, f.anchor)
+			if err != nil {
+				t.Fatalf("Show(%s) = %v", claudeSettingsTarget, err)
+			}
+			report := mustRender(t, f)
+
+			for label, text := range map[string]string{"Show": shown, ClaudeSettingsFile: f.readAnchor(t, ClaudeSettingsFile)} {
+				var object struct {
+					EffortLevel string            `json:"effortLevel"`
+					Env         map[string]string `json:"env"`
+				}
+				if err := json.Unmarshal([]byte(text), &object); err != nil {
+					t.Fatalf("%s = %q does not decode: %v", label, text, err)
+				}
+				if object.EffortLevel != tt.wantEffort || object.Env[agentconfig.SubagentEffortEnv] != tt.wantEffort {
+					t.Errorf("%s holds effortLevel %q and %s %q; want both %q",
+						label, object.EffortLevel, agentconfig.SubagentEffortEnv, object.Env[agentconfig.SubagentEffortEnv], tt.wantEffort)
+				}
+			}
+			warned := slices.ContainsFunc(report.Warnings, func(warning string) bool { return strings.Contains(warning, "effort defaults") })
+			if warned != (tt.wantEffort == "") {
+				t.Errorf("warnings = %v; want a warning naming the effort defaults: %v", report.Warnings, tt.wantEffort == "")
+			}
+		})
 	}
 }

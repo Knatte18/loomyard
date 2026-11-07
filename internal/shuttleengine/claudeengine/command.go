@@ -408,7 +408,7 @@ func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, sett
 // Both lines open with a statement that exports it as CLAUDE_CODE_PROMPT_CACHE_TTL,
 // so the resume line and its fresh fallback both run under it, in either shell dialect.
 // With a hub board directory, it creates dir and writes two files into it:
-// settings.json holds creel's hook delivery, the empty attribution and the session's scope for spec.Skills alone.
+// settings.json holds creel's hook delivery and the session's scope for spec.Skills alone.
 // The append-system-prompt file holds the creel trust sentence.
 // The Cmd and ResumeCmd lines both name these files, and the launch is marked CreelHooks,
 // so the session gets its mail through its hooks, as a run session does.
@@ -489,8 +489,7 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 }
 
 // writeOpenFiles creates dir and writes an opened session's two files into it.
-// settings.json holds creel's hook delivery over the flag directory creelFlagDirPosix;
-// its attribution is empty, and its scope is the one passed in.
+// settings.json holds creel's hook delivery over the flag directory creelFlagDirPosix and the scope passed in.
 // The append-system-prompt file holds the creel trust sentence.
 // It returns the two files' absolute paths.
 // A failure after the directory is created removes it, so a failed launch leaves nothing behind.

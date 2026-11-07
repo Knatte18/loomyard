@@ -21,7 +21,20 @@
 // and the next render takes out of the file what that record holds and no entry sets any more.
 // The file holds no marker: heddle merges into whatever file is there, and leaves alone one holding no JSON object.
 // The shipped layer sets lym's hub-wide Claude settings: no attribution, lym's plugins and the tools lym denies.
+// It also turns off claude.ai connectors, bundled skills, the Workflow tool and prompt suggestions.
+// The Workflow tool goes with the bundled skills.
+// Without them its schema carries the whole workflow authoring reference.
+// A derived entry, `lym-agent-defaults`, follows the shipped ones at every render and in `show`:
+// it sets `effortLevel` and the subagent effort variable to the default of the agents.yaml the worktree resolves,
+// so a session started by hand runs at the effort lym's own launches default to.
+// A change to agents.yaml reaches a worktree's file at its next render.
 // A setting that differs per session or role stays in the settings document a session is launched with.
+//
+// RenderOverview writes HEDDLE.md at the Bolt checkout's root, beside heddle.json.
+// It holds every entry, shipped, derived and the hub's, grouped by target in render order.
+// Each shows its source, order, targets and text, a JSON-object entry's object as a json block.
+// The `lym heddle` write path renders it under the Bolt write lock after each save,
+// and the Bolt replayer claims it and renders it afresh after each replay, so it holds no state of its own.
 //
 // A prompt target is read as passages appended to a session's system prompt, the shipped ones first.
 // A prompt target reaches the sessions its row names by engine, by strand role, or both:

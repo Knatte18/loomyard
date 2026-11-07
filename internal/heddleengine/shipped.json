@@ -39,6 +39,22 @@
       "targets": [
         "claude-settings"
       ]
+    },
+    {
+      "slug": "lym-session-scope",
+      "text": "{\"disableClaudeAiConnectors\": true, \"disableBundledSkills\": true, \"disableWorkflows\": true}",
+      "order": 130,
+      "targets": [
+        "claude-settings"
+      ]
+    },
+    {
+      "slug": "lym-prompt-suggestion-off",
+      "text": "{\"promptSuggestionEnabled\": false}",
+      "order": 140,
+      "targets": [
+        "claude-settings"
+      ]
     }
   ]
 }

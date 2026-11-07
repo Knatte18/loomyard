@@ -16,7 +16,7 @@ import (
 )
 
 // scopeSettingsKeys are the settings keys a session scope writes.
-var scopeSettingsKeys = []string{"enabledPlugins", "skillOverrides", "disableClaudeAiConnectors", "disableBundledSkills", "disableWorkflows", "autoMemoryEnabled", "permissions"}
+var scopeSettingsKeys = []string{"enabledPlugins", "skillOverrides", "autoMemoryEnabled", "env"}
 
 // scopeKeysOf returns the scope keys a settings document holds, with their values.
 func scopeKeysOf(t *testing.T, data []byte) map[string]any {
@@ -69,7 +69,7 @@ func writeMalformedPlugins(t *testing.T) string {
 }
 
 // TestSessionScope_WrittenSettingsPerRole pins the scope keys of the settings document each kind of session gets:
-// the orch, which keeps its memory and the ListAgents tool;
+// the orch, which keeps its memory;
 // an opened session with no skills;
 // the board session with the ly plugin and scribe skills;
 // a darn writer with its language's skills; and a scope switched off.
@@ -90,24 +90,24 @@ func TestSessionScope_WrittenSettingsPerRole(t *testing.T) {
 			cfg:       enabled,
 			preloaded: []string{"scribe:prose", "scribe:conversation", "ly:board", "ly:board-policy"},
 			orch:      true,
-			want:      `{"enabledPlugins":{"ly@loomyard":true,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"disableWorkflows":true}`,
+			want:      `{"enabledPlugins":{"ly@loomyard":true,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off"}}`,
 		},
 		{
 			name: "OpenedSessionWithoutSkills",
 			cfg:  enabled,
-			want: `{"enabledPlugins":{"ly@loomyard":false,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":false},"skillOverrides":{"anthropic-skills:docx":"off","scribe:prose":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"disableWorkflows":true,"autoMemoryEnabled":false,"permissions":{"deny":["ListAgents"]}}`,
+			want: `{"enabledPlugins":{"ly@loomyard":false,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":false},"skillOverrides":{"anthropic-skills:docx":"off","scribe:prose":"off"},"autoMemoryEnabled":false}`,
 		},
 		{
 			name:      "BoardSession",
 			cfg:       enabled,
 			preloaded: []string{"scribe:prose", "scribe:conversation", "ly:board-policy", "ly:board"},
-			want:      `{"enabledPlugins":{"ly@loomyard":true,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"disableWorkflows":true,"autoMemoryEnabled":false,"permissions":{"deny":["ListAgents"]}}`,
+			want:      `{"enabledPlugins":{"ly@loomyard":true,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off"},"autoMemoryEnabled":false}`,
 		},
 		{
 			name:      "DarnWriter",
 			cfg:       enabled,
 			preloaded: []string{"scribe:prose", "scribe:golang-testing"},
-			want:      `{"enabledPlugins":{"ly@loomyard":false,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"disableWorkflows":true,"autoMemoryEnabled":false,"permissions":{"deny":["ListAgents"]}}`,
+			want:      `{"enabledPlugins":{"ly@loomyard":false,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off"},"autoMemoryEnabled":false}`,
 		},
 		{
 			name:      "ScopeOff",
@@ -202,8 +202,8 @@ func TestClaudeConfigDir(t *testing.T) {
 // That scope is the one the shipped claude.yaml turns on.
 // A run's and an opened session's plugins follow their preloaded skills, and their auto-memory is off.
 // An opened orch session's auto-memory is left alone.
-// If Prepare cannot read the plugins file, connectors, bundled skills and the Workflow tool are off,
-// and no plugin is named.
+// No session's settings deny a tool.
+// If Prepare cannot read the plugins file, no plugin is named and the run's auto-memory is still off.
 func TestSessionScope_ReachesWrittenSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -243,10 +243,8 @@ func TestSessionScope_ReachesWrittenSettings(t *testing.T) {
 			t.Fatalf("read settings.json: %v", err)
 		}
 		got := scopeKeysOf(t, data)
-		for _, key := range []string{"disableClaudeAiConnectors", "disableBundledSkills", "disableWorkflows"} {
-			if got[key] != true {
-				t.Errorf("%s = %v; want true", key, got[key])
-			}
+		if got["autoMemoryEnabled"] != false {
+			t.Errorf("autoMemoryEnabled = %v; want false for an autonomous run", got["autoMemoryEnabled"])
 		}
 		if _, ok := got["enabledPlugins"]; ok {
 			t.Errorf("enabledPlugins = %v; want it absent when no plugin is known", got["enabledPlugins"])
@@ -256,8 +254,8 @@ func TestSessionScope_ReachesWrittenSettings(t *testing.T) {
 	openLaunchTests := []struct {
 		name string
 		role string
-		// wantDenied is whether the settings turn auto-memory off and deny ListAgents.
-		wantDenied bool
+		// wantMemoryOff is whether the settings turn auto-memory off.
+		wantMemoryOff bool
 	}{
 		{"OpenLaunch", "board", true},
 		{"OpenLaunchOrch", "orch", false},
@@ -280,11 +278,15 @@ func TestSessionScope_ReachesWrittenSettings(t *testing.T) {
 			if want := map[string]any{"ly@loomyard": true, "scribe@scribe": false}; !reflect.DeepEqual(got["enabledPlugins"], want) {
 				t.Errorf("enabledPlugins = %v; want %v", got["enabledPlugins"], want)
 			}
-			if _, ok := got["autoMemoryEnabled"]; ok != tt.wantDenied {
-				t.Errorf("autoMemoryEnabled present = %v; want %v for role %q", ok, tt.wantDenied, tt.role)
+			if _, ok := got["autoMemoryEnabled"]; ok != tt.wantMemoryOff {
+				t.Errorf("autoMemoryEnabled present = %v; want %v for role %q", ok, tt.wantMemoryOff, tt.role)
 			}
-			if _, ok := got["permissions"]; ok != tt.wantDenied {
-				t.Errorf("permissions present = %v; want %v for role %q", ok, tt.wantDenied, tt.role)
+			var doc map[string]any
+			if err := json.Unmarshal(data, &doc); err != nil {
+				t.Fatalf("parse settings.json %q: %v", data, err)
+			}
+			if _, ok := doc["permissions"]; ok {
+				t.Errorf("permissions = %v; want no tool denied for role %q", doc["permissions"], tt.role)
 			}
 		})
 	}

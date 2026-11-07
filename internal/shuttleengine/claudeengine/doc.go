@@ -225,9 +225,11 @@
 // and an unmatched start would read a crashed fork active without bound.
 // The settings leave Claude Code's `autoContinueAtUsageLimit` unset,
 // so a session the usage limit stopped waits for the orch's wake and revive rather than racing it.
-// They set Claude Code's `attribution` to `{"commit": "", "pr": ""}`,
-// so a commit or pull request the session makes carries no credit of its own,
-// and a landing's credit block stays the one credit.
+// They hold only what differs per session or role.
+// What every session of a worktree shares comes from the worktree's `.claude/settings.local.json`.
+// That covers the empty `attribution`, which keeps a landing's credit block the one credit.
+// It also covers `promptSuggestionEnabled` false, which IdleSession needs.
+// heddle renders that file at the session's anchor, and a session started where none is rendered goes without them.
 // An engine told a hub board directory also installs a second PostToolUse entry with no matcher, creel's mail hook;
 // an engine told none, a standalone run, installs the stamp alone.
 // Its command is plain POSIX `sh`.
@@ -610,7 +612,7 @@
 // the resume line carries none.
 // An engine told no board directory passes no `--settings`, so the session takes the worktree's own settings.
 // An engine told one writes these files into the directory Runner.Open names for the session:
-// a settings.json holding creel's hook delivery, the run document's empty `attribution` and the session scope below;
+// a settings.json holding creel's hook delivery and the session scope below;
 // the settings.json holds nothing else;
 // the append-system-prompt file holding the creel trust sentence.
 // Both lines name the files, and the launch is marked CreelHooks.
@@ -633,16 +635,15 @@
 // The plugins file is Claude Code's `plugins/installed_plugins.json`, under `CLAUDE_CONFIG_DIR` or else `~/.claude`.
 // Each plugin it names is on in `enabledPlugins` exactly when the session preloads a skill of that plugin.
 // Every other plugin is off.
-// `disableClaudeAiConnectors`, `disableBundledSkills` and `disableWorkflows` are true,
-// and `skillOverrides` turns off each skill of `skills_off` the session does not preload.
-// No session lym launches calls the `Workflow` tool, so the scope drops it.
-// `disableBundledSkills` alone would move the workflow authoring reference into that tool's schema.
+// `skillOverrides` turns off each skill of `skills_off` the session does not preload.
 // A plugin that is on lists all of its skills:
 // Claude Code reads `skillOverrides` for a plugin's skill only through its claude.ai skill sync;
 // a `Skill(...)` deny rule refuses a call but leaves the listing;
 // the session skills allowlist reaches only an SDK session.
-// A session whose strand role is the orch's alone keeps its auto-memory and the `ListAgents` tool;
-// every other session, run or opened, has `autoMemoryEnabled` false and `ListAgents` in its `permissions.deny`.
+// A session whose strand role is the orch's alone keeps its auto-memory;
+// every other session, run or opened, has `autoMemoryEnabled` false.
+// The scope denies no tool, since every agent keeps the same tool set,
+// and the claude.ai connectors, bundled skills and `Workflow` tool every session goes without are the worktree settings'.
 // A config directory or plugins file the engine cannot read is logged and names no plugin,
 // so the session's other settings decide its plugins.
 // An opened session outside a hub writes no settings and gets no scope.

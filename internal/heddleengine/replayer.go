@@ -1,4 +1,5 @@
 // replayer.go holds heddle's Bolt replayer: the by-entry merge of a local heddle.json commit onto origin's store.
+// It then renders the overview afresh.
 
 package heddleengine
 
@@ -12,7 +13,7 @@ import (
 )
 
 // Replayer is heddle's Bolt replayer, named heddle.
-// It holds no state, claims the store file alone and is no run ledger.
+// It holds no state, claims the store file and the overview, and is no run ledger.
 type Replayer struct{}
 
 var _ fabricengine.BoltReplayer = Replayer{}
@@ -20,9 +21,9 @@ var _ fabricengine.BoltReplayer = Replayer{}
 // Name returns the replayer's registry name.
 func (Replayer) Name() string { return "heddle" }
 
-// Claims reports whether path, a Bolt-root-relative slash path, is the store file.
+// Claims reports whether path, a Bolt-root-relative slash path, is the store file or the overview.
 // The lym override file is left unclaimed, since its entries carry no order or targets for the by-entry merge.
-func (Replayer) Claims(path string) bool { return path == FileName }
+func (Replayer) Claims(path string) bool { return path == FileName || path == OverviewFileName }
 
 // entryFields is the merge's table over Entry, keyed by slug.
 // Unknown keys are not fields: they stay as origin holds them.
@@ -56,7 +57,9 @@ type replayRun struct {
 // A removed entry is dropped only while origin still holds it as the commit's parent did.
 // A change to an entry origin no longer holds is reported lost.
 // An entry that fails ValidateEntry is reported refused and the rest of the commit still lands.
-// It saves through Save, so every unknown key stays as origin holds it, and writes nothing when no change survived.
+// It saves through Save, so every unknown key stays as origin holds it, and writes no store when no change survived.
+// It then renders the overview from what origin now holds, so the commit's own overview never lands;
+// a replay that changed neither file is empty.
 // It takes no lock, since its caller holds the Bolt write and push locks.
 func (Replayer) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayResult, error) {
 	var baseBytes, parentBytes, commitBytes []byte
@@ -97,13 +100,16 @@ func (Replayer) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayResult
 		}
 	}
 
-	run.result.Empty = !run.applied
-	if run.result.Empty {
-		return run.result, nil
+	if run.applied {
+		if err := Save(req.Dir, run.store); err != nil {
+			return fabricengine.ReplayResult{}, fmt.Errorf("save %s: %w", FileName, err)
+		}
 	}
-	if err := Save(req.Dir, run.store); err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("save %s: %w", FileName, err)
+	rendered, err := RenderOverview(req.Dir)
+	if err != nil {
+		return fabricengine.ReplayResult{}, fmt.Errorf("render %s: %w", OverviewFileName, err)
 	}
+	run.result.Empty = !run.applied && !rendered
 	return run.result, nil
 }
 

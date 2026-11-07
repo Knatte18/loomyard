@@ -123,7 +123,7 @@ func TestPrepare_NoAgentsConfigWritesNoSubagentRule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the settings: %v", err)
 	}
-	if strings.Contains(string(settings), subagentEffortEnvKey) {
-		t.Errorf("settings = %s; want no %s", settings, subagentEffortEnvKey)
+	if strings.Contains(string(settings), agentconfig.SubagentEffortEnv) {
+		t.Errorf("settings = %s; want no %s", settings, agentconfig.SubagentEffortEnv)
 	}
 }

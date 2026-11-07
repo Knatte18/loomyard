@@ -178,8 +178,9 @@ slug lym ships is refused: shipped entries change only with a lym release.
 An entry aimed at claude-settings holds one JSON object and no other target;
 every render merges it into the worktree's .claude/settings.local.json.
 
-The change is saved under the Bolt write lock, and the board's detached Bolt
-sync then commits and pushes it. A refused change saves nothing.
+The change is saved under the Bolt write lock with HEDDLE.md, the overview of
+every entry, rendered beside it, and the board's detached Bolt sync then
+commits and pushes both. A refused change saves nothing.
 
 Examples:
   lym heddle set house-rules --text-file rules.md --order 10 --targets claude-file,claude-prompt
@@ -254,7 +255,8 @@ func (c *heddleCLI) removeCmd() *cobra.Command {
 		Short:       "remove an entry",
 		Annotations: operatorAnnotation,
 		Long: `Removes the repository entry with the given slug, saves the store under the
-Bolt write lock, and lets the board's detached Bolt sync commit and push it.
+Bolt write lock with HEDDLE.md rendered beside it, and lets the board's
+detached Bolt sync commit and push both.
 A slug lym ships is refused unless the repository holds an entry under it.
 With --layer lym it removes the hub's override of
 the shipped entry instead, whatever heddle.yaml's lym_override holds.
@@ -398,7 +400,7 @@ func (c *heddleCLI) finishWrite(cmd *cobra.Command, slug string, file storeFile,
 	return nil
 }
 
-// write applies change to file under the Bolt write lock and saves it.
+// write applies change to file under the Bolt write lock, saves it and renders the overview.
 // It then starts the board's detached Bolt sync once the lock is released.
 // It pulls and commits nothing in the foreground and touches no worktree.
 // A change the store refuses saves nothing and starts no sync.
@@ -414,7 +416,7 @@ func (c *heddleCLI) write(file storeFile, change func(*heddleengine.Store) error
 	return nil
 }
 
-// saveLocked loads file, applies change and saves it, all under the Bolt write lock.
+// saveLocked loads file, applies change, saves it and renders the overview, all under the Bolt write lock.
 func (c *heddleCLI) saveLocked(file storeFile, change func(*heddleengine.Store) error) error {
 	lockPath, err := fabricengine.BoltLockPath(c.boltDir, fabricengine.BoardWriteLockFile)
 	if err != nil {
@@ -436,7 +438,13 @@ func (c *heddleCLI) saveLocked(file storeFile, change func(*heddleengine.Store) 
 	if err := change(&store); err != nil {
 		return err
 	}
-	return file.save(store)
+	if err := file.save(store); err != nil {
+		return err
+	}
+	if _, err := heddleengine.RenderOverview(c.boltDir); err != nil {
+		return fmt.Errorf("heddle: %s is saved but %s was not rendered: %w; way forward: run the verb again once the cause is fixed", file.name, heddleengine.OverviewFileName, err)
+	}
+	return nil
 }
 
 // readText returns the text of the file at path, or of stdin for the stdin marker.

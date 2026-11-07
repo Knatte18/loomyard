@@ -17,6 +17,8 @@ const (
 	LayerShipped = "shipped"
 	// LayerRepository is the repository's own layer, heddle.json in the Bolt checkout.
 	LayerRepository = "repository"
+	// LayerDerived holds the entries lym builds from the hub's config at each render, such as its effort defaults.
+	LayerDerived = "derived"
 )
 
 // Headings open the two sections of a file target both layers write to,
@@ -60,10 +62,14 @@ func decodeShipped(data []byte) Store {
 // Overrides holds the lym overrides in force, and is empty while the hub's lym_override setting is off.
 // OverrideWarning is set when the setting is on but the override file did not load.
 // In that case Overrides is empty and the shipped texts stand.
+// Derived holds the entries built from the hub's config, which a render or the overview adds;
+// DerivedWarning is set when one could not be built.
 type Layers struct {
 	Repository      Store
 	Overrides       Store
 	OverrideWarning string
+	Derived         []Entry
+	DerivedWarning  string
 }
 
 // LayeredEntry is an entry with the layer it comes from.
@@ -74,7 +80,7 @@ type LayeredEntry struct {
 	Overridden bool
 }
 
-// Ordered returns the shipped layer's entries in order, then the repository's entries in order.
+// Ordered returns the shipped layer's entries in order, then the derived entries, then the repository's entries in order.
 // Each entry is marked with its layer.
 // A shipped entry carries the text of its override when Overrides holds one that is not blank.
 // This is the render order of every target.
@@ -87,6 +93,9 @@ func (l Layers) Ordered() []LayeredEntry {
 			item.Overridden = true
 		}
 		layered = append(layered, item)
+	}
+	for _, entry := range l.Derived {
+		layered = append(layered, LayeredEntry{Entry: entry, Layer: LayerDerived})
 	}
 	for _, entry := range l.Repository.Ordered() {
 		layered = append(layered, LayeredEntry{Entry: entry, Layer: LayerRepository})

@@ -2,10 +2,9 @@
 // It also composes the creel-only document that OpenLaunch writes for a session opened in a hub.
 // Each recording hook appends to the run's events.jsonl, the only channel ParseEvents reads.
 // Each recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
-// Every document sets `promptSuggestionEnabled` to false, since a plain capture carries no styling,
-// so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
-// Every document also sets Claude Code's `attribution` to empty commit and pull-request texts,
-// so no session lym launches credits itself in a commit or pull request it makes.
+// A document holds only what differs per session or role: hooks naming the session's own paths, its denies and its scope.
+// A setting every session of a worktree shares comes from the worktree's `.claude/settings.local.json` instead.
+// Examples are `attribution` and `promptSuggestionEnabled`.
 // No hook denies the Agent tool, since a subagent or fork runs inside the session and shows in its own pane.
 
 package claudeengine
@@ -195,21 +194,11 @@ type openSettingsHooks struct {
 	PostToolUse []hookEntry `json:"PostToolUse"`
 }
 
-// attributionSettings is Claude Code's `attribution` setting:
-// the text a session appends to a commit message and to a pull request body it writes.
-// An empty text appends nothing, so its zero value credits no session.
-type attributionSettings struct {
-	Commit      string `json:"commit"`
-	PullRequest string `json:"pr"`
-}
-
 // openSettingsDoc is the settings document written for a session opened in a hub.
-// It carries hooks, the attribution and the session's scope alone,
+// It carries hooks and the session's scope alone,
 // so every other setting of the session stays the worktree's own.
-// Attribution has no omitempty and is left zero, so the document credits no session.
 type openSettingsDoc struct {
-	Hooks       openSettingsHooks   `json:"hooks"`
-	Attribution attributionSettings `json:"attribution"`
+	Hooks openSettingsHooks `json:"hooks"`
 	sessionScope
 }
 
@@ -233,17 +222,10 @@ func buildOpenSettings(creelFlagDirPosix string, scope sessionScope) ([]byte, er
 	return data, nil
 }
 
-// settingsDoc is the Claude Code settings.json document written for a session.
-// The promptSuggestionEnabled key has no omitempty and is left false,
-// so every document carries `"promptSuggestionEnabled": false`.
-// This document does not configure a hand-added session;
-// the styled read is what lets it have its suggestion read as an empty box.
-// Attribution has no omitempty and is left zero, so the document credits no session.
-// The session's scope follows as the last keys.
+// settingsDoc is the Claude Code settings.json document written for a session:
+// its hooks, with the session's scope following as the last keys.
 type settingsDoc struct {
-	Hooks                   settingsHooks       `json:"hooks"`
-	PromptSuggestionEnabled bool                `json:"promptSuggestionEnabled"`
-	Attribution             attributionSettings `json:"attribution"`
+	Hooks settingsHooks `json:"hooks"`
 	sessionScope
 }
 

@@ -5,6 +5,9 @@ package heddleengine
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -36,12 +39,23 @@ func replayEntry(slug, text string, order int) Entry {
 	return entryFor(slug, text, order, "claude-file")
 }
 
-// applyReplay saves origin into a fresh directory and replays one commit onto it.
-// It returns the result and the store afterwards.
-func applyReplay(t *testing.T, origin Store, base, parent, commit []byte) (fabricengine.ReplayResult, Store) {
+// seedOrigin saves origin and its overview into a fresh directory.
+// A replay that changes neither then finds the overview standing.
+func seedOrigin(t *testing.T, origin Store) string {
 	t.Helper()
 	dir := t.TempDir()
 	saveStore(t, dir, origin)
+	if _, err := RenderOverview(dir); err != nil {
+		t.Fatalf("RenderOverview() = %v", err)
+	}
+	return dir
+}
+
+// applyReplay seeds origin into a fresh directory and replays one commit onto it.
+// It returns the result and the store afterwards.
+func applyReplay(t *testing.T, origin Store, base, parent, commit []byte) (fabricengine.ReplayResult, Store) {
+	t.Helper()
+	dir := seedOrigin(t, origin)
 	result, err := Replayer{}.Apply(fabricengine.ReplayRequest{
 		Dir:   dir,
 		Files: []fabricengine.ReplayFile{{Path: FileName, Base: base, Before: parent, After: commit}},
@@ -61,8 +75,9 @@ func TestReplayer(t *testing.T) {
 	t.Run("NameAndClaims", func(t *testing.T) {
 		t.Parallel()
 		r := Replayer{}
-		if r.Name() != "heddle" || !r.Claims("heddle.json") || r.Claims("board.json") || r.Claims("sub/heddle.json") || r.Claims(OverrideFileName) {
-			t.Error("Replayer must be named heddle and claim exactly heddle.json at the root, leaving the override file unclaimed")
+		if r.Name() != "heddle" || !r.Claims("heddle.json") || !r.Claims("HEDDLE.md") ||
+			r.Claims("board.json") || r.Claims("sub/heddle.json") || r.Claims("sub/HEDDLE.md") || r.Claims(OverrideFileName) {
+			t.Error("Replayer must be named heddle and claim exactly heddle.json and HEDDLE.md at the root, leaving the override file unclaimed")
 		}
 		if _, isLedger := any(r).(fabricengine.RunLedger); isLedger {
 			t.Error("Replayer is a run ledger")
@@ -131,18 +146,74 @@ func TestReplayer(t *testing.T) {
 		}
 	})
 
-	t.Run("CommitWithNoEntryChangeIsEmptyAndWritesNothing", func(t *testing.T) {
+	t.Run("CommitWithNoEntryChangeWritesNoStoreAndIsEmptyOnceTheOverviewStands", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		result, err := Replayer{}.Apply(fabricengine.ReplayRequest{
+		request := fabricengine.ReplayRequest{
 			Dir:   dir,
 			Files: []fabricengine.ReplayFile{{Path: FileName, Base: storeBytes(t, a), Before: storeBytes(t, a), After: storeBytes(t, a)}},
-		})
-		if err != nil || !result.Empty {
-			t.Fatalf("Apply() = %+v, %v; want Empty", result, err)
+		}
+		for _, wantEmpty := range []bool{false, true} {
+			result, err := Replayer{}.Apply(request)
+			if err != nil || result.Empty != wantEmpty {
+				t.Fatalf("Apply() = %+v, %v; want Empty %v", result, err, wantEmpty)
+			}
 		}
 		if got := loadStore(t, dir); len(got.Entries) != 0 {
 			t.Errorf("store after an empty replay = %+v; want it unwritten", got)
+		}
+	})
+
+	t.Run("AppliedChangeRendersTheOverviewFromWhatOriginHolds", func(t *testing.T) {
+		t.Parallel()
+		c := replayEntry("c", "C", 3)
+		dir := seedOrigin(t, Store{Entries: []Entry{a, b}})
+		result, err := Replayer{}.Apply(fabricengine.ReplayRequest{
+			Dir:   dir,
+			Files: []fabricengine.ReplayFile{{Path: FileName, Base: storeBytes(t, a, b), Before: storeBytes(t, a, b), After: storeBytes(t, a, b, c)}},
+		})
+		if err != nil || result.Empty {
+			t.Fatalf("Apply() = %+v, %v; want a non-empty result", result, err)
+		}
+		data, err := os.ReadFile(filepath.Join(dir, OverviewFileName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "### `c`\n") {
+			t.Errorf("%s = %q; want it to name the entry the commit added", OverviewFileName, data)
+		}
+	})
+
+	t.Run("CommitsOwnOverviewNeverLands", func(t *testing.T) {
+		t.Parallel()
+		c := replayEntry("c", "C", 3)
+		dir := seedOrigin(t, Store{Entries: []Entry{a, b}})
+		stale := []byte("stale overview\n")
+		_, err := Replayer{}.Apply(fabricengine.ReplayRequest{
+			Dir: dir,
+			Files: []fabricengine.ReplayFile{
+				{Path: FileName, Base: storeBytes(t, a, b), Before: storeBytes(t, a, b), After: storeBytes(t, a, b, c)},
+				{Path: OverviewFileName, Base: stale, Before: stale, After: []byte("local overview\n")},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Apply() = %v", err)
+		}
+		got, err := os.ReadFile(filepath.Join(dir, OverviewFileName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := t.TempDir()
+		saveStore(t, want, Store{Entries: []Entry{a, b, c}})
+		if _, err := RenderOverview(want); err != nil {
+			t.Fatalf("RenderOverview() = %v", err)
+		}
+		wantText, err := os.ReadFile(filepath.Join(want, OverviewFileName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != string(wantText) {
+			t.Errorf("%s = %q; want the overview rendered from origin's merged store, %q", OverviewFileName, got, wantText)
 		}
 	})
 
