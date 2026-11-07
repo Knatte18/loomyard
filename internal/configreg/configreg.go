@@ -129,7 +129,8 @@ func repositoryOfShortname(shortname string) (string, error) {
 	return repository, markUnresolvable(err)
 }
 
-// markUnresolvable wraps err as creelconfig.ErrShortnameUnresolvable when it refuses a shortname for want of a repository.
+// markUnresolvable wraps err as creelconfig.ErrShortnameUnresolvable.
+// It does so when err refuses a shortname for want of a repository.
 // It returns every other err, nil included, unchanged.
 func markUnresolvable(err error) error {
 	if errors.Is(err, hubregistry.ErrUnresolved) || errors.Is(err, hubregistry.ErrNoRepository) {
