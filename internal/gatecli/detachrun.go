@@ -72,7 +72,7 @@ const (
 	processReadRetryPeriod = 20 * time.Millisecond //lym:one-shot bounded re-read of at most processReadAttempts
 )
 
-// leaseReadPeriod is how often the runner reads its lease; it is the one-second floor of the wake rule.
+// leaseReadPeriod is how often a production runner reads its lease; it is the one-second floor of the wake rule.
 const leaseReadPeriod = time.Second
 
 // abandonedLine returns the line appended to the stderr of a run of verb when its lease passed before the call ended.
@@ -340,7 +340,8 @@ func (d detachRun) readRequest() (detachRequest, error) {
 // A `test` request runs through a fresh gate tree, and a `card-verify` request through the card runner.
 // A terminating signal cancels the call's context and ends it as {128 + signal, abandoned}.
 // A lease that has passed cancels it too and ends it as {1, abandoned}, with an abandoned line appended to stderr.
-func (d detachRun) runRequest(ctx context.Context, request detachRequest, gateTree func() *cobra.Command) detachExit {
+// It reads the lease once per leaseRead.
+func (d detachRun) runRequest(ctx context.Context, request detachRequest, gateTree func() *cobra.Command, leaseRead time.Duration) detachExit {
 	stdout, stdoutErr := os.Create(d.path(stdoutFile))
 	stderr, stderrErr := os.Create(d.path(stderrFile))
 	if err := errors.Join(stdoutErr, stderrErr); err != nil {
@@ -358,7 +359,7 @@ func (d detachRun) runRequest(ctx context.Context, request detachRequest, gateTr
 	watchDone := make(chan struct{})
 	go func() {
 		defer close(watchDone)
-		d.cancelOnPassedLease(callCtx, cancelCall, &leasePassed)
+		d.cancelOnPassedLease(callCtx, cancelCall, &leasePassed, leaseRead)
 	}()
 
 	runCtx := withPhase(lymcwd.WithCwd(callCtx, request.Cwd), d.writePhase)
@@ -389,12 +390,12 @@ func (d detachRun) runRequest(ctx context.Context, request detachRequest, gateTr
 	return detachExit{Code: code}
 }
 
-// cancelOnPassedLease reads the lease once per leaseReadPeriod.
+// cancelOnPassedLease reads the lease once per period.
 // Once the lease has lapsed, it sets passed, calls cancel, and returns.
 // A lease that cannot be read is read again at the next period.
 // It also returns when ctx ends.
-func (d detachRun) cancelOnPassedLease(ctx context.Context, cancel context.CancelFunc, passed *atomic.Bool) {
-	ticker := time.NewTicker(leaseReadPeriod)
+func (d detachRun) cancelOnPassedLease(ctx context.Context, cancel context.CancelFunc, passed *atomic.Bool, period time.Duration) {
+	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 	for {
 		select {

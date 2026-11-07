@@ -49,14 +49,15 @@ type GuardTest struct {
 	Tier int
 }
 
-// GuardScanError is a failure of the guard or seam scan that sits in the content of a test file:
-// a file that does not parse; a `//lym:guard` or `//lym:seam` marker not directly above a top-level test;
-// a guard marker in a `tier2` or `tier3` file; and a seam marker whose argument is not a `<unit>#<Type>` glyph.
+// GuardScanError is a failure of the guard, seam or watch scan that sits in the content of a test file:
+// a file that does not parse; a `//lym:guard`, `//lym:seam` or `//lym:watch` marker not directly above a top-level test;
+// a guard marker in a `tier2` or `tier3` file; a seam marker whose argument is not a `<unit>#<Type>` glyph;
+// and a watch marker with no pattern or a malformed one.
 // The author of the change can fix each one.
 type GuardScanError struct {
 	// File is the worktree-relative, slash-separated path of the test file the error sits in.
 	File string
-	// Kind is which of the four failures this is.
+	// Kind is which of the failures this is.
 	Kind GuardScanKind
 	// Line is the marker's line for the marker kinds.
 	// For GuardParse it is the line the parser reports, or 0 when it reports none.
@@ -178,7 +179,7 @@ func guardNamesInFile(path, rel string) ([]GuardTest, error) {
 			if comment.Text != guardMarker {
 				continue
 			}
-			if fn.Recv != nil || !strings.HasPrefix(fn.Name.Name, "Test") || !onlyKeepLinesAfter(fn.Doc.List[i+1:]) {
+			if fn.Recv != nil || !strings.HasPrefix(fn.Name.Name, "Test") || !onlyDirectiveLinesAfter(fn.Doc.List[i+1:]) {
 				continue
 			}
 			placed[comment] = true
@@ -195,24 +196,13 @@ func guardNamesInFile(path, rel string) ([]GuardTest, error) {
 				continue
 			}
 			markerLine := fset.Position(comment.Pos()).Line
-			return nil, &GuardScanError{File: rel, Kind: GuardMisplaced, Line: markerLine, message: fmt.Sprintf("impactset: %s:%d: %s is not directly above a top-level func Test line", rel, markerLine, guardMarker)}
+			return nil, &GuardScanError{File: rel, Kind: GuardMisplaced, Line: markerLine, message: fmt.Sprintf("impactset: %s:%d: %s is not directly above a top-level func Test line; way forward: move the marker directly above its func Test line", rel, markerLine, guardMarker)}
 		}
 	}
 	if len(names) > 0 && tier > 1 {
 		return nil, &GuardScanError{File: rel, Kind: GuardWrongTier, Line: firstMarkerLine, message: fmt.Sprintf("impactset: %s:%d: %s marks a guard test in a tier%d file; a guard test lives in a tier0 or tier1 file", rel, firstMarkerLine, guardMarker, tier)}
 	}
 	return names, nil
-}
-
-// onlyKeepLinesAfter reports whether every comment is a `//testtiming:keep` or `//lym:seam` line.
-// Those are the only lines allowed between a guard marker and its func line.
-func onlyKeepLinesAfter(comments []*ast.Comment) bool {
-	for _, comment := range comments {
-		if !strings.HasPrefix(comment.Text, testtimingKeepTag) && !isSeamLine(comment.Text) {
-			return false
-		}
-	}
-	return true
 }
 
 // FileTier returns the tier of a test file.

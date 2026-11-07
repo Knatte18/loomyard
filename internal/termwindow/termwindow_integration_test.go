@@ -31,36 +31,41 @@ func TestAttachLine_EndsOrKeepsTheShellByAttachStatus(t *testing.T) {
 		// stub is the script body after the shebang, given the pair directory.
 		stub          func(dir string) string
 		dirPresent    bool
-		waitSeconds   int
+		waitPolls     int
+		pollInterval  time.Duration
 		wantStatus    bool
 		wantKeptShell bool
 	}{
 		{
-			name:        "a stub exiting 0 ends without the shell",
-			stub:        func(string) string { return "exit 0" },
-			dirPresent:  true,
-			waitSeconds: 1,
+			name:         "a stub exiting 0 ends without the shell",
+			stub:         func(string) string { return "exit 0" },
+			dirPresent:   true,
+			waitPolls:    1,
+			pollInterval: time.Second,
 		},
 		{
-			name:        "a stub exiting 3 with the directory absent prints the status and ends",
-			stub:        func(string) string { return "exit 3" },
-			waitSeconds: 1,
-			wantStatus:  true,
+			name:         "a stub exiting 3 with the directory absent prints the status and ends",
+			stub:         func(string) string { return "exit 3" },
+			waitPolls:    1,
+			pollInterval: time.Second,
+			wantStatus:   true,
 		},
 		{
 			name:          "a stub exiting 3 with the directory present prints the status and keeps the shell",
 			stub:          func(string) string { return "exit 3" },
 			dirPresent:    true,
-			waitSeconds:   1,
+			waitPolls:     1,
+			pollInterval:  time.Second,
 			wantStatus:    true,
 			wantKeptShell: true,
 		},
 		{
-			name:        "a directory removed during the wait ends the window",
-			stub:        func(dir string) string { return fmt.Sprintf("(sleep 1; rmdir %q) &\nexit 3", dir) },
-			dirPresent:  true,
-			waitSeconds: 3,
-			wantStatus:  true,
+			name:         "a directory removed during the wait ends the window",
+			stub:         func(dir string) string { return fmt.Sprintf("(sleep 0.2; rmdir %q) &\nexit 3", dir) },
+			dirPresent:   true,
+			waitPolls:    60,
+			pollInterval: 50 * time.Millisecond,
+			wantStatus:   true,
 		},
 	}
 	for _, tt := range tests {
@@ -81,7 +86,7 @@ func TestAttachLine_EndsOrKeepsTheShellByAttachStatus(t *testing.T) {
 
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, "bash", "-c", attachLineWaiting(stub, dir, tt.waitSeconds))
+			cmd := exec.CommandContext(ctx, "bash", "-c", attachLineWaiting(stub, dir, tt.waitPolls, tt.pollInterval))
 			cmd.Stdin = strings.NewReader("echo kept-shell\n")
 			output, err := cmd.CombinedOutput()
 			if err != nil {

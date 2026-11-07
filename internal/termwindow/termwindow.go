@@ -15,7 +15,9 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -114,26 +116,29 @@ func (l Launcher) OpenAttach(dir, title, lymPath string) error {
 // Past the bound, the window keeps an interactive shell.
 const pairGoneWaitSeconds = 30
 
-// attachLine is the window's shell line, with the wait on a removed worktree set to pairGoneWaitSeconds.
+// attachLine is the window's shell line, with the wait on a removed worktree set to pairGoneWaitSeconds one-second polls.
 func attachLine(lymPath, dir string) string {
-	return attachLineWaiting(lymPath, dir, pairGoneWaitSeconds)
+	return attachLineWaiting(lymPath, dir, pairGoneWaitSeconds, time.Second)
 }
 
 // attachLineWaiting is the window's shell line: it runs the attach and keeps its status.
 // On status 0 it exits.
-// Otherwise it prints the status and that it waits up to waitSeconds seconds for dir to be removed.
-// It polls once a second and exits as soon as dir is no longer a directory.
+// Otherwise it prints the status and that it waits up to polls times pollInterval for dir to be removed.
+// It polls once per pollInterval and exits as soon as dir is no longer a directory.
+// A test passes a short pollInterval so a removal during the wait is seen without a second of real time per poll.
 // When the wait ends with dir present it execs an interactive shell, keeping the attach's output on screen.
-func attachLineWaiting(lymPath, dir string, waitSeconds int) string {
+func attachLineWaiting(lymPath, dir string, polls int, pollInterval time.Duration) string {
 	sh := shell.Posix()
+	pollSleep := strconv.FormatFloat(pollInterval.Seconds(), 'f', -1, 64)
+	waitBound := time.Duration(polls) * pollInterval
 	gone := "[ -d " + sh.Quote(dir) + " ] || exit 0"
 	return sh.Chain(
 		sh.Invoke(lymPath)+" reed attach",
 		"status=$?",
 		"if [ $status -eq 0 ]; then exit 0; fi",
-		"echo "+sh.Quote("reed attach ended with status")+" $status "+sh.Quote(fmt.Sprintf("- waiting up to %ds for the run worktree to be removed", waitSeconds)),
+		"echo "+sh.Quote("reed attach ended with status")+" $status "+sh.Quote(fmt.Sprintf("- waiting up to %s for the run worktree to be removed", waitBound)),
 		"i=0",
-		fmt.Sprintf("while [ $i -lt %d ]; do %s; sleep 1; i=$((i+1)); done", waitSeconds, gone),
+		fmt.Sprintf("while [ $i -lt %d ]; do %s; sleep %s; i=$((i+1)); done", polls, gone, pollSleep),
 		gone,
 		"exec bash",
 	)

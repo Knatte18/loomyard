@@ -59,6 +59,8 @@ type tierRun struct {
 	vetStep bool
 	// buildOnly marks a shared_build tier whose share selected no test class: it runs only the build step.
 	buildOnly bool
+	// skip names the `//lym:watch` tests whose `-skip` filter args carries, so the empty-tier check discounts them.
+	skip []string
 }
 
 // tierName returns the gate.yaml key and the label of tier number.
@@ -73,6 +75,9 @@ func tierName(number int) string {
 // It adds the guard step when --guards or the scope's form asks for it:
 // one guard run per tier that sc.guards holds guard tests for, ascending.
 // It leaves out a tier the listed tiers already ran whole.
+// A narrowed tier whose share names watched tests to skip gets `-skip '^(<names>)$'` after the call's own words.
+// It gets none when those words carry a filter flag or the command holds no {args}.
+// A line on request.stderr names the tests.
 // A guard run is a placeholder whose packages and names the run fills from sc.guards.
 // A covered tier is named on request.stderr when it has one.
 // A tier a no-test-class scope runs whole is named on request.stderr when it has one.
@@ -114,7 +119,7 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 			printLine(request.stderr, fmt.Sprintf("gate test: the scope selected no test class, so %s runs whole", tierName(number)))
 		}
 		invocations, ignoresTargets := scopeInvocations(tier, request, share)
-		runs = append(runs, tierRun{
+		run := tierRun{
 			number:         number,
 			tier:           tier,
 			scopeForm:      sc.form,
@@ -122,7 +127,14 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 			args:           request.args,
 			ignoresTargets: ignoresTargets,
 			buildOnly:      tier.SharedBuild && share.noTests && len(invocations) == 0,
-		})
+		}
+		// A caller's own filter decides what runs, so the watch skip stays out of it.
+		if !share.whole && len(share.skip) > 0 && len(invocations) > 0 && strings.Contains(tier.Command, "{args}") && !slices.ContainsFunc(request.args, isFilterFlag) {
+			run.args = append(slices.Clone(request.args), watchSkipArgs(share.skip)...)
+			run.skip = share.skip
+			printLine(request.stderr, fmt.Sprintf("gate test: %s skips %s, since no changed file matches their //lym:watch patterns", tierName(number), strings.Join(share.skip, ", ")))
+		}
+		runs = append(runs, run)
 	}
 
 	if sc.form == scopeCard && cfg.Scoper == "go" {
@@ -182,6 +194,11 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 		})
 	}
 	return runs, nil
+}
+
+// watchSkipArgs returns the go test words that skip the top-level tests names.
+func watchSkipArgs(names []string) []string {
+	return []string{"-skip", "^(" + strings.Join(names, "|") + ")$"}
 }
 
 // scopeInvocations returns the invocations one tier makes over sc, and whether its command ignores the scope's narrowing.

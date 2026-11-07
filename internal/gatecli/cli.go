@@ -236,8 +236,9 @@ func guardScanRefusal(moduleDir string, err error) string {
 		location += ":" + strconv.Itoa(scanErr.Line)
 	}
 	switch scanErr.Kind {
-	case impactset.GuardMisplaced:
-		return fmt.Sprintf("gate test: the guard step found a //lym:guard marker at %s that is not directly above a top-level func Test line; way forward: move the marker directly above its func Test line, then re-run the same command", location)
+	case impactset.GuardMisplaced, impactset.WatchMalformed:
+		// The scan error names the marker and carries its own way forward.
+		return fmt.Sprintf("gate test: the guard step cannot use the marker at %s: %v; then re-run the same command", location, err)
 	case impactset.GuardWrongTier:
 		return fmt.Sprintf("gate test: the guard step found a //lym:guard marker at %s in a tier2 or tier3 file; way forward: move the marked test into a tier0 or tier1 file, then re-run the same command", location)
 	default:

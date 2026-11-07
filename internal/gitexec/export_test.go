@@ -1,10 +1,11 @@
 // export_test.go lets package gitexec_test shorten the remote deadline and the stall bound.
-// It runs the stall check on its own signal and starts the production stall timer.
+// It runs the stall check and the remote deadline on their own signal and starts the production stall timer and deadline.
 // It injects a git version line and makes a git start fail.
 
 package gitexec
 
 import (
+	"context"
 	"os/exec"
 	"sync"
 	"testing"
@@ -17,6 +18,14 @@ var defaultStallTimer = startStallTimer
 // StartDefaultStallTimerForTest starts the production stall timer, with no packet trace, and returns its stop.
 func StartDefaultStallTimerForTest(bound time.Duration, check func()) (stop func() bool) {
 	return defaultStallTimer(bound, "", check)
+}
+
+// defaultArmDeadline keeps the production deadline context reachable while a test replaces it.
+var defaultArmDeadline = armDeadline
+
+// ArmDefaultDeadlineForTest arms the production deadline and returns its context and cancel.
+func ArmDefaultDeadlineForTest(deadline time.Duration) (context.Context, context.CancelFunc) {
+	return defaultArmDeadline(deadline)
 }
 
 // SetStallCheckForTest runs each armed stall check once ready reports true, not once the stall bound passes.
@@ -64,6 +73,49 @@ func SetStallCheckForTest(t *testing.T, ready func(attempt int, tracePath string
 		mu.Lock()
 		defer mu.Unlock()
 		return append([]time.Duration(nil), bounds...)
+	}
+}
+
+// SetDeadlineForTest ends each remote attempt once ready reports true, not once its deadline passes.
+// The override lasts until the test ends.
+// The error the attempt reports still carries the deadline it was given, as if that deadline had passed.
+// ready is polled until it reports true or the attempt ends.
+// It returns a function that reports the deadlines armed so far, one per remote attempt; a local command arms none.
+// It changes process-global state, so the calling test must not be parallel.
+func SetDeadlineForTest(t *testing.T, ready func() bool) (armed func() []time.Duration) {
+	t.Helper()
+
+	var mu sync.Mutex
+	var deadlines []time.Duration
+	previous := armDeadline
+	armDeadline = func(deadline time.Duration) (context.Context, context.CancelFunc) {
+		mu.Lock()
+		deadlines = append(deadlines, deadline)
+		mu.Unlock()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			tick := time.NewTicker(5 * time.Millisecond)
+			defer tick.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+					if ready() {
+						cancel()
+						return
+					}
+				}
+			}
+		}()
+		return ctx, cancel
+	}
+	t.Cleanup(func() { armDeadline = previous })
+	return func() []time.Duration {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]time.Duration(nil), deadlines...)
 	}
 }
 

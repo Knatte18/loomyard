@@ -11,10 +11,12 @@ import (
 	"fmt"
 	"go/build"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -53,6 +55,8 @@ type tierScope struct {
 	modules []moduleTargets
 	// noTests means the dotnet scoper found changes but no test class naming them.
 	noTests bool
+	// skip names the `//lym:watch` tests of modules that the tier's diff leaves alone, sorted.
+	skip []string
 }
 
 // scope is what a call's tiers run over.
@@ -79,12 +83,19 @@ type scope struct {
 	// tagTiers are the declared tiers, ascending, whose build tag adds a file to a --card scope's package.
 	// A build without tags leaves that file out, so the vet step is planned over these tiers.
 	tagTiers []int
+	// skip names the `//lym:watch` tests of modules that the scope's changed files leave alone, sorted.
+	// Each listed tier's run skips them.
+	skip []string
+	// changed holds the worktree-relative paths a --card scope's changes are read as, when changesRead is set.
+	// The guard scan drops the watched guard tests they leave alone.
+	changed     []string
+	changesRead bool
 }
 
-// forTier returns s with the narrowing of tier number in place of its own whole, modules and noTests.
+// forTier returns s with the narrowing of tier number in place of its own whole, modules, noTests and skip.
 func (s scope) forTier(number int) scope {
 	if share, ok := s.tiers[number]; ok {
-		s.whole, s.modules, s.noTests = share.whole, share.modules, share.noTests
+		s.whole, s.modules, s.noTests, s.skip = share.whole, share.modules, share.noTests, share.skip
 	}
 	return s
 }
@@ -129,7 +140,10 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 // A set that cannot be narrowed falls back to whole, naming the reason on request.stderr.
 // A --card scope is the cards' packages per module.
 // It adds the declared tiers whose build tag brings a file into one of those packages.
-// A guard scan error refuses with its file, line and way forward.
+// A narrowed share, and a --card scope, skip the `//lym:watch` tests of their packages that no changed file concerns.
+// A --card scope reads its changed files as the diff from the merge base with the parent branch.
+// With no parent branch or an unreadable diff it skips none.
+// A guard or watch scan error refuses with its file, line and way forward.
 // ctx bounds the derivation, so a stalled `go list` is killed when it ends.
 func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, green *greenRun) (scope, error) {
 	request = withGateScope(cfg, request)
@@ -178,10 +192,27 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 	}
 	if form == scopeCard {
 		modules := make([]moduleTargets, len(cardModules))
+		var dirs []string
 		for i, module := range cardModules {
 			modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
+			for _, target := range module.Packages {
+				dir := path.Join(module.Dir, strings.TrimPrefix(target, "./"))
+				// A card may name a package it has yet to create.
+				if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(dir))); err == nil && info.IsDir() {
+					dirs = append(dirs, dir)
+				}
+			}
 		}
-		return scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules)}, nil
+		sc := scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules)}
+		sc.changed, sc.changesRead = cardChanges(ctx, location, root)
+		if sc.changesRead {
+			watched, err := impactset.FindWatchedTests(root, dirs)
+			if err != nil {
+				return scope{}, errors.New(guardScanRefusal(root, err))
+			}
+			sc.skip = skipNames(impactset.UnwatchedTests(watched, sc.changed))
+		}
+		return sc, nil
 	}
 
 	groups, wholeTiers := diffBaseGroups(cfg, location, root, request, form, green)
@@ -213,7 +244,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 			printLine(request.stderr, "gate test: the scope falls back to whole: "+targets.Fallback)
 		} else {
 			narrowed = true
-			share = tierScope{modules: make([]moduleTargets, len(targets.Modules))}
+			share = tierScope{modules: make([]moduleTargets, len(targets.Modules)), skip: skipNames(targets.Unwatched)}
 			for i, module := range targets.Modules {
 				share.modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
 			}
@@ -403,6 +434,53 @@ func guardsByTier(guards map[string][]impactset.GuardTest) map[int]map[string][]
 	return byTier
 }
 
+// skipNames returns the test names of unwatched, sorted and without repeats.
+func skipNames(unwatched map[string][]string) []string {
+	var names []string
+	for _, dirNames := range unwatched {
+		names = append(names, dirNames...)
+	}
+	sort.Strings(names)
+	return slices.Compact(names)
+}
+
+// cardChanges returns the worktree-relative paths that differ from the parent branch's merge base.
+// The comparison is against the working tree.
+// It reports false when the worktree has no parent branch or the diff cannot be read.
+// Every watched test of the scope then runs.
+func cardChanges(ctx context.Context, location *lymcwd.Location, root string) ([]string, bool) {
+	base, ok, err := parentMergeBase(location)
+	if err != nil {
+		logger.Warn("gate test: could not read the merge base with the parent branch; every watched test of the card scope runs", "cause", err)
+		return nil, false
+	}
+	if !ok {
+		return nil, false
+	}
+	paths, err := impactset.ChangedPaths(ctx, root, base)
+	if err != nil {
+		logger.Warn("gate test: could not read the files changed since the merge base; every watched test of the card scope runs", "base", base, "cause", err)
+		return nil, false
+	}
+	return paths, true
+}
+
+// moduleRelative returns the paths of changed that lie under the module at dir, made relative to it.
+// changed and the result are slash-separated, and dir resolves against root.
+func moduleRelative(root, dir string, changed []string) []string {
+	prefix := moduleKey(root, dir)
+	if prefix == "." {
+		return changed
+	}
+	relative := []string{}
+	for _, changedPath := range changed {
+		if rest, ok := strings.CutPrefix(changedPath, prefix+"/"); ok {
+			relative = append(relative, rest)
+		}
+	}
+	return relative
+}
+
 // guardScanDir returns the directory of the module the guard scan lists, relative to the worktree root unless absolute:
 // the scope's own guard directory, else the -C directory of explicit targets, else tier0's dir.
 func guardScanDir(cfg gateslot.Config, request testRequest, sc scope) (string, error) {
@@ -422,6 +500,8 @@ func guardScanDir(cfg gateslot.Config, request testRequest, sc scope) (string, e
 // scanGuards fills sc.guards with the guard tests outside the scope's packages, grouped by their file's tier.
 // It scans the module at sc.guardDir.
 // A whole scope and an explicit-targets scope hold no package of that module, so every guard test counts as outside.
+// It scans the guard packages for `//lym:watch` markers too.
+// When the scope read its changes, it drops each watched guard test those changes leave alone.
 // A scan error is returned as the refusal.
 func scanGuards(sc scope, root string) (scope, error) {
 	moduleDir := resolveRunDir(root, sc.guardDir)
@@ -442,6 +522,15 @@ func scanGuards(sc scope, root string) (scope, error) {
 	for dir, tests := range all {
 		if len(tests) > 0 && !inside[path.Clean(dir)] {
 			outside[dir] = tests
+		}
+	}
+	watched, err := impactset.FindWatchedTests(moduleDir, slices.Sorted(maps.Keys(outside)))
+	if err != nil {
+		return scope{}, errors.New(guardScanRefusal(moduleDir, err))
+	}
+	if sc.changesRead {
+		for dir, names := range impactset.UnwatchedTests(watched, moduleRelative(root, sc.guardDir, sc.changed)) {
+			outside[dir] = slices.DeleteFunc(outside[dir], func(test impactset.GuardTest) bool { return slices.Contains(names, test.Name) })
 		}
 	}
 	sc.guards = guardsByTier(outside)

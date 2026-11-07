@@ -37,6 +37,7 @@ func withManualTier3(cfg *gateslot.Config) {
 // It joins one `dir=… …` part per invocation with ` | `, and renders no invocations as `none`.
 // An invocation that carries terms adds ` terms=<terms>`, and a partial one adds ` partial`.
 // A command that ignores the scope adds ` ignores`, and the guard step adds ` guard`.
+// A run with args adds ` args=<args>`, and one with watch skips adds ` skip=<names>`.
 func describe(run tierRun) string {
 	parts := make([]string, len(run.invocations))
 	for i, invocation := range run.invocations {
@@ -60,6 +61,12 @@ func describe(run tierRun) string {
 	}
 	if run.buildOnly {
 		line += " buildonly"
+	}
+	if len(run.args) > 0 {
+		line += " args=" + strings.Join(run.args, " ")
+	}
+	if len(run.skip) > 0 {
+		line += " skip=" + strings.Join(run.skip, ",")
 	}
 	return line
 }
@@ -381,6 +388,34 @@ func TestPlanTierRuns(t *testing.T) {
 			},
 			scope: scope{form: scopeComputed, tiers: map[int]tierScope{0: projects}},
 			want:  []string{"tier0 computed dir=. ./..."},
+		},
+		{
+			name:       "a narrowed share with skip names gets -skip after the call's own words, the skip names and a stderr line",
+			request:    testRequest{args: []string{"-v"}},
+			scope:      scope{form: scopeComputed, modules: narrower.modules, skip: []string{"TestA", "TestB"}},
+			want:       []string{"tier0 computed dir=. ./a ./b | dir=nested . args=-v -skip ^(TestA|TestB)$ skip=TestA,TestB"},
+			wantStderr: "gate test: tier0 skips TestA, TestB, since no changed file matches their //lym:watch patterns",
+		},
+		{
+			name:  "a whole share with skip names gets no -skip",
+			scope: scope{form: scopeComputed, whole: true, skip: []string{"TestA"}},
+			want:  []string{"tier0 computed dir=. ./..."},
+		},
+		{
+			name:    "a call whose args carry -run gets no -skip",
+			request: testRequest{args: []string{"-run", "X"}},
+			scope:   scope{form: scopeComputed, modules: narrower.modules, skip: []string{"TestA"}},
+			want:    []string{"tier0 computed dir=. ./a ./b | dir=nested . args=-run X"},
+		},
+		{
+			name: "a tier whose command lacks {args} gets no -skip",
+			mutate: func(cfg *gateslot.Config) {
+				t0 := cfg.Tiers["tier0"]
+				t0.Command = "go test {targets}"
+				cfg.Tiers["tier0"] = t0
+			},
+			scope: scope{form: scopeComputed, modules: narrower.modules, skip: []string{"TestA"}},
+			want:  []string{"tier0 computed dir=. ./a ./b | dir=nested ."},
 		},
 		{
 			name:    "a carry: false tier narrows to explicit targets like any tier",

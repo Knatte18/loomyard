@@ -30,6 +30,10 @@ type Targets struct {
 	// It includes packages inside the set and outside it,
 	// and it is empty with Whole.
 	BinaryTests []string
+	// Unwatched maps the directory of each package inside the set to its `//lym:watch` tests the diff leaves alone.
+	// Each list is sorted by name, and the map is nil when there is none.
+	// Such a test is also left out of Guards.
+	Unwatched map[string][]string
 }
 
 // ModuleTargets is the impacted packages of one module.
@@ -44,7 +48,7 @@ type ModuleTargets struct {
 // The diff includes uncommitted and untracked files.
 // A fallback is reported as Whole with its reason and is no error.
 // An error is a failure to read git or a package directory, a cancelled ctx, or a *GuardScanError.
-// A *GuardScanError reports a test file the guard scan cannot accept.
+// A *GuardScanError reports a test file the guard or watch scan cannot accept.
 // ctx bounds the derivation: it is checked before each git read, and a cancelled ctx kills a stalled `go list`.
 func DeriveTargets(ctx context.Context, worktree, base string) (Targets, error) {
 	if _, err := os.Stat(filepath.Join(worktree, "go.mod")); err != nil {
@@ -81,8 +85,12 @@ func DeriveTargets(ctx context.Context, worktree, base string) (Targets, error) 
 	if err != nil {
 		return Targets{}, err
 	}
+	watched, err := FindWatchedTests(worktree, dirs)
+	if err != nil {
+		return Targets{}, err
+	}
 
-	targets := targetsFor(graph, changedPaths, guards)
+	targets := targetsFor(graph, changedPaths, guards, watched)
 	targets.Base = resolvedBase
 	return targets, nil
 }
@@ -121,8 +129,8 @@ func ChangedPaths(ctx context.Context, worktree, base string) ([]string, error) 
 
 // targetsFor is the pure core of the impacted-set derivation:
 // the changed paths' impacted set over the graph, as root-module targets, or a Whole fallback.
-// guards maps a package directory to its guard tests.
-func targetsFor(graph moduleGraph, changedPaths []string, guards map[string][]GuardTest) Targets {
+// guards and watched map a package directory to its guard tests and its watched tests.
+func targetsFor(graph moduleGraph, changedPaths []string, guards map[string][]GuardTest, watched map[string][]WatchedTest) Targets {
 	set, fallback := impactedFor(graph, changedPaths)
 	if fallback != "" {
 		return wholeTargets("", fallback)
@@ -132,11 +140,23 @@ func targetsFor(graph moduleGraph, changedPaths []string, guards map[string][]Gu
 	if len(set) > 0 {
 		targets.Modules = []ModuleTargets{{Dir: ".", Packages: packageArgs(graph.packageDirs(set))}}
 	}
+	unwatched := UnwatchedTests(watched, changedPaths)
 	for dir, tests := range guards {
-		if len(tests) > 0 && !set[graph.byDir[dir].ImportPath] {
-			sorted := slices.Clone(tests)
-			sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
-			targets.Guards[dir] = slices.Compact(sorted)
+		if len(tests) == 0 || set[graph.byDir[dir].ImportPath] {
+			continue
+		}
+		kept := slices.DeleteFunc(slices.Clone(tests), func(test GuardTest) bool { return slices.Contains(unwatched[dir], test.Name) })
+		if len(kept) > 0 {
+			sort.Slice(kept, func(i, j int) bool { return kept[i].Name < kept[j].Name })
+			targets.Guards[dir] = slices.Compact(kept)
+		}
+	}
+	for dir, names := range unwatched {
+		if set[graph.byDir[dir].ImportPath] {
+			if targets.Unwatched == nil {
+				targets.Unwatched = map[string][]string{}
+			}
+			targets.Unwatched[dir] = names
 		}
 	}
 	return targets

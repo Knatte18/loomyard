@@ -81,10 +81,12 @@ func TestGreenRecord(t *testing.T) {
 	t.Run("covered answers by fingerprint, tree, module and args", func(t *testing.T) {
 		t.Parallel()
 		guardFilter := []string{"-run", "^(TestA|TestB)$"}
+		watchSkip := []string{"-skip", "^(TestA)$"}
 		record := greenRecord{Entries: []greenEntry{
 			{Fingerprint: "f", Tree: "t", ModuleDir: ".", Whole: true},
 			{Fingerprint: "f", Tree: "t", ModuleDir: ".", Args: []string{"-count=1"}, Packages: []string{"./b"}},
 			{Fingerprint: "g", Tree: "t", ModuleDir: ".", Args: guardFilter, Packages: []string{"./x"}},
+			{Fingerprint: "s", Tree: "t", ModuleDir: ".", Args: watchSkip, Packages: []string{"./y"}},
 			{Fingerprint: "h", Tree: "t", ModuleDir: ".", Packages: []string{"./b"}},
 			{Fingerprint: "h", Tree: "t", ModuleDir: ".", Packages: []string{"./a", "./b"}},
 		}}
@@ -99,6 +101,8 @@ func TestGreenRecord(t *testing.T) {
 		}{
 			{name: "a whole entry covers an empty-args request", fingerprint: "f", tree: "t", moduleDir: ".", wantWhole: true},
 			{name: "an empty-args entry covers the guard step's own -run filter", fingerprint: "f", tree: "t", moduleDir: ".", args: guardFilter, wantWhole: true},
+			{name: "an empty-args entry covers a request under the watch skip", fingerprint: "f", tree: "t", moduleDir: ".", args: watchSkip, wantWhole: true},
+			{name: "a watch-skip entry never covers an empty-args request", fingerprint: "s", tree: "t", moduleDir: "."},
 			{name: "an empty-args entry covers no other args", fingerprint: "f", tree: "t", moduleDir: ".", args: []string{"-run", "TestA"}},
 			{name: "an entry under -count=1 covers an exact repeat of those args", fingerprint: "f", tree: "t", moduleDir: ".", args: []string{"-count=1"}, wantPackages: []string{"./b"}},
 			{name: "a guard-filter entry never covers an empty-args request", fingerprint: "g", tree: "t", moduleDir: "."},

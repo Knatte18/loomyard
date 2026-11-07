@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -39,6 +40,57 @@ const capStrandEntry = agentname.StrandNameEnv + "=lym:implementer"
 // holdEnv makes the stand-in hold its tier until it is killed.
 var holdEnv = []string{helperHoldEnv + "=1"}
 
+// The periods a capped call's front polls at and its runner reads the lease at, in place of the production second.
+const (
+	testPollPeriod      = 50 * time.Millisecond
+	testLeaseReadPeriod = 100 * time.Millisecond
+)
+
+// leaseSlack is the time past a lease read that a test waits before it reads a run's state.
+const leaseSlack = 500 * time.Millisecond
+
+// pollEnv gives a capped call's front and runner the test periods.
+var pollEnv = []string{helperPollEnv + "=" + testPollPeriod.String(), helperLeaseReadEnv + "=" + testLeaseReadPeriod.String()}
+
+// newRelease returns the path of a release file and the function that creates it.
+// A stand-in or a card line that waits for the file at path ends once release ran.
+// The test runs release when it ends too, so a failed test leaves nothing waiting.
+func newRelease(t *testing.T) (path string, release func()) {
+	t.Helper()
+
+	path = filepath.Join(t.TempDir(), "release")
+	var once sync.Once
+	release = func() {
+		once.Do(func() {
+			if err := os.WriteFile(path, nil, 0o644); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	t.Cleanup(release)
+	return path, release
+}
+
+// releaseEnv is the entry that holds the stand-ins of a call until the file at path exists.
+func releaseEnv(path string) string {
+	return helperReleaseEnv + "=" + path
+}
+
+// releaseLine is the shell command that waits until the file at path exists.
+func releaseLine(path string) string {
+	return "while [ ! -e '" + path + "' ]; do sleep 0.05; done"
+}
+
+// waitPhaseOf waits until the phase file of run names state.
+func waitPhaseOf(t *testing.T, run detachRun, state string) {
+	t.Helper()
+
+	eventually(t, "the run's phase "+state, func() bool {
+		phase, found := readRunFile[runPhase](run.path(phaseFile))
+		return found && phase.State == state
+	})
+}
+
 // goingAnswer is the envelope of a capped call whose run goes on.
 type goingAnswer struct {
 	OK       bool                `json:"ok"`
@@ -54,7 +106,7 @@ type goingAnswer struct {
 func startCappedGate(t *testing.T, cwd, record, capWait string, env []string, args ...string) *runningGate {
 	t.Helper()
 
-	all := append([]string{capStrandEntry, helperRecordEnv + "=" + record, helperCapEnv + "=" + capWait}, env...)
+	all := slices.Concat([]string{capStrandEntry, helperRecordEnv + "=" + record, helperCapEnv + "=" + capWait}, pollEnv, env)
 	return startGate(t, gateRun{cwd: cwd, args: append([]string{"test"}, args...), env: all})
 }
 
@@ -277,7 +329,7 @@ func (r *detachRig) writePlan(cards ...plankit.Card) {
 func (r *detachRig) cardCall(capWait string, env []string, id string) *runningGate {
 	r.t.Helper()
 
-	all := append([]string{capStrandEntry, helperRecordEnv + "=" + r.observed.record, helperCapEnv + "=" + capWait}, env...)
+	all := slices.Concat([]string{capStrandEntry, helperRecordEnv + "=" + r.observed.record, helperCapEnv + "=" + capWait}, pollEnv, env)
 	return startGate(r.t, gateRun{cwd: r.prime, args: []string{"card-verify", id}, env: all})
 }
 
@@ -322,10 +374,12 @@ func TestGateTest_DetachedRun(t *testing.T) {
 	t.Run("a run that outlasts the cap answers done false in its phase, the next call after it ended prints its result, and a third call starts a fresh run", func(t *testing.T) {
 		t.Parallel()
 		rig := newDetachRig(t)
-		env := []string{helperDelayEnv + "=4s", helperExitEnv + "=7"}
+		path, release := newRelease(t)
+		env := []string{releaseEnv(path), helperDelayEnv + "=0s", helperExitEnv + "=7"}
 
 		requireGoing(t, rig.call("3s", env, "./pkg"), "running tier0")
 		run := rig.currentRun("./pkg")
+		release()
 		waitExitOf(t, run)
 
 		second := rig.call("3s", env, "./pkg")
@@ -338,7 +392,7 @@ func TestGateTest_DetachedRun(t *testing.T) {
 			}
 		}
 
-		requireGoing(t, rig.call("3s", env, "./pkg"), "")
+		requireGoing(t, rig.call("3s", slices.Concat([]string{helperExitEnv + "=7"}, holdEnv), "./pkg"), "")
 		if rig.currentRun("./pkg").dir == run.dir {
 			t.Errorf("the third call joined run %s, whose result the second call printed; want a fresh run", run.dir)
 		}
@@ -617,9 +671,11 @@ func TestGateTest_DetachedRun(t *testing.T) {
 		}
 		observed := &runningGate{record: filepath.Join(t.TempDir(), "standin.json")}
 		t.Cleanup(func() { settleRunners(t, location.AnchorPath(), observed) })
-		env := []string{helperDelayEnv + "=4s", helperExitEnv + "=4"}
+		path, release := newRelease(t)
+		env := []string{releaseEnv(path), helperDelayEnv + "=0s", helperExitEnv + "=4"}
 
 		requireGoing(t, startCappedGate(t, worktree, observed.record, "2s", env, "./pkg"), "")
+		release()
 		waitExitOf(t, currentRunOf(t, location.AnchorPath(), worktree, "./pkg"))
 		second := startCappedGate(t, worktree, observed.record, "2s", env, "./pkg")
 		if code := second.wait(t); code != 4 {
@@ -670,12 +726,13 @@ func TestGateTest_DetachedRun(t *testing.T) {
 		t.Run("a SIGTERM to a waiting front exits 143 while the runner goes on, and the next call replays the run", func(t *testing.T) {
 			t.Parallel()
 			rig := newDetachRig(t)
-			env := []string{helperDelayEnv + "=5s", helperExitEnv + "=9"}
+			path, release := newRelease(t)
+			env := []string{releaseEnv(path), helperDelayEnv + "=0s", helperExitEnv + "=9"}
 
 			g := rig.call("60s", env, "./pkg")
-			rig.waitInvocations(1)
 			run := rig.currentRun("./pkg")
 			runner := runnerPIDOf(t, run)
+			waitPhaseOf(t, run, phaseRunning)
 			signalPID(t, g.cmd.Process.Pid, syscall.SIGTERM)
 			if code := g.wait(t); code != 128+int(syscall.SIGTERM) {
 				t.Errorf("front = exit %d, stdout %q; want 143", code, g.stdout.String())
@@ -683,6 +740,7 @@ func TestGateTest_DetachedRun(t *testing.T) {
 			if !proc.IsAlive(runner) {
 				t.Error("the runner ended with its front; want it to go on")
 			}
+			release()
 			if exit := waitExitOf(t, run); exit != (detachExit{Code: 9}) {
 				t.Errorf("exit file = %+v; want code 9, not abandoned", exit)
 			}
@@ -724,7 +782,8 @@ func TestGateTest_DetachedRun(t *testing.T) {
 	t.Run("a short call joining a long call's run leaves the lease at the later deadline", func(t *testing.T) {
 		t.Parallel()
 		rig := newDetachRig(t)
-		env := append([]string{helperGraceEnv + "=1s"}, holdEnv...)
+		const grace = time.Second
+		env := append([]string{helperGraceEnv + "=" + grace.String()}, holdEnv...)
 
 		long := rig.call("10s", env, "./pkg")
 		rig.waitInvocations(1)
@@ -739,8 +798,8 @@ func TestGateTest_DetachedRun(t *testing.T) {
 		if after, _ := readRunFile[leaseRecord](run.path(leaseFile)); !after.Deadline.Equal(leased.Deadline) {
 			t.Errorf("lease deadline = %s after the short call; want the long call's %s", after.Deadline, leased.Deadline)
 		}
-		// The short call's deadline plus grace has passed by the time the pause ends.
-		time.Sleep(2500 * time.Millisecond)
+		// The short call's deadline plus grace has passed by the time the pause ends, and the runner has read the lease since.
+		time.Sleep(grace + testLeaseReadPeriod + leaseSlack)
 		if _, ended := readRunFile[detachExit](run.path(exitFile)); ended || !proc.IsAlive(runner) {
 			t.Errorf("runner alive = %v, exit file present = %v after the short call's deadline plus grace; want it live", proc.IsAlive(runner), ended)
 		}
@@ -766,8 +825,8 @@ func TestGateTest_DetachedRun(t *testing.T) {
 			t.Fatalf("lease deadline = %s after the joining call; want it later than the first call's %s", second.Deadline, first.Deadline)
 		}
 
-		// The runner reads its lease once a second, so one that was not extended has ended by now.
-		time.Sleep(time.Until(first.Deadline.Add(1600 * time.Millisecond)))
+		// The runner reads its lease once per test period, so one that was not extended has ended by now.
+		time.Sleep(time.Until(first.Deadline.Add(testLeaseReadPeriod + leaseSlack)))
 		if _, ended := readRunFile[detachExit](run.path(exitFile)); ended || !proc.IsAlive(runner) {
 			t.Errorf("runner alive = %v, exit file present = %v after the first call's deadline plus grace; want it live", proc.IsAlive(runner), ended)
 		}
@@ -841,12 +900,14 @@ func TestGateTest_DetachedRun(t *testing.T) {
 		t.Run("a card line that outlasts the cap answers done false in the phase running, and the next call after it ended prints its output and exits with its code", func(t *testing.T) {
 			t.Parallel()
 			rig := newDetachRig(t)
-			rig.writePlan(verifyCard(4, "alpha", "sleep 4; echo done-line; exit 4"))
+			path, release := newRelease(t)
+			rig.writePlan(verifyCard(4, "alpha", releaseLine(path)+"; echo done-line; exit 4"))
 
 			answer := requireGoing(t, rig.cardCall("2s", nil, "4"), "")
 			if !strings.HasPrefix(answer.Phase, phaseRunning) {
 				t.Errorf("answered phase = %q; want one starting with %q", answer.Phase, phaseRunning)
 			}
+			release()
 			waitExitOf(t, rig.cardRun("4-alpha"))
 
 			second := rig.cardCall("3s", nil, "4")
@@ -859,7 +920,8 @@ func TestGateTest_DetachedRun(t *testing.T) {
 			t.Parallel()
 			rig := newDetachRig(t)
 			marker := filepath.Join(t.TempDir(), "ran")
-			rig.writePlan(verifyCard(4, "alpha", "echo ran >> "+marker+"; sleep 4"))
+			path, release := newRelease(t)
+			rig.writePlan(verifyCard(4, "alpha", "echo ran >> "+marker+"; "+releaseLine(path)))
 
 			requireGoing(t, rig.cardCall("1s", nil, "4"), "")
 			requireGoing(t, rig.cardCall("1s", nil, "4-alpha"), "")
@@ -876,6 +938,7 @@ func TestGateTest_DetachedRun(t *testing.T) {
 			if runs != 1 {
 				t.Errorf("key directory holds %d run directories; want the one both calls joined", runs)
 			}
+			release()
 			waitExitOf(t, rig.cardRun("4-alpha"))
 			if data, err := os.ReadFile(marker); err != nil || string(data) != "ran\n" {
 				t.Errorf("marker = %q, %v; want the line to have run once", data, err)

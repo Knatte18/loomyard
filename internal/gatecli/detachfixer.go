@@ -71,14 +71,15 @@ func awaitFixer(ctx context.Context, kit cardFixerKit, rec *gatefixer.Record) (f
 // The closer is called once and reports the abandoned exit: {128 + signal, abandoned} after a signal.
 // After a passed lease it reports {1, abandoned} and writes abandonedLine to stderr.
 // It reports false when neither event ended the phase.
-func (d detachRun) watchPhase(ctx context.Context) (context.Context, func() (detachExit, bool)) {
+// It reads the lease once per leaseRead.
+func (d detachRun) watchPhase(ctx context.Context, leaseRead time.Duration) (context.Context, func() (detachExit, bool)) {
 	signalCtx, caught, stopSignals := catchTerminatingSignals(ctx)
 	phaseCtx, cancelPhase := context.WithCancel(signalCtx)
 	var leasePassed atomic.Bool
 	watchDone := make(chan struct{})
 	go func() {
 		defer close(watchDone)
-		d.cancelOnPassedLease(phaseCtx, cancelPhase, &leasePassed)
+		d.cancelOnPassedLease(phaseCtx, cancelPhase, &leasePassed, leaseRead)
 	}()
 	return phaseCtx, func() (detachExit, bool) {
 		cancelledDuringPhase := phaseCtx.Err() != nil
@@ -107,7 +108,7 @@ func (d detachRun) watchPhase(ctx context.Context) (context.Context, func() (det
 // It also ends the call for a request that is not `test`, and for a request the seam turns down or errors on.
 func (d detachRun) runWithFixer(ctx context.Context, request detachRequest, gateTree func() *cobra.Command, seams detachSeams) detachExit {
 	if request.Verb != verbTest {
-		return d.runRequest(ctx, request, gateTree)
+		return d.runRequest(ctx, request, gateTree, seams.leaseRead())
 	}
 	kit, on, err := seams.cardFixer(request)
 	if err != nil {
@@ -118,7 +119,7 @@ func (d detachRun) runWithFixer(ctx context.Context, request detachRequest, gate
 	if exit, ended := d.settleLiveFixer(ctx, request, seams, kit, on, store); ended {
 		return exit
 	}
-	first := d.runRequest(ctx, request, gateTree)
+	first := d.runRequest(ctx, request, gateTree, seams.leaseRead())
 	if !on || first.Abandoned || first.Code == 0 || !d.holdsFailureReport() || d.endedOnRunnerCrash() {
 		return first
 	}
@@ -156,7 +157,7 @@ func (d detachRun) settleLiveFixer(ctx context.Context, request detachRequest, s
 		return detachExit{}, false
 	}
 	d.writePhase(runPhase{State: phaseFixing})
-	waitCtx, closeWatch := d.watchPhase(ctx)
+	waitCtx, closeWatch := d.watchPhase(ctx, seams.leaseRead())
 	var outcome fixerOutcome
 	var waitErr error
 	if on {
@@ -209,7 +210,7 @@ func (d detachRun) fixAndRerun(ctx context.Context, request detachRequest, gateT
 		return d.endUnfixed(first, "the fixer's prompt could not be built", err)
 	}
 
-	waitCtx, closeWatch := d.watchPhase(ctx)
+	waitCtx, closeWatch := d.watchPhase(ctx, seams.leaseRead())
 	rec, _, spawnErr := kit.fixer.SpawnOrAttach(store, spec)
 	var outcome fixerOutcome
 	var waitErr error
@@ -235,7 +236,7 @@ func (d detachRun) fixAndRerun(ctx context.Context, request detachRequest, gateT
 
 	d.rewriteTreeIdentity(seams.treeIdentity(kit.worktreeRoot))
 	d.writePhase(runPhase{State: phaseStarting})
-	rerun := d.runRequest(ctx, request, gateTree)
+	rerun := d.runRequest(ctx, request, gateTree, seams.leaseRead())
 	// Marked only once the re-run has a result over the fixer's finished tree;
 	// a restart during the re-run still finds the record live.
 	if err := store.markTerminal(outcome.status, outcome.deadReason); err != nil {

@@ -181,7 +181,14 @@ func runGateHelper() int {
 func helperSeams() (detachSeams, bool) {
 	seams := defaultDetachSeams()
 	seams.launch = helperLaunch
-	for name, target := range map[string]*time.Duration{helperLockMarginEnv: &seams.lockMargin, helperClaimBoundEnv: &seams.claimBound, helperGraceEnv: &seams.grace} {
+	durationSeams := map[string]*time.Duration{
+		helperLockMarginEnv: &seams.lockMargin,
+		helperClaimBoundEnv: &seams.claimBound,
+		helperGraceEnv:      &seams.grace,
+		helperPollEnv:       &seams.pollPeriod,
+		helperLeaseReadEnv:  &seams.leaseReadPeriod,
+	}
+	for name, target := range durationSeams {
 		if value := os.Getenv(name); value != "" {
 			parsed, err := time.ParseDuration(value)
 			if err != nil {
@@ -2241,6 +2248,11 @@ func TestGateTest_Scenario(t *testing.T) {
 			name:      "a marker in a tier2 file names its file and line and says to move it into a tier0 or tier1 file",
 			files:     map[string]string{"p/p.go": "package p\n", "p/p_test.go": "//go:build tier2\n\npackage p\n\nimport \"testing\"\n\n//lym:guard\nfunc TestA(t *testing.T) {}\n"},
 			wantError: []string{"p/p_test.go:7", "move the marked test into a tier0 or tier1 file"},
+		},
+		{
+			name:      "a watch marker with no pattern names its file and line and says to give it patterns",
+			files:     map[string]string{"p/p.go": "package p\n", "p/p_test.go": "package p\n\nimport \"testing\"\n\n//lym:guard\n//lym:watch\nfunc TestA(t *testing.T) {}\n"},
+			wantError: []string{"p/p_test.go:6", "write the marker as"},
 		},
 		{
 			name:       "an unreadable test file names it and says to make it readable or fix it",

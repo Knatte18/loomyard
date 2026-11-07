@@ -10,8 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -19,17 +18,44 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// expiringContext is a context whose deadline passes when expire is called, reporting context.DeadlineExceeded after it.
+// It lets a test expire the context on an event instead of after a fixed time.
+type expiringContext struct {
+	context.Context
+	done chan struct{}
+	once sync.Once
+}
+
+func newExpiringContext() *expiringContext {
+	return &expiringContext{Context: context.Background(), done: make(chan struct{})}
+}
+
+func (c *expiringContext) Done() <-chan struct{} {
+	return c.done
+}
+
+func (c *expiringContext) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+func (c *expiringContext) expire() {
+	c.once.Do(func() { close(c.done) })
+}
+
 // TestRun_ExpiryKillsBackgroundedDescendant pins that an expired context ends a descendant that holds the output pipe.
 // A descendant that exits on SIGTERM is gone when run returns, having run its trap.
 // One that ignores SIGTERM is killed once the wait delay has passed.
+// The context expires once the descendant has written its pid, so the expiry is an event and not a fixed pause.
 func TestRun_ExpiryKillsBackgroundedDescendant(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	const (
-		expiry = time.Second
-		delay  = 200 * time.Millisecond
-	)
+	const delay = 200 * time.Millisecond
 	tests := []struct {
 		name             string
 		trap             string
@@ -46,27 +72,30 @@ func TestRun_ExpiryKillsBackgroundedDescendant(t *testing.T) {
 			pidFile := filepath.Join(dir, "descendant.pid")
 			marker := filepath.Join(dir, "term.marker")
 			command := "sh -c '" + tt.trap + "; echo $$ > " + pidFile + "; sleep 60 & wait' & wait"
-			ctx, cancel := context.WithTimeout(context.Background(), expiry)
-			defer cancel()
+			ctx := newExpiringContext()
+			defer ctx.expire()
+			expired := make(chan time.Time, 1)
+			go func() {
+				// The expiry fires after the bound too, so a missing pid file fails the test below and does not hang it.
+				for until := time.Now().Add(10 * time.Second); time.Now().Before(until); time.Sleep(10 * time.Millisecond) {
+					if _, err := os.Stat(pidFile); err == nil {
+						break
+					}
+				}
+				expired <- time.Now()
+				ctx.expire()
+			}()
 
-			start := time.Now()
 			code, err := run(ctx, command, dir, append(os.Environ(), "MARKER="+marker), &bytes.Buffer{}, delay)
-			elapsed := time.Since(start)
+			returned := time.Now()
 			if !errors.Is(err, context.DeadlineExceeded) || code != -1 {
 				t.Fatalf("run = (%d, %v); want (-1, context.DeadlineExceeded)", code, err)
 			}
-			if !tt.wantGoneOnReturn && elapsed < expiry+delay {
-				t.Errorf("run took %s; want at least the expiry plus the wait delay %s", elapsed, expiry+delay)
+			if elapsed := returned.Sub(<-expired); !tt.wantGoneOnReturn && elapsed < delay {
+				t.Errorf("run took %s after the expiry; want at least the wait delay %s", elapsed, delay)
 			}
 
-			raw, err := os.ReadFile(pidFile)
-			if err != nil {
-				t.Fatal(err)
-			}
-			pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
-			if err != nil {
-				t.Fatal(err)
-			}
+			pid := waitForPidFile(t, pidFile)
 			deadline := time.Now().Add(5 * time.Second)
 			for !errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
 				if tt.wantGoneOnReturn || time.Now().After(deadline) {

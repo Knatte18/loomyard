@@ -61,6 +61,11 @@ func TestFindGuardTests(t *testing.T) {
 			want: []GuardTest{{Name: "TestA", Tier: 0}},
 		},
 		{
+			name: "a guard stacked with a watch line on either side is found",
+			file: "package p\n\n//lym:guard\n//lym:watch *.cs\nfunc TestA(t *testing.T) {}\n\n//lym:watch *.cs\n//lym:guard\nfunc TestB(t *testing.T) {}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 0}, {Name: "TestB", Tier: 0}},
+		},
+		{
 			name: "a guard in a tier0 file is found as tier 0",
 			file: "//go:build tier0\n\npackage p\n\n//lym:guard\nfunc TestA(t *testing.T) {}\n",
 			want: []GuardTest{{Name: "TestA", Tier: 0}},

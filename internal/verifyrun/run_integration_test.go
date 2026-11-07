@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -146,26 +147,44 @@ func TestRun_SpawnFailure(t *testing.T) {
 	}
 }
 
+// firstWrite is a writer that closes seen on its first write and discards everything.
+type firstWrite struct {
+	once sync.Once
+	seen chan struct{}
+}
+
+func (w *firstWrite) Write(p []byte) (int, error) {
+	w.once.Do(func() { close(w.seen) })
+	return len(p), nil
+}
+
 func TestRun_Cancellation(t *testing.T) {
 	tiergate.Require(t, 1)
 	buf := runCapture(t)
-	long := "sleep 30"
+	// The sleep starts before the first write, so that write means a child is running.
+	// On Windows ping prints its banner once it runs.
+	long := "sleep 30 & echo up; wait"
 	if runtime.GOOS == "windows" {
 		long = "ping -n 30 127.0.0.1"
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// The command's own first output says it runs, so the cancel needs no fixed pause.
+	out := &firstWrite{seen: make(chan struct{})}
+	cancelled := make(chan time.Time, 1)
 	go func() {
-		time.Sleep(300 * time.Millisecond)
+		<-out.seen
+		cancelled <- time.Now()
 		cancel()
 	}()
 
 	const delay = 500 * time.Millisecond
-	start := time.Now()
-	code, err := run(ctx, long, t.TempDir(), nil, &bytes.Buffer{}, delay)
+	code, err := run(ctx, long, t.TempDir(), nil, out, delay)
+	returned := time.Now()
 	if !errors.Is(err, context.Canceled) || code != -1 {
 		t.Fatalf("run = (%d, %v); want (-1, context.Canceled)", code, err)
 	}
-	if elapsed := time.Since(start); elapsed > 300*time.Millisecond+4*delay {
+	if elapsed := returned.Sub(<-cancelled); elapsed > 4*delay {
 		t.Errorf("run took %s after cancel; want well under the command's own duration", elapsed)
 	}
 	if strings.Contains(buf.String(), "WARN") {

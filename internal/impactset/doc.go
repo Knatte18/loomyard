@@ -54,12 +54,23 @@
 // A marker in a `tier2` or `tier3` file is an error naming the file and line.
 // So is a marker not directly above a top-level `func Test…` line.
 // That error is a *GuardScanError.
-// Its Kind is GuardMisplaced, GuardWrongTier, GuardParse or SeamMalformed.
+// Its Kind is GuardMisplaced, GuardWrongTier, GuardParse, SeamMalformed or WatchMalformed.
 // Its Line is the marker's line, or the parser's for GuardParse when it reports one.
 // A file that cannot be parsed or read is a GuardParse error.
-// A `//testtiming:keep` or `//lym:seam` line between the marker and the func line does not displace the marker.
+// Another `//lym:` line or a `//testtiming:keep` line between the marker and the func line does not displace the marker.
 // A test carrying several markers stacks them as contiguous directive lines.
-// DeriveTargets returns a guard scan failure as the *GuardScanError.
+// DeriveTargets returns a guard or watch scan failure as the *GuardScanError.
+//
+// A top-level test marked `//lym:watch <pattern>...` guards only the files its patterns name, such as a cross-compile.
+// A narrowed set runs it only when a changed path matches one of its `path.Match` patterns or its own file changed.
+// A pattern holding a `/` matches a worktree-relative path, and any other matches a path's base name.
+// Targets.Unwatched names, per package inside the set, the watched tests the diff leaves alone.
+// Guards leaves those tests out.
+// A whole run still runs them.
+// FindWatchedTests is the static parse.
+// UnwatchedTests matches its result against a list of changed paths, for a scope that reads them itself.
+// A watch line outside the comment block of a top-level `func Test…` is a GuardMisplaced error.
+// A watch line naming no pattern, or a pattern `path.Match` rejects, is a WatchMalformed error.
 //
 // FindSeamTests is the same static parse for `//lym:seam <unit>#<Type>`.
 // That marker belongs to a test that reflects over a struct's fields.

@@ -356,6 +356,7 @@ var filterFlags = []string{"run", "skip", "list", "bench"}
 // args are the call's own words after `--`.
 // A filter among them exempts the run, since it may match nothing in a package.
 // The run's args are not read, as the guard step appends its own `-run` filter there.
+// A test the run's watch skip names does not count toward a package's tests.
 // A run with no counts, such as a vstest one, has nothing to check.
 func emptyTierFailure(run tierRun, root string, ran map[string]int, args []string) string {
 	if len(ran) == 0 || slices.ContainsFunc(args, isFilterFlag) {
@@ -378,7 +379,7 @@ func emptyTierFailure(run tierRun, root string, ran map[string]int, args []strin
 			continue
 		}
 		dir := packageDir(modules, pkg)
-		if dir != "" && holdsTierTest(tagged, dir) {
+		if dir != "" && holdsTierTest(tagged, dir, run.skip) {
 			empty = append(empty, pkg)
 		}
 	}
@@ -428,8 +429,9 @@ func packageDir(modules map[string]string, pkg string) string {
 }
 
 // holdsTierTest reports whether a `_test.go` file in dir matches the build tags of tagged and declares a Test function.
+// A Test function named in skipped does not count.
 // A file that cannot be matched or parsed is left out: a build failure already failed the run.
-func holdsTierTest(tagged build.Context, dir string) bool {
+func holdsTierTest(tagged build.Context, dir string, skipped []string) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return false
@@ -447,7 +449,7 @@ func holdsTierTest(tagged build.Context, dir string) bool {
 			continue
 		}
 		for _, decl := range file.Decls {
-			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && isTestName(fn.Name.Name) {
+			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && isTestName(fn.Name.Name) && !slices.Contains(skipped, fn.Name.Name) {
 				return true
 			}
 		}

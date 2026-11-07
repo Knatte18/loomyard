@@ -320,6 +320,25 @@
 // `--guards` under the `none` or `dotnet` scoper is refused naming the scoper, since the scan is Go's.
 // A module with no marked test runs no guard step and logs so.
 //
+// # Watched tests
+//
+// A top-level test marked `//lym:watch <pattern>...` guards only the files its patterns name.
+// An example is a cross-compile that matters only when a `_linux.go` file changes.
+// Under the `go` scoper a narrowed computed or `--base` share and a `--card` scope skip such a test.
+// They skip it when no changed file matches a pattern and its own file did not change.
+// `impactset.DeriveTargets` names those tests for a computed or `--base` share.
+// A `--card` scope reads its changes as the diff from the merge base with the parent branch.
+// It matches the watched tests of its packages through `impactset.UnwatchedTests`.
+// With no parent branch, or a diff that cannot be read, it skips none.
+// A listed tier's run gets `-skip '^(<names>)$'` after the words from `--`, and a line on stderr names the tests.
+// A call whose words after `--` carry a filter flag gets no skip, nor does a tier whose command holds no `{args}`.
+// The guard step leaves out a watched guard test that the same changes leave alone.
+// A whole scope and explicit targets skip nothing, so the whole gates run every watched test.
+// A skipped test does not count toward the empty-tier check,
+// and a whole pass with empty args covers a skipping run in the green record.
+// A misplaced or malformed watch marker refuses the call, as a guard scan error does.
+// Bound: `-skip` matches by name in every package of the run, so a test of the same name elsewhere is skipped too.
+//
 // # Hub resolution
 //
 // The directory is resolved with lymcwd.ResolveWorktree.
@@ -397,7 +416,7 @@
 // under the `go` scoper a package entry covers its packages, so a remainder runs as explicit packages;
 // under the `none` scoper only a whole entry carries.
 // The same holds under the `dotnet` scoper, since a pass narrowed to a project and its classes records nothing.
-// An entry with empty args covers a request with empty args and the guard step's own `-run` filter;
+// An entry with empty args covers a request with empty args, the guard step's own `-run` filter and the watch skip;
 // any other args need an exact match, so `-- -count=1` reruns.
 // A remainder whose targets would exceed a shell-safe length runs whole instead.
 // So does one whose packages `go list` cannot list.
@@ -475,6 +494,7 @@
 // Its line names the tier, the package and `lym config gate`, and goes to stderr and the log before the summary line.
 // A run whose words after `--` carry `-run`, `-skip`, `-list` or `-bench` is exempt, since its filter may match nothing;
 // the guard step's own `-run` filter exempts nothing.
+// A test the run's watch skip names does not count as a test the package holds.
 // Otherwise a tier that discovers no tests passes with zero counted, as a package with only a `TestMain` does.
 //
 // # Lint steps

@@ -139,7 +139,7 @@ func seamGlyph(text string) (string, bool) {
 }
 
 // onlyDirectiveLinesAfter reports whether every comment is a `//lym:` or `//testtiming:keep` line.
-// Only these lines may sit between a seam marker and its func line.
+// Only these lines may sit between a guard, seam or watch marker and its func line.
 func onlyDirectiveLinesAfter(comments []*ast.Comment) bool {
 	for _, comment := range comments {
 		if !strings.HasPrefix(comment.Text, "//lym:") && !strings.HasPrefix(comment.Text, testtimingKeepTag) {

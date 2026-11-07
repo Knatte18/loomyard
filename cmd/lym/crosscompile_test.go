@@ -24,6 +24,9 @@ import (
 // TestCrossCompileLinux cross-compiles the entire module for GOOS=linux.
 // It fails on any non-zero exit and surfaces the compiler's combined output.
 // It builds every package together, so a Linux-tagged file in any package fails it.
+// A narrowed gate runs it only when a file a native Windows build leaves out changes; a whole gate always runs it.
+//
+//lym:watch *_linux.go *_unix.go
 func TestCrossCompileLinux(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Skip when the go toolchain is not on PATH, so a minimal CI image without it does not fail the gate.

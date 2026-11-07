@@ -54,7 +54,7 @@ const (
 // detachRunMaxAge is how long a finished run directory is kept before it is pruned.
 const detachRunMaxAge = 14 * 24 * time.Hour
 
-// frontPollPeriod is how often a front tries the key directory's lock and looks for the runner's claim.
+// frontPollPeriod is how often a production front tries the key directory's lock and looks for the runner's claim.
 // It is never shorter than one second.
 const frontPollPeriod = time.Second
 
@@ -96,6 +96,11 @@ type detachSeams struct {
 	lockMargin time.Duration
 	// grace is how long a run's lease outlasts the deadline of the latest call that wrote it.
 	grace time.Duration
+	// pollPeriod is how often a front tries the key directory's lock and looks for the runner's claim.
+	// Zero takes frontPollPeriod.
+	pollPeriod time.Duration
+	// leaseReadPeriod is how often a runner reads its lease; zero takes leaseReadPeriod.
+	leaseReadPeriod time.Duration
 	// cardFixer builds the kit a runner hands a red verdict to, and reports false for a request whose verdict stands.
 	cardFixer func(detachRequest) (cardFixerKit, bool, error)
 	// fixerStopper builds the stop of a fixer strand over the request's worktree, whether or not the request hands off.
@@ -115,7 +120,26 @@ func defaultDetachSeams() detachSeams {
 		cardFixer:    newCardFixer,
 		fixerStopper: newFixerStopper,
 		treeIdentity: treeIdentityAt,
+
+		pollPeriod:      frontPollPeriod,
+		leaseReadPeriod: leaseReadPeriod,
 	}
+}
+
+// frontPoll returns how often a front polls, the production period where the seams leave it unset.
+func (s detachSeams) frontPoll() time.Duration {
+	if s.pollPeriod <= 0 {
+		return frontPollPeriod
+	}
+	return s.pollPeriod
+}
+
+// leaseRead returns how often a runner reads its lease, the production period where the seams leave it unset.
+func (s detachSeams) leaseRead() time.Duration {
+	if s.leaseReadPeriod <= 0 {
+		return leaseReadPeriod
+	}
+	return s.leaseReadPeriod
 }
 
 // runnerSpawn is what a launcher needs to start a runner.
@@ -701,7 +725,8 @@ func endStrayLine(run detachRun) {
 	}
 }
 
-// lockKey takes the key directory's lock, trying once a second while at least the lock margin of the call's cap remains.
+// lockKey takes the key directory's lock.
+// It tries once per poll period of the seams while at least the lock margin of the call's cap remains.
 // done is set when the front ends instead, with code:
 // it answered that the run goes on in the phase `starting`, or the lock could not be taken.
 func (f *front) lockKey(ctx context.Context) (file *lock.FileLock, code int, done bool) {
@@ -720,7 +745,7 @@ func (f *front) lockKey(ctx context.Context) (file *lock.FileLock, code int, don
 		select {
 		case <-ctx.Done():
 			return nil, 1, true
-		case <-time.After(frontPollPeriod):
+		case <-time.After(f.seams.frontPoll()):
 		}
 	}
 }
@@ -905,7 +930,8 @@ func (f *front) registerRunner(pid int, run detachRun) {
 	}
 }
 
-// awaitClaim polls every frontPollPeriod until the runner claimed run, and reports whether it did within the claim bound.
+// awaitClaim polls every poll period of the seams until the runner claimed run.
+// It reports whether the runner did within the claim bound.
 // A runner that ended unclaimed, or none that claimed by the bound, is a failed start:
 // the front claims the run itself so no runner can, and reports false.
 // A cancelled ctx reports true, since the front is ending and the run stands as it is.
@@ -915,7 +941,7 @@ func (f *front) awaitClaim(ctx context.Context, run detachRun, pid int) bool {
 		select {
 		case <-ctx.Done():
 			return true
-		case <-time.After(frontPollPeriod):
+		case <-time.After(f.seams.frontPoll()):
 		}
 		if _, err := os.Stat(run.path(processFile)); err == nil {
 			return true

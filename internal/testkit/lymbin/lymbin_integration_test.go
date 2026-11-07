@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -163,6 +164,8 @@ func TestBuildWithLDFlags_ReachTheBuild(t *testing.T) {
 	}
 }
 
+// TestBuildInto_UnwritableDirReturnsError checks that an output directory that cannot be created fails before the build.
+// A failed build would answer its exit error instead of the directory's *fs.PathError.
 func TestBuildInto_UnwritableDirReturnsError(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv(gateslot.PrebuiltLymEnv, "")
@@ -172,8 +175,9 @@ func TestBuildInto_UnwritableDirReturnsError(t *testing.T) {
 	}
 
 	bin, err := BuildInto(filepath.Join(blocker, "out"), "")
-	if err == nil {
-		t.Fatalf("BuildInto into a path under a regular file succeeded: %s", bin)
+	var pathErr *fs.PathError
+	if !errors.As(err, &pathErr) {
+		t.Fatalf("BuildInto into a path under a regular file = (%q, %v); want the directory's *fs.PathError before any build", bin, err)
 	}
 }
 

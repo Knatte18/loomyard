@@ -96,6 +96,8 @@ func TestGateTest_Scopes(t *testing.T) {
 		"other/other.go":     "package other\n",
 		"guardpkg/g.go":      "package guardpkg\n",
 		"guardpkg/g_test.go": "package guardpkg\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuard(t *testing.T) {}\n",
+		"watched/w.go":       "package watched\n",
+		"watched/w_test.go":  "package watched\n\nimport \"testing\"\n\n//lym:watch *_linux.go\nfunc TestWatched(t *testing.T) {}\n",
 		"nested/go.mod":      "module example.com/scopes/nested\n\ngo 1.21\n",
 		"nested/n.go":        "package nested\n",
 		"docs/note.md":       "note\n",
@@ -108,7 +110,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		"cs/Lib.Tests/OtherTests.cs":    "namespace Lib.Tests;\n\n[TestFixture]\npublic class OtherTests\n{\n    [Test]\n    public void Run() { }\n}\n",
 	}
 	plankit.WriteTree(t, prime, files)
-	gitkit.Git(t, prime, "add", "go.mod", "lib", "user", "other", "guardpkg", "nested", "docs", "cs")
+	gitkit.Git(t, prime, "add", "go.mod", "lib", "user", "other", "guardpkg", "watched", "nested", "docs", "cs")
 	gitkit.Git(t, prime, "commit", "-q", "-m", "seed the scopes module")
 	gitkit.Git(t, pair, "merge", "--ff-only", "-q", "main")
 
@@ -360,6 +362,14 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	})
 
+	t.Run("a computed scope skips a //lym:watch test of an impacted package when the diff touches no file its pattern names, and runs it when the diff adds one", func(t *testing.T) {
+		edit(t, "watched/w.go", "package watched\n\nvar Changed = true\n")
+		wantArgs(t, gate(t, pair, nil), []string{"./watched", "-skip", "^(TestWatched)$"}, guardInvocation)
+
+		edit(t, "watched/x_linux.go", "package watched\n")
+		wantArgs(t, gate(t, pair, nil), []string{"./watched"}, guardInvocation)
+	})
+
 	circleTestsArgs := []string{"cs/Lib.Tests/Lib.Tests.csproj", "--filter", "FullyQualifiedName~Lib.Tests.CircleTests"}
 
 	t.Run("a computed scope under dotnet runs the selected test project once with its class filter", func(t *testing.T) {
@@ -419,6 +429,27 @@ func TestGateTest_Scopes(t *testing.T) {
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" {
 			t.Errorf("tier0 run record scope form = %q; want card", run.ScopeForm)
 		}
+	})
+
+	t.Run("--card skips a //lym:watch test of a card's package that no change since the parent merge base concerns, and runs it once one does or with no parent branch", func(t *testing.T) {
+		watchedPlan := plan
+		watchedPlan.Cards = []plankit.Card{{Number: 1, Slug: "span", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"watched/w.go"}}}}}
+		plankit.Write(t, planparser.PlanDir(pair), watchedPlan)
+		t.Cleanup(func() { plankit.Write(t, planparser.PlanDir(pair), plan) })
+		// A dirty tree is never carried, so the packages the row before ran green run again.
+		edit(t, "docs/note.md", "a dirtying note\n")
+		wantArgs(t, gate(t, pair, nil, "--card", "1"), []string{"./watched", "-skip", "^(TestWatched)$"}, guardInvocation)
+
+		edit(t, "watched/x_linux.go", "package watched\n")
+		wantArgs(t, gate(t, pair, nil, "--card", "1"), []string{"./watched"}, guardInvocation)
+
+		plankit.Write(t, planparser.PlanDir(prime), watchedPlan)
+		t.Cleanup(func() {
+			_ = os.RemoveAll(planparser.PlanDir(prime))
+			// The prime's passing call recorded green, which would make the next prime row list packages.
+			_ = os.Remove(filepath.Join(gateslot.WaitDir(prime), greenFileName))
+		})
+		wantArgs(t, gate(t, prime, nil, "--card", "1"), []string{"./watched"}, guardInvocation)
 	})
 
 	// vetSummary returns the summary line of tier1's vet run in output, failing the test when there is none.
@@ -618,7 +649,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		wantArgs(t, diff, []string{"./lib", "./user"}, guardInvocation)
 
 		second := real(t, "--all")
-		wantArgs(t, second, []string{"./guardpkg", "./other"})
+		wantArgs(t, second, []string{"./guardpkg", "./other", "./watched"})
 
 		wantCarried(t, real(t, "--all"))
 	})
@@ -963,4 +994,54 @@ func TestGateTest_Scopes(t *testing.T) {
 			t.Errorf("ended records = %+v; want tier0's blocked record, failed with the build's exit 1", ended)
 		}
 	})
+}
+
+func TestScanGuards_DropsWatchedGuardsNoReadChangeConcerns(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const guardFile = "package p\n\nimport \"testing\"\n\n//lym:guard\n//lym:watch *_linux.go\nfunc TestWatchedGuard(t *testing.T) {}\n\n" +
+		"//lym:guard\nfunc TestPlainGuard(t *testing.T) {}\n"
+	root := t.TempDir()
+	plankit.WriteTree(t, root, map[string]string{
+		"go.mod":          "module example.com/root\n\ngo 1.21\n",
+		"p/p_test.go":     guardFile,
+		"mod/go.mod":      "module example.com/root/mod\n\ngo 1.21\n",
+		"mod/p/p_test.go": guardFile,
+	})
+
+	tests := []struct {
+		name        string
+		guardDir    string
+		changesRead bool
+		changed     []string
+		want        []string
+	}{
+		{"UnreadChangesKeepEveryGuard", ".", false, nil, []string{"TestPlainGuard", "TestWatchedGuard"}},
+		{"RootModuleChangeMatchingTheWatchKeepsIt", ".", true, []string{"p/x_linux.go"}, []string{"TestPlainGuard", "TestWatchedGuard"}},
+		{"RootModuleChangeOutsideTheWatchDropsIt", ".", true, []string{"docs.md"}, []string{"TestPlainGuard"}},
+		{"NestedModuleChangeMatchingTheWatchKeepsIt", "mod", true, []string{"mod/p/x_linux.go"}, []string{"TestPlainGuard", "TestWatchedGuard"}},
+		{"NestedModuleChangeOutsideTheWatchDropsIt", "mod", true, []string{"mod/docs.md"}, []string{"TestPlainGuard"}},
+		{"ChangeOutsideTheNestedModuleDropsIt", "mod", true, []string{"p/x_linux.go"}, []string{"TestPlainGuard"}},
+		{"NoChangeDropsIt", "mod", true, nil, []string{"TestPlainGuard"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := scanGuards(scope{guardDir: tt.guardDir, changesRead: tt.changesRead, changed: tt.changed}, root)
+			if err != nil {
+				t.Fatalf("scanGuards error = %v; want none", err)
+			}
+			var names []string
+			for _, dirs := range got.guards {
+				for _, dirNames := range dirs {
+					names = append(names, dirNames...)
+				}
+			}
+			slices.Sort(names)
+			if !slices.Equal(names, tt.want) {
+				t.Errorf("scanGuards guards = %q; want %q", names, tt.want)
+			}
+		})
+	}
 }

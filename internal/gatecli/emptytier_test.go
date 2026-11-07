@@ -31,8 +31,15 @@ func TestEmptyTierFailure(t *testing.T) {
 		ran int
 		// args are the call's own words after `--`, and runArgs the run's, which the guard step appends its filter to.
 		args, runArgs []string
-		wantFailure   bool
+		// skip names the tests the run's watch skip leaves out.
+		skip        []string
+		wantFailure bool
 	}{
+		{
+			name:  "a package whose only tier test the run's watch skip names does not fail",
+			files: map[string]string{"p_test.go": "//go:build tier1\n\n" + testFile},
+			skip:  []string{"TestA"},
+		},
 		{
 			name:        "a package holding a tier1 test file that ran none fails",
 			files:       map[string]string{"p_test.go": "//go:build tier1\n\n" + testFile, "main_test.go": "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestMain(m *testing.M) { os.Exit(m.Run()) }\n"},
@@ -110,7 +117,7 @@ func TestEmptyTierFailure(t *testing.T) {
 				}
 			}
 
-			run := tierRun{number: 1, invocations: []invocation{{dir: root, targets: []string{"./..."}}}, args: tt.runArgs}
+			run := tierRun{number: 1, invocations: []invocation{{dir: root, targets: []string{"./..."}}}, args: tt.runArgs, skip: tt.skip}
 			got := emptyTierFailure(run, root, map[string]int{"example.com/m/p": tt.ran}, tt.args)
 			if !tt.wantFailure {
 				if got != "" {

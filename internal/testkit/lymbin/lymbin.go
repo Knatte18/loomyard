@@ -59,9 +59,13 @@ func prebuilt() (string, bool, error) {
 }
 
 // compile builds `./cmd/lym` from the module root into dir and returns the binary path.
+// It creates dir first, so a dir that cannot be created fails before the build starts.
 // scankit.ModuleRoot finds the module root from the test binary's starting directory.
 // An empty ldflags omits the `-ldflags` argument.
 func compile(dir, ldflags string) (string, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("lymbin: create the output directory: %w", err)
+	}
 	root, err := scankit.ModuleRoot()
 	if err != nil {
 		return "", fmt.Errorf("lymbin: locate the module root: %w", err)
@@ -86,9 +90,10 @@ func compile(dir, ldflags string) (string, error) {
 }
 
 // BuildInto returns the binary `gateslot.PrebuiltLymEnv` names when ldflags is empty and the variable is set.
-// Otherwise it builds `./cmd/lym` from the module root into dir.
+// Otherwise it builds `./cmd/lym` from the module root into dir, creating dir when it is missing.
 // It passes ldflags as `-ldflags` when non-empty, and returns the binary path.
 // The error carries the build's combined output, or wraps ErrStalePrebuilt when the variable names no executable file.
+// A dir that cannot be created fails before the build with the *fs.PathError of the attempt.
 func BuildInto(dir, ldflags string) (string, error) {
 	if ldflags == "" {
 		path, ok, err := prebuilt()

@@ -117,9 +117,11 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
   The marker sits directly above the test's `func Test…` line, the way `//testtiming:keep` sits above a kept test.
 - A narrowed gate's guard step runs every marked test by name under its file's tier, whatever the impacted set.
   A guard's result depends on files no import edge names.
+  The one exception is a guard test that also carries `//lym:watch`:
+  the step leaves it out when no changed file concerns it.
 - A test carrying both markers stacks them as contiguous directive lines directly above its `func Test…` line.
   Either order works.
-  `//lym:guard` counts as directly above when only `//testtiming:keep` and `//lym:seam` lines lie between.
+  `//lym:guard` counts as directly above when only `//testtiming:keep` and other `//lym:` lines lie between.
   `//testtiming:keep` counts as directly above when only `//lym:` lines lie between.
   Two stacked keeps stay an error.
 - A test that reads only its own package directory is left unmarked.
@@ -147,10 +149,23 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
 - Bound: reflection through a non-test helper other than `envkit.NilSeams` is not seen.
 - `lym loom validate-plan` reads the markers for `seam-test-unlisted`.
 
+## Narrow tests carry `//lym:watch`
+
+- A test that guards only some files, such as a cross-compile or a fixture build, carries `//lym:watch <pattern>...`.
+  `path.Match` matches a pattern holding a `/` against the worktree-relative path, and any other against the base name.
+- A narrowed gate runs the test only when a changed file matches a pattern or the test's own file changed.
+  A diff-scoped key narrows over its diff, and a `card` key over the diff from the merge base with the parent branch.
+- A whole gate always runs it.
+- The marker stacks with `//lym:guard`, `//lym:seam` and `//testtiming:keep` lines in any order.
+- A misplaced marker, or one with no pattern or a malformed one, refuses the gate.
+- Bound: the skip matches by test name, so a test of the same name in another package of the run is skipped too.
+
 ## Time is injectable
 
 - A production interval, timeout or clock that a test would otherwise wait out is a struct field or a parameter.
   It is never a package-level `var`, so tests keep `t.Parallel`.
+- Exception: `internal/gitexec`'s remote-attempt bounds and seams stay package-level variables,
+  and the tests that replace them run serially.
 - Production always passes today's value; the test passes a short one.
 - No test in any tier waits out a production duration.
 

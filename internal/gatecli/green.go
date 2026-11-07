@@ -177,7 +177,7 @@ func (r greenRecord) with(entry greenEntry, now time.Time) greenRecord {
 
 // covered returns what the record holds green for the tier of fingerprint on tree, in moduleDir, under args:
 // whole when an entry passed over every target, else the union of the packages the matching entries passed.
-// An entry with empty args matches a request with empty args and the guard step's own -run filter;
+// An entry with empty args matches a request with empty args, the guard step's own -run filter and the watch skip;
 // an entry with any other args matches only exactly.
 func (r greenRecord) covered(fingerprint, tree, moduleDir string, args []string) (whole bool, packages []string) {
 	for _, held := range r.Entries {
@@ -223,7 +223,7 @@ func (r greenRecord) newestWholeAncestor(fingerprint, moduleDir string, isAncest
 // argsMatch reports whether an entry that ran with entryArgs covers a request with requestArgs.
 func argsMatch(entryArgs, requestArgs []string) bool {
 	if len(entryArgs) == 0 {
-		return len(requestArgs) == 0 || isGuardRunFilter(requestArgs)
+		return len(requestArgs) == 0 || isGuardRunFilter(requestArgs) || isWatchSkip(requestArgs)
 	}
 	return slices.Equal(entryArgs, requestArgs)
 }
@@ -231,6 +231,12 @@ func argsMatch(entryArgs, requestArgs []string) bool {
 // isGuardRunFilter reports whether args are exactly the -run filter the guard step builds over its guard test names.
 func isGuardRunFilter(args []string) bool {
 	return len(args) == 2 && args[0] == "-run" && strings.HasPrefix(args[1], "^(") && strings.HasSuffix(args[1], ")$")
+}
+
+// isWatchSkip reports whether args are exactly the -skip filter a narrowed tier gets over its unwatched tests.
+// A pass with empty args ran those tests too, so it covers such a run.
+func isWatchSkip(args []string) bool {
+	return len(args) == 2 && args[0] == "-skip" && strings.HasPrefix(args[1], "^(") && strings.HasSuffix(args[1], ")$")
 }
 
 // unionSorted returns the sorted union of a and b without repeats.

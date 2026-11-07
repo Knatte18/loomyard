@@ -54,6 +54,13 @@ var startStallTimer = func(bound time.Duration, tracePath string, check func()) 
 	return time.AfterFunc(bound, check).Stop
 }
 
+// armDeadline returns the context that ends one remote attempt once deadline has passed, and its cancel.
+// It is a variable only so a test can end the attempt once its remote is ready and record the deadlines armed.
+// Waiting on a wall-clock deadline would sit it out in real time.
+var armDeadline = func(deadline time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), deadline)
+}
+
 // spawnAgainAttempts is how many times a git the host could not start for EAGAIN is tried in all.
 const spawnAgainAttempts = 4
 
@@ -299,7 +306,7 @@ func runAttempt(args []string, cwd, stdin string, extraEnv []string, remote bool
 		}
 
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(context.Background(), deadline)
+		ctx, cancel = armDeadline(deadline)
 		defer cancel()
 		cmd = exec.CommandContext(ctx, "git", args...)
 		cmd.WaitDelay = remoteWaitDelay

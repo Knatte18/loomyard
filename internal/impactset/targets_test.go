@@ -33,6 +33,7 @@ func TestTargetsFor(t *testing.T) {
 		graph   *moduleGraph
 		changed []string
 		guards  map[string][]GuardTest
+		watched map[string][]WatchedTest
 		want    Targets
 	}{
 		{
@@ -114,6 +115,50 @@ func TestTargetsFor(t *testing.T) {
 			changed: []string{"go.sum"},
 			want:    Targets{Whole: true, Fallback: "go.sum changed"},
 		},
+		{
+			name:    "a watched test in the set that no changed path matches is unwatched under its directory",
+			changed: []string{"internal/d/d.go"},
+			watched: map[string][]WatchedTest{"internal/d": {{Name: "TestW", File: "internal/d/d_test.go", Patterns: []string{"*.sql"}}}},
+			want: Targets{
+				Modules:     root("./internal/d"),
+				Guards:      map[string][]GuardTest{},
+				BinaryTests: binaryTests,
+				Unwatched:   map[string][]string{"internal/d": {"TestW"}},
+			},
+		},
+		{
+			name:    "a watched test whose base-name pattern matches a changed path is not unwatched",
+			changed: []string{"internal/d/d_linux.go"},
+			watched: map[string][]WatchedTest{"internal/d": {{Name: "TestW", File: "internal/d/d_test.go", Patterns: []string{"*_linux.go"}}}},
+			want:    Targets{Modules: root("./internal/d"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
+		},
+		{
+			name:    "a watched test whose own file changed is not unwatched",
+			changed: []string{"internal/d/d_test.go"},
+			watched: map[string][]WatchedTest{"internal/d": {{Name: "TestW", File: "internal/d/d_test.go", Patterns: []string{"*.sql"}}}},
+			want:    Targets{Modules: root("./internal/d"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
+		},
+		{
+			name:    "an unwatched guard outside the set is dropped from the guards and a sibling guard stays",
+			changed: []string{"internal/a/a.go"},
+			guards:  guards,
+			watched: map[string][]WatchedTest{"internal/d": {{Name: "TestGuardD2", File: "internal/d/d_test.go", Patterns: []string{"*.sql"}}}},
+			want: Targets{
+				Modules:     root("./cmd/lym", "./internal/a", "./internal/b", "./internal/c", "./internal/tmuxonly"),
+				Guards:      map[string][]GuardTest{"internal/d": {{Name: "TestGuardD", Tier: 0}}},
+				BinaryTests: binaryTests,
+			},
+		},
+		{
+			name:    "an unwatched test in a package outside the set is not listed as unwatched",
+			changed: []string{"internal/a/a.go"},
+			watched: map[string][]WatchedTest{"internal/d": {{Name: "TestW", File: "internal/d/d_test.go", Patterns: []string{"*.sql"}}}},
+			want: Targets{
+				Modules:     root("./cmd/lym", "./internal/a", "./internal/b", "./internal/c", "./internal/tmuxonly"),
+				Guards:      map[string][]GuardTest{},
+				BinaryTests: binaryTests,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -123,7 +168,7 @@ func TestTargetsFor(t *testing.T) {
 			if tt.graph != nil {
 				graph = *tt.graph
 			}
-			if got := targetsFor(graph, tt.changed, tt.guards); !reflect.DeepEqual(got, tt.want) {
+			if got := targetsFor(graph, tt.changed, tt.guards, tt.watched); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("targetsFor() = %+v; want %+v", got, tt.want)
 			}
 		})

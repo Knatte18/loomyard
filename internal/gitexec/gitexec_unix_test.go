@@ -28,8 +28,10 @@ import (
 // TestRun_RemoteBounds drives the bounds on a remote git command through git's ext:: transport:
 // a remote that accepts and never answers, with no network.
 // Its rows run serially because they set process-global state:
-// the remote deadline, the stall bound and the stall check seam;
+// the remote deadline, the stall bound, the stall check seam and the deadline seam;
 // the kill reporter, the pause network gate and the process environment.
+// A deadline ends its attempt once the row's remote is ready, so no row sits out a deadline in real time.
+// The deadline reported in the error is still the configured one.
 func TestRun_RemoteBounds(t *testing.T) {
 	tiergate.Require(t, 1)
 	const deadline = time.Second
@@ -61,6 +63,11 @@ func TestRun_RemoteBounds(t *testing.T) {
 		}
 	}
 	repoDir := t.TempDir()
+	// A hang script is ready once it has written its pid, so a loaded machine's git start-up never reaches the deadline.
+	hangStarted := func() bool {
+		written, err := os.ReadFile(pidFile)
+		return err == nil && strings.TrimSpace(string(written)) != ""
+	}
 
 	if !t.Run("a remote command waits while a pause covers the process, a local one does not", func(t *testing.T) {
 		marker := filepath.Join(scriptDir, "ran")
@@ -134,15 +141,19 @@ func TestRun_RemoteBounds(t *testing.T) {
 
 	if !t.Run("a hung remote command is killed at the deadline", func(t *testing.T) {
 		args := []string{"-c", "protocol.ext.allow=always", "ls-remote", "ext::" + hang}
+		armed := gitexec.SetDeadlineForTest(t, hangStarted)
 		start := time.Now()
 		_, err := gitexec.Run(args, repoDir)
 		if elapsed := time.Since(start); elapsed > 10*deadline {
-			t.Errorf("Run took %v; want it to return shortly after the %v deadline", elapsed, deadline)
+			t.Errorf("Run took %v; want it to return shortly after the deadline fires", elapsed)
 		}
 
 		var gitErr *gitexec.GitError
 		if !errors.As(err, &gitErr) || gitErr.Timeout != deadline {
 			t.Fatalf("Run error = %v; want a *GitError with Timeout %v", err, deadline)
+		}
+		if got, want := armed(), []time.Duration{deadline}; !reflect.DeepEqual(got, want) {
+			t.Errorf("deadlines armed with %v; want %v", got, want)
 		}
 		if !gitexec.IsTransportFailure(err) {
 			t.Errorf("IsTransportFailure(%v) = false; want true for a timed-out remote command", err)
@@ -176,11 +187,19 @@ func TestRun_RemoteBounds(t *testing.T) {
 
 	if !t.Run("RunWithin bounds a remote command by its own deadline, not the package's", func(t *testing.T) {
 		own := deadline / 4
+		// The previous row's pid would make the hang look started before it ran.
+		if err := os.Remove(pidFile); err != nil {
+			t.Fatalf("remove the previous row's pid file: %v", err)
+		}
+		armed := gitexec.SetDeadlineForTest(t, hangStarted)
 		_, err := gitexec.RunWithin([]string{"-c", "protocol.ext.allow=always", "ls-remote", "ext::" + hang}, repoDir, own)
 
 		var gitErr *gitexec.GitError
 		if !errors.As(err, &gitErr) || gitErr.Timeout != own {
 			t.Fatalf("RunWithin error = %v; want a *GitError with Timeout %v", err, own)
+		}
+		if got, want := armed(), []time.Duration{own}; !reflect.DeepEqual(got, want) {
+			t.Errorf("deadlines armed with %v; want only the call's own %v", got, want)
 		}
 		if !gitexec.IsTransportFailure(err) {
 			t.Errorf("IsTransportFailure(%v) = false; want true for a timed-out remote command", err)
@@ -204,6 +223,21 @@ func TestRun_RemoteBounds(t *testing.T) {
 		stopPending := gitexec.StartDefaultStallTimerForTest(time.Hour, func() { t.Error("the check ran after stop") })
 		if !stopPending() {
 			t.Error("stop of a pending timer = false; want true")
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("the production deadline ends its context with DeadlineExceeded once it passes", func(t *testing.T) {
+		ctx, cancel := gitexec.ArmDefaultDeadlineForTest(20 * time.Millisecond)
+		defer cancel()
+		select {
+		case <-ctx.Done():
+		case <-time.After(10 * time.Second):
+			t.Fatal("the production deadline never ended its context")
+		}
+		if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			t.Errorf("context error = %v; want context.DeadlineExceeded", ctx.Err())
 		}
 	}) {
 		return
@@ -294,12 +328,21 @@ func TestRun_RemoteBounds(t *testing.T) {
 		gitexec.SetStallBoundForTest(t, deadline)
 		// An always-ready check fires at once if armed, which the row's assertions would catch.
 		_ = gitexec.SetStallCheckForTest(t, func(int, string) bool { return true })
+		// The deadline ends the attempt once the ext script has counted its run.
+		unarmedCount := filepath.Join(scriptDir, "unarmed.count")
+		armed := gitexec.SetDeadlineForTest(t, func() bool {
+			_, err := os.Stat(unarmedCount)
+			return err == nil
+		})
 
 		runs, recorded, err := remoteAttempts(t, "unarmed", "")
 
 		var gitErr *gitexec.GitError
 		if !errors.As(err, &gitErr) || gitErr.Stalled || gitErr.Timeout != deadline {
 			t.Fatalf("Run error = %v; want a *GitError with Timeout %v that is not stalled", err, deadline)
+		}
+		if got, want := armed(), []time.Duration{deadline}; !reflect.DeepEqual(got, want) {
+			t.Errorf("deadlines armed with %v; want %v", got, want)
 		}
 		if runs != 1 || len(recorded) != 1 {
 			t.Errorf("runs = %d, kill reports = %d; want 1 of each", runs, len(recorded))
@@ -321,12 +364,17 @@ func TestRun_RemoteBounds(t *testing.T) {
 			checkRan.Store(true)
 			return true
 		})
+		// The deadline ends the attempt only after the stall check ran and spared the answering remote.
+		armedDeadlines := gitexec.SetDeadlineForTest(t, checkRan.Load)
 
 		runs, recorded, err := remoteAttempts(t, "answering", "000eversion 2\\n")
 
 		var gitErr *gitexec.GitError
 		if !errors.As(err, &gitErr) || gitErr.Stalled || gitErr.Timeout != deadline {
 			t.Fatalf("Run error = %v; want a *GitError with Timeout %v that is not stalled", err, deadline)
+		}
+		if got, want := armedDeadlines(), []time.Duration{deadline}; !reflect.DeepEqual(got, want) {
+			t.Errorf("deadlines armed with %v; want %v", got, want)
 		}
 		if runs != 1 || len(recorded) != 1 {
 			t.Errorf("runs = %d, kill reports = %d; want 1 of each", runs, len(recorded))
@@ -370,9 +418,14 @@ func TestRun_RemoteBounds(t *testing.T) {
 		if err := os.Unsetenv("GIT_TRACE_PACKET"); err != nil {
 			t.Fatalf("unset GIT_TRACE_PACKET: %v", err)
 		}
-		stdout, err := gitexec.Run([]string{"-c", "alias.slowenv=!sleep 2 && env", "slowenv"}, repoDir)
+		// A never-ready deadline cannot end the command, so only the recorded deadlines show it was not bounded.
+		armed := gitexec.SetDeadlineForTest(t, func() bool { return false })
+		stdout, err := gitexec.Run([]string{"-c", "alias.localenv=!env", "localenv"}, repoDir)
 		if err != nil {
-			t.Fatalf("Run error = %v; want a local command to run past the remote deadline", err)
+			t.Fatalf("Run error = %v; want a local command to run unbounded", err)
+		}
+		if got := armed(); len(got) != 0 {
+			t.Errorf("deadlines armed with %v; want none for a local command", got)
 		}
 		if strings.Contains(stdout, "GIT_HTTP_LOW_SPEED") {
 			t.Errorf("local command environment holds a low-speed variable; stdout: %s", stdout)
