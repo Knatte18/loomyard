@@ -61,8 +61,8 @@ var (
 		Base:  hubforge.Shape{Anchor: "."},
 		Build: nonFastForwardFeature("warp-branch.txt", "warp-current.txt"),
 	}
-	// warpProgressLayer is nonFastForwardLayer's scenario with the branch adding feature.txt
-	// and the current branch adding warp-progress.txt.
+	// warpProgressLayer is nonFastForwardLayer's scenario with other files.
+	// Its branch adds feature.txt, and its current branch adds warp-progress.txt.
 	warpProgressLayer = hubforge.Registration{
 		Key:   "fabricengine-merge-warp-progress",
 		Base:  hubforge.Shape{Anchor: "."},
@@ -91,8 +91,8 @@ var (
 	}
 )
 
-// conflictingFeature returns a layer build that makes the warp branch "feature"
-// conflict with the current branch on filename.
+// conflictingFeature returns a layer build for a conflict on filename.
+// The build makes the warp branch "feature" conflict with the current branch on that file.
 // It branches "feature-weft" at the weft's HEAD.
 func conflictingFeature(filename string) func(tb testing.TB, h *hubforge.Hub) {
 	return func(tb testing.TB, h *hubforge.Hub) {
