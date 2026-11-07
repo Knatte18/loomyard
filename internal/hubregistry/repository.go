@@ -16,7 +16,8 @@ const (
 	maxRepositoryLength = 100
 )
 
-// ErrNoRepository is wrapped by the refusal of a hub with no readable origin remote, and of one whose origin names no valid GitHub repository.
+// ErrNoRepository is wrapped by the refusal of a hub with no readable origin remote.
+// It is wrapped by the refusal of a hub whose origin names no valid GitHub repository too.
 var ErrNoRepository = errors.New("creel: hub names no GitHub repository")
 
 // noRepositoryError carries a refusal's own text and matches ErrNoRepository.
@@ -29,8 +30,9 @@ func (e noRepositoryError) Is(target error) bool { return target == ErrNoReposit
 // RepositoryName answers the full name, owner/repo, of the GitHub repository the hub at hubPath works on.
 // It reads the origin remote of the hub's prime worktree.
 // A name reused on another machine or by a later hub therefore still names the repository, never the shortname.
-// A hub with no readable origin remote, one whose origin is no GitHub repository,
-// and one whose owner or repository has characters or a length GitHub does not allow, are refused with the reason.
+// A hub with no readable origin remote is refused with the reason.
+// So is one whose origin is no GitHub repository.
+// So is one whose owner or repository has characters or a length GitHub does not allow.
 // Each refusal matches ErrNoRepository.
 func RepositoryName(hubPath string) (string, error) {
 	url, err := fabricengine.HubOriginURL(hubPath)
@@ -47,8 +49,8 @@ func RepositoryName(hubPath string) (string, error) {
 	return owner + "/" + repo, nil
 }
 
-// validName reports whether name is one to maxLength characters of ASCII letters, digits, hyphens, underscores and dots,
-// and is neither "." nor "..", which GitHub reserves.
+// validName reports whether name is one to maxLength characters of ASCII letters, digits, hyphens, underscores and dots.
+// It also requires that name is neither "." nor "..", which GitHub reserves.
 func validName(name string, maxLength int) bool {
 	if name == "" || name == "." || name == ".." || len(name) > maxLength {
 		return false

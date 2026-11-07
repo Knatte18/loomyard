@@ -117,7 +117,8 @@ type Reinterpretation struct {
 }
 
 // repositoryOfShortname answers the repository name of the hub that shortname names in this machine's record of hubs.
-// A shortname that names no hub or several, and a hub with no valid repository, match creelconfig.ErrShortnameUnresolvable.
+// A shortname that names no hub or several matches creelconfig.ErrShortnameUnresolvable.
+// So does a hub with no valid repository.
 // A failure to read the machine's state matches it not, so the rewrite that asked ends instead of dropping the entry.
 func repositoryOfShortname(shortname string) (string, error) {
 	registryDir, err := standalonestate.UserStateDir()
@@ -128,8 +129,8 @@ func repositoryOfShortname(shortname string) (string, error) {
 	return repository, markUnresolvable(err)
 }
 
-// markUnresolvable wraps err as creelconfig.ErrShortnameUnresolvable when it refuses a shortname for want of a repository,
-// and returns every other err, nil included, unchanged.
+// markUnresolvable wraps err as creelconfig.ErrShortnameUnresolvable when it refuses a shortname for want of a repository.
+// It returns every other err, nil included, unchanged.
 func markUnresolvable(err error) error {
 	if errors.Is(err, hubregistry.ErrUnresolved) || errors.Is(err, hubregistry.ErrNoRepository) {
 		return unresolvableShortname{err}

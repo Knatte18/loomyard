@@ -46,8 +46,8 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_CreelRegistersTheTrustedHubsReinterpretation pins that the creel module carries the change of trusted_hubs
-// from shortnames to repository names, which rewrites a hub's creel.yaml with no hand step.
+// TestModules_CreelRegistersTheTrustedHubsReinterpretation pins that the creel module carries the change of trusted_hubs.
+// The change goes from shortnames to repository names and rewrites a hub's creel.yaml with no hand step.
 func TestModules_CreelRegistersTheTrustedHubsReinterpretation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

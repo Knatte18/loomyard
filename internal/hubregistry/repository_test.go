@@ -1,4 +1,5 @@
-// repository_test.go covers RepositoryName and LookupRepository over temporary hubs whose prime worktree is a git repository.
+// repository_test.go covers RepositoryName and LookupRepository over temporary hubs.
+// The prime worktree of each hub is a git repository.
 
 package hubregistry_test
 
@@ -70,7 +71,8 @@ func TestRepositoryName(t *testing.T) {
 	}
 }
 
-// TestLookupRepository pins that a recorded shortname resolves to its hub's repository and the refusals of one that cannot.
+// TestLookupRepository pins that a recorded shortname resolves to its hub's repository.
+// It also pins the refusals of a shortname that cannot.
 func TestLookupRepository(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
