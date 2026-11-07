@@ -122,8 +122,8 @@ func seedStencilsAt(hub, worktree string, mode stencilstore.Mode, running buildv
 	// sourceDir exists only to drive the port-back drift warning, which serves an authoring workflow specs do not have;
 	// the loomyard-side file is the single source of truth,
 	// and a deployed copy is never authored.
-	// A per-name source mapping is not built either: the travelling docs live in different directories.
-	// Also, one's basename differs from its registered name, so no single sourceDir shape fits.
+	// A per-name source mapping is not built either: the travelling docs live in different directories,
+	// and one's basename differs from its registered name, so no single sourceDir shape fits.
 	if write, due := seedSubtree(fabricengine.SpecsDir(hub), fabricengine.SpecsSubtreeRel(), specs.Registry(), mode, fabricengine.StencilSource(worktree, "", running), "specs"); due {
 		writes = append(writes, write)
 	}

@@ -311,7 +311,8 @@
 // At the end it reads `adopt check of <subject> green` or `adopt check of <subject> failed` with every tier it ran.
 // A failure before any tier ended reads as a failure naming `lym beam status`.
 // `primeMark` shows the mark joined, by ` | `, with the mark of each other running subject.
-// The marks are sorted by subject, and the state is running while any joined record runs.
+// The other marks follow the subject's own, sorted by subject.
+// The state is running while any joined record runs.
 // A post or mark that fails is logged and changes nothing.
 // Bound: a check killed before its end leaves its last running mark, with its seconds still growing.
 // The mark stays until the next check sets one or the prime's session ends.

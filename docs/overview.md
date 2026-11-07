@@ -78,8 +78,8 @@ the module that constructs each of those owns it.
 
 - `Getwd()` — the only permitted call to `os.Getwd` outside `cmd/lym/main.go`.
 - `Resolve(cwd)` → `*Location` — resolves the current cwd into a legal worktree's coordinates, applying the strict cwd gate.
-- `ResolveWithAnchor(cwd, anchor)` / `ResolveWorktree(root)` — the ungated variants.
-  They serve callers that hold something other than an acting cwd; see `docs/shared-libs/lymcwd.md`.
+- `ResolveWorktree(root)` — the ungated variant.
+  It serves callers that hold a worktree root rather than an acting cwd; see `docs/shared-libs/lymcwd.md`.
 - `NamedWorktree(hubPath, name)` → `*Location` — the coordinates of another worktree of the hub, at that worktree's own anchor.
 
 `Location` carries `RepoName`, `HubPath`, `WorktreeName` and `AnchorRel`, plus the derived accessors `WorktreePath()` and `AnchorPath()`.

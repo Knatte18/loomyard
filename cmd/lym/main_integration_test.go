@@ -1,6 +1,6 @@
 // main_integration_test.go holds the module-dispatcher tests.
 // They seed a real git repo with gitkit.Git(t, cwd, "init") so lymcwd.Resolve succeeds;
-// the file is integration-tagged per the Test Tier Purity Invariant.
+// its tests run at tier1 per the Test Tier Purity Invariant.
 
 package main
 

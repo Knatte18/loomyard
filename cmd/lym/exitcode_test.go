@@ -1,5 +1,5 @@
 // exitcode_test.go asserts the exit-code contract for the lym cobra root via the run() seam.
-// It covers help (exit 0), unknown command (exit 1, cobra text), and handler failure (exit 1, JSON envelope).
+// It covers help (exit 0), unknown command (exit 1, JSON envelope), and handler failure (exit 1, JSON envelope).
 // It also confirms that help paths never emit a JSON error envelope.
 
 package main

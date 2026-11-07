@@ -69,9 +69,9 @@ type pkgHermeticStatus struct {
 // It fails for each package that spawns git and lacks the hermetic presence token.
 // A git-spawn token counts directly or via the gitkit fixture helpers.
 // A package on the allowedNonHermetic allowlist is exempt.
-// The walk includes files behind a build constraint.
-// The git-spawning set is almost exactly the integration-tagged set.
-// So skipping tagged files would make this guard vacuous.
+// The walk reads every test file, whatever its tier or build constraint.
+// The git-spawning set is almost exactly the tier1 set.
+// So skipping the tiered files would make this guard vacuous.
 //
 //lym:guard
 func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {

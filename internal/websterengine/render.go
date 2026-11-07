@@ -8,8 +8,9 @@
 // so the implementer reads its own card in its own turn.
 // Each Render*Prompt takes a notePath for the friction directive.
 // A friction.Directive error is logged and swallowed rather than returned.
-// RenderForkPrompt and RenderRecoveryPrompt require specsDir and gateTiers.
-// A blank specsDir would reproduce a dead cross-repository reference in the agent's instructions.
+// RenderForkPrompt and RenderRecoveryPrompt require a non-blank specsDir for the required specs_dir marker.
+// The fill refuses a blank one, which would leave a dead cross-repository reference in the agent's instructions.
+// A blank gateTiers renders "none".
 
 package websterengine
 
@@ -198,7 +199,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 
 // RenderRecoveryPrompt fills RecoveryTemplate for one batch's cold-start recovery strand, read from stencilsDir.
 // The recovery strand inherits nothing;
-// its prompt orients from plan/overview.md and from any PATTERN entries before the shared implementer-job body runs.
+// its prompt orients from plan/00-overview.md and from any PATTERN entries before the shared implementer-job body runs.
 // {{.worktree_root}} is filled from the caller-supplied promptWorktreeRoot, the pane's own cwd;
 // the card pointers are spelled relative to it.
 // repoRoot is the repository's worktree root holding PATTERN.md, and it feeds pattern.Directive alone.

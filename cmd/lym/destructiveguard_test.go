@@ -62,10 +62,10 @@ var destructiveGuardScanPackages = []string{
 }
 
 // destructiveGuardBannedTokens are the raw substrings a non-test .go file in the scanned packages may not contain.
-// A file on destructiveGuardAllowlist is exempt.
 // They name the destructive calls and the reset, replay and remote-branch primitives.
 // They also name the literals that construct the gate's tokens.
 // The token literals are banned because this guard, not the type system, keeps the tokens unforgeable.
+// A file on destructiveGuardAllowlist is exempt.
 var destructiveGuardBannedTokens = []string{
 	"RemoveAll(",
 	"os.Remove(",
@@ -126,8 +126,8 @@ var destructiveGuardExcludedDirs = map[string]string{}
 
 // destructiveGuardRecordingExecutors lists the destroy.go executors that must take a leading `rec *Mutations` parameter.
 // Each row pairs the executor with the raw declaration-line prefix the guard matches against the source.
-// repointLink has no row: it records nothing of its own, since there is no link_repointed kind,
-// and it passes rec straight through to removeLink, so it needs no row and is not an exemption.
+// repointLink records nothing of its own, since there is no link_repointed kind;
+// its row pins the leading rec parameter it passes straight through to removeLink.
 var destructiveGuardRecordingExecutors = []struct {
 	name       string
 	declPrefix string

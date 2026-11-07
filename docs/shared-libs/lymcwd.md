@@ -56,16 +56,6 @@ On failure, one of two errors:
 `Resolve` does NOT check for `_lym/`;
 that stays in `internal/configengine`.
 
-### `ResolveWithAnchor(cwd, anchor string) (*Location, error)`
-
-Builds a `Location` as `Resolve` does, but takes the anchor as a parameter instead of reading the recorded marker.
-It applies NO cwd gate.
-
-**This is a bypass, not a general-purpose resolver.**
-A caller reaching for `ResolveWithAnchor` to escape a gate failure is misusing it — the correct fix is to stand in the anchored directory.
-It stays ungated because its callers stand somewhere the strict gate would reject.
-For example, a fresh clone passes the new worktree root while the anchor may be a non-`"."` subpath.
-
 ### The recorded anchor
 
 A worktree's anchor is read in this order:

@@ -2,7 +2,7 @@
 // It runs the real `go` toolchain with GOOS=linux and fails if any package in the module does not build.
 // That includes every `_linux.go` file, which a native `go test` on Windows never compiles.
 // It is the mechanical proof that the whole module cross-compiles for Linux.
-// The test runs in the Tier 2 (`-tags integration`) run.
+// The test runs at tier1, never in the offline tier0 run.
 // A whole-module `GOOS=linux go build ./...` does not belong in the offline loop (Test Tier Purity Invariant).
 // The per-batch `GOOS=linux go build` development gates mirror it.
 //

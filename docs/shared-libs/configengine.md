@@ -6,15 +6,12 @@ It is the one place that knows the `_lym/` layout, and it enforces strict valida
 ## Layout
 
 ```
-<cwd>/                  ← where `lym init` was run (the current working directory)
-├── _lym/               git-TRACKED config Hub
-│   ├── config/         git-TRACKED config files (only source of live values)
-│   │   ├── loom.yaml       (must match loom module template)
-│   │   └── worktree.yaml   (must match worktree module template)
-│   ├── discussion.md    lym task discussion (artifact)
-│   ├── plan.md         lym task plan (artifact)
-│   └── reviews/        lym code reviews (artifact directory)
-├── .env                git-IGNORED — local env values (KEY=value)
+<anchor>/
+├── _lym/
+│   └── config/         git-TRACKED: the worktree layer's files, one <module>.yaml each
+├── .lym/
+│   └── config/         git-IGNORED: the local layer's <module>.local.yaml files
+├── .env                git-IGNORED: local env values (KEY=value)
 
 <hub>/_bolt/_lym/config/
 └── <module>.yaml       hub-wide: one per hub (must match the module's template)
@@ -126,7 +123,7 @@ Each caller unmarshals this into its own config struct;
 a strict caller reads through `Load`, and a degrading caller reads through `LoadOrTemplate`.
 Callers never see raw YAML or unexpanded tokens.
 
-## Migration from old format
+## Reconciling config files
 
 `lym config reconcile --apply` from the code worktree reconciles all module configs against their templates.
 The code worktree's `_lym` is a directory junction into its records sibling's `_lym`,
@@ -135,17 +132,17 @@ no separate command in the records sibling is needed.
 The files under the hub's board dir, the hub-wide modules' files and the per-worktree repo defaults,
 are reconciled by `lym config reconcile --layer default`, applied from the hub's prime, and by the hub reconcile the first start verb after a binary change runs.
 
-## Exported functions
-
-### `LymDirName` (not exported here)
+## The `_lym` token
 
 [`internal/lymdirs` is the sole declarer](../../PATTERN.md) of the `"_lym"` token (`lymdirs.LymDirName`);
-`internal/configengine` itself uses `lymdirs.LymDirName` like every other caller and does not declare or export the literal.
+`internal/configengine` uses `lymdirs.LymDirName` like every other caller and does not declare or export the literal.
 Every module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, lymdirs.LymDirName, "plan")`), never onto a fused `"_lym/..."` literal — see the per-segment join rule in [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md).
+
+## Exported functions
 
 ### `ConfigDir(baseDir string) string`
 
-Returns `filepath.Join(baseDir, LymDirName, "config")` — the directory where module configuration YAML files are stored.
+Returns `filepath.Join(baseDir, lymdirs.LymDirName, "config")` — the directory where module configuration YAML files are stored.
 
 ### `ConfigFile(baseDir, module string) string`
 
@@ -153,11 +150,11 @@ Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")` — the path to a sp
 
 ### `StagingFile(baseDir, module string) string`
 
-Returns `filepath.Join(baseDir, DotLymDirName, "config", module+".yaml")` — the ephemeral `.lym` counterpart of `ConfigFile` at the mirrored subpath, where an interactive edit works on a copy that is never tracked.
+Returns `filepath.Join(baseDir, lymdirs.DotLymDirName, "config", module+".yaml")` — the ephemeral `.lym` counterpart of `ConfigFile` at the mirrored subpath, where an interactive edit works on a copy that is never tracked.
 
 ### `ConfigFileRel(module string) string`
 
-Returns `filepath.Join(LymDirName, "config", module+".yaml")` — the anchor-relative form used to build records commit pathspecs, as opposed to `ConfigFile`'s base-joined absolute form.
+Returns `filepath.Join(lymdirs.LymDirName, "config", module+".yaml")` — the anchor-relative form used to build records commit pathspecs, as opposed to `ConfigFile`'s base-joined absolute form.
 
 ### `FindBaseDir(cwd string) (string, error)`
 
@@ -184,9 +181,9 @@ Do not conflate:
 - Raw `FindBaseDir` error: `not initialized: _lym/ directory not found`
 - Strict-caller rewrapped: `not initialized here; run "lym fabric reconcile"`
 
-### `Load(baseDir, module string, template []byte) ([]byte, error)`
+### `Load(dirs Dirs, spec Spec) ([]byte, error)`
 
-Loads and resolves a module's configuration from its layer stack under `dirs`; the current signature is `Load(dirs Dirs, spec Spec) ([]byte, error)`.
+Loads and resolves a module's configuration from its layer stack under `dirs`.
 
 **Behavior:** Implements the six-step flow described in the Resolution model section above:
 check the base layer's `_lym/` exists, read the base file, merge the layers and fill missing template keys, build the environment, and resolve env vars.
@@ -207,7 +204,7 @@ All error messages include the file path and context to guide the user.
 **Returns:** On success, the resolved YAML bytes.
 On error, nil bytes and an error message.
 
-### `LoadOrTemplate(baseDir, module string, template []byte) ([]byte, error)`
+### `LoadOrTemplate(dirs Dirs, spec Spec) ([]byte, error)`
 
 Takes the same arguments and returns the same results as `Load`.
 A provably-absent base-layer `_lym/` directory or base file resolves the spec's template through `envsource.Build` then `yamlengine.Resolve` instead of erroring — see the "degrading path" in the Resolution model section above.
@@ -221,11 +218,10 @@ A fallback-path error is keyed on the module, not on a config-file path that doe
 **Returns:** On success, the resolved YAML bytes (either the on-disk config, or the resolved template on proven absence).
 On error, nil bytes and an error message.
 
-### `Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, error)`
+### `Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, error)`
 
 Writes an explicit list of key=value pairs into one layer of a module's config.
 It is the non-interactive path of the `lym config <module> --set key=value` CLI — no editor is invoked and there is no validation loop.
-The current signature is `Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, error)`.
 
 **Behavior:**
 
@@ -247,15 +243,14 @@ The current signature is `Set(dirs Dirs, spec Spec, layer Layer, pairs []yamleng
 - **Unknown config key(s):** Returns error `unknown config key(s): <requested keys> (known: <template's known keys>)`.
 - **Read/write failure:** Propagates the underlying filesystem error.
 
-**Returns:** On success, the sorted list of pre-existing top-level config keys not present in `template` that were preserved verbatim rather than dropped (see `internal/yamlengine`'s `SetValues` documentation for the full preservation mechanism),
+**Returns:** On success, the sorted list of pre-existing top-level config keys not present in the spec's template that were preserved verbatim rather than dropped (see `internal/yamlengine`'s `SetValues` documentation for the full preservation mechanism),
 and a nil error.
 This list is nil/empty when no such orphaned key was present.
 On any error return, the returned `[]string` is always nil.
 
-### `Edit(baseDir, module, template string, edit EditorFunc) error`
+### `Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error`
 
 Opens one layer's file of a module in an editor, validates the YAML syntax, and loops on a validation failure.
-The current signature is `Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error`.
 An absent base layer is scaffolded first:
 the header for a hub's sparse base, the template for a standalone or seed-only one;
 an absent layer above the base is scaffolded empty.

@@ -1,5 +1,5 @@
-// deps_test.go covers the hub-only pause reading and the adopt check start's guard under go test;
-// its alive skip, its liveness reading, and the adopt gate tiers it carries.
+// deps_test.go covers the hub-only pause reading and the adopt check start's guard under go test.
+// It also covers the start's alive skip, its liveness reading, and the adopt gate tiers it carries.
 
 package adoptcli
 

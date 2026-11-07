@@ -6,7 +6,7 @@
 // A raw-substring scan would count doc prose that mentions exec.Command as a spawn.
 // Detection is file-level import presence.
 // A file that imports the logger for an unrelated line and spawns unlogged still passes.
-// Only the spawn half is guarded.
+// Only the spawn half is guarded, not the hard-error returns of outcome switches.
 // A new unlogged exec.Command is nearly always a real miss.
 // A new outcome-switch branch may legitimately return normally for the caller to branch on,
 // so a file-level check on it would fire on correct code.

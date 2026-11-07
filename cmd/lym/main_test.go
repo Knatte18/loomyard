@@ -4,7 +4,7 @@
 // It covers module routing from an uninitialized repo, and that the root hook mints nothing under test.
 // It also checks that a run without -v keeps the init-time log level.
 // Help paths and unknown modules live in exitcode_test.go.
-// The tests that seed a real git repo by spawning gitexec's RunGit(["init"], …) live in main_integration_test.go.
+// The tests that seed a real git repo by running `git init` live in main_integration_test.go.
 // That placement follows the Test Tier Purity Invariant.
 
 package main

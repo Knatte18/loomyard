@@ -93,15 +93,6 @@ func ResolveWorktree(worktreeRoot string) (*Location, error) {
 	return resolveCore(worktreeRoot, false)
 }
 
-// ResolveWithAnchor builds a Location as Resolve does, but takes the anchor as a parameter.
-// It applies no cwd gate.
-// It is not a general resolver: a caller that uses it to escape a gate failure is misusing it,
-// and the fix is to stand in the anchored directory.
-// Its callers, such as a fresh clone, stand where the gate would reject them, so it must stay ungated.
-func ResolveWithAnchor(cwd, anchor string) (*Location, error) {
-	return resolveWithAnchorCore(cwd, anchor, false)
-}
-
 // NamedWorktree builds the Location of the worktree called name in the hub at hubPath.
 // AnchorRel is that worktree's own recorded anchor, with the hub-wide fallback and then "." when none is recorded.
 // It applies no cwd gate, spawns no git, and needs neither the worktree nor its records sibling to exist.
@@ -150,18 +141,6 @@ func resolveCore(cwd string, applyGate bool) (*Location, error) {
 	}
 
 	return buildLocation(cwd, workTreeRoot, hubPath, anchorRel, applyGate)
-}
-
-// resolveWithAnchorCore is the shared body behind ResolveWithAnchor.
-// It finds the worktree root from cwd and takes anchor as a parameter instead of reading the recorded marker.
-func resolveWithAnchorCore(cwd, anchor string, applyGate bool) (*Location, error) {
-	workTreeRoot, err := gitWorktreeRoot(cwd)
-	if err != nil {
-		return nil, err
-	}
-
-	hubPath := filepath.Dir(workTreeRoot)
-	return buildLocation(cwd, workTreeRoot, hubPath, anchor, applyGate)
 }
 
 // gitWorktreeRoot finds the worktree root at or above cwd in-process, as `git rev-parse --show-toplevel` does.

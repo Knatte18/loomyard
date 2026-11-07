@@ -57,7 +57,7 @@ type pathRule struct {
 // They are tautological with respect to anchoring,
 // so they cannot catch a production call site that passes the wrong root.
 // That proof lives in the subpath-anchored PlanTable case in internal/loomengine/plan_test.go.
-// The other half is the subpath-anchored PersistentPreRunE case in internal/webstercli/verbs_test.go.
+// That proof also lives in the subpath-anchored PersistentPreRunE case in internal/webstercli/verbs_test.go.
 // pattern.File has no row: the overview sits at the worktree root, not in `_lym` content.
 // The worktree-root subtest of `TestPlanTable` in internal/loomengine/plan_test.go proves its call site's root.
 var pathRules = []pathRule{

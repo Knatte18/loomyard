@@ -119,8 +119,8 @@ func TestVerifiedTree_NoRetiredMarker(t *testing.T) {
 	scankit.RequireFloor(t, scanned, 20, "verified-tree retired-marker scan")
 }
 
-// TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant proves the scan helpers fire on an offending source,
-// and they stay quiet on a compliant or commented one.
+// TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant proves the scan helpers fire on offending source.
+// It also proves they stay quiet on compliant or commented source.
 //
 //testtiming:keep proves the scan helpers of the TestVerifiedTree_* guards fire on an offending source and stay quiet on a compliant or commented one
 func TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant(t *testing.T) {
