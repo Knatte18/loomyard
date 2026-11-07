@@ -661,7 +661,7 @@ func cleanupCase() VerbCase {
 						tb.Errorf("Cleanup left orphan branch %q behind", orphan)
 					}
 					// The clean-state effect: orphan managed branches are gone, and the primary weft branch stays intact.
-					// Arrange moves the prime pair off f.OriginalBranch,
+					// Build moves the prime pair off f.OriginalBranch,
 					// so no live pair or checked-out weft worktree holds the primary weft branch.
 					primary := fabricengine.RecordsBranchName(f.OriginalBranch)
 					if !gitkit.BranchExists(tb, h.PrimeRecords(), primary) {
