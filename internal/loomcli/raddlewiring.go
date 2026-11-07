@@ -206,13 +206,6 @@ func raddleFileDeps(location *lymcwd.Location, slug string) loomshed.RaddleFileD
 			return board.FileRaddle(filing)
 		},
 		CreateBeam: func(project string) error { return createBeamFromParent(location, project, runLymChild) },
-		Release: func(slugs []string) error {
-			board, err := openHubBoard(location)
-			if err != nil {
-				return err
-			}
-			return board.ReleaseTasks(slugs)
-		},
 		// Notify names the run first, since the orch reads the notices of every run of the hub.
 		Notify: func(line string) error {
 			_, err := orchcli.NotifyParent(location, loomProgram, fmt.Sprintf("loom %s: %s", slug, line))

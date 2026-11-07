@@ -104,7 +104,7 @@ Agent nouns name the one who does the work.
 |---|---|---|---|---|---|
 | weaver | vever, veverske | sv vävare; da væver; fr tisserand; de Weber | works the loom | agent role | Taken: `Weaver`, a board note (F13) for a cold-start implementer beside Webster, a fresh agent per batch that escalates its model when an agent fails. Webster itself is the fork-based implementer loop. |
 | warper | renner † | sv varpare †; fr ourdisseur; de Schärer | prepares the warp | agent role | – |
-| drafter | mønstertegner † | sv mönsterritare †; fr dessinateur; de Musterzeichner | draws the pattern draft | agent role | Close: `draft`, the board status of a task that is not released: every new task takes it, bar a task a write releases, such as the raddle promotion and a raddle filing's released parts, and a draft entry holds no run lock. |
+| drafter | mønstertegner † | sv mönsterritare †; fr dessinateur; de Musterzeichner | draws the pattern draft | agent role | Close: `draft`, the board status of a task that is not released: every new task takes it, bar a task a write releases, such as the raddle promotion, and a draft entry holds no run lock. |
 | threader | – † | fr rentreur | draws the warp through heddles and reed | agent role | – |
 | spinner | spinner, spinnerske | sv spinnare; fr fileur; de Spinner | spins yarn | agent role | – |
 | carder | – † | fr cardeur; de Kardierer | cards fibre | agent role | Close: a plan `card`, as above. |
@@ -148,7 +148,7 @@ Agent nouns name the one who does the work.
 | English | Norwegian | Other | Meaning | Fits | In lym |
 |---|---|---|---|---|---|
 | design | mønster †, utkast † | sv mönster; fr dessin; de Entwurf | the pattern to be woven | artifact | – |
-| draft | opptegning † | sv uppritning †; fr mise en carte; de Patrone | the written weaving pattern: threading, tie-up, treadling | artifact | Taken: `draft`, the board status of a task that is not released: every new task takes it, bar a task a write releases, such as the raddle promotion and a raddle filing's released parts, and a draft entry holds no run lock. The board layer `Draft` lists such tasks. |
+| draft | opptegning † | sv uppritning †; fr mise en carte; de Patrone | the written weaving pattern: threading, tie-up, treadling | artifact | Taken: `draft`, the board status of a task that is not released: every new task takes it, bar a task a write releases, such as the raddle promotion, and a draft entry holds no run lock. The board layer `Draft` lists such tasks. |
 | cartoon | kartong | sv kartong; fr carton; de Karton | the full-size drawing placed behind the warp | artifact | Taken: `cartoon`, kept for a later Plan block by the shed-sub-run-block task. |
 | sample, swatch | prøve, vevprøve † | sv provlapp; fr échantillon; de Muster, Probe | a small piece woven to test a design | artifact | Close: `sampler`, the recipe and agent role described above. |
 | motif | motiv | sv motiv; fr motif; de Motiv | a repeated unit of a design | artifact, recipe | Taken: `motif`, a recipe a board task may name, which runs Discussion alone, and which tapestry runs inline as its Motif block, a shed block that runs a whole sub-recipe as one producer. |

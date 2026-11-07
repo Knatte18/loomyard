@@ -139,11 +139,6 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		}
 		result = p.task
 	}
-	// A filing's released parts are released in the filing's own write; the filing returns no result.
-	if filed, ok := result.(raddleFiled); ok {
-		released = filed.released
-		result = nil
-	}
 	// A renamed slug is the same entry, so the loaded entries are judged under the new slug.
 	renamedFrom, renamedTo := "", ""
 	if r, ok := result.(RenameResult); ok {

@@ -80,8 +80,6 @@ type RaddleFileDeps struct {
 	File func(boardengine.RaddleFiling) error
 	// CreateBeam makes the filed project a beam; it is passed the project's slug.
 	CreateBeam func(project string) error
-	// Release releases the filed tasks that are still draft.
-	Release func(slugs []string) error
 	// Notify tells the run's parent what was filed.
 	Notify func(line string) error
 	// EndEntry ends the run's own board entry.
@@ -114,9 +112,10 @@ func NewRaddleFile(name string, deps RaddleFileDeps) shedengine.ShedProducer {
 // Step 1 stages the store files, step 2 writes the part records and commits, and step 3 files the entries.
 // A step whose outputs carry the hash of the proposal now approved is skipped,
 // so a retry after a crash finishes the steps it missed.
-// Steps 4 and 5 make the project a beam and release its parts, both for the beam shape;
-// step 6 notifies the parent once, and step 7 ends the run's entry, leaving the row Done.
-// A failure of steps 4 to 7 is Stuck with Halt naming the step and the resume that re-runs the row.
+// Every filed task is draft, so a release stays the operator's.
+// Step 4 makes the project a beam for the beam shape;
+// step 5 notifies the parent once, and step 6 ends the run's entry, leaving the row Done.
+// A failure of steps 4 to 6 is Stuck with Halt naming the step and the resume that re-runs the row.
 func (p *raddleFile) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -395,7 +394,6 @@ func (p *raddleFile) filing(proposal raddleparser.Proposal, hash string, entry R
 		Project:      entry.Project,
 		Hash:         hash,
 		RunEntry:     entry.Slug,
-		Release:      proposal.Shape != raddleparser.ShapeBeam,
 		Proposal:     staged[stageProposalFile],
 		ColdProposal: staged[stageColdFile],
 		SketchRecord: staged[stageRecordFile],
@@ -496,21 +494,14 @@ func dependencyOrder(parts []raddleparser.Part) []raddleparser.Part {
 	return ordered
 }
 
-// finish runs steps 4 to 7 over the filed entries.
+// finish runs steps 4 to 6 over the filed entries.
 // Each is skipped when its result is there:
-// the beam and the release are idempotent calls, the notice is marked in the state,
+// the beam is an idempotent call, the notice is marked in the state,
 // and the entry's end is the last write.
 func (p *raddleFile) finish(ctx context.Context, current RaddleState, proposal raddleparser.Proposal, landed []string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if proposal.Shape == raddleparser.ShapeBeam {
 		if err := p.deps.CreateBeam(proposal.Project.Slug); err != nil {
 			return p.halt(ctx, "make the project a beam", err)
-		}
-		slugs := make([]string, len(proposal.Parts))
-		for i, part := range dependencyOrder(proposal.Parts) {
-			slugs[i] = part.Slug
-		}
-		if err := p.deps.Release(slugs); err != nil {
-			return p.halt(ctx, "release the filed parts", err)
 		}
 	}
 
@@ -545,10 +536,11 @@ func raddleFiledSlugs(proposal raddleparser.Proposal) []string {
 }
 
 // raddleFiledNotice renders the line that tells the parent what the run filed:
-// the slugs of the filed entries, then the entries the proposal weighed that landed meanwhile, when any did.
+// the slugs of the filed entries, and that its tasks wait as drafts for the operator's release.
+// When any entries the proposal weighed landed meanwhile, it names them too.
 func raddleFiledNotice(proposal raddleparser.Proposal, landed []string) string {
 	slugs := raddleFiledSlugs(proposal)
-	line := fmt.Sprintf("raddle: filed %d entries from the Sketch %s as the %s shape: %s", len(slugs), proposal.Sketch, proposal.Shape, strings.Join(slugs, ", "))
+	line := fmt.Sprintf("raddle: filed %d entries from the Sketch %s as the %s shape: %s; every filed task is draft until the operator releases it with lym board set-status", len(slugs), proposal.Sketch, proposal.Shape, strings.Join(slugs, ", "))
 	if len(landed) > 0 {
 		line += "; entries the proposal weighed that landed meanwhile: " + strings.Join(landed, ", ")
 	}

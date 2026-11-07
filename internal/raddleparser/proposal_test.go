@@ -58,19 +58,38 @@ func TestParse(t *testing.T) {
 	}
 }
 
-// TestParse_PatternClusters pins the JSON form of a part's pattern_clusters, which the Go-literal fixtures leave unset.
-func TestParse_PatternClusters(t *testing.T) {
+// TestParse_OptionalKeys pins the JSON form of the optional keys, which the Go-literal fixtures leave unset.
+func TestParse_OptionalKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	const data = `{"parts":[{"slug":"a","pattern_clusters":[{"sketch_id":"PATTERN-a","entry":"PATTERN-live","text":"Live rule."}]}]}`
-	got, err := Parse([]byte(data))
-	if err != nil {
-		t.Fatalf("Parse() error = %v; want nil", err)
+	tests := []struct {
+		name string
+		data string
+		want Proposal
+	}{
+		{
+			"PatternClusters",
+			`{"parts":[{"slug":"a","pattern_clusters":[{"sketch_id":"PATTERN-a","entry":"PATTERN-live","text":"Live rule."}]}]}`,
+			Proposal{Parts: []Part{{Slug: "a", PatternClusters: []PatternCluster{{SketchID: "PATTERN-a", Entry: "PATTERN-live", Text: "Live rule."}}}}},
+		},
+		{
+			"OrderDepartures",
+			`{"order_departures":[{"parts":["a","b"],"record_order":"D9: b waits for nothing","cost":"b's saving lands one run later"}]}`,
+			Proposal{OrderDepartures: []OrderDeparture{{Parts: []string{"a", "b"}, RecordOrder: "D9: b waits for nothing", Cost: "b's saving lands one run later"}}},
+		},
 	}
-	want := []PatternCluster{{SketchID: "PATTERN-a", Entry: "PATTERN-live", Text: "Live rule."}}
-	if len(got.Parts) != 1 || !reflect.DeepEqual(got.Parts[0].PatternClusters, want) {
-		t.Errorf("Parse() parts = %+v; want one part with the clusters %+v", got.Parts, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := Parse([]byte(tt.data))
+			if err != nil {
+				t.Fatalf("Parse() error = %v; want nil", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Parse() = %+v; want %+v", got, tt.want)
+			}
+		})
 	}
 }
 

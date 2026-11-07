@@ -26,6 +26,11 @@ The proposal holds these keys:
 - `board_checked` — a list of `{slug, revised}`, one per board entry the agent weighed.
   `revised` is the entry's `revised` stamp in RFC 3339, as `lym board list` prints it.
 - `parts` — a list of parts.
+- `order_departures` — optional, a list of `{parts, record_order, cost}`,
+  one per place the parts' order departs from an order the Sketch's decision record states.
+  `parts` holds the slugs of the parts concerned, `record_order` the order the record states with the decision id that states it,
+  and `cost` what the departure costs, such as a saving that lands later.
+  It is absent or empty when the order follows every order the record states.
 - `cost` — the proposal's cost.
 
 A part holds:

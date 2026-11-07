@@ -1,4 +1,5 @@
-// raddlefile_test.go — the board writes of a raddle run: FileRaddle's one write with the raddle store, ReleaseTasks and EndRaddleEntry.
+// raddlefile_test.go — the board writes of a raddle run:
+// FileRaddle's one write with the raddle store, and EndRaddleEntry.
 
 package boardengine
 
@@ -97,42 +98,30 @@ func TestFileRaddle(t *testing.T) {
 		groupingProject string
 		projectEntry    *RaddleEntry
 		parts           []RaddleEntry
-		release         bool
 		// wantProjectOf maps each filed slug to the project it belongs to.
 		wantProjectOf map[string]string
-		wantDraft     []string
 		wantDependsOn map[string][]string
 	}{
 		{
-			name: "TapestryShapeFilesOneReleasedTask", parts: []RaddleEntry{raddlePart("plan-t")}, release: true,
+			name: "TapestryShapeFilesOneDraftTask", parts: []RaddleEntry{raddlePart("plan-t")},
 			wantProjectOf: map[string]string{"plan-t": ""},
 		},
 		{
-			name:          "TasksShapeFilesReleasedPartsAndDropsAGoneDependency",
+			name:          "TasksShapeFilesDraftPartsAndDropsAGoneDependency",
 			parts:         []RaddleEntry{raddlePart("plan-a"), raddlePart("plan-b", "plan-a", "gone", "plan")},
-			release:       true,
 			wantProjectOf: map[string]string{"plan-a": "", "plan-b": ""},
 			wantDependsOn: map[string][]string{"plan-b": {"plan-a"}},
 		},
 		{
-			name:          "ProjectShapeFilesTheProjectAndReleasedParts",
-			projectEntry:  raddleProject("plan-proj"),
-			parts:         []RaddleEntry{raddlePart("plan-a"), raddlePart("plan-b")},
-			release:       true,
-			wantProjectOf: map[string]string{"plan-proj": "", "plan-a": "plan-proj", "plan-b": "plan-proj"},
-		},
-		{
-			name:          "BeamShapeFilesTheProjectAndDraftParts",
+			name:          "ProjectShapeFilesTheProjectAndDraftParts",
 			projectEntry:  raddleProject("plan-proj"),
 			parts:         []RaddleEntry{raddlePart("plan-a"), raddlePart("plan-b")},
 			wantProjectOf: map[string]string{"plan-proj": "", "plan-a": "plan-proj", "plan-b": "plan-proj"},
-			wantDraft:     []string{"plan-a", "plan-b"},
 		},
 		{
 			name:            "SketchInAGroupingProjectFilesTasksInThatProject",
 			groupingProject: "grouping",
 			parts:           []RaddleEntry{raddlePart("plan-a")},
-			release:         true,
 			wantProjectOf:   map[string]string{"plan-a": "grouping"},
 		},
 		{
@@ -140,7 +129,6 @@ func TestFileRaddle(t *testing.T) {
 			groupingProject: "grouping",
 			projectEntry:    raddleProject("plan-proj"),
 			parts:           []RaddleEntry{raddlePart("plan-a")},
-			release:         true,
 			wantProjectOf:   map[string]string{"plan-proj": "grouping", "plan-a": "plan-proj"},
 		},
 	}
@@ -155,7 +143,7 @@ func TestFileRaddle(t *testing.T) {
 			checks := 0
 			filing := RaddleFiling{
 				Sketch: "plan", Created: run.Created, Project: tt.groupingProject, Hash: "hash-1", RunEntry: "plan",
-				ProjectEntry: tt.projectEntry, Parts: tt.parts, Release: tt.release,
+				ProjectEntry: tt.projectEntry, Parts: tt.parts,
 				Proposal: []byte("proposal\n"), ColdProposal: []byte("cold\n"), SketchRecord: []byte("sketch record\n"),
 				Check: func([]Task, RaddleStore) error { checks++; return nil },
 			}
@@ -180,11 +168,8 @@ func TestFileRaddle(t *testing.T) {
 				if entry.Kind == KindProject && !slices.Contains(entry.Labels, "enhancement") {
 					t.Errorf("project %q labels = %v; want the proposal's type label enhancement", slug, entry.Labels)
 				}
-				if entry.Kind == KindTask {
-					draft := entry.Status != nil && *entry.Status == StatusDraft
-					if draft != slices.Contains(tt.wantDraft, slug) || (!draft && entry.Status != nil) {
-						t.Errorf("entry %q status = %v; want draft = %t, otherwise released", slug, entry.Status, slices.Contains(tt.wantDraft, slug))
-					}
+				if entry.Kind == KindTask && (entry.Status == nil || *entry.Status != StatusDraft) {
+					t.Errorf("entry %q status = %v; want draft", slug, entry.Status)
 				}
 			}
 			for slug, wantDeps := range tt.wantDependsOn {
@@ -238,7 +223,7 @@ func TestFileRaddle(t *testing.T) {
 		run := startRaddleRun(t, b, "plan", "")
 		checks := 0
 		filing := RaddleFiling{
-			Sketch: "plan", Created: run.Created, Hash: "hash-1", RunEntry: "plan", Parts: []RaddleEntry{raddlePart("plan-a")}, Release: true,
+			Sketch: "plan", Created: run.Created, Hash: "hash-1", RunEntry: "plan", Parts: []RaddleEntry{raddlePart("plan-a")},
 			Proposal: []byte("proposal\n"), ColdProposal: []byte("cold\n"), SketchRecord: []byte("sketch record\n"),
 			Check: func([]Task, RaddleStore) error {
 				checks++
@@ -293,7 +278,7 @@ func TestFileRaddle(t *testing.T) {
 				b, boardPath := newRaddleTestBoard(t)
 				run := startRaddleRun(t, b, "plan", "")
 				filing := RaddleFiling{
-					Sketch: "plan", Created: run.Created, Hash: "hash-1", RunEntry: "plan", Parts: []RaddleEntry{raddlePart("plan-a")}, Release: true,
+					Sketch: "plan", Created: run.Created, Hash: "hash-1", RunEntry: "plan", Parts: []RaddleEntry{raddlePart("plan-a")},
 					Proposal: []byte("proposal\n"), ColdProposal: []byte("cold\n"), SketchRecord: []byte("sketch record\n"),
 				}
 				if err := b.FileRaddle(filing); err != nil {
@@ -322,7 +307,7 @@ func TestFileRaddle(t *testing.T) {
 		b, boardPath := newRaddleTestBoard(t)
 		run := startRaddleRun(t, b, "plan", "")
 		filing := RaddleFiling{
-			Sketch: "plan", Created: run.Created, Hash: "hash-1", RunEntry: "plan", Parts: []RaddleEntry{raddlePart("plan-a")}, Release: true,
+			Sketch: "plan", Created: run.Created, Hash: "hash-1", RunEntry: "plan", Parts: []RaddleEntry{raddlePart("plan-a")},
 			Proposal: []byte("proposal\n"), SketchRecord: []byte("sketch record\n"),
 			Check: func([]Task, RaddleStore) error { return errors.New("another entry took the slug") },
 		}
@@ -351,7 +336,7 @@ func TestHoldsRaddleFiling(t *testing.T) {
 	run := startRaddleRun(t, b, "plan", "")
 	filing := RaddleFiling{
 		Sketch: "plan", Created: run.Created, Hash: "hash-1", RunEntry: "plan", ProjectEntry: raddleProject("plan-proj"),
-		Parts: []RaddleEntry{raddlePart("plan-a")}, Release: true,
+		Parts:    []RaddleEntry{raddlePart("plan-a")},
 		Proposal: []byte("proposal\n"), ColdProposal: []byte("cold\n"), SketchRecord: []byte("sketch record\n"),
 	}
 	if err := b.FileRaddle(filing); err != nil {
@@ -376,54 +361,6 @@ func TestHoldsRaddleFiling(t *testing.T) {
 			got, err := b.HoldsRaddleFiling(tt.sketch, tt.slugs)
 			if err != nil || got != tt.want {
 				t.Errorf("HoldsRaddleFiling(%q, %v) = %t, %v; want %t, nil", tt.sketch, tt.slugs, got, err, tt.want)
-			}
-		})
-	}
-}
-
-func TestReleaseTasks(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		slugs []string
-		// wantReleased lists the slugs that read released afterwards, and wantWrite whether the call writes board.json.
-		wantReleased []string
-		wantWrite    bool
-	}{
-		{"TwoDraftPartsAreReleased", []string{"part-a", "part-b"}, []string{"part-a", "part-b"}, true},
-		{"AbsentAndDoneAreSkipped", []string{"gone", "part-done", "part-b"}, []string{"part-b"}, true},
-		{"NoneLeftWritesNothing", []string{"gone", "part-done"}, nil, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			b, boardPath := newRaddleTestBoard(t)
-			for _, slug := range []string{"part-a", "part-b", "part-done"} {
-				upsertForRaddle(t, b, map[string]any{"slug": slug, "title": slug, "kind": "task", "labels": []string{"bug"}})
-			}
-			done := StatusDone
-			if err := b.SetStatus("part-done", &done); err != nil {
-				t.Fatalf("SetStatus() error = %v; want nil", err)
-			}
-			old := backdateBoardFile(t, boardPath)
-
-			if err := b.ReleaseTasks(tt.slugs); err != nil {
-				t.Fatalf("ReleaseTasks() error = %v; want nil", err)
-			}
-
-			if written := boardFileWritten(t, boardPath, old); written != tt.wantWrite {
-				t.Errorf("ReleaseTasks wrote board.json = %t; want %t", written, tt.wantWrite)
-			}
-			for _, slug := range []string{"part-a", "part-b"} {
-				entry := entryForRaddle(t, b, slug)
-				if released := entry.Status == nil; released != slices.Contains(tt.wantReleased, slug) {
-					t.Errorf("entry %q status = %v; want released = %t", slug, entry.Status, !released)
-				}
-			}
-			if entry := entryForRaddle(t, b, "part-done"); entry.Status == nil || *entry.Status != StatusDone {
-				t.Errorf("done entry status = %v; want it left done", entry.Status)
 			}
 		})
 	}

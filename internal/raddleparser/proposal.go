@@ -42,7 +42,18 @@ type Proposal struct {
 	Project      *Project     `json:"project,omitempty"`
 	BoardChecked []BoardCheck `json:"board_checked"`
 	Parts        []Part       `json:"parts"`
-	Cost         Cost         `json:"cost"`
+	// OrderDepartures lists every place the parts' order departs from an order the Sketch's decision record states.
+	OrderDepartures []OrderDeparture `json:"order_departures,omitempty"`
+	Cost            Cost             `json:"cost"`
+}
+
+// OrderDeparture is one place the proposal orders parts against an order the Sketch's decision record states:
+// the slugs of the parts concerned, the order the record states, and what the departure costs.
+// The operator reads it before approving the proposal.
+type OrderDeparture struct {
+	Parts       []string `json:"parts"`
+	RecordOrder string   `json:"record_order"`
+	Cost        string   `json:"cost"`
 }
 
 // Project is the project a `project` or `beam` shape files:

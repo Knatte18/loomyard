@@ -460,7 +460,7 @@
 // So does an upsert setting `status` to null on a task, and so does a merge whose `set_status` sets null.
 // An empty string written to a task whose loaded status differs is `draft`, not a release.
 // A write may release the tasks it makes: the draft rule skips the slugs it is told.
-// Those are the promoted task of a promotion with recipe `raddle` and the released parts of a raddle filing.
+// That is the promoted task of a promotion with recipe `raddle`.
 // The owner write and the replay of a local commit run no draft rule:
 // the first never makes a task, and the second copies entries a critical-section write already normalised.
 //
@@ -606,11 +606,9 @@
 // After the save it writes the store directory with store.json last, so the write leaves its own done marker.
 // The filing's Project is the Sketch's own project field, so every filed entry's parent beam equals the Sketch's;
 // the parts are members of the new project when the shape files one.
-// The parts are draft unless the filing says to release them in the write, through the draft rule's released list.
+// The parts are filed draft, so a release stays the operator's.
 // The run's own entry stays open.
 // A part's dependency on the run's entry, or on a slug no longer on the board, is dropped.
-// ReleaseTasks releases the named tasks that are still open and draft.
-// It writes nothing when none is left, which is the done marker of that step.
 // EndRaddleEntry marks the run's entry done and clears its notify_on_land.
 // The run lock admits both changes, since neither is scope.
 // It writes nothing for an absent or done entry.

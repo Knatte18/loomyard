@@ -121,7 +121,6 @@ func raddleFileEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProdu
 		{"RaddleFile.AlreadyFiled", deps.AlreadyFiled},
 		{"RaddleFile.File", deps.File},
 		{"RaddleFile.CreateBeam", deps.CreateBeam},
-		{"RaddleFile.Release", deps.Release},
 		{"RaddleFile.Notify", deps.Notify},
 		{"RaddleFile.EndEntry", deps.EndEntry},
 		{"RaddleFile.Commit", deps.Commit},

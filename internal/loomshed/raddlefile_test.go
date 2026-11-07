@@ -57,7 +57,6 @@ type raddleFileFixture struct {
 	findings []raddleparser.Finding
 	recheck  raddleparser.Recheck
 	filings  []boardengine.RaddleFiling
-	released []string
 	notices  []string
 
 	stored     bool
@@ -107,10 +106,6 @@ func newRaddleFileFixture(t *testing.T, proposal raddleparser.Proposal, mode loo
 			return nil
 		},
 		CreateBeam: func(string) error { return f.seam("create_beam") },
-		Release: func(slugs []string) error {
-			f.released = slugs
-			return f.seam("release")
-		},
 		Notify: func(line string) error {
 			if err := f.seam("notify"); err != nil {
 				return err
@@ -247,7 +242,7 @@ func TestRaddleFile(t *testing.T) {
 	t.Run("EachShapeFilesOnceWithItsStepsInOrder", func(t *testing.T) {
 		t.Parallel()
 		inOrder := []string{"commit", "file", "notify", "end_entry"}
-		beamOrder := []string{"commit", "file", "create_beam", "release", "notify", "end_entry"}
+		beamOrder := []string{"commit", "file", "create_beam", "notify", "end_entry"}
 		for _, tt := range []struct {
 			shape string
 			want  []string
@@ -267,11 +262,11 @@ func TestRaddleFile(t *testing.T) {
 					t.Fatalf("steps = %v; want %v", got, tt.want)
 				}
 				filing := f.filings[0]
-				if filing.Release != (tt.shape != raddleparser.ShapeBeam) || filing.Project != "grouping" || filing.RunEntry != "sketch-x" || filing.Hash != raddleparser.Hash(marshalRaddleProposal(t, f.proposal)) {
-					t.Errorf("filing release/project/run entry/hash = %v/%q/%q/%q; want release off only for a beam, the Sketch's project, the run's entry and the proposal's hash", filing.Release, filing.Project, filing.RunEntry, filing.Hash)
+				if filing.Project != "grouping" || filing.RunEntry != "sketch-x" || filing.Hash != raddleparser.Hash(marshalRaddleProposal(t, f.proposal)) {
+					t.Errorf("filing project/run entry/hash = %q/%q/%q; want the Sketch's project, the run's entry and the proposal's hash", filing.Project, filing.RunEntry, filing.Hash)
 				}
-				if tt.shape == raddleparser.ShapeBeam && !slices.Equal(f.released, []string{"part-a", "part-b"}) {
-					t.Errorf("released = %v; want both parts", f.released)
+				if len(f.notices) != 1 || !strings.Contains(f.notices[0], "every filed task is draft until the operator releases it") {
+					t.Errorf("notices = %q; want one saying the filed tasks wait as drafts for the operator", f.notices)
 				}
 				if got := f.state(); !got.NoticeSent {
 					t.Errorf("state = %+v; want the notice marked sent", got)
@@ -415,7 +410,6 @@ func TestRaddleFile(t *testing.T) {
 			wantNotify int
 		}{
 			{"create_beam", "make the project a beam", 1},
-			{"release", "release the filed parts", 1},
 			{"notify", "notify the parent", 2},
 			{"end_entry", "end the run's board entry", 1},
 		} {
