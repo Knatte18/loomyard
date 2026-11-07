@@ -47,9 +47,10 @@ func RepositoryName(hubPath string) (string, error) {
 	return owner + "/" + repo, nil
 }
 
-// validName reports whether name is one to maxLength characters of ASCII letters, digits, hyphens, underscores and dots.
+// validName reports whether name is one to maxLength characters of ASCII letters, digits, hyphens, underscores and dots,
+// and is neither "." nor "..", which GitHub reserves.
 func validName(name string, maxLength int) bool {
-	if name == "" || len(name) > maxLength {
+	if name == "" || name == "." || name == ".." || len(name) > maxLength {
 		return false
 	}
 	for _, r := range name {

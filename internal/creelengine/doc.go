@@ -659,7 +659,7 @@
 //
 // With a HubDirectory set, a post to a name of another hub is accepted only from a strand to a strand.
 // The receiver's shortname must resolve to one hub in the machine record.
-// The line must fit the cap with the longer stamp.
+// The line must fit the cap with the longer stamp, led by the longest repository name GitHub allows.
 // It is journaled as an outbound message under a new id and answers that id at once.
 // Each of these is refused with its own way forward:
 // a program or EXTERNAL sender, a program or EXTERNAL receiver, an unresolved shortname and an over-long line.

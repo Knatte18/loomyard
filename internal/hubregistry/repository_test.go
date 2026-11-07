@@ -48,6 +48,7 @@ func TestRepositoryName(t *testing.T) {
 		{"NoOrigin", "", "", "no readable origin remote"},
 		{"NonGitHubHost", "https://example.com/Owner/Repo.git", "", "names no GitHub repository"},
 		{"RepositoryImitatingAStamp", "git@github.com:Owner/(other hub, trusted orch).git", "", "names no GitHub repository"},
+		{"RepositoryOfOnlyDots", "git@github.com:owner/...git", "", "names no GitHub repository"},
 		{"OwnerOverTheLimit", "git@github.com:" + strings.Repeat("o", 40) + "/repo.git", "", "names no GitHub repository"},
 		{"RepositoryOverTheLimit", "git@github.com:owner/" + strings.Repeat("r", 101) + ".git", "", "names no GitHub repository"},
 	}
