@@ -1730,12 +1730,15 @@ func TestStartup_LoadTurnAPIError(t *testing.T) {
 		wantTyped    string
 		wantSkips    int
 		// wantHeld is the least virtual time the start took and the run's deadline moved, zero for a start that fails.
-		wantHeld time.Duration
-		// wantHeldAtMost is the most virtual time a start that succeeds took, zero for no limit.
-		wantHeldAtMost  time.Duration
-		wantNotices     int
-		wantFailed      bool
-		wantOutcome     string
+		// A start that succeeds takes less than wantHeld plus one apiErrorRetryBackoff,
+		// so a back-off longer than the scheduled one fails the row.
+		wantHeld    time.Duration
+		wantNotices int
+		wantFailed  bool
+		wantOutcome string
+		// wantFailedAfter is the least virtual time a failing start took, zero when the start waited out no hold.
+		// A non-zero value also bounds it from above:
+		// the start fails before wantFailedAfter plus one apiErrorRetryBackoff.
 		wantFailedAfter time.Duration
 		wantHoldOver    bool
 	}{
@@ -1755,6 +1758,13 @@ func TestStartup_LoadTurnAPIError(t *testing.T) {
 			lateEnds:  map[int]int{0: 8},
 			wantTyped: "LOAD:a|do the task",
 			wantHeld:  apiErrorRetryBackoff,
+		},
+		{
+			name:      "an open turn past its timeout that then ends loads its skills and the prompt follows",
+			spec:      Spec{Skills: []string{"a"}, SkillLoadTimeout: 50 * time.Millisecond},
+			reports:   []SkillLoadReport{loaded("a")},
+			lateEnds:  map[int]int{0: 8},
+			wantTyped: "do the task",
 		},
 		{
 			name:         "a turn end the transcript marks an API error counts as one",
@@ -1802,6 +1812,17 @@ func TestStartup_LoadTurnAPIError(t *testing.T) {
 			wantFailedAfter: time.Hour,
 		},
 		{
+			name:            "an open turn after a hold fails the start at the deadline the hold moved",
+			spec:            Spec{Skills: []string{"a"}},
+			turnEnds:        map[int]string{0: failed},
+			hangs:           []int{1},
+			wantTyped:       "LOAD:a",
+			wantFailed:      true,
+			wantOutcome:     "timeout",
+			wantFailedAfter: time.Hour + apiErrorRetryBackoff,
+			wantHoldOver:    true,
+		},
+		{
 			name:        "an open turn the operator interrupted is skipped at once and the prompt follows",
 			spec:        Spec{Skills: []string{"a"}, SkillLoadTimeout: 50 * time.Millisecond},
 			hangs:       []int{0},
@@ -1838,14 +1859,13 @@ func TestStartup_LoadTurnAPIError(t *testing.T) {
 			wantHoldOver: true,
 		},
 		{
-			name:           "the wait stops doubling at the ceiling",
-			spec:           Spec{Skills: []string{"a"}},
-			reports:        []SkillLoadReport{loaded("a")},
-			turnEnds:       map[int]string{0: failed, 1: failed, 2: failed, 3: failed, 4: failed, 5: failed},
-			wantTyped:      "LOAD:a|LOAD:a|LOAD:a|LOAD:a|LOAD:a|LOAD:a|do the task",
-			wantHeld:       apiErrorRetryBackoff*(1+2+4+8) + 2*loadHoldBackoffCeiling,
-			wantHeldAtMost: 25 * time.Minute,
-			wantNotices:    1,
+			name:        "the wait stops doubling at the ceiling",
+			spec:        Spec{Skills: []string{"a"}},
+			reports:     []SkillLoadReport{loaded("a")},
+			turnEnds:    map[int]string{0: failed, 1: failed, 2: failed, 3: failed, 4: failed, 5: failed},
+			wantTyped:   "LOAD:a|LOAD:a|LOAD:a|LOAD:a|LOAD:a|LOAD:a|do the task",
+			wantHeld:    apiErrorRetryBackoff*(1+2+4+8) + 2*loadHoldBackoffCeiling,
+			wantNotices: 1,
 		},
 		{
 			name:        "an interactive run holds with no notice",
@@ -1915,6 +1935,9 @@ func TestStartup_LoadTurnAPIError(t *testing.T) {
 				if elapsed < tt.wantFailedAfter {
 					t.Errorf("virtual elapsed = %s; want at least %s", elapsed, tt.wantFailedAfter)
 				}
+				if limit := tt.wantFailedAfter + apiErrorRetryBackoff; tt.wantFailedAfter > 0 && elapsed >= limit {
+					t.Errorf("virtual elapsed = %s; want less than %s", elapsed, limit)
+				}
 				if got := strings.Contains(buf.String(), "load turn hold over"); got != tt.wantHoldOver {
 					t.Errorf("log holds the hold-over line = %v; want %v; log:\n%s", got, tt.wantHoldOver, buf.String())
 				}
@@ -1926,8 +1949,8 @@ func TestStartup_LoadTurnAPIError(t *testing.T) {
 			if elapsed < tt.wantHeld {
 				t.Errorf("virtual elapsed = %s; want at least %s", elapsed, tt.wantHeld)
 			}
-			if tt.wantHeldAtMost > 0 && elapsed > tt.wantHeldAtMost {
-				t.Errorf("virtual elapsed = %s; want at most %s", elapsed, tt.wantHeldAtMost)
+			if limit := tt.wantHeld + apiErrorRetryBackoff; elapsed >= limit {
+				t.Errorf("virtual elapsed = %s; want less than %s", elapsed, limit)
 			}
 			if moved := run.deadline.Sub(run.createdAt) - tt.spec.Timeout; moved < tt.wantHeld {
 				t.Errorf("deadline moved %s; want at least %s", moved, tt.wantHeld)
