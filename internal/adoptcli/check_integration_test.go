@@ -27,7 +27,7 @@ func TestHubCheckDeps_StaleStampRunsTheTunedFinalizeTiers(t *testing.T) {
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	tier := map[string]any{"command": "true", "all_targets": ".", "timeout_min": 1, "counter": "go-json"}
 	hubFile, err := yaml.Marshal(map[string]any{
 		"slots":  1,

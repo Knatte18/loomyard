@@ -36,7 +36,7 @@ func newRecordsFixture(t *testing.T) *recordsFixture {
 	t.Helper()
 	boardkit.InstallReplay(t)
 	registerHeddleReplayer()
-	return &recordsFixture{t: t, hub: hubforge.NewHub(t, ".")}
+	return &recordsFixture{t: t, hub: hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})}
 }
 
 var registerHeddleReplayerOnce sync.Once

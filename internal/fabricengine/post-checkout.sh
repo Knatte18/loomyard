@@ -30,8 +30,10 @@ if [ -z "$WORKTREE_ROOT" ]; then
 fi
 
 # Derive the weft sibling path: parent-dir/<basename>-weft.
-PARENT="$(dirname "$WORKTREE_ROOT")"
-BASE="$(basename "$WORKTREE_ROOT")"
+# git answers an absolute path with no trailing slash, so parameter expansion splits it as dirname and basename would,
+# without spawning either on every checkout.
+PARENT="${WORKTREE_ROOT%/*}"
+BASE="${WORKTREE_ROOT##*/}"
 WEFT_WORKTREE="${PARENT}/${BASE}-weft"
 
 # If the weft worktree does not exist, nothing to compare — exit silently.

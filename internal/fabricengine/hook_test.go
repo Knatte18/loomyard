@@ -148,6 +148,17 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 	if string(firstChainContent) != string(secondChainContent) {
 		t.Errorf("chained hook changed on re-install; first=%q second=%q", firstChainContent, secondChainContent)
 	}
+
+	// A branch checkout fires the wrapper, which must find and run the executable user hook beside it.
+	cmd := exec.Command("git", "checkout", "-b", "hook-chain-probe")
+	cmd.Dir = hub
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git checkout -b hook-chain-probe: %v (%s)", err, out)
+	}
+	if !strings.Contains(string(out), "user\n") {
+		t.Errorf("checkout output = %q; want the chained user hook's output", out)
+	}
 }
 
 // TestInstallPostCheckoutHook_WeftResolution_Prime verifies that the hook resolves the prime worktree's weft sibling.

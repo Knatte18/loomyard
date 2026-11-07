@@ -36,11 +36,15 @@ const hookSentinel = "FABRIC_SENTINEL: post-checkout drift warning"
 // The executable test around the chained call keeps the operator's own enable or disable decision.
 // git ignores a non-executable hook; a hook disabled with chmod -x must stay disabled once fabric moves it aside.
 // Invoking it anyway would print a "Permission denied" line on every checkout.
+// The wrapper finds its own directory by parameter expansion on $0, so a checkout spawns no dirname process.
 const chainedHookPreamble = `#!/bin/sh
 # post-checkout — user hook chain wrapper written by fabric.
 # The original hook was moved to post-checkout.user and is invoked first.
 
-SCRIPT_DIR="$(dirname "$0")"
+case "$0" in
+    */*) SCRIPT_DIR="${0%/*}" ;;
+    *) SCRIPT_DIR=. ;;
+esac
 if [ -x "$SCRIPT_DIR/post-checkout.user" ]; then
     "$SCRIPT_DIR/post-checkout.user" "$@"
 fi

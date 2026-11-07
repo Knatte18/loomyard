@@ -55,7 +55,7 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
-	first := hubforge.NewHub(t, ".")
+	first := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, first, taskSlug)
 
 	board, err := boardengine.OpenHub(first.Path)
@@ -213,7 +213,7 @@ func TestCommand_RunsFromABeam(t *testing.T) {
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{Beam: true})
 	hubforge.AddPairWith(t, h, "p", fabricengine.AddOptions{})
 	primeName, err := fabricengine.PrimeName(h.Location)
@@ -236,7 +236,7 @@ func TestCheckCmd_FromABeamExitsZeroWhileOneRuns(t *testing.T) {
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{Beam: true})
 	scratch := filepath.Join(fabricengine.AdoptScratchDir(h.Path), "root")
 	if err := os.MkdirAll(scratch, 0o755); err != nil {

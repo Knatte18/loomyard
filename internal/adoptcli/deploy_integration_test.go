@@ -75,7 +75,7 @@ func TestReadDeployState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			h := hubforge.NewHub(t, ".")
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			prime := h.PrimeWorktree()
 			branch := gitkit.CurrentBranch(t, prime)
 			old := gitkit.RevParse(t, prime, "HEAD")
