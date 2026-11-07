@@ -61,14 +61,24 @@ func TestOpenWindow(t *testing.T) {
 		{
 			name: "ALiveWindowOfThatNameIsReportedAndNothingStarts",
 			script: func(f *fakeTmux) {
-				f.answer(sessionListVerb, "@0 %1 0 0 tmux\n@4 %9 0 0 "+name+"\n", nil)
+				f.answer(sessionListVerb, "@0 %1 0 0 tmux\n@4 %9 0 1 "+name+"\n", nil)
 			},
 			want: WindowResult{WindowID: "@4", Name: name, Existing: true},
 		},
 		{
-			name: "ALiveOwnWindowOfThatNameIsNeitherReturnedNorKilledAndANewWindowOpens",
+			name: "ALiveUnhiddenWindowOfThatNameIsNeitherReturnedNorKilledAndANewWindowOpens",
 			script: func(f *fakeTmux) {
-				f.answer(sessionListVerb, "@4 %9 0 1 "+name+"\n", nil)
+				f.answer(sessionListVerb, "@4 %9 0 0 "+name+"\n", nil)
+				f.answer("new-window", "@8\n", nil)
+				f.answerFormat(windowReadBackFormat, "@8 off\n", nil)
+			},
+			want:         WindowResult{WindowID: "@8", Name: name},
+			wantNewCalls: 1,
+		},
+		{
+			name: "ADeadUnhiddenWindowOfThatNameStaysAndANewWindowOpens",
+			script: func(f *fakeTmux) {
+				f.answer(sessionListVerb, "@4 %9 1 0 "+name+"\n", nil)
 				f.answer("new-window", "@8\n", nil)
 				f.answerFormat(windowReadBackFormat, "@8 off\n", nil)
 			},
@@ -78,7 +88,7 @@ func TestOpenWindow(t *testing.T) {
 		{
 			name: "ADeadWindowOfThatNameIsKilledAndReplaced",
 			script: func(f *fakeTmux) {
-				f.answer(sessionListVerb, "@4 %9 1 0 "+name+"\n", nil)
+				f.answer(sessionListVerb, "@4 %9 1 1 "+name+"\n", nil)
 				f.answer("new-window", "@8\n", nil)
 				f.answerFormat(windowReadBackFormat, "@8 off\n", nil)
 			},

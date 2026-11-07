@@ -542,6 +542,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 
 	e.touchDiscoverSignal()
+	e.logBootWindowLocked()
 
 	if runtime.GOOS != "windows" {
 		if err := e.guardBootSessionLocked(identityBefore, tmuxConf); err != nil {
@@ -554,6 +555,23 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 
 	return true, stripped, nil
+}
+
+// bootWindowFormat is the display-message format that names a freshly booted session's one window:
+// the window id, the pane id, then the window name.
+const bootWindowFormat = "#{window_id} #{pane_id} #{window_name}"
+
+// logBootWindowLocked logs at Info the window a fresh boot's new-session opened, by window id, pane id and name,
+// so every window in a session traces to the reed step that opened it.
+// A failed or unparsable read logs at Debug and never fails the boot.
+func (e *Engine) logBootWindowLocked() {
+	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), bootWindowFormat)
+	fields := strings.SplitN(strings.TrimSpace(out), " ", 3)
+	if err != nil || len(fields) != 3 {
+		logger.Debug("reed: could not read the booted session's first window", "socket", e.Socket(), "session", e.SessionName(), "answer", strings.TrimSpace(out), "err", err)
+		return
+	}
+	logger.Info("reed: opened the session's first window", "socket", e.Socket(), "session", e.SessionName(), "window", fields[0], "pane", fields[1], "name", fields[2])
 }
 
 // pinBootOptionsLocked pins the options a fresh boot sets on the server and session it just spawned.

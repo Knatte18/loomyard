@@ -41,8 +41,8 @@ const temporaryWindowNamePrefix = "lym-opening-"
 var temporaryWindowCounter atomic.Uint64
 
 // windowListFormat is the session-wide listing format that finds a named window:
-// window id, pane id, pane dead flag, the own-window flag, then the window name.
-const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{?#{@lym_own},1,0} #{window_name}"
+// window id, pane id, pane dead flag, the hidden-window flag, then the window name.
+const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{?#{@lym_hidden},1,0} #{window_name}"
 
 // windowReadBackFormat reads back a window's remain-on-exit option: the answering window's id, then the value.
 // The id is needed because tmux answers a target window that has already closed from another scope.
@@ -55,8 +55,9 @@ const windowReadBackFormat = "#{window_id} #{remain-on-exit}"
 // It opens after the highest-index window, so every hidden window sits behind the shell window.
 // When the session predates the window order, the shell window is first renamed and moved into place.
 //
-// A window of that exact name whose pane is live is returned as existing and nothing is started;
+// A hidden window of that exact name whose pane is live is returned as existing and nothing is started;
 // one whose pane is dead is killed and replaced.
+// A window of that name without the hidden marker, such as one the operator opened by hand, is left as it is.
 // It returns an error wrapping ErrNoSession when the worktree has no reed session, and creates nothing;
 // a *CapabilityError when the multiplexer lacks new-window;
 // ErrNewWindowFailed wrapping the multiplexer's error when it refuses the window;
@@ -154,9 +155,10 @@ type namedWindow struct {
 	paneDead bool
 }
 
-// findWindowLocked returns the window of this session named exactly name, or nil when there is none.
+// findWindowLocked returns the hidden window of this session named exactly name, or nil when there is none.
 // It reads the session-wide pane listing and compares names itself, since a window-name target that matches nothing falls back to the current window.
-// A window carrying the own-window marker is skipped, so an own window of the same name is never adopted, killed or replaced.
+// Only a window carrying @lym_hidden, the marker every window this op opens carries, is considered.
+// An own window or a window the operator opened by hand is therefore never adopted, killed or replaced.
 func (e *Engine) findWindowLocked(name string) (*namedWindow, error) {
 	out, err := e.tmux.output("list-panes", "-s", "-t", exactSessionTarget(e.SessionName()), "-F", windowListFormat)
 	if err != nil {
@@ -164,7 +166,7 @@ func (e *Engine) findWindowLocked(name string) (*namedWindow, error) {
 	}
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.SplitN(strings.TrimSpace(line), " ", 5)
-		if len(fields) != 5 || fields[3] == "1" || fields[4] != name {
+		if len(fields) != 5 || fields[3] != "1" || fields[4] != name {
 			continue
 		}
 		return &namedWindow{windowID: fields[0], paneID: fields[1], paneDead: fields[2] == "1"}, nil

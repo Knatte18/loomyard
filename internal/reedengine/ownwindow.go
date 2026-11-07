@@ -436,7 +436,7 @@ func (e *Engine) moveShellWindowStrandsLocked(st *ReedState, shellWindow string,
 		s.Display.Anchor = render.AnchorOwnWindow
 		s.Display.Window = ""
 		moved = true
-		logger.Info("reed: moved a strand pane out of the shell window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", fields[0], "pane", paneID)
+		logger.Info("reed: moved a strand pane out of the shell window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", fields[0], "pane", paneID, "name", strandLabel(s.Name))
 	}
 	return moved
 }

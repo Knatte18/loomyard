@@ -660,8 +660,15 @@
 // With nothing to place against, the plain form `-t '=<session>:'` is used.
 // A placed new-window the multiplexer refuses on Windows (psmux) logs at Debug and is retried once in the plain form,
 // so the order is best-effort there and nothing fails.
+// Every window reed opens logs one Info line naming its window id and name, and its pane id where the open reports one:
+// the boot's first window, an own window, a strand pane broken out of the shell window, and a detached window.
+// An own window, a break-out and a detached window are each opened with a name.
+// The boot's first window starts named after its shell and the shell-window step renames it shell,
+// so a window named after its shell outside that boot came from no reed step.
+// The session's default-command is the configured shell, so a window the operator opens by hand runs that shell.
+// Reed ends only a window carrying @lym_own and reuses only one carrying @lym_hidden; a window opened by hand stays.
 // The shell window is the window of the recorded console pane (Selvage), named shell with automatic-rename off.
-// A fresh boot names its one window that way.
+// A fresh boot's one window ends up named that way.
 // ensureShellWindowLocked brings a session booted by an older lym into that order.
 // It runs wherever a window opens, once the boot marks the strands' window and at the head of every attach pre-flight.
 // It runs also when no client size is known.
@@ -701,10 +708,10 @@
 // Tmux answers for a window that has already closed, as when its command exited at once.
 // The answer is exit 0, an empty id and the global value;
 // a failed read or a reply from any other window counts as the window being gone, never as a mismatch.
-// A window of the same name whose pane is live is returned as existing and nothing is started;
+// A hidden window of the same name whose pane is live is returned as existing and nothing is started;
 // one whose pane is dead is killed and replaced.
-// A window carrying @lym_own is skipped by that lookup.
-// OpenWindow therefore never adopts, kills or replaces an own window of the same name.
+// That lookup reads only windows carrying @lym_hidden.
+// OpenWindow therefore never adopts, kills or replaces an own window or a window the operator opened by hand.
 // The command line is composed in panebin.go from the pane-binary prelude, so `lym` resolves to the spawning binary.
 // Bound: the op only chooses where a command runs;
 // the window lives as long as the reed session, and the session's other windows keep remain-on-exit on.

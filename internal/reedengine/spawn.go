@@ -325,7 +325,7 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 		}
 	}
 
-	logger.Info("reed: opened own window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", windowID, "pane", paneID)
+	logger.Info("reed: opened own window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", windowID, "pane", paneID, "name", name)
 	return paneID, nil
 }
 
