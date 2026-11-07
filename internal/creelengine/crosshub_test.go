@@ -634,39 +634,56 @@ func TestDaemon_CrossHubDeliver(t *testing.T) {
 				}
 				return resp.Messages[0]
 			}
-			p.receiving.hubs.SetTrusted([]string{"ly"}, nil)
+			p.receiving.hubs.SetRepository(p.sending.geom.HubPath, "Knatte18/loomyard", nil)
+			p.receiving.hubs.SetTrusted([]string{"Knatte18/loomyard"}, nil)
 			p.startReceiving()
 			listenHubFake(t, p.sending, confirmYes)
 			wantAccepted(t, p.deliver(creelengine.HubMail{SendingID: 1, Sender: "ly:orch", Receiver: rcvAlpha, Posted: epoch, Body: "first"}))
-			if first := read(p.receiving); !first.Trusted || first.HubStamp() != creelengine.StampTrusted {
-				t.Errorf("the orch of a listed hub arrived as %+v; want trusted", first)
+			first := read(p.receiving)
+			if !first.Trusted || first.SendingRepository != "Knatte18/loomyard" || first.HubStamp() != "Knatte18/loomyard "+creelengine.StampTrusted {
+				t.Errorf("the orch of a listed hub arrived as %+v; want trusted with the stamp led by its repository", first)
+			}
+			if line := creelengine.MessageLine(first); !strings.Contains(line, `"ly:orch" Knatte18/loomyard `+creelengine.StampTrusted) {
+				t.Errorf("MessageLine() = %q; want the repository beside the sender, before the stamp", line)
 			}
 			p.receiving.hubs.SetTrusted(nil, nil)
 			wantAccepted(t, p.deliver(creelengine.HubMail{SendingID: 2, Sender: "ly:orch", Receiver: rcvAlpha, Posted: epoch, Body: "second"}))
-			if second := read(p.receiving); second.Trusted || second.HubStamp() != creelengine.StampUntrusted {
+			if second := read(p.receiving); second.Trusted || second.HubStamp() != "Knatte18/loomyard "+creelengine.StampUntrusted {
 				t.Errorf("the same orch after the list changed arrived as %+v; want untrusted", second)
+			}
+			p.receiving.hubs.SetRepository(p.sending.geom.HubPath, "", errors.New("the hub has no readable origin remote"))
+			wantAccepted(t, p.deliver(creelengine.HubMail{SendingID: 3, Sender: "ly:orch", Receiver: rcvAlpha, Posted: epoch, Body: "third"}))
+			if third := read(p.receiving); third.Trusted || third.SendingRepository != "" || third.HubStamp() != creelengine.StampUntrusted {
+				t.Errorf("the orch of a hub with no repository name arrived as %+v; want untrusted with the bare stamp", third)
 			}
 		}},
 		{"TheStoredTrustIsUntrustedForEveryOtherSenderAndForAFailedListAndAnotherPlatform", func(t *testing.T, p *hubPair) {
+			const repository = "Knatte18/loomyard"
+			listed := []string{repository}
 			cases := []struct {
-				name       string
-				sender     string
-				trusted    []string
-				trustedErr error
-				goos       string
-				want       bool
+				name          string
+				sender        string
+				trusted       []string
+				trustedErr    error
+				repositoryErr error
+				goos          string
+				want          bool
 			}{
-				{"TaskOrchOfAListedHub", "ly:build:orch", []string{"ly"}, nil, "", true},
-				{"NonOrchStrand", "ly:beta:driver", []string{"ly"}, nil, "", false},
-				{"OrchThread", "ly:orch-2", []string{"ly"}, nil, "", false},
-				{"OrchOfAnUnlistedHub", "ly:orch", []string{"qq"}, nil, "", false},
-				{"AFailedListRead", "ly:orch", []string{"ly"}, errors.New("creel.yaml is unreadable"), "", false},
-				{"AnotherPlatform", "ly:orch", []string{"ly"}, nil, "darwin", false},
+				{"TaskOrchOfAListedHub", "ly:build:orch", listed, nil, nil, "", true},
+				{"AListEntryThatDiffersOnlyInCase", "ly:orch", []string{"knatte18/LoomYard"}, nil, nil, "", true},
+				{"NonOrchStrand", "ly:beta:driver", listed, nil, nil, "", false},
+				{"OrchThread", "ly:orch-2", listed, nil, nil, "", false},
+				{"OrchOfAnUnlistedHub", "ly:orch", []string{"Knatte18/other"}, nil, nil, "", false},
+				{"AListThatNamesTheShortname", "ly:orch", []string{"ly"}, nil, nil, "", false},
+				{"AHubWithNoRepositoryName", "ly:orch", listed, nil, errors.New("the hub has no readable origin remote"), "", false},
+				{"AFailedListRead", "ly:orch", listed, errors.New("creel.yaml is unreadable"), nil, "", false},
+				{"AnotherPlatform", "ly:orch", listed, nil, nil, "darwin", false},
 			}
 			for _, tt := range cases {
 				t.Run(tt.name, func(t *testing.T) {
 					t.Parallel()
 					p := newHubPair(t)
+					p.receiving.hubs.SetRepository(p.sending.geom.HubPath, repository, tt.repositoryErr)
 					p.receiving.hubs.SetTrusted(tt.trusted, tt.trustedErr)
 					if tt.goos != "" {
 						p.receiving.goos = tt.goos

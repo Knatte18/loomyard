@@ -24,7 +24,7 @@ func TestLoadConfig(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "TemplateValue", hub: "", want: []string{}},
-		{name: "HubValue", hub: "trusted_hubs:\n  - ly\n  - ab\n", want: []string{"ly", "ab"}},
+		{name: "HubValue", hub: "trusted_hubs:\n  - Knatte18/loomyard\n  - Knatte18/other\n", want: []string{"Knatte18/loomyard", "Knatte18/other"}},
 		{name: "MalformedYAML", hub: "trusted_hubs: [ly\n", wantErr: true},
 	}
 	for _, tt := range tests {

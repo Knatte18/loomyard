@@ -70,6 +70,8 @@ type Message struct {
 	EndedUnreadAt time.Time
 	// SendingHub is the path of the hub that sent the message, empty for every local message.
 	SendingHub string
+	// SendingRepository is the repository name, owner/repo, of the hub that sent the message, empty when it had none.
+	SendingRepository string
 	// SendingID is the id the sending hub gave the message.
 	SendingID int64
 	// Trusted marks a message from the orch of a hub this hub trusts.
@@ -92,15 +94,19 @@ const (
 )
 
 // HubStamp returns the stamp of a message from another hub, and the empty string for a local message.
+// The sending hub's repository name, when it had one, leads the stamp, so the line names the repository beside the sender.
 func (m Message) HubStamp() string {
-	switch {
-	case m.SendingHub == "":
+	if m.SendingHub == "" {
 		return ""
-	case m.Trusted:
-		return StampTrusted
-	default:
-		return StampUntrusted
 	}
+	stamp := StampUntrusted
+	if m.Trusted {
+		stamp = StampTrusted
+	}
+	if m.SendingRepository == "" {
+		return stamp
+	}
+	return m.SendingRepository + " " + stamp
 }
 
 // outboundState is where an outbound message stands.
@@ -508,7 +514,7 @@ func (p *pool) applyInbound(rec record, day string) {
 	kind := cmp.Or(rec.Kind, kindMail)
 	p.messages[rec.ID] = &Message{
 		ID: rec.ID, From: rec.From, Holder: rec.To, Kind: kind, Subject: firstLine(rec.Body), Body: rec.Body, ReplyTo: rec.ReplyTo,
-		Posted: rec.At, Status: StatusUnread, ExpectReply: rec.ExpectReply, SendingHub: rec.SendingHub, SendingID: rec.SendingID,
+		Posted: rec.At, Status: StatusUnread, ExpectReply: rec.ExpectReply, SendingHub: rec.SendingHub, SendingRepository: rec.SendingRepository, SendingID: rec.SendingID,
 		Trusted: rec.Trusted, RemotePosted: rec.RemotePosted, DeliveredTo: cmp.Or(rec.DeliveredTo, rec.To), origin: day,
 	}
 	if kind == kindReply {
@@ -590,7 +596,7 @@ func (p *pool) applyCarried(rec record, day string) bool {
 				Subject: firstLine(rec.Body), Body: rec.Body, ReplyTo: rec.ReplyTo,
 				Posted: rec.OrigAt, Status: StatusUnread, ExpectReply: rec.ExpectReply, ChaseOf: rec.Chased,
 				EndedUnreadBy: rec.Receiver, EndedUnreadAt: rec.ReceiverAt, origin: day,
-				SendingHub: rec.SendingHub, SendingID: rec.SendingID, Trusted: rec.Trusted, RemotePosted: rec.RemotePosted, DeliveredTo: rec.DeliveredTo,
+				SendingHub: rec.SendingHub, SendingRepository: rec.SendingRepository, SendingID: rec.SendingID, Trusted: rec.Trusted, RemotePosted: rec.RemotePosted, DeliveredTo: rec.DeliveredTo,
 			}
 			if !rec.ReadAt.IsZero() {
 				msg.Status, msg.ReadAt = StatusRead, rec.ReadAt
@@ -696,7 +702,7 @@ func (p *pool) carryRecords(cutoffDay string, now time.Time) []record {
 				Kind: msg.Kind, Body: msg.Body, ReplyTo: msg.ReplyTo, Path: msg.Path, ExpectReply: msg.ExpectReply, Chased: msg.ChaseOf,
 				ReadAt: msg.ReadAt, ConsumedSeconds: int64(msg.ChaseConsumed / time.Second), Chase: msg.Chases, MarkSeconds: int64(msg.ChaseMark / time.Second),
 				Receiver: msg.EndedUnreadBy, ReceiverAt: msg.EndedUnreadAt, OrigAt: msg.Posted,
-				SendingHub: msg.SendingHub, SendingID: msg.SendingID, Trusted: msg.Trusted, RemotePosted: msg.RemotePosted, DeliveredTo: msg.DeliveredTo,
+				SendingHub: msg.SendingHub, SendingRepository: msg.SendingRepository, SendingID: msg.SendingID, Trusted: msg.Trusted, RemotePosted: msg.RemotePosted, DeliveredTo: msg.DeliveredTo,
 			})
 		}
 	}

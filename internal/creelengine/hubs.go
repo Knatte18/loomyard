@@ -4,6 +4,8 @@ package creelengine
 
 import (
 	"errors"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,8 +25,17 @@ type HubDirectory interface {
 	Geometry(hubPath string) (Geometry, error)
 	// Spawn starts the daemon of the hub at hubPath, with its stderr appended to the log at logPath.
 	Spawn(hubPath, logPath string) (Spawn, error)
-	// TrustedHubs reads the shortnames of the hubs whose orch this hub obeys, at each call.
+	// TrustedHubs reads the repository names, owner/repo, of the hubs whose orch this hub obeys, at each call.
 	TrustedHubs() ([]string, error)
+	// RepositoryName answers the repository name, owner/repo, of the hub at hubPath, read from that hub's origin remote.
+	// An error means the hub has no repository name, and its text says why.
+	RepositoryName(hubPath string) (string, error)
+}
+
+// ListsRepository reports whether listed names repository, ignoring case as GitHub does.
+// An empty repository is in no list, so a hub with no repository name is never trusted.
+func ListsRepository(listed []string, repository string) bool {
+	return repository != "" && slices.ContainsFunc(listed, func(entry string) bool { return strings.EqualFold(entry, repository) })
 }
 
 // ErrHubUnresolved is matched by the refusal of a shortname that names no hub or more than one hub on this machine.

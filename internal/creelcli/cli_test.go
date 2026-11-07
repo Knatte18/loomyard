@@ -465,14 +465,24 @@ func TestCreelCLI(t *testing.T) {
 			}
 		})
 
-		t.Run("a hub named in trusted_hubs shows trusted and another does not", func(t *testing.T) {
+		t.Run("a hub whose repository trusted_hubs lists shows it trusted, and a listed shortname or a hub with no repository does not", func(t *testing.T) {
 			r := newRig(t)
-			trusted, other := r.addHub(t, xx), r.addHub(t, yy)
-			recordHubs(t, trusted, other)
-			writeBoardCreelConfig(t, r.hub.Path, "trusted_hubs:\n  - "+xx+"\n")
+			trusted, local, bare := r.addHub(t, xx), r.addHub(t, yy), r.addHub(t, "zz")
+			gitkit.Git(t, trusted.hub.PrimeWorktree(), "remote", "set-url", "origin", "git@github.com:Owner/xx-repo.git")
+			gitkit.Git(t, bare.hub.PrimeWorktree(), "remote", "remove", "origin")
+			recordHubs(t, trusted, local, bare)
+			writeBoardCreelConfig(t, r.hub.Path, "trusted_hubs:\n  - owner/XX-repo\n  - "+yy+"\n  - zz\n")
 			byName := listed(t, runCreel(r.cwd, "hubs"))
-			if byName[xx]["trusted"] != true || byName[yy]["trusted"] != false {
-				t.Errorf("creel hubs = %v; want %s trusted and %s not", byName, xx, yy)
+			if byName[xx]["trusted"] != true || byName[xx]["repository"] != "Owner/xx-repo" {
+				t.Errorf("creel hubs entry of %s = %v; want trusted with the repository Owner/xx-repo", xx, byName[xx])
+			}
+			wantWhy := map[string]string{yy: "names no GitHub repository", "zz": "no readable origin remote"}
+			for shortname, why := range wantWhy {
+				entry := byName[shortname]
+				reason, _ := entry["no_repository"].(string)
+				if entry["trusted"] != false || entry["repository"] != nil || !strings.Contains(reason, why) {
+					t.Errorf("creel hubs entry of %s = %v; want it untrusted with no repository and a reason containing %q", shortname, entry, why)
+				}
 			}
 		})
 

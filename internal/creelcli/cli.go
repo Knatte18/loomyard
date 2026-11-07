@@ -323,6 +323,9 @@ func messageFields(message creelengine.Message) map[string]any {
 		fields["trust"] = trustField(message)
 		fields["sending_hub"] = message.SendingHub
 		fields["sending_id"] = message.SendingID
+		if message.SendingRepository != "" {
+			fields["sending_repository"] = message.SendingRepository
+		}
 	}
 	return fields
 }

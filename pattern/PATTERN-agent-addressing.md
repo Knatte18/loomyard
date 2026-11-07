@@ -8,7 +8,7 @@ Rule: Messaging another session from an agent: only through creel, never an engi
 
 ## Across hubs
 
-Rule: Messaging a strand of another hub of the machine: only a strand posts and replies across hubs, and only to a strand; the receiving daemon confirms each delivery with the sending daemon before anything reaches an agent, a confirm that answers no drops the message and journals it, and authority goes only to the exact orch names of a hub in `trusted_hubs`, on Linux.
+Rule: Messaging a strand of another hub of the machine: only a strand posts and replies across hubs, and only to a strand; the receiving daemon confirms each delivery with the sending daemon before anything reaches an agent, a confirm that answers no drops the message and journals it, and authority goes only to the exact orch names of a hub whose repository name, read from its origin remote, `trusted_hubs` lists, on Linux.
 
 Held by the tests in `internal/creelengine` and by review.
 

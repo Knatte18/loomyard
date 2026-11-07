@@ -129,6 +129,8 @@ type record struct {
 	// SendingHub is the path of the hub that sent an inbound or dropped message, and SendingShortname the shortname it claimed.
 	SendingHub       string `json:"sending_hub,omitempty"`
 	SendingShortname string `json:"sending_shortname,omitempty"`
+	// SendingRepository is the repository name, owner/repo, of the hub that sent an inbound message, empty when it had none.
+	SendingRepository string `json:"sending_repository,omitempty"`
 	// SendingID is the id the sending hub gave an inbound message.
 	SendingID int64 `json:"sending_id,omitempty"`
 	// ReceivingHub is the path of the hub an outbound message goes to.
