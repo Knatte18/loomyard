@@ -32,7 +32,8 @@ Heddle's instruction text is stored once per layer and rendered from those store
   A setting every session of a worktree shares lives only there;
   a setting that differs per session or role lives only in the `--settings` document a session is launched with.
 - `HEDDLE.md` at the Bolt checkout's root shows every entry heddle holds.
-  Only `heddleengine.RenderOverview` writes it: the `lym heddle` write path after each save, and heddle's Bolt replayer after each replay.
+  Only `heddleengine.RenderOverview` writes it: the `lym heddle` write path after each save, heddle's Bolt replayer after each replay,
+  and the hub config reconcile's board write once per lym build.
 
 ## Lym instructions in code
 

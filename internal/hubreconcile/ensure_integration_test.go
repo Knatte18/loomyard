@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -903,6 +904,116 @@ func TestEnsure_MergeBeginningBeforeCommitRestoresTheFiles(t *testing.T) {
 		t.Errorf("the next walk did not strip and mark the pair")
 	}
 	assertClean(t, h.PairRecordsSibling("pair-a"))
+}
+
+func TestEnsure_HubWideWalkRendersAndCommitsTheHeddleOverview(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	landingRel := filepath.ToSlash(configengine.ConfigFileRel("landing"))
+	tests := []struct {
+		name string
+		// seed leaves the board's overview and heddle.json in the state the row walks, in board commits.
+		seed func(t *testing.T, h *hubforge.Hub)
+		// failedWriteFirst runs a walk whose board write fails first, and expects it to restore the overview.
+		failedWriteFirst bool
+		// renderFails marks a heddle.json that does not load, so the render fails and the walk goes on.
+		renderFails bool
+		// wantOverviewCommitted is whether the walk's board commit names the overview.
+		wantOverviewCommitted bool
+		// wantLandingCommitted is whether the walk's board commit names the landing config the seed changed.
+		wantLandingCommitted bool
+	}{
+		{
+			name: "missing overview",
+			seed: func(t *testing.T, h *hubforge.Hub) {
+				gitkit.Git(t, h.BoardDir(), "rm", "-q", "--ignore-unmatch", "--", heddleengine.OverviewFileName)
+				gitkit.Git(t, h.BoardDir(), "commit", "-q", "--allow-empty", "-m", "fixture: no heddle overview")
+			},
+			failedWriteFirst:      true,
+			wantOverviewCommitted: true,
+		},
+		{
+			name: "stale overview",
+			seed: func(t *testing.T, h *hubforge.Hub) {
+				gitkit.CommitFile(t, h.BoardDir(), heddleengine.OverviewFileName, "# Heddle\n\nstale\n", "fixture: stale heddle overview")
+			},
+			failedWriteFirst:      true,
+			wantOverviewCommitted: true,
+		},
+		{
+			name: "overview already current",
+			seed: func(t *testing.T, h *hubforge.Hub) {
+				if changed, err := heddleengine.RenderOverview(h.BoardDir()); err != nil {
+					t.Fatalf("RenderOverview: %v", err)
+				} else if changed {
+					gitkit.Git(t, h.BoardDir(), "add", "--", heddleengine.OverviewFileName)
+					gitkit.Git(t, h.BoardDir(), "commit", "-q", "-m", "fixture: current heddle overview")
+				}
+				seedRetiredHubWideKey(t, h)
+			},
+			wantLandingCommitted: true,
+		},
+		{
+			name: "heddle store that does not load",
+			seed: func(t *testing.T, h *hubforge.Hub) {
+				gitkit.CommitFile(t, h.BoardDir(), heddleengine.FileName, "{not json", "fixture: broken heddle.json")
+				seedRetiredHubWideKey(t, h)
+			},
+			renderFails:          true,
+			wantLandingCommitted: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newStaleHub(t)
+			geom := geometryOf(h)
+			tc.seed(t, h)
+			overview := filepath.Join(h.BoardDir(), heddleengine.OverviewFileName)
+			before, beforeErr := os.ReadFile(overview)
+			statusBefore := gitkit.GitStatusPorcelain(t, h.BoardDir())
+
+			if tc.failedWriteFirst {
+				if err := hubreconcile.EnsureFailingAfterHubWideWrite(geom, hubreconcile.Options{}, errors.New("fixture: failure after the hub-wide write")); err == nil {
+					t.Fatalf("EnsureFailingAfterHubWideWrite = nil; want the fixture failure")
+				}
+				after, afterErr := os.ReadFile(overview)
+				if string(after) != string(before) || errors.Is(afterErr, os.ErrNotExist) != errors.Is(beforeErr, os.ErrNotExist) {
+					t.Errorf("overview after a failed board write = %q (err %v); want it restored to %q (err %v)", after, afterErr, before, beforeErr)
+				}
+				if got := gitkit.GitStatusPorcelain(t, h.BoardDir()); got != statusBefore {
+					t.Errorf("board status after a failed board write = %q; want %q", got, statusBefore)
+				}
+			}
+
+			if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+				t.Fatalf("Ensure: %v", err)
+			}
+			committed := strings.Split(gitkit.Git(t, h.BoardDir(), "log", "-1", "--name-only", "--format="), "\n")
+			if got := slices.Contains(committed, heddleengine.OverviewFileName); got != tc.wantOverviewCommitted {
+				t.Errorf("the walk's board commit holds %q; want %s committed: %v", committed, heddleengine.OverviewFileName, tc.wantOverviewCommitted)
+			}
+			if got := slices.Contains(committed, landingRel); got != tc.wantLandingCommitted {
+				t.Errorf("the walk's board commit holds %q; want %s committed: %v", committed, landingRel, tc.wantLandingCommitted)
+			}
+			after, afterErr := os.ReadFile(overview)
+			if tc.renderFails {
+				if string(after) != string(before) || errors.Is(afterErr, os.ErrNotExist) != errors.Is(beforeErr, os.ErrNotExist) {
+					t.Errorf("overview after a failed render = %q (err %v); want it left as %q (err %v)", after, afterErr, before, beforeErr)
+				}
+				if _, err := heddleengine.RenderOverview(h.BoardDir()); err == nil {
+					t.Errorf("RenderOverview = nil error; want the broken heddle.json to still fail")
+				}
+			} else if changed, err := heddleengine.RenderOverview(h.BoardDir()); err != nil || changed {
+				t.Errorf("RenderOverview after the walk = (%v, %v); want (false, nil), the walk having rendered what heddle holds", changed, err)
+			}
+			if got := gitkit.GitStatusPorcelain(t, h.BoardDir()); got != statusBefore {
+				t.Errorf("board status after the walk = %q; want %q, the overview committed", got, statusBefore)
+			}
+		})
+	}
 }
 
 // commitTemplate commits module's template as its config file in the records worktree at recordsRoot.

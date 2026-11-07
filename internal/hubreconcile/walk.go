@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -202,8 +203,9 @@ var spawnBoardSync = boardengine.SpawnSync
 // A seed-only module's template base that the pass wrote joins the commit beside its file.
 // A registered reinterpretation whose board marker is absent is judged against the prime and applied.
 // Its marker joins the commit.
+// The heddle overview is rendered afresh from what heddle holds, and joins the commit when its bytes changed.
 // The board is pulled first: when it cannot be brought up to date, nothing is written and skipped is true.
-// A reconcile or commit failure restores the board's config files to their prior bytes.
+// A reconcile or commit failure restores the board's config files and the overview to their prior bytes.
 // It also removes a marker or template base the pass wrote.
 // Once the commit lands, the hub's orch is mailed what the reinterpretations rewrote or flagged.
 // It is also mailed what the seed-only files took from their template or kept against it.
@@ -221,6 +223,9 @@ func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label st
 			var err error
 			prior, err = snapshotConfig(boardDir)
 			if err != nil {
+				return nil, err
+			}
+			if err := snapshotFile(prior, filepath.Join(boardDir, heddleengine.OverviewFileName)); err != nil {
 				return nil, err
 			}
 			markedBefore := fileExists(configengine.BaseSparseMarker(boardDir))
@@ -256,6 +261,9 @@ func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label st
 				}
 			}
 			notices = lines
+			if renderHeddleOverview(boardDir) {
+				written = append(written, heddleengine.OverviewFileName)
+			}
 			if hooks.afterHubWideWrite != nil {
 				if err := hooks.afterHubWideWrite(); err != nil {
 					return nil, err
@@ -277,6 +285,21 @@ func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label st
 		logger.Warn("hubreconcile: the detached board sync did not start, so the board's commits wait for the board's next push", "board", boardDir, "committed", res.Committed, "error", err)
 	}
 	return false, nil
+}
+
+// renderHeddleOverview renders the heddle overview in boardDir afresh and reports whether its bytes changed.
+// The shipped entries it lists change with a lym build while heddle.json stays as it is,
+// so the walk a new build runs is what renews it.
+// A failed render is logged and leaves the file as it was,
+// so a heddle store that does not load never blocks the config reconcile.
+func renderHeddleOverview(boardDir string) bool {
+	changed, err := heddleengine.RenderOverview(boardDir)
+	if err != nil {
+		logger.Warn("hubreconcile: the heddle overview was not rendered and stays as it was", "board", boardDir, "file", heddleengine.OverviewFileName, "error", err,
+			"way_forward", "fix the cause the error names; the next `lym heddle set` or `lym heddle remove` renders it")
+		return false
+	}
+	return changed
 }
 
 // reconcileWorktree reconciles and commits one code worktree's config.
@@ -504,17 +527,26 @@ func snapshotConfig(anchor string) (map[string][]byte, error) {
 		}
 	}
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if errors.Is(err, fs.ErrNotExist) {
-			prior[path] = nil
-			continue
+		if err := snapshotFile(prior, path); err != nil {
+			return nil, err
 		}
-		if err != nil {
-			return nil, fmt.Errorf("snapshot %s: %w", path, err)
-		}
-		prior[path] = data
 	}
 	return prior, nil
+}
+
+// snapshotFile records in prior the bytes of the file at path, or nil when it is absent.
+// Any read failure other than absence is returned naming the path.
+func snapshotFile(prior map[string][]byte, path string) error {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		prior[path] = nil
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("snapshot %s: %w", path, err)
+	}
+	prior[path] = data
+	return nil
 }
 
 // restoreConfig writes every file of a snapshot back to its prior bytes, removing the files it recorded as absent.

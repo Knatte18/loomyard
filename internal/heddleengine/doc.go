@@ -35,6 +35,7 @@
 // Each shows its source, order, targets and text, a JSON-object entry's object as a json block.
 // The `lym heddle` write path renders it under the Bolt write lock after each save,
 // and the Bolt replayer claims it and renders it afresh after each replay, so it holds no state of its own.
+// The hub config reconcile a new lym build runs renders it too, so a missing file or one a release made stale is renewed.
 //
 // A prompt target is read as passages appended to a session's system prompt, the shipped ones first.
 // A prompt target reaches the sessions its row names by engine, by strand role, or both:

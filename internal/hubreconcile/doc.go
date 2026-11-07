@@ -37,6 +37,11 @@
 // A pair registered while the walk ran is therefore walked before the stamp is written.
 // The board commit carries the per-worktree repo defaults beside the hub-wide files.
 // Each worktree's applied files are committed in that worktree.
+// The board write also renders the heddle overview, HEDDLE.md, afresh in the Bolt checkout, under the Bolt write lock.
+// A hub therefore gets the file, or a file the shipped entries of a new build made stale renewed, with no hand step.
+// A render that changes no byte adds nothing to the commit.
+// A failed render is logged and leaves the file as it was, and the config reconcile goes on.
+// A failed board write restores the overview with the config files.
 // The board's push goes to the detached `lym board sync` every board write spawns.
 // That sync carries the board commit and any an earlier run left unpushed.
 // The walk spawns it and returns at once.

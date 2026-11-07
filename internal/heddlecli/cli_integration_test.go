@@ -501,8 +501,10 @@ func TestHeddleCLI(t *testing.T) {
 		if head := git(t, boltDir, "rev-parse", "HEAD"); head != headBefore {
 			t.Errorf("Bolt HEAD = %s; want %s, no foreground commit", head, headBefore)
 		}
-		if status := git(t, boltDir, "status", "--porcelain", "--untracked-files=no"); status != boltStatusBefore {
-			t.Errorf("Bolt tracked status = %q; want %q", status, boltStatusBefore)
+		// The save renders the committed overview beside the store and leaves it for the board sync to commit.
+		wantBoltStatus := boltStatusBefore + " M " + heddleengine.OverviewFileName + "\n"
+		if status := git(t, boltDir, "status", "--porcelain", "--untracked-files=no"); status != wantBoltStatus {
+			t.Errorf("Bolt tracked status = %q; want %q", status, wantBoltStatus)
 		}
 		if status := git(t, cwd, "status", "--porcelain"); status != primeStatusBefore {
 			t.Errorf("prime status = %q; want %q, no worktree file changed", status, primeStatusBefore)
