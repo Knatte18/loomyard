@@ -61,7 +61,8 @@ var (
 		Base:  hubforge.Shape{Anchor: "."},
 		Build: nonFastForwardFeature("warp-branch.txt", "warp-current.txt"),
 	}
-	// warpProgressLayer is nonFastForwardLayer's scenario with the branch adding feature.txt and the current branch warp-progress.txt.
+	// warpProgressLayer is nonFastForwardLayer's scenario with the branch adding feature.txt
+// and the current branch adding warp-progress.txt.
 	warpProgressLayer = hubforge.Registration{
 		Key:   "fabricengine-merge-warp-progress",
 		Base:  hubforge.Shape{Anchor: "."},
@@ -77,7 +78,8 @@ var (
 			commitOnBranch(tb, h.PrimeRecords(), "feature-weft", "feature.txt", "feature\n", "feature: weft")
 		},
 	}
-	// cleanMergeableLayer has "feature" and "feature-weft" each one commit past the current branches, mergeable without conflict.
+	// cleanMergeableLayer has "feature" and "feature-weft" each one commit past the current branches.
+// Both merge without conflict.
 	cleanMergeableLayer = hubforge.Registration{
 		Key:  "fabricengine-merge-clean",
 		Base: hubforge.Shape{Anchor: "."},
@@ -89,7 +91,8 @@ var (
 	}
 )
 
-// conflictingFeature returns a layer build that makes the warp branch "feature" conflict with the current branch on filename.
+// conflictingFeature returns a layer build that makes the warp branch "feature"
+// conflict with the current branch on filename.
 // It branches "feature-weft" at the weft's HEAD.
 func conflictingFeature(filename string) func(tb testing.TB, h *hubforge.Hub) {
 	return func(tb testing.TB, h *hubforge.Hub) {
@@ -99,8 +102,8 @@ func conflictingFeature(filename string) func(tb testing.TB, h *hubforge.Hub) {
 	}
 }
 
-// nonFastForwardFeature returns a layer build whose warp branch "feature" adds branchFile,
-// while the current branch advances past the branch point by adding currentFile.
+// nonFastForwardFeature returns a layer build whose warp branch "feature" adds branchFile.
+// The current branch advances past the branch point by adding currentFile.
 // It branches "feature-weft" at the weft's HEAD.
 func nonFastForwardFeature(branchFile, currentFile string) func(tb testing.TB, h *hubforge.Hub) {
 	return func(tb testing.TB, h *hubforge.Hub) {
@@ -110,7 +113,8 @@ func nonFastForwardFeature(branchFile, currentFile string) func(tb testing.TB, h
 	}
 }
 
-// mergePairFixtureOf returns h, the Fabric opened over its prime warp and weft worktrees, and the commit closures over them.
+// mergePairFixtureOf returns h, the Fabric opened over its prime warp and weft worktrees,
+// and the commit closures over them.
 func mergePairFixtureOf(t *testing.T, h *hubforge.Hub) (_ *hubforge.Hub, f *fabricengine.Fabric, commitOnWarpBranch, commitOnWeftBranch func(branch, filename, content, msg string), commitOnWarpCurrent, commitOnWeftCurrent func(filename, content, msg string)) {
 	t.Helper()
 

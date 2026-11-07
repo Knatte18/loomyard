@@ -1,5 +1,6 @@
 // verbs.go builds the verb table for the gate-reaching verbs.
-// Each verb has its own Build and Arrange fixture steps, Run call, and Expect function, which derives a per-state Expectation.
+// Each verb has its own Build and Arrange fixture steps, Run call, and Expect function.
+// The Expect function derives a per-state Expectation.
 // The file also holds the hostile-input cases and the omission table of excluded verb/state pairs.
 //
 // # The verified dirtiness-scope table
