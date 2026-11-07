@@ -4,6 +4,7 @@ package creelconfig
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,11 +16,17 @@ import (
 // TrustedHubsRepositoryReinterpretation names the change of trusted_hubs from hub shortnames to repository names.
 const TrustedHubsRepositoryReinterpretation = "creel-trusted-hubs-repository"
 
+// ErrShortnameUnresolvable is wrapped by a resolver's refusal of a shortname that names no repository on this machine.
+// The rewrite drops such an entry; any other resolver error ends the rewrite with that error.
+var ErrShortnameUnresolvable = errors.New("creel: shortname names no repository on this machine")
+
 // RewriteShortnamesToRepositories returns the reinterpretation of a hub's creel.yaml.
 // resolve answers the repository name, owner/repo, of the hub a shortname names on the machine that runs the rewrite.
 // An entry holding a "/" is already a repository name and is kept.
 // Every other entry is a shortname.
-// It is rewritten to its repository name, or dropped when resolve fails, and each such entry gets one line naming it.
+// It is rewritten to its repository name, or dropped when resolve fails with ErrShortnameUnresolvable,
+// and each such entry gets one line naming it.
+// Any other resolve error is returned, so a transient failure drops no entry.
 // A repository listed twice is kept once.
 // The rewrite takes no worktree root or anchored directory, since trusted_hubs names no path.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
@@ -42,6 +49,9 @@ func RewriteShortnamesToRepositories(resolve func(shortname string) (string, err
 			value := entry.Value
 			if entry.Kind == yaml.ScalarNode && !strings.Contains(value, "/") {
 				repository, err := resolve(value)
+				if err != nil && !errors.Is(err, ErrShortnameUnresolvable) {
+					return nil, nil, nil, fmt.Errorf("rewrite trusted hubs: resolve the shortname %q: %w", value, err)
+				}
 				if err != nil {
 					rewrote = append(rewrote, fmt.Sprintf("%s %q dropped, since it lists repository names now and that shortname names none on this machine (%v); way forward: add the hub's repository as owner/repo with lym config creel from the prime", trustedHubsKey, value, err))
 					continue

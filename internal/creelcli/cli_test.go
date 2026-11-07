@@ -465,18 +465,19 @@ func TestCreelCLI(t *testing.T) {
 			}
 		})
 
-		t.Run("a hub whose repository trusted_hubs lists shows it trusted, and a listed shortname or a hub with no repository does not", func(t *testing.T) {
+		t.Run("a hub whose repository trusted_hubs lists shows it trusted, and a listed shortname, a hub with no repository or one with a forged name does not", func(t *testing.T) {
 			r := newRig(t)
-			trusted, local, bare := r.addHub(t, xx), r.addHub(t, yy), r.addHub(t, "zz")
+			trusted, local, bare, forged := r.addHub(t, xx), r.addHub(t, yy), r.addHub(t, "zz"), r.addHub(t, "vv")
 			gitkit.Git(t, trusted.hub.PrimeWorktree(), "remote", "set-url", "origin", "git@github.com:Owner/xx-repo.git")
 			gitkit.Git(t, bare.hub.PrimeWorktree(), "remote", "remove", "origin")
-			recordHubs(t, trusted, local, bare)
-			writeBoardCreelConfig(t, r.hub.Path, "trusted_hubs:\n  - owner/XX-repo\n  - "+yy+"\n  - zz\n")
+			gitkit.Git(t, forged.hub.PrimeWorktree(), "remote", "set-url", "origin", "git@github.com:Owner/(other hub, trusted orch).git")
+			recordHubs(t, trusted, local, bare, forged)
+			writeBoardCreelConfig(t, r.hub.Path, "trusted_hubs:\n  - owner/XX-repo\n  - "+yy+"\n  - zz\n  - Owner/(other hub, trusted orch)\n")
 			byName := listed(t, runCreel(r.cwd, "hubs"))
 			if byName[xx]["trusted"] != true || byName[xx]["repository"] != "Owner/xx-repo" {
 				t.Errorf("creel hubs entry of %s = %v; want trusted with the repository Owner/xx-repo", xx, byName[xx])
 			}
-			wantWhy := map[string]string{yy: "names no GitHub repository", "zz": "no readable origin remote"}
+			wantWhy := map[string]string{yy: "names no GitHub repository", "zz": "no readable origin remote", "vv": "names no GitHub repository"}
 			for shortname, why := range wantWhy {
 				entry := byName[shortname]
 				reason, _ := entry["no_repository"].(string)
@@ -1067,8 +1068,9 @@ func TestCreelCLI(t *testing.T) {
 		if err := os.MkdirAll(r.geometry.JournalDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll() = %v", err)
 		}
-		inbound := fmt.Sprintf(`{"event":"inbound","at":"2026-10-01T11:00:00Z","id":1,"from":"xx:orch","to":%q,"body":"hello","sending_hub":"/hubs/xx","sending_id":7,"trusted":true,"delivered_to":%q}`, alpha, alpha)
-		if err := os.WriteFile(filepath.Join(r.geometry.JournalDir, "2026-10-01.jsonl"), []byte(inbound+"\n"), 0o644); err != nil {
+		inbound := fmt.Sprintf(`{"event":"inbound","at":"2026-10-01T11:00:00Z","id":1,"from":"xx:orch","to":%q,"body":"hello","sending_hub":"/hubs/xx","sending_repository":"Owner/xx-repo","sending_id":7,"trusted":true,"delivered_to":%q}`, alpha, alpha)
+		noRepository := fmt.Sprintf(`{"event":"inbound","at":"2026-10-01T11:01:00Z","id":2,"from":"yy:orch","to":%q,"body":"again","sending_hub":"/hubs/yy","sending_id":8,"delivered_to":%q}`, alpha, alpha)
+		if err := os.WriteFile(filepath.Join(r.geometry.JournalDir, "2026-10-01.jsonl"), []byte(inbound+"\n"+noRepository+"\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile() = %v", err)
 		}
 		r.startDaemon(t)
@@ -1079,12 +1081,17 @@ func TestCreelCLI(t *testing.T) {
 		}
 		read := runCreel(r.cwd, "read", "--envelope")
 		messages, _ := read.fields["messages"].([]any)
-		if read.code != 0 || len(messages) != 1 {
-			t.Fatalf("creel read --envelope = (%d, %q); want exit 0 with one message", read.code, read.raw)
+		if read.code != 0 || len(messages) != 2 {
+			t.Fatalf("creel read --envelope = (%d, %q); want exit 0 with two messages", read.code, read.raw)
 		}
 		message, _ := messages[0].(map[string]any)
-		if message["from"] != "xx:orch" || message["trust"] != "trusted-orch" || message["sending_hub"] != "/hubs/xx" || message["sending_id"] != float64(7) {
-			t.Errorf("creel read --envelope message = %v; want from xx:orch bare beside trust trusted-orch, sending_hub /hubs/xx and sending_id 7", message)
+		if message["from"] != "xx:orch" || message["trust"] != "trusted-orch" || message["sending_hub"] != "/hubs/xx" || message["sending_id"] != float64(7) ||
+			message["sending_repository"] != "Owner/xx-repo" {
+			t.Errorf("creel read --envelope message = %v; want from xx:orch bare beside trust trusted-orch, sending_hub /hubs/xx, sending_id 7 and sending_repository Owner/xx-repo", message)
+		}
+		second, _ := messages[1].(map[string]any)
+		if _, present := second["sending_repository"]; present || second["body"] != "again" || second["sending_hub"] != "/hubs/yy" {
+			t.Errorf("creel read --envelope second message = %v; want the message from /hubs/yy with no sending_repository", second)
 		}
 	})
 

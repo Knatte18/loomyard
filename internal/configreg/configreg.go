@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"sort"
 	"strconv"
 
@@ -116,12 +117,33 @@ type Reinterpretation struct {
 }
 
 // repositoryOfShortname answers the repository name of the hub that shortname names in this machine's record of hubs.
+// A shortname that names no hub or several, and a hub with no valid repository, match creelconfig.ErrShortnameUnresolvable.
+// A failure to read the machine's state matches it not, so the rewrite that asked ends instead of dropping the entry.
 func repositoryOfShortname(shortname string) (string, error) {
 	registryDir, err := standalonestate.UserStateDir()
 	if err != nil {
 		return "", err
 	}
-	return hubregistry.LookupRepository(registryDir, shortname)
+	repository, err := hubregistry.LookupRepository(registryDir, shortname)
+	return repository, markUnresolvable(err)
+}
+
+// markUnresolvable wraps err as creelconfig.ErrShortnameUnresolvable when it refuses a shortname for want of a repository,
+// and returns every other err, nil included, unchanged.
+func markUnresolvable(err error) error {
+	if errors.Is(err, hubregistry.ErrUnresolved) || errors.Is(err, hubregistry.ErrNoRepository) {
+		return unresolvableShortname{err}
+	}
+	return err
+}
+
+// unresolvableShortname carries a refusal's own text and matches creelconfig.ErrShortnameUnresolvable.
+type unresolvableShortname struct{ error }
+
+func (e unresolvableShortname) Unwrap() error { return e.error }
+
+func (e unresolvableShortname) Is(target error) bool {
+	return target == creelconfig.ErrShortnameUnresolvable
 }
 
 // withLocalBounds fills the module's LocalKeys or LocalDenied from its Spec, so the registry never restates a key.

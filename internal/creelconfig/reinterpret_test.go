@@ -27,7 +27,7 @@ func TestRewriteShortnamesToRepositories(t *testing.T) {
 		if repository, ok := repositories[shortname]; ok {
 			return repository, nil
 		}
-		return "", fmt.Errorf("no hub with the shortname %q is recorded on this machine", shortname)
+		return "", fmt.Errorf("%w: no hub with the shortname %q is recorded on this machine", creelconfig.ErrShortnameUnresolvable, shortname)
 	}
 	rewrite := creelconfig.RewriteShortnamesToRepositories(resolve)
 
@@ -85,6 +85,16 @@ func TestRewriteShortnamesToRepositories(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("AResolveFailureThatIsNoUnresolvedShortnameIsReturnedAndDropsNoEntry", func(t *testing.T) {
+		t.Parallel()
+		unreadable := errors.New("the per-user state directory is unreadable")
+		failing := creelconfig.RewriteShortnamesToRepositories(func(string) (string, error) { return "", unreadable })
+		out, rewrote, _, err := failing([]byte("trusted_hubs:\n  - ly\n"), "", "")
+		if !errors.Is(err, unreadable) || out != nil || rewrote != nil {
+			t.Errorf("rewrite with a failing resolver = (%q, %q, %v); want only the resolver's error", out, rewrote, err)
+		}
+	})
 
 	t.Run("AMalformedFileIsRefusedAsInvalid", func(t *testing.T) {
 		t.Parallel()
