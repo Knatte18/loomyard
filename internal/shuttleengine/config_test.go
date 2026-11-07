@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -178,6 +179,52 @@ func TestLoadConfig_KeepWarmMaxReruns(t *testing.T) {
 			}
 			if cfg.KeepWarmMaxReruns != tt.want {
 				t.Errorf("KeepWarmMaxReruns = %d, want %d", cfg.KeepWarmMaxReruns, tt.want)
+			}
+		})
+	}
+}
+
+// TestLoadConfig_AgentsYAML pins that LoadConfig fills Config.Agents from the hub's agents.yaml.
+// It also pins that an unusable agents.yaml fails the call.
+func TestLoadConfig_AgentsYAML(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		agents  string
+		wantErr bool
+		// wantDarn is the skill list Agents must give the darn role; nil only requires that it gives one.
+		wantDarn []string
+	}{
+		{name: "absent file resolves the template", agents: ""},
+		{name: "hub file overrides a role", agents: "skills:\n  darn: [scribe:x]\n", wantDarn: []string{"scribe:x"}},
+		{name: "unusable file fails the load", agents: "efforts:\n  haiku: low\n", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			board := t.TempDir()
+			if tt.agents != "" {
+				seedLymConfig(t, board, agentconfig.ModuleName, tt.agents)
+			}
+			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: t.TempDir(), Board: board}, "shuttle")
+			if tt.wantErr {
+				if !errors.Is(err, agentconfig.ErrUnusable) {
+					t.Fatalf("LoadConfig err = %v, want one wrapping agentconfig.ErrUnusable", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			got, err := cfg.Agents.Skills(agentconfig.RoleDarn, nil)
+			if err != nil {
+				t.Fatalf("Agents.Skills(%q) error = %v", agentconfig.RoleDarn, err)
+			}
+			if tt.wantDarn != nil && !slices.Equal(got, tt.wantDarn) {
+				t.Errorf("Agents.Skills(%q) = %v, want %v", agentconfig.RoleDarn, got, tt.wantDarn)
 			}
 		})
 	}

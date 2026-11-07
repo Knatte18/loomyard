@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -24,9 +25,6 @@ import (
 // targetingRole is the agent-name role the targeting spawn carries.
 // The spawn runs in the review segment.
 const targetingRole = "targeting"
-
-// targetingSkills are the skills the targeting spawn loads before its prompt.
-var targetingSkills = []string{"scribe:prose"}
 
 // runTargeting spawns the pre-round targeting call, which reads a handoff and writes a prose seed brief.
 // Any failure, including reading the prompt template, logs a Warn and returns ("", false),
@@ -68,7 +66,7 @@ func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round
 		ModelChoice: choice,
 		Role:        targetingRole,
 		Segment:     segmentcolor.Review,
-		Skills:      targetingSkills,
+		ConfigRole:  agentconfig.RoleTreadleTargeting,
 		Round:       strconv.Itoa(round),
 	}
 

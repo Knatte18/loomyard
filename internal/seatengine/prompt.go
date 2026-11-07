@@ -241,6 +241,7 @@ func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 		Role:          SeatRole(table.RolePrefix, seat.Name),
 		Round:         table.Round,
 		Timeout:       timeout,
+		ConfigRole:    seat.ConfigRole,
 		Skills:        slices.Clone(seat.Skills),
 		Display:       render.Display{Anchor: render.AnchorOwnWindow, Window: tableWindow(table), WindowSize: len(table.Seats)},
 	}

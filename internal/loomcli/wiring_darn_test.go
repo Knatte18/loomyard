@@ -33,6 +33,7 @@ import (
 // wantDarnLandingCall is the landing call the two-tier gate config renders for the `finalize` key.
 const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 
+//lym:seam internal/agentconfig#Config
 //lym:seam internal/battenshed#InnerRunDeps
 //lym:seam internal/battenshed#LandDeps
 //lym:seam internal/battenshed#PrimeLock
@@ -385,6 +386,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 // It also covers the tree-scope verify seams and attempts it shares with darn.
 // The four seams that need reed's strand table are left to wireLanding.
 //
+//lym:seam internal/agentconfig#Config
 //lym:seam internal/battenshed#InnerRunDeps
 //lym:seam internal/battenshed#LandDeps
 //lym:seam internal/battenshed#PrimeLock

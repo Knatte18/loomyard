@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -90,6 +91,7 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []stri
 				ModelChoice:   opts.Fix,
 				Inputs:        []string{p.ReviewPath},
 				Outputs:       []string{p.FixerReportPath},
+				ConfigRole:    agentconfig.RoleBurler,
 				Skills:        skills,
 				Values:        values,
 				ForkSubagents: p.FixFan != "",

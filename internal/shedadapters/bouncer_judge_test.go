@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -105,7 +106,7 @@ func judgeFakeShuttle(round int, verdictBody, ledgerBody string, writeFocus bool
 }
 
 // TestBouncer_PromptComposition covers what both the seed and the judge call put into the spec they spawn:
-// the parent directive, the one skill, and the told specs directory the composed prompt names.
+// the parent directive, the config role, and the told specs directory the composed prompt names.
 // The rubric is interpolated as a marker VALUE, never run through the fill itself.
 // So the {{.specs_dir}} marker inside the rubric value is invisible to a rubric-bytes-only assertion;
 // only a check of the composed prompt can catch a literal marker surviving.
@@ -132,7 +133,9 @@ func TestBouncer_PromptComposition(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(role+" "+tt.name, func(t *testing.T) {
 				var shuttle *shedfake.Shuttle
+				wantConfigRole := agentconfig.RoleBouncerSeed
 				if role == "judge" {
+					wantConfigRole = agentconfig.RoleBouncerJudge
 					shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 				} else {
 					shuttle = &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -175,8 +178,8 @@ func TestBouncer_PromptComposition(t *testing.T) {
 				if shuttle.GotSpec.Segment != wantSegment {
 					t.Errorf("%s spec.Segment = %q; want %q", role, shuttle.GotSpec.Segment, wantSegment)
 				}
-				if got := shuttle.GotSpec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
-					t.Errorf("%s spec.Skills = %v; want [scribe:prose]", role, got)
+				if shuttle.GotSpec.ConfigRole != wantConfigRole || len(shuttle.GotSpec.Skills) != 0 {
+					t.Errorf("%s spec.ConfigRole, Skills = %q, %v; want %q and no skills", role, shuttle.GotSpec.ConfigRole, shuttle.GotSpec.Skills, wantConfigRole)
 				}
 			})
 		}

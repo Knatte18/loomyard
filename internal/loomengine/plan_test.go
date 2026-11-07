@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lenses"
@@ -110,8 +111,8 @@ func TestPlanTable(t *testing.T) {
 			if want := []string{wantOverview(layout)}; !slices.Equal(lead.Outputs, want) {
 				t.Errorf("lead outputs = %v; want the overview %v", lead.Outputs, want)
 			}
-			if want := []string{"scribe:prose", "scribe:testing"}; !slices.Equal(lead.Skills, want) {
-				t.Errorf("lead skills = %v; want %v", lead.Skills, want)
+			if lead.ConfigRole != agentconfig.RolePlan || len(lead.Skills) != 0 {
+				t.Errorf("lead config role/skills = %q/%v; want %q and no skills", lead.ConfigRole, lead.Skills, agentconfig.RolePlan)
 			}
 			if table.Segment != segmentcolor.Plan {
 				t.Errorf("table segment = %q; want %q", table.Segment, segmentcolor.Plan)

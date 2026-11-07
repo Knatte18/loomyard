@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -172,7 +173,10 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 	if spec.Timeout != opts.Timeout || spec.Round != opts.Round {
 		t.Errorf("spec timeout %v round %q; want %v and %q", spec.Timeout, spec.Round, opts.Timeout, opts.Round)
 	}
-	if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"}; !slices.Equal(spec.Skills, want) {
+	if spec.ConfigRole != agentconfig.RoleBurler {
+		t.Errorf("spec.ConfigRole = %q; want %q", spec.ConfigRole, agentconfig.RoleBurler)
+	}
+	if want := []string{"scribe:golang-testing"}; !slices.Equal(spec.Skills, want) {
 		t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
 	}
 	gate := shuttle.gates[fixRole]
@@ -473,8 +477,8 @@ func TestEngine_ProbeFix_And_ResumeFix(t *testing.T) {
 			if spec := shuttle.probeSpecs[fixHalfRole]; !slices.Equal(spec.OutputFiles, []string{filepath.Join(root, "fixer-report.md")}) || spec.Timeout != time.Minute {
 				t.Errorf("probe spec outputs %v timeout %v; want the fixer report and the opts' timeout", spec.OutputFiles, spec.Timeout)
 			}
-			if want := append(slices.Clone(burlerSkills), "scribe:golang-testing"); !slices.Equal(shuttle.probeSpecs[fixHalfRole].Skills, want) {
-				t.Errorf("probe spec skills = %v; want %v", shuttle.probeSpecs[fixHalfRole].Skills, want)
+			if probe := shuttle.probeSpecs[fixHalfRole]; probe.ConfigRole != agentconfig.RoleBurler || !slices.Equal(probe.Skills, []string{"scribe:golang-testing"}) {
+				t.Errorf("probe spec role %q skills %v; want %q and the language skills alone", probe.ConfigRole, probe.Skills, agentconfig.RoleBurler)
 			}
 			if tt.wantState != HalfLive {
 				if _, err := e.ResumeFix(p, RunOpts{}, digest, half); err == nil || !strings.Contains(err.Error(), "needs the fix half live") {

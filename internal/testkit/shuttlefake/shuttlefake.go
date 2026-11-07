@@ -4,6 +4,7 @@
 // Engine is inert until a field or func override scripts it, and records what Prepare was handed.
 // Reed keeps a mutex-guarded strand table, so a test sees the liveness a real reed would report.
 // Neither fake asserts anything or takes a testing.TB; a test reads the recorded fields and asserts itself.
+// Agents is the kit's one helper that takes a testing.TB.
 // SignalEngine is the kit's opt-in signal-reading engine.
 // Engine implements no session-signal reading, so a consumer keeps the readings of an engine without one.
 // The kit also holds a golden of a Claude reading in neutral types, TokencountRunReads.
@@ -17,8 +18,11 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -138,6 +142,17 @@ func TokencountRunReads() []shuttleengine.SessionRead {
 		panic(fmt.Sprintf("shuttlefake: decode tokencount-run-reads.json: %v", err))
 	}
 	return reads
+}
+
+// Agents returns the agents.yaml template, resolved as a hub with no agents.yaml would resolve it.
+// It is the Config.Agents a runner needs to start any role.
+func Agents(t testing.TB) agentconfig.Config {
+	t.Helper()
+	agents, err := agentconfig.Load(configengine.Dirs{Anchor: t.TempDir()})
+	if err != nil {
+		t.Fatalf("agentconfig.Load() error = %v", err)
+	}
+	return agents
 }
 
 // EngineName is the name EngineSet registers its engine under, and the default of the set it returns.

@@ -113,7 +113,8 @@
 //
 // # Skills and the parent directive
 //
-// The spawned roles (judge, targeting) each load `scribe:prose` through the spec's Skills.
+// The spawned roles (judge, targeting) take their skills from agents.yaml through the spec's ConfigRole.
+// Their roles are `treadle-judge` and `treadle-targeting`.
 // The skills load before the prompt is delivered.
 // Each opening stencil carries `{{.parent_directive}}` and `{{.edit_directive}}` near its top.
 // `{{.parent_directive}}` is filled with `parentdirective.Directive` from the told Options.ParentName.

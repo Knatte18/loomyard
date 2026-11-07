@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lenses"
@@ -146,8 +147,8 @@ func TestDiscussionTable(t *testing.T) {
 				if chair.ForkSubagents {
 					t.Errorf("chair ForkSubagents = true; want no forks without a lens key")
 				}
-				if !slices.Equal(chair.Skills, discussionSkills) || chair.Engine != "claude" || chair.Model == "" || chair.Effort != "high" || chair.Stencil != discussionChairStencil {
-					t.Errorf("chair skills/engine/model/effort/stencil = %v/%q/%q/%q/%q; want %v, claude, a model, high and %q", chair.Skills, chair.Engine, chair.Model, chair.Effort, chair.Stencil, discussionSkills, discussionChairStencil)
+				if chair.ConfigRole != agentconfig.RoleDiscussion || len(chair.Skills) != 0 || chair.Engine != "claude" || chair.Model == "" || chair.Effort != "high" || chair.Stencil != discussionChairStencil {
+					t.Errorf("chair config role/skills/engine/model/effort/stencil = %q/%v/%q/%q/%q/%q; want %q, no skills, claude, a model, high and %q", chair.ConfigRole, chair.Skills, chair.Engine, chair.Model, chair.Effort, chair.Stencil, agentconfig.RoleDiscussion, discussionChairStencil)
 				}
 				if role := seatengine.SeatRole(table.RolePrefix, chair.Name); chair.Name != "" || role != "discussion" {
 					t.Errorf("lead name %q and role %q; want no name and the role discussion", chair.Name, role)
@@ -160,8 +161,8 @@ func TestDiscussionTable(t *testing.T) {
 					if wantKey := (shuttleengine.ModelKey{Module: "loom", Key: "discussion_advisors", Entry: want.Name}); advisor.ModelKey != wantKey {
 						t.Errorf("advisor %q ModelKey = %+v; want %+v", want.Name, advisor.ModelKey, wantKey)
 					}
-					if advisor.Name != want.Name || advisor.Stencil != discussionAdvisorStencil || !slices.Equal(advisor.Outputs, []string{DiscussionAdvisorNotes(layout, want.Name)}) || !slices.Equal(advisor.Skills, []string{"scribe:prose"}) || advisor.Engine != "claude" || advisor.Model == "" || advisor.ForkSubagents {
-						t.Errorf("advisor %q = %+v; want its stencil, its notes file as the only output, scribe:prose alone, the claude engine, a model and no forks", want.Name, advisor)
+					if advisor.Name != want.Name || advisor.Stencil != discussionAdvisorStencil || !slices.Equal(advisor.Outputs, []string{DiscussionAdvisorNotes(layout, want.Name)}) || advisor.ConfigRole != agentconfig.RoleDiscussionAdvisor || len(advisor.Skills) != 0 || advisor.Engine != "claude" || advisor.Model == "" || advisor.ForkSubagents {
+						t.Errorf("advisor %q = %+v; want its stencil, its notes file as the only output, the discussion-advisor config role and no skills, the claude engine, a model and no forks", want.Name, advisor)
 					}
 					if role := seatengine.SeatRole(table.RolePrefix, advisor.Name); role != "discussion-"+want.Name {
 						t.Errorf("advisor %q role = %q; want %q", want.Name, role, "discussion-"+want.Name)

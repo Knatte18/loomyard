@@ -4,10 +4,10 @@ package samplerengine
 
 import (
 	"os"
-	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -45,8 +45,8 @@ func TestSessionSpec(t *testing.T) {
 		if spec.Role != Role || spec.Segment != segmentcolor.Darn {
 			t.Errorf("SessionSpec() Role, Segment = %q, %q; want %q, %q", spec.Role, spec.Segment, Role, segmentcolor.Darn)
 		}
-		if want := []string{"scribe:prose", "scribe:conversation", "scribe:code-quality", "scribe:testing"}; !slices.Equal(spec.Skills, want) {
-			t.Errorf("SessionSpec() Skills = %v; want %v", spec.Skills, want)
+		if spec.ConfigRole != agentconfig.RoleSampler || len(spec.Skills) != 0 {
+			t.Errorf("SessionSpec() ConfigRole, Skills = %q, %v; want %q and no skills", spec.ConfigRole, spec.Skills, agentconfig.RoleSampler)
 		}
 		directive, err := parentdirective.Directive(stencilsDir, "hub:orch", true)
 		if err != nil {

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -73,30 +74,28 @@ func TestEngine_Review_TableShape(t *testing.T) {
 		// declaredBullet, when set, is written to the decision record and must appear in the reviewer's instruction files.
 		declaredBullet string
 	}{
-		{name: "solo reviewer", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole, wantSkills: burlerSkills},
+		{name: "solo reviewer", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole},
 		{
 			name:           "declared PATTERN change",
 			wantSegment:    segmentcolor.Review,
 			wantRole:       reviewHalfRole,
-			wantSkills:     burlerSkills,
 			declaredBullet: "- `PATTERN-example-entry` — adds: the new rule text",
 		},
-		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole, wantForkFlag: true, wantSkills: burlerSkills},
-		{name: "merge-segment reviewer", segment: segmentcolor.Merge, rolePrefix: "merge", wantSegment: segmentcolor.Merge, wantRole: "merge-" + reviewHalfRole, wantSkills: burlerSkills},
+		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole, wantForkFlag: true},
+		{name: "merge-segment reviewer", segment: segmentcolor.Merge, rolePrefix: "merge", wantSegment: segmentcolor.Merge, wantRole: "merge-" + reviewHalfRole},
 		{
 			name:           "code round",
 			languageSkills: []string{"scribe:golang-testing", "scribe:testing"},
 			codeRound:      true,
 			wantSegment:    segmentcolor.Review,
 			wantRole:       reviewHalfRole,
-			wantSkills:     []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"},
+			wantSkills:     []string{"scribe:golang-testing", "scribe:testing"},
 		},
 		{
 			name:           "non-code round with a language list",
 			languageSkills: []string{"scribe:golang-testing", "scribe:testing"},
 			wantSegment:    segmentcolor.Review,
 			wantRole:       reviewHalfRole,
-			wantSkills:     burlerSkills,
 		},
 	}
 	for _, tt := range tests {
@@ -153,6 +152,9 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			}
 			if spec.Segment != tt.wantSegment {
 				t.Errorf("spec.Segment = %q; want %q", spec.Segment, tt.wantSegment)
+			}
+			if spec.ConfigRole != agentconfig.RoleBurler {
+				t.Errorf("spec.ConfigRole = %q; want %q", spec.ConfigRole, agentconfig.RoleBurler)
 			}
 			if !slices.Equal(spec.Skills, tt.wantSkills) {
 				t.Errorf("spec.Skills = %v; want %v", spec.Skills, tt.wantSkills)
@@ -367,8 +369,8 @@ func TestEngine_ProbeReview_And_ResumeReview(t *testing.T) {
 			if spec := shuttle.probeSpecs[reviewHalfRole]; !slices.Equal(spec.OutputFiles, []string{filepath.Join(root, "review.md")}) || spec.Timeout != time.Minute {
 				t.Errorf("probe spec outputs %v timeout %v; want the review file and the opts' timeout", spec.OutputFiles, spec.Timeout)
 			}
-			if want := append(slices.Clone(burlerSkills), "scribe:golang-testing"); !slices.Equal(shuttle.probeSpecs[reviewHalfRole].Skills, want) {
-				t.Errorf("probe spec skills = %v; want %v", shuttle.probeSpecs[reviewHalfRole].Skills, want)
+			if probe := shuttle.probeSpecs[reviewHalfRole]; probe.ConfigRole != agentconfig.RoleBurler || !slices.Equal(probe.Skills, []string{"scribe:golang-testing"}) {
+				t.Errorf("probe spec role %q skills %v; want %q and the language skills alone", probe.ConfigRole, probe.Skills, agentconfig.RoleBurler)
 			}
 			if len(shuttle.started) != 0 {
 				t.Errorf("ProbeReview started %v; want nothing started", shuttle.started)

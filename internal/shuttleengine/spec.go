@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
@@ -129,7 +130,12 @@ type Spec struct {
 	// Such a shell also keeps a gated waiting turn end waiting, with no nudge and no expiry.
 	// It likewise keeps an ungated wait from expiring.
 	AwaitedShellPrefixes []string
-	// Skills names the provider-neutral skills shuttle loads into the fresh session.
+	// ConfigRole, when non-empty, names the agents.yaml role the session runs as.
+	// Start puts the role's skill list ahead of Skills, dropping repeats, and refuses a role the config holds no list for.
+	// An engine reads the role's efforts for the launch and for the subagents the session spawns.
+	// Empty leaves Skills as the whole list.
+	ConfigRole agentconfig.Role
+	// Skills names the provider-neutral skills shuttle loads into the fresh session, after ConfigRole's list.
 	// They all load in one turn, before the prompt is delivered.
 	// The engine realizes the list through its skill-loader capability.
 	// An engine without that capability refuses a non-empty list at start.

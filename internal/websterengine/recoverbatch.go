@@ -17,12 +17,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -84,7 +84,8 @@ type RecoverDeps struct {
 	// A nil ParentBranch (standalone mode) accepts no merge commit between the report's head_sha and HEAD.
 	ParentBranch ParentBranchFunc
 
-	// LanguageSkills are the hub's language skills the recovery strand loads after roleSkills; empty for none.
+	// LanguageSkills are the hub's language skills the recovery strand loads after the webster role's agents.yaml skills.
+	// Empty means none.
 	LanguageSkills []string
 
 	// GateTiers are the hub's rendered tier and gate-list lines that fill the recovery prompt's gate_tiers marker.
@@ -328,7 +329,8 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		Prompt:      string(prompt),
 		OutputFiles: []string{reportPath},
 		ModelChoice: choice,
-		Skills:      languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
+		ConfigRole:  agentconfig.RoleWebster,
+		Skills:      deps.LanguageSkills,
 		Role:        string(RoleRecovery),
 		Segment:     segmentcolor.Webster,
 		Round:       batchName,

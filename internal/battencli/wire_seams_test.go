@@ -188,6 +188,7 @@ var intentionallyNil = map[string]string{
 	"Sampler.Sleep":                       "sampler-only seam, batten runs no sampler row",
 }
 
+//lym:seam internal/agentconfig#Config
 //lym:seam internal/battenshed#InnerRunDeps
 //lym:seam internal/battenshed#LandDeps
 //lym:seam internal/battenshed#PrimeLock

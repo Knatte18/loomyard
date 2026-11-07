@@ -1,4 +1,4 @@
-// config_test.go verifies Load's degrade and content-failure paths for language.yaml, and AppendSkills' ordering.
+// config_test.go verifies Load's degrade and content-failure paths for language.yaml.
 // It seeds its fixtures with os.MkdirAll and os.WriteFile under t.TempDir, so the tests spawn no process.
 
 package languageconfig_test
@@ -239,43 +239,4 @@ func boardFile(content string) func(t *testing.T, board, anchor string) {
 	return func(t *testing.T, board, _ string) {
 		writeFile(t, configengine.ConfigFile(board, "language"), content)
 	}
-}
-
-func TestAppendSkills(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	own := []string{"scribe:prose", "scribe:code-quality"}
-	tests := []struct {
-		name     string
-		language []string
-		want     []string
-	}{
-		{"empty language list", nil, []string{"scribe:prose", "scribe:code-quality"}},
-		{"language appended in order", []string{"scribe:x", "scribe:y"}, []string{"scribe:prose", "scribe:code-quality", "scribe:x", "scribe:y"}},
-		{"repeat appears once at its first position", []string{"scribe:x", "scribe:y", "scribe:x"}, []string{"scribe:prose", "scribe:code-quality", "scribe:x", "scribe:y"}},
-		{"own skill is skipped", []string{"scribe:code-quality", "scribe:x"}, []string{"scribe:prose", "scribe:code-quality", "scribe:x"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := languageconfig.AppendSkills(own, tt.language); !slices.Equal(got, tt.want) {
-				t.Errorf("AppendSkills = %q, want %q", got, tt.want)
-			}
-		})
-	}
-
-	t.Run("spare capacity of own is untouched", func(t *testing.T) {
-		t.Parallel()
-		backing := []string{"scribe:prose", "sentinel"}
-		short := backing[:1]
-
-		got := languageconfig.AppendSkills(short, []string{"scribe:x"})
-
-		if want := []string{"scribe:prose", "scribe:x"}; !slices.Equal(got, want) {
-			t.Errorf("AppendSkills = %q, want %q", got, want)
-		}
-		if backing[1] != "sentinel" {
-			t.Errorf("own's backing array was written: %q", backing)
-		}
-	})
 }

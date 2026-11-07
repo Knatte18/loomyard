@@ -36,6 +36,7 @@ Read no more of the code than that.
 
 Start with explore subagents.
 List every question the reading raises, such as where a symbol is used or which package owns a concern, and send the independent ones as one batch to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`, all launched together in one message.
+Give each Agent call the `effort` that the subagent passage of your system prompt names.
 A fresh subagent sees none of this session, so each prompt carries its whole question and asks for a short answer naming files and spans.
 A fork does not serve here: it inherits this session's whole context.
 

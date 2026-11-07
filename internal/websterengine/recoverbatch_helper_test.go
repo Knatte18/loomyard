@@ -87,7 +87,7 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 	// webster's prompts are read from disk at call time,
 	// so the fixture's hub must carry them before RecoverBatch reaches RenderRecoveryPrompt.
 	seedHubStencils(t, hubPath)
-	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
+	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30, Agents: shuttlefake.Agents(t)}
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), worktree, worktree, shuttleCfg)
 
 	roles := map[websterengine.Role]shuttleengine.ModelChoice{

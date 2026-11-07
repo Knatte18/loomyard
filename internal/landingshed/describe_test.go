@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -91,8 +92,11 @@ func requireDescribeLead(t *testing.T, table seatengine.Table, wantOutput string
 	if want := []string{wantOutput}; !slices.Equal(lead.Outputs, want) {
 		t.Errorf("lead outputs = %v; want %v", lead.Outputs, want)
 	}
-	if want := []string{"scribe:prose"}; !slices.Equal(lead.Skills, want) {
-		t.Errorf("lead skills = %v; want %v", lead.Skills, want)
+	if lead.ConfigRole != agentconfig.RoleDescriber {
+		t.Errorf("lead ConfigRole = %q; want %q", lead.ConfigRole, agentconfig.RoleDescriber)
+	}
+	if len(lead.Skills) != 0 {
+		t.Errorf("lead skills = %v; want none beyond the role's", lead.Skills)
 	}
 	if table.Segment != segmentcolor.Describe || table.Interactive || lead.ForkSubagents {
 		t.Errorf("table segment/interactive/fork = %q/%v/%v; want %q/false/false", table.Segment, table.Interactive, lead.ForkSubagents, segmentcolor.Describe)
@@ -161,8 +165,8 @@ func TestDescribeSpec_SkillsAndParentDirective(t *testing.T) {
 			if tt.parentName == "" && strings.Contains(prompt, "Your parent is") {
 				t.Errorf("prompt %q carries the parent variant; want the no-parent variant", prompt)
 			}
-			if got := strings.Join(table.Chair().Skills, ","); got != "scribe:prose" {
-				t.Errorf("lead.Skills = %q; want scribe:prose", got)
+			if got := table.Chair().ConfigRole; got != agentconfig.RoleDescriber {
+				t.Errorf("lead.ConfigRole = %q; want %q", got, agentconfig.RoleDescriber)
 			}
 		})
 	}

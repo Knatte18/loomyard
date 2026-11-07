@@ -15,6 +15,7 @@ import (
 
 // allowedImports lists the only non-stdlib import paths production code in this package may use.
 var allowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/agentconfig",
 	"github.com/Knatte18/loomyard/internal/editdirective",
 	"github.com/Knatte18/loomyard/internal/lock",
 	"github.com/Knatte18/loomyard/internal/logger",

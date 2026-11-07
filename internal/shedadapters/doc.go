@@ -122,7 +122,7 @@
 //     It also applies when no gating finding is open in this round's ledger and an earlier one.
 //     The guard only narrows CIRCLING to CONTINUE and reads only on-disk state.
 //     A round that already has a decision file stays as recorded.
-//     Roles: the judge and the seed spawn each load the `scribe:prose` skill (bouncerJudgeSkills, bouncerSeedSkills).
+//     Roles: the judge and the seed spawn take their skills from agents.yaml (roles `bouncer-judge`, `bouncer-seed`).
 //     Both prompts carry the parent directive that parentdirective.Directive renders from BouncerConfig.ParentName.
 //     The directive is in its non-interactive form.
 //     An empty ParentName renders the no-parent variant.

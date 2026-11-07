@@ -68,6 +68,8 @@ type sessionScope struct {
 	AutoMemoryEnabled *bool `json:"autoMemoryEnabled,omitempty"`
 	// Permissions, when set, carries the tools the session is denied.
 	Permissions *scopePermissions `json:"permissions,omitempty"`
+	// Env holds the environment variables the session sets, such as the effort its subagents fall back to.
+	Env map[string]string `json:"env,omitempty"`
 }
 
 // scopePermissions is the permissions object of a scoped settings document:

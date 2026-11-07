@@ -204,7 +204,7 @@ func TestStartLLMDriverArm(t *testing.T) {
 	t.Run("a requirements refusal names the driver key and adds no strand", func(t *testing.T) {
 		reed := &shuttlefake.Reed{}
 		root := t.TempDir()
-		runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
+		runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30, Agents: shuttlefake.Agents(t)})
 		c := newTestLLMArmReceiver(t, runnerDriverStarter{runner: runner}, &fakeDriverPaneProbeForArm{})
 
 		_, err := c.startLLMDriverArm(driverStrandNone, "", "self")

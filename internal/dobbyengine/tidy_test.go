@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -340,8 +341,8 @@ func TestTidyPrompt(t *testing.T) {
 	if spec.Segment != segmentcolor.Coordinator {
 		t.Errorf("TidySpec().Segment = %v; want %v", spec.Segment, segmentcolor.Coordinator)
 	}
-	if !slices.Equal(spec.Skills, []string{"ly:board"}) {
-		t.Errorf("TidySpec().Skills = %v; want [ly:board]", spec.Skills)
+	if spec.ConfigRole != agentconfig.RoleBoardTidy || len(spec.Skills) != 0 {
+		t.Errorf("TidySpec().ConfigRole, Skills = %q, %v; want %q and no skills", spec.ConfigRole, spec.Skills, agentconfig.RoleBoardTidy)
 	}
 	if spec.Role != BoardTidyRole || !slices.Equal(spec.OutputFiles, []string{"/report.md"}) || spec.Timeout != 30*time.Minute {
 		t.Errorf("TidySpec() = role %q, outputs %v, timeout %v; want the role, the report and the timeout", spec.Role, spec.OutputFiles, spec.Timeout)

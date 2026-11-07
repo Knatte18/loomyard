@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -33,9 +34,6 @@ import (
 
 // orchStrandName is the role the orchestrator strand is added and addressed by in the prime's reed session.
 const orchStrandName = agentname.RoleOrch
-
-// orchSkills are the skills shuttle loads into the orch session before its prompt pointer on every launch path.
-var orchSkills = []string{"scribe:prose", "scribe:conversation", "ly:board", "ly:board-policy"}
 
 // Report "action" values.
 const (
@@ -186,6 +184,7 @@ func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (startedSess
 // Its one output file is a sentinel that is never written, so the run never finishes on its own.
 // It carries the configured permission mode verbatim and authorizes forks,
 // so the hosted hub can spawn forks beside typed subagents.
+// Its skills come from the orch role in agents.yaml, which shuttle loads before the prompt pointer on every launch path.
 func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 	sentinel := filepath.Join(c.paths.Dir, "session-"+now.UTC().Format("20060102T150405Z")+".never")
 	return shuttleengine.Spec{
@@ -201,7 +200,7 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 		ColorByCaller:  true,
 		Display:        render.Display{Anchor: render.AnchorOwnWindow, Focus: true},
 
-		Skills:           orchSkills,
+		ConfigRole:       agentconfig.RoleOrch,
 		SkillLoadTimeout: c.cfg.HandoffTimeout(),
 
 		ContextAfterCompaction: resumeContextCommand(c.location.AnchorPath()),

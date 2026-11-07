@@ -63,8 +63,8 @@ type Profile struct {
 	// Segment is the segment both halves' sessions are colored by; the zero value keeps segmentcolor.Review.
 	Segment segmentcolor.Segment
 	// LanguageSkills marks a code round.
-	// When true, every seat of the half loads burlerSkills followed by the engine's language skills;
-	// when false, burlerSkills alone.
+	// When true, every seat of the half loads the burler role's skills followed by the engine's language skills;
+	// when false, the role's skills alone.
 	// It only adds skills to a seat's load turn and changes no rubric, lens, fan or gate.
 	LanguageSkills bool
 	// RolePrefix leads both halves' session roles, as `<RolePrefix>-burler-review` and `<RolePrefix>-burler-fix`;

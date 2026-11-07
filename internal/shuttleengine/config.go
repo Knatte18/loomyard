@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
@@ -61,6 +62,11 @@ type Config struct {
 	// RefuseRaw lists the command prefixes the shell guard refuses to run raw, from the hub's gate config.
 	// No config file sets it: an engine fills it on its own copy of the config, so it has no yaml key.
 	RefuseRaw []string `yaml:"-"`
+
+	// Agents is the hub's agents.yaml, loaded from the same directories as shuttle.yaml.
+	// It answers the skills of a spec's config role and the efforts an engine gives a launch and its subagents.
+	// No shuttle.yaml key sets it.
+	Agents agentconfig.Config `yaml:"-"`
 }
 
 // StartAllowance returns the longest a start may take:
@@ -108,6 +114,7 @@ func ConfigSpec() configengine.Spec {
 // An absent config file in every layer resolves the embedded template;
 // a layer file that exists but is invalid still errors.
 // module names the config file to read, so a caller may load a sibling file with shuttle's shape.
+// It also loads agents.yaml under dirs into Agents, and an agents.yaml that fails to load fails the call.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -156,6 +163,12 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	if cfg.SubmitConfirmTimeoutS <= 0 {
 		return Config{}, fmt.Errorf("shuttle config: submit_confirm_timeout_s must be positive, got %d", cfg.SubmitConfirmTimeoutS)
 	}
+
+	agents, err := agentconfig.Load(dirs)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Agents = agents
 
 	return cfg, nil
 }

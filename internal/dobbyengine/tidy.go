@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -27,8 +28,6 @@ const (
 	BoardTidyRole = "board-tidy"
 	// tidyStencilName is the registered name of the board-tidy agent's opening stencil.
 	tidyStencilName = "beam-template-board-tidy"
-	// tidySkill is the one skill the agent needs: the board, read and amended through `lym board`.
-	tidySkill = "ly:board"
 )
 
 // TidyShuttle is the part of shuttle the board-tidy agent runs through.
@@ -84,13 +83,13 @@ func TidyPrompt(stencilsDir string, in TidyPromptInput) (string, error) {
 
 // TidySpec composes the shuttle spec the board-tidy agent launches from.
 // OutputFiles holds reportPath alone.
-// Skills holds only `ly:board`, the one skill the agent needs to read and amend the board.
+// ConfigRole is the board-tidy role, whose skills come from agents.yaml (role `board-tidy`).
 // Segment is the coordinator, since the agent acts for the beam's driver,
 // and the agent is autonomous with no parent session to message.
 func TidySpec(prompt, reportPath string, model shuttleengine.ModelChoice, timeout time.Duration) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:      prompt,
-		Skills:      []string{tidySkill},
+		ConfigRole:  agentconfig.RoleBoardTidy,
 		OutputFiles: []string{reportPath},
 		ModelChoice: model,
 		Timeout:     timeout,

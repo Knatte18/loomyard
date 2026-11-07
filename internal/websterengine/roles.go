@@ -27,10 +27,6 @@ const (
 	RoleRecovery Role = "recovery"
 )
 
-// roleSkills are the skills the master and the recovery strand both load, in order.
-// Forks get none: they inherit the master's context.
-var roleSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
-
 // MerriamStrandRole is the reed strand role the Master session runs under,
 // so reed names the strand `<shortname>:<slug>:webster`.
 // The webster.yaml model key of the Master session is `master`, a separate name.

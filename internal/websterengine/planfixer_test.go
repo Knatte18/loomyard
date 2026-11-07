@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -178,8 +179,12 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 		if spec.Role != "plan-fixer" || spec.ModelChoice.Model != "master-model" || !slices.Equal(spec.OutputFiles, []string{replyPath}) {
 			t.Errorf("spec role %q, model %q, output files %v; want plan-fixer, master-model, [%s]", spec.Role, spec.ModelChoice.Model, spec.OutputFiles, replyPath)
 		}
-		if !slices.Contains(spec.Skills, "scribe:prose") {
-			t.Errorf("spec skills = %v; want the role skills", spec.Skills)
+		wantSkills, err := shuttlefake.Agents(t).Skills(agentconfig.RoleWebster, nil)
+		if err != nil {
+			t.Fatalf("Skills(webster) error = %v", err)
+		}
+		if spec.ConfigRole != agentconfig.RoleWebster || !slices.Equal(spec.Skills, wantSkills) {
+			t.Errorf("spec config role %q, skills %v; want %q and its agents.yaml skills %v", spec.ConfigRole, spec.Skills, agentconfig.RoleWebster, wantSkills)
 		}
 		for _, want := range []string{websterengine.ConflictRecordPath(deps.Geom.ScratchDir), replyPath, deps.Geom.SpecsDir + "/loom/loom-plan-spec.md", "ly:orch"} {
 			if !strings.Contains(fx.Engine.LastPrompt, want) {

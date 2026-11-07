@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lensreport"
@@ -126,6 +127,7 @@ func (e *Engine) assistSeat(p *Profile, opts RunOpts, files reviewFilePaths, ski
 		ModelChoice: opts.Assist,
 		ModelKey:    opts.AssistKey,
 		Outputs:     []string{report},
+		ConfigRole:  agentconfig.RoleBurler,
 		Skills:      skills,
 		Values:      reviewSeatValues(&assist, files),
 		Gate:        shuttleengine.GateSpec{ReviewGateEntry(report)},

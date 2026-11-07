@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -166,8 +167,8 @@ func TestBuildReflectionSpec_SkillsAndParentDirective(t *testing.T) {
 			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
 				t.Errorf("Prompt = %q; want the no-parent variant", spec.Prompt)
 			}
-			if got := strings.Join(spec.Skills, ","); got != "scribe:prose" {
-				t.Errorf("Skills = %q; want scribe:prose", got)
+			if spec.ConfigRole != agentconfig.RoleFriction || len(spec.Skills) != 0 {
+				t.Errorf("ConfigRole, Skills = %q, %v; want %q and no skills", spec.ConfigRole, spec.Skills, agentconfig.RoleFriction)
 			}
 		})
 	}

@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -1199,20 +1200,30 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			},
 		},
 		{
-			name: "no language list spawns the strand with the role skills alone",
+			name: "no language list spawns the strand with the webster role and no skills of its own",
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 				requireSpawned(t, spawned, err)
-				if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(fx.Engine.LastSpec.Skills, want) {
-					t.Errorf("recovery spec Skills = %v; want %v", fx.Engine.LastSpec.Skills, want)
+				if got := fx.Engine.LastSpec.ConfigRole; got != agentconfig.RoleWebster {
+					t.Errorf("recovery spec ConfigRole = %q; want %q", got, agentconfig.RoleWebster)
+				}
+				want, skillsErr := shuttlefake.Agents(t).Skills(agentconfig.RoleWebster, nil)
+				if skillsErr != nil {
+					t.Fatalf("Skills(webster) error = %v", skillsErr)
+				}
+				if !slices.Equal(fx.Engine.LastSpec.Skills, want) {
+					t.Errorf("recovery spec Skills = %v; want the webster role's agents.yaml skills %v", fx.Engine.LastSpec.Skills, want)
 				}
 			},
 		},
 		{
-			name:  "a told language list follows the role skills",
+			name:  "a told language list is the spec's skills",
 			setup: func(fx *recoverFixture) { fx.Deps.LanguageSkills = []string{"scribe:golang-testing"} },
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 				requireSpawned(t, spawned, err)
-				want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"}
+				want, skillsErr := shuttlefake.Agents(t).Skills(agentconfig.RoleWebster, []string{"scribe:golang-testing"})
+				if skillsErr != nil {
+					t.Fatalf("Skills(webster) error = %v", skillsErr)
+				}
 				if !slices.Equal(fx.Engine.LastSpec.Skills, want) {
 					t.Errorf("recovery spec Skills = %v; want %v", fx.Engine.LastSpec.Skills, want)
 				}

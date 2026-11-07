@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -693,9 +694,9 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 		language   []string
 		wantSkills string
 	}{
-		{"with parent", "ab:cd:webster", "ab:cd:webster", nil, "scribe:prose,scribe:code-quality,scribe:testing"},
-		{"no parent", "", "No parent is recorded", nil, "scribe:prose,scribe:code-quality,scribe:testing"},
-		{"language skills follow its own", "", "No parent is recorded", []string{"scribe:golang-testing", "scribe:code-quality"}, "scribe:prose,scribe:code-quality,scribe:testing,scribe:golang-testing"},
+		{"with parent", "ab:cd:webster", "ab:cd:webster", nil, ""},
+		{"no parent", "", "No parent is recorded", nil, ""},
+		{"language skills only", "", "No parent is recorded", []string{"scribe:golang-testing", "scribe:code-quality"}, "scribe:golang-testing,scribe:code-quality"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -716,6 +717,9 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 			}
 			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
 				t.Errorf("Prompt = %q; want the no-parent variant", spec.Prompt)
+			}
+			if spec.ConfigRole != agentconfig.RoleConflictResolver {
+				t.Errorf("ConfigRole = %q; want %q", spec.ConfigRole, agentconfig.RoleConflictResolver)
 			}
 			if got := strings.Join(spec.Skills, ","); got != tt.wantSkills {
 				t.Errorf("Skills = %q; want %q", got, tt.wantSkills)

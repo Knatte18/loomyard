@@ -473,6 +473,9 @@
 // The palette-to-command mapping is provider grammar and lives in the engine.
 //
 // Skill loading: Spec.Skills names provider-neutral skills.
+// A spec with a ConfigRole has that role's agents.yaml list put ahead of them, repeats dropped.
+// Start refuses a role the config holds no list for.
+// Config.Agents carries the loaded agents.yaml.
 // Shuttle loads them into a fresh session, all in one turn, before the prompt.
 // It needs the optional SkillLoader capability.
 // A spec that names skills on an engine without it is refused before any run directory exists.

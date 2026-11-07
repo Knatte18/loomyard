@@ -115,6 +115,9 @@ func validateSessionID(id string) error {
 // It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID, the prompt-cache TTL config, the keep-warm caps and the batching nudge before writing any artifacts.
 // With the batching nudge on it also seeds the nudge's state file beside the settings.
 // The settings carry the session's scope, resolved from claude.yaml's session_scope, spec.Skills and spec.Role.
+// A spec with no effort takes the one cfg.Agents gives spec.ConfigRole on spec.Model.
+// The settings set the effort a subagent of the role falls back to,
+// and the appended system prompt tells the session the effort and skills to give each subagent it spawns.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	claude, err := loadConfigOrRefuse(c.dirs)
 	if err != nil {
@@ -128,6 +131,8 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 	cfg.RefuseRaw = gate.RefuseRaw
 
+	// A spec whose model-spec names no effort takes the one agents.yaml gives its role and model.
+	spec.Effort = effortFor(cfg.Agents, spec.ConfigRole, spec.Effort, spec.Model)
 	// Reject unrealizable effort before any artifact is written (claude ignores bad efforts at launch).
 	if err := validateEffort(spec.Effort); err != nil {
 		return shuttleengine.Launch{}, err
@@ -215,6 +220,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 
 	scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role)
+	scope.Env = subagentEffortEnv(cfg.Agents, spec.ConfigRole)
 	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, creelFlagDirForHook, scope)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
@@ -246,6 +252,9 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish)
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
 	passages := shuttleengine.StandingPassages(c.dirs.Board, "claude", spec.Role)
+	if passage := subagentPassage(cfg.Agents, spec.ConfigRole, spec.Skills); passage != "" {
+		passages = append([]string{passage}, passages...)
+	}
 	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText(notice, passages)), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write append system prompt: %w", err)
 	}

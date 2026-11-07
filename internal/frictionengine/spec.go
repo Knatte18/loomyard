@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -21,9 +22,6 @@ const reflectionStencilName = "friction-template-reflection"
 
 // frictionRole is the agent-name role this module's reflection spawn carries.
 const frictionRole = "friction"
-
-// frictionSkills are the skills the reflection agent loads before its prompt.
-var frictionSkills = []string{"scribe:prose"}
 
 // buildReflectionSpec builds the shuttleengine.Spec for the reflection run.
 // notes is the sorted set of note file names the scan found, and reportPath is the agent's mandatory output file.
@@ -82,7 +80,7 @@ func buildReflectionSpec(deps Deps, notes []string, reportPath string) (shuttlee
 		ForkSubagents: false,
 		Role:          frictionRole,
 		Segment:       segmentcolor.Landing,
-		Skills:        frictionSkills,
+		ConfigRole:    agentconfig.RoleFriction,
 		Timeout:       deps.Timeout,
 	}, nil
 }

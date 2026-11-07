@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -34,6 +35,7 @@ func promptTable() Table {
 	table.Values = map[string]string{"topic": "the topic"}
 	table.Seats[0].Inputs = []string{"/w/a1.md", "/w/a2.md"}
 	table.Seats[0].ModelChoice = shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "high", Version: "5"}
+	table.Seats[0].ConfigRole = agentconfig.RoleBurler
 	table.Seats[0].Skills = []string{"scribe:prose"}
 	table.Seats[1].Inputs = []string{"/w/in.md"}
 	table.Seats[1].Values = map[string]string{"focus": "the focus"}
@@ -145,8 +147,8 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	if !chairSpec.Interactive || chairSpec.KeepPane || chairSpec.QuietHold {
 		t.Errorf("chair spec Interactive/KeepPane/QuietHold = %v/%v/%v, want true/false/false", chairSpec.Interactive, chairSpec.KeepPane, chairSpec.QuietHold)
 	}
-	if !slices.Equal(chairSpec.Skills, []string{"scribe:prose"}) {
-		t.Errorf("chair spec skills = %v, want the seat's skills", chairSpec.Skills)
+	if chairSpec.ConfigRole != agentconfig.RoleBurler || !slices.Equal(chairSpec.Skills, []string{"scribe:prose"}) {
+		t.Errorf("chair spec config role/skills = %q/%v, want the seat's config role and skills", chairSpec.ConfigRole, chairSpec.Skills)
 	}
 
 	advisorSpec := seatSpec(table, table.Seats[1], advisorPrompt)

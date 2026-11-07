@@ -29,7 +29,7 @@ var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/pullrequest",
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/editdirective",
-	"github.com/Knatte18/loomyard/internal/languageconfig",
+	"github.com/Knatte18/loomyard/internal/agentconfig",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/parentdirective",
 	"github.com/Knatte18/loomyard/internal/seatengine",

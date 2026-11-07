@@ -8,6 +8,7 @@ package shedarbiter
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -26,9 +27,6 @@ const AbsentPath = "none"
 
 // verdictGateAttempts is how many times the verdict gate re-prompts an arbiter whose verdict file does not read.
 const verdictGateAttempts = 2
-
-// skills is the skill list the arbiter loads before its launch prompt: none, since the prompt is its whole procedure.
-var skills = []string{}
 
 // PromptInput carries what the arbiter stencil's markers are filled from.
 // Recipe, ReportPath, BriefPath, CaseBriefPath, DecisionRecordPath, SupportLogPath and AmendmentTarget may be empty.
@@ -100,7 +98,8 @@ func pathOrNone(path string) string {
 // Spec composes the shuttleengine.Spec the arbiter session launches from.
 // It takes a composed prompt, the verdict path and the resolved arbiter settings.
 //
-// Prompt is the argument verbatim, and Skills is empty, so the prompt is the arbiter's whole procedure.
+// Prompt is the argument verbatim, so the prompt is the arbiter's whole procedure.
+// ConfigRole is the arbiter role, whose skills come from agents.yaml (role `arbiter`).
 // OutputFiles holds verdictPath alone, so the completion check reads the verdict file,
 // and a resumed run drops a finished strand.
 // ModelChoice is the settings' choice whole, carrying the resolved engine, provider model id, effort and version.
@@ -116,7 +115,7 @@ func pathOrNone(path string) string {
 func Spec(prompt, verdictPath string, settings sheddriver.ArbiterSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:          prompt,
-		Skills:          skills,
+		ConfigRole:      agentconfig.RoleArbiter,
 		OutputFiles:     []string{verdictPath},
 		ModelChoice:     settings.ModelChoice,
 		Timeout:         settings.Timeout,

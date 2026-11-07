@@ -11,8 +11,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -28,9 +28,6 @@ const prReviewerRole = "pr-reviewer"
 
 // prReviewStencilName is the registered name of the PR-Review session's opening prompt.
 const prReviewStencilName = "landing-template-pr-review"
-
-// prReviewerSkills are the skills the PR-Review session loads before its prompt.
-var prReviewerSkills = []string{"scribe:prose", "scribe:conversation"}
 
 // prSessions is the seam the PR-Review row starts and stops its interactive session through.
 type prSessions interface {
@@ -159,7 +156,8 @@ func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, erro
 		DenyPublish: true,
 		Role:        prReviewerRole,
 		Segment:     segmentcolor.Landing,
-		Skills:      languageconfig.AppendSkills(prReviewerSkills, p.deps.LanguageSkills),
+		ConfigRole:  agentconfig.RolePRReviewer,
+		Skills:      p.deps.LanguageSkills,
 	}, nil
 }
 

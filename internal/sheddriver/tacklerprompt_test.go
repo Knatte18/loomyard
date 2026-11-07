@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -156,8 +157,8 @@ func TestTacklerSpec(t *testing.T) {
 	if got.NameOverride != "" {
 		t.Errorf("tacklerSpec().NameOverride = %q; want empty so a second attempt numbers its role", got.NameOverride)
 	}
-	if len(got.Skills) != 0 {
-		t.Errorf("tacklerSpec().Skills = %v; want none", got.Skills)
+	if got.ConfigRole != agentconfig.RoleTackler || len(got.Skills) != 0 {
+		t.Errorf("tacklerSpec().ConfigRole, Skills = %q, %v; want %q and no skills", got.ConfigRole, got.Skills, agentconfig.RoleTackler)
 	}
 	if got.Segment != segmentcolor.Coordinator {
 		t.Errorf("tacklerSpec().Segment = %q; want %q", got.Segment, segmentcolor.Coordinator)

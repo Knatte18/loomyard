@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -94,9 +95,8 @@ func TestDarnSpec(t *testing.T) {
 		wantSkills      []string
 	}{
 		{
-			name:       "first spawn renders the prior-work token as none",
-			configure:  func(in *DarnInputs) {},
-			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
+			name:      "first spawn renders the prior-work token as none",
+			configure: func(in *DarnInputs) {},
 			wantInPrompt: func(in DarnInputs) []string {
 				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath, in.ConditionStopMarkerPath, `model: "haiku"`, ungatedTestStep, ungatedSubagentGate}
 			},
@@ -105,9 +105,8 @@ func TestDarnSpec(t *testing.T) {
 			wantNoParent:    true,
 		},
 		{
-			name:       "a cold fixer on the verify gate has the writer and its subagents run no gate",
-			configure:  func(in *DarnInputs) { in.GateFixed = true },
-			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
+			name:      "a cold fixer on the verify gate has the writer and its subagents run no gate",
+			configure: func(in *DarnInputs) { in.GateFixed = true },
 			wantInPrompt: func(in DarnInputs) []string {
 				return []string{`model: "haiku"`, gatedNoGateStep}
 			},
@@ -125,17 +124,16 @@ func TestDarnSpec(t *testing.T) {
 			wantInPrompt: func(in DarnInputs) []string {
 				return []string{"the verify gate failed on TestCache", "the-parent", filepath.Join(in.FrictionDir, "Darn-Write.md")}
 			},
-			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
 		},
 		{
-			name: "language skills follow the writer's own, a repeat or an own skill appearing once",
+			name: "the seat's skills are the hub's language skills alone, the role's coming from agents.yaml",
 			configure: func(in *DarnInputs) {
-				in.LanguageSkills = []string{"scribe:golang-testing", "scribe:testing", "scribe:golang-testing"}
+				in.LanguageSkills = []string{"scribe:golang-testing"}
 			},
 			wantInPrompt: func(in DarnInputs) []string { return nil },
 			wantNone:     1,
 			wantNoParent: true,
-			wantSkills:   []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"},
+			wantSkills:   []string{"scribe:golang-testing"},
 		},
 	}
 	for _, tt := range tests {
@@ -173,6 +171,9 @@ func TestDarnSpec(t *testing.T) {
 			}
 			if want := []string{in.DescriptionPath}; !slices.Equal(lead.Outputs, want) {
 				t.Errorf("lead outputs = %v; want the description alone %v", lead.Outputs, want)
+			}
+			if lead.ConfigRole != agentconfig.RoleDarn {
+				t.Errorf("lead config role = %q; want %q", lead.ConfigRole, agentconfig.RoleDarn)
 			}
 			if !slices.Equal(lead.Skills, tt.wantSkills) {
 				t.Errorf("lead skills = %v; want %v", lead.Skills, tt.wantSkills)

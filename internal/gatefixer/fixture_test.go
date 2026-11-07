@@ -108,7 +108,7 @@ func newFixture(t *testing.T) *fixture {
 	anchor := t.TempDir()
 	reed := &shuttlefake.Reed{}
 	engine := &shuttlefake.Engine{}
-	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
+	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30, Agents: shuttlefake.Agents(t)}
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), anchor, anchor, shuttleCfg)
 
 	fx := &fixture{

@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
@@ -73,9 +74,11 @@ func (o reedStrandOps) RemoveStrand(guid string) error {
 
 // orchCLI is the receiver every orch verb hangs off, populated by wireCLI.
 type orchCLI struct {
-	location    *lymcwd.Location
-	cfg         orchengine.Config
-	shuttleCfg  shuttleengine.Config
+	location   *lymcwd.Location
+	cfg        orchengine.Config
+	shuttleCfg shuttleengine.Config
+	// orchSkills is the orch role's skill list from agents.yaml, which the watcher re-sends when the orch reloads.
+	orchSkills  []string
 	engines     shuttleengine.EngineSet
 	runner      *shuttleengine.Runner
 	strands     strandOps
@@ -198,6 +201,10 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	if err != nil {
 		return err
 	}
+	orchSkills, err := shuttleCfg.Agents.Skills(agentconfig.RoleOrch, nil)
+	if err != nil {
+		return err
+	}
 	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 	if err != nil {
 		return err
@@ -213,6 +220,7 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.runsWindowTitle = func() string { return runsWindowTitleIn(location, beam) }
 	c.cfg = orchCfg
 	c.shuttleCfg = shuttleCfg
+	c.orchSkills = orchSkills
 	engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err

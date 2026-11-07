@@ -135,6 +135,7 @@ var intentionallyNil = map[string]string{
 // TestWire_EverySeamFilled pins that wire fills every shedrecipe.Env seam, VerifyHold among them.
 // The batten-only seams are the exception.
 //
+//lym:seam internal/agentconfig#Config
 //lym:seam internal/battenshed#InnerRunDeps
 //lym:seam internal/battenshed#LandDeps
 //lym:seam internal/battenshed#PrimeLock

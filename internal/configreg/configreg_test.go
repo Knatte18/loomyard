@@ -57,7 +57,7 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 		if m.SeedOnly != wantSeedOnly {
 			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, wantSeedOnly)
 		}
-		wantHubWide := m.Name == "fabric" || m.Name == "board" || m.Name == "creel" || m.Name == "gate" || m.Name == "heddle" || m.Name == "hibernate" || m.Name == "ide" || m.Name == "landing" || m.Name == "darn" || m.Name == "desktop" || m.Name == "drift" || m.Name == "env" || m.Name == "language" || m.Name == "profiles" || m.Name == "report" || m.Name == "sampler" || m.Name == "slack"
+		wantHubWide := m.Name == "agents" || m.Name == "fabric" || m.Name == "board" || m.Name == "creel" || m.Name == "gate" || m.Name == "heddle" || m.Name == "hibernate" || m.Name == "ide" || m.Name == "landing" || m.Name == "darn" || m.Name == "desktop" || m.Name == "drift" || m.Name == "env" || m.Name == "language" || m.Name == "profiles" || m.Name == "report" || m.Name == "sampler" || m.Name == "slack"
 		if m.HubWide != wantHubWide {
 			t.Errorf("Modules(): module %q HubWide = %v; want %v", m.Name, m.HubWide, wantHubWide)
 		}
@@ -79,6 +79,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
+		"agents":  {"efforts"},
 		"darn":    {"gate_fixer", "verify_attempts", "writer", "writer_timeout_min"},
 		"drift":   {"enabled", "expect_model", "judge_interactive", "judge_model", "scope"},
 		"ide":     {"open_files", "render_markdown"},
@@ -205,6 +206,7 @@ func TestModules_LocalLayerRefusals(t *testing.T) {
 		wantKey string
 		allowed bool
 	}{
+		{"agents", "skills:\n  darn: []\n", "skills", false},
 		{"creel", "trusted_hubs:\n  - ly\n", "trusted_hubs", false},
 		{"darn", "verify_attempts: 2\n", "verify_attempts", true},
 		{"landing", "deploy_branches: false\n", "deploy_branches", false},

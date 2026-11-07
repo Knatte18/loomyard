@@ -7,6 +7,7 @@ package sheddriver
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -17,9 +18,6 @@ import (
 
 // tacklerStencilName is the registered name of the tackler's opening stencil.
 const tacklerStencilName = "shed-template-tackler"
-
-// tacklerSkills is the skill list the tackler loads before its launch prompt: none, since the prompt is its whole procedure.
-var tacklerSkills = []string{}
 
 // TacklerPromptInput carries what the tackler stencil's markers are filled from.
 // ReportPath may be empty; every other field is required.
@@ -101,7 +99,8 @@ func pathOrNone(path string) string {
 // tacklerSpec composes the shuttleengine.Spec the tackler session launches from.
 // It takes the composed prompt, the verdict and case-brief paths and the resolved tackler settings.
 //
-// The prompt is the tackler's whole procedure, so the spec loads no skills before it.
+// The prompt is the tackler's whole procedure.
+// ConfigRole is the tackler role, whose skills come from agents.yaml (role `tackler`).
 // OutputFiles holds only verdictPath, so shuttle's completion check reads the verdict through allOutputFilesExist;
 // reed drops a finished strand on resume.
 // The case brief is not an output file, since only an escalate writes it;
@@ -118,7 +117,7 @@ func pathOrNone(path string) string {
 func tacklerSpec(prompt, verdictPath, caseBriefPath string, settings TacklerSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:          prompt,
-		Skills:          tacklerSkills,
+		ConfigRole:      agentconfig.RoleTackler,
 		OutputFiles:     []string{verdictPath},
 		ModelChoice:     settings.ModelChoice,
 		Timeout:         settings.Timeout,

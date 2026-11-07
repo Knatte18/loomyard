@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -53,9 +54,6 @@ const describeStencilName = "landing-template-describe"
 
 // describeRole is the agent-name role this module's Describe spawn carries.
 const describeRole = "describe"
-
-// describeSkills are the skills the Describe session loads before its prompt.
-var describeSkills = []string{"scribe:prose"}
 
 // DescribeInputs carries the told values one Describe session needs.
 // Every field but RunRecordPath, PriorRunRecordPaths and DriftVerdict is required.
@@ -184,7 +182,7 @@ func describeSessionTable(stencilName, descriptionPath string, markers map[strin
 			Stencil:     stencilName,
 			ModelChoice: shuttleengine.NewModelChoice(resolved),
 			Outputs:     []string{descriptionPath},
-			Skills:      describeSkills,
+			ConfigRole:  agentconfig.RoleDescriber,
 		}},
 	}, nil
 }

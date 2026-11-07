@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -22,9 +23,6 @@ const (
 
 // judgeTimeout is the judge session's timeout, since drift.yaml declares no timeout key.
 const judgeTimeout = 60 * time.Minute
-
-// judgeSkills are the skills the judge's spawn loads, in order.
-var judgeSkills = []string{"scribe:prose"}
 
 // The judge stencil's mode text, autonomous and with the operator in the pane.
 const (
@@ -183,7 +181,7 @@ func JudgeTable(in JudgeInputs, cfg Config, reg modelspec.Registry) (seatengine.
 			Stencil:     judgeStencilName,
 			ModelChoice: choice,
 			Outputs:     []string{in.JudgementPath},
-			Skills:      append([]string(nil), judgeSkills...),
+			ConfigRole:  agentconfig.RoleDriftJudge,
 		}},
 	}, nil
 }

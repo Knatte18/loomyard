@@ -170,7 +170,7 @@ func newFakeShuttle(t *testing.T) *fakeShuttle {
 func realRunnerShuttle(t *testing.T, root string) (Shuttle, *shuttlefake.Reed) {
 	t.Helper()
 	reed := &shuttlefake.Reed{}
-	cfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
+	cfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30, Agents: shuttlefake.Agents(t)}
 	return RunnerShuttle(shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, cfg)), reed
 }
 

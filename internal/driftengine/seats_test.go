@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -126,8 +127,8 @@ func TestSeatTables(t *testing.T) {
 				if lead.Engine != "claude" || lead.Model != "sonnet" || lead.Effort != "medium" {
 					t.Errorf("lead engine/model/effort = %q/%q/%q; want claude/sonnet/medium", lead.Engine, lead.Model, lead.Effort)
 				}
-				if !slices.Equal(lead.Outputs, []string{in.ExpectedPath}) || !slices.Equal(lead.Skills, []string{"scribe:prose"}) {
-					t.Errorf("lead outputs %v and skills %v; want expected.yaml alone and scribe:prose", lead.Outputs, lead.Skills)
+				if !slices.Equal(lead.Outputs, []string{in.ExpectedPath}) || lead.ConfigRole != agentconfig.RoleDriftExpect || len(lead.Skills) != 0 {
+					t.Errorf("lead outputs %v, config role %q and skills %v; want expected.yaml alone, %q and no skills", lead.Outputs, lead.ConfigRole, lead.Skills, agentconfig.RoleDriftExpect)
 				}
 
 				prompt := seatPrompt(t, stencilsDir, worktreeRoot, in.Slug, table)
@@ -214,8 +215,8 @@ func TestSeatTables(t *testing.T) {
 				if lead.Engine != "claude" || lead.Model != "opus" || lead.Effort != "high" {
 					t.Errorf("lead engine/model/effort = %q/%q/%q; want claude/opus/high", lead.Engine, lead.Model, lead.Effort)
 				}
-				if !slices.Equal(lead.Outputs, []string{in.JudgementPath}) || !slices.Equal(lead.Skills, []string{"scribe:prose"}) {
-					t.Errorf("lead outputs %v and skills %v; want judgement.yaml alone and scribe:prose", lead.Outputs, lead.Skills)
+				if !slices.Equal(lead.Outputs, []string{in.JudgementPath}) || lead.ConfigRole != agentconfig.RoleDriftJudge || len(lead.Skills) != 0 {
+					t.Errorf("lead outputs %v, config role %q and skills %v; want judgement.yaml alone, %q and no skills", lead.Outputs, lead.ConfigRole, lead.Skills, agentconfig.RoleDriftJudge)
 				}
 
 				prompt := seatPrompt(t, stencilsDir, worktreeRoot, in.Slug, table)

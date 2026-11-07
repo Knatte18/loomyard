@@ -183,7 +183,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 	// so the hub must carry them before then.
 	seedHubStencils(t, hubPath)
 	shuttleRunRoot := t.TempDir()
-	shuttleCfg := shuttleengine.Config{RunDir: shuttleRunRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
+	shuttleCfg := shuttleengine.Config{RunDir: shuttleRunRoot, RunTimeoutMin: 60, StartupTimeoutS: 30, Agents: shuttlefake.Agents(t)}
 
 	roles := map[websterengine.Role]shuttleengine.ModelChoice{
 		websterengine.RoleMaster:   {Model: "master-model"},

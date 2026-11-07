@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -92,8 +93,12 @@ func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 				if sh.spec.Segment != segmentcolor.Review {
 					t.Errorf("spec.Segment = %q; want %q", sh.spec.Segment, segmentcolor.Review)
 				}
-				if got := sh.spec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
-					t.Errorf("spec.Skills = %v; want [scribe:prose]", got)
+				wantRole := agentconfig.RoleTreadleJudge
+				if name == "targeting" {
+					wantRole = agentconfig.RoleTreadleTargeting
+				}
+				if sh.spec.ConfigRole != wantRole || len(sh.spec.Skills) != 0 {
+					t.Errorf("spec.ConfigRole, Skills = %q, %v; want %q and no skills", sh.spec.ConfigRole, sh.spec.Skills, wantRole)
 				}
 				if len(sh.spec.Requires) != 0 {
 					t.Errorf("spec.Requires = %v; want none", sh.spec.Requires)

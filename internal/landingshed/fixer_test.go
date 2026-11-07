@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -71,7 +72,10 @@ func TestFixerTable(t *testing.T) {
 			if want := []string{in.ReportPath}; !slices.Equal(lead.Outputs, want) {
 				t.Errorf("lead outputs = %v; want %v", lead.Outputs, want)
 			}
-			if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-build"}; !slices.Equal(lead.Skills, want) {
+			if lead.ConfigRole != agentconfig.RoleMergeFixer {
+				t.Errorf("lead ConfigRole = %q; want %q", lead.ConfigRole, agentconfig.RoleMergeFixer)
+			}
+			if want := []string{"scribe:golang-build"}; !slices.Equal(lead.Skills, want) {
 				t.Errorf("lead skills = %v; want %v", lead.Skills, want)
 			}
 			if table.Values["mode"] != string(mode) || table.Values["aligned_tip"] != "aligned123" || table.Values["merged_tip"] != "merged456" {

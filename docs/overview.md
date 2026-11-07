@@ -288,6 +288,7 @@ github.com/Knatte18/loomyard/
 ├── cmd/lym/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
 ├── internal/adoptcli/            the adopt CLI command (`lym adopt`, the takeover of beam projects or root, and the runs under them, from another machine)
+├── internal/agentconfig/         the hub-wide `agents.yaml` config: the skills each role lym starts loads, and the effort of its Claude sessions and their subagents by role and model, a leaf
 ├── internal/agentname/           the sole former, parser and validator of agent names (`<shortname>:<slug>:<role>`), a stdlib-only leaf
 ├── internal/beamcli/             the beam CLI command (`lym beam`, the making and starting of beams from board project entries, and the wiring of their dobby, the prime's carrying the hibernate request and bringing back the Slack relay)
 ├── internal/dobbyengine/         dobby, the daemon of a beam worktree: it starts released tasks, drives their batten runs in passes and spawns the board-tidy agent
@@ -673,6 +674,10 @@ User-facing modules each get one `lym <module>` namespace:
   While `claude.yaml`'s `session_scope` block is on, the same documents scope what each session loads, over the user's and the repository's settings:
   an installed plugin is on only when the session preloads one of its skills, so the orch and the board session get the `ly` plugin in every hub and a writer does not, claude.ai connectors, Claude Code's bundled skills, its `Workflow` tool and the block's `skills_off` list are off, a plugin that is on lists all of its skills, since no setting hides one skill of it,
   and every session but the orch's gets no auto-memory and no `ListAgents` tool.
+  The skills a session loads come from the hub's `agents.yaml`, by the config role its spec names, followed by `language.yaml`'s skills for a code role;
+  a launch whose model-spec names no effort takes `--effort` from `agents.yaml`'s efforts table by role and model.
+  The appended prompt tells the session the explicit `effort` each Agent tool call takes and the skills a subagent's brief names,
+  and the settings set `CLAUDE_CODE_SUBAGENT_EFFORT`, so a subagent whose call names no effort still runs at the role's.
   The engine sets the prompt-cache TTL per role on launch, resume and open from `claude.yaml`'s `prompt_cache_ttl` and `prompt_cache_ttl_roles` (template: 5 minutes for `driver`, 1 hour for `webster` and `orch`, 5 minutes for every other role).
   `claude.yaml`'s `keep_warm_cap` (template 250s) and `keep_warm_cap_roles` set the per-role keep-warm cap beside them.
   While `claude.yaml`'s `batching_nudge` block is on, a `PostToolUse` hook after each `Read`, `Grep`, `Glob`, `Bash`, `Edit` or `Write` call runs the hidden `lym shuttle hook-batching`, which adds one line naming the breach and quoting the rule to a session above the block's context threshold whose recent messages make a chain of single lookups (a Bash call with a read-only lookup command such as `grep`, `find` or a git read counting as one), a sliced read of a short or already-read file, or a chain of edit-only messages;

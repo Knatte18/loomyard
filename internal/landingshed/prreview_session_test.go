@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -160,8 +161,11 @@ func TestPRReview_Session(t *testing.T) {
 				if spec.Role != prReviewerRole || spec.Segment != segmentcolor.Landing || spec.Engine != "claude" || spec.Model != "fixture-model" || spec.ResumeSessionID != "" {
 					t.Errorf("spec role %q, segment %q, engine %q, model %q, resume %q; want the pr-reviewer role, the landing segment, the pr_reviewer model and no resume", spec.Role, spec.Segment, spec.Engine, spec.Model, spec.ResumeSessionID)
 				}
-				if want := []string{"scribe:prose", "scribe:conversation"}; !slices.Equal(spec.Skills, want) {
-					t.Errorf("spec skills = %q; want %q", spec.Skills, want)
+				if spec.ConfigRole != agentconfig.RolePRReviewer {
+					t.Errorf("spec ConfigRole = %q; want %q", spec.ConfigRole, agentconfig.RolePRReviewer)
+				}
+				if len(spec.Skills) != 0 {
+					t.Errorf("spec skills = %q; want none beyond the role's", spec.Skills)
 				}
 				for _, want := range []string{"the-slug", recordedURL, "/wt/task", "`task`", "`main`", fx.deps.DescriptionPath, "parent-session", noDriftVerdict} {
 					if !strings.Contains(spec.Prompt, want) {
@@ -234,8 +238,8 @@ func TestPRReview_Session(t *testing.T) {
 				if strings.Contains(prompt, fx.deps.PlanDir) {
 					t.Errorf("prompt lists the missing plan directory %q:\n%s", fx.deps.PlanDir, prompt)
 				}
-				if want := []string{"scribe:prose", "scribe:conversation", "scribe:golang-testing"}; !slices.Equal(s.starts[0].Skills, want) {
-					t.Errorf("spec skills = %q; want a repeated language skill loaded once, %q", s.starts[0].Skills, want)
+				if want := []string{"scribe:prose", "scribe:golang-testing"}; !slices.Equal(s.starts[0].Skills, want) {
+					t.Errorf("spec skills = %q; want the language skills alone, %q", s.starts[0].Skills, want)
 				}
 			},
 		},

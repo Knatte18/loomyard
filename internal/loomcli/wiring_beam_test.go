@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+//lym:seam internal/agentconfig#Config
 //lym:seam internal/battenshed#InnerRunDeps
 //lym:seam internal/battenshed#LandDeps
 //lym:seam internal/battenshed#PrimeLock

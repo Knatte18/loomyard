@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -150,8 +151,8 @@ func TestSpec(t *testing.T) {
 	if got.NameOverride != "" {
 		t.Errorf("Spec().NameOverride = %q; want empty so a second attempt numbers its role", got.NameOverride)
 	}
-	if len(got.Skills) != 0 {
-		t.Errorf("Spec().Skills = %v; want none", got.Skills)
+	if got.ConfigRole != agentconfig.RoleArbiter || len(got.Skills) != 0 {
+		t.Errorf("Spec().ConfigRole, Skills = %q, %v; want %q and no skills", got.ConfigRole, got.Skills, agentconfig.RoleArbiter)
 	}
 	if got.Segment != segmentcolor.Coordinator {
 		t.Errorf("Spec().Segment = %q; want %q", got.Segment, segmentcolor.Coordinator)

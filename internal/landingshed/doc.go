@@ -598,7 +598,7 @@
 // A squashed branch leaves one commit per task branch and no merge commit linking it to its target.
 // Git history alone then cannot show whether a branch was merged.
 //
-// The Describe session loads `scribe:prose` before its prompt.
+// The Describe session's skills come from agents.yaml (role `describer`) and load before its prompt.
 // Its stencil and the conflict session's carry a parent directive that internal/parentdirective renders.
 // The told name is the seat engine's geometry for Describe;
 // for Parent-Align and Finalize it is Deps.ParentName, passed through to the resolver.

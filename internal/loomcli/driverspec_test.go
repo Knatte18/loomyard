@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -32,8 +33,11 @@ func TestDriverSpec(t *testing.T) {
 		}
 	})
 	t.Run("Skills", func(t *testing.T) {
+		if got.ConfigRole != agentconfig.RoleDriver {
+			t.Errorf("driverSpec().ConfigRole = %q; want %q", got.ConfigRole, agentconfig.RoleDriver)
+		}
 		if len(got.Skills) != 0 {
-			t.Errorf("driverSpec().Skills = %v; want none -- the prompt is the driver's whole procedure", got.Skills)
+			t.Errorf("driverSpec().Skills = %v; want none beyond the role's", got.Skills)
 		}
 	})
 	t.Run("OutputFiles", func(t *testing.T) {

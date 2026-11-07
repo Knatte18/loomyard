@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -64,7 +65,7 @@ func TestRaddleTable(t *testing.T) {
 			if want := (shuttleengine.ModelKey{Module: "loom", Key: "raddle"}); seat.ModelKey != want {
 				t.Errorf("seat ModelKey = %+v; want %+v", seat.ModelKey, want)
 			}
-			if seat.Name != "" || seat.Stencil != raddleStencil || seat.Engine != "claude" || seat.Model == "" || seat.Effort != "high" || !slices.Equal(seat.Skills, raddleSkills) || seat.ForkSubagents {
+			if seat.Name != "" || seat.Stencil != raddleStencil || seat.Engine != "claude" || seat.Model == "" || seat.Effort != "high" || seat.ConfigRole != agentconfig.RoleRaddle || len(seat.Skills) != 0 || seat.ForkSubagents {
 				t.Errorf("seat = %+v; want the lead with the raddle stencil, claude, a model, high effort, its skills and no forks", seat)
 			}
 

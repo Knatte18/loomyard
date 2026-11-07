@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/friction"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -37,9 +37,6 @@ const darnRole = "darn"
 // noneToken is what the stencil renders for a prior-work value the spawn has nothing to tell for.
 const noneToken = "(none)"
 
-// darnSkills are the skills the darn writer's spawn loads, in order.
-var darnSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
-
 // DarnInputs are the told values one darn writer spawn is composed from.
 type DarnInputs struct {
 	// StencilsDir is the directory the writer's stencil and the directive stencils are read from.
@@ -62,7 +59,8 @@ type DarnInputs struct {
 	ConditionStopMarkerPath string
 	// PriorWork names what an earlier spawn left unfinished or broken; empty on a first spawn.
 	PriorWork string
-	// LanguageSkills are the hub's language skills the writer loads after its own; empty for none.
+	// LanguageSkills are the hub's language skills the writer loads after the darn role's agents.yaml skills.
+	// Empty means none.
 	LanguageSkills []string
 	// SubagentModel is the model name the writer passes to the Agent tool for the fresh subagents it hands work to.
 	SubagentModel string
@@ -143,7 +141,8 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 			Stencil:     darnStencilName,
 			ModelChoice: shuttleengine.NewModelChoice(resolved),
 			Outputs:     []string{in.DescriptionPath},
-			Skills:      languageconfig.AppendSkills(darnSkills, in.LanguageSkills),
+			ConfigRole:  agentconfig.RoleDarn,
+			Skills:      in.LanguageSkills,
 		}},
 	}, nil
 }

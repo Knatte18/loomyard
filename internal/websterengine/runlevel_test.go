@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -308,7 +309,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) func() {
 				masterReed = &shuttlefake.Reed{}
-				runner := shuttleengine.NewRunner(masterReed, shuttlefake.EngineSet(&shuttlefake.Engine{}), fx.Worktree, fx.Worktree, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
+				runner := shuttleengine.NewRunner(masterReed, shuttlefake.EngineSet(&shuttlefake.Engine{}), fx.Worktree, fx.Worktree, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30, Agents: shuttlefake.Agents(t)})
 				fx.Deps.Starter = realMasterStarter{runner: runner}
 				return nil
 			},
@@ -1559,8 +1560,11 @@ func TestRun_MasterSpawn(t *testing.T) {
 				if want := fx.Deps.Roles[websterengine.RoleMaster].Engine; spec.Engine != want {
 					t.Errorf("Spec.Engine = %q; want %q (RoleMaster's engine)", spec.Engine, want)
 				}
-				if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(spec.Skills, want) {
-					t.Errorf("Spec.Skills = %v; want %v", spec.Skills, want)
+				if spec.ConfigRole != agentconfig.RoleWebster {
+					t.Errorf("Spec.ConfigRole = %q; want %q", spec.ConfigRole, agentconfig.RoleWebster)
+				}
+				if len(spec.Skills) != 0 {
+					t.Errorf("Spec.Skills = %v; want none", spec.Skills)
 				}
 				if want := []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}; !slices.Equal(spec.Requires, want) {
 					t.Errorf("Spec.Requires = %v; want %v (forks stay implied by ForkSubagents)", spec.Requires, want)
@@ -1588,13 +1592,13 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
-			name:  "the told language skills follow the role skills",
+			name:  "the told language skills are the spec's skills",
 			cards: 1,
 			prepare: func(t *testing.T, fx *runFixture) {
 				fx.Deps.LanguageSkills = []string{"scribe:golang-testing", "scribe:testing"}
 			},
 			check: func(t *testing.T, fx *runFixture) {
-				want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"}
+				want := []string{"scribe:golang-testing", "scribe:testing"}
 				if got := fx.Starter.startCalls[0].Skills; !slices.Equal(got, want) {
 					t.Errorf("Spec.Skills = %v; want %v", got, want)
 				}

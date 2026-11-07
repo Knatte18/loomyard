@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
@@ -278,7 +277,7 @@ func cardFixerSpec(kit cardFixerKit, request detachRequest, reportPath, replyPat
 		ReplyPath:   replyPath,
 		Role:        gatefixer.RoleGateFixer,
 		ModelChoice: kit.model,
-		Skills:      languageconfig.AppendSkills(nil, kit.skills),
+		Skills:      kit.skills,
 		Segment:     segmentcolor.Webster,
 		Timeout:     kit.timeout,
 	}, nil

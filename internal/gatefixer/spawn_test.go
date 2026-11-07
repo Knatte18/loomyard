@@ -11,7 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -47,8 +49,12 @@ func TestSpawnOrAttach(t *testing.T) {
 			t.Errorf("stat stale reply = %v; want it removed before the spawn", err)
 		}
 		spec := fx.engine.LastSpec
-		if spec.Role != RoleGateFixer || spec.ModelChoice.Model != "fixer-model" || !slices.Equal(spec.OutputFiles, []string{fx.replyPath}) || !slices.Equal(spec.Skills, []string{"scribe:prose"}) {
-			t.Errorf("started spec = role %q, model %q, output files %v, skills %v; want the fixer's role, model, the reply as only output file and its skills", spec.Role, spec.ModelChoice.Model, spec.OutputFiles, spec.Skills)
+		wantSkills, err := shuttlefake.Agents(t).Skills(agentconfig.RoleGateFixer, []string{"scribe:prose"})
+		if err != nil {
+			t.Fatalf("Skills(gate-fixer) error = %v", err)
+		}
+		if spec.Role != RoleGateFixer || spec.ModelChoice.Model != "fixer-model" || !slices.Equal(spec.OutputFiles, []string{fx.replyPath}) || spec.ConfigRole != agentconfig.RoleGateFixer || !slices.Equal(spec.Skills, wantSkills) {
+			t.Errorf("started spec = role %q, model %q, output files %v, config role %q, skills %v; want the fixer's role, model, the reply as only output file, the gate-fixer config role and its skills", spec.Role, spec.ModelChoice.Model, spec.OutputFiles, spec.ConfigRole, spec.Skills)
 		}
 		if fx.engine.LastPrompt != "fix the failures" {
 			t.Errorf("started prompt = %q; want the spec's prompt", fx.engine.LastPrompt)

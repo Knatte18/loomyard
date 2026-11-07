@@ -24,6 +24,11 @@ Imports only the standard library.
 
 Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.
 
+## `internal/agentconfig`
+
+Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.
+It owns `agents.yaml`, which shuttle, its engines and every spawning package read, so it imports none of them.
+
 ## `internal/lenses`
 
 Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.

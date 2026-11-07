@@ -16,6 +16,7 @@ import (
 
 // shedarbiterAllowedImports are the only non-stdlib import paths production code in this package may use.
 var shedarbiterAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/agentconfig",
 	"github.com/Knatte18/loomyard/internal/arbiterstop",
 	"github.com/Knatte18/loomyard/internal/editdirective",
 	"github.com/Knatte18/loomyard/internal/logger",

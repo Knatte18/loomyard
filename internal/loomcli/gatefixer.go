@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -284,7 +283,7 @@ func fixerSpec(in gateFixerInputs, req shedrecipe.GateFixerRequest, choice shutt
 			ReplyPath:   replyPath,
 			Role:        gatefixer.RoleGateFixer,
 			ModelChoice: choice,
-			Skills:      languageconfig.AppendSkills(nil, in.languageSkills),
+			Skills:      in.languageSkills,
 			Segment:     body.segment,
 			Timeout:     in.gate.FixerTimeout(),
 		}, nil

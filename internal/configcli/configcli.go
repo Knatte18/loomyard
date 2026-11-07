@@ -476,7 +476,6 @@ func buildConfigLong() string {
 		"An open map's keys are the repo's own; --set adds or rewrites one entry\n" +
 		"or a key inside it, e.g.\n" +
 		"  lym config gate --set tiers.tier0.env.LYM_TEST_TIER=0\n" +
-		"A value the loader refuses is refused, naming the key.\n" +
 		"Keys the template lacks are preserved (JSON \"preserved\" field);\n" +
 		"\"lym config reconcile --layer default --apply\" from the prime removes them from the\n" +
 		"board dir's files, and \"lym config reconcile --apply\" from a worktree file.\n\n" +

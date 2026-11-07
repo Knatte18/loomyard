@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -28,25 +29,13 @@ func launchPointer(promptPath string) string {
 	return "Read " + promptPath + " in full first; it is your complete, authoritative instructions."
 }
 
-// validEfforts is the set of lowercase --effort values claude accepts.
-var validEfforts = map[string]bool{
-	"low":    true,
-	"medium": true,
-	"high":   true,
-	"xhigh":  true,
-	"max":    true,
-}
-
 // validateEffort reports an error unless effort is empty or one of the exact-lowercase values claude accepts.
 // claude ignores invalid efforts rather than failing, so shuttle must reject them here to prevent silent drops.
 func validateEffort(effort string) error {
-	if effort == "" {
+	if effort == "" || slices.Contains(agentconfig.Efforts(), effort) {
 		return nil
 	}
-	if validEfforts[effort] {
-		return nil
-	}
-	return fmt.Errorf("claudeengine: invalid effort %q; valid values are low, medium, high, xhigh, max (case-sensitive, exact-lowercase)", effort)
+	return fmt.Errorf("claudeengine: invalid effort %q; valid values are %s (case-sensitive, exact-lowercase)", effort, strings.Join(agentconfig.Efforts(), ", "))
 }
 
 // The permission modes a spec may name besides the empty default, which means bypass.
@@ -411,6 +400,8 @@ func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, sett
 }
 
 // OpenLaunch returns the launch of a named interactive session with no prompt.
+// A spec naming no effort takes the agents.yaml effort for its model.
+// A full Claude model id resolves to its alias, and a model without an entry gets the default.
 // It validates the effort, the permission mode and the model before it writes anything,
 // and it resolves the prompt-cache TTL before then too.
 // The TTL is spec.Role's from claude.yaml, as for a run, and an invalid TTL anywhere in claude.yaml refuses the open.
@@ -440,6 +431,8 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
+	// An opened session runs as no agents.yaml role, so a spec with no effort takes the one its model gets.
+	spec.Effort = effortFor(cfg.Agents, "", spec.Effort, spec.Model)
 	if err := validateEffort(spec.Effort); err != nil {
 		return shuttleengine.Launch{}, err
 	}

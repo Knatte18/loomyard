@@ -7,10 +7,10 @@ package loomengine
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -40,9 +40,10 @@ func lensNames(resolved []lenses.Lens) []string {
 	return names
 }
 
-// TestProducerSpecs_SkillsAndParentDirective verifies each loom producer carries its role's skills in order.
+// TestProducerSpecs_SkillsAndParentDirective verifies each loom producer carries its config role.
+// It also checks that no producer carries skills of its own.
 // It checks that the prompt names the told parent, and that an empty parent renders the no-parent variant.
-// Every row reads the lead's skills and prompt through seatengine.Prompts, under a geometry that names the parent.
+// Every row reads the lead and its prompt through seatengine.Prompts, under a geometry that names the parent.
 // The operator-ban line is absent only for the interactive Discussion.
 func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -56,13 +57,13 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	// leadOfTable builds a table over a seeded stencils directory and returns the lead's skills and prompt.
+	// leadOfTable builds a table over a seeded stencils directory and returns the lead and its prompt.
 	// The prompt is composed under a geometry that names parent.
-	leadOfTable := func(build func(stencilsDir string) (seatengine.Table, error), parent string) ([]string, string, error) {
+	leadOfTable := func(build func(stencilsDir string) (seatengine.Table, error), parent string) (seatengine.Seat, string, error) {
 		stencilsDir := newTestStencilsDir(t)
 		table, err := build(stencilsDir)
 		if err != nil {
-			return nil, "", err
+			return seatengine.Seat{}, "", err
 		}
 		prompts, err := seatengine.Prompts(seatengine.Geometry{
 			WorktreeRoot: layout.WorktreePath(),
@@ -73,12 +74,12 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 			Slug:         "add-json-flag",
 		}, table)
 		if err != nil {
-			return nil, "", err
+			return seatengine.Seat{}, "", err
 		}
-		return table.Chair().Skills, prompts[""], nil
+		return table.Chair(), prompts[""], nil
 	}
-	// leadOf returns the discussion lead's skills and prompt for a run that is interactive or not.
-	leadOf := func(interactive bool, parent string) ([]string, string, error) {
+	// leadOf returns the discussion lead and its prompt for a run that is interactive or not.
+	leadOf := func(interactive bool, parent string) (seatengine.Seat, string, error) {
 		discussionCfg := cfg
 		discussionCfg.DiscussionInteractive = interactive
 		return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
@@ -87,31 +88,31 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 	}
 
 	const operatorBan = "never the way forward"
-	build := map[string]func(parent string) ([]string, string, error){
-		"discussion-interactive": func(parent string) ([]string, string, error) { return leadOf(true, parent) },
-		"discussion-autonomous":  func(parent string) ([]string, string, error) { return leadOf(false, parent) },
-		"plan": func(parent string) ([]string, string, error) {
+	build := map[string]func(parent string) (seatengine.Seat, string, error){
+		"discussion-interactive": func(parent string) (seatengine.Seat, string, error) { return leadOf(true, parent) },
+		"discussion-autonomous":  func(parent string) (seatengine.Seat, string, error) { return leadOf(false, parent) },
+		"plan": func(parent string) (seatengine.Seat, string, error) {
 			return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
 				return PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)
 			}, parent)
 		},
 	}
-	wantSkills := map[string][]string{
-		"discussion-interactive": {"scribe:prose", "scribe:conversation"},
-		"discussion-autonomous":  {"scribe:prose", "scribe:conversation"},
-		"plan":                   {"scribe:prose", "scribe:testing"},
+	wantRole := map[string]agentconfig.Role{
+		"discussion-interactive": agentconfig.RoleDiscussion,
+		"discussion-autonomous":  agentconfig.RoleDiscussion,
+		"plan":                   agentconfig.RolePlan,
 	}
 
 	for name, mk := range build {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			skills, prompt, err := mk("shortname:orch")
+			lead, prompt, err := mk("shortname:orch")
 			if err != nil {
 				t.Fatalf("prompt with parent = _, %v; want nil error", err)
 			}
-			if !reflect.DeepEqual(skills, wantSkills[name]) {
-				t.Errorf("Skills = %v; want %v", skills, wantSkills[name])
+			if lead.ConfigRole != wantRole[name] || len(lead.Skills) != 0 {
+				t.Errorf("ConfigRole/Skills = %q/%v; want %q and no skills", lead.ConfigRole, lead.Skills, wantRole[name])
 			}
 			if !strings.Contains(prompt, "`shortname:orch`") {
 				t.Errorf("Prompt does not name the told parent %q", "shortname:orch")

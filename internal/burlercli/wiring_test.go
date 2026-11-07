@@ -839,7 +839,7 @@ fixer-report-path: reviews/fixer-report.md
 			t.Fatalf("write profile: %v", err)
 		}
 		reed := &shuttlefake.Reed{}
-		runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
+		runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30, Agents: shuttlefake.Agents(t)})
 		engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, lenses.Config{
 			Lenses: map[string]string{"style": "style prose"},
 			Fans:   map[string][]string{"standard": {"style"}},

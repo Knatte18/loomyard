@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/editdirective"
@@ -44,12 +45,6 @@ const bouncerJudgeRole = "bouncer-judge"
 // A literal in one place and a constant in the other is how the two silently stop matching.
 // The seed's specs name the review segment.
 const bouncerSeedRole = "bouncer-seed"
-
-// bouncerJudgeSkills and bouncerSeedSkills are the skills the judge and seed spawns load, in order.
-var (
-	bouncerJudgeSkills = []string{"scribe:prose"}
-	bouncerSeedSkills  = []string{"scribe:prose"}
-)
 
 // BouncerModels holds the already-resolved model pair of each pass a Bouncer spawns.
 // An empty pair defers to the provider default.
@@ -1734,7 +1729,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		Role:        b.role(bouncerSeedRole),
 		Segment:     b.colorSegment(),
 		Round:       "1",
-		Skills:      bouncerSeedSkills,
+		ConfigRole:  agentconfig.RoleBouncerSeed,
 	}
 
 	result, attached, err := b.cfg.Shuttle.Attach(spec)
@@ -1888,7 +1883,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		Role:        b.role(bouncerJudgeRole),
 		Segment:     b.colorSegment(),
 		Round:       strconv.Itoa(n),
-		Skills:      bouncerJudgeSkills,
+		ConfigRole:  agentconfig.RoleBouncerJudge,
 	}
 
 	if err := b.recordJudgeSubject(); err != nil {

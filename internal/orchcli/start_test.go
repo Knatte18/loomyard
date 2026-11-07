@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -478,8 +479,8 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if spec.Segment != segmentcolor.Coordinator || !spec.ColorByCaller {
 		t.Errorf("Segment/ColorByCaller = %q/%v; want %q/true", spec.Segment, spec.ColorByCaller, segmentcolor.Coordinator)
 	}
-	if !slices.Equal(spec.Skills, []string{"scribe:prose", "scribe:conversation", "ly:board", "ly:board-policy"}) {
-		t.Errorf("Skills = %v; want the orch skills", spec.Skills)
+	if spec.ConfigRole != agentconfig.RoleOrch || len(spec.Skills) != 0 {
+		t.Errorf("ConfigRole/Skills = %q/%v; want %q and no skills on the spec", spec.ConfigRole, spec.Skills, agentconfig.RoleOrch)
 	}
 	if spec.SkillLoadTimeout != h.cli.cfg.HandoffTimeout() {
 		t.Errorf("SkillLoadTimeout = %v; want the handoff timeout %v", spec.SkillLoadTimeout, h.cli.cfg.HandoffTimeout())

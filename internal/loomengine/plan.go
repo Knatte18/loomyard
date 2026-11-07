@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
@@ -54,9 +55,6 @@ import (
 
 // planRole is the agent-name role this module's Plan-Write spawn carries.
 const planRole = "plan"
-
-// planSkills are the skills the Plan-Write spawn loads, in order.
-var planSkills = []string{"scribe:prose", "scribe:testing"}
 
 // planStencil is the stencil that opens the Plan-Write lead seat.
 const planStencil = "loom-template-plan"
@@ -130,7 +128,7 @@ func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 		ModelChoice:   choice,
 		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: "plan"},
 		Outputs:       []string{planparser.PlanOverview(layout.AnchorPath())},
-		Skills:        planSkills,
+		ConfigRole:    agentconfig.RolePlan,
 		Values:        leadValues,
 		ForkSubagents: forks,
 	}

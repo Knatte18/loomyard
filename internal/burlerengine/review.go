@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -80,6 +81,7 @@ func (p *Profile) reviewTable(opts RunOpts, values map[string]string, skills []s
 				ModelChoice:   opts.Review,
 				ModelKey:      opts.ReviewKey,
 				Outputs:       []string{p.ReviewPath},
+				ConfigRole:    agentconfig.RoleBurler,
 				Skills:        skills,
 				Values:        values,
 				ForkSubagents: p.ClusterFan != "",

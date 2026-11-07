@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -24,9 +24,6 @@ const conflictStencilName = "landing-template-conflict"
 
 // ConflictRole is the agent-name role this module's conflict-resolution spawn carries.
 const ConflictRole = "conflict"
-
-// conflictSkills are the skills the conflict-resolution session loads before its prompt.
-var conflictSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
 
 // reportNamePrefix is the filename prefix of every attempt's resolution report.
 // The attempt number and ".md" follow it, and code that builds or matches a report path uses it.
@@ -101,7 +98,8 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 		Interactive: false,
 		Role:        ConflictRole,
 		Segment:     segmentcolor.Landing,
-		Skills:      languageconfig.AppendSkills(conflictSkills, deps.LanguageSkills),
+		ConfigRole:  agentconfig.RoleConflictResolver,
+		Skills:      deps.LanguageSkills,
 		Timeout:     deps.Timeout,
 	}, nil
 }

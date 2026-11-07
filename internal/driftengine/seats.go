@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -38,9 +39,6 @@ const (
 	// SubjectBoardEntry reads the task from its board entry.
 	SubjectBoardEntry = "board-entry"
 )
-
-// expectSkills are the skills the expect agent's spawn loads, in order.
-var expectSkills = []string{"scribe:prose"}
 
 // The expectation formats the expect stencil's `expectation_format` text names, one per diff mode.
 const (
@@ -215,7 +213,7 @@ func ExpectTable(in ExpectInputs, cfg Config, reg modelspec.Registry) (seatengin
 			Stencil:     expectStencilName,
 			ModelChoice: choice,
 			Outputs:     []string{in.ExpectedPath},
-			Skills:      append([]string(nil), expectSkills...),
+			ConfigRole:  agentconfig.RoleDriftExpect,
 		}},
 	}, nil
 }

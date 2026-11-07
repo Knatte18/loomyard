@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -66,8 +67,9 @@ type Spec struct {
 	// Role is the strand's reed role, one of Roles.
 	Role        string
 	ModelChoice shuttleengine.ModelChoice
-	Skills      []string
-	Segment     segmentcolor.Segment
+	// Skills are the skills the strand loads after the gate-fixer role's agents.yaml list, such as the hub's language skills.
+	Skills  []string
+	Segment segmentcolor.Segment
 	// Timeout bounds the strand's own run.
 	Timeout time.Duration
 }
@@ -99,6 +101,7 @@ func SpawnOrAttach(deps Deps, store Store, spec Spec) (*Record, bool, error) {
 		Prompt:      string(spec.Prompt),
 		OutputFiles: []string{spec.ReplyPath},
 		ModelChoice: spec.ModelChoice,
+		ConfigRole:  agentconfig.RoleGateFixer,
 		Skills:      spec.Skills,
 		Role:        spec.Role,
 		Segment:     spec.Segment,

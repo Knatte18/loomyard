@@ -4,5 +4,6 @@
      internal/stencilstore reads it for the assistant's engine.
      It declares no marker. -->
 Run the subagents with the Agent tool, `subagent_type: "general-purpose"`, one call per lens, all in a SINGLE message, as soon as your exploration is done.
+Give each call the `effort`, and each prompt the skills, that the subagent passage of your system prompt names.
 A subagent starts with none of your context, so its prompt names, after the boilerplate, the target's files and the fasit's files by path.
 The Agent tool returns every subagent's final message in the same turn: never end your turn while a subagent runs.

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -89,7 +90,7 @@ func PartsTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Confi
 		ModelKey:    shuttleengine.ModelKey{Module: tapestryModule, Key: "parts"},
 		Inputs:      []string{DiscussionDecisionRecord(layout), DiscussionRelevant(layout)},
 		Outputs:     []string{partsFile},
-		Skills:      planSkills,
+		ConfigRole:  agentconfig.RolePlan,
 	}
 	return seatengine.Table{
 		RolePrefix: partsRole,

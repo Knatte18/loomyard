@@ -479,6 +479,13 @@
 // Both the launch line and the resume line name it with --append-system-prompt-file.
 // The file holds the deny notice and the creel trust sentence, space-separated.
 // The notice is left out when no deny is installed.
+// After a blank line comes the subagent passage.
+// It is written from the shuttle config's agents.yaml for the spec's config role.
+// It names the explicit effort every Agent tool call gives a subagent by model.
+// It also names the skills of the session a brief names for a subagent.
+// The settings set `CLAUDE_CODE_SUBAGENT_EFFORT` to the role's effort on a model the efforts table does not name,
+// so a subagent whose call names no effort still gets the role's effort instead of Claude Code's default.
+// A launch whose model-spec names no effort takes `--effort` from the same table, by config role and model alias.
 // The standing passages heddle's layers hold for the claude engine follow it, each after a blank line and in order.
 // They are read through the process-wide passage reader that shuttleengine installs a seam for.
 // The one-line rule applies to lym's own sentences alone, since passages may span lines,
@@ -597,6 +604,7 @@
 //
 // The open launch (Claude.OpenLaunch) starts a named interactive session with no prompt.
 // Its line carries the session id and the strand-name reference, and adds `--model` and `--effort` only when set.
+// An open with no effort takes the one agents.yaml's efforts table gives its model.
 // It exports `CLAUDE_CODE_PROMPT_CACHE_TTL` at the role's TTL ahead of both lines.
 // An open naming skills puts their load message after the binary on the fresh line as the session's first turn;
 // the resume line carries none.

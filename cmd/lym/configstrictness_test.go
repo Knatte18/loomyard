@@ -54,6 +54,7 @@ var configStrictnessDegradingSet = map[string]bool{
 	"internal/battenshed":                 true,
 	"internal/sheddriver":                 true,
 	"internal/languageconfig":             true,
+	"internal/agentconfig":                true,
 	"internal/lenses":                     true,
 	"internal/desktophook":                true,
 	"internal/heddleengine":               true,

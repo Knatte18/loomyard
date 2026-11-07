@@ -129,7 +129,7 @@ A second watcher finding the first alive reports already_running and exits.`,
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			watcher := orchengine.NewWatcher(runnerSession{runner: c.runner, strands: c.strands}, creel, c.cfg, c.paths, c.stencilsDir, orchSkills, realClock{})
+			watcher := orchengine.NewWatcher(runnerSession{runner: c.runner, strands: c.strands}, creel, c.cfg, c.paths, c.stencilsDir, c.orchSkills, realClock{})
 			pauseGeometry, err := hubgeom.PauseGeometry(c.location)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))

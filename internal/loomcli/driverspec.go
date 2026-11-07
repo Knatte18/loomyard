@@ -4,6 +4,7 @@
 package loomcli
 
 import (
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -11,10 +12,6 @@ import (
 
 // driverRole is the agent-name role that the driver spawn carries.
 const driverRole = "driver"
-
-// driverSkills is the empty skill list the driver session loads.
-// The launch prompt carries the whole procedure, so the driver loads no skill.
-var driverSkills = []string{}
 
 // driverSpec composes the shuttleengine.Spec that the loom driver session launches from.
 // It takes the composed prompt, the composed report path, and the resolved driver-role model choice.
@@ -55,7 +52,7 @@ var driverSkills = []string{}
 func driverSpec(prompt string, reportPath string, choice shuttleengine.ModelChoice) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:        prompt,
-		Skills:        driverSkills,
+		ConfigRole:    agentconfig.RoleDriver,
 		OutputFiles:   []string{reportPath},
 		ModelChoice:   choice,
 		NameOverride:  driverStrandDisplayName,

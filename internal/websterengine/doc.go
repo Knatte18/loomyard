@@ -601,8 +601,7 @@
 // It does so when a fork reports stuck or writes no report.
 // The recovery prompt is the full cold-start prompt (RenderRecoveryPrompt), not a fork's thin RenderForkPrompt.
 // The recovery strand inherits no session context (see the fork-context-hygiene Shared Decision).
-// The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing`.
-// They load them through their spawn spec's skills (`roleSkills`).
+// The master and the recovery strand take their skills from agents.yaml (role `webster`).
 // The hub's language skills follow them.
 // `RunDeps.LanguageSkills` and `RecoverDeps.LanguageSkills` carry them, loaded by their wiring.
 // The fork and recovery prompts render the hub's tiers and gate lists.

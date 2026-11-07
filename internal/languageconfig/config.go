@@ -140,22 +140,3 @@ func unusable(key, detail string) error {
 	}
 	return configengine.MarkInvalid(fmt.Errorf("language config: %s: %s (%w)%s", key, detail, ErrUnusable, wayForward))
 }
-
-// AppendSkills returns a fresh slice holding own in order, then each language entry not already present, in order.
-// own's backing array is never written.
-func AppendSkills(own, language []string) []string {
-	merged := make([]string, len(own), len(own)+len(language))
-	copy(merged, own)
-	seen := make(map[string]bool, len(own)+len(language))
-	for _, skill := range own {
-		seen[skill] = true
-	}
-	for _, skill := range language {
-		if seen[skill] {
-			continue
-		}
-		seen[skill] = true
-		merged = append(merged, skill)
-	}
-	return merged
-}

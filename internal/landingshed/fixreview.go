@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -166,6 +167,7 @@ func fixReviewTable(in fixReviewInputs, cfg Config, reg modelspec.Registry) (sea
 			Stencil:     fixReviewStencilName,
 			ModelChoice: shuttleengine.NewModelChoice(resolved),
 			Outputs:     []string{in.ReportPath},
+			ConfigRole:  agentconfig.RoleFixReview,
 			Skills:      in.LanguageSkills,
 		}},
 	}, nil

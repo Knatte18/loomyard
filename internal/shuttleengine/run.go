@@ -562,6 +562,13 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	if err := r.checkRequirementsAtStart(spec, engine, engineName); err != nil {
 		return nil, Result{}, err
 	}
+	if spec.ConfigRole != "" {
+		skills, err := r.cfg.Agents.Skills(spec.ConfigRole, spec.Skills)
+		if err != nil {
+			return nil, Result{}, fmt.Errorf("shuttle: %w", err)
+		}
+		spec.Skills = skills
+	}
 	if len(spec.Skills) > 0 {
 		if _, err := r.skillLoader(engine); err != nil {
 			return nil, Result{}, fmt.Errorf("shuttle: spec names skills %v: %w", spec.Skills, err)

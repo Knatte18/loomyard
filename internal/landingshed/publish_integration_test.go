@@ -12,6 +12,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -95,7 +96,10 @@ func TestMergeIn_ConflictSessionLoadsLanguageSkills(t *testing.T) {
 		if len(shuttle.Specs) != 1 {
 			t.Fatalf("fake shuttle Run() called %d time(s); want exactly 1 conflict-resolution session", len(shuttle.Specs))
 		}
-		if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"}; !slices.Equal(shuttle.Specs[0].Skills, want) {
+		if got := shuttle.Specs[0].ConfigRole; got != agentconfig.RoleConflictResolver {
+			t.Errorf("conflict session ConfigRole = %q; want %q", got, agentconfig.RoleConflictResolver)
+		}
+		if want := []string{"scribe:golang-testing"}; !slices.Equal(shuttle.Specs[0].Skills, want) {
 			t.Errorf("conflict session Skills = %v; want %v", shuttle.Specs[0].Skills, want)
 		}
 	})

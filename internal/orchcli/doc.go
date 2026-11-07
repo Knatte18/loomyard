@@ -48,7 +48,7 @@
 // The procedure lives in the orch role, one fixed text for every orch built into the binary, not in the launch prompt.
 // `BeamUp` renders it to `.lym/orch/role.md` and launches the session with a one-line pointer at it.
 // Shuttle loads the orch's skills before that pointer on every launch path, a resume included;
-// they include `ly:board`'s board mechanics and `ly:board-policy`'s board policy.
+// the skills come from the `orch` role in agents.yaml.
 // `BeamUp` records the orch session's id in orch's state and resumes it after a reboot, a `stop` or a dead strand.
 // When the resume fails it falls back to the last note, else the start stencil;
 // the internal/orchengine package documentation's `Continuing after a reboot` section has the detail.

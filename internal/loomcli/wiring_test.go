@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
@@ -394,8 +395,8 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if len(table.Seats) != 1 {
 			t.Errorf("table has %d seats; want the lead alone", len(table.Seats))
 		}
-		if want := []string{"scribe:prose", "scribe:testing"}; !reflect.DeepEqual(lead.Skills, want) {
-			t.Errorf("lead.Skills = %v; want %v", lead.Skills, want)
+		if lead.ConfigRole != agentconfig.RolePlan || len(lead.Skills) != 0 {
+			t.Errorf("lead config role/skills = %q/%v; want %q and no further skills", lead.ConfigRole, lead.Skills, agentconfig.RolePlan)
 		}
 		wantTimeout := time.Duration(c.cfg.PlanTimeoutMin) * time.Minute
 		if table.Timeout != wantTimeout {
@@ -584,8 +585,8 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 			}
 
 			chair := table.Chair()
-			if want := []string{"scribe:prose", "scribe:conversation"}; !reflect.DeepEqual(chair.Skills, want) {
-				t.Errorf("chair.Skills = %v; want %v", chair.Skills, want)
+			if chair.ConfigRole != agentconfig.RoleDiscussion || len(chair.Skills) != 0 {
+				t.Errorf("chair config role/skills = %q/%v; want %q and no further skills", chair.ConfigRole, chair.Skills, agentconfig.RoleDiscussion)
 			}
 			wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc), loomengine.DiscussionRelevant(loc)}
 			if !reflect.DeepEqual(chair.Outputs, wantOutputs) {
@@ -1209,9 +1210,8 @@ func TestWire_LanguageSkills(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DarnTable() = %v; want nil", err)
 			}
-			want := append([]string{"scribe:prose", "scribe:code-quality", "scribe:testing"}, tt.wantSkills...)
-			if got := table.Chair().Skills; !slices.Equal(got, want) {
-				t.Errorf("darn writer skills = %v; want %v", got, want)
+			if chair := table.Chair(); chair.ConfigRole != agentconfig.RoleDarn || !slices.Equal(chair.Skills, tt.wantSkills) {
+				t.Errorf("darn writer config role/skills = %q/%v; want %q/%v", chair.ConfigRole, chair.Skills, agentconfig.RoleDarn, tt.wantSkills)
 			}
 			// The plan table reads the plan perch's values, and only a recipe with a Plan-Review row applies them,
 			// so the tapestry wiring over the same hub builds it.

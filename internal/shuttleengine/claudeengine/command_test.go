@@ -376,6 +376,8 @@ func TestOpenLaunch(t *testing.T) {
 		// so the write of that file fails after the directory and settings.json exist.
 		obstructAppendPrompt bool
 		wantErr              string
+		// withAgents hands the launch the agents.yaml template, which gives a spec with no effort one.
+		withAgents bool
 		// check gets the launch and its two lines with the TTL export stripped.
 		check func(t *testing.T, launch shuttleengine.Launch, fresh, resume string)
 	}{
@@ -471,6 +473,30 @@ func TestOpenLaunch(t *testing.T) {
 			},
 		},
 		{
+			name:       "a spec with no effort takes the agents.yaml default",
+			spec:       shuttleengine.OpenSpec{Role: "explore"},
+			withAgents: true,
+			check: func(t *testing.T, _ shuttleengine.Launch, fresh, resume string) {
+				for _, line := range []string{fresh, resume} {
+					if want := "--effort " + sh.Quote("medium"); !strings.Contains(line, want) {
+						t.Errorf("line = %q; want it to hold %q", line, want)
+					}
+				}
+			},
+		},
+		{
+			name:       "a full model id takes the effort of its alias",
+			spec:       shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Model: "claude-fable-5-1"}},
+			withAgents: true,
+			check: func(t *testing.T, _ shuttleengine.Launch, fresh, resume string) {
+				for _, line := range []string{fresh, resume} {
+					if want := "--effort " + sh.Quote("high"); !strings.Contains(line, want) {
+						t.Errorf("line = %q; want it to hold %q", line, want)
+					}
+				}
+			},
+		},
+		{
 			name: "skills ride the fresh line as the first turn and no resume line",
 			spec: shuttleengine.OpenSpec{Role: "board", Skills: []string{"ly:board-policy", "ly:board"}},
 			check: func(t *testing.T, _ shuttleengine.Launch, fresh, resume string) {
@@ -508,7 +534,11 @@ func TestOpenLaunch(t *testing.T) {
 					t.Fatalf("MkdirAll: %v", err)
 				}
 			}
-			launch, err := engine.OpenLaunch(dir, tt.spec, shuttleengine.Config{})
+			launchConfig := shuttleengine.Config{}
+			if tt.withAgents {
+				launchConfig = templateAgentsConfig(t)
+			}
+			launch, err := engine.OpenLaunch(dir, tt.spec, launchConfig)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("OpenLaunch() error = %v; want it to contain %q", err, tt.wantErr)

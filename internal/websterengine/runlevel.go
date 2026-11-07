@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planindex"
@@ -149,7 +149,8 @@ type RunDeps struct {
 	// It closes every pending-findings and run-exit way forward; the reset route archives the run record first.
 	ReentryStep string
 
-	// LanguageSkills are the hub's language skills that Master loads after roleSkills; empty means none.
+	// LanguageSkills are the hub's language skills that Master loads after the webster role's agents.yaml skills.
+	// Empty means none.
 	LanguageSkills []string
 
 	// InstructionFiles lists the names of the instruction files that Master's engine loads; nil means none.
@@ -755,7 +756,8 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		// so a Master that writes outcome.yaml but never reaches its summary.md final action never falsely reads as finished.
 		OutputFiles:   []string{outcomePath, summaryPath},
 		ModelChoice:   choice,
-		Skills:        languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
+		ConfigRole:    agentconfig.RoleWebster,
+		Skills:        deps.LanguageSkills,
 		ForkSubagents: true,
 		// The Master stencil ends its turn after each backgrounded call and wakes on its completion.
 		Requires: []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake},

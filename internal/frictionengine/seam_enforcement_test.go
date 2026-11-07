@@ -23,7 +23,9 @@ import (
 // the stencil store reads the reflection prompt off disk;
 // the stencil filler renders it; the logger handles logging.
 // The segment vocabulary names the reflection session's segment.
+// The agents config leaf names the session's config role.
 var frictionengineAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/agentconfig",
 	"github.com/Knatte18/loomyard/internal/friction",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/modelspec",

@@ -1,5 +1,6 @@
 // Package languageconfig owns the hub-wide _lym/config/language.yaml:
-// the skills every code-writing or code-reviewing role loads after its own, and the hub's structure-aware rename tools.
+// the skills every code-writing or code-reviewing role loads after its agents.yaml list,
+// and the hub's structure-aware rename tools.
 //
 // The module has two keys, skills and rename_tools, each an ordered list of strings.
 // Each is classified Guard, so a worktree's local override cannot set it.
@@ -34,7 +35,6 @@
 //
 // A Python-based rename tool needs shuttle's deny_python off, since the shell guard's python row refuses it otherwise.
 //
-// AppendSkills merges a role's own skill list with the language list:
-// the role's skills in order, then each language skill not already present.
+// A role's own skills come from agents.yaml; shuttle loads the language skills after them, dropping repeats.
 // Load never resolves cwd itself: the caller hands it the directories (see PATTERN-cwd-resolution).
 package languageconfig

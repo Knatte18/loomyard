@@ -106,8 +106,9 @@ func newTestCLI(t *testing.T, fake *fakeStrands) *orchCLI {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "orch")
 	return &orchCLI{
-		cfg:     orchengine.Config{ThresholdTokens: 1234},
-		strands: fake,
+		cfg:        orchengine.Config{ThresholdTokens: 1234},
+		orchSkills: []string{"scribe:prose"},
+		strands:    fake,
 		// The record is absent until a test writes it with pauserecord.Update.
 		pauseRecordPath: filepath.Join(filepath.Dir(dir), "pause", pauserecord.RecordFileName),
 		engines:         shuttleengine.NewEngineSet("claude", map[string]shuttleengine.Engine{"claude": claudeengine.New()}),

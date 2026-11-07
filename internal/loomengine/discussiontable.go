@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
@@ -31,9 +32,6 @@ const (
 	discussionSelfCheckStencil      = "loom-fragment-self-check-discussion"
 	discussionSelfCheckGatedStencil = "loom-fragment-self-check-discussion-gated"
 )
-
-// discussionAdvisorSkills are the skills each advisor seat loads.
-var discussionAdvisorSkills = []string{"scribe:prose"}
 
 // DiscussionAdvisorNotes returns the path of the notes file of the advisor named name.
 // The file name carries an "advisor-" prefix, so no advisor name takes the path of a lead output.
@@ -147,7 +145,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 			ModelChoice: choice,
 			ModelKey:    shuttleengine.ModelKey{Module: loomModule, Key: discussionAdvisorsKey, Entry: advisor.Name},
 			Outputs:     []string{path},
-			Skills:      discussionAdvisorSkills,
+			ConfigRole:  agentconfig.RoleDiscussionAdvisor,
 		})
 	}
 	lead := seatengine.Seat{
@@ -155,7 +153,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 		ModelChoice:   chairChoice,
 		Inputs:        notes,
 		Outputs:       []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), DiscussionRelevant(layout)},
-		Skills:        discussionSkills,
+		ConfigRole:    agentconfig.RoleDiscussion,
 		Values:        leadValues,
 		ForkSubagents: forks,
 		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: "discussion"},

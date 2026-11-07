@@ -5,6 +5,7 @@ package samplerengine
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -24,10 +25,6 @@ const stencilName = "sampler-template-agent"
 // patternDirectiveMarker is the stencil's one optional marker.
 // It is filled with the PATTERN directive and left empty when the worktree has no PATTERN overview.
 const patternDirectiveMarker = "pattern_directive"
-
-// skills are the skills the sampler session loads before its prompt:
-// it talks with the operator and writes code and tests.
-var skills = []string{"scribe:prose", "scribe:conversation", "scribe:code-quality", "scribe:testing"}
 
 // SessionInputs holds the caller-supplied values the sampler agent's session spec is built from, none of them derived.
 type SessionInputs struct {
@@ -106,6 +103,6 @@ func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttlee
 		DenyPublish: true,
 		Role:        Role,
 		Segment:     segmentcolor.Darn,
-		Skills:      skills,
+		ConfigRole:  agentconfig.RoleSampler,
 	}, nil
 }

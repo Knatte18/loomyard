@@ -7,14 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
-
-// burlerSkills are the skills both halves' seats load, in order.
-var burlerSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
 
 // Engine drives the review and fix halves of burler rounds through a seat engine.
 // It resolves Profile paths against geom.WorktreeRoot and Profile.ClusterFan against cfg's lens/fan library.
@@ -24,17 +20,18 @@ type Engine struct {
 	cfg         lenses.Config
 	stencilsDir string
 	frictionDir string
-	// languageSkills are the hub's language skills a code round's seats load after burlerSkills; empty for none.
+	// languageSkills are the hub's language skills a code round's seats load after the burler role's skills; empty for none.
 	languageSkills []string
 }
 
 // seatSkills returns the skills every seat of p's half loads:
-// burlerSkills alone, or burlerSkills followed by the engine's language skills when p marks a code round.
+// the engine's language skills when p marks a code round, and nil otherwise.
+// The role's own skills come from agents.yaml (role `burler`) through each seat's ConfigRole.
 func (e *Engine) seatSkills(p *Profile) []string {
 	if !p.LanguageSkills {
-		return burlerSkills
+		return nil
 	}
-	return languageconfig.AppendSkills(burlerSkills, e.languageSkills)
+	return e.languageSkills
 }
 
 // New returns an Engine ready to run halves.
@@ -48,7 +45,7 @@ func (e *Engine) seatSkills(p *Profile) []string {
 // internal/hubgeom and internal/standalonegeom construct burlerengine.Geometry under the Told-Geometry Invariant,
 // so an explicit constructor parameter is the remaining told seam.
 // An empty value means Tier 2 is off for this engine.
-// languageSkills are the hub's language skills a code round's seats load after burlerSkills, empty for none.
+// languageSkills are the hub's language skills a code round's seats load after the burler role's skills, empty for none.
 func New(shuttle seatengine.Shuttle, geom Geometry, cfg lenses.Config, stencilsDir, frictionDir string, languageSkills []string) *Engine {
 	seats := seatengine.New(shuttle, seatengine.Geometry{
 		WorktreeRoot:  geom.WorktreeRoot,

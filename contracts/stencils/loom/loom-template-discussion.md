@@ -70,6 +70,7 @@ You MUST NOT gather exact signatures, `file:line` citations, interface shapes, o
 Start the exploration with explore subagents, before you read code in this session.
 Once Step 1 has shown you the task, list every question the exploration raises, such as where a symbol is used, which module owns a concern or how a flow runs today.
 Send the independent ones as one batch to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`, all launched together in one message.
+Give each Agent call the `effort` that the subagent passage of your system prompt names.
 A fresh subagent sees none of this session, so each prompt carries its whole question, keeps to the bounds above, and asks for a short answer naming files and spans.
 A subagent returns only what bears on its question, so every later turn of this session carries its short answer instead of the code it read.
 Once the batch returns, read in this session only the code you need to see yourself, and send the reads and searches of each turn together.

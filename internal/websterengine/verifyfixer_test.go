@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -193,8 +194,12 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 		if spec.Role != gatefixer.RoleVerifyFixer || spec.ModelChoice.Model != "recovery-model" || !slices.Equal(spec.OutputFiles, []string{replyPath}) {
 			t.Errorf("spec role %q, model %q, output files %v; want verify-fixer, recovery-model, [%s]", spec.Role, spec.ModelChoice.Model, spec.OutputFiles, replyPath)
 		}
-		if !slices.Contains(spec.Skills, "scribe:prose") {
-			t.Errorf("spec skills = %v; want the role skills", spec.Skills)
+		wantSkills, err := shuttlefake.Agents(t).Skills(agentconfig.RoleGateFixer, nil)
+		if err != nil {
+			t.Fatalf("Skills(gate-fixer) error = %v", err)
+		}
+		if spec.ConfigRole != agentconfig.RoleGateFixer || !slices.Equal(spec.Skills, wantSkills) {
+			t.Errorf("spec config role %q, skills %v; want %q and its agents.yaml skills %v", spec.ConfigRole, spec.Skills, agentconfig.RoleGateFixer, wantSkills)
 		}
 		for _, want := range []string{websterengine.VerifyGateReportPath(fx.ReportsDir), replyPath, "lym gate test --gate webster-fix"} {
 			if !strings.Contains(fx.Engine.LastPrompt, want) {

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -158,7 +159,7 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 		Prompt:      string(prompt),
 		OutputFiles: []string{replyPath},
 		ModelChoice: choice,
-		Skills:      roleSkills,
+		ConfigRole:  agentconfig.RoleWebster,
 		Role:        planFixerStrandRole,
 		Segment:     segmentcolor.Webster,
 		Timeout:     time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,

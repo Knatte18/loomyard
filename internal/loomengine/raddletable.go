@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -21,9 +22,6 @@ const raddleRole = "raddle"
 
 // raddleStencil is the stencil that opens the raddle agent's seat.
 const raddleStencil = "raddle-template-agent"
-
-// raddleSkills are the skills the Raddle-Write spawn loads, in order.
-var raddleSkills = []string{"scribe:prose", "scribe:conversation"}
 
 // raddleModeRules returns the {{.mode_rules}} block of the raddle agent.
 // In auto mode the agent ends on the complete proposal file with no operator present.
@@ -98,7 +96,7 @@ func RaddleTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Conf
 			Stencil:     raddleStencil,
 			ModelChoice: choice,
 			Outputs:     []string{output},
-			Skills:      raddleSkills,
+			ConfigRole:  agentconfig.RoleRaddle,
 			ModelKey:    shuttleengine.ModelKey{Module: loomModule, Key: "raddle"},
 		}},
 	}, nil

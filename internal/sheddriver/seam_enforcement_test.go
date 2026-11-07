@@ -15,6 +15,7 @@ import (
 
 // sheddriverAllowedImports are the only non-stdlib import paths production code in this package may use.
 var sheddriverAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/agentconfig",
 	"github.com/Knatte18/loomyard/internal/buildvcs",
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/editdirective",

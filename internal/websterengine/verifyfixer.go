@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -229,7 +228,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 		ReplyPath:   replyPath,
 		Role:        gatefixer.RoleVerifyFixer,
 		ModelChoice: choice,
-		Skills:      languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
+		Skills:      deps.LanguageSkills,
 		Segment:     segmentcolor.Webster,
 		Timeout:     time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
 	})

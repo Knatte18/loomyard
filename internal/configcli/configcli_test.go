@@ -358,7 +358,7 @@ func TestMenu(t *testing.T) {
 		wantNotOut []string
 	}{
 		{name: "no terminal refuses before reading a choice", input: "1\n", noTerminal: true, wantCode: 1, wantOut: []string{"--print", "--set"}, wantNotOut: []string{"1) "}},
-		{name: "valid selection", input: "1\nq\n", seed: []string{"batcher"}, editsAllowed: true, wantSynced: true, wantOut: []string{"board"}},
+		{name: "valid selection", input: fmt.Sprintf("%d\nq\n", slices.Index(configreg.Names(), "batcher")+1), seed: []string{"batcher"}, editsAllowed: true, wantSynced: true, wantOut: []string{"board"}},
 		{name: "quit", input: "q\n"},
 		{name: "non-number", input: "abc\n", wantCode: 1, wantOut: []string{"invalid"}},
 		{name: "out-of-range number", input: "999\n", wantCode: 1, wantOut: []string{"invalid"}},

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -99,7 +100,10 @@ type Seat struct {
 	// Inputs are the files the seat reads, and Outputs the files it writes; a seat has at least one output.
 	Inputs  []string
 	Outputs []string
-	// Skills are the skills the seat's session is typed.
+	// ConfigRole names the agents.yaml role the seat's session runs as; its skill list loads ahead of Skills.
+	// Empty leaves Skills as the whole list.
+	ConfigRole agentconfig.Role
+	// Skills are the skills the seat's session is typed after ConfigRole's list.
 	Skills []string
 	// Values are the seat's own stencil marker values; a name may not be reserved and a value may not be blank.
 	Values map[string]string

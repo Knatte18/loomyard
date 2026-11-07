@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -24,9 +25,6 @@ import (
 // judgeRole is the agent-name role this module's judge spawn carries.
 // The spawn names the review segment.
 const judgeRole = "judge"
-
-// judgeSkills are the skills the judge spawns load before their prompt.
-var judgeSkills = []string{"scribe:prose"}
 
 // Shuttle is the seam judge.go drives its ephemeral calls through, satisfied by
 // *shuttleengine.Runner in production and fakes in tests.
@@ -149,7 +147,7 @@ func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]st
 		ModelChoice: choice,
 		Role:        judgeRole,
 		Segment:     segmentcolor.Review,
-		Skills:      judgeSkills,
+		ConfigRole:  agentconfig.RoleTreadleJudge,
 		Round:       strconv.Itoa(round),
 	}
 

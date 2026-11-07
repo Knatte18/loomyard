@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -122,7 +123,7 @@ func PartsPlanTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg C
 		ModelKey:    shuttleengine.ModelKey{Module: tapestryModule, Key: "parts_chair"},
 		Inputs:      append([]string{DiscussionDecisionRecord(layout), partsFile}, overviews...),
 		Outputs:     []string{partsparser.JoinRecord(anchor)},
-		Skills:      planSkills,
+		ConfigRole:  agentconfig.RolePlan,
 		Values:      chairValues,
 		Timeout:     chairTimeout,
 	}
@@ -148,7 +149,7 @@ func PartsPlanTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg C
 			ModelKey:         shuttleengine.ModelKey{Module: tapestryModule, Key: "part_writer"},
 			Inputs:           []string{DiscussionDecisionRecord(layout), DiscussionRelevant(layout), partsFile},
 			Outputs:          []string{partsparser.PartOverview(anchor, part.Name)},
-			Skills:           planSkills,
+			ConfigRole:       agentconfig.RolePlan,
 			Values:           writerValues,
 			Gate:             gate,
 			GateFindingsPath: findingsPath(part.Name),
