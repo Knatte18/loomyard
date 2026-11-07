@@ -148,6 +148,9 @@ func TestStore(t *testing.T) {
 			{"NewWithoutTargets", "x", Patch{Text: textOf("t"), Order: orderOf(1)}, "--targets"},
 			{"ExistingWithEmptyTargets", "a", Patch{Targets: []string{}}, "--targets"},
 			{"ShippedSlug", shippedStore.Ordered()[0].Slug, Patch{Text: textOf("t"), Order: orderOf(1), Targets: []string{"claude-file"}}, "--layer " + OverrideLayer},
+			{"SettingsTextIsNoObject", "x", Patch{Text: textOf("deny Workflow"), Order: orderOf(1), Targets: []string{"claude-settings"}}, "one JSON object"},
+			{"SettingsTextIsAList", "x", Patch{Text: textOf(`["Workflow"]`), Order: orderOf(1), Targets: []string{"claude-settings"}}, "one JSON object"},
+			{"SettingsBesideATextTarget", "x", Patch{Text: textOf(`{"a": 1}`), Order: orderOf(1), Targets: []string{"claude-settings", "claude-file"}}, "alone"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -170,14 +173,18 @@ func TestStore(t *testing.T) {
 	t.Run("ShippedEntriesArePinned", func(t *testing.T) {
 		t.Parallel()
 		// The rows are the shipped layer in render order.
-		// wantHeading is the entry's first line: a level-two heading of its own.
+		// wantHeading is a text entry's first line: a level-two heading of its own, and empty for a JSON-object entry.
 		// Level two keeps the rendered file stepping from the shipped section's level-one heading with no skip.
 		tests := []struct {
 			slug        string
+			target      string
 			wantHeading string
 		}{
-			{"lym-batching", "## Batch your calls"},
-			{"lym-plan-edits-before-gate", "## Make every round of edits in this order"},
+			{"lym-batching", "claude-file", "## Batch your calls"},
+			{"lym-plan-edits-before-gate", "claude-file", "## Make every round of edits in this order"},
+			{"lym-no-attribution", "claude-settings", ""},
+			{"lym-plugins", "claude-settings", ""},
+			{"lym-tool-deny", "claude-settings", ""},
 		}
 		ordered := shippedStore.Ordered()
 		if len(ordered) != len(tests) {
@@ -185,8 +192,11 @@ func TestStore(t *testing.T) {
 		}
 		for i, tt := range tests {
 			got := ordered[i]
-			if got.Slug != tt.slug || len(got.Targets) != 1 || got.Targets[0] != "claude-file" {
-				t.Errorf("shipped entry %d = %+v; want slug %s aimed at claude-file alone", i, got, tt.slug)
+			if got.Slug != tt.slug || len(got.Targets) != 1 || got.Targets[0] != tt.target {
+				t.Errorf("shipped entry %d = %+v; want slug %s aimed at %s alone", i, got, tt.slug, tt.target)
+			}
+			if tt.wantHeading == "" {
+				continue
 			}
 			if heading, _, _ := strings.Cut(got.Text, "\n"); heading != tt.wantHeading {
 				t.Errorf("shipped entry %s opens with %q; want %q", tt.slug, heading, tt.wantHeading)

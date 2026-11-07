@@ -35,7 +35,7 @@ func newRenderFixture(t *testing.T, store Store) renderFixture {
 		anchor:   t.TempDir(),
 		scratch:  t.TempDir(),
 		bolt:     t.TempDir(),
-		excluded: []string{"CLAUDE.local.md", "AGENTS.override.md", ".heddle"},
+		excluded: []string{"CLAUDE.local.md", "AGENTS.override.md", ".heddle", ClaudeSettingsFile},
 	}
 	saveStore(t, fixture.bolt, store)
 	return fixture
@@ -240,7 +240,7 @@ func TestRender(t *testing.T) {
 		if want := Marker + "\n\none\n\ntwo\n"; f.readAnchor(t, "AGENTS.override.md") != want {
 			t.Errorf("AGENTS.override.md = %q; want %q", f.readAnchor(t, "AGENTS.override.md"), want)
 		}
-		if want := []string{"CLAUDE.local.md", "AGENTS.override.md"}; !slices.Equal(report.Written, want) || len(report.Warnings) != 0 {
+		if want := []string{"CLAUDE.local.md", "AGENTS.override.md", ClaudeSettingsFile}; !slices.Equal(report.Written, want) || len(report.Warnings) != 0 {
 			t.Errorf("report = %+v; want %v written", report, want)
 		}
 		if f.anchorHas(".heddle") {
@@ -310,8 +310,8 @@ func TestRender(t *testing.T) {
 		if want := claudeFileWant(""); f.readAnchor(t, "CLAUDE.local.md") != want {
 			t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 		}
-		if !slices.Equal(report.Written, []string{"CLAUDE.local.md"}) || f.anchorHas("AGENTS.override.md") {
-			t.Errorf("report = %+v; want only CLAUDE.local.md written", report)
+		if !slices.Equal(report.Written, []string{"CLAUDE.local.md", ClaudeSettingsFile}) || f.anchorHas("AGENTS.override.md") {
+			t.Errorf("report = %+v; want CLAUDE.local.md and the settings file written, and no AGENTS.override.md", report)
 		}
 	})
 
@@ -509,7 +509,7 @@ func TestRender(t *testing.T) {
 	t.Run("LeftoverTempFileIsOverwritten", func(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, claudeStore)
-		f.writeAnchor(t, ".heddle/CLAUDE.local.md.tmp", "half a render")
+		f.writeAnchor(t, ".heddle/claude-file.tmp", "half a render")
 		mustRender(t, f)
 		if !strings.HasPrefix(f.readAnchor(t, "CLAUDE.local.md"), Marker) || f.anchorHas(".heddle") {
 			t.Error("leftover temp file not overwritten, or .heddle left behind")

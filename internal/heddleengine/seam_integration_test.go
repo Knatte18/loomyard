@@ -77,7 +77,7 @@ func TestSeam_PullTakeIn(t *testing.T) {
 	pullBolt(t, hub)
 	t.Cleanup(fabricengine.InstallWorktreeSeam(heddleengine.Seam{}))
 
-	excluded := []string{"CLAUDE.local.md", "AGENTS.override.md", ".heddle"}
+	excluded := []string{"CLAUDE.local.md", "AGENTS.override.md", ".heddle", heddleengine.ClaudeSettingsFile}
 	stripExcludeLines(t, hub.PrimeWorktree(), excluded)
 	gitkit.CommitFile(t, second.PrimeWorktree(), "AGENTS.md", "new rules\n", "change AGENTS.md")
 	gitkit.Git(t, second.PrimeWorktree(), "push", "origin", "HEAD")

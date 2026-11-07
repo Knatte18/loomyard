@@ -16,7 +16,7 @@ import (
 )
 
 // warpExcludeLines are the anchored exclude lines the template's default warp_exclude list yields.
-var warpExcludeLines = []string{"/CLAUDE.local.md", "/AGENTS.override.md", "/.heddle"}
+var warpExcludeLines = []string{"/CLAUDE.local.md", "/AGENTS.override.md", "/.heddle", "/.claude/settings.local.json"}
 
 // countLine returns how many of lines trim to want.
 func countLine(lines []string, want string) int {
@@ -68,7 +68,7 @@ func TestSeedWarpExclude_SeedsWarpOnlyOnce(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SeedWarpExclude: %v", err)
 		}
-		if got, want := strings.Join(paths, " "), "CLAUDE.local.md AGENTS.override.md .heddle"; got != want {
+		if got, want := strings.Join(paths, " "), "CLAUDE.local.md AGENTS.override.md .heddle .claude/settings.local.json"; got != want {
 			t.Errorf("SeedWarpExclude() = %q; want %q", got, want)
 		}
 		for i := 0; i < 2; i++ {

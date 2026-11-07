@@ -14,7 +14,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -133,6 +135,49 @@ func TestEnsure_DriftDirsOnAnAnchoredHubAreRewrittenOnceAndMailed(t *testing.T) 
 	}
 	if len(*sent) != 1 {
 		t.Errorf("notifier called %d times after the second walk; want no further mail", len(*sent))
+	}
+}
+
+// TestEnsure_OwnExcludeListGainsTheSettingsFileOnce does not call t.Parallel:
+// it installs the process-global notifier and swaps the package-global detached board sync.
+func TestEnsure_OwnExcludeListGainsTheSettingsFileOnce(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	geom := geometryOf(h)
+	board := h.BoardDir()
+	removeReinterpretationMarkers(t, board)
+	gitkit.Git(t, board, "commit", "-q", "--allow-empty", "-m", "fixture: a board no reinterpretation was applied to")
+	gitkit.CommitFile(t, board, configengine.ConfigFileRel("fabric"), fabricengine.ExcludeListKey+": A.md\n", "fixture: a hub with its own exclude list")
+	recordBoardSyncs(t)
+	recordNotices(t)
+	fabricPath := configengine.ConfigFile(board, "fabric")
+	markerRel := filepath.ToSlash(configengine.ReinterpretedMarkerRel(heddleengine.SettingsExcludeReinterpretation))
+
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+
+	first, err := os.ReadFile(fabricPath)
+	if err != nil {
+		t.Fatalf("read the board's fabric.yaml: %v", err)
+	}
+	if want := fabricengine.ExcludeListKey + ": A.md " + heddleengine.ClaudeSettingsFile; !strings.Contains(string(first), want) {
+		t.Errorf("board fabric.yaml = %q after the walk; want it to hold %q", first, want)
+	}
+	if !slices.Contains(gitkit.LsFiles(t, board), markerRel) {
+		t.Errorf("the board does not track %s after the walk", markerRel)
+	}
+	assertClean(t, board)
+
+	if err := os.Remove(geom.StampPath()); err != nil {
+		t.Fatalf("remove the stamp: %v", err)
+	}
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("second Ensure: %v", err)
+	}
+	if second, err := os.ReadFile(fabricPath); err != nil || string(second) != string(first) {
+		t.Errorf("board fabric.yaml = %q, %v after the second walk; want it unchanged", second, err)
 	}
 }
 

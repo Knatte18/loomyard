@@ -30,13 +30,19 @@ func SaveOverrides(boltDir string, s Store) error {
 }
 
 // SetOverride stores text as the override of the shipped entry slug.
-// It refuses a slug the shipped layer does not hold and an empty text, changing nothing.
+// It refuses a slug the shipped layer does not hold and an empty text.
+// It also refuses a text that is no JSON object, for an entry aimed at a JSON-object target.
+// A refusal changes nothing.
 func (s *Store) SetOverride(slug, text string) error {
-	if _, found := shippedStore.Get(slug); !found {
+	shipped, found := shippedStore.Get(slug)
+	if !found {
 		return fmt.Errorf("no shipped entry %q to override; way forward: run `lym heddle list` for the shipped slugs, or drop --layer %s to set a repository entry", slug, OverrideLayer)
 	}
 	if strings.TrimSpace(text) == "" {
 		return fmt.Errorf("the override of %q has an empty text; way forward: give a non-empty --text-file", slug)
+	}
+	if err := validateObjectEntry(slug, shipped.Targets, text); err != nil {
+		return err
 	}
 	entries := slices.Clone(s.Entries)
 	if index := slices.IndexFunc(entries, func(entry Entry) bool { return entry.Slug == slug }); index >= 0 {

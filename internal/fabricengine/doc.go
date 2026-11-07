@@ -509,10 +509,11 @@
 // A concurrent reader sees either the whole old file or the whole new one.
 //
 // The warp exclude list is `fabric.yaml`'s `warp_exclude` key.
-// It names paths under a warp worktree's anchor that lym's instruction files occupy.
+// It names paths under a warp worktree's anchor that lym's rendered files occupy.
 // Wiring seeds each as a root-anchored `/<anchor>/<path>` line (`/<path>` for anchor `.`) into the same `info/exclude`.
 // It never removes one, since every worktree shares the file.
 // `SeedWarpExclude` seeds it on demand, and `ExcludeWayForward` is the refusal text for a path off the list.
+// `AppendExcludePaths` is the hub reconcile's rewrite that adds a path lym starts rendering to a hub's own list.
 // The list is separate from `pathspec`.
 // It is never folded into the wired junction names, so health and drift checks never ask for a junction of it.
 //

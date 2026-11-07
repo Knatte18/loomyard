@@ -20,6 +20,7 @@
 // and `remove` drops an override whatever the setting holds.
 // `set` takes `--text-file <path>` (`-` reads stdin), `--order <n>` and `--targets <a,b>`.
 // It changes only the fields given; a new entry needs all three.
+// An entry aimed at `claude-settings` holds one JSON object and names no text target beside it.
 // Both take the Bolt write lock, load the store, apply the change, save it and release the lock.
 // Then they start the board's detached Bolt sync, which commits what is dirty under that lock and pushes.
 // A refused change saves nothing and starts no sync.

@@ -340,7 +340,7 @@ github.com/Knatte18/loomyard/
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
 ├── internal/desktophook/         the hub-wide `desktop.yaml` config and the machine's window command, run after `lym reed window` and `lym ide` open a window, and the machine's added status-bar buttons
 ├── internal/samplerengine/       the sampler recipe's hub-wide `sampler.yaml` config
-├── internal/heddleengine/        heddle's instruction layers, the one lym ships in its binary and the repository's `heddle.json`, their rendering into a worktree's CLAUDE and AGENTS files and a session's system prompt, and the hub-wide `heddle.yaml` that turns the hub's overrides of shipped entries on
+├── internal/heddleengine/        heddle's instruction layers, the one lym ships in its binary and the repository's `heddle.json`, their rendering into a worktree's CLAUDE and AGENTS files, its `.claude/settings.local.json` and a session's system prompt, and the hub-wide `heddle.yaml` that turns the hub's overrides of shipped entries on
 ├── internal/driftengine/         regression around a task: the hub-wide `drift.yaml` config, the drift paths and records, the capture and compare runs and the Drift rows' producers
 ├── internal/driftcli/            the `lym drift` commands (`check`, `amend`, `capture`, `defer`, `status` and the hidden `capture-child`) and their worktree wiring over `internal/driftengine`
 ├── internal/envconfig/           the hub-wide `env.yaml` config: the environment variables lym exports to gate tiers and the shared build, Drift capture and compare, and agent sessions, with a machine layer that wins name by name

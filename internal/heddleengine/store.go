@@ -312,6 +312,7 @@ func (s *Store) Remove(slug string) error {
 
 // ValidateEntry refuses an entry that cannot be rendered.
 // It refuses a slug off the slug rule, an empty text, no target, or a target the table does not hold.
+// It also refuses an entry aimed at a JSON-object target beside a text target, or one whose text is no JSON object.
 // Each message names the way forward.
 func ValidateEntry(e Entry) error {
 	if !slugRule.MatchString(e.Slug) {
@@ -328,5 +329,5 @@ func ValidateEntry(e Entry) error {
 			return fmt.Errorf("entry %q names the unknown target %q; way forward: use one of %s", e.Slug, name, strings.Join(TargetNames(), ", "))
 		}
 	}
-	return nil
+	return validateObjectEntry(e.Slug, e.Targets, e.Text)
 }

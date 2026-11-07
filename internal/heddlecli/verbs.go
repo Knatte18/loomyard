@@ -175,11 +175,15 @@ slug lym ships is refused: shipped entries change only with a lym release.
                        slug instead; it takes --text-file alone, and only a hub
                        whose heddle.yaml sets lym_override takes it
 
+An entry aimed at claude-settings holds one JSON object and no other target;
+every render merges it into the worktree's .claude/settings.local.json.
+
 The change is saved under the Bolt write lock, and the board's detached Bolt
 sync then commits and pushes it. A refused change saves nothing.
 
 Examples:
   lym heddle set house-rules --text-file rules.md --order 10 --targets claude-file,claude-prompt
+  lym heddle set house-deny --text-file deny.json --order 20 --targets claude-settings
   lym heddle set lym-batching --layer lym --text-file tuned.md`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

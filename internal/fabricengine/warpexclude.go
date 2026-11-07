@@ -5,11 +5,16 @@
 package fabricengine
 
 import (
+	"bytes"
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
@@ -66,6 +71,58 @@ func SeedWarpExclude(l *lymcwd.Location) ([]string, error) {
 		return nil, err
 	}
 	return paths, nil
+}
+
+// AppendExcludePaths returns a hub config reinterpretation's rewrite that adds paths to a hub's own warp exclude list.
+// A fabric.yaml that sets warp_exclude gains each path its list lacks, appended in order, and one line naming them.
+// A file that leaves the key unset takes the template's list, so it comes back unchanged, as does one listing every path.
+// The rewrite ignores the worktree root and anchored directory it is handed.
+// A document that does not parse returns an error marked configengine.ErrInvalid.
+func AppendExcludePaths(paths ...string) func(existing []byte, worktreeRoot, anchorDir string) (rewritten []byte, rewrote, flagged []string, err error) {
+	return func(existing []byte, _, _ string) ([]byte, []string, []string, error) {
+		var document yaml.Node
+		if err := yaml.Unmarshal(existing, &document); err != nil {
+			return nil, nil, nil, configengine.MarkInvalid(fmt.Errorf("extend %s: unmarshal yaml: %w", ExcludeListKey, err))
+		}
+		if document.Kind != yaml.DocumentNode || len(document.Content) == 0 || document.Content[0].Kind != yaml.MappingNode {
+			return existing, nil, nil, nil
+		}
+		mapping := document.Content[0]
+		var value *yaml.Node
+		for i := 0; i+1 < len(mapping.Content); i += 2 {
+			if mapping.Content[i].Value == ExcludeListKey && mapping.Content[i+1].Kind == yaml.ScalarNode {
+				value = mapping.Content[i+1]
+			}
+		}
+		if value == nil {
+			return existing, nil, nil, nil
+		}
+		listed := strings.Fields(value.Value)
+		var added []string
+		for _, missing := range paths {
+			if !slices.Contains(listed, missing) {
+				listed = append(listed, missing)
+				added = append(added, missing)
+			}
+		}
+		if len(added) == 0 {
+			return existing, nil, nil, nil
+		}
+		value.Value = strings.Join(listed, " ")
+		value.Tag = "!!str"
+
+		var out bytes.Buffer
+		encoder := yaml.NewEncoder(&out)
+		encoder.SetIndent(2)
+		if err := encoder.Encode(&document); err != nil {
+			return nil, nil, nil, configengine.MarkInvalid(fmt.Errorf("extend %s: encode yaml: %w", ExcludeListKey, err))
+		}
+		if err := encoder.Close(); err != nil {
+			return nil, nil, nil, configengine.MarkInvalid(fmt.Errorf("extend %s: encode yaml: %w", ExcludeListKey, err))
+		}
+		line := fmt.Sprintf("%s gained %s, a file lym now renders into every worktree; lym config fabric --set %s=<paths> from the prime sets another list", ExcludeListKey, strings.Join(added, " "), ExcludeListKey)
+		return out.Bytes(), []string{line}, nil, nil
+	}
 }
 
 // ExcludeWayForward returns the refusal text for a path the warp exclude list does not name:

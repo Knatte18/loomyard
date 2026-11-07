@@ -16,9 +16,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRender_WritesAtTheAnchorAndLeavesNoUntrackedFile renders both file targets into a hub's prime.
+// TestRender_WritesAtTheAnchorAndLeavesNoUntrackedFile renders every file target into a hub's prime.
 // Its event is the one fabricengine builds.
-// It expects both files at the prime's anchor, none at its root when the two differ, and git to see nothing untracked.
+// It expects every file at the prime's anchor, none at its root when the two differ, and git to see nothing untracked.
 func TestRender_WritesAtTheAnchorAndLeavesNoUntrackedFile(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -51,15 +51,16 @@ func TestRender_WritesAtTheAnchorAndLeavesNoUntrackedFile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Render() = %v", err)
 			}
-			if want := []string{"CLAUDE.local.md", "AGENTS.override.md"}; !slices.Equal(report.Written, want) || len(report.Warnings) != 0 {
-				t.Errorf("Render() report = %+v; want %v written and no warnings", report, want)
+			files := []string{"CLAUDE.local.md", "AGENTS.override.md", heddleengine.ClaudeSettingsFile}
+			if !slices.Equal(report.Written, files) || len(report.Warnings) != 0 {
+				t.Errorf("Render() report = %+v; want %v written and no warnings", report, files)
 			}
-			for _, name := range []string{"CLAUDE.local.md", "AGENTS.override.md"} {
-				if _, err := os.Stat(filepath.Join(hub.Location.AnchorPath(), name)); err != nil {
+			for _, name := range files {
+				if _, err := os.Stat(filepath.Join(hub.Location.AnchorPath(), filepath.FromSlash(name))); err != nil {
 					t.Errorf("%s was not rendered at the anchor: %v", name, err)
 				}
 				if tt.anchor != "." {
-					if _, err := os.Stat(filepath.Join(hub.PrimeWorktree(), name)); err == nil {
+					if _, err := os.Stat(filepath.Join(hub.PrimeWorktree(), filepath.FromSlash(name))); err == nil {
 						t.Errorf("%s was rendered at the worktree's root", name)
 					}
 				}

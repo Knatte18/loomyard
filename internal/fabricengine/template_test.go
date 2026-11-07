@@ -22,10 +22,10 @@ import (
 // _lym and .lym are structural and injected in code, so the key never supplies them;
 // an empty default leaves pathspec free to name only the optional per-repo directories the operator adds.
 // The resolved value is whitespace-split and compared name by name, so a splitting bug cannot pass silently;
-// warp_exclude resolves to exactly CLAUDE.local.md, AGENTS.override.md and .heddle;
+// warp_exclude resolves to exactly CLAUDE.local.md, AGENTS.override.md, .heddle and .claude/settings.local.json;
 // and an empty pathspec leaves the routing set and the wired-name set at their structural sets alone.
 //
-//testtiming:keep the config template being valid YAML with its three keys, resolving to an empty branch prefix, an empty pathspec and the three default warp exclude paths, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep the config template being valid YAML with its three keys, resolving to an empty branch prefix, an empty pathspec and the default warp exclude paths, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
 func TestConfigTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -77,7 +77,7 @@ func TestConfigTemplate(t *testing.T) {
 		t.Fatalf("resolved YAML does not unmarshal into Config: %v", err)
 	}
 
-	if got, want := cfg.WarpExcludePaths(), []string{"CLAUDE.local.md", "AGENTS.override.md", ".heddle"}; !reflect.DeepEqual(got, want) {
+	if got, want := cfg.WarpExcludePaths(), []string{"CLAUDE.local.md", "AGENTS.override.md", ".heddle", ".claude/settings.local.json"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("cfg.WarpExcludePaths() = %v; want %v", got, want)
 	}
 

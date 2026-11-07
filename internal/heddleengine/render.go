@@ -70,6 +70,7 @@ type Renderer struct {
 // Two renders of one worktree therefore serialize, and the last one's text stands whole.
 // A target with no entry loses its marked file.
 // A target the exclude list does not cover, or whose file lacks the marker, is left alone with a warning.
+// A JSON-object target's entries merge into the keys its file already holds, so that file needs no marker.
 // A render whose Only names claude-file renders codex-file too,
 // so a worktree that already exists takes a changed repository entry at its next render.
 // The lock wait running out fails the render before it writes anything.
@@ -108,6 +109,12 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 		if target.Delivery != DeliveryFile || (len(only) > 0 && !slices.Contains(only, target.Name)) {
 			continue
 		}
+		if target.JSONObject {
+			if err := renderObjectTarget(&report, req, target, entries, blocked); err != nil {
+				return report, err
+			}
+			continue
+		}
 		text, held, err := fileText(target, req.Anchor, entries)
 		if err != nil {
 			return report, err
@@ -140,7 +147,7 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 			report.warn(fmt.Sprintf("%s exists and was not rendered by heddle, so it is left untouched; way forward: move or remove it, then run `%s`", path, renderVerb))
 			report.Unwritten = append(report.Unwritten, target.File)
 		default:
-			if err := writeRendered(tempDir, target.File, path, text); err != nil {
+			if err := writeRendered(tempDir, target.Name, path, text); err != nil {
 				return report, err
 			}
 			report.Written = append(report.Written, target.File)
@@ -218,9 +225,13 @@ func tempDirBlocked(dir string) (bool, error) {
 }
 
 // writeRendered writes text to tempDir/<name>.tmp, overwriting a leftover, and renames it onto path.
+// name is the target's name, so the staged file sits directly in tempDir whatever directory path lies in.
+// It creates path's directory when it is missing.
 func writeRendered(tempDir, name, path, text string) error {
-	if err := os.MkdirAll(tempDir, 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", tempDir, err)
+	for _, dir := range []string{tempDir, filepath.Dir(path)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", dir, err)
+		}
 	}
 	tempPath := filepath.Join(tempDir, name+tempSuffix)
 	if err := os.WriteFile(tempPath, []byte(text), 0o644); err != nil {
@@ -327,6 +338,7 @@ func fileExists(path string) bool {
 // Show returns the text the named target renders to for the worktree anchor, from the shipped layer and the store.
 // It writes nothing.
 // A prompt target gives its passages joined by blank lines, and a target with no entry gives no text.
+// A JSON-object target gives the object its entries fold to, before any merge into the file.
 func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 	named, ok := LookupTarget(target)
 	if !ok {
@@ -338,6 +350,13 @@ func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 	}
 	if named.Delivery == DeliveryPrompt {
 		return strings.Join(passagesOf(layers, named.Name), "\n\n"), nil
+	}
+	if named.JSONObject {
+		folded, held, _, _ := foldObjects(named, layers.Ordered())
+		if !held {
+			return "", nil
+		}
+		return encodeObject(folded)
 	}
 	text, _, err := fileText(named, anchor, layers.Ordered())
 	return text, err

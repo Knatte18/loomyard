@@ -23,6 +23,12 @@ Heddle's instruction text is stored once per layer and rendered from those store
   It does so through fabric's worktree seam or `lym heddle render`.
 - It renders a session's appended system prompt through shuttle's prompt seam.
 - Fabric hands heddle paths and events and names no heddle file.
+- Heddle's file targets are the one place a per-worktree file lym seeds is declared, so a new such file is a new target.
+  Its path joins the exclude list in fabric's config template,
+  and a hub that sets its own list gains the path through a config reinterpretation.
+- Claude Code's worktree settings, `.claude/settings.local.json`, render from the `claude-settings` target.
+  The shipped layer holds lym's hub-wide Claude settings there, and a repository's entries add to them.
+  A setting that differs per session or role stays in the `--settings` document a session is launched with.
 
 ## Lym instructions in code
 

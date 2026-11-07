@@ -15,6 +15,30 @@
       "targets": [
         "claude-file"
       ]
+    },
+    {
+      "slug": "lym-no-attribution",
+      "text": "{\"attribution\": {\"commit\": \"\", \"pr\": \"\"}}",
+      "order": 100,
+      "targets": [
+        "claude-settings"
+      ]
+    },
+    {
+      "slug": "lym-plugins",
+      "text": "{\"enabledPlugins\": {\"ly@loomyard\": true, \"scribe@scribe\": true}, \"extraKnownMarketplaces\": {\"scribe\": {\"source\": {\"source\": \"github\", \"repo\": \"Knatte18/scribe\"}}}}",
+      "order": 110,
+      "targets": [
+        "claude-settings"
+      ]
+    },
+    {
+      "slug": "lym-tool-deny",
+      "text": "{\"permissions\": {\"deny\": [\"Artifact\", \"Workflow\", \"ReportFindings\", \"ScheduleWakeup\", \"SendFeedback\", \"CronCreate\", \"CronDelete\", \"CronList\", \"RemoteTrigger\", \"DesignSync\", \"NotebookEdit\", \"EnterWorktree\", \"ExitWorktree\", \"Skill(dataviz)\"]}}",
+      "order": 120,
+      "targets": [
+        "claude-settings"
+      ]
     }
   ]
 }

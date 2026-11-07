@@ -25,6 +25,7 @@ func TestOverrides(t *testing.T) {
 		}{
 			{"UnshippedSlug", "house-rules", "t", "drop --layer " + OverrideLayer},
 			{"EmptyText", shipped, "  \n", "--text-file"},
+			{"SettingsOverrideIsNoObject", "lym-tool-deny", "deny everything", "one JSON object"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

@@ -13,6 +13,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ExcludeListKey is fabric.yaml's key holding the warp exclude list.
+const ExcludeListKey = "warp_exclude"
+
 // Config holds the settings every pair shares: the warp branch prefix, the weft-sync pathspec and the warp exclude list.
 type Config struct {
 	BranchPrefix string `yaml:"branch_prefix"`
@@ -42,7 +45,7 @@ func ConfigSpec() configengine.Spec {
 		Categories: map[string]configengine.Category{
 			"branch_prefix": configengine.CategoryCrossPair,
 			"pathspec":      configengine.CategoryCrossPair,
-			"warp_exclude":  configengine.CategoryCrossPair,
+			ExcludeListKey:  configengine.CategoryCrossPair,
 		},
 	}
 }
