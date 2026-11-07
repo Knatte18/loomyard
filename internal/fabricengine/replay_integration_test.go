@@ -101,6 +101,26 @@ func (f *recordsFixture) originCommit(branch, rel, content, message string) stri
 	return sha
 }
 
+// originHeddleCommit commits a heddle.json of texts and the overview rendered from it on branch, from a second clone.
+// The clone is of the records bare repository, and the commit is pushed, as a heddle write on another machine does.
+// It returns the new origin tip.
+func (f *recordsFixture) originHeddleCommit(branch string, texts map[string]string, message string) string {
+	f.t.Helper()
+
+	other := filepath.Join(f.t.TempDir(), "other")
+	gitkit.Git(f.t, filepath.Dir(other), "clone", "--branch", branch, f.hub.RecordsBare, other)
+	if err := os.WriteFile(filepath.Join(other, heddleengine.FileName), []byte(heddleFileOf(f.t, texts)), 0o644); err != nil {
+		f.t.Fatalf("write %s: %v", heddleengine.FileName, err)
+	}
+	if _, err := heddleengine.RenderOverview(other); err != nil {
+		f.t.Fatalf("render %s: %v", heddleengine.OverviewFileName, err)
+	}
+	gitkit.Git(f.t, other, "add", "--all")
+	gitkit.Git(f.t, other, "commit", "--message", message)
+	gitkit.Git(f.t, other, "push", "origin", branch)
+	return gitkit.RevParse(f.t, other, "HEAD")
+}
+
 // scribbleThenFailReplay is the real board replay for every board but one.
 // For that one it writes an uncommitted `board.json` and then fails, as an apply that dies halfway leaves it.
 type scribbleThenFailReplay struct {
@@ -768,7 +788,7 @@ func TestRecordsReplay(t *testing.T) {
 			branch := gitkit.CurrentBranch(t, board)
 			pushHeddleBase(t, board, branch, map[string]string{"x": "X"})
 			local := gitkit.CommitFile(t, board, "heddle.json", heddleFileOf(t, map[string]string{"x": "X local"}), "edit x locally")
-			upstream := f.originCommit(branch, "heddle.json", heddleFileOf(t, map[string]string{"x": "X origin"}), "edit x on origin")
+			upstream := f.originHeddleCommit(branch, map[string]string{"x": "X origin"}, "edit x on origin")
 			gitkit.Git(t, board, "fetch")
 
 			outcome, err := fabricengine.ReplayBoltForTest(f.hub.Location, board, nil)

@@ -341,7 +341,7 @@ github.com/Knatte18/loomyard/
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
 ├── internal/desktophook/         the hub-wide `desktop.yaml` config and the machine's window command, run after `lym reed window` and `lym ide` open a window, and the machine's added status-bar buttons
 ├── internal/samplerengine/       the sampler recipe's hub-wide `sampler.yaml` config
-├── internal/heddleengine/        heddle's instruction layers, the one lym ships in its binary and the repository's `heddle.json`, their rendering into a worktree's CLAUDE and AGENTS files, its `.claude/settings.local.json` and a session's system prompt, and the hub-wide `heddle.yaml` that turns the hub's overrides of shipped entries on
+├── internal/heddleengine/        heddle's instruction layers, the one lym ships in its binary and the repository's `heddle.json`, their rendering into a worktree's CLAUDE and AGENTS files, its `.claude/settings.local.json` and a session's system prompt, the Bolt checkout's `HEDDLE.md` overview of every entry, and the hub-wide `heddle.yaml` that turns the hub's overrides of shipped entries on
 ├── internal/driftengine/         regression around a task: the hub-wide `drift.yaml` config, the drift paths and records, the capture and compare runs and the Drift rows' producers
 ├── internal/driftcli/            the `lym drift` commands (`check`, `amend`, `capture`, `defer`, `status` and the hidden `capture-child`) and their worktree wiring over `internal/driftengine`
 ├── internal/envconfig/           the hub-wide `env.yaml` config: the environment variables lym exports to gate tiers and the shared build, Drift capture and compare, and agent sessions, with a machine layer that wins name by name
@@ -668,16 +668,20 @@ User-facing modules each get one `lym <module>` namespace:
   and every Claude session it launches with a run directory also gets the creel trust sentence,
   through one `append-system-prompt.txt` file named by `--append-system-prompt-file` on launch and resume,
   so a session knows the tool is unavailable before it tries one and follows `[creel]` mail from its hooks.
-  Every settings document the Claude engine writes, a run's and an opened session's alike,
-  sets Claude Code's `attribution` to empty commit and pull-request texts,
-  so no session lym launches credits itself in a commit or pull request and a landing's credit block stays the one credit.
-  While `claude.yaml`'s `session_scope` block is on, the same documents scope what each session loads, over the user's and the repository's settings:
-  an installed plugin is on only when the session preloads one of its skills, so the orch and the board session get the `ly` plugin in every hub and a writer does not, claude.ai connectors, Claude Code's bundled skills, its `Workflow` tool and the block's `skills_off` list are off, a plugin that is on lists all of its skills, since no setting hides one skill of it,
-  and every session but the orch's gets no auto-memory and no `ListAgents` tool.
+  Every settings document the Claude engine writes, a run's and an opened session's alike, holds only what differs per session or role.
+  What every session of a worktree shares comes from the worktree's heddle-rendered `.claude/settings.local.json`:
+  Claude Code's `attribution` with empty commit and pull-request texts, so no session lym launches credits itself and a landing's credit block stays the one credit,
+  prompt suggestions off, which the idle read needs, and claude.ai connectors, Claude Code's bundled skills and its `Workflow` tool off.
+  While `claude.yaml`'s `session_scope` block is on, the documents scope what each session loads, over the user's and the repository's settings:
+  an installed plugin is on only when the session preloads one of its skills, so the orch and the board session get the `ly` plugin in every hub and a writer does not, the block's `skills_off` list is off, a plugin that is on lists all of its skills, since no setting hides one skill of it,
+  and every session but the orch's gets no auto-memory.
+  Every agent keeps the same tool set, so no document denies a tool to one role.
   The skills a session loads come from the hub's `agents.yaml`, by the config role its spec names, followed by `language.yaml`'s skills for a code role;
   a launch whose model-spec names no effort takes `--effort` from `agents.yaml`'s efforts table by role and model.
   The appended prompt tells the session the explicit `effort` each Agent tool call takes and the skills a subagent's brief names,
   and the settings set `CLAUDE_CODE_SUBAGENT_EFFORT`, so a subagent whose call names no effort still runs at the role's.
+  The worktree's `.claude/settings.local.json` carries the efforts table's default as `effortLevel` and as that variable,
+  so a session started by hand in the worktree runs at it.
   The engine sets the prompt-cache TTL per role on launch, resume and open from `claude.yaml`'s `prompt_cache_ttl` and `prompt_cache_ttl_roles` (template: 5 minutes for `driver`, 1 hour for `webster` and `orch`, 5 minutes for every other role).
   `claude.yaml`'s `keep_warm_cap` (template 250s) and `keep_warm_cap_roles` set the per-role keep-warm cap beside them.
   While `claude.yaml`'s `batching_nudge` block is on, a `PostToolUse` hook after each `Read`, `Grep`, `Glob`, `Bash`, `Edit` or `Write` call runs the hidden `lym shuttle hook-batching`, which adds one line naming the breach and quoting the rule to a session above the block's context threshold whose recent messages make a chain of single lookups (a Bash call with a read-only lookup command such as `grep`, `find` or a git read counting as one), a sliced read of a short or already-read file, or a chain of edit-only messages;

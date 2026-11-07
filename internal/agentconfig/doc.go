@@ -9,6 +9,7 @@
 // The efforts key maps default, a model alias, a role, or `<role>/<model>` to an effort in Claude Code's vocabulary.
 // The most specific key wins, and default is required.
 // Effort answers one session or subagent, and ModelEfforts lists the efforts a role's subagents take by model.
+// SubagentEffortEnv names the Claude Code variable a session's settings carry its subagents' fallback effort in.
 // The map is open: a hub file's map replaces the template's whole.
 //
 // skills is classed Guard, since a skill list sets the rules a writer or reviewer works to;

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -66,6 +67,7 @@ type Renderer struct {
 }
 
 // Render writes the file targets of req into its anchor from the entries of the shipped layer and the store.
+// It also uses the entries derived from the agents.yaml the anchor and the Bolt checkout resolve.
 // It holds the worktree's render lock for the whole read and write.
 // Two renders of one worktree therefore serialize, and the last one's text stands whole.
 // A target with no entry loses its marked file.
@@ -90,8 +92,11 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 	if err != nil {
 		return report, err
 	}
-	if layers.OverrideWarning != "" {
-		report.warn(layers.OverrideWarning)
+	layers.addDerived(configengine.Dirs{Anchor: req.Anchor, Board: req.BoltDir})
+	for _, warning := range []string{layers.OverrideWarning, layers.DerivedWarning} {
+		if warning != "" {
+			report.warn(warning)
+		}
 	}
 	entries := layers.Ordered()
 
@@ -278,14 +283,14 @@ func fileText(target Target, anchor string, entries []LayeredEntry) (string, boo
 	var shipped, repository []string
 	for _, entry := range entries {
 		if !slices.Contains(entry.Targets, target.Name) &&
-			!(target.Name == codexFileTarget && entry.Layer != LayerShipped && slices.Contains(entry.Targets, claudeFileTarget)) {
+			!(target.Name == codexFileTarget && entry.Layer == LayerRepository && slices.Contains(entry.Targets, claudeFileTarget)) {
 			continue
 		}
 		text := strings.Trim(entry.Text, "\n")
-		if entry.Layer == LayerShipped {
-			shipped = append(shipped, text)
-		} else {
+		if entry.Layer == LayerRepository {
 			repository = append(repository, text)
+		} else {
+			shipped = append(shipped, text)
 		}
 	}
 	var texts []string
@@ -339,6 +344,7 @@ func fileExists(path string) bool {
 // It writes nothing.
 // A prompt target gives its passages joined by blank lines, and a target with no entry gives no text.
 // A JSON-object target gives the object its entries fold to, before any merge into the file.
+// The entries derived from the agents.yaml the anchor and boltDir resolve are among them.
 func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 	named, ok := LookupTarget(target)
 	if !ok {
@@ -352,6 +358,7 @@ func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 		return strings.Join(passagesOf(layers, named.Name), "\n\n"), nil
 	}
 	if named.JSONObject {
+		layers.addDerived(configengine.Dirs{Anchor: anchor, Board: boltDir})
 		folded, held, _, _ := foldObjects(named, layers.Ordered())
 		if !held {
 			return "", nil

@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -594,7 +594,7 @@ func TestOpenLaunch(t *testing.T) {
 
 // checkOpenCreelFiles asserts what an open launch with a board directory leaves:
 // CreelHooks is set, and both launch lines name the settings and append-prompt files in dir.
-// The settings document holds creel's hooks and the empty attribution alone,
+// The settings document holds creel's hooks and the session scope alone,
 // and the append prompt holds the trust sentence alone.
 func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDir string, sh shell.Shell) {
 	t.Helper()
@@ -632,7 +632,6 @@ func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDi
 				RewakeSummary string `json:"rewakeSummary"`
 			} `json:"hooks"`
 		} `json:"hooks"`
-		Attribution map[string]string `json:"attribution"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		t.Fatalf("parse settings.json %q: %v", data, err)
@@ -641,11 +640,13 @@ func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDi
 	if err := json.Unmarshal(data, &keys); err != nil {
 		t.Fatalf("parse settings.json %q: %v", data, err)
 	}
-	if len(keys) != 2 || len(doc.Hooks) != 2 {
-		t.Fatalf("settings.json = %s; want a hooks object holding only Stop and PostToolUse beside the attribution", data)
+	for key := range keys {
+		if key != "hooks" && !slices.Contains(scopeSettingsKeys, key) {
+			t.Errorf("settings.json holds %q; want the hooks and the session scope alone (data: %s)", key, data)
+		}
 	}
-	if want := map[string]string{"commit": "", "pr": ""}; !reflect.DeepEqual(doc.Attribution, want) {
-		t.Errorf("settings.json attribution = %v; want %v", doc.Attribution, want)
+	if len(doc.Hooks) != 2 {
+		t.Fatalf("settings.json = %s; want a hooks object holding only Stop and PostToolUse", data)
 	}
 	stop, post := doc.Hooks["Stop"], doc.Hooks["PostToolUse"]
 	if len(stop) != 2 || len(stop[0].Hooks) != 1 || len(stop[1].Hooks) != 1 || len(post) != 1 || len(post[0].Hooks) != 1 {

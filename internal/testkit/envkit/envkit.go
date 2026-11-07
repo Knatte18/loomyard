@@ -361,7 +361,6 @@ func raddleFileDeps(dir string) loomshed.RaddleFileDeps {
 		AlreadyFiled:   func(string, []string) (bool, error) { return false, nil },
 		File:           func(boardengine.RaddleFiling) error { return nil },
 		CreateBeam:     func(string) error { return nil },
-		Release:        func([]string) error { return nil },
 		Notify:         func(string) error { return nil },
 		EndEntry:       func() error { return nil },
 		Commit:         func() error { return nil },

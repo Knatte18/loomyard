@@ -257,7 +257,8 @@
 // Raddle-File deletes its stage and part records and counts a return.
 // The failure after two returns halts the run for its parent.
 // Its steps are staging the store files, writing the part records and filing the entries in one board write.
-// Further steps make the project a beam and release its parts for the beam shape.
+// Every filed task is draft, so a release stays the operator's.
+// A further step makes the project a beam for the beam shape.
 // The last steps notify the parent once and end the run's entry.
 // A step whose outputs carry the hash of the proposal now approved is skipped,
 // so a retry after a crash finishes the steps it missed.

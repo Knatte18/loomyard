@@ -151,7 +151,6 @@ var intentionallyNil = map[string]string{
 	"RaddleFile.AlreadyFiled":             "raddle-only seam, batten runs no raddle row",
 	"RaddleFile.File":                     "raddle-only seam, batten runs no raddle row",
 	"RaddleFile.CreateBeam":               "raddle-only seam, batten runs no raddle row",
-	"RaddleFile.Release":                  "raddle-only seam, batten runs no raddle row",
 	"RaddleFile.Notify":                   "raddle-only seam, batten runs no raddle row",
 	"RaddleFile.EndEntry":                 "raddle-only seam, batten runs no raddle row",
 	"RaddleFile.Commit":                   "raddle-only seam, batten runs no raddle row",

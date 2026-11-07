@@ -28,7 +28,11 @@ Heddle's instruction text is stored once per layer and rendered from those store
   and a hub that sets its own list gains the path through a config reinterpretation.
 - Claude Code's worktree settings, `.claude/settings.local.json`, render from the `claude-settings` target.
   The shipped layer holds lym's hub-wide Claude settings there, and a repository's entries add to them.
-  A setting that differs per session or role stays in the `--settings` document a session is launched with.
+  The effort defaults come from `agents.yaml` through an entry heddle derives at each render, never from a copy in an entry.
+  A setting every session of a worktree shares lives only there;
+  a setting that differs per session or role lives only in the `--settings` document a session is launched with.
+- `HEDDLE.md` at the Bolt checkout's root shows every entry heddle holds.
+  Only `heddleengine.RenderOverview` writes it: the `lym heddle` write path after each save, and heddle's Bolt replayer after each replay.
 
 ## Lym instructions in code
 

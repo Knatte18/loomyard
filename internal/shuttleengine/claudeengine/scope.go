@@ -1,4 +1,4 @@
-// scope.go decides a Claude session's scope: the plugins, skills, connectors, memory and tools the session gets.
+// scope.go decides a Claude session's scope: the plugins, skills and memory the session gets.
 // It reads claude.yaml's session_scope block, the skills the session preloads and the plugins Claude Code has installed.
 // It also declares the settings fields that carry the scope.
 
@@ -25,7 +25,7 @@ const sessionScopeKey = "session_scope"
 // whether lym scopes what each session loads, and the skills it turns off in every session.
 type ScopeConfig struct {
 	// Enabled writes the scope into every session's settings;
-	// when off, a session's plugins, skills, connectors, memory and tools follow its other settings layers.
+	// when off, a session's plugins, skills and memory follow its other settings layers.
 	Enabled bool `yaml:"enabled"`
 	// SkillsOff names the skills turned off in every session that does not preload them, as Claude Code lists them.
 	// A plugin's skill named here stays listed, because Claude Code ignores skillOverrides for an installed plugin's skills.
@@ -34,10 +34,6 @@ type ScopeConfig struct {
 
 // skillOff is the skillOverrides value that turns a skill off.
 const skillOff = "off"
-
-// listAgentsTool is the Claude Code tool every session but the orch is denied:
-// it lists the sessions a session can message, and their messages go through creel.
-const listAgentsTool = "ListAgents"
 
 // claudeConfigDirEnv names the variable that moves Claude Code's config directory away from the default.
 // The default is claudeConfigDirName under the home directory.
@@ -57,36 +53,20 @@ type sessionScope struct {
 	EnabledPlugins map[string]bool `json:"enabledPlugins,omitempty"`
 	// SkillOverrides maps a skill's listed name to skillOff.
 	SkillOverrides map[string]string `json:"skillOverrides,omitempty"`
-	// DisableClaudeAiConnectors keeps the account's claude.ai connectors out of the session.
-	DisableClaudeAiConnectors bool `json:"disableClaudeAiConnectors,omitempty"`
-	// DisableBundledSkills keeps the skills shipped inside Claude Code out of the session.
-	DisableBundledSkills bool `json:"disableBundledSkills,omitempty"`
-	// DisableWorkflows drops Claude Code's Workflow tool from the session.
-	// With bundled skills off and the tool kept, the tool's schema carries the whole workflow authoring reference.
-	DisableWorkflows bool `json:"disableWorkflows,omitempty"`
 	// AutoMemoryEnabled, when set, switches the session's auto-memory; nil leaves it to the other layers.
 	AutoMemoryEnabled *bool `json:"autoMemoryEnabled,omitempty"`
-	// Permissions, when set, carries the tools the session is denied.
-	Permissions *scopePermissions `json:"permissions,omitempty"`
 	// Env holds the environment variables the session sets, such as the effort its subagents fall back to.
 	Env map[string]string `json:"env,omitempty"`
-}
-
-// scopePermissions is the permissions object of a scoped settings document:
-// the tools it denies, which Claude Code adds to the deny rules of the other layers.
-type scopePermissions struct {
-	Deny []string `json:"deny"`
 }
 
 // resolveSessionScope returns the scope of a session from its preloaded skills and the installed plugin ids.
 // A disabled cfg returns the zero scope.
 // Otherwise an installed plugin is on exactly when the session preloads a skill listed under the plugin's name;
 // it is off.
-// The claude.ai connectors, bundled skills and the Workflow tool are off,
-// and every skill of cfg.SkillsOff the session does not preload is off.
+// Every skill of cfg.SkillsOff the session does not preload is off.
 // A plugin that is on lists all of its skills: no setting hides one skill of it.
-// The orch session alone keeps its auto-memory and the ListAgents tool;
-// every other session has auto-memory off and the tool denied.
+// The orch session alone keeps its auto-memory; every other session has it off.
+// The scope changes no session's tools, so every session keeps the same tool set.
 func resolveSessionScope(cfg ScopeConfig, installed []string, preloaded []string, orch bool) sessionScope {
 	if !cfg.Enabled {
 		return sessionScope{}
@@ -112,7 +92,7 @@ func resolveSessionScope(cfg ScopeConfig, installed []string, preloaded []string
 		}
 	}
 
-	scope := sessionScope{DisableClaudeAiConnectors: true, DisableBundledSkills: true, DisableWorkflows: true}
+	var scope sessionScope
 	if len(plugins) > 0 {
 		scope.EnabledPlugins = plugins
 	}
@@ -122,7 +102,6 @@ func resolveSessionScope(cfg ScopeConfig, installed []string, preloaded []string
 	if !orch {
 		memory := false
 		scope.AutoMemoryEnabled = &memory
-		scope.Permissions = &scopePermissions{Deny: []string{listAgentsTool}}
 	}
 	return scope
 }
@@ -130,7 +109,7 @@ func resolveSessionScope(cfg ScopeConfig, installed []string, preloaded []string
 // sessionScopeFor returns the scope of a session that preloads skills and has the given strand role.
 // It reads the installed plugins from the engine's Claude Code config directory.
 // A directory or plugins file it cannot read is logged and names no plugin,
-// so the scope still turns off the connectors, the bundled skills, the Workflow tool and cfg's skills.
+// so the scope still turns off cfg's skills and the memory of a session that is not the orch.
 func (c *Claude) sessionScopeFor(cfg ScopeConfig, skills []string, role string) sessionScope {
 	if !cfg.Enabled {
 		return sessionScope{}

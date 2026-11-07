@@ -73,6 +73,11 @@ const (
 	roleModelSeparator = "/"
 )
 
+// SubagentEffortEnv is the variable Claude Code reads as a subagent's effort.
+// It applies only when no Agent call or definition names one.
+// A session's settings set it to an effort of this config.
+const SubagentEffortEnv = "CLAUDE_CODE_SUBAGENT_EFFORT"
+
 // wayForward is the clause every content failure ends with.
 const wayForward = `; way forward: fix it with "lym config agents" from the prime`
 

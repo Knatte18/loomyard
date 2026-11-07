@@ -25,7 +25,9 @@ const raddleStencil = "raddle-template-agent"
 
 // raddleModeRules returns the {{.mode_rules}} block of the raddle agent.
 // In auto mode the agent ends on the complete proposal file with no operator present.
-// In interactive mode it checks the proposal, puts it to the operator and records the operator's approval.
+// In interactive mode it checks the proposal and puts it to the operator:
+// a table of the parts with their dependencies, the order departures with their costs, and that the tasks land as drafts.
+// It then records the operator's approval.
 func raddleModeRules(interactive bool, proposalPath string) string {
 	if !interactive {
 		return "This session is running in auto mode: no operator is present. " +
@@ -34,7 +36,11 @@ func raddleModeRules(interactive bool, proposalPath string) string {
 	}
 	return "This session is running interactively: an operator is present at the pane. " +
 		"Once the proposal is complete, run `lym loom raddle-propose`, which checks the file and tells your parent that a proposal waits. " +
-		"Then put the proposal to the operator in the pane as plain text, and revise the file while the operator questions or corrects the split, the order, the recipes or the profiles; run `lym loom raddle-propose` again after each revision. " +
+		"Then put the proposal to the operator in the pane as plain text. " +
+		"Show the parts as a table with a column of each part's dependencies, by part slug, so the order reads from the table alone. " +
+		"Name each order departure the proposal lists, with its cost. " +
+		"Say that every task lands on the board as a draft, which the operator releases with `lym board set-status`, so a project can be made a beam before any of its tasks starts. " +
+		"Revise the file while the operator questions or corrects the split, the order, the recipes or the profiles; run `lym loom raddle-propose` again after each revision. " +
 		"Run `lym loom raddle-approve` only on the operator's explicit approval, never without it, and then end your turn."
 }
 

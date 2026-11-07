@@ -227,6 +227,16 @@ func TestHeddleCLI(t *testing.T) {
 		requireOK(t, runVerb(c, cwd, "", "set", "rules", "--text-file", textFile, "--order", "20", "--targets", "claude-file"))
 		requireOK(t, runVerb(c, cwd, "text from stdin", "set", "intro", "--text-file", "-", "--order", "10", "--targets", "claude-prompt,claude-file"))
 
+		overview, err := os.ReadFile(filepath.Join(fabricengine.BoltDir(h.Path), heddleengine.OverviewFileName))
+		if err != nil {
+			t.Fatalf("read %s: %v; want a set to render it beside heddle.json", heddleengine.OverviewFileName, err)
+		}
+		for _, want := range []string{"### `rules`\n", "### `intro`\n", "rules from a file"} {
+			if !strings.Contains(string(overview), want) {
+				t.Errorf("%s after two sets lacks %q", heddleengine.OverviewFileName, want)
+			}
+		}
+
 		listed := requireOK(t, runVerb(c, cwd, "", "list"))
 		if got, want := strings.Join(entrySlugs(t, listed), ","), listedWithShipped("intro", "rules"); got != want {
 			t.Errorf("list slugs = %q; want %q, the shipped entries first, in render order", got, want)

@@ -40,51 +40,45 @@ func hooksFor(doc map[string]any, event string) []any {
 	return entries
 }
 
-// TestBuildSettings_PromptSuggestionOff pins promptSuggestionEnabled as false in every run mode.
+// TestBuildSettings_LeavesWorktreeSettingsOut pins that a session's document holds none of the worktree-wide keys.
+// Those are the keys the worktree's rendered .claude/settings.local.json sets.
+// It holds in every run mode, in a hub and out of one.
 //
-//testtiming:keep pins promptSuggestionEnabled=false in the interactive, autonomous and fork documents, which its covering tests do not assert
-func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
+//testtiming:keep pins the absence of the worktree-wide keys in every run mode, which its covering tests do not assert
+func TestBuildSettings_LeavesWorktreeSettingsOut(t *testing.T) {
 	tiergate.Require(t, 0)
-	cases := []struct {
+	t.Parallel()
+	worktreeKeys := []string{
+		"promptSuggestionEnabled", "attribution", "disableClaudeAiConnectors",
+		"disableBundledSkills", "disableWorkflows", "permissions",
+	}
+	tests := []struct {
 		name        string
 		interactive bool
 		fork        bool
+		flagDir     string
 	}{
-		{"interactive", true, false},
-		{"autonomous", false, false},
-		{"fork", false, true},
+		{"interactive", true, false, ""},
+		{"autonomous", false, false, ""},
+		{"fork", false, true, ""},
+		{"interactive_in_a_hub", true, false, "/c/hub/flags"},
+		{"autonomous_in_a_hub", false, false, "/c/hub/flags"},
+		{"fork_in_a_hub", false, true, "/c/hub/flags"},
 	}
-	for _, tt := range cases {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "", "", sessionScope{})
+			t.Parallel()
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "", tt.flagDir, sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
 			doc := parseSettings(t, data)
-			v, ok := doc["promptSuggestionEnabled"]
-			if !ok {
-				t.Fatalf("promptSuggestionEnabled missing; data: %s", data)
-			}
-			if b, isBool := v.(bool); !isBool || b {
-				t.Errorf("promptSuggestionEnabled = %v, want false", v)
+			for _, key := range worktreeKeys {
+				if _, ok := doc[key]; ok {
+					t.Errorf("document holds %q; want it left to the worktree settings (data: %s)", key, data)
+				}
 			}
 		})
-	}
-}
-
-// TestBuildSettings_CreditNoSessionInAHub pins `attribution` as empty commit and pull-request texts.
-// The run document is built with a creel flag directory.
-func TestBuildSettings_CreditNoSessionInAHub(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	data, err := buildSettings("/c/run/events.jsonl", true, shuttleengine.Config{}, Config{}, false, false, "", "/c/hub/flags", sessionScope{})
-	if err != nil {
-		t.Fatalf("buildSettings() error: %v", err)
-	}
-	got := parseSettings(t, data)["attribution"]
-	want := map[string]any{"commit": "", "pr": ""}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("attribution = %v; want %v (data: %s)", got, want, data)
 	}
 }
 

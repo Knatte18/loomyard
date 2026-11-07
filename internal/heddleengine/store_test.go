@@ -185,6 +185,8 @@ func TestStore(t *testing.T) {
 			{"lym-no-attribution", "claude-settings", ""},
 			{"lym-plugins", "claude-settings", ""},
 			{"lym-tool-deny", "claude-settings", ""},
+			{"lym-session-scope", "claude-settings", ""},
+			{"lym-prompt-suggestion-off", "claude-settings", ""},
 		}
 		ordered := shippedStore.Ordered()
 		if len(ordered) != len(tests) {

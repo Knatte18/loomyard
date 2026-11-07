@@ -10,9 +10,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 )
 
-// subagentEffortEnvKey is the variable Claude Code reads as the effort of a subagent no call or definition names one for.
-const subagentEffortEnvKey = "CLAUDE_CODE_SUBAGENT_EFFORT"
-
 // modelIDPrefix opens every full Claude model id, such as claude-haiku-5-5.
 const modelIDPrefix = "claude-"
 
@@ -41,7 +38,7 @@ func subagentEffortEnv(agents agentconfig.Config, role agentconfig.Role) map[str
 	if effort == "" {
 		return nil
 	}
-	return map[string]string{subagentEffortEnvKey: effort}
+	return map[string]string{agentconfig.SubagentEffortEnv: effort}
 }
 
 // subagentPassage returns the appended-prompt passage that tells a session of role what each subagent it spawns gets:
