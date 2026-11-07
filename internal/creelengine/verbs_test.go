@@ -260,7 +260,8 @@ func TestStore_Mail(t *testing.T) {
 			hubs.Add("shared", creelengine.Geometry{HubPath: "/hubs/s2", Shortname: "shared"})
 			hubs.Add("broken", creelengine.Geometry{HubPath: "/hubs/b", Shortname: "broken"})
 			hubs.SetLookupError("broken", errors.New("the machine record is unreadable"))
-			stampedOverhead := len(creelengine.MessageLine(creelengine.Message{ID: math.MaxInt64, From: alpha, ExpectReply: true, SendingHub: "hub"}))
+			longestRepository := strings.Repeat("o", 39) + "/" + strings.Repeat("r", 100)
+			stampedOverhead := len(creelengine.MessageLine(creelengine.Message{ID: math.MaxInt64, From: alpha, ExpectReply: true, SendingHub: "hub", SendingRepository: longestRepository}))
 			tests := []struct {
 				name     string
 				sender   creelengine.Sender
@@ -292,6 +293,10 @@ func TestStore_Mail(t *testing.T) {
 			}
 			if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 0 {
 				t.Errorf("the refused posts journaled %v; want nothing", eventsOf(entries))
+			}
+			atTheLimit := strings.Repeat("x", (8<<10)-stampedOverhead)
+			if _, err := e.store.Post(strand(alpha), "zz:orch", atTheLimit); err != nil {
+				t.Errorf("Post of a line at the budget once the longest repository leads the stamp: %v; want it accepted", err)
 			}
 		}},
 		{"WaitReply_OnAnOutboundMessageResumesForItsSenderAndAnswersReturnedAndStoredReplies", func(t *testing.T, e *env) {
