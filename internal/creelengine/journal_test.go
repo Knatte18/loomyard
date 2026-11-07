@@ -258,7 +258,7 @@ func TestJournal_Fold(t *testing.T) {
 				line(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "question", ExpectReply: true}),
 				line(record{Event: eventRead, ID: 1, By: beta}),
 				line(record{Event: eventOutbound, ID: 2, From: beta, To: remoteOrch, ReceivingHub: remoteHub, Kind: kindReply, Body: "answer", ReplyTo: 9, Answers: 1}),
-				line(record{Event: eventInbound, ID: 3, From: remoteOrch, To: beta, Body: "ask", SendingHub: remoteHub, SendingShortname: "xx", SendingID: 31, Trusted: true, ExpectReply: true,
+				line(record{Event: eventInbound, ID: 3, From: remoteOrch, To: beta, Body: "ask", SendingHub: remoteHub, SendingShortname: "xx", SendingRepository: "Owner/xx-repo", SendingID: 31, Trusted: true, ExpectReply: true,
 					RemotePosted: journalEpoch.Add(-time.Hour), DeliveredTo: beta}),
 				line(record{Event: eventForwarded, ID: 3, By: beta, To: gamma}),
 				line(record{Event: eventOutbound, ID: 4, From: gamma, To: remoteOrch, ReceivingHub: remoteHub, Body: "q", ExpectReply: true}),
@@ -270,7 +270,7 @@ func TestJournal_Fold(t *testing.T) {
 				}
 				inbound := p.messages[3]
 				if inbound.Holder != gamma || inbound.DeliveredTo != beta || inbound.Status != StatusUnread || inbound.SendingHub != remoteHub || inbound.SendingID != 31 ||
-					!inbound.Trusted || !inbound.RemotePosted.Equal(journalEpoch.Add(-time.Hour)) || !inbound.ExpectReply || inbound.HubStamp() != StampTrusted {
+					!inbound.Trusted || !inbound.RemotePosted.Equal(journalEpoch.Add(-time.Hour)) || !inbound.ExpectReply || inbound.SendingRepository != "Owner/xx-repo" || inbound.HubStamp() != "Owner/xx-repo "+StampTrusted {
 					t.Errorf("inbound message = %+v, want unread mail held by %s, delivered to %s, trusted, from %s as id 31", inbound, gamma, beta, remoteHub)
 				}
 				if reply := p.messages[5]; reply.Kind != kindReply || reply.ReplyTo != 4 || reply.HubStamp() != StampUntrusted || reply.DeliveredTo != gamma {
@@ -799,7 +799,7 @@ func TestJournal_Retention(t *testing.T) {
 			{Event: eventRemoteDelivered, ID: 2, RemoteID: 40},
 			{Event: eventOutbound, ID: 3, From: alpha, To: remoteOrch, ReceivingHub: remoteHub, Body: "returned"},
 			{Event: eventOutboundReturned, ID: 3, Reason: "no-hub"},
-			{Event: eventInbound, ID: 4, From: remoteOrch, To: beta, Body: "unread", SendingHub: remoteHub, SendingID: 12, Trusted: true, RemotePosted: remotePosted, DeliveredTo: beta},
+			{Event: eventInbound, ID: 4, From: remoteOrch, To: beta, Body: "unread", SendingHub: remoteHub, SendingRepository: "Owner/xx-repo", SendingID: 12, Trusted: true, RemotePosted: remotePosted, DeliveredTo: beta},
 			{Event: eventInbound, ID: 5, From: remoteOrch, To: beta, Body: "read", SendingHub: remoteHub, SendingID: 13, RemotePosted: remotePosted, DeliveredTo: beta, ExpectReply: true},
 			{Event: eventRead, ID: 5, By: beta},
 			{Event: eventChaseAged, ID: 5, ConsumedSeconds: 600},
@@ -826,10 +826,10 @@ func TestJournal_Retention(t *testing.T) {
 				t.Errorf("%s: outbound = %+v, want %d entries with 1 pending, posted at %v, for %s, replying to 9 and answering 8", label, p.outbound, wantOutbound, postedAt, remoteHub)
 			}
 			unread, read := p.messages[4], p.messages[5]
-			if unread == nil || unread.Status != StatusUnread || unread.SendingHub != remoteHub || unread.SendingID != 12 || !unread.Trusted || !unread.RemotePosted.Equal(remotePosted) || unread.DeliveredTo != beta || !unread.Posted.Equal(journalEpoch) {
+			if unread == nil || unread.Status != StatusUnread || unread.SendingHub != remoteHub || unread.SendingID != 12 || unread.SendingRepository != "Owner/xx-repo" || !unread.Trusted || !unread.RemotePosted.Equal(remotePosted) || unread.DeliveredTo != beta || !unread.Posted.Equal(journalEpoch) {
 				t.Errorf("%s: unread inbound message = %+v, want it back with its hub fields and its original time", label, unread)
 			}
-			if read == nil || read.Status != StatusRead || !read.ReadAt.Equal(journalEpoch) || read.ChaseConsumed != 10*time.Minute || read.SendingID != 13 || read.Trusted || !isChaseable(read) {
+			if read == nil || read.Status != StatusRead || !read.ReadAt.Equal(journalEpoch) || read.ChaseConsumed != 10*time.Minute || read.SendingID != 13 || read.SendingRepository != "" || read.Trusted || !isChaseable(read) {
 				t.Errorf("%s: read inbound message = %+v, want it back read, chaseable, with its read time, chase clock and hub fields", label, read)
 			}
 			if len(p.messages) != 3 {
