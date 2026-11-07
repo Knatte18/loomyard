@@ -109,6 +109,9 @@
 // It sets the minutes the placeholder renders for the test runner's per-binary bound.
 // Unset, it is DefaultTestTimeoutMin.
 // A hub thereby raises `go test`'s `-timeout` default from config instead of a literal in the command.
+// A tier's command may hold TestTargetsPlaceholder where its targets reach `go test`.
+// A run fills it with the targets narrowed to the packages that hold a test of the tier.
+// HoldsTargets counts it as taking targets, so such a tier needs `all_targets` too.
 // `build` holds `about`, `command`, `env`, `timeout_min` and `dir`.
 // An unset `dir` is the worktree's anchor, filled by `Config.WithDefaultDir`.
 // The template's `build: {}` is no build step, and a declared step has a non-empty Config.Build.Command.
@@ -132,7 +135,8 @@
 // A standalone worktree has no machine layer and sets the key in its own file.
 //
 // LoadConfig refuses at load, naming the key and `lym config gate`:
-// a tier lacking `command`, `timeout_min` or `counter`, or `all_targets` when its command holds `{targets}`;
+// a tier lacking `command`, `timeout_min` or `counter`;
+// a tier lacking `all_targets` when its command holds `{targets}` or `{test_targets}`;
 // `manual: true` on `tier0`, the tier a call with no tier flag runs;
 // `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1;
 // a counter other than `go-json` or `vstest`, a scoper other than `go`, `none` or `dotnet`;

@@ -19,13 +19,14 @@ import (
 type Tier struct {
 	// About is one line saying what the tier tests.
 	About string
-	// Command is the shell command run, with placeholders {targets}, {parallel}, {args}, {filter} and {test_timeout}.
+	// Command is the shell command run.
+	// Its placeholders are {targets}, {test_targets}, {parallel}, {args}, {filter} and {test_timeout}.
 	Command string
 	// Dir is the run directory relative to the worktree root, empty when gate.yaml sets none.
 	Dir string
 	// Env is the environment the command runs with; values may hold {parallel}.
 	Env map[string]string
-	// AllTargets is the {targets} value of a whole-scope run.
+	// AllTargets is the targets of a whole-scope run, which {targets} and {test_targets} take.
 	AllTargets string
 	// Parallel is the tier's parallelism, this machine's tier_parallel entry when one is set.
 	Parallel int
@@ -74,6 +75,16 @@ type tierFile struct {
 // TestTimeoutPlaceholder is the tier command placeholder a run fills with the tier's TestTimeoutMin followed by `m`.
 // It renders as a duration such as `20m`, the form `go test -timeout` reads.
 const TestTimeoutPlaceholder = "{test_timeout}"
+
+// TestTargetsPlaceholder is the tier command placeholder a run fills with its targets narrowed to test packages.
+// They are the packages that hold a test of the tier.
+// It stands where the targets reach `go test`, so a run starts no test binary that would find no test to run.
+const TestTargetsPlaceholder = "{test_targets}"
+
+// HoldsTargets reports whether command takes a run's targets, through {targets} or TestTargetsPlaceholder.
+func HoldsTargets(command string) bool {
+	return strings.Contains(command, "{targets}") || strings.Contains(command, TestTargetsPlaceholder)
+}
 
 // DefaultTestTimeoutMin is the TestTimeoutMin of a tier whose command holds TestTimeoutPlaceholder and that sets no test_timeout_min.
 // It leaves room above the wall of the slowest package on a heavily loaded machine.
@@ -172,8 +183,8 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 	if strings.TrimSpace(tier.Command) == "" {
 		return Tier{}, refuse("command", "missing; want the shell command a run executes")
 	}
-	if strings.Contains(tier.Command, "{targets}") && tier.AllTargets == "" {
-		return Tier{}, refuse("all_targets", "missing; want the {targets} value of a whole run, since the command holds {targets}")
+	if HoldsTargets(tier.Command) && tier.AllTargets == "" {
+		return Tier{}, refuse("all_targets", "missing; want the targets of a whole run, since the command holds {targets} or {test_targets}")
 	}
 	if tier.Filter != "" && !strings.Contains(tier.Command, "{filter}") {
 		return Tier{}, refuse("filter", "set, but the command holds no {filter}; want {filter} in the command or no filter")

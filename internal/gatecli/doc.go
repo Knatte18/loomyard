@@ -74,7 +74,8 @@
 // A tier's own command sets its build tags.
 // The words after `--` fill each tier's `{args}`.
 //
-// A tier is one shell command that may hold `{targets}`, `{parallel}`, `{args}`, `{filter}` and `{test_timeout}`.
+// A tier is one shell command that may hold these placeholders:
+// `{targets}`, `{test_targets}`, `{parallel}`, `{args}`, `{filter}` and `{test_timeout}`.
 // `renderTierCommand` fills them, quoting each target and each arg for the platform shell through `verifyrun.QuoteArg`.
 // `{test_timeout}` renders as the tier's `test_timeout_min` followed by `m`, such as `20m`.
 // A hub's `go test -timeout {test_timeout}` thereby takes its per-binary bound from config.
@@ -87,6 +88,18 @@
 // A command without `{filter}` renders no filter whatever terms it is given.
 // A tier's `filter` applies at whole scope too, landing gates included.
 // The executable, hub-file-only `tiers` key bounds it.
+// `{test_targets}` stands where the targets reach `go test`, beside a `{targets}` the command's other steps take.
+// It renders each invocation's targets narrowed to the packages that hold a test function the tier runs,
+// so a pass compiles, links and starts no test binary that would find no test of its tier.
+// `impactset.HoldsTierTest` judges each package over the tier and the tiers it `covers`.
+// A test function opening with `tiergate.Require(t, N)` counts for tier N alone, and any other for every tier.
+// A pattern target is listed with `go list` first, as the green record lists one, and an import path is kept.
+// An invocation with no package left runs no command, its other steps included, and says so on stderr.
+// The targets fill it unnarrowed when they cannot be listed or the narrowed list passes `greenCommandBudget`.
+// A command that holds `{test_targets}` without `{targets}` takes a scope's targets as one holding `{targets}` does.
+// A package gaining its first test of a tier thereby joins that tier's runs with no config edit.
+// Bound: a tier whose `LYM_TEST_TIER` names a range runs the tests of tiers it does not `covers`,
+// and a package holding only those is left out.
 // The command runs through the shell `verifyrun.ShellFor` names, as a tied child in the run directory.
 // It starts from this process's environment, less the strand-name and trace-id variables.
 // An inherited `gateslot.PrebuiltLymEnv` is dropped too.
@@ -116,7 +129,8 @@
 // explicit `<targets>`, `--all`, `--card <id>`, `--base <rev>` or, with none of them, the computed form.
 // Explicit targets replace each run's `{targets}` verbatim and run in the `-C` directory, else in the tier's `dir`.
 // `--all` sets `{targets}` to the tier's `all_targets`, split at spaces, and runs in the tier's `dir`.
-// A command without `{targets}` runs once, whole, under explicit targets and under a non-empty narrower scope.
+// A command holding neither `{targets}` nor `{test_targets}` runs once, whole.
+// It does so under explicit targets and under a non-empty narrower scope.
 // It says so on stderr.
 // Flag-shape refusals need no config and run first, before hub resolution:
 // `--tags`, naming `--tier`; a negative `--upto`; `-C` without explicit targets, naming them;
@@ -160,7 +174,7 @@
 // It prints `gate test: the scope falls back to whole: <reason>`.
 // A narrowed share runs each selected test project once in the tier's `dir`, under one slot hold and one `timeout_min`.
 // The project path is `{targets}`, and its class terms render into `{filter}`.
-// A command without `{targets}` runs once, whole, with its tier filter only.
+// A command holding neither `{targets}` nor `{test_targets}` runs once, whole, with its tier filter only.
 // Two empty scopes tell apart.
 // Nothing testable changed, such as an inert-only diff: that makes no invocation, as under `go`.
 // Changes that no test class names run a tier with `shared_build` as no invocation.
@@ -293,7 +307,8 @@
 // A failed guard run, like a failed listed tier, stops no later run.
 // A group is skipped when the call ran its tier, or a tier covering it, whole.
 // A group whose tier the green record holds green carries.
-// A group whose tier is undeclared, or whose command lacks `{targets}` or `{args}`, is refused before any slot.
+// A group is refused before any slot when its tier is undeclared.
+// It is refused likewise when its tier's command lacks `{args}`, or lacks both `{targets}` and `{test_targets}`.
 // The refusal names `lym config gate`.
 // A scan error refuses the call before any slot.
 // The refusal names the file, the line when there is one and a way forward for its kind:
@@ -561,37 +576,36 @@
 //
 // loomyard declares tiers and a go scoper; this block shows its `gate.yaml` tier section.
 // Every tier's `env` puts the cap in GOFLAGS, so every go command in the tier, its build and vet included, takes it.
+// Each tier's `LYM_TEST_TIER` picks its tests at run time, and `{test_targets}` keeps `go test` to their packages.
 //
 //	scoper: go
 //	refuse_raw: ["go test"]
 //	tiers:
 //	  tier0:
-//	    about: offline tests
-//	    command: go test -json -tags tier0 {targets} {args}
+//	    about: unit tests
+//	    command: go test -json {test_targets} {args}
 //	    all_targets: ./...
-//	    env: {GOFLAGS: "-trimpath -p={parallel}"}
+//	    env: {GOFLAGS: "-trimpath -p={parallel}", LYM_TEST_TIER: "0"}
 //	    counter: go-json
 //	    parallel: 4
 //	    timeout_min: 10
 //	  tier1:
-//	    about: integration tests, with build and vet under each tag first
-//	    command: go build ./... && go vet -tags tier1 {targets} && go vet -tags tier2 {targets} && go vet -tags tier3 {targets} && go test -json -tags tier1 {targets} {args}
+//	    about: integration tests with build and vet first
+//	    command: go build ./... && go vet {targets} && go test -json {test_targets} {args}
 //	    all_targets: ./...
-//	    env: {GOFLAGS: "-trimpath -p={parallel}"}
+//	    env: {GOFLAGS: "-trimpath -p={parallel}", LYM_TEST_TIER: "1"}
 //	    counter: go-json
 //	    parallel: 4
 //	    timeout_min: 30
-//	    covers: [0]
 //	    prebuilt_lym: true
 //	  tier2:
 //	    about: tmux tests
-//	    command: go test -json -tags tier2 {targets} {args}
+//	    command: go test -json {test_targets} {args}
 //	    all_targets: ./...
-//	    env: {GOFLAGS: "-trimpath -p={parallel}"}
+//	    env: {GOFLAGS: "-trimpath -p={parallel}", LYM_TEST_TIER: "2"}
 //	    counter: go-json
 //	    parallel: 4
 //	    timeout_min: 30
-//	    covers: [0]
 //	    prebuilt_lym: true
 //	gates:
 //	  card: {tiers: [0], scope: card}

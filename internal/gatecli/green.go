@@ -331,7 +331,7 @@ func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) gree
 		return plan
 	}
 	fingerprint := g.fingerprint(run.tier)
-	hasTargets := strings.Contains(run.tier.Command, "{targets}")
+	hasTargets := gateslot.HoldsTargets(run.tier.Command)
 	for _, inv := range run.invocations {
 		key := moduleKey(g.root, inv.dir)
 		whole, packages := g.record.covered(fingerprint, g.tree, key, run.args)
@@ -346,7 +346,7 @@ func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) gree
 			plan.invocations = append(plan.invocations, inv)
 			continue
 		}
-		listed, err := g.expandPackages(ctx, inv.dir, run.tier, inv.targets, env)
+		listed, err := expandPackages(ctx, g.goBinary, resolveRunDir(g.root, inv.dir), run.tier, inv.targets, env)
 		if err != nil {
 			logger.Warn("gate test: could not list the packages to subtract the green record from; running the whole invocation", "dir", inv.dir, "cause", err)
 			plan.invocations = append(plan.invocations, inv)
@@ -378,7 +378,7 @@ func (g *greenRun) carriesOverInert(ctx context.Context, run tierRun, inv invoca
 	if len(g.cfg.InertPaths) == 0 || len(run.args) > 0 || run.guardStep || run.vetStep || inv.partial {
 		return false
 	}
-	if strings.Contains(run.tier.Command, "{targets}") && (key != moduleKey(g.root, run.tier.Dir) || !slices.Equal(inv.targets, strings.Fields(run.tier.AllTargets))) {
+	if gateslot.HoldsTargets(run.tier.Command) && (key != moduleKey(g.root, run.tier.Dir) || !slices.Equal(inv.targets, strings.Fields(run.tier.AllTargets))) {
 		return false
 	}
 	isAncestor := func(commit, of string) bool {
@@ -444,14 +444,14 @@ func (g *greenRun) recordPass(ctx context.Context, run tierRun, ran []invocation
 			continue
 		case run.guardStep:
 			entry.Packages = inv.targets
-		case !strings.Contains(run.tier.Command, "{targets}"):
+		case !gateslot.HoldsTargets(run.tier.Command):
 			entry.Whole = true
 		case len(plan.carried[key]) == 0 && slices.Equal(inv.targets, strings.Fields(run.tier.AllTargets)) && key == moduleKey(g.root, run.tier.Dir):
 			entry.Whole = true
 		case !g.scoperGo:
 			continue
 		default:
-			packages, err := g.expandPackages(ctx, inv.dir, run.tier, inv.targets, env)
+			packages, err := expandPackages(ctx, g.goBinary, resolveRunDir(g.root, inv.dir), run.tier, inv.targets, env)
 			if err != nil {
 				logger.Warn("gate test: could not list the packages that passed; the pass is not recorded", "tier", tierName(run.number), "cause", err)
 				continue
@@ -472,7 +472,7 @@ func (g *greenRun) recordPass(ctx context.Context, run tierRun, ran []invocation
 
 // coversAllTargets reports whether packages hold every package the tier's all_targets expand to.
 func (g *greenRun) coversAllTargets(ctx context.Context, tier gateslot.Tier, packages []string, env []string) bool {
-	all, err := g.expandPackages(ctx, tier.Dir, tier, strings.Fields(tier.AllTargets), env)
+	all, err := expandPackages(ctx, g.goBinary, resolveRunDir(g.root, tier.Dir), tier, strings.Fields(tier.AllTargets), env)
 	if err != nil || len(all) == 0 {
 		return false
 	}
@@ -482,10 +482,10 @@ func (g *greenRun) coversAllTargets(ctx context.Context, tier gateslot.Tier, pac
 // buildTagsPattern finds the build tags a tier's command compiles with.
 var buildTagsPattern = regexp.MustCompile(`-tags[= ]+"?([A-Za-z0-9_,!.-]+)"?`)
 
-// expandPackages returns the targets as sorted, unique, module-relative package arguments of the tier's module at dir.
+// expandPackages returns the targets as sorted, unique, module-relative package arguments of the module at moduleDir.
 // A target with no `...` is only cleaned;
-// a pattern is listed with `go list` under the build tags the tier's command names.
-func (g *greenRun) expandPackages(ctx context.Context, dir string, tier gateslot.Tier, targets []string, env []string) ([]string, error) {
+// a pattern is listed with goBinary's `go list` under the build tags the tier's command names.
+func expandPackages(ctx context.Context, goBinary, moduleDir string, tier gateslot.Tier, targets []string, env []string) ([]string, error) {
 	if !slices.ContainsFunc(targets, func(target string) bool { return strings.Contains(target, "...") }) {
 		packages := make([]string, len(targets))
 		for i, target := range targets {
@@ -494,16 +494,16 @@ func (g *greenRun) expandPackages(ctx context.Context, dir string, tier gateslot
 		return unionSorted(packages, nil), nil
 	}
 
-	moduleDir := resolveRunDir(g.root, dir)
 	args := []string{"list"}
 	if match := buildTagsPattern.FindStringSubmatch(tier.Command); match != nil {
 		args = append(args, "-tags", match[1])
 	}
 	args = append(args, "-f", "{{.Dir}}")
 	args = append(args, targets...)
-	cmd := exec.CommandContext(ctx, g.goBinary, args...)
+	cmd := exec.CommandContext(ctx, goBinary, args...)
 	cmd.Dir = moduleDir
 	cmd.Env = slices.Concat(env, renderTierEnv(tier))
+	logger.Info("gate test: spawning go list", "dir", moduleDir, "targets", strings.Join(targets, " "))
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("go list %s in %s: %w", strings.Join(targets, " "), moduleDir, err)

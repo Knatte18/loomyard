@@ -483,7 +483,7 @@ func (e *execution) runListed(run tierRun) runEnd {
 		return e.reportBlocked(run)
 	}
 	if run.ignoresTargets {
-		printLine(e.request.stderr, fmt.Sprintf("gate test: the command of %s holds no {targets}, so it runs whole", tierName(run.number)))
+		printLine(e.request.stderr, fmt.Sprintf("gate test: the command of %s holds neither {targets} nor {test_targets}, so it runs whole", tierName(run.number)))
 	}
 	if len(run.invocations) == 0 && !run.buildOnly {
 		printLine(e.request.stderr, fmt.Sprintf("gate test: the scope is empty, so %s runs no command", tierName(run.number)))

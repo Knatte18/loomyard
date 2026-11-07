@@ -33,6 +33,9 @@ The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and
   and no gate runs them.
 - A test that reads `LYM_TEST_TIER` keys the Go test cache on it,
   so each tier's run of an unchanged binary misses the cache once.
+- A tier's command hands its packages to `go test` through `{test_targets}`.
+  `lym gate test` fills it with the packages holding a test of the tier, read from each test's `tiergate.Require`,
+  so a pass starts no test binary without one, and a package's first test of a tier joins with no hand edit.
 
 ### Gate keys
 

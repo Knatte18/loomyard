@@ -240,6 +240,16 @@ func TestPlanTierRuns(t *testing.T) {
 			want:  []string{"tier0 computed dir=. ./... ignores", "tier1 guard dir=. guard"},
 		},
 		{
+			name: "a command holding {test_targets} alone narrows like one holding {targets}",
+			mutate: func(cfg *gateslot.Config) {
+				t0 := cfg.Tiers["tier0"]
+				t0.Command = "go test {test_targets} {args}"
+				cfg.Tiers["tier0"] = t0
+			},
+			scope: narrower,
+			want:  []string{"tier0 computed dir=. ./a ./b | dir=nested .", "tier1 guard dir=. guard"},
+		},
+		{
 			name:  "an empty scope runs no listed tier's command, and the guard group is still planned",
 			scope: scope{form: scopeComputed, guardStep: true, guardDir: ".", guards: tier1Guards},
 			want:  []string{"tier0 computed none", "tier1 guard dir=. guard"},
@@ -456,7 +466,7 @@ func TestPlanTierRuns(t *testing.T) {
 			},
 			request: testRequest{guards: true},
 			scope:   scope{form: scopeAll, whole: true, guards: map[int]map[string][]string{1: {"g": {"TestG"}}}},
-			want:    "must hold {targets} and {args}",
+			want:    "must hold {targets} or {test_targets} and {args}",
 		},
 		{
 			name: "a guard group whose tier command lacks {args}",
@@ -467,7 +477,7 @@ func TestPlanTierRuns(t *testing.T) {
 			},
 			request: testRequest{guards: true},
 			scope:   scope{form: scopeAll, whole: true, guards: map[int]map[string][]string{1: {"g": {"TestG"}}}},
-			want:    "must hold {targets} and {args}",
+			want:    "must hold {targets} or {test_targets} and {args}",
 		},
 		{
 			name:    "--guards under the none scoper",

@@ -1704,7 +1704,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		if got := g.tierArgs(t); !reflect.DeepEqual(got, [][]string{{"whole"}}) {
 			t.Errorf("tier invocations = %q; want the command as written", got)
 		}
-		if !strings.Contains(g.stdout.String(), "the command of tier2 holds no {targets}") {
+		if !strings.Contains(g.stdout.String(), "the command of tier2 holds neither {targets} nor {test_targets}") {
 			t.Errorf("stdout = %q; want the notice that the command runs whole", g.stdout.String())
 		}
 	})

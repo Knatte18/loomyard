@@ -27,6 +27,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
@@ -249,6 +250,9 @@ func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Du
 
 // runInvocations prebuilds `lym` when the tier asks.
 // It then runs each invocation of run in order under ctx, stopping at the first non-zero exit.
+// For a command holding {test_targets} it first narrows each invocation's targets.
+// It keeps the packages holding a test of the tier.
+// An invocation left with no package runs no command, and a line on request.stderr says so.
 // It returns that exit code, the commands it rendered and a refusal when a command could not be run at all.
 func runInvocations(ctx context.Context, run tierRun, counter counter, env []string, request testRequest) (exit int, commands []string, refusal string) {
 	if len(run.invocations) == 0 {
@@ -270,12 +274,20 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 
 	shellName, shellFlag := verifyrun.ShellFor(runtime.GOOS)
 	for _, invocation := range run.invocations {
-		command, err := renderTierCommand(run.number, run.tier, invocation.targets, invocation.terms, run.args)
+		dir := resolveRunDir(request.root, invocation.dir)
+		testTargets := invocation.targets
+		if strings.Contains(run.tier.Command, gateslot.TestTargetsPlaceholder) {
+			testTargets = tierTestTargets(ctx, request.goBinary, dir, run, invocation.targets, env)
+			if len(testTargets) == 0 {
+				printLine(request.stderr, fmt.Sprintf("gate test: no package of %s in %s holds a %s test, so the command of %s does not run there", strings.Join(invocation.targets, " "), dir, tierName(run.number), tierName(run.number)))
+				continue
+			}
+		}
+		command, err := renderTierCommand(run.number, run.tier, invocation.targets, testTargets, invocation.terms, run.args)
 		if err != nil {
 			return 0, commands, err.Error()
 		}
 		commands = append(commands, command)
-		dir := resolveRunDir(request.root, invocation.dir)
 
 		cmd := exec.CommandContext(ctx, shellName, shellFlag, command)
 		cmd.Dir = dir
@@ -307,6 +319,28 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		}
 	}
 	return 0, commands, ""
+}
+
+// tierTestTargets returns the packages of targets in the module at moduleDir that hold a test run's tier executes.
+// The tiers counted are run's own and those it covers.
+// A target that names no directory, such as an import path, is kept.
+// It returns targets unnarrowed when their packages cannot be listed or the narrowed list passes greenCommandBudget:
+// the narrowing only saves time, so a failure around it runs every target.
+func tierTestTargets(ctx context.Context, goBinary, moduleDir string, run tierRun, targets, env []string) []string {
+	packages, err := expandPackages(ctx, goBinary, moduleDir, run.tier, targets, env)
+	if err != nil {
+		logger.Warn("gate test: could not list the packages to keep those with a test of the tier; every target runs", "tier", tierName(run.number), "dir", moduleDir, "cause", err)
+		return targets
+	}
+	tiers := append([]int{run.number}, run.tier.Covers...)
+	kept := slices.DeleteFunc(packages, func(pkg string) bool {
+		return strings.HasPrefix(pkg, ".") && !impactset.HoldsTierTest(filepath.Join(moduleDir, filepath.FromSlash(pkg)), tiers)
+	})
+	if len(strings.Join(kept, " ")) > greenCommandBudget {
+		logger.Info("gate test: the packages with a test of the tier exceed the command budget; every target runs", "tier", tierName(run.number), "packages", len(kept))
+		return targets
+	}
+	return kept
 }
 
 // filterFlags are the go test flags whose filter may match nothing in a package,

@@ -69,6 +69,10 @@
 // A seam line whose argument is not a single `<unit>#<Type>` token is a SeamMalformed error.
 // Whether a glyph names a struct is for the caller to judge.
 //
+// HoldsTierTest reports whether a package directory holds a test function a run of given tiers executes.
+// A test function opening with `tiergate.Require(t, N)` counts for tier N alone, and any other for every tier.
+// The gate's `{test_targets}` keeps a package on it, so a tier run starts only the test binaries with a test to run.
+//
 // A narrower run skips only packages the import graph shows unreachable.
 // Whole runs catch what the graph cannot see, such as a test reading another package's files.
 // A binary-driving test can reach a change only through a subcommand its own package does not import.

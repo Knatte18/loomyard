@@ -17,14 +17,16 @@ func TestRenderTierCommand(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		command string
-		filter  string
-		targets []string
-		terms   []string
-		args    []string
-		want    string
+		name        string
+		command     string
+		filter      string
+		targets     []string
+		testTargets []string
+		terms       []string
+		args        []string
+		want        string
 	}{
+		{name: "the test targets fill {test_targets} beside the targets", command: "go vet {targets} && go test {test_targets}", targets: []string{"./a", "./b"}, testTargets: []string{"./a"}, want: "go vet './a' './b' && go test './a'"},
 		{name: "each target and arg is quoted", command: "run {targets} -- {args}", targets: []string{"./a b", "it's"}, args: []string{"-run", "^(X|Y)$"}, want: `run './a b' 'it'\''s' -- '-run' '^(X|Y)$'`},
 		{name: "parallel is filled", command: "make -j{parallel}", targets: []string{"x"}, want: "make -j3"},
 		{name: "the test timeout is filled in minutes", command: "go test -timeout {test_timeout} {targets}", targets: []string{"x"}, want: "go test -timeout 25m 'x'"},
@@ -40,7 +42,7 @@ func TestRenderTierCommand(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := renderTierCommand(2, gateslot.Tier{Command: tc.command, Filter: tc.filter, Parallel: 3, TestTimeoutMin: 25}, tc.targets, tc.terms, tc.args)
+			got, err := renderTierCommand(2, gateslot.Tier{Command: tc.command, Filter: tc.filter, Parallel: 3, TestTimeoutMin: 25}, tc.targets, tc.testTargets, tc.terms, tc.args)
 			if err != nil {
 				t.Fatalf("renderTierCommand() error = %v", err)
 			}

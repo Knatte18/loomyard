@@ -50,7 +50,8 @@ type tierRun struct {
 	invocations []invocation
 	// args are the words that fill the command's {args}.
 	args []string
-	// ignoresTargets is set when explicit targets were given and the command holds no {targets}, so it runs whole.
+	// ignoresTargets is set when explicit targets were given and the command holds neither {targets} nor {test_targets},
+	// so it runs whole.
 	ignoresTargets bool
 	// guardStep marks the run of a tier's command over the guard tests of the files that belong to that tier.
 	guardStep bool
@@ -77,7 +78,8 @@ func tierName(number int) string {
 // A tier a no-test-class scope runs whole is named on request.stderr when it has one.
 // It refuses, naming `lym config gate`: a hub with no tier0; an undeclared tier; a dangling covers entry;
 // words after `--` for a tier whose command lacks {args};
-// a guard group whose tier is undeclared or whose command lacks {targets} or {args}; and --guards under the none scoper.
+// a guard group whose tier is undeclared or whose command lacks {targets} and {test_targets}, or lacks {args};
+// and --guards under the none scoper.
 // It refuses --guards under the dotnet scoper too, naming only dropping --guards:
 // no config change gives a C# hub the guard tests.
 func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun, error) {
@@ -161,8 +163,8 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 		if !declared {
 			return nil, configRefusal("the guard tests of %s run under its command, but the hub declares no %s", tierName(number), tierName(number))
 		}
-		if !strings.Contains(tier.Command, "{targets}") || !strings.Contains(tier.Command, "{args}") {
-			return nil, configRefusal("the guard step runs the command of %s, which must hold {targets} and {args}", tierName(number))
+		if !gateslot.HoldsTargets(tier.Command) || !strings.Contains(tier.Command, "{args}") {
+			return nil, configRefusal("the guard step runs the command of %s, which must hold {targets} or {test_targets} and {args}", tierName(number))
 		}
 		dir := tier.Dir
 		switch {
@@ -189,7 +191,8 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 // A dotnet share's module is a selected project, whose invocation carries its class filter terms and is partial.
 // A scope that selected no test class makes no invocation for a tier with shared_build, and runs any other tier whole.
 // A tier with carry: false runs whole under every scope form but explicit targets, the empty scope included.
-// A command without {targets} runs once, whole, under explicit targets and under a non-empty narrower scope.
+// A command holding neither {targets} nor {test_targets} runs once, whole.
+// It does so under explicit targets and under a non-empty narrower scope.
 func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invocations []invocation, ignoresTargets bool) {
 	runsWhole := []invocation{{dir: tier.Dir, targets: strings.Fields(tier.AllTargets)}}
 	switch {
@@ -198,7 +201,7 @@ func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invoca
 		if request.dir != "" {
 			dir = request.dir
 		}
-		return []invocation{{dir: dir, targets: request.targets}}, !strings.Contains(tier.Command, "{targets}")
+		return []invocation{{dir: dir, targets: request.targets}}, !gateslot.HoldsTargets(tier.Command)
 	case sc.whole, tier.NoCarry:
 		return runsWhole, false
 	case sc.noTests && tier.SharedBuild:
@@ -207,7 +210,7 @@ func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invoca
 		return runsWhole, false
 	case len(sc.modules) == 0:
 		return nil, false
-	case !strings.Contains(tier.Command, "{targets}"):
+	case !gateslot.HoldsTargets(tier.Command):
 		return runsWhole, true
 	}
 	for _, module := range sc.modules {
@@ -315,13 +318,19 @@ func ranWhole(runs []tierRun, number int, sc scope) bool {
 	})
 }
 
-// renderTierCommand fills {targets}, {args}, {parallel}, {filter} and {test_timeout} in the tier's command.
+// renderTierCommand fills the placeholders of the tier's command.
+// They are {targets}, {test_targets}, {args}, {parallel}, {filter} and {test_timeout}.
 // Each target and each arg is quoted for the platform shell.
 // number is the tier's number and terms are the class filter terms of the invocation.
+// testTargets fill {test_targets}: the targets narrowed to the packages that hold a test of the tier.
 // {filter} renders the tier's filter ANDed with the terms ORed together.
 // A placeholder the command does not hold is not added, so terms given to a command without {filter} filter nothing.
-func renderTierCommand(number int, tier gateslot.Tier, targets, terms, args []string) (string, error) {
+func renderTierCommand(number int, tier gateslot.Tier, targets, testTargets, terms, args []string) (string, error) {
 	quotedTargets, err := quoteAll(targets)
+	if err != nil {
+		return "", err
+	}
+	quotedTestTargets, err := quoteAll(testTargets)
 	if err != nil {
 		return "", err
 	}
@@ -337,6 +346,7 @@ func renderTierCommand(number int, tier gateslot.Tier, targets, terms, args []st
 	}
 	return strings.NewReplacer(
 		"{targets}", strings.Join(quotedTargets, " "),
+		gateslot.TestTargetsPlaceholder, strings.Join(quotedTestTargets, " "),
 		"{args}", strings.Join(quotedArgs, " "),
 		"{parallel}", strconv.Itoa(tier.Parallel),
 		"{filter}", filter,
