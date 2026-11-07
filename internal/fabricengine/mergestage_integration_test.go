@@ -59,10 +59,7 @@ func TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds(t *testin
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &conflictLayer)
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -100,10 +97,7 @@ func TestMergeStageResolved_PathNotConflictedOnEitherSide(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	_, f, _, _, _, _ := newMergeLayerFixture(t, &conflictLayer)
 
 	if _, err := f.MergeIn("feature"); err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)

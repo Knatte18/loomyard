@@ -29,9 +29,7 @@ import (
 func setupResolvedConflictedMergeIn(t *testing.T) (*hubforge.Hub, *fabricengine.Fabric) {
 	t.Helper()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &clashLayer)
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -210,9 +208,7 @@ func TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(t 
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	_, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
-	commitOnWarpBranch("feature", "clean-warp.txt", "clean\n", "warp: clean branch")
-	commitOnWeftBranch("feature-weft", "_lym/clean-weft.txt", "clean\n", "weft: clean branch")
+	_, f, _, _, _, _ := newMergeLayerFixture(t, &cleanMergeableLayer)
 
 	held, done := launchBlockedOnLock(t, f, func() error {
 		_, mergeErr := f.Merge("feature", fabricengine.MergeOptions{})
@@ -297,9 +293,7 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 func newCleanMergeablePair(t *testing.T) (*hubforge.Hub, *fabricengine.Fabric) {
 	t.Helper()
 
-	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
-	commitOnWarpBranch("feature", "clean-warp.txt", "clean\n", "warp: clean branch")
-	commitOnWeftBranch("feature-weft", "_lym/clean-weft.txt", "clean\n", "weft: clean branch")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &cleanMergeableLayer)
 	return h, f
 }
 

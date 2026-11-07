@@ -1,5 +1,6 @@
 // verbs.go builds the verb table for the gate-reaching verbs.
-// Each verb has its own Arrange fixture, Run call, and Expect function, which derives a per-state Expectation.
+// Each verb has its own Build and Arrange fixture steps, Run call, and Expect function.
+// The Expect function derives a per-state Expectation.
 // The file also holds the hostile-input cases and the omission table of excluded verb/state pairs.
 //
 // # The verified dirtiness-scope table
@@ -181,6 +182,10 @@ type Expectation struct {
 // Arrange is a required field, not a convenience: most verbs need a fixture no state builds.
 // Folding that work into Run would be a correctness bug.
 // The before-manifest is captured before Run, so a mutation folded into Run would show up as an unpermitted change.
+// Build is optional and holds the fixture steps a hubforge template build can run, such as adding a pair.
+// It runs once per anchor in a registered template, and each cell copies that template.
+// Arrange then derives the fixture from the copy's Hub.
+// It keeps only the steps a build cannot run, such as placing a directory outside the hub.
 // States is an optional restriction.
 // Empty means the case inherits every state in the package-level States slice, which ordinary verbs use.
 // So a newly appended verb gets the full matrix automatically.
@@ -193,6 +198,7 @@ type Expectation struct {
 // Discarding the typed result would leave nothing for a cell to cross-check against the manifest diff.
 type VerbCase struct {
 	Name    string
+	Build   func(tb testing.TB, h *hubforge.Hub)
 	Arrange func(tb testing.TB, h *hubforge.Hub) VerbFixture
 	Run     func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error)
 	States  []string
@@ -234,11 +240,11 @@ var Omissions = []Omission{
 	{Verb: "Reconcile", State: "foreignDirAtFabricOwnedPath", Reason: "Reconcile has no path-executor gate call (reconcile.go contains no pathRequest); its own pre-flight is scopeAll on the board, not a per-path check"},
 	{Verb: "Reconcile", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "Reconcile has no path-executor gate call (reconcile.go contains no pathRequest); its own pre-flight is scopeAll on the board, not a per-path check"},
 
-	// Cleanup's Arrange removes the pair's weft worktree by hand before the state is applied.
+	// Cleanup's Build removes the pair's weft worktree by hand before the state is applied.
 	// No weft-targeted dirtiness state can plant into a checkout that no longer exists.
-	{Verb: "Cleanup", State: "dirtyWeftTracked", Reason: "Cleanup's Arrange removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout a weft dirtiness state would plant into does not exist"},
-	{Verb: "Cleanup", State: "dirtyWeftUntracked", Reason: "Cleanup's Arrange removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout a weft dirtiness state would plant into does not exist"},
-	{Verb: "Cleanup", State: "bothDirty", Reason: "Cleanup's Arrange removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout bothDirty's weft half would plant into does not exist"},
+	{Verb: "Cleanup", State: "dirtyWeftTracked", Reason: "Cleanup's Build removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout a weft dirtiness state would plant into does not exist"},
+	{Verb: "Cleanup", State: "dirtyWeftUntracked", Reason: "Cleanup's Build removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout a weft dirtiness state would plant into does not exist"},
+	{Verb: "Cleanup", State: "bothDirty", Reason: "Cleanup's Build removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout bothDirty's weft half would plant into does not exist"},
 
 	// Remove's own path-executor gate calls target only the pair's registered worktree and its own wired junctions.
 	// No ownership check reaches an independent foreign directory or unrelated clone at another path.
@@ -384,6 +390,7 @@ func assertExists(tb testing.TB, path string) {
 // A clean-state Run therefore returns the launcher error.
 // It leaves the hub as it was before Run, apart from the blocker.
 // That is add.go's documented rollback contract, so this case expects RefusedBefore rather than Proceeds.
+// The case has no Build: the blocker is one directory and no git step, so a template would only add a build.
 func addCase() VerbCase {
 	return VerbCase{
 		Name: "Add",
@@ -467,13 +474,15 @@ func addCase() VerbCase {
 // removeCase builds Topology.Remove's VerbCase.
 // Its dirty-refusal cells declare no permitted roots, because a correctly-refusing cell changes nothing.
 func removeCase() VerbCase {
+	const slug = "verb-remove-owner"
 	return VerbCase{
 		Name: "Remove",
+		Build: func(tb testing.TB, h *hubforge.Hub) {
+			tb.Helper()
+			hubforge.AddPair(tb, h, slug)
+		},
 		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
-
-			slug := "verb-remove-owner"
-			hubforge.AddPair(tb, h, slug)
 			return VerbFixture{
 				Slug: slug,
 				Target: StateTarget{
@@ -510,7 +519,7 @@ func removeCase() VerbCase {
 			default:
 				return Expectation{
 					Kind:           KindProceeds,
-					PermittedRoots: slugPermittedRoots("verb-remove-owner"),
+					PermittedRoots: slugPermittedRoots(slug),
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertGone(tb, h.PairCodeWorktree(f.Slug))
@@ -524,19 +533,22 @@ func removeCase() VerbCase {
 }
 
 // pruneCase builds Topology.Prune's VerbCase.
-// Arrange produces a stale pair: the warp worktree directory is removed by hand, bypassing fabric,
+// Build produces a stale pair: the warp worktree directory is removed by hand, bypassing fabric,
 // so the weft sibling and warp's worktree registration stay behind, as an operator's manual `rm -rf` would.
 func pruneCase() VerbCase {
+	const slug = "verb-prune-owner"
 	return VerbCase{
 		Name: "Prune",
-		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
+		Build: func(tb testing.TB, h *hubforge.Hub) {
 			tb.Helper()
 
-			slug := "verb-prune-owner"
 			hubforge.AddPair(tb, h, slug)
 			if err := os.RemoveAll(h.PairCodeWorktree(slug)); err != nil {
 				tb.Fatalf("remove warp worktree %s to stage a stale pair: %v", h.PairCodeWorktree(slug), err)
 			}
+		},
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
+			tb.Helper()
 			return VerbFixture{
 				Slug: slug,
 				Target: StateTarget{
@@ -564,7 +576,7 @@ func pruneCase() VerbCase {
 				// What matters is that the protected entry survives untouched.
 				return Expectation{
 					Kind:           KindProceeds,
-					PermittedRoots: slugPermittedRoots("verb-prune-owner"),
+					PermittedRoots: slugPermittedRoots(slug),
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertExists(tb, h.PairRecordsSibling(f.Slug))
@@ -574,7 +586,7 @@ func pruneCase() VerbCase {
 			default:
 				return Expectation{
 					Kind:           KindProceeds,
-					PermittedRoots: slugPermittedRoots("verb-prune-owner"),
+					PermittedRoots: slugPermittedRoots(slug),
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertGone(tb, h.PairRecordsSibling(f.Slug))
@@ -587,11 +599,11 @@ func pruneCase() VerbCase {
 }
 
 // cleanupCase builds Topology.Cleanup's VerbCase.
-// Arrange produces an orphan managed branch.
+// Build produces an orphan managed branch.
 // It creates a pair and tears down its warp side (worktree and branch) by hand.
 // That leaves the weft branch with no live warp sibling.
-// Arrange also moves the prime pair off the hub's default branch.
-// The hub's Bolt checkout stays on the original branch.
+// Build also moves the prime pair off the hub's default branch.
+// The hub's Bolt checkout stays on the original branch, so Arrange reads the original branch there.
 // fabricengine.primaryWeftBranch reads that to find the repo's primary weft line (cleanup.go:206).
 // It alone still records the primary after the move.
 // Without the move, branch-space liveness alone would still protect the primary weft branch:
@@ -603,14 +615,12 @@ func pruneCase() VerbCase {
 // Cleanup's force parameter is reserved and no gate consults it, so apply alone deletes an orphan branch.
 // The argument is kept as it was; this cell's clean-state effect does not depend on it.
 func cleanupCase() VerbCase {
+	const slug = "verb-cleanup-owner"
 	return VerbCase{
 		Name: "Cleanup",
-		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
+		Build: func(tb testing.TB, h *hubforge.Hub) {
 			tb.Helper()
 
-			original := gitkit.CurrentBranch(tb, h.PrimeWorktree())
-
-			slug := "verb-cleanup-owner"
 			hubforge.AddPair(tb, h, slug)
 			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairCodeWorktree(slug))
 			mustGit(h.PrimeWorktree(), "branch", "-D", slug)
@@ -624,10 +634,12 @@ func cleanupCase() VerbCase {
 			// the condition under which Cleanup's primaryWeft carve-out is load-bearing.
 			mustGit(h.PrimeWorktree(), "checkout", "-b", "verb-cleanup-alt")
 			mustGit(h.PrimeRecords(), "checkout", "-b", fabricengine.RecordsBranchName("verb-cleanup-alt"))
-
+		},
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
+			tb.Helper()
 			return VerbFixture{
 				Slug:           slug,
-				OriginalBranch: original,
+				OriginalBranch: gitkit.CurrentBranch(tb, h.BoardDir()),
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
 					WeftCheckout: h.PairRecordsSibling(slug),
@@ -649,7 +661,7 @@ func cleanupCase() VerbCase {
 						tb.Errorf("Cleanup left orphan branch %q behind", orphan)
 					}
 					// The clean-state effect: orphan managed branches are gone, and the primary weft branch stays intact.
-					// Arrange moves the prime pair off f.OriginalBranch,
+					// Build moves the prime pair off f.OriginalBranch,
 					// so no live pair or checked-out weft worktree holds the primary weft branch.
 					primary := fabricengine.RecordsBranchName(f.OriginalBranch)
 					if !gitkit.BranchExists(tb, h.PrimeRecords(), primary) {
@@ -668,26 +680,27 @@ func checkoutPermittedRoots() []string {
 }
 
 // checkoutCase builds Topology.Checkout's VerbCase.
-// Arrange adds a pair, and Run passes that pair's own warp branch.
+// Build adds a pair, and Run passes that pair's own warp branch.
 // Without the pair, the cells are vacuous.
 // A factory-built hub carries only the clone's own branch, and Checkout on that branch is a no-op.
 func checkoutCase() VerbCase {
+	const slug = "verb-checkout-owner"
 	return VerbCase{
 		Name: "Checkout",
-		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
+		Build: func(tb testing.TB, h *hubforge.Hub) {
 			tb.Helper()
 
-			slug := "verb-checkout-owner"
 			hubforge.AddPair(tb, h, slug)
 			// Remove the pair's own worktrees, never its branches, so both branches are free for the prime pair to switch onto.
-			// Without this, `git switch` refuses: the branch is still checked out at the pair worktree this Arrange created.
+			// Without this, `git switch` refuses: the branch is still checked out at the pair worktree this Build created.
 			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairCodeWorktree(slug))
 			mustGit(h.PrimeRecords(), "worktree", "remove", "--force", h.PairRecordsSibling(slug))
-			original := gitkit.CurrentBranch(tb, h.PrimeWorktree())
-
+		},
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
+			tb.Helper()
 			return VerbFixture{
 				Slug:           slug,
-				OriginalBranch: original,
+				OriginalBranch: gitkit.CurrentBranch(tb, h.PrimeWorktree()),
 				CheckoutBranch: slug,
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
@@ -804,15 +817,17 @@ func reconcileCase() VerbCase {
 }
 
 // unwireJunctionsCase builds fabricengine.UnwireJunctions' VerbCase.
-// Arrange adds a pair; clean-state effect: junctions gone, worktree intact.
+// Build adds a pair; clean-state effect: junctions gone, worktree intact.
 func unwireJunctionsCase() VerbCase {
+	const slug = "verb-unwire-owner"
 	return VerbCase{
 		Name: "UnwireJunctions",
+		Build: func(tb testing.TB, h *hubforge.Hub) {
+			tb.Helper()
+			hubforge.AddPair(tb, h, slug)
+		},
 		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
-
-			slug := "verb-unwire-owner"
-			hubforge.AddPair(tb, h, slug)
 			return VerbFixture{
 				Slug: slug,
 				Target: StateTarget{
@@ -842,9 +857,9 @@ func unwireJunctionsCase() VerbCase {
 			// so both anchor variants of both names are permitted unconditionally, which is harmless when one goes unused.
 			var permitted []string
 			for _, anchor := range []string{".", "backend"} {
-				loc := &lymcwd.Location{WorktreeName: "verb-unwire-owner", AnchorRel: anchor}
+				loc := &lymcwd.Location{WorktreeName: slug, AnchorRel: anchor}
 				for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
-					permitted = append(permitted, filepath.ToSlash(fabricengine.WarpJunctions(loc, "verb-unwire-owner", []string{name})[0].Link))
+					permitted = append(permitted, filepath.ToSlash(fabricengine.WarpJunctions(loc, slug, []string{name})[0].Link))
 				}
 			}
 

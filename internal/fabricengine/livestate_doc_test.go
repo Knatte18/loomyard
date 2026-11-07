@@ -8,7 +8,9 @@
 // both backed by real bare git repositories on disk.
 // It does not use hand-assembled fixtures.
 // A named hostile-state matrix plants dirty, stale, or otherwise hostile on-disk conditions before a verb runs.
-// A verb table lists the topology verbs under test, each with its own Arrange step and permitted removal roots.
+// A verb table lists the topology verbs under test, each with its own fixture steps and permitted removal roots.
+// A verb's Build steps run once per anchor in a registered hubforge template, which each cell copies;
+// its Arrange derives the rest of the fixture from the copy.
 // The cross product of the two runs, and every cell asserts survival: the cell names what may change,
 // and any change outside that is a failure.
 // Defects of this kind surface only when real git runs against a real filesystem in hostile or dirty state.
@@ -98,7 +100,7 @@
 //     With all three disabled, that test fails: Cleanup reports the primary weft branch "main-weft" as handled.
 //     The clean/Cleanup/"." cell covers the same protection.
 //     It also covers Cleanup's ordinary orphan deletion, through the branch cleanupCase deliberately orphans.
-//     Its Arrange moves the prime pair off the hub's default branch.
+//     Its Build moves the prime pair off the hub's default branch.
 //     Its Effect asserts that the primary weft branch still exists afterward.
 //   - (5) dirtyWarpUntracked x Prune x "." checks that Prune does not remove a path git has just refused.
 //     This cell cannot prove that on its own.
@@ -142,7 +144,7 @@
 //   - Reconcile omits all four structural states: reconcile.go contains no pathRequest call,
 //     so no structural state, of any shape, names a path that Reconcile's pre-flight (scopeAll on the board) inspects.
 //   - Cleanup additionally omits dirtyWeftTracked, dirtyWeftUntracked and bothDirty.
-//     Its Arrange tears down the pair's weft worktree by hand before the state is applied.
+//     Its Build tears down the pair's weft worktree by hand before the state is applied.
 //     This mirrors cleanup's orphan-branch precondition.
 //     So no weft-targeted dirtiness state has a live checkout to plant into.
 //   - Remove omits foreignDirAtFabricOwnedPath and unrelatedGitCloneAtWeftNamedPath.

@@ -23,9 +23,7 @@ func TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h1, f1, _, _, _, _ := newMergePairFixture(t, ".")
-	setupCleanNonFastForward(t, h1.PrimeWorktree(), "feature", "feature.txt", "warp-progress.txt")
-	branchAtCurrentHEAD(t, h1.PrimeRecords(), "feature-weft")
+	h1, f1, _, _, _, _ := newMergeLayerFixture(t, &warpProgressLayer)
 	if err := os.WriteFile(filepath.Join(h1.PrimeWorktree(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatalf("write dirty.txt: %v", err)
 	}
@@ -34,9 +32,7 @@ func TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes(t *testing.T) {
 	_, err := f1.MergeIn("feature")
 	assertSoleGuardReason(t, "MergeIn(feature) [warp dirty]", err, "worktree dirty")
 
-	h2, f2, _, _, _, _ := newMergePairFixture(t, ".")
-	setupCleanNonFastForward(t, h2.PrimeWorktree(), "feature", "feature.txt", "warp-progress.txt")
-	branchAtCurrentHEAD(t, h2.PrimeRecords(), "feature-weft")
+	h2, f2, _, _, _, _ := newMergeLayerFixture(t, &warpProgressLayer)
 	weftBefore2 := fabricengine.CurrentSHAForTest(t, h2.PrimeRecords())
 	if err := os.WriteFile(filepath.Join(h2.PrimeRecords(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatalf("write dirty.txt: %v", err)
@@ -65,9 +61,7 @@ func TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes(t *testing.T)
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h1, f1, commitOnWarpBranch1, commitOnWeftBranch1, _, _ := newMergePairFixture(t, ".")
-	commitOnWarpBranch1("feature", "feature.txt", "feature\n", "feature: warp")
-	commitOnWeftBranch1("feature-weft", "feature.txt", "feature\n", "feature: weft")
+	h1, f1, _, _, _, _ := newMergeLayerFixture(t, &featureBothSidesLayer)
 	gitkit.MustRun(t, h1.PrimeWorktree(), "git", "checkout", "-q", "--detach", "HEAD")
 
 	_, err := f1.MergeIn("feature")
@@ -77,9 +71,7 @@ func TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes(t *testing.T)
 		t.Errorf("detached-warp guard error carries Checkout %q and DirtyPaths %q; want both empty beside no dirty reason", detachedErr.Checkout, detachedErr.DirtyPaths)
 	}
 
-	h2, f2, commitOnWarpBranch2, commitOnWeftBranch2, _, _ := newMergePairFixture(t, ".")
-	commitOnWarpBranch2("feature", "feature.txt", "feature\n", "feature: warp")
-	commitOnWeftBranch2("feature-weft", "feature.txt", "feature\n", "feature: weft")
+	h2, f2, _, _, _, _ := newMergeLayerFixture(t, &featureBothSidesLayer)
 	gitkit.MustRun(t, h2.PrimeRecords(), "git", "checkout", "-q", "--detach", "HEAD")
 	weftBefore2 := fabricengine.CurrentSHAForTest(t, h2.PrimeRecords())
 
@@ -142,9 +134,7 @@ func TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "feature.txt", "warp-progress.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &warpProgressLayer)
 
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "checkout", "-q", "--detach", "HEAD")
 	if err := os.WriteFile(filepath.Join(h.PrimeRecords(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
@@ -178,9 +168,7 @@ func TestWeftGuards_EveryRecordThisBinaryWritesIsResumable(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	_, f, _, _, _, _ := newMergeLayerFixture(t, &conflictLayer)
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -219,9 +207,7 @@ func TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact(t *testing.T
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &conflictLayer)
 
 	warpStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 
