@@ -576,7 +576,7 @@ func TestCopyHub(t *testing.T) {
 		t.Errorf("%s exists on the copy (err = %v); want no _portals directory", portalsDir, err)
 	}
 
-	templateRoot := templateFor(t, shape).root
+	templateRoot := templateFor(t, shapeRegistration(t, shape)).root
 	copyRoot := filepath.Dir(h.Container)
 	stale, err := findRootReference(copyRoot, templateRoot)
 	if err != nil {

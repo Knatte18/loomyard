@@ -192,6 +192,17 @@ No hub is hand-assembled.
 - A copy from `hubforge.CopyHub` relocates a hub that `fabriccli.CloneAndWire` built into a per-binary template.
   It is never a hub assembled another way.
   `SharedHub` hands out that template itself to a test that only reads.
+- A start state the closed shape set cannot hold, such as commits, pushes and pairs under fixed slugs,
+  is a registered template: a package-level `hubforge.Registration` of a key, a base shape and a build function.
+  `hubforge.CopyRegistered` copies it the way `CopyHub` copies a shape's.
+  Its template is the base shape's `fabriccli.CloneAndWire` hub plus the build function's steps, never a copy.
+  The build's TB fails it on `Cleanup`, `Setenv`, `TempDir`, `Chdir`, `ArtifactDir` or a skip,
+  and the build fails unless the board's HEAD is its branch's tip in the records bare.
+- A build function makes no process-wide change its TB cannot see:
+  no `os.Setenv`, `os.MkdirTemp`, global git config, package-global seam setter or once-only registration,
+  and no code whose result such a registration changes, such as a Bolt replay.
+  A test that installs a process-global seam takes its copies before installing it.
+  Enforcement of this clause is review discipline, not a scan.
 - No test package wraps `hubforge` in its own fixture type;
   a test takes a `*hubforge.Hub` and reads `h.Topology`, `AddPairWith` and `OpenFabric` directly.
   Enforcement of this clause is review discipline, not a scan.

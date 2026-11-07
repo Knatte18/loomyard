@@ -2,7 +2,7 @@
 // it builds every hub fixture through fabriccli.CloneAndWire and never replicates that wiring by hand.
 // It asserts nothing about fabric, which is why its name does not end in "test".
 // Its exports are Hub with its geometry accessors and the hub builders.
-// They also include the junction teardown, the config seeders, Shape and TestShortname.
+// They also include the junction teardown, the config seeders, Shape, Registration and TestShortname.
 //
 // hubforge drives fabriccli.CloneAndWire, not fabricengine.CloneHub, because CloneHub alone yields a partial hub.
 // That hub has the warp clone, weft clone, board, anchor marker and warp binding.
@@ -22,25 +22,43 @@
 // The same template-and-copy model extends to the hub.
 // A Shape is an anchor plus an ordered list of pair slugs, and Shapes is the closed set:
 // the "." and "backend" anchors, each with no pair and with the one pair TemplatePairSlug.
-// The first CopyHub or SharedHub of a shape builds its template once per test binary.
-// The build runs NewHub's CloneAndWire plus AddPair.
+// A Registration is a template a test package declares as a package-level value:
+// a key, a base Shape and a build function that brings the hub to a start state the closed set cannot hold.
+// Each shape is built through a registration of its own, keyed by the shape's name.
+// The first CopyHub, CopyRegistered or SharedHub of a key builds its template once per test binary.
+// The build runs NewHub's CloneAndWire plus AddPair for the base shape's pairs, then the build function.
+// It runs on a goroutine of its own, under a testing.TB that records failures,
+// and that fails the build on Cleanup, Setenv, TempDir, Chdir, ArtifactDir or a skip.
+// After the build the board's HEAD must be its branch's tip in the records bare, read from the bare.
+// Each key builds under its own lock, so templates of different keys build at once.
+// A build that fails fails its caller with the build's error, and every later caller naming the key, without a rebuild.
+// Two different registrations with one key fail the second caller naming the key.
 // The template directory's name begins with templatePrefix.
 // That keeps the template root from being a string prefix of any copy path.
 // The template directory holds the bares and the hub.
 // It lives in the process run directory of internal/lymtemp, which tmuxkit.Main removes.
-// CopyHub relocates the template into the test's own tb.TempDir.
+// CopyHub and CopyRegistered relocate the template into the test's own tb.TempDir.
 // Files are copied without following links.
 // The template root path is rewritten to the copy's in every text file, in both separator spellings.
 // Each link is recreated with its rewritten target.
 // The copy is verified to name the template root nowhere.
 // The board's tracked `.lym-warp` binding is among the rewritten files.
-// CopyHub therefore amends it into the board's one commit and force-pushes that to the copy's own records bare.
+// A copy therefore amends it into the board's HEAD commit and force-pushes that to the copy's own records bare.
 // That leaves every checkout of the copy clean, as a fresh hub's is.
 // A link keeps its one-hop target, so a chain of links stays a chain.
 // A copy's Mutations are the template's, unrewritten.
-// A shape outside the set fails through tb.Fatalf, whose message points at NewHub for building such shapes.
+// A shape outside the set fails through tb.Fatalf, whose message points at NewHub and Registration.
 //
-// SharedHub returns the template's own Hub for a test that only reads it.
+// A build's process-wide calls are outside its TB's reach.
+// They are os.Setenv, os.MkdirTemp, global git config, a package-global seam setter and a once-only registration.
+// The TB's Context kept past the build is one too.
+// Relocation rewrites only the template root, so any of those results reaches every later copy or test.
+// So a build makes none of them.
+// It also reaches no code whose result a once-only registration changes, such as a Bolt replay.
+// A test that installs a process-global seam takes its copies first.
+// Review holds that line.
+//
+// SharedHub returns a shape's template's own Hub for a test that only reads it.
 // A read is a file read, a link read or an in-process go-git read.
 // A write is anything that may change a file under the hub.
 // Writes include a fabric mutating verb, SeedConfig and AddPair.

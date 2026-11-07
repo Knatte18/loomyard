@@ -1,8 +1,9 @@
 // template.go builds hubforge's per-binary hub templates and hands them out.
-// CopyHub relocates a template into a test's own temp directory.
-// SharedHub returns the template itself for a test that only reads it.
-// A template is a fully wired hub built once per test binary and per shape,
-// and the fingerprint taken at build time catches a write to a shared template.
+// A template is a fully wired hub built once per test binary and per key:
+// a shape of the closed Shapes set, or a Registration a test package declares.
+// CopyHub and CopyRegistered relocate a template into a test's own temp directory.
+// SharedHub returns a shape's template itself for a test that only reads it.
+// The fingerprint taken at build time catches a write to a shared template.
 
 package hubforge
 
@@ -13,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -54,6 +56,49 @@ func Shapes() []Shape {
 	return shapes
 }
 
+// Registration is a hub template a test package declares once, as a package-level value, and copies with CopyRegistered.
+// Its template is the Base shape's hub with Build run on it, built on first use and once per test binary.
+// It holds a start state the closed shape set cannot: commits, pushes and pairs under fixed slugs.
+// A registration is identified by its address, and its Key is unique among the binary's registrations and shape names.
+type Registration struct {
+	// Key names the template in every failure about it.
+	Key string
+	// Base is the anchor and the ordered pair slugs the hub is built with before Build runs.
+	Base Shape
+	// Build brings the template's hub to its start state; a nil Build leaves the base hub as it is.
+	// It captures no per-call data: a test derives the paths it needs from its copy's Hub,
+	// and a start state that varies takes a registration of its own.
+	// Its testing.TB fails the build on Cleanup, Setenv, TempDir, Chdir, ArtifactDir or a skip,
+	// so no template state is tied to the first caller's lifetime or reaches a path outside the template.
+	// It makes no process-wide change the TB cannot see, since every later copy or test in the binary would inherit it:
+	// no os.Setenv, os.MkdirTemp, global git config, package-global seam setter or once-only registration.
+	// It also reaches no code whose result such a registration changes, such as a Bolt replay.
+	// It pushes every commit it makes on the board, and pushes nothing else into the records bare:
+	// the build fails when the board's HEAD is not its branch's tip in the records bare.
+	Build func(tb testing.TB, h *Hub)
+}
+
+// shapeRegistrations holds the registration each shape of Shapes is built through, keyed by the shape's name.
+var shapeRegistrations = func() map[string]*Registration {
+	registrations := map[string]*Registration{}
+	for _, shape := range Shapes() {
+		registrations[shape.name()] = &Registration{Key: shape.name(), Base: shape}
+	}
+	return registrations
+}()
+
+// shapeRegistration returns shape's registration.
+// A shape outside Shapes fails tb with a message that points at NewHub and Registration.
+func shapeRegistration(tb testing.TB, shape Shape) *Registration {
+	tb.Helper()
+
+	registration, ok := shapeRegistrations[shape.name()]
+	if !ok {
+		tb.Fatalf("hubforge: shape %q is outside Shapes(); build such a hub with NewHub or a Registration", shape.name())
+	}
+	return registration
+}
+
 // hubTemplate is one built template: the root that holds the bares and the hub, and the Hub built there.
 // primeCwd is the directory the Hub's Location resolves from, and fingerprint is the digest of the tree at build time.
 // poisoned is set once a write to the shared tree is seen.
@@ -66,70 +111,241 @@ type hubTemplate struct {
 	poisoned    atomic.Bool
 }
 
-// templates caches the built templates by shape name; templatesMu guards it and serialises the builds.
+// templateSlot is the cache entry of one key: the registration that owns the key and the template built for it.
+// mu serialises the key's build, so templates of different keys build at once.
+// failed is set once the build failed, so no later caller rebuilds it.
+type templateSlot struct {
+	registration *Registration
+	mu           sync.Mutex
+	template     *hubTemplate
+	failed       bool
+}
+
+// templateSlots holds one slot per key; templateSlotsMu guards the map only, never a build.
 var (
-	templates   = map[string]*hubTemplate{}
-	templatesMu sync.Mutex
+	templateSlots   = map[string]*templateSlot{}
+	templateSlotsMu sync.Mutex
 )
 
-// templateFor returns shape's template, building it on first use in a directory that lives as long as the test binary.
-// A shape outside Shapes fails tb with a message that points at NewHub.
-func templateFor(tb testing.TB, shape Shape) *hubTemplate {
+// slotFor returns registration's slot, adding it on first use.
+// It fails tb, naming the key, when another registration already holds the key.
+func slotFor(tb testing.TB, registration *Registration) *templateSlot {
 	tb.Helper()
 
-	templatesMu.Lock()
-	defer templatesMu.Unlock()
+	templateSlotsMu.Lock()
+	slot, ok := templateSlots[registration.Key]
+	if !ok {
+		slot = &templateSlot{registration: registration}
+		templateSlots[registration.Key] = slot
+	}
+	templateSlotsMu.Unlock()
 
-	name := shape.name()
-	known := false
-	for _, candidate := range Shapes() {
-		known = known || candidate.name() == name
+	if slot.registration != registration {
+		tb.Fatalf("hubforge: two different registrations share the key %q; give each its own key", registration.Key)
 	}
-	if !known {
-		tb.Fatalf("hubforge: shape %q is outside Shapes(); build such a hub with NewHub", name)
+	return slot
+}
+
+// templateFor returns registration's template.
+// It builds the template on first use, in a directory that lives as long as the test binary.
+// The caller whose build fails fails with the build's error, naming the key.
+// Every later caller fails naming the key, and the template is not built again.
+func templateFor(tb testing.TB, registration *Registration) *hubTemplate {
+	tb.Helper()
+
+	slot := slotFor(tb, registration)
+	slot.mu.Lock()
+	defer slot.mu.Unlock()
+
+	if slot.template != nil {
+		return slot.template
 	}
-	if template, ok := templates[name]; ok {
-		return template
+	if slot.failed {
+		tb.Fatalf("hubforge: template %q failed to build for an earlier caller, whose failure holds the build's error; it is not built again", registration.Key)
 	}
+
+	template, failures := buildTemplate(tb, registration)
+	if len(failures) > 0 {
+		slot.failed = true
+		tb.Fatalf("hubforge: template %q failed to build: %s", registration.Key, strings.Join(failures, "; "))
+	}
+	slot.template = template
+	return template
+}
+
+// buildTemplate builds registration's template on a goroutine of its own, under a templateBuildTB over tb.
+// It returns the template, or the failures the build recorded.
+func buildTemplate(tb testing.TB, registration *Registration) (*hubTemplate, []string) {
+	buildTB := &templateBuildTB{TB: tb}
+	var template *hubTemplate
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		template = buildTemplateIn(buildTB, registration)
+	}()
+	<-done
+	return template, buildTB.recordedFailures()
+}
+
+// buildTemplateIn builds registration's template in its own lymtemp root, never from a copy of another template.
+// It copies the bares, clones the hub, adds the base shape's pairs and runs Build.
+// It then checks the board against its upstream tip and takes the fingerprint.
+func buildTemplateIn(tb testing.TB, registration *Registration) *hubTemplate {
+	tb.Helper()
 
 	defer markFixtureBuild()()
 
 	root, err := lymtemp.MkdirTemp(templatePrefix + "*")
 	if err != nil {
-		tb.Fatalf("hubforge: template %q: mkdir: %v", name, err)
+		tb.Fatalf("mkdir: %v", err)
 	}
 	root, err = filepath.EvalSymlinks(root)
 	if err != nil {
-		tb.Fatalf("hubforge: template %q: resolve root: %v", name, err)
+		tb.Fatalf("resolve root: %v", err)
 	}
 
 	templateWarp, templateWeft := buildBareTemplate()
 	warpBare := filepath.Join(root, "bares", "warp-bare")
 	weftBare := filepath.Join(root, "bares", "weft-bare")
 	if err := copyDirRecursive(templateWarp, warpBare); err != nil {
-		tb.Fatalf("hubforge: template %q: copy warp bare: %v", name, err)
+		tb.Fatalf("copy warp bare: %v", err)
 	}
 	if err := copyDirRecursive(templateWeft, weftBare); err != nil {
-		tb.Fatalf("hubforge: template %q: copy weft bare: %v", name, err)
+		tb.Fatalf("copy weft bare: %v", err)
 	}
 	container := filepath.Join(root, "container")
 	if err := os.Mkdir(container, 0o755); err != nil {
-		tb.Fatalf("hubforge: template %q: mkdir container: %v", name, err)
+		tb.Fatalf("mkdir container: %v", err)
 	}
 
-	hub, primeCwd := cloneHub(tb, shape.Anchor, warpBare, weftBare, container)
-	for _, slug := range shape.Pairs {
+	hub, primeCwd := cloneHub(tb, registration.Base.Anchor, warpBare, weftBare, container)
+	for _, slug := range registration.Base.Pairs {
 		AddPair(tb, hub, slug)
 	}
+	if registration.Build != nil {
+		registration.Build(tb, hub)
+	}
+	requireBoardAtUpstreamTip(tb, hub)
 
 	built, err := fingerprint(root)
 	if err != nil {
-		tb.Fatalf("hubforge: template %q: fingerprint: %v", name, err)
+		tb.Fatalf("fingerprint: %v", err)
 	}
+	return &hubTemplate{name: registration.Key, root: root, hub: hub, primeCwd: primeCwd, fingerprint: built}
+}
 
-	template := &hubTemplate{name: name, root: root, hub: hub, primeCwd: primeCwd, fingerprint: built}
-	templates[name] = template
-	return template
+// requireBoardAtUpstreamTip fails tb unless the board's HEAD is the tip of the board's branch in the records bare.
+// The tip is read from the bare, never from the board's tracking ref,
+// so a commit pushed into the bare from elsewhere counts.
+// A copy folds its relocated binding into the board's HEAD and force-pushes it.
+// That would drop any commit the bare holds beyond that HEAD.
+func requireBoardAtUpstreamTip(tb testing.TB, h *Hub) {
+	tb.Helper()
+
+	board := h.BoardDir()
+	branch := gitkit.CurrentBranch(tb, board)
+	head := gitkit.RevParse(tb, board, "HEAD")
+	tip := gitkit.RevParse(tb, h.RecordsBare, "refs/heads/"+branch)
+	if head != tip {
+		tb.Fatalf("the board's HEAD %s is not the tip %s of %s in the records bare; push every board commit, and push nothing else into the bare", head, tip, branch)
+	}
+}
+
+// templateBuildTB is the testing.TB a template build runs under, on a goroutine of its own.
+// A failure is recorded instead of reported, and a fatal one ends the build's goroutine.
+// A call that would tie template state to the calling test, or reach a path outside the template root, fails the build:
+// Cleanup, Setenv, TempDir, Chdir, ArtifactDir and every skip.
+// Logging and every other call reach the calling test.
+type templateBuildTB struct {
+	testing.TB
+	mu       sync.Mutex
+	failures []string
+}
+
+func (b *templateBuildTB) Helper() {}
+
+func (b *templateBuildTB) Error(args ...any) {
+	b.record(fmt.Sprint(args...))
+}
+
+func (b *templateBuildTB) Errorf(format string, args ...any) {
+	b.record(fmt.Sprintf(format, args...))
+}
+
+func (b *templateBuildTB) Fail() {
+	b.record("the build marked itself failed")
+}
+
+func (b *templateBuildTB) FailNow() {
+	b.Fail()
+	runtime.Goexit()
+}
+
+func (b *templateBuildTB) Fatal(args ...any) {
+	b.Error(args...)
+	runtime.Goexit()
+}
+
+func (b *templateBuildTB) Fatalf(format string, args ...any) {
+	b.Errorf(format, args...)
+	runtime.Goexit()
+}
+
+func (b *templateBuildTB) Failed() bool {
+	return len(b.recordedFailures()) > 0
+}
+
+func (b *templateBuildTB) Skip(...any) {
+	b.refuse("Skip")
+}
+
+func (b *templateBuildTB) Skipf(string, ...any) {
+	b.refuse("Skipf")
+}
+
+func (b *templateBuildTB) SkipNow() {
+	b.refuse("SkipNow")
+}
+
+func (b *templateBuildTB) Cleanup(func()) {
+	b.refuse("Cleanup")
+}
+
+func (b *templateBuildTB) Setenv(string, string) {
+	b.refuse("Setenv")
+}
+
+func (b *templateBuildTB) TempDir() string {
+	b.refuse("TempDir")
+	return ""
+}
+
+func (b *templateBuildTB) Chdir(string) {
+	b.refuse("Chdir")
+}
+
+func (b *templateBuildTB) ArtifactDir() string {
+	b.refuse("ArtifactDir")
+	return ""
+}
+
+// refuse fails the build for a call no template build may make.
+func (b *templateBuildTB) refuse(call string) {
+	b.Fatalf("a template build may not call testing.TB's %s: its result would outlive the build or leave the template root", call)
+}
+
+// record adds one failure.
+func (b *templateBuildTB) record(failure string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.failures = append(b.failures, failure)
+}
+
+// recordedFailures returns the failures recorded so far.
+func (b *templateBuildTB) recordedFailures() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]string(nil), b.failures...)
 }
 
 // requireIntact fails tb, naming the fixture, when an earlier write poisoned the template.
@@ -138,7 +354,7 @@ func (template *hubTemplate) requireIntact(tb testing.TB) {
 	tb.Helper()
 
 	if template.poisoned.Load() {
-		tb.Fatalf("hubforge: fixture %q was written to by an earlier test and is poisoned; take CopyHub in the test that writes", template.name)
+		tb.Fatalf("hubforge: fixture %q was written to by an earlier test and is poisoned; take CopyHub or CopyRegistered in the test that writes", template.name)
 	}
 	current, err := fingerprint(template.root)
 	if err != nil {
@@ -154,31 +370,53 @@ func (template *hubTemplate) requireIntact(tb testing.TB) {
 // It is the shape's template relocated into tb's temp directory, with every path inside it rewritten to the copy's.
 // Every checkout of the copy is clean against its HEAD and upstream, as a fresh hub's is.
 // A write to the copy touches nothing shared.
-// It fails tb, naming the fixture, when the template is poisoned or its tree changed since it was built.
+// It fails tb, naming the fixture, when the template failed to build, is poisoned or changed since it was built.
 func CopyHub(tb testing.TB, shape Shape) *Hub {
 	tb.Helper()
 
-	template := templateFor(tb, shape)
+	return copyTemplate(tb, templateFor(tb, shapeRegistration(tb, shape)))
+}
+
+// CopyRegistered returns a hub that the test owns, holding the commits, pushes and pairs of registration's build.
+// It is the registration's template relocated into tb's temp directory.
+// Every path inside it is rewritten to the copy's.
+// The board's binding is folded into its HEAD.
+// Every checkout of the copy is clean against its HEAD and upstream.
+// A write to the copy touches nothing shared.
+// It fails tb, naming the key, when the template failed to build, for this caller or an earlier one.
+// It also fails when another registration holds the key.
+// It also fails when the template is poisoned or changed since it was built.
+func CopyRegistered(tb testing.TB, registration *Registration) *Hub {
+	tb.Helper()
+
+	return copyTemplate(tb, templateFor(tb, registration))
+}
+
+// copyTemplate relocates template into tb's temp directory and returns the copy's Hub.
+// It fails tb, naming the fixture, when the template is poisoned or its tree changed since it was built.
+func copyTemplate(tb testing.TB, template *hubTemplate) *Hub {
+	tb.Helper()
+
 	template.requireIntact(tb)
 
 	root, err := filepath.EvalSymlinks(tb.TempDir())
 	if err != nil {
-		tb.Fatalf("CopyHub: resolve temp dir: %v", err)
+		tb.Fatalf("hubforge: copy of %q: resolve temp dir: %v", template.name, err)
 	}
 	if err := relocateHub(template.root, root); err != nil {
-		tb.Fatalf("CopyHub: fixture %q: %v", template.name, err)
+		tb.Fatalf("hubforge: copy of %q: %v", template.name, err)
 	}
-	hub := hubAt(tb, root, shape)
+	hub := hubAt(tb, template, root)
 	commitRelocatedBinding(tb, fabricengine.BoltDir(hub.Path))
 	return hub
 }
 
-// commitRelocatedBinding amends the board's one commit to fold in the relocated `.lym-warp` binding.
+// commitRelocatedBinding amends the board's HEAD commit to fold in the relocated `.lym-warp` binding.
 // It then force-pushes that commit to the copy's own records bare.
 // The relocation rewrites the binding's working-tree file.
 // The committed blob, compressed in the object store, still names the template's warp bare.
 // Amending the commit leaves the board clean against its HEAD and upstream.
-// It keeps the one-commit history a fresh hub's board has.
+// It keeps the board's history as long as the template's.
 func commitRelocatedBinding(tb testing.TB, boardDir string) {
 	tb.Helper()
 
@@ -196,7 +434,7 @@ func commitRelocatedBinding(tb testing.TB, boardDir string) {
 func SharedHub(tb testing.TB, shape Shape) *Hub {
 	tb.Helper()
 
-	template := templateFor(tb, shape)
+	template := templateFor(tb, shapeRegistration(tb, shape))
 	template.requireIntact(tb)
 
 	tb.Cleanup(func() {
@@ -213,12 +451,11 @@ func SharedHub(tb testing.TB, shape Shape) *Hub {
 	return template.hub
 }
 
-// hubAt builds the Hub for a template relocated to root, rebasing every path of the template's own Hub.
+// hubAt builds the Hub for template relocated to root, rebasing every path of the template's own Hub.
 // It also registers the junction teardown for the Hub's path.
-func hubAt(tb testing.TB, root string, shape Shape) *Hub {
+func hubAt(tb testing.TB, template *hubTemplate, root string) *Hub {
 	tb.Helper()
 
-	template := templateFor(tb, shape)
 	rebase := func(path string) string {
 		rel, err := filepath.Rel(template.root, path)
 		if err != nil {
