@@ -136,7 +136,7 @@ func (p *DriftExpect) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 	}
 
 	if session := rec.Scope.ExpectSession; !session.Open && session.OpenedAt != "" {
-		present, findings, err := checkExpectationFile(d)
+		present, _, findings, err := readExpectationFile(d)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
@@ -261,10 +261,24 @@ func (p *DriftExpect) runAgent(ctx context.Context, scope ScopeRecord, unguarded
 	return p.seal(unguarded)
 }
 
-// seal commits expected.yaml with its seal trailer.
+// seal records the metadata marks of a validating expected.yaml in the scope record, when it holds any.
+// It then commits expected.yaml with its seal trailer.
 // When unguarded is true, no commit has recorded the baseline digest yet, so it is added as a second trailer.
 func (p *DriftExpect) seal(unguarded bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
+	_, expectation, _, err := readExpectationFile(d)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if marks := expectation.Metadata; len(marks.Files)+len(marks.Keys) > 0 {
+		err := WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
+			scope.Metadata = marks
+			return nil
+		})
+		if err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+	}
 	var extra []fabricengine.Trailer
 	if unguarded {
 		digest, err := BaselineDigest(d.Paths.BaselineDir)
@@ -286,7 +300,7 @@ func (p *DriftExpect) seal(unguarded bool) (shedengine.Outcome, shedengine.Outpu
 // A missing file fails the gate asking for it.
 func NewExpectationGate(d Deps) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
-		present, findings, err := checkExpectationFile(d)
+		present, _, findings, err := readExpectationFile(d)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("drift: the expectation gate: %w", err)
 		}
@@ -300,41 +314,43 @@ func NewExpectationGate(d Deps) shuttleengine.Gate {
 	}
 }
 
-// checkExpectationFile reports whether expected.yaml exists and, when it does, the parser's refusal of it, empty when it validates.
-func checkExpectationFile(d Deps) (present bool, findings string, err error) {
+// readExpectationFile reports whether expected.yaml exists and, when it does, parses it.
+// findings is the parser's refusal of the file, empty when it validates.
+func readExpectationFile(d Deps) (present bool, expectation Expectation, findings string, err error) {
 	if err := requireSeams("the expectation check", seam{"Config", d.Config != nil}); err != nil {
-		return false, "", err
+		return false, Expectation{}, "", err
 	}
 	data, present, err := readRecordFile(d.Paths.Expected)
 	if err != nil || !present {
-		return false, "", err
+		return false, Expectation{}, "", err
 	}
 	rec, err := ReadRecords(d)
 	if err != nil {
-		return true, "", err
+		return true, Expectation{}, "", err
 	}
 	mode, patterns := rec.Scope.Diff, rec.Scope.KeyPatterns
 	if mode == "" {
 		cfg, err := d.Config()
 		if err != nil {
-			return true, "", fmt.Errorf("load the drift config: %w", err)
+			return true, Expectation{}, "", fmt.Errorf("load the drift config: %w", err)
 		}
 		mode, patterns = cfg.Diff, cfg.KeyPatterns
 	}
 	compiled, err := CompileKeyPatterns(patterns)
 	if err != nil {
-		return true, "", err
+		return true, Expectation{}, "", err
 	}
 	var baseline []CaseListing
 	if mode == DiffLines {
 		if baseline, err = ListCaptures(d.Paths.BaselineDir, compiled); err != nil {
-			return true, "", err
+			return true, Expectation{}, "", err
 		}
 	}
-	if _, err := ParseExpectation(data, mode, baseline); err != nil {
-		return true, err.Error(), nil
+	expectation, err = ParseExpectation(data, mode, baseline)
+	if err != nil {
+		return true, Expectation{}, err.Error(), nil
 	}
-	return true, "", nil
+	return true, expectation, "", nil
 }
 
 // listingLine is one line of a listed case; N is written only for a key that occurs more than once in its case.

@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +26,9 @@ type Expectation struct {
 	Added []CaseEntry
 	// Removed lists the cases only the baseline capture is expected to hold.
 	Removed []CaseEntry
+	// Metadata marks the capture files and line keys that hold metadata, such as provenance, and no results.
+	// Their cells are no drift.
+	Metadata Volatile
 }
 
 // ExpectedCase is what is expected of one case.
@@ -88,9 +93,10 @@ type rawCase struct {
 
 // rawExpectation is expected.yaml as it is spelled, before validation.
 type rawExpectation struct {
-	Cases   map[string]rawCase `yaml:"cases"`
-	Added   []CaseEntry        `yaml:"added"`
-	Removed []CaseEntry        `yaml:"removed"`
+	Cases    map[string]rawCase `yaml:"cases"`
+	Added    []CaseEntry        `yaml:"added"`
+	Removed  []CaseEntry        `yaml:"removed"`
+	Metadata Volatile           `yaml:"metadata"`
 }
 
 // lineRange is a parsed range of unkeyed line positions; an open range has no upper bound.
@@ -134,6 +140,10 @@ func (r lineRange) holds(position int) bool {
 // Under DiffLines it also refuses a range that is not `N`, `N-M` or `N-`, and a case-level `why`.
 // Under DiffCommand it refuses a `keys` or `lines` entry and checks no case name against baseline.
 // Under both it refuses a blank `why`, an `n` below 1 and an unknown key.
+// It refuses a blank `metadata` entry and a `metadata.files` entry that is no valid glob.
+// Under DiffLines a `metadata.files` glob must match a case of the baseline,
+// and a `metadata.keys` entry must be a key of one.
+// Under DiffCommand it refuses `metadata.keys`, since the compare keys no line.
 // Each refusal names the entry and the rule.
 func ParseExpectation(data []byte, mode string, baseline []CaseListing) (Expectation, error) {
 	if mode != DiffLines && mode != DiffCommand {
@@ -162,7 +172,11 @@ func ParseExpectation(data []byte, mode string, baseline []CaseListing) (Expecta
 		return Expectation{}, err
 	}
 
-	expectation := Expectation{Added: raw.Added, Removed: raw.Removed}
+	if err := checkMetadata(raw.Metadata, mode, baseline); err != nil {
+		return Expectation{}, err
+	}
+
+	expectation := Expectation{Added: raw.Added, Removed: raw.Removed, Metadata: raw.Metadata}
 	names := make([]string, 0, len(raw.Cases))
 	for name := range raw.Cases {
 		names = append(names, name)
@@ -179,6 +193,37 @@ func ParseExpectation(data []byte, mode string, baseline []CaseListing) (Expecta
 		expectation.Cases[name] = parsed
 	}
 	return expectation, nil
+}
+
+// checkMetadata checks the `metadata` marks under mode against the baseline's listings.
+func checkMetadata(marks Volatile, mode string, baseline []CaseListing) error {
+	for _, pattern := range marks.Files {
+		if strings.TrimSpace(pattern) == "" {
+			return fmt.Errorf("expected.yaml: metadata.files holds a blank entry; want a case's name or a glob")
+		}
+		if _, err := path.Match(pattern, ""); err != nil {
+			return fmt.Errorf("expected.yaml: metadata.files entry %q is no valid glob: %w", pattern, err)
+		}
+		matcher := Volatile{Files: []string{pattern}}
+		if mode == DiffLines && !slices.ContainsFunc(baseline, func(listing CaseListing) bool { return matcher.holdsCase(listing.Case) }) {
+			return fmt.Errorf("expected.yaml: metadata.files entry %q matches no case of the baseline", pattern)
+		}
+	}
+	for _, key := range marks.Keys {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("expected.yaml: metadata.keys holds a blank entry; want a key the listing holds")
+		}
+		if mode == DiffCommand {
+			return fmt.Errorf("expected.yaml: metadata.keys entry %q is refused under diff %q, which keys no line; mark the case under metadata.files", key, DiffCommand)
+		}
+		keyed := func(listing CaseListing) bool {
+			return slices.ContainsFunc(listing.Lines, func(line ListedLine) bool { return line.Identity.Key == key })
+		}
+		if !slices.ContainsFunc(baseline, keyed) {
+			return fmt.Errorf("expected.yaml: metadata.keys entry %q is not a key of any case of the baseline", key)
+		}
+	}
+	return nil
 }
 
 // checkCaseEntries checks each entry of an `added` or `removed` list and returns the case names it holds.
@@ -276,11 +321,12 @@ func checkKeyEntry(caseName string, entry rawKeyEntry, occurrences map[string]in
 
 // Merge returns the receiver's entries followed by more's.
 // It lets containment read the sealed file and every amendment as one expectation.
-// A case in both keeps the receiver's why when it has one.
+// A case in both keeps the receiver's why when it has one, and the metadata marks are joined.
 func (e Expectation) Merge(more Expectation) Expectation {
 	merged := Expectation{
-		Added:   append(append([]CaseEntry(nil), e.Added...), more.Added...),
-		Removed: append(append([]CaseEntry(nil), e.Removed...), more.Removed...),
+		Added:    append(append([]CaseEntry(nil), e.Added...), more.Added...),
+		Removed:  append(append([]CaseEntry(nil), e.Removed...), more.Removed...),
+		Metadata: e.Metadata.union(more.Metadata),
 	}
 	if len(e.Cases)+len(more.Cases) > 0 {
 		merged.Cases = map[string]ExpectedCase{}

@@ -13,7 +13,8 @@ const verdictHeading = "## Regression check"
 
 // Verdict renders the task's regression check as a markdown section from its drift records,
 // so a hand edit of a record never reaches the landing, and it runs no capture.
-// The section names the scope, the last check's counts and the expectation entries no cell used.
+// The section names the scope, the commit the counted baseline was captured at, and the last check's counts.
+// It names the expectation entries no cell used and the capture files and keys marked as metadata.
 // It also names the open ranges the judge looked into and the parent's amendments.
 // It returns "" when no scope record exists,
 // so a task no Drift row recorded a scope for carries no section, and it creates no directory.
@@ -25,11 +26,20 @@ func Verdict(d Deps) (string, error) {
 	if !records.ScopeFound {
 		return "", nil
 	}
-	return renderVerdict(records), nil
+	baseline, found, err := d.TrailerCommit(BaselineTrailerKey, false)
+	if err != nil {
+		return "", fmt.Errorf("drift: find the oldest %s commit for the verdict: %w", BaselineTrailerKey, err)
+	}
+	baseHead := ""
+	if found {
+		baseHead = baseline.CodeHead
+	}
+	return renderVerdict(records, baseHead), nil
 }
 
 // renderVerdict renders rec as the markdown regression check section.
-func renderVerdict(rec Records) string {
+// baseHead is the commit the counted baseline was captured at, empty when no commit recorded one.
+func renderVerdict(rec Records, baseHead string) string {
 	scope := rec.Scope
 	lines := []string{verdictHeading, "", "- Scope: " + scopeText(scope)}
 	if scope.Scope == ScopeOff {
@@ -43,14 +53,40 @@ func renderVerdict(rec Records) string {
 		if mode == "" {
 			mode = scope.Diff
 		}
+		if baseHead != "" {
+			lines = append(lines, fmt.Sprintf("- Baseline: captured at `%s`, the task's branch point.", baseHead))
+		}
 		lines = append(lines, "- Diff: "+diffText(mode))
 		lines = append(lines, checkLines(scope.LastCheck)...)
 	default:
 		lines = append(lines, oldCheckLines(scope)...)
 	}
+	lines = append(lines, metadataLines(scope.Metadata)...)
 	lines = append(lines, rangeLines(rec.Judged.Ranges)...)
 	lines = append(lines, amendmentLines(scope.Amendments)...)
 	return strings.Join(lines, "\n")
+}
+
+// metadataLines renders the capture files and line keys marked as metadata, which no check compared.
+func metadataLines(marks Volatile) []string {
+	if len(marks.Files)+len(marks.Keys) == 0 {
+		return nil
+	}
+	quote := func(items []string) string {
+		quoted := make([]string, len(items))
+		for i, item := range items {
+			quoted[i] = "`" + item + "`"
+		}
+		return strings.Join(quoted, ", ")
+	}
+	var parts []string
+	if len(marks.Files) > 0 {
+		parts = append(parts, "files "+quote(marks.Files))
+	}
+	if len(marks.Keys) > 0 {
+		parts = append(parts, "keys "+quote(marks.Keys))
+	}
+	return []string{"- Left out as capture metadata, not results: " + strings.Join(parts, "; ") + "."}
 }
 
 // scopeText renders the scope line's value.

@@ -109,6 +109,10 @@ func TestDriftEntries(t *testing.T) {
 		{"VerifyNilCompare", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.Compare = nil }, nil, "Drift.Compare"},
 		{"VerifyNilRecordsChangedSince", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.RecordsChangedSince = nil }, nil, "Drift.RecordsChangedSince"},
 		{"VerifyNilEndRoles", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.EndRoles = nil }, nil, "Drift.EndRoles"},
+		{"BaselineNilHead", driftBaselineEntry, Config{"subject": "decision-record"}, func(e *Env) { e.Drift.Head = nil }, nil, "Drift.Head"},
+		{"ExpectNilHead", driftExpectEntry, expectCfg, func(e *Env) { e.Drift.Head = nil }, nil, "Drift.Head"},
+		{"AwaitNilHead", driftAwaitEntry, Config{}, func(e *Env) { e.Drift.Head = nil }, nil, "Drift.Head"},
+		{"VerifyNilHead", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.Head = nil }, nil, "Drift.Head"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

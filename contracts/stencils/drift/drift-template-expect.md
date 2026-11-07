@@ -30,6 +30,12 @@ The baseline capture of the task's branch point is in `{{.baseline_dir}}`.
 The listing of its cases is `{{.listing_path}}`, with the identity each value is named by.
 Read the capture files the task's change can reach, and the code that writes them, to judge which values the change moves.
 
+Tell metadata from results.
+A capture's provenance is metadata, not a result: a file such as `_source.txt` with the commit the capture ran at and its capture time, and any timestamp, run id or host name.
+Such a value differs between two captures of the same code, so it says nothing about the task's change.
+Mark every file and key that holds metadata under `metadata` in Step 3, whatever the listing calls it.
+lym leaves what you mark out of every later listing, check and gate, and the landing names it.
+
 ## Step 3 — Write the expectation
 
 Write what you expect the task to change in the captured output, and why, to `{{.expected_path}}`, as diff mode `{{.diff_mode}}` reads it.
@@ -39,7 +45,7 @@ Write what you expect the task to change in the captured output, and why, to `{{
 State what you expect and why, never what may be accepted: write no tolerance under which a change passes.
 A later check lists every value that changed and finds each one in your file, so a value you leave out is a change nothing explains, and an entry that no changed value matches is reported as unmatched.
 Judging whether a changed value matches its entry belongs to the judge and the run's parent.
-Under a stated output invariant, or when the task moves no captured value, write an empty expectation: `cases: {}`.
+Under a stated output invariant, or when the task moves no captured value, write an empty expectation, `cases: {}`, beside any `metadata` marks.
 
 ## Step 4 — End your turn
 

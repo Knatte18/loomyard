@@ -85,6 +85,7 @@ func RunCompare(ctx context.Context, req CompareRequest) (CompareResult, error) 
 		WaitDir:     req.WaitDir,
 		Site:        siteCompare,
 		BaselineDir: p.BaselineDir,
+		MetaDir:     p.BaselineMetaDir,
 		LogPath:     result.Log,
 		Timeout:     req.Timeout,
 		Now:         req.Now,

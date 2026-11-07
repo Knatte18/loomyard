@@ -78,6 +78,18 @@ func TestRunCompare(t *testing.T) {
 		}
 	})
 
+	t.Run("the command sees the baseline's meta directory, which exists before it runs", func(t *testing.T) {
+		t.Parallel()
+		req, _ := newCompareFixture(t, "echo {meta_dir} > seen.txt; test -d {meta_dir}")
+		if got, err := RunCompare(context.Background(), req); err != nil || !got.Passed {
+			t.Fatalf("RunCompare() = %+v, %v; want a pass", got, err)
+		}
+		want := req.Paths.BaselineMetaDir + "\n"
+		if text := readFile(t, filepath.Join(req.AnchorDir, "seen.txt")); text != want {
+			t.Errorf("seen.txt = %q; want %q", text, want)
+		}
+	})
+
 	t.Run("a command holding the retired skip file placeholder is refused naming the edit, with the slot and the marker free", func(t *testing.T) {
 		t.Parallel()
 		req, pool := newCompareFixture(t, "cat {skip_file}")

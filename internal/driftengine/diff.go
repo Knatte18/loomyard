@@ -95,15 +95,32 @@ type CaseListing struct {
 	Lines []ListedLine
 }
 
-// Volatile names what a hub's capture writes that differs between captures whatever the code does, such as provenance,
+// Volatile names what a capture writes that differs between captures whatever the code does, such as provenance,
 // so it is no drift.
+// It holds a hub's `volatile_files` and `volatile_keys` lists, and the metadata marks an agent sets on a run's capture.
 // The zero Volatile names nothing.
 type Volatile struct {
 	// Files are the glob patterns of the cases left out whole:
 	// a pattern with no slash matches a case's file name at any depth, and one with a slash its whole path.
-	Files []string `json:"files,omitempty"`
+	Files []string `json:"files,omitempty" yaml:"files"`
 	// Keys are the line keys left out of every case.
-	Keys []string `json:"keys,omitempty"`
+	Keys []string `json:"keys,omitempty" yaml:"keys"`
+}
+
+// union returns the receiver's files and keys followed by those of more it does not already hold.
+func (v Volatile) union(more Volatile) Volatile {
+	joined := Volatile{Files: slices.Clone(v.Files), Keys: slices.Clone(v.Keys)}
+	for _, file := range more.Files {
+		if !slices.Contains(joined.Files, file) {
+			joined.Files = append(joined.Files, file)
+		}
+	}
+	for _, key := range more.Keys {
+		if !slices.Contains(joined.Keys, key) {
+			joined.Keys = append(joined.Keys, key)
+		}
+	}
+	return joined
 }
 
 // holdsCase reports whether name is a case the list leaves out whole.

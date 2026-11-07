@@ -817,7 +817,7 @@ func (p *DriftVerify) passCommand(ctx context.Context, rec Records, report Check
 		}
 		return doneBecause("the check passed: the compare exited 0")
 	}
-	if stored := storedCaseRulings(rec, head); len(stored) > 0 {
+	if stored := storedCaseRulings(rec, head, report.Metadata); len(stored) > 0 {
 		if err := p.recordCheck(p.commandResult(report, head, false), nil); err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
@@ -869,13 +869,14 @@ func describeCaseRuling(caseName string, ruling Ruling, reason string) string {
 }
 
 // storedCaseRulings returns each stored non-matching ruling at head that no amendment was recorded after.
+// A ruling on a case the metadata marks name is left out, since such a case is no drift.
 // Each string names the case, its ruling and its reason.
 // Rulings and amendments both carry UTC stamps, so their strings order by time;
 // an amendment stamped in the same second as a ruling counts as after it.
-func storedCaseRulings(rec Records, head string) []string {
+func storedCaseRulings(rec Records, head string, metadata Volatile) []string {
 	var ruled []string
 	for _, stored := range rec.Judged.Cases {
-		if stored.CodeHead != head || stored.Ruling == RulingMatches {
+		if stored.CodeHead != head || stored.Ruling == RulingMatches || metadata.holdsCase(stored.Case) {
 			continue
 		}
 		amended := slices.ContainsFunc(rec.Scope.Amendments, func(amendment Amendment) bool { return amendment.At >= stored.At })
@@ -888,8 +889,9 @@ func storedCaseRulings(rec Records, head string) []string {
 
 // storeCaseRulings stores the judge's rulings on the cases of the failing compare.
 // It closes the session mark and records the check in one write; then it removes judgement.yaml.
-// A ruling of matches is not stored, and drops an earlier stored ruling of the same case at head;
-// each other ruling is stored as a JudgedCase keyed by head and case.
+// A ruling of matches, and any ruling on a case the report's metadata marks name, is not stored.
+// It drops an earlier stored ruling of the same case at head.
+// Each other ruling is stored as a JudgedCase keyed by head and case.
 // Any ruling other than matches is a Stuck naming the cases and their reasons;
 // all matches records the pass and is Done.
 func (p *DriftVerify) storeCaseRulings(report CheckReport, session *judgeSession, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -897,7 +899,7 @@ func (p *DriftVerify) storeCaseRulings(report CheckReport, session *judgeSession
 	var ruled []JudgedCase
 	var matching, notMatching []string
 	for _, ruling := range session.Judgement.Cases {
-		if ruling.Ruling == RulingMatches {
+		if ruling.Ruling == RulingMatches || report.Metadata.holdsCase(ruling.Case) {
 			matching = append(matching, ruling.Case)
 			continue
 		}

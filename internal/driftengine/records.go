@@ -110,6 +110,9 @@ type ScopeRecord struct {
 	KeyPatterns []string `json:"key_patterns,omitempty"`
 	// Volatile is what the config's diff ignores, recorded with Diff.
 	Volatile Volatile `json:"volatile,omitzero"`
+	// Metadata is the capture files and line keys the expect agent marked as metadata, not results, recorded at the seal.
+	// No later listing, check or gate shows them, and the landing names them.
+	Metadata Volatile `json:"metadata,omitzero"`
 	// ExpectSession marks the expect agent's session.
 	ExpectSession SessionMark `json:"expect_session,omitzero"`
 	// JudgeSession marks the judge's session.

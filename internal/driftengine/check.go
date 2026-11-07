@@ -37,6 +37,9 @@ type ClassifiedCell struct {
 	Expected bool
 	// Repeated is true when the cell's key occurs more than once in its case, so a listing names the occurrence.
 	Repeated bool
+	// Unchangeable is true for a cell no expectation covers and no code change can move, which the drift gate found.
+	// Such a cell is capture metadata the run did not mark, and it is no unexpected cell.
+	Unchangeable bool
 }
 
 // CheckReport is what a drift check found.
@@ -64,17 +67,35 @@ type CheckReport struct {
 	// Compared is true when the declared compare ran, under DiffCommand, and Compare is how it ended.
 	Compared bool
 	Compare  CompareResult
+	// Metadata is the run's metadata marks: the scope record's joined with the expectation's.
+	// Their cells are left out of Cells, and under DiffCommand a case they name is no drift.
+	Metadata Volatile
+
+	// patterns and leaveOut are what the diff of the current capture ran with, so a second capture is diffed alike.
+	patterns []*regexp.Regexp
+	leaveOut []string
 }
 
-// Unexpected returns the cells no entry of the expectation covers.
+// Unexpected returns the cells no entry of the expectation covers, bar the unchangeable ones.
 func (r CheckReport) Unexpected() []ClassifiedCell {
 	var unexpected []ClassifiedCell
 	for _, cell := range r.Cells {
-		if !cell.Expected {
+		if !cell.Expected && !cell.Unchangeable {
 			unexpected = append(unexpected, cell)
 		}
 	}
 	return unexpected
+}
+
+// unchangeable returns the cells marked Unchangeable.
+func (r CheckReport) unchangeable() []ClassifiedCell {
+	var cells []ClassifiedCell
+	for _, cell := range r.Cells {
+		if cell.Unchangeable {
+			cells = append(cells, cell)
+		}
+	}
+	return cells
 }
 
 // Check runs the drift check and returns what it found; it ends at the first step that ends the check.
@@ -86,7 +107,8 @@ func (r CheckReport) Unexpected() []ClassifiedCell {
 // A failed seal check is a seal fault;
 // the check goes on against the sealed copy, or an empty expectation when there is none.
 // Under DiffLines it takes a current capture, whose failure is a capture fault.
-// It diffs the capture against the baseline and drops the cells of the volatile lists.
+// It diffs the capture against the baseline and drops the cells of the volatile lists and of the metadata marks.
+// The marks are the scope record's joined with the merged expectation's.
 // It then classifies each cell left by the merged expectation.
 // Under DiffCommand it runs the declared compare and takes no capture.
 // Whether the capture counted is read from the tracked scope record alone, never from the capture record.
@@ -165,10 +187,11 @@ func Check(ctx context.Context, d Deps) (CheckReport, error) {
 	if report.Expectation, err = sealedAndAmended(seal.Sealed, rec.Scope.Amendments, mode, baselineListings); err != nil {
 		return report, err
 	}
+	report.Metadata = rec.Scope.Metadata.union(report.Expectation.Metadata)
 
 	switch mode {
 	case DiffLines:
-		return report, classifyCurrent(ctx, d, rec.Scope, compiled, volatile, baselineListings, &report)
+		return report, classifyCurrent(ctx, d, rec.Scope, compiled, volatile.union(report.Metadata), baselineListings, &report)
 	case DiffCommand:
 		if err := requireSeams("the drift check under diff command", seam{"Compare", d.Compare != nil}); err != nil {
 			return report, err
@@ -236,9 +259,9 @@ func sealedAndAmended(sealed []byte, amendments []Amendment, mode string, baseli
 }
 
 // classifyCurrent takes the current capture and diffs it against the baseline.
-// It classifies each cell that volatile does not name into report.
+// It classifies each cell that ignored does not name into report.
 // A capture that did not pass is a capture fault and ends the check with no error.
-func classifyCurrent(ctx context.Context, d Deps, scope ScopeRecord, patterns []*regexp.Regexp, volatile Volatile, baseline []CaseListing, report *CheckReport) error {
+func classifyCurrent(ctx context.Context, d Deps, scope ScopeRecord, patterns []*regexp.Regexp, ignored Volatile, baseline []CaseListing, report *CheckReport) error {
 	if err := requireSeams("the drift check under diff lines", seam{"CaptureCurrent", d.CaptureCurrent != nil}); err != nil {
 		return err
 	}
@@ -258,11 +281,12 @@ func classifyCurrent(ctx context.Context, d Deps, scope ScopeRecord, patterns []
 			return err
 		}
 	}
+	report.patterns, report.leaveOut = patterns, leaveOut
 	cells, err := DiffCaptures(d.Paths.BaselineDir, capture.Dir, patterns, leaveOut)
 	if err != nil {
 		return err
 	}
-	cells = volatile.withoutCells(cells)
+	cells = ignored.withoutCells(cells)
 	current, err := ListCaptures(capture.Dir, patterns)
 	if err != nil {
 		return err
@@ -325,16 +349,7 @@ func (r CheckReport) Findings() string {
 	if r.Skip != "" {
 		lines = append(lines, "skipped: "+r.Skip)
 	}
-	for _, fault := range []struct{ label, text string }{
-		{"baseline fault", r.BaselineFault},
-		{"records fault", r.RecordsFault},
-		{"seal fault", r.SealFault},
-		{"capture fault", r.CaptureFault},
-	} {
-		if fault.text != "" {
-			lines = append(lines, fault.label+": "+fault.text)
-		}
-	}
+	lines = append(lines, r.faultLines()...)
 	unexpected := r.Unexpected()
 	for _, cell := range unexpected {
 		lines = append(lines, "unexpected cell: "+describeCell(cell))
@@ -346,6 +361,22 @@ func (r CheckReport) Findings() string {
 		lines = append(lines, fmt.Sprintf("the compare exited %d; log %s", r.Compare.ExitCode, r.Compare.Log))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// faultLines renders each fault the report holds as one labelled line, in the order the check finds them.
+func (r CheckReport) faultLines() []string {
+	var lines []string
+	for _, fault := range []struct{ label, text string }{
+		{"baseline fault", r.BaselineFault},
+		{"records fault", r.RecordsFault},
+		{"seal fault", r.SealFault},
+		{"capture fault", r.CaptureFault},
+	} {
+		if fault.text != "" {
+			lines = append(lines, fault.label+": "+fault.text)
+		}
+	}
+	return lines
 }
 
 // describeCell names a cell by its kind, case, identity, old value and new value.
@@ -369,26 +400,139 @@ func identityText(identity Identity, repeated bool) string {
 	return fmt.Sprintf("key %q", identity.Key)
 }
 
+// unchangeableWayForward is the way forward of a drift gate that ends on unchangeable cells alone.
+const unchangeableWayForward = "way forward: the parent marks them as metadata with lym drift amend <slug> --entries <file>, " +
+	"whose file holds metadata: {files: [<case>], keys: [<key>]}"
+
+// minCommitAbbrev is the shortest hex run a captured value names a commit by.
+const minCommitAbbrev = 7
+
+// settleUnchangeable marks each unexpected cell of report that no code change can move as Unchangeable.
+// A cell is unchangeable when its old value names the commit the baseline was captured at.
+// Its new value must name the code HEAD.
+// It is also unchangeable when a second current capture of the same code gives it another value or none.
+// The second capture runs only when a cell is left after the first rule, and one that does not pass marks nothing.
+func settleUnchangeable(ctx context.Context, d Deps, report *CheckReport) error {
+	if err := requireSeams("the drift gate", seam{"Head", d.Head != nil}); err != nil {
+		return err
+	}
+	baseHead, err := baselineHead(d)
+	if err != nil {
+		return err
+	}
+	head, err := d.Head()
+	if err != nil {
+		return fmt.Errorf("drift: read the code HEAD for the drift gate: %w", err)
+	}
+	left := false
+	for i := range report.Cells {
+		cell := &report.Cells[i]
+		if cell.Expected {
+			continue
+		}
+		if baseHead != head && namesCommit(cell.Cell.Old, baseHead) && namesCommit(cell.Cell.New, head) {
+			cell.Unchangeable = true
+			continue
+		}
+		left = true
+	}
+	if !left {
+		return nil
+	}
+
+	second, err := d.CaptureCurrent(ctx)
+	if err != nil {
+		return fmt.Errorf("drift: take a second current capture for the drift gate: %w", err)
+	}
+	if !second.Passed {
+		return nil
+	}
+	cells, err := DiffCaptures(d.Paths.BaselineDir, second.Dir, report.patterns, report.leaveOut)
+	if err != nil {
+		return err
+	}
+	type cellAt struct {
+		caseName string
+		identity Identity
+	}
+	again := make(map[cellAt]Cell, len(cells))
+	for _, cell := range cells {
+		again[cellAt{cell.Case, cell.Identity}] = cell
+	}
+	for i := range report.Cells {
+		cell := &report.Cells[i]
+		if cell.Expected || cell.Unchangeable {
+			continue
+		}
+		repeat, found := again[cellAt{cell.Cell.Case, cell.Cell.Identity}]
+		if !found || repeat.Kind != cell.Cell.Kind || repeat.New != cell.Cell.New {
+			cell.Unchangeable = true
+		}
+	}
+	return nil
+}
+
+// namesCommit reports whether value holds commit, whole or as an abbreviation of at least minCommitAbbrev hex digits.
+func namesCommit(value, commit string) bool {
+	if commit == "" {
+		return false
+	}
+	commit = strings.ToLower(commit)
+	isHex := func(r rune) bool { return strings.ContainsRune("0123456789abcdefABCDEF", r) }
+	for _, run := range strings.FieldsFunc(value, func(r rune) bool { return !isHex(r) }) {
+		if len(run) >= minCommitAbbrev && strings.HasPrefix(commit, strings.ToLower(run)) {
+			return true
+		}
+	}
+	return false
+}
+
+// unchangeableFindings renders the findings of a drift gate that ends on unchangeable cells alone, for the run's parent.
+// A records or seal fault found beside the cells leads the findings.
+func (r CheckReport) unchangeableFindings() string {
+	cells := r.unchangeable()
+	described := make([]string, len(cells))
+	for i, cell := range cells {
+		described[i] = describeCell(cell)
+	}
+	return strings.Join(append(r.faultLines(), fmt.Sprintf("the drift gate ended without asking the writer again: every change it found is capture metadata no code change can move, "+
+		"since it names the commit its capture ran at or differs between two captures of the same code: %s; %s",
+		strings.Join(described, "; "), unchangeableWayForward)), "\n")
+}
+
 // NewDriftGate returns the gate the `drift` entry of a writer's gate list runs:
 // it runs Check over d and judges the report.
 // It passes on a skip and on a baseline fault, which no writer session can clear.
 // Under `DiffCommand` it passes whatever the compare's exit.
 // Findings that remain on a pass are logged at Info.
-// It fails on a capture fault and, under `DiffLines`, on any unexpected cell.
+// It fails on a capture fault.
+// Under `DiffLines` it first marks the unexpected cells no code change can move, and fails on any unexpected cell left.
 // The failure carries the report's findings, which also name a records or seal fault found beside them.
-// It writes no tracked record, only the current capture's scratch directory.
+// It never names an unchangeable cell to the writer.
+// When the unexpected cells were all unchangeable, the failure is Terminal:
+// the run ends the gate at once, and its findings go to the run's parent with the way to mark the cells as metadata.
+// It writes no tracked record, only the current captures' scratch directories.
 func NewDriftGate(d Deps) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
-		report, err := Check(context.Background(), d)
+		ctx := context.Background()
+		report, err := Check(ctx, d)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("drift: the drift gate: %w", err)
 		}
-		findings := report.Findings()
 		clearable := report.Skip == "" && report.BaselineFault == ""
-		if clearable && (report.CaptureFault != "" || len(report.Unexpected()) > 0) {
-			return shuttleengine.GateResult{Findings: findings}, nil
+		if clearable && report.CaptureFault != "" {
+			return shuttleengine.GateResult{Findings: report.Findings()}, nil
 		}
-		if findings != "" {
+		if clearable && len(report.Unexpected()) > 0 {
+			if err := settleUnchangeable(ctx, d, &report); err != nil {
+				return shuttleengine.GateResult{}, fmt.Errorf("drift: the drift gate: %w", err)
+			}
+			if len(report.Unexpected()) > 0 {
+				return shuttleengine.GateResult{Findings: report.Findings()}, nil
+			}
+			return shuttleengine.GateResult{Findings: report.unchangeableFindings(), Terminal: true}, nil
+		}
+		if findings := report.Findings(); findings != "" {
 			logger.Info("drift: the drift gate passed with findings no writer session can clear", "findings", findings)
 		}
 		return shuttleengine.GateResult{Passed: true}, nil

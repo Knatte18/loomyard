@@ -287,6 +287,7 @@ func newTestEnv(t *testing.T) Env {
 		Drift: driftengine.Deps{
 			Config: func() (driftengine.Config, error) { return driftengine.Config{}, nil },
 			Status: func() (shedengine.Status, error) { return shedengine.Status{}, nil },
+			Head:   func() (string, error) { return "head", nil },
 			CaptureCurrent: func(context.Context) (driftengine.CurrentCapture, error) {
 				return driftengine.CurrentCapture{Passed: true}, nil
 			},

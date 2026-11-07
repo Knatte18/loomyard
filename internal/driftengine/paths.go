@@ -47,6 +47,8 @@ type Paths struct {
 	JudgeRequest string
 	// BaselineDir is the directory the capture writes its profile files to.
 	BaselineDir string
+	// BaselineMetaDir is the directory the capture writes its metadata to, such as its provenance; drift never compares it.
+	BaselineMetaDir string
 	// CurrentDir holds the directory and log of every current capture a check ran.
 	CurrentDir string
 }
@@ -55,20 +57,27 @@ type Paths struct {
 func NewPaths(anchorRoot string) Paths {
 	durable := filepath.Join(anchorRoot, lymdirs.LymDirName, driftDirName)
 	ephemeral := filepath.Join(anchorRoot, lymdirs.DotLymDirName, driftDirName)
+	baselineDir := filepath.Join(ephemeral, "baseline")
 	return Paths{
-		Scope:         filepath.Join(durable, scopeFileName),
-		Judged:        filepath.Join(durable, judgedFileName),
-		Expected:      filepath.Join(durable, expectedFileName),
-		Judgement:     filepath.Join(durable, judgementFileName),
-		LogsDir:       filepath.Join(durable, "logs"),
-		Capture:       filepath.Join(ephemeral, "capture.json"),
-		CaptureLock:   filepath.Join(ephemeral, "capture.lock"),
-		CompareMarker: filepath.Join(ephemeral, "compare.lock"),
-		Listing:       filepath.Join(ephemeral, "listing.yaml"),
-		JudgeRequest:  filepath.Join(ephemeral, "judge-request.json"),
-		BaselineDir:   filepath.Join(ephemeral, "baseline"),
-		CurrentDir:    filepath.Join(ephemeral, "current"),
+		Scope:           filepath.Join(durable, scopeFileName),
+		Judged:          filepath.Join(durable, judgedFileName),
+		Expected:        filepath.Join(durable, expectedFileName),
+		Judgement:       filepath.Join(durable, judgementFileName),
+		LogsDir:         filepath.Join(durable, "logs"),
+		Capture:         filepath.Join(ephemeral, "capture.json"),
+		CaptureLock:     filepath.Join(ephemeral, "capture.lock"),
+		CompareMarker:   filepath.Join(ephemeral, "compare.lock"),
+		Listing:         filepath.Join(ephemeral, "listing.yaml"),
+		JudgeRequest:    filepath.Join(ephemeral, "judge-request.json"),
+		BaselineDir:     baselineDir,
+		BaselineMetaDir: metaDirFor(baselineDir),
+		CurrentDir:      filepath.Join(ephemeral, "current"),
 	}
+}
+
+// metaDirFor returns the metadata directory of the capture directory dir: a sibling, so no capture lists its files.
+func metaDirFor(dir string) string {
+	return dir + ".meta"
 }
 
 // DirRel returns the durable drift directory relative to the anchor root, always forward-slashed.

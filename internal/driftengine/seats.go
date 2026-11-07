@@ -64,8 +64,12 @@ const (
 		"removed:\n" +
 		"  - case: <a case only the baseline holds and the task removes>\n" +
 		"    why: <why>\n" +
+		"metadata:\n" +
+		"  files: [<a case that holds metadata and no result, by name or glob>]\n" +
+		"  keys: [<a key whose value is metadata in every case>]\n" +
 		"```\n\n" +
-		"Every entry needs a non-empty `why`, and a case or key must be one the listing holds unless it is marked as added."
+		"Every entry needs a non-empty `why`, and a case or key must be one the listing holds unless it is marked as added.\n" +
+		"A `metadata` file must match a case of the listing, and a `metadata` key must be a key the listing holds."
 	commandExpectationFormat = "The listing holds `mode: command`: the case names of the baseline alone, since the declared compare command, not lym, compares the captures.\n" +
 		"Write expected.yaml as a mapping with these keys, each optional:\n\n" +
 		"```yaml\n" +
@@ -78,8 +82,11 @@ const (
 		"removed:\n" +
 		"  - case: <a case only the baseline holds and the task removes>\n" +
 		"    why: <why>\n" +
+		"metadata:\n" +
+		"  files: [<a case that holds metadata and no result, by name or glob>]\n" +
 		"```\n\n" +
-		"A case holds one `why` and no `keys` or `lines`, and every entry needs a non-empty `why`."
+		"A case holds one `why` and no `keys` or `lines`, and every entry needs a non-empty `why`.\n" +
+		"`metadata` takes `files` alone, since the compare keys no line."
 )
 
 // subjectFields are the told values the task's subject is read from.

@@ -264,6 +264,7 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 		{"PartsNilSetting", gatesCfg("parts", 1), "Setting"},
 		{"PartsMaxBelowOne", gatesCfg("parts", 1), "tapestry.parts_max"},
 		{"DriftNilCaptureCurrent", gatesCfg("drift", 1), "Drift.CaptureCurrent"},
+		{"DriftNilHead", gatesCfg("drift", 1), "Drift.Head"},
 		{"FixerOnARowThatReadsNone", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "fixer": "tapestry.plan_gate_fixer"}}}, "fixer"},
 	}
 	for _, tt := range tests {
@@ -289,6 +290,8 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 				env.Setting = partsMaxSetting(0)
 			case "DriftNilCaptureCurrent":
 				env.Drift.CaptureCurrent = nil
+			case "DriftNilHead":
+				env.Drift.Head = nil
 			}
 			_, err := resolveGateSpec("TheRow", tt.cfg, env)
 			assertErrContains(t, err, "TheRow")

@@ -34,6 +34,10 @@ const configModule = "drift"
 // A capture writes that directory, and a compare reads it.
 const baselineDirPlaceholder = "{baseline_dir}"
 
+// metaDirPlaceholder is the optional placeholder a declared command holds for the capture's metadata directory.
+// A capture writes its provenance there, such as the commit it ran at and its capture time, and drift never compares it.
+const metaDirPlaceholder = "{meta_dir}"
+
 // Step names of the two command steps.
 const (
 	stepCapture = "capture"
@@ -54,7 +58,7 @@ const hubOnlyWayForward = "set it in the hub's drift.yaml with lym config drift 
 // CommandStep is one declared drift command: the shell command, its run directory and the environment it runs with.
 // The zero CommandStep is an undeclared step.
 type CommandStep struct {
-	// Command is the shell command the step runs, holding the {baseline_dir} placeholder.
+	// Command is the shell command the step runs, holding the {baseline_dir} placeholder and optionally {meta_dir}.
 	Command string `yaml:"command"`
 	// Dir is the run directory, absolute or relative to the worktree root; empty means the worktree's anchored directory.
 	Dir string `yaml:"dir"`

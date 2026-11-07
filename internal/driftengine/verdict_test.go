@@ -8,16 +8,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// writeVerdictRecords commits scope and judged as the records of d.
-func writeVerdictRecords(t *testing.T, d Deps, scope ScopeRecord, judged JudgedRecord) {
+// writeVerdictRecords commits scope and judged as the records of d, with trailers on the records commit.
+func writeVerdictRecords(t *testing.T, d Deps, scope ScopeRecord, judged JudgedRecord, trailers ...fabricengine.Trailer) {
 	t.Helper()
 	err := WriteRecords(d, func(s *ScopeRecord, j *JudgedRecord) error {
 		*s, *j = scope, judged
 		return nil
-	})
+	}, trailers...)
 	if err != nil {
 		t.Fatalf("WriteRecords() error = %v; want nil", err)
 	}
@@ -148,6 +149,27 @@ func TestVerdict(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("BaselineLineAndMetadataMarksFrameTheLastCheck", func(t *testing.T) {
+		t.Parallel()
+		store := newCommitStore(t)
+		d := store.deps(NewPaths(store.root))
+		scope := ScopeRecord{
+			Scope:     ScopeFull,
+			Diff:      DiffLines,
+			LastCheck: CheckResult{Head: "head2", Passed: true, At: "2026-01-02T03:04:05Z", Mode: DiffLines},
+			Metadata:  Volatile{Files: []string{"_source.txt", "b.txt"}, Keys: []string{"captured_at"}},
+		}
+		writeVerdictRecords(t, d, scope, JudgedRecord{}, fabricengine.Trailer{Key: BaselineTrailerKey, Value: "digest"})
+		want := strings.Join([]string{"## Regression check", "", "- Scope: full.",
+			"- Baseline: captured at `code-head-0`, the task's branch point.",
+			"- Diff: lines.",
+			"- Last check: passed at `head2`. 0 changed cells, 0 expected, 0 judged as matching, 0 reused from stored rulings, 0 unexpected.",
+			"- Left out as capture metadata, not results: files `_source.txt`, `b.txt`; keys `captured_at`."}, "\n")
+		if got, err := Verdict(d); err != nil || got != want {
+			t.Errorf("Verdict() = %q, %v; want %q, nil", got, err, want)
+		}
+	})
 
 	t.Run("HandEditedScopeRecordRendersTheCommittedCopy", func(t *testing.T) {
 		t.Parallel()

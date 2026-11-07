@@ -14,7 +14,8 @@
 // `expect_model` and `judge_model`, the model-specs of the expect agent and the judge;
 // `judge_interactive`, which makes the judge a session with the operator in its pane;
 // and `scope`, a task's regression scope, which a task sets in its board entry's `run_settings`.
-// A hub's harness may write provenance that differs in every capture, and lym hard-codes no name of it.
+// A capture's provenance needs no `volatile_files` or `volatile_keys` entry, and lym hard-codes no name of it:
+// a harness writes it to `{meta_dir}`, and the expect agent marks any it finds among the results as metadata.
 // `diff`, `key_patterns`, `volatile_files` and `volatile_keys` are guard keys:
 // only the hub's file sets take them, and a task's run settings are refused them.
 // `skip` and `verify_max_runs` are retired keys that ConfigSpec lists in RetiredKeys.
@@ -24,6 +25,9 @@
 // it reads a stored `partial` as `full` and sets Config.ScopeWasPartial, so a base not yet edited still loads.
 // A declared command holds the placeholder `{baseline_dir}`:
 // the directory the capture writes its profile files to and the compare reads them from.
+// It may hold `{meta_dir}`, the capture's metadata directory, a sibling of the capture directory named with `.meta`.
+// A capture writes its provenance there, such as the commit it ran at and its capture time.
+// Drift keeps that directory with the capture but never lists, compares or shows it to an agent.
 // A command holding the retired `{skip_file}` placeholder is refused when it runs.
 // CheckRetiredPlaceholders refuses the same command before the run starts while drift is enabled,
 // and the Preflight row of a recipe with Drift rows runs it.
@@ -78,7 +82,7 @@
 // It also holds the judgement file and the logs of every run.
 // The ephemeral directory `.lym/drift/` holds the expect agent's identity listing and the judge request.
 // It also holds the capture record, the capture lock and the compare marker.
-// The baseline and current-capture directories live there too.
+// The baseline and current-capture directories live there too, the baseline's metadata directory beside the baseline.
 // A profile file holds a test's profile when its path relative to its profile directory is the test's name.
 // The path may omit its last extension.
 // A dotfile has no extension to drop, so its whole name is the test's name.
@@ -94,9 +98,11 @@
 // the scope and, for `off`, its source;
 // a deferred capture, saying no compare ran;
 // for a legacy `partial` record, the cases its skip list left out;
+// the commit the counted baseline was captured at, from the oldest `Drift-Baseline` commit;
 // the diff mode, and under `command` that containment was the judge's;
 // the last check's counts of changed, expected, matching, reused and unexpected cells;
 // each expectation entry that covered no cell;
+// the files and keys marked as metadata, which no check compared;
 // each open range with its `why` and the judge's sentence;
 // and each amendment with who made it.
 // A record with no last check renders its legacy compare, acceptance and waiver fields.
@@ -117,8 +123,10 @@
 // It takes its slot, then the capture lock with a bounded non-blocking retry that rides out a reader's probe.
 // Under the lock it runs the caller's precondition,
 // and it writes a `running` capture record naming the HEAD that precondition checked.
-// It moves a non-empty baseline directory to the first free numbered backup beside it.
-// It then runs the declared command in its shell, with `{baseline_dir}` rendered as a quoted path.
+// It moves a non-empty baseline directory, with its metadata directory, to a numbered backup beside it.
+// The backup is the first number whose directory and metadata directory are both free.
+// Beside an empty baseline directory it removes a leftover metadata directory.
+// It then runs the declared command in its shell, with `{baseline_dir}` and `{meta_dir}` rendered as quoted paths.
 // The command's stdout and stderr go to the open log file.
 // A timeout, counted from the command's start, kills the command's whole tree.
 // The record ends `passed` for exit 0 with a file under the baseline directory, else `failed` with the reason.
@@ -143,6 +151,7 @@
 // a lock holder already holds its slot.
 // It polls the lock through the request's Sleep from one second, doubling to thirty while the lock stays held.
 // It runs the declared command with `{baseline_dir}` rendered as that directory while it holds the lock.
+// `{meta_dir}` renders as that directory's `.meta` sibling.
 // It releases the lock and the slot on return.
 // It writes no capture record and never touches the baseline directory or its backups.
 // Its log is a sibling of the fresh directory.
@@ -184,10 +193,10 @@
 // Old holds the baseline's value and New the current one.
 // DiffCaptures returns the cells in case order and then file order.
 // It skips a case it is told to leave out on both sides, which serves a run whose scope record skipped tests.
-// Volatile holds the `volatile_files` and `volatile_keys` lists:
+// Volatile holds the `volatile_files` and `volatile_keys` lists, and the metadata marks of a run:
 // a file entry is a glob over a case's file name at any depth, or over its whole path when it holds a slash;
 // a key entry names a line key in every case.
-// Check drops their cells after the diff, and the expect agent's listing leaves them out.
+// Check drops the cells of both after the diff, and the expect agent's listing leaves out the volatile lists.
 // The baseline digest still covers them.
 // Under `diff: command` the declared compare decides alone.
 //
@@ -201,11 +210,13 @@
 // Each of `lines` has a `range` of `12`, `12-20` or the open `12-` and a `why`.
 // `added` and `removed` are lists of a `case` and a `why`.
 // Under `diff: command` a case holds one `why` and nothing else.
-// Every `why` must be non-blank, and a case, key and occurrence are checked against the baseline's listings.
+// Under both, `metadata` marks the capture files and line keys that hold metadata, such as provenance, and no results:
+// `files` are globs as the volatile lists read them, and `keys` line keys, which `diff: command` refuses.
+// Every `why` must be non-blank, and a case, key, occurrence and mark are checked against the baseline's listings.
 // The expect agent's `expectation` entry re-prompts on the refusal's text.
 // Expectation.Cover returns the entry covering a cell and whether it is an open range.
 // Expectation.Uncovering names the entries that cover no cell.
-// Expectation.Merge reads the sealed file and every amendment as one expectation.
+// Expectation.Merge reads the sealed file and every amendment as one expectation, joining their metadata marks.
 //
 // # Judgement
 //
@@ -269,6 +280,7 @@
 // Under `command` it also holds the judge's rulings per case and code head.
 // `scope.json` also holds what the checks record:
 // the config's `diff`, `key_patterns` and volatile lists as first seen;
+// the metadata marks of the sealed expectation;
 // the source of a scope `off`;
 // the agent-session marks;
 // the parent's amendments;
@@ -333,11 +345,12 @@
 // The sealed bytes and every amendment that adds entries are parsed by ParseExpectation under the mode and merged.
 // The mode, key patterns and volatile lists are the scope record's, or the config's when the record holds no mode yet.
 // A run thus keeps the lists it started with.
-// A run started before they were set still needs `lym drift amend`.
+// The metadata marks are the scope record's joined with the merged expectation's, and CheckReport.Metadata holds them.
 // Under `lines` the current capture is taken through Deps.CaptureCurrent.
 // A capture that did not pass sets CaptureFault naming its log and the way forward;
 // the diff leaves out the cases of the scope record's skipped tests when its scope is the legacy `partial`;
-// each cell is classified by Expectation.Cover, with Expectation.Uncovering listing the entries no cell uses.
+// the cells of the volatile lists and the metadata marks are dropped;
+// each cell left is classified by Expectation.Cover, with Expectation.Uncovering listing the entries no cell uses.
 // Under `command` Deps.Compare runs the declared compare and the report carries its exit and log.
 // CheckReport.Findings renders the report:
 // one line per unexpected cell with its case, identity, old and new value, and each fault with its way forward.
@@ -346,9 +359,16 @@
 // It passes on a skip and on a baseline fault, which no writer session can clear.
 // Under `command` it passes whatever the compare's exit.
 // It logs the findings it passes with at Info.
-// It fails on a capture fault and, under `lines`, on any unexpected cell.
+// It fails on a capture fault.
+// Under `lines` it first marks each unexpected cell no code change can move as unchangeable.
+// One kind is a cell whose old value names the baseline's commit and whose new value names the code HEAD.
+// The other is a cell a second current capture of the same code gives another value.
+// It fails on any unexpected cell left, with findings that name no unchangeable cell.
 // The failure carries the findings, which also name a records or seal fault found beside them.
-// Its only write is the current capture's scratch directory, and Drift-Verify repeats the check as the guarantee.
+// When every unexpected cell was unchangeable, the failure is Terminal, and the writer is not asked again.
+// The findings go to the run's parent.
+// They name `lym drift amend <slug> --entries` with `metadata` marks as the way forward.
+// Its only writes are the current captures' scratch directories, and Drift-Verify repeats the check as the guarantee.
 //
 // # Compare
 //
@@ -356,7 +376,8 @@
 // It takes the compare marker, an OS lock, before it waits for its gate slot, and holds it until it ends.
 // A compare queued for a slot thus reads as activity, and a marker a dead compare left reads as none.
 // A marker still held after a bounded retry, which rides out a reader's probe, is refused.
-// It holds one slot as a non-tier holder and renders `{baseline_dir}` as the baseline directory.
+// It holds one slot as a non-tier holder.
+// It renders `{baseline_dir}` as the baseline directory and `{meta_dir}` as the baseline's metadata directory.
 // It kills the command's tree at its timeout.
 // The result carries the exit code, the log and whether the compare passed, which means exit 0 within the timeout.
 // A compare that did not pass carries a reason naming the directory and the last output, as a failed capture's does.
@@ -481,8 +502,10 @@
 // The agent's table is gated by the row's `expectation` entry, NewExpectationGate.
 // The gate parses expected.yaml with ParseExpectation under the recorded mode against the baseline's cases,
 // and it re-prompts the agent with the parser's message; a missing file fails asking for it.
+// The stencil has the agent tell metadata from results and mark each file and key of metadata under `metadata`.
 // The session's return closes the mark.
-// A Done seals the file through SealExpectation when no commit recorded it yet.
+// A Done records the marks of a validating file in the scope record through WriteRecords.
+// It then seals the file through SealExpectation when no commit recorded it yet.
 // The seal carries the baseline's digest as a second trailer.
 // An exhausted entry is the shed's Stuck, whose resume spawns the agent again.
 //
@@ -555,6 +578,7 @@
 // a nonzero exit at a code head whose stored case rulings in `judged.json` include a `does not match` or an `unexpected`, with no amendment recorded since they were stored, is a Stuck naming them, with no new judge;
 // otherwise one judge is spawned under the same snapshot guard, its request carrying the compare's log, the sealed expectation and every amendment as text, and its `judgement` entry checks the `command` form, so a judge that rules no case after a failing compare is refused.
 // A ruling of `matches` is not stored; each `does not match` and `unexpected` ruling is stored as a case ruling keyed by code head and case with its reason, and any of them is a Stuck naming the cases, their reasons, the parent's `lym drift amend <slug>` and the route that fixes code.
+// A ruling on a case the metadata marks name counts as `matches`, and a stored ruling on such a case is no Stuck.
 // All `matches` records the pass, which counts as passing for the skip of a head already checked.
 // Bound: `command` gives up containment by code, and a drifted case the log does not show goes unjudged.
 //

@@ -952,6 +952,45 @@ func TestDriftVerify(t *testing.T) {
 				t.Errorf("%d judge runs and stored cases %+v; want one judge and the old ruling dropped once the case matches", f.seats.Calls, f.records().Judged.Cases)
 			}
 		})
+
+		t.Run("a case the metadata marks is no drift: a stored ruling on it stops nothing and a judge's ruling on it counts as matches", func(t *testing.T) {
+			t.Parallel()
+			tests := []struct {
+				name string
+				// stored says a non-matching ruling on the marked case is already stored at the code head.
+				stored bool
+				// ruling is what the judge gives the marked case.
+				ruling Ruling
+			}{
+				{"AStoredRulingStopsNothing", true, RulingMatches},
+				{"AJudgeRulingOfDoesNotMatchCountsAsMatches", false, RulingNoMatch},
+			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					t.Parallel()
+					f := newVerifyFixture(t)
+					f.seedCommand()
+					err := WriteRecords(f.deps, func(scope *ScopeRecord, judged *JudgedRecord) error {
+						scope.Metadata = Volatile{Files: []string{"a.txt"}}
+						if tt.stored {
+							judged.Cases = []JudgedCase{{CodeHead: "code-head-0", Case: "a.txt", Ruling: RulingNoMatch, Reason: "wrong direction", At: "2026-01-01T06:00:00Z"}}
+						}
+						return nil
+					})
+					if err != nil {
+						t.Fatalf("WriteRecords() = %v; want nil", err)
+					}
+					f.caseRulings = map[string]Ruling{"a.txt": tt.ruling}
+
+					requireDone(f)
+
+					scope := f.scope()
+					if f.seats.Calls != 1 || len(f.records().Judged.Cases) != 0 || !scope.LastCheck.Passed || scope.LastCheck.Matched != 1 {
+						t.Errorf("%d judge runs, stored cases %+v, last check %+v; want one judge, no stored ruling and a pass with one matched case", f.seats.Calls, f.records().Judged.Cases, scope.LastCheck)
+					}
+				})
+			}
+		})
 	})
 
 	t.Run("the Drift-Recheck row runs the same pass", func(t *testing.T) {

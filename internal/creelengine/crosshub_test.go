@@ -501,9 +501,10 @@ func TestDaemon_CrossHubDeliver(t *testing.T) {
 		{"AConfirmHeldPastTheTimeoutAndOneAnsweringNeitherWordEachAnswerNotOKWithNothingStoredOrDropped", func(t *testing.T, p *hubPair) {
 			p.startReceiving()
 			release := make(chan struct{})
-			var calls atomic.Int32
-			listenHubFake(t, p.sending, func(creelengine.Request) (creelengine.Response, string) {
-				if calls.Add(1) == 1 {
+			// The fake answers by the asked id, not by arrival order:
+			// the timed-out confirm can reach the fake after the next deliver's confirm does.
+			listenHubFake(t, p.sending, func(req creelengine.Request) (creelengine.Response, string) {
+				if req.Mail.SendingID == held.SendingID {
 					<-release
 					return creelengine.Response{OK: true, Confirmed: "yes"}, ""
 				}

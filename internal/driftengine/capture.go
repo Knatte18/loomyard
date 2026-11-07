@@ -72,8 +72,10 @@ func lockHeldRefusal(lockPath string) error {
 // A command that fails, times out or writes no file under the baseline directory yields a failed record.
 // That record carries no error;
 // its reason names the directory the command ran in and the command's last output lines, or that it printed nothing.
-// An existing non-empty baseline directory is first moved to the first free numbered backup beside it,
-// so no baseline is deleted or overwritten.
+// An existing non-empty baseline directory is first moved to a numbered backup beside it.
+// The backup is the first number whose directory and metadata directory are both free.
+// Its metadata directory moves with it, so no baseline is deleted or overwritten.
+// A leftover metadata directory beside an empty baseline directory is removed.
 // Once the command ran, the final record is handed to OnEnd under the capture lock.
 func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) {
 	if err := refuseSkipFilePlaceholder(siteCapture, stepCapture, req.Step.Command); err != nil {
@@ -90,6 +92,7 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 		InheritedSlot: req.InheritedSlot,
 		Site:          siteCapture,
 		BaselineDir:   p.BaselineDir,
+		MetaDir:       p.BaselineMetaDir,
 		Timeout:       req.Timeout,
 		Now:           req.Now,
 	}
@@ -195,17 +198,37 @@ func timeoutMinutes(timeout time.Duration) string {
 	return strconv.FormatFloat(timeout.Minutes(), 'f', -1, 64)
 }
 
-// backUpBaseline moves a non-empty baseline directory to the first free numbered backup beside it.
+// backUpBaseline moves a non-empty baseline directory to a numbered backup beside it.
+// The backup is the first number whose directory and metadata directory are both free.
+// The baseline's metadata directory, when it exists, moves to the backup's metadata directory;
+// when that move fails, the baseline directory moves back so the pair stays together.
+// When the move back fails too, both errors are returned and the pair stays split.
 // It leaves an empty baseline directory in place.
+// It removes the metadata directory beside an empty baseline, which describes no baseline.
 func backUpBaseline(baselineDir string) error {
 	entries, err := os.ReadDir(baselineDir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("drift: read the baseline directory: %w", err)
 	}
+	if len(entries) == 0 {
+		if err := os.RemoveAll(metaDirFor(baselineDir)); err != nil {
+			return fmt.Errorf("drift: remove the metadata of the empty baseline: %w", err)
+		}
+	}
 	if len(entries) > 0 {
-		backup := nextFree(filepath.Dir(baselineDir), filepath.Base(baselineDir)+".")
+		backup := nextFreeBackup(baselineDir)
 		if err := os.Rename(baselineDir, backup); err != nil {
 			return fmt.Errorf("drift: move the existing baseline to %s: %w", backup, err)
+		}
+		err := os.Rename(metaDirFor(baselineDir), metaDirFor(backup))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			// The baseline moves back so the pair stays together:
+			// an absent baseline would make the next capture delete the metadata left behind.
+			moveErr := fmt.Errorf("drift: move the existing baseline's metadata to %s: %w", metaDirFor(backup), err)
+			if rollbackErr := os.Rename(backup, baselineDir); rollbackErr != nil {
+				return errors.Join(moveErr, fmt.Errorf("drift: move the backup %s back to %s: %w", backup, baselineDir, rollbackErr))
+			}
+			return moveErr
 		}
 	}
 	if err := os.MkdirAll(baselineDir, 0o755); err != nil {
@@ -214,11 +237,16 @@ func backUpBaseline(baselineDir string) error {
 	return nil
 }
 
-// nextFree returns the path in dir named prefix and the lowest positive number that does not exist yet.
-func nextFree(dir, prefix string) string {
+// nextFreeBackup returns the backup path of baselineDir with the lowest positive number.
+// Neither the backup nor its metadata directory may exist yet.
+func nextFreeBackup(baselineDir string) string {
+	exists := func(path string) bool {
+		_, err := os.Lstat(path)
+		return !errors.Is(err, os.ErrNotExist)
+	}
 	for n := 1; ; n++ {
-		candidate := filepath.Join(dir, prefix+strconv.Itoa(n))
-		if _, err := os.Lstat(candidate); errors.Is(err, os.ErrNotExist) {
+		candidate := baselineDir + "." + strconv.Itoa(n)
+		if !exists(candidate) && !exists(metaDirFor(candidate)) {
 			return candidate
 		}
 	}
@@ -247,6 +275,8 @@ func holdsFile(dir string) (bool, error) {
 type CurrentCapture struct {
 	// Dir is the fresh directory under the current-capture directory that the command wrote to.
 	Dir string
+	// MetaDir is the sibling of Dir the command's {meta_dir} renders to, which no check compares.
+	MetaDir string
 	// Log is the command's log file, a sibling of Dir so the log never counts as a captured file.
 	Log string
 	// Passed is true when the command exited 0 within its timeout and wrote at least one file.
@@ -271,7 +301,7 @@ func CaptureCurrent(ctx context.Context, req CaptureRequest) (CurrentCapture, er
 	if err != nil {
 		return CurrentCapture{}, err
 	}
-	result := CurrentCapture{Dir: dir, Log: dir + ".log"}
+	result := CurrentCapture{Dir: dir, MetaDir: metaDirFor(dir), Log: dir + ".log"}
 	if err := refuseSkipFilePlaceholder(siteCurrentCapture, stepCapture, req.Step.Command); err != nil {
 		result.Reason = err.Error()
 		return result, nil
@@ -286,6 +316,7 @@ func CaptureCurrent(ctx context.Context, req CaptureRequest) (CurrentCapture, er
 		InheritedSlot: req.InheritedSlot,
 		Site:          siteCurrentCapture,
 		BaselineDir:   dir,
+		MetaDir:       result.MetaDir,
 		LogPath:       result.Log,
 		Timeout:       req.Timeout,
 		Now:           req.Now,

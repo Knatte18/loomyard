@@ -271,6 +271,24 @@ func TestDriftExpect(t *testing.T) {
 		}
 	})
 
+	t.Run("TheSealRecordsTheMetadataMarksInTheScopeRecord", func(t *testing.T) {
+		t.Parallel()
+		f := newExpectFixture(t)
+		f.agentFile = validExpectation + "metadata:\n  files: [b.txt]\n  keys: [gamma]\n"
+		f.seed(nil)
+
+		outcome, _, err := f.call()
+
+		requireExpectDone(t, outcome, err)
+		want := Volatile{Files: []string{"b.txt"}, Keys: []string{"gamma"}}
+		if got := f.records().Scope.Metadata; !reflect.DeepEqual(got, want) {
+			t.Errorf("scope record metadata = %+v after the seal; want %+v", got, want)
+		}
+		if got := len(f.commitsWith(SealTrailerKey)); got != 1 {
+			t.Errorf("%d seal commits; want 1", got)
+		}
+	})
+
 	t.Run("TheListingNamesEveryBaselineCase", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {

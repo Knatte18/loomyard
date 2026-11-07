@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -21,6 +22,9 @@ const keyValuePattern = `^(?P<key>\w+)=(?P<value>.*)$`
 
 // expectsY is an expectation covering the key `y` of `a.txt`.
 const expectsY = "cases:\n  a.txt:\n    keys:\n      - key: y\n        why: tuned the setting\n"
+
+// expectsMetadata is an expectation that marks the file `_source.txt` and the key `captured_at` as metadata.
+const expectsMetadata = "metadata:\n  files: [_source.txt]\n  keys: [captured_at]\n"
 
 // expectsCommandCase is an expectation under diff command for the case `a.txt`.
 const expectsCommandCase = "cases:\n  a.txt:\n    why: the compare is expected to differ\n"
@@ -167,7 +171,48 @@ func TestCheck(t *testing.T) {
 	partial := countedScope()
 	partial.Scope, partial.Skip = ScopePartial, []string{"skipped"}
 
+	marked := Volatile{Files: []string{"_source.txt"}, Keys: []string{"captured_at"}}
+	metadataBaseline := map[string]string{"_source.txt": "commit=a\n", "a.txt": "x=1\ncaptured_at=1\n"}
+	metadataCurrent := map[string]string{"_source.txt": "commit=b\n", "a.txt": "x=1\ncaptured_at=2\n"}
+	leavesNoCell := func(t *testing.T, f *checkFixture, report CheckReport) {
+		if len(report.Cells) != 0 || !slices.Equal(report.Metadata.Files, marked.Files) || !slices.Equal(report.Metadata.Keys, marked.Keys) {
+			t.Errorf("Check() = %+v; want no cell and the metadata marks %+v", report, marked)
+		}
+	}
+
 	tests := []checkScenario{
+		{
+			name: "a sealed expectation's metadata file and key leave no cell",
+			setup: func(f *checkFixture) {
+				f.seed(countedScope(), metadataBaseline)
+				f.seal(expectsMetadata)
+				f.current = metadataCurrent
+			},
+			check:      leavesNoCell,
+			gatePasses: true,
+		},
+		{
+			name: "a scope record's metadata file and key leave no cell",
+			setup: func(f *checkFixture) {
+				scope := countedScope()
+				scope.Metadata = marked
+				f.seed(scope, metadataBaseline)
+				f.current = metadataCurrent
+			},
+			check:      leavesNoCell,
+			gatePasses: true,
+		},
+		{
+			name: "an amendment's metadata file and key leave no cell",
+			setup: func(f *checkFixture) {
+				scope := countedScope()
+				scope.Amendments = []Amendment{{By: "parent", At: "2026-01-02T00:00:00Z", Kind: amendmentKindEntries, Entries: expectsMetadata}}
+				f.seed(scope, metadataBaseline)
+				f.current = metadataCurrent
+			},
+			check:      leavesNoCell,
+			gatePasses: true,
+		},
 		{
 			name:  "an unexpected cell is listed with case, identity, old and new value",
 			setup: func(f *checkFixture) { f.seed(countedScope(), baseline); f.current = changed },
@@ -476,6 +521,213 @@ func TestCheck(t *testing.T) {
 			}
 			if wantFindings := map[bool]string{true: "", false: report.Findings()}[tt.gatePasses]; result.Findings != wantFindings {
 				t.Errorf("NewDriftGate()() findings = %q; want %q", result.Findings, wantFindings)
+			}
+		})
+	}
+}
+
+// TestNamesCommit covers which values name a commit: the whole hash or an abbreviation of at least seven hex digits.
+func TestNamesCommit(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const commit = "abcdef1234567890"
+	tests := []struct {
+		name   string
+		value  string
+		commit string
+		want   bool
+	}{
+		{"TheWholeHash", commit, commit, true},
+		{"AnAbbreviationOfSevenDigits", "abcdef1", commit, true},
+		{"AnAbbreviationOfSixDigits", "abcdef", commit, false},
+		{"ARunAfterANonHexSeparator", "commit=abcdef1", commit, true},
+		{"UpperCaseDigits", "ABCDEF1", commit, true},
+		{"ARunSplitByANonHexLetter", "abcdefg1234567", commit, false},
+		{"ARunOfOtherDigits", "abcdef2", commit, false},
+		{"ARunLongerThanTheCommit", "abcdef1234567890ab", commit, false},
+		{"AnEmptyCommit", "abcdef1", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := namesCommit(tt.value, tt.commit); got != tt.want {
+				t.Errorf("namesCommit(%q, %q) = %v; want %v", tt.value, tt.commit, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDriftGateUnchangeableCells covers the drift gate's marking of unexpected cells no code change can move.
+// A cell that names the baseline's capture head and the code HEAD is unchangeable.
+// So is a cell a second capture of the same code gives another value.
+// The gate ends Terminal when every unexpected cell is unchangeable, and fails as before when one is left.
+func TestDriftGateUnchangeableCells(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const (
+		baselineHead = "abcdef1234567890"
+		codeHead     = "0123456789abcdef"
+	)
+	tests := []struct {
+		name     string
+		baseline map[string]string
+		// current is the files the capture with the given call number, counted from 1, writes.
+		current func(call int) map[string]string
+		// secondCaptureFails makes the capture with call number 2 not pass.
+		secondCaptureFails bool
+		// sameHead puts the code HEAD where the baseline was captured.
+		sameHead bool
+		// prepare, when set, runs after the baseline is seeded and before the code HEAD moves.
+		prepare      func(f *checkFixture)
+		wantTerminal bool
+		wantCaptures int
+		want         []string
+		wantNot      []string
+	}{
+		{
+			name:         "a value naming the baseline's capture head and the code HEAD ends the gate terminal",
+			baseline:     map[string]string{"a.txt": "commit=abcdef1\nx=1\n"},
+			current:      func(int) map[string]string { return map[string]string{"a.txt": "commit=0123456\nx=1\n"} },
+			wantTerminal: true,
+			wantCaptures: 1,
+			want:         []string{`key "commit"`, "lym drift amend", "metadata:"},
+		},
+		{
+			name:         "a value that differs between the gate's two captures ends the gate terminal",
+			baseline:     map[string]string{"a.txt": "x=0\n"},
+			current:      func(call int) map[string]string { return map[string]string{"a.txt": "x=" + strconv.Itoa(call) + "\n"} },
+			wantTerminal: true,
+			wantCaptures: 2,
+			want:         []string{`key "x"`, "lym drift amend", "metadata:"},
+		},
+		{
+			name:     "a stable unexpected change beside a changing one fails without naming the changing one",
+			baseline: map[string]string{"a.txt": "x=0\ny=0\n"},
+			current: func(call int) map[string]string {
+				return map[string]string{"a.txt": "x=" + strconv.Itoa(call) + "\ny=7\n"}
+			},
+			wantCaptures: 2,
+			want:         []string{`key "y"`},
+			wantNot:      []string{`key "x"`, "metadata:"},
+		},
+		{
+			name:               "a second capture that does not pass marks nothing and fails without terminal",
+			baseline:           map[string]string{"a.txt": "x=0\n"},
+			current:            func(int) map[string]string { return map[string]string{"a.txt": "x=1\n"} },
+			secondCaptureFails: true,
+			wantCaptures:       2,
+			want:               []string{`key "x"`},
+			wantNot:            []string{"metadata:"},
+		},
+		{
+			name:     "a cell the second capture does not hold ends the gate terminal",
+			baseline: map[string]string{"a.txt": "x=0\n"},
+			current: func(call int) map[string]string {
+				if call == 1 {
+					return map[string]string{"a.txt": "x=1\n"}
+				}
+				return map[string]string{"a.txt": "x=0\n"}
+			},
+			wantTerminal: true,
+			wantCaptures: 2,
+			want:         []string{`key "x"`, "metadata:"},
+		},
+		{
+			name:     "a cell of another kind in the second capture ends the gate terminal",
+			baseline: map[string]string{"a.txt": "x=0\n"},
+			current: func(call int) map[string]string {
+				if call == 1 {
+					return map[string]string{"a.txt": "x=\n"}
+				}
+				return map[string]string{"a.txt": ""}
+			},
+			wantTerminal: true,
+			wantCaptures: 2,
+			want:         []string{`key "x"`, "metadata:"},
+		},
+		{
+			name:         "a value naming a commit with the code HEAD still at the baseline's head fails without terminal",
+			baseline:     map[string]string{"a.txt": "commit=abcdef1\n"},
+			current:      func(int) map[string]string { return map[string]string{"a.txt": "commit=abcdef12\n"} },
+			sameHead:     true,
+			wantCaptures: 2,
+			want:         []string{`key "commit"`},
+			wantNot:      []string{"metadata:"},
+		},
+		{
+			name:     "a records fault found beside unchangeable cells is named in the terminal findings",
+			baseline: map[string]string{"a.txt": "commit=abcdef1\nx=1\n"},
+			current:  func(int) map[string]string { return map[string]string{"a.txt": "commit=0123456\nx=1\n"} },
+			prepare: func(f *checkFixture) {
+				scope := countedScope()
+				scope.Amendments = []Amendment{{By: "parent", At: "2026-01-02T00:00:00Z", Kind: amendmentKindEntries, Entries: expectsX}}
+				if err := WriteRecords(f.deps, func(s *ScopeRecord, _ *JudgedRecord) error { *s = scope; return nil }); err != nil {
+					f.t.Fatalf("WriteRecords() = %v; want nil", err)
+				}
+				f.edit(f.deps.Paths.Scope, `{"scope":"full","awaited_at":"2026-01-01T00:00:00Z","diff":"lines"}`)
+			},
+			wantTerminal: true,
+			wantCaptures: 1,
+			want:         []string{"records fault", "--restore", `key "commit"`, "metadata:"},
+		},
+		{
+			name:     "a seal fault found beside unchangeable cells is named in the terminal findings",
+			baseline: map[string]string{"a.txt": "commit=abcdef1\nx=1\n"},
+			current:  func(int) map[string]string { return map[string]string{"a.txt": "commit=0123456\nx=1\n"} },
+			prepare: func(f *checkFixture) {
+				f.seal(expectsX)
+				f.edit(f.deps.Paths.Expected, "cases: {}\n")
+			},
+			wantTerminal: true,
+			wantCaptures: 1,
+			want:         []string{"seal fault", "--restore", `key "commit"`, "metadata:"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newCheckFixture(t)
+			f.store.codeHead = baselineHead
+			f.seed(countedScope(), tt.baseline)
+			if tt.prepare != nil {
+				tt.prepare(f)
+			}
+			f.store.codeHead = codeHead
+			if tt.sameHead {
+				f.store.codeHead = baselineHead
+			}
+			calls := 0
+			f.deps.CaptureCurrent = func(context.Context) (CurrentCapture, error) {
+				calls++
+				if tt.secondCaptureFails && calls == 2 {
+					return CurrentCapture{Log: "/logs/current.log", Reason: "exit 3"}, nil
+				}
+				dir := t.TempDir()
+				writeTree(t, dir, tt.current(calls))
+				return CurrentCapture{Dir: dir, Log: "/logs/current.log", Passed: true}, nil
+			}
+
+			result, err := NewDriftGate(f.deps)()
+			if err != nil {
+				t.Fatalf("NewDriftGate()() = _, %v; want nil", err)
+			}
+			if result.Passed || result.Terminal != tt.wantTerminal {
+				t.Errorf("NewDriftGate()() = %+v; want a failure with terminal %v", result, tt.wantTerminal)
+			}
+			if calls != tt.wantCaptures {
+				t.Errorf("NewDriftGate()() took %d captures; want %d", calls, tt.wantCaptures)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(result.Findings, want) {
+					t.Errorf("NewDriftGate()() findings = %q; want it to name %q", result.Findings, want)
+				}
+			}
+			for _, unwanted := range tt.wantNot {
+				if strings.Contains(result.Findings, unwanted) {
+					t.Errorf("NewDriftGate()() findings = %q; want no %q", result.Findings, unwanted)
+				}
 			}
 		})
 	}

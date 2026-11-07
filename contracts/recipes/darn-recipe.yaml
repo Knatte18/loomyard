@@ -131,7 +131,8 @@ producers:
         # The drift gate runs the drift check over the committed code against the sealed expectation and
         # fails on a change nothing expects or a current capture that did not pass, with no fixer: the
         # writer fixes the code or leaves an intended change for the parent's amendment at Drift-Verify.
-        # Drift-Verify repeats the check as the guarantee.
+        # A failure whose changes no code change can move, such as capture metadata, ends the gate at once
+        # with no re-prompt and goes to the parent. Drift-Verify repeats the check as the guarantee.
         - name: drift
           attempts: 3
         - name: description

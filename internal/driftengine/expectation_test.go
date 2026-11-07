@@ -83,6 +83,24 @@ func TestParseExpectation(t *testing.T) {
 		{name: "CommandKeysEntry", mode: DiffCommand, data: "cases:\n  anything:\n    keys:\n      - {key: k, why: a}\n", wantErr: "holds keys or lines"},
 		{name: "CommandLinesEntry", mode: DiffCommand, data: "cases:\n  anything:\n    lines:\n      - {range: 1, why: a}\n", wantErr: "holds keys or lines"},
 		{name: "CommandEmptyWhy", mode: DiffCommand, data: "cases:\n  anything:\n    why: ''\n", wantErr: "has an empty why"},
+		{
+			name: "MetadataFilesAndKeys",
+			mode: DiffLines,
+			data: "metadata:\n  files: [plain.txt]\n  keys: [other]\n",
+			want: Expectation{Metadata: Volatile{Files: []string{"plain.txt"}, Keys: []string{"other"}}},
+		},
+		{
+			name: "CommandMetadataFileNeedsNoBaselineCase",
+			mode: DiffCommand,
+			data: "metadata:\n  files: [anything]\n",
+			want: Expectation{Metadata: Volatile{Files: []string{"anything"}}},
+		},
+		{name: "MetadataBlankFile", mode: DiffLines, data: "metadata:\n  files: ['  ']\n", wantErr: "metadata.files holds a blank entry"},
+		{name: "MetadataBlankKey", mode: DiffLines, data: "metadata:\n  keys: ['']\n", wantErr: "metadata.keys holds a blank entry"},
+		{name: "MetadataInvalidGlob", mode: DiffLines, data: "metadata:\n  files: ['[a']\n", wantErr: `metadata.files entry "[a" is no valid glob`},
+		{name: "MetadataFileMatchingNoBaselineCase", mode: DiffLines, data: "metadata:\n  files: [missing.txt]\n", wantErr: `metadata.files entry "missing.txt" matches no case of the baseline`},
+		{name: "MetadataKeyOfNoBaselineCase", mode: DiffLines, data: "metadata:\n  keys: [nokey]\n", wantErr: `metadata.keys entry "nokey" is not a key of any case of the baseline`},
+		{name: "CommandMetadataKeys", mode: DiffCommand, data: "metadata:\n  keys: [k]\n", wantErr: `metadata.keys entry "k" is refused under diff "command"`},
 		{name: "UnknownMode", mode: "other", data: "", wantErr: `mode "other"`},
 	}
 	for _, tt := range tests {
@@ -175,6 +193,16 @@ func TestExpectationCover(t *testing.T) {
 		}
 		if _, ok := expectation.Cover(cell); ok {
 			t.Errorf("Merge changed its receiver")
+		}
+	})
+
+	t.Run("MergeJoinsMetadataMarksWithoutDuplicates", func(t *testing.T) {
+		t.Parallel()
+		sealed := Expectation{Metadata: Volatile{Files: []string{"a", "b"}, Keys: []string{"k"}}}
+		amendment := Expectation{Metadata: Volatile{Files: []string{"b", "c"}, Keys: []string{"k", "m"}}}
+		want := Volatile{Files: []string{"a", "b", "c"}, Keys: []string{"k", "m"}}
+		if diff := cmp.Diff(want, sealed.Merge(amendment).Metadata); diff != "" {
+			t.Errorf("Merge().Metadata mismatch (-want +got):\n%s", diff)
 		}
 	})
 

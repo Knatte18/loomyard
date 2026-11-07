@@ -256,6 +256,25 @@ func TestCaptureCurrent(t *testing.T) {
 		}
 	})
 
+	t.Run("a command writing to the meta dir lands beside the capture directory, not in it", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "echo meta > {meta_dir}/provenance.json; echo profile > {baseline_dir}/p.json")
+
+		got, err := CaptureCurrent(context.Background(), f.req)
+		if err != nil || !got.Passed {
+			t.Fatalf("CaptureCurrent() = %+v, %v; want a passed capture", got, err)
+		}
+		if got.MetaDir != got.Dir+".meta" {
+			t.Errorf("CaptureCurrent() meta dir = %q; want %q", got.MetaDir, got.Dir+".meta")
+		}
+		if text := readFile(t, filepath.Join(got.MetaDir, "provenance.json")); text != "meta\n" {
+			t.Errorf("meta dir provenance.json = %q; want %q", text, "meta\n")
+		}
+		if _, err := os.Stat(filepath.Join(got.Dir, "provenance.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the meta file is under the capture directory; want it only in the meta dir")
+		}
+	})
+
 	failures := []struct {
 		name    string
 		command string
@@ -274,6 +293,11 @@ func TestCaptureCurrent(t *testing.T) {
 		{
 			name:       "exit 0 with no file does not pass and names the directory",
 			command:    "true",
+			wantReason: []string{"exit 0 but wrote no file to {dir}"},
+		},
+		{
+			name:       "exit 0 with only a meta file does not pass and names the directory",
+			command:    "echo meta > {meta_dir}/provenance.json",
 			wantReason: []string{"exit 0 but wrote no file to {dir}"},
 		},
 		{
@@ -339,6 +363,10 @@ func TestRunCapture(t *testing.T) {
 			name:    "exit 0 with no file and no output fails and says the command printed nothing",
 			command: "true", wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
 			wantEnds: "; it ran in {dir} and printed nothing",
+		},
+		{
+			name:    "exit 0 with only a meta file fails as a capture that wrote no file",
+			command: "echo meta > {meta_dir}/provenance.json", wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
 		},
 		{name: "a non-zero exit fails", command: "exit 3", wantState: CaptureFailed, wantReason: "exit 3"},
 		{
@@ -524,6 +552,80 @@ func TestRunCapture(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(f.req.Paths.BaselineDir, "old.json")); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("the old file is still in the new baseline directory")
+		}
+	})
+
+	t.Run("a command writing to the meta dir lands in the baseline's meta dir, not in the baseline", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "echo meta > {meta_dir}/provenance.json; echo profile > {baseline_dir}/p.json")
+		p := f.req.Paths
+
+		if rec, err := RunCapture(context.Background(), f.req); err != nil || rec.State != CapturePassed {
+			t.Fatalf("RunCapture() = %+v, %v; want a passed record", rec, err)
+		}
+		if p.BaselineMetaDir != p.BaselineDir+".meta" {
+			t.Errorf("BaselineMetaDir = %q; want %q", p.BaselineMetaDir, p.BaselineDir+".meta")
+		}
+		if text := readFile(t, filepath.Join(p.BaselineMetaDir, "provenance.json")); text != "meta\n" {
+			t.Errorf("meta dir provenance.json = %q; want %q", text, "meta\n")
+		}
+		if _, err := os.Stat(filepath.Join(p.BaselineDir, "provenance.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the meta file is under the baseline directory; want it only in the meta dir")
+		}
+	})
+
+	t.Run("a backup moves the baseline's meta dir to the backup's meta dir", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "echo new > {baseline_dir}/p.json; echo new > {meta_dir}/provenance.json")
+		p := f.req.Paths
+		writeTree(t, p.BaselineDir, map[string]string{"old.json": "old"})
+		writeTree(t, p.BaselineMetaDir, map[string]string{"provenance.json": "old"})
+
+		if rec, err := RunCapture(context.Background(), f.req); err != nil || rec.State != CapturePassed {
+			t.Fatalf("RunCapture() = %+v, %v; want a passed record", rec, err)
+		}
+		if text := readFile(t, p.BaselineDir+".1.meta/provenance.json"); text != "old" {
+			t.Errorf("baseline.1.meta/provenance.json = %q; want the kept old metadata", text)
+		}
+		if text := readFile(t, filepath.Join(p.BaselineMetaDir, "provenance.json")); text != "new\n" {
+			t.Errorf("meta dir provenance.json = %q; want the new capture's metadata", text)
+		}
+	})
+
+	t.Run("a backup skips a number whose meta dir is taken and keeps what is there", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "echo new > {baseline_dir}/p.json")
+		p := f.req.Paths
+		writeTree(t, p.BaselineDir, map[string]string{"old.json": "old"})
+		writeTree(t, p.BaselineMetaDir, map[string]string{"provenance.json": "old"})
+		writeTree(t, p.BaselineDir+".1.meta", map[string]string{"keep.json": "kept"})
+
+		if rec, err := RunCapture(context.Background(), f.req); err != nil || rec.State != CapturePassed {
+			t.Fatalf("RunCapture() = %+v, %v; want a passed record", rec, err)
+		}
+		if text := readFile(t, p.BaselineDir+".1.meta/keep.json"); text != "kept" {
+			t.Errorf("baseline.1.meta/keep.json = %q; want the taken meta dir untouched", text)
+		}
+		if text := readFile(t, p.BaselineDir+".2/old.json"); text != "old" {
+			t.Errorf("baseline.2/old.json = %q; want the old baseline under the next free number", text)
+		}
+		if text := readFile(t, p.BaselineDir+".2.meta/provenance.json"); text != "old" {
+			t.Errorf("baseline.2.meta/provenance.json = %q; want the old metadata beside its baseline", text)
+		}
+	})
+
+	t.Run("a meta dir beside an empty baseline is cleared before the capture", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "echo new > {baseline_dir}/p.json")
+		p := f.req.Paths
+		writeTree(t, p.BaselineDir, nil)
+		writeTree(t, p.BaselineMetaDir, map[string]string{"stale.json": "stale"})
+
+		if rec, err := RunCapture(context.Background(), f.req); err != nil || rec.State != CapturePassed {
+			t.Fatalf("RunCapture() = %+v, %v; want a passed record", rec, err)
+		}
+		if _, err := os.Stat(filepath.Join(p.BaselineMetaDir, "stale.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the stale metadata is still beside the new baseline; want it cleared")
 		}
 	})
 

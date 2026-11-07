@@ -50,7 +50,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // env.VerifyTreeScope alone selects the darn form;
 // it requires env.VerifyMergeBase, the base of both lints in that form;
 // otherwise env.VerifyMergeBase is the base of the headroom lint;
-// "drift" requires the env.Drift seams Config, Status, CaptureCurrent, TrailerCommit, FileAt and Compare;
+// "drift" requires the env.Drift seams Config, Status, Head, CaptureCurrent, TrailerCommit, FileAt and Compare;
 // it returns driftengine.NewDriftGate over them;
 // "expectation" requires the env.Drift seams Config, TrailerCommit and FileAt;
 // it returns driftengine.NewExpectationGate over them;
@@ -279,6 +279,7 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		err := requireDriftSeams(entry, driftSeams{
 			{"Drift.Config", d.Config},
 			{"Drift.Status", d.Status},
+			{"Drift.Head", d.Head},
 			{"Drift.CaptureCurrent", d.CaptureCurrent},
 			{"Drift.TrailerCommit", d.TrailerCommit},
 			{"Drift.FileAt", d.FileAt},

@@ -60,6 +60,8 @@ type stepRun struct {
 	Site string
 	// BaselineDir is the path the command's {baseline_dir} placeholder renders to.
 	BaselineDir string
+	// MetaDir is the path the command's {meta_dir} placeholder renders to, created before the command starts.
+	MetaDir string
 	// LogPath is the file the command's stdout and stderr go to.
 	LogPath string
 	// Timeout bounds the command from its start, on the monotonic clock.
@@ -110,6 +112,9 @@ func runStep(ctx context.Context, run stepRun) (stepOutcome, error) {
 	}
 	if err := os.MkdirAll(filepath.Dir(run.LogPath), 0o755); err != nil {
 		return stepOutcome{}, fmt.Errorf("drift: create the log directory: %w", err)
+	}
+	if err := os.MkdirAll(run.MetaDir, 0o755); err != nil {
+		return stepOutcome{}, fmt.Errorf("drift: create the metadata directory: %w", err)
 	}
 	run.OnSlot(run.Now())
 
@@ -307,7 +312,7 @@ func acquireSlot(ctx context.Context, run stepRun) (heldSlot, error) {
 	return heldSlot{lease: lease, limits: limits, release: release}, nil
 }
 
-// renderCommand returns the step's command with {baseline_dir} replaced by the quoted baseline directory.
+// renderCommand returns the step's command with {baseline_dir} and {meta_dir} replaced by their quoted directories.
 // A command holding the {skip_file} placeholder is refused, since nothing fills it.
 func renderCommand(run stepRun) (string, error) {
 	if err := refuseSkipFilePlaceholder(run.Site, run.Name, run.Step.Command); err != nil {
@@ -317,7 +322,11 @@ func renderCommand(run stepRun) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("drift: quote the baseline directory: %w", err)
 	}
-	return strings.ReplaceAll(run.Step.Command, baselineDirPlaceholder, baseline), nil
+	meta, err := verifyrun.QuoteArg(runtime.GOOS, run.MetaDir)
+	if err != nil {
+		return "", fmt.Errorf("drift: quote the metadata directory: %w", err)
+	}
+	return strings.NewReplacer(baselineDirPlaceholder, baseline, metaDirPlaceholder, meta).Replace(run.Step.Command), nil
 }
 
 // skipFilePlaceholder is the {skip_file} placeholder, which drift does not render, so a command holding it is refused.
