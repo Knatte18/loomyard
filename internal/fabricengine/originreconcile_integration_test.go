@@ -63,17 +63,56 @@ type originHub struct {
 	primeRecords     string
 }
 
+// originTemplate is the "." hub with the prime's records branch published.
+var originTemplate = hubforge.Registration{
+	Key:   "fabricengine-origin",
+	Base:  hubforge.Shape{Anchor: "."},
+	Build: publishPrimeRecords,
+}
+
+// originTaskTemplate is originTemplate's hub with the pair "task" added and its code branch's upstream set.
+var originTaskTemplate = hubforge.Registration{
+	Key:   "fabricengine-origin-task",
+	Base:  hubforge.Shape{Anchor: "."},
+	Build: buildOriginTask,
+}
+
+// publishPrimeRecords pushes the prime's records branch with its upstream set.
+func publishPrimeRecords(tb testing.TB, h *hubforge.Hub) {
+	tb.Helper()
+	publishBranch(tb, h.PrimeRecords())
+}
+
+// buildOriginTask publishes the prime's records branch and adds the pair "task" with its upstream set.
+func buildOriginTask(tb testing.TB, h *hubforge.Hub) {
+	tb.Helper()
+	publishPrimeRecords(tb, h)
+	originPair(tb, originHubOf(tb, h), "task")
+}
+
+// originHubOf returns h with the prime's branch names and records path read from it.
+func originHubOf(tb testing.TB, h *hubforge.Hub) *originHub {
+	tb.Helper()
+	return &originHub{
+		Hub:              h,
+		primeBranch:      gitkit.CurrentBranch(tb, h.PrimeWorktree()),
+		primeRecordsPath: h.PrimeRecords(),
+		primeRecords:     gitkit.CurrentBranch(tb, h.PrimeRecords()),
+	}
+}
+
+// newOriginHub returns a copy of originTemplate.
 func newOriginHub(t *testing.T) *originHub {
 	t.Helper()
-	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	recordsBranch := gitkit.CurrentBranch(t, hub.PrimeRecords())
-	gitkit.Git(t, hub.PrimeRecords(), "push", "--set-upstream", "origin", recordsBranch)
-	return &originHub{
-		Hub:              hub,
-		primeBranch:      gitkit.CurrentBranch(t, hub.PrimeWorktree()),
-		primeRecordsPath: hub.PrimeRecords(),
-		primeRecords:     recordsBranch,
-	}
+	return originHubOf(t, hubforge.CopyRegistered(t, &originTemplate))
+}
+
+// newOriginTaskHub returns a copy of originTaskTemplate with the code worktree and branch of its pair "task".
+func newOriginTaskHub(t *testing.T) (hub *originHub, worktree, branch string) {
+	t.Helper()
+	hub = originHubOf(t, hubforge.CopyRegistered(t, &originTaskTemplate))
+	worktree = hub.PairCodeWorktree("task")
+	return hub, worktree, gitkit.CurrentBranch(t, worktree)
 }
 
 // otherMachine clones bare at branch, as a second machine working on the same remote.
@@ -85,12 +124,12 @@ func otherMachine(t *testing.T, bare, branch string) string {
 }
 
 // originPair adds the pair slug, with its upstream set, and returns its code worktree and branch.
-func originPair(t *testing.T, hub *originHub, slug string) (worktree, branch string) {
-	t.Helper()
-	hubforge.AddPair(t, hub.Hub, slug)
+func originPair(tb testing.TB, hub *originHub, slug string) (worktree, branch string) {
+	tb.Helper()
+	hubforge.AddPair(tb, hub.Hub, slug)
 	worktree = hub.PairCodeWorktree(slug)
-	branch = gitkit.CurrentBranch(t, worktree)
-	gitkit.Git(t, worktree, "branch", "--set-upstream-to=origin/"+branch)
+	branch = gitkit.CurrentBranch(tb, worktree)
+	gitkit.Git(tb, worktree, "branch", "--set-upstream-to=origin/"+branch)
 	return worktree, branch
 }
 
@@ -162,14 +201,14 @@ func refsOf(t *testing.T, dir string) string {
 }
 
 // writeStatus gives slug a batten run record at the prime, naming producer as its current row.
-func writeStatus(t *testing.T, hub *originHub, slug, producer string) {
-	t.Helper()
+func writeStatus(tb testing.TB, hub *originHub, slug, producer string) {
+	tb.Helper()
 	path := shedrun.StatusFile(hub.Location, slug)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir for %s: %v", path, err)
+		tb.Fatalf("mkdir for %s: %v", path, err)
 	}
 	if err := os.WriteFile(path, []byte(`{"current_producer":"`+producer+`"}`), 0o644); err != nil {
-		t.Fatalf("write %s: %v", path, err)
+		tb.Fatalf("write %s: %v", path, err)
 	}
 }
 
@@ -233,8 +272,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 	})
 
 	t.Run("An origin that moved nothing is read by two ls-remote calls and no fetch", func(t *testing.T) {
-		hub := newOriginHub(t)
-		originPair(t, hub, "task")
+		hub, _, _ := newOriginTaskHub(t)
 
 		var calls callLog
 		t.Cleanup(fabricengine.SetOriginCallHookForTest(calls.record))
@@ -333,8 +371,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 	})
 
 	t.Run("A code branch both sides moved reads diverged and names the merge that settles it", func(t *testing.T) {
-		hub := newOriginHub(t)
-		pairCode, pairBranch := originPair(t, hub, "task")
+		hub, pairCode, pairBranch := newOriginTaskHub(t)
 		for _, row := range []struct {
 			name, worktree, branch, bare string
 			prime                        bool
@@ -420,8 +457,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 	}
 
 	t.Run("A branch whose origin head lies below an earlier tracking value and shares no commit with the local tip reads diverged", func(t *testing.T) {
-		hub := newOriginHub(t)
-		pairCode, branch := originPair(t, hub, "task")
+		hub, pairCode, branch := newOriginTaskHub(t)
 		parent := gitkit.RevParse(t, pairCode, "HEAD")
 		kept := gitkit.CommitFile(t, pairCode, "one.txt", "one", "one")
 		earlier := gitkit.CommitFile(t, pairCode, "two.txt", "two", "two")
@@ -437,8 +473,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 	})
 
 	t.Run("A code branch origin replaced with a history no earlier value holds reads rewritten", func(t *testing.T) {
-		hub := newOriginHub(t)
-		pairCode, pairBranch := originPair(t, hub, "task")
+		hub, pairCode, pairBranch := newOriginTaskHub(t)
 		for _, row := range []struct{ name, worktree, branch string }{
 			{"task branch", pairCode, pairBranch},
 			{"prime branch", hub.PrimeWorktree(), hub.primeBranch},
@@ -464,8 +499,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 	})
 
 	t.Run("A deleted upstream reads gone and its summary follows the way forward with the cleanup re-entry", func(t *testing.T) {
-		hub := newOriginHub(t)
-		pairCode, branch := originPair(t, hub, "task")
+		hub, pairCode, branch := newOriginTaskHub(t)
 		gitkit.Git(t, hub.CodeBare, "branch", "-D", branch)
 
 		report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
@@ -681,8 +715,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		// with it the directory is deleted and the registration is left for prune.
 		absentHub := func(t *testing.T, staleRegistration bool) *originHub {
 			t.Helper()
-			hub := newOriginHub(t)
-			originPair(t, hub, "task")
+			hub, _, _ := newOriginTaskHub(t)
 			writeStatus(t, hub, "task", "Implementer")
 			if staleRegistration {
 				if err := os.RemoveAll(hub.PairCodeWorktree("task")); err != nil {
@@ -768,8 +801,7 @@ type rewoundBranch struct {
 // With withLocal the pair also holds one commit that was never pushed.
 func newRewoundBranch(t *testing.T, withLocal bool) rewoundBranch {
 	t.Helper()
-	hub := newOriginHub(t)
-	worktree, branch := originPair(t, hub, "task")
+	hub, worktree, branch := newOriginTaskHub(t)
 	base := gitkit.RevParse(t, worktree, "HEAD")
 	first := gitkit.CommitFile(t, worktree, "one.txt", "one", "one")
 	second := gitkit.CommitFile(t, worktree, "two.txt", "two", "two")

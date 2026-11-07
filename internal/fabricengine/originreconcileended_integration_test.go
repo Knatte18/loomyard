@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -55,12 +56,12 @@ func tagMutation(hub *originHub, tag string) fabricengine.MutationRecord {
 }
 
 // publishBoard commits a board holding entries at the board checkout, pushes it and returns the Bolt branch.
-func publishBoard(t *testing.T, hub *originHub, entries ...boardengine.Task) string {
-	t.Helper()
+func publishBoard(tb testing.TB, hub *originHub, entries ...boardengine.Task) string {
+	tb.Helper()
 	board := hub.BoardDir()
-	branch := gitkit.CurrentBranch(t, board)
-	gitkit.CommitFile(t, board, "board.json", boardFileOf(t, entries...), "base board")
-	gitkit.Git(t, board, "push", "origin", branch)
+	branch := gitkit.CurrentBranch(tb, board)
+	gitkit.CommitFile(tb, board, "board.json", boardFileOf(tb, entries...), "base board")
+	gitkit.Git(tb, board, "push", "origin", branch)
 	return branch
 }
 
@@ -82,21 +83,36 @@ func writePairStatus(t *testing.T, hub *originHub, slug, producer string, histor
 	}
 }
 
-// endedHub is a hub with the pair slugs, each holding a batten run record at the prime before its Finalize.
-// Origin's board marks each of those runs done.
-func endedHub(t *testing.T, slugs ...string) (*originHub, string) {
-	t.Helper()
-	hub := newOriginHub(t)
-	var live, done []boardengine.Task
+// endedTemplate is originTemplate's hub with the pair "task" and a published board that holds "task" as a live entry.
+// The pair holds a batten run record at the prime before its Finalize.
+var endedTemplate = hubforge.Registration{
+	Key:  "fabricengine-origin-ended",
+	Base: hubforge.Shape{Anchor: "."},
+	Build: func(tb testing.TB, h *hubforge.Hub) {
+		publishPrimeRecords(tb, h)
+		arrangeEnded(tb, originHubOf(tb, h), "task")
+	},
+}
+
+// arrangeEnded adds the pair slugs to hub, each holding a batten run record at the prime before its Finalize.
+// It publishes a board holding each slug as a live entry and returns the Bolt branch.
+func arrangeEnded(tb testing.TB, hub *originHub, slugs ...string) string {
+	tb.Helper()
+	var live []boardengine.Task
 	for _, slug := range slugs {
-		originPair(t, hub, slug)
-		writeStatus(t, hub, slug, "Implementer")
+		originPair(tb, hub, slug)
+		writeStatus(tb, hub, slug, "Implementer")
 		live = append(live, boardEntry(slug))
-		done = append(done, boardEntry(slug, withBoardStatus("done")))
 	}
-	branch := publishBoard(t, hub, live...)
-	originBoard(t, hub, branch, done...)
-	return hub, branch
+	return publishBoard(tb, hub, live...)
+}
+
+// endedHub returns a copy of endedTemplate whose origin board marks the run of "task" done.
+func endedHub(t *testing.T) *originHub {
+	t.Helper()
+	hub := originHubOf(t, hubforge.CopyRegistered(t, &endedTemplate))
+	originBoard(t, hub, gitkit.CurrentBranch(t, hub.BoardDir()), boardEntry("task", withBoardStatus("done")))
+	return hub
 }
 
 // TestReconcileOrigin_Ended covers the origin reconcile's handling of runs origin has ended.
@@ -107,7 +123,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	boardkit.InstallReplay(t)
 
 	t.Run("An entry done on origin with a local pair is handed to the teardown seam once and reported ended as landed", func(t *testing.T) {
-		hub, _ := endedHub(t, "task")
+		hub := endedHub(t)
 		recorder := &teardownRecorder{reply: func(fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
 			return fabricengine.TeardownReport{MutationRecord: tagMutation(hub, "set-aside/task/abc"), Tags: []string{"set-aside/task/abc"}, Kept: []string{"branch task: unlanded"}}, nil
 		}}
@@ -167,7 +183,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	})
 
 	t.Run("A hub reconcile ends a pair at Finalize before its parent merge although it fast-forwards the parent", func(t *testing.T) {
-		hub, _ := endedHub(t, "task")
+		hub := endedHub(t)
 		writePairStatus(t, hub, "task", "Finalize")
 		gitkit.CommitFile(t, hub.PairCodeWorktree("task"), "feature.txt", "task work\n", "task work")
 		originCommitFile(t, hub.CodeBare, hub.primeBranch, "moved.txt", "moved")
@@ -184,7 +200,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	})
 
 	t.Run("A pair whose Finalize passed its parent merge is not ended", func(t *testing.T) {
-		hub, _ := endedHub(t, "task")
+		hub := endedHub(t)
 		writePairStatus(t, hub, "task", "Land", "Finalize")
 		recorder := &teardownRecorder{}
 
@@ -197,7 +213,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	})
 
 	t.Run("A raddle run standing at Raddle-File is not ended by the entry its own row ended", func(t *testing.T) {
-		hub, _ := endedHub(t, "task")
+		hub := endedHub(t)
 		writePairStatus(t, hub, "task", "Raddle-File", "Raddle-Write")
 		recorder := &teardownRecorder{}
 
@@ -210,7 +226,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	})
 
 	t.Run("A raddle run a return sent back to Raddle-Write is ended", func(t *testing.T) {
-		hub, _ := endedHub(t, "task")
+		hub := endedHub(t)
 		writePairStatus(t, hub, "task", "Raddle-Write", "Raddle-File")
 		recorder := &teardownRecorder{}
 
@@ -222,8 +238,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	})
 
 	t.Run("A raddle run standing at Raddle-File whose done entry origin then pruned is not ended", func(t *testing.T) {
-		hub := newOriginHub(t)
-		originPair(t, hub, "task")
+		hub, _, _ := newOriginTaskHub(t)
 		writeStatus(t, hub, "task", "Implementer")
 		writePairStatus(t, hub, "task", "Raddle-File", "Raddle-Write")
 		branch := publishBoard(t, hub, boardEntry("task"), boardEntry("keep"))
@@ -240,8 +255,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	})
 
 	t.Run("A raddle run standing at Raddle-File whose entry origin removed is ended as removed", func(t *testing.T) {
-		hub := newOriginHub(t)
-		originPair(t, hub, "task")
+		hub, _, _ := newOriginTaskHub(t)
 		writeStatus(t, hub, "task", "Implementer")
 		writePairStatus(t, hub, "task", "Raddle-File", "Raddle-Write")
 		branch := publishBoard(t, hub, boardEntry("task"), boardEntry("keep"))
@@ -260,8 +274,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	})
 
 	t.Run("An entry removed from origin's board is ended as removed", func(t *testing.T) {
-		hub := newOriginHub(t)
-		originPair(t, hub, "task")
+		hub, _, _ := newOriginTaskHub(t)
 		writeStatus(t, hub, "task", "Implementer")
 		branch := publishBoard(t, hub, boardEntry("task"), boardEntry("keep"))
 		originBoard(t, hub, branch, boardEntry("keep"))
@@ -287,7 +300,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 			{"lock", fabricengine.BusyOnLock, []string{"lock", "lym cleanup --apply"}},
 		} {
 			t.Run(row.name, func(t *testing.T) {
-				hub, _ := endedHub(t, "task")
+				hub := endedHub(t)
 				recorder := &teardownRecorder{reply: func(fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
 					return fabricengine.TeardownReport{Busy: true, BusyOn: row.busyOn}, nil
 				}}
@@ -308,7 +321,9 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	})
 
 	t.Run("A teardown failing with another error is ended with the error and a second entry is still handed to the seam", func(t *testing.T) {
-		hub, _ := endedHub(t, "task", "two")
+		hub := newOriginHub(t)
+		branch := arrangeEnded(t, hub, "task", "two")
+		originBoard(t, hub, branch, boardEntry("task", withBoardStatus("done")), boardEntry("two", withBoardStatus("done")))
 		recorder := &teardownRecorder{reply: func(request fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
 			if request.Slug == "task" {
 				return fabricengine.TeardownReport{}, errors.New("boom")
@@ -381,7 +396,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 			{"a parent the run's own Finalize merged into is the re-entry after its done mark", true, false},
 		} {
 			t.Run(row.name, func(t *testing.T) {
-				hub, _ := endedHub(t, "task")
+				hub := endedHub(t)
 				writePairStatus(t, hub, "task", "Finalize")
 				gitkit.CommitFile(t, hub.PairCodeWorktree("task"), "feature.txt", "task work\n", "task work")
 				if row.merged {
@@ -403,7 +418,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	})
 
 	t.Run("A judge-only reconcile reports the teardown it would run and calls none", func(t *testing.T) {
-		hub, _ := endedHub(t, "task")
+		hub := endedHub(t)
 		recorder := &teardownRecorder{}
 
 		report := moveReconcile(t, hub, fabricengine.ReconcileScope{JudgeOnly: true}, recorder.seams())
@@ -421,7 +436,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 	})
 
 	t.Run("An earlier snapshot tag sets EarlierSnapshot on the request", func(t *testing.T) {
-		hub, _ := endedHub(t, "task")
+		hub := endedHub(t)
 		weftRoot, err := fabricengine.RecordsRepoRoot(hub.Location)
 		if err != nil {
 			t.Fatalf("RecordsRepoRoot: %v", err)

@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
@@ -44,10 +45,10 @@ func moveReconcile(t *testing.T, hub *originHub, scope fabricengine.ReconcileSco
 }
 
 // publishBranch pushes the branch checked out at dir with an upstream and returns its name.
-func publishBranch(t *testing.T, dir string) string {
-	t.Helper()
-	branch := gitkit.CurrentBranch(t, dir)
-	gitkit.Git(t, dir, "push", "--set-upstream", "origin", branch)
+func publishBranch(tb testing.TB, dir string) string {
+	tb.Helper()
+	branch := gitkit.CurrentBranch(tb, dir)
+	gitkit.Git(tb, dir, "push", "--set-upstream", "origin", branch)
 	return branch
 }
 
@@ -115,13 +116,31 @@ type movesPair struct {
 	recordsName string
 }
 
+// movesTemplate is originTaskTemplate's hub with a batten run record for "task" at the prime naming Land,
+// and the pair's records branch published.
+var movesTemplate = hubforge.Registration{
+	Key:  "fabricengine-origin-moves",
+	Base: hubforge.Shape{Anchor: "."},
+	Build: func(tb testing.TB, h *hubforge.Hub) {
+		buildOriginTask(tb, h)
+		writeStatus(tb, originHubOf(tb, h), "task", "Land")
+		publishBranch(tb, h.PairRecordsSibling("task"))
+	},
+}
+
+// newMovesPair returns a copy of movesTemplate with the paths and branch names of its pair "task".
 func newMovesPair(t *testing.T) *movesPair {
 	t.Helper()
-	hub := newOriginHub(t)
-	code, codeBranch := originPair(t, hub, "task")
+	hub := originHubOf(t, hubforge.CopyRegistered(t, &movesTemplate))
+	code := hub.PairCodeWorktree("task")
 	records := hub.PairRecordsSibling("task")
-	writeStatus(t, hub, "task", "Land")
-	return &movesPair{originHub: hub, code: code, codeBranch: codeBranch, records: records, recordsName: publishBranch(t, records)}
+	return &movesPair{
+		originHub:   hub,
+		code:        code,
+		codeBranch:  gitkit.CurrentBranch(t, code),
+		records:     records,
+		recordsName: gitkit.CurrentBranch(t, records),
+	}
 }
 
 // TestReconcileOrigin_Moves covers the origin reconcile's moves: what it fast-forwards or replays.
@@ -621,7 +640,7 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 	})
 
 	t.Run("An ended entry owned elsewhere reports ended, a nil OwnerOf reads it active, an OwnerOf error is the reconcile's error and a hub with no Bolt origin head asks nothing", func(t *testing.T) {
-		hub, _ := endedHub(t, "task")
+		hub := endedHub(t)
 		torn := &teardownRecorder{}
 		seams := torn.seams()
 		seams.OwnerOf = func(string, []byte, string) (string, string, bool, error) { return "other-machine", "task", true, nil }
@@ -637,8 +656,7 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 			t.Errorf("ReconcileOrigin error = %v; want the seam's error", err)
 		}
 
-		bare := newOriginHub(t)
-		originPair(t, bare, "task")
+		bare, _, _ := newOriginTaskHub(t)
 		writeStatus(t, bare, "task", "Land")
 		gitkit.Git(t, bare.BoardDir(), "update-ref", "-d", "refs/remotes/origin/"+gitkit.CurrentBranch(t, bare.BoardDir()))
 		asked := false

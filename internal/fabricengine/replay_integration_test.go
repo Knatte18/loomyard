@@ -166,8 +166,8 @@ func withBoardCreated(created time.Time) func(*boardengine.Task) {
 }
 
 // boardFileOf encodes entries as a board.json, numbering them by position.
-func boardFileOf(t *testing.T, entries ...boardengine.Task) string {
-	t.Helper()
+func boardFileOf(tb testing.TB, entries ...boardengine.Task) string {
+	tb.Helper()
 	for i := range entries {
 		entries[i].ID = i
 	}
@@ -176,7 +176,7 @@ func boardFileOf(t *testing.T, entries ...boardengine.Task) string {
 		Entries []boardengine.Task `json:"entries"`
 	}{1, entries})
 	if err != nil {
-		t.Fatalf("marshal board.json: %v", err)
+		tb.Fatalf("marshal board.json: %v", err)
 	}
 	return string(data)
 }

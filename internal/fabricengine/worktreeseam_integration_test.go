@@ -181,6 +181,16 @@ func TestWorktreeSeam_Events(t *testing.T) {
 		}
 	})
 
+	// Every later subtest's template copy is taken before the seam is installed:
+	// a template's first build must not run under the fake seam.
+	// The reconcile fixtures copy the "." shape inside buildReconcileFixture, so one copy here builds that template first.
+	boardkit.InstallReplay(t)
+	hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	boltOnlyOrigin := newOriginHub(t)
+	failingPullOrigin := newOriginHub(t)
+	parentPairOrigin := newOriginHub(t)
+	reconcilePair := newMovesPair(t)
+
 	seam := &fakeWorktreeSeam{t: t}
 	t.Cleanup(fabricengine.InstallWorktreeSeam(seam))
 
@@ -377,7 +387,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 	})
 
 	t.Run("A Bolt pull and a weft-only fast-forward fire nothing", func(t *testing.T) {
-		origin := newOriginHub(t)
+		origin := boltOnlyOrigin
 		originCommitFile(t, origin.RecordsBare, "main", "moved.txt", "moved")
 		originCommitFile(t, origin.RecordsBare, origin.primeRecords, "moved.txt", "moved")
 
@@ -397,7 +407,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 	})
 
 	t.Run("A failing seam never fails a pull, and its warning reaches the result, the log, the verb's output and the hub pull's line", func(t *testing.T) {
-		origin := newOriginHub(t)
+		origin := failingPullOrigin
 		prime := locationOf(t, origin.PrimeWorktree())
 		seam.failWithin(origin.Path)
 		t.Cleanup(func() { seam.failWithin("") })
@@ -462,7 +472,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 	})
 
 	t.Run("The parent-pair fast-forward fires one took-in event, and a failing seam still returns the new head", func(t *testing.T) {
-		origin := newOriginHub(t)
+		origin := parentPairOrigin
 		fab := hubforge.OpenFabric(t, origin.Hub)
 		head := originCommitFile(t, origin.CodeBare, origin.primeBranch, "AGENTS.md", "moved")
 
@@ -487,8 +497,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 	})
 
 	t.Run("A reconcile that fast-forwards a pair's code branch fires one took-in event while its records branch and Bolt fire none, and a failing seam sets the outcome's warning", func(t *testing.T) {
-		boardkit.InstallReplay(t)
-		pair := newMovesPair(t)
+		pair := reconcilePair
 		originCommitFile(t, pair.CodeBare, pair.codeBranch, "moved/code.txt", "moved")
 		originCommitFile(t, pair.RecordsBare, pair.recordsName, "moved/records.txt", "moved")
 		originCommitFile(t, pair.RecordsBare, "main", "moved/bolt.txt", "moved")

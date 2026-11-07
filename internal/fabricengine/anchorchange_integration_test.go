@@ -28,14 +28,21 @@ import (
 // anchorKill is what the kill hook panics with, standing in for a process that dies in the middle of a change.
 type anchorKill struct{ afterCommit bool }
 
-// newAnchorHub builds a "." hub whose prime warp tracks sub/ and other/ before any pair is added.
+// anchorTemplate is the "." hub whose prime warp tracks sub/ and other/ in unpushed commits, with no pair added.
+var anchorTemplate = hubforge.Registration{
+	Key:  "fabricengine-anchor",
+	Base: hubforge.Shape{Anchor: "."},
+	Build: func(tb testing.TB, h *hubforge.Hub) {
+		gitkit.CommitFile(tb, h.PrimeWorktree(), "sub/.keep", "", "track sub")
+		gitkit.CommitFile(tb, h.PrimeWorktree(), "other/.keep", "", "track other")
+	},
+}
+
+// newAnchorHub returns a copy of anchorTemplate.
 func newAnchorHub(t *testing.T) *hubforge.Hub {
 	t.Helper()
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	gitkit.CommitFile(t, h.PrimeWorktree(), "sub/.keep", "", "track sub")
-	gitkit.CommitFile(t, h.PrimeWorktree(), "other/.keep", "", "track other")
-	return h
+	return hubforge.CopyRegistered(t, &anchorTemplate)
 }
 
 // beginAnchorChange begins the change of slug's anchor to target from the anchor the hub records for slug.
