@@ -95,10 +95,7 @@ func TestMergeAbort_FreshHandle_RecoversConflictedRecord(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &conflictLayer)
 
 	warpStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	weftStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
@@ -188,13 +185,10 @@ func TestMergeContinue_ConcludeFailureThenRetryConcludes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	// setupCleanNonFastForward forks the branch off the pre-divergence HEAD and advances current separately.
+	// The layer forks the branch off the pre-divergence HEAD and advances current separately.
 	// The target is a genuine non-fast-forward merge, so it lands a real conclude commit.
 	// A fast-forward would make concludeMergeSides skip the conclude commit.
-	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &nonFastForwardLayer)
 
 	installFailingPreCommitHook(t, h.PrimeWorktree())
 
@@ -519,10 +513,7 @@ func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testin
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &clashLayer)
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -605,10 +596,7 @@ func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &clashLayer)
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -665,10 +653,7 @@ func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &clashLayer)
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -735,10 +720,7 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &clashLayer)
 
 	// A decoy branch off the current warp HEAD, carrying one non-conflicting commit.
 	commitOnBranch(t, h.PrimeWorktree(), "decoy", "decoy.txt", "nothing to do with feature\n", "decoy commit")
@@ -1149,10 +1131,7 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &nonFastForwardLayer)
 
 	// Sabotage the warp conclude so Merge stops with the record retained and warp_outcome staged —
 	// the state a crash between `git merge --squash` and the conclude commit leaves.
@@ -1301,10 +1280,7 @@ func TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted(t *tes
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &nonFastForwardLayer)
 
 	// Sabotage the warp conclude so Merge stops with the record retained, squash recorded, and the
 	// warp side staged with no conclude SHA.

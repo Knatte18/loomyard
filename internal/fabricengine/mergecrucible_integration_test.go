@@ -43,9 +43,7 @@ func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
-	commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
-	commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &featureBothSidesLayer)
 
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "--detach", "HEAD")
 
@@ -77,9 +75,7 @@ func TestMergeCrucible_WeftDetachedDoesNotRefuse(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
-	commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
-	commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &featureBothSidesLayer)
 
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "checkout", "-q", "--detach", "HEAD")
 
@@ -110,9 +106,7 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
-	commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
-	commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
+	h, f, _, _, commitOnWarpCurrent, commitOnWeftCurrent := newMergeLayerFixture(t, &featureBothSidesLayer)
 	// Diverge the target branches so the reconstructed attempt stages rather than fast-forwards:
 	// a fast-forward moves HEAD, and the crash window this test reconstructs is the staged one.
 	commitOnWarpCurrent("target.txt", "target\n", "target: warp")
@@ -176,9 +170,7 @@ func TestMergeCrucible_ResultFlagsDescribeWhatHappened(t *testing.T) {
 	t.Parallel()
 
 	t.Run("FastForwardBothSidesFabricatesNoCommit", func(t *testing.T) {
-		h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
-		commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
-		commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
+		h, f, _, _, _, _ := newMergeLayerFixture(t, &featureBothSidesLayer)
 
 		res, err := f.MergeIn("feature")
 		if err != nil {
@@ -197,9 +189,7 @@ func TestMergeCrucible_ResultFlagsDescribeWhatHappened(t *testing.T) {
 	})
 
 	t.Run("SecondCallReportsAlreadyUpToDateNotCommitted", func(t *testing.T) {
-		_, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
-		commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
-		commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
+		_, f, _, _, commitOnWarpCurrent, commitOnWeftCurrent := newMergeLayerFixture(t, &featureBothSidesLayer)
 		commitOnWarpCurrent("target.txt", "target\n", "target: warp")
 		commitOnWeftCurrent("target.txt", "target\n", "target: weft")
 

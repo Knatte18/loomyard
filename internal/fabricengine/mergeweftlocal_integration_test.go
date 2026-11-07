@@ -185,10 +185,7 @@ func TestMergeWeftLocal_MergeIn_WarpConflictReachesUnifyConflictPaths(t *testing
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &clashLayer)
 
 	res, err := f.MergeIn("feature")
 	if err != nil {

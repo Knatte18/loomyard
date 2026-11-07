@@ -26,8 +26,94 @@ import (
 // so the checkout MergeIn runs against stays on its original branch.
 func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabricengine.Fabric, commitOnWarpBranch, commitOnWeftBranch func(branch, filename, content, msg string), commitOnWarpCurrent, commitOnWeftCurrent func(filename, content, msg string)) {
 	t.Helper()
+	return mergePairFixtureOf(t, hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor}))
+}
 
-	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
+// newMergeLayerFixture copies layer, a "." hub template whose build already made a merge scenario's commits.
+// It returns the copy's Hub and the Fabric opened over its prime warp and weft worktrees.
+// The commitOnWarpBranch and commitOnWeftBranch closures commit on a named branch and switch back,
+// so the checkout MergeIn runs against stays on its original branch.
+func newMergeLayerFixture(t *testing.T, layer *hubforge.Registration) (h *hubforge.Hub, f *fabricengine.Fabric, commitOnWarpBranch, commitOnWeftBranch func(branch, filename, content, msg string), commitOnWarpCurrent, commitOnWeftCurrent func(filename, content, msg string)) {
+	t.Helper()
+	return mergePairFixtureOf(t, hubforge.CopyRegistered(t, layer))
+}
+
+// The merge layers: "." hubs whose prime pair carries a merge scenario's branch commits.
+// Each holds a start state that at least three tests share.
+var (
+	// conflictLayer's warp branch "feature" conflicts with the current branch on conflict.txt,
+	// and its weft branch "feature-weft" is at the weft's HEAD.
+	conflictLayer = hubforge.Registration{
+		Key:   "fabricengine-merge-conflict",
+		Base:  hubforge.Shape{Anchor: "."},
+		Build: conflictingFeature("conflict.txt"),
+	}
+	// clashLayer is conflictLayer's scenario with the conflict on clash.txt.
+	clashLayer = hubforge.Registration{
+		Key:   "fabricengine-merge-clash",
+		Base:  hubforge.Shape{Anchor: "."},
+		Build: conflictingFeature("clash.txt"),
+	}
+	// nonFastForwardLayer's warp branch "feature" adds warp-branch.txt, the current branch has since added warp-current.txt,
+	// and its weft branch "feature-weft" is at the weft's HEAD.
+	nonFastForwardLayer = hubforge.Registration{
+		Key:   "fabricengine-merge-nonff",
+		Base:  hubforge.Shape{Anchor: "."},
+		Build: nonFastForwardFeature("warp-branch.txt", "warp-current.txt"),
+	}
+	// warpProgressLayer is nonFastForwardLayer's scenario with the branch adding feature.txt and the current branch warp-progress.txt.
+	warpProgressLayer = hubforge.Registration{
+		Key:   "fabricengine-merge-warp-progress",
+		Base:  hubforge.Shape{Anchor: "."},
+		Build: nonFastForwardFeature("feature.txt", "warp-progress.txt"),
+	}
+	// featureBothSidesLayer has "feature" and "feature-weft" each one commit adding feature.txt past the current branches.
+	featureBothSidesLayer = hubforge.Registration{
+		Key:  "fabricengine-merge-feature-both-sides",
+		Base: hubforge.Shape{Anchor: "."},
+		Build: func(tb testing.TB, h *hubforge.Hub) {
+			tb.Helper()
+			commitOnBranch(tb, h.PrimeWorktree(), "feature", "feature.txt", "feature\n", "feature: warp")
+			commitOnBranch(tb, h.PrimeRecords(), "feature-weft", "feature.txt", "feature\n", "feature: weft")
+		},
+	}
+	// cleanMergeableLayer has "feature" and "feature-weft" each one commit past the current branches, mergeable without conflict.
+	cleanMergeableLayer = hubforge.Registration{
+		Key:  "fabricengine-merge-clean",
+		Base: hubforge.Shape{Anchor: "."},
+		Build: func(tb testing.TB, h *hubforge.Hub) {
+			tb.Helper()
+			commitOnBranch(tb, h.PrimeWorktree(), "feature", "clean-warp.txt", "clean\n", "warp: clean branch")
+			commitOnBranch(tb, h.PrimeRecords(), "feature-weft", "_lym/clean-weft.txt", "clean\n", "weft: clean branch")
+		},
+	}
+)
+
+// conflictingFeature returns a layer build that makes the warp branch "feature" conflict with the current branch on filename.
+// It branches "feature-weft" at the weft's HEAD.
+func conflictingFeature(filename string) func(tb testing.TB, h *hubforge.Hub) {
+	return func(tb testing.TB, h *hubforge.Hub) {
+		tb.Helper()
+		setupConflictingDivergence(tb, h.PrimeWorktree(), "feature", filename)
+		branchAtCurrentHEAD(tb, h.PrimeRecords(), "feature-weft")
+	}
+}
+
+// nonFastForwardFeature returns a layer build whose warp branch "feature" adds branchFile,
+// while the current branch advances past the branch point by adding currentFile.
+// It branches "feature-weft" at the weft's HEAD.
+func nonFastForwardFeature(branchFile, currentFile string) func(tb testing.TB, h *hubforge.Hub) {
+	return func(tb testing.TB, h *hubforge.Hub) {
+		tb.Helper()
+		setupCleanNonFastForward(tb, h.PrimeWorktree(), "feature", branchFile, currentFile)
+		branchAtCurrentHEAD(tb, h.PrimeRecords(), "feature-weft")
+	}
+}
+
+// mergePairFixtureOf returns h, the Fabric opened over its prime warp and weft worktrees, and the commit closures over them.
+func mergePairFixtureOf(t *testing.T, h *hubforge.Hub) (_ *hubforge.Hub, f *fabricengine.Fabric, commitOnWarpBranch, commitOnWeftBranch func(branch, filename, content, msg string), commitOnWarpCurrent, commitOnWeftCurrent func(filename, content, msg string)) {
+	t.Helper()
+
 	f = hubforge.OpenFabric(t, h)
 
 	warpDir, weftDir := h.PrimeWorktree(), h.PrimeRecords()
@@ -48,37 +134,37 @@ func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabri
 
 // commitOnBranch checks out branch in dir, creating it off the current checkout when it does not exist yet.
 // It writes filename with content, commits msg, and switches back to the previous branch.
-func commitOnBranch(t *testing.T, dir, branch, filename, content, msg string) {
-	t.Helper()
+func commitOnBranch(tb testing.TB, dir, branch, filename, content, msg string) {
+	tb.Helper()
 
-	current := gitkit.CurrentBranch(t, dir)
-	if gitkit.BranchExists(t, dir, branch) {
-		gitkit.MustRun(t, dir, "git", "checkout", "-q", branch)
+	current := gitkit.CurrentBranch(tb, dir)
+	if gitkit.BranchExists(tb, dir, branch) {
+		gitkit.MustRun(tb, dir, "git", "checkout", "-q", branch)
 	} else {
-		gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", branch)
+		gitkit.MustRun(tb, dir, "git", "checkout", "-q", "-b", branch)
 	}
 
-	gitkit.CommitFile(t, dir, filename, content, msg)
+	gitkit.CommitFile(tb, dir, filename, content, msg)
 
-	gitkit.MustRun(t, dir, "git", "checkout", "-q", current)
+	gitkit.MustRun(tb, dir, "git", "checkout", "-q", current)
 }
 
 // branchAtCurrentHEAD creates branch in dir at the current HEAD, without checking it out or adding a commit.
 // Merging it reports already up to date.
-func branchAtCurrentHEAD(t *testing.T, dir, branch string) {
-	t.Helper()
-	gitkit.MustRun(t, dir, "git", "branch", branch)
+func branchAtCurrentHEAD(tb testing.TB, dir, branch string) {
+	tb.Helper()
+	gitkit.MustRun(tb, dir, "git", "branch", branch)
 }
 
 // setupConflictingDivergence commits filename on dir's current branch.
 // It then writes different content to filename on branch and on the current branch.
 // Merging branch into the current branch then conflicts on filename.
-func setupConflictingDivergence(t *testing.T, dir, branch, filename string) {
-	t.Helper()
+func setupConflictingDivergence(tb testing.TB, dir, branch, filename string) {
+	tb.Helper()
 
-	gitkit.CommitFile(t, dir, filename, "seed content\n", "seed "+filename)
-	commitOnBranch(t, dir, branch, filename, "branch content\n", "diverge "+filename+" on "+branch)
-	gitkit.CommitFile(t, dir, filename, "current content\n", "diverge "+filename+" on current")
+	gitkit.CommitFile(tb, dir, filename, "seed content\n", "seed "+filename)
+	commitOnBranch(tb, dir, branch, filename, "branch content\n", "diverge "+filename+" on "+branch)
+	gitkit.CommitFile(tb, dir, filename, "current content\n", "diverge "+filename+" on current")
 }
 
 // setupCleanFastForward creates branch off dir's current HEAD with one commit adding filename.
@@ -90,10 +176,10 @@ func setupCleanFastForward(t *testing.T, dir, branch, filename string) {
 
 // setupCleanNonFastForward creates branch off dir's current HEAD with a commit adding branchFile.
 // It then advances the current branch with a commit adding currentFile, so merging branch is not a fast-forward.
-func setupCleanNonFastForward(t *testing.T, dir, branch, branchFile, currentFile string) {
-	t.Helper()
-	commitOnBranch(t, dir, branch, branchFile, "clean branch content\n", "clean "+branchFile+" on "+branch)
-	gitkit.CommitFile(t, dir, currentFile, "current progress\n", "progress current past "+branch)
+func setupCleanNonFastForward(tb testing.TB, dir, branch, branchFile, currentFile string) {
+	tb.Helper()
+	commitOnBranch(tb, dir, branch, branchFile, "clean branch content\n", "clean "+branchFile+" on "+branch)
+	gitkit.CommitFile(tb, dir, currentFile, "current progress\n", "progress current past "+branch)
 }
 
 // TestMergeIn_BothSidesClean covers the both-sides-clean scenario.
@@ -291,10 +377,7 @@ func TestMergeContinue_ResolvedConflictsConclude(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &conflictLayer)
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -333,10 +416,7 @@ func TestMergeContinue_UnresolvedConflictsRefuse(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	_, f, _, _, _, _ := newMergeLayerFixture(t, &conflictLayer)
 
 	if _, err := f.MergeIn("feature"); err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
@@ -359,12 +439,9 @@ func TestMergeAbort_AfterConflict(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &conflictLayer)
 
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
-
-	// Captured after the divergence commits above land: these are the pre-merge SHAs
+	// Captured after the layer's divergence commits: these are the pre-merge SHAs
 	// MergeIn's own record captures and MergeAbort must restore — not the SHAs from before this fixture's own setup ran.
 	warpStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	weftStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
