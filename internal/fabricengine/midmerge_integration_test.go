@@ -38,9 +38,7 @@ func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	h, f, _, _, _, _ := newMergeLayerFixture(t, &clashLayer)
 	wantStartSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 	wantSourceSHA := gitkit.RevParse(t, h.PrimeWorktree(), "feature")
 
