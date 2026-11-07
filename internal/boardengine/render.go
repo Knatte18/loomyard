@@ -9,6 +9,7 @@
 // Tasks split by Running, Ready, dependency layers, Independent and Draft.
 // The design files are built by renderDesigns;
 // each opens with a header naming the entry's slug, kind, labels and status, then the stored body unchanged.
+// A discussed entry's header and Slug cells link its decision record.
 // RenderToDisk writes the files and maintains the manifest sidecar .board-rendered.json;
 // so renamed or removed outputs are cleaned up on the next render.
 
@@ -33,8 +34,10 @@ const renderManifestFile = ".board-rendered.json"
 
 // RenderToDisk renders the board as of now and writes its output files under boardPath.
 // It removes the files the previous render recorded in the manifest that this render does not produce.
+// An entry flagged discussed whose decision record file is missing from boardPath renders as undiscussed,
+// so no board file links a missing record.
 func RenderToDisk(boardPath string, tasks []Task, primeOwner string, out Outputs, now time.Time) error {
-	files, err := Render(tasks, primeOwner, out, now)
+	files, err := Render(withMissingRecordsUndiscussed(boardPath, tasks), primeOwner, out, now)
 	if err != nil {
 		return err
 	}
@@ -54,6 +57,21 @@ func RenderToDisk(boardPath string, tasks []Task, primeOwner string, out Outputs
 
 	writeRenderManifest(boardPath, files)
 	return nil
+}
+
+// withMissingRecordsUndiscussed returns a copy of tasks.
+// Each discussed entry whose decision record file is missing from boardPath has its discussed flag cleared in the copy.
+func withMissingRecordsUndiscussed(boardPath string, tasks []Task) []Task {
+	rendered := slices.Clone(tasks)
+	for i, task := range rendered {
+		if !task.Discussed {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(boardPath, DecisionFileName(task.Slug))); err != nil {
+			rendered[i].Discussed = false
+		}
+	}
+	return rendered
 }
 
 // readRenderManifest returns the filenames the previous render recorded.
@@ -87,6 +105,7 @@ func writeRenderManifest(boardPath string, files map[string]string) {
 // Render produces the board output files from the entries, measuring every age as of now.
 // primeOwner is the machine that owns the hub's prime, or "" when none is recorded.
 // Every project, open or done, gets a file named by projectFileName, and the root project gets rootProjectFile.
+// Every entry flagged discussed is linked to its decision record, which Render takes to exist.
 func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[string]string, error) {
 	ordered, err := RenderOrder(tasks)
 	if err != nil {
@@ -765,6 +784,14 @@ func slugCell(t Task, designPrefix string) string {
 // sketchLinkText is the text of a discussed entry's link to its decision record.
 const sketchLinkText = "Sketch"
 
+// recordLinePrefix opens the design doc line that links a discussed entry's decision record.
+const recordLinePrefix = "Decision record: "
+
+// sketchLink is a markdown link to the decision record of the entry slug.
+func sketchLink(slug string) string {
+	return "[" + sketchLinkText + "](" + DecisionFileName(slug) + ")"
+}
+
 // slugColumnCell is a table's Slug cell: slugCell, with a Sketch link to the decision record for a discussed entry.
 // The link stacks under the slug, so the mark adds no column.
 func slugColumnCell(t Task, designPrefix string) string {
@@ -772,7 +799,7 @@ func slugColumnCell(t Task, designPrefix string) string {
 	if !t.Discussed {
 		return cell
 	}
-	return cell + cellBreak + "[" + sketchLinkText + "](" + DecisionFileName(t.Slug) + ")"
+	return cell + cellBreak + sketchLink(t.Slug)
 }
 
 // priorityCell is H for a high priority, L for a low one and empty for normal.
@@ -906,7 +933,8 @@ func labelsCell(t Task, types []string) string {
 }
 
 // renderDesigns returns one design-doc file entry per entry with a non-empty body, using the configured design prefix.
-// The doc is a header (title, metadata line, dependencies) followed by the body byte-for-byte.
+// The doc is a header (title, metadata line, decision record link, dependencies) followed by the body byte-for-byte.
+// The decision record link stands only in a discussed entry's header.
 func renderDesigns(entries []Task, designPrefix string) map[string]string {
 	hasBody := make(map[string]bool, len(entries))
 	for _, e := range entries {
@@ -919,6 +947,9 @@ func renderDesigns(entries []Task, designPrefix string) map[string]string {
 			continue
 		}
 		header := []string{"# " + e.Title, "", metaLine(e, kindName(e.Kind)), ""}
+		if e.Discussed {
+			header = append(header, recordLinePrefix+sketchLink(e.Slug), "")
+		}
 		if len(e.DependsOn) > 0 {
 			deps := make([]string, len(e.DependsOn))
 			for i, d := range e.DependsOn {

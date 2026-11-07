@@ -38,6 +38,14 @@ func TestStoreDecisionRecord(t *testing.T) {
 			if task, _, _ := b.GetTask("old"); !task.Discussed {
 				t.Errorf("GetTask(old).Discussed = false; want true")
 			}
+			for file, want := range map[string]string{
+				readmeFile:        "[Sketch](decision-old.md)",
+				"proposal-old.md": "Decision record: [Sketch](decision-old.md)",
+			} {
+				if content, err := os.ReadFile(filepath.Join(boardPath, file)); err != nil || !strings.Contains(string(content), want) {
+					t.Errorf("%s after the store = %q, %v; want it to contain %q", file, content, err, want)
+				}
+			}
 			boardJSON, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
 			if err != nil {
 				t.Fatalf("read board.json: %v", err)

@@ -505,8 +505,10 @@
 // An entry whose run's Discussion was approved carries the discussed flag.
 // Its decision record is the file `decision-<slug>.md` beside board.json, at the Bolt root;
 // the file follows its entry through a rename, and a remove, a prune or a merge that drops the slug removes it.
-// The file is no render output, so RenderToDisk's manifest never holds it and a render never deletes it;
-// a flagged entry's Slug cell in every board table links it as `Sketch`.
+// The file is no render output, so RenderToDisk's manifest never holds it and a render never deletes it.
+// A flagged entry's Slug cell in every board table links it as `Sketch`.
+// So does a `Decision record:` line under the metadata line of the entry's design doc.
+// RenderToDisk renders a flagged entry whose file is missing as unflagged, so no board file links a missing record.
 // Only lym writes the flag and the file: Board.StoreDecisionRecord is the one writer.
 // A payload may carry discussed only as the entry's stored value, false for a new entry, which is dropped as a no-op;
 // any other value is refused.

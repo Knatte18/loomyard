@@ -1119,6 +1119,59 @@ func TestRenderSlugCellLinksTheDecisionRecord(t *testing.T) {
 	}
 }
 
+// TestRenderToDiskLinksOnlyAStoredDecisionRecord pins which discussed entries RenderToDisk links.
+// The link appears in the README row and the design doc only when the record file exists in the board directory.
+func TestRenderToDiskLinksOnlyAStoredDecisionRecord(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, boardengine.DecisionFileName("stored")), []byte("## Goal\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tasks := []boardengine.Task{
+		{ID: 1, Handle: "T1", Slug: "stored", Title: "Stored", Kind: boardengine.KindTask, Labels: []string{"bug"}, Body: "body", Discussed: true},
+		{ID: 2, Handle: "T2", Slug: "missing", Title: "Missing", Kind: boardengine.KindTask, Labels: []string{"bug"}, Body: "body", Discussed: true},
+	}
+	out := boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes, DefaultRecipe: "darn"}
+	if err := boardengine.RenderToDisk(dir, tasks, "", out, renderTime); err != nil {
+		t.Fatalf("RenderToDisk: %v", err)
+	}
+	if !tasks[1].Discussed {
+		t.Errorf("tasks[1].Discussed = false after RenderToDisk; want the caller's entry left flagged")
+	}
+	read := func(name string) string {
+		t.Helper()
+		content, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		return string(content)
+	}
+	readme := read("README.md")
+	tests := []struct {
+		name    string
+		content string
+		want    string
+		wantNot string
+	}{
+		{"StoredRecordReadmeRow", readme, "| T1 | **Stored** | [`stored`](design-stored.md)<br>[Sketch](decision-stored.md) | darn |", ""},
+		{"MissingRecordReadmeRow", readme, "| T2 | **Missing** | [`missing`](design-missing.md) | darn |", "decision-missing.md"},
+		{"StoredRecordDesignDoc", read("design-stored.md"), "\n\nDecision record: [Sketch](decision-stored.md)\n\n", ""},
+		{"MissingRecordDesignDoc", read("design-missing.md"), "", "Decision record:"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if !strings.Contains(tt.content, tt.want) {
+				t.Errorf("content lacks %q:\n%s", tt.want, tt.content)
+			}
+			if tt.wantNot != "" && strings.Contains(tt.content, tt.wantNot) {
+				t.Errorf("content holds %q:\n%s", tt.wantNot, tt.content)
+			}
+		})
+	}
+}
+
 // TestRenderSketchSection pins that Sketches render first among the Notes subsections, ahead of Research.
 // Each row is a note row with its Sketch link and its module labels.
 func TestRenderSketchSection(t *testing.T) {
@@ -1236,6 +1289,7 @@ func TestRenderDesignDocGoldens(t *testing.T) {
 		{ID: 3, Slug: "main", Title: "Main", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("active"),
 			DependsOn: []string{"linked", "bare"}, Body: "line one\n\n  indented\nline three"},
 		{ID: 4, Slug: "plain", Title: "Plain", Kind: note, Labels: []string{"enhancement"}, Body: "just a body"},
+		{ID: 5, Slug: "discussed", Title: "Discussed", Kind: task, Labels: []string{"bug"}, DependsOn: []string{"linked"}, Body: "the brief", Discussed: true},
 	}
 	result, err := boardengine.Render(tasks, "", boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes}, renderTime)
 	if err != nil {
@@ -1255,6 +1309,13 @@ func TestRenderDesignDocGoldens(t *testing.T) {
 		{
 			file: "design-plain.md",
 			want: "# Plain\n\n`plain` · Note · enhancement\n\njust a body",
+		},
+		{
+			file: "design-discussed.md",
+			want: "# Discussed\n\n`discussed` · Task · bug\n\n" +
+				"Decision record: [Sketch](decision-discussed.md)\n\n" +
+				"Depends on: [`linked`](design-linked.md)\n\n" +
+				"the brief",
 		},
 	}
 	for _, tt := range tests {
