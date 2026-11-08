@@ -1274,7 +1274,7 @@ func TestDispatchSetProfiles(t *testing.T) {
 // A hub-wide module has no worktree layer.
 // A local override is written uncommitted and refuses a key the local layer closes.
 // A machine override is written uncommitted from the prime through the load check,
-// and it is refused on a module with no machine file.
+// and it is refused on a module with no machine key.
 // A worktree write under a board is sparse, and --print reads the selected layer.
 func TestDispatchLayers(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1564,6 +1564,13 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
+			name: "machine layer writes a per-worktree module's machine key uncommitted from the prime", module: "codex", layer: "machine",
+			setFlags: []string{"sandbox_mode=danger-full-access"},
+			check: func(t *testing.T, fx hubFixture, out string) {
+				assertFile(t, configengine.MachineFile(fx.board, "codex"), "sandbox_mode: danger-full-access\n", false)
+			},
+		},
+		{
 			name: "machine layer set is refused by a refusing guard and leaves no file", module: "gate", layer: "machine",
 			setFlags: []string{"tier_parallel.tier0=8"}, seedBoard: gateTemplate(), wantCode: 1, wantErr: refused, guard: refusingGuard,
 			check: func(t *testing.T, fx hubFixture, out string) {
@@ -1657,7 +1664,7 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
-			name: "machine layer of a per-worktree module is refused naming the local layer", module: "loom", layer: "machine",
+			name: "machine layer of a per-worktree module with no machine key is refused naming the local layer", module: "loom", layer: "machine",
 			setFlags: []string{"review_max_bounces=2"}, seedBoard: loomTemplate(), wantCode: 1, wantErr: "--layer local",
 			check: func(t *testing.T, fx hubFixture, out string) {
 				assertFile(t, configengine.MachineFile(fx.board, "loom"), "", true)

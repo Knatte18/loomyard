@@ -984,6 +984,8 @@ func TestLayerFile(t *testing.T) {
 	hubWide := layerSpec()
 	hubWide.HubWide = true
 	machine := machineSpec()
+	perWorktreeMachine := machineSpec()
+	perWorktreeMachine.HubWide = false
 	hub := configengine.Dirs{Anchor: "/a", Board: "/b"}
 
 	tests := []struct {
@@ -1004,7 +1006,8 @@ func TestLayerFile(t *testing.T) {
 		{"no anchor means no local layer", configengine.Dirs{Board: "/b"}, spec, configengine.LayerLocal, "", false, configengine.LayerDefault},
 		{"template has no file", hub, spec, configengine.LayerTemplate, "", false, configengine.LayerDefault},
 		{"machine under the board dir's .lym", hub, machine, configengine.LayerMachine, filepath.Join("/b", lymdirs.DotLymDirName, "config", layerModule+".machine.yaml"), true, configengine.LayerDefault},
-		{"machine does not apply to a per-worktree module", hub, spec, configengine.LayerMachine, "", false, configengine.LayerDefault},
+		{"machine applies to a per-worktree module with a machine key", hub, perWorktreeMachine, configengine.LayerMachine, filepath.Join("/b", lymdirs.DotLymDirName, "config", layerModule+".machine.yaml"), true, configengine.LayerDefault},
+		{"machine does not apply to a per-worktree module with no machine key", hub, spec, configengine.LayerMachine, "", false, configengine.LayerDefault},
 		{"machine does not apply to a hub-wide module with no machine key", hub, hubWide, configengine.LayerMachine, "", false, configengine.LayerDefault},
 		{"machine does not apply with the board dir alone", configengine.Dirs{Board: "/b"}, machine, configengine.LayerMachine, "", false, configengine.LayerDefault},
 		{"machine does not apply with the anchor alone", configengine.Dirs{Anchor: "/a"}, machine, configengine.LayerMachine, "", false, configengine.LayerWorktree},

@@ -50,9 +50,11 @@
 //   - the untracked local override, `<Anchor>/.lym/config/<module>.local.yaml`, [LayerLocal].
 //
 // A hub-wide module stacks the template, the hub file `<Board>/_lym/config/<module>.yaml` and the local file.
-// A hub-wide module with a [CategoryMachine] key also stacks, between the hub file and the local file, [LayerMachine]:
+// A module with a [CategoryMachine] key also stacks, below the local file, [LayerMachine]:
 // the untracked machine override `<Board>/.lym/config/<module>.machine.yaml`.
-// The stack is then template, hub file, machine, local, so a local value wins over a machine one.
+// A hub-wide module's stack is then template, hub file, machine, local;
+// a per-worktree module's is template, repo default, worktree, machine, local.
+// So a machine value wins over every tracked file, and a local value wins over a machine one.
 // The machine layer applies only when `Dirs` carries both `Anchor` and `Board`.
 // So a load that tells `Board` alone, as a hub-file check does, stacks none, and a standalone load never reads one.
 // It applies whether or not the anchor has a `_lym/`.

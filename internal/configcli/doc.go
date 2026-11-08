@@ -34,14 +34,14 @@
 // A hub-wide module has no worktree file, so the refusal names two ways forward:
 // `--layer default` from the prime and `--layer local`.
 // `--layer machine` addresses `configengine.MachineFile` of the Bolt checkout.
-// It applies to a hub-wide module with machine keys (`configengine.MachineKeys`).
-// The file is never tracked and bounds a resource every worktree of the hub on this machine shares.
+// It applies to a module with machine keys (`configengine.MachineKeys`), hub-wide or per-worktree.
+// The file is never tracked and holds a value every worktree of the hub on this machine shares.
 // It passes the default layer's write guard below, never commits and runs no fabric sync.
 // It refuses a key the machine layer closes before writing anything.
 // It checks that the stack still loads over the prime's worktree and puts the file back when it does not.
-// It is refused on a per-worktree module, naming `--layer local` as the way forward.
-// It is refused on a hub-wide module with no machine key.
-// That refusal names `lym config <module>` from the prime as the way forward.
+// It is refused on a module with no machine key.
+// For a per-worktree module the refusal names `--layer local` as the way forward.
+// For a hub-wide module it names `lym config <module>` from the prime.
 // Both refusals touch no file.
 // `--layer local` writes `configengine.LocalFile` of the anchor, never commits and runs no fabric sync.
 // It refuses a key the local layer closes (`configengine.ValidateLocal`) and leaves the file as it was.

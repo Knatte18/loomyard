@@ -103,7 +103,7 @@ func (d configDirs) engineDirs() configengine.Dirs {
 // An empty --layer selects the module's own default.
 // --layer worktree on a hub-wide module is refused with the ways forward.
 // A hub-wide module's default with no board is the worktree layer, the one file a standalone worktree has.
-// --layer machine is refused on a per-worktree module and on a hub-wide module that classifies no machine key.
+// --layer machine is refused on a module that classifies no machine key.
 func (d configDirs) selectedLayer(module configreg.Module) (configengine.Layer, error) {
 	switch {
 	case d.layer == "" && module.HubWide && d.board == "":
@@ -114,8 +114,8 @@ func (d configDirs) selectedLayer(module configreg.Module) (configengine.Layer, 
 		return configengine.LayerWorktree, nil
 	case d.layer == string(configengine.LayerWorktree) && module.HubWide:
 		return "", fmt.Errorf("%s is a hub-wide module and has no worktree file; way forward: --layer default from the hub's prime worktree, or --layer local", module.Name)
-	case d.layer == string(configengine.LayerMachine) && !module.HubWide:
-		return "", fmt.Errorf("%s is a per-worktree module and has no machine file; way forward: --layer local", module.Name)
+	case d.layer == string(configengine.LayerMachine) && !module.HubWide && len(configengine.MachineKeys(module.Spec())) == 0:
+		return "", fmt.Errorf("%s is a per-worktree module with no machine key, so it has no machine file; way forward: --layer local", module.Name)
 	case d.layer == string(configengine.LayerMachine) && len(configengine.MachineKeys(module.Spec())) == 0:
 		return "", fmt.Errorf("%s has no machine key; way forward: \"lym config %s\" from the hub's prime worktree", module.Name, module.Name)
 	}

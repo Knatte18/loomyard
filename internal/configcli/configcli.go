@@ -310,7 +310,7 @@ func setLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string,
 	return output.Ok(out, fields)
 }
 
-// setMachine writes pairs into a hub-wide module's machine override file at path.
+// setMachine writes pairs into a module's machine override file at path.
 // A machine override is never committed and runs no fabric sync.
 // A key the machine layer refuses leaves the file as it was.
 // So does a value the module's loader refuses over the prime's worktree stack.
@@ -329,7 +329,7 @@ func setMachine(dirs configDirs, out io.Writer, mod configreg.Module, path strin
 	return output.Ok(out, fields)
 }
 
-// editMachine edits a hub-wide module's machine override file at path in the editor.
+// editMachine edits a module's machine override file at path in the editor.
 // A machine override is never committed and runs no fabric sync.
 // A saved key the machine layer refuses puts the file back to its previous bytes.
 // So does a save that leaves the stack newly failing to load.
@@ -671,7 +671,7 @@ func Command() *cobra.Command {
 	configCmd.Flags().Bool("print", false, "print on-disk config as YAML without launching the editor")
 	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
 	configCmd.Flags().Bool("resolved", false, "print the module's resolved config, each unit annotated with the layer it came from")
-	configCmd.Flags().String("layer", "", "the layer to print or write: default, worktree, machine or local (default: the module's own file); machine is a hub-wide module's never-tracked override of its machine keys under the board dir's .lym, written from the prime")
+	configCmd.Flags().String("layer", "", "the layer to print or write: default, worktree, machine or local (default: the module's own file); machine is a module's never-tracked override of its machine keys under the board dir's .lym, written from the prime")
 	// The RunE closure captures configCmd so the --print and --set flags are readable without consulting os.Args.
 	configCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if clihelp.ShouldAbort(cmd.Context()) {

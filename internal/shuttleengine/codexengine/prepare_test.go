@@ -41,6 +41,7 @@ func readRecord(t *testing.T, home string) trustRecord {
 // The writable roots are the told records checkout (none when the engine is told none).
 // After it come the git dirs of a linked worktree or a plain clone, then the configured roots that exist.
 // The hooks of the run are carried, with a guard per row that the python switch and the publish guard install.
+// The line runs codex.yaml's sandbox mode, workspace-write unless a layer sets danger-full-access.
 // The line also carries the prompt pointer.
 // It also pins the resume line, which exits and records the session start.
 // An engine told no board gets no creel hooks, and the resume line has no session id.
@@ -61,6 +62,8 @@ func TestPrepare_Launch(t *testing.T) {
 		configuredRoots bool
 		// gitDirsThroughLink reports whether the linked worktree reaches its git dir and common dir through a symlink.
 		gitDirsThroughLink bool
+		// fullAccess reports whether codex.yaml's worktree layer sets the danger-full-access sandbox mode.
+		fullAccess bool
 	}{
 		{name: "RecordsTold", toldRecords: true},
 		{name: "RecordsToldThroughLink", toldRecords: true, toldThroughLink: true},
@@ -68,6 +71,7 @@ func TestPrepare_Launch(t *testing.T) {
 		{name: "PlainClone", plainClone: true},
 		{name: "ConfiguredRoots", toldRecords: true, configuredRoots: true},
 		{name: "GitDirsThroughLink", gitDirsThroughLink: true},
+		{name: "DangerFullAccess", toldRecords: true, fullAccess: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -102,6 +106,11 @@ func TestPrepare_Launch(t *testing.T) {
 				writeWritableRoots(t, anchor, cache+", "+filepath.Join(repo.base, "missing"))
 				wantRoots = append(wantRoots, cache)
 			}
+			wantMode := sandboxWorkspaceWrite
+			if tt.fullAccess {
+				writeFile(t, configengine.ConfigFile(anchor, "codex"), "writable_roots: []\nsandbox_mode: "+sandboxFullAccess+"\n")
+				wantMode = sandboxFullAccess
+			}
 			runDir := t.TempDir()
 
 			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "review the plan", DenyPublish: true, ModelChoice: shuttleengine.ModelChoice{Engine: "codex", Model: "gpt-6-astra", Effort: "medium"}}, shuttleengine.Config{DenyPython: true})
@@ -116,6 +125,7 @@ func TestPrepare_Launch(t *testing.T) {
 				Cmd: buildLaunchCmd(sh, launchLine{
 					bin:           "codex",
 					home:          repo.lymHome,
+					sandboxMode:   wantMode,
 					writableRoots: wantRoots,
 					model:         "gpt-6-astra",
 					effort:        "medium",
@@ -164,6 +174,7 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 	want := buildLaunchCmd(shell.ForGOOS(), launchLine{
 		bin:           "codex",
 		home:          repo.lymHome,
+		sandboxMode:   sandboxWorkspaceWrite,
 		writableRoots: append(repo.wantGitDirs(anchor), cache),
 		hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), installedGuards(nil, guardInputs{}), creelDelivery{}),
 		firstTurn:     launchPointer(promptPath),
@@ -228,6 +239,7 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 			wantCmd := buildLaunchCmd(shell.ForGOOS(), launchLine{
 				bin:           "codex",
 				home:          repo.lymHome,
+				sandboxMode:   sandboxWorkspaceWrite,
 				writableRoots: repo.wantGitDirs(anchor),
 				hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), guards, creelDelivery{}),
 				firstTurn:     launchPointer(promptPath),
@@ -464,6 +476,13 @@ func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 			wantErr: []string{`codex.yaml's writable_roots "cache"`, "way forward"},
 		},
 		{
+			name: "UnknownSandboxMode",
+			setup: func(t *testing.T, anchor string) {
+				writeFile(t, configengine.ConfigFile(anchor, "codex"), "writable_roots: []\nsandbox_mode: read-only\n")
+			},
+			wantErr: []string{`codex.yaml's sandbox_mode "read-only"`, "way forward", "--layer <default|worktree|machine|local>"},
+		},
+		{
 			name: "RulesInWorktree",
 			setup: func(t *testing.T, anchor string) {
 				mkdirAll(t, filepath.Join(anchor, codexFolderName, rulesDirName))
@@ -618,7 +637,7 @@ func TestCheckAfterStartup(t *testing.T) {
 
 // TestLoadConfig_Template pins codex.yaml's template:
 // the codex binary on PATH, the homes under ~/, the efforts low to high;
-// the Claude plugin cache as the skill root, and the Go build cache as the writable root.
+// the Claude plugin cache as the skill root, the workspace-write sandbox and the Go build cache as the writable root.
 func TestLoadConfig_Template(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -627,12 +646,69 @@ func TestLoadConfig_Template(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error: %v", err)
 	}
-	want := Config{Home: "~/.lym/codex", OperatorHome: "~/.codex", Efforts: []string{"low", "medium", "high"}, SkillRoots: []string{"~/.claude/plugins/cache"}, WritableRoots: []string{"~/.cache/go-build"}}
+	want := Config{Home: "~/.lym/codex", OperatorHome: "~/.codex", Efforts: []string{"low", "medium", "high"}, SkillRoots: []string{"~/.claude/plugins/cache"}, SandboxMode: sandboxWorkspaceWrite, WritableRoots: []string{"~/.cache/go-build"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("LoadConfig() = %+v; want %+v", got, want)
 	}
 	if bin := codexBinary(got); bin != "codex" {
 		t.Errorf("codexBinary() = %q; want codex", bin)
+	}
+}
+
+// TestLoadConfig_SandboxModeLayers pins which layers set sandbox_mode in a hub.
+// The machine override wins over the worktree file.
+// So one machine runs unsandboxed while the tracked files keep the sandbox.
+// A local override that sets it refuses the load.
+func TestLoadConfig_SandboxModeLayers(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		worktree string
+		machine  string
+		local    string
+		want     string
+		// wantErr is a text the load error must hold; empty means the load succeeds.
+		wantErr string
+	}{
+		{name: "MachineOverWorktree", worktree: sandboxWorkspaceWrite, machine: sandboxFullAccess, want: sandboxFullAccess},
+		{name: "WorktreeWithNoMachineFile", worktree: sandboxFullAccess, want: sandboxFullAccess},
+		{name: "LocalRefused", local: sandboxFullAccess, wantErr: `"sandbox_mode"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dirs := configengine.Dirs{Anchor: t.TempDir(), Board: t.TempDir()}
+			base := configengine.ConfigFile(dirs.Board, "codex")
+			mkdirAll(t, filepath.Dir(base), filepath.Dir(configengine.ConfigFile(dirs.Anchor, "codex")))
+			writeFile(t, base, configengine.SparseBaseHeader)
+			layers := []struct{ path, mode string }{
+				{configengine.ConfigFile(dirs.Anchor, "codex"), tt.worktree},
+				{configengine.MachineFile(dirs.Board, "codex"), tt.machine},
+				{configengine.LocalFile(dirs.Anchor, "codex"), tt.local},
+			}
+			for _, layer := range layers {
+				if layer.mode != "" {
+					mkdirAll(t, filepath.Dir(layer.path))
+					writeFile(t, layer.path, "sandbox_mode: "+layer.mode+"\n")
+				}
+			}
+
+			got, err := LoadConfig(dirs)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("LoadConfig() error = %v; want one naming %s", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadConfig() error: %v", err)
+			}
+			if got.SandboxMode != tt.want {
+				t.Errorf("LoadConfig().SandboxMode = %q; want %q", got.SandboxMode, tt.want)
+			}
+		})
 	}
 }
 

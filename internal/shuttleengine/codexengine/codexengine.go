@@ -88,7 +88,8 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // It readies the lym home and writes prompt.md into runDir.
 // The prompt holds the deny notice, the creel trust sentence, the standing passages and the spec's prompt.
 // The launch line carries a PreToolUse hook per installed shell guard.
-// It turns on the sandbox's network access, so the session reaches the creel daemon's socket.
+// It runs codex.yaml's sandbox mode, and under workspace-write it turns on the sandbox's network access,
+// so the session reaches the creel daemon's socket.
 // Once Codex exits, the launch appends the exit record to the run's events file.
 // A board directory adds creel's hook delivery and marks the launch CreelHooks.
 // A spec with skills starts with the skill load as its first turn.
@@ -139,6 +140,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		Cmd: buildLaunchCmd(sh, launchLine{
 			bin:           codexBinary(codex),
 			home:          home,
+			sandboxMode:   codex.SandboxMode,
 			writableRoots: writableRoots,
 			model:         spec.Model,
 			effort:        spec.Effort,
@@ -158,7 +160,8 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 // It refuses under Codex rules before anything is written.
 // Its line runs Codex with no hooks and no first turn, so the session carries no shell guard and waits at its composer.
 // When Codex exits, the pane's shell writes the exit marker, asks reed to remove the strand and exits.
-// The line turns on the sandbox's network access, so an opened session reaches the creel daemon's socket too.
+// The line runs codex.yaml's sandbox mode, and under workspace-write it turns on the sandbox's network access,
+// so an opened session reaches the creel daemon's socket too.
 // It writes nothing into the directory it is given and names no session id.
 // It carries no creel hooks, since the session has no prompt file to hold the creel trust sentence.
 // Codex reads a hook's block as a failed tool call without that sentence, so the strand gets its mail by the pane path.
@@ -180,6 +183,7 @@ func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengin
 		Cmd: codexCommand(shell.ForGOOS(), launchLine{
 			bin:           codexBinary(codex),
 			home:          home,
+			sandboxMode:   codex.SandboxMode,
 			writableRoots: writableRoots,
 			model:         spec.Model,
 			effort:        spec.Effort,
