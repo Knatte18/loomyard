@@ -243,39 +243,70 @@ func messageIDs(messages []creelengine.Message) []int64 {
 type postedText struct {
 	Channel string
 	Text    string
+	Sender  slackengine.Sender
 }
 
-// fakeSlack is a SlackClient holding each channel's messages in memory.
+// slackCall is one call the fake Slack received.
+// Arg is the call's argument besides the channel and the sender.
+// It is the oldest timestamp of a read, the thread of Replies, the text of PostAs, or the user of Invite.
+// For CreateChannel, FindChannel and Rename it is the name.
+type slackCall struct {
+	Method  string
+	Channel string
+	Arg     string
+	Sender  slackengine.Sender
+}
+
+// fakeSlack is a SlackClient holding each channel's messages in memory, with a directory of the channels that exist.
 type fakeSlack struct {
 	mu       sync.Mutex
 	channels map[string][]slackengine.Message
+	// directory holds the channels that exist, created or seeded, in the order they came.
+	directory []slackengine.ChannelInfo
+	// invited maps a channel to the users Invite added to it.
+	invited map[string][]string
 	// historyErr and latestErr fail the reads when set.
 	historyErr error
 	latestErr  error
-	// postErrs is consumed one per PostMessage call, a nil entry succeeding; an empty script succeeds.
-	postErrs []error
+	// failures holds, per method, the errors consumed one per call of that method, a nil entry succeeding.
+	failures map[string][]error
 	posted   []postedText
-	// onPost runs after each PostMessage call, outside the lock.
+	// log holds every call received, in order.
+	log []slackCall
+	// onPost runs after each PostAs call, outside the lock.
 	onPost func()
 	// calls counts every call of any method.
 	calls int
 	// onCall runs at the start of every call of any method, outside the lock.
 	onCall func()
+	// onMethod runs at the start of every call with its method name, outside the lock.
+	onMethod func(method string)
 }
 
-// called counts a call and runs the onCall hook.
-func (s *fakeSlack) called() {
+// begin counts and logs a call, runs the hooks and returns the next error queued for the call's method.
+func (s *fakeSlack) begin(call slackCall) error {
 	s.mu.Lock()
 	s.calls++
-	onCall := s.onCall
+	s.log = append(s.log, call)
+	onCall, onMethod := s.onCall, s.onMethod
 	s.mu.Unlock()
 	if onCall != nil {
 		onCall()
 	}
+	if onMethod != nil {
+		onMethod(call.Method)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var err error
+	if queue := s.failures[call.Method]; len(queue) > 0 {
+		err, s.failures[call.Method] = queue[0], queue[1:]
+	}
+	return err
 }
 
 func newFakeSlack() *fakeSlack {
-	return &fakeSlack{channels: map[string][]slackengine.Message{}}
+	return &fakeSlack{channels: map[string][]slackengine.Message{}, invited: map[string][]string{}, failures: map[string][]error{}}
 }
 
 // add appends message to channel, which a test does in timestamp order.
@@ -285,8 +316,22 @@ func (s *fakeSlack) add(channel string, message slackengine.Message) {
 	s.channels[channel] = append(s.channels[channel], message)
 }
 
+// seedChannel adds a channel that exists in Slack, as another user, another bot or an archive left it.
+func (s *fakeSlack) seedChannel(info slackengine.ChannelInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.directory = append(s.directory, info)
+}
+
+// isTopLevel reports whether History returns the message: it starts no thread, starts one, or is broadcast from one.
+func isTopLevel(message slackengine.Message) bool {
+	return message.ThreadTS == "" || message.ThreadTS == message.TS || message.Subtype == "thread_broadcast"
+}
+
 func (s *fakeSlack) History(_ context.Context, channel, oldest string) ([]slackengine.Message, error) {
-	s.called()
+	if err := s.begin(slackCall{Method: "History", Channel: channel, Arg: oldest}); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.historyErr != nil {
@@ -294,15 +339,34 @@ func (s *fakeSlack) History(_ context.Context, channel, oldest string) ([]slacke
 	}
 	var after []slackengine.Message
 	for _, message := range s.channels[channel] {
-		if tsValue(message.TS) > tsValue(oldest) {
+		if isTopLevel(message) && tsValue(message.TS) > tsValue(oldest) {
 			after = append(after, message)
 		}
 	}
 	return after, nil
 }
 
+// Replies returns the messages of one thread after oldest, the parent included, as Slack does.
+func (s *fakeSlack) Replies(_ context.Context, channel, thread, oldest string) ([]slackengine.Message, error) {
+	if err := s.begin(slackCall{Method: "Replies", Channel: channel, Arg: thread}); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var replies []slackengine.Message
+	for _, message := range s.channels[channel] {
+		isParent := message.TS == thread
+		if isParent || (message.ThreadTS == thread && tsValue(message.TS) > tsValue(oldest)) {
+			replies = append(replies, message)
+		}
+	}
+	return replies, nil
+}
+
 func (s *fakeSlack) Latest(_ context.Context, channel string) (string, bool, error) {
-	s.called()
+	if err := s.begin(slackCall{Method: "Latest", Channel: channel}); err != nil {
+		return "", false, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.latestErr != nil {
@@ -317,15 +381,11 @@ func (s *fakeSlack) Latest(_ context.Context, channel string) (string, bool, err
 	return newest, found, nil
 }
 
-func (s *fakeSlack) PostMessage(_ context.Context, channel, text string) error {
-	s.called()
+func (s *fakeSlack) PostAs(_ context.Context, channel, text string, sender slackengine.Sender) error {
+	err := s.begin(slackCall{Method: "PostAs", Channel: channel, Arg: text, Sender: sender})
 	s.mu.Lock()
-	var err error
-	if len(s.postErrs) > 0 {
-		err, s.postErrs = s.postErrs[0], s.postErrs[1:]
-	}
 	if err == nil {
-		s.posted = append(s.posted, postedText{Channel: channel, Text: text})
+		s.posted = append(s.posted, postedText{Channel: channel, Text: text, Sender: sender})
 	}
 	onPost := s.onPost
 	s.mu.Unlock()
@@ -335,16 +395,160 @@ func (s *fakeSlack) PostMessage(_ context.Context, channel, text string) error {
 	return err
 }
 
+// CreateChannel adds a channel with a fresh id under name, created by UBOT with the bot a member.
+// It answers name_taken for a name any existing channel holds, an archived one included.
+func (s *fakeSlack) CreateChannel(_ context.Context, name string) (slackengine.ChannelInfo, error) {
+	if err := s.begin(slackCall{Method: "CreateChannel", Arg: name}); err != nil {
+		return slackengine.ChannelInfo{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.indexByName(name) >= 0 {
+		return slackengine.ChannelInfo{}, &slackengine.APIError{Method: "conversations.create", Code: "name_taken"}
+	}
+	info := slackengine.ChannelInfo{ID: s.freshID(), Name: name, Creator: "UBOT", IsMember: true}
+	s.directory = append(s.directory, info)
+	return info, nil
+}
+
+// FindChannel finds a created or seeded channel by name, archived ones included.
+func (s *fakeSlack) FindChannel(_ context.Context, name string) (slackengine.ChannelInfo, bool, error) {
+	if err := s.begin(slackCall{Method: "FindChannel", Arg: name}); err != nil {
+		return slackengine.ChannelInfo{}, false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if i := s.indexByName(name); i >= 0 {
+		return s.directory[i], true, nil
+	}
+	return slackengine.ChannelInfo{}, false, nil
+}
+
+// Join marks the bot a member of the channel.
+func (s *fakeSlack) Join(_ context.Context, channel string) error {
+	if err := s.begin(slackCall{Method: "Join", Channel: channel}); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if i := s.indexByID(channel); i >= 0 {
+		s.directory[i].IsMember = true
+	}
+	return nil
+}
+
+// Invite records the user as invited to the channel.
+func (s *fakeSlack) Invite(_ context.Context, channel, user string) error {
+	if err := s.begin(slackCall{Method: "Invite", Channel: channel, Arg: user}); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.invited[channel] = append(s.invited[channel], user)
+	return nil
+}
+
+// Rename changes the channel's name, and answers name_taken for a name another channel holds.
+func (s *fakeSlack) Rename(_ context.Context, channel, name string) error {
+	if err := s.begin(slackCall{Method: "Rename", Channel: channel, Arg: name}); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := s.indexByID(channel)
+	if i < 0 {
+		return &slackengine.APIError{Method: "conversations.rename", Code: "channel_not_found"}
+	}
+	if taken := s.indexByName(name); taken >= 0 && taken != i {
+		return &slackengine.APIError{Method: "conversations.rename", Code: "name_taken"}
+	}
+	s.directory[i].Name = name
+	return nil
+}
+
+// Archive marks the channel archived.
+func (s *fakeSlack) Archive(_ context.Context, channel string) error {
+	if err := s.begin(slackCall{Method: "Archive", Channel: channel}); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := s.indexByID(channel)
+	if i < 0 {
+		return &slackengine.APIError{Method: "conversations.archive", Code: "channel_not_found"}
+	}
+	s.directory[i].IsArchived = true
+	return nil
+}
+
+// AuthTest answers the bot UBOT of the bot B1.
+func (s *fakeSlack) AuthTest(context.Context) (slackengine.Identity, error) {
+	if err := s.begin(slackCall{Method: "AuthTest"}); err != nil {
+		return slackengine.Identity{}, err
+	}
+	return slackengine.Identity{UserID: "UBOT", BotID: "B1"}, nil
+}
+
+// indexByName returns the directory index of the channel called name, or -1; the caller holds the lock.
+func (s *fakeSlack) indexByName(name string) int {
+	for i, info := range s.directory {
+		if info.Name == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// indexByID returns the directory index of the channel with id, or -1; the caller holds the lock.
+func (s *fakeSlack) indexByID(id string) int {
+	for i, info := range s.directory {
+		if info.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// freshID returns the first id of the form C<n> that no channel of the directory or of the messages holds.
+// The caller holds the lock.
+func (s *fakeSlack) freshID() string {
+	for n := 1; ; n++ {
+		id := fmt.Sprintf("C%d", n)
+		if _, held := s.channels[id]; !held && s.indexByID(id) < 0 {
+			return id
+		}
+	}
+}
+
 func (s *fakeSlack) setHistoryErr(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.historyErr = err
 }
 
-func (s *fakeSlack) failPosts(errs ...error) {
+// failNext queues errs for the next calls of method, one per call, a nil entry succeeding.
+func (s *fakeSlack) failNext(method string, errs ...error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.postErrs = append(s.postErrs, errs...)
+	s.failures[method] = append(s.failures[method], errs...)
+}
+
+// failPosts queues errs for the next PostAs calls.
+func (s *fakeSlack) failPosts(errs ...error) {
+	s.failNext("PostAs", errs...)
+}
+
+// logged returns the calls received of method, in order.
+func (s *fakeSlack) logged(method string) []slackCall {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var calls []slackCall
+	for _, call := range s.log {
+		if call.Method == method {
+			calls = append(calls, call)
+		}
+	}
+	return calls
 }
 
 // texts returns the texts the fake accepted, oldest first.

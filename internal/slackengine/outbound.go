@@ -138,7 +138,7 @@ func (out *outbound) reportStale(ctx context.Context, setup Setup, record *outbo
 		return nil
 	}
 	line := fmt.Sprintf("%d messages older than 24 hours were not posted; read them with `lym creel log --to %s`", record.Stale, out.relayName())
-	if err := out.slack.PostMessage(ctx, setup.ChannelID, line); err != nil {
+	if err := out.slack.PostAs(ctx, setup.ChannelID, line, Sender{}); err != nil {
 		return fmt.Errorf("slack: post the line about stale mail: %w", err)
 	}
 	record.Stale = 0
@@ -164,7 +164,7 @@ func (out *outbound) postMessages(ctx context.Context, setup Setup, record *outb
 			record.Stale++
 		} else if text, ok := outboundText(out.geom.Shortname, message); !ok {
 			logger.Warn("slackengine: dropped mail from a sender the relay does not post", "id", message.ID, "from", message.From)
-		} else if err := out.slack.PostMessage(ctx, setup.ChannelID, text); err != nil {
+		} else if err := out.slack.PostAs(ctx, setup.ChannelID, text, Sender{}); err != nil {
 			dropped, refuseErr := out.refused(ctx, setup, record, message, err)
 			if !dropped {
 				return refuseErr
@@ -194,7 +194,7 @@ func (out *outbound) refused(ctx context.Context, setup Setup, record *outboxRec
 		return false, err
 	}
 	line := fmt.Sprintf("message %d from %s was refused by Slack %d times and is dropped; read it with `lym creel log --to %s`", message.ID, message.From, refusalCap, out.relayName())
-	if postErr := out.slack.PostMessage(ctx, setup.ChannelID, line); postErr != nil {
+	if postErr := out.slack.PostAs(ctx, setup.ChannelID, line, Sender{}); postErr != nil {
 		logger.Warn("slackengine: the line about a dropped message was not posted", "id", message.ID, "error", postErr)
 	}
 	return true, nil

@@ -65,12 +65,29 @@ type Mailbox interface {
 
 // SlackClient is the set of Slack API calls the relay makes.
 type SlackClient interface {
-	// History reads the channel's messages after oldest, oldest first.
+	// History reads the channel's top-level messages after oldest, oldest first.
 	History(ctx context.Context, channel, oldest string) ([]Message, error)
+	// Replies reads the messages of the thread started at thread after oldest, oldest first.
+	// The thread's first message is included.
+	Replies(ctx context.Context, channel, thread, oldest string) ([]Message, error)
 	// Latest returns the timestamp of the channel's newest message, found false for an empty channel.
 	Latest(ctx context.Context, channel string) (string, bool, error)
-	// PostMessage posts text to the channel.
-	PostMessage(ctx context.Context, channel, text string) error
+	// PostAs posts text to the channel under the sender's name and icon; a Sender field left empty leaves Slack's default.
+	PostAs(ctx context.Context, channel, text string, sender Sender) error
+	// CreateChannel creates a public channel called name; a name that is taken is an *APIError with the code `name_taken`.
+	CreateChannel(ctx context.Context, name string) (ChannelInfo, error)
+	// FindChannel finds the public channel called name, archived ones included, and reports found false when there is none.
+	FindChannel(ctx context.Context, name string) (ChannelInfo, bool, error)
+	// Join makes the bot a member of the public channel.
+	Join(ctx context.Context, channel string) error
+	// Invite adds the Slack user to the channel; a user who is already a member counts as invited.
+	Invite(ctx context.Context, channel, user string) error
+	// Rename renames the channel to name; a name that is taken is an *APIError with the code `name_taken`.
+	Rename(ctx context.Context, channel, name string) error
+	// Archive archives the channel; a channel that is already archived counts as archived.
+	Archive(ctx context.Context, channel string) error
+	// AuthTest checks the token and tells who it belongs to.
+	AuthTest(ctx context.Context) (Identity, error)
 }
 
 // Hub is the hub state the relay reads that is not in its own files.
@@ -421,7 +438,7 @@ func (in *inbound) settle() {
 // answer posts text to the channel, escaped.
 // An answer Slack refuses is logged once per episode and never holds the message it answers.
 func (in *inbound) answer(ctx context.Context, setup Setup, text string) {
-	if err := in.slack.PostMessage(ctx, setup.ChannelID, slackEscape.Replace(text)); err != nil {
+	if err := in.slack.PostAs(ctx, setup.ChannelID, slackEscape.Replace(text), Sender{}); err != nil {
 		in.episodes.Fail("answer", "slackengine: Slack refused an answer", "error", err)
 		return
 	}

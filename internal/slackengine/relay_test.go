@@ -84,12 +84,30 @@ func newRelayRun(t *testing.T) *relayRun {
 	parked := make(chan struct{})
 	h.mailbox.readWaitEntered = parked
 	t.Cleanup(func() {
-		// The blocked outbound read wakes once the block closes and takes one more wait;
-		// no hook of a finished test may run then.
+		// The blocked outbound read wakes once the block closes, stamps the relay state and takes one more wait;
+		// no hook of a finished test may run then, and the temp dir may be removed only after the wait.
+		afterWake := make(chan struct{})
+		var once sync.Once
 		h.clock.mu.Lock()
-		h.clock.onWait = nil
+		h.clock.onWait = func(time.Duration) { once.Do(func() { close(afterWake) }) }
 		h.clock.mu.Unlock()
+		h.mailbox.mu.Lock()
+		stillBlocked := h.mailbox.blockReadWait == block
+		h.mailbox.mu.Unlock()
 		close(block)
+		select {
+		case <-parked:
+		default:
+			return
+		}
+		if !stillBlocked {
+			return
+		}
+		select {
+		case <-afterWake:
+		case <-time.After(10 * time.Second):
+			t.Errorf("the relay's outbound loop did not finish after its read woke")
+		}
 	})
 	r := &relayRun{harness: h, outboundParked: parked}
 	r.deps = slackengine.RelayDeps{
@@ -156,6 +174,22 @@ func (r *relayRun) relayState() slackengine.RelayState {
 // stopAtFirstWait ends the run at the relay's first wait, after one pass of its loop.
 func (r *relayRun) stopAtFirstWait() {
 	r.onWait(func(int, time.Duration) { r.stop() })
+}
+
+// parkInbound makes the inbound loop block in its first History call.
+// Only the outbound loop then takes waits on the clock.
+// The returned release lets the loop go on, and the test's cleanup calls it too.
+func (r *relayRun) parkInbound() (release func()) {
+	gate := make(chan struct{})
+	var once sync.Once
+	release = func() { once.Do(func() { close(gate) }) }
+	r.slack.onMethod = func(method string) {
+		if method == "History" {
+			<-gate
+		}
+	}
+	r.t.Cleanup(release)
+	return release
 }
 
 func TestRunRelay(t *testing.T) {
@@ -450,16 +484,59 @@ func TestRunRelay(t *testing.T) {
 		})
 	})
 
-	t.Run("SuccessfulSlackCallStampsLastSlackOK", func(t *testing.T) {
+	t.Run("OutboundReadStampsLastHealthyWithNoSlackCall", func(t *testing.T) {
 		t.Parallel()
 		r := newRelayRun(t)
 		r.startAt("100.000000")
-		r.stopAtFirstWait()
+		r.mailbox.blockReadWait = nil
+		r.slack.setHistoryErr(errors.New("slack down"))
+		release := r.parkInbound()
+		r.onWait(func(int, time.Duration) {
+			if !r.relayState().LastSlackOK.IsZero() {
+				release()
+				r.stop()
+			}
+		})
 		if err := r.run(); err != nil {
 			t.Fatalf("RunRelay = %v", err)
 		}
 		if r.relayState().LastSlackOK.IsZero() {
-			t.Errorf("LastSlackOK is zero after a successful Slack call")
+			t.Errorf("LastSlackOK is zero after an outbound read of a relay whose Slack calls all fail")
+		}
+	})
+
+	t.Run("RelayReadingNoMailForElevenMinutesCountsAsHealthyToTheStarter", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.startAt("100.000000")
+		r.mailbox.blockReadWait = nil
+		if _, err := slackengine.WritePresence(r.geom.PresencePath, slackengine.PresenceSlack, r.clock.Now()); err != nil {
+			t.Fatalf("WritePresence = %v", err)
+		}
+		spawnedAt := r.clock.Now()
+		if err := slackengine.UpdateRelayState(r.geom, func(relayState *slackengine.RelayState) {
+			relayState.LastSpawnAt = spawnedAt
+			relayState.NextStartAt = spawnedAt.Add(time.Minute)
+		}); err != nil {
+			t.Fatalf("UpdateRelayState = %v", err)
+		}
+		release := r.parkInbound()
+		r.onWait(func(int, time.Duration) {
+			if r.relayState().LastSlackOK.Sub(spawnedAt) >= 11*time.Minute {
+				release()
+				r.stop()
+			}
+		})
+		if err := r.run(); err != nil {
+			t.Fatalf("RunRelay = %v", err)
+		}
+		spawn := &fakeSpawn{}
+		starter := slackengine.NewStarter(spawn.spawn, r.clock, func() int { return 4242 })
+		if got, err := starter.Ensure(r.geom, "main", true); err != nil || got != slackengine.OutcomeStarted {
+			t.Fatalf("Ensure(whileAway) = %q, %v; want started", got, err)
+		}
+		if failures := r.relayState().StartFailures; failures != 0 {
+			t.Errorf("StartFailures = %d after a relay that read no mail for eleven minutes; want 0", failures)
 		}
 	})
 

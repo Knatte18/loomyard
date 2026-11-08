@@ -161,7 +161,7 @@ func (s starter) spawnRelay(geom Geometry, primeName string) error {
 // With whileAway, any presence but slack answers OutcomeTerminal and starts nothing;
 // a relay down before its next restart is due answers OutcomeWaiting.
 // Each due start judges the relay its previous start spawned by how long it lived:
-// the last successful Slack call minus the spawn time.
+// its last-healthy time minus the spawn time.
 // A relay under relayHealthyLifetime counts one failure, and one at or over it resets the count;
 // reaching maxStartFailures in a row answers OutcomeGaveUp and spawns nothing.
 // Before it spawns, it records the spawn time and the next restart time.
@@ -235,8 +235,8 @@ func (s starter) ensure(geom Geometry, primeName string, whileAway bool) (StartO
 	return OutcomeStarted, nil
 }
 
-// lifetime returns how long the relay of the last spawn lived: its last successful Slack call minus the spawn time.
-// A last call that is missing or not after the spawn reads as zero.
+// lifetime returns how long the relay of the last spawn lived: its last-healthy time minus the spawn time.
+// A last-healthy time that is missing or not after the spawn reads as zero.
 func lifetime(relayState RelayState) time.Duration {
 	if !relayState.LastSlackOK.After(relayState.LastSpawnAt) {
 		return 0

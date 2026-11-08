@@ -181,8 +181,8 @@ func TestAPI(t *testing.T) {
 		if err := api.UserInfo(ctx, "U1"); err != nil {
 			t.Fatalf("UserInfo = %v", err)
 		}
-		if err := api.PostMessage(ctx, "C1", "hello"); err != nil {
-			t.Fatalf("PostMessage = %v", err)
+		if err := api.PostAs(ctx, "C1", "hello", slackengine.Sender{}); err != nil {
+			t.Fatalf("PostAs = %v", err)
 		}
 		messages, err := api.History(ctx, "C1", "4.0")
 		if err != nil {
@@ -365,25 +365,25 @@ func TestAPI(t *testing.T) {
 					w.Header().Set("Retry-After", "7")
 					w.WriteHeader(http.StatusTooManyRequests)
 				},
-				call:     func(api *slackengine.API) error { return api.PostMessage(ctx, "C1", "x") },
+				call:     func(api *slackengine.API) error { return api.PostAs(ctx, "C1", "x", slackengine.Sender{}) },
 				wantRate: 7 * time.Second,
 			},
 			{
 				name:     "MissingRetryAfterReadsAsOneSecond",
 				reply:    func(w http.ResponseWriter) { w.WriteHeader(http.StatusTooManyRequests) },
-				call:     func(api *slackengine.API) error { return api.PostMessage(ctx, "C1", "x") },
+				call:     func(api *slackengine.API) error { return api.PostAs(ctx, "C1", "x", slackengine.Sender{}) },
 				wantRate: time.Second,
 			},
 			{
 				name:     "RatelimitedCodeIsARateLimit",
 				reply:    func(w http.ResponseWriter) { answerJSON(w, `{"ok":false,"error":"ratelimited"}`) },
-				call:     func(api *slackengine.API) error { return api.PostMessage(ctx, "C1", "x") },
+				call:     func(api *slackengine.API) error { return api.PostAs(ctx, "C1", "x", slackengine.Sender{}) },
 				wantRate: time.Second,
 			},
 			{
 				name:     "MsgTooLongIsAnAPIError",
 				reply:    func(w http.ResponseWriter) { answerJSON(w, `{"ok":false,"error":"msg_too_long"}`) },
-				call:     func(api *slackengine.API) error { return api.PostMessage(ctx, "C1", "x") },
+				call:     func(api *slackengine.API) error { return api.PostAs(ctx, "C1", "x", slackengine.Sender{}) },
 				wantCode: "msg_too_long",
 			},
 			{
@@ -420,7 +420,7 @@ func TestAPI(t *testing.T) {
 			{
 				name:      "ServerErrorIsPlain",
 				reply:     func(w http.ResponseWriter) { w.WriteHeader(http.StatusInternalServerError) },
-				call:      func(api *slackengine.API) error { return api.PostMessage(ctx, "C1", "x") },
+				call:      func(api *slackengine.API) error { return api.PostAs(ctx, "C1", "x", slackengine.Sender{}) },
 				wantPlain: true,
 			},
 		}

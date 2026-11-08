@@ -417,17 +417,10 @@ func (a *API) Latest(ctx context.Context, channel string) (string, bool, error) 
 	return page.Messages[0].TS, true, nil
 }
 
-// PostMessage posts text to the channel with chat.postMessage.
-// It returns nil once Slack accepted the post and reads nothing more of the answer,
-// so a post Slack accepted never reads as a failure that would post it again.
-func (a *API) PostMessage(ctx context.Context, channel, text string) error {
-	_, err := a.call(ctx, "chat.postMessage", url.Values{"channel": {channel}, "text": {text}})
-	return err
-}
-
 // PostAs posts text to the channel with chat.postMessage under the sender's name and icon.
 // A Sender field left empty is not sent.
-// Like PostMessage it reads nothing of the answer past `ok`.
+// It returns nil once Slack accepted the post and reads nothing more of the answer,
+// so a post Slack accepted never reads as a failure that would post it again.
 func (a *API) PostAs(ctx context.Context, channel, text string, sender Sender) error {
 	form := url.Values{"channel": {channel}, "text": {text}}
 	if sender.Username != "" {

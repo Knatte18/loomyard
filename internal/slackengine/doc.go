@@ -28,7 +28,7 @@
 // Each call posts a form to the method's URL with the bot token as a bearer header and a bounded timeout.
 // Every answer is read first for its `ok` and `error` alone;
 // each method then decodes only the fields it uses, in the shape that method's answer has.
-// `PostMessage` reads nothing past `ok`, so a post Slack accepted never reads as a failure.
+// `PostAs` reads nothing past `ok`, so a post Slack accepted never reads as a failure.
 // No error or log line carries the token.
 // A call Slack refused for its rate limit is a `*RateLimitError` carrying the wait Slack asked for.
 // Any other `ok: false` is an `*APIError` carrying Slack's code.

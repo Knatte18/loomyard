@@ -32,7 +32,7 @@ var errFirstReadAccepted = errors.New("slack: the first read was accepted and it
 type RelayDeps struct {
 	// Mailbox is the relay's creel mailbox.
 	Mailbox Mailbox
-	// Slack is the Slack client, whose successful calls the relay records in its state.
+	// Slack is the Slack client the relay's loops call.
 	Slack SlackClient
 	// Hub reads the hub's beams and pauses.
 	Hub Hub
@@ -114,42 +114,6 @@ func (l *relayLog) appendLine(line string) {
 	}
 }
 
-// recordingSlack is a SlackClient that stamps LastSlackOK in the relay state after each call that succeeds.
-type recordingSlack struct {
-	inner SlackClient
-	geom  Geometry
-	clock Clock
-	log   *relayLog
-}
-
-func (s *recordingSlack) stamp(err error) {
-	if err != nil {
-		return
-	}
-	now := s.clock.Now()
-	if writeErr := updateRelayState(s.geom, func(relayState *RelayState) { relayState.LastSlackOK = now }); writeErr != nil {
-		s.log.fail("relay-state", writeErr)
-	}
-}
-
-func (s *recordingSlack) History(ctx context.Context, channel, oldest string) ([]Message, error) {
-	messages, err := s.inner.History(ctx, channel, oldest)
-	s.stamp(err)
-	return messages, err
-}
-
-func (s *recordingSlack) Latest(ctx context.Context, channel string) (string, bool, error) {
-	ts, found, err := s.inner.Latest(ctx, channel)
-	s.stamp(err)
-	return ts, found, err
-}
-
-func (s *recordingSlack) PostMessage(ctx context.Context, channel, text string) error {
-	err := s.inner.PostMessage(ctx, channel, text)
-	s.stamp(err)
-	return err
-}
-
 // updateRelayState applies mutate to the relay state under the record's lock,
 // so the relay's writes and the starter's keep each other's fields.
 func updateRelayState(geom Geometry, mutate func(*RelayState)) error {
@@ -178,6 +142,7 @@ func waitFor(ctx context.Context, clock Clock, d time.Duration) bool {
 // It takes the relay lock, registers itself, and records its pid.
 // It makes the first creel read before any Slack call, then polls the channel and reads its own mailbox.
 // Each loop waits on its own schedule.
+// At the end of each outbound read it stamps the relay's last-healthy time in its state.
 // A creel refusal of the program claim from a strand's pane returns ErrRelayInStrandPane with the lock released.
 // Any other first-read refusal is retried while the lock is held.
 // At each poll it checks whether the lym binary was replaced and re-execs onto it.
@@ -219,9 +184,16 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 
 	loopCtx, stopLoops := context.WithCancel(ctx)
 	defer stopLoops()
-	slack := &recordingSlack{inner: deps.Slack, geom: geom, clock: deps.Clock, log: log}
-	go runOutbound(loopCtx, newOutbound(geom, deps.Mailbox, slack, deps.Clock, floor), deps.Clock, log)
-	poller := &inbound{geom: geom, mailbox: deps.Mailbox, slack: slack, hub: deps.Hub, clock: deps.Clock}
+	stampLastHealthy := func() {
+		now := deps.Clock.Now()
+		if err := updateRelayState(geom, func(relayState *RelayState) { relayState.LastSlackOK = now }); err != nil {
+			log.fail("relay-state", err)
+			return
+		}
+		log.recovered("relay-state")
+	}
+	go runOutbound(loopCtx, newOutbound(geom, deps.Mailbox, deps.Slack, deps.Clock, floor), deps.Clock, log, stampLastHealthy)
+	poller := &inbound{geom: geom, mailbox: deps.Mailbox, slack: deps.Slack, hub: deps.Hub, clock: deps.Clock}
 	return runInbound(loopCtx, poller, deps, heldLock, log, floor)
 }
 
@@ -285,7 +257,8 @@ func firstRead(ctx context.Context, geom Geometry, deps RelayDeps, heldLock *rel
 }
 
 // runOutbound reads the relay's mailbox until ctx ends, waiting between reads as each read asks.
-func runOutbound(ctx context.Context, out *outbound, clock Clock, log *relayLog) {
+// It calls afterRead after each read, whatever the read found, before the wait.
+func runOutbound(ctx context.Context, out *outbound, clock Clock, log *relayLog, afterRead func()) {
 	for ctx.Err() == nil {
 		wait, err := out.read(ctx)
 		if err != nil {
@@ -293,6 +266,7 @@ func runOutbound(ctx context.Context, out *outbound, clock Clock, log *relayLog)
 		} else {
 			log.recovered("outbound")
 		}
+		afterRead()
 		if !waitFor(ctx, clock, wait) {
 			return
 		}
