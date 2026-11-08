@@ -174,7 +174,7 @@ func waitFor(ctx context.Context, clock Clock, d time.Duration) bool {
 }
 
 // RunRelay runs the hub's relay until ctx ends, and returns nil when it ends or another relay holds the lock.
-// It refuses a hub with no token or no setup file.
+// It refuses a machine missing either token and a hub with no setup file.
 // It takes the relay lock, registers itself, and records its pid.
 // It makes the first creel read before any Slack call, then polls the channel and reads its own mailbox.
 // Each loop waits on its own schedule.

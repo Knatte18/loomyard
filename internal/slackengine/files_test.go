@@ -3,12 +3,15 @@
 package slackengine_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -58,21 +61,30 @@ func TestPresence(t *testing.T) {
 	})
 }
 
-// TestCredentialFiles covers the token and setup files, their modes and the configured check.
+// TestCredentialFiles covers the credential and setup files, their modes and the configured check.
 func TestCredentialFiles(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("TokenReadsBackWithPrivateModes", func(t *testing.T) {
+	t.Run("CredentialsReadBackWithPrivateModesAndTheBotTokenUnderToken", func(t *testing.T) {
 		t.Parallel()
 		dir := filepath.Join(t.TempDir(), "credentials")
 		path := filepath.Join(dir, slackengine.TokenFileName)
-		if err := slackengine.WriteToken(path, "xoxb-secret"); err != nil {
-			t.Fatalf("WriteToken = %v", err)
+		want := slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}
+		if err := slackengine.WriteCredentials(path, want); err != nil {
+			t.Fatalf("WriteCredentials = %v", err)
 		}
-		got, found, err := slackengine.ReadToken(path)
-		if err != nil || !found || got != "xoxb-secret" {
-			t.Errorf("ReadToken = %q, %v, %v; want xoxb-secret found", got, found, err)
+		got, err := slackengine.ReadCredentials(path)
+		if err != nil || got != want {
+			t.Errorf("ReadCredentials = %+v, %v; want %+v", got, err, want)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile = %v", err)
+		}
+		var keys map[string]string
+		if err := json.Unmarshal(raw, &keys); err != nil || keys["token"] != "xoxb-secret" {
+			t.Errorf("credential file = %s (%v); want the bot token under the key token", raw, err)
 		}
 		if runtime.GOOS != "windows" {
 			assertMode(t, path, 0o600)
@@ -80,17 +92,14 @@ func TestCredentialFiles(t *testing.T) {
 		}
 	})
 
-	t.Run("MissingAndEmptyTokenReportNotFound", func(t *testing.T) {
+	t.Run("MissingFileReadsZeroCredentialsMissingBothTokens", func(t *testing.T) {
 		t.Parallel()
-		path := filepath.Join(t.TempDir(), slackengine.TokenFileName)
-		if got, found, err := slackengine.ReadToken(path); err != nil || found {
-			t.Errorf("ReadToken(missing) = %q, %v, %v; want not found", got, found, err)
+		got, err := slackengine.ReadCredentials(filepath.Join(t.TempDir(), slackengine.TokenFileName))
+		if err != nil || got != (slackengine.Credentials{}) {
+			t.Errorf("ReadCredentials(missing) = %+v, %v; want zero credentials", got, err)
 		}
-		if err := slackengine.WriteToken(path, ""); err != nil {
-			t.Fatalf("WriteToken(empty) = %v", err)
-		}
-		if got, found, err := slackengine.ReadToken(path); err != nil || found {
-			t.Errorf("ReadToken(empty) = %q, %v, %v; want not found", got, found, err)
+		if diff := cmp.Diff([]string{"bot token (xoxb-)", "app-level token (xapp-)"}, got.Missing()); diff != "" {
+			t.Errorf("Missing() mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -117,22 +126,51 @@ func TestCredentialFiles(t *testing.T) {
 			TokenPath: filepath.Join(root, "credentials", slackengine.TokenFileName),
 			SetupPath: filepath.Join(root, "slack", slackengine.SetupFileName),
 		}
-		if _, _, err := slackengine.RequireConfigured(geom); err == nil || !strings.Contains(err.Error(), "lym slack login") {
-			t.Errorf("RequireConfigured(no token) = %v; want an error naming lym slack login", err)
+		const botKind, appKind = "bot token (xoxb-)", "app-level token (xapp-)"
+		tokenRows := []struct {
+			name        string
+			credentials slackengine.Credentials
+			wantNamed   []string
+			wantAbsent  []string
+		}{
+			{"NoTokens", slackengine.Credentials{}, []string{botKind, appKind}, nil},
+			{"BotTokenAlone", slackengine.Credentials{BotToken: "xoxb-secret"}, []string{appKind}, []string{botKind}},
+			{"AppTokenAlone", slackengine.Credentials{AppToken: "xapp-secret"}, []string{botKind}, []string{appKind}},
 		}
-		if err := slackengine.WriteToken(geom.TokenPath, "xoxb-secret"); err != nil {
-			t.Fatalf("WriteToken = %v", err)
+		for _, row := range tokenRows {
+			if err := slackengine.WriteCredentials(geom.TokenPath, row.credentials); err != nil {
+				t.Fatalf("WriteCredentials = %v", err)
+			}
+			_, _, err := slackengine.RequireConfigured(geom)
+			if err == nil || !strings.Contains(err.Error(), "lym slack login") {
+				t.Fatalf("RequireConfigured(%s) = %v; want an error naming lym slack login", row.name, err)
+			}
+			for _, kind := range row.wantNamed {
+				if !strings.Contains(err.Error(), kind) {
+					t.Errorf("RequireConfigured(%s) = %v; want it to name the %s", row.name, err, kind)
+				}
+			}
+			for _, kind := range row.wantAbsent {
+				if strings.Contains(err.Error(), kind) {
+					t.Errorf("RequireConfigured(%s) = %v; want it not to name the %s", row.name, err, kind)
+				}
+			}
 		}
-		if _, _, err := slackengine.RequireConfigured(geom); err == nil || !strings.Contains(err.Error(), "lym slack setup") {
-			t.Errorf("RequireConfigured(no setup) = %v; want an error naming lym slack setup", err)
+
+		bothTokens := slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}
+		if err := slackengine.WriteCredentials(geom.TokenPath, bothTokens); err != nil {
+			t.Fatalf("WriteCredentials = %v", err)
+		}
+		if _, _, err := slackengine.RequireConfigured(geom); err == nil || !strings.Contains(err.Error(), "lym slack setup --operator") {
+			t.Errorf("RequireConfigured(no setup) = %v; want an error naming lym slack setup --operator", err)
 		}
 		want := slackengine.Setup{ChannelID: "C123", OperatorID: "U456"}
 		if err := slackengine.WriteSetup(geom.SetupPath, want); err != nil {
 			t.Fatalf("WriteSetup = %v", err)
 		}
-		token, setup, err := slackengine.RequireConfigured(geom)
-		if err != nil || token != "xoxb-secret" || setup != want {
-			t.Errorf("RequireConfigured(both) = %q, %+v, %v; want xoxb-secret and %+v", token, setup, err, want)
+		credentials, setup, err := slackengine.RequireConfigured(geom)
+		if err != nil || credentials != bothTokens || setup != want {
+			t.Errorf("RequireConfigured(both) = %+v, %+v, %v; want %+v and %+v", credentials, setup, err, bothTokens, want)
 		}
 	})
 }

@@ -157,7 +157,7 @@ func (s starter) spawnRelay(geom Geometry, primeName string) error {
 }
 
 // ensure starts the relay when it is down.
-// A machine with no token or a hub with no setup file answers OutcomeNotConfigured, and a live relay OutcomeLive.
+// A machine missing either token or a hub with no setup file answers OutcomeNotConfigured, and a live relay OutcomeLive.
 // With whileAway, any presence but slack answers OutcomeTerminal and starts nothing;
 // a relay down before its next restart is due answers OutcomeWaiting.
 // Each due start judges the relay its previous start spawned by how long it lived:
@@ -169,7 +169,7 @@ func (s starter) spawnRelay(geom Geometry, primeName string) error {
 // A spawn that fails to start still leaves both behind.
 // A start without whileAway resets the count first.
 func (s starter) ensure(geom Geometry, primeName string, whileAway bool) (StartOutcome, error) {
-	_, tokenFound, err := ReadToken(geom.TokenPath)
+	credentials, err := ReadCredentials(geom.TokenPath)
 	if err != nil {
 		return "", err
 	}
@@ -177,7 +177,7 @@ func (s starter) ensure(geom Geometry, primeName string, whileAway bool) (StartO
 	if err != nil {
 		return "", err
 	}
-	if !tokenFound || !setupFound {
+	if len(credentials.Missing()) > 0 || !setupFound {
 		return OutcomeNotConfigured, nil
 	}
 	if whileAway {

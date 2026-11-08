@@ -232,7 +232,7 @@ func runRelay(ctx context.Context, hubPath, primeName string) error {
 	if err != nil {
 		return err
 	}
-	token, _, err := slackengine.RequireConfigured(geom)
+	credentials, _, err := slackengine.RequireConfigured(geom)
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func runRelay(ctx context.Context, hubPath, primeName string) error {
 	}
 	deps := slackengine.RelayDeps{
 		Mailbox: newProgramMailbox(prime),
-		Slack:   slackengine.NewAPI(slackengine.DefaultBaseURL, token, &http.Client{}),
+		Slack:   slackengine.NewAPI(slackengine.DefaultBaseURL, credentials.BotToken, &http.Client{}),
 		Hub: slackengine.Hub{
 			Beams:  func() ([]string, error) { return beamSlugs(prime) },
 			Paused: func(receiver string) (bool, error) { return receiverPaused(hubPath, prime, receiver) },

@@ -444,8 +444,8 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	h := &harness{t: t, geom: newGeometry(t), clock: newFakeClock(), mailbox: &fakeMailbox{}, slack: newFakeSlack(), hub: &fakeHub{paused: map[string]bool{}}}
-	if err := slackengine.WriteToken(h.geom.TokenPath, "xoxb-secret"); err != nil {
-		t.Fatalf("WriteToken = %v", err)
+	if err := slackengine.WriteCredentials(h.geom.TokenPath, slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}); err != nil {
+		t.Fatalf("WriteCredentials = %v", err)
 	}
 	h.setChannel(testChannel)
 	h.in = slackengine.NewInbound(h.geom, h.mailbox, h.slack, h.hub.hub(), h.clock)

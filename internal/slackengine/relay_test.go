@@ -171,8 +171,9 @@ func TestRunRelay(t *testing.T) {
 		if err := r.run(); err == nil || !strings.Contains(err.Error(), "lym slack login") {
 			t.Errorf("RunRelay(no token) = %v; want an error naming lym slack login", err)
 		}
-		if err := slackengine.WriteToken(r.geom.TokenPath, "xoxb-secret"); err != nil {
-			t.Fatalf("WriteToken = %v", err)
+		bothTokens := slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}
+		if err := slackengine.WriteCredentials(r.geom.TokenPath, bothTokens); err != nil {
+			t.Fatalf("WriteCredentials = %v", err)
 		}
 		if err := os.Remove(r.geom.SetupPath); err != nil {
 			t.Fatalf("Remove = %v", err)
@@ -627,8 +628,15 @@ func TestEnsureRelay(t *testing.T) {
 		if got, err := e.starter.Ensure(e.geom, "main", false); err != nil || got != slackengine.OutcomeNotConfigured {
 			t.Errorf("Ensure(no token) = %q, %v; want not-configured", got, err)
 		}
-		if err := slackengine.WriteToken(e.geom.TokenPath, "xoxb-secret"); err != nil {
-			t.Fatalf("WriteToken = %v", err)
+		if err := slackengine.WriteCredentials(e.geom.TokenPath, slackengine.Credentials{BotToken: "xoxb-secret"}); err != nil {
+			t.Fatalf("WriteCredentials = %v", err)
+		}
+		if got, err := e.starter.Ensure(e.geom, "main", false); err != nil || got != slackengine.OutcomeNotConfigured {
+			t.Errorf("Ensure(bot token alone) = %q, %v; want not-configured", got, err)
+		}
+		bothTokens := slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}
+		if err := slackengine.WriteCredentials(e.geom.TokenPath, bothTokens); err != nil {
+			t.Fatalf("WriteCredentials = %v", err)
 		}
 		if err := os.Remove(e.geom.SetupPath); err != nil {
 			t.Fatalf("Remove = %v", err)

@@ -227,7 +227,12 @@ func (c *slackCLI) login(cmd *cobra.Command) (map[string]any, error) {
 	if _, err := c.newSlack(c.slackBaseURL, token).AuthTest(cmd.Context()); err != nil {
 		return nil, tokenRefusal(err)
 	}
-	if err := slackengine.WriteToken(c.geom.TokenPath, token); err != nil {
+	stored, err := slackengine.ReadCredentials(c.geom.TokenPath)
+	if err != nil {
+		return nil, err
+	}
+	stored.BotToken = token
+	if err := slackengine.WriteCredentials(c.geom.TokenPath, stored); err != nil {
 		return nil, err
 	}
 	return map[string]any{"token_file": c.geom.TokenPath}, nil
@@ -301,14 +306,14 @@ func (c *slackCLI) setup(ctx context.Context, channel, operator string) (map[str
 	if err := paneRefusal(c.pane(), false, terminalWayForward("setup")); err != nil {
 		return nil, err
 	}
-	token, found, err := slackengine.ReadToken(c.geom.TokenPath)
+	credentials, err := slackengine.ReadCredentials(c.geom.TokenPath)
 	if err != nil {
 		return nil, err
 	}
-	if !found {
+	if credentials.BotToken == "" {
 		return nil, errors.New(noTokenMessage)
 	}
-	api := c.newSlack(c.slackBaseURL, token)
+	api := c.newSlack(c.slackBaseURL, credentials.BotToken)
 	info, err := api.ConversationInfo(ctx, channel)
 	if err != nil {
 		return nil, channelRefusal(channel, err)

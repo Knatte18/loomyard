@@ -12,7 +12,7 @@ import (
 // The token and the socket lock live in the per-user credential directory.
 // The rest live in the hub's Slack directory.
 const (
-	// TokenFileName is the machine's bot token file.
+	// TokenFileName is the machine's credential file: the bot token, the app-level token and the app id.
 	TokenFileName = "slack.json"
 	// SocketLockFileName is the lock the holder of the machine's one Socket Mode connection holds.
 	SocketLockFileName = "slack-socket.lock"

@@ -248,12 +248,18 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 	return h
 }
 
-// configure stores a token and a setup, as login and setup leave them.
+// storeCredentials writes the machine's credential file.
+func (h *harness) storeCredentials(credentials slackengine.Credentials) {
+	h.t.Helper()
+	if err := slackengine.WriteCredentials(h.geom.TokenPath, credentials); err != nil {
+		h.t.Fatalf("WriteCredentials = %v", err)
+	}
+}
+
+// configure stores both tokens and a setup, as login and setup leave them.
 func (h *harness) configure() {
 	h.t.Helper()
-	if err := slackengine.WriteToken(h.geom.TokenPath, "xoxb-stored"); err != nil {
-		h.t.Fatalf("WriteToken = %v", err)
-	}
+	h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-stored", AppToken: "xapp-stored", AppID: "A1"})
 	if err := slackengine.WriteSetup(h.geom.SetupPath, slackengine.Setup{ChannelID: "C1", OperatorID: "U1"}); err != nil {
 		h.t.Fatalf("WriteSetup = %v", err)
 	}
@@ -368,10 +374,12 @@ func TestSlackCLI(t *testing.T) {
 		t.Run("StoresTheTokenOnlyAfterSlackAcceptsIt", func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, nil)
+			h.storeCredentials(slackengine.Credentials{AppToken: "xapp-stored", AppID: "A1"})
 			code, env := h.run("  xoxb-good\n", "login")
 			wantOK(t, code, env)
-			if token, found, err := slackengine.ReadToken(h.geom.TokenPath); err != nil || !found || token != "xoxb-good" {
-				t.Errorf("ReadToken = %q, %v, %v; want the trimmed token", token, found, err)
+			wantStored := slackengine.Credentials{BotToken: "xoxb-good", AppToken: "xapp-stored", AppID: "A1"}
+			if stored, err := slackengine.ReadCredentials(h.geom.TokenPath); err != nil || stored != wantStored {
+				t.Errorf("ReadCredentials = %+v, %v; want the trimmed token with the app-level token and app id standing: %+v", stored, err, wantStored)
 			}
 			if info, err := os.Stat(h.geom.TokenPath); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 				t.Errorf("token file mode = %v, %v; want 0600", info.Mode().Perm(), err)
@@ -397,8 +405,8 @@ func TestSlackCLI(t *testing.T) {
 			if diff := cmp.Diff([]string{tokenPrompt}, h.prompts); diff != "" {
 				t.Errorf("prompts mismatch (-want +got):\n%s", diff)
 			}
-			if token, found, err := slackengine.ReadToken(h.geom.TokenPath); err != nil || !found || token != "xoxb-typed" {
-				t.Errorf("ReadToken = %q, %v, %v; want the trimmed line read at the prompt", token, found, err)
+			if stored, err := slackengine.ReadCredentials(h.geom.TokenPath); err != nil || stored.BotToken != "xoxb-typed" {
+				t.Errorf("ReadCredentials = %+v, %v; want the trimmed line read at the prompt", stored, err)
 			}
 		})
 
@@ -452,9 +460,7 @@ func TestSlackCLI(t *testing.T) {
 		t.Run("RecordsTheChannelAndOperatorSlackConfirms", func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, nil)
-			if err := slackengine.WriteToken(h.geom.TokenPath, "xoxb-stored"); err != nil {
-				t.Fatalf("WriteToken = %v", err)
-			}
+			h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-stored"})
 			code, env := h.run("", setupArgs...)
 			wantOK(t, code, env)
 			want := slackengine.Setup{ChannelID: "C1", OperatorID: "U1"}
@@ -487,9 +493,7 @@ func TestSlackCLI(t *testing.T) {
 				t.Parallel()
 				h := newHarness(t, tt.answers)
 				if tt.token {
-					if err := slackengine.WriteToken(h.geom.TokenPath, "xoxb-stored"); err != nil {
-						t.Fatalf("WriteToken = %v", err)
-					}
+					h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-stored"})
 				}
 				code, env := h.run("", setupArgs...)
 				wantRefused(t, code, env, tt.wants...)
@@ -585,9 +589,11 @@ func TestSlackCLI(t *testing.T) {
 			code, env := h.run("", verb)
 			wantRefused(t, code, env, "lym slack login")
 
-			if err := slackengine.WriteToken(h.geom.TokenPath, "xoxb-stored"); err != nil {
-				t.Fatalf("WriteToken = %v", err)
-			}
+			h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-stored"})
+			code, env = h.run("", verb)
+			wantRefused(t, code, env, "app-level token (xapp-)", "lym slack login")
+
+			h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-stored", AppToken: "xapp-stored", AppID: "A1"})
 			code, env = h.run("", verb)
 			wantRefused(t, code, env, "lym slack setup")
 			h.wantCalls()

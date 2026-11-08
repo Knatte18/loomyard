@@ -4,8 +4,9 @@
 // It holds the only calls to Slack and the files the relay and `lym slack` read and write.
 //
 // The files sit in two places.
-// The machine's bot token is `slack.json` in the per-user lym directory `githubclient.CredentialDir` names.
-// `WriteToken` writes it and `ReadToken` reads it; no config template, layer or env file holds it.
+// The machine's credentials are `slack.json` in the per-user lym directory `githubclient.CredentialDir` names:
+// the bot token, the app-level token and the app id.
+// `WriteCredentials` writes it and `ReadCredentials` reads it; no config template, layer or env file holds it.
 // The hub's own files sit in its `.lym/slack/` directory.
 // They are the setup file with the channel and the operator (`Setup`) and the presence (`Presence`).
 // They also include the inbound cursor, the outbound record and the relay state (`RelayState`).
@@ -20,7 +21,8 @@
 // Its one key, `remind_after_min`, is the minutes between dobby's reminders.
 // Dobby sends them for a run waiting on the operator while presence is slack.
 // The channel, the operator and the token are never config.
-// `RequireConfigured` refuses a hub with no token or no setup file, naming the `lym slack` verb that writes it.
+// `RequireConfigured` refuses a machine missing either token and a hub with no setup file.
+// Each refusal names the `lym slack` verb that writes the missing piece.
 //
 // `API` is the Web API client, over `net/http` alone.
 // Each call posts a form to the method's URL with the bot token as a bearer header and a bounded timeout.
