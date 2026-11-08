@@ -32,7 +32,7 @@ type keeperHarness struct {
 // newKeeperHarness returns a keeper for newHarness's hub whose live-hub seam names that hub and a second one.
 func newKeeperHarness(t *testing.T) *keeperHarness {
 	t.Helper()
-	k := &keeperHarness{harness: newHarness(t), other: newGeometry(t)}
+	k := &keeperHarness{harness: newBareHarness(t), other: newGeometry(t)}
 	k.keeper = slackengine.NewChannelKeeper(k.geom, k.slack, k.liveHubs, k.mailbox, k.clock)
 	return k
 }

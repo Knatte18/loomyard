@@ -49,7 +49,6 @@ func SlackGeometry(hubPath string) (slackengine.Geometry, error) {
 		SocketLockPath: filepath.Join(credentialDir, slackengine.SocketLockFileName),
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   filepath.Join(dir, slackengine.PresenceFileName),
-		CursorPath:     filepath.Join(dir, slackengine.CursorFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
 		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),

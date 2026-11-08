@@ -114,6 +114,7 @@ func newRelayRun(t *testing.T) *relayRun {
 		Mailbox:       h.mailbox,
 		Slack:         h.slack,
 		Hub:           h.hub.hub(),
+		LiveHubs:      func() ([]slackengine.Geometry, error) { return []slackengine.Geometry{h.geom}, nil },
 		Clock:         h.clock,
 		PID:           func() int { return fakePID },
 		CheckBinary:   func(func(), func(error)) {},
@@ -554,42 +555,6 @@ func TestRunRelay(t *testing.T) {
 			!relayState.NextStartAt.Equal(time.Date(2026, 11, 5, 12, 30, 0, 0, time.UTC)) ||
 			!relayState.LastSpawnAt.Equal(time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)) {
 			t.Errorf("state = %+v; want a first read with StartFailures, NextStartAt and LastSpawnAt as they stood", relayState)
-		}
-	})
-
-	t.Run("InboundWaitDoublesToTheCeilingResetsOnActivityAndARateLimitRaisesTheFloor", func(t *testing.T) {
-		t.Parallel()
-		r := newRelayRun(t)
-		r.startAt("100.000000")
-		next := 100
-		newTS := func() string {
-			next++
-			return fmt.Sprintf("%d.000001", next)
-		}
-		r.onWait(func(n int, _ time.Duration) {
-			switch n {
-			case 5:
-				r.say(newTS(), "hello")
-			case 7:
-				r.slack.setHistoryErr(&slackengine.RateLimitError{Method: "conversations.history", RetryAfter: 3 * time.Second})
-			case 8:
-				r.slack.setHistoryErr(nil)
-				r.say(newTS(), "again")
-			case 9:
-				r.stop()
-			}
-		})
-		if err := r.run(); err != nil {
-			t.Fatalf("RunRelay = %v", err)
-		}
-		want := []time.Duration{
-			2 * slackengine.Floor, 4 * slackengine.Floor, 8 * slackengine.Floor, slackengine.Ceiling, slackengine.Ceiling,
-			slackengine.Floor, 2 * slackengine.Floor,
-			3 * time.Second,
-			2 * slackengine.Floor,
-		}
-		if got := r.clock.recordedWaits(); !cmp.Equal(got, want) {
-			t.Errorf("inbound waits mismatch (-want +got):\n%s", cmp.Diff(want, got))
 		}
 	})
 }

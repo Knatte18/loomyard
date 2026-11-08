@@ -1,11 +1,10 @@
-// inbound_test.go covers the inbound poll and the presence notices.
+// inbound_test.go covers the inbound read of the hub's channels and the presence notices.
 // It also declares the in-memory Slack, mailbox, hub and clock that the outbound and relay tests use.
 
 package slackengine_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -26,6 +25,11 @@ import (
 const (
 	testChannel  = "C1"
 	testOperator = "U1"
+	// paymentsChannel and paymentsOrch are the second channel of the harness's map and the orch it belongs to.
+	paymentsChannel = "C2"
+	paymentsOrch    = "ly:payments:orch"
+	// primeOrch is the orch of testChannel.
+	primeOrch = "ly:orch"
 )
 
 // fakeClock is a Clock whose time moves only when a test advances it or a wait is taken, and whose waits return at once.
@@ -268,6 +272,8 @@ type fakeSlack struct {
 	// historyErr and latestErr fail the reads when set.
 	historyErr error
 	latestErr  error
+	// channelErr fails the reads of one channel, History and Replies, when set for it.
+	channelErr map[string]error
 	// failures holds, per method, the errors consumed one per call of that method, a nil entry succeeding.
 	failures map[string][]error
 	posted   []postedText
@@ -306,7 +312,10 @@ func (s *fakeSlack) begin(call slackCall) error {
 }
 
 func newFakeSlack() *fakeSlack {
-	return &fakeSlack{channels: map[string][]slackengine.Message{}, invited: map[string][]string{}, failures: map[string][]error{}}
+	return &fakeSlack{
+		channels: map[string][]slackengine.Message{}, invited: map[string][]string{},
+		failures: map[string][]error{}, channelErr: map[string]error{},
+	}
 }
 
 // add appends message to channel, which a test does in timestamp order.
@@ -337,6 +346,9 @@ func (s *fakeSlack) History(_ context.Context, channel, oldest string) ([]slacke
 	if s.historyErr != nil {
 		return nil, s.historyErr
 	}
+	if err := s.channelErr[channel]; err != nil {
+		return nil, err
+	}
 	var after []slackengine.Message
 	for _, message := range s.channels[channel] {
 		if isTopLevel(message) && tsValue(message.TS) > tsValue(oldest) {
@@ -353,6 +365,9 @@ func (s *fakeSlack) Replies(_ context.Context, channel, thread, oldest string) (
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.channelErr[channel]; err != nil {
+		return nil, err
+	}
 	var replies []slackengine.Message
 	for _, message := range s.channels[channel] {
 		isParent := message.TS == thread
@@ -526,6 +541,13 @@ func (s *fakeSlack) setHistoryErr(err error) {
 	s.historyErr = err
 }
 
+// failChannel makes the reads of channel fail with err; a nil err ends the failure.
+func (s *fakeSlack) failChannel(channel string, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.channelErr[channel] = err
+}
+
 // failNext queues errs for the next calls of method, one per call, a nil entry succeeding.
 func (s *fakeSlack) failNext(method string, errs ...error) {
 	s.mu.Lock()
@@ -623,7 +645,6 @@ func newGeometry(t *testing.T) slackengine.Geometry {
 		SocketLockPath: filepath.Join(root, "credentials", slackengine.SocketLockFileName),
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   filepath.Join(dir, slackengine.PresenceFileName),
-		CursorPath:     filepath.Join(dir, slackengine.CursorFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
 		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),
@@ -633,7 +654,7 @@ func newGeometry(t *testing.T) slackengine.Geometry {
 	}
 }
 
-// harness is an inbound poll over the in-memory seams of a configured hub.
+// harness is an inbound read over the in-memory seams of a configured hub.
 type harness struct {
 	t       *testing.T
 	geom    slackengine.Geometry
@@ -641,82 +662,135 @@ type harness struct {
 	mailbox *fakeMailbox
 	slack   *fakeSlack
 	hub     *fakeHub
+	keeper  *slackengine.ChannelKeeper
 	in      *slackengine.Inbound
 }
 
-// newHarness returns a harness whose hub has the token and the setup for testChannel and testOperator.
-func newHarness(t *testing.T) *harness {
+// newBareHarness returns a harness whose hub has the tokens and the setup for testOperator and an empty channel map.
+func newBareHarness(t *testing.T) *harness {
 	t.Helper()
 	h := &harness{t: t, geom: newGeometry(t), clock: newFakeClock(), mailbox: &fakeMailbox{}, slack: newFakeSlack(), hub: &fakeHub{paused: map[string]bool{}}}
 	if err := slackengine.WriteCredentials(h.geom.TokenPath, slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}); err != nil {
 		t.Fatalf("WriteCredentials = %v", err)
 	}
-	h.setChannel(testChannel)
-	h.in = slackengine.NewInbound(h.geom, h.mailbox, h.slack, h.hub.hub(), h.clock)
+	if err := slackengine.WriteSetup(h.geom.SetupPath, slackengine.Setup{OperatorID: testOperator}); err != nil {
+		t.Fatalf("WriteSetup = %v", err)
+	}
+	liveHubs := func() ([]slackengine.Geometry, error) { return []slackengine.Geometry{h.geom}, nil }
+	h.keeper = slackengine.NewChannelKeeper(h.geom, h.slack, liveHubs, h.mailbox, h.clock)
+	h.in = slackengine.NewInbound(h.geom, h.mailbox, h.slack, h.hub.hub(), h.clock, h.keeper)
 	return h
 }
 
-// setChannel writes the setup naming channel and testOperator.
-func (h *harness) setChannel(channel string) {
+// newHarness returns a bare harness whose channel map holds the prime orch on testChannel.
+// The map also holds the payments orch on paymentsChannel.
+// Each entry records the operator, so no read or post invites anyone.
+func newHarness(t *testing.T) *harness {
+	t.Helper()
+	h := newBareHarness(t)
+	err := slackengine.UpdateChannelMap(h.geom.ChannelMapPath, func(channelMap *slackengine.ChannelMap) error {
+		channelMap.Channels[primeOrch] = slackengine.ChannelEntry{ID: testChannel, Name: "ly-neve-prime", Operator: testOperator}
+		channelMap.Channels[paymentsOrch] = slackengine.ChannelEntry{ID: paymentsChannel, Name: "ly-neve-payments", Operator: testOperator}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("UpdateChannelMap = %v", err)
+	}
+	return h
+}
+
+// updateEntry applies change to the orch's entry in the harness's channel map.
+func (h *harness) updateEntry(orch string, change func(*slackengine.ChannelEntry)) {
 	h.t.Helper()
-	if err := slackengine.WriteSetup(h.geom.SetupPath, slackengine.Setup{ChannelID: channel, OperatorID: testOperator}); err != nil {
-		h.t.Fatalf("WriteSetup = %v", err)
+	err := slackengine.UpdateChannelMap(h.geom.ChannelMapPath, func(channelMap *slackengine.ChannelMap) error {
+		entry := channelMap.Channels[orch]
+		change(&entry)
+		channelMap.Channels[orch] = entry
+		return nil
+	})
+	if err != nil {
+		h.t.Fatalf("UpdateChannelMap = %v", err)
 	}
 }
 
-// startAt writes the cursor for testChannel at ts.
+// startAt writes the prime entry's cursor at ts.
 func (h *harness) startAt(ts string) {
 	h.t.Helper()
-	if err := os.MkdirAll(h.geom.Dir, 0o700); err != nil {
-		h.t.Fatalf("MkdirAll = %v", err)
-	}
-	content := fmt.Sprintf(`{"channel":%q,"ts":%q}`, testChannel, ts)
-	if err := os.WriteFile(h.geom.CursorPath, []byte(content), 0o600); err != nil {
-		h.t.Fatalf("write the cursor = %v", err)
-	}
+	h.updateEntry(primeOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = ts })
 }
 
-// cursor returns the channel and timestamp the cursor file holds, empty when none is written.
-func (h *harness) cursor() (string, string) {
+// entryOf returns the orch's entry in the harness's channel map.
+func (h *harness) entryOf(orch string) slackengine.ChannelEntry {
 	h.t.Helper()
-	data, err := os.ReadFile(h.geom.CursorPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return "", ""
-	}
+	channelMap, err := slackengine.ReadChannelMap(h.geom.ChannelMapPath)
 	if err != nil {
-		h.t.Fatalf("read the cursor = %v", err)
+		h.t.Fatalf("ReadChannelMap = %v", err)
 	}
-	var record struct{ Channel, TS string }
-	if err := json.Unmarshal(data, &record); err != nil {
-		h.t.Fatalf("decode the cursor = %v", err)
-	}
-	return record.Channel, record.TS
+	return channelMap.Channels[orch]
+}
+
+// ago returns the Slack timestamp d before the harness's clock.
+func (h *harness) ago(d time.Duration) string {
+	return fmt.Sprintf("%d.000001", h.clock.Now().Add(-d).Unix())
 }
 
 // say adds a top-level message of the operator to testChannel.
 func (h *harness) say(ts, text string) {
-	h.slack.add(testChannel, slackengine.Message{TS: ts, User: testOperator, Text: text})
+	h.sayIn(testChannel, ts, text)
 }
 
-func (h *harness) poll() (bool, error) {
-	h.t.Helper()
-	return h.in.Poll(context.Background())
+// sayIn adds a top-level message of the operator to channel.
+func (h *harness) sayIn(channel, ts, text string) {
+	h.slack.add(channel, slackengine.Message{TS: ts, User: testOperator, Text: text})
 }
 
-// mustPoll polls and fails the test on an error.
-func (h *harness) mustPoll() bool {
+// hint writes an empty hint called name into the hub's inbox.
+func (h *harness) hint(name string) {
 	h.t.Helper()
-	activity, err := h.poll()
+	if err := slackengine.WriteHint(h.geom, name); err != nil {
+		h.t.Fatalf("WriteHint(%s) = %v", name, err)
+	}
+}
+
+func (h *harness) drain() (bool, error) {
+	h.t.Helper()
+	return h.in.Drain(context.Background())
+}
+
+// mustDrain drains and fails the test on an error.
+func (h *harness) mustDrain() bool {
+	h.t.Helper()
+	activity, err := h.drain()
 	if err != nil {
-		h.t.Fatalf("Poll = %v", err)
+		h.t.Fatalf("Drain = %v", err)
 	}
 	return activity
 }
 
+// readC1 writes the hint of testChannel and drains.
+func (h *harness) readC1() (bool, error) {
+	h.t.Helper()
+	h.hint(testChannel)
+	return h.drain()
+}
+
+// mustReadC1 writes the hint of testChannel, drains and fails the test on an error.
+func (h *harness) mustReadC1() bool {
+	h.t.Helper()
+	h.hint(testChannel)
+	return h.mustDrain()
+}
+
+// retry makes the owed reads that are due.
+func (h *harness) retry() bool {
+	h.t.Helper()
+	return h.in.RetryOwed(context.Background())
+}
+
 func (h *harness) wantCursorTS(want string) {
 	h.t.Helper()
-	if _, ts := h.cursor(); ts != want {
-		h.t.Errorf("cursor ts = %q; want %q", ts, want)
+	if got := h.entryOf(primeOrch).Cursor; got != want {
+		h.t.Errorf("cursor = %q; want %q", got, want)
 	}
 }
 
@@ -734,24 +808,382 @@ func (h *harness) wantAnswers(want ...string) {
 	}
 }
 
-func TestInboundPoll(t *testing.T) {
+// relayNotices returns the bodies of the `[slack relay]` notices mailed to the hub's orch.
+func (h *harness) relayNotices() []string {
+	var bodies []string
+	for _, posted := range h.mailbox.accepted() {
+		if posted.Receiver == primeOrch && strings.HasPrefix(posted.Body, "[slack relay]") {
+			bodies = append(bodies, posted.Body)
+		}
+	}
+	return bodies
+}
+
+// threadScenario prepares the prime channel for a read with a thread scan.
+// The cursor stands 30 minutes back, a thread started two hours back has a reply an hour back past its cursor,
+// and a top-level message "one" came 10 minutes back.
+func (h *harness) threadScenario() {
+	h.t.Helper()
+	parent, reply := h.ago(2*time.Hour), h.ago(time.Hour)
+	h.updateEntry(primeOrch, func(entry *slackengine.ChannelEntry) {
+		entry.Cursor = h.ago(30 * time.Minute)
+		entry.Threads = map[string]string{parent: h.ago(90 * time.Minute)}
+	})
+	h.slack.add(testChannel, slackengine.Message{TS: parent, User: testOperator, Text: "parent", LatestReply: reply})
+	h.slack.add(testChannel, slackengine.Message{TS: reply, ThreadTS: parent, User: testOperator, Text: "reply"})
+	h.slack.add(testChannel, slackengine.Message{TS: h.ago(10 * time.Minute), User: testOperator, Text: "one"})
+}
+
+func TestInboundRead(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("OperatorMessageReachesThePrimeOrch", func(t *testing.T) {
+	// fires are the ways a read of every open channel with its thread scan is asked for.
+	fires := []struct {
+		name string
+		fire func(h *harness)
+	}{
+		{"ResyncHint", func(h *harness) {
+			h.hint(slackengine.ResyncHint)
+			_, _ = h.drain()
+		}},
+		{"Start", func(h *harness) {
+			h.in.Start()
+			h.retry()
+		}},
+	}
+	hintC1 := func(h *harness) {
+		h.hint(testChannel)
+		_, _ = h.drain()
+	}
+	notInChannel := &slackengine.APIError{Method: "conversations.history", Code: "not_in_channel"}
+
+	t.Run("MessageReachesTheOrchOfTheChannelItWasWrittenIn", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.startAt("100.000000")
-		h.say("101.000001", "deploy now")
-		if !h.mustPoll() {
-			t.Errorf("Poll reported no activity for a forwarded message")
+		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
+		h.sayIn(paymentsChannel, "101.000001", "deploy prod")
+		h.say("102.000001", "@payments x")
+		h.hint(paymentsChannel)
+		if !h.mustDrain() {
+			t.Errorf("Drain reported no activity for a forwarded message")
 		}
-		h.wantPosts(mail{"ly:orch", "[slack] deploy now"})
-		h.wantCursorTS("101.000001")
-		if h.mustPoll() {
-			t.Errorf("a second Poll reported activity")
+		h.wantPosts(mail{paymentsOrch, "[slack] deploy prod"})
+		if got := h.entryOf(paymentsOrch).Cursor; got != "101.000001" {
+			t.Errorf("payments cursor = %q; want 101.000001", got)
 		}
-		h.wantPosts(mail{"ly:orch", "[slack] deploy now"})
+		h.mustReadC1()
+		h.wantPosts(mail{paymentsOrch, "[slack] deploy prod"}, mail{primeOrch, "[slack] @payments x"})
+		h.wantCursorTS("102.000001")
+		h.hint(paymentsChannel)
+		if h.mustDrain() {
+			t.Errorf("a second Drain over read messages reported activity")
+		}
+		h.wantPosts(mail{paymentsOrch, "[slack] deploy prod"}, mail{primeOrch, "[slack] @payments x"})
+	})
+
+	t.Run("HintFileContentIsNeverForwarded", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
+		if err := os.MkdirAll(h.geom.InboxDir, 0o700); err != nil {
+			t.Fatalf("MkdirAll = %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(h.geom.InboxDir, paymentsChannel), []byte("deploy prod"), 0o600); err != nil {
+			t.Fatalf("WriteFile = %v", err)
+		}
+		if h.mustDrain() {
+			t.Errorf("Drain over a hint holding text and a channel with no new message reported activity")
+		}
+		h.wantPosts()
+		h.sayIn(paymentsChannel, "101.000001", "what Slack returns")
+		h.hint(paymentsChannel)
+		h.mustDrain()
+		h.wantPosts(mail{paymentsOrch, "[slack] what Slack returns"})
+	})
+
+	t.Run("ResyncAndStartReadEveryChannelAfterItsCursorAndEveryThreadPastItsCursor", func(t *testing.T) {
+		t.Parallel()
+		for _, tt := range fires {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t)
+				h.threadScenario()
+				h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
+				h.sayIn(paymentsChannel, "101.000001", "two")
+				tt.fire(h)
+				h.wantPosts(mail{primeOrch, "[slack] one"}, mail{primeOrch, "[slack] reply"}, mail{paymentsOrch, "[slack] two"})
+				entry := h.entryOf(primeOrch)
+				if got := entry.Threads[h.ago(2*time.Hour)]; got != h.ago(time.Hour) {
+					t.Errorf("thread cursor = %q; want the reply's %q", got, h.ago(time.Hour))
+				}
+			})
+		}
+	})
+
+	t.Run("ReadRefusedWithNotInChannelJoinsTheBotAndReadsAgain", func(t *testing.T) {
+		t.Parallel()
+		for _, tt := range fires {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t)
+				h.threadScenario()
+				h.slack.failNext("History", notInChannel)
+				tt.fire(h)
+				if joins := h.slack.logged("Join"); len(joins) != 1 || joins[0].Channel != testChannel {
+					t.Errorf("Join calls = %+v; want one for %s", joins, testChannel)
+				}
+				h.wantPosts(mail{primeOrch, "[slack] one"}, mail{primeOrch, "[slack] reply"})
+			})
+		}
+	})
+
+	t.Run("FailedReadStaysOwedAndIsMadeAgainOnceItStands", func(t *testing.T) {
+		t.Parallel()
+		rateLimit := &slackengine.RateLimitError{Method: "conversations.history", RetryAfter: 7 * time.Second}
+		tests := []struct {
+			name string
+			fire func(h *harness)
+			err  error
+			// wait is the time the read stays owed before it is due.
+			wait time.Duration
+			// wantReply is whether the read carries the thread scan.
+			wantReply bool
+		}{
+			{"HintedTransportError", hintC1, errors.New("slack: call conversations.history: connection reset"), 0, false},
+			{"HintedServerError", hintC1, errors.New("slack: conversations.history answered HTTP 500"), 0, false},
+			{"HintedRateLimit", hintC1, rateLimit, 7 * time.Second, false},
+			{"ResyncReadWithItsScan", fires[0].fire, errors.New("slack: conversations.history answered HTTP 500"), 0, true},
+			{"StartReadWithItsScan", fires[1].fire, errors.New("slack: call conversations.history: connection reset"), 0, true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t)
+				h.threadScenario()
+				h.slack.failNext("History", tt.err)
+				tt.fire(h)
+				h.wantPosts()
+				if tt.wait > 0 {
+					if h.retry() {
+						t.Errorf("RetryOwed before the retry wait reported activity")
+					}
+					h.wantPosts()
+					h.clock.Advance(tt.wait)
+				}
+				if !h.retry() {
+					t.Errorf("RetryOwed reported no activity for the owed read")
+				}
+				want := []mail{{primeOrch, "[slack] one"}}
+				if tt.wantReply {
+					want = append(want, mail{primeOrch, "[slack] reply"})
+				}
+				h.wantPosts(want...)
+				if h.retry() {
+					t.Errorf("a second RetryOwed reported activity")
+				}
+				h.wantPosts(want...)
+			})
+		}
+	})
+
+	t.Run("DrainWithoutTheSetupFileReturnsAnErrorNamingTheWayForward", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		if err := os.Remove(h.geom.SetupPath); err != nil {
+			t.Fatalf("Remove = %v", err)
+		}
+		h.hint(testChannel)
+		_, err := h.drain()
+		if err == nil || !strings.Contains(err.Error(), h.geom.SetupPath) || !strings.Contains(err.Error(), "lym slack setup --operator <user-id>") {
+			t.Errorf("Drain = %v; want an error naming %s and lym slack setup --operator <user-id>", err, h.geom.SetupPath)
+		}
+	})
+
+	t.Run("RefusedChannelMailsOneNoticePerEpisodeWhileAnotherChannelReads", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
+		refusal := &slackengine.APIError{Method: "conversations.history", Code: "invalid_auth"}
+		h.slack.failChannel(testChannel, refusal)
+		for i := range 2 {
+			h.sayIn(paymentsChannel, fmt.Sprintf("10%d.000001", i+1), fmt.Sprintf("ok%d", i+1))
+			h.hint(testChannel)
+			h.hint(paymentsChannel)
+			if _, err := h.drain(); !errors.Is(err, refusal) {
+				t.Fatalf("Drain #%d = %v; want the refusal", i+1, err)
+			}
+		}
+		notices := h.relayNotices()
+		if len(notices) != 1 || !strings.Contains(notices[0], "invalid_auth") || !strings.Contains(notices[0], "lym slack login") ||
+			!strings.Contains(notices[0], "docs/slack-app.md") || strings.Contains(notices[0], "lym slack setup") {
+			t.Fatalf("notices = %q; want one naming invalid_auth, lym slack login and docs/slack-app.md", notices)
+		}
+		h.wantPosts(mail{primeOrch, notices[0]}, mail{paymentsOrch, "[slack] ok1"}, mail{paymentsOrch, "[slack] ok2"})
+		h.slack.failChannel(testChannel, nil)
+		h.mustReadC1()
+		h.slack.failChannel(testChannel, refusal)
+		if _, err := h.readC1(); !errors.Is(err, refusal) {
+			t.Fatalf("Drain = %v; want the refusal", err)
+		}
+		if got := len(h.relayNotices()); got != 2 {
+			t.Errorf("notices after a recovered episode = %d; want 2", got)
+		}
+	})
+
+	t.Run("HintsThatNameNoOpenChannelAreRemovedUnreadAndADotHintIsLeftAlone", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.hint("C9")
+		h.hint("junk_")
+		if err := os.WriteFile(filepath.Join(h.geom.InboxDir, ".tmp"), nil, 0o600); err != nil {
+			t.Fatalf("WriteFile = %v", err)
+		}
+		h.mustDrain()
+		if calls := h.slack.callCount(); calls != 0 {
+			t.Errorf("Slack calls = %d; want none for hints that name no open channel", calls)
+		}
+		for _, name := range []string{"C9", "junk_"} {
+			if _, err := os.Stat(filepath.Join(h.geom.InboxDir, name)); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("Stat(hint %s) = %v; want it removed", name, err)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(h.geom.InboxDir, ".tmp")); err != nil {
+			t.Errorf("Stat(.tmp) = %v; want the hint being written left in place", err)
+		}
+	})
+
+	t.Run("HintWrittenDuringAReadStaysInTheInboxForTheNextDrain", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
+		h.sayIn(paymentsChannel, "101.000001", "two")
+		var once sync.Once
+		h.slack.onCall = func() { once.Do(func() { h.hint(paymentsChannel) }) }
+		h.mustReadC1()
+		if _, err := os.Stat(filepath.Join(h.geom.InboxDir, paymentsChannel)); err != nil {
+			t.Errorf("Stat(hint written during the read) = %v; want it left in the inbox", err)
+		}
+		h.wantPosts()
+		h.mustDrain()
+		h.wantPosts(mail{paymentsOrch, "[slack] two"})
+	})
+
+	t.Run("CursorForwardsEachMessageOnceWhicheverReadFindsItFirst", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.startAt("100.000000")
+		h.say("101.000001", "read by Start")
+		h.in.Start()
+		h.retry()
+		h.say("102.000001", "after a lost hint")
+		h.say("103.000001", "hinted")
+		h.mustReadC1()
+		h.wantPosts(mail{primeOrch, "[slack] read by Start"}, mail{primeOrch, "[slack] after a lost hint"}, mail{primeOrch, "[slack] hinted"})
+	})
+
+	t.Run("ThreadCursorOlderThanADayIsPrunedAndTheFloorRaised", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		parent, older, newer := h.ago(26*time.Hour), h.ago(24*time.Hour+30*time.Minute), h.ago(time.Hour)
+		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) {
+			entry.Cursor = newer
+			entry.Threads = map[string]string{parent: h.ago(25 * time.Hour)}
+		})
+		h.slack.add(paymentsChannel, slackengine.Message{TS: parent, User: testOperator, Text: "parent"})
+		h.slack.add(paymentsChannel, slackengine.Message{TS: older, ThreadTS: parent, User: testOperator, Text: "earlier reply"})
+		h.slack.add(paymentsChannel, slackengine.Message{TS: newer, ThreadTS: parent, User: testOperator, Text: "later reply"})
+		h.hint(paymentsChannel + "_" + parent)
+		h.mustDrain()
+		h.wantPosts(mail{paymentsOrch, "[slack] later reply"})
+		entry := h.entryOf(paymentsOrch)
+		if wantFloor := fmt.Sprintf("%d.000000", h.clock.Now().Add(-24*time.Hour).Unix()); entry.ThreadFloor != wantFloor {
+			t.Errorf("thread floor = %q; want the cut-off %q", entry.ThreadFloor, wantFloor)
+		}
+		if entry.Threads[parent] != newer {
+			t.Errorf("thread cursor = %q; want the forwarded reply's %q", entry.Threads[parent], newer)
+		}
+	})
+
+	t.Run("EntryWhoseFloorStandsAtItsNewestMessageForwardsNoEarlierReplyAtStart", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		parent, reply, newest := h.ago(2*time.Hour), h.ago(time.Hour), h.ago(10*time.Minute)
+		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) {
+			entry.Cursor, entry.ThreadFloor = newest, newest
+		})
+		h.slack.add(paymentsChannel, slackengine.Message{TS: parent, User: testOperator, Text: "parent", LatestReply: reply})
+		h.slack.add(paymentsChannel, slackengine.Message{TS: reply, ThreadTS: parent, User: testOperator, Text: "earlier reply"})
+		h.in.Start()
+		h.retry()
+		h.wantPosts()
+	})
+
+	t.Run("OperatorThreadReplyAndBroadcastReachTheChannelsOrchOnce", func(t *testing.T) {
+		t.Parallel()
+		parent, broadcast, reply := func(h *harness) string { return h.ago(2 * time.Hour) }, func(h *harness) string { return h.ago(time.Hour) }, func(h *harness) string { return h.ago(30 * time.Minute) }
+		prepare := func(t *testing.T) *harness {
+			h := newHarness(t)
+			h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = parent(h) })
+			h.slack.add(paymentsChannel, slackengine.Message{TS: parent(h), User: testOperator, Text: "parent", LatestReply: reply(h)})
+			h.slack.add(paymentsChannel, slackengine.Message{TS: broadcast(h), ThreadTS: parent(h), Subtype: "thread_broadcast", User: testOperator, Text: "both"})
+			h.slack.add(paymentsChannel, slackengine.Message{TS: reply(h), ThreadTS: parent(h), User: testOperator, Text: "reply"})
+			return h
+		}
+
+		t.Run("ThreadHintThenChannelHint", func(t *testing.T) {
+			t.Parallel()
+			h := prepare(t)
+			h.hint(paymentsChannel + "_" + parent(h))
+			h.mustDrain()
+			h.wantPosts(mail{paymentsOrch, "[slack] reply"})
+			h.hint(paymentsChannel)
+			h.mustDrain()
+			h.hint(paymentsChannel + "_" + parent(h))
+			h.mustDrain()
+			h.wantPosts(mail{paymentsOrch, "[slack] reply"}, mail{paymentsOrch, "[slack] both"})
+		})
+
+		t.Run("StartReadsTheChannelAndTheThread", func(t *testing.T) {
+			t.Parallel()
+			h := prepare(t)
+			h.in.Start()
+			h.retry()
+			h.wantPosts(mail{paymentsOrch, "[slack] both"}, mail{paymentsOrch, "[slack] reply"})
+		})
+	})
+
+	t.Run("FileShareForwardsItsTextAndAFileLinePerFileAndOtherMessagesAreSkipped", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.startAt("100.000000")
+		h.slack.add(testChannel, slackengine.Message{TS: "101.000001", User: "U2", Text: "someone else"})
+		h.slack.add(testChannel, slackengine.Message{TS: "102.000001", User: testOperator, BotID: "B1", Text: "a bot"})
+		h.slack.add(testChannel, slackengine.Message{TS: "103.000001", User: testOperator, Subtype: "channel_join", Text: "joined"})
+		h.slack.add(testChannel, slackengine.Message{
+			TS: "104.000001", User: testOperator, Subtype: "file_share", Text: "see <https://x.io/a|doc>",
+			Files: []slackengine.File{{Name: "a.png"}, {Name: "b.pdf"}},
+		})
+		h.mustReadC1()
+		h.wantPosts(mail{primeOrch, "[slack] see https://x.io/a\n(file not relayed: a.png)\n(file not relayed: b.pdf)"})
+		h.wantAnswers()
+		h.wantCursorTS("104.000001")
+	})
+
+	t.Run("OperatorChangedInTheSetupIsTheOneForwardedAtTheNextDrain", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.startAt("100.000000")
+		h.say("101.000001", "from the first operator")
+		h.mustReadC1()
+		if err := slackengine.WriteSetup(h.geom.SetupPath, slackengine.Setup{OperatorID: "U2"}); err != nil {
+			t.Fatalf("WriteSetup = %v", err)
+		}
+		h.say("102.000001", "from the first operator again")
+		h.slack.add(testChannel, slackengine.Message{TS: "103.000001", User: "U2", Text: "from the second operator"})
+		h.mustReadC1()
+		h.wantPosts(mail{primeOrch, "[slack] from the first operator"}, mail{primeOrch, "[slack] from the second operator"})
 	})
 
 	t.Run("SlackMarkupReachesTheOrchAsPlainText", func(t *testing.T) {
@@ -759,110 +1191,46 @@ func TestInboundPoll(t *testing.T) {
 		h := newHarness(t)
 		h.startAt("100.000000")
 		h.say("101.000001", "see <https://x.io/a|label> <https://x.io/a> <#C1|general> <!here> <@U1> &amp; &lt;c&gt;")
-		h.mustPoll()
-		h.wantPosts(mail{"ly:orch", "[slack] see https://x.io/a https://x.io/a <#C1|general> <!here> <@U1> & <c>"})
+		h.mustReadC1()
+		h.wantPosts(mail{primeOrch, "[slack] see https://x.io/a https://x.io/a <#C1|general> <!here> <@U1> & <c>"})
 	})
 
-	t.Run("WhatIsNotTheOperatorsTopLevelTextMovesTheCursorOnly", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.startAt("100.000000")
-		h.slack.add(testChannel, slackengine.Message{TS: "101.000001", User: "U2", Text: "someone else"})
-		h.slack.add(testChannel, slackengine.Message{TS: "102.000001", User: testOperator, BotID: "B1", Text: "a bot"})
-		h.slack.add(testChannel, slackengine.Message{TS: "103.000001", ThreadTS: "99.000001", User: testOperator, Text: "a thread reply"})
-		h.slack.add(testChannel, slackengine.Message{TS: "104.000001", User: testOperator, Subtype: "channel_join", Text: "joined"})
-		if h.mustPoll() {
-			t.Errorf("Poll reported activity for messages it skipped")
-		}
-		h.wantPosts()
-		h.wantAnswers()
-		h.wantCursorTS("104.000001")
-	})
-
-	t.Run("AtSlugReachesThatBeamsOrch", func(t *testing.T) {
+	t.Run("PresenceCommandsInAnyChannelSetAndReadThePresenceAndAreAnsweredThere", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.hub.set(func(h *fakeHub) { h.beams = []string{"payments"} })
-		h.startAt("100.000000")
-		h.say("101.000001", "@payments do x")
-		h.mustPoll()
-		h.wantPosts(mail{"ly:payments:orch", "[slack] do x"})
+		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
+		h.sayIn(paymentsChannel, "101.000001", "away")
+		h.sayIn(paymentsChannel, "102.000001", " Back ")
+		h.sayIn(paymentsChannel, "103.000001", "status")
+		h.hint(paymentsChannel)
+		h.mustDrain()
+		h.wantAnswers("presence is now slack", "presence is now terminal", "presence is terminal")
+		for _, call := range h.slack.logged("PostAs") {
+			if call.Channel != paymentsChannel {
+				t.Errorf("an answer was posted to %s; want %s", call.Channel, paymentsChannel)
+			}
+		}
+		h.wantPosts(
+			mail{primeOrch, "[slack presence] presence is now slack"},
+			mail{paymentsOrch, "[slack presence] presence is now slack"},
+			mail{primeOrch, "[slack presence] presence is now terminal"},
+			mail{paymentsOrch, "[slack presence] presence is now terminal"},
+		)
 	})
 
-	t.Run("UnknownBeamIsAnsweredWithTheBeamsAndPostsNothing", func(t *testing.T) {
+	t.Run("AnswerRefusedWithNotInChannelJoinsTheChannelAndPostsAgain", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
-		h.hub.set(func(h *fakeHub) { h.beams = []string{"payments", "orders"} })
-		h.startAt("100.000000")
-		h.say("101.000001", "@nope x")
-		h.mustPoll()
-		h.wantPosts()
-		h.wantAnswers(`no beam "nope"; the hub's beams are: payments, orders`)
-		h.wantCursorTS("101.000001")
-	})
-
-	t.Run("BeamsErrorRetriesAndForwardsOnce", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.hub.set(func(h *fakeHub) { h.beams, h.beamsErr = []string{"payments"}, errors.New("board unreadable") })
-		h.startAt("100.000000")
-		h.say("101.000001", "@payments x")
-		if _, err := h.poll(); err == nil {
-			t.Fatalf("Poll = nil; want the Beams error")
+		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
+		h.sayIn(paymentsChannel, "101.000001", "status")
+		h.slack.failPosts(&slackengine.APIError{Method: "chat.postMessage", Code: "not_in_channel"})
+		h.hint(paymentsChannel)
+		h.mustDrain()
+		if joins := h.slack.logged("Join"); len(joins) != 1 || joins[0].Channel != paymentsChannel {
+			t.Errorf("Join calls = %+v; want one for %s", joins, paymentsChannel)
 		}
-		h.wantPosts()
-		h.wantAnswers()
-		h.wantCursorTS("100.000000")
-		h.hub.set(func(h *fakeHub) { h.beamsErr = nil })
-		h.mustPoll()
-		h.mustPoll()
-		h.wantPosts(mail{"ly:payments:orch", "[slack] x"})
-	})
-
-	t.Run("FirstPollWithNoCursorForwardsNoHistory", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.say("90.000001", "old one")
-		h.say("91.000001", "old two")
-		if h.mustPoll() {
-			t.Errorf("the first Poll reported activity")
-		}
-		h.wantPosts()
-		h.wantCursorTS("91.000001")
-		h.say("92.000001", "new")
-		h.mustPoll()
-		h.mustPoll()
-		h.wantPosts(mail{"ly:orch", "[slack] new"})
-	})
-
-	t.Run("EmptyChannelFirstPollStartsAtTheClock", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.mustPoll()
-		if channel, ts := h.cursor(); channel != testChannel || ts != fmt.Sprintf("%d.000000", h.clock.Now().Unix()) {
-			t.Errorf("cursor = %q, %q; want the channel and the clock's now", channel, ts)
-		}
-	})
-
-	t.Run("ChangedChannelForwardsNoHistoryOfThatChannel", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.startAt("100.000000")
-		h.say("101.000001", "first")
-		h.mustPoll()
-		h.slack.add("C2", slackengine.Message{TS: "50.000001", User: testOperator, Text: "in the other channel"})
-		h.setChannel("C2")
-		h.mustPoll()
-		if channel, ts := h.cursor(); channel != "C2" || ts != "50.000001" {
-			t.Errorf("cursor after the change = %q, %q; want C2 at its newest message", channel, ts)
-		}
-		h.say("102.000001", "written while away from C1")
-		h.setChannel(testChannel)
-		h.mustPoll()
-		if channel, ts := h.cursor(); channel != testChannel || ts != "102.000001" {
-			t.Errorf("cursor after the change back = %q, %q; want C1 at its newest message", channel, ts)
-		}
-		h.wantPosts(mail{"ly:orch", "[slack] first"})
+		h.wantAnswers("presence is terminal")
 	})
 
 	t.Run("RefusedPostHoldsLaterMessagesUntilAcceptedOrFiveMinutes", func(t *testing.T) {
@@ -875,16 +1243,18 @@ func TestInboundPoll(t *testing.T) {
 			h.say("101.000001", "m1")
 			h.say("102.000001", "away")
 			h.mailbox.setPostErr(errors.New("creel down"))
-			if _, err := h.poll(); err == nil {
-				t.Fatalf("Poll = nil; want the post error")
+			if _, err := h.readC1(); err == nil {
+				t.Fatalf("Drain = nil; want the post error")
 			}
 			h.wantCursorTS("100.000000")
 			h.wantAnswers()
 			h.mailbox.setPostErr(nil)
 			h.clock.Advance(time.Minute)
-			h.mustPoll()
+			if !h.retry() {
+				t.Errorf("RetryOwed reported no activity for the held messages")
+			}
 			h.wantCursorTS("102.000001")
-			h.wantPosts(mail{"ly:orch", "[slack] m1"}, mail{"ly:orch", "[slack presence] presence is now slack"})
+			h.wantPosts(mail{primeOrch, "[slack] m1"}, mail{primeOrch, "[slack presence] presence is now slack"})
 		})
 
 		t.Run("PastFiveMinutesIsAnsweredOnceAndPassed", func(t *testing.T) {
@@ -893,12 +1263,12 @@ func TestInboundPoll(t *testing.T) {
 			h.startAt("100.000000")
 			h.say("101.000001", "m1")
 			h.mailbox.setPostErr(errors.New("creel down"))
-			if _, err := h.poll(); err == nil {
-				t.Fatalf("Poll = nil; want the post error")
+			if _, err := h.readC1(); err == nil {
+				t.Fatalf("Drain = nil; want the post error")
 			}
 			h.clock.Advance(5 * time.Minute)
-			h.mustPoll()
-			h.mustPoll()
+			h.retry()
+			h.retry()
 			h.wantAnswers("your message was not delivered; send it again: creel down")
 			h.wantCursorTS("101.000001")
 			h.wantPosts()
@@ -921,7 +1291,7 @@ func TestInboundPoll(t *testing.T) {
 				h := newHarness(t)
 				h.startAt("100.000000")
 				h.say("101.000001", strings.Repeat("x", tt.textBytes))
-				h.mustPoll()
+				h.mustReadC1()
 				if posted := len(h.mailbox.accepted()) == 1; posted != tt.wantPosted {
 					t.Errorf("posted = %v; want %v", posted, tt.wantPosted)
 				}
@@ -936,11 +1306,11 @@ func TestInboundPoll(t *testing.T) {
 	t.Run("PausedReceiverGetsThePostAndOneAnswer", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
-		h.hub.set(func(h *fakeHub) { h.paused["ly:orch"] = true })
+		h.hub.set(func(h *fakeHub) { h.paused[primeOrch] = true })
 		h.startAt("100.000000")
 		h.say("101.000001", "hello")
-		h.mustPoll()
-		h.wantPosts(mail{"ly:orch", "[slack] hello"})
+		h.mustReadC1()
+		h.wantPosts(mail{primeOrch, "[slack] hello"})
 		h.wantAnswers("the hub is paused; your message waits for the resume")
 	})
 
@@ -950,29 +1320,11 @@ func TestInboundPoll(t *testing.T) {
 		h.hub.set(func(h *fakeHub) { h.pausedErr = errors.New("pause record unreadable") })
 		h.startAt("100.000000")
 		h.say("101.000001", "hello")
-		h.mustPoll()
-		h.mustPoll()
-		h.wantPosts(mail{"ly:orch", "[slack] hello"})
+		h.mustReadC1()
+		h.mustReadC1()
+		h.wantPosts(mail{primeOrch, "[slack] hello"})
 		h.wantAnswers()
 		h.wantCursorTS("101.000001")
-	})
-
-	t.Run("PresenceCommandsSetAndReadThePresenceAndAreAnswered", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.hub.set(func(h *fakeHub) { h.beams = []string{"payments"} })
-		h.startAt("100.000000")
-		h.say("101.000001", "away")
-		h.say("102.000001", " Back ")
-		h.say("103.000001", "status")
-		h.mustPoll()
-		h.wantAnswers("presence is now slack", "presence is now terminal", "presence is terminal")
-		h.wantPosts(
-			mail{"ly:orch", "[slack presence] presence is now slack"},
-			mail{"ly:payments:orch", "[slack presence] presence is now slack"},
-			mail{"ly:orch", "[slack presence] presence is now terminal"},
-			mail{"ly:payments:orch", "[slack presence] presence is now terminal"},
-		)
 	})
 
 	t.Run("AwayWhoseBeamsReadFailsAfterTheWriteIsAnsweredAndPassed", func(t *testing.T) {
@@ -981,8 +1333,8 @@ func TestInboundPoll(t *testing.T) {
 		h.hub.set(func(h *fakeHub) { h.beamsErr = errors.New("board unreadable") })
 		h.startAt("100.000000")
 		h.say("101.000001", "away")
-		h.mustPoll()
-		h.mustPoll()
+		h.mustReadC1()
+		h.mustReadC1()
 		if presence, err := slackengine.ReadPresence(h.geom.PresencePath); err != nil || presence != slackengine.PresenceSlack {
 			t.Errorf("ReadPresence = %q, %v; want slack", presence, err)
 		}
@@ -998,16 +1350,17 @@ func TestInboundPoll(t *testing.T) {
 		if err := os.MkdirAll(h.geom.PresencePath, 0o700); err != nil {
 			t.Fatalf("MkdirAll = %v", err)
 		}
-		if _, err := h.poll(); err == nil {
-			t.Fatalf("Poll = nil; want the presence write error")
+		if _, err := h.readC1(); err == nil {
+			t.Fatalf("Drain = nil; want the presence write error")
 		}
 		h.wantAnswers()
 		h.wantCursorTS("100.000000")
 		if err := os.Remove(h.geom.PresencePath); err != nil {
 			t.Fatalf("Remove = %v", err)
 		}
-		h.mustPoll()
-		h.mustPoll()
+		if !h.retry() {
+			t.Errorf("RetryOwed reported no activity once the write works")
+		}
 		h.wantAnswers("presence is now slack")
 		h.wantCursorTS("101.000001")
 	})
@@ -1020,14 +1373,13 @@ func TestInboundPoll(t *testing.T) {
 			t.Fatalf("WriteFile = %v", err)
 		}
 		h.say("101.000001", "status")
-		if _, err := h.poll(); err == nil {
-			t.Fatalf("Poll = nil; want the presence read error")
+		if _, err := h.readC1(); err == nil {
+			t.Fatalf("Drain = nil; want the presence read error")
 		}
 		h.wantAnswers()
 		h.wantCursorTS("100.000000")
 		h.clock.Advance(5 * time.Minute)
-		h.mustPoll()
-		h.mustPoll()
+		h.retry()
 		answers := h.slack.texts()
 		if len(answers) != 1 || !strings.Contains(answers[0], h.geom.PresencePath) {
 			t.Errorf("answers = %q; want one quoting the error that names %s", answers, h.geom.PresencePath)
@@ -1041,11 +1393,11 @@ func TestInboundPoll(t *testing.T) {
 		h.startAt("100.000000")
 		h.say("101.000001", "hello")
 		h.mailbox.setPostErr(errors.New("a & <b>"))
-		if _, err := h.poll(); err == nil {
-			t.Fatalf("Poll = nil; want the post error")
+		if _, err := h.readC1(); err == nil {
+			t.Fatalf("Drain = nil; want the post error")
 		}
 		h.clock.Advance(5 * time.Minute)
-		h.mustPoll()
+		h.retry()
 		h.wantAnswers("your message was not delivered; send it again: a &amp; &lt;b&gt;")
 	})
 
@@ -1055,7 +1407,7 @@ func TestInboundPoll(t *testing.T) {
 		h.startAt("100.000000")
 		h.say("101.000001", "status")
 		h.slack.failPosts(errors.New("slack down"))
-		h.mustPoll()
+		h.mustReadC1()
 		h.wantCursorTS("101.000001")
 		h.wantAnswers()
 	})
@@ -1063,45 +1415,17 @@ func TestInboundPoll(t *testing.T) {
 	t.Run("PresenceChangedByAnotherWriterIsActivity", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
-		h.startAt("100.000000")
-		if h.mustPoll() {
-			t.Errorf("the first Poll reported activity")
+		if h.mustDrain() {
+			t.Errorf("the first Drain reported activity")
 		}
 		if _, err := slackengine.WritePresence(h.geom.PresencePath, slackengine.PresenceSlack, h.clock.Now()); err != nil {
 			t.Fatalf("WritePresence = %v", err)
 		}
-		if !h.mustPoll() {
-			t.Errorf("Poll after another writer changed the presence reported no activity")
+		if !h.mustDrain() {
+			t.Errorf("Drain after another writer changed the presence reported no activity")
 		}
-		if h.mustPoll() {
-			t.Errorf("Poll over an unchanged presence reported activity")
-		}
-	})
-
-	t.Run("SlackRefusalMailsOneNoticePerEpisode", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.startAt("100.000000")
-		refusal := &slackengine.APIError{Method: "conversations.history", Code: "invalid_auth"}
-		h.slack.setHistoryErr(refusal)
-		for range 2 {
-			if _, err := h.poll(); !errors.Is(err, refusal) {
-				t.Fatalf("Poll = %v; want the refusal", err)
-			}
-		}
-		posts := h.mailbox.accepted()
-		if len(posts) != 1 || posts[0].Receiver != "ly:orch" || !strings.HasPrefix(posts[0].Body, "[slack relay]") ||
-			!strings.Contains(posts[0].Body, "invalid_auth") || !strings.Contains(posts[0].Body, "lym slack login") {
-			t.Fatalf("notices = %+v; want one [slack relay] notice to ly:orch naming invalid_auth and lym slack login", posts)
-		}
-		h.slack.setHistoryErr(nil)
-		h.mustPoll()
-		h.slack.setHistoryErr(refusal)
-		if _, err := h.poll(); !errors.Is(err, refusal) {
-			t.Fatalf("Poll = %v; want the refusal", err)
-		}
-		if got := len(h.mailbox.accepted()); got != 2 {
-			t.Errorf("notices after a recovered episode = %d; want 2", got)
+		if h.mustDrain() {
+			t.Errorf("Drain over an unchanged presence reported activity")
 		}
 	})
 }

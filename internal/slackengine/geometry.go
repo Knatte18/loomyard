@@ -24,8 +24,6 @@ const (
 	SetupFileName = "setup.json"
 	// PresenceFileName is the hub's presence record.
 	PresenceFileName = "presence.json"
-	// CursorFileName is the record of the newest Slack message the relay has read.
-	CursorFileName = "cursor.json"
 	// OutboxFileName is the record of the mail the relay has read and not yet finished posting.
 	OutboxFileName = "outbox.json"
 	// RelayStateFileName is the relay's state record.
@@ -61,8 +59,6 @@ type Geometry struct {
 	SetupPath string
 	// PresencePath is the hub's presence record.
 	PresencePath string
-	// CursorPath is the record of the newest Slack message the relay has read.
-	CursorPath string
 	// OutboxPath is the record of the mail the relay has read and not yet finished posting.
 	OutboxPath string
 	// RelayStatePath is the relay's state record.

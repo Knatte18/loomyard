@@ -36,6 +36,8 @@ type RelayDeps struct {
 	Slack SlackClient
 	// Hub reads the hub's beams and pauses.
 	Hub Hub
+	// LiveHubs lists the machine's live hubs, which the relay's channel keeper reads to judge a channel.
+	LiveHubs LiveHubs
 	// Clock is the relay's source of time.
 	Clock Clock
 	// PID returns the relay's process id.
@@ -140,12 +142,13 @@ func waitFor(ctx context.Context, clock Clock, d time.Duration) bool {
 // RunRelay runs the hub's relay until ctx ends, and returns nil when it ends or another relay holds the lock.
 // It refuses a machine missing either token and a hub with no setup file.
 // It takes the relay lock, registers itself, and records its pid.
-// It makes the first creel read before any Slack call, then polls the channel and reads its own mailbox.
+// It makes the first creel read before any Slack call, then reads the hub's channels and its own mailbox.
+// The channel reads are owed at the start and asked for by the hints in the hub's inbox.
 // Each loop waits on its own schedule.
 // At the end of each outbound read it stamps the relay's last-healthy time in its state.
 // A creel refusal of the program claim from a strand's pane returns ErrRelayInStrandPane with the lock released.
 // Any other first-read refusal is retried while the lock is held.
-// At each poll it checks whether the lym binary was replaced and re-execs onto it.
+// After each channel read it checks whether the lym binary was replaced and re-execs onto it.
 // A relay that cannot re-exec retakes its lock, or exits when another relay holds it.
 func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 	if _, _, err := RequireConfigured(geom); err != nil {
@@ -192,9 +195,10 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 		}
 		log.recovered("relay-state")
 	}
+	keeper := newChannelKeeper(geom, deps.Slack, deps.LiveHubs, deps.Mailbox, deps.Clock)
 	go runOutbound(loopCtx, newOutbound(geom, deps.Mailbox, deps.Slack, deps.Clock, floor), deps.Clock, log, stampLastHealthy)
-	poller := &inbound{geom: geom, mailbox: deps.Mailbox, slack: deps.Slack, hub: deps.Hub, clock: deps.Clock}
-	return runInbound(loopCtx, poller, deps, heldLock, log, floor)
+	reader := newInbound(geom, deps.Mailbox, deps.Slack, deps.Hub, deps.Clock, keeper)
+	return runInbound(loopCtx, reader, deps, heldLock, log, floor)
 }
 
 // takeRelayLock takes the relay lock, and returns nil when another relay holds it.
@@ -273,14 +277,17 @@ func runOutbound(ctx context.Context, out *outbound, clock Clock, log *relayLog,
 	}
 }
 
-// runInbound polls the channel until ctx ends.
-// After each poll it checks for a replaced binary and then waits.
-// The wait is the shared floor after activity, doubled while polls find nothing or fail, and a rate limit's retry wait.
+// runInbound reads the hub's channels until ctx ends.
+// It owes every open channel a read at its start, then drains the inbox's hints and makes the owed reads on each pass.
+// After each pass it checks for a replaced binary and then waits.
+// The wait is the shared floor after activity, doubled while passes find nothing or fail, and a rate limit's retry wait.
 func runInbound(ctx context.Context, in *inbound, deps RelayDeps, heldLock *relayLock, log *relayLog, floor *sharedFloor) error {
 	wait := newLoopWait(floor)
 	exiting := false
+	in.start()
 	for ctx.Err() == nil {
-		activity, err := in.poll(ctx)
+		activity, err := in.drain(ctx)
+		activity = in.retryOwed(ctx) || activity
 		var pause time.Duration
 		limit, rateLimited := isRateLimit(err)
 		switch {

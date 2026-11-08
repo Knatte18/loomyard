@@ -276,6 +276,7 @@ func runRelay(ctx context.Context, hubPath, primeName string) error {
 			Beams:  func() ([]string, error) { return beamSlugs(prime) },
 			Paused: func(receiver string) (bool, error) { return receiverPaused(hubPath, prime, receiver) },
 		},
+		LiveHubs:       liveHubGeometries,
 		Clock:          slackengine.SystemClock{},
 		PID:            os.Getpid,
 		ReexecLockWait: relayReexecLockWait,

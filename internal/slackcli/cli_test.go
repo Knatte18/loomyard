@@ -213,7 +213,6 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 			ChannelMapPath: filepath.Join(slackDir, slackengine.ChannelMapFileName),
 			SetupPath:      filepath.Join(slackDir, slackengine.SetupFileName),
 			PresencePath:   filepath.Join(slackDir, slackengine.PresenceFileName),
-			CursorPath:     filepath.Join(slackDir, slackengine.CursorFileName),
 			OutboxPath:     filepath.Join(slackDir, slackengine.OutboxFileName),
 			RelayStatePath: filepath.Join(slackDir, slackengine.RelayStateFileName),
 			LockPath:       filepath.Join(slackDir, slackengine.RelayLockFileName),

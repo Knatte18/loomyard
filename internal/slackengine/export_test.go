@@ -13,16 +13,22 @@ const (
 	Ceiling = waitCeiling
 )
 
-// Inbound is the unexported inbound poll.
+// Inbound is the unexported inbound read of the hub's channels.
 type Inbound = inbound
 
-// NewInbound builds an inbound poll over the seams.
-func NewInbound(geom Geometry, mailbox Mailbox, slack SlackClient, hub Hub, clock Clock) *Inbound {
-	return &inbound{geom: geom, mailbox: mailbox, slack: slack, hub: hub, clock: clock}
+// NewInbound builds an inbound read over the seams.
+func NewInbound(geom Geometry, mailbox Mailbox, slack SlackClient, hub Hub, clock Clock, keeper *ChannelKeeper) *Inbound {
+	return newInbound(geom, mailbox, slack, hub, clock, keeper)
 }
 
-// Poll runs one inbound poll.
-func (in *inbound) Poll(ctx context.Context) (bool, error) { return in.poll(ctx) }
+// Start owes every open channel a read with its thread scan.
+func (in *inbound) Start() { in.start() }
+
+// Drain makes the reads the inbox's hints ask for.
+func (in *inbound) Drain(ctx context.Context) (bool, error) { return in.drain(ctx) }
+
+// RetryOwed makes each owed read whose time has come.
+func (in *inbound) RetryOwed(ctx context.Context) bool { return in.retryOwed(ctx) }
 
 // Outbound is the unexported outbound read.
 type Outbound = outbound
