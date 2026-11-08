@@ -41,6 +41,11 @@ The commands that read and write the board are in the `ly:board` skill.
 - Never propose one note alone as a loom task: a loom run has a fixed cost of about half its spend whatever its size.
   Fold related notes into one loom task, or propose darn for a small change and let the operator name darn.
   A part of a darn task that looks large raises the darn's profile; it never becomes a loom run of its own.
+- A note or bundle weighed for a tapestry run is proposed as a `motif` task, never as a tapestry task straight from the board.
+  Its Motif stores the approved decision record and makes the entry a Sketch;
+  promoting the Sketch runs raddle, which splits it into tasks.
+  Raddle chooses each part's recipe, tapestry included, and that choice stands:
+  never change, on your own judgment, the recipe of a task raddle filed; the operator may still name darn for it.
 - Every task runs through loom, bug fixes included.
   Never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
 - A rename is a task of its own: mechanical, done by script, with nothing else in it.
@@ -76,7 +81,8 @@ and the board holds all its state.
 - Read the board, and the code a case needs, yourself.
 - Talk each case through with the operator before writing it.
   Then write, merge or remove notes, promote notes to tasks and release tasks as the sections above say.
-- Split an entry into tasks on the operator's approval:
+- A Sketch is split by promoting it to its raddle task, never by hand.
+  Split any other entry into tasks on the operator's approval:
   each part is a task with its own body and its `depends_on` set;
   no two parts that run in parallel change the same package.
   For a discussed entry, each part's body carries the part of the decision record it builds.
