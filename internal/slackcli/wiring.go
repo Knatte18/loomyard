@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"syscall"
@@ -24,12 +25,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/slackengine"
+	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
 
 // relayReexecLockWait is how long a relay that re-executed onto a replaced binary waits for the lock its old image released.
@@ -110,6 +113,10 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 	c.geom = geom
 	c.pane = func() paneCaller { return hubPaneCaller(location.HubPath) }
 	c.newSlack = func(baseURL, token string) slackChecks { return slackengine.NewAPI(baseURL, token, &http.Client{}) }
+	c.newDialer = func(baseURL, appToken string) slackengine.Dialer {
+		return slackengine.NewDialer(baseURL, appToken, &http.Client{}, slackengine.HelloTimeout)
+	}
+	c.liveHubs = liveHubGeometries
 	c.newMailbox = func() slackengine.Mailbox { return newProgramMailbox(prime) }
 	c.ensure = func(geom slackengine.Geometry) (slackengine.StartOutcome, error) {
 		return slackengine.EnsureRelay(geom, primeName)
@@ -119,6 +126,28 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 	c.beams = func() ([]string, error) { return beamSlugs(prime) }
 	c.paused = func() (bool, error) { return orchPaused(prime) }
 	return nil
+}
+
+// liveHubGeometries lists the Slack geometry of each hub the machine record of hubs lists as live.
+// A failed read of the record keeps its own message in the chain, and a hub whose geometry fails is named by its path.
+func liveHubGeometries() ([]slackengine.Geometry, error) {
+	dir, err := standalonestate.UserStateDir()
+	if err != nil {
+		return nil, fmt.Errorf("slack: find the directory of the machine record of hubs: %w", err)
+	}
+	entries, err := hubregistry.Live(dir)
+	if err != nil {
+		return nil, fmt.Errorf("slack: read the machine record of hubs %s: %w", filepath.Join(dir, hubregistry.RecordFileName), err)
+	}
+	geometries := make([]slackengine.Geometry, 0, len(entries))
+	for _, entry := range entries {
+		geom, err := hubgeom.SlackGeometry(entry.HubPath)
+		if err != nil {
+			return nil, fmt.Errorf("slack: build the Slack geometry of the hub at %s: %w", entry.HubPath, err)
+		}
+		geometries = append(geometries, geom)
+	}
+	return geometries, nil
 }
 
 // hubPaneCaller describes this process for the pane check, against the strands of the hub at hubPath.

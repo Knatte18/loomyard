@@ -77,6 +77,10 @@ type Geometry struct {
 	LymExecutable string
 }
 
+// LiveHubs lists the Slack geometries of the machine's live hubs.
+// A failed read is the returned error, which a caller quotes as it is.
+type LiveHubs func() ([]Geometry, error)
+
 // recordLockPath returns the lock path of the record at path: a file in a locks directory beside the record.
 func recordLockPath(path string) string {
 	return filepath.Join(filepath.Dir(path), lymdirs.LocksDirName, filepath.Base(path)+".lock")

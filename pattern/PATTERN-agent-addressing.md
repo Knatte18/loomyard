@@ -20,6 +20,6 @@ Held by review alone; no test enforces it.
 
 ## Slack boundary
 
-Rule: Calling Slack: only `internal/slackengine` calls the Web API, reading the bot token only from its machine credential file (`slack.json` in githubclient's credential directory), never from a config layer, `lym config env`, an environment variable or a repository; operator Slack text reaches an agent only as creel mail from `<shortname>:SLACK`, and an agent reaches Slack only by creel mail to that program.
+Rule: Calling Slack: only `internal/slackengine` calls Slack, over the Web API and Socket Mode, reading its bot and app-level tokens only from `slack.json` in githubclient's credential directory, never from a config layer, `lym config env`, an environment variable or a repository; operator Slack text reaches an agent only as creel mail from `<shortname>:SLACK` of what Slack returned, and an agent reaches Slack only by creel mail to that program.
 
 Held by review alone; no test enforces it.

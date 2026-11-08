@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelengine"
@@ -52,6 +54,28 @@ func (fixedClock) After(time.Duration) <-chan time.Time {
 type slackRequest struct {
 	path          string
 	authorization string
+	form          url.Values
+}
+
+// requestOptions compare the requests the fake Slack saw, an absent form equal to an empty one.
+var requestOptions = []cmp.Option{cmp.AllowUnexported(slackRequest{}), cmpopts.EquateEmpty()}
+
+// fakeLoginSocket is the Socket Mode connection login opens and closes at once; it answers nothing and records its Close.
+type fakeLoginSocket struct {
+	closed bool
+}
+
+func (s *fakeLoginSocket) Read(context.Context) (slackengine.Envelope, error) {
+	return slackengine.Envelope{}, nil
+}
+
+func (s *fakeLoginSocket) Ack(context.Context, string) error { return nil }
+
+func (s *fakeLoginSocket) Ping(context.Context) error { return nil }
+
+func (s *fakeLoginSocket) Close() error {
+	s.closed = true
+	return nil
 }
 
 // fakeSlack is an httptest server standing in for Slack's Web API.
@@ -64,17 +88,23 @@ type fakeSlack struct {
 
 // newFakeSlack starts a server that answers the methods in answers, as `/<method>` keys, and ok for the rest.
 // A channel check not in answers names a channel the bot is a member of.
+// An auth.test not in answers names the bot B1, and a bots.info not in answers names the app A1.
 func newFakeSlack(t *testing.T, answers map[string]string) *fakeSlack {
 	t.Helper()
 	fake := &fakeSlack{}
 	fake.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
 		fake.mu.Lock()
-		fake.requests = append(fake.requests, slackRequest{path: r.URL.Path, authorization: r.Header.Get("Authorization")})
+		fake.requests = append(fake.requests, slackRequest{path: r.URL.Path, authorization: r.Header.Get("Authorization"), form: r.PostForm})
 		fake.mu.Unlock()
 		body, found := answers[r.URL.Path]
 		switch {
 		case !found && r.URL.Path == "/conversations.info":
 			body = `{"ok":true,"channel":{"id":"C1","name":"ops","is_member":true}}`
+		case !found && r.URL.Path == "/auth.test":
+			body = `{"ok":true,"bot_id":"B1"}`
+		case !found && r.URL.Path == "/bots.info":
+			body = `{"ok":true,"bot":{"app_id":"A1"}}`
 		case !found:
 			body = `{"ok":true}`
 		}
@@ -122,12 +152,26 @@ type harness struct {
 
 	// caller is the process the pane check sees.
 	caller paneCaller
-	// onTerminal makes standard input read as a terminal, which answers terminalLine or terminalErr;
+	// onTerminal makes standard input read as a terminal.
+	// It answers the next of terminalLines, then terminalLine, with terminalErr.
 	// prompts records every prompt the hidden read printed.
-	onTerminal   bool
-	terminalLine string
-	terminalErr  error
-	prompts      []string
+	onTerminal    bool
+	terminalLines []string
+	terminalLine  string
+	terminalErr   error
+	prompts       []string
+	// appID is the app the fake dial's hello names, and dialErr is what the dial fails with.
+	// dials counts the dials made, and dialToken is the app-level token the last one used.
+	// sockets records the connections opened.
+	appID     string
+	dialErr   error
+	dials     int
+	dialToken string
+	sockets   []*fakeLoginSocket
+	// liveHubs and liveHubsErr are what the live-hub seam answers; stoppedHubs lists the hubs the stop seam was told.
+	liveHubs    []slackengine.Geometry
+	liveHubsErr error
+	stoppedHubs []string
 	// beams, paused and the errors are what the seams answer.
 	beams                                     []string
 	paused                                    bool
@@ -163,6 +207,7 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 		dir:     dir,
 		slack:   newFakeSlack(t, answers),
 		mailbox: &recordingMailbox{},
+		appID:   "A1",
 		geom: slackengine.Geometry{
 			HubPath:        hub,
 			Shortname:      "hub",
@@ -206,18 +251,36 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 				return "", false, nil
 			}
 			h.prompts = append(h.prompts, prompt)
-			return h.terminalLine, true, h.terminalErr
+			line := h.terminalLine
+			if len(h.terminalLines) > 0 {
+				line, h.terminalLines = h.terminalLines[0], h.terminalLines[1:]
+			}
+			return line, true, h.terminalErr
 		},
 		newSlack: func(baseURL, token string) slackChecks {
 			return slackengine.NewAPI(baseURL, token, h.slack.server.Client())
 		},
+		newDialer: func(_, appToken string) slackengine.Dialer {
+			return func(context.Context) (slackengine.Socket, string, error) {
+				h.dials++
+				h.dialToken = appToken
+				if h.dialErr != nil {
+					return nil, "", h.dialErr
+				}
+				socket := &fakeLoginSocket{}
+				h.sockets = append(h.sockets, socket)
+				return socket, h.appID, nil
+			}
+		},
+		liveHubs:   func() ([]slackengine.Geometry, error) { return h.liveHubs, h.liveHubsErr },
 		newMailbox: func() slackengine.Mailbox { return h.mailbox },
 		ensure: func(slackengine.Geometry) (slackengine.StartOutcome, error) {
 			h.calls = append(h.calls, "ensure")
 			return slackengine.OutcomeStarted, h.ensureErr
 		},
-		stop: func(_ slackengine.Geometry, callerPID int) ([]runproc.Ended, error) {
+		stop: func(geom slackengine.Geometry, callerPID int) ([]runproc.Ended, error) {
 			h.calls = append(h.calls, "stop")
+			h.stoppedHubs = append(h.stoppedHubs, geom.HubPath)
 			h.stopPID = callerPID
 			return nil, h.stopErr
 		},
@@ -371,15 +434,14 @@ func TestSlackCLI(t *testing.T) {
 	t.Run("Login", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("StoresTheTokenOnlyAfterSlackAcceptsIt", func(t *testing.T) {
+		t.Run("StoresBothTokensWithTheAppIDOnlyAfterSlackAcceptsThem", func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, nil)
-			h.storeCredentials(slackengine.Credentials{AppToken: "xapp-stored", AppID: "A1"})
-			code, env := h.run("  xoxb-good\n", "login")
+			code, env := h.run("  xoxb-good\nxapp-good\n", "login")
 			wantOK(t, code, env)
-			wantStored := slackengine.Credentials{BotToken: "xoxb-good", AppToken: "xapp-stored", AppID: "A1"}
+			wantStored := slackengine.Credentials{BotToken: "xoxb-good", AppToken: "xapp-good", AppID: "A1"}
 			if stored, err := slackengine.ReadCredentials(h.geom.TokenPath); err != nil || stored != wantStored {
-				t.Errorf("ReadCredentials = %+v, %v; want the trimmed token with the app-level token and app id standing: %+v", stored, err, wantStored)
+				t.Errorf("ReadCredentials = %+v, %v; want both tokens and the app id: %+v", stored, err, wantStored)
 			}
 			if info, err := os.Stat(h.geom.TokenPath); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 				t.Errorf("token file mode = %v, %v; want 0600", info.Mode().Perm(), err)
@@ -387,70 +449,182 @@ func TestSlackCLI(t *testing.T) {
 			if fileExists(h.geom.SetupPath) || fileExists(h.geom.PresencePath) {
 				t.Error("login wrote a setup or presence file; want the token file alone")
 			}
-			if diff := cmp.Diff([]slackRequest{{path: "/auth.test", authorization: "Bearer xoxb-good"}}, h.slack.seen(), cmp.AllowUnexported(slackRequest{})); diff != "" {
+			wantRequests := []slackRequest{
+				{path: "/auth.test", authorization: "Bearer xoxb-good"},
+				{path: "/bots.info", authorization: "Bearer xoxb-good", form: url.Values{"bot": {"B1"}}},
+			}
+			if diff := cmp.Diff(wantRequests, h.slack.seen(), requestOptions...); diff != "" {
 				t.Errorf("Slack requests mismatch (-want +got):\n%s", diff)
+			}
+			if h.dials != 1 || h.dialToken != "xapp-good" || len(h.sockets) != 1 || !h.sockets[0].closed {
+				t.Errorf("dials = %d with token %q and %d sockets; want one dial with xapp-good, its connection closed", h.dials, h.dialToken, len(h.sockets))
 			}
 			if len(h.prompts) != 0 {
 				t.Errorf("piped login printed prompts %q; want none", h.prompts)
 			}
 		})
 
-		t.Run("OnATerminalPromptsAndStoresTheHiddenLine", func(t *testing.T) {
+		t.Run("OnATerminalPromptsPerTokenAndFilesEachByItsPrefix", func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, nil)
 			h.onTerminal = true
-			h.terminalLine = " xoxb-typed "
-			code, env := h.run("xoxb-piped\n", "login")
+			h.terminalLines = []string{" xapp-typed ", "xoxb-typed"}
+			code, env := h.run("xoxb-piped xapp-piped\n", "login")
 			wantOK(t, code, env)
-			if diff := cmp.Diff([]string{tokenPrompt}, h.prompts); diff != "" {
+			if diff := cmp.Diff([]string{tokenPrompt, tokenPrompt}, h.prompts); diff != "" {
 				t.Errorf("prompts mismatch (-want +got):\n%s", diff)
 			}
-			if stored, err := slackengine.ReadCredentials(h.geom.TokenPath); err != nil || stored.BotToken != "xoxb-typed" {
-				t.Errorf("ReadCredentials = %+v, %v; want the trimmed line read at the prompt", stored, err)
+			wantStored := slackengine.Credentials{BotToken: "xoxb-typed", AppToken: "xapp-typed", AppID: "A1"}
+			if stored, err := slackengine.ReadCredentials(h.geom.TokenPath); err != nil || stored != wantStored {
+				t.Errorf("ReadCredentials = %+v, %v; want the trimmed lines read at the prompts: %+v", stored, err, wantStored)
 			}
 		})
 
 		terminalRefusals := []struct {
 			name  string
-			line  string
+			lines []string
 			err   error
 			wants []string
 		}{
-			{"AnEmptyLineIsRefusedNamingThePrompt", " ", nil, []string{"no token entered at the prompt", "lym slack login"}},
-			{"AnInterruptedReadIsRefusedNamingLogin", "", errors.New("interrupted"), []string{"interrupted", "nothing was stored", "lym slack login"}},
+			{"AnEmptyLineIsRefusedNamingThePrompt", []string{" "}, nil, []string{"no token entered at the prompt", "lym slack login"}},
+			{"AnEmptySecondLineIsRefusedNamingThePrompt", []string{"xoxb-typed", " "}, nil, []string{"no token entered at the prompt", "lym slack login"}},
+			{"AnInterruptedReadIsRefusedNamingLogin", nil, errors.New("interrupted"), []string{"interrupted", "nothing was stored", "lym slack login"}},
 		}
 		for _, tt := range terminalRefusals {
 			t.Run("OnATerminal"+tt.name, func(t *testing.T) {
 				t.Parallel()
 				h := newHarness(t, nil)
 				h.onTerminal = true
-				h.terminalLine, h.terminalErr = tt.line, tt.err
+				h.terminalLines, h.terminalErr = tt.lines, tt.err
 				code, env := h.run("", "login")
 				wantRefused(t, code, env, tt.wants...)
-				if len(h.slack.seen()) != 0 || fileExists(h.geom.TokenPath) {
+				if len(h.slack.seen()) != 0 || h.dials != 0 || fileExists(h.geom.TokenPath) {
 					t.Error("a refused terminal read reached Slack or the token file; want neither")
 				}
 			})
 		}
 
-		t.Run("RefusedTokenNamesTheOAuthPageAndStoresNothing", func(t *testing.T) {
+		kindRefusals := []struct {
+			name  string
+			stdin string
+		}{
+			{"AUserTokenIsRefused", "xoxp-user xapp-good\n"},
+			{"TwoBotTokensAreRefused", "xoxb-one xoxb-two\n"},
+			{"ALoneBotTokenIsRefused", "xoxb-good\n"},
+		}
+		for _, tt := range kindRefusals {
+			t.Run(tt.name+"NamingBothKindsWithNoSlackCallAndNoFile", func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t, nil)
+				code, env := h.run(tt.stdin, "login")
+				wantRefused(t, code, env, "bot token (xoxb-)", "app-level token (xapp-)", "lym slack login")
+				if len(h.slack.seen()) != 0 || h.dials != 0 || fileExists(h.geom.TokenPath) {
+					t.Error("a refused token set reached Slack or the token file; want neither")
+				}
+			})
+		}
+
+		t.Run("AHelloFromAnotherAppIsRefusedAndStoresNothing", func(t *testing.T) {
 			t.Parallel()
-			h := newHarness(t, map[string]string{"/auth.test": `{"ok":false,"error":"invalid_auth"}`})
-			code, env := h.run("xoxb-bad\n", "login")
-			wantRefused(t, code, env, "invalid_auth", "OAuth & Permissions", "lym slack login")
-			if strings.Contains(env.Error, "xoxb-bad") || fileExists(h.geom.TokenPath) {
-				t.Errorf("refusal %q or the token file leaks the rejected token", env.Error)
+			h := newHarness(t, nil)
+			h.appID = "A2"
+			code, env := h.run("xoxb-good xapp-good\n", "login")
+			wantRefused(t, code, env, "A1", "A2", "lym slack login")
+			if fileExists(h.geom.TokenPath) {
+				t.Error("login stored tokens of two different apps; want no file")
 			}
 		})
+
+		rejections := []struct {
+			name    string
+			answers map[string]string
+			dialErr error
+			wants   []string
+		}{
+			{"ARefusedBotTokenNamesTheOAuthPage", map[string]string{"/auth.test": `{"ok":false,"error":"invalid_auth"}`}, nil, []string{"bot token (xoxb-)", "invalid_auth", "OAuth & Permissions", "lym slack login"}},
+			{"ARefusedBotsInfoNamesTheBotToken", map[string]string{"/bots.info": `{"ok":false,"error":"invalid_auth"}`}, nil, []string{"bot token (xoxb-)", "invalid_auth"}},
+			{"ARefusedConnectionsOpenNamesTheAppLevelToken", nil, &slackengine.APIError{Method: "apps.connections.open", Code: "invalid_auth"}, []string{"app-level token (xapp-)", "invalid_auth", "Basic Information"}},
+			{"ATransportErrorOnTheDialNamesTheNetwork", nil, errors.New("dial tcp: connection refused"), []string{"app-level token (xapp-)", "network"}},
+		}
+		for _, tt := range rejections {
+			t.Run(tt.name+"AndStoresNothing", func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t, tt.answers)
+				h.dialErr = tt.dialErr
+				code, env := h.run("xoxb-bad xapp-bad\n", "login")
+				wantRefused(t, code, env, tt.wants...)
+				if strings.Contains(env.Error, "xoxb-bad") || strings.Contains(env.Error, "xapp-bad") || fileExists(h.geom.TokenPath) {
+					t.Errorf("refusal %q or the token file leaks a rejected token", env.Error)
+				}
+			})
+		}
 
 		t.Run("EmptyStandardInputIsRefusedWithoutAskingSlack", func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, nil)
 			code, env := h.run(" \n", "login")
 			wantRefused(t, code, env, "no token on standard input")
-			if len(h.slack.seen()) != 0 || fileExists(h.geom.TokenPath) {
+			if len(h.slack.seen()) != 0 || h.dials != 0 || fileExists(h.geom.TokenPath) {
 				t.Error("an empty token reached Slack or the token file; want neither")
 			}
+		})
+
+		liveHubs := []slackengine.Geometry{{HubPath: "/hubs/a"}, {HubPath: "/hubs/b"}}
+		replacements := []struct {
+			name      string
+			stored    slackengine.Credentials
+			stdin     string
+			wantEnded []string
+		}{
+			{"AFirstLoginEndsNoRelay", slackengine.Credentials{}, "xoxb-new xapp-new\n", nil},
+			{"RepeatedTokensEndNoRelay", slackengine.Credentials{BotToken: "xoxb-same", AppToken: "xapp-same", AppID: "A1"}, "xoxb-same xapp-same\n", nil},
+			{"AReplacedBotTokenEndsEveryLiveHubsRelay", slackengine.Credentials{BotToken: "xoxb-old", AppToken: "xapp-same", AppID: "A1"}, "xoxb-new xapp-same\n", []string{"/hubs/a", "/hubs/b"}},
+			{"AReplacedAppLevelTokenEndsEveryLiveHubsRelay", slackengine.Credentials{BotToken: "xoxb-same", AppToken: "xapp-old", AppID: "A1"}, "xoxb-same xapp-new\n", []string{"/hubs/a", "/hubs/b"}},
+		}
+		for _, tt := range replacements {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t, nil)
+				h.liveHubs = liveHubs
+				if tt.stored != (slackengine.Credentials{}) {
+					h.storeCredentials(tt.stored)
+				}
+				code, env := h.run(tt.stdin, "login")
+				wantOK(t, code, env)
+				if diff := cmp.Diff(tt.wantEnded, h.stoppedHubs, cmpopts.EquateEmpty()); diff != "" {
+					t.Errorf("stopped hubs mismatch (-want +got):\n%s", diff)
+				}
+				var named []string
+				items, _ := env.Raw["relays_ended"].([]any)
+				for _, item := range items {
+					hub, _ := item.(string)
+					named = append(named, hub)
+				}
+				if diff := cmp.Diff(tt.wantEnded, named, cmpopts.EquateEmpty()); diff != "" {
+					t.Errorf("relays_ended mismatch (-want +got):\n%s", diff)
+				}
+				wayForward, _ := env.Raw["way_forward"].(string)
+				if hasWay := strings.Contains(wayForward, "lym slack start"); hasWay != (len(tt.wantEnded) > 0) {
+					t.Errorf("way_forward = %q; want `lym slack start` named exactly when a relay was ended", wayForward)
+				}
+				if len(tt.wantEnded) > 0 && h.stopPID != os.Getpid() {
+					t.Errorf("stop spared pid %d; want this process %d", h.stopPID, os.Getpid())
+				}
+			})
+		}
+
+		t.Run("AFailedLiveHubReadAfterTheWriteStoresBothTokensAndNamesTheWayForward", func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, nil)
+			h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-old", AppToken: "xapp-same", AppID: "A1"})
+			h.liveHubsErr = errors.New("hubs record unreadable")
+			code, env := h.run("xoxb-new xapp-same\n", "login")
+			wantRefused(t, code, env, "hubs record unreadable", "tokens are stored", "lym slack stop", "lym slack start")
+			wantStored := slackengine.Credentials{BotToken: "xoxb-new", AppToken: "xapp-same", AppID: "A1"}
+			if stored, err := slackengine.ReadCredentials(h.geom.TokenPath); err != nil || stored != wantStored {
+				t.Errorf("ReadCredentials = %+v, %v; want the new tokens stored: %+v", stored, err, wantStored)
+			}
+			h.wantCalls()
 		})
 	})
 
@@ -468,10 +642,10 @@ func TestSlackCLI(t *testing.T) {
 				t.Errorf("ReadSetup = %+v, %v, %v; want %+v", got, found, err, want)
 			}
 			wantRequests := []slackRequest{
-				{path: "/conversations.info", authorization: "Bearer xoxb-stored"},
-				{path: "/users.info", authorization: "Bearer xoxb-stored"},
+				{path: "/conversations.info", authorization: "Bearer xoxb-stored", form: url.Values{"channel": {"C1"}}},
+				{path: "/users.info", authorization: "Bearer xoxb-stored", form: url.Values{"user": {"U1"}}},
 			}
-			if diff := cmp.Diff(wantRequests, h.slack.seen(), cmp.AllowUnexported(slackRequest{})); diff != "" {
+			if diff := cmp.Diff(wantRequests, h.slack.seen(), requestOptions...); diff != "" {
 				t.Errorf("Slack requests mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -484,7 +658,7 @@ func TestSlackCLI(t *testing.T) {
 		}{
 			{"BotNotAMember", true, map[string]string{"/conversations.info": `{"ok":true,"channel":{"id":"C1","name":"ops","is_member":false}}`}, []string{"/invite", "lym slack setup"}},
 			{"ChannelNotFound", true, map[string]string{"/conversations.info": `{"ok":false,"error":"channel_not_found"}`}, []string{"/invite", "private channel"}},
-			{"MissingScopeNamesTheScopes", true, map[string]string{"/conversations.info": `{"ok":false,"error":"missing_scope"}`}, []string{"channels:history", "groups:history", "users:read", "chat:write", "reinstall"}},
+			{"MissingScopeNamesTheScopes", true, map[string]string{"/conversations.info": `{"ok":false,"error":"missing_scope"}`}, []string{"channels:history", "channels:join", "channels:manage", "channels:read", "chat:write", "chat:write.customize", "users:read", "docs/slack-app.md", "reinstall"}},
 			{"UserNotFoundNamesTheMemberId", true, map[string]string{"/users.info": `{"ok":false,"error":"user_not_found"}`}, []string{"member id", "user_not_found"}},
 			{"NoTokenNamesLogin", false, nil, []string{"lym slack login"}},
 		}
