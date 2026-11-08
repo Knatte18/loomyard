@@ -1,4 +1,5 @@
-// wiring_geometry_test.go covers liveHubGeometries, the seam that lists the machine's live hubs, over a temp machine record.
+// wiring_geometry_test.go covers liveHubGeometries, the seam that lists the machine's live hubs.
+// It reads a temp machine record of hubs.
 
 package slackcli
 
@@ -23,7 +24,8 @@ import (
 func TestLiveHubGeometries(t *testing.T) {
 	tiergate.Require(t, 0)
 
-	// machineWithHub points the per-user state and config directories at temp ones and records one live hub in the former.
+	// machineWithHub points the per-user state and config directories at temp ones.
+	// It records one live hub in the state directory.
 	// It returns the state directory and the hub's path.
 	machineWithHub := func(t *testing.T) (stateDir, hubPath string) {
 		t.Helper()
