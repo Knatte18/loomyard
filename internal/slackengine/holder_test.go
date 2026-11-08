@@ -876,6 +876,9 @@ func TestSocketHolder(t *testing.T) {
 			r.clock.Advance(seconds * time.Second)
 		}
 		awaitClosed(t, dialedSocket)
+		// The ping wait is pending only once the holder has stamped the connection's start,
+		// so the clock is advanced after it and the connection reads as stable.
+		r.clock.awaitWait(t, pingInterval)
 		r.clock.Advance(slackengine.StableConnection)
 		socket.fail(errors.New("connection reset"))
 		r.clock.awaitWait(t, slackengine.ReconnectFloor)
@@ -905,6 +908,7 @@ func TestSocketHolder(t *testing.T) {
 
 		r.clock.Advance(4 * time.Second)
 		awaitClosed(t, dialedSocket)
+		r.clock.awaitWait(t, pingInterval)
 		r.clock.Advance(slackengine.StableConnection)
 		socket.fail(errors.New("connection reset"))
 		r.clock.awaitWait(t, slackengine.ReconnectFloor)
