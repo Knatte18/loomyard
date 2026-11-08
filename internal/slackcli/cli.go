@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -47,14 +48,12 @@ const (
 	tokensPerLogin = 2
 )
 
-// slackChecks is the Slack calls that `login` and `setup` make to check the tokens, a channel and a user.
+// slackChecks is the Slack calls that `login` and `setup` make to check the tokens and a user.
 type slackChecks interface {
 	// AuthTest checks the token and tells who it belongs to.
 	AuthTest(ctx context.Context) (slackengine.Identity, error)
 	// BotAppID reads the id of the Slack app the bot belongs to.
 	BotAppID(ctx context.Context, botID string) (string, error)
-	// ConversationInfo reads the channel.
-	ConversationInfo(ctx context.Context, channel string) (slackengine.ChannelInfo, error)
 	// UserInfo checks that the Slack user exists.
 	UserInfo(ctx context.Context, user string) error
 }
@@ -119,14 +118,15 @@ func Command() *cobra.Command {
 func (c *slackCLI) command() *cobra.Command {
 	slack := &cobra.Command{
 		Use:   "slack",
-		Short: "relay the operator's Slack channel to the hub's orchs and post their mail back",
-		Long: `slack connects a hub to one Slack channel, so the operator can talk to the
-hub's orchs while away. login stores the app's bot token on this machine and
-setup names the hub's channel and the one operator whose messages count. While
-the presence is slack, a relay forwards the operator's channel messages to the
-orchs as creel mail from SLACK and posts the orchs' mail for SLACK to the
-channel. away and back set the presence, start and stop run the relay, and
-status shows both.`,
+		Short: "relay the operator's Slack channels to the hub's orchs and post their mail back",
+		Long: `slack connects a hub to Slack, so the operator can talk to the hub's orchs
+while away. lym makes one channel per orch. login stores the app's bot and
+app-level tokens on this machine and setup names the one operator whose
+messages count; a running relay takes up a new operator at its next wake, with
+no restart. While the presence is slack, a relay forwards the operator's
+messages in an orch's channel to that orch as creel mail from SLACK and posts
+the orchs' mail for SLACK to their channels. away and back set the presence,
+start and stop run the relay, and status shows both.`,
 		RunE: clihelp.GroupRunE,
 	}
 	slack.AddCommand(c.loginCmd(), c.setupCmd(), c.startCmd(), c.stopCmd(), c.awayCmd(), c.backCmd(), c.statusCmd(), c.relayCmd())
@@ -395,35 +395,33 @@ func tokenRefusal(kind string, err error) error {
 
 // setupCmd returns the `slack setup` verb.
 func (c *slackCLI) setupCmd() *cobra.Command {
-	var channel, operator string
+	var operator string
 	cmd := &cobra.Command{
-		Use:         "setup --channel <id> --operator <user-id>",
-		Short:       "name the hub's Slack channel and operator",
+		Use:         "setup --operator <user-id>",
+		Short:       "name the hub's Slack operator",
 		Annotations: operatorAnnotations(),
-		Long: `setup checks the channel and the operator with Slack and only then records them
-for this hub. The relay reads the channel and forwards only the messages of that
-one operator. Invite the app to the channel first, with /invite in the channel.
-Copy the operator's Slack user id from their profile, under More, Copy member
-ID. Give each machine's hub its own channel.
+		Long: `setup checks the operator with Slack and only then records them for this hub.
+lym makes one channel per orch, so setup names only the operator, and the relay
+forwards only the messages of that one operator. A running relay takes up a new
+operator at its next wake, with no restart. Copy the operator's Slack user id
+from their profile, under More, Copy member ID.
 
 Run it from the operator's terminal; a strand refuses.
 
 Example:
-  lym slack setup --channel C0123456789 --operator U0123456789`,
+  lym slack setup --operator U0123456789`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.runVerb(cmd, func() (map[string]any, error) { return c.setup(cmd.Context(), channel, operator) })
+			return c.runVerb(cmd, func() (map[string]any, error) { return c.setup(cmd.Context(), operator) })
 		},
 	}
-	cmd.Flags().StringVar(&channel, "channel", "", "Slack id of the channel the relay reads and posts in")
 	cmd.Flags().StringVar(&operator, "operator", "", "Slack user id of the operator whose messages the relay forwards")
-	_ = cmd.MarkFlagRequired("channel")
 	_ = cmd.MarkFlagRequired("operator")
 	return cmd
 }
 
-// setup records the channel and the operator once Slack confirms both.
-func (c *slackCLI) setup(ctx context.Context, channel, operator string) (map[string]any, error) {
+// setup records the operator once Slack confirms the user exists.
+func (c *slackCLI) setup(ctx context.Context, operator string) (map[string]any, error) {
 	if err := paneRefusal(c.pane(), false, terminalWayForward("setup")); err != nil {
 		return nil, err
 	}
@@ -434,36 +432,13 @@ func (c *slackCLI) setup(ctx context.Context, channel, operator string) (map[str
 	if credentials.BotToken == "" {
 		return nil, errors.New(noTokenMessage)
 	}
-	api := c.newSlack(c.slackBaseURL, credentials.BotToken)
-	info, err := api.ConversationInfo(ctx, channel)
-	if err != nil {
-		return nil, channelRefusal(channel, err)
-	}
-	if !info.IsMember {
-		return nil, fmt.Errorf("slack: the bot is not a member of channel %s; way forward: run `/invite @<app>` in that channel, naming this app, then run `lym slack setup` again", channel)
-	}
-	if err := api.UserInfo(ctx, operator); err != nil {
+	if err := c.newSlack(c.slackBaseURL, credentials.BotToken).UserInfo(ctx, operator); err != nil {
 		return nil, userRefusal(operator, err)
 	}
-	if err := slackengine.WriteSetup(c.geom.SetupPath, slackengine.Setup{ChannelID: channel, OperatorID: operator}); err != nil {
+	if err := slackengine.SetOperator(c.geom.SetupPath, operator); err != nil {
 		return nil, err
 	}
-	return map[string]any{"channel": channel, "channel_name": info.Name, "operator": operator}, nil
-}
-
-// channelRefusal is the refusal of a channel Slack's channel check failed on.
-func channelRefusal(channel string, err error) error {
-	var refused *slackengine.APIError
-	if !errors.As(err, &refused) {
-		return fmt.Errorf("slack: channel %s could not be checked: %w; way forward: check the network and run `lym slack setup` again", channel, err)
-	}
-	switch refused.Code {
-	case "channel_not_found":
-		return fmt.Errorf("slack: Slack shows no channel %s to the bot (channel_not_found), as it does for a private channel the bot was not invited to; way forward: run `/invite @<app>` in that channel, naming this app, then run `lym slack setup` again", channel)
-	case missingScopeCode:
-		return scopeRefusal("setup")
-	}
-	return fmt.Errorf("slack: Slack refused the check of channel %s with %s; way forward: fix what that code names, then run `lym slack setup` again", channel, refused.Code)
+	return map[string]any{"operator": operator}, nil
 }
 
 // userRefusal is the refusal of an operator Slack's user check failed on.
@@ -647,8 +622,9 @@ func (c *slackCLI) statusCmd() *cobra.Command {
 		Short:       "show the presence, the relay and the hub's Slack setup",
 		Annotations: operatorAnnotations(),
 		Long: `status prints the presence, whether the relay is live, whether a pause covers
-the prime orch, the channel and the operator the setup names, and when a Slack
-call of the relay last succeeded. Any process may run it.
+the prime orch, the operator the setup names, the hub's channels, one per orch
+with its name, id and whether it is archived, and when the relay was last
+healthy. Any process may run it.
 
 Example:
   lym slack status`,
@@ -659,7 +635,22 @@ Example:
 	}
 }
 
-// status reads the presence, the relay's health, the pause and the setup.
+// channelRows lists the entries of the channel map as status fields, sorted by orch.
+func channelRows(channelMap slackengine.ChannelMap) []map[string]any {
+	orchs := make([]string, 0, len(channelMap.Channels))
+	for orch := range channelMap.Channels {
+		orchs = append(orchs, orch)
+	}
+	sort.Strings(orchs)
+	rows := make([]map[string]any, 0, len(orchs))
+	for _, orch := range orchs {
+		entry := channelMap.Channels[orch]
+		rows = append(rows, map[string]any{"orch": orch, "name": entry.Name, "id": entry.ID, "archived": entry.Archived})
+	}
+	return rows
+}
+
+// status reads the presence, the relay's health, the pause, the operator and the channels.
 func (c *slackCLI) status() (map[string]any, error) {
 	presence, err := slackengine.ReadPresence(c.geom.PresencePath)
 	if err != nil {
@@ -679,14 +670,21 @@ func (c *slackCLI) status() (map[string]any, error) {
 		return nil, err
 	}
 	if found {
-		fields["channel"], fields["operator"] = setup.ChannelID, setup.OperatorID
+		fields["operator"] = setup.OperatorID
+	}
+	channelMap, err := slackengine.ReadChannelMap(c.geom.ChannelMapPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(channelMap.Channels) > 0 {
+		fields["channels"] = channelRows(channelMap)
 	}
 	relayState, found, err := slackengine.ReadRelayState(c.geom)
 	if err != nil {
 		return nil, err
 	}
 	if found && !relayState.LastSlackOK.IsZero() {
-		fields["last_slack_ok"] = relayState.LastSlackOK.UTC().Format(time.RFC3339)
+		fields["last_healthy"] = relayState.LastSlackOK.UTC().Format(time.RFC3339)
 	}
 	return fields, nil
 }

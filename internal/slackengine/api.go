@@ -88,7 +88,7 @@ type Sender struct {
 	IconEmoji string
 }
 
-// ChannelInfo is what conversations.info tells about a channel.
+// ChannelInfo is what Slack tells about a channel.
 type ChannelInfo struct {
 	// ID is the channel's Slack id.
 	ID string `json:"id"`
@@ -137,8 +137,8 @@ type envelope struct {
 	Error string `json:"error"`
 }
 
-// conversationInfoAnswer is the part of a conversations.info answer the client reads.
-type conversationInfoAnswer struct {
+// createChannelAnswer is the part of a conversations.create answer the client reads.
+type createChannelAnswer struct {
 	Channel ChannelInfo `json:"channel"`
 }
 
@@ -266,7 +266,7 @@ func (a *API) CreateChannel(ctx context.Context, name string) (ChannelInfo, erro
 	if err != nil {
 		return ChannelInfo{}, err
 	}
-	answer, err := decodeAnswer[conversationInfoAnswer](method, body)
+	answer, err := decodeAnswer[createChannelAnswer](method, body)
 	if err != nil {
 		return ChannelInfo{}, err
 	}
@@ -355,20 +355,6 @@ func ignoreCode(err error, code string) error {
 		return nil
 	}
 	return err
-}
-
-// ConversationInfo reads the channel with conversations.info.
-func (a *API) ConversationInfo(ctx context.Context, channel string) (ChannelInfo, error) {
-	const method = "conversations.info"
-	body, err := a.call(ctx, method, url.Values{"channel": {channel}})
-	if err != nil {
-		return ChannelInfo{}, err
-	}
-	answer, err := decodeAnswer[conversationInfoAnswer](method, body)
-	if err != nil {
-		return ChannelInfo{}, err
-	}
-	return answer.Channel, nil
 }
 
 // UserInfo checks with users.info that the Slack user exists.

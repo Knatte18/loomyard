@@ -71,7 +71,7 @@ func answerJSON(w http.ResponseWriter, body string) {
 
 // documentedAnswers holds, by request path, the example answer Slack's API reference shows for each method lym calls.
 // The answers keep Slack's shapes.
-// chat.postMessage sends `channel` as an id string, while conversations.info sends it as an object.
+// chat.postMessage sends `channel` as an id string, while conversations.create sends it as an object.
 var documentedAnswers = map[string]string{
 	"/auth.test": `{
 		"ok": true,
@@ -96,39 +96,6 @@ var documentedAnswers = map[string]string{
 		`{"type":"message","user":"U061F7AUR","text":"one island","thread_ts":"1482960137.003543",` +
 		`"parent_user_id":"U061F7AUR","ts":"1483037603.017503"}],"has_more":false}`,
 	"/apps.connections.open": `{"ok":true,"url":"wss://wss-primary.slack.com/link/?ticket=1234-5678"}`,
-	"/conversations.info": `{
-		"ok": true,
-		"channel": {
-			"id": "C012AB3CD",
-			"name": "general",
-			"is_channel": true,
-			"is_group": false,
-			"is_im": false,
-			"is_mpim": false,
-			"is_private": false,
-			"created": 1654868334,
-			"is_archived": false,
-			"is_general": true,
-			"unlinked": 0,
-			"name_normalized": "general",
-			"is_shared": false,
-			"is_org_shared": false,
-			"is_pending_ext_shared": false,
-			"pending_shared": [],
-			"context_team_id": "T123ABCDEF",
-			"updated": 1723215202803,
-			"parent_conversation": null,
-			"creator": "U123ABCDEF",
-			"is_ext_shared": false,
-			"shared_team_ids": ["T123ABCDEF"],
-			"pending_connected_team_ids": [],
-			"is_member": true,
-			"last_read": "1723215190.639619",
-			"topic": {"value": "", "creator": "", "last_set": 0},
-			"purpose": {"value": "This is the one channel that will always include everyone.", "creator": "U123ABCDEF", "last_set": 1654868334},
-			"previous_names": []
-		}
-	}`,
 	"/conversations.history": `{
 		"ok": true,
 		"messages": [
@@ -211,13 +178,6 @@ func TestAPI(t *testing.T) {
 		if want := (slackengine.Identity{TeamID: "T12345678", UserID: "W12345678", BotID: "B12345678"}); identity != want {
 			t.Errorf("AuthTest = %+v; want %+v", identity, want)
 		}
-		info, err := api.ConversationInfo(ctx, "C1")
-		if err != nil {
-			t.Fatalf("ConversationInfo = %v", err)
-		}
-		if want := (slackengine.ChannelInfo{ID: "C012AB3CD", Name: "general", IsMember: true, Creator: "U123ABCDEF"}); info != want {
-			t.Errorf("ConversationInfo = %+v; want %+v", info, want)
-		}
 		if err := api.UserInfo(ctx, "U1"); err != nil {
 			t.Fatalf("UserInfo = %v", err)
 		}
@@ -283,7 +243,6 @@ func TestAPI(t *testing.T) {
 		historyForm := url.Values{"channel": {"C1"}, "oldest": {"4.0"}, "limit": {"200"}}
 		want := []recordedRequest{
 			{path: "/auth.test", form: url.Values{}},
-			{path: "/conversations.info", form: url.Values{"channel": {"C1"}}},
 			{path: "/users.info", form: url.Values{"user": {"U1"}}},
 			{path: "/chat.postMessage", form: url.Values{"channel": {"C1"}, "text": {"hello"}}},
 			{path: "/conversations.history", form: historyForm},

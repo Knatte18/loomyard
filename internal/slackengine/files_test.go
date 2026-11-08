@@ -117,6 +117,32 @@ func TestCredentialFiles(t *testing.T) {
 		if runtime.GOOS != "windows" {
 			assertMode(t, path, 0o600)
 		}
+		if err := slackengine.SetOperator(path, "U789"); err != nil {
+			t.Fatalf("SetOperator = %v", err)
+		}
+		wantKept := slackengine.Setup{ChannelID: "C123", OperatorID: "U789"}
+		if got, found, err := slackengine.ReadSetup(path); err != nil || !found || got != wantKept {
+			t.Errorf("ReadSetup after SetOperator = %+v, %v, %v; want %+v with the channel kept", got, found, err, wantKept)
+		}
+		olderPath := filepath.Join(t.TempDir(), "slack", slackengine.SetupFileName)
+		if err := os.MkdirAll(filepath.Dir(olderPath), 0o700); err != nil {
+			t.Fatalf("MkdirAll = %v", err)
+		}
+		if err := os.WriteFile(olderPath, []byte(`{"channel_id":"C9","newer_key":"kept"}`), 0o600); err != nil {
+			t.Fatalf("WriteFile = %v", err)
+		}
+		if err := slackengine.SetOperator(olderPath, "U1"); err != nil {
+			t.Fatalf("SetOperator(older file) = %v", err)
+		}
+		raw, err := os.ReadFile(olderPath)
+		if err != nil {
+			t.Fatalf("ReadFile = %v", err)
+		}
+		var keys map[string]string
+		wantKeys := map[string]string{"channel_id": "C9", "newer_key": "kept", "operator_id": "U1"}
+		if err := json.Unmarshal(raw, &keys); err != nil || !cmp.Equal(keys, wantKeys) {
+			t.Errorf("setup file after SetOperator = %s (%v); want the keys %v", raw, err, wantKeys)
+		}
 	})
 
 	t.Run("RequireConfiguredNamesTheVerbThatWritesWhatIsMissing", func(t *testing.T) {

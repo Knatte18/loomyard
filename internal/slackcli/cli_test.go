@@ -87,7 +87,6 @@ type fakeSlack struct {
 }
 
 // newFakeSlack starts a server that answers the methods in answers, as `/<method>` keys, and ok for the rest.
-// A channel check not in answers names a channel the bot is a member of.
 // An auth.test not in answers names the bot B1, and a bots.info not in answers names the app A1.
 func newFakeSlack(t *testing.T, answers map[string]string) *fakeSlack {
 	t.Helper()
@@ -99,8 +98,6 @@ func newFakeSlack(t *testing.T, answers map[string]string) *fakeSlack {
 		fake.mu.Unlock()
 		body, found := answers[r.URL.Path]
 		switch {
-		case !found && r.URL.Path == "/conversations.info":
-			body = `{"ok":true,"channel":{"id":"C1","name":"ops","is_member":true}}`
 		case !found && r.URL.Path == "/auth.test":
 			body = `{"ok":true,"bot_id":"B1"}`
 		case !found && r.URL.Path == "/bots.info":
@@ -213,6 +210,7 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 			Shortname:      "hub",
 			Dir:            slackDir,
 			TokenPath:      filepath.Join(dir, "credentials", slackengine.TokenFileName),
+			ChannelMapPath: filepath.Join(slackDir, slackengine.ChannelMapFileName),
 			SetupPath:      filepath.Join(slackDir, slackengine.SetupFileName),
 			PresencePath:   filepath.Join(slackDir, slackengine.PresenceFileName),
 			CursorPath:     filepath.Join(slackDir, slackengine.CursorFileName),
@@ -396,7 +394,7 @@ func fileExists(path string) bool {
 }
 
 // setupArgs is the argument list of a valid `setup` run.
-var setupArgs = []string{"setup", "--channel", "C1", "--operator", "U1"}
+var setupArgs = []string{"setup", "--operator", "U1"}
 
 // paneCallers are the callers the pane check tells apart.
 // loginOK says whether login and setup, which no strand may run, let the caller through.
@@ -631,22 +629,50 @@ func TestSlackCLI(t *testing.T) {
 	t.Run("Setup", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("RecordsTheChannelAndOperatorSlackConfirms", func(t *testing.T) {
+		t.Run("RecordsTheOperatorSlackConfirms", func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, nil)
 			h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-stored"})
 			code, env := h.run("", setupArgs...)
 			wantOK(t, code, env)
-			want := slackengine.Setup{ChannelID: "C1", OperatorID: "U1"}
+			want := slackengine.Setup{OperatorID: "U1"}
 			if got, found, err := slackengine.ReadSetup(h.geom.SetupPath); err != nil || !found || got != want {
 				t.Errorf("ReadSetup = %+v, %v, %v; want %+v", got, found, err, want)
 			}
 			wantRequests := []slackRequest{
-				{path: "/conversations.info", authorization: "Bearer xoxb-stored", form: url.Values{"channel": {"C1"}}},
 				{path: "/users.info", authorization: "Bearer xoxb-stored", form: url.Values{"user": {"U1"}}},
 			}
 			if diff := cmp.Diff(wantRequests, h.slack.seen(), requestOptions...); diff != "" {
 				t.Errorf("Slack requests mismatch (-want +got):\n%s", diff)
+			}
+		})
+
+		t.Run("KeepsTheChannelAnOlderSetupFileHolds", func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, nil)
+			h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-stored"})
+			if err := os.MkdirAll(filepath.Dir(h.geom.SetupPath), 0o700); err != nil {
+				t.Fatalf("MkdirAll = %v", err)
+			}
+			if err := os.WriteFile(h.geom.SetupPath, []byte(`{"channel_id":"C9"}`), 0o600); err != nil {
+				t.Fatalf("WriteFile = %v", err)
+			}
+			code, env := h.run("", setupArgs...)
+			wantOK(t, code, env)
+			want := slackengine.Setup{ChannelID: "C9", OperatorID: "U1"}
+			if got, found, err := slackengine.ReadSetup(h.geom.SetupPath); err != nil || !found || got != want {
+				t.Errorf("ReadSetup = %+v, %v, %v; want %+v", got, found, err, want)
+			}
+		})
+
+		t.Run("TheChannelFlagIsRefusedAsUnknown", func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, nil)
+			h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-stored"})
+			code, env := h.run("", "setup", "--channel", "C1", "--operator", "U1")
+			wantRefused(t, code, env, "unknown flag")
+			if len(h.slack.seen()) != 0 || fileExists(h.geom.SetupPath) {
+				t.Error("a setup with an unknown flag reached Slack or wrote the setup file; want neither")
 			}
 		})
 
@@ -656,9 +682,7 @@ func TestSlackCLI(t *testing.T) {
 			answers map[string]string
 			wants   []string
 		}{
-			{"BotNotAMember", true, map[string]string{"/conversations.info": `{"ok":true,"channel":{"id":"C1","name":"ops","is_member":false}}`}, []string{"/invite", "lym slack setup"}},
-			{"ChannelNotFound", true, map[string]string{"/conversations.info": `{"ok":false,"error":"channel_not_found"}`}, []string{"/invite", "private channel"}},
-			{"MissingScopeNamesTheScopes", true, map[string]string{"/conversations.info": `{"ok":false,"error":"missing_scope"}`}, []string{"channels:history", "channels:join", "channels:manage", "channels:read", "chat:write", "chat:write.customize", "users:read", "docs/slack-app.md", "reinstall"}},
+			{"MissingScopeNamesTheScopes", true, map[string]string{"/users.info": `{"ok":false,"error":"missing_scope"}`}, []string{"channels:history", "channels:join", "channels:manage", "channels:read", "chat:write", "chat:write.customize", "users:read", "docs/slack-app.md", "reinstall"}},
 			{"UserNotFoundNamesTheMemberId", true, map[string]string{"/users.info": `{"ok":false,"error":"user_not_found"}`}, []string{"member id", "user_not_found"}},
 			{"NoTokenNamesLogin", false, nil, []string{"lym slack login"}},
 		}
@@ -849,7 +873,7 @@ func TestSlackCLI(t *testing.T) {
 			}
 		})
 
-		t.Run("PrintsPresenceRelayPauseSetupAndLastSlackCall", func(t *testing.T) {
+		t.Run("PrintsPresenceRelayPauseOperatorChannelsAndLastHealthy", func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, nil)
 			h.configure()
@@ -863,6 +887,14 @@ func TestSlackCLI(t *testing.T) {
 				t.Fatalf("TryAcquireWriteLock = %v, %v; want the relay lock", acquired, err)
 			}
 			t.Cleanup(func() { _ = held.Release() })
+			err = slackengine.UpdateChannelMap(h.geom.ChannelMapPath, func(channelMap *slackengine.ChannelMap) error {
+				channelMap.Channels["hub:orch"] = slackengine.ChannelEntry{ID: "C1", Name: "ly-neve"}
+				channelMap.Channels["hub:impl:orch"] = slackengine.ChannelEntry{ID: "C2", Name: "ly-neve-impl-2026-11-05", Archived: true}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("UpdateChannelMap = %v", err)
+			}
 			if err := os.WriteFile(h.geom.RelayStatePath, []byte(`{"last_slack_ok":"2026-11-05T11:00:00Z"}`), 0o600); err != nil {
 				t.Fatalf("WriteFile = %v", err)
 			}
@@ -870,11 +902,28 @@ func TestSlackCLI(t *testing.T) {
 			wantOK(t, code, env)
 			want := map[string]any{
 				"presence": "slack", "relay_live": true, "paused": true,
-				"channel": "C1", "operator": "U1", "last_slack_ok": "2026-11-05T11:00:00Z",
+				"operator": "U1", "last_healthy": "2026-11-05T11:00:00Z",
+				"channels": []any{
+					map[string]any{"orch": "hub:impl:orch", "name": "ly-neve-impl-2026-11-05", "id": "C2", "archived": true},
+					map[string]any{"orch": "hub:orch", "name": "ly-neve", "id": "C1", "archived": false},
+				},
 			}
 			if diff := cmp.Diff(want, env.Raw); diff != "" {
 				t.Errorf("status fields mismatch (-want +got):\n%s", diff)
 			}
+		})
+
+		t.Run("AnUnreadableChannelMapIsRefusedNamingItAndMovingItAside", func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, nil)
+			if err := os.MkdirAll(filepath.Dir(h.geom.ChannelMapPath), 0o700); err != nil {
+				t.Fatalf("MkdirAll = %v", err)
+			}
+			if err := os.WriteFile(h.geom.ChannelMapPath, []byte(`{`), 0o600); err != nil {
+				t.Fatalf("WriteFile = %v", err)
+			}
+			code, env := h.run("", "status")
+			wantRefused(t, code, env, h.geom.ChannelMapPath, "move the file aside")
 		})
 	})
 

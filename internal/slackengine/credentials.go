@@ -36,9 +36,11 @@ func (c Credentials) Missing() []string {
 	return missing
 }
 
-// Setup is the hub's Slack setup: the channel the relay reads and posts in and the one operator whose messages it forwards.
+// Setup is the hub's operator record: the one operator whose messages the relay forwards.
+// The channels live in the hub's channel map, not here.
 type Setup struct {
-	// ChannelID is the Slack id of the channel.
+	// ChannelID is the Slack id of the single channel an older binary's setup named.
+	// SetOperator keeps it, and only the relay's missing-token line reads it.
 	ChannelID string `json:"channel_id"`
 	// OperatorID is the Slack user id of the operator.
 	OperatorID string `json:"operator_id"`
@@ -81,6 +83,23 @@ func WriteSetup(path string, setup Setup) error {
 	}
 	if err := state.WriteJSON(path, recordLockPath(path), setup); err != nil {
 		return fmt.Errorf("slack: write the setup file %s: %w", path, err)
+	}
+	return nil
+}
+
+// SetOperator records operator as the setup's operator at path, creating the directory private to the user.
+// It reads and writes the file under one lock and keeps every other key,
+// so a setup an older binary wrote keeps its channel_id.
+func SetOperator(path, operator string) error {
+	if err := os.MkdirAll(filepath.Dir(path), privateDirMode); err != nil {
+		return fmt.Errorf("slack: create the directory of the setup file %s: %w", path, err)
+	}
+	err := state.UpdateJSON(path, recordLockPath(path), func(current Setup, _ bool) (Setup, error) {
+		current.OperatorID = operator
+		return current, nil
+	})
+	if err != nil {
+		return fmt.Errorf("slack: record the operator in the setup file %s: %w", path, err)
 	}
 	return nil
 }

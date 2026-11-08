@@ -20,7 +20,7 @@ const (
 	ChannelMapFileName = "channels.json"
 	// InboxDirName is the directory where the socket holder drops a wake hint for the hub's relay.
 	InboxDirName = "inbox"
-	// SetupFileName is the hub's channel and operator record.
+	// SetupFileName is the hub's operator record.
 	SetupFileName = "setup.json"
 	// PresenceFileName is the hub's presence record.
 	PresenceFileName = "presence.json"
@@ -57,7 +57,7 @@ type Geometry struct {
 	InboxDir string
 	// SocketLockPath is the lock the holder of the machine's one Socket Mode connection holds.
 	SocketLockPath string
-	// SetupPath is the hub's channel and operator record.
+	// SetupPath is the hub's operator record.
 	SetupPath string
 	// PresencePath is the hub's presence record.
 	PresencePath string
