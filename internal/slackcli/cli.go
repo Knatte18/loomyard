@@ -39,8 +39,8 @@ const (
 
 // slackChecks is the Slack calls that `login` and `setup` make to check the token, a channel and a user.
 type slackChecks interface {
-	// AuthTest checks the token.
-	AuthTest(ctx context.Context) error
+	// AuthTest checks the token and tells who it belongs to.
+	AuthTest(ctx context.Context) (slackengine.Identity, error)
 	// ConversationInfo reads the channel.
 	ConversationInfo(ctx context.Context, channel string) (slackengine.ChannelInfo, error)
 	// UserInfo checks that the Slack user exists.
@@ -224,7 +224,7 @@ func (c *slackCLI) login(cmd *cobra.Command) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.newSlack(c.slackBaseURL, token).AuthTest(cmd.Context()); err != nil {
+	if _, err := c.newSlack(c.slackBaseURL, token).AuthTest(cmd.Context()); err != nil {
 		return nil, tokenRefusal(err)
 	}
 	if err := slackengine.WriteToken(c.geom.TokenPath, token); err != nil {
