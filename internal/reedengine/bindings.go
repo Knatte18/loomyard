@@ -2,7 +2,8 @@
 // They are the four Alt keys and the left click on the status bar.
 // Alt+Up and Alt+Down step across windows in index order,
 // and a left click on the shell button returns to the strands' window.
-// The click dispatches on the shell, window and session ranges, the follow button and the button ranges.
+// The click dispatches on the shell, window and session ranges.
+// It also dispatches on the follow button, the Slack toggles and the button ranges.
 // The builder is pure.
 // pinBindingsLocked issues its argvs, each non-fatal.
 // Its caller is the geometry pin path that boot and the attach pre-flight run.
@@ -49,6 +50,13 @@ const followCommandOption = "@lym_follow_command"
 // buttonCommandOption is the server-global user option holding the shell line a click on a button range runs.
 // The click reads it through `#{E:...}` inside run-shell, like followCommandOption.
 const buttonCommandOption = "@lym_button_command"
+
+// slackToggleCommandOption is the server-global user option holding the shell line a click on a Slack toggle runs.
+// The click reads it through `#{E:...}` inside run-shell, like followCommandOption.
+const slackToggleCommandOption = "@lym_slack_toggle_command"
+
+// slackToggleCondition is true for a click on either Slack toggle.
+const slackToggleCondition = "#{||:#{==:#{mouse_status_range}," + slackToggleRange + "},#{==:#{mouse_status_range}," + awayToggleRange + "}}"
 
 // bindingsBuildOption is the server-global user option naming the build whose bindings the server holds.
 // Its value is the build's VCS commit time in RFC 3339 UTC, a space, then its revision label.
@@ -135,8 +143,9 @@ func followClickCommand(followJump bool) string {
 // The click dispatch ends in the follow button's branch.
 // When buttonClick holds, a click on a range named by buttonRangePrefix runs the button branch.
 // That branch runs the line pinned in buttonCommandOption, resolved through the session's own options.
-// buttonClick reports that the line is pinned; when false no button branch is bound.
-func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick bool) [][]string {
+// When slackClick holds, a click on a Slack toggle then runs the line pinned in slackToggleCommandOption the same way.
+// Each reports that its line is pinned; when false its branch is not bound.
+func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick, slackClick bool) [][]string {
 	argvs := [][]string{
 		{"unbind-key", "-n", "M-z"},
 		{"bind-key", "-n", "M-Up", "set-option", followSessionOption, "off", `\;`, "previous-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, selectStrandsWindowCommand},
@@ -160,7 +169,26 @@ func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick bool) [
 	if buttonClick {
 		click = append(click, `\;`, "if-shell", "-F", "#{m:"+buttonRangePrefix+"*,#{mouse_status_range}}", `run-shell -b "#{E:`+buttonCommandOption+`}"`)
 	}
+	if slackClick {
+		click = append(click, `\;`, "if-shell", "-F", slackToggleCondition, `run-shell -b "#{E:`+slackToggleCommandOption+`}"`)
+	}
 	return append(argvs, click)
+}
+
+// pinGlobalLineLocked sets the server-global option to line, or unsets it when line is empty,
+// so a stale line never outlives the binary that pinned it.
+// A failure is logged via logger.Warn naming what the line is for.
+// Assumes the op lock is already held.
+func (e *Engine) pinGlobalLineLocked(option, line, what string) {
+	if line != "" {
+		if err := e.tmux.run("set-option", "-g", option, line); err != nil {
+			logger.Warn("reed: failed to pin "+what, "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		}
+		return
+	}
+	if err := e.tmux.run("set-option", "-gu", option); err != nil {
+		logger.Warn("reed: failed to unset "+what, "socket", e.Socket(), "session", e.SessionName(), "err", err)
+	}
 }
 
 // pinBindingsLocked issues the navigation bindings on the server.
@@ -171,25 +199,17 @@ func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick bool) [
 // The follow jump line is set in followCommandOption when it resolves and unset otherwise,
 // so a stale line never outlives the binary that pinned it.
 // The button click line is set in buttonCommandOption and unset the same way.
+// The Slack toggle click line in slackToggleCommandOption is set and unset the same way.
+// So is the Slack state line in slackStateCommandOption.
 // This binary's build stamp is then set in bindingsBuildOption, ahead of the bindings themselves.
 // It is unset for a binary with no VCS stamp.
 // Assumes the op lock is already held.
 func (e *Engine) pinBindingsLocked() {
-	switchPrev, switchNext, follow, button := e.switchBindingCommandsLocked()
-	if follow != "" {
-		if err := e.tmux.run("set-option", "-g", followCommandOption, follow); err != nil {
-			logger.Warn("reed: failed to pin the follow jump line", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		}
-	} else if err := e.tmux.run("set-option", "-gu", followCommandOption); err != nil {
-		logger.Warn("reed: failed to unset the follow jump line", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-	}
-	if button != "" {
-		if err := e.tmux.run("set-option", "-g", buttonCommandOption, button); err != nil {
-			logger.Warn("reed: failed to pin the button click line", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		}
-	} else if err := e.tmux.run("set-option", "-gu", buttonCommandOption); err != nil {
-		logger.Warn("reed: failed to unset the button click line", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-	}
+	switchPrev, switchNext, follow, button, slackToggle, slackState := e.switchBindingCommandsLocked()
+	e.pinGlobalLineLocked(followCommandOption, follow, "the follow jump line")
+	e.pinGlobalLineLocked(buttonCommandOption, button, "the button click line")
+	e.pinGlobalLineLocked(slackToggleCommandOption, slackToggle, "the Slack toggle click line")
+	e.pinGlobalLineLocked(slackStateCommandOption, slackState, "the Slack state line")
 	if stamp := bindingsBuildStamp(e.build); stamp != "" {
 		if err := e.tmux.run("set-option", "-g", bindingsBuildOption, stamp); err != nil {
 			logger.Warn("reed: failed to stamp the bindings' build", "socket", e.Socket(), "session", e.SessionName(), "err", err)
@@ -197,7 +217,7 @@ func (e *Engine) pinBindingsLocked() {
 	} else if err := e.tmux.run("set-option", "-gu", bindingsBuildOption); err != nil {
 		logger.Warn("reed: failed to unset the bindings' build stamp", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 	}
-	for _, argv := range bindingArgvs(switchPrev, switchNext, follow != "", button != "") {
+	for _, argv := range bindingArgvs(switchPrev, switchNext, follow != "", button != "", slackToggle != "") {
 		if err := e.tmux.run(argv...); err != nil {
 			logger.Warn("reed: failed to pin a key binding", "socket", e.Socket(), "session", e.SessionName(), "binding", argv[2], "err", err)
 		}
@@ -230,14 +250,18 @@ func (e *Engine) repinStaleBindingsLocked() {
 	e.pinBindingsLocked()
 }
 
-// switchBindingCommandsLocked returns the shell lines for M-Left, M-Right, the follow button's jump and a button click.
-// All four are empty when the socket path, the tmux path or this binary cannot be resolved.
-func (e *Engine) switchBindingCommandsLocked() (prev, next, follow, button string) {
+// switchBindingCommandsLocked returns the shell lines for M-Left, M-Right and the follow button's jump.
+// It also returns the lines of a button click, a Slack toggle click and the Slack toggles' state job.
+// All six are empty when the socket path or the tmux path cannot be resolved.
+// The first four are empty together when this binary cannot be resolved.
+// The two Slack lines are empty together when either cannot be composed, as under a test binary,
+// and the other four are still returned then.
+func (e *Engine) switchBindingCommandsLocked() (prev, next, follow, button, slackToggle, slackState string) {
 	socketPath, err := e.tmux.output("display-message", "-p", "#{socket_path}")
 	socketPath = strings.TrimSpace(socketPath)
 	if err != nil || socketPath == "" {
 		logger.Warn("reed: could not read the server's socket path, pinning no session-switch binding", "socket", e.Socket(), "err", err)
-		return "", "", "", ""
+		return "", "", "", "", "", ""
 	}
 	tmuxPath, err := exec.LookPath(e.cfg.Tmux)
 	if err == nil {
@@ -245,15 +269,20 @@ func (e *Engine) switchBindingCommandsLocked() (prev, next, follow, button strin
 	}
 	if err != nil {
 		logger.Warn("reed: could not resolve the tmux binary, pinning no session-switch binding", "tmux", e.cfg.Tmux, "err", err)
-		return "", "", "", ""
+		return "", "", "", "", "", ""
 	}
 	sh := shell.ForGOOS()
+	slackToggle, slackToggleOK := composeSlackToggleCommand(sh, e.executablePath, socketPath, tmuxPath)
+	slackState, slackStateOK := composeSlackStateCommand(sh, e.executablePath)
+	if !slackToggleOK || !slackStateOK {
+		slackToggle, slackState = "", ""
+	}
 	prev, prevOK := composeSwitchCommand(sh, e.executablePath, false, socketPath, tmuxPath)
 	next, nextOK := composeSwitchCommand(sh, e.executablePath, true, socketPath, tmuxPath)
 	follow, followOK := composeFollowCommand(sh, e.executablePath, socketPath, tmuxPath)
 	button, buttonOK := composeButtonCommand(sh, e.executablePath, socketPath, tmuxPath)
 	if !prevOK || !nextOK || !followOK || !buttonOK {
-		return "", "", "", ""
+		return "", "", "", "", slackToggle, slackState
 	}
-	return prev, next, follow, button
+	return prev, next, follow, button, slackToggle, slackState
 }

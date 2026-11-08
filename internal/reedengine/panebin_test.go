@@ -440,6 +440,89 @@ func TestComposeSwitchCommand(t *testing.T) {
 		})
 	}
 
+	slackTests := []struct {
+		name string
+		sh   shell.Shell
+		got  func(sh shell.Shell, executablePath func() (string, error)) (string, bool)
+		want string
+	}{
+		{
+			"slack toggle/posix",
+			shell.Posix(),
+			func(sh shell.Shell, executablePath func() (string, error)) (string, bool) {
+				return composeSlackToggleCommand(sh, executablePath, socketPath, tmuxPath)
+			},
+			`cd #{@lym_button_dir} >/dev/null 2>&1; '/opt/it'\''s##here/lym' slack toggle #{q:mouse_status_range} --socket '/tmp/tmux-1000/it'\''s##socket' --tmux '/usr/local/it'\''s##bin/tmux' --client #{q:client_name} >/dev/null 2>&1; exit 0`,
+		},
+		{
+			"slack toggle/pwsh",
+			shell.Pwsh(),
+			func(sh shell.Shell, executablePath func() (string, error)) (string, bool) {
+				return composeSlackToggleCommand(sh, executablePath, socketPath, tmuxPath)
+			},
+			`Set-Location -LiteralPath #{@lym_button_dir} *> $null; & '/opt/it''s##here/lym' slack toggle #{q:mouse_status_range} --socket '/tmp/tmux-1000/it''s##socket' --tmux '/usr/local/it''s##bin/tmux' --client #{q:client_name} *> $null; exit 0`,
+		},
+		{
+			"slack state/posix",
+			shell.Posix(),
+			composeSlackStateCommand,
+			`'/opt/it'\''s#here/lym' slack bar`,
+		},
+		{
+			"slack state/pwsh",
+			shell.Pwsh(),
+			composeSlackStateCommand,
+			`& '/opt/it''s#here/lym' slack bar`,
+		},
+	}
+	for _, tt := range slackTests {
+		t.Run(tt.name, func(t *testing.T) {
+			executablePath := func() (string, error) { return exe, nil }
+
+			got, ok := tt.got(tt.sh, executablePath)
+
+			if !ok || got != tt.want {
+				t.Errorf("%s = (%q, %v), want (%q, true)", tt.name, got, ok, tt.want)
+			}
+		})
+	}
+
+	slackUnresolvable := []struct {
+		name    string
+		got     func(executablePath func() (string, error)) (string, bool)
+		wantLog string
+	}{
+		{
+			"slack toggle",
+			func(executablePath func() (string, error)) (string, bool) {
+				return composeSlackToggleCommand(shell.Posix(), executablePath, socketPath, tmuxPath)
+			},
+			"pinning no Slack toggle click",
+		},
+		{
+			"slack state",
+			func(executablePath func() (string, error)) (string, bool) {
+				return composeSlackStateCommand(shell.Posix(), executablePath)
+			},
+			"pinning no Slack state line",
+		},
+	}
+	for _, tt := range slackUnresolvable {
+		t.Run(tt.name+" with an unresolvable executable pins nothing", func(t *testing.T) {
+			executablePath := func() (string, error) { return "", errors.New("no executable") }
+			logs := logcapture.CaptureVerbose(t)
+
+			got, ok := tt.got(executablePath)
+
+			if ok || got != "" {
+				t.Errorf("%s with an unresolvable executable = (%q, %v), want (\"\", false)", tt.name, got, ok)
+			}
+			if !strings.Contains(logs.String(), tt.wantLog) {
+				t.Errorf("log = %q, want a named warning containing %q", logs.String(), tt.wantLog)
+			}
+		})
+	}
+
 	t.Run("button with an unresolvable executable pins nothing", func(t *testing.T) {
 		executablePath := func() (string, error) { return "", errors.New("no executable") }
 		logs := logcapture.CaptureVerbose(t)

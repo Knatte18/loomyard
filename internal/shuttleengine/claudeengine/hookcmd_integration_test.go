@@ -30,7 +30,7 @@ func recordingHookCommands(t *testing.T, eventsPath string) map[string]string {
 	t.Helper()
 	commands := map[string]string{}
 	for _, interactive := range []bool{false, true} {
-		data, err := buildSettings(eventsPath, interactive, shuttleengine.Config{}, Config{}, false, false, "", "", sessionScope{})
+		data, err := buildSettings(eventsPath, interactive, shuttleengine.Config{}, Config{}, false, false, "", "", "", sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings() error: %v", err)
 		}
@@ -228,6 +228,233 @@ func TestRecordingHooks_AppendStampThenPayload(t *testing.T) {
 	})
 }
 
+// turnHookFixture is the directory tree and stub scripts the turn hook tests run the composed commands against.
+// The stub turn hook records its working directory and arguments, and its standard input, then prints and fails as told.
+// The stub `lym` stands in for creel's mail command.
+type turnHookFixture struct {
+	binDir, flagDir, projectDir, eventsPath string
+	hookArgvPath, hookStdinPath             string
+	turnHookCommand                         string
+}
+
+const turnHookStrandName = "ly:turn-hook:driver"
+
+// newTurnHookFixture lays out the fixture under a temp dir; the events file lives in eventsDir below it.
+func newTurnHookFixture(t *testing.T, eventsDir string) turnHookFixture {
+	t.Helper()
+	root := t.TempDir()
+	fx := turnHookFixture{
+		binDir: filepath.Join(root, "bin"), flagDir: filepath.Join(root, "flags"), projectDir: filepath.Join(root, "project"),
+		eventsPath:   filepath.Join(root, eventsDir, "events.jsonl"),
+		hookArgvPath: filepath.Join(root, "hook-argv"), hookStdinPath: filepath.Join(root, "hook-stdin"),
+	}
+	for _, dir := range []string{fx.binDir, fx.flagDir, fx.projectDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resolvedProjectDir, err := filepath.EvalSymlinks(fx.projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fx.projectDir = resolvedProjectDir
+	hookPath := filepath.Join(fx.binDir, "turnhook")
+	hookScript := "#!/bin/sh\nprintf '%s %s\\n' \"$(pwd -P)\" \"$*\" > \"$HOOK_ARGV\"\ncat > \"$HOOK_STDIN\"\necho hook-output\necho hook-error >&2\nexit \"$HOOK_EXIT\"\n"
+	if err := os.WriteFile(hookPath, []byte(hookScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lymScript := "#!/bin/sh\ncat > /dev/null\n[ -n \"$STUB_OUT\" ] && printf '%s\\n' \"$STUB_OUT\"\nexit \"$STUB_EXIT\"\n"
+	if err := os.WriteFile(filepath.Join(fx.binDir, "lym"), []byte(lymScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fx.turnHookCommand = shQuote(hookPath)
+	return fx
+}
+
+// standFlag raises the strand's mail flag in the fixture's flag directory.
+func (fx turnHookFixture) standFlag(t *testing.T) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(fx.flagDir, agentname.FileName(turnHookStrandName)), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// env returns the environment the commands run in.
+// The stub turn hook exits with hookExit, and the stub `lym` exits with lymExit after printing lymOut.
+func (fx turnHookFixture) env(hookExit, lymExit, lymOut string) []string {
+	return []string{
+		"PATH=" + fx.binDir + ":/usr/bin:/bin", "CLAUDE_PROJECT_DIR=" + fx.projectDir, agentname.StrandNameEnv + "=" + turnHookStrandName,
+		"HOOK_ARGV=" + fx.hookArgvPath, "HOOK_STDIN=" + fx.hookStdinPath, "HOOK_EXIT=" + hookExit,
+		"STUB_EXIT=" + lymExit, "STUB_OUT=" + lymOut,
+	}
+}
+
+// commands returns the UserPromptSubmit and Stop commands buildSettings composes for the fixture.
+// An empty turnHook composes the commands of a run with none; inHub gives the Stop command its creel merge.
+func (fx turnHookFixture) commands(t *testing.T, turnHook string, inHub bool) (prompt, stop string) {
+	t.Helper()
+	flagDir := ""
+	if inHub {
+		flagDir = fx.flagDir
+	}
+	data, err := buildSettings(fx.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", turnHook, flagDir, sessionScope{})
+	if err != nil {
+		t.Fatalf("buildSettings() error: %v", err)
+	}
+	doc := parseSettings(t, data)
+	return firstHookCommand(t, doc, "UserPromptSubmit"), firstHookCommand(t, doc, "Stop")
+}
+
+// TestTurnHook_GetsThePayloadAndTheEngineNameWithoutPrinting runs the prompt and Stop commands under sh.
+// They are composed with a turn hook.
+// The recording is appended as it is without a turn hook.
+// The hook runs from the project directory.
+// Its only argument is the engine name `claude`, and the payload is on standard input.
+// What it prints reaches neither the command's standard output nor its exit status.
+func TestTurnHook_GetsThePayloadAndTheEngineNameWithoutPrinting(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const payload = `{"hook_event_name":"Stop","session_id":"s1"}`
+	tests := []struct {
+		name  string
+		event string
+		inHub bool
+	}{
+		{"UserPromptSubmit", "UserPromptSubmit", false},
+		{"Stop", "Stop", false},
+		{"StopInAHubWithNoMail", "Stop", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fx := newTurnHookFixture(t, "")
+			prompt, stop := fx.commands(t, fx.turnHookCommand, tt.inHub)
+			command := stop
+			if tt.event == "UserPromptSubmit" {
+				command = prompt
+			}
+			stdout, exitCode := runHookCommand(t, command, payload, fx.env("0", "1", ""))
+			if stdout != "" || exitCode != 0 {
+				t.Fatalf("hook stdout = %q, exit = %d; want no output and exit 0", stdout, exitCode)
+			}
+			argv, err := os.ReadFile(fx.hookArgvPath)
+			if want := fx.projectDir + " claude\n"; err != nil || string(argv) != want {
+				t.Errorf("turn hook working directory and arguments = %q (err %v); want %q", argv, err, want)
+			}
+			stdin, err := os.ReadFile(fx.hookStdinPath)
+			if err != nil || string(stdin) != payload {
+				t.Errorf("turn hook standard input = %q (err %v); want the payload %q", stdin, err, payload)
+			}
+			file, err := os.ReadFile(fx.eventsPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stampLine, rest, found := strings.Cut(string(file), "\n")
+			var stamp map[string]string
+			if !found || rest != payload+"\n" || json.Unmarshal([]byte(stampLine), &stamp) != nil || stamp["lym_stamp"] != tt.event {
+				t.Errorf("events file = %q; want the %s stamp line, then the payload and a newline", file, tt.event)
+			}
+		})
+	}
+}
+
+// TestTurnHook_LeavesTheCommandsExitStatusToTheRecording runs the composed commands under sh with a failing turn hook.
+// The prompt command exits 0 whatever the hook does.
+// The Stop command, plain or merged with creel's delivery, exits as it does without a turn hook:
+// 0 when the events file is written, and the shell's redirection failure when it is not.
+func TestTurnHook_LeavesTheCommandsExitStatusToTheRecording(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		prompt      bool
+		inHub       bool
+		eventsDir   string
+		wantFailure bool
+	}{
+		{"PromptWithAFailingHook", true, false, "", false},
+		{"PromptWithAFailingHookAndAnUnwritableEventsFile", true, false, "missing-dir", false},
+		{"StopWithAFailingHook", false, false, "", false},
+		{"StopWithAFailingHookAndAnUnwritableEventsFile", false, false, "missing-dir", true},
+		{"StopInAHubWithAFailingHook", false, true, "", false},
+		{"StopInAHubWithAFailingHookAndAnUnwritableEventsFile", false, true, "missing-dir", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fx := newTurnHookFixture(t, tt.eventsDir)
+			env := fx.env("3", "1", "")
+			commandOf := func(turnHook string) string {
+				prompt, stop := fx.commands(t, turnHook, tt.inHub)
+				if tt.prompt {
+					return prompt
+				}
+				return stop
+			}
+			_, baselineExit := runHookCommand(t, commandOf(""), `{"hook_event_name":"Stop"}`, env)
+			stdout, exitCode := runHookCommand(t, commandOf(fx.turnHookCommand), `{"hook_event_name":"Stop"}`, env)
+			if stdout != "" || exitCode != baselineExit || (exitCode != 0) != tt.wantFailure {
+				t.Errorf("hook stdout = %q, exit = %d; want no output and the exit %d of the same command without a turn hook (failure = %v)", stdout, exitCode, baselineExit, tt.wantFailure)
+			}
+			if _, err := os.Stat(fx.hookArgvPath); err != nil {
+				t.Errorf("the turn hook did not run: %v", err)
+			}
+		})
+	}
+}
+
+// TestTurnHook_MergedCreelStopRunsItOnlyWhenATurnEndIsRecorded runs the merged Stop command.
+// The strand's flag is standing.
+// Mail handed out (the stub `lym` exits 0) continues the turn.
+// So the command records nothing and the turn hook does not run.
+// Otherwise the turn end is recorded and the turn hook runs, and the stub `lym` output stays the command's output.
+func TestTurnHook_MergedCreelStopRunsItOnlyWhenATurnEndIsRecorded(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const (
+		mail    = `{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"mail"}}`
+		echo    = `{"systemMessage":"echo"}`
+		payload = `{"hook_event_name":"Stop","session_id":"s1"}`
+	)
+	tests := []struct {
+		name       string
+		lymExit    string
+		lymOut     string
+		wantStdout string
+		wantRecord bool
+	}{
+		{"MailHandedOut", "0", mail, mail + "\n", false},
+		{"EchoAloneHandedOut", "1", echo, echo + "\n", true},
+		{"NothingClaimed", "1", "", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fx := newTurnHookFixture(t, "")
+			fx.standFlag(t)
+			_, stop := fx.commands(t, fx.turnHookCommand, true)
+			stdout, exitCode := runHookCommand(t, stop, payload, fx.env("0", tt.lymExit, tt.lymOut))
+			if stdout != tt.wantStdout || exitCode != 0 {
+				t.Errorf("hook stdout = %q, exit = %d; want %q and exit 0", stdout, exitCode, tt.wantStdout)
+			}
+			_, hookErr := os.Stat(fx.hookArgvPath)
+			if ran := hookErr == nil; ran != tt.wantRecord {
+				t.Errorf("turn hook ran = %v; want %v", ran, tt.wantRecord)
+			}
+			file, _ := os.ReadFile(fx.eventsPath)
+			if recorded := len(file) != 0; recorded != tt.wantRecord {
+				t.Errorf("events file = %q; want recorded = %v", file, tt.wantRecord)
+			}
+		})
+	}
+}
+
 // TestShellGuardDenies_RenderedCommandsGrepThePayload runs the rendered shell guard commands under sh against a Bash PreToolUse payload.
 // A row whose pattern holds a single quote echoes its deny JSON on a matching command.
 // So does a row of several patterns.
@@ -403,7 +630,7 @@ func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 				}
 			}
 			eventsPath := filepath.Join(root, tt.eventsDir, "events.jsonl")
-			command := creelStopHookCommand(shQuote(flagDir), shQuote(eventsPath))
+			command := creelStopHookCommand(shQuote(flagDir), shQuote(eventsPath), "")
 			if tt.open {
 				command = creelOpenStopHookCommand(shQuote(flagDir))
 			}

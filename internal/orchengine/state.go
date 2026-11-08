@@ -39,7 +39,7 @@ type Paths struct {
 	NoteTemplatePath string // Note template file rendered before every note request.
 	PrimeRoot        string // The prime's worktree root, which a relative note path resolves against.
 
-	// SlackPresencePath is the hub's presence record, which every rendered pointer reads; empty means no presence line.
+	// SlackPresencePath is the machine's presence record, which every rendered pointer reads; empty means no presence line.
 	SlackPresencePath string
 }
 

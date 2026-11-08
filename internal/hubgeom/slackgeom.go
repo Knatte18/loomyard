@@ -1,4 +1,4 @@
-// slackgeom.go builds the geometry the Slack engine is told for one hub.
+// slackgeom.go builds the geometry the Slack engine is told for one hub, and the paths of the machine's own Slack files.
 
 package hubgeom
 
@@ -15,19 +15,33 @@ import (
 	"github.com/Knatte18/loomyard/internal/slackengine"
 )
 
+// SlackMachine returns the paths of the machine's own Slack files, which lie in the per-user credential directory.
+// A machine where that directory does not resolve is an error naming the environment variables that decide it.
+func SlackMachine() (slackengine.MachinePaths, error) {
+	credentialDir, ok := githubclient.CredentialDir()
+	if !ok {
+		return slackengine.MachinePaths{}, errors.New("slack: no per-user directory for the machine's Slack files; way forward: set HOME, XDG_CONFIG_HOME or LOCALAPPDATA")
+	}
+	return slackengine.MachinePaths{
+		TokenPath:      filepath.Join(credentialDir, slackengine.TokenFileName),
+		SocketLockPath: filepath.Join(credentialDir, slackengine.SocketLockFileName),
+		PresencePath:   filepath.Join(credentialDir, slackengine.PresenceFileName),
+		SwitchPath:     filepath.Join(credentialDir, slackengine.SwitchFileName),
+	}, nil
+}
+
 // SlackGeometry builds the slackengine.Geometry of the hub at hubPath.
 // A hub with no recorded shortname is an error.
-// The token path and the machine socket lock lie in the per-user credential directory.
+// The machine's own files come from SlackMachine, and its errors are returned as they are.
 // A machine whose name cannot be read is an error, which is machinename.Name's own.
-// A machine where that directory does not resolve is an error naming the environment variables that decide it.
 func SlackGeometry(hubPath string) (slackengine.Geometry, error) {
 	creel, err := CreelGeometry(hubPath, "")
 	if err != nil {
 		return slackengine.Geometry{}, err
 	}
-	credentialDir, ok := githubclient.CredentialDir()
-	if !ok {
-		return slackengine.Geometry{}, errors.New("slack: no per-user directory for the token file; way forward: set HOME, XDG_CONFIG_HOME or LOCALAPPDATA")
+	machinePaths, err := SlackMachine()
+	if err != nil {
+		return slackengine.Geometry{}, err
 	}
 	executable, err := os.Executable()
 	if err != nil {
@@ -43,12 +57,13 @@ func SlackGeometry(hubPath string) (slackengine.Geometry, error) {
 		Shortname:      creel.Shortname,
 		Machine:        machine,
 		Dir:            dir,
-		TokenPath:      filepath.Join(credentialDir, slackengine.TokenFileName),
+		TokenPath:      machinePaths.TokenPath,
 		ChannelMapPath: filepath.Join(dir, slackengine.ChannelMapFileName),
 		InboxDir:       filepath.Join(dir, slackengine.InboxDirName),
-		SocketLockPath: filepath.Join(credentialDir, slackengine.SocketLockFileName),
+		SocketLockPath: machinePaths.SocketLockPath,
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
-		PresencePath:   filepath.Join(dir, slackengine.PresenceFileName),
+		PresencePath:   machinePaths.PresencePath,
+		SwitchPath:     machinePaths.SwitchPath,
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
 		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),

@@ -6,7 +6,7 @@
 // the two note requests render to the mail body creel posts.
 // Every other render is one creel text line or a shuttle launch pointer, so it must render to one line;
 // an operator override that breaks that fails here, naming the stencil to fix.
-// WithPresence appends the presence line to a pointer while the hub's presence is slack.
+// WithPresence appends the presence line to a pointer while the machine's presence is slack.
 
 package orchengine
 
@@ -25,10 +25,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// presenceLine is appended to a pointer's own line while the hub's presence is slack.
+// presenceLine is appended to a pointer's own line while the machine's presence is slack.
 const presenceLine = " Presence is slack: also post every message meant for the operator to the hub's SLACK program, as the orch role's Slack rules say."
 
-// WithPresence returns pointer with the presence line appended while the hub's presence is slack.
+// WithPresence returns pointer with the presence line appended while the machine's presence is slack.
 // The presence is read from p.SlackPresencePath.
 // The line joins the pointer's own line, since a typed pointer is one creel text line.
 // An empty path, a hub with no presence record and a record that cannot be read all leave the pointer as it is;

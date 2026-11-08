@@ -119,33 +119,46 @@ func (fake *fakeSlack) seen() []slackRequest {
 	return append([]slackRequest(nil), fake.requests...)
 }
 
-// recordingMailbox is a creel mailbox that records the posts and reads nothing.
-type recordingMailbox struct {
-	mu    sync.Mutex
-	posts []string
+// sentPost is one post a fake strand client was asked to make.
+type sentPost struct {
+	receiver, body string
 }
 
-func (m *recordingMailbox) Post(receiver, body string) (int64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.posts = append(m.posts, receiver+" "+body)
-	return int64(len(m.posts)), nil
+// fakeStrandClient is a strandClient that answers a canned journal.
+// It records the posts and the log filters it was given.
+type fakeStrandClient struct {
+	shortname string
+	entries   []creelengine.LogEntry
+	logErr    error
+	postErr   error
+	filters   []creelengine.LogFilter
+	posts     []sentPost
 }
 
-func (m *recordingMailbox) ReadAll(func([]creelengine.Message) error) error { return nil }
+func (c *fakeStrandClient) Post(receiver, body string) (int64, error) {
+	c.posts = append(c.posts, sentPost{receiver: receiver, body: body})
+	return int64(len(c.posts)), c.postErr
+}
 
-func (m *recordingMailbox) ReadWait(time.Duration, func([]creelengine.Message) error) error {
-	return nil
+func (c *fakeStrandClient) Log(filter creelengine.LogFilter) ([]creelengine.LogEntry, error) {
+	c.filters = append(c.filters, filter)
+	return c.entries, c.logErr
+}
+
+func (c *fakeStrandClient) Shortname() string { return c.shortname }
+
+// toggleRedraw is one redraw of the clicking client's status bar that the toggle verb asked for.
+type toggleRedraw struct {
+	tmuxPath, socketPath, client, message string
 }
 
 // harness is one slackCLI over fakes, with the knobs a test turns before it runs a verb.
 type harness struct {
-	t       *testing.T
-	dir     string
-	geom    slackengine.Geometry
-	slack   *fakeSlack
-	mailbox *recordingMailbox
-	cli     *slackCLI
+	t     *testing.T
+	dir   string
+	geom  slackengine.Geometry
+	slack *fakeSlack
+	cli   *slackCLI
 
 	// caller is the process the pane check sees.
 	caller paneCaller
@@ -171,10 +184,21 @@ type harness struct {
 	liveHubsErr error
 	stoppedHubs []string
 	stopErrs    map[string]error
-	// beams, paused and the errors are what the seams answer.
-	beams                                     []string
+	// paused and the errors are what the seams answer.
 	paused                                    bool
 	ensureErr, stopErr, awaitErr, reparentErr error
+	// endedPerStop is how many relay processes each successful stop call reports ended.
+	endedPerStop int
+	// machineErr is what the machine seam fails with.
+	machineErr error
+	// strand is what the strand-name seam answers; client is what the strand-client seam builds, or clientErr is its failure.
+	// builtFor lists the strands the strand-client seam was asked for.
+	strand    string
+	client    *fakeStrandClient
+	clientErr error
+	builtFor  []string
+	// redraws records each status-bar redraw the toggle verb asked for.
+	redraws []toggleRedraw
 	// calls logs the seams the verb reached, in order; stopPID and presenceAtAwait are what the stop and await seams saw.
 	calls           []string
 	stopPID         int
@@ -202,16 +226,19 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 	hub := filepath.Join(dir, "hub")
 	slackDir := filepath.Join(hub, "slack")
 	h := &harness{
-		t:       t,
-		dir:     dir,
-		slack:   newFakeSlack(t, answers),
-		mailbox: &recordingMailbox{},
-		appID:   "A1",
+		t:      t,
+		dir:    dir,
+		slack:  newFakeSlack(t, answers),
+		appID:  "A1",
+		strand: "hub:orch",
+		client: &fakeStrandClient{shortname: "hub"},
 		geom: slackengine.Geometry{
 			HubPath:        hub,
 			Shortname:      "hub",
 			Dir:            slackDir,
 			TokenPath:      filepath.Join(dir, "credentials", slackengine.TokenFileName),
+			SocketLockPath: filepath.Join(dir, "credentials", slackengine.SocketLockFileName),
+			SwitchPath:     filepath.Join(dir, "credentials", slackengine.SwitchFileName),
 			ChannelMapPath: filepath.Join(slackDir, slackengine.ChannelMapFileName),
 			SetupPath:      filepath.Join(slackDir, slackengine.SetupFileName),
 			PresencePath:   filepath.Join(slackDir, slackengine.PresenceFileName),
@@ -272,7 +299,18 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 			}
 		},
 		liveHubs:   func() ([]slackengine.Geometry, error) { return h.liveHubs, h.liveHubsErr },
-		newMailbox: func() slackengine.Mailbox { return h.mailbox },
+		machine:    func() (slackengine.MachinePaths, error) { return h.geom.MachinePaths(), h.machineErr },
+		strandName: func() string { return h.strand },
+		newStrandClient: func(strand string) (strandClient, error) {
+			h.builtFor = append(h.builtFor, strand)
+			if h.clientErr != nil {
+				return nil, h.clientErr
+			}
+			return h.client, nil
+		},
+		showToggle: func(tmuxPath, socketPath, client, message string) {
+			h.redraws = append(h.redraws, toggleRedraw{tmuxPath: tmuxPath, socketPath: socketPath, client: client, message: message})
+		},
 		ensure: func(slackengine.Geometry) (slackengine.StartOutcome, error) {
 			h.calls = append(h.calls, "ensure")
 			return slackengine.OutcomeStarted, h.ensureErr
@@ -284,7 +322,7 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 			if hubErr, ok := h.stopErrs[geom.HubPath]; ok {
 				return nil, hubErr
 			}
-			return nil, h.stopErr
+			return make([]runproc.Ended, h.endedPerStop), h.stopErr
 		},
 		awaitFirstRead: func(slackengine.Geometry, slackengine.Clock, time.Duration) error {
 			h.calls = append(h.calls, "await")
@@ -295,7 +333,6 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 			h.presenceAtAwait = presence
 			return h.awaitErr
 		},
-		beams:  func() ([]string, error) { return h.beams, nil },
 		paused: func() (bool, error) { return h.paused, nil },
 		spawnIntermediate: func(_, prime string) error {
 			h.calls = append(h.calls, "spawn:"+prime)
@@ -338,6 +375,37 @@ func (h *harness) storePresence(presence slackengine.Presence) {
 	}
 }
 
+// storeSwitch writes the machine's connection switch.
+func (h *harness) storeSwitch(off bool) {
+	h.t.Helper()
+	if err := slackengine.WriteSwitchedOff(h.geom.SwitchPath, off, fixedClock{}.Now()); err != nil {
+		h.t.Fatalf("WriteSwitchedOff = %v", err)
+	}
+}
+
+// switchedOff reads the machine's connection switch.
+func (h *harness) switchedOff() bool {
+	h.t.Helper()
+	off, err := slackengine.ReadSwitchedOff(h.geom.SwitchPath)
+	if err != nil {
+		h.t.Fatalf("ReadSwitchedOff = %v", err)
+	}
+	return off
+}
+
+// holdSocketLock holds the machine's socket lock until the test ends, as the relay that holds the connection does.
+func (h *harness) holdSocketLock() {
+	h.t.Helper()
+	if err := os.MkdirAll(filepath.Dir(h.geom.SocketLockPath), 0o700); err != nil {
+		h.t.Fatalf("MkdirAll = %v", err)
+	}
+	held, acquired, err := lock.TryAcquireWriteLock(h.geom.SocketLockPath)
+	if err != nil || !acquired {
+		h.t.Fatalf("TryAcquireWriteLock = %v, %v; want the socket lock", acquired, err)
+	}
+	h.t.Cleanup(func() { _ = held.Release() })
+}
+
 // presence reads the presence file.
 func (h *harness) presence() slackengine.Presence {
 	h.t.Helper()
@@ -348,9 +416,9 @@ func (h *harness) presence() slackengine.Presence {
 	return presence
 }
 
-// run executes the slack command with args and standard input stdin, from the harness's directory.
-// It decodes the envelope the command printed.
-func (h *harness) run(stdin string, args ...string) (int, envelope.Envelope) {
+// runRaw executes the slack command with args and standard input stdin, from the harness's directory.
+// It returns the exit code and what the command printed.
+func (h *harness) runRaw(stdin string, args ...string) (int, string) {
 	h.t.Helper()
 	cmd := h.cli.command()
 	if h.installPreRun {
@@ -359,7 +427,14 @@ func (h *harness) run(stdin string, args ...string) (int, envelope.Envelope) {
 	cmd.SetIn(strings.NewReader(stdin))
 	var out bytes.Buffer
 	code := clihelp.ExecuteIn(cmd, h.dir, &out, args)
-	return code, envelope.Decode(h.t, out.String())
+	return code, out.String()
+}
+
+// run executes the slack command like runRaw and decodes the envelope the command printed.
+func (h *harness) run(stdin string, args ...string) (int, envelope.Envelope) {
+	h.t.Helper()
+	code, out := h.runRaw(stdin, args...)
+	return code, envelope.Decode(h.t, out)
 }
 
 // wantRefused fails the test unless the run exited 1 with an error envelope naming every one of wants.
@@ -831,6 +906,20 @@ func TestSlackCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("StartAndAwayLeaveTheConnectionSwitchedOn", func(t *testing.T) {
+		t.Parallel()
+		for _, verb := range []string{"start", "away"} {
+			h := newHarness(t, nil)
+			h.configure()
+			h.storeSwitch(true)
+			code, env := h.run("", verb)
+			wantOK(t, code, env)
+			if h.switchedOff() {
+				t.Errorf("%s left the connection switched off; want it on", verb)
+			}
+		}
+	})
+
 	t.Run("Away", func(t *testing.T) {
 		t.Parallel()
 
@@ -861,7 +950,7 @@ func TestSlackCLI(t *testing.T) {
 	t.Run("Stop", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("SetsTerminalTellsTheOrchAndEndsTheRelayOnceSparingItself", func(t *testing.T) {
+		t.Run("SetsTerminalAndEndsTheRelayOnceSparingItself", func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, nil)
 			h.configure()
@@ -875,8 +964,8 @@ func TestSlackCLI(t *testing.T) {
 			if h.stopPID != os.Getpid() {
 				t.Errorf("stop spared pid %d; want this process %d", h.stopPID, os.Getpid())
 			}
-			if diff := cmp.Diff([]string{"hub:orch [slack presence] presence is now terminal"}, h.mailbox.posts); diff != "" {
-				t.Errorf("notices mismatch (-want +got):\n%s", diff)
+			if got := h.presence(); got != slackengine.PresenceTerminal {
+				t.Errorf("presence = %q; want terminal", got)
 			}
 		})
 
@@ -889,7 +978,7 @@ func TestSlackCLI(t *testing.T) {
 			code, env := h.run("", "stop")
 			wantRefused(t, code, env, "a process would not end", "lym slack stop")
 			if got := h.presence(); got != slackengine.PresenceTerminal {
-				t.Errorf("presence = %q; want terminal, so a second stop sends no notice", got)
+				t.Errorf("presence = %q; want terminal", got)
 			}
 		})
 	})
@@ -903,7 +992,7 @@ func TestSlackCLI(t *testing.T) {
 			h.caller = paneIn("hub:impl")
 			code, env := h.run("", "status")
 			wantOK(t, code, env)
-			want := map[string]any{"presence": "terminal", "relay_live": false, "paused": false}
+			want := map[string]any{"presence": "terminal", "relay_live": false, "connected": false, "connection_off": false, "paused": false}
 			if diff := cmp.Diff(want, env.Raw); diff != "" {
 				t.Errorf("status fields mismatch (-want +got):\n%s", diff)
 			}
@@ -923,6 +1012,8 @@ func TestSlackCLI(t *testing.T) {
 				t.Fatalf("TryAcquireWriteLock = %v, %v; want the relay lock", acquired, err)
 			}
 			t.Cleanup(func() { _ = held.Release() })
+			h.holdSocketLock()
+			h.storeSwitch(true)
 			err = slackengine.UpdateChannelMap(h.geom.ChannelMapPath, func(channelMap *slackengine.ChannelMap) error {
 				channelMap.Channels["hub:orch"] = slackengine.ChannelEntry{ID: "C1", Name: "ly-neve"}
 				channelMap.Channels["hub:impl:orch"] = slackengine.ChannelEntry{ID: "C2", Name: "ly-neve-impl-2026-11-05", Archived: true}
@@ -937,7 +1028,7 @@ func TestSlackCLI(t *testing.T) {
 			code, env := h.run("", "status")
 			wantOK(t, code, env)
 			want := map[string]any{
-				"presence": "slack", "relay_live": true, "paused": true,
+				"presence": "slack", "relay_live": true, "connected": true, "connection_off": true, "paused": true,
 				"operator": "U1", "last_healthy": "2026-11-05T11:00:00Z",
 				"channels": []any{
 					map[string]any{"orch": "hub:impl:orch", "name": "ly-neve-impl-2026-11-05", "id": "C2", "archived": true},
@@ -1000,7 +1091,7 @@ func TestSlackCLI(t *testing.T) {
 		})
 	})
 
-	t.Run("PreRunResolvesNoWorktreeForTheRelayButDoesForEveryOtherVerb", func(t *testing.T) {
+	t.Run("PreRunResolvesNoWorktreeForTheRelayAndBarButDoesForEveryOtherVerb", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t, nil)
 		h.installPreRun = true
@@ -1012,10 +1103,17 @@ func TestSlackCLI(t *testing.T) {
 			t.Errorf("relay resolved a worktree %d times; want none", h.resolveCalls)
 		}
 
+		if code, _ := h.runRaw("", "bar"); code != 0 || h.resolveCalls != 0 {
+			t.Errorf("bar = exit %d with %d worktree resolves; want exit 0 and none", code, h.resolveCalls)
+		}
+
 		code, env = h.run("", "status")
 		wantRefused(t, code, env, "no worktree")
-		if h.resolveCalls != 1 || len(h.wired) != 1 || !h.wired[0] {
-			t.Errorf("resolver calls = %d, wiring nil-location calls = %v; want one resolve, and only the relay wired", h.resolveCalls, h.wired)
+		if h.resolveCalls != 1 {
+			t.Errorf("resolver calls = %d; want one, for status alone", h.resolveCalls)
+		}
+		if diff := cmp.Diff([]bool{true, true}, h.wired); diff != "" {
+			t.Errorf("wiring nil-location calls mismatch (-want +got), only the relay and bar wired:\n%s", diff)
 		}
 	})
 }

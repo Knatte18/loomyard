@@ -570,6 +570,44 @@ func checkRepairedTail(t *testing.T, dir string, p *pool, buf *logcapture.Buffer
 	}
 }
 
+// TestLogEntry_TypesInject pins which journal events record an inject typed into a pane.
+// It also pins that every line creel types opens with LinePrefix.
+func TestLogEntry_TypesInject(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		event string
+		want  bool
+	}{
+		{eventSending, true},
+		{eventInjected, true},
+		{eventUnconfirmed, true},
+		{eventExpired, false},
+		{eventRead, false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.event, func(t *testing.T) {
+			t.Parallel()
+			if got := (LogEntry{Event: tt.event}).TypesInject(); got != tt.want {
+				t.Errorf("LogEntry{Event: %q}.TypesInject() = %v; want %v", tt.event, got, tt.want)
+			}
+		})
+	}
+
+	lines := map[string]string{
+		"MessageLine": MessageLine(Message{ID: 1, From: alpha}),
+		"BellLine":    BellLine,
+		"EchoHeading": EchoHeading,
+	}
+	for name, line := range lines {
+		if !strings.HasPrefix(line, LinePrefix) {
+			t.Errorf("%s = %q; want it to open with %q", name, line, LinePrefix)
+		}
+	}
+}
+
 func TestJournal_Retention(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -247,8 +247,9 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	// They also include the window-size pin, the follow-command and button-command pins, and the build-stamp unset.
 	// Each of the follow-command and button-command pins is set, or unset when its line cannot be composed.
 	// They also include the window marker and the strand pane's two options.
+	// They also include the status interval and the unset of the two Slack toggle pins.
 	// The console marker goes on the recorded Selvage pane.
-	wantSetOptionCalls := 16 + wantShellPins
+	wantSetOptionCalls := 19 + wantShellPins
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}

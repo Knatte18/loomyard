@@ -11,7 +11,9 @@
 // Line 2 lists the session carrying @lym_prime_session first, then every other session in the #{S:} loop's own order.
 // Line 2 ends with the current session's check mark, before the clock.
 // The check mark is read from the session user options @lym_check, @lym_check_state and @lym_check_start.
-// Line 3 is the follow button, then the action row.
+// Line 3 is the follow button, then the slack and away toggles, then the action row.
+// The toggles read the machine's Slack state from a `#()` job.
+// The server-global @lym_slack_state_command holds the job's line.
 // The action row is read from the session user options @lym_buttons_plain and @lym_buttons_agent.
 // No Go decision reads @strand_color, @lym_unseen or @lym_prime_session.
 // Neither does one read a check mark's options or the action row's options.
@@ -20,6 +22,13 @@
 // A button click reads them to decide what to run and where.
 
 package reedengine
+
+// The words of the Slack state line that light the toggles: SlackToggleLit lights slack, AwayToggleLit lights away.
+// The state line is what the command in @lym_slack_state_command prints.
+const (
+	SlackToggleLit = "slack-on"
+	AwayToggleLit  = "away-on"
+)
 
 const (
 	// strandColorFormat expands to a strand pane's @strand_color, or white when the pane has none.
@@ -117,9 +126,33 @@ const (
 		"#{S:#{?#{&&:" + reedSessionFilter + ",#{!=:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
 		"#[nolist align=right]" + checkMarkFormat + "%H:%M "
 
-	// statusFormatActions is status-format[2]: the follow button, then the action row.
+	// slackStateCommandOption is the server-global user option holding the shell line the Slack toggles' state job runs.
+	// Like the bar's other options it is display only, and no Go decision reads it.
+	slackStateCommandOption = "@lym_slack_state_command"
+
+	// slackToggleRange and awayToggleRange name the user ranges of the two Slack toggles, which a click dispatches on.
+	slackToggleRange = "slack"
+	awayToggleRange  = "away"
+
+	// slackStateJob is the `#()` job the Slack toggles read: the line slackStateCommandOption holds.
+	// tmux expands the option into the job's command and runs the job again at a redraw a second or more after its last run.
+	// Its output is only matched, never drawn, so an unset option or a job not yet run leaves both toggles unlit.
+	slackStateJob = "#(#{" + slackStateCommandOption + "})"
+
+	// slackToggleFormat is the slack toggle: a user range labelled slack.
+	// It is lit green while the state line holds SlackToggleLit.
+	slackToggleFormat = "#[range=user|" + slackToggleRange + " #{?#{m:*" + SlackToggleLit + "*," + slackStateJob + "},bg=green fg=black bold," + unlitButtonStyle + "}] " + slackToggleRange + " #[norange list=on default] "
+
+	// awayToggleFormat is the away toggle: a user range labelled away, lit green while the state line holds AwayToggleLit.
+	awayToggleFormat = "#[range=user|" + awayToggleRange + " #{?#{m:*" + AwayToggleLit + "*," + slackStateJob + "},bg=green fg=black bold," + unlitButtonStyle + "}] " + awayToggleRange + " #[norange list=on default] "
+
+	// statusFormatActions is status-format[2]: the follow button, the slack and away toggles, then the action row.
 	// A window whose active pane carries @strand draws the row in buttonRowAgentOption;
 	// every other window draws the row in buttonRowPlainOption.
 	// Both options are unset until the render sets them, so the row is empty until then.
-	statusFormatActions = listPrologueFormat + followButtonFormat + "#{?#{@strand},#{E:" + buttonRowAgentOption + "},#{E:" + buttonRowPlainOption + "}}"
+	statusFormatActions = listPrologueFormat + followButtonFormat + slackToggleFormat + awayToggleFormat + "#{?#{@strand},#{E:" + buttonRowAgentOption + "},#{E:" + buttonRowPlainOption + "}}"
+
+	// statusIntervalSeconds is the bar's redraw interval in seconds.
+	// The Slack toggles' state job runs again at each redraw, so a change made by any route shows within it.
+	statusIntervalSeconds = "5"
 )

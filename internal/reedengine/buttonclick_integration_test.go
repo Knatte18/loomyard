@@ -31,7 +31,7 @@ func TestRunButton_RealTmux(t *testing.T) {
 	}
 	recordPath := filepath.Join(t.TempDir(), "recorded-args")
 	recorder := filepath.Join(t.TempDir(), "lym-recorder")
-	if err := os.WriteFile(recorder, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > "+recordPath+"\n"), 0o755); err != nil {
+	if err := os.WriteFile(recorder, []byte("#!/bin/sh\n[ \"$1\" = slack ] && exit 0\nprintf '%s\\n' \"$@\" > "+recordPath+"\n"), 0o755); err != nil {
 		t.Fatalf("write recorder script: %v", err)
 	}
 

@@ -283,6 +283,17 @@ func (r *relayRun) forwarded(text string) bool {
 	return false
 }
 
+// presenceNotices returns the mail the relay sent as `[slack presence]` notices, in the order it was accepted.
+func (r *relayRun) presenceNotices() []mail {
+	var notices []mail
+	for _, posted := range r.mailbox.accepted() {
+		if strings.HasPrefix(posted.Body, "[slack presence]") {
+			notices = append(notices, posted)
+		}
+	}
+	return notices
+}
+
 // awaitForwarded blocks until the relay mailed the operator's text to the hub's orch.
 func (r *relayRun) awaitForwarded(text string) {
 	r.t.Helper()
@@ -795,10 +806,8 @@ func TestRunRelay(t *testing.T) {
 		r.clock.Advance(slackengine.WakeFloor)
 		r.say("200.000001", "go ahead")
 		r.hint(testChannel)
+		// The clock is manual and not advanced after the hint, so a forward proves the wake waited on no clock.
 		r.awaitForwarded("go ahead")
-		if r.clock.hasWait(slackengine.WakeFloor) {
-			t.Errorf("the wake waited on the clock for a hint that came a second after the previous wake's start")
-		}
 	})
 
 	t.Run("EventInsideASecondOfAWakesStartWaitsTheRestOfThatSecond", func(t *testing.T) {
@@ -837,6 +846,11 @@ func TestRunRelay(t *testing.T) {
 		r.updateEntry(primeOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "300.000001" })
 		if err := os.WriteFile(r.geom.LogPath, []byte("a note\n"), 0o600); err != nil {
 			t.Fatalf("write the relay log = %v", err)
+		}
+		// The machine's token file shares the presence file's directory and wakes nothing either.
+		bothTokens := slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}
+		if err := slackengine.WriteCredentials(r.geom.TokenPath, bothTokens); err != nil {
+			t.Fatalf("WriteCredentials = %v", err)
 		}
 		unseen := map[string]bool{
 			slackengine.RelayStateFileName: true, slackengine.OutboxFileName: true,
@@ -922,6 +936,55 @@ func TestRunRelay(t *testing.T) {
 		r.settle()
 		if diff := cmp.Diff([]string{prime, payments}, r.createdChannels()); diff != "" {
 			t.Errorf("channels created at the start mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("PresenceChangeAfterTheStartIsMailedToTheHubOrchAndItsBeamOrchsAndTheStartsPresenceIsNot", func(t *testing.T) {
+		t.Parallel()
+		const slackNotice, terminalNotice = "[slack presence] presence is now slack", "[slack presence] presence is now terminal"
+		tests := []struct {
+			name string
+			// atStart is the presence written before the relay starts, empty for none.
+			atStart slackengine.Presence
+			// beamsErr is what the hub's beams read answers.
+			beamsErr error
+			// changes are written one after the other once the relay's first wake is done.
+			changes []slackengine.Presence
+			want    []mail
+		}{
+			{"ChangeToSlackMailsTheHubOrchAndTheBeamOrch", "", nil,
+				[]slackengine.Presence{slackengine.PresenceSlack},
+				[]mail{{primeOrch, slackNotice}, {paymentsOrch, slackNotice}}},
+			{"FailedBeamsReadMailsTheHubOrchAlone", "", errors.New("board unreadable"),
+				[]slackengine.Presence{slackengine.PresenceSlack},
+				[]mail{{primeOrch, slackNotice}}},
+			{"PresenceFoundAtStartIsNotMailedButTheChangeFromItIs", slackengine.PresenceSlack, nil,
+				[]slackengine.Presence{slackengine.PresenceTerminal},
+				[]mail{{primeOrch, terminalNotice}, {paymentsOrch, terminalNotice}}},
+			{"RewriteOfTheStoredPresenceMailsNothingButALaterChangeDoes", "", nil,
+				[]slackengine.Presence{slackengine.PresenceTerminal, slackengine.PresenceSlack},
+				[]mail{{primeOrch, slackNotice}, {paymentsOrch, slackNotice}}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				r := newRelayRun(t)
+				r.hub.set(func(hub *fakeHub) { hub.beamsErr = tt.beamsErr })
+				if tt.atStart != "" {
+					r.setPresence(tt.atStart)
+				}
+				r.settle()
+				if notices := r.presenceNotices(); len(notices) != 0 {
+					t.Fatalf("notices after the start = %+v; want none for the presence found at the start", notices)
+				}
+				for _, change := range tt.changes {
+					r.setPresence(change)
+				}
+				r.driveUntil("the presence notices to be mailed", func() bool { return len(r.presenceNotices()) >= len(tt.want) })
+				if diff := cmp.Diff(tt.want, r.presenceNotices()); diff != "" {
+					t.Errorf("presence notices mismatch (-want +got):\n%s", diff)
+				}
+			})
 		}
 	})
 
@@ -1197,6 +1260,49 @@ func TestEnsureRelay(t *testing.T) {
 			t.Errorf("Ensure(no setup) = %q, %v; want not-configured", got, err)
 		}
 		e.wantSpawns(0)
+	})
+
+	t.Run("SwitchedOffMachineAnswersSwitchedOffInBothModesSpawnsNothingAndStartsOnceSwitchedOn", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name        string
+			whileAway   bool
+			removeToken bool
+			want        slackengine.StartOutcome
+		}{
+			{"OperatorStart", false, false, slackengine.OutcomeSwitchedOff},
+			{"WhileAway", true, false, slackengine.OutcomeSwitchedOff},
+			{"NotConfiguredIsAnsweredBeforeTheSwitchIsRead", false, true, slackengine.OutcomeNotConfigured},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				e := newEnsureHarness(t)
+				e.setAway()
+				if tt.removeToken {
+					if err := os.Remove(e.geom.TokenPath); err != nil {
+						t.Fatalf("Remove = %v", err)
+					}
+				}
+				if err := slackengine.WriteSwitchedOff(e.geom.SwitchPath, true, e.clock.Now()); err != nil {
+					t.Fatalf("WriteSwitchedOff = %v", err)
+				}
+				if got, err := e.starter.Ensure(e.geom, "main", tt.whileAway); err != nil || got != tt.want {
+					t.Fatalf("Ensure(switched off) = %q, %v; want %q", got, err, tt.want)
+				}
+				e.wantSpawns(0)
+				if tt.removeToken {
+					return
+				}
+				if err := slackengine.WriteSwitchedOff(e.geom.SwitchPath, false, e.clock.Now()); err != nil {
+					t.Fatalf("WriteSwitchedOff = %v", err)
+				}
+				if got, err := e.starter.Ensure(e.geom, "main", tt.whileAway); err != nil || got != slackengine.OutcomeStarted {
+					t.Fatalf("Ensure(switched on) = %q, %v; want started", got, err)
+				}
+				e.wantSpawns(1)
+			})
+		}
 	})
 
 	t.Run("LiveRelaySpawnsNothing", func(t *testing.T) {

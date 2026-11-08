@@ -488,6 +488,9 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if want := "cd '" + h.cli.location.AnchorPath() + "'; lym orch resume-context"; spec.ContextAfterCompaction != want {
 		t.Errorf("ContextAfterCompaction = %q; want %q", spec.ContextAfterCompaction, want)
 	}
+	if spec.TurnHookCommand != "lym slack hook" {
+		t.Errorf("TurnHookCommand = %q; want %q", spec.TurnHookCommand, "lym slack hook")
+	}
 	if spec.Model != "opus" || spec.Effort != "high" {
 		t.Errorf("model/effort = %q/%q; want opus/high", spec.Model, spec.Effort)
 	}
@@ -1331,7 +1334,7 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 		stopping bool
 		// stopFirst runs the stop verb, then reports no strand as reed does after the removal.
 		stopFirst bool
-		// presence sets the hub's presence to slack, so the pointer the launch carries ends with the presence line.
+		// presence sets the machine's presence to slack, so the pointer the launch carries ends with the presence line.
 		presence bool
 
 		wantStarts    int

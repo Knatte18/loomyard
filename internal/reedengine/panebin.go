@@ -12,11 +12,13 @@
 package reedengine
 
 import (
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -216,6 +218,64 @@ func composeButtonCommand(sh shell.Shell, executablePath func() (string, error),
 		"--client", "#{q:client_name}",
 	}
 	return sh.Chain(sh.DiscardOutput(sh.ChangeDirToWord("#{"+buttonDirOption+"}")), sh.DiscardOutput(strings.Join(words, " ")), sh.ExitSuccess()), true
+}
+
+// composeSlackToggleCommand returns the shell line the click binding runs for a Slack toggle, on sh's dialect.
+// It changes into the session's run directory, as composeButtonCommand's line does.
+// Then it runs the absolute path of this binary with `slack toggle` and the clicked range, slack or away.
+// The line also carries the told socket and tmux paths and the clicking client, so the verb can redraw its bar.
+// Every pinned token is quoted once and then has each # doubled, since the click format-expands the line.
+// #{q:mouse_status_range} and #{q:client_name} are left for that expansion, each as its own word.
+// The output of both steps is discarded and the line ends with status zero, so tmux opens no view mode.
+// An executable path that does not resolve, or resolves to a running test binary, logs a named logger.Warn.
+// It then returns false, so the caller pins no toggle click.
+func composeSlackToggleCommand(sh shell.Shell, executablePath func() (string, error), socketPath, tmuxPath string) (string, bool) {
+	exe, err := slackLineExecutable(executablePath)
+	if err != nil {
+		logger.Warn("reed: could not resolve this binary, pinning no Slack toggle click", "err", err)
+		return "", false
+	}
+	pinned := func(token string) string { return strings.ReplaceAll(token, "#", "##") }
+	words := []string{
+		pinned(sh.Invoke(exe)), "slack", "toggle", "#{q:mouse_status_range}",
+		"--socket", pinned(sh.Quote(socketPath)),
+		"--tmux", pinned(sh.Quote(tmuxPath)),
+		"--client", "#{q:client_name}",
+	}
+	return sh.Chain(sh.DiscardOutput(sh.ChangeDirToWord("#{"+buttonDirOption+"}")), sh.DiscardOutput(strings.Join(words, " ")), sh.ExitSuccess()), true
+}
+
+// composeSlackStateCommand returns the shell line the Slack toggles' state job runs, on sh's dialect:
+// the absolute path of this binary with `slack bar`, which prints the machine's Slack state.
+// The line rides the option the job's format reads, and an option's value is not expanded again, so no # is doubled.
+// An executable path that does not resolve, or resolves to a running test binary, logs a named logger.Warn.
+// It then returns false, so both toggles stay unlit.
+func composeSlackStateCommand(sh shell.Shell, executablePath func() (string, error)) (string, bool) {
+	exe, err := slackLineExecutable(executablePath)
+	if err != nil {
+		logger.Warn("reed: could not resolve this binary, pinning no Slack state line", "err", err)
+		return "", false
+	}
+	return sh.Invoke(exe) + " slack bar", true
+}
+
+// errSlackLineTestBinary refuses a Slack line that would run the running test binary.
+var errSlackLineTestBinary = errors.New("the binary is the running test binary, which a Slack line must never run")
+
+// slackLineExecutable resolves the binary a Slack line runs through executablePath.
+// Under go test it refuses the running test binary, and refuses any path when that binary's own path does not resolve.
+// tmux runs the state job at every redraw, and a test binary given `slack bar` runs its whole suite;
+// each session that run boots would pin the same job again, without end.
+func slackLineExecutable(executablePath func() (string, error)) (string, error) {
+	exe, err := executablePath()
+	if err != nil || !testing.Testing() {
+		return exe, err
+	}
+	self, err := os.Executable()
+	if err != nil || exe == self {
+		return "", errSlackLineTestBinary
+	}
+	return exe, nil
 }
 
 // The flags a button's prompt re-enters the click verb with.

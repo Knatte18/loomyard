@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/slackengine"
@@ -89,9 +90,10 @@ func readHiddenTerminalLine(in io.Reader, prompt string) (string, bool, error) {
 }
 
 // wireProduction fills the seams the verb about to run reads.
-// A nil location is the relay verb's, which needs only the relay's three seams:
-// each is told the hub and the prime by its caller.
+// A nil location is a worktree-free verb's, which needs only the machine's paths and the relay's three seams:
+// each relay seam is told the hub and the prime by its caller.
 func wireProduction(c *slackCLI, location *lymcwd.Location) error {
+	c.machine = hubgeom.SlackMachine
 	if location == nil {
 		c.spawnIntermediate = spawnIntermediate
 		c.awaitReparent = func(intermediate int) error { return awaitReparent(c.clock, intermediate) }
@@ -117,13 +119,20 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 		return slackengine.NewDialer(baseURL, appToken, &http.Client{}, slackengine.HelloTimeout)
 	}
 	c.liveHubs = liveHubGeometries
-	c.newMailbox = func() slackengine.Mailbox { return newProgramMailbox(prime) }
+	c.strandName = func() string { return os.Getenv(agentname.StrandNameEnv) }
+	c.newStrandClient = func(strand string) (strandClient, error) {
+		client, err := creelcli.NewStrandClient(location, strand)
+		if err != nil {
+			return nil, err
+		}
+		return client, nil
+	}
+	c.showToggle = reedengine.ShowToggleOutcome
 	c.ensure = func(geom slackengine.Geometry) (slackengine.StartOutcome, error) {
 		return slackengine.EnsureRelay(geom, primeName)
 	}
 	c.stop = slackengine.StopRelay
 	c.awaitFirstRead = slackengine.AwaitFirstRead
-	c.beams = func() ([]string, error) { return beamSlugs(prime) }
 	c.paused = func() (bool, error) { return orchPaused(prime) }
 	return nil
 }

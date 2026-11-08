@@ -188,9 +188,12 @@ func TestHubDobbyDeps_PrimeTickEnsuresRelay(t *testing.T) {
 // TestHubDobbyDeps_WaitReminders pins that every dobby gets the wait reminder seams.
 // It also pins what they read over a hub: the reminded rows, the presence, the template's interval,
 // and the pause record's latest resume.
+// It redirects the credential directory, where the presence file lies, with t.Setenv.
+// That is process-global state, so the test does not run in parallel.
 func TestHubDobbyDeps_WaitReminders(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Parallel()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, "task1")

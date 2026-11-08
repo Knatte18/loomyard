@@ -38,6 +38,53 @@ func sessionLoopTwoFormats(format string, loopStart int) int {
 	return -1
 }
 
+// TestStatusFormatActions_SlackAndAwayTogglesFollowTheFollowButton pins line 3's two toggles.
+// They come after the follow button and before the action row.
+// Each is a user range with its own label, and each lights green only on its own word of the state job's output.
+func TestStatusFormatActions_SlackAndAwayTogglesFollowTheFollowButton(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const stateJob = "#(#{@lym_slack_state_command})"
+	markers := []string{"#[range=user|follow ", "#[range=user|slack ", "#[range=user|away ", "#{?#{@strand},"}
+	at := make([]int, len(markers))
+	for i, marker := range markers {
+		at[i] = strings.Index(statusFormatActions, marker)
+		if at[i] < 0 {
+			t.Fatalf("statusFormatActions = %q, want it to hold %q", statusFormatActions, marker)
+		}
+		if i > 0 && at[i] <= at[i-1] {
+			t.Fatalf("%q at %d, %q at %d, want line 3 in the order follow, slack, away, action row", markers[i-1], at[i-1], marker, at[i])
+		}
+	}
+
+	tests := []struct {
+		name      string
+		segment   string
+		label     string
+		litWord   string
+		unlitWord string
+	}{
+		{"Slack", statusFormatActions[at[1]:at[2]], "slack", "slack-on", "away-on"},
+		{"Away", statusFormatActions[at[2]:at[3]], "away", "away-on", "slack-on"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			wantLit := "#{?#{m:*" + tt.litWord + "*," + stateJob + "},bg=green fg=black bold,"
+			if !strings.Contains(tt.segment, wantLit) {
+				t.Errorf("%s toggle = %q, want it lit by %q", tt.name, tt.segment, wantLit)
+			}
+			if strings.Contains(tt.segment, tt.unlitWord) {
+				t.Errorf("%s toggle = %q, want it free of the other toggle's word %q", tt.name, tt.segment, tt.unlitWord)
+			}
+			if wantLabel := "] " + tt.label + " #[norange list=on default] "; !strings.HasSuffix(tt.segment, wantLabel) {
+				t.Errorf("%s toggle = %q, want it to end with the label %q", tt.name, tt.segment, wantLabel)
+			}
+		})
+	}
+}
+
 // TestStatusFormats_SessionLoopsTakeOneFormat fails on a #{S:} loop with a second, current-item format.
 // tmux 3.4 does not accept such a loop.
 // Rendering on a newer tmux cannot catch one, so this untagged check scans the bar's format strings.

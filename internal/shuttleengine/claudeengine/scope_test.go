@@ -119,7 +119,7 @@ func TestSessionScope_WrittenSettingsPerRole(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			scope := resolveSessionScope(tt.cfg, installed, tt.preloaded, tt.orch)
-			data, err := buildSettings("/c/run/events.jsonl", tt.orch, shuttleengine.Config{}, Config{}, false, false, "", "", scope)
+			data, err := buildSettings("/c/run/events.jsonl", tt.orch, shuttleengine.Config{}, Config{}, false, false, "", "", "", scope)
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}

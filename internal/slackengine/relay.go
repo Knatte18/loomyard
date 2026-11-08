@@ -156,6 +156,8 @@ func waitFor(ctx context.Context, clock Clock, d time.Duration) bool {
 
 // RunRelay runs the hub's relay until ctx ends, and returns nil when it ends or another relay holds the lock.
 // It takes the relay lock, registers itself, records its pid, and makes the first creel read before any Slack call.
+// It reads the machine's presence before that read.
+// So a presence a start sets once the read is accepted is a change it notices.
 // Only then does it refuse a machine missing either token and a hub with no setup file, through missingTokenExit.
 // It ensures the hub's channels and owes the start read of each, then runs three loops:
 // the machine's socket holder, which turns Slack events into hints in the hub's inbox;
@@ -193,6 +195,10 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 
 	log := &relayLog{geom: geom, clock: deps.Clock}
 	floor := newSharedFloor()
+	startPresence, err := ReadPresence(geom.PresencePath)
+	if err != nil {
+		log.fail("presence", err)
+	}
 	if err := firstRead(ctx, geom, deps, heldLock, log, floor); err != nil {
 		return err
 	}
@@ -215,10 +221,11 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 		watchOpen = fswatch.Watch
 	}
 	wake := &wakeLoop{
-		geom: geom, hub: deps.Hub, clock: deps.Clock, keeper: keeper, in: reader, log: log, floor: floor,
+		geom: geom, hub: deps.Hub, mailbox: deps.Mailbox, clock: deps.Clock, keeper: keeper, in: reader, log: log, floor: floor,
 		watchOpen: watchOpen, checkBinary: deps.CheckBinary, relayLock: heldLock, holder: holder,
 		outbound:     make(chan chan struct{}),
 		primePending: primePending,
+		noticed:      startPresence,
 	}
 	stampLastHealthy := func() {
 		now := deps.Clock.Now()
@@ -445,6 +452,7 @@ func runOutbound(ctx context.Context, out *outbound, clock Clock, log *relayLog,
 type wakeLoop struct {
 	geom      Geometry
 	hub       Hub
+	mailbox   Mailbox
 	clock     Clock
 	keeper    *channelKeeper
 	in        *inbound
@@ -461,6 +469,9 @@ type wakeLoop struct {
 	// The fields below belong to the loop's own goroutine.
 	// presence is the presence the previous wake read, empty before the first.
 	presence Presence
+	// noticed is the presence the hub's orchs were last told of, or the one the relay read at its start;
+	// empty while neither is known.
+	noticed Presence
 	// primePending is set while the prime's channel is still to be ensured.
 	primePending bool
 	// lastWake is the start of the previous wake, valid once woke is set.
@@ -545,7 +556,7 @@ func (w *wakeLoop) awaitFloor(ctx context.Context) bool {
 	return waitFor(ctx, w.clock, rest)
 }
 
-// watch watches the inbox whole and the Slack directory for the presence file alone,
+// watch watches the inbox whole and the machine presence file's directory for that file alone,
 // so the relay's records, outbox, map, log and lock wake nothing.
 // It returns one channel that holds a signal after any event but a removal, and the function that closes both watches.
 func (w *wakeLoop) watch() (<-chan struct{}, func(), error) {
@@ -553,7 +564,11 @@ func (w *wakeLoop) watch() (<-chan struct{}, func(), error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("slack: watch the inbox %s: %w", w.geom.InboxDir, err)
 	}
-	presence, err := w.watchOpen(w.geom.Dir, filepath.Base(w.geom.PresencePath))
+	if err := os.MkdirAll(filepath.Dir(w.geom.PresencePath), privateDirMode); err != nil {
+		_ = inbox.Close()
+		return nil, nil, fmt.Errorf("slack: create the directory of the presence file %s: %w", w.geom.PresencePath, err)
+	}
+	presence, err := w.watchOpen(filepath.Dir(w.geom.PresencePath), filepath.Base(w.geom.PresencePath))
 	if err != nil {
 		_ = inbox.Close()
 		return nil, nil, fmt.Errorf("slack: watch the presence file %s: %w", w.geom.PresencePath, err)
@@ -583,9 +598,9 @@ func (w *wakeLoop) watch() (<-chan struct{}, func(), error) {
 	return signal, closeAll, nil
 }
 
-// diskCheck reports whether the inbox holds a hint or the presence differs from the previous wake's.
+// diskCheck reports whether the inbox holds a hint or the presence differs from the previous wake's or the noticed one.
 // It is the watch's stand-in when the watch cannot be opened.
-// Before the first wake there is no previous presence to differ from.
+// Before the first wake, and with no presence noticed, there is nothing to differ from.
 func (w *wakeLoop) diskCheck() bool {
 	if entries, err := os.ReadDir(w.geom.InboxDir); err == nil {
 		for _, entry := range entries {
@@ -595,11 +610,15 @@ func (w *wakeLoop) diskCheck() bool {
 		}
 	}
 	presence, err := ReadPresence(w.geom.PresencePath)
-	return err == nil && w.presence != "" && presence != w.presence
+	if err != nil {
+		return false
+	}
+	return (w.presence != "" && presence != w.presence) || (w.noticed != "" && presence != w.noticed)
 }
 
 // wake does the channel work of one wake.
 // It drains the inbox and reads the presence and the hub's beams.
+// It mails the hub's orchs the presence notice when the presence changed.
 // It ensures every listed beam's channel when presence turned to slack.
 // It retires the channels of beams that a successful beams read no longer lists.
 // A failed beams read retires nothing.
@@ -622,6 +641,7 @@ func (w *wakeLoop) wake(ctx context.Context, fromOutbound bool) {
 	beams, beamsErr := w.hub.Beams()
 	if beamsErr != nil {
 		w.log.fail("beams", beamsErr)
+		beams = nil
 	} else {
 		w.log.recovered("beams")
 	}
@@ -630,6 +650,7 @@ func (w *wakeLoop) wake(ctx context.Context, fromOutbound bool) {
 		w.log.fail("presence", presenceErr)
 	} else {
 		w.log.recovered("presence")
+		w.noticePresenceChange(presence, beams)
 		w.followPresence(ctx, presence, beams, beamsErr)
 	}
 	if beamsErr == nil {
@@ -651,6 +672,26 @@ func (w *wakeLoop) wake(ctx context.Context, fromOutbound bool) {
 	}
 	w.retryPrime(ctx)
 	w.runBinaryCheck(ctx)
+}
+
+// noticePresenceChange mails the hub's orchs a `[slack presence]` notice when presence differs from the noticed one.
+// With no presence noticed yet it takes presence as noticed and mails nothing.
+// The notice goes to the hub's orch and to the orch of each beam in beams, which is empty when the beams read failed.
+// A failed notice is logged and not sent again.
+func (w *wakeLoop) noticePresenceChange(presence Presence, beams []string) {
+	if presence == w.noticed {
+		return
+	}
+	known := w.noticed != ""
+	w.noticed = presence
+	if !known {
+		return
+	}
+	if err := noticePresence(w.geom, w.mailbox, beams, presence); err != nil {
+		w.log.fail("presence-notice", err)
+		return
+	}
+	w.log.recovered("presence-notice")
 }
 
 // followPresence records presence and, when it turned to slack, ensures every listed beam's channel.

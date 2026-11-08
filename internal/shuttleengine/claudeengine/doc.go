@@ -253,9 +253,11 @@
 // With the mail in the additional context alone the model reads it once, as `Stop hook additional context:`;
 // the turn continues through it.
 // HookInput parses a hook's payload:
-// `PostToolUse` and `Stop` map to the tool-boundary and stop events;
+// `PostToolUse`, `Stop` and `UserPromptSubmit` map to the tool-boundary, stop and prompt events;
 // a non-empty `agent_id` marks a subagent;
 // and `stop_hook_active` is carried.
+// A Stop carries its trimmed `last_assistant_message` as the reply,
+// and a prompt carries its prompt as a typed instruction, empty for a slash command and a task notification.
 // RewakeOutput returns the text plus a newline and exit code 2, the `asyncRewake` wake.
 // Claude Code runs an event's matching hooks in parallel,
 // so a separate creel Stop hook could not keep the recording from logging a turn end its mail then continues,
@@ -275,6 +277,12 @@
 // hook-read prints it as a system message and exits 1, so the operator sees it and the turn ends.
 // Bound: a merged command killed at its timeout after the write never reaches its record step,
 // so the turn ends with no Stop record when Claude Code drops the killed hook's output.
+// A spec's turn hook command (Spec.TurnHookCommand) joins the UserPromptSubmit and Stop commands.
+// Each then reads the hook input once, records it, and pipes it to the turn hook command with `claude` appended.
+// That runs in a subshell from `$CLAUDE_PROJECT_DIR`, with its output and errors discarded.
+// The prompt command still exits 0, and the Stop command exits with its recording's status.
+// In the merged creel Stop command the turn hook runs only on the path that records a turn end,
+// so a Stop that handed out mail, which the session continues, runs no turn hook.
 // The waiter entry runs `lym creel hook-wait claude` from `$CLAUDE_PROJECT_DIR` whether or not a flag stands.
 // It sets `asyncRewake` true and a timeout of 86400 seconds.
 // Claude Code therefore runs it in the background and wakes the idle session when it exits 2.

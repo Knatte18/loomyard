@@ -30,6 +30,8 @@ const (
 	OutcomeLive StartOutcome = "live"
 	// OutcomeNotConfigured means the machine has no token or the hub no setup, so no relay was started.
 	OutcomeNotConfigured StartOutcome = "not-configured"
+	// OutcomeSwitchedOff means the operator switched the machine's Slack connection off, so no relay was started.
+	OutcomeSwitchedOff StartOutcome = "switched-off"
 	// OutcomeTerminal means the presence is terminal, so a start made while the operator is away started nothing.
 	OutcomeTerminal StartOutcome = "terminal"
 	// OutcomeWaiting means a start made while the operator is away came before the next restart is due.
@@ -108,6 +110,7 @@ func spawnDetached(geom Geometry, args []string, wait bool) error {
 
 // EnsureRelay starts the hub's relay when it is not running, and answers how that went.
 // It starts nothing for a machine with no token or a hub with no setup file.
+// It also starts nothing while the machine's connection is switched off.
 // It ignores the restart cap and resets it, so the operator's start and a prime's bring-up always start the relay.
 // primeName is the prime worktree's name, which rides the relay's arguments.
 func EnsureRelay(geom Geometry, primeName string) (StartOutcome, error) {
@@ -157,7 +160,8 @@ func (s starter) spawnRelay(geom Geometry, primeName string) error {
 }
 
 // ensure starts the relay when it is down.
-// A machine missing either token or a hub with no setup file answers OutcomeNotConfigured, and a live relay OutcomeLive.
+// A machine missing either token or a hub with no setup file answers OutcomeNotConfigured.
+// A machine whose connection is switched off answers OutcomeSwitchedOff, and a live relay OutcomeLive.
 // With whileAway, any presence but slack answers OutcomeTerminal and starts nothing;
 // a relay down before its next restart is due answers OutcomeWaiting.
 // Each due start judges the relay its previous start spawned by how long it lived:
@@ -179,6 +183,13 @@ func (s starter) ensure(geom Geometry, primeName string, whileAway bool) (StartO
 	}
 	if len(credentials.Missing()) > 0 || !setupFound {
 		return OutcomeNotConfigured, nil
+	}
+	switchedOff, err := ReadSwitchedOff(geom.SwitchPath)
+	if err != nil {
+		return "", err
+	}
+	if switchedOff {
+		return OutcomeSwitchedOff, nil
 	}
 	if whileAway {
 		presence, err := ReadPresence(geom.PresencePath)

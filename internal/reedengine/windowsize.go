@@ -46,7 +46,7 @@ func (e *Engine) primeGeometry() bool {
 	return e.geom.DiscoverSignalPath != "" && e.geom.NameSlug == ""
 }
 
-// statusFormatPinArgvs returns the global pins of every status format and the bar style, in order.
+// statusFormatPinArgvs returns the global pins of every status format, the bar style and the redraw interval, in order.
 // The status formats are one tmux array, so each is pinned with -g.
 // A per-session index would drop the global lines for that session.
 func statusFormatPinArgvs() [][]string {
@@ -55,6 +55,7 @@ func statusFormatPinArgvs() [][]string {
 		{"set-option", "-g", "status-format[1]", statusFormatSessions},
 		{"set-option", "-g", "status-format[2]", statusFormatActions},
 		{"set-option", "-g", "status-style", statusBarStyle},
+		{"set-option", "-g", "status-interval", statusIntervalSeconds},
 	}
 }
 

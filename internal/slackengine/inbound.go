@@ -182,24 +182,13 @@ func orchName(shortname, slug string) (string, error) {
 	return agentname.Format(shortname, slug, agentname.RoleOrch)
 }
 
-// SetPresence writes presence and, only when it changed, mails a `[slack presence]` notice to the hub's orch;
-// the notice goes to the orch of every beam `beams` lists.
+// noticePresence mails a `[slack presence]` notice of presence to the hub's orch and to the orch of each beam in beams.
 // The notice asks for no reply.
-// It returns changed false with an error when the presence was not written;
-// it returns changed true with an error when the write stood and the beams read or a notice failed;
-// the error joins every failed notice.
-func SetPresence(geom Geometry, mailbox Mailbox, beams func() ([]string, error), presence Presence, now time.Time) (bool, error) {
-	changed, err := WritePresence(geom.PresencePath, presence, now)
-	if err != nil || !changed {
-		return false, err
-	}
+// The error joins every failed notice.
+func noticePresence(geom Geometry, mailbox Mailbox, beams []string, presence Presence) error {
 	var failures []error
-	slugs, err := beams()
-	if err != nil {
-		failures = append(failures, fmt.Errorf("slack: read the hub's beams for the presence notice: %w", err))
-	}
 	notice := fmt.Sprintf("%s presence is now %s", presenceNoticePrefix, presence)
-	for _, slug := range append([]string{""}, slugs...) {
+	for _, slug := range append([]string{""}, beams...) {
 		receiver, err := orchName(geom.Shortname, slug)
 		if err != nil {
 			failures = append(failures, err)
@@ -209,7 +198,7 @@ func SetPresence(geom Geometry, mailbox Mailbox, beams func() ([]string, error),
 			failures = append(failures, fmt.Errorf("slack: post the presence notice to %s: %w", receiver, err))
 		}
 	}
-	return true, errors.Join(failures...)
+	return errors.Join(failures...)
 }
 
 // slackTimestamp renders t as a Slack message timestamp, `<seconds>.<micros>`.
@@ -621,6 +610,7 @@ func (in *inbound) readFailed(orch string, err error) error {
 // handle handles one message of the orch's channel and reports whether it forwarded or answered anything.
 // It forwards the setup's operator's message of no subtype, `file_share` or `thread_broadcast`;
 // any other subtype, a bot's message and anyone else's are skipped.
+// A message it forwards first sets the presence to slack.
 // An error means the message is not handled yet and the cursor stays before it.
 func (in *inbound) handle(ctx context.Context, setup Setup, orch, channel string, message Message) (bool, error) {
 	forwardedSubtype := message.Subtype == "" || message.Subtype == fileShareSubtype || message.Subtype == threadBroadcastSubtype
@@ -637,21 +627,28 @@ func (in *inbound) handle(ctx context.Context, setup Setup, orch, channel string
 	case "status":
 		return in.status(ctx, channel, message)
 	}
+	in.awayOnOperatorMessage()
 	return in.forward(ctx, orch, channel, message, text)
 }
 
+// awayOnOperatorMessage sets the presence to slack before an operator's message is forwarded:
+// the operator writing in Slack shows they are away.
+// A presence already slack is left as it is.
+// A failed write is logged once per episode and holds no message.
+func (in *inbound) awayOnOperatorMessage() {
+	if _, err := WritePresence(in.geom.PresencePath, PresenceSlack, in.clock.Now()); err != nil {
+		in.episodes.Fail("presence", "slackengine: an operator's message could not set the presence to slack", "error", err)
+		return
+	}
+	in.episodes.Recover("presence", "slackengine: the presence is written again")
+	in.lastPresence, in.presenceKnown = PresenceSlack, true
+}
+
 // setPresence sets the presence for an `away` or `back` command and answers in the channel with the resulting state.
-// A presence that was not written is retried;
-// a write that stood with a notice or beams failure is logged once per episode and counts as handled.
+// A presence that was not written is retried.
 func (in *inbound) setPresence(ctx context.Context, channel string, message Message, presence Presence) (bool, error) {
-	changed, err := SetPresence(in.geom, in.mailbox, in.hub.Beams, presence, in.clock.Now())
-	switch {
-	case err != nil && !changed:
+	if _, err := WritePresence(in.geom.PresencePath, presence, in.clock.Now()); err != nil {
 		return in.retryOrGiveUp(ctx, channel, message, "the presence was not set", err)
-	case err != nil:
-		in.episodes.Fail("presence-notice", "slackengine: the presence was written but a notice failed", "presence", presence, "error", err)
-	default:
-		in.episodes.Recover("presence-notice", "slackengine: presence notices succeed again")
 	}
 	in.lastPresence, in.presenceKnown = presence, true
 	in.settle()

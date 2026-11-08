@@ -1518,7 +1518,7 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 		// mark returns the mark written before the reload starts, and false for none.
 		mark      func(baseline, boundary time.Time, pointer string) (ResumeMark, bool)
 		wantTyped bool
-		// slack sets the hub's presence to slack, so the rendered pointer carries the presence line.
+		// slack sets the machine's presence to slack, so the rendered pointer carries the presence line.
 		slack bool
 	}{
 		{"a mark after the boundary holding the pointer skips it", func(_, boundary time.Time, pointer string) (ResumeMark, bool) {

@@ -25,7 +25,7 @@ type WaitReminderDeps struct {
 	Rows []string
 	// LatestResume reads when the latest resumed pause entry covering slug resumed, zero when the record holds none.
 	LatestResume func(slug string) (time.Time, error)
-	// Away reports whether the hub's presence says the operator is in Slack.
+	// Away reports whether the machine's presence says the operator is in Slack.
 	Away func() (bool, error)
 	// Interval reads the reminder interval.
 	Interval func() (time.Duration, error)

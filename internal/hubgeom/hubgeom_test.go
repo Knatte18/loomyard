@@ -487,7 +487,8 @@ func TestCreelGeometry(t *testing.T) {
 }
 
 // TestSlackGeometry pins every Slack geometry field.
-// The token path lies in the credential directory, while every other path lies under the hub's Slack directory.
+// The token, socket lock, presence and switch paths lie in the credential directory.
+// Every other path lies under the hub's Slack directory.
 // A hub with no shortname record is refused.
 // A machine with no credential directory is refused, naming the environment variables that decide it.
 // The test redirects the credential directory through t.Setenv, which is process-global state,
@@ -531,7 +532,8 @@ func TestSlackGeometry(t *testing.T) {
 		InboxDir:       filepath.Join(dir, slackengine.InboxDirName),
 		SocketLockPath: filepath.Join(credentialRoot, "lym", slackengine.SocketLockFileName),
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
-		PresencePath:   filepath.Join(dir, slackengine.PresenceFileName),
+		PresencePath:   filepath.Join(credentialRoot, "lym", slackengine.PresenceFileName),
+		SwitchPath:     filepath.Join(credentialRoot, "lym", slackengine.SwitchFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
 		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),
@@ -559,6 +561,44 @@ func TestSlackGeometry(t *testing.T) {
 	for _, name := range []string{"HOME", "XDG_CONFIG_HOME", "LOCALAPPDATA"} {
 		if !strings.Contains(err.Error(), name) {
 			t.Errorf("SlackGeometry with no credential directory error = %v; want it to name %s", err, name)
+		}
+	}
+}
+
+// TestSlackMachine pins the four machine-wide Slack file paths and the refusal on a machine with no per-user directory.
+// It sets the environment with t.Setenv, which is process-global state, so it does not run in parallel.
+func TestSlackMachine(t *testing.T) {
+	tiergate.Require(t, 0)
+	credentialRoot := t.TempDir()
+	for _, name := range []string{"HOME", "XDG_CONFIG_HOME", "LOCALAPPDATA"} {
+		t.Setenv(name, credentialRoot)
+	}
+
+	got, err := SlackMachine()
+	if err != nil {
+		t.Fatalf("SlackMachine() = %v", err)
+	}
+	credentialDir := filepath.Join(credentialRoot, "lym")
+	want := slackengine.MachinePaths{
+		TokenPath:      filepath.Join(credentialDir, slackengine.TokenFileName),
+		SocketLockPath: filepath.Join(credentialDir, slackengine.SocketLockFileName),
+		PresencePath:   filepath.Join(credentialDir, "slack-presence.json"),
+		SwitchPath:     filepath.Join(credentialDir, slackengine.SwitchFileName),
+	}
+	if got != want {
+		t.Errorf("SlackMachine() = %+v; want %+v", got, want)
+	}
+
+	for _, name := range []string{"HOME", "XDG_CONFIG_HOME", "LOCALAPPDATA"} {
+		t.Setenv(name, "")
+	}
+	if _, err := SlackMachine(); err == nil {
+		t.Fatal("SlackMachine() with no credential directory = nil error; want a refusal")
+	} else {
+		for _, name := range []string{"HOME", "XDG_CONFIG_HOME", "LOCALAPPDATA"} {
+			if !strings.Contains(err.Error(), name) {
+				t.Errorf("SlackMachine() with no credential directory error = %v; want it to name %s", err, name)
+			}
 		}
 	}
 }

@@ -31,7 +31,7 @@ Files beside this one hold what a rarer event needs; read the one that fits befo
 - `role-landing-halts.md`: on any halt at Parent-Align or Finalize.
 - `role-intake.md`: when the operator asks for intake.
 - `role-hibernate.md`: when the operator asks to hibernate the machine.
-- `role-slack.md`: on mail from `<shortname>:SLACK`, and while the presence is `slack`.
+- `role-slack.md`: on mail from `<shortname>:SLACK`, and before you send anything to Slack yourself.
 
 ## The run loop
 

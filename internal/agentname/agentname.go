@@ -19,6 +19,8 @@
 // Pane titles and Claude session names are display mirrors.
 // A full name never names a tmux session or socket, since tmux rewrites ':' and '.' there.
 // A per-strand file, such as creel's mail flag, is named by FileName.
+// A name shown across machines takes the machine's name in front, as "<machine>::<name>".
+// FormatMachineAddress forms it.
 //
 // The module that spawns an agent owns its role name as a constant declared in that module.
 // It is never an inline literal in the spawn spec.
@@ -178,6 +180,16 @@ func FormatProgram(shortname, name string) (string, error) {
 		return "", err
 	}
 	return shortname + sep + name, nil
+}
+
+// MachineAddressSeparator joins a machine's name to an agent's or program's name in the cross-machine address form.
+const MachineAddressSeparator = "::"
+
+// FormatMachineAddress returns name in the cross-machine address form "<machine>::<name>".
+// The form tells a reader on another machine, or in Slack, which machine the agent or program lives on.
+// It validates neither part: name is a full name this package already formed.
+func FormatMachineAddress(machine, name string) string {
+	return machine + MachineAddressSeparator + name
 }
 
 // FormatScopedProgram validates the shortname, the slug and the upper-case program name.

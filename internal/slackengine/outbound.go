@@ -183,7 +183,7 @@ func (out *outbound) postMessages(ctx context.Context, record *outboxRecord, mes
 		}
 		if out.clock.Now().Sub(message.Posted) > staleMailAge {
 			record.Stale++
-		} else if orch, sender, ok := outboundRoute(out.geom.Shortname, message); !ok {
+		} else if orch, sender, ok := outboundRoute(out.geom.Machine, out.geom.Shortname, message); !ok {
 			logger.Warn("slackengine: dropped mail from a sender the relay does not post", "id", message.ID, "from", message.From)
 		} else if err := out.postTo(ctx, record, message, orch, slackEscape.Replace(message.Body), sender); errors.Is(err, errNoOpenChannel) {
 			waiting = true
@@ -204,19 +204,19 @@ func (out *outbound) postMessages(ctx context.Context, record *outboxRecord, mes
 // outboundRoute names the orch whose channel the message is posted to and the sender it is posted under.
 // An orch strand routes to its own orch, a program of the beam `<shortname>:<slug>:<NAME>` to that beam's orch,
 // and a program `<shortname>:<NAME>` to the hub's orch.
-// The sender carries the creel name as its name and an icon for an orch or for a program.
+// The sender carries the creel name on machine as its name, and an icon for an orch or for a program.
 // It reports ok false for a strand that is no orch, another hub's program and `EXTERNAL`.
-func outboundRoute(shortname string, message creelengine.Message) (string, Sender, bool) {
+func outboundRoute(machine, shortname string, message creelengine.Message) (string, Sender, bool) {
 	if creelengine.IsOrchStrand(message.From) {
 		orch, err := orchName(shortname, agentname.TaskSlug(message.From))
-		return orch, Sender{Username: message.From, IconEmoji: orchIcon}, err == nil
+		return orch, Sender{Username: agentname.FormatMachineAddress(machine, message.From), IconEmoji: orchIcon}, err == nil
 	}
 	programShortname, name, err := agentname.ParseProgram(message.From)
 	if err != nil || programShortname != shortname || name == agentname.External {
 		return "", Sender{}, false
 	}
 	orch, err := orchName(shortname, programSlug(message.From, programShortname, name))
-	return orch, Sender{Username: message.From, IconEmoji: programIcon}, err == nil
+	return orch, Sender{Username: agentname.FormatMachineAddress(machine, message.From), IconEmoji: programIcon}, err == nil
 }
 
 // channelFor returns the channel entry a post for orch goes to and the orch whose channel it is.
@@ -382,9 +382,9 @@ func (out *outbound) relayName() string {
 	return out.geom.Shortname + ":" + SlackProgram
 }
 
-// relaySender is the sender of the relay's own lines: its creel program name and the program icon.
+// relaySender is the sender of the relay's own lines: its creel program name on the machine, and the program icon.
 func (out *outbound) relaySender() Sender {
-	return Sender{Username: out.relayName(), IconEmoji: programIcon}
+	return Sender{Username: agentname.FormatMachineAddress(out.geom.Machine, out.relayName()), IconEmoji: programIcon}
 }
 
 // programSlug returns the beam slug of a program sender of the form `<shortname>:<slug>:<NAME>`, empty for the two-segment form.

@@ -13,11 +13,83 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPresence covers a hub with no record, a change, a repeat of the stored value and a stored value neither presence names.
+// TestConnectionSwitch covers a machine with no switch file, which reads on, and a switch written off and on again.
+func TestConnectionSwitch(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+
+	t.Run("MissingFileReadsOn", func(t *testing.T) {
+		t.Parallel()
+		off, err := slackengine.ReadSwitchedOff(filepath.Join(t.TempDir(), slackengine.SwitchFileName))
+		if err != nil || off {
+			t.Errorf("ReadSwitchedOff(missing) = %v, %v; want on", off, err)
+		}
+	})
+
+	t.Run("WriteReadsBackAndCreatesItsDirectory", func(t *testing.T) {
+		t.Parallel()
+		path := filepath.Join(t.TempDir(), "credentials", slackengine.SwitchFileName)
+		for _, wantOff := range []bool{true, false, true} {
+			if err := slackengine.WriteSwitchedOff(path, wantOff, now); err != nil {
+				t.Fatalf("WriteSwitchedOff(%v) = %v", wantOff, err)
+			}
+			if off, err := slackengine.ReadSwitchedOff(path); err != nil || off != wantOff {
+				t.Errorf("ReadSwitchedOff after writing %v = %v, %v; want %v", wantOff, off, err, wantOff)
+			}
+		}
+	})
+}
+
+// TestConnected covers a machine whose socket lock is held, one whose lock is free and one with no credential directory.
+func TestConnected(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	t.Run("MissingDirectoryReadsDisconnected", func(t *testing.T) {
+		t.Parallel()
+		geom := newGeometry(t)
+		if connected, err := slackengine.Connected(geom.MachinePaths()); err != nil || connected {
+			t.Errorf("Connected(no directory) = %v, %v; want disconnected", connected, err)
+		}
+	})
+
+	t.Run("HeldLockReadsConnectedAndFreeLockReadsDisconnectedAndStaysFree", func(t *testing.T) {
+		t.Parallel()
+		geom := newGeometry(t)
+		if err := os.MkdirAll(filepath.Dir(geom.SocketLockPath), 0o700); err != nil {
+			t.Fatalf("MkdirAll = %v", err)
+		}
+		held, acquired, err := lock.TryAcquireWriteLock(geom.SocketLockPath)
+		if err != nil || !acquired {
+			t.Fatalf("TryAcquireWriteLock = %v, %v; want the lock", acquired, err)
+		}
+		if connected, err := slackengine.Connected(geom.MachinePaths()); err != nil || !connected {
+			t.Errorf("Connected(lock held) = %v, %v; want connected", connected, err)
+		}
+		if err := held.Release(); err != nil {
+			t.Fatalf("Release = %v", err)
+		}
+		if connected, err := slackengine.Connected(geom.MachinePaths()); err != nil || connected {
+			t.Errorf("Connected(lock free) = %v, %v; want disconnected", connected, err)
+		}
+		again, acquired, err := lock.TryAcquireWriteLock(geom.SocketLockPath)
+		if err != nil || !acquired {
+			t.Fatalf("TryAcquireWriteLock after Connected = %v, %v; want the lock left free", acquired, err)
+		}
+		if err := again.Release(); err != nil {
+			t.Errorf("Release = %v", err)
+		}
+	})
+}
+
+// TestPresence covers a machine with no record, a change and a repeat of the stored value.
+// It also covers a stored value neither presence names.
 func TestPresence(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

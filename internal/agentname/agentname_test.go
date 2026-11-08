@@ -269,6 +269,24 @@ func TestStandaloneShortname(t *testing.T) {
 	}
 }
 
+func TestFormatMachineAddress(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct{ machine, name, want string }{
+		{"laptop", "ly:orch", "laptop::ly:orch"},
+		{"build-box", "ly:agent-naming:driver-2", "build-box::ly:agent-naming:driver-2"},
+	}
+	for _, tt := range tests {
+		if got := FormatMachineAddress(tt.machine, tt.name); got != tt.want {
+			t.Errorf("FormatMachineAddress(%q, %q) = %q; want %q", tt.machine, tt.name, got, tt.want)
+		}
+	}
+	if MachineAddressSeparator != "::" {
+		t.Errorf("MachineAddressSeparator = %q; want %q", MachineAddressSeparator, "::")
+	}
+}
+
 func TestFileName(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

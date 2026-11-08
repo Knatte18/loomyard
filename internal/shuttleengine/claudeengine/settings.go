@@ -129,9 +129,30 @@ func creelMailHookCommand(quotedFlagDir string) string {
 // Otherwise, or when the flag is absent, the command appends the Stop stamp and the input as the recording command does.
 // It exits with that append's status, and what the delivery step printed stays the hook's output.
 // An echo printed with exit 1 relies on that output to reach the operator.
-func creelStopHookCommand(quotedFlagDir, quotedEventsPath string) string {
+// A non-empty turnHookCommand runs after that append, as recordHeldStop describes.
+func creelStopHookCommand(quotedFlagDir, quotedEventsPath, turnHookCommand string) string {
+	return creelStopDelivery(quotedFlagDir) + `; ` + recordHeldStop(quotedEventsPath, turnHookCommand)
+}
+
+// turnHookEngineName is the registry name a turn hook command is given as its last argument.
+const turnHookEngineName = "claude"
+
+// recordHeldStop returns the step that appends the Stop stamp and the hook input held in $in to the events file.
+// It keeps the append's status as the command's, as the recording command does.
+// A non-empty turnHookCommand then gets the same input through turnHookStep, and the command exits with the kept status.
+func recordHeldStop(quotedEventsPath, turnHookCommand string) string {
 	record := `printf '%s' "$in" | { ` + recordingCommand(hookEventStop, quotedEventsPath) + `; }`
-	return creelStopDelivery(quotedFlagDir) + `; ` + record
+	if turnHookCommand == "" {
+		return record
+	}
+	return record + `; s=$?; ` + turnHookStep(turnHookCommand) + `; exit $s`
+}
+
+// turnHookStep returns the step that pipes the hook input held in $in to turnHookCommand, given this engine's name.
+// It runs in a subshell from the session's project directory, with its output and errors discarded,
+// so it prints nothing a hook's standard output would hand the session, and it leaves the calling shell where it was.
+func turnHookStep(turnHookCommand string) string {
+	return `printf '%s' "$in" | (cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + turnHookCommand + ` ` + turnHookEngineName + `) >/dev/null 2>&1`
 }
 
 // creelOpenStopHookCommand returns the Stop hook command of a session with no events file:
@@ -400,8 +421,12 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // It also replaces the Stop recording with the command that merges it with creel's turn-end delivery.
 // Creel's idle waiter is added as a second Stop entry.
 // An empty creelFlagDirPosix adds none of them and keeps the plain Stop recording.
+// A non-empty turnHookCommand reads the hook input once in the UserPromptSubmit and Stop commands.
+// It runs after their recording on the same input, through turnHookStep;
+// the prompt command still exits 0, and the Stop command exits with its recording's status.
+// In a merged creel Stop command it runs only on the path that records a turn end.
 // scope is the session's scope, carried as the document's last keys; the zero scope adds none.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, creelFlagDirPosix string, scope sessionScope) ([]byte, error) {
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, turnHookCommand, creelFlagDirPosix string, scope sessionScope) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -410,11 +435,20 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		}
 		return []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: command}}}}
 	}
+	commandHook := func(command string) []hookEntry {
+		return []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: command}}}}
+	}
+	stopHook := recordingHook(hookEventStop, false)
+	promptHook := recordingHook(hookEventUserPromptSubmit, true)
+	if turnHookCommand != "" {
+		stopHook = commandHook(`in=$(cat); ` + recordHeldStop(quotedEventsPath, turnHookCommand))
+		promptHook = commandHook(`in=$(cat); printf '%s' "$in" | { ` + recordingCommand(hookEventUserPromptSubmit, quotedEventsPath) + `; }; ` + turnHookStep(turnHookCommand) + `; true`)
+	}
 
 	doc := settingsDoc{
 		Hooks: settingsHooks{
-			Stop:              recordingHook(hookEventStop, false),
-			UserPromptSubmit:  recordingHook(hookEventUserPromptSubmit, true),
+			Stop:              stopHook,
+			UserPromptSubmit:  promptHook,
 			StopFailure:       recordingHook(hookEventStopFailure, true),
 			Notification:      recordingHook(hookEventNotification, true),
 			SessionEnd:        recordingHook(hookEventSessionEnd, true),
@@ -463,7 +497,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		quotedFlagDir := shQuote(creelFlagDirPosix)
 		doc.Hooks.PostToolUse = append(doc.Hooks.PostToolUse, hookEntry{Hooks: []hookCommand{{Type: "command", Command: creelMailHookCommand(quotedFlagDir)}}})
 		doc.Hooks.Stop = []hookEntry{
-			{Hooks: []hookCommand{{Type: "command", Command: creelStopHookCommand(quotedFlagDir, quotedEventsPath)}}},
+			{Hooks: []hookCommand{{Type: "command", Command: creelStopHookCommand(quotedFlagDir, quotedEventsPath, turnHookCommand)}}},
 			creelWaitHookEntry(),
 		}
 	}

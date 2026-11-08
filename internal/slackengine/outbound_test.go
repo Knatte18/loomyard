@@ -105,12 +105,15 @@ func (s *fakeSlack) postedTexts() []postedText {
 	return append([]postedText(nil), s.posted...)
 }
 
+// orchSender is the sender of a post for the orch strand called name: the creel name behind the machine's name.
 func orchSender(name string) slackengine.Sender {
-	return slackengine.Sender{Username: name, IconEmoji: ":robot_face:"}
+	return slackengine.Sender{Username: testMachine + "::" + name, IconEmoji: ":robot_face:"}
 }
 
+// programSender is the sender of a post for the program called name, or of the relay's own line.
+// The machine's name comes first.
 func programSender(name string) slackengine.Sender {
-	return slackengine.Sender{Username: name, IconEmoji: ":gear:"}
+	return slackengine.Sender{Username: testMachine + "::" + name, IconEmoji: ":gear:"}
 }
 
 func TestOutboundRead(t *testing.T) {

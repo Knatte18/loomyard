@@ -4,11 +4,14 @@
 // It holds the only calls to Slack and the files the relay and `lym slack` read and write.
 //
 // The files sit in two places.
-// The machine's credentials are `slack.json` in the per-user lym directory `githubclient.CredentialDir` names:
-// the bot token, the app-level token and the app id.
-// `WriteCredentials` writes it and `ReadCredentials` reads it; no config template, layer or env file holds it.
+// The machine's own files sit in the per-user lym directory `githubclient.CredentialDir` names.
+// Every hub of the machine shares them.
+// They are the credentials, `slack.json`, with the bot token, the app-level token and the app id;
+// the presence (`Presence`); the connection switch; and the socket lock.
+// `WriteCredentials` writes the credentials and `ReadCredentials` reads them.
+// No config template, layer or env file holds them.
 // The hub's own files sit in its `.lym/slack/` directory.
-// They are the setup file with the operator alone (`Setup`), the presence (`Presence`) and the channel map.
+// They are the setup file with the operator alone (`Setup`) and the channel map.
 // The channel map (`ChannelMap`) holds one channel per orch, named by hub, machine and orch, with its read cursors.
 // They also include the inbox of wake hints, the outbound record and the relay state (`RelayState`).
 // The relay lock and the relay log sit there too.
@@ -45,12 +48,17 @@
 // It reads the configured operator's messages after the channel's cursor.
 // It hands each, once, to the orch of the channel it was written in as mail whose body is the operator's text alone.
 // `away`, `back` and `status` are presence commands answered in Slack and sent to no orch.
-// `SetPresence` mails the orchs a notice when the presence changes.
+// Any other message of the operator first sets the presence to slack: writing in Slack shows the operator is away.
+// No writer of the presence mails a notice.
+// Each running relay mails its own hub's orchs a `[slack presence]` notice when it sees the presence change.
+// It does so whoever changed it.
 // A message that cannot be handled holds the later ones until it succeeds or is five minutes old.
 // The relay then answers in Slack and moves past it.
 //
 // The outbound read waits on the relay's own mailbox.
-// It posts each message to the channel of its sender's orch, under the sender's name and icon.
+// It posts each message to the channel of its sender's orch, under the sender's icon.
+// The name it posts under is the sender's in the cross-machine address form `<machine>::<sender>`,
+// so the operator sees which machine wrote; the relay's own lines carry its program name in the same form.
 // Posting is at least once, and a message Slack accepted is not posted again.
 // An outbox record keeps each message already posted.
 // It also keeps the count of stale mail whose line is not yet posted, until creel confirms the acknowledgement.
@@ -75,6 +83,8 @@
 // That process exits at once, and the relay reparents itself away from it.
 // A start made while the operator is away is capped by how long each spawned relay lived,
 // so a relay that dies young is not restarted without end.
+// While the operator has switched the machine's connection off, no start spawns a relay.
+// `Connected` reports whether a relay holds the machine's Socket Mode connection.
 // `StopRelay` ends the relay through the run-process records.
 // `AwaitFirstRead` is how a start learns the relay's first creel read was accepted.
 package slackengine

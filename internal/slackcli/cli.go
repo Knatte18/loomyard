@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -82,10 +83,18 @@ type slackCLI struct {
 	newSlack func(baseURL, token string) slackChecks
 	// newDialer builds the Socket Mode dial that `login` makes with the app-level token, against baseURL.
 	newDialer func(baseURL, appToken string) slackengine.Dialer
-	// liveHubs lists the Slack geometries of the machine's live hubs, whose relays `login` ends when it replaces a token.
+	// liveHubs lists the Slack geometries of the machine's live hubs.
+	// `login` ends their relays when it replaces a token.
+	// `toggle slack` ends them when it switches the connection off.
 	liveHubs slackengine.LiveHubs
-	// newMailbox builds the creel mailbox signing as the SLACK program, which carries the presence notices.
-	newMailbox func() slackengine.Mailbox
+	// machine returns the paths of the machine's own Slack files, which `bar` reads with no hub.
+	machine func() (slackengine.MachinePaths, error)
+	// strandName returns the name of the strand whose pane the process runs in, empty when it names none.
+	strandName func() string
+	// newStrandClient builds the creel client of the strand named strand, which `hook` reads the log and posts as.
+	newStrandClient func(strand string) (strandClient, error)
+	// showToggle redraws the clicking client's status bar, showing message on it first when message is not empty.
+	showToggle func(tmuxPath, socketPath, client, message string)
 	// ensure starts the relay when it is down, for the hub's prime.
 	// It reports whether the relay started or was already live.
 	ensure func(geom slackengine.Geometry) (slackengine.StartOutcome, error)
@@ -93,8 +102,6 @@ type slackCLI struct {
 	stop func(geom slackengine.Geometry, callerPID int) ([]runproc.Ended, error)
 	// awaitFirstRead waits until the started relay has made its first creel read.
 	awaitFirstRead func(geom slackengine.Geometry, clock slackengine.Clock, bound time.Duration) error
-	// beams lists the slugs of the hub's beams.
-	beams func() ([]string, error)
 	// paused reports whether a pause covers the prime orch.
 	paused func() (bool, error)
 
@@ -123,13 +130,20 @@ func (c *slackCLI) command() *cobra.Command {
 while away. lym makes one channel per orch. login stores the app's bot and
 app-level tokens on this machine and setup names the one operator whose
 messages count; a running relay takes up a new operator at its next wake, with
-no restart. While the presence is slack, a relay forwards the operator's
-messages in an orch's channel to that orch as creel mail from SLACK and posts
-the orchs' mail for SLACK to their channels. away and back set the presence,
-start and stop run the relay, and status shows both.`,
+no restart. A relay forwards the operator's messages in an orch's channel to
+that orch as creel mail from SLACK and posts the orchs' mail for SLACK to their
+channels, under the sender's name on this machine, such as neve::ly:orch.
+
+The presence is the machine's: away holds for every hub and orch on it. away
+and back set it, and so do the operator's own words: a message in Slack sets it
+to slack, and a line typed in an orch's pane sets it back to terminal. While it
+is slack, each turn's final reply of an orch goes to its channel. start and
+stop run the relay, and status shows both. reed's status bar shows the
+connection and the presence as its slack and away toggles.`,
 		RunE: clihelp.GroupRunE,
 	}
-	slack.AddCommand(c.loginCmd(), c.setupCmd(), c.startCmd(), c.stopCmd(), c.awayCmd(), c.backCmd(), c.statusCmd(), c.relayCmd())
+	slack.AddCommand(c.loginCmd(), c.setupCmd(), c.startCmd(), c.stopCmd(), c.awayCmd(), c.backCmd(), c.statusCmd(), c.relayCmd(),
+		c.hookCmd(), c.barCmd(), c.toggleCmd())
 	// Slack reads no stencils, and the relay is a long-lived process that must never commit seed writes into the hub.
 	for _, cmd := range append([]*cobra.Command{slack}, slack.Commands()...) {
 		if cmd.Annotations == nil {
@@ -140,9 +154,12 @@ start and stop run the relay, and status shows both.`,
 	return slack
 }
 
+// worktreeFreeVerbs are the verbs that resolve no worktree:
+// relay runs from the hub directory, and bar from wherever reed's status bar runs it.
+var worktreeFreeVerbs = []string{relayVerb, barVerb}
+
 // preRun fills the seams the verb about to run reads.
-// A verb of a hub first resolves the worktree it runs in.
-// relay resolves none, since it runs from the hub directory, which is no worktree.
+// A verb of a hub first resolves the worktree it runs in; a verb of worktreeFreeVerbs resolves none.
 // A failure is written as a refusal and aborts the verb.
 // The bare group needs nothing and prints its help.
 func (c *slackCLI) preRun(cmd *cobra.Command, args []string) error {
@@ -151,7 +168,7 @@ func (c *slackCLI) preRun(cmd *cobra.Command, args []string) error {
 	}
 	var location *lymcwd.Location
 	err := func() error {
-		if cmd.Name() != relayVerb {
+		if !slices.Contains(worktreeFreeVerbs, cmd.Name()) {
 			cwd, err := lymcwd.CwdFrom(cmd.Context())
 			if err != nil {
 				return err
@@ -494,8 +511,10 @@ func (c *slackCLI) startCmd() *cobra.Command {
 		Short:       "start the hub's Slack relay when it is down",
 		Annotations: operatorAnnotations(),
 		Long: `start brings up the hub's relay, which runs out of every pane, and reports
-whether it started or was already live. It needs login and setup first. The
-operator's terminal and an orch's pane may run it; any other strand refuses.
+whether it started or was already live. It needs login and setup first. It
+first switches the machine's Slack connection on, so a connection switched off
+at reed's slack toggle comes back. The operator's terminal and an orch's pane
+may run it; any other strand refuses.
 
 Example:
   lym slack start`,
@@ -506,12 +525,15 @@ Example:
 	}
 }
 
-// start starts the relay once login and setup are done.
+// start switches the machine's connection on and starts the relay once login and setup are done.
 func (c *slackCLI) start() (map[string]any, error) {
 	if err := paneRefusal(c.pane(), true, orchWayForward("start", "")); err != nil {
 		return nil, err
 	}
 	if _, _, err := slackengine.RequireConfigured(c.geom); err != nil {
+		return nil, err
+	}
+	if err := slackengine.WriteSwitchedOff(c.geom.SwitchPath, false, c.clock.Now()); err != nil {
 		return nil, err
 	}
 	outcome, err := c.ensure(c.geom)
@@ -527,10 +549,11 @@ func (c *slackCLI) stopCmd() *cobra.Command {
 		Use:         "stop",
 		Short:       "set the presence to terminal and end the hub's Slack relay",
 		Annotations: operatorAnnotations(),
-		Long: `stop sets the presence to terminal, telling the orchs, and then ends the relay,
-so no tick of the prime's dobby starts it again. If ending the relay fails,
-run it again: the presence is then unchanged and no notice is sent twice. The
-operator's terminal and an orch's pane may run it; any other strand refuses.
+		Long: `stop sets the machine's presence to terminal and then ends the hub's relay,
+so no tick of the prime's dobby starts it again. The relays of the machine that
+still run tell their orchs of the presence. If ending the relay fails, run it
+again: the presence is then unchanged. The operator's terminal and an orch's
+pane may run it; any other strand refuses.
 
 Example:
   lym slack stop`,
@@ -564,10 +587,11 @@ func (c *slackCLI) awayCmd() *cobra.Command {
 		Use:         "away",
 		Short:       "set the presence to slack once the relay is up",
 		Annotations: operatorAnnotations(),
-		Long: `away starts the relay when it is down, waits for its first creel read, and
-only then sets the presence to slack, telling the orchs. A relay that cannot
-read its mail refuses it, naming why. The operator's terminal and an orch's pane
-may run it, and so may the Slack text away; any other strand refuses.
+		Long: `away switches the machine's Slack connection on, starts the relay when it is
+down, waits for its first creel read, and only then sets the machine's presence
+to slack; each running relay tells its orchs. A relay that cannot read its mail
+refuses it, naming why. The operator's terminal and an orch's pane may run it,
+and so may the Slack text away; any other strand refuses.
 
 Example:
   lym slack away`,
@@ -578,12 +602,15 @@ Example:
 	}
 }
 
-// away starts the relay, waits for it to read creel and sets the presence slack.
+// away switches the machine's connection on, starts the relay, waits for it to read creel and sets the presence slack.
 func (c *slackCLI) away() (map[string]any, error) {
 	if err := paneRefusal(c.pane(), true, orchWayForward("away", "away")); err != nil {
 		return nil, err
 	}
 	if _, _, err := slackengine.RequireConfigured(c.geom); err != nil {
+		return nil, err
+	}
+	if err := slackengine.WriteSwitchedOff(c.geom.SwitchPath, false, c.clock.Now()); err != nil {
 		return nil, err
 	}
 	outcome, err := c.ensure(c.geom)
@@ -607,9 +634,10 @@ func (c *slackCLI) backCmd() *cobra.Command {
 		Use:         "back",
 		Short:       "set the presence to terminal",
 		Annotations: operatorAnnotations(),
-		Long: `back sets the presence to terminal, telling the orchs, and leaves the relay
-running. The operator's terminal and an orch's pane may run it, and so may the
-Slack text back; any other strand refuses.
+		Long: `back sets the machine's presence to terminal and leaves the relay running;
+each running relay tells its orchs. The operator's terminal and an orch's pane
+may run it, and so may the Slack text back and any line the operator types in an
+orch's pane; any other strand refuses.
 
 Example:
   lym slack back`,
@@ -620,6 +648,7 @@ Example:
 	}
 }
 
+// back sets the presence terminal.
 func (c *slackCLI) back() (map[string]any, error) {
 	if err := paneRefusal(c.pane(), true, orchWayForward("back", "back")); err != nil {
 		return nil, err
@@ -627,18 +656,14 @@ func (c *slackCLI) back() (map[string]any, error) {
 	return c.setPresence(slackengine.PresenceTerminal)
 }
 
-// setPresence writes presence and tells the orchs when it changed.
-// A write that stood but whose notice failed is reported under notice_error, not as a failure.
+// setPresence writes presence as the machine's and reports whether it changed.
+// It mails no notice: each running relay of the machine sees the change and tells its own hub's orchs.
 func (c *slackCLI) setPresence(presence slackengine.Presence) (map[string]any, error) {
-	changed, err := slackengine.SetPresence(c.geom, c.newMailbox(), c.beams, presence, c.clock.Now())
-	fields := map[string]any{"presence": string(presence), "changed": changed}
-	switch {
-	case err != nil && !changed:
+	changed, err := slackengine.WritePresence(c.geom.PresencePath, presence, c.clock.Now())
+	if err != nil {
 		return nil, err
-	case err != nil:
-		fields["notice_error"] = err.Error()
 	}
-	return fields, nil
+	return map[string]any{"presence": string(presence), "changed": changed}, nil
 }
 
 // statusCmd returns the `slack status` verb.
@@ -647,10 +672,11 @@ func (c *slackCLI) statusCmd() *cobra.Command {
 		Use:         "status",
 		Short:       "show the presence, the relay and the hub's Slack setup",
 		Annotations: operatorAnnotations(),
-		Long: `status prints the presence, whether the relay is live, whether a pause covers
-the prime orch, the operator the setup names, the hub's channels, one per orch
-with its name, id and whether it is archived, and when the relay was last
-healthy. Any process may run it.
+		Long: `status prints the machine's presence, whether the hub's relay is live, whether
+a relay holds the machine's Slack connection and whether the operator switched
+that connection off, whether a pause covers the prime orch, the operator the
+setup names, the hub's channels, one per orch with its name, id and whether it
+is archived, and when the relay was last healthy. Any process may run it.
 
 Example:
   lym slack status`,
@@ -676,7 +702,7 @@ func channelRows(channelMap slackengine.ChannelMap) []map[string]any {
 	return rows
 }
 
-// status reads the presence, the relay's health, the pause, the operator and the channels.
+// status reads the presence, the relay's health, the connection, the pause, the operator and the channels.
 func (c *slackCLI) status() (map[string]any, error) {
 	presence, err := slackengine.ReadPresence(c.geom.PresencePath)
 	if err != nil {
@@ -686,11 +712,21 @@ func (c *slackCLI) status() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	connected, err := slackengine.Connected(c.geom.MachinePaths())
+	if err != nil {
+		return nil, err
+	}
+	switchedOff, err := slackengine.ReadSwitchedOff(c.geom.SwitchPath)
+	if err != nil {
+		return nil, err
+	}
 	paused, err := c.paused()
 	if err != nil {
 		return nil, err
 	}
-	fields := map[string]any{"presence": string(presence), "relay_live": live, "paused": paused}
+	fields := map[string]any{
+		"presence": string(presence), "relay_live": live, "connected": connected, "connection_off": switchedOff, "paused": paused,
+	}
 	setup, found, err := slackengine.ReadSetup(c.geom.SetupPath)
 	if err != nil {
 		return nil, err

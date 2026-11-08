@@ -31,6 +31,10 @@ func isNotice(msg *Message) bool {
 	return agentname.IsProgram(msg.From) && len(msg.Body) <= maxNoticeBytes
 }
 
+// LinePrefix opens every line creel types into a session or hands it at a hook:
+// a message's line, a reminder, the bell and the echo heading.
+const LinePrefix = "[creel]"
+
 // MessageLine renders the one line that carries a message in full.
 // It is typed as a notice into an idle pane, or handed over as mail at a tool boundary.
 // The line starts with the message id, so the receiver can reply without a read, then gives the sender and the body.

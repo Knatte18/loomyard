@@ -19,7 +19,7 @@ func PrimePaths(location *lymcwd.Location) orchengine.Paths {
 }
 
 // orchPaths returns every path orch operates on, rooted at location's anchor.
-// It also sets the hub's presence record, which the rendered pointers read.
+// It also sets the machine's presence record, which the rendered pointers read.
 // A hub whose Slack geometry cannot be built leaves the presence path empty, which reads as no presence line.
 func orchPaths(location *lymcwd.Location) orchengine.Paths {
 	paths := orchroute.Paths(location)

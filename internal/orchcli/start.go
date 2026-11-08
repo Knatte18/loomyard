@@ -185,6 +185,9 @@ func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (startedSess
 // It carries the configured permission mode verbatim and authorizes forks,
 // so the hosted hub can spawn forks beside typed subagents.
 // Its skills come from the orch role in agents.yaml, which shuttle loads before the prompt pointer on every launch path.
+// Its turn hook is the Slack hook.
+// It switches the presence back on the operator's typed line.
+// While away, it forwards each turn's final reply to the orch's channel.
 func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 	sentinel := filepath.Join(c.paths.Dir, "session-"+now.UTC().Format("20060102T150405Z")+".never")
 	return shuttleengine.Spec{
@@ -204,6 +207,7 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 		SkillLoadTimeout: c.cfg.HandoffTimeout(),
 
 		ContextAfterCompaction: resumeContextCommand(c.location.AnchorPath()),
+		TurnHookCommand:        slackengine.HookCommand,
 	}
 }
 

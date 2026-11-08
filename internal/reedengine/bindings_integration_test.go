@@ -53,7 +53,8 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 	}
 	recordPath := filepath.Join(t.TempDir(), "recorded-args")
 	scriptPath := filepath.Join(scriptDir, "lym-recorder")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + recordPath + "\n"
+	// The bar's Slack state job also runs this script, as `slack bar`, at every redraw; it records nothing for that.
+	script := "#!/bin/sh\n[ \"$1\" = slack ] && exit 0\nprintf '%s\\n' \"$@\" > " + recordPath + "\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write recorder script: %v", err)
 	}
@@ -416,7 +417,7 @@ func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
 	beamDir := t.TempDir()
 	recordPath := filepath.Join(t.TempDir(), "record")
 	scriptPath := filepath.Join(t.TempDir(), "lym-button-recorder")
-	script := "#!/bin/sh\n{ pwd; echo \"strand=${LYM_STRAND_NAME+set}\"; echo \"parent=${LYM_PARENT+set}\"; printf '%s\\n' \"$@\"; } > " + recordPath + "\nexit 3\n"
+	script := "#!/bin/sh\n[ \"$1\" = slack ] && exit 0\n{ pwd; echo \"strand=${LYM_STRAND_NAME+set}\"; echo \"parent=${LYM_PARENT+set}\"; printf '%s\\n' \"$@\"; } > " + recordPath + "\nexit 3\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write recorder script: %v", err)
 	}

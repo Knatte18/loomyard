@@ -68,7 +68,7 @@ func TestBuildSettings_LeavesWorktreeSettingsOut(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "", tt.flagDir, sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "", "", tt.flagDir, sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -117,7 +117,7 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "", sessionScope{})
+			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -190,7 +190,7 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command, "", sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command, "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -284,14 +284,14 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 			"InAHub", `/c/hub's/` + fabricengine.BoltDirName + `/.lym/creel/flags`,
 			[]string{"touch '/c/run/activity-stamp'; true", creelMailHookCommand(quotedFlagDir)},
 			[]stopHook{
-				{command: creelStopHookCommand(quotedFlagDir, quotedEventsPath)},
+				{command: creelStopHookCommand(quotedFlagDir, quotedEventsPath, "")},
 				{command: creelWaitHookCommand(), asyncRewake: true, timeout: 86400, rewakeMessage: creelRewakeMessage, rewakeSummary: creelRewakeSummary},
 			},
 		},
 		{"Standalone", "", []string{"touch '/c/run/activity-stamp'; true"}, []stopHook{{command: recordingCommand(hookEventStop, quotedEventsPath)}}},
 	}
 	for _, tt := range tests {
-		data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", tt.flagDir, sessionScope{})
+		data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "", tt.flagDir, sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings(%s) error: %v", tt.name, err)
 		}
@@ -333,6 +333,70 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 	}
 }
 
+// firstHookCommand returns the command of the first hook of the first entry of the settings document's event.
+func firstHookCommand(t *testing.T, doc map[string]any, event string) string {
+	t.Helper()
+	entries := hooksFor(doc, event)
+	if len(entries) == 0 {
+		t.Fatalf("%s hooks are absent", event)
+	}
+	entry, _ := entries[0].(map[string]any)
+	hooks, _ := entry["hooks"].([]any)
+	if len(hooks) == 0 {
+		t.Fatalf("%s entry holds no hook", event)
+	}
+	command, _ := hooks[0].(map[string]any)["command"].(string)
+	return command
+}
+
+// TestBuildSettings_TurnHookCommand pins the UserPromptSubmit and Stop commands a turn hook command adds.
+// Both read the input once and pipe it to the recording, then to the hook step run from the project directory.
+// The prompt command ends in `; true`; the Stop command exits with the recording's status.
+// In a hub the merged creel Stop command runs the step only after the recording.
+// The commands without a turn hook are pinned by the recording and creel tests.
+func TestBuildSettings_TurnHookCommand(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const (
+		eventsPath = "/c/run/events.jsonl"
+		quoted     = `'/c/run/events.jsonl'`
+		flagDir    = "/c/hub/flags"
+	)
+	step := `printf '%s' "$in" | (cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; lym slack hook claude) >/dev/null 2>&1`
+	record := func(event string) string {
+		return `printf '%s' "$in" | { ` + stampPrintf(event, quoted) + "; cat >> " + quoted + " && printf '\\n' >> " + quoted + `; }`
+	}
+	wantPrompt := `in=$(cat); ` + record("UserPromptSubmit") + `; ` + step + `; true`
+	wantStop := `in=$(cat); ` + record("Stop") + `; s=$?; ` + step + `; exit $s`
+	wantMergedStop := creelStopDelivery(shQuote(flagDir)) + `; ` + record("Stop") + `; s=$?; ` + step + `; exit $s`
+
+	tests := []struct {
+		name     string
+		flagDir  string
+		wantStop string
+	}{
+		{"OutsideAHub", "", wantStop},
+		{"InAHub", flagDir, wantMergedStop},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "lym slack hook", tt.flagDir, sessionScope{})
+			if err != nil {
+				t.Fatalf("buildSettings() error: %v", err)
+			}
+			doc := parseSettings(t, data)
+			if got := firstHookCommand(t, doc, "UserPromptSubmit"); got != wantPrompt {
+				t.Errorf("UserPromptSubmit command = %q; want %q", got, wantPrompt)
+			}
+			if got := firstHookCommand(t, doc, "Stop"); got != tt.wantStop {
+				t.Errorf("Stop command = %q; want %q", got, tt.wantStop)
+			}
+		})
+	}
+}
+
 func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -362,7 +426,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := shuttleengine.Config{DenyPython: tt.pythonDeny}
 			claude := Config{DenyAskUserQuestion: tt.askUserDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, tt.denyPublish, "", "", sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, tt.denyPublish, "", "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -554,7 +618,7 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, false, "", "", sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, false, "", "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -929,7 +993,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 				for _, fork := range []bool{false, true} {
 					cfg := shuttleengine.Config{DenyPython: pythonDeny, RefuseRaw: sampleRefuseRaw}
 					claude := Config{DenyAskUserQuestion: askUserDeny}
-					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", sessionScope{})
+					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", "", sessionScope{})
 					if err != nil {
 						t.Fatalf("buildSettings() error: %v", err)
 					}
@@ -1030,7 +1094,7 @@ func TestBuildSettings_MatchesGolden(t *testing.T) {
 			t.Errorf("golden lacks %q", label)
 			continue
 		}
-		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", sessionScope{})
+		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", "", sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings(%s): %v", label, err)
 		}

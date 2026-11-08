@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -40,16 +41,21 @@ func (c *Claude) ResumeContext(text string) ([]byte, error) {
 }
 
 // HookInput parses the JSON object Claude Code passes a hook on standard input.
-// PostToolUse maps to the tool-boundary event and Stop to the stop event; any other event leaves Event empty.
+// PostToolUse maps to the tool-boundary event, Stop to the stop event and UserPromptSubmit to the prompt event;
+// any other event leaves Event empty.
+// A prompt event carries its prompt as typedInstruction reads it, empty for a slash command and a task notification.
+// A stop event carries the trimmed `last_assistant_message` as its reply.
 // A non-empty agent_id marks a subagent or fork; agent_type does not, since the --agent flag sets it for the main thread too.
 func (c *Claude) HookInput(payload []byte) (shuttleengine.HookInput, error) {
 	if !bytes.HasPrefix(bytes.TrimSpace(payload), []byte("{")) {
 		return shuttleengine.HookInput{}, fmt.Errorf("parse hook input: the payload is not a JSON object")
 	}
 	var parsed struct {
-		HookEventName  string `json:"hook_event_name"`
-		AgentID        string `json:"agent_id"`
-		StopHookActive bool   `json:"stop_hook_active"`
+		HookEventName        string `json:"hook_event_name"`
+		AgentID              string `json:"agent_id"`
+		StopHookActive       bool   `json:"stop_hook_active"`
+		Prompt               string `json:"prompt"`
+		LastAssistantMessage string `json:"last_assistant_message"`
 	}
 	if err := json.Unmarshal(payload, &parsed); err != nil {
 		return shuttleengine.HookInput{}, fmt.Errorf("parse hook input: %w", err)
@@ -60,6 +66,10 @@ func (c *Claude) HookInput(payload []byte) (shuttleengine.HookInput, error) {
 		input.Event = shuttleengine.HookEventToolBoundary
 	case hookEventStop:
 		input.Event = shuttleengine.HookEventStop
+		input.Reply = strings.TrimSpace(parsed.LastAssistantMessage)
+	case hookEventUserPromptSubmit:
+		input.Event = shuttleengine.HookEventPrompt
+		input.Prompt = typedInstruction(parsed.Prompt)
 	}
 	return input, nil
 }

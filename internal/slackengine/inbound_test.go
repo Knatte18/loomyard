@@ -1,4 +1,4 @@
-// inbound_test.go covers the inbound read of the hub's channels and the presence notices.
+// inbound_test.go covers the inbound read of the hub's channels and the presence commands.
 // It also declares the in-memory Slack, mailbox, hub and clock that the outbound and relay tests use.
 
 package slackengine_test
@@ -30,6 +30,8 @@ const (
 	paymentsOrch    = "ly:payments:orch"
 	// primeOrch is the orch of testChannel.
 	primeOrch = "ly:orch"
+	// testMachine is the machine name of the harness's geometry, which prefixes every sender name Slack shows.
+	testMachine = "neve"
 )
 
 // fakeClock is a Clock whose time moves only when a test advances it or a wait is taken, and whose waits return at once.
@@ -108,7 +110,9 @@ type fakeMailbox struct {
 	// postErr fails every post when set; postErrFor fails the posts to one receiver.
 	postErr    error
 	postErrFor map[string]error
-	nextID     int64
+	// onPost runs at the start of every Post, before it is accepted or refused.
+	onPost func(receiver string)
+	nextID int64
 	// readAllSteps and readWaitSteps are consumed one per call; an empty script reads as no mail.
 	readAllSteps  []readStep
 	readWaitSteps []readStep
@@ -127,6 +131,9 @@ type fakeMailbox struct {
 }
 
 func (m *fakeMailbox) Post(receiver, body string) (int64, error) {
+	if m.onPost != nil {
+		m.onPost(receiver)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.postErrFor[receiver]; err != nil {
@@ -630,21 +637,24 @@ func (h *fakeHub) set(update func(h *fakeHub)) {
 }
 
 // newGeometry returns the Geometry of a hub in a fresh temp directory, with no file written.
+// The machine's files stand in a credentials directory beside the hub's Slack directory.
 func newGeometry(t *testing.T) slackengine.Geometry {
 	t.Helper()
 	root := t.TempDir()
 	dir := filepath.Join(root, "slack")
+	credentials := filepath.Join(root, "credentials")
 	return slackengine.Geometry{
 		HubPath:        root,
 		Shortname:      "ly",
-		Machine:        "neve",
+		Machine:        testMachine,
 		Dir:            dir,
-		TokenPath:      filepath.Join(root, "credentials", slackengine.TokenFileName),
+		TokenPath:      filepath.Join(credentials, slackengine.TokenFileName),
 		ChannelMapPath: filepath.Join(dir, slackengine.ChannelMapFileName),
 		InboxDir:       filepath.Join(dir, slackengine.InboxDirName),
-		SocketLockPath: filepath.Join(root, "credentials", slackengine.SocketLockFileName),
+		SocketLockPath: filepath.Join(credentials, slackengine.SocketLockFileName),
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
-		PresencePath:   filepath.Join(dir, slackengine.PresenceFileName),
+		PresencePath:   filepath.Join(credentials, slackengine.PresenceFileName),
+		SwitchPath:     filepath.Join(credentials, slackengine.SwitchFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
 		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),
@@ -1206,28 +1216,88 @@ func TestInboundRead(t *testing.T) {
 		h.wantPosts(mail{primeOrch, "see https://x.io/a https://x.io/a <#C1|general> <!here> <@U1> & <c>"})
 	})
 
-	t.Run("PresenceCommandsInAnyChannelSetAndReadThePresenceAndAreAnsweredThere", func(t *testing.T) {
+	t.Run("PresenceCommandsInAnyChannelWriteAndReadThePresenceAndAreAnsweredThereWithNoMail", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
-		h.hub.set(func(h *fakeHub) { h.beams = []string{"payments"} })
 		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
-		h.sayIn(paymentsChannel, "101.000001", "away")
-		h.sayIn(paymentsChannel, "102.000001", " Back ")
-		h.sayIn(paymentsChannel, "103.000001", "status")
-		h.hint(paymentsChannel)
-		h.mustDrain()
-		h.wantAnswers("presence is now slack", "presence is now terminal", "presence is terminal")
+		steps := []struct {
+			ts, text     string
+			wantPresence slackengine.Presence
+		}{
+			{"101.000001", "away", slackengine.PresenceSlack},
+			{"102.000001", "status", slackengine.PresenceSlack},
+			{"103.000001", " Back ", slackengine.PresenceTerminal},
+			{"104.000001", "status", slackengine.PresenceTerminal},
+		}
+		for _, step := range steps {
+			h.sayIn(paymentsChannel, step.ts, step.text)
+			h.hint(paymentsChannel)
+			h.mustDrain()
+			if got, err := slackengine.ReadPresence(h.geom.PresencePath); err != nil || got != step.wantPresence {
+				t.Fatalf("ReadPresence after %q = %q, %v; want %q", step.text, got, err, step.wantPresence)
+			}
+		}
+		h.wantAnswers("presence is now slack", "presence is slack", "presence is now terminal", "presence is terminal")
 		for _, call := range h.slack.logged("PostAs") {
 			if call.Channel != paymentsChannel {
 				t.Errorf("an answer was posted to %s; want %s", call.Channel, paymentsChannel)
 			}
 		}
-		h.wantPosts(
-			mail{primeOrch, "[slack presence] presence is now slack"},
-			mail{paymentsOrch, "[slack presence] presence is now slack"},
-			mail{primeOrch, "[slack presence] presence is now terminal"},
-			mail{paymentsOrch, "[slack presence] presence is now terminal"},
-		)
+		h.wantPosts()
+	})
+
+	t.Run("OperatorMessageSetsThePresenceToSlackBeforeItIsForwardedAndBackAndStatusDoNot", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name         string
+			text         string
+			wantPresence slackengine.Presence
+			// wantAtPost is the presence the file held when the mail was posted, empty when no mail was posted.
+			wantAtPost slackengine.Presence
+			wantPosts  []mail
+		}{
+			{"PlainText", "deploy prod", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "deploy prod"}}},
+			{"BackCommand", "back", slackengine.PresenceTerminal, "", nil},
+			{"StatusCommand", "status", slackengine.PresenceTerminal, "", nil},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t)
+				h.startAt("100.000000")
+				var atPost slackengine.Presence
+				h.mailbox.onPost = func(string) {
+					presence, err := slackengine.ReadPresence(h.geom.PresencePath)
+					if err != nil {
+						t.Errorf("ReadPresence at the post = %v", err)
+					}
+					atPost = presence
+				}
+				h.say("101.000001", tt.text)
+				h.mustReadC1()
+				h.wantPosts(tt.wantPosts...)
+				if atPost != tt.wantAtPost {
+					t.Errorf("presence when the mail was posted = %q; want %q", atPost, tt.wantAtPost)
+				}
+				if got, err := slackengine.ReadPresence(h.geom.PresencePath); err != nil || got != tt.wantPresence {
+					t.Errorf("ReadPresence = %q, %v; want %q", got, err, tt.wantPresence)
+				}
+			})
+		}
+	})
+
+	t.Run("OperatorMessageWhosePresenceWriteFailsIsStillForwarded", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.startAt("100.000000")
+		h.say("101.000001", "hello")
+		if err := os.MkdirAll(h.geom.PresencePath, 0o700); err != nil {
+			t.Fatalf("MkdirAll = %v", err)
+		}
+		h.mustReadC1()
+		h.wantPosts(mail{primeOrch, "hello"})
+		h.wantAnswers()
+		h.wantCursorTS("101.000001")
 	})
 
 	t.Run("AnswerRefusedWithNotInChannelJoinsTheChannelAndPostsAgain", func(t *testing.T) {
@@ -1265,7 +1335,10 @@ func TestInboundRead(t *testing.T) {
 				t.Errorf("RetryOwed reported no activity for the held messages")
 			}
 			h.wantCursorTS("102.000001")
-			h.wantPosts(mail{primeOrch, "m1"}, mail{primeOrch, "[slack presence] presence is now slack"})
+			h.wantPosts(mail{primeOrch, "m1"})
+			if got, err := slackengine.ReadPresence(h.geom.PresencePath); err != nil || got != slackengine.PresenceSlack {
+				t.Errorf("ReadPresence = %q, %v; want slack", got, err)
+			}
 		})
 
 		t.Run("PastFiveMinutesIsAnsweredOnceAndPassed", func(t *testing.T) {
@@ -1335,21 +1408,6 @@ func TestInboundRead(t *testing.T) {
 		h.mustReadC1()
 		h.wantPosts(mail{primeOrch, "hello"})
 		h.wantAnswers()
-		h.wantCursorTS("101.000001")
-	})
-
-	t.Run("AwayWhoseBeamsReadFailsAfterTheWriteIsAnsweredAndPassed", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.hub.set(func(h *fakeHub) { h.beamsErr = errors.New("board unreadable") })
-		h.startAt("100.000000")
-		h.say("101.000001", "away")
-		h.mustReadC1()
-		h.mustReadC1()
-		if presence, err := slackengine.ReadPresence(h.geom.PresencePath); err != nil || presence != slackengine.PresenceSlack {
-			t.Errorf("ReadPresence = %q, %v; want slack", presence, err)
-		}
-		h.wantAnswers("presence is now slack")
 		h.wantCursorTS("101.000001")
 	})
 
@@ -1437,73 +1495,6 @@ func TestInboundRead(t *testing.T) {
 		}
 		if h.mustDrain() {
 			t.Errorf("Drain over an unchanged presence reported activity")
-		}
-	})
-}
-
-func TestSetPresence(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	const notice = "[slack presence] presence is now slack"
-
-	beams := func(slugs ...string) func() ([]string, error) {
-		return func() ([]string, error) { return slugs, nil }
-	}
-
-	t.Run("ChangeMailsTheOrchAndEachBeam", func(t *testing.T) {
-		t.Parallel()
-		geom, mailbox := newGeometry(t), &fakeMailbox{}
-		changed, err := slackengine.SetPresence(geom, mailbox, beams("payments", "orders"), slackengine.PresenceSlack, time.Now())
-		if err != nil || !changed {
-			t.Fatalf("SetPresence = %v, %v; want a change", changed, err)
-		}
-		want := []mail{{"ly:orch", notice}, {"ly:payments:orch", notice}, {"ly:orders:orch", notice}}
-		if got := mailbox.accepted(); !cmp.Equal(got, want) {
-			t.Errorf("notices mismatch (-want +got):\n%s", cmp.Diff(want, got))
-		}
-	})
-
-	t.Run("SameStateMailsNothing", func(t *testing.T) {
-		t.Parallel()
-		geom, mailbox := newGeometry(t), &fakeMailbox{}
-		if _, err := slackengine.SetPresence(geom, mailbox, beams(), slackengine.PresenceSlack, time.Now()); err != nil {
-			t.Fatalf("SetPresence = %v", err)
-		}
-		changed, err := slackengine.SetPresence(geom, mailbox, beams(), slackengine.PresenceSlack, time.Now())
-		if err != nil || changed {
-			t.Errorf("SetPresence(same state) = %v, %v; want unchanged", changed, err)
-		}
-		if got := len(mailbox.accepted()); got != 1 {
-			t.Errorf("notices = %d; want the one of the first change", got)
-		}
-	})
-
-	t.Run("FailedNoticeReturnsAnErrorWithThePresenceWritten", func(t *testing.T) {
-		t.Parallel()
-		geom := newGeometry(t)
-		mailbox := &fakeMailbox{postErrFor: map[string]error{"ly:payments:orch": errors.New("creel refused")}}
-		changed, err := slackengine.SetPresence(geom, mailbox, beams("payments"), slackengine.PresenceSlack, time.Now())
-		if !changed || err == nil || !strings.Contains(err.Error(), "ly:payments:orch") {
-			t.Fatalf("SetPresence = %v, %v; want changed with an error naming the failed receiver", changed, err)
-		}
-		if presence, readErr := slackengine.ReadPresence(geom.PresencePath); readErr != nil || presence != slackengine.PresenceSlack {
-			t.Errorf("ReadPresence = %q, %v; want slack", presence, readErr)
-		}
-		if got := mailbox.accepted(); len(got) != 1 || got[0].Receiver != "ly:orch" {
-			t.Errorf("notices = %+v; want the one to ly:orch", got)
-		}
-	})
-
-	t.Run("BeamsReadErrorAfterTheWriteReturnsChangedWithTheError", func(t *testing.T) {
-		t.Parallel()
-		geom, mailbox := newGeometry(t), &fakeMailbox{}
-		failing := func() ([]string, error) { return nil, errors.New("board unreadable") }
-		changed, err := slackengine.SetPresence(geom, mailbox, failing, slackengine.PresenceSlack, time.Now())
-		if !changed || err == nil {
-			t.Fatalf("SetPresence = %v, %v; want changed with an error", changed, err)
-		}
-		if presence, readErr := slackengine.ReadPresence(geom.PresencePath); readErr != nil || presence != slackengine.PresenceSlack {
-			t.Errorf("ReadPresence = %q, %v; want slack", presence, readErr)
 		}
 	})
 }

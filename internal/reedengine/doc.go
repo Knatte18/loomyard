@@ -185,9 +185,17 @@
 // It renders as the plain window-button style.
 // A window carrying @lym_hidden gets no button, and no Go decision reads @strand_color or @lym_unseen.
 // Line 2 lists the sessions, then, right-aligned, the check mark and the time.
-// Line 3 starts with the follow button, then the action row.
+// Line 3 starts with the follow button, then the slack and away toggles, then the action row.
 // The follow button is a range=user|follow button labelled follow.
 // It is lit green while the current session's @lym_follow is not off and unlit while it is.
+// The toggles are range=user|slack and range=user|away buttons, each lit green while its state is on.
+// They read the machine's Slack state, which is no session's, from a `#()` job:
+// the line `lym slack bar` that the server-global option @lym_slack_state_command holds, pinned with the bindings.
+// slack is lit while the state line holds SlackToggleLit, and away while it holds AwayToggleLit.
+// tmux runs the job again at each redraw a second or more after its last run.
+// The geometry pins set the redraw interval (status-interval) to five seconds.
+// So a change made by any route, a Slack text or a hook included, shows within that interval.
+// A toggle's click redraws its client's bar at once.
 //
 // The navigation bindings (bindings.go) are root-table bindings on the hub's reed server.
 // pinBindingsLocked issues them at the end of the geometry pins, so boot and every attach pre-flight pin them.
@@ -221,7 +229,14 @@
 // a window button selects that window;
 // a session button switches the client to that session;
 // the follow button toggles the follow state;
-// and a button range named by buttonRangePrefix runs `lym reed button`.
+// a button range named by buttonRangePrefix runs `lym reed button`;
+// and a Slack toggle runs `lym slack toggle slack|away` from the session's run directory.
+// That line (panebin.go's composeSlackToggleCommand) rides the server-global option @lym_slack_toggle_command.
+// It is pinned and unset together with the Slack state line, apart from the other lines.
+// It carries the socket, tmux and client the verb redraws through ShowToggleOutcome.
+// Neither Slack line is pinned when the resolved binary is a running test binary.
+// tmux runs the state job at every redraw.
+// A test binary given `slack bar` runs its whole suite, whose sessions would pin the same job again.
 // The button line (panebin.go's composeButtonCommand) rides the server-global option @lym_button_command.
 // The option is set when the line resolves and unset otherwise,
 // and the one global binding resolves it through `#{E:...}` with the session's own options.

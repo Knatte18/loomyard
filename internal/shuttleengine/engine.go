@@ -238,7 +238,7 @@ type ResumeContextRenderer interface {
 	ResumeContext(text string) ([]byte, error)
 }
 
-// HookEvent names a provider hook event creel's delivery acts on.
+// HookEvent names a provider hook event a lym hook acts on.
 type HookEvent string
 
 const (
@@ -246,16 +246,23 @@ const (
 	HookEventToolBoundary HookEvent = "tool-boundary"
 	// HookEventStop is the hook the provider runs when a turn ends.
 	HookEventStop HookEvent = "stop"
+	// HookEventPrompt is the hook the provider runs when a prompt is submitted to the session.
+	HookEventPrompt HookEvent = "prompt"
 )
 
-// HookInput is what a creel hook needs from the provider's hook input.
+// HookInput is what a lym hook needs from the provider's hook input.
 type HookInput struct {
-	// Event is the hook event the input belongs to, empty for an event creel does not act on.
+	// Event is the hook event the input belongs to, empty for an event no lym hook acts on.
 	Event HookEvent
 	// Subagent is true when the call comes from a subagent or fork rather than the session's main thread.
 	Subagent bool
 	// StopHookActive is true when the turn-end input says an earlier Stop hook's output already continues the session.
 	StopHookActive bool
+	// Prompt is a prompt input's submitted text, trimmed, when it reads as a line typed into the pane.
+	// It is empty for a slash command and for a prompt the provider submits by itself, such as a background task's notice.
+	Prompt string
+	// Reply is a turn-end input's text of the session's last message, trimmed, and empty when the turn ended with none.
+	Reply string
 }
 
 // ToolBoundaryContextRenderer is an optional capability of an engine:

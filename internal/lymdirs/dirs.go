@@ -26,8 +26,8 @@ const HibernateDirName = "hibernate"
 // CreelDirName is the directory under the hub's board-level `.lym` that holds creel's journal and the daemon lock.
 const CreelDirName = "creel"
 
-// SlackDirName is the directory under the hub's board-level `.lym` that holds the Slack setup file and presence.
-// It also holds the cursor, outbound record, relay state, relay lock and relay log.
+// SlackDirName is the directory under the hub's board-level `.lym` that holds the Slack setup file and channel map.
+// It also holds the inbox, outbound record, relay state, relay lock and relay log.
 const SlackDirName = "slack"
 
 // FailedPushDirName is the directory under the hub's board-level `.lym` that holds the failed-push records.

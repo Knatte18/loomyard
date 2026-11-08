@@ -247,6 +247,16 @@ type LogEntry struct {
 	Answers int64
 }
 
+// TypesInject reports whether the entry records an inject's line being typed into its receiver's pane:
+// the sending event journaled before the typing, or the injected or unconfirmed outcome after it.
+func (entry LogEntry) TypesInject() bool {
+	switch entry.Event {
+	case eventSending, eventInjected, eventUnconfirmed:
+		return true
+	}
+	return false
+}
+
 // pool is the state folded from the journal.
 // It is not safe for concurrent use: the store holds its mutex around every call.
 type pool struct {

@@ -9,15 +9,7 @@ and mail you post to `<shortname>:SLACK` is posted to your channel under your ow
 - Mail from `<shortname>:SLACK` that opens `[slack relay]` is a notice about the relay itself.
   It carries no operator authority and is not answered.
 - Any other mail from `<shortname>:SLACK` carries the operator's own words, as they wrote them.
-  It has the same authority as a line typed in your pane.
-  Answer it with `lym creel post --reply <id> "<text>"`, which reaches Slack.
+  It has the same authority as a line typed in your pane, and you answer it in your reply as you would that line.
 
-You learn the presence from `[slack presence]` mail and from the presence line your resume pointer carries,
-and `lym slack status` prints it.
-
-While the presence is `slack`, also post each operator-bound message to `<shortname>:SLACK` with `lym creel post`:
-a design question, a go-ahead you need, a status report, a relayed owner halt and an answer to the operator.
-Leave out the attach command, which needs a terminal.
-While the presence is `terminal`, post to `<shortname>:SLACK` only a reply to mail that came from it.
-Each orch's posts reach its own channel under its own name,
-and the operator answers in that channel or in a thread of it, so the answer comes back to that orch.
+While the presence is `slack`, lym posts the final reply of each of your turns to your channel, so you need not track the presence.
+To send anything else to Slack, such as when the operator asks for something to be sent there, post it to `<shortname>:SLACK` with `lym creel post`.

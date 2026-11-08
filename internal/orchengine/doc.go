@@ -49,7 +49,7 @@
 //
 // A start resumes the session State.SessionID records, with the reload pointer.
 // The reload pointer is the one-line stencil that tells the session to read the role file and continue.
-// Every rendered pointer may carry a presence line, which `WithPresence` appends while the hub's presence is slack.
+// Every rendered pointer may carry a presence line, which `WithPresence` appends while the machine's presence is slack.
 // That covers the reload and resume pointers and a fresh launch's prompt alike.
 // Only a launch with no session recorded, or whose resume failed to start, picks a fresh prompt, in a fixed order:
 //

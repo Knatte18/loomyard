@@ -6,12 +6,16 @@ package reedengine
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -33,7 +37,7 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			argvs := bindingArgvs(tt.prev, tt.next, false, true)
+			argvs := bindingArgvs(tt.prev, tt.next, false, true, true)
 			if want := []string{"unbind-key", "-n", "M-z"}; !slices.Equal(argvs[0], want) {
 				t.Fatalf("first binding argv = %q, want %q ahead of every bind-key", argvs[0], want)
 			}
@@ -54,7 +58,7 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		t.Parallel()
 
 		got := map[string][]string{}
-		for _, argv := range bindingArgvs(prev, next, true, true) {
+		for _, argv := range bindingArgvs(prev, next, true, true, true) {
 			got[argv[2]] = argv
 		}
 		if want := []string{"bind-key", "-n", "M-Left", "run-shell", "-b", prev}; !slices.Equal(got["M-Left"], want) {
@@ -69,7 +73,7 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		t.Parallel()
 
 		got := map[string][]string{}
-		for _, argv := range bindingArgvs(prev, next, true, true) {
+		for _, argv := range bindingArgvs(prev, next, true, true, true) {
 			got[argv[2]] = argv
 		}
 		want := map[string][]string{
@@ -86,7 +90,7 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 	t.Run("the status click dispatches on every range type", func(t *testing.T) {
 		t.Parallel()
 
-		click := clickArgv(t, bindingArgvs(prev, next, true, true))
+		click := clickArgv(t, bindingArgvs(prev, next, true, true, true))
 		joined := strings.Join(click, " ")
 		for _, rangeType := range []string{"shell", "window", "session", "follow"} {
 			if !strings.Contains(joined, "#{==:#{mouse_status_range},"+rangeType+"}") {
@@ -96,34 +100,48 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		if strings.Contains(joined, "mouse_status_range},pane}") {
 			t.Errorf("status click binding %q dispatches on the retired pane range", joined)
 		}
-		// The listed branches, the follow branch and the button branch, joined by one separator fewer than the branch count.
-		if got := strings.Count(joined, `\;`); got != len(statusClickBranches)+1 {
-			t.Errorf("status click binding joins its branches with %d escaped separators, want %d", got, len(statusClickBranches)+1)
+		// The listed branches, the follow branch, the button branch and the Slack toggle branch are joined by separators.
+		// There is one separator fewer than there are branches.
+		if got := strings.Count(joined, `\;`); got != len(statusClickBranches)+2 {
+			t.Errorf("status click binding joins its branches with %d escaped separators, want %d", got, len(statusClickBranches)+2)
 		}
 	})
 
-	t.Run("the button branch ends the click only when its line is pinned", func(t *testing.T) {
+	t.Run("the button and Slack toggle branches each end the click only when its line is pinned", func(t *testing.T) {
 		t.Parallel()
 
-		with := clickArgv(t, bindingArgvs(prev, next, true, true))
-		wantTail := []string{`\;`, "if-shell", "-F", "#{m:lymbtn*,#{mouse_status_range}}", `run-shell -b "#{E:@lym_button_command}"`}
-		if got := with[len(with)-len(wantTail):]; !slices.Equal(got, wantTail) {
-			t.Errorf("click binding ends with %q, want the button branch %q", got, wantTail)
+		buttonBranch := []string{`\;`, "if-shell", "-F", "#{m:lymbtn*,#{mouse_status_range}}", `run-shell -b "#{E:@lym_button_command}"`}
+		slackBranch := []string{`\;`, "if-shell", "-F", "#{||:#{==:#{mouse_status_range},slack},#{==:#{mouse_status_range},away}}", `run-shell -b "#{E:@lym_slack_toggle_command}"`}
+		tests := []struct {
+			name                    string
+			buttonClick, slackClick bool
+			wantTail                []string
+		}{
+			{"Both", true, true, slices.Concat(buttonBranch, slackBranch)},
+			{"ButtonOnly", true, false, buttonBranch},
+			{"SlackOnly", false, true, slackBranch},
+			{"Neither", false, false, nil},
 		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 
-		without := clickArgv(t, bindingArgvs(prev, next, true, false))
-		if joined := strings.Join(without, " "); strings.Contains(joined, "lymbtn") {
-			t.Errorf("click binding without the button line = %q, want no button branch", joined)
-		}
-		if got := strings.Count(strings.Join(without, " "), `\;`); got != len(statusClickBranches) {
-			t.Errorf("click binding without the button line joins its branches with %d escaped separators, want %d", got, len(statusClickBranches))
+				click := clickArgv(t, bindingArgvs(prev, next, true, tt.buttonClick, tt.slackClick))
+				followAt := slices.Index(click, followClickCommand(true))
+				if followAt < 0 {
+					t.Fatalf("click binding %q holds no follow branch", click)
+				}
+				if got := click[followAt+1:]; !slices.Equal(got, tt.wantTail) {
+					t.Errorf("click binding after the follow branch = %q; want %q", got, tt.wantTail)
+				}
+			})
 		}
 	})
 
 	t.Run("the shell and window clicks write follow off first and the session click does not", func(t *testing.T) {
 		t.Parallel()
 
-		click := clickArgv(t, bindingArgvs(prev, next, true, true))
+		click := clickArgv(t, bindingArgvs(prev, next, true, true, true))
 		for _, rangeType := range []string{"shell", "window"} {
 			if got := clickBranchCommand(t, click, rangeType); !strings.HasPrefix(got, "set-option @lym_follow off ; ") {
 				t.Errorf("%s click command = %q, want it to start with the follow-off write", rangeType, got)
@@ -137,13 +155,13 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 	t.Run("the follow click toggles the state and runs the jump line only when it is pinned", func(t *testing.T) {
 		t.Parallel()
 
-		withJump := clickBranchCommand(t, clickArgv(t, bindingArgvs(prev, next, true, true)), "follow")
+		withJump := clickBranchCommand(t, clickArgv(t, bindingArgvs(prev, next, true, true, true)), "follow")
 		wantWithJump := `if-shell -F '#{==:#{@lym_follow},off}' 'set-option @lym_follow on ; run-shell -b "#{E:@lym_follow_command}"' 'set-option @lym_follow off'`
 		if withJump != wantWithJump {
 			t.Errorf("follow click command with the jump pinned = %q, want %q", withJump, wantWithJump)
 		}
 
-		withoutJump := clickBranchCommand(t, clickArgv(t, bindingArgvs(prev, next, false, true)), "follow")
+		withoutJump := clickBranchCommand(t, clickArgv(t, bindingArgvs(prev, next, false, true, true)), "follow")
 		wantWithoutJump := `if-shell -F '#{==:#{@lym_follow},off}' 'set-option @lym_follow on' 'set-option @lym_follow off'`
 		if withoutJump != wantWithoutJump {
 			t.Errorf("follow click command without the jump = %q, want %q", withoutJump, wantWithoutJump)
@@ -176,6 +194,118 @@ func clickBranchCommand(t *testing.T, click []string, rangeType string) string {
 		t.Fatalf("click binding %q has no branch for range %q", click, rangeType)
 	}
 	return click[at+1]
+}
+
+// TestPinGlobalLineLocked pins that a told line is set on the server globally and an empty one unsets the option.
+// It also pins that a failed call is logged naming what the line is for and never returned.
+// It captures the process-global logger, so it does not run in parallel.
+func TestPinGlobalLineLocked(t *testing.T) {
+	tiergate.Require(t, 0)
+
+	const option, what = "@lym_test_line", "the test line"
+	tests := []struct {
+		name    string
+		line    string
+		callErr error
+		want    []string
+		wantLog string
+	}{
+		{"SetsAToldLine", "echo hi", nil, []string{"set-option", "-g", option, "echo hi"}, ""},
+		{"UnsetsAnEmptyLine", "", nil, []string{"set-option", "-gu", option}, ""},
+		{"FailedSetIsLogged", "echo hi", errors.New("boom"), []string{"set-option", "-g", option, "echo hi"}, "failed to pin the test line"},
+		{"FailedUnsetIsLogged", "", errors.New("boom"), []string{"set-option", "-gu", option}, "failed to unset the test line"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			fake := installFakeTmux(t, e)
+			fake.answer("set-option", "", tt.callErr)
+			logs := logcapture.CaptureVerbose(t)
+
+			e.pinGlobalLineLocked(option, tt.line, what)
+
+			if got := fake.Calls(); !slices.EqualFunc(got, [][]string{tt.want}, slices.Equal[[]string]) {
+				t.Errorf("pinGlobalLineLocked tmux calls = %q; want %q", got, [][]string{tt.want})
+			}
+			if tt.wantLog == "" && logs.String() != "" {
+				t.Errorf("log = %q; want nothing logged", logs.String())
+			}
+			if tt.wantLog != "" && !strings.Contains(logs.String(), tt.wantLog) {
+				t.Errorf("log = %q; want it to contain %q", logs.String(), tt.wantLog)
+			}
+		})
+	}
+}
+
+// TestPinBindingsLocked_PinsTheSlackLinesOnlyWhenEverythingResolves pins the two Slack options.
+// It also pins the click's toggle branch.
+// A resolved socket, tmux binary and executable pin the toggle click line and the state line and bind the toggle branch.
+// Any one failing to resolve unsets both lines and binds no toggle branch.
+// An executable that resolves to this test binary unsets both lines too, yet the button line stays pinned.
+func TestPinBindingsLocked_PinsTheSlackLinesOnlyWhenEverythingResolves(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the tmux binary stand-in resolves through the executable bit")
+	}
+
+	const exe, socketPath = "/opt/lym/bin/lym", "/tmp/tmux-1000/sock"
+	tests := []struct {
+		name             string
+		executable       func() (string, error)
+		socketAnswer     string
+		wantResolved     bool
+		wantButtonPinned bool
+	}{
+		{"Resolved", func() (string, error) { return exe, nil }, socketPath, true, true},
+		{"UnresolvableExecutable", func() (string, error) { return "", errors.New("no executable") }, socketPath, false, false},
+		{"UnreadableSocketPath", func() (string, error) { return exe, nil }, "", false, false},
+		{"TestBinaryExecutable", os.Executable, socketPath, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tmuxPath := filepath.Join(t.TempDir(), "tmux")
+			if err := os.WriteFile(tmuxPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+				t.Fatalf("WriteFile tmux stand-in: %v", err)
+			}
+			e := newTestEngine(t)
+			e.cfg.Tmux = tmuxPath
+			e.executablePath = tt.executable
+			fake := installFakeTmux(t, e)
+			fake.answerFormat("#{socket_path}", tt.socketAnswer, nil)
+
+			e.pinBindingsLocked()
+
+			sh := shell.ForGOOS()
+			wantToggle, _ := composeSlackToggleCommand(sh, tt.executable, socketPath, tmuxPath)
+			wantState, _ := composeSlackStateCommand(sh, tt.executable)
+			var wantToggleCall, wantStateCall []string
+			if tt.wantResolved {
+				wantToggleCall = []string{"set-option", "-g", slackToggleCommandOption, wantToggle}
+				wantStateCall = []string{"set-option", "-g", slackStateCommandOption, wantState}
+			} else {
+				wantToggleCall = []string{"set-option", "-gu", slackToggleCommandOption}
+				wantStateCall = []string{"set-option", "-gu", slackStateCommandOption}
+			}
+			setOptions := fake.ArgvFor("set-option")
+			for _, want := range [][]string{wantToggleCall, wantStateCall} {
+				if !slices.ContainsFunc(setOptions, func(call []string) bool { return slices.Equal(call, want) }) {
+					t.Errorf("pinBindingsLocked set-option calls = %q; want %q among them", setOptions, want)
+				}
+			}
+			buttonPinned := slices.ContainsFunc(setOptions, func(call []string) bool {
+				return len(call) == 4 && call[1] == "-g" && call[2] == buttonCommandOption
+			})
+			if buttonPinned != tt.wantButtonPinned {
+				t.Errorf("pinBindingsLocked set-option calls = %q; button line pinned = %v, want %v", setOptions, buttonPinned, tt.wantButtonPinned)
+			}
+			joinedClick := strings.Join(clickArgv(t, fake.ArgvFor("bind-key")), " ")
+			if got := strings.Contains(joinedClick, "#{E:"+slackToggleCommandOption+"}"); got != tt.wantResolved {
+				t.Errorf("click binding %q holds the Slack toggle branch = %v; want %v", joinedClick, got, tt.wantResolved)
+			}
+		})
+	}
 }
 
 // TestBindingsBuildStamp pins the bindings' build stamp.
