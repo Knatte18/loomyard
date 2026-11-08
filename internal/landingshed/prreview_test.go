@@ -581,6 +581,11 @@ type prReviewFixture struct {
 	pushes int
 	// dirty is what the task worktree's uncommitted-paths seam reports.
 	dirty []string
+	// asks are the lines the parent-ask seam was handed.
+	asks []string
+	// askErr is what the parent-ask seam fails with, and askUnrecorded makes it report no orch recorded.
+	askErr        error
+	askUnrecorded bool
 }
 
 // prReviewFixtureNow is the instant every fake clock of the PR-Review tests starts at.
@@ -653,7 +658,9 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 				now = now.Add(d)
 				return nil
 			},
-			RecordChanges: func() (<-chan struct{}, func()) { return nil, func() {} },
+			RecordChanges:      func() (<-chan struct{}, func()) { return nil, func() {} },
+			ParentReviewWanted: func() (bool, error) { return false, nil },
+			AskParent:          func(string) (bool, error) { return true, nil },
 		},
 	}
 }
@@ -672,6 +679,10 @@ func newPRReviewFixture(t *testing.T, parentMode string, parentErr error, field 
 	pr.PushTask = func() error {
 		fx.pushes++
 		return pushErr
+	}
+	pr.AskParent = func(line string) (bool, error) {
+		fx.asks = append(fx.asks, line)
+		return fx.askErr == nil && !fx.askUnrecorded, fx.askErr
 	}
 	if record != nil {
 		if err := pullrequest.WriteRecord(pr.RecordPath, pr.RecordLockPath, *record); err != nil {

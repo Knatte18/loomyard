@@ -38,6 +38,8 @@ type Record struct {
 	// In that case the pull request is left for Finalize to merge.
 	// The JSON key stays `closed_for_continue`, so a record written by an older build reads the same.
 	ReviewEnded bool `json:"closed_for_continue,omitempty"`
+	// ParentReviewAsked records that the PR-Review row asked the parent orch to review this pull request.
+	ParentReviewAsked bool `json:"parent_review_asked,omitempty"`
 }
 
 // ErrNoRecord is returned when the record's file does not exist.

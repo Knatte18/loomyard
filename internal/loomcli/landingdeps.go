@@ -416,6 +416,14 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			_, err = client.Post(strandName, line)
 			return err
 		},
+		// ParentReviewWanted reads loom.yaml's pr_review_ask_parent over the pair's layers, the task's run_settings included.
+		ParentReviewWanted: func() (bool, error) {
+			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
+			return cfg.PRReviewAskParent, err
+		},
+		AskParent: func(line string) (bool, error) {
+			return orchcli.NotifyParent(l, loomProgram, line)
+		},
 		// PauseCovered reports whether the pause record covers the slug; an unreadable record covers nothing.
 		PauseCovered: func() (bool, error) { return pauseCovered(l)(slug), nil },
 		Now:          time.Now,

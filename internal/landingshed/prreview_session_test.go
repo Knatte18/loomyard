@@ -130,6 +130,20 @@ func TestPRReview_Session(t *testing.T) {
 		return func(r *pullrequest.Record) { r.StrandGUID, r.SessionID = guid, sessionID }
 	}
 	cancelAtFirstSleep := 1
+	parentReviewOn := func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+		fx.deps.PullRequest.ParentReviewWanted = func() (bool, error) { return true, nil }
+	}
+	// assertAsks fails the test unless the row handed the parent-ask seam wantAsks lines and the record says wantAsked.
+	assertAsks := func(t *testing.T, fx *prReviewFixture, wantAsks int, wantAsked bool) {
+		t.Helper()
+		if len(fx.asks) != wantAsks {
+			t.Errorf("parent asks = %q; want %d", fx.asks, wantAsks)
+		}
+		got, found, err := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath)
+		if err != nil || !found || got.ParentReviewAsked != wantAsked {
+			t.Errorf("ReadRecord() = %+v, %v, %v; want the record with ParentReviewAsked %v", got, found, err, wantAsked)
+		}
+	}
 
 	tests := []struct {
 		name    string
@@ -186,6 +200,59 @@ func TestPRReview_Session(t *testing.T) {
 					t.Errorf("record session = %q, %q, %q, %q; want the started session's identity", got.StrandGUID, got.StrandName, got.SessionID, got.Engine)
 				}
 			},
+		},
+		{
+			name: "ParentReviewOnAsksTheParentOnceNamingTheSlugPullRequestBranchesAndSession", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup:       parentReviewOn,
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				assertAsks(t, fx, 1, true)
+				if len(fx.asks) != 1 {
+					return
+				}
+				for _, want := range []string{parentReviewRequestPrefix + " the-slug:", recordedURL, "branch task into main", "lym creel post pr-strand"} {
+					if !strings.Contains(fx.asks[0], want) {
+						t.Errorf("parent ask %q lacks %q", fx.asks[0], want)
+					}
+				}
+			},
+		},
+		{
+			name: "ParentReviewOnWithTheRecordAlreadyAskedAsksNone", record: recordedAtHead(func(r *pullrequest.Record) { r.ParentReviewAsked = true }), scripts: map[string][]scriptedCall{"Status": {open}},
+			setup:         parentReviewOn,
+			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 0, true) },
+		},
+		{
+			name: "ParentReviewOffAsksNone", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 0, false) },
+		},
+		{
+			name: "AnUnreadableParentReviewSettingAsksNone", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				fx.deps.PullRequest.ParentReviewWanted = func() (bool, error) { return false, errors.New("loom.yaml refused") }
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 0, false) },
+		},
+		{
+			name: "AFailedParentAskLeavesTheRecordUnaskedForTheNextEntry", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				parentReviewOn(t, fx, s)
+				fx.askErr = errors.New("creel down")
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 1, false) },
+		},
+		{
+			name: "AParentAskNoOrchTakesLeavesTheRecordUnasked", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				parentReviewOn(t, fx, s)
+				fx.askUnrecorded = true
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 1, false) },
 		},
 		{
 			name: "PromptCarriesTheRegressionCheck", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},

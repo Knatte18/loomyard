@@ -384,6 +384,12 @@ type PullRequestDeps struct {
 	SessionLive func(guid string) (bool, error)
 	// RegisterSession registers the process of the session's pane under the run, so a teardown ends it.
 	RegisterSession func(guid string) error
+	// ParentReviewWanted reports whether the hub or the task turns on the parent orch's review of the pull request.
+	// It is read at each entry of the row, and nil reads as off.
+	ParentReviewWanted func() (bool, error)
+	// AskParent posts line to the orch the run's agents reach as their parent, and reports whether it posted.
+	// It reports false with no error when no orch is recorded to take the line.
+	AskParent func(line string) (bool, error)
 	// BeamRecord reads the pull request the beam's landing record holds and reports whether it holds one.
 	// A non-nil BeamRecord marks the landing as a beam's, and is nil on every run but a beam's.
 	BeamRecord func() (pullRequest BeamPullRequest, recorded bool, err error)

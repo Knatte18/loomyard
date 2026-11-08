@@ -37,6 +37,7 @@ const (
 // The pull request's title comes from the change description.
 // Its body comes from the description's body, the regression check and the credit block.
 // The row records it, keeps one interactive session for the operator to discuss it in, and waits on it.
+// With the parent review setting on, it asks the parent orch to review the open pull request before it waits.
 // The wait gates and pushes the agent's commits.
 // The text is built from the change description, the regression check and the credit block.
 // When it changes, the wait sets the title and body again.
@@ -319,7 +320,50 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 	if rec, err = p.ensureSession(ctx, rec); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
+	p.askParentReview(rec)
 	return p.wait(ctx, api, rec, entryStatus, entryReadAt, text)
+}
+
+// parentReviewRequestPrefix opens the request the row mails the parent orch, so the orch knows the line for one.
+const parentReviewRequestPrefix = "[pr-review request]"
+
+// askParentReview asks the parent orch to review the open pull request rec records, when the setting is on.
+// It asks once per record, and the request names the PR-Review session the orch answers.
+// An unreadable setting, a failed post, an orch no record names and a failed write of the ask into the record are logged,
+// and the row's next entry asks again.
+// The row asks and does not gate: the orch's answer reaches the session's agent as creel mail, which the row never reads.
+func (p *PRReview) askParentReview(rec pullrequest.Record) {
+	pr := p.deps.PullRequest
+	if rec.ParentReviewAsked || pr.ParentReviewWanted == nil || pr.AskParent == nil {
+		return
+	}
+	wanted, err := pr.ParentReviewWanted()
+	if err != nil {
+		logger.Warn("landingshed: the parent review setting is unreadable, so the parent orch is not asked", "row", p.name, "cause", err)
+		return
+	}
+	if !wanted {
+		return
+	}
+	posted, err := pr.AskParent(p.parentReviewRequest(rec))
+	if err != nil {
+		logger.Warn("landingshed: could not ask the parent orch for a review of the pull request", "row", p.name, "cause", err)
+		return
+	}
+	if !posted {
+		logger.Info("landingshed: no parent orch is recorded to ask for a review of the pull request", "row", p.name)
+		return
+	}
+	// The request is posted, so a failed write is no reason for the driver to re-step and post it again.
+	if err := p.updateRecord(func(r *pullrequest.Record) { r.ParentReviewAsked = true }); err != nil {
+		logger.Warn("landingshed: could not record that the parent orch was asked for a review of the pull request", "row", p.name, "cause", err)
+	}
+}
+
+// parentReviewRequest is the line that asks the parent orch to review the pull request rec records.
+func (p *PRReview) parentReviewRequest(rec pullrequest.Record) string {
+	return fmt.Sprintf("%s %s: pull request %s, from branch %s into %s, is open for your review; answer the PR-Review session with lym creel post %s \"<answer>\", saying you are satisfied or giving your findings, which its agent fixes before it asks you again",
+		parentReviewRequestPrefix, p.deps.Slug, rec.URL, p.deps.TaskBranch, p.deps.ParentBranch, rec.StrandName)
 }
 
 // prText is a pull request's title and body.

@@ -46,6 +46,15 @@ Answer from it, and never ask the operator to run a regression compare it settle
 
 The run ends on the pull request's state, not on this session, so after each answer you wait for the operator's next message.
 
+## Your parent's review
+
+Your parent orch may review the pull request.
+lym asks it on its own when the hub or the task turns `pr_review_ask_parent` on;
+otherwise ask it only when the operator asks you to, with `lym creel post --parent --expect-reply`, naming the pull request.
+Its answer arrives as creel mail: either that it is satisfied, or its findings.
+Fix the findings as you would the operator's requests, commit, and tell the operator in this pane what you changed.
+Then ask your parent to look again with `lym creel post --parent --expect-reply`, naming your commits, until it is satisfied.
+
 ## The operator's ending
 
 When the operator says they are satisfied and asks you to continue:

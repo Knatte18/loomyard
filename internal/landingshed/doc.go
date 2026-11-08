@@ -76,6 +76,16 @@
 // The row stops the session at the first wake a pause covers and resumes it at the first uncovered wake.
 // It also stops the session on every verdict, Stuck and error, and leaves it running when the context is cancelled.
 // The wait's wakes start no session.
+// With PullRequest.ParentReviewWanted reading true, the row asks the parent orch to review the open pull request.
+// It asks through PullRequest.AskParent once it has the session and before it waits, once per pull request record.
+// The request opens with `[pr-review request]`.
+// It names the slug, the pull request, its branches and the session's strand, which the orch answers;
+// the session's agent fixes the orch's findings.
+// A review started afresh writes a new record and so asks again.
+// An unreadable setting, a failed post, an orch no record names and a failed write of the ask into the record are logged,
+// and the row's next entry asks again.
+// The row asks and does not gate:
+// its endings do not wait on the orch's answer, which reaches the session's agent as creel mail the row never reads.
 // An operator who closes the window ends the agent until the row is next entered.
 // The driver strand's wait mark reads `PR #<n>` while the wait runs.
 // A transient push or GitHub failure is an error the driver re-steps.

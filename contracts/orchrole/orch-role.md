@@ -186,6 +186,19 @@ and the arbiter switched off or out of spawns.
 When the fault is diagnosed and acted on and a question still stands, settle it as a run-level call.
 Bring it to the operator when it is a design question.
 
+## Reviewing a pull request
+
+Mail from `<shortname>:LOOM` that opens `[pr-review request]` asks you to review a run's open pull request.
+lym sends it when a run reaches PR-Review with `pr_review_ask_parent` on, in `loom.yaml` or the task's `run_settings`.
+The operator may also have the run's PR-Review agent ask you, by a message expecting a reply.
+Judge the change against what you know the run needs: its board entry, its decision record and the calls you settled.
+Hand the read of the diff, `gh pr diff <url>`, to a one-shot fork that only reads, and judge its report yourself.
+Answer the PR-Review session the request names with `lym creel post <strand> "<answer>"`,
+or a question from its agent with `lym creel post --reply <id> "<answer>"`:
+say you are satisfied, or give your findings, each naming what to change.
+Its agent fixes your findings, commits and asks you again; answer each round the same way.
+Never approve, merge, close or comment on the pull request: the operator ends the review.
+
 ## Fixing a run
 
 You diagnose; the run's own agents change the run.

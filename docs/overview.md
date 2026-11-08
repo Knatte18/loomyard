@@ -1244,6 +1244,9 @@ User-facing modules each get one `lym <module>` namespace:
   It reads the pull request at most once a minute and before each gate.
   It ends Done when the pull request is merged or approved at the gated head.
   It also ends Done when the operator's `lym loom pr-continue` ends the review.
+  With `loom.yaml`'s `pr_review_ask_parent` on, the row asks the parent orch to review the open pull request.
+  It asks once per pull request, and the orch answers the row's session, whose agent fixes the findings.
+  The row asks and does not gate: its endings do not wait on the orch's answer.
   That ending leaves the pull request for `Finalize` to merge on GitHub.
   Any other ending is Stuck.
   A pause that covers the run holds it.
@@ -1324,6 +1327,8 @@ User-facing modules each get one `lym <module>` namespace:
   An empty list runs the lead alone, deciding each question itself.
   `raddle` is the raddle agent's model-spec.
   `raddle_auto_approve` files a raddle proposal once its gate passes, with no operator approval.
+  `pr_review_ask_parent` has PR-Review ask the parent orch to review the open pull request.
+  It is open to the local layer, so a task's `run_settings` sets it for one run.
   `discussion_lenses` names the `lenses.yaml` fan whose lenses the Discussion-Write lead forks itself for.
   Empty turns the forks off, and the key is closed to the local layer.
   `subagent_model` names the model of the fresh subagents that Plan, Discussion-Write and darn writers hand lookups to.

@@ -533,6 +533,10 @@ type Config struct {
 	DiscussionAutoAccept     bool `yaml:"discussion_auto_accept"`
 	PlanAutoAccept           bool `yaml:"-"`
 	CodeAutoAccept           bool `yaml:"code_auto_accept"`
+
+	// PRReviewAskParent makes the PR-Review row ask the parent orch for a review of the run's open pull request.
+	// It is open to the local layer, so a task's run_settings turns it on or off for one run.
+	PRReviewAskParent bool `yaml:"pr_review_ask_parent"`
 }
 
 // DiscussionAdvisor is one Discussion-Write advisor: Name is its seat name and Model its model-spec.
@@ -650,6 +654,7 @@ func ConfigSpec() configengine.Spec {
 			"driver":                           none,
 			"step_idle_timeout_min":            none,
 			"review_circling_checkpoint":       none,
+			"pr_review_ask_parent":             none,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"fan_review": none,

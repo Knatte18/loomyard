@@ -178,6 +178,11 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.Raddle, c.RaddleAutoApprove = "sonnet[high]", true },
 		},
 		{
+			name:   "pr_review_ask_parent overridden",
+			values: map[string]string{"pr_review_ask_parent": "true"},
+			mutate: func(c *Config) { c.PRReviewAskParent = true },
+		},
+		{
 			name:   "reviewer_model as a per-round list",
 			values: map[string]string{"reviewer_model": "\n  - sonnet[low]\n  - opus[high]"},
 			mutate: func(c *Config) { c.ReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "opus[high]"} },
