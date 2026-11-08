@@ -63,3 +63,31 @@ const RelayHealthyLifetime = relayHealthyLifetime
 
 // MaxStartFailures is how many young relays in a row end the starts made while the operator is away.
 const MaxStartFailures = maxStartFailures
+
+// The timings of the socket holder, and the name of the hint that asks a relay to read every channel.
+const (
+	PingInterval     = pingInterval
+	PongTimeout      = pongTimeout
+	EnvelopeLimit    = envelopeLimit
+	ReconnectFloor   = reconnectFloor
+	StableConnection = stableConnection
+	ResyncHint       = resyncHint
+)
+
+// SocketHolder is the unexported holder of the machine's Socket Mode connection.
+type SocketHolder = socketHolder
+
+// NewSocketHolder builds a holder whose hint writer is write; a nil write keeps the holder's own.
+func NewSocketHolder(geom Geometry, dial Dialer, liveHubs LiveHubs, mailbox Mailbox, slack SlackClient, clock Clock, write func(Geometry, string) error) *SocketHolder {
+	holder := newSocketHolder(geom, dial, liveHubs, mailbox, slack, clock)
+	if write != nil {
+		holder.write = write
+	}
+	return holder
+}
+
+// Run runs the holder until ctx ends.
+func (h *socketHolder) Run(ctx context.Context) { h.run(ctx) }
+
+// WriteHint writes the named hint into the hub's inbox as the holder does.
+func WriteHint(geom Geometry, name string) error { return writeHint(geom, name) }
