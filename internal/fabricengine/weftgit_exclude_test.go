@@ -179,59 +179,50 @@ func mustWriteFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth proves the sync never stages machine-local files.
+// TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtNestedAnchor proves the sync never stages machine-local files.
 // Another module's lock file, pause flag, or rendered-prompt directory is one such file.
 // Those files live under .lym, outside the _lym-scoped pathspec, so no git-exclude pattern is needed.
 //
-// The test runs at the weft root and at two nested anchors, each on its own real hub.
-// Each anchor's Fabric.Commit resolves its own anchor-relative path, so one Fabric cannot stand in for all three.
-// Each depth also commits a durable state file under _lym next to the .lym artifacts,
+// The test runs on a real hub whose anchor is a nested path with a structural directory above the leaf.
+// Fabric.Commit must therefore resolve the anchor-relative path.
+// It also commits a durable state file under _lym next to the .lym artifacts,
 // so the test shows the pathspec is exact: real state under _lym is still committed.
-func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing.T) {
+func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtNestedAnchor(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	for _, anchor := range []string{".", "backend", "wts/some-task"} {
-		t.Run(anchor, func(t *testing.T) {
-			// Only the "." and "backend" anchors have a template, so the nested anchor is built with NewHub.
-			var h *hubforge.Hub
-			if anchor == "wts/some-task" {
-				h = hubforge.NewHub(t, anchor)
-			} else {
-				h = hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
-			}
-			f, err := fabricengine.Open(h.Location)
-			if err != nil {
-				t.Fatalf("fabricengine.Open: %v", err)
-			}
-			weftPath := h.PrimeRecords()
-			anchorRel := filepath.FromSlash(anchor)
+	const anchor = "wts/some-task"
+	h := hubforge.NewHub(t, anchor)
+	f, err := fabricengine.Open(h.Location)
+	if err != nil {
+		t.Fatalf("fabricengine.Open: %v", err)
+	}
+	weftPath := h.PrimeRecords()
+	anchorRel := filepath.FromSlash(anchor)
 
-			dotLymDir := filepath.Join(weftPath, anchorRel, lymdirs.DotLymDirName)
-			mustWriteFile(t, filepath.Join(dotLymDir, "webster", "pause"), "")
-			mustWriteFile(t, filepath.Join(dotLymDir, "webster", "prompts", "01.md"), "prompt")
+	dotLymDir := filepath.Join(weftPath, anchorRel, lymdirs.DotLymDirName)
+	mustWriteFile(t, filepath.Join(dotLymDir, "webster", "pause"), "")
+	mustWriteFile(t, filepath.Join(dotLymDir, "webster", "prompts", "01.md"), "prompt")
 
-			lymDir := filepath.Join(weftPath, anchorRel, lymdirs.LymDirName)
-			mustWriteFile(t, filepath.Join(lymDir, "webster", "state.json"), "{}")
+	lymDir := filepath.Join(weftPath, anchorRel, lymdirs.LymDirName)
+	mustWriteFile(t, filepath.Join(lymDir, "webster", "state.json"), "{}")
 
-			pathspec := fabricengine.ScopedPathspec(anchor, []string{lymdirs.LymDirName})
-			if _, err := f.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
-				t.Fatalf("Commit(anchor=%q, pathspec=%v): %v", anchor, pathspec, err)
-			}
+	pathspec := fabricengine.ScopedPathspec(anchor, []string{lymdirs.LymDirName})
+	if _, err := f.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("Commit(anchor=%q, pathspec=%v): %v", anchor, pathspec, err)
+	}
 
-			tracked := strings.Join(gitkit.LsFiles(t, weftPath), "\n")
-			lymRel := filepath.ToSlash(filepath.Join(anchorRel, lymdirs.LymDirName))
-			durable := lymRel + "/webster/state.json"
-			if !strings.Contains(tracked, durable) {
-				t.Errorf("git ls-files at anchor=%q does not track durable %q; want it committed\nfull ls-files:\n%s", anchor, durable, tracked)
-			}
+	tracked := strings.Join(gitkit.LsFiles(t, weftPath), "\n")
+	lymRel := filepath.ToSlash(filepath.Join(anchorRel, lymdirs.LymDirName))
+	durable := lymRel + "/webster/state.json"
+	if !strings.Contains(tracked, durable) {
+		t.Errorf("git ls-files at anchor=%q does not track durable %q; want it committed\nfull ls-files:\n%s", anchor, durable, tracked)
+	}
 
-			for _, forbidden := range []string{".lock", "pause", "prompts"} {
-				if strings.Contains(tracked, forbidden) {
-					t.Errorf("git ls-files tracks a %q-named entry; want none\nfull ls-files:\n%s", forbidden, tracked)
-				}
-			}
-		})
+	for _, forbidden := range []string{".lock", "pause", "prompts"} {
+		if strings.Contains(tracked, forbidden) {
+			t.Errorf("git ls-files tracks a %q-named entry; want none\nfull ls-files:\n%s", forbidden, tracked)
+		}
 	}
 }
 

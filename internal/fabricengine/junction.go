@@ -549,33 +549,12 @@ func unseedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []s
 		// The sibling census runs inside the lock.
 		// A concurrent wire in another worktree cannot invalidate its answer before the write it feeds.
 		wired := namesWiredInSiblingWorktrees(l, slug, names)
-		stripSet := make(map[string]bool)
-		for _, j := range WarpJunctions(l, slug, names) {
-			// Both spellings are stripped when nothing still needs them.
-			// One is the anchored pattern this binary writes; the other is the legacy bare name an earlier binary wrote.
-			// Stripping both lets a hub wired by an earlier binary revert cleanly.
-			// Only worktrees linked at the same anchored path share the anchored line.
-			// A bare line matches at every depth, so every worktree wiring the name shares it.
-			if !wired.sameAnchor[j.Name] {
-				stripSet[excludePatternFor(l.AnchorRel, j.Name)] = true
-			}
-			if !wired.anyAnchor[j.Name] {
-				stripSet[j.Name] = true
-			}
-		}
+		stripSet := excludeLinesToStrip(l.AnchorRel, names, wired)
 		if len(stripSet) == 0 {
 			return content, nil
 		}
 
-		lines := strings.Split(content, "\n")
-		kept := make([]string, 0, len(lines))
-		for _, line := range lines {
-			if stripSet[strings.TrimSpace(line)] {
-				continue
-			}
-			kept = append(kept, line)
-		}
-		stripped := strings.Join(kept, "\n")
+		stripped := stripExcludeLines(content, stripSet)
 		if dryRun {
 			wouldChange = stripped != content
 			return content, nil
@@ -592,6 +571,39 @@ func unseedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []s
 		rec.Append(KindFileWritten, excludePath, "")
 	}
 	return changed, nil
+}
+
+// excludeLinesToStrip returns the exclude lines an unwire of names at anchorRel may remove, given the sibling census.
+// Both spellings of a name are stripped when nothing still needs them.
+// One is the anchored pattern this binary writes; the other is the legacy bare name an earlier binary wrote.
+// Stripping both lets a hub wired by an earlier binary revert cleanly.
+// Only worktrees linked at the same anchored path share the anchored line.
+// A bare line matches at every depth, so every worktree wiring the name shares it.
+func excludeLinesToStrip(anchorRel string, names []string, wired siblingWiring) map[string]bool {
+	stripSet := make(map[string]bool)
+	for _, name := range names {
+		if !wired.sameAnchor[name] {
+			stripSet[excludePatternFor(anchorRel, name)] = true
+		}
+		if !wired.anyAnchor[name] {
+			stripSet[name] = true
+		}
+	}
+	return stripSet
+}
+
+// stripExcludeLines returns content without the lines that trim to a key of stripSet.
+// The remaining lines keep their original order and spacing.
+func stripExcludeLines(content string, stripSet map[string]bool) string {
+	lines := strings.Split(content, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if stripSet[strings.TrimSpace(line)] {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
 }
 
 // siblingWiring is the census of the names the other warp worktrees of a repo still have linked.

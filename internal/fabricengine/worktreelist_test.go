@@ -1,6 +1,7 @@
-// worktreelist_test.go covers List: the Main-on-first-entry behavior and prunable entries.
-// It also covers the bare-repo rejection and the errors.
+// worktreelist_test.go covers List against real repositories.
+// It covers the prunable flag of a deleted worktree, the bare-repo rejection and the errors.
 // It covers the read with no git process beside the porcelain fallback for a reftable repository.
+// The parsing and mapping of worktree records is covered with no git in worktreelist_parse_test.go.
 
 package fabricengine_test
 
@@ -21,106 +22,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestList covers the porcelain parser: a fresh repo yields exactly the main worktree,
-// and additional worktrees appear after it with Main=false.
-func TestList(t *testing.T) {
+// TestList_RejectsBareRepository asserts that List fails on a bare repository, naming it as bare.
+func TestList_RejectsBareRepository(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	tests := []struct {
-		name string
-		// extraWorktrees is the number of additional worktrees created
-		// alongside the main checkout before listing.
-		extraWorktrees int
-		verify         func(t *testing.T, hub string, entries []fabricengine.WorktreeEntry)
-	}{
-		{
-			name:           "SingleWorktree",
-			extraWorktrees: 0,
-			verify: func(t *testing.T, hub string, entries []fabricengine.WorktreeEntry) {
-				if len(entries) != 1 {
-					t.Fatalf("List() len = %d; want 1", len(entries))
-				}
-				e := entries[0]
-				if !e.Main {
-					t.Errorf("entries[0].Main = false; want true")
-				}
-				if e.Branch != "main" {
-					t.Errorf("entries[0].Branch = %q; want %q", e.Branch, "main")
-				}
-				if e.Head == "" {
-					t.Error(`entries[0].Head = ""; want non-empty`)
-				}
-			},
-		},
-		{
-			name:           "TwoWorktrees",
-			extraWorktrees: 1,
-			verify: func(t *testing.T, hub string, entries []fabricengine.WorktreeEntry) {
-				if len(entries) != 2 {
-					t.Fatalf("List() len = %d; want 2", len(entries))
-				}
-				if !entries[0].Main {
-					t.Errorf("entries[0].Main = false; want true")
-				}
-				// git may emit forward slashes on any platform.
-				// The main entry's path is normalized before it is compared with the hub path.
-				gotPath := filepath.FromSlash(entries[0].Path)
-				if gotPath != hub {
-					t.Errorf("entries[0].Path = %q; want %q", gotPath, hub)
-				}
-				if entries[1].Main {
-					t.Errorf("entries[1].Main = true; want false")
-				}
-			},
-		},
-		{
-			name:           "BareRepoRejection",
-			extraWorktrees: 0,
-			verify: func(t *testing.T, hub string, entries []fabricengine.WorktreeEntry) {
-				// The outer loop handles the BareRepoRejection case itself;
-				// verify is never called for it.
-			},
-		},
+	bareRepo := filepath.Join(t.TempDir(), "bare.git")
+	gitkit.MustRun(t, t.TempDir(), "git", "init", "--bare", bareRepo)
+
+	entries, err := fabricengine.List(bareRepo)
+	if err == nil {
+		t.Fatalf("List() error = nil; want error containing 'bare'")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			// The BareRepoRejection case runs against a bare repository it creates itself.
-			if tt.name == "BareRepoRejection" {
-				bareRepo := filepath.Join(t.TempDir(), "bare.git")
-				gitkit.MustRun(t, t.TempDir(), "git", "init", "--bare", bareRepo)
-
-				entries, err := fabricengine.List(bareRepo)
-				if err == nil {
-					t.Fatalf("List() error = nil; want error containing 'bare'")
-				}
-				if !strings.Contains(err.Error(), "bare") {
-					t.Errorf("List() error = %q; want error containing 'bare'", err.Error())
-				}
-				if entries != nil {
-					t.Errorf("List() entries = %v; want nil", entries)
-				}
-				return
-			}
-
-			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			hub := h.PrimeWorktree()
-
-			for i := 0; i < tt.extraWorktrees; i++ {
-				wtPath := filepath.Join(filepath.Dir(hub), fmt.Sprintf("wt%d", i+1))
-				gitkit.MustRun(t, hub, "git", "worktree", "add", wtPath)
-			}
-
-			entries, err := fabricengine.List(hub)
-			if err != nil {
-				t.Fatalf("List() error = %v; want nil", err)
-			}
-
-			tt.verify(t, hub, entries)
-		})
+	if !strings.Contains(err.Error(), "bare") {
+		t.Errorf("List() error = %q; want error containing 'bare'", err.Error())
+	}
+	if entries != nil {
+		t.Errorf("List() entries = %v; want nil", entries)
 	}
 }
 

@@ -24,6 +24,8 @@ import (
 
 // TestFabricWarp_IsAncestorOrdersWarpCommits proves IsAncestor reaches the warp checkout's history:
 // an older warp commit is an ancestor of a later one, and not the other way round.
+//
+//testtiming:keep IsAncestor returning true older-to-later and false later-to-older, which BeamCommitsPast never asserts directly
 func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

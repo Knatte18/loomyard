@@ -227,24 +227,36 @@ func assertSurvivesIfUnpermitted(t *testing.T, h *hubforge.Hub, abs string, perm
 	check()
 }
 
-// assertArrangePreconditions fails t when an Arrange left a fixture that would make its verb's column vacuous.
-// Each check keys on a fixture field only the arranging verb sets, so the loop stays free of per-verb branches:
+// assertArrangePreconditions fails t when verb's Arrange left a fixture that would make the verb's column vacuous.
+// Add, Checkout and Pull each need one fixture field set, and an empty one fails as surely as a wrong one:
 // A launcher blocker that is not a directory lets Add proceed.
 // A checkout branch equal to the original makes Checkout a no-op.
 // An unadvanced warp bare makes Pull return before its dirty check.
-func assertArrangePreconditions(t *testing.T, fixture VerbFixture) {
+func assertArrangePreconditions(t *testing.T, verb string, fixture VerbFixture) {
 	t.Helper()
 
-	if fixture.LauncherBlocker != "" {
+	switch verb {
+	case "Add":
+		if fixture.LauncherBlocker == "" {
+			t.Fatalf("Arrange: Add left LauncherBlocker empty")
+		}
 		if info, err := os.Lstat(fixture.LauncherBlocker); err != nil || !info.IsDir() {
 			t.Errorf("Arrange: launcher blocker %s is not a directory (err %v)", fixture.LauncherBlocker, err)
 		}
-	}
-	if fixture.CheckoutBranch != "" && fixture.CheckoutBranch == fixture.OriginalBranch {
-		t.Errorf("Arrange: CheckoutBranch %q is not distinct from the branch already checked out", fixture.CheckoutBranch)
-	}
-	if fixture.AdvancedToSHA != "" && fixture.AdvancedFromSHA == fixture.AdvancedToSHA {
-		t.Errorf("Arrange: warp bare was not advanced (from == to == %s)", fixture.AdvancedFromSHA)
+	case "Checkout":
+		if fixture.CheckoutBranch == "" {
+			t.Fatalf("Arrange: Checkout left CheckoutBranch empty")
+		}
+		if fixture.CheckoutBranch == fixture.OriginalBranch {
+			t.Errorf("Arrange: CheckoutBranch %q is not distinct from the branch already checked out", fixture.CheckoutBranch)
+		}
+	case "Pull":
+		if fixture.AdvancedToSHA == "" {
+			t.Fatalf("Arrange: Pull left AdvancedToSHA empty")
+		}
+		if fixture.AdvancedFromSHA == fixture.AdvancedToSHA {
+			t.Errorf("Arrange: warp bare was not advanced (from == to == %s)", fixture.AdvancedFromSHA)
+		}
 	}
 }
 
@@ -264,7 +276,7 @@ func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 
 	// Arrange: the rest of the verb's own fixture, derived from the copy.
 	fixture := vc.Arrange(t, h)
-	assertArrangePreconditions(t, fixture)
+	assertArrangePreconditions(t, vc.Name, fixture)
 
 	// State: the hostile or dirty condition, planted against the fixture's own resolved target.
 	state.Apply(t, h, fixture.Target)

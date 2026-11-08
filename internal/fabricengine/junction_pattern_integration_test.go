@@ -210,6 +210,8 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 
 // TestUnwireJunctions_AlreadyUnwiredIsNoOp checks that unwiring an already unwired worktree is a no-op.
 // Unwiring returns an empty JunctionsRemoved and a nil error.
+//
+//testtiming:keep a second UnwireJunctions returning an empty JunctionsRemoved, ExcludeChanged false and a nil error, which no other test asserts
 func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

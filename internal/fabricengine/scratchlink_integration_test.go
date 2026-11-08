@@ -342,52 +342,52 @@ var scratchShapeCases = []scratchShapeCase{
 }
 
 // TestWireJunctions_ScratchLink pins the scratch step through WireJunctionsWith.
+// Every row runs at the subpath anchor `backend`, the harder path.
+// The repository-root anchor is covered by the other rows.
 // A link is created or kept, a real directory is adopted, and every leave shape is left as found without failing wiring.
 func TestWireJunctions_ScratchLink(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	for _, anchor := range []string{".", "backend"} {
-		t.Run("AbsentRootLinked_Anchor_"+anchor, func(t *testing.T) {
-			t.Parallel()
+	t.Run("AbsentRootLinked", func(t *testing.T) {
+		t.Parallel()
 
-			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
-			l := h.Location
-			slug := l.WorktreeName
-			root, target := scratchPaths(l, slug)
-			removeRootLink(t, root)
-			removeTarget(t, target)
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		l := h.Location
+		slug := l.WorktreeName
+		root, target := scratchPaths(l, slug)
+		removeRootLink(t, root)
+		removeTarget(t, target)
 
-			rec := wireWithRecord(t, l, slug)
+		rec := wireWithRecord(t, l, slug)
 
-			if got, want := describeEntry(t, root), "link:"+target; got != want {
-				t.Fatalf("root .scratch = %q; want %q", got, want)
-			}
-			record := rec.Snapshot()
-			if !hasMutation(record, fabricengine.KindDirCreated, scratchHubRelative(t, l, target), "") {
-				t.Errorf("record %+v lacks dir_created at the target", record.Entries())
-			}
-			if !hasMutation(record, fabricengine.KindLinkCreated, scratchHubRelative(t, l, root), "") {
-				t.Errorf("record %+v lacks link_created at the root", record.Entries())
-			}
+		if got, want := describeEntry(t, root), "link:"+target; got != want {
+			t.Fatalf("root .scratch = %q; want %q", got, want)
+		}
+		record := rec.Snapshot()
+		if !hasMutation(record, fabricengine.KindDirCreated, scratchHubRelative(t, l, target), "") {
+			t.Errorf("record %+v lacks dir_created at the target", record.Entries())
+		}
+		if !hasMutation(record, fabricengine.KindLinkCreated, scratchHubRelative(t, l, root), "") {
+			t.Errorf("record %+v lacks link_created at the root", record.Entries())
+		}
 
-			before, err := os.Lstat(root)
-			if err != nil {
-				t.Fatalf("Lstat(%s): %v", root, err)
-			}
-			if err := os.WriteFile(filepath.Join(root, scratchNoteName), []byte("written through the link"), 0o644); err != nil {
-				t.Fatalf("write through the link: %v", err)
-			}
-			after, err := os.Lstat(root)
-			if err != nil {
-				t.Fatalf("Lstat(%s) after the write: %v", root, err)
-			}
-			if before.Mode() != after.Mode() || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
-				t.Errorf("root .scratch Lstat changed after a write under it: before %v %d %v, after %v %d %v",
-					before.Mode(), before.Size(), before.ModTime(), after.Mode(), after.Size(), after.ModTime())
-			}
-		})
-	}
+		before, err := os.Lstat(root)
+		if err != nil {
+			t.Fatalf("Lstat(%s): %v", root, err)
+		}
+		if err := os.WriteFile(filepath.Join(root, scratchNoteName), []byte("written through the link"), 0o644); err != nil {
+			t.Fatalf("write through the link: %v", err)
+		}
+		after, err := os.Lstat(root)
+		if err != nil {
+			t.Fatalf("Lstat(%s) after the write: %v", root, err)
+		}
+		if before.Mode() != after.Mode() || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
+			t.Errorf("root .scratch Lstat changed after a write under it: before %v %d %v, after %v %d %v",
+				before.Mode(), before.Size(), before.ModTime(), after.Mode(), after.Size(), after.ModTime())
+		}
+	})
 
 	t.Run("CorrectLinkRecordsNothing", func(t *testing.T) {
 		t.Parallel()
@@ -424,94 +424,90 @@ func TestWireJunctions_ScratchLink(t *testing.T) {
 		}
 	})
 
-	for _, anchor := range []string{".", "backend"} {
-		t.Run("RealDirectoryAdoptedIntoTheTarget_Anchor_"+anchor, func(t *testing.T) {
-			t.Parallel()
+	t.Run("RealDirectoryAdoptedIntoTheTarget", func(t *testing.T) {
+		t.Parallel()
 
-			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
-			l := h.Location
-			slug := l.WorktreeName
-			warp := fabricengine.WorktreePath(l, slug)
-			root, target := scratchPaths(l, slug)
-			gitkit.CommitFile(t, warp, ".gitignore", "**/.scratch/\n", "ignore scratch directories")
-			replaceLinkWithRealDirectory(t, root)
-			removeTarget(t, target)
-			writeLegacyScratchExclude(t, l, slug)
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		l := h.Location
+		slug := l.WorktreeName
+		warp := fabricengine.WorktreePath(l, slug)
+		root, target := scratchPaths(l, slug)
+		gitkit.CommitFile(t, warp, ".gitignore", "**/.scratch/\n", "ignore scratch directories")
+		replaceLinkWithRealDirectory(t, root)
+		removeTarget(t, target)
+		writeLegacyScratchExclude(t, l, slug)
 
-			before := CaptureManifest(t, l.HubPath)
-			rec := wireWithRecord(t, l, slug)
-			after := CaptureManifest(t, l.HubPath)
+		before := CaptureManifest(t, l.HubPath)
+		rec := wireWithRecord(t, l, slug)
+		after := CaptureManifest(t, l.HubPath)
 
-			if got, want := describeEntry(t, root), "link:"+target; got != want {
-				t.Fatalf("root .scratch = %q; want %q", got, want)
-			}
-			content, err := os.ReadFile(filepath.Join(root, scratchNoteName))
-			if err != nil || string(content) != "hello" {
-				t.Errorf("note read through .scratch = %q, %v; want %q", content, err, "hello")
-			}
+		if got, want := describeEntry(t, root), "link:"+target; got != want {
+			t.Fatalf("root .scratch = %q; want %q", got, want)
+		}
+		content, err := os.ReadFile(filepath.Join(root, scratchNoteName))
+		if err != nil || string(content) != "hello" {
+			t.Errorf("note read through .scratch = %q, %v; want %q", content, err, "hello")
+		}
 
-			record := rec.Snapshot()
-			if !hasMutation(record, fabricengine.KindPathRenamed, scratchHubRelative(t, l, target), scratchHubRelative(t, l, root)) {
-				t.Errorf("record %+v lacks path_renamed from the root to the target", record.Entries())
-			}
-			if !hasMutation(record, fabricengine.KindLinkCreated, scratchHubRelative(t, l, root), "") {
-				t.Errorf("record %+v lacks link_created at the root", record.Entries())
-			}
-			if !hasMutation(record, fabricengine.KindFileWritten, scratchHubRelative(t, l, excludeFilePath(t, l, slug)), "") {
-				t.Errorf("record %+v lacks file_written at the exclude file", record.Entries())
-			}
-			AssertRecordMatchesDiff(t, record, DiffManifest(before, after, nil))
+		record := rec.Snapshot()
+		if !hasMutation(record, fabricengine.KindPathRenamed, scratchHubRelative(t, l, target), scratchHubRelative(t, l, root)) {
+			t.Errorf("record %+v lacks path_renamed from the root to the target", record.Entries())
+		}
+		if !hasMutation(record, fabricengine.KindLinkCreated, scratchHubRelative(t, l, root), "") {
+			t.Errorf("record %+v lacks link_created at the root", record.Entries())
+		}
+		if !hasMutation(record, fabricengine.KindFileWritten, scratchHubRelative(t, l, excludeFilePath(t, l, slug)), "") {
+			t.Errorf("record %+v lacks file_written at the exclude file", record.Entries())
+		}
+		AssertRecordMatchesDiff(t, record, DiffManifest(before, after, nil))
 
-			lines := gitkit.ExcludeLines(t, warp)
-			if line := scratchExcludeLine(l); !containsLine(lines, line) || containsLine(lines, line+"/") {
-				t.Errorf("exclude lines = %v; want %s and no %s/", lines, line, line)
-			}
-			if status := gitkit.GitStatusPorcelain(t, warp); strings.Contains(status, ".scratch") {
-				t.Errorf("git status lists .scratch: %q", status)
-			}
-		})
-	}
+		lines := gitkit.ExcludeLines(t, warp)
+		if line := scratchExcludeLine(l); !containsLine(lines, line) || containsLine(lines, line+"/") {
+			t.Errorf("exclude lines = %v; want %s and no %s/", lines, line, line)
+		}
+		if status := gitkit.GitStatusPorcelain(t, warp); strings.Contains(status, ".scratch") {
+			t.Errorf("git status lists .scratch: %q", status)
+		}
+	})
 
 	for _, tt := range scratchShapeCases {
 		if tt.readOnlyDir && runtime.GOOS == "windows" {
 			continue
 		}
-		for _, anchor := range []string{".", "backend"} {
-			t.Run("Leaves_"+tt.name+"_Anchor_"+anchor, func(t *testing.T) {
-				t.Parallel()
+		t.Run("Leaves_"+tt.name, func(t *testing.T) {
+			t.Parallel()
 
-				h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
-				l := h.Location
-				slug := l.WorktreeName
-				root, target := scratchPaths(l, slug)
-				tt.arrange(t, l, slug)
-				rootBefore, targetBefore := describeEntry(t, root), describeEntry(t, target)
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+			l := h.Location
+			slug := l.WorktreeName
+			root, target := scratchPaths(l, slug)
+			tt.arrange(t, l, slug)
+			rootBefore, targetBefore := describeEntry(t, root), describeEntry(t, target)
 
-				names, err := fabricengine.RepoWiredNames(l)
-				if err != nil {
-					t.Fatalf("RepoWiredNames: %v", err)
-				}
-				rec := fabricengine.NewMutations(l.HubPath)
-				if err := fabricengine.WireJunctionsWith(rec, l, slug, names); err != nil {
-					t.Fatalf("WireJunctionsWith = %v; want nil", err)
-				}
+			names, err := fabricengine.RepoWiredNames(l)
+			if err != nil {
+				t.Fatalf("RepoWiredNames: %v", err)
+			}
+			rec := fabricengine.NewMutations(l.HubPath)
+			if err := fabricengine.WireJunctionsWith(rec, l, slug, names); err != nil {
+				t.Fatalf("WireJunctionsWith = %v; want nil", err)
+			}
 
-				if tt.leaves {
-					if got := describeEntry(t, root); got != rootBefore {
-						t.Errorf("root .scratch = %q; want it left as %q", got, rootBefore)
-					}
-					if got := describeEntry(t, target); got != targetBefore {
-						t.Errorf("target = %q; want it left as %q", got, targetBefore)
-					}
+			if tt.leaves {
+				if got := describeEntry(t, root); got != rootBefore {
+					t.Errorf("root .scratch = %q; want it left as %q", got, rootBefore)
 				}
-				record := rec.Snapshot()
-				for _, kind := range []fabricengine.Kind{fabricengine.KindPathRenamed, fabricengine.KindLinkCreated} {
-					if hasMutation(record, kind, scratchHubRelative(t, l, target), "") || hasMutation(record, kind, scratchHubRelative(t, l, root), "") {
-						t.Errorf("record %+v holds a %s entry for a left shape", record.Entries(), kind)
-					}
+				if got := describeEntry(t, target); got != targetBefore {
+					t.Errorf("target = %q; want it left as %q", got, targetBefore)
 				}
-			})
-		}
+			}
+			record := rec.Snapshot()
+			for _, kind := range []fabricengine.Kind{fabricengine.KindPathRenamed, fabricengine.KindLinkCreated} {
+				if hasMutation(record, kind, scratchHubRelative(t, l, target), "") || hasMutation(record, kind, scratchHubRelative(t, l, root), "") {
+					t.Errorf("record %+v holds a %s entry for a left shape", record.Entries(), kind)
+				}
+			}
+		})
 	}
 }
 

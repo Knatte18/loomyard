@@ -323,9 +323,9 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 // or every one of them reports untracked dirt in git status and trips Remove's no-force dirty gate.
 //
 // Each row unwires one pair of a hub whose prime is at ".", after the rows' pairs are re-anchored.
-// The row then asserts which exclude lines remain.
-// A legacy bare line matches at every depth, so it stays while any worktree wires the name at any anchor;
-// an anchored line stays while another worktree links the same anchored path.
+// The row then asserts that the prime and the kept pair report the same git status as before.
+// It asserts that the kept junction lives.
+// It also asserts that an anchored exclude line no sibling still needs is stripped.
 func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -339,12 +339,13 @@ func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 		keptAnchor    string
 		// plantBareLine writes a legacy bare `_lym` line into the exclude file beside the anchored ones.
 		plantBareLine bool
-		wantKept      []string
-		wantStripped  []string
+		// wantStripped is the anchored exclude line the unwire must remove because no sibling links that path.
+		// It is empty when no line is stripped.
+		wantStripped string
 	}{
-		{"PairsAtTheHubAnchor", ".", ".", false, []string{"/_lym"}, nil},
-		{"UnwiredPairAloneAtItsAnchor", "sub", ".", true, []string{"_lym", "/_lym"}, []string{"/sub/_lym"}},
-		{"KeptPairAtTheSameAnchor", "sub", "sub", false, []string{"/sub/_lym"}, nil},
+		{"PairsAtTheHubAnchor", ".", ".", false, ""},
+		{"UnwiredPairAloneAtItsAnchor", "sub", ".", true, "/sub/_lym"},
+		{"KeptPairAtTheSameAnchor", "sub", "sub", false, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -381,6 +382,12 @@ func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 				}
 			}
 
+			if tt.wantStripped != "" {
+				if lines := gitkit.ExcludeLines(t, h.PrimeWorktree()); !containsLine(lines, tt.wantStripped) {
+					t.Fatalf("setup: exclude file lacks %q before Unwire: %v", tt.wantStripped, lines)
+				}
+			}
+
 			others := []string{h.PrimeWorktree(), keptLayout.WorktreePath()}
 			before := make([]string, len(others))
 			for i, other := range others {
@@ -394,21 +401,6 @@ func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 				t.Fatalf("Unwire(%s): %v", unwiredSlug, err)
 			}
 
-			content, err := os.ReadFile(excludePath)
-			if err != nil {
-				t.Fatalf("read %s: %v", excludePath, err)
-			}
-			lines := strings.Split(string(content), "\n")
-			for _, line := range tt.wantKept {
-				if !slices.Contains(lines, line) {
-					t.Errorf("exclude lacks %q after the unwire; want it kept for the worktrees still wiring it\n%s", line, content)
-				}
-			}
-			for _, line := range tt.wantStripped {
-				if slices.Contains(lines, line) {
-					t.Errorf("exclude still holds %q after the unwire; want it stripped\n%s", line, content)
-				}
-			}
 			for i, other := range others {
 				if status := worktreeStatusPorcelain(t, other); status != before[i] {
 					t.Errorf("git status in %s = %q; want %q — unwiring a sibling stripped its exclude entries", other, status, before[i])
@@ -416,6 +408,11 @@ func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 			}
 			if isLink, err := fslink.IsLink(fabricengine.WarpLymLinkHere(keptLayout)); err != nil || !isLink {
 				t.Errorf("kept worktree's _lym junction: isLink=%v err=%v; want it still wired", isLink, err)
+			}
+			if tt.wantStripped != "" {
+				if lines := gitkit.ExcludeLines(t, h.PrimeWorktree()); containsLine(lines, tt.wantStripped) {
+					t.Errorf("exclude file still holds %q after Unwire; want the unwired pair's anchored line stripped: %v", tt.wantStripped, lines)
+				}
 			}
 		})
 	}

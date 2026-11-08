@@ -41,6 +41,13 @@ func List(sourceDir string) ([]WorktreeEntry, error) {
 		return nil, fmt.Errorf("list git worktrees in %q: %w", sourceDir, err)
 	}
 
+	return entriesFromWorktrees(worktrees), nil
+}
+
+// entriesFromWorktrees converts dotgit's worktrees into entries.
+// The first worktree is the main one.
+// An empty branch reads as detached, and a branch loses its refs/heads/ prefix.
+func entriesFromWorktrees(worktrees []dotgit.Worktree) []WorktreeEntry {
 	entries := make([]WorktreeEntry, len(worktrees))
 	for i, worktree := range worktrees {
 		branch := detachedBranch
@@ -55,7 +62,7 @@ func List(sourceDir string) ([]WorktreeEntry, error) {
 			Prunable: worktree.Prunable,
 		}
 	}
-	return entries, nil
+	return entries
 }
 
 // listFromPorcelain lists the worktrees of the repository holding sourceDir through `git worktree list --porcelain`.

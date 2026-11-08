@@ -178,6 +178,8 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 // Its weft primary sits on a branch with no commits; there `git rev-parse --abbrev-ref HEAD` exits 128.
 // Healthy must classify that state as a verdict, not return a Go error that aborts the preflight.
 // The pair is still correctly wired and paired.
+//
+//testtiming:keep Healthy returning a healthy verdict, not an error, on an unborn weft branch, which the repo-wide-config test never builds
 func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -68,6 +68,13 @@ func trackedDirtyPaths(dir string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("check for uncommitted changes in %s: %w", dir, err)
 	}
+	return parseTrackedDirtyPaths(dir, stdout), nil
+}
+
+// parseTrackedDirtyPaths returns the dirty paths, each joined under dir.
+// Its input is the output of `git status --porcelain -z --untracked-files=no` run in dir.
+// A rename or copy record names its destination and is followed by a record holding its source, which is skipped.
+func parseTrackedDirtyPaths(dir, stdout string) []string {
 	var paths []string
 	records := strings.Split(stdout, "\x00")
 	for i := 0; i < len(records); i++ {
@@ -80,5 +87,5 @@ func trackedDirtyPaths(dir string) ([]string, error) {
 			i++
 		}
 	}
-	return paths, nil
+	return paths
 }

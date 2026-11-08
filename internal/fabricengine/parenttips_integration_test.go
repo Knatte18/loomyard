@@ -229,6 +229,8 @@ func TestChangedPaths_NamesExactlyTheCommittedFiles(t *testing.T) {
 // TestChangedPathsBothSides_NamesRenamesAndRawPaths asserts that a rename is named by both paths.
 // It also asserts that a non-ASCII path arrives raw and that an empty range names nothing.
 // An unknown ref is an error naming it.
+//
+//testtiming:keep ChangedPathsBothSides returning a non-ASCII path raw and an empty range as none, which LineChange never asserts
 func TestChangedPathsBothSides_NamesRenamesAndRawPaths(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

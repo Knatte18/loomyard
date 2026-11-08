@@ -6,9 +6,8 @@
 // a state that dirties or plants at a path the verb never touches asserts nothing about that verb.
 //
 // Every state's Apply asserts its own establishment inline, via tb.Fatalf.
-// states_test.go carries a self-assertion suite for the state builders as well.
-// The inline check protects every cell run; the suite protects the builders during development.
-// Neither substitutes for the other.
+// States additionally wraps each structural state so an Apply that changes nothing on disk fails too.
+// Both checks protect every caller of States, the cross product included.
 
 package fabricengine_test
 
@@ -16,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
@@ -52,7 +52,7 @@ type State struct {
 
 // States is the ordered hostile-state matrix every cross-product cell draws from.
 // The order is stable so a driven failure's cell name is reproducible across runs.
-var States = []State{
+var States = withVacuityCheck([]State{
 	cleanState(),
 	dirtyWarpTrackedState(),
 	dirtyWarpUntrackedState(),
@@ -63,6 +63,48 @@ var States = []State{
 	foreignDirAtFabricOwnedPathState(),
 	unrelatedGitCloneAtWeftNamedPathState(),
 	staleWiredJunctionState(),
+})
+
+// structuralStateNames is the set of states whose Apply must change the hub manifest.
+// Dirtiness states and clean are not listed.
+// Their inline porcelain assertions already prove establishment, and clean plants nothing to diff.
+var structuralStateNames = map[string]bool{
+	"trackedSymlinkAtWiredPath":        true,
+	"staleWiredJunction":               true,
+	"foreignDirAtFabricOwnedPath":      true,
+	"unrelatedGitCloneAtWeftNamedPath": true,
+}
+
+// withVacuityCheck returns states with each structural state's Apply wrapped.
+// The wrapper fails tb when the hub manifest is identical before and after the Apply.
+// A structural state that silently no-ops would make every cell using it vacuous while reading like coverage.
+// The check runs on the first Apply of each structural state at each anchor, and later Applies skip it:
+// a manifest capture hashes every file of the hub, so checking every cell would double the captures a cell takes.
+func withVacuityCheck(states []State) []State {
+	wrapped := make([]State, len(states))
+	for i, state := range states {
+		wrapped[i] = state
+		if !structuralStateNames[state.Name] {
+			continue
+		}
+		name, apply := state.Name, state.Apply
+		var checkedAnchors sync.Map
+		wrapped[i].Apply = func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
+			tb.Helper()
+
+			if _, checked := checkedAnchors.LoadOrStore(h.Anchor, true); checked {
+				apply(tb, h, target)
+				return
+			}
+			before := CaptureManifest(tb, h.Path)
+			apply(tb, h, target)
+			after := CaptureManifest(tb, h.Path)
+			if changes := DiffManifest(before, after, nil); len(changes) == 0 {
+				tb.Fatalf("%s at anchor %q: applying the state produced no manifest diff; want at least one change", name, h.Anchor)
+			}
+		}
+	}
+	return wrapped
 }
 
 // sentinelFileName returns the sentinel file name state stateName plants.

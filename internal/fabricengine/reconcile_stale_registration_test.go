@@ -519,14 +519,19 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 	}
 }
 
-// TestCleanup_DryRunMatchesApplyVerdict proves a dry run reports what the same flags plus --apply would actually do.
-// An orphan weft branch is unprotected in both the dry run and the apply, and --apply alone (no --force) deletes it.
-func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
+// TestCleanup_VerdictIsIndependentOfDryRunAndForce proves a dry run reports what the same flags plus --apply would do,
+// and that Cleanup's force parameter is reserved: it changes no verdict and answers no gate.
+// A reserved flag that no test covers can quietly regrow a gate.
+// `lym fabric cleanup --force` is still accepted and documented as answering no gate, so the test asserts the property.
+// The fixture holds an orphan weft branch beside an unmanaged non-suffixed branch,
+// so both an unprotected and a protected verdict are covered.
+// --apply alone (no --force) deletes the orphan, and --apply with force deletes exactly the orphan.
+func TestCleanup_VerdictIsIndependentOfDryRunAndForce(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
-	const slug = "cleanup-dryrun-parity"
+	const slug = "cleanup-verdict-parity"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
@@ -543,6 +548,8 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	}
 	orphan := fabricengine.RecordsBranchName(slug)
 	gitkit.MustRun(t, weftRepoRoot, "git", "branch", orphan)
+	const unmanaged = "legacy-notes"
+	gitkit.MustRun(t, weftRepoRoot, "git", "branch", unmanaged)
 
 	findEntry := func(t *testing.T, entries []fabricengine.CleanupBranchEntry) fabricengine.CleanupBranchEntry {
 		t.Helper()
@@ -555,16 +562,26 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 		return fabricengine.CleanupBranchEntry{}
 	}
 
-	dry, err := topology.Cleanup(l, false, false, false)
+	// The two dry runs change nothing, so they come first, over the untouched fixture.
+	dryWithoutForce, err := topology.Cleanup(l, false, false, false)
 	if err != nil {
-		t.Fatalf("Cleanup(dry): %v", err)
+		t.Fatalf("Cleanup(dry, force=false): %v", err)
 	}
+	dryWithForce, err := topology.Cleanup(l, false, true, false)
+	if err != nil {
+		t.Fatalf("Cleanup(dry, force=true): %v", err)
+	}
+	if diff := cmp.Diff(dryWithoutForce.Entries, dryWithForce.Entries); diff != "" {
+		t.Errorf("Cleanup(dry) entries differ between force=false and force=true (-without +with):\n%s\nforce is reserved and must answer no gate in this verb", diff)
+	}
+
+	// The first apply deletes the orphan, so the force=true apply below re-creates it.
 	applied, err := topology.Cleanup(l, true, false, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply): %v", err)
 	}
 
-	dryEntry := findEntry(t, dry.Entries)
+	dryEntry := findEntry(t, dryWithoutForce.Entries)
 	appliedEntry := findEntry(t, applied.Entries)
 	if dryEntry.Protected != appliedEntry.Protected {
 		t.Errorf("dry-run Protected = %v; --apply Protected = %v; want them to agree",
@@ -579,51 +596,9 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	if gitkit.BranchExists(t, weftRepoRoot, orphan) {
 		t.Errorf("orphan branch %q still exists in the weft repo after --apply; want deleted", orphan)
 	}
-}
 
-// TestCleanup_ForceIsReservedAndChangesNoVerdict pins that Cleanup's force parameter is reserved:
-// it changes no verdict and answers no gate.
-// A reserved flag that no test covers can quietly regrow a gate.
-// `lym fabric cleanup --force` is still accepted and documented as answering no gate, so the test asserts the property.
-// It compares the full verdict set from a dry run with force=false against one with force=true over the same fixture:
-// an unmanaged non-suffixed branch beside a genuine orphan, so both a protected and an unprotected verdict are covered.
-// It then confirms the apply pass with force=true deletes exactly the orphan.
-func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
-	tiergate.Require(t, 1)
-	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("FABRIC_SKIP_PUSH", "1")
-
-	const slug = "cleanup-force-reserved"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	topology := h.Topology
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-	if _, err := topology.Remove(l, slug, true, false); err != nil {
-		t.Fatalf("Remove: %v", err)
-	}
-
-	weftRepoRoot, err := fabricengine.RecordsRepoRoot(l)
-	if err != nil {
-		t.Fatalf("RecordsRepoRoot: %v", err)
-	}
-	orphan := fabricengine.RecordsBranchName(slug)
 	gitkit.MustRun(t, weftRepoRoot, "git", "branch", orphan)
-	const unmanaged = "legacy-notes"
-	gitkit.MustRun(t, weftRepoRoot, "git", "branch", unmanaged)
-
-	dryWithoutForce, err := topology.Cleanup(l, false, false, false)
-	if err != nil {
-		t.Fatalf("Cleanup(dry, force=false): %v", err)
-	}
-	dryWithForce, err := topology.Cleanup(l, false, true, false)
-	if err != nil {
-		t.Fatalf("Cleanup(dry, force=true): %v", err)
-	}
-	if diff := cmp.Diff(dryWithoutForce.Entries, dryWithForce.Entries); diff != "" {
-		t.Errorf("Cleanup(dry) entries differ between force=false and force=true (-without +with):\n%s\nforce is reserved and must answer no gate in this verb", diff)
-	}
-
-	applied, err := topology.Cleanup(l, true, true, false)
+	applied, err = topology.Cleanup(l, true, true, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply, force=true): %v", err)
 	}

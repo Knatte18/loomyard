@@ -23,6 +23,8 @@ import (
 // and the bare remote advances to the local HEAD.
 // The returned record contains a KindBranchPushed entry.
 // The test pins the residue property: no gitrepo.PushLockFileName file is left at the warp worktree root.
+//
+//testtiming:keep PushWarpRebaseFreeAt recording KindBranchPushed and leaving no push-lock file, which TestPushFailureClasses never asserts
 func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
