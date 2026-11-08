@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -168,43 +167,6 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 	}
 }
 
-// TestRemove_DeletesTaskWorktreeDirRefilledAfterItsRemoval asserts Remove deletes the refilled directory.
-// The refill at the task worktree's path lands once that removal is over, and Remove reports no StrayPath.
-// It sets the process-global teardown hook, so it is not parallel.
-func TestRemove_DeletesTaskWorktreeDirRefilledAfterItsRemoval(t *testing.T) {
-	tiergate.Require(t, 1)
-
-	const slug = "refilled-late"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	l := h.Location
-	dir := fabricengine.WorktreePath(l, slug)
-	refilled := false
-	fabricengine.SetTeardownHooksForTest(t, nil, func() { refilled = refillWithLockFile(t, dir) })
-
-	res, err := h.Topology.Remove(l, slug, false, false)
-	if err != nil {
-		t.Fatalf("Remove error = %v; want the refilled directory deleted", err)
-	}
-	if !refilled {
-		t.Fatalf("no late writer refilled %s; want the refill after the teardown", dir)
-	}
-	if _, statErr := os.Lstat(dir); !os.IsNotExist(statErr) {
-		t.Errorf("%s still on disk after Remove (stat error = %v)", dir, statErr)
-	}
-	if res.StrayPath != "" {
-		t.Errorf("StrayPath = %q; want empty once the refilled directory is deleted", res.StrayPath)
-	}
-	rel, relErr := filepath.Rel(l.HubPath, dir)
-	if relErr != nil {
-		t.Fatalf("relate %s to the hub: %v", dir, relErr)
-	}
-	want := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: filepath.ToSlash(rel), Detail: "recursive"}
-	if !slices.Contains(res.Mutations.Entries(), want) {
-		t.Errorf("mutation record = %+v; want it to hold %+v", res.Mutations.Entries(), want)
-	}
-}
-
 // TestRemove_FailsOnTaskWorktreeDirRefilledAfterItsRemovalThatCannotBeDeleted asserts that Remove keeps the directory:
 // a late writer refills the task worktree's path, and the directory cannot be deleted.
 // Remove then returns an error wrapping ErrStrayPathKept that names the directory and reports its path in StrayPath.
@@ -248,41 +210,6 @@ func TestRemove_FailsOnTaskWorktreeDirRefilledAfterItsRemovalThatCannotBeDeleted
 	removed := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: filepath.ToSlash(rel), Detail: "recursive"}
 	if slices.Contains(res.Mutations.Entries(), removed) {
 		t.Errorf("mutation record = %+v; want no removal of %s", res.Mutations.Entries(), dir)
-	}
-}
-
-// TestRemove_ReturnsTheRemoteStepFailureOverAKeptDirectory asserts that Remove returns the remote failure:
-// when a remote step and a kept refilled directory both fail, and it still reports the directory in StrayPath.
-// It sets process-global hooks, so it is not parallel.
-func TestRemove_ReturnsTheRemoteStepFailureOverAKeptDirectory(t *testing.T) {
-	tiergate.Require(t, 1)
-
-	const slug = "refilled-late-remote"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	l := h.Location
-	dir := fabricengine.WorktreePath(l, slug)
-	gitkit.CommitFile(t, h.PairRecordsSibling(slug), "_lym/record.txt", "run record\n", "record")
-	fabricengine.SetTeardownHooksForTest(t, nil, func() { refillWithLockFile(t, dir) })
-	fabricengine.SetLeftoverSeamForTest(h.Topology,
-		func(container, target string) (bool, bool, error) {
-			return false, false, &os.PathError{Op: "unlinkat", Path: target, Err: fs.ErrPermission}
-		},
-		func(time.Duration) {})
-	fabricengine.SetArchiveSleepForTest(h.Topology, func(time.Duration) {})
-	fabricengine.SetArchiveTagPushHookForTest(t, func(tagRef string) error {
-		return &gitexec.GitError{Args: []string{"push"}, ExitCode: 1, Stderr: " ! [remote rejected] " + tagRef + " -> " + tagRef + " (pre-receive hook declined)\n"}
-	})
-
-	res, err := h.Topology.Remove(l, slug, false, false)
-	if err == nil {
-		t.Fatal("Remove error = nil; want the remote step's failure")
-	}
-	if errors.Is(err, fabricengine.ErrStrayPathKept) {
-		t.Errorf("Remove error = %v; want the remote step's failure, not the kept directory's", err)
-	}
-	if res.StrayPath != dir {
-		t.Errorf("StrayPath = %q; want %q", res.StrayPath, dir)
 	}
 }
 

@@ -44,6 +44,8 @@ func requireSteps(t *testing.T, got []string, want ...string) {
 // TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand removes the task worktree by hand;
 // the sibling worktree holds a pending record.
 // It asserts one Remove commits the record into the archive tag and removes the sibling worktree and both branches.
+//
+//testtiming:keep the pending record committed into the archive tag with a Warp-SHA trailer naming the task branch tip, after the task worktree was removed by hand; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -98,6 +100,8 @@ func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
 
 // TestRemove_FinishesPairWithBothWorktreesGone removes both worktrees by hand.
 // It asserts one Remove deletes both leftover branches; the sibling branch goes only after its archive tag is on origin.
+//
+//testtiming:keep the archive tag on origin targeting the sibling branch tip before that branch is deleted, with both worktrees gone; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_FinishesPairWithBothWorktreesGone(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -151,6 +155,8 @@ func leaveSiblingBranchOnlyOnOrigin(t *testing.T, h *hubforge.Hub, slug string) 
 
 // TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin asserts Remove archives the origin-only sibling branch.
 // With remote set, it deletes that branch from origin too.
+//
+//testtiming:keep the archive tag targeting the origin-only sibling branch tip and that branch then deleted on origin; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -249,6 +255,8 @@ func TestRemove_ReportsStrayPathAndFinishesBranchTeardown(t *testing.T) {
 
 // TestRemove_ReturnsPairNotFoundWhenNothingRemains asserts a second Remove wraps ErrPairNotFound.
 // The same holds when only a retired portal link remains, and the error names a bare stray directory.
+//
+//testtiming:keep a user's stray directory and its file surviving a Remove that finds no pair; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_ReturnsPairNotFoundWhenNothingRemains(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

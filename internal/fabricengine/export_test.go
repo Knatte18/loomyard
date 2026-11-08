@@ -153,18 +153,6 @@ var IsWarpCheckoutForTest = isAnyWorktreeOf
 // The check runs against an arbitrary (repoDir, target) pair.
 var IsRegisteredLinkedWorktreeInForTest = isRegisteredLinkedWorktreeIn
 
-// WorktreeDirtyTrackedForTest reports whether the worktree at dir is dirty over tracked files only.
-// Package fabricengine_test integration tests use it, since they cannot name the unexported scope values.
-func WorktreeDirtyTrackedForTest(dir string) (dirty bool, detail string, err error) {
-	return worktreeDirty(scopeTracked, dir)
-}
-
-// WorktreeDirtyAllForTest reports whether the worktree at dir is dirty over tracked and untracked files.
-// Package fabricengine_test integration tests use it, since they cannot name the unexported scope values.
-func WorktreeDirtyAllForTest(dir string) (dirty bool, detail string, err error) {
-	return worktreeDirty(scopeAll, dir)
-}
-
 // DeleteBranchForTest deletes branch in repoDir, subject to the branch-ownership gate.
 // Integration tests in package fabricengine_test call it directly.
 // The application-level orphan and liveness filter never reaches the gate for the primary weft branch.

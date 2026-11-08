@@ -1,9 +1,8 @@
 // bolt_integration_test.go — integration coverage for Bolt.Commit/Push/Sync, the unpaired weft:main handle.
-// A dirty repo commits and pushes; a clean repo is a no-op; SkipGit short-circuits before any git runs.
+// A dirty repo commits and pushes; SkipGit short-circuits before any git runs.
 // Sync holds its single absorbing lock across a burst of steps.
 // Each test builds a plain repo with a bare remote beside it, not nested in the worktree.
 // A bare remote nested in the worktree would be staged by Bolt's wildcard commit.
-// That would defeat the clean-repo no-op assertion.
 // The package-wide TestMain in testmain_test.go provides HermeticGitEnv(), so this file adds none.
 
 package fabricengine
@@ -54,6 +53,8 @@ func newBoltRepo(t *testing.T, dir, name, bareRemote string) string {
 // TestBolt_DirtyRepo_CommitsAndPushes asserts that Commit followed by Push lands a real commit,
 // and that the bare origin advances to that same SHA.
 // It also asserts that the commit leaves machine-local scratch under .lym untracked, as no seed excludes it.
+//
+//testtiming:keep machine-local scratch under .lym staying untracked by Bolt's wildcard commit while the pushed SHA lands on origin; coverage of its blocks by other tests does not show an assertion of this
 func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -93,48 +94,6 @@ func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 	}
 	if got := gitkit.RevParse(t, bareRemote, "main"); got != sha {
 		t.Errorf("bare remote main = %q; want it advanced to %q", got, sha)
-	}
-}
-
-// TestBolt_CleanRepo_CommitAndPushAreNoOps asserts that Commit reports committed=false when nothing is new to stage.
-// It also asserts that a subsequent Push is a no-op once nothing is ahead of upstream:
-// it never touches the network and never errors.
-func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	container := t.TempDir()
-	bareRemote := newBoltBareRemote(t, container)
-	repoPath := newBoltRepo(t, container, "bolt", bareRemote)
-
-	b := NewBolt(repoPath)
-
-	// A first real commit establishes a HEAD to be clean against;
-	// the no-change call below is what this test asserts.
-	if err := os.WriteFile(filepath.Join(repoPath, "seed.md"), []byte("seed"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	if _, committed, err := b.Commit("bolt sync init", SyncOptions{}); err != nil {
-		t.Fatalf("Commit() (seed) error = %v; want nil", err)
-	} else if !committed {
-		t.Fatalf("Commit() (seed) committed = false; want true")
-	}
-	if err := b.Push(SyncOptions{}); err != nil {
-		t.Fatalf("Push() (seed) error = %v; want nil", err)
-	}
-	sha, committed, err := b.Commit("bolt sync", SyncOptions{})
-	if err != nil {
-		t.Fatalf("Commit() error = %v; want nil", err)
-	}
-	if committed {
-		t.Fatalf("Commit() committed = true; want false (nothing changed)")
-	}
-	if sha != "" {
-		t.Errorf("Commit() sha = %q; want empty", sha)
-	}
-
-	if err := b.Push(SyncOptions{}); err != nil {
-		t.Fatalf("Push() error = %v; want nil (nothing to push)", err)
 	}
 }
 

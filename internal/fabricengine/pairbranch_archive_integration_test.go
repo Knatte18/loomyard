@@ -266,6 +266,8 @@ func TestCleanup_ArchiveFailureKeepsTheLocalTagAndContinuesSweep(t *testing.T) {
 
 // TestCleanup_NoOriginDeletesAndReportsArchiveSkip covers a weft repo with no origin:
 // the orphan is deleted and the result reports the skipped archive once.
+//
+//testtiming:keep no archive tag on the entry and a reported skip reason when the weft repo has no origin
 func TestCleanup_NoOriginDeletesAndReportsArchiveSkip(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

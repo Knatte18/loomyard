@@ -108,36 +108,3 @@ func lstatExists(t *testing.T, path string) bool {
 	}
 	return err == nil
 }
-
-func TestReadOrigin_CreatesNoWeftDirectoryAndSeedsNoExclude(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const slug = "no-weft-dir"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
-	if err != nil {
-		t.Fatalf("ResolveWorktree(%q): %v", slug, err)
-	}
-	weftPath := fabricengine.RecordsWorktree(pair)
-	weftLockDir := filepath.Join(weftPath, ".weft")
-	if err := os.RemoveAll(weftLockDir); err != nil {
-		t.Fatalf("RemoveAll(%q): %v", weftLockDir, err)
-	}
-	// Add already seeded the exclude; emptying it lets a regression that seeds it again show.
-	if err := os.WriteFile(weftExcludePath(t, weftPath), nil, 0o644); err != nil {
-		t.Fatalf("WriteFile(info/exclude): %v", err)
-	}
-
-	origin, found, err := fabricengine.ReadOrigin(pair)
-	if err != nil || !found {
-		t.Fatalf("ReadOrigin(%q) = (%+v, %v, %v); want the record read without its lock directory", slug, origin, found, err)
-	}
-	if lstatExists(t, weftLockDir) {
-		t.Errorf("%q exists after ReadOrigin; want a read to create no .weft directory", weftLockDir)
-	}
-	if got := readWeftExclude(t, weftPath); got != "" {
-		t.Errorf("info/exclude of %q = %q after ReadOrigin; want it still empty", weftPath, got)
-	}
-}

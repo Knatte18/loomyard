@@ -81,6 +81,7 @@ func sweepFixture(t *testing.T) *hubforge.Hub {
 	return h
 }
 
+//testtiming:keep a dry run recording no mutations and leaving every classified branch on origin; coverage of its blocks by other tests does not show an assertion of this
 func TestCleanupRemoteWarp_DryRunClassifiesEveryBranch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -238,6 +239,8 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 
 // With branch_prefix set, a branch lacking the prefix is read as the bare slug of a pair made earlier.
 // Weft evidence makes it managed and deletable; without evidence it is kept as not fabric-managed.
+//
+//testtiming:keep the managed bare branch deleted on origin and the unmanaged one left on origin under branch_prefix; coverage of its blocks by other tests does not show an assertion of this
 func TestCleanupRemoteWarp_BranchPrefixSetOverBareBranches(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -267,6 +270,8 @@ func TestCleanupRemoteWarp_BranchPrefixSetOverBareBranches(t *testing.T) {
 
 // With branch_prefix set, the sweep takes the teardown lock of a bare branch's own slug.
 // It keeps the branch while that lock is held.
+//
+//testtiming:keep the bare branch left on origin while the teardown lock of its own slug is held; coverage of its blocks by other tests does not show an assertion of this
 func TestCleanupRemoteWarp_BranchPrefixSetTakesTheBareSlugsLock(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

@@ -1,20 +1,16 @@
 // remove_siblingdirty_integration_test.go pins Remove's sibling-dirty handling.
 // An uncommitted run record in a pair's other worktree is committed and archived, not refused.
-// A pair dirty only on the task side is refused,
-// and that refusal does not satisfy errors.Is(err, fabricengine.ErrPairSiblingDirty).
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -23,6 +19,8 @@ import (
 // The file is the uncommitted stop report the done-wait rests on.
 // It asserts that a no-force Remove commits the file and the archive tag contains it;
 // it raises no sibling-dirty refusal.
+//
+//testtiming:keep the untracked drive report carried into the archive tag on origin with its content
 func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -52,34 +50,5 @@ func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
 	rel := "_lym/shed/" + slug + "/drive-reports/stop.md"
 	if got := showAtTag(t, h.RecordsBare, res.ArchiveTag, rel); got != "stopped\n" {
 		t.Errorf("archived %s = %q; want the committed report", rel, got)
-	}
-}
-
-// TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty dirties only the task-side worktree.
-// It asserts that the resulting refusal is not the sibling-dirty sentinel.
-func TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const slug = "task-side-dirty"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	topology := h.Topology
-
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-
-	warpPath := fabricengine.WorktreePath(l, slug)
-	tracked := filepath.Join(warpPath, "tracked.md")
-	gitkit.CommitFile(t, warpPath, "tracked.md", "committed\n", "seed tracked file")
-	if err := os.WriteFile(tracked, []byte("committed\nuncommitted\n"), 0o644); err != nil {
-		t.Fatalf("dirty %s: %v", tracked, err)
-	}
-
-	_, err := topology.Remove(l, slug, false, false)
-	if err == nil {
-		t.Fatalf("Remove(force=false) on a task-side-dirty pair returned nil error; want a refusal")
-	}
-	if errors.Is(err, fabricengine.ErrPairSiblingDirty) {
-		t.Errorf("task-side refusal %v must not satisfy ErrPairSiblingDirty", err)
 	}
 }

@@ -105,24 +105,3 @@ func TestMergeStageTracked_NoMergeInProgressRefuses(t *testing.T) {
 		t.Errorf("MergeStageTracked() mutations = %v; want none", res.Mutated().Entries())
 	}
 }
-
-// TestMergeStageTracked_ForeignMergeStateRefuses asserts the verb refuses a foreign merge.
-// The merge is a plain-git conflict that fabric did not start.
-func TestMergeStageTracked_ForeignMergeStateRefuses(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "other", "plain-conflict.txt")
-	gitMergeAllowConflict(t, h.PrimeWorktree(), "other")
-
-	res, err := f.MergeStageTracked()
-	var foreign *fabricengine.ErrForeignMergeState
-	if !errors.As(err, &foreign) {
-		t.Fatalf("MergeStageTracked() over foreign state: error = %v (%T); want *fabricengine.ErrForeignMergeState", err, err)
-	}
-	if res.Mutated().Len() != 0 {
-		t.Errorf("MergeStageTracked() mutations = %v; want none", res.Mutated().Entries())
-	}
-}

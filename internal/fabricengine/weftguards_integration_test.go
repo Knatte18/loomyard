@@ -1,12 +1,8 @@
-// weftguards_integration_test.go pins the merge guards that apply to the warp and not to the weft.
-// The guards cover a dirty worktree, a detached HEAD, a source that is not fabric-managed, and the abort-time reset.
-// Each case pairs a weft case, which does not block a merge, with its warp twin, which still does.
-// It reuses the fixture helpers newMergePairFixture and assertSoleGuardReason from the sibling test files.
+// weftguards_integration_test.go pins that MergeAbort resets only the warp side.
 
 package fabricengine_test
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,193 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes covers pairDirtyReason for the weft.
-// A weft worktree with uncommitted tracked changes does not refuse a MergeIn that the warp alone can complete.
-// A dirty warp worktree still refuses it with mergeReasonWorktreeDirty.
-func TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h1, f1, _, _, _, _ := newMergeLayerFixture(t, &warpProgressLayer)
-	if err := os.WriteFile(filepath.Join(h1.PrimeWorktree(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
-		t.Fatalf("write dirty.txt: %v", err)
-	}
-	gitkit.MustRun(t, h1.PrimeWorktree(), "git", "add", "dirty.txt")
-
-	_, err := f1.MergeIn("feature")
-	assertSoleGuardReason(t, "MergeIn(feature) [warp dirty]", err, "worktree dirty")
-
-	h2, f2, _, _, _, _ := newMergeLayerFixture(t, &warpProgressLayer)
-	weftBefore2 := fabricengine.CurrentSHAForTest(t, h2.PrimeRecords())
-	if err := os.WriteFile(filepath.Join(h2.PrimeRecords(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
-		t.Fatalf("write dirty.txt: %v", err)
-	}
-	gitkit.MustRun(t, h2.PrimeRecords(), "git", "add", "dirty.txt")
-
-	res, err := f2.MergeIn("feature")
-	if err != nil {
-		t.Fatalf("MergeIn(feature) [weft dirty] error = %v; want nil — a dirty weft must no longer refuse a merge the warp alone can complete", err)
-	}
-	if !res.Committed {
-		t.Errorf("MergeIn(feature) [weft dirty].Committed = false; want true — a real (non-fast-forward) merge")
-	}
-	if got := fabricengine.CurrentSHAForTest(t, h2.PrimeRecords()); got != weftBefore2 {
-		t.Errorf("weft HEAD changed to %q; want unchanged %q — MergeIn never touches the weft", got, weftBefore2)
-	}
-	if out := gitkit.GitStatusPorcelain(t, h2.PrimeRecords()); out == "" {
-		t.Error("weft git status --porcelain after MergeIn = clean; want it to still mention the uncommitted dirty.txt")
-	}
-}
-
-// TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes covers detachedHeadReason for the weft.
-// A weft checkout on a detached HEAD does not refuse a merge.
-// A detached warp HEAD still refuses it with mergeReasonDetachedHead.
-func TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h1, f1, _, _, _, _ := newMergeLayerFixture(t, &featureBothSidesLayer)
-	gitkit.MustRun(t, h1.PrimeWorktree(), "git", "checkout", "-q", "--detach", "HEAD")
-
-	_, err := f1.MergeIn("feature")
-	assertSoleGuardReason(t, "MergeIn(feature) [warp detached]", err, "checkout is not on a branch")
-	var detachedErr *fabricengine.MergeGuardError
-	if errors.As(err, &detachedErr) && (detachedErr.Checkout != "" || len(detachedErr.DirtyPaths) != 0) {
-		t.Errorf("detached-warp guard error carries Checkout %q and DirtyPaths %q; want both empty beside no dirty reason", detachedErr.Checkout, detachedErr.DirtyPaths)
-	}
-
-	h2, f2, _, _, _, _ := newMergeLayerFixture(t, &featureBothSidesLayer)
-	gitkit.MustRun(t, h2.PrimeRecords(), "git", "checkout", "-q", "--detach", "HEAD")
-	weftBefore2 := fabricengine.CurrentSHAForTest(t, h2.PrimeRecords())
-
-	if _, err := f2.MergeIn("feature"); err != nil {
-		t.Fatalf("MergeIn(feature) [weft detached] error = %v; want nil — a detached weft HEAD must no longer refuse a merge the warp alone can complete", err)
-	}
-	if got := fabricengine.CurrentSHAForTest(t, h2.PrimeRecords()); got != weftBefore2 {
-		t.Errorf("weft HEAD changed to %q; want unchanged %q — MergeIn never touches the weft", got, weftBefore2)
-	}
-}
-
-// TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly covers resolveMergeSources from two angles.
-// First, a source whose weft counterpart exists neither locally nor on origin is not refused.
-// The attempt proceeds, here into a deliberately conflicted state so the merge-state record survives to inspect.
-// mergeState.WeftSource stays empty.
-// Neither mergeReasonNotFabricManaged nor mergeReasonSourceNotFound is appended.
-// Second, a source resolvable on neither side still reports mergeReasonSourceNotFound alone, from the warp arm.
-// That is the only reason resolveMergeSources produces.
-func TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	// No "-weft" counterpart branch exists, locally or on origin.
-
-	res, err := f.MergeIn("feature")
-	if err != nil {
-		t.Fatalf("MergeIn(feature) error = %v; want nil — a source with no weft counterpart must no longer refuse", err)
-	}
-	if len(res.Conflicts) == 0 {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want at least one — setupConflictingDivergence must produce a real warp-side conflict, which is what leaves the record in place to inspect", res.Conflicts)
-	}
-
-	st, found, err := fabricengine.LoadMergeStateForTest(f)
-	if err != nil || !found {
-		t.Fatalf("LoadMergeStateForTest() = (%+v, %v, %v); want (_, true, nil) — a conflicted MergeIn leaves its record in place", st, found, err)
-	}
-	if st.WeftSource != "" {
-		t.Errorf("mergeState.WeftSource = %q; want empty — no weft counterpart exists to resolve", st.WeftSource)
-	}
-
-	if _, err := f.MergeAbort(); err != nil {
-		t.Fatalf("MergeAbort() cleanup error = %v", err)
-	}
-
-	_, err = f.MergeIn("does-not-exist-anywhere")
-	assertSoleGuardReason(t, "MergeIn(does-not-exist-anywhere)", err, "source branch not found")
-}
-
-// TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges drives the weft guards in combination.
-// The guard stage aggregates every reason before it decides.
-// A retained weft conjunct inside one helper is therefore hidden while the other weft states are healthy.
-// A test of each guard alone would keep passing.
-// The merge still refuses once a weft is bad in more than one way at a time.
-// That is the ordinary shape for a weft carrying a live loom run.
-// Here the weft is on a detached HEAD, carries uncommitted tracked changes, and sits on a branch with no upstream,
-// and the warp side is clean.
-func TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h, f, _, _, _, _ := newMergeLayerFixture(t, &warpProgressLayer)
-
-	gitkit.MustRun(t, h.PrimeRecords(), "git", "checkout", "-q", "--detach", "HEAD")
-	if err := os.WriteFile(filepath.Join(h.PrimeRecords(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
-		t.Fatalf("write dirty.txt: %v", err)
-	}
-	gitkit.MustRun(t, h.PrimeRecords(), "git", "add", "dirty.txt")
-	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
-
-	res, err := f.MergeIn("feature")
-	if err != nil {
-		t.Fatalf("MergeIn(feature) [weft dirty AND detached] error = %v; want nil — combined weft state must not refuse a merge the warp alone can complete", err)
-	}
-	if !res.Committed {
-		t.Errorf("MergeIn(feature) [weft dirty AND detached].Committed = false; want true — a real (non-fast-forward) merge")
-	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftBefore {
-		t.Errorf("weft HEAD changed to %q; want unchanged %q — MergeIn never touches the weft", got, weftBefore)
-	}
-	if out := gitkit.GitStatusPorcelain(t, h.PrimeRecords()); out == "" {
-		t.Error("weft git status --porcelain after MergeIn = clean; want the uncommitted dirty.txt still there — the merge must not have tidied the weft")
-	}
-}
-
-// TestWeftGuards_EveryRecordThisBinaryWritesIsResumable pins one invariant.
-// Every merge-state record this binary persists carries a non-empty WeftOutcome from its first on-disk appearance.
-// mergeAttemptIncompleteReason refuses a MergeContinue resume on an empty outcome.
-// So it never fires on a record fabric wrote itself.
-// It asserts the property at the one observable moment: a conflicted MergeIn leaves the record in place,
-// and a MergeContinue over that record must refuse on the conflicts alone, never on mergeReasonAttemptIncomplete.
-func TestWeftGuards_EveryRecordThisBinaryWritesIsResumable(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	_, f, _, _, _, _ := newMergeLayerFixture(t, &conflictLayer)
-
-	res, err := f.MergeIn("feature")
-	if err != nil {
-		t.Fatalf("MergeIn(feature) error = %v; want nil with conflicts reported", err)
-	}
-	if len(res.Conflicts) == 0 {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want at least one — the record only survives a conflicted attempt", res.Conflicts)
-	}
-
-	st, found, err := fabricengine.LoadMergeStateForTest(f)
-	if err != nil || !found {
-		t.Fatalf("LoadMergeStateForTest() = (%+v, %v, %v); want (_, true, nil)", st, found, err)
-	}
-	if st.WeftOutcome != "up_to_date" {
-		t.Errorf("mergeState.WeftOutcome = %q; want %q — the weft is recorded as unmoved from the record's first write, never left empty", st.WeftOutcome, "up_to_date")
-	}
-
-	_, continueErr := f.MergeContinue("")
-	if continueErr == nil {
-		t.Fatal("MergeContinue() error = nil; want a guard refusal — the conflict is still unresolved")
-	}
-	assertSoleGuardReason(t, "MergeContinue() over an unresolved conflicted record", continueErr, "unresolved conflicts remain")
-
-	if _, err := f.MergeAbort(); err != nil {
-		t.Fatalf("MergeAbort() cleanup error = %v", err)
-	}
-}
-
 // TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact covers MergeAbort leaving the weft side alone:
 // resetMergeSides resets only the warp side.
 // Here the weft gains commits during the attempt window, independent of any merge in progress on the warp side.
 // A per-transition status push produces that shape.
 // The warp side is reset to WarpStart,
 // and the weft HEAD with the commits it carries stays where MergeAbort found it.
+//
+//testtiming:keep weft commits made during the attempt window surviving MergeAbort at the weft HEAD it found; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

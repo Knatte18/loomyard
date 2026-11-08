@@ -21,6 +21,8 @@ import (
 // TestPrune_ProtectsDirtyWeftWorktreeUntilForced builds a stale pair.
 // Its weft worktree holds an uncommitted tracked change.
 // It asserts the dry run and the apply run both protect it, the content survives --apply, and --force removes it.
+//
+//testtiming:keep uncommitted tracked weft work surviving prune --apply until --force; coverage of its blocks by other tests does not show an assertion of this
 func TestPrune_ProtectsDirtyWeftWorktreeUntilForced(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

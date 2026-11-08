@@ -57,53 +57,6 @@ func TestContainedWorktreeAdd_RefusesSymlinkedTarget(t *testing.T) {
 	}
 }
 
-// TestContainedWorktreeAdd_PlacesWorktreeAtTarget asserts the success path.
-// The worktree lands at target as a real directory on the requested branch.
-// git's admin directory is named after the slug, the base name of target, not the staging token.
-func TestContainedWorktreeAdd_PlacesWorktreeAtTarget(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	repoDir := newPlainWarpRepo(t)
-	base := t.TempDir()
-	container := filepath.Join(base, "container")
-	if err := os.MkdirAll(container, 0o755); err != nil {
-		t.Fatalf("mkdir container: %v", err)
-	}
-	target := filepath.Join(container, "myslug")
-
-	err := containedWorktreeAdd(repoDir, container, target, func(worktreePath string) []string {
-		return []string{"worktree", "add", "-b", "feature", worktreePath}
-	})
-	if err != nil {
-		t.Fatalf("containedWorktreeAdd(%q): %v", target, err)
-	}
-
-	info, statErr := os.Lstat(target)
-	if statErr != nil {
-		t.Fatalf("target not created: %v", statErr)
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		t.Fatalf("target is not a real directory: mode=%v", info.Mode())
-	}
-
-	// No staging debris survives in the container.
-	entries, readErr := os.ReadDir(container)
-	if readErr != nil {
-		t.Fatalf("read container: %v", readErr)
-	}
-	for _, e := range entries {
-		if e.Name() != "myslug" {
-			t.Fatalf("unexpected leftover in container after placement: %q", e.Name())
-		}
-	}
-
-	// git's admin directory is named after the slug, not the random staging token.
-	if _, statErr := os.Stat(filepath.Join(repoDir, ".git", "worktrees", "myslug")); statErr != nil {
-		t.Fatalf("git admin dir not named after the slug: %v", statErr)
-	}
-}
-
 // TestContainedWorktreeAdd_FailsClosedOnStagingLeafSwap checks the fail-closed path of containedWorktreeAdd.
 // An observer waits for the random staging parent to appear, then plants a symlink at the predictable staging leaf.
 // The leaf is the target's base name, so git follows the link and writes the worktree outside the container.

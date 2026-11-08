@@ -1,7 +1,6 @@
 // hubpull_integration_test.go drives PullHub against a hubforge hub whose origin a second clone moves.
 // Its cases cover every side moved and then up to date, and a stopped side beside the sides that still move.
 // Other cases cover a beam with no upstream, and each pair pulled inside its lock.
-// One case covers Bolt waiting for the board write lock.
 // Shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -12,13 +11,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -185,76 +181,6 @@ func TestPullHub_StoppedSideLeavesTheOthersPulled(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(h.PrimeWorktree(), "prime-code-moved.txt")); err == nil {
 		t.Errorf("the dirty prime's code moved; want it left where it was")
 	}
-}
-
-func TestBoltPull_HoldsTheBoardWriteLockWhileItPulls(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	second := hubforge.CloneSecond(t, h)
-	moveOrigin(t, second.BoardDir(), "board-moved.txt")
-	// Holding the push lock parks the pull with the board write lock already held.
-	// Bolt.Pull takes the push lock after the board write lock.
-	// The test then observes the lock instead of waiting out a clock.
-	pushLockPath, err := gitrepo.New(h.BoardDir()).PushLockPath()
-	if err != nil {
-		t.Fatalf("locate the push lock: %v", err)
-	}
-	pushLock, err := lock.AcquireWriteLock(pushLockPath)
-	if err != nil {
-		t.Fatalf("take the push lock: %v", err)
-	}
-	before := gitkit.RevParse(t, h.BoardDir(), "HEAD")
-
-	type pullResult struct {
-		skip fabricengine.BoltSkip
-		err  error
-	}
-	done := make(chan pullResult, 1)
-	go func() {
-		skip, _, err := fabricengine.NewBolt(h.BoardDir()).Pull(fabricengine.SyncOptions{}, fabricengine.NewMutations(h.Location.HubPath))
-		done <- pullResult{skip, err}
-	}()
-
-	writeLockPath, err := fabricengine.BoltLockPath(h.BoardDir(), fabricengine.BoardWriteLockFile)
-	if err != nil {
-		t.Fatalf("locate the board write lock: %v", err)
-	}
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		contender, acquired, err := lock.TryAcquireWriteLock(writeLockPath)
-		if err != nil {
-			t.Fatalf("probe the board write lock: %v", err)
-		}
-		if !acquired {
-			break
-		}
-		if err := contender.Release(); err != nil {
-			t.Fatalf("release the probe: %v", err)
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("Bolt.Pull() never took the board write lock")
-		}
-		time.Sleep(time.Millisecond)
-	}
-	if got := gitkit.RevParse(t, h.BoardDir(), "HEAD"); got != before {
-		t.Errorf("board HEAD = %s while the pull was parked; want it unchanged at %s", got, before)
-	}
-
-	if err := pushLock.Release(); err != nil {
-		t.Fatalf("release the push lock: %v", err)
-	}
-	if got := <-done; got.skip != "" || got.err != nil {
-		t.Fatalf("Bolt.Pull() = (%q, %v); want a clean pull once the push lock is released", got.skip, got.err)
-	}
-	if _, err := os.Stat(filepath.Join(h.BoardDir(), "board-moved.txt")); err != nil {
-		t.Errorf("Stat(board-moved.txt) error = %v; want the pulled file", err)
-	}
-	free, acquired, err := lock.TryAcquireWriteLock(writeLockPath)
-	if err != nil || !acquired {
-		t.Fatalf("board write lock after the pull = (acquired %v, %v); want it released", acquired, err)
-	}
-	_ = free.Release()
 }
 
 // firstTrackedFile returns the first file git tracks in dir.

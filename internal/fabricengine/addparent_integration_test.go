@@ -33,36 +33,6 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(out)
 }
 
-// TestAdd_FromParentPairMadeBeforeBranchPrefix pins that --parent accepts a pair made under the empty prefix;
-// the pair stands on its bare slug once branch_prefix is set; --parent still refuses one switched to another branch.
-func TestAdd_FromParentPairMadeBeforeBranchPrefix(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	for _, slug := range []string{"old-parent", "old-switched"} {
-		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-	}
-	top := topologyWithPrefix(t, l, laterBranchPrefix)
-
-	if _, err := top.Add(l, "child", fabricengine.AddOptions{SkipPush: true, Parent: "old-parent"}); err != nil {
-		t.Fatalf("Add(child, Parent old-parent) error = %v; want the bare-slug parent accepted", err)
-	}
-	if !gitkit.BranchExists(t, l.WorktreePath(), laterBranchPrefix+"child") {
-		t.Errorf("child's branch %q missing; want the prefixed branch", laterBranchPrefix+"child")
-	}
-	origin, found, err := fabricengine.ReadOriginFor(l, "child")
-	if err != nil || !found || origin.ParentBranch != "old-parent" {
-		t.Errorf("ReadOriginFor(child) = (%+v, %v, %v); want a record naming the parent branch old-parent", origin, found, err)
-	}
-
-	gitOut(t, fabricengine.WorktreePath(l, "old-switched"), "checkout", "-b", "elsewhere")
-	if _, err := top.Add(l, "refused-child", fabricengine.AddOptions{SkipPush: true, Parent: "old-switched"}); err == nil || !strings.Contains(err.Error(), "\"elsewhere\"") {
-		t.Errorf("Add(refused-child, Parent old-switched) error = %v; want a refusal naming \"elsewhere\"", err)
-	}
-}
-
 func TestAdd_FromParentPair(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

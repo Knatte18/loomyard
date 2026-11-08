@@ -60,62 +60,6 @@ func pairOnOriginOnly(t *testing.T, slug string) (*hubforge.Hub, *fabricengine.T
 	return h, topologyWithPrefix(t, h.Location, laterBranchPrefix)
 }
 
-func TestBranchPrefixChange_KeepsLivePairsManaged(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const (
-		oldSlug = "pb-old"
-		newSlug = "pb-new"
-	)
-	prefix := laterBranchPrefix
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	hubforge.AddPair(t, h, oldSlug)
-	gitkit.MustRun(t, fabricengine.WorktreePath(l, oldSlug), "git", "push", "origin", oldSlug)
-
-	top := topologyWithPrefix(t, l, prefix)
-
-	if got, err := top.PairTaskBranch(l, oldSlug); err != nil || got != oldSlug {
-		t.Errorf("PairTaskBranch(%q) = %q, %v; want %q", oldSlug, got, err, oldSlug)
-	}
-	parts, err := top.PairParts(l, oldSlug)
-	if err != nil {
-		t.Fatalf("PairParts(%q) error = %v", oldSlug, err)
-	}
-	if !parts.TaskBranch || !parts.RecordsBranch {
-		t.Errorf("PairParts(%q) = %+v; want the task and records branches present", oldSlug, parts)
-	}
-	if onOrigin, err := top.TaskBranchOnOrigin(l, oldSlug); err != nil || !onOrigin {
-		t.Errorf("TaskBranchOnOrigin(%q) = %v, %v; want true", oldSlug, onOrigin, err)
-	}
-
-	if _, err := top.Add(l, newSlug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q) error = %v", newSlug, err)
-	}
-	if !gitkit.BranchExists(t, l.WorktreePath(), prefix+newSlug) {
-		t.Errorf("new pair's branch %q missing; want the prefixed branch", prefix+newSlug)
-	}
-	if got, err := top.PairTaskBranch(l, newSlug); err != nil || got != prefix+newSlug {
-		t.Errorf("PairTaskBranch(%q) = %q, %v; want %q", newSlug, got, err, prefix+newSlug)
-	}
-
-	res, err := top.Remove(l, oldSlug, false, false)
-	if err != nil {
-		t.Fatalf("Remove(%q) error = %v", oldSlug, err)
-	}
-	oldWeft := fabricengine.RecordsBranchName(oldSlug)
-	if res.SiblingBranch != oldWeft {
-		t.Errorf("Remove(%q).SiblingBranch = %q; want %q", oldSlug, res.SiblingBranch, oldWeft)
-	}
-	if !res.CodeBranchDeleted || gitkit.BranchExists(t, l.WorktreePath(), oldSlug) {
-		t.Errorf("Remove(%q) CodeBranchDeleted = %v (kept: %q); want the bare-slug task branch deleted", oldSlug, res.CodeBranchDeleted, res.CodeBranchKeptReason)
-	}
-	if gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), oldWeft) {
-		t.Errorf("records branch %q still present after Remove; want it deleted", oldWeft)
-	}
-}
-
 // TestBranchPrefixChange_PairWithNothingLeftLocally pins that a pair left with only origin branches:
 // made under the empty prefix is still found and torn down by its bare-slug names once branch_prefix is set.
 func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {

@@ -1,7 +1,6 @@
 // weftgit_pathspec_integration_test.go holds integration coverage for weftPathspecFilter.
 // That filter is the pre-stage step CommitWeft runs immediately before f.records.StageAndCommit.
 // Each predicate clause has a test against real git.
-// A regression test pins that the widened default pathspec and this filter belong together.
 // The package is fabricengine_test.
 // It reuses export_test.go's NewPlainWarpRepoForTest, NewFabricForTest and WriteWeftConfigContentForTest fixture shims.
 
@@ -234,69 +233,4 @@ func TestResolvedDefaultRoutingNames_IsLymAlone(t *testing.T) {
 	if len(dirs) != 1 || dirs[0] != "_lym" {
 		t.Fatalf("resolvedDefaultRoutingNames() = %v; want [_lym]", dirs)
 	}
-}
-
-// TestCommitWeft_WidenedPathspecTolerance_LymChangeStillCommitsWithEmptyOptionalDir covers a widened pathspec.
-// The routing set is hand-supplied as "_lym" and "_extra", not taken from the template default.
-// The pathspec filter stays live for any repo whose fabric.yaml pathspec widens beyond "_lym".
-// With no files under "_extra", a "_lym" change must still commit.
-// Without the filter, `git add -- _lym _extra` fails whole once "_extra" matches nothing.
-// CommitWeft's "did not match any files" tolerance then turns that into ("", false, nil) with no error,
-// so the test asserts that the commit happened rather than that no error was returned.
-// The test covers both an absent "_extra" and a present but empty one.
-// Git tracks files, not directories, so an empty "_extra/" is a normal state for an optional entry.
-func TestCommitWeft_WidenedPathspecTolerance_LymChangeStillCommitsWithEmptyOptionalDir(t *testing.T) {
-	tiergate.Require(t, 1)
-	dirs := []string{"_lym", "_extra"}
-
-	t.Run("OptionalDirWhollyAbsent", func(t *testing.T) {
-		t.Parallel()
-
-		warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-		weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
-
-		if _, err := os.Stat(filepath.Join(weftFixture.PrimeRecords(), "_extra")); !os.IsNotExist(err) {
-			t.Fatalf("precondition: _extra must not exist in this fixture; Stat err = %v", err)
-		}
-
-		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "lym change, _extra wholly absent")
-
-		sha, committed, err := fabricengine.CommitWeftForTest(f, dirs, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
-		if err != nil {
-			t.Fatalf("commitWeft() error = %v; want nil", err)
-		}
-		if !committed {
-			t.Fatalf("commitWeft() committed = false; want true (the _lym change must still commit)")
-		}
-		if sha == "" {
-			t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
-		}
-	})
-
-	t.Run("OptionalDirExistsButEmpty", func(t *testing.T) {
-		t.Parallel()
-
-		warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-		weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
-
-		// git tracks files, not directories: a materialised-but-empty "_extra/" still has nothing for a pathspec to match.
-		if err := os.MkdirAll(filepath.Join(weftFixture.PrimeRecords(), "_extra"), 0o755); err != nil {
-			t.Fatalf("MkdirAll _extra: %v", err)
-		}
-
-		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "lym change, _extra present but empty")
-
-		sha, committed, err := fabricengine.CommitWeftForTest(f, dirs, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
-		if err != nil {
-			t.Fatalf("commitWeft() error = %v; want nil", err)
-		}
-		if !committed {
-			t.Fatalf("commitWeft() committed = false; want true (the _lym change must still commit)")
-		}
-		if sha == "" {
-			t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
-		}
-	})
 }

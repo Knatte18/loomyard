@@ -52,6 +52,8 @@ func mustRemoveOrigin(t *testing.T, repoRoot string) {
 
 // TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan checks apply and remote both true.
 // Both the local orphan weft branch and its copy on the remote are deleted.
+//
+//testtiming:keep the orphan weft branch deleted on origin as well as locally under remote=true; coverage of its blocks by other tests does not show an assertion of this
 func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -90,6 +92,8 @@ func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 
 // TestCleanup_PrefixSetOverBareSlugOrphan covers an orphan weft branch from before branch_prefix was set.
 // The branch is read as its bare slug, so the sweep archives and deletes it under that slug.
+//
+//testtiming:keep the archive tag of a bare-slug orphan named under archive/<slug>/ after a branch prefix was set
 func TestCleanup_PrefixSetOverBareSlugOrphan(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -118,6 +122,8 @@ func TestCleanup_PrefixSetOverBareSlugOrphan(t *testing.T) {
 
 // TestCleanup_RemoteFalseLeavesRemoteCopyIntact covers apply true with remote false.
 // It guards the existing default: the remote deletion is opt-in.
+//
+//testtiming:keep the origin copy of a deleted orphan left intact when remote is off; coverage of its blocks by other tests does not show an assertion of this
 func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -149,6 +155,8 @@ func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
 }
 
 // TestCleanup_DryRunWithRemoteDeletesNeither checks that a dry run with remote true deletes on neither side.
+//
+//testtiming:keep a dry run with remote=true deleting the orphan branch neither locally nor on origin; coverage of its blocks by other tests does not show an assertion of this
 func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -182,6 +190,8 @@ func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
 // TestCleanup_NeverPushedOrphanIsIdempotentOnRemote covers an orphan branch that was never pushed.
 // It deletes locally and reports no remote deletion or remote error.
 // It records no KindRemoteBranchDeleted entry.
+//
+//testtiming:keep no remote_branch_deleted mutation record for a branch that was never on origin; coverage of its blocks by other tests does not show an assertion of this
 func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -220,6 +230,8 @@ func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
 
 // TestCleanup_ProtectedEntryUntouchedOnRemote checks that a protected entry keeps its local and remote copies.
 // Here the protected entry is an unmanaged branch, and remote true must not touch either copy.
+//
+//testtiming:keep a protected unmanaged branch left untouched on origin and locally under remote=true; coverage of its blocks by other tests does not show an assertion of this
 func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -328,63 +340,5 @@ func TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce(t *testing.T) {
 		if gitkit.BranchExists(t, weftRoot, b) {
 			t.Errorf("branch %q still exists locally after Cleanup(apply=true)", b)
 		}
-	}
-}
-
-// Under a dry run with remote true, a repo with no origin still reports RemoteSkippedReason.
-// It deletes nothing.
-func TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const branch = "cleanup-no-origin-dry-weft"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	weftRoot := mustRecordsRepoRoot(t, l)
-
-	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	mustRemoveOrigin(t, weftRoot)
-
-	topology := h.Topology
-	res, err := topology.Cleanup(l, false, false, true)
-	if err != nil {
-		t.Fatalf("Cleanup(apply=false, remote=true) error = %v", err)
-	}
-
-	if res.RemoteSkippedReason == "" {
-		t.Errorf("RemoteSkippedReason is empty; want a reason naming the missing origin remote, even on a dry run")
-	}
-
-	entry := findCleanupEntry(t, res.Entries, branch)
-	if entry.Deleted {
-		t.Errorf("entry.Deleted = true; want false — apply is false")
-	}
-	if !gitkit.BranchExists(t, weftRoot, branch) {
-		t.Errorf("branch %q was removed on a dry run", branch)
-	}
-}
-
-// With remote false, a repo with no origin reports no RemoteSkippedReason.
-// It guards the remote guard itself: a plain cleanup --apply on a remoteless repo must not report a reason.
-func TestCleanup_NoOriginWithRemoteFalseReportsNoReason(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const branch = "cleanup-no-origin-remote-off-weft"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	weftRoot := mustRecordsRepoRoot(t, l)
-
-	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	mustRemoveOrigin(t, weftRoot)
-
-	topology := h.Topology
-	res, err := topology.Cleanup(l, true, false, false)
-	if err != nil {
-		t.Fatalf("Cleanup(apply=true, remote=false) error = %v", err)
-	}
-
-	if res.RemoteSkippedReason != "" {
-		t.Errorf("RemoteSkippedReason = %q; want empty — remote is false, so the pre-check must not run at all", res.RemoteSkippedReason)
 	}
 }

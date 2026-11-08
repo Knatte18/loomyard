@@ -26,6 +26,8 @@ import (
 
 // TestRemove_DirtyRefusalLeavesPairIntact builds a real pair, dirties its warp worktree, and asserts:
 // the no-force refusal tears nothing down, records nothing, and pushes no archive tag.
+//
+//testtiming:keep no archive tag locally or on origin after a no-force Remove refused on a dirty warp worktree
 func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

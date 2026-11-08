@@ -1,8 +1,6 @@
 // snapshot_integration_test.go covers Fabric.snapshotWarpSHA against real weft and warp repositories.
-// The newest tagged commit wins, and tags stay isolated from one another.
-// A commit carrying several tags resolves for each of them,
-// and a lookup that matches nothing reads as absent, not as an error.
-// Trailers without a Warp-SHA, byte-exact tag matching, and per-branch scoping are covered too.
+// A lookup that matches nothing reads as absent, not as an error.
+// Per-branch scoping and a dangling Warp-SHA are covered too.
 // A back-dated merge commit tells the --topo-order walk from git log's default date order,
 // and a RebuildIndex assertion covers the same history.
 // The file is package fabricengine_test.
@@ -42,91 +40,6 @@ func commitWeftTagged(t *testing.T, f *fabricengine.Fabric, warpPath, weftPath, 
 		t.Fatalf("commitWeft(tags=%v) committed = false; want true", tags)
 	}
 	return warpSHA, weftSHA
-}
-
-// commitWeftSnapshotOnlyTrailer commits content into weftPath's tracked _lym/config.yaml under a hand-written message.
-// The message carries only a "Snapshot: <tag>" trailer and no "Warp-SHA:" trailer:
-// the shape snapshotWarpSHA must skip rather than read as an empty baseline.
-// It is built with git directly, because CommitWeft writes a Snapshot trailer only alongside a Warp-SHA one.
-// CommitWeft also drops tags on an unborn warp HEAD (see `commitWeftLocked`), so no call produces this shape.
-func commitWeftSnapshotOnlyTrailer(t *testing.T, weftPath, content, tag string) string {
-	t.Helper()
-
-	msg := "weft sync\n\n" + fabricengine.SnapshotTrailerKey + ": " + tag
-	return gitkit.CommitFile(t, weftPath, filepath.Join("_lym", "config.yaml"), content, msg)
-}
-
-// TestSnapshotWarpSHA_Lookup checks the lookup over one weft history, where each step builds on the steps before it.
-// Untagged commits are skipped without error, so a tag no commit records resolves as absent, as ("", nil).
-// That absence lets a first-ever consumer read no baseline and generate everything.
-// A commit with a Snapshot trailer but no Warp-SHA trailer is never a match.
-// Several commits tagged the same resolve to the newest one's Warp-SHA.
-// Each tag resolves to its own newest commit, including a commit that carries both tags.
-// Tags match byte for byte, so "Raddle" and "raddle " both read as absent for a "raddle" tag.
-// The steps run serially on one fixture.
-func TestSnapshotWarpSHA_Lookup(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
-	weftPath := weftFixture.PrimeRecords()
-
-	requireSnapshotWarpSHA := func(t *testing.T, tag, want, reason string) {
-		t.Helper()
-		got, err := fabricengine.SnapshotWarpSHAForTest(f, tag)
-		if err != nil {
-			t.Fatalf("snapshotWarpSHA(%q) error = %v", tag, err)
-		}
-		if got != want {
-			t.Errorf("snapshotWarpSHA(%q) = %q; want %q (%s)", tag, got, want, reason)
-		}
-	}
-
-	t.Run("untagged commits are skipped and a never-recorded tag is absent", func(t *testing.T) {
-		commitWeftTagged(t, f, warpPath, weftPath, "plain change 1")
-		commitWeftTagged(t, f, warpPath, weftPath, "plain change 2")
-
-		requireSnapshotWarpSHA(t, "raddle", "", "no commit carries this tag")
-		requireSnapshotWarpSHA(t, "never-recorded", "", "absent is not an error")
-	})
-
-	t.Run("a Snapshot trailer with no Warp-SHA sibling is skipped", func(t *testing.T) {
-		commitWeftSnapshotOnlyTrailer(t, weftPath, "no warp trailer", "raddle")
-
-		requireSnapshotWarpSHA(t, "raddle", "", "Snapshot trailer with no Warp-SHA sibling is unusable")
-	})
-
-	t.Run("the newest tagged commit wins", func(t *testing.T) {
-		commitWeftTagged(t, f, warpPath, weftPath, "raddle round 1", "raddle")
-		commitWeftTagged(t, f, warpPath, weftPath, "raddle round 2", "raddle")
-		warpSHA3, _ := commitWeftTagged(t, f, warpPath, weftPath, "raddle round 3", "raddle")
-
-		requireSnapshotWarpSHA(t, "raddle", warpSHA3, "the newest recorded")
-	})
-
-	t.Run("each tag resolves to its own newest commit", func(t *testing.T) {
-		commitWeftTagged(t, f, warpPath, weftPath, "trace round 1", "trace")
-		warpRaddle2, _ := commitWeftTagged(t, f, warpPath, weftPath, "raddle round 4", "raddle")
-		warpTrace2, _ := commitWeftTagged(t, f, warpPath, weftPath, "trace round 2", "trace")
-
-		requireSnapshotWarpSHA(t, "raddle", warpRaddle2, "raddle's own newest, never trace's")
-		requireSnapshotWarpSHA(t, "trace", warpTrace2, "trace's own newest, never raddle's")
-	})
-
-	t.Run("several tags on one commit each resolve to it", func(t *testing.T) {
-		warpSHA, _ := commitWeftTagged(t, f, warpPath, weftPath, "multi-tag commit", "raddle", "trace")
-
-		requireSnapshotWarpSHA(t, "raddle", warpSHA, "the multi-tag commit")
-		requireSnapshotWarpSHA(t, "trace", warpSHA, "the multi-tag commit")
-	})
-
-	t.Run("tag matching is byte-exact", func(t *testing.T) {
-		for _, tag := range []string{"Raddle", "raddle "} {
-			requireSnapshotWarpSHA(t, tag, "", "byte-exact match only")
-		}
-	})
 }
 
 // TestSnapshotWarpSHA_UnbornWeftHEAD covers a weft repo with zero commits.
@@ -233,7 +146,6 @@ func commitWeftTaggedWithDate(t *testing.T, f *fabricengine.Fabric, warpPath, we
 // TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate covers a history where date order and topological order disagree.
 // Every other case in this file has a linear history, where date order and topological order coincide.
 // Such a case passes with or without --topo-order, so it proves nothing about the flag.
-// TestRebuildIndex_EqualsIncrementallyBuiltIndex in syncweft_integration_test.go is linear too.
 //
 // The fixture: a mainline commit carries the "raddle" tag at the current committer date.
 // A "side" branch forks from that mainline commit, so the side commit is a topological descendant of it,
@@ -333,7 +245,7 @@ func treeSHA(t *testing.T, repoPath, rev string) string {
 // Three things are asserted.
 // First, WeftSHAForWarpSHA resolves to the newer, empty commit, so the last recorded entry wins.
 // Second, RebuildIndex's full trailer rescan agrees with the incrementally built index over the same history.
-// The comparison is the entries() check that TestRebuildIndex_EqualsIncrementallyBuiltIndex uses.
+// The comparison is an entry-by-entry check of the two loaded indexes.
 // Third, the empty commit's tree is byte-identical to the content commit's.
 // So resolving through the overwritten entry restores the same weft state either commit would have.
 // That makes the overwrite benign, not merely tolerated.

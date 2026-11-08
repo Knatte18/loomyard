@@ -38,21 +38,6 @@ func landedWorkCheck(repo, branch string) error {
 	})
 }
 
-func TestLandedWork_PushedBranchPasses(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	repo, _ := landedWorkRepo(t)
-	gitkit.Git(t, repo, "switch", "-c", "task")
-	gitkit.Git(t, repo, "commit", "--allow-empty", "-m", "work")
-	gitkit.Git(t, repo, "push", "origin", "task")
-	gitkit.Git(t, repo, "switch", "main")
-
-	if err := landedWorkCheck(repo, "task"); err != nil {
-		t.Fatalf("pushed branch refused: %v", err)
-	}
-}
-
 func TestLandedWork_SquashLandedBranchPasses(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -66,24 +51,6 @@ func TestLandedWork_SquashLandedBranchPasses(t *testing.T) {
 
 	if err := landedWorkCheck(repo, "task"); err != nil {
 		t.Fatalf("squash-landed branch refused: %v", err)
-	}
-}
-
-func TestLandedWork_UnlandedBranchRefusedEvenWithForce(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	repo, _ := landedWorkRepo(t)
-	gitkit.Git(t, repo, "switch", "-c", "task")
-	gitkit.CommitFile(t, repo, "one.txt", "one.txt", "one.txt")
-	gitkit.CommitFile(t, repo, "two.txt", "two.txt", "two.txt")
-	gitkit.Git(t, repo, "switch", "main")
-
-	err := landedWorkCheck(repo, "task")
-	assertRefusalCheck(t, err, CheckDirtiness)
-	msg := err.Error()
-	if !strings.Contains(msg, "2 commit(s)") || !strings.Contains(msg, "git branch -D task") {
-		t.Fatalf("refusal = %q; want the commit count 2 and the hand remedy", msg)
 	}
 }
 

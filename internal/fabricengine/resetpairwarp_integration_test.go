@@ -420,6 +420,8 @@ func TestResetPairCode_RemoteHalf(t *testing.T) {
 // TestResetPairCode_OursMergeThenRerunConverges proves the way forward a remote-only commit's refusal names:
 // after `git merge --strategy ours` takes in the remote tip,
 // and a re-run rewinds both the checkout and the remote task branch.
+//
+//testtiming:keep the remote_branch_updated then worktree_reset records, in that order, and the remote task branch rewound after the ours merge; coverage of its blocks by other tests does not show an assertion of this
 func TestResetPairCode_OursMergeThenRerunConverges(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

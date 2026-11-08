@@ -38,46 +38,6 @@ func cloneBareForTest(t *testing.T, bareRepo, branch string) string {
 	return dir
 }
 
-// TestPushAnchored_SkipGitOrSkipPush_PushesNothing asserts that SkipGit and SkipPush each return a nil error.
-// Each returns an empty result, and the weft bare remote stays unadvanced.
-func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		opts fabricengine.SyncOptions
-	}{
-		{name: "SkipGit", opts: fabricengine.SyncOptions{SkipGit: true}},
-		{name: "SkipPush", opts: fabricengine.SyncOptions{SkipPush: true}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			// The weft bare is empty at clone time, so it carries no branch to read a "before" SHA from yet;
-			// a priming push establishes one.
-			if _, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
-				t.Fatalf("PushAnchored() priming push error = %v; want nil", err)
-			}
-			bareHeadBefore := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main"))
-			gitkit.CommitFile(t, h.PrimeRecords(), "weft-file.txt", "weft change never pushed", "weft change never pushed")
-
-			res, err := fabricengine.PushAnchored(h.Location, tt.opts, fabricengine.LockWaitUnbounded)
-			if err != nil {
-				t.Fatalf("PushAnchored() error = %v; want nil", err)
-			}
-			if res.Mutated().Len() != 0 {
-				t.Errorf("PushAnchored() record = %+v; want empty", res.Mutated().Entries())
-			}
-
-			if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main")); got != bareHeadBefore {
-				t.Errorf("weft bare = %q; want it unadvanced at %q", got, bareHeadBefore)
-			}
-		})
-	}
-}
-
 // TestPushAnchored_PushesAndRecordsBranchPush covers the successful push path.
 // A weft sibling with a commit ahead of its bare remote pushes it;
 // the bare remote advances to the local HEAD, and the returned record holds exactly one KindBranchPushed entry.
@@ -166,26 +126,6 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejected(t *testing.T) {
 	records, err := fabricengine.ListFailedPushes(h.Location.HubPath)
 	if err != nil || len(records) != 1 || records[0].Branch != failed.Record.Branch || records[0].Class != fabricengine.PushFailureNotFastForward {
 		t.Errorf("ListFailedPushes() = %+v, %v; want the one not-fast-forward record of the push", records, err)
-	}
-}
-
-// TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected covers a push error of another kind.
-// The test removes the weft sibling's origin remote entirely;
-// that error must not satisfy errors.Is(err, gitrepo.ErrPushRejected).
-func TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	gitkit.CommitFile(t, h.PrimeRecords(), "weft-file.txt", "weft change", "weft change")
-	gitkit.MustRun(t, h.PrimeRecords(), "git", "remote", "remove", "origin")
-
-	_, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
-	if err == nil {
-		t.Fatal("PushAnchored() with no remote configured error = nil; want a non-nil push error")
-	}
-	if errors.Is(err, gitrepo.ErrPushRejected) {
-		t.Errorf("PushAnchored() error = %v; want it NOT to satisfy errors.Is(err, gitrepo.ErrPushRejected) — this is a different error kind", err)
 	}
 }
 

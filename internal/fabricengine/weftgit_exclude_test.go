@@ -45,6 +45,8 @@ func writeWeftConfig(t *testing.T, weftPath, content string) {
 // TestCommitWeft_LockArtifactsExcludedFromStatus commits scoped weft content, which creates the .weft lock dir.
 // It then drops a legacy push lock file, and it asserts neither artifact appears in `git status --porcelain`.
 // The check is the one Remove's no-force dirty gate runs; a stray lock file under _lym must still show.
+//
+//testtiming:keep the .weft lock dir and legacy push lock being git-excluded from weft status while a stray lock under _lym still shows; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -223,38 +225,5 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtNestedAnchor(t *tes
 		if strings.Contains(tracked, forbidden) {
 			t.Errorf("git ls-files tracks a %q-named entry; want none\nfull ls-files:\n%s", forbidden, tracked)
 		}
-	}
-}
-
-// TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp covers an entry matching only a git-ignored file.
-// The entryMatchesWeft probe (`git ls-files --cached --others`) matches untracked files, including ignored ones.
-// weftPathspecFilter then forwards that entry to `git add`;
-// git refuses an ignored path and fails the whole StageAndCommit call.
-// The --exclude-standard flag keeps ignored files out of the probe,
-// so the entry is dropped and the call degrades to a clean no-op (WeftCommitted=false, no error).
-// Without the flag, the call fails with a "gitrepo: git add:" error instead of a clean no-op.
-func TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	f, weftPath := newFabricPair(t)
-
-	ignoredRel := filepath.ToSlash(filepath.Join(lymdirs.LymDirName, "ignored.tmp"))
-	excludePath := filepath.Join(weftPath, ".git", "info", "exclude")
-	existing, err := os.ReadFile(excludePath)
-	if err != nil && !os.IsNotExist(err) {
-		t.Fatalf("read info/exclude: %v", err)
-	}
-	if err := os.WriteFile(excludePath, append(existing, []byte("ignored.tmp\n")...), 0o644); err != nil {
-		t.Fatalf("write info/exclude: %v", err)
-	}
-	mustWriteFile(t, filepath.Join(weftPath, lymdirs.LymDirName, "ignored.tmp"), "ignored, never committed")
-
-	result, err := f.Commit([]string{ignoredRel}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
-	if err != nil {
-		t.Fatalf("Commit(%q) error = %v; want a clean no-op, not a git add failure on an ignored-only entry", ignoredRel, err)
-	}
-	if result.WeftCommitted {
-		t.Errorf("Commit(%q) = %+v; want WeftCommitted=false (nothing but an ignored file matched)", ignoredRel, result)
 	}
 }

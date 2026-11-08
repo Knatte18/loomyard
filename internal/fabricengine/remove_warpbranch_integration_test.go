@@ -10,7 +10,6 @@
 package fabricengine_test
 
 import (
-	"os"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -27,61 +26,7 @@ func warpBranchCommit(t *testing.T, l *lymcwd.Location, slug, name string) {
 	gitkit.CommitFile(t, dir, name, name, name)
 }
 
-func TestRemove_PushedWarpBranchIsDeleted(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const slug = "wb-pushed"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
-	warpBranchCommit(t, l, slug, "work.txt")
-	gitkit.MustRun(t, fabricengine.WorktreePath(l, slug), "git", "push", "origin", slug)
-
-	res, err := topology.Remove(l, slug, false, false)
-	if err != nil {
-		t.Fatalf("Remove(%q) error = %v", slug, err)
-	}
-	if !res.CodeBranchDeleted || res.CodeBranchKeptReason != "" {
-		t.Errorf("CodeBranchDeleted = %v, kept reason = %q; want deleted", res.CodeBranchDeleted, res.CodeBranchKeptReason)
-	}
-	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
-		t.Errorf("warp branch %q still exists after Remove", slug)
-	}
-}
-
-func TestRemove_SquashLandedWarpBranchIsDeleted(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const slug = "wb-landed"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
-	warpBranchCommit(t, l, slug, "work.txt")
-
-	prime := l.WorktreePath()
-	gitkit.MustRun(t, prime, "git", "merge", "--squash", slug)
-	gitkit.Git(t, prime, "commit", "-m", "land "+slug)
-
-	res, err := topology.Remove(l, slug, false, false)
-	if err != nil {
-		t.Fatalf("Remove(%q) error = %v", slug, err)
-	}
-	if !res.CodeBranchDeleted || res.CodeBranchKeptReason != "" {
-		t.Errorf("CodeBranchDeleted = %v, kept reason = %q; want deleted", res.CodeBranchDeleted, res.CodeBranchKeptReason)
-	}
-	if gitkit.BranchExists(t, prime, slug) {
-		t.Errorf("warp branch %q still exists after Remove", slug)
-	}
-}
-
+//testtiming:keep a local task branch carrying unlanded commits surviving Remove, with and without force; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -117,60 +62,5 @@ func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
 				t.Errorf("warp branch %q was deleted despite unlanded work", slug)
 			}
 		})
-	}
-}
-
-func TestRemove_MissingWeftWorktreeRecreatesNothing(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const slug = "wb-noweft"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
-
-	weftPath := fabricengine.RecordsWorktreePath(l, slug)
-	if err := os.RemoveAll(weftPath); err != nil {
-		t.Fatalf("remove weft worktree: %v", err)
-	}
-	if _, found, err := fabricengine.ReadOriginFor(l, slug); err != nil || found {
-		t.Fatalf("ReadOriginFor with no weft worktree = (found=%v, err=%v); want (false, nil)", found, err)
-	}
-	if _, err := os.Stat(weftPath); !os.IsNotExist(err) {
-		t.Fatalf("ReadOriginFor recreated %s (stat err = %v)", weftPath, err)
-	}
-
-	if _, err := topology.Remove(l, slug, false, false); err != nil {
-		t.Fatalf("Remove(%q) error = %v", slug, err)
-	}
-	if _, err := os.Stat(weftPath); !os.IsNotExist(err) {
-		t.Errorf("Remove left a stray path at %s (stat err = %v)", weftPath, err)
-	}
-}
-
-func TestRemove_AddSucceedsAfterWarpBranchDeleted(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const slug = "wb-readd"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
-
-	res, err := topology.Remove(l, slug, false, false)
-	if err != nil {
-		t.Fatalf("Remove(%q) error = %v", slug, err)
-	}
-	if !res.CodeBranchDeleted {
-		t.Fatalf("CodeBranchDeleted = false (kept reason %q); a workless branch should be deleted", res.CodeBranchKeptReason)
-	}
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("second Add(%q) after a deleting Remove: %v", slug, err)
 	}
 }

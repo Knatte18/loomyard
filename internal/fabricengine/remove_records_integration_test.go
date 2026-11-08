@@ -47,6 +47,8 @@ func showAtTag(t *testing.T, repoRoot, tag, rel string) string {
 // TestRemove_CommitsPendingRecordsIntoArchiveTag asserts that a no-force Remove commits pending records:
 // an untracked stop report under the pair's drive-reports directory is committed with the Warp-SHA trailer,
 // and the pushed archive tag contains it.
+//
+//testtiming:keep the pending record committed with a Warp-SHA trailer and carried into the archive tag, with one commit_created mutation; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -88,6 +90,8 @@ func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 // TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation asserts that a no-force Remove refuses:
 // a stray file outside the record pathspec in the sibling worktree leaves no tag or commit and keeps the sibling tip.
 // With force, Remove proceeds.
+//
+//testtiming:keep no archive tag on origin and an unchanged sibling tip after a refused Remove, then the archive on force
 func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

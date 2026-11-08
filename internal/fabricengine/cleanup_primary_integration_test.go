@@ -20,6 +20,8 @@ import (
 // TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout moves the prime pair off the default branch.
 // The test starts from a real Bolt checkout worktree on the warp's default branch.
 // It asserts cleanup reports the primary weft branch as protected and leaves it on disk, even under --apply --force.
+//
+//testtiming:keep the primary weft branch and its commits surviving cleanup --apply --force after a checkout moved the prime pair; coverage of its blocks by other tests does not show an assertion of this
 func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

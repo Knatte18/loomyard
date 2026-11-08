@@ -4,8 +4,9 @@
 // It covers the tag's landing and its reuse when the origin already holds it.
 // It covers the commit-then-archive flow for a weft worktree with uncommitted records.
 // It covers the fail-closed shape of an unreachable origin.
-// It also checks that force and remote=false do not skip the step;
-// a missing origin skips it; and a rolled-back Add never archives.
+// It also checks that force does not skip the step and that a missing origin skips it.
+// A rolled-back Add never archives.
+// It also covers the order and extent of the archive against the weft branch push.
 //
 // Every hub is built through hubforge.NewHub, with the hub's RecordsBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -39,6 +40,9 @@ func archiveTagsAt(t *testing.T, repoRoot string) []string {
 }
 
 // TestRemove_ArchivesWeftTipBeforeTeardown covers the happy path: the tag on the origin points at the tip carrying the committed _lym file, and the result names it.
+// The call passes remote=false, so the branch deletion stays local while the archive tag is still pushed.
+//
+//testtiming:keep the archive tag named archive/<slug>/<tip> on origin pointing at the weft tip, with no skip reason and the remote branch left in place
 func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -61,12 +65,17 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	if res.ArchiveSkippedReason != "" {
 		t.Errorf("ArchiveSkippedReason = %q; want empty", res.ArchiveSkippedReason)
 	}
+	if res.RemoteBranchDeleted {
+		t.Errorf("RemoteBranchDeleted = true; want false")
+	}
 	if got := tagTargetAt(t, h.RecordsBare, wantTag); got != tip {
 		t.Errorf("origin tag %s points at %q; want the tip %s", wantTag, got, tip)
 	}
 }
 
 // TestRemove_ReusesSameTipArchiveTag covers archiveWeftTip's reuse path: an archive tag for the same tip already on the origin, as a teardown that failed after the archive leaves it, is reused rather than pushed again.
+//
+//testtiming:keep exactly one archive tag on origin after a same-tip tag was already pushed, reused rather than duplicated
 func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -100,6 +109,8 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 }
 
 // TestRemove_PendingRecordsAreCommittedAndArchivedOnce covers the pre-archive record commit: a single no-force Remove of a pair whose weft worktree holds an uncommitted record commits it and archives the post-commit tip, once.
+//
+//testtiming:keep the post-commit tip carrying a pending uncommitted record getting the one archive tag on origin; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -181,6 +192,8 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 }
 
 // TestRemove_ForceStillArchives covers force: it answers dirtiness only, so the archive still runs.
+//
+//testtiming:keep the archive tag pushed to origin at the weft tip when Remove runs with force
 func TestRemove_ForceStillArchives(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -205,32 +218,9 @@ func TestRemove_ForceStillArchives(t *testing.T) {
 	}
 }
 
-// TestRemove_RemoteFalseStillPushesArchiveTag covers remote=false: the branch deletion stays local, but the archive tag is still pushed.
-func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const slug = "remove-archive-noremote"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	topology := h.Topology
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lym/record.txt", "run record\n", "record")
-
-	res, err := topology.Remove(l, slug, false, false)
-	if err != nil {
-		t.Fatalf("Remove(remote=false) error = %v", err)
-	}
-	if res.RemoteBranchDeleted {
-		t.Errorf("RemoteBranchDeleted = true; want false")
-	}
-	wantTag := "archive/" + slug + "/" + tip[:12]
-	if got := tagTargetAt(t, h.RecordsBare, wantTag); got != tip {
-		t.Errorf("origin tag %s points at %q; want %s", wantTag, got, tip)
-	}
-}
-
 // TestRemove_NoOriginSkipsArchiveAndCompletes covers a weft repo with no origin: the removal completes and the result carries the skip reason.
+//
+//testtiming:keep no archive tag and a reported skip reason when the weft repo has no origin
 func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -272,6 +262,8 @@ func installUpdateHook(t *testing.T, bare, body string) {
 // A retryable tag refusal is retried, and a refused branch push never fails the removal.
 // One hub per row, each topology's archive sleep shortened.
 // The retry row sets a package-level hook, so neither the test nor its rows are parallel.
+//
+//testtiming:keep the archive tag pushed after the weft branch on origin, and a diverged or ahead origin tip getting its own tag; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_ArchiveOrder(t *testing.T) {
 	tiergate.Require(t, 1)
 
@@ -404,6 +396,8 @@ func TestRemove_ArchiveOrder(t *testing.T) {
 }
 
 // TestAddRollback_LeavesNoArchiveTag covers a rolled-back Add: it removes the weft branch it just created without archiving, so no archive/ tag appears locally or on the origin.
+//
+//testtiming:keep no archive tag locally or on origin after a rolled-back Add
 func TestAddRollback_LeavesNoArchiveTag(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

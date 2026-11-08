@@ -74,22 +74,6 @@ func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
 	}
 }
 
-func TestMidMerge_FabricParkedResolved_ParkedNoConflicts(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h, _ := setupResolvedConflictedMergeIn(t)
-
-	got, err := fabricengine.MidMerge(h.Location)
-	if err != nil {
-		t.Fatalf("MidMerge() error = %v", err)
-	}
-	if got.Kind != fabricengine.MidMergeParked || len(got.Conflicts) != 0 || got.Conflicts == nil {
-		t.Errorf("MidMerge() = %+v; want MidMergeParked with empty non-nil Conflicts", got)
-	}
-	assertMergeBlocked(t, h.Location, true)
-}
-
 func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

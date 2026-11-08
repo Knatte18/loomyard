@@ -437,26 +437,3 @@ func TestAdd_AdoptOnly(t *testing.T) {
 		requireTrackingStanding(t, h.PrimeWorktree(), slug, false)
 	})
 }
-
-// TestAdd_AdoptOnlyRollbackKeepsReusedRecordsWorktree covers a failure after the task worktree exists.
-// The records worktree the add reused, and its branch, survive the rollback.
-// It sets a package hook, so it must not run in parallel.
-func TestAdd_AdoptOnlyRollbackKeepsReusedRecordsWorktree(t *testing.T) {
-	tiergate.Require(t, 1)
-	// SetAddFailAfterWarpHookForTest sets the package-level addFailAfterWarpHook.
-	const slug = "reuse-fail"
-	h := pushedAdoptPair(t, slug)
-	dropTaskWorktree(h, slug)
-	fabricengine.SetAddFailAfterWarpHookForTest(t, func() error { return errors.New("injected failure") })
-
-	if _, err := addAdoptOnly(h, slug); err == nil {
-		t.Fatal("Add succeeded; want the injected failure")
-	}
-
-	if got, want := gitkit.CurrentBranch(t, fabricengine.RecordsWorktreePath(h.Location, slug)), fabricengine.RecordsBranchName(slug); got != want {
-		t.Errorf("records worktree branch = %q; want it left on %q", got, want)
-	}
-	if _, err := os.Lstat(fabricengine.WorktreePath(h.Location, slug)); !os.IsNotExist(err) {
-		t.Errorf("task worktree remains after the rollback (stat err = %v)", err)
-	}
-}

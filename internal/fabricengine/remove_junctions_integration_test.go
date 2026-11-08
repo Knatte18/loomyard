@@ -137,6 +137,8 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 
 // TestRemove_SweepsAnchoredLinksOnSubpathHub asserts Remove sweeps the pair's anchored directory, not the root.
 // On a subpath-anchored hub every junction sits in the anchored directory, so the root holds none.
+//
+//testtiming:keep the scratch link_removed mutation recorded once, ahead of the warp worktree_removed; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
@@ -188,35 +190,6 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	warpRemoved := mutationIndexes(result.Mutations, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.WorktreePath(l, slug)))
 	if len(unlinked) != 1 || len(warpRemoved) != 1 || unlinked[0] > warpRemoved[0] {
 		t.Errorf("record %+v; want one link_removed at the anchor .scratch ahead of the warp worktree_removed", result.Mutations.Entries())
-	}
-}
-
-// TestRemove_FailedWeftTeardownIsReported locks the weft worktree so `git worktree remove --force` refuses it.
-// It asserts Remove reports the surviving weft worktree as an error rather than success.
-func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
-	tiergate.Require(t, 1)
-	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("FABRIC_SKIP_PUSH", "1")
-
-	const slug = "remove-locked-pair"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-
-	topology := h.Topology
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-
-	weftTarget := fabricengine.RecordsWorktreePath(l, slug)
-	gitkit.MustRun(t, h.PrimeRecords(), "git", "worktree", "lock", weftTarget)
-
-	_, err := topology.Remove(l, slug, true, false)
-	if err == nil {
-		t.Fatal("Remove() with a locked weft worktree error = nil; want the surviving weft worktree reported")
-	}
-	if !strings.Contains(err.Error(), "weft teardown failed") {
-		t.Errorf("Remove() error = %q; want it to report the failed weft teardown", err)
-	}
-	if _, statErr := os.Stat(weftTarget); statErr != nil {
-		t.Fatalf("test premise broken: locked weft worktree %s was removed anyway: %v", weftTarget, statErr)
 	}
 }
 

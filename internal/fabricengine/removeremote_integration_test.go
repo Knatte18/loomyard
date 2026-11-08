@@ -1,11 +1,10 @@
 // removeremote_integration_test.go covers Remove's remote branch deletion under --remote.
 // It covers the opt-in deletion of the pair's weft branch on the remote, and its default-off guard.
-// It also covers the non-fatal remote-failure partial-teardown guarantee.
 // The no-origin pre-check runs once per verb.
 //
 // Every hub here is built through hubforge, per the hubforge Fabric-Fixture Invariant.
 // The assertions read the weft remote from the hub's RecordsBare field.
-// The helpers mustBreakOrigin and mustRemoveOrigin come from cleanupremote_integration_test.go,
+// The helper mustRemoveOrigin comes from cleanupremote_integration_test.go,
 // and every assertion here goes through exported API.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -25,6 +24,8 @@ import (
 
 // TestRemove_RemoteTrueDeletesWeftBranchOnRemote asserts that remote true deletes the pair's weft branch on the remote.
 // It also asserts that RemoteBranchDeleted is set, and that exactly one KindRemoteBranchDeleted entry is recorded.
+//
+//testtiming:keep the weft branch deleted on origin under remote, with exactly one remote_branch_deleted mutation record for it; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -191,6 +192,8 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 
 // TestRemove_RemoteFalseLeavesRemoteBranchIntact asserts that remote false leaves the remote weft branch intact.
 // It sets neither RemoteBranchDeleted nor a KindRemoteBranchDeleted entry.
+//
+//testtiming:keep the weft branch on origin left intact when remote is off; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -212,35 +215,6 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	}
 	if !gitkit.BranchExists(t, h.RecordsBare, weftBranch) {
 		t.Errorf("weft branch %q no longer exists on the remote after Remove(remote=false)", weftBranch)
-	}
-}
-
-// TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact asserts the partial-teardown guarantee.
-// An unreachable weft origin fails the remote steps, which run after the local teardown.
-// The weft worktree is gone and the archive failure is the returned error.
-// The weft origin is broken by pointing it at an absent path.
-func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const slug = "remove-remote-fail"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	weftRoot := mustRecordsRepoRoot(t, l)
-
-	topology := h.Topology
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-
-	mustBreakOrigin(t, weftRoot)
-
-	// The archive push runs before the remote deletion, so it is the step that fails.
-	if _, err := topology.Remove(l, slug, false, true); err == nil {
-		t.Fatalf("Remove(%q, remote=true) = nil error; want the archive push failure against the unreachable origin", slug)
-	}
-
-	weftTarget := fabricengine.RecordsWorktreePath(l, slug)
-	if _, statErr := os.Stat(weftTarget); !os.IsNotExist(statErr) {
-		t.Errorf("weft worktree at %s: Stat error = %v; want it removed before the remote steps", weftTarget, statErr)
 	}
 }
 

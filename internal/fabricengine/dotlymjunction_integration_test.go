@@ -377,6 +377,8 @@ func TestDotLymJunction_AdoptionMergesADirectoryPresentOnBothSides(t *testing.T)
 // TestDotLymJunction_AdoptionDoesNotOverreachIntoLymOrPattern checks that the adoption branch covers only .lym.
 // A real _lym or other config-driven junction directory still produces the hard refusal.
 // The refusal exists so that the tool never touches what might be the user's hand-authored content.
+//
+//testtiming:keep a user's real _lym or other junction-named directory and its file never adopted, claimed or changed; coverage of its blocks by other tests does not show an assertion of this
 func TestDotLymJunction_AdoptionDoesNotOverreachIntoLymOrPattern(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

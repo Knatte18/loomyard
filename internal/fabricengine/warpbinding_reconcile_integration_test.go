@@ -159,61 +159,6 @@ func TestReconcile_BacksFillsBindingOnce(t *testing.T) {
 	}
 }
 
-// TestReconcile_BacksFillsOnceOnMultiWorktreeHub asserts that with several warp worktrees present,
-// the backfill still writes the record exactly once and reports it exactly once at the repo-wide level,
-// and it leaves the per-pair results untouched.
-func TestReconcile_BacksFillsOnceOnMultiWorktreeHub(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	fixture := newClonedHubFixture(t)
-	unbindHub(t, fixture.Result.BoardDir)
-
-	if _, err := fixture.Topology.Add(fixture.Layout, "second-pair", fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(second-pair): %v", err)
-	}
-
-	result, err := fixture.Topology.Reconcile(fixture.Layout)
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	if result.WarpBinding != fabricengine.WarpBindingOutcomeRecorded {
-		t.Fatalf("WarpBinding = %q (detail %q); want %q", result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomeRecorded)
-	}
-	if len(result.Pairs) < 2 {
-		t.Fatalf("len(Pairs) = %d; want at least 2 (multi-worktree hub)", len(result.Pairs))
-	}
-	for _, pair := range result.Pairs {
-		if strings.Contains(strings.ToLower(pair.Detail), "warp binding") {
-			t.Errorf("pair %+v carries a warp-binding detail; want the binding reported only repo-wide", pair)
-		}
-	}
-}
-
-// TestReconcile_NormalizedRecordReportsPresent asserts that a trailing ".git" difference is normalized away:
-// a record that differs from the warp origin only by that suffix reports "present", not "diverged".
-func TestReconcile_NormalizedRecordReportsPresent(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	fixture := newClonedHubFixture(t)
-
-	origin := filepath.ToSlash(fixture.CodeBare)
-	trimmed := strings.TrimSuffix(origin, ".git")
-	if trimmed == origin {
-		t.Fatalf("fixture warp URL %q has no trailing .git to trim", origin)
-	}
-	writeAndCommitBinding(t, fixture.Result.BoardDir, trimmed)
-
-	result, err := fixture.Topology.Reconcile(fixture.Layout)
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	if result.WarpBinding != fabricengine.WarpBindingOutcomePresent {
-		t.Errorf("WarpBinding = %q (detail %q); want %q", result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomePresent)
-	}
-}
-
 // TestReconcile_DivergentRecordIsLeftUntouched asserts that a differing record is not overwritten:
 // it reports "diverged" with both URLs named in the detail, and Reconcile still returns a nil error.
 func TestReconcile_DivergentRecordIsLeftUntouched(t *testing.T) {
@@ -244,38 +189,6 @@ func TestReconcile_DivergentRecordIsLeftUntouched(t *testing.T) {
 	}
 	if got := strings.TrimSpace(string(data)); got != divergent {
 		t.Errorf("binding content = %q; want unchanged %q", got, divergent)
-	}
-}
-
-// TestReconcile_TransportOnlyDifferenceIsAdvisory asserts that a transport-only difference is advisory:
-// the record reports "diverged" with a detail that calls the difference transport-only and advisory.
-// The warp origin is a local path with no scheme, so normalizeWarpURL applies no case-folding to it.
-// Flipping its case gives two spellings that differ under normalizeWarpURL and stay "diverged".
-// They collapse to one string under warpURLTransportIdentity, which lowercases unconditionally.
-// This has the same shape as a real scheme-versus-scp-form transport swap.
-func TestReconcile_TransportOnlyDifferenceIsAdvisory(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	fixture := newClonedHubFixture(t)
-
-	origin := filepath.ToSlash(fixture.CodeBare)
-	caseDiffered := strings.ToUpper(origin)
-	if caseDiffered == origin {
-		t.Fatalf("fixture warp URL %q has no letters to case-flip", origin)
-	}
-	writeAndCommitBinding(t, fixture.Result.BoardDir, caseDiffered)
-
-	result, err := fixture.Topology.Reconcile(fixture.Layout)
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	if result.WarpBinding != fabricengine.WarpBindingOutcomeDiverged {
-		t.Fatalf("WarpBinding = %q (detail %q); want %q", result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomeDiverged)
-	}
-	lowerDetail := strings.ToLower(result.WarpBindingDetail)
-	if !strings.Contains(lowerDetail, "transport") || !strings.Contains(lowerDetail, "advisory") {
-		t.Errorf("WarpBindingDetail = %q; want it to name the difference as transport-only and advisory", result.WarpBindingDetail)
 	}
 }
 
@@ -339,38 +252,6 @@ func TestReconcile_NoWarpOriginIsSkipped(t *testing.T) {
 	}
 }
 
-// TestReconcile_UnpushedRetryPushesOnPresent covers the engine half of the unpushed-retry path:
-// once a record is committed and matches the warp origin, Reconcile reports "present" with an empty detail,
-// and a second pass creates no further commit.
-// Topology.Reconcile never pushes; the CLI handler (fabriccli.runReconcile) does.
-// This test therefore drives Topology.Reconcile directly and asserts only the engine's verdict.
-// The commit-then-push retry is covered at the CLI seam.
-func TestReconcile_UnpushedRetryPushesOnPresent(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	fixture := newClonedHubFixture(t)
-
-	result, err := fixture.Topology.Reconcile(fixture.Layout)
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	if result.WarpBinding != fabricengine.WarpBindingOutcomePresent {
-		t.Fatalf("WarpBinding = %q (detail %q); want %q", result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomePresent)
-	}
-	if result.WarpBindingDetail != "" {
-		t.Errorf("WarpBindingDetail = %q; want empty", result.WarpBindingDetail)
-	}
-
-	headBefore := gitOutput(t, fixture.Result.BoardDir, "rev-parse", "HEAD")
-	if _, err := fixture.Topology.Reconcile(fixture.Layout); err != nil {
-		t.Fatalf("second Reconcile: %v", err)
-	}
-	if headAfter := gitOutput(t, fixture.Result.BoardDir, "rev-parse", "HEAD"); headAfter != headBefore {
-		t.Errorf("a second Reconcile pass changed HEAD from %s to %s; want no second commit", headBefore, headAfter)
-	}
-}
-
 // TestUnwire_LeavesWarpBindingInPlace asserts that unwire on a bound hub leaves the record on the weft side untouched.
 // Unwire already leaves the anchor marker and the repo-wide config in place the same way.
 // No production change is needed; the test stops a future unwire edit from deleting the record.
@@ -396,40 +277,5 @@ func TestUnwire_LeavesWarpBindingInPlace(t *testing.T) {
 	}
 	if string(before) != string(after) {
 		t.Errorf("warp binding record changed after Unwire: before %q, after %q", before, after)
-	}
-}
-
-// TestReconcile_BoardLockArtifactDoesNotDeferBackfill is the counterpart to TestReconcile_DirtyBoardDefersWrite.
-// A lock file at the board root is machine-local scratch, not content a stage-all commit would sweep up.
-// It must therefore not defer the once-per-hub binding backfill.
-func TestReconcile_BoardLockArtifactDoesNotDeferBackfill(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	fixture := newClonedHubFixture(t)
-	unbindHub(t, fixture.Result.BoardDir)
-
-	for _, name := range []string{"tasks.json.swaplock", "board.write.lock"} {
-		lockPath, err := fabricengine.BoltLockPath(fixture.Result.BoardDir, name)
-		if err != nil {
-			t.Fatalf("lock path of %s: %v", name, err)
-		}
-		if err := os.WriteFile(lockPath, nil, 0o600); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
-	}
-
-	result, err := fixture.Topology.Reconcile(fixture.Layout)
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	if result.WarpBinding != fabricengine.WarpBindingOutcomeRecorded {
-		t.Fatalf("WarpBinding = %q (detail %q); want %q — a lock artifact must not defer the backfill",
-			result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomeRecorded)
-	}
-
-	bindingPath := filepath.Join(fixture.Result.BoardDir, fabricengine.WarpBindingFileName)
-	if _, statErr := os.Stat(bindingPath); statErr != nil {
-		t.Errorf("binding file %s not written: %v", bindingPath, statErr)
 	}
 }

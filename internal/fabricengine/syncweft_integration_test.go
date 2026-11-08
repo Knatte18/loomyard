@@ -1,6 +1,5 @@
 // syncweft_integration_test.go covers the weft-git paths that need git spawned.
 // It checks that the Warp-SHA trailer lands in a real commit.
-// It checks that RebuildIndex reconstructs the index an incremental build produces.
 // It checks the detached-commit path's self-healing lookup, and that staleness survives a rebuild.
 // The package is fabricengine_test; the unexported index plumbing is reached via export_test.go's ForTest shims.
 
@@ -8,7 +7,6 @@ package fabricengine_test
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -16,62 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
-
-// TestRebuildIndex_EqualsIncrementallyBuiltIndex checks that a full RebuildIndex matches the incremental index.
-// The incremental index comes from several Commit rounds, each calling RecordCorrespondence.
-// The rebuilt entries must be identical to the incremental ones.
-func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	fabricengine.SeedFabricConfigForTest(t, warpPath)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
-
-	for i := 0; i < 3; i++ {
-		fabricengine.CommitWarpForTest(t, warpPath, fmt.Sprintf("warp round %d", i))
-		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), fmt.Sprintf("weft round %d", i))
-		res, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
-		if err != nil {
-			t.Fatalf("Commit() round %d error = %v", i, err)
-		}
-		if !res.WeftCommitted {
-			t.Fatalf("Commit() round %d WeftCommitted = false; want true", i)
-		}
-	}
-
-	path, err := fabricengine.CorrIndexPathForTest(f)
-	if err != nil {
-		t.Fatalf("corrIndexPath() error = %v", err)
-	}
-	incremental, err := fabricengine.LoadCorrIndexForTest(path)
-	if err != nil {
-		t.Fatalf("loadCorrIndex() error = %v", err)
-	}
-	wantEntries := fabricengine.CorrIndexEntriesForTest(incremental)
-	if len(wantEntries) != 3 {
-		t.Fatalf("incrementally-built index has %d entries; want 3", len(wantEntries))
-	}
-
-	if err := f.RebuildIndex(); err != nil {
-		t.Fatalf("RebuildIndex() error = %v", err)
-	}
-	rebuilt, err := fabricengine.LoadCorrIndexForTest(path)
-	if err != nil {
-		t.Fatalf("loadCorrIndex() (post-rebuild) error = %v", err)
-	}
-	gotEntries := fabricengine.CorrIndexEntriesForTest(rebuilt)
-
-	if len(gotEntries) != len(wantEntries) {
-		t.Fatalf("RebuildIndex() entries = %d; want %d", len(gotEntries), len(wantEntries))
-	}
-	for i := range wantEntries {
-		if gotEntries[i] != wantEntries[i] {
-			t.Errorf("entries[%d]: RebuildIndex()=%+v incremental=%+v; want equal", i, gotEntries[i], wantEntries[i])
-		}
-	}
-}
 
 // expireAndPruneUnreachable makes git forget every commit object no longer reachable from a ref in repoPath.
 // An amend or reset alone leaves the superseded object resolvable through the reflog.

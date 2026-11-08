@@ -51,6 +51,7 @@ func squashLand(t *testing.T, h *hubforge.Hub, slug string) {
 	gitkit.Git(t, prime, "commit", "-m", "land "+slug)
 }
 
+//testtiming:keep the squash-landed task branch deleted on origin under remote; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -105,6 +106,7 @@ func TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin(t *testing.T) {
 	}
 }
 
+//testtiming:keep the task branch on origin left untouched when remote is off, even once squash-landed; coverage of its blocks by other tests does not show an assertion of this
 func TestRemove_WithoutRemoteLeavesTaskBranchOnOrigin(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

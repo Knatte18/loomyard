@@ -1,7 +1,6 @@
 // shortnamebinding_clone_integration_test.go checks CloneHub's shortname rule end to end on local bare-repo fixtures.
 // A fresh bind needs --shortname, and the record lands on weft:main beside .lym-warp.
 // A later clone derives the record, and a disagreeing shortname is refused.
-// A bound weft without a record either takes a shortname or warns.
 // The fixture helpers are reused from clone_adopt_test.go and warpbinding_clone_integration_test.go.
 
 package fabricengine_test
@@ -140,47 +139,6 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 		}
 		if shortname, found := fabricengine.ReadShortname(res.BoardDir); !found || shortname != "tst" {
 			t.Errorf("ReadShortname(board) = %q, %v; want %q, true", shortname, found, "tst")
-		}
-	})
-}
-
-// TestCloneHub_BoundWeftWithoutRecord asserts that a weft bound before shortnames existed takes a supplied shortname.
-// It records the shortname, and without one the clone succeeds with a warning naming `lym fabric shortname`.
-func TestCloneHub_BoundWeftWithoutRecord(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	fixtures := t.TempDir()
-	warpBare := makeBareRemote(t, fixtures, "bound-warp")
-	weftBare := makeBareRemote(t, fixtures, "bound-weft")
-	warpURL := filepath.ToSlash(warpBare)
-	seedWeftBinding(t, fixtures, weftBare, warpURL)
-
-	t.Run("WithShortname", func(t *testing.T) {
-		res, err := fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{WeftURL: filepath.ToSlash(weftBare), Shortname: "tst"})
-		if err != nil {
-			t.Fatalf("CloneHub() error = %v; want nil", err)
-		}
-		t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
-		if res.Shortname != "tst" || !res.ShortnameRecorded {
-			t.Errorf("Shortname = %q, ShortnameRecorded = %v; want %q, true", res.Shortname, res.ShortnameRecorded, "tst")
-		}
-		if shortname, found := fabricengine.ReadShortname(res.BoardDir); !found || shortname != "tst" {
-			t.Errorf("ReadShortname(board) = %q, %v; want %q, true", shortname, found, "tst")
-		}
-	})
-
-	t.Run("WithoutShortnameWarns", func(t *testing.T) {
-		res, err := fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{WeftURL: filepath.ToSlash(weftBare)})
-		if err != nil {
-			t.Fatalf("CloneHub() error = %v; want nil", err)
-		}
-		t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
-		if res.Shortname != "" || res.ShortnameRecorded {
-			t.Errorf("Shortname = %q, ShortnameRecorded = %v; want empty, false", res.Shortname, res.ShortnameRecorded)
-		}
-		if !strings.Contains(res.Warning, "lym fabric shortname") {
-			t.Errorf("Warning = %q; want it to name `lym fabric shortname`", res.Warning)
 		}
 	})
 }

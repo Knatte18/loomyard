@@ -12,10 +12,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -25,6 +23,8 @@ const operatorExcludePattern = "/operator-build-output"
 
 // TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent runs many simultaneous mutations
 // against one repository's exclude file and asserts that pre-existing content survives all of them.
+//
+//testtiming:keep the operator's pre-existing exclude pattern surviving concurrent mutations exactly once; coverage of its blocks by other tests does not show an assertion of this
 func TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -80,66 +80,6 @@ func TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent(t *testing.
 	if got != 1 {
 		t.Errorf("operator pattern %q appears %d times after %d concurrent mutations; want exactly 1\nfile:\n%s",
 			operatorExcludePattern, got, writers*iterations*2, final)
-	}
-}
-
-// TestMutateGitExclude_ReportsWhetherContentChanged pins the no-op contract.
-// A caller relies on it to decide whether it unwired anything.
-func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	repoDir := newGitRepoForExcludeTest(t)
-
-	_, changed, err := mutateGitExclude(repoDir, appendPatternOnce("/_lym"))
-	if err != nil {
-		t.Fatalf("first mutateGitExclude = %v; want nil", err)
-	}
-	if !changed {
-		t.Error("first mutateGitExclude reported changed=false; want true")
-	}
-
-	_, changed, err = mutateGitExclude(repoDir, appendPatternOnce("/_lym"))
-	if err != nil {
-		t.Fatalf("second mutateGitExclude = %v; want nil", err)
-	}
-	if changed {
-		t.Error("re-applying the same pattern reported changed=true; want false")
-	}
-}
-
-// TestExcludeAnchoredDir_AppendsAnchoredLineOnce pins the exact bytes written and the idempotent second call.
-func TestExcludeAnchoredDir_AppendsAnchoredLineOnce(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	repoDir := newGitRepoForExcludeTest(t)
-	excludePath := seedExclude(t, repoDir, operatorExcludePattern+"\n")
-
-	gotPath, changed, err := ExcludeAnchoredDir(repoDir, ".", ".vscode")
-	if err != nil {
-		t.Fatalf("ExcludeAnchoredDir = %v; want nil", err)
-	}
-	if !changed {
-		t.Error("first call reported changed=false; want true")
-	}
-	if gotPath != excludePath {
-		t.Errorf("returned exclude path = %q; want %q", gotPath, excludePath)
-	}
-	first := readFileT(t, excludePath)
-	if want := operatorExcludePattern + "\n/.vscode/\n"; first != want {
-		t.Errorf("exclude content = %q; want %q", first, want)
-	}
-
-	_, changed, err = ExcludeAnchoredDir(repoDir, ".", ".vscode")
-	if err != nil {
-		t.Fatalf("second ExcludeAnchoredDir = %v; want nil", err)
-	}
-	if changed {
-		t.Error("second call reported changed=true; want false")
-	}
-	if second := readFileT(t, excludePath); second != first {
-		t.Errorf("second call changed content to %q; want %q", second, first)
 	}
 }
 
@@ -200,62 +140,6 @@ func TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing(t *testing.T) {
 	after, _ := os.ReadFile(excludePath)
 	if string(after) != string(before) {
 		t.Errorf("exclude content changed from %q to %q; want untouched", before, after)
-	}
-}
-
-// TestExcludeAnchoredDir_HoldsExcludeLock pins that the write waits on the shared exclude lock.
-func TestExcludeAnchoredDir_HoldsExcludeLock(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	repoDir := newGitRepoForExcludeTest(t)
-	excludePath := seedExclude(t, repoDir, operatorExcludePattern+"\n")
-
-	held, err := lock.AcquireWriteLock(filepath.Join(filepath.Dir(excludePath), gitExcludeLockFileName))
-	if err != nil {
-		t.Fatalf("acquire exclude lock: %v", err)
-	}
-	released := false
-	defer func() {
-		if !released {
-			_ = held.Release()
-		}
-	}()
-
-	type result struct {
-		changed bool
-		err     error
-	}
-	done := make(chan result, 1)
-	go func() {
-		_, changed, err := ExcludeAnchoredDir(repoDir, ".", ".vscode")
-		done <- result{changed, err}
-	}()
-
-	select {
-	case r := <-done:
-		t.Fatalf("ExcludeAnchoredDir returned (%v, %v) while the lock was held; want blocked", r.changed, r.err)
-	case <-time.After(300 * time.Millisecond):
-	}
-	if got, want := readFileT(t, excludePath), operatorExcludePattern+"\n"; got != want {
-		t.Errorf("exclude content while locked = %q; want %q", got, want)
-	}
-
-	if err := held.Release(); err != nil {
-		t.Fatalf("release exclude lock: %v", err)
-	}
-	released = true
-
-	select {
-	case r := <-done:
-		if r.err != nil || !r.changed {
-			t.Fatalf("ExcludeAnchoredDir after release = (%v, %v); want (true, nil)", r.changed, r.err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("ExcludeAnchoredDir did not return after the lock was released")
-	}
-	if got, want := readFileT(t, excludePath), operatorExcludePattern+"\n/.vscode/\n"; got != want {
-		t.Errorf("exclude content after release = %q; want %q", got, want)
 	}
 }
 

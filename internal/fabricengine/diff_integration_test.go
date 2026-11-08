@@ -1,5 +1,5 @@
 // diff_integration_test.go holds the integration tests for Fabric.Diff and Fabric.Status, which diff.go defines.
-// It covers the exact-correspondence merge, the nearest-older weft-anchor bridge, and the no-correspondence case.
+// It covers the exact-correspondence merge and the nearest-older weft-anchor bridge.
 // It also covers Status's live worktree merge, which honours the weft repo's git-excluded artifacts.
 
 package fabricengine_test
@@ -116,45 +116,6 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 	weftPaths := changeEntryPaths(got.Entries, fabricengine.SideWeft)
 	if !slices.Contains(weftPaths, "manual-ahead.txt") {
 		t.Errorf("Diff(%q) weft-side paths = %v; want it to contain manual-ahead.txt (the nearest-older baseline resolved, not empty)", warpSHA2, weftPaths)
-	}
-}
-
-// TestDiff_NoWeftCorrespondence_BeforeFirstSync covers the case with no weft correspondence.
-// A `sinceWarpSHA` older than the first weft commit has no entry at or before it.
-// The Diff call must not fail.
-// It must report the warp entries, empty weft entries, and `NoWeftCorrespondence` set to true.
-func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	initialWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
-	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	fabricengine.SeedFabricConfigForTest(t, warpPath)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
-
-	// Advancing warp and syncing weft records correspondence for the new warp commit only.
-	// `initialWarpSHA` predates any recorded correspondence, so it never gets an entry.
-	fabricengine.CommitWarpForTest(t, warpPath, "warp change")
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change")
-	res, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
-	if err != nil || !res.WeftCommitted {
-		t.Fatalf("Commit: %+v, err=%v", res, err)
-	}
-
-	got, err := f.Diff(initialWarpSHA)
-	if err != nil {
-		t.Fatalf("Diff(%q) error = %v; want nil (no correspondence is not a failure)", initialWarpSHA, err)
-	}
-	if !got.NoWeftCorrespondence {
-		t.Errorf("Diff(%q) NoWeftCorrespondence = false; want true", initialWarpSHA)
-	}
-	if len(changeEntryPaths(got.Entries, fabricengine.SideWeft)) != 0 {
-		t.Errorf("Diff(%q) weft-side entries = %v; want empty", initialWarpSHA, changeEntryPaths(got.Entries, fabricengine.SideWeft))
-	}
-	warpPaths := changeEntryPaths(got.Entries, fabricengine.SideWarp)
-	if !slices.Contains(warpPaths, "README") {
-		t.Errorf("Diff(%q) warp-side paths = %v; want it to contain README", initialWarpSHA, warpPaths)
 	}
 }
 

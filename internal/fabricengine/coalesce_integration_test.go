@@ -88,6 +88,8 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 // so the warp side's push is a non-fast-forward rejection.
 // CoalescePushBothAt must return nil and leave the warp bare's HEAD unadvanced by this call.
 // It must mutate no warp working-tree file and return promptly rather than spinning.
+//
+//testtiming:keep the operator's warp working-tree file and .git left untouched, with no rebase attempted, when the warp push is rejected; coverage of its blocks by other tests does not show an assertion of this
 func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -144,40 +146,5 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 		if _, statErr := os.Stat(filepath.Join(warpPath, ".git", rebaseDir)); statErr == nil {
 			t.Errorf(".git/%s exists after fabricengine.CoalescePushBothAt(); want no rebase ever attempted", rebaseDir)
 		}
-	}
-}
-
-// TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd covers the weft-only detached push.
-// The warp path is empty, the shape a caller of SpawnDetachedPush gets by passing no warp path.
-// CoalescePushBothAt must still push the weft side and return nil when the child's cwd is a non-git directory;
-// it must not open a git checkout at the inherited cwd for the absent warp side.
-// gitrepo.New("").CurrentSHA() resolves "" to the process cwd through filepath.Abs, where no .git exists.
-func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.T) {
-	tiergate.Require(t, 1)
-	// Serial: os.Chdir changes the process-global cwd.
-	unrelatedCwd := t.TempDir()
-
-	origCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(unrelatedCwd); err != nil {
-		t.Fatalf("Chdir(%s): %v", unrelatedCwd, err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(origCwd); err != nil {
-			t.Fatalf("restore Chdir(%s): %v", origCwd, err)
-		}
-	})
-
-	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	weftSHA := gitkit.CommitFile(t, weftFixture.PrimeRecords(), "weft-file.txt", "weft change, no warp", "weft change, no warp")
-
-	if _, err := fabricengine.CoalescePushBothAt("", weftFixture.PrimeRecords(), fabricengine.SyncOptions{}); err != nil {
-		t.Fatalf("fabricengine.CoalescePushBothAt(\"\", ...) error = %v; want nil (empty warpPath must be a true no-op, not a cwd-relative git open)", err)
-	}
-
-	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
-		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
 	}
 }

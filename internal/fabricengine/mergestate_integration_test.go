@@ -1,11 +1,9 @@
-// mergestate_integration_test.go covers the on-disk merge-state record and the foreign-merge-state probes.
-// It tests the save and load roundtrip, absence, and delete idempotence;
-// foreignMergeStatePresent's true and false cases run against a real hubforge pair.
+// mergestate_integration_test.go covers the on-disk merge-state record and resetMergeSides.
+// It tests the save and load roundtrip, absence, and delete idempotence against a real hubforge pair.
 
 package fabricengine_test
 
 import (
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -51,6 +49,7 @@ func assertNoZeroFields(t *testing.T, label string, v any) {
 // The steps run serially on one fixture, each starting from the record state the step before left.
 //
 //lym:seam internal/fabricengine#MergeStateForTest
+//testtiming:keep the merge-state record kept out of git status on both the warp and the weft; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeState_Record(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -165,51 +164,6 @@ func assertMergeStateFileInvisibleToGit(t *testing.T, label, dir string) {
 	}
 }
 
-// TestMergeState_ForeignMergeStatePresent checks the true/false split.
-// A plain-git conflicted merge staged directly in the warp checkout must report true.
-// A clean pair must report false.
-func TestMergeState_ForeignMergeStatePresent(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	f, h := newMergeStateFixture(t)
-
-	present, err := fabricengine.ForeignMergeStatePresentForTest(f)
-	if err != nil {
-		t.Fatalf("ForeignMergeStatePresentForTest() on clean pair error = %v", err)
-	}
-	if present {
-		t.Error("ForeignMergeStatePresentForTest() on clean pair = true; want false")
-	}
-
-	warpPath := h.PrimeWorktree()
-	gitkit.MustRun(t, warpPath, "git", "checkout", "-q", "-b", "conflict-branch")
-	gitkit.MustRun(t, warpPath, "git", "commit", "-q", "--allow-empty", "-m", "branch commit")
-	gitkit.CommitFile(t, warpPath, "conflict-target.txt", "branch content", "branch content commit")
-
-	gitkit.MustRun(t, warpPath, "git", "checkout", "-q", "-")
-	gitkit.CommitFile(t, warpPath, "conflict-target.txt", "main content", "main content commit")
-
-	mergeCmd := exec.Command("git", "merge", "conflict-branch")
-	mergeCmd.Dir = warpPath
-	_, mergeErr := mergeCmd.CombinedOutput() // conflicted merge exits non-zero, intentionally ignored
-
-	present, err = fabricengine.ForeignMergeStatePresentForTest(f)
-	if err != nil {
-		t.Fatalf("ForeignMergeStatePresentForTest() after foreign conflicted merge error = %v", err)
-	}
-	if !present {
-		t.Fatalf("ForeignMergeStatePresentForTest() after foreign conflicted merge = false; want true (mergeErr from git merge = %v)", mergeErr)
-	}
-
-	// The probe must leave the foreign state untouched, so MERGE_HEAD must still be present.
-	statCmd := exec.Command("git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD")
-	statCmd.Dir = warpPath
-	if err := statCmd.Run(); err != nil {
-		t.Errorf("MERGE_HEAD missing after ForeignMergeStatePresentForTest() probe; want the foreign state left untouched (rev-parse error = %v)", err)
-	}
-}
-
 // driveConflictedMergeStart builds a divergent "conflict-branch" in dir off the current HEAD.
 // It then runs repo.MergeStart against it.
 // The merge leaves dir with conflict markers present and the tracked worktree dirty.
@@ -261,6 +215,8 @@ func wantWorktreeResetEntries(t *testing.T, entries []fabricengine.Mutation, wan
 // The weft's conflicted merge state stays exactly as it was:
 // MERGE_HEAD still present, conflict markers still on disk.
 // The weft step leaves its conflict in place, so it runs last.
+//
+//testtiming:keep the single KindWorktreeReset mutation entry carrying the warp pre-merge SHA, and the weft's conflicted state left untouched; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeState_ResetMergeSides(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

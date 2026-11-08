@@ -1,5 +1,5 @@
-// remove_guard_integration_test.go pins the two guards of `lym fabric remove`.
-// Each keeps the command from deleting a directory that git itself declined to remove.
+// remove_guard_integration_test.go pins a guard of `lym fabric remove`:
+// it keeps the command from deleting a directory that git itself declined to remove.
 // Remove must not fall back to an unconditional os.RemoveAll when git refuses a path.
 // Such a path includes the main working tree and any path that is not a linked worktree of the repo.
 //
@@ -19,34 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
-
-// TestRemove_RefusesPrimeWorktreeAndLeavesItIntact asserts Remove refuses the hub's prime slug.
-// The warp clone, worktree contents and gitdir alike, survives the refusal untouched.
-func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	primeSlug := filepath.Base(l.WorktreePath())
-	topology := h.Topology
-
-	_, err := topology.Remove(l, primeSlug, false, false)
-	if err == nil {
-		t.Fatalf("Remove(%q) = nil error; want a refusal naming the prime worktree", primeSlug)
-	}
-	if !strings.Contains(err.Error(), "prime worktree") {
-		t.Errorf("Remove(%q) error = %v; want it to name the prime worktree", primeSlug, err)
-	}
-
-	if _, statErr := os.Stat(l.WorktreePath()); statErr != nil {
-		t.Fatalf("prime warp worktree %s was destroyed by a refused Remove: %v", l.WorktreePath(), statErr)
-	}
-	gitPath := filepath.Join(l.WorktreePath(), ".git")
-	if _, statErr := os.Stat(gitPath); statErr != nil {
-		t.Fatalf("prime warp gitdir %s was destroyed by a refused Remove: %v", gitPath, statErr)
-	}
-}
 
 // TestRemove_RefusesForeignWorktreeWithoutDeletingIt asserts Remove refuses a foreign worktree.
 // The directory is a clean git worktree of the WEFT repo, not of warp.

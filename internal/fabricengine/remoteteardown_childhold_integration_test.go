@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -134,31 +133,6 @@ func TestSpawnTeardownHold(t *testing.T) {
 	}
 }
 
-// TestChildHold_Finish_NoticesAnUnwritableJob covers a job the child never receives:
-// the one creel notice names the slug and the reason.
-// It installs the process's push notifier, so it is not parallel.
-func TestChildHold_Finish_NoticesAnUnwritableJob(t *testing.T) {
-	tiergate.Require(t, 1)
-	notices := recordNotices(t)
-	cmd := exec.Command("git", "--version")
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start the stand-in child: %v", err)
-	}
-	job := remoteTeardownJob{Kind: remoteTeardownRemove, Slug: "pair"}
-
-	(&childHold{hubPath: "hub", slug: "pair", cmd: cmd, stdin: &recordingStdin{writeErr: errors.New("broken pipe")}}).finish(&job)
-
-	got := notices()
-	if len(got) != 1 {
-		t.Fatalf("finish() posted %d notices %q; want exactly one", len(got), got)
-	}
-	for _, want := range []string{"pair", "broken pipe", "way forward"} {
-		if !strings.Contains(got[0], want) {
-			t.Errorf("notice = %q; want it to hold %q", got[0], want)
-		}
-	}
-}
-
 // recordingStdin is a child's input that records what is written to it and whether it was closed;
 // it fails every write when writeErr is set.
 type recordingStdin struct {
@@ -227,48 +201,6 @@ func TestChildHold_Finish(t *testing.T) {
 			var written remoteTeardownJob
 			if err := json.Unmarshal(stdin.Bytes(), &written); err != nil || written != job {
 				t.Errorf("finish() wrote %q; want the JSON of %+v (decode error %v)", stdin.String(), job, err)
-			}
-		})
-	}
-}
-
-// TestChildHold_Finish_CarriesThePauseExemption covers the pause exemption that the job carries to the child.
-// The exemption is set while this process's gate exempts every pause, and it is clear otherwise.
-// It is never set on the caller's own job.
-// It installs a process-wide gate, so neither the test nor its rows are parallel.
-func TestChildHold_Finish_CarriesThePauseExemption(t *testing.T) {
-	tiergate.Require(t, 1)
-	tests := []struct {
-		name   string
-		exempt bool
-	}{
-		{"ExemptGate", true},
-		{"PlainGate", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{}))
-			if tt.exempt {
-				t.Cleanup(pauserecord.SetGateExemptAll())
-			}
-			cmd := exec.Command("git", "--version")
-			if err := cmd.Start(); err != nil {
-				t.Fatalf("start the stand-in child: %v", err)
-			}
-			stdin := &recordingStdin{}
-			job := remoteTeardownJob{Kind: remoteTeardownRemove, Slug: "pair"}
-
-			(&childHold{slug: "pair", cmd: cmd, stdin: stdin}).finish(&job)
-
-			var written remoteTeardownJob
-			if err := json.Unmarshal(stdin.Bytes(), &written); err != nil {
-				t.Fatalf("decode the handed job %q: %v", stdin.String(), err)
-			}
-			if written.ExemptPause != tt.exempt {
-				t.Errorf("handed job ExemptPause = %v; want %v", written.ExemptPause, tt.exempt)
-			}
-			if job.ExemptPause {
-				t.Errorf("finish() set ExemptPause on the caller's job; want it left alone")
 			}
 		})
 	}

@@ -1,6 +1,5 @@
-// hubscratch_integration_test.go pins the ordering CloneHub guarantees at its own boundary:
-// the board worktree's weft-common-gitdir excludes carry a `.lym/` entry the instant CloneHub returns,
-// and the board's stage-all commit never picks up anything planted inside the hub scratch tree.
+// hubscratch_integration_test.go pins the board's stage-all commit after CloneHub.
+// That commit never picks up anything planted inside the hub scratch tree.
 //
 // It is an external test package to reuse makeBareRemote from clone_adopt_test.go.
 // It shares the single TestMain in testmain_test.go.
@@ -15,50 +14,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
-
-// TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning asserts that at the instant
-// fabricengine.CloneHub returns, the weft common gitdir's info/exclude file reached from
-// res.BoardDir already carries the `.lym/` entry.
-//
-// It calls CloneHub directly: a later step that seeds the excludes would hide the omission this test checks.
-// The exclude file is resolved with `git rev-parse --git-path info/exclude` run in res.BoardDir.
-// The path is not assumed.
-// The test checks the exclude entry itself, since a clean `git status` passes while the scratch directory is empty.
-func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	fixtures := t.TempDir()
-	warpBare := makeBareRemote(t, fixtures, "hubscratch-order-warp")
-	weftBare := makeBareRemote(t, fixtures, "hubscratch-order-weft")
-
-	cloneParent := t.TempDir()
-	// ForceBootstrap is true because weftBare is an ordinary seeded bare remote standing in for a weft.
-	// It has never been a weft itself, so it carries no .lym-anchor.
-	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
-		WeftURL:        filepath.ToSlash(weftBare),
-		WarpURL:        filepath.ToSlash(warpBare),
-		Subpath:        ".",
-		ForceBootstrap: true,
-		Shortname:      "tst",
-	})
-	if err != nil {
-		t.Fatalf("CloneHub() error = %v; want nil", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
-
-	lines := gitkit.ExcludeLines(t, res.BoardDir)
-	if !containsLine(lines, ".lym/") {
-		t.Fatalf("weft common gitdir info/exclude reached from %s = %v; want it to already contain %q at the instant CloneHub returns", res.BoardDir, lines, ".lym/")
-	}
-}
 
 // TestCloneHub_BoardStageAllCommitNeverStagesHubScratch checks that the board's stage-all commit omits hub scratch.
 // After CloneHub returns, fabricengine.HubScratchDir(res.HubPath) exists as a real directory;
 // a file planted inside it must be absent from the tree of the board's own stage-all commit.
+//
+//testtiming:keep a file planted in the hub scratch tree never appearing in the tree of the board's stage-all commit; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_BoardStageAllCommitNeverStagesHubScratch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

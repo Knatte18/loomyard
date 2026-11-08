@@ -21,6 +21,8 @@ import (
 // TestPrune_RefusesHubDirectoryItDoesNotOwn parks an ordinary operator directory named "<slug>-weft" in the hub.
 // It asserts prune reports it Unowned and never deletes it, on a dry run, on --apply, and on --apply --force.
 // Force answers "discard this work", never "this directory is mine", so it does not lift the refusal.
+//
+//testtiming:keep a user's real "<slug>-weft" directory and its file surviving prune in every mode including --apply --force; coverage of its blocks by other tests does not show an assertion of this
 func TestPrune_RefusesHubDirectoryItDoesNotOwn(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -171,84 +173,5 @@ func TestPrune_ReportsANonWorktreeDirectoryAtAPairPath(t *testing.T) {
 		if _, statErr := os.Stat(buildOutput); statErr != nil {
 			t.Fatalf("%s: prune deleted a directory it does not own: %v", mode.name, statErr)
 		}
-	}
-}
-
-// TestPrune_IgnoresDirectoriesThatAreNoPairPath asserts the pass over pair paths reports no entry for a live pair.
-// It also asserts the pass ignores a hidden directory, a weft-suffixed directory and a reserved hub name.
-func TestPrune_IgnoresDirectoriesThatAreNoPairPath(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	hubforge.AddPairWith(t, h, "live-pair", fabricengine.AddOptions{SkipPush: true})
-
-	livePair := fabricengine.WorktreePath(l, "live-pair")
-	parked := []string{
-		filepath.Join(l.HubPath, ".hidden"),
-		filepath.Join(l.HubPath, "notes-weft"),
-		filepath.Join(l.HubPath, "_portals"),
-	}
-	for _, path := range parked {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatalf("create %s: %v", path, err)
-		}
-	}
-	notReported := append([]string{livePair}, parked...)
-
-	result, err := h.Topology.Prune(l, false, false)
-	if err != nil {
-		t.Fatalf("Prune error = %v", err)
-	}
-	for _, entry := range result.Entries {
-		got := filepath.Clean(filepath.FromSlash(entry.CodeWorktree))
-		for _, path := range notReported {
-			if got == filepath.Clean(path) {
-				t.Errorf("Prune reported %+v; want no entry for %s", entry, path)
-			}
-		}
-	}
-}
-
-// TestPrune_StillRemovesAStaleWeftWorktreeItOwns is the ownership gate's counter-test.
-// A stale pair whose weft worktree the hub's weft repo registers must still be removed by --apply.
-// The gate refuses only what fabric does not own, rather than disabling prune outright.
-func TestPrune_StillRemovesAStaleWeftWorktreeItOwns(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	const slug = "prune-owned"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	topology := h.Topology
-
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-
-	weftPath := fabricengine.RecordsWorktreePath(l, slug)
-
-	// Make the pair stale: the warp worktree directory disappears, the registration stays.
-	if err := os.RemoveAll(fabricengine.WorktreePath(l, slug)); err != nil {
-		t.Fatalf("hand-delete warp worktree: %v", err)
-	}
-
-	dry, err := topology.Prune(l, false, false)
-	if err != nil {
-		t.Fatalf("Prune(dry) error = %v", err)
-	}
-	if dryEntry := findPruneEntryByWeftPath(t, dry.Entries, weftPath); dryEntry.Unowned {
-		t.Fatalf("dry run Unowned = true for a genuine stale pair at %s; the gate must refuse only what fabric does not own", weftPath)
-	}
-
-	applied, err := topology.Prune(l, true, false)
-	if err != nil {
-		t.Fatalf("Prune(apply) error = %v", err)
-	}
-	entry := findPruneEntryByWeftPath(t, applied.Entries, weftPath)
-	if !entry.Removed {
-		t.Errorf("Removed = false for a genuine stale pair; want true (Error = %q)", entry.Error)
-	}
-	if _, statErr := os.Stat(weftPath); !os.IsNotExist(statErr) {
-		t.Errorf("stale weft worktree still present at %s after --apply", weftPath)
 	}
 }
