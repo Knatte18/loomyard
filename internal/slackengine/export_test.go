@@ -29,6 +29,9 @@ func (in *inbound) Start() { in.start() }
 // Drain makes the reads the inbox's hints ask for.
 func (in *inbound) Drain(ctx context.Context) (bool, error) { return in.drain(ctx) }
 
+// TakeAwayFrom returns the orchs forwarded an operator's message that turned the presence, and forgets them.
+func (in *inbound) TakeAwayFrom() map[string]bool { return in.takeAwayFrom() }
+
 // RetryOwed makes each owed read whose time has come.
 func (in *inbound) RetryOwed(ctx context.Context) bool { return in.retryOwed(ctx) }
 

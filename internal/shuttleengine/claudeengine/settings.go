@@ -122,16 +122,21 @@ func creelMailHookCommand(quotedFlagDir string) string {
 // Claude Code runs an event's hooks in parallel,
 // so a separate creel hook could not keep the recording from logging a turn end the mail then continues.
 // The command reads the hook input once.
-// When the strand's flag stands in the directory at quotedFlagDir, it pipes that input to creel's claim verb.
+// A non-empty turnHookCommand gets that input first, through turnHookStep,
+// so it sees the end of every turn, one whose handed-out mail continues the turn included.
+// When the strand's flag stands in the directory at quotedFlagDir, the command pipes the input to creel's claim verb.
 // That runs from the session's project directory, and its output is the hook's.
 // An exit 0 of that step means mail was handed to the session, which continues the turn,
 // and the command then exits 0 having appended nothing to the events file at quotedEventsPath.
 // Otherwise, or when the flag is absent, the command appends the Stop stamp and the input as the recording command does.
 // It exits with that append's status, and what the delivery step printed stays the hook's output.
 // An echo printed with exit 1 relies on that output to reach the operator.
-// A non-empty turnHookCommand runs after that append, as recordHeldStop describes.
 func creelStopHookCommand(quotedFlagDir, quotedEventsPath, turnHookCommand string) string {
-	return creelStopDelivery(quotedFlagDir) + `; ` + recordHeldStop(quotedEventsPath, turnHookCommand)
+	command := `in=$(cat); `
+	if turnHookCommand != "" {
+		command += turnHookStep(turnHookCommand) + `; `
+	}
+	return command + creelStopDelivery(quotedFlagDir) + `; ` + recordHeldStop(quotedEventsPath, "")
 }
 
 // turnHookEngineName is the registry name a turn hook command is given as its last argument.
@@ -163,16 +168,16 @@ func turnHookStep(turnHookCommand string) string {
 // It always exits 0;
 // whatever the delivery printed, an echo with exit 1 included, reaches Claude Code as the hook's output.
 func creelOpenStopHookCommand(quotedFlagDir string) string {
-	return creelStopDelivery(quotedFlagDir) + `; true`
+	return `in=$(cat); ` + creelStopDelivery(quotedFlagDir) + `; true`
 }
 
-// creelStopDelivery returns the opening of a creel Stop hook command:
-// it reads the hook input into $in and forms the strand's flag name.
+// creelStopDelivery returns the delivery step of a creel Stop hook command, over the hook input held in $in:
+// it forms the strand's flag name.
 // When that flag stands in the directory at quotedFlagDir, it pipes the input to creel's mail command.
 // The command runs from the session's project directory, and the shell exits 0 when that hands out mail.
 func creelStopDelivery(quotedFlagDir string) string {
 	deliver := `if [ -f ` + quotedFlagDir + `/"$f$n" ]; then cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; printf '%s' "$in" | ` + creelMailCommand + ` && exit 0; fi`
-	return `in=$(cat); ` + shuttleengine.StrandFlagNameShell() + `; ` + deliver
+	return shuttleengine.StrandFlagNameShell() + `; ` + deliver
 }
 
 // creelWaitCommand is the command the idle waiter hook runs.
@@ -424,7 +429,7 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // A non-empty turnHookCommand reads the hook input once in the UserPromptSubmit and Stop commands.
 // It runs after their recording on the same input, through turnHookStep;
 // the prompt command still exits 0, and the Stop command exits with its recording's status.
-// In a merged creel Stop command it runs only on the path that records a turn end.
+// In a merged creel Stop command it runs first, before creel's delivery, whether or not mail is then handed out.
 // scope is the session's scope, carried as the document's last keys; the zero scope adds none.
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, turnHookCommand, creelFlagDirPosix string, scope sessionScope) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)

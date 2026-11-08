@@ -52,6 +52,8 @@
 // No writer of the presence mails a notice.
 // Each running relay mails its own hub's orchs a `[slack presence]` notice when it sees the presence change.
 // It does so whoever changed it.
+// A notice of slack leaves out the orch that was forwarded the operator's message which turned the presence.
+// That message already woke the orch.
 // A message that cannot be handled holds the later ones until it succeeds or is five minutes old.
 // The relay then answers in Slack and moves past it.
 //
@@ -72,7 +74,10 @@
 // `RunRelay` is the relay process: it holds the relay lock and makes its first creel read before any Slack call.
 // It then checks the tokens and the setup and ensures the hub's channels.
 // It runs the socket holder, the outbound read and a wake loop.
-// The outbound read waits from a five-second floor and doubles to sixty while it finds nothing.
+// The outbound read is a long poll of the relay's mailbox, bounded at sixty seconds.
+// A poll that found no mail once it had waited out the five-second floor is followed at once by the next.
+// So mail posted while the relay is idle reaches Slack when it is posted.
+// After mail the read waits the floor, and after a failure, or a poll that found nothing sooner, it doubles to sixty.
 // The wake loop wakes on a file event in the inbox or on the presence file.
 // It never wakes within a second of its previous wake.
 // It also wakes at the end of each outbound read.

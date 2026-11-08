@@ -79,7 +79,9 @@ func newOutbound(geom Geometry, mailbox Mailbox, slack SlackClient, clock Clock,
 
 // read waits for mail in the relay's mailbox and posts it to the channels of its senders.
 // It returns how long to wait before the next read.
-// The wait is the floor after mail arrived, doubled after a read with none, and a rate limit's retry wait.
+// The wait is the floor after mail arrived and a rate limit's retry wait after a limit.
+// It is none after a poll that found no mail once it had waited out the floor, since that poll was the wait.
+// It doubles after a read that failed or that found no mail sooner.
 // The mail is acknowledged only when creel confirms it.
 // Until then the outbox record keeps each handled message, so a redelivered read posts nothing twice.
 // A failed post returns its error with the read released; the record stays until a confirmed acknowledgement clears it.
@@ -95,6 +97,7 @@ func (out *outbound) read(ctx context.Context) (time.Duration, error) {
 	}
 	out.saveFault = nil
 	handlerRan := false
+	pollStarted := out.clock.Now()
 	err = out.mailbox.ReadWait(outboundReadTimeout, func(messages []creelengine.Message) error {
 		handlerRan = true
 		return out.post(ctx, messages)
@@ -106,7 +109,7 @@ func (out *outbound) read(ctx context.Context) (time.Duration, error) {
 	case errors.Is(err, errReadBudget):
 		return out.wait.afterActivity(), out.saveFault
 	case errors.Is(err, creelengine.ErrWaitTimeout) && !handlerRan:
-		return out.wait.afterIdle(), nil
+		return out.wait.afterEmptyPoll(out.clock.Now().Sub(pollStarted)), nil
 	}
 	err = errors.Join(err, out.saveFault)
 	if limit, ok := isRateLimit(err); ok {

@@ -281,8 +281,9 @@
 // Each then reads the hook input once, records it, and pipes it to the turn hook command with `claude` appended.
 // That runs in a subshell from `$CLAUDE_PROJECT_DIR`, with its output and errors discarded.
 // The prompt command still exits 0, and the Stop command exits with its recording's status.
-// In the merged creel Stop command the turn hook runs only on the path that records a turn end,
-// so a Stop that handed out mail, which the session continues, runs no turn hook.
+// In the merged creel Stop command the turn hook runs first, before creel's delivery,
+// so a Stop that hands out mail, which the session continues, runs it too:
+// an orch's turn reply reaches Slack whether or not mail waited at the turn's end.
 // The waiter entry runs `lym creel hook-wait claude` from `$CLAUDE_PROJECT_DIR` whether or not a flag stands.
 // It sets `asyncRewake` true and a timeout of 86400 seconds.
 // Claude Code therefore runs it in the background and wakes the idle session when it exits 2.

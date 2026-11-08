@@ -407,12 +407,12 @@ func TestTurnHook_LeavesTheCommandsExitStatusToTheRecording(t *testing.T) {
 	}
 }
 
-// TestTurnHook_MergedCreelStopRunsItOnlyWhenATurnEndIsRecorded runs the merged Stop command.
+// TestTurnHook_MergedCreelStopRunsItOnEveryTurnEnd runs the merged Stop command.
 // The strand's flag is standing.
 // Mail handed out (the stub `lym` exits 0) continues the turn.
-// So the command records nothing and the turn hook does not run.
-// Otherwise the turn end is recorded and the turn hook runs, and the stub `lym` output stays the command's output.
-func TestTurnHook_MergedCreelStopRunsItOnlyWhenATurnEndIsRecorded(t *testing.T) {
+// So the command records nothing, yet the turn hook runs.
+// Otherwise the turn end is recorded and the turn hook runs too, and the stub `lym` output stays the command's output.
+func TestTurnHook_MergedCreelStopRunsItOnEveryTurnEnd(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -444,8 +444,8 @@ func TestTurnHook_MergedCreelStopRunsItOnlyWhenATurnEndIsRecorded(t *testing.T) 
 				t.Errorf("hook stdout = %q, exit = %d; want %q and exit 0", stdout, exitCode, tt.wantStdout)
 			}
 			_, hookErr := os.Stat(fx.hookArgvPath)
-			if ran := hookErr == nil; ran != tt.wantRecord {
-				t.Errorf("turn hook ran = %v; want %v", ran, tt.wantRecord)
+			if hookErr != nil {
+				t.Errorf("the turn hook did not run: %v", hookErr)
 			}
 			file, _ := os.ReadFile(fx.eventsPath)
 			if recorded := len(file) != 0; recorded != tt.wantRecord {
@@ -570,8 +570,10 @@ func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
 }
 
 // TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock runs the merged Stop command under sh.
-// A stub `lym` on PATH records the standard input it got, prints a fixed output, and exits as each row says.
+// A stub `lym` on PATH records the standard input each of its verbs got and prints a fixed output.
+// It exits as each row says.
 // Mail written (the stub exits 0) leaves the events file empty and the output on standard output.
+// A turn hook gets the payload whether or not mail is written, and its output never reaches the hook's.
 // Otherwise, with the flag absent as well, the file holds the Stop stamp and then the payload byte for byte.
 // ParseEvents reads that as the payload alone.
 // An exit 1 that printed an echo alone records the turn end and leaves the printed output as the hook's.
@@ -598,15 +600,19 @@ func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 		wantFailure bool
 		// open runs `creelOpenStopHookCommand` in place of the merged command, which records nothing and always exits 0.
 		open bool
+		// turnHook gives the merged command the turn hook `lym slack hook`.
+		turnHook bool
 	}{
-		{"FlagStandsAndMailIsWritten", true, "0", mail, "", mail + "\n", false, true, false, false},
-		{"FlagStandsAndAnEchoAloneIsWritten", true, "1", echo, "", echo + "\n", true, true, false, false},
-		{"FlagStandsAndNothingIsClaimed", true, "1", "", "", "", true, true, false, false},
-		{"FlagAbsent", false, "0", mail, "", "", true, false, false, false},
-		{"UnwritableEventsFile", true, "1", "", "missing-dir", "", false, true, true, false},
-		{"OpenFlagStandsAndMailIsWritten", true, "0", mail, "", mail + "\n", false, true, false, true},
-		{"OpenFlagStandsAndAnEchoReachesTheOperator", true, "1", echo, "", echo + "\n", false, true, false, true},
-		{"OpenFlagAbsent", false, "0", mail, "", "", false, false, false, true},
+		{"FlagStandsAndMailIsWritten", true, "0", mail, "", mail + "\n", false, true, false, false, false},
+		{"FlagStandsAndAnEchoAloneIsWritten", true, "1", echo, "", echo + "\n", true, true, false, false, false},
+		{"FlagStandsAndNothingIsClaimed", true, "1", "", "", "", true, true, false, false, false},
+		{"FlagAbsent", false, "0", mail, "", "", true, false, false, false, false},
+		{"UnwritableEventsFile", true, "1", "", "missing-dir", "", false, true, true, false, false},
+		{"OpenFlagStandsAndMailIsWritten", true, "0", mail, "", mail + "\n", false, true, false, true, false},
+		{"OpenFlagStandsAndAnEchoReachesTheOperator", true, "1", echo, "", echo + "\n", false, true, false, true, false},
+		{"OpenFlagAbsent", false, "0", mail, "", "", false, false, false, true, false},
+		{"TurnHookGetsTheInputWhenMailIsWritten", true, "0", mail, "", mail + "\n", false, true, false, false, true},
+		{"TurnHookGetsTheInputWhenTheTurnEnds", false, "0", mail, "", "", true, false, false, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -619,8 +625,9 @@ func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			stdinPath := filepath.Join(root, "stub-stdin")
-			stub := "#!/bin/sh\ncat > \"$STUB_STDIN\"\n[ -n \"$STUB_OUT\" ] && printf '%s\\n' \"$STUB_OUT\"\nexit \"$STUB_EXIT\"\n"
+			stdinPrefix := filepath.Join(root, "stub-stdin")
+			stdinPath, turnHookStdinPath := stdinPrefix+".creel", stdinPrefix+".slack"
+			stub := "#!/bin/sh\ncat > \"$STUB_STDIN.$1\"\n[ -n \"$STUB_OUT\" ] && printf '%s\\n' \"$STUB_OUT\"\nexit \"$STUB_EXIT\"\n"
 			if err := os.WriteFile(filepath.Join(binDir, "lym"), []byte(stub), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -630,13 +637,17 @@ func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 				}
 			}
 			eventsPath := filepath.Join(root, tt.eventsDir, "events.jsonl")
-			command := creelStopHookCommand(shQuote(flagDir), shQuote(eventsPath), "")
+			turnHookCommand := ""
+			if tt.turnHook {
+				turnHookCommand = "lym slack hook"
+			}
+			command := creelStopHookCommand(shQuote(flagDir), shQuote(eventsPath), turnHookCommand)
 			if tt.open {
 				command = creelOpenStopHookCommand(shQuote(flagDir))
 			}
 			env := []string{
 				"PATH=" + binDir + ":/usr/bin:/bin", "CLAUDE_PROJECT_DIR=" + projectDir, agentname.StrandNameEnv + "=" + name,
-				"STUB_STDIN=" + stdinPath, "STUB_OUT=" + tt.stubOut, "STUB_EXIT=" + tt.stubExit,
+				"STUB_STDIN=" + stdinPrefix, "STUB_OUT=" + tt.stubOut, "STUB_EXIT=" + tt.stubExit,
 			}
 
 			stdout, exitCode := runHookCommand(t, command, payload, env)
@@ -649,6 +660,13 @@ func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 				t.Errorf("the stub's standard input = %d bytes (err %v); want the %d-byte payload", len(got), err, len(payload))
 			case !tt.wantStubRun && err == nil:
 				t.Errorf("the stub ran with the flag absent")
+			}
+			turnHookInput, err := os.ReadFile(turnHookStdinPath)
+			switch {
+			case tt.turnHook && (err != nil || string(turnHookInput) != payload):
+				t.Errorf("the turn hook's standard input = %d bytes (err %v); want the %d-byte payload", len(turnHookInput), err, len(payload))
+			case !tt.turnHook && err == nil:
+				t.Errorf("a turn hook ran with none given")
 			}
 
 			file, err := os.ReadFile(eventsPath)

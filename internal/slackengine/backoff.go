@@ -1,5 +1,7 @@
-// backoff.go holds the waits the relay's outbound loop takes between reads:
-// a floor, doubled while a read finds nothing, and raised by a rate limit that the outbound loop or the wake loop meets.
+// backoff.go holds the waits the relay's outbound loop takes between reads.
+// There is none after a long poll that waited out the floor.
+// Otherwise the wait is a floor doubled while a read finds nothing.
+// A rate limit that the outbound loop or the wake loop meets raises it.
 
 package slackengine
 
@@ -59,6 +61,18 @@ func (w *loopWait) afterActivity() time.Duration {
 func (w *loopWait) afterIdle() time.Duration {
 	w.current = min(max(w.current*2, w.floor.get()), waitCeiling)
 	return w.current
+}
+
+// afterEmptyPoll returns the wait after a long poll that found no mail and lasted elapsed.
+// A poll that lasted the shared floor or longer was the wait itself:
+// the next poll starts at once, so mail posted meanwhile is read when it is posted, and the wait drops back to the floor.
+// A shorter poll backs off as afterIdle does, so a poll that returns early never runs the loop hot.
+func (w *loopWait) afterEmptyPoll(elapsed time.Duration) time.Duration {
+	if elapsed < w.floor.get() {
+		return w.afterIdle()
+	}
+	w.current = w.floor.get()
+	return 0
 }
 
 // afterRateLimit raises the shared floor and returns the wait limit asks for.

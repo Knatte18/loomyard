@@ -677,8 +677,11 @@ func (w *wakeLoop) wake(ctx context.Context, fromOutbound bool) {
 // noticePresenceChange mails the hub's orchs a `[slack presence]` notice when presence differs from the noticed one.
 // With no presence noticed yet it takes presence as noticed and mails nothing.
 // The notice goes to the hub's orch and to the orch of each beam in beams, which is empty when the beams read failed.
+// A notice of slack leaves out each orch forwarded an operator's message that turned the presence:
+// that message already woke the orch, and a notice behind it would wake it again for nothing.
 // A failed notice is logged and not sent again.
 func (w *wakeLoop) noticePresenceChange(presence Presence, beams []string) {
+	awayFrom := w.in.takeAwayFrom()
 	if presence == w.noticed {
 		return
 	}
@@ -687,7 +690,10 @@ func (w *wakeLoop) noticePresenceChange(presence Presence, beams []string) {
 	if !known {
 		return
 	}
-	if err := noticePresence(w.geom, w.mailbox, beams, presence); err != nil {
+	if presence != PresenceSlack {
+		awayFrom = nil
+	}
+	if err := noticePresence(w.geom, w.mailbox, beams, presence, awayFrom); err != nil {
 		w.log.fail("presence-notice", err)
 		return
 	}

@@ -149,7 +149,7 @@ type Spec struct {
 	// The engine runs it verbatim inside the provider's hook shell, on no other session event.
 	ContextAfterCompaction string
 	// TurnHookCommand, when non-empty, is a shell command the engine runs at each prompt submitted to the session.
-	// It also runs at each turn end of the session's main thread that hands the session no creel mail.
+	// It also runs at each turn end of the session's main thread, whether or not creel mail is handed to the session.
 	// The command gets the provider's hook input on standard input and the engine's registry name as its last argument.
 	// It runs from the session's project directory.
 	// Its output and exit status are discarded, so it never steers the session.

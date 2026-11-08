@@ -352,7 +352,7 @@ func firstHookCommand(t *testing.T, doc map[string]any, event string) string {
 // TestBuildSettings_TurnHookCommand pins the UserPromptSubmit and Stop commands a turn hook command adds.
 // Both read the input once and pipe it to the recording, then to the hook step run from the project directory.
 // The prompt command ends in `; true`; the Stop command exits with the recording's status.
-// In a hub the merged creel Stop command runs the step only after the recording.
+// In a hub the merged creel Stop command runs the step first, before creel's delivery and the recording.
 // The commands without a turn hook are pinned by the recording and creel tests.
 func TestBuildSettings_TurnHookCommand(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -369,7 +369,7 @@ func TestBuildSettings_TurnHookCommand(t *testing.T) {
 	}
 	wantPrompt := `in=$(cat); ` + record("UserPromptSubmit") + `; ` + step + `; true`
 	wantStop := `in=$(cat); ` + record("Stop") + `; s=$?; ` + step + `; exit $s`
-	wantMergedStop := creelStopDelivery(shQuote(flagDir)) + `; ` + record("Stop") + `; s=$?; ` + step + `; exit $s`
+	wantMergedStop := `in=$(cat); ` + step + `; ` + creelStopDelivery(shQuote(flagDir)) + `; ` + record("Stop")
 
 	tests := []struct {
 		name     string

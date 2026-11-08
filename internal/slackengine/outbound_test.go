@@ -709,6 +709,53 @@ func TestOutboundRead(t *testing.T) {
 		h.wantAnswers("once")
 	})
 
+	t.Run("EmptyPollThatWaitedOutTheFloorIsFollowedAtOnceByTheNext", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		h.mailbox.onReadWait = func() { h.clock.Advance(slackengine.Ceiling) }
+		for i := range 3 {
+			if wait := h.mustRead(); wait != 0 {
+				t.Errorf("Read #%d wait = %s; want none after a poll that lasted its timeout", i+1, wait)
+			}
+		}
+	})
+
+	t.Run("EmptyPollsBackOffAndAPollThatWaitedItOutResetsTheWaitToTheFloor", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		var advance time.Duration
+		h.mailbox.onReadWait = func() { h.clock.Advance(advance) }
+		var waits []time.Duration
+		for _, elapsed := range []time.Duration{0, 0, slackengine.Ceiling, 0} {
+			advance = elapsed
+			waits = append(waits, h.mustRead())
+		}
+		want := []time.Duration{2 * slackengine.Floor, 4 * slackengine.Floor, 0, 2 * slackengine.Floor}
+		if !cmp.Equal(waits, want) {
+			t.Errorf("waits = %v; want %v", waits, want)
+		}
+	})
+
+	t.Run("EmptyPollOfExactlyTheRaisedFloorIsFollowedAtOnceByTheNext", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		batch := []creelengine.Message{h.mailFrom(1, primeOrch, "limited")}
+		h.mailbox.scriptReadWait(readStep{messages: batch}, readStep{messages: batch})
+		h.slack.failPosts(&slackengine.RateLimitError{Method: "chat.postMessage", RetryAfter: time.Second})
+		if _, err := h.read(); err == nil {
+			t.Fatalf("Read = nil; want the rate limit")
+		}
+		h.mustRead()
+		h.mailbox.onReadWait = func() { h.clock.Advance(2 * slackengine.Floor) }
+		if wait := h.mustRead(); wait != 0 {
+			t.Errorf("Read wait after a poll of the raised floor = %s; want none", wait)
+		}
+		h.mailbox.onReadWait = func() { h.clock.Advance(2*slackengine.Floor - time.Nanosecond) }
+		if wait := h.mustRead(); wait != 4*slackengine.Floor {
+			t.Errorf("Read wait after a poll just under the raised floor = %s; want %s", wait, 4*slackengine.Floor)
+		}
+	})
+
 	t.Run("TimeoutAfterTheHandlerRanKeepsTheRecordAndReturnsTheFloor", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)

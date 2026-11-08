@@ -118,6 +118,8 @@ type fakeMailbox struct {
 	readWaitSteps []readStep
 	// blockReadWait, when set, makes ReadWait block until it is closed, as a long poll with no mail does.
 	blockReadWait chan struct{}
+	// onReadWait, when set, runs at the start of every ReadWait call, as the time a poll takes passes.
+	onReadWait func()
 	// readWaitEntered, when set, is closed by the first ReadWait call before it blocks.
 	readWaitEntered chan struct{}
 	// acks holds the ids each acknowledged ReadWait covered, and readAllAcks the ids each acknowledged ReadAll covered.
@@ -171,6 +173,9 @@ func (m *fakeMailbox) ReadAll(handle func([]creelengine.Message) error) error {
 }
 
 func (m *fakeMailbox) ReadWait(_ time.Duration, handle func([]creelengine.Message) error) error {
+	if m.onReadWait != nil {
+		m.onReadWait()
+	}
 	m.mu.Lock()
 	m.readWaitCalls++
 	if m.readWaitCalls == 1 && m.readWaitEntered != nil {
@@ -1298,6 +1303,74 @@ func TestInboundRead(t *testing.T) {
 		h.wantPosts(mail{primeOrch, "hello"})
 		h.wantAnswers()
 		h.wantCursorTS("101.000001")
+	})
+
+	t.Run("OrchIsKeptForTheNoticeOnlyWhenAnOperatorMessageThatTurnedThePresenceWasPostedToIt", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name string
+			run  func(t *testing.T, h *harness)
+			want map[string]bool
+		}{
+			{"PostedMessage", func(t *testing.T, h *harness) {
+				h.say("101.000001", "hello")
+				h.mustReadC1()
+			}, map[string]bool{primeOrch: true}},
+			{"PresenceAlreadySlack", func(t *testing.T, h *harness) {
+				if _, err := slackengine.WritePresence(h.geom.PresencePath, slackengine.PresenceSlack, h.clock.Now()); err != nil {
+					t.Fatalf("WritePresence = %v", err)
+				}
+				h.say("101.000001", "hello")
+				h.mustReadC1()
+			}, map[string]bool{}},
+			{"MessageOverTheBodyLimit", func(t *testing.T, h *harness) {
+				h.say("101.000001", strings.Repeat("x", 4097))
+				h.mustReadC1()
+			}, map[string]bool{}},
+			{"MessageWithNoTextAndNoFiles", func(t *testing.T, h *harness) {
+				h.say("101.000001", " ")
+				h.mustReadC1()
+			}, map[string]bool{}},
+			{"FirstPostFailsAndTheRetryStands", func(t *testing.T, h *harness) {
+				h.say("101.000001", "hello")
+				h.mailbox.setPostErr(errors.New("creel down"))
+				if _, err := h.readC1(); err == nil {
+					t.Fatalf("Drain = nil; want the post error")
+				}
+				if got := h.in.TakeAwayFrom(); len(got) != 0 {
+					t.Errorf("TakeAwayFrom after the failed post = %v; want none", got)
+				}
+				h.mailbox.setPostErr(nil)
+				h.clock.Advance(time.Minute)
+				h.retry()
+			}, map[string]bool{primeOrch: true}},
+			{"MessageGivenUpOnDoesNotMarkALaterOne", func(t *testing.T, h *harness) {
+				h.say("101.000001", "hello")
+				h.mailbox.setPostErr(errors.New("creel down"))
+				if _, err := h.readC1(); err == nil {
+					t.Fatalf("Drain = nil; want the post error")
+				}
+				h.clock.Advance(5 * time.Minute)
+				h.retry()
+				h.mailbox.setPostErr(nil)
+				h.say("102.000001", "later")
+				h.mustReadC1()
+			}, map[string]bool{}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t)
+				h.startAt("100.000000")
+				tt.run(t, h)
+				if diff := cmp.Diff(tt.want, h.in.TakeAwayFrom()); diff != "" {
+					t.Errorf("TakeAwayFrom mismatch (-want +got):\n%s", diff)
+				}
+				if again := h.in.TakeAwayFrom(); len(again) != 0 {
+					t.Errorf("second TakeAwayFrom = %v; want none, the first call forgets", again)
+				}
+			})
+		}
 	})
 
 	t.Run("AnswerRefusedWithNotInChannelJoinsTheChannelAndPostsAgain", func(t *testing.T) {

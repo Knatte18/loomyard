@@ -988,6 +988,77 @@ func TestRunRelay(t *testing.T) {
 		}
 	})
 
+	t.Run("OperatorsMessageThatTurnsThePresenceToSlackIsNoticedToEveryOrchButTheOneItWasForwardedTo", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.startAt("100.000000")
+		r.settle()
+		r.clock.Advance(slackengine.WakeFloor)
+		r.say("200.000001", "hello from slack")
+		r.hint(testChannel)
+		r.awaitForwarded("hello from slack")
+		r.driveUntil("the presence notice to be mailed", func() bool { return len(r.presenceNotices()) >= 1 })
+		want := []mail{{paymentsOrch, "[slack presence] presence is now slack"}}
+		if diff := cmp.Diff(want, r.presenceNotices()); diff != "" {
+			t.Errorf("presence notices mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("PresenceThatTurnedBackBeforeTheNoticeIsNoticedToEveryOrchAndTheKeptOrchesAreForgottenAtEveryWake", func(t *testing.T) {
+		t.Parallel()
+		// The mailbox hook below writes the presence terminal once, as the operator's message reaches the hub's orch,
+		// so the wake that forwards the message also finds the presence changed again.
+		const slackNotice, terminalNotice = "[slack presence] presence is now slack", "[slack presence] presence is now terminal"
+		tests := []struct {
+			name string
+			// run drives the relay from a settled start and returns when the notices of want are mailed.
+			run  func(r *relayRun, turnBack *atomic.Bool)
+			want []mail
+		}{
+			{"NoticeOfTerminalReachesTheOrchTheMessageWasForwardedTo", func(r *relayRun, turnBack *atomic.Bool) {
+				r.setPresence(slackengine.PresenceSlack)
+				r.driveUntil("the slack notices to be mailed", func() bool { return len(r.presenceNotices()) >= 2 })
+				r.setPresence(slackengine.PresenceTerminal)
+				r.say("200.000001", "hello from slack")
+				turnBack.Store(true)
+				r.hint(testChannel)
+				r.driveUntil("the terminal notices to be mailed", func() bool { return len(r.presenceNotices()) >= 4 })
+			}, []mail{
+				{primeOrch, slackNotice}, {paymentsOrch, slackNotice},
+				{primeOrch, terminalNotice}, {paymentsOrch, terminalNotice},
+			}},
+			{"OrchKeptByAWakeThatSentNoNoticeDoesNotSuppressALaterNotice", func(r *relayRun, turnBack *atomic.Bool) {
+				reads := r.beamReads.Load()
+				r.say("200.000001", "hello from slack")
+				turnBack.Store(true)
+				r.hint(testChannel)
+				r.driveUntil("a wake after the forwarding wake", func() bool { return r.beamReads.Load() >= reads+2 })
+				r.setPresence(slackengine.PresenceSlack)
+				r.driveUntil("the slack notices to be mailed", func() bool { return len(r.presenceNotices()) >= 2 })
+			}, []mail{{primeOrch, slackNotice}, {paymentsOrch, slackNotice}}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				r := newRelayRun(t)
+				r.startAt("100.000000")
+				var turnBack atomic.Bool
+				r.mailbox.onPost = func(receiver string) {
+					if receiver == primeOrch && turnBack.CompareAndSwap(true, false) {
+						if _, err := slackengine.WritePresence(r.geom.PresencePath, slackengine.PresenceTerminal, r.clock.Now()); err != nil {
+							t.Errorf("WritePresence = %v", err)
+						}
+					}
+				}
+				r.settle()
+				tt.run(r, &turnBack)
+				if diff := cmp.Diff(tt.want, r.presenceNotices()); diff != "" {
+					t.Errorf("presence notices mismatch (-want +got):\n%s", diff)
+				}
+			})
+		}
+	})
+
 	t.Run("RefusedOperatorInviteIsRetriedAtTheNextOutboundWake", func(t *testing.T) {
 		t.Parallel()
 		r := newRelayRun(t)
