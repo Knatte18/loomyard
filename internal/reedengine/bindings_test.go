@@ -241,7 +241,7 @@ func TestPinGlobalLineLocked(t *testing.T) {
 // It also pins the click's toggle branch.
 // A resolved socket, tmux binary and executable pin the toggle click line and the state line and bind the toggle branch.
 // Any one failing to resolve unsets both lines and binds no toggle branch.
-// An executable that resolves to this test binary unsets both lines too, yet the button line stays pinned.
+// An executable that resolves to this test binary unsets both lines too and pins no button line.
 func TestPinBindingsLocked_PinsTheSlackLinesOnlyWhenEverythingResolves(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -260,7 +260,7 @@ func TestPinBindingsLocked_PinsTheSlackLinesOnlyWhenEverythingResolves(t *testin
 		{"Resolved", func() (string, error) { return exe, nil }, socketPath, true, true},
 		{"UnresolvableExecutable", func() (string, error) { return "", errors.New("no executable") }, socketPath, false, false},
 		{"UnreadableSocketPath", func() (string, error) { return exe, nil }, "", false, false},
-		{"TestBinaryExecutable", os.Executable, socketPath, false, true},
+		{"TestBinaryExecutable", os.Executable, socketPath, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -299,6 +299,21 @@ func TestPinBindingsLocked_PinsTheSlackLinesOnlyWhenEverythingResolves(t *testin
 			})
 			if buttonPinned != tt.wantButtonPinned {
 				t.Errorf("pinBindingsLocked set-option calls = %q; button line pinned = %v, want %v", setOptions, buttonPinned, tt.wantButtonPinned)
+			}
+			followPinned := slices.ContainsFunc(setOptions, func(call []string) bool {
+				return len(call) == 4 && call[1] == "-g" && call[2] == followCommandOption
+			})
+			if followPinned != tt.wantResolved {
+				t.Errorf("pinBindingsLocked set-option calls = %q; follow line pinned = %v, want %v", setOptions, followPinned, tt.wantResolved)
+			}
+			var boundKeys []string
+			for _, argv := range fake.ArgvFor("bind-key") {
+				boundKeys = append(boundKeys, argv[2])
+			}
+			for _, key := range []string{"M-Left", "M-Right"} {
+				if got := slices.Contains(boundKeys, key); got != tt.wantResolved {
+					t.Errorf("pinBindingsLocked bound keys = %q; %s bound = %v, want %v", boundKeys, key, got, tt.wantResolved)
+				}
 			}
 			joinedClick := strings.Join(clickArgv(t, fake.ArgvFor("bind-key")), " ")
 			if got := strings.Contains(joinedClick, "#{E:"+slackToggleCommandOption+"}"); got != tt.wantResolved {

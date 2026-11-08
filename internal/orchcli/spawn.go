@@ -12,16 +12,17 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
 // spawnWatcherProcess starts `<lym> orch watch` detached, with its output appended to the watch log.
 // The child runs from the prime's anchor so its own cwd resolution finds the prime.
-// It is a no-op under `go test`, since re-executing os.Executable() there would run the test binary.
+// It is a no-op under `go test`, since the running binary there is the test binary.
 func (c *orchCLI) spawnWatcherProcess() error {
 	if testing.Testing() {
 		return nil
 	}
-	exe, err := os.Executable()
+	exe, err := selfexec.LymBinary()
 	if err != nil {
 		return fmt.Errorf("orch: resolve executable: %w", err)
 	}

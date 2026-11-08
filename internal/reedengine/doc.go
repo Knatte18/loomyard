@@ -396,7 +396,11 @@
 // Selvage's pane and the new-session first pane are out of scope.
 // The detached `lym` window OpenWindow opens composes its command in panebin.go with the same prelude.
 // Every key binding that runs `lym` names the pinning binary's absolute path.
-// The path comes from the same executable-path lookup, an engine field New sets to os.Executable.
+// The path comes from the same executable-path lookup, an engine field New sets to selfexec.LymBinary.
+// Every pin passes that lookup through selfexec.ResolveLymBinary.
+// SpawnWatchdog calls selfexec.LymBinary directly, since it takes no injectable lookup.
+// No prelude, binding, button or Slack line therefore names the running test binary.
+// That holds even when a test hands the engine os.Executable.
 // Each `#` in it is doubled for run-shell's format expansion.
 // The detached `lym loom run` and watchdog daemon spawns are outside the rule:
 // both are spawned from the executable path and never resolve `lym` from PATH.

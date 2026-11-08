@@ -165,7 +165,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"testing"
 
@@ -179,6 +178,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -608,7 +608,7 @@ func spawnDetachedPass(dir string, args []string) (int, error) {
 	if testing.Testing() {
 		return 0, errors.New("battencli: pass not spawned under test")
 	}
-	executable, err := os.Executable()
+	executable, err := selfexec.LymBinary()
 	if err != nil {
 		return 0, fmt.Errorf("locate the lym executable: %w", err)
 	}

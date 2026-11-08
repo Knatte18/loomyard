@@ -6,6 +6,7 @@ package loomcli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -324,7 +325,8 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 	})
 
 	t.Run("LoopArmedForALocatedReceiver", func(t *testing.T) {
-		c := &loomCLI{location: loc, runID: "self", stepIdleTimeout: 7 * time.Minute}
+		standInBinary := func() (string, error) { return "/stand-in/lym", nil }
+		c := &loomCLI{location: loc, runID: "self", stepIdleTimeout: 7 * time.Minute, lymBinary: standInBinary}
 		spec := c.specFor("step")
 		loop := spec.Loop
 
@@ -347,6 +349,19 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 		}
 		if loop.OnExit == nil || loop.OnWake == nil {
 			t.Errorf("loop exit hook set %v, wake hook set %v; want both for the parent lock", loop.OnExit != nil, loop.OnWake != nil)
+		}
+	})
+
+	t.Run("LoopExecutableEmptyWhenTheLookupFails", func(t *testing.T) {
+		c := &loomCLI{lymBinary: func() (string, error) { return "", errors.New("no executable") }}
+		if got := c.loopExecutable(); got != "" {
+			t.Errorf("loopExecutable() = %q; want empty when the lookup fails", got)
+		}
+	})
+
+	t.Run("LoopExecutableEmptyUnderGoTestWithTheDefaultLookup", func(t *testing.T) {
+		if got := (&loomCLI{}).loopExecutable(); got != "" {
+			t.Errorf("loopExecutable() with the default lookup = %q; want empty, since the default refuses the test binary", got)
 		}
 	})
 

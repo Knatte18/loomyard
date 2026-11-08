@@ -46,7 +46,7 @@
 
 ## Processes and waits
 
-- `PATTERN-child-processes` — Starting or ending a process: log the spawn via `internal/logger`; its starter waits on it, bar a double fork's intermediate, which exits at once; a run's processes register in `internal/runproc` and end only through it. — [background](pattern/PATTERN-child-processes.md)
+- `PATTERN-child-processes` — Starting or ending a process: log the spawn via `internal/logger`; its starter waits on it, bar a double fork's intermediate; a run's processes register in `internal/runproc` and end only through it; a pinned or spawned lym command names its binary via `selfexec.LymBinary`. — [background](pattern/PATTERN-child-processes.md)
 - `PATTERN-daemon-wakeups` — Waiting: an unbounded wait wakes at most once a second and backs off while idle; a wait an agent blocks on takes its cap from the keep-warm resolver. (test) — [background](pattern/PATTERN-daemon-wakeups.md)
 
 ## Testing

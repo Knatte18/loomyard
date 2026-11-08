@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -29,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
 // The hidden fabric verb and flags that start the teardown child.
@@ -272,7 +272,7 @@ func (t *Topology) holdTeardown(lockRec, rec *Mutations, l *lymcwd.Location, slu
 		}
 		return &inProcessHold{rec: rec, location: l, release: release, sleep: t.archiveSleep}, nil
 	}
-	exe, err := os.Executable()
+	exe, err := selfexec.LymBinary()
 	if err != nil {
 		return nil, fmt.Errorf("start the teardown child of %q: %w", slug, err)
 	}

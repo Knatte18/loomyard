@@ -17,14 +17,12 @@ var hermeticGitEnvOnce sync.Once
 // HermeticGitEnv makes every git process spawned by this test binary ignore the operator's global and system git config.
 // It replaces that config with a neutral one.
 // Call it as the first line of TestMain, before m.Run().
-// It also runs the CLI-reexec refusal guard before anything else.
 // The neutral config file lives in the process run directory of internal/lymtemp.
 // tmuxkit.Main removes that directory after the run.
 //
 // The bare function name HermeticGitEnv is the presence token that cmd/lym's hermetic guard scans test files for;
 // do not rename it without updating the guard.
 func HermeticGitEnv() {
-	refuseCLIReexec()
 	hermeticGitEnvOnce.Do(func() {
 		// Neutral config content: fsmonitor/maintenance/gc keys mirror Layer A.
 		// Raw `git init` and `git clone` calls inside tests are quiet too.

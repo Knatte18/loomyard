@@ -23,6 +23,7 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
+	const standInLym = "/stand-in/lym"
 	existing := t.TempDir()
 	tests := []struct {
 		name string
@@ -30,10 +31,12 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 		// openErr is what the launcher seam returns.
 		openErr error
 		// placeErr is what the window-command seam returns.
-		placeErr  error
-		wantCode  int
-		wantTitle string
-		wantCalls int
+		placeErr error
+		// defaultLookup leaves lymBinary nil, so the production lookup runs and refuses the test binary.
+		defaultLookup bool
+		wantCode      int
+		wantTitle     string
+		wantCalls     int
 		// wantErr must appear in the error envelope; empty means an ok envelope.
 		wantErr string
 	}{
@@ -41,6 +44,7 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 		{name: "DefaultTitleIsTheBaseName", args: []string{existing}, wantTitle: filepath.Base(existing), wantCalls: 1},
 		{name: "MissingDirectoryRunsNoLauncher", args: []string{filepath.Join(existing, "absent")}, wantCode: 1, wantErr: "absent"},
 		{name: "LauncherErrorIsCarried", args: []string{existing}, openErr: errors.New("no terminal window launcher known here"), wantCode: 1, wantTitle: filepath.Base(existing), wantCalls: 1, wantErr: "no terminal window launcher"},
+		{name: "DefaultLookupRefusesTheTestBinaryAndRunsNoLauncher", args: []string{existing}, defaultLookup: true, wantCode: 1, wantErr: "window: resolve the running lym"},
 		{name: "WindowCommandFailureOnlyWarns", args: []string{existing}, placeErr: errors.New("window command failed"), wantTitle: filepath.Base(existing), wantCalls: 1},
 	}
 	for _, tt := range tests {
@@ -57,6 +61,9 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 					placed = append(placed, dir)
 					return tt.placeErr
 				},
+			}
+			if !tt.defaultLookup {
+				c.lymBinary = func() (string, error) { return standInLym, nil }
 			}
 			var out bytes.Buffer
 
@@ -83,8 +90,8 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 			if tt.wantCalls == 0 {
 				return
 			}
-			if got := calls[0]; got.dir != existing || got.title != tt.wantTitle || got.lymPath == "" {
-				t.Errorf("launcher call = %+v; want dir %q, title %q and a non-empty lym path", got, existing, tt.wantTitle)
+			if got := calls[0]; got.dir != existing || got.title != tt.wantTitle || got.lymPath != standInLym {
+				t.Errorf("launcher call = %+v; want dir %q, title %q and lym path %q", got, existing, tt.wantTitle, standInLym)
 			}
 			if tt.wantErr == "" && !strings.Contains(out.String(), `"title"`) {
 				t.Errorf("output = %q; want it to carry the title", out.String())

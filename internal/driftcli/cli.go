@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"testing"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
 // The bounds a capture start and a capture child's lock take, in production.
@@ -197,7 +197,7 @@ func startMainCapture(w *worktree) (any, error) {
 	if testing.Testing() {
 		return nil, errors.New("drift: the capture child is not spawned under go test")
 	}
-	executable, err := os.Executable()
+	executable, err := selfexec.LymBinary()
 	if err != nil {
 		return nil, fmt.Errorf("drift: resolve this binary: %w", err)
 	}

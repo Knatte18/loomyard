@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -25,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -243,7 +243,7 @@ func createBeamFromParent(location *lymcwd.Location, project string, run func(di
 
 // runLymChild runs this binary with args in dir and waits for it, returning its output in the error when it fails.
 func runLymChild(dir string, args ...string) error {
-	executable, err := os.Executable()
+	executable, err := selfexec.LymBinary()
 	if err != nil {
 		return fmt.Errorf("find the lym binary: %w", err)
 	}

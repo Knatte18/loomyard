@@ -205,6 +205,42 @@ func TestComposePaneLaunchLine(t *testing.T) {
 	}
 }
 
+// TestComposeLines_DropThePreludeForTheTestBinary pins the pane launch line and the window command.
+// Both drop the lym-bin prelude when the executable lookup answers the running test binary.
+// It captures the process-global logger, so it does not run in parallel.
+func TestComposeLines_DropThePreludeForTheTestBinary(t *testing.T) {
+	tiergate.Require(t, 0)
+
+	tests := []struct {
+		name    string
+		compose func(sh shell.Shell) string
+	}{
+		{"PaneLaunchLine", func(sh shell.Shell) string {
+			line, _ := composePaneLaunchLine(sh, os.Executable, "claude --continue", "guid", "tst:wt:driver", "")
+			return line
+		}},
+		{"WindowCommand", func(sh shell.Shell) string {
+			return composeWindowCommand(sh, os.Executable, []string{"reed", "attach"})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, sh := range launchScriptDialects() {
+				logs := logcapture.CaptureVerbose(t)
+
+				got := tt.compose(sh)
+
+				if strings.Contains(got, agentname.LymBinEnv) {
+					t.Errorf("%s = %q; want no %s prelude", tt.name, got, agentname.LymBinEnv)
+				}
+				if !strings.Contains(logs.String(), "could not resolve this binary") {
+					t.Errorf("log = %q; want the named warning that the prelude is dropped", logs.String())
+				}
+			}
+		})
+	}
+}
+
 // TestPaneEnvExports pins per dialect that a strand pane exports the geometry's PaneEnv variables in name order.
 // It also pins that no PaneEnv, an empty answer and a failed read each export nothing;
 // the failure is logged, naming the strand.

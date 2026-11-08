@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -468,7 +469,7 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 // OnStart registers the loop process in the hub's owner record under slug with the role loop;
 // a failed registration is logged and the loop runs on.
 func battenLoopSpec(location *lymcwd.Location, slug string) shedverbs.LoopSpec {
-	executable, err := os.Executable()
+	executable, err := selfexec.LymBinary()
 	if err != nil {
 		logger.Warn("battencli: could not resolve the running binary, so the loop has no executable", "error", err.Error())
 	}

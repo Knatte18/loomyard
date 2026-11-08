@@ -59,21 +59,23 @@ func TestRunButtonVia(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		entry       buttonSpecEntry
-		rawSpec     *string
-		specErr     error
-		rangeName   string
-		confirmed   bool
-		answered    bool
-		hash        string
-		strand      string
-		answer      string
-		strandRead  string
-		strandErr   error
-		answerRead  string
-		answerErr   error
-		exeErr      error
+		name       string
+		entry      buttonSpecEntry
+		rawSpec    *string
+		specErr    error
+		rangeName  string
+		confirmed  bool
+		answered   bool
+		hash       string
+		strand     string
+		answer     string
+		strandRead string
+		strandErr  error
+		answerRead string
+		answerErr  error
+		exeErr     error
+		// testBinary hands the running test binary in as the lym executable.
+		testBinary  bool
 		runOut      string
 		runCode     int
 		runErr      error
@@ -85,7 +87,9 @@ func TestRunButtonVia(t *testing.T) {
 		wantRun     bool
 		wantRunText string
 		wantMessage string
-		wantPrompt  func(dir string) []string
+		// wantLog must appear in the captured log; empty means no check.
+		wantLog    string
+		wantPrompt func(dir string) []string
 	}{
 		{name: "PlainEntryRunsWithTheSpecsShellFlagAndDirectory", entry: plain, wantRun: true, wantRunText: "echo hi"},
 		{name: "RangeWithNoEntryAtItsIndexShowsTheChangedMessage", entry: plain, rangeName: "lymbtn7", wantMessage: "lym: the buttons changed; click again"},
@@ -98,6 +102,7 @@ func TestRunButtonVia(t *testing.T) {
 		{name: "StrandEntryWithAFailedReadRunsNothing", entry: stranded, strandErr: errors.New("no client"), wantMessage: "lym: go needs the agent's name, which this pane lacks; reattach the session with lym reed attach and click again"},
 		{name: "ConfirmEntryRaisesThePromptAndRunsNothing", entry: confirming, wantPrompt: promptFor(confirming, "drop it? (y/n)", nil)},
 		{name: "ConfirmEntryWithAnUnresolvableExecutableRaisesNothing", entry: confirming, exeErr: errors.New("no exe"), anchorMoved: true, wantMessage: "lym: go could not raise its prompt; see the lym log in ANCHOR/.lym/logs"},
+		{name: "ConfirmEntryHandedTheTestBinaryRaisesNothing", entry: confirming, testBinary: true, anchorMoved: true, wantMessage: "lym: go could not raise its prompt; see the lym log in ANCHOR/.lym/logs", wantLog: "could not resolve this binary"},
 		{name: "ConfirmedCallWithTheMatchingHashRuns", entry: confirming, confirmed: true, hash: buttonRunHash(confirming.Run), wantRun: true, wantRunText: "rm x"},
 		{name: "ConfirmedCallWithAnotherHashRunsNothing", entry: confirming, confirmed: true, hash: "other", wantMessage: "lym: the buttons changed since go asked; click again"},
 		{name: "ConfirmedStrandThatIsNoNameRunsNothing", entry: strandedConfirming, confirmed: true, hash: buttonRunHash(strandedConfirming.Run), strand: "not a name", wantMessage: "lym: go: the strand name not a name is not a strand name; click the button again from the agent pane"},
@@ -175,7 +180,12 @@ func TestRunButtonVia(t *testing.T) {
 					runs = append(runs, buttonRunCall{shellPath, flag, script, runDir})
 					return tt.runOut, tt.runCode, tt.runErr
 				},
-				executablePath: func() (string, error) { return exe, tt.exeErr },
+				executablePath: func() (string, error) {
+					if tt.testBinary {
+						return os.Executable()
+					}
+					return exe, tt.exeErr
+				},
 				anchorOf: func(specDir string) (string, error) {
 					if specDir != dir {
 						t.Errorf("anchorOf(%q), want it asked for the rendered directory %q", specDir, dir)
@@ -235,6 +245,9 @@ func TestRunButtonVia(t *testing.T) {
 				}
 			}
 
+			if tt.wantLog != "" && !strings.Contains(logs.String(), tt.wantLog) {
+				t.Errorf("log = %q, want it to hold %q", logs.String(), tt.wantLog)
+			}
 			if tt.messageErr && logs.String() != "" {
 				t.Errorf("log = %q, want a failed message logged below Warn", logs.String())
 			}

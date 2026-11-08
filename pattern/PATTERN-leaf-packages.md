@@ -66,6 +66,8 @@ Imports only the standard library.
 
 Imports only the standard library and `internal/logger`.
 `internal/logger` is admitted because the helper logs its stat, exec and replace outcomes.
+It owns `LymBinary`, the one lookup of the running lym binary that every command pinned into tmux or a process goes through,
+so every package that pins one can import it.
 
 ## `internal/pattern`
 

@@ -48,6 +48,8 @@ type tierResult struct {
 	shortage string
 	// crash is the signal of a tier that crashed its test runner in its run and again in its rerun; empty otherwise.
 	crash string
+	// processCapped is set when the process cap killed the run's processes; such a run is never rerun.
+	processCapped bool
 	// failures, causes and unparsed feed the failure report: failed tests, lines the verb states, and unparsed output.
 	failures []runFailure
 	causes   []string
@@ -87,7 +89,7 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	if trimpathNote != "" {
 		logBuffer.WriteString(trimpathNote + "\n")
 	}
-	exit, commands, refusal := runInvocations(tierCtx, run, counter, gateslot.WithTestCacheOff(tierEnv), request)
+	exit, commands, capLine, refusal := runInvocations(tierCtx, run, counter, gateslot.WithTestCacheOff(tierEnv), request)
 	if refusal != "" {
 		return tierResult{refusal: refusal}
 	}
@@ -103,6 +105,14 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 		logBuffer.WriteString(line + "\n")
 		printLine(request.stderr, line)
 		causes = append(causes, line)
+	}
+	if capLine != "" {
+		if exit == 0 {
+			exit = 1
+		}
+		logBuffer.WriteString(capLine + "\n")
+		printLine(request.stderr, capLine)
+		causes = append(causes, capLine)
 	}
 
 	if exit == 0 {
@@ -132,7 +142,7 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	record.Launches = counter.Launches()
 	failures := counter.Failures()
 	record.Failures = testFailures(failures)
-	return tierResult{record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote, failures: failures, causes: causes, unparsed: counter.Unparsed()}
+	return tierResult{record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote, processCapped: capLine != "", failures: failures, causes: causes, unparsed: counter.Unparsed()}
 }
 
 // testFailures returns the failed tests of failures as the run record carries them.
@@ -170,9 +180,10 @@ func resourceShortage(log []byte) string {
 }
 
 // failedOnShortage returns the resource-shortage marker of a tier run that ran to a failing exit without timing out.
-// It returns "" for any other result.
+// It returns "" for any other result, a run the process cap killed included:
+// its shortage is the runaway's own, which a rerun would only repeat.
 func failedOnShortage(result tierResult) string {
-	if result.refusal != "" || result.buildFailed || result.record.ExitCode == 0 || result.record.TimedOut {
+	if result.refusal != "" || result.buildFailed || result.record.ExitCode == 0 || result.record.TimedOut || result.processCapped {
 		return ""
 	}
 	return resourceShortage(result.log)
@@ -254,18 +265,20 @@ func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Du
 // For a command holding {test_targets} it first narrows each invocation's targets.
 // It keeps the packages holding a test of the tier.
 // An invocation left with no package runs no command, and a line on request.stderr says so.
-// It returns that exit code, the commands it rendered and a refusal when a command could not be run at all.
-func runInvocations(ctx context.Context, run tierRun, counter counter, env []string, request testRequest) (exit int, commands []string, refusal string) {
+// While a command runs, the process cap watches every process carrying env's run marker, when env sets one.
+// It returns that exit code, the commands it rendered, the process cap's line when the cap killed the run,
+// and a refusal when a command could not be run at all.
+func runInvocations(ctx context.Context, run tierRun, counter counter, env []string, request testRequest) (exit int, commands []string, capLine, refusal string) {
 	if len(run.invocations) == 0 {
-		return 0, nil, ""
+		return 0, nil, "", ""
 	}
 	if run.tier.PrebuiltLym {
 		bin, cleanup, err := prebuildLym(ctx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore)
 		if err != nil {
 			if ctx.Err() != nil {
-				return 1, nil, ""
+				return 1, nil, "", ""
 			}
-			return 0, nil, fmt.Sprintf("gate test: cannot build lym for the tier: %v; way forward: fix the build, then re-run the same command", err)
+			return 0, nil, "", fmt.Sprintf("gate test: cannot build lym for the tier: %v; way forward: fix the build, then re-run the same command", err)
 		}
 		defer cleanup()
 		if bin != "" {
@@ -274,6 +287,11 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 	}
 
 	shellName, shellFlag := verifyrun.ShellFor(runtime.GOOS)
+	marker := runMarker(env)
+	capFor := request.processCapFor
+	if capFor == nil {
+		capFor = newProcessCap
+	}
 	for _, invocation := range run.invocations {
 		dir := resolveRunDir(request.root, invocation.dir)
 		testTargets := invocation.targets
@@ -286,7 +304,7 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		}
 		command, err := renderTierCommand(run.number, run.tier, invocation.targets, testTargets, invocation.terms, run.args)
 		if err != nil {
-			return 0, commands, err.Error()
+			return 0, commands, "", err.Error()
 		}
 		commands = append(commands, command)
 
@@ -299,6 +317,13 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		watchCtx, stopWatching := context.WithCancel(ctx)
 		var watchdogDone sync.WaitGroup
 		runErr := runTiedChild(cmd, request.pipeWaitDelay, func(pid int) {
+			if marker != "" && request.samplePeriod > 0 {
+				watchdogDone.Add(1)
+				go func() {
+					defer watchdogDone.Done()
+					capLine = capFor(marker, request.samplePeriod).run(watchCtx)
+				}()
+			}
 			if !request.watching {
 				return
 			}
@@ -313,13 +338,13 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		exit = tierExitCodeOf(runErr)
 		logger.Info("gate test: tier command ended", "tier", tierName(run.number), "exit", exit, "error", runErr)
 		if cmd.Process == nil && ctx.Err() == nil {
-			return 0, commands, fmt.Sprintf("gate test: could not start the shell for %s in %s: %v; way forward: make the tier's dir an existing directory and put the platform shell on PATH, then re-run the same command", tierName(run.number), dir, runErr)
+			return 0, commands, "", fmt.Sprintf("gate test: could not start the shell for %s in %s: %v; way forward: make the tier's dir an existing directory and put the platform shell on PATH, then re-run the same command", tierName(run.number), dir, runErr)
 		}
-		if exit != 0 || ctx.Err() != nil {
-			return exit, commands, ""
+		if exit != 0 || ctx.Err() != nil || capLine != "" {
+			return exit, commands, capLine, ""
 		}
 	}
-	return 0, commands, ""
+	return 0, commands, "", ""
 }
 
 // tierTestTargets returns the packages of targets in the module at moduleDir that hold a test run's tier executes.

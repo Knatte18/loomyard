@@ -13,6 +13,14 @@ The level is `Info` for a lifecycle spawn and `Debug` for a spawn inside a polli
 - A site structurally barred from importing `internal/logger` is exempt, and carries a written reason wherever the exemption is recorded.
 - Test-fixture machinery, standalone harnesses and dev tooling under `tools/` are outside this rule, not exemptions to it.
 - Never re-exec `os.Executable()` under `go test`.
+  A command that names this lym binary for a pane, a tmux job or binding, a hook or a lym child or detached process
+  resolves it through `selfexec.LymBinary`, or `selfexec.ResolveLymBinary` over an injectable lookup,
+  which refuses the running test binary.
+  Only a read of the binary itself, such as a build identity or a commit label, calls `os.Executable` directly.
+  Two kinds of site also call it directly.
+  The drive wiring in `internal/loomcli` and the wire in `internal/battencli` each resolve the path once at wiring.
+  The geometry builders in `internal/hubgeom` hand the path to a spawner that refuses to start under `go test`.
+  `tmuxkit.Main` exits 2 on a positional first argument, so a pin that slips past still never runs a suite.
 - A retry loop around a real spawn caps attempt COUNT, not only elapsed time.
 
 ### Log levels

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -67,7 +68,7 @@ type buttonDeps struct {
 func RunButton(req ButtonRequest, anchorOf func(dir string) (string, error)) {
 	runButtonVia(newTmuxCmdForSocketPath(req.TmuxPath, req.SocketPath), req, buttonDeps{
 		run:            runButtonScript,
-		executablePath: os.Executable,
+		executablePath: selfexec.LymBinary,
 		anchorOf:       anchorOf,
 		sh:             shell.ForGOOS(),
 	})
@@ -152,7 +153,7 @@ func runButtonVia(cmd TmuxCmd, req ButtonRequest, deps buttonDeps) {
 		return
 	}
 	if asking || (entry.Confirm != "" && !req.Confirmed) {
-		exe, err := deps.executablePath()
+		exe, err := selfexec.ResolveLymBinary(deps.executablePath)
 		if err != nil {
 			logger.Warn("reed: could not resolve this binary, raising no button prompt", "label", entry.Label, "err", err)
 			say("lym: " + entry.Label + " could not raise its prompt; see the lym log in " + runDir + "/.lym/logs")

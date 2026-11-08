@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/termwindow"
 	"github.com/spf13/cobra"
 )
@@ -80,7 +81,11 @@ Example:
 			if windowTitle == "" {
 				windowTitle = filepath.Base(dir)
 			}
-			lymPath, err := os.Executable()
+			resolveLym := c.lymBinary
+			if resolveLym == nil {
+				resolveLym = selfexec.LymBinary
+			}
+			lymPath, err := resolveLym()
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("window: resolve the running lym: %v", err)))
 				return nil

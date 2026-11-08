@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
 // daemonLogCap is the size above which a spawn truncates the daemon log before appending to it.
@@ -58,7 +59,7 @@ func spawnDaemon(hubPath, logPath string) (creelengine.Spawn, error) {
 	if testing.Testing() {
 		return creelengine.Spawn{}, errors.New("creel: the daemon is not spawned under go test")
 	}
-	exe, err := os.Executable()
+	exe, err := selfexec.LymBinary()
 	if err != nil {
 		return creelengine.Spawn{}, fmt.Errorf("creel: resolve this binary: %w", err)
 	}

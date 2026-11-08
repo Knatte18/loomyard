@@ -19,6 +19,7 @@ import (
 
 // TestMain runs HermeticGitEnv before spawning git tests.
 // It points KeybindingsPath at a temporary directory for the whole package run.
+// It points LymBinary at a stand-in path in that directory, since the test binary is no lym.
 // It then runs the tests under tmuxkit.Main.
 // KeybindingsPath is process-global state, so no test writes the operator's real keybindings.json.
 func TestMain(m *testing.M) {
@@ -29,6 +30,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	KeybindingsPath = func() (string, error) { return filepath.Join(dir, "keybindings.json"), nil }
+	LymBinary = func() (string, error) { return filepath.Join(dir, "lym"), nil }
 	code := tmuxkit.Main(m)
 	os.RemoveAll(dir)
 	os.Exit(code)

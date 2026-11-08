@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
 // SpawnWatchdog attempts to spawn the per-hub watchdog daemon detached, best-effort.
@@ -48,7 +49,7 @@ func SpawnWatchdog(hubPath, tmuxPath, shellPath string, suppress bool) {
 		return
 	}
 
-	exe, err := os.Executable()
+	exe, err := selfexec.LymBinary()
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, skipping watchdog spawn", "hub", hubPath, "err", err)
 		return

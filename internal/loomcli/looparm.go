@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -36,14 +37,11 @@ import (
 // The loop's files and job name come from shedrun over the resolved run-id.
 // The step children run the same binary from the same cwd as the loop,
 // so they share its trace directory, and the loop lists a child's trace files there.
+// executable is the lym binary the loop's step children run; it is empty when none resolved.
 // idle is the watchdog window, zero disarming it, and activity is the reading of the run's agent activity.
 // The watchdog reads the pause record of loc's hub for loc's slug;
 // when the geometry or the record cannot be read, it reads the run uncovered.
-func loopSpecFor(loc *lymcwd.Location, runID string, idle time.Duration, activity func() (time.Time, bool, error)) shedverbs.LoopSpec {
-	executable, err := os.Executable()
-	if err != nil {
-		logger.Warn("loom: could not resolve the running binary, so the loop has no executable", "error", err.Error())
-	}
+func loopSpecFor(loc *lymcwd.Location, runID, executable string, idle time.Duration, activity func() (time.Time, bool, error)) shedverbs.LoopSpec {
 	return shedverbs.LoopSpec{
 		LockPath:     shedrun.LoopLock(loc, runID),
 		PIDPath:      shedrun.LoopPIDFile(loc, runID),
@@ -68,6 +66,19 @@ func loopSpecFor(loc *lymcwd.Location, runID string, idle time.Duration, activit
 			return pauserecord.ReadCoverage(geometry.RecordPath, geometry.Slug, now)
 		},
 	}
+}
+
+// loopExecutable returns the lym binary the loop's step children run, or "" with a Warn when none resolves.
+func (c *loomCLI) loopExecutable() string {
+	resolve := c.lymBinary
+	if resolve == nil {
+		resolve = selfexec.LymBinary
+	}
+	executable, err := resolve()
+	if err != nil {
+		logger.Warn("loom: could not resolve the running binary, so the loop has no executable", "error", err.Error())
+	}
+	return executable
 }
 
 // registerRunProcess registers the calling process in the hub's owner record under owner with the given role.

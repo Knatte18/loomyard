@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/tendercli"
@@ -237,7 +238,7 @@ func startSuite(dir, outPath, subject string) (int, error) {
 	if testing.Testing() {
 		return 0, errors.New("the adopt check is not started under go test")
 	}
-	executable, err := os.Executable()
+	executable, err := selfexec.LymBinary()
 	if err != nil {
 		return 0, fmt.Errorf("locate the lym executable: %w", err)
 	}
@@ -343,7 +344,7 @@ func resumeChild(pairPath string) error {
 	if testing.Testing() {
 		return errors.New("resuming a child spawns the lym binary, which a test binary must not re-exec")
 	}
-	executable, err := os.Executable()
+	executable, err := selfexec.LymBinary()
 	if err != nil {
 		return err
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
 // reedLockFileName names the reed operation lock file, in the directory stateDir returns under Geometry.AnchorPath.
@@ -51,7 +52,8 @@ type Engine struct {
 	ensureServerGone func(serverPID int) error
 	// paneAge reports the elapsed time of a pane's first process; New sets it to paneProcessAge and a test sets a stub.
 	paneAge func(pid int) (time.Duration, bool)
-	// executablePath resolves the running lym binary's path; under go test that is the test binary, so tests stub it.
+	// executablePath resolves the running lym binary's path.
+	// Under go test it refuses the test binary, so a test that wants a pinned line stubs it.
 	executablePath func() (string, error)
 }
 
@@ -72,7 +74,7 @@ func New(cfg Config, geom Geometry, scrub EnvScrub) *Engine {
 		warnOut:        os.Stderr,
 		build:          buildvcs.Running(),
 		paneAge:        paneProcessAge,
-		executablePath: os.Executable,
+		executablePath: selfexec.LymBinary,
 	}
 }
 

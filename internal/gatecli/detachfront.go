@@ -35,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -155,7 +156,7 @@ func launchRunner(spawn runnerSpawn) (int, error) {
 	if testing.Testing() {
 		return 0, errors.New("gate: the detached runner is not started under go test")
 	}
-	exe, err := os.Executable()
+	exe, err := selfexec.LymBinary()
 	if err != nil {
 		return 0, fmt.Errorf("resolve this binary: %w", err)
 	}

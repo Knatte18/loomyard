@@ -32,6 +32,7 @@ func TestStartAction(t *testing.T) {
 		name         string
 		key          string
 		startErr     error
+		lookupErr    error
 		wantErr      string
 		wantStarted  bool
 		wantLogParts []string
@@ -51,6 +52,12 @@ func TestStartAction(t *testing.T) {
 			wantLogParts: []string{"did not start", "fork failed"},
 		},
 		{
+			name:      "UnresolvedBinaryIsRefusedWithoutStarting",
+			key:       ActionAdoptCheck,
+			lookupErr: errors.New("test binary"),
+			wantErr:   "locate the lym executable",
+		},
+		{
 			name:    "KeyOutsideTheTableIsRefusedWithoutStarting",
 			key:     "nonsense",
 			wantErr: `"nonsense"`,
@@ -64,7 +71,13 @@ func TestStartAction(t *testing.T) {
 			prime := &lymcwd.Location{HubPath: hub, WorktreeName: "prime"}
 
 			var started *exec.Cmd
-			err := startAction(prime, tt.key, "alpha", func(command *exec.Cmd) (int, error) {
+			standInBinary := func() (string, error) {
+				if tt.lookupErr != nil {
+					return "", tt.lookupErr
+				}
+				return "/stand-in/lym", nil
+			}
+			err := startAction(prime, tt.key, "alpha", standInBinary, func(command *exec.Cmd) (int, error) {
 				started = command
 				return 4242, tt.startErr
 			})

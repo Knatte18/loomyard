@@ -4,7 +4,6 @@
 package boardengine
 
 import (
-	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -13,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
 // DeferrableSyncFlag is the hidden flag that marks a detached board sync as deferrable:
@@ -29,7 +29,7 @@ func SpawnSync(boardPath string) error {
 }
 
 // syncExecutable names the binary spawnSync launches; a test points it at a harmless one.
-var syncExecutable = os.Executable
+var syncExecutable = selfexec.LymBinary
 
 // spawnSync launches `lym board sync --deferrable` as a detached, windowless process in the board directory:
 // it registers the process under the hub owner.

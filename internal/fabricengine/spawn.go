@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
 const (
@@ -72,7 +73,7 @@ func SpawnDetachedPush(req PushSpawn) error {
 		return ErrSpawnUnderTest
 	}
 
-	exe, err := os.Executable()
+	exe, err := selfexec.LymBinary()
 	if err != nil {
 		return err
 	}

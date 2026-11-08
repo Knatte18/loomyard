@@ -1,5 +1,11 @@
 // Package tmuxkit gives each test package one isolated tmux socket directory.
 //
+// Main first refuses a test binary started with a positional first argument: it writes the refusal and returns 2.
+// A pane, tmux job, binding or child that names the test binary in place of lym starts it that way,
+// and the binary would otherwise run its whole suite, which could start the same command again in every session.
+// Only the first argument is read, since a later word may be a flag's value.
+// A package's TestMain dispatches its own helper roles before it calls Main.
+//
 // A package's TestMain calls Main, which points `TMUX_TMPDIR` at a private directory,
 // so no test reaches the caller's own tmux server or leaves a socket in the default directory.
 // Socket hands a single test a unique `-L` key and, when the test ends, kills its server and removes its socket file.
@@ -102,7 +108,15 @@ const (
 // Off Windows the run directory is also the isolated tmux socket directory.
 // A package calls it as `os.Exit(tmuxkit.Main(m))` after its own setup.
 // On Windows (psmux) the tests run unchanged, apart from the temp variables pointing at the run directory.
+// A binary started with a positional first argument runs no test and returns 2.
+// It first removes the run directory its TestMain's setup made, so a refused process leaves nothing behind.
 func Main(m *testing.M) int {
+	if refusesReexec(os.Stderr, os.Args[1:]) {
+		if err := lymtemp.Remove(); err != nil {
+			fmt.Fprintf(os.Stderr, "tmuxkit: %v\n", err)
+		}
+		return refusedReexecExit
+	}
 	dir, err := lymtemp.Dir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tmuxkit: %v\n", err)

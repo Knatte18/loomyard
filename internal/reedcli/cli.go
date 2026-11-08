@@ -39,7 +39,7 @@ type reedCLI struct {
 
 	// suppressWatchdogSpawn, when true, makes the watchdog spawn a no-op.
 	// Command sets it from testing.Testing().
-	// Spawning os.Executable() from a test binary would run the whole suite recursively.
+	// Spawning the test binary would run the whole suite recursively.
 	// An in-package test clears it to drive the real spawn path.
 	suppressWatchdogSpawn bool
 
@@ -53,6 +53,10 @@ type reedCLI struct {
 
 	// openTerminal is the test seam for the window verb; nil means termwindow.Resolve then Launcher.OpenAttach.
 	openTerminal func(dir, title, lymPath string) error
+
+	// lymBinary is the test seam for the lookup of this lym binary that the window verb hands the launcher.
+	// nil means selfexec.LymBinary, which refuses a test binary.
+	lymBinary func() (string, error)
 
 	// placeWindow is the test seam for the placement the window verb runs after it opens a window.
 	// nil means placeTerminalWindow.

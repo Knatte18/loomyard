@@ -12,17 +12,16 @@
 package reedengine
 
 import (
-	"errors"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -94,7 +93,7 @@ func buildServerExports(sh shell.Shell) string {
 // composePaneLaunchLine returns the launch script's content:
 // the pane-binary prelude, the build-server exports, the name exports, then launchCmd, on sh's dialect.
 // It reads the running process's own path via executablePath.
-// On error it logs a named logger.Warn and drops the prelude,
+// When the path does not resolve, or names the running test binary, it logs a named logger.Warn and drops the prelude,
 // so the pane launches with no prelude rather than failing the strand launch.
 // The build-server and name exports do not depend on that lookup and stay either way.
 // Because Chain drops empty parts, an empty launchCmd yields the statements alone.
@@ -102,7 +101,7 @@ func buildServerExports(sh shell.Shell) string {
 // It also returns the executable path the prelude exports, empty when the lookup failed and the prelude was dropped.
 func composePaneLaunchLine(sh shell.Shell, executablePath func() (string, error), launchCmd, strandGUID, name, parent string) (line, exe string) {
 	prelude := ""
-	exe, err := executablePath()
+	exe, err := selfexec.ResolveLymBinary(executablePath)
 	if err != nil {
 		exe = ""
 		logger.Warn("reed: could not resolve this binary, launching strand pane with no lym-bin prelude", "strand", strandGUID, "err", err)
@@ -115,11 +114,11 @@ func composePaneLaunchLine(sh shell.Shell, executablePath func() (string, error)
 // composeWindowCommand returns the shell line a detached reed window runs:
 // the pane-binary prelude, then `lym` invoked with lymArgs, each quoted, on sh's dialect.
 // No strand name exports, since a window is not a strand.
-// An unresolvable executable path logs a named logger.Warn and drops the prelude,
-// so the window opens with no prelude.
+// An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
+// The window then opens with no prelude.
 func composeWindowCommand(sh shell.Shell, executablePath func() (string, error), lymArgs []string) string {
 	prelude := ""
-	exe, err := executablePath()
+	exe, err := selfexec.ResolveLymBinary(executablePath)
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, opening window with no lym-bin prelude", "err", err)
 	} else {
@@ -141,9 +140,10 @@ func composeWindowCommand(sh shell.Shell, executablePath func() (string, error),
 // Every pinned token is quoted once and then has each # doubled.
 // The doubling keeps run-shell's format expansion at key press from touching the pinned tokens.
 // #{q:client_name} is the one value left for that expansion, as its own unquoted word.
-// An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no switch binding.
+// An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
+// It then returns false, so the caller pins no switch binding.
 func composeSwitchCommand(sh shell.Shell, executablePath func() (string, error), next bool, socketPath, tmuxPath string) (string, bool) {
-	exe, err := executablePath()
+	exe, err := selfexec.ResolveLymBinary(executablePath)
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, pinning no session-switch binding", "err", err)
 		return "", false
@@ -172,9 +172,10 @@ func composeSwitchCommand(sh shell.Shell, executablePath func() (string, error),
 // and the doubling keeps that expansion from touching the pinned tokens.
 // #{q:session_name} is the one value left for that expansion, as its own unquoted word,
 // so the session reaches the verb as one quoted argument.
-// An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no follow jump.
+// An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
+// It then returns false, so the caller pins no follow jump.
 func composeFollowCommand(sh shell.Shell, executablePath func() (string, error), socketPath, tmuxPath string) (string, bool) {
-	exe, err := executablePath()
+	exe, err := selfexec.ResolveLymBinary(executablePath)
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, pinning no follow jump", "err", err)
 		return "", false
@@ -201,9 +202,10 @@ func composeFollowCommand(sh shell.Shell, executablePath func() (string, error),
 // #{q:session_name}, #{q:mouse_status_range} and #{q:client_name} are left for that expansion, each as its own word.
 // The output of the directory change and of the verb is discarded,
 // and the line ends with status zero, so tmux opens no view mode whatever either does, a gone run directory included.
-// An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no button click.
+// An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
+// It then returns false, so the caller pins no button click.
 func composeButtonCommand(sh shell.Shell, executablePath func() (string, error), socketPath, tmuxPath string) (string, bool) {
-	exe, err := executablePath()
+	exe, err := selfexec.ResolveLymBinary(executablePath)
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, pinning no button click", "err", err)
 		return "", false
@@ -227,10 +229,10 @@ func composeButtonCommand(sh shell.Shell, executablePath func() (string, error),
 // Every pinned token is quoted once and then has each # doubled, since the click format-expands the line.
 // #{q:mouse_status_range} and #{q:client_name} are left for that expansion, each as its own word.
 // The output of both steps is discarded and the line ends with status zero, so tmux opens no view mode.
-// An executable path that does not resolve, or resolves to a running test binary, logs a named logger.Warn.
+// An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
 // It then returns false, so the caller pins no toggle click.
 func composeSlackToggleCommand(sh shell.Shell, executablePath func() (string, error), socketPath, tmuxPath string) (string, bool) {
-	exe, err := slackLineExecutable(executablePath)
+	exe, err := selfexec.ResolveLymBinary(executablePath)
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, pinning no Slack toggle click", "err", err)
 		return "", false
@@ -248,34 +250,15 @@ func composeSlackToggleCommand(sh shell.Shell, executablePath func() (string, er
 // composeSlackStateCommand returns the shell line the Slack toggles' state job runs, on sh's dialect:
 // the absolute path of this binary with `slack bar`, which prints the machine's Slack state.
 // The line rides the option the job's format reads, and an option's value is not expanded again, so no # is doubled.
-// An executable path that does not resolve, or resolves to a running test binary, logs a named logger.Warn.
+// An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
 // It then returns false, so both toggles stay unlit.
 func composeSlackStateCommand(sh shell.Shell, executablePath func() (string, error)) (string, bool) {
-	exe, err := slackLineExecutable(executablePath)
+	exe, err := selfexec.ResolveLymBinary(executablePath)
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, pinning no Slack state line", "err", err)
 		return "", false
 	}
 	return sh.Invoke(exe) + " slack bar", true
-}
-
-// errSlackLineTestBinary refuses a Slack line that would run the running test binary.
-var errSlackLineTestBinary = errors.New("the binary is the running test binary, which a Slack line must never run")
-
-// slackLineExecutable resolves the binary a Slack line runs through executablePath.
-// Under go test it refuses the running test binary, and refuses any path when that binary's own path does not resolve.
-// tmux runs the state job at every redraw, and a test binary given `slack bar` runs its whole suite;
-// each session that run boots would pin the same job again, without end.
-func slackLineExecutable(executablePath func() (string, error)) (string, error) {
-	exe, err := executablePath()
-	if err != nil || !testing.Testing() {
-		return exe, err
-	}
-	self, err := os.Executable()
-	if err != nil || exe == self {
-		return "", errSlackLineTestBinary
-	}
-	return exe, nil
 }
 
 // The flags a button's prompt re-enters the click verb with.

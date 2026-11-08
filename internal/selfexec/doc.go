@@ -1,6 +1,16 @@
 // doc.go carries the package-level doc comment for internal/selfexec.
 
-// Package selfexec is the self-re-exec helper a long-lived process calls when its binary has been replaced on disk.
+// Package selfexec resolves and re-execs the running lym binary.
+// A long-lived process calls its Watcher when its binary has been replaced on disk,
+// and every command lym builds for another process to run later names its binary through LymBinary.
+//
+// LymBinary is the one lookup of "this lym binary".
+// A pane's launch line, a tmux job or binding, a hook and a detached or child lym process all use it.
+// Under go test it refuses with ErrTestBinary instead of returning the test binary's path.
+// A test binary handed a lym verb runs its whole suite,
+// and a tmux job that suite pins runs it again in every session it starts, without end.
+// ResolveLymBinary applies the same refusal to an injectable lookup, so a test's stand-in path still passes.
+// A lookup that only reads the binary, such as a build identity or a commit label, calls os.Executable itself.
 //
 // New resolves the process's executable path once and records that path with the file's identity:
 // device, inode, size and modification time.

@@ -9,7 +9,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -121,6 +126,101 @@ func TestRetryTier(t *testing.T) {
 			}
 			if len(recorded) != 1 || recorded[0].record.ExitCode != tt.attempts[0].record.ExitCode || recorded[0].record.Rerun || recorded[0].record.RunnerCrash != wantFirstCrash {
 				t.Errorf("recorded first runs = %+v; want the first run once, not marked a rerun, with runner crash %q", recorded, wantFirstCrash)
+			}
+		})
+	}
+}
+
+// TestRunTierProcessCap pins the tier run's wiring of the process cap.
+// A tripped cap fails a command that exited 0 and marks the result so no rerun follows.
+// A run whose environment carries no run marker starts no cap.
+func TestRunTierProcessCap(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the tier command is a POSIX shell loop")
+	}
+
+	const shortage = "resource temporarily unavailable"
+	tests := []struct {
+		name string
+		// marked is whether the run's environment carries the run marker.
+		marked bool
+		// wait is whether the command waits for the stand-in cap to trip before it exits 0.
+		wait       bool
+		wantCapped bool
+		wantStarts int32
+	}{
+		{name: "TrippedCapFailsACommandThatExitedZero", marked: true, wait: true, wantCapped: true, wantStarts: 1},
+		{name: "NoRunMarkerStartsNoCap", wantCapped: false, wantStarts: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			tripped := filepath.Join(dir, "tripped")
+			command := "echo " + shortage
+			if tt.wait {
+				command = fmt.Sprintf("until [ -f %q ]; do sleep 0.01; done; echo %s", tripped, shortage)
+			}
+			env := []string{"PATH=" + os.Getenv("PATH")}
+			if tt.marked {
+				env = append(env, enclosingGateEnv+"=1")
+			}
+			var starts atomic.Int32
+			var stderr bytes.Buffer
+			request := testRequest{
+				root: dir, stderr: &stderr, samplePeriod: time.Millisecond, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay,
+				processCapFor: func(marker string, period time.Duration) processCap {
+					starts.Add(1)
+					return processCap{
+						limit:  1,
+						period: period,
+						marker: marker,
+						list: func(string) ([]int, error) {
+							return []int{1, 2}, os.WriteFile(tripped, nil, 0o644)
+						},
+						kill: func(int) error { return nil },
+						after: func(time.Duration) <-chan time.Time {
+							elapsed := make(chan time.Time, 1)
+							elapsed <- time.Time{}
+							return elapsed
+						},
+					}
+				},
+			}
+			run := tierRun{
+				number:      0,
+				tier:        gateslot.Tier{Command: command, Counter: counterGoJSON, TimeoutMin: 1},
+				invocations: []invocation{{dir: dir}},
+			}
+
+			result := runTier(context.Background(), io.Discard, run, env, request)
+
+			if got := starts.Load(); got != tt.wantStarts {
+				t.Errorf("runTier() started the process cap %d times; want %d", got, tt.wantStarts)
+			}
+			if result.processCapped != tt.wantCapped {
+				t.Errorf("runTier() processCapped = %v; want %v", result.processCapped, tt.wantCapped)
+			}
+			if !tt.wantCapped {
+				if result.record.ExitCode != 0 || stderr.Len() != 0 {
+					t.Errorf("runTier() exit = %d, stderr = %q; want exit 0 and no stderr", result.record.ExitCode, stderr.String())
+				}
+				return
+			}
+			capLine := processCapLine(2, 1)
+			if result.record.ExitCode != 1 {
+				t.Errorf("runTier() exit = %d; want 1 for a command that exited 0 under a tripped cap", result.record.ExitCode)
+			}
+			if !slices.Contains(result.causes, capLine) || !strings.Contains(stderr.String(), capLine) {
+				t.Errorf("runTier() causes = %q, stderr = %q; want the cap line in both", result.causes, stderr.String())
+			}
+			if resourceShortage(result.log) == "" {
+				t.Fatalf("runTier() log = %q; want it to hold the shortage marker the command printed", result.log)
+			}
+			if got := failedOnShortage(result); got != "" {
+				t.Errorf("failedOnShortage() = %q; want none, so a capped run is never rerun", got)
 			}
 		})
 	}

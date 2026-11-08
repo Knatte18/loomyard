@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/spf13/cobra"
 )
 
@@ -55,12 +56,12 @@ func waitParentExit(waitPID int) error {
 // The child runs outside the strand's own process tree,
 // and it removes only once this process, the pane's descendant, is gone.
 // It is a no-op under a test binary, where `suppressWatchdogSpawn` is set.
-// Re-exec'ing os.Executable() there would run the whole suite.
+// Re-exec'ing the test binary there would run the whole suite.
 func (c *reedCLI) spawnDetachedRemove(guid string, recursive bool) error {
 	if c.suppressWatchdogSpawn {
 		return nil
 	}
-	exe, err := os.Executable()
+	exe, err := selfexec.LymBinary()
 	if err != nil {
 		return fmt.Errorf("resolve this binary: %w", err)
 	}

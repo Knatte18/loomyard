@@ -19,6 +19,9 @@ A test package never reaches the operator's global gitconfig or default tmux soc
   starting tmux has no static shape, so every package carries the one call;
   it costs one run directory per test binary.
 - In a `tier0` run the entry point spawns nothing.
+- The entry point exits 2 without running a test when the binary's first argument is not a flag,
+  so a command that names a test binary in place of `lym` never runs its suite.
+  A `TestMain` that serves helper roles of its own dispatches them before it calls the entry point.
 - A package whose `TestMain` cannot call the entry point is admitted by an allowlist entry.
   The entry's reason names that obstacle; "does not start tmux" is not a reason.
   That `TestMain` removes the process run directory after `m.Run` through `lymtemp.Remove`.

@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/slackengine"
@@ -248,7 +249,7 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.startLockWait = stopStartLockWait
 	c.sleep = time.Sleep
 	c.reapInherited = reapInheritedChildren
-	c.executable = os.Executable
+	c.executable = selfexec.LymBinary
 	c.currentBuild = statuspane.CurrentBuild
 	c.reconcile = func() (fabricengine.OriginReport, error) { return reconcileHub(location) }
 	c.readBeamFacts = func() (beamFacts, error) { return readBeamFacts(location, beam) }

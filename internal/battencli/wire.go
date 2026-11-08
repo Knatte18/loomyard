@@ -48,6 +48,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -1456,7 +1457,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				exe, err := os.Executable()
+				exe, err := selfexec.LymBinary()
 				if err != nil {
 					return err
 				}

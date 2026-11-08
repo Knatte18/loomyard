@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -208,7 +209,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			return fabricengine.RecordsPathsChangedSince(location, rev)
 		},
 		StartCapture: func() error {
-			executable, err := os.Executable()
+			executable, err := selfexec.LymBinary()
 			if err != nil {
 				return fmt.Errorf("drift: resolve this binary: %w", err)
 			}

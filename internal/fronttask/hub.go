@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -107,7 +108,7 @@ func HubSettleDeps(prime *lymcwd.Location, beam string) (SettleDeps, error) {
 		},
 		RecordPath: recordPathOf(prime.HubPath),
 		RunAction: func(key, subject string) error {
-			return startAction(prime, key, subject, startDetached)
+			return startAction(prime, key, subject, selfexec.LymBinary, startDetached)
 		},
 	}, nil
 }
@@ -127,14 +128,15 @@ func startDetached(command *exec.Cmd) (int, error) {
 }
 
 // startAction builds the lym command of the action table's row key for subject and starts it through start.
-// The command runs in the prime's anchor, with its output appended to a file in the front-task directory.
+// The command names the binary lymBinary resolves.
+// It runs in the prime's anchor, with its output appended to a file in the front-task directory.
 // It logs the spawn with the executable, arguments, directory, pid and output file, and logs a failed start.
-func startAction(prime *lymcwd.Location, key, subject string, start func(*exec.Cmd) (int, error)) error {
+func startAction(prime *lymcwd.Location, key, subject string, lymBinary func() (string, error), start func(*exec.Cmd) (int, error)) error {
 	row, known := actions[key]
 	if !known {
 		return fmt.Errorf("the action %q is not in the action table", key)
 	}
-	executable, err := os.Executable()
+	executable, err := lymBinary()
 	if err != nil {
 		return fmt.Errorf("locate the lym executable: %w", err)
 	}

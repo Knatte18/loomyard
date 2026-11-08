@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/slackengine"
@@ -331,7 +332,7 @@ func beamStartChild(prime *lymcwd.Location) func(label string) ([]byte, error) {
 		if testing.Testing() {
 			return nil, errors.New("fabriccli: `lym beam start` not run under test")
 		}
-		executable, err := os.Executable()
+		executable, err := selfexec.LymBinary()
 		if err != nil {
 			return nil, fmt.Errorf("locate the lym executable: %w", err)
 		}

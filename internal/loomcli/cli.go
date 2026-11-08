@@ -6,7 +6,6 @@ package loomcli
 
 import (
 	"io"
-	"os"
 	"testing"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -71,6 +71,9 @@ type loomCLI struct {
 	// wire takes it from the reed geometry's origin record; it is empty when the worktree has no resolvable parent.
 	// Every role loom wires renders its parent directive from it.
 	parentName string
+	// lymBinary resolves this lym binary for the loop's step children; nil means selfexec.LymBinary.
+	// A test sets it to a stand-in path, since selfexec.LymBinary refuses a test binary.
+	lymBinary func() (string, error)
 	// endFixers, when set, is what an admitted goto calls to end the pair's gate fixers; nil means endRunFixers.
 	// Tests set it to record the call.
 	endFixers func() error
@@ -189,7 +192,7 @@ func newLoomCLI() *loomCLI {
 	}
 	c.spawnGoDriverFrom = func(executable string) (int, error) { return spawnDetachedDrive(c.location, executable) }
 	c.spawnGoDriver = func() (int, error) {
-		executable, err := os.Executable()
+		executable, err := selfexec.LymBinary()
 		if err != nil {
 			return 0, err
 		}

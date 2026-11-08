@@ -29,10 +29,11 @@
 // ListProcesses lists every process with its start time, exe and cwd links and command line.
 // ListStats lists every process with its parent, group, start time and zombie state, read from its stat alone.
 // It also lists a process whose links the caller cannot read.
+// PIDsWithEnv lists every process whose environment holds a given `NAME=value` entry.
 // SignalProcess and SignalGroup send SIGTERM, or SIGKILL when asked, to one pid or to one process group.
 // They return the raw syscall error.
 // All of these read /proc or signal by pid, so they work on Linux only.
-// On Windows TreeCPU, ListProcesses and ListStats return errors.ErrUnsupported and IsAncestor is false;
+// On Windows TreeCPU, ListProcesses, ListStats and PIDsWithEnv return errors.ErrUnsupported and IsAncestor is false;
 // SignalProcess only kills, and SignalGroup returns ErrNoProcessGroup.
 // CreationTime is the exception: it reads a process's creation time by pid on Windows, where StartTime is unreadable.
 // Elsewhere it is always the zero time and false.

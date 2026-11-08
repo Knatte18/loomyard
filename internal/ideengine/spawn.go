@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/ideconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
@@ -29,6 +30,11 @@ var CodeLauncher = vscode.Launch
 // It defaults to `vscode.UserKeybindingsPath`.
 // It is exported so that tests in other packages can point it at a temporary file.
 var KeybindingsPath = vscode.UserKeybindingsPath
+
+// LymBinary resolves the absolute lym path that Spawn and Seed stamp into a worktree's .vscode/ config.
+// It defaults to `selfexec.LymBinary`, which refuses a test binary.
+// It is exported so that tests can point it at a stand-in lym path.
+var LymBinary = selfexec.LymBinary
 
 // Spawn writes the worktree slug's window title, colours and .vscode/ config, and seeds the user's lym key bindings.
 // It then launches VS Code and runs the machine's desktop window command.
@@ -222,7 +228,7 @@ func placeWindow(l *lymcwd.Location, windowDir string) {
 // writeWorktreeConfig writes slug's .vscode/ config at own's anchor, stamping in the absolute lym path.
 // The path is the empty string on error, so the config writer's bare-name fallback applies.
 func writeWorktreeConfig(own *lymcwd.Location, worktreeDir, slug string, look vscode.Look, renderMarkdown bool) error {
-	lymPath, _ := os.Executable()
+	lymPath, _ := LymBinary()
 	return writeVSCodeConfig(own, worktreeDir, slug, look, renderMarkdown, lymPath)
 }
 

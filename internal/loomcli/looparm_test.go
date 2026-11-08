@@ -31,7 +31,7 @@ func TestRegisterRunProcess(t *testing.T) {
 		role     string
 		register func(loc *lymcwd.Location)
 	}{
-		{"Loop", runproc.RoleLoop, func(loc *lymcwd.Location) { loopSpecFor(loc, loc.WorktreeName, 0, nil).OnStart() }},
+		{"Loop", runproc.RoleLoop, func(loc *lymcwd.Location) { loopSpecFor(loc, loc.WorktreeName, "", 0, nil).OnStart() }},
 		{"Driver", runproc.RoleDriver, func(loc *lymcwd.Location) { registerRunProcess(loc, loc.WorktreeName, runproc.RoleDriver) }},
 	}
 	for _, tt := range roles {

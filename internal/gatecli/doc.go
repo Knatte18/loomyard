@@ -607,6 +607,19 @@
 // a verify run holds a slot and passes it to a verify command whose `lym gate test` call is the outermost gate run.
 // It watches `.test` processes only, so a `vstest` tier is bounded by its `timeout_min` alone.
 //
+// # Process cap
+//
+// While a tier's command runs, the verb also lists, once per period, every process carrying the run's entry.
+// The entry is `LYM_GATE_TEST_PID` in the process's environment, and `proc.PIDsWithEnv` does the listing.
+// A tmux server a test starts and its panes keep that entry after they leave the command's tree, so they count too.
+// When the list passes `runProcessCap`, the verb kills every listed process with SIGKILL.
+// It kills again at each later period until the command ends.
+// The tier then fails with a line naming the cap and the way forward, and it is never rerun as a resource shortage.
+// The cap guards against a test binary that a pinned tmux job or child runs again, re-running its own suite.
+// A nested `lym gate test` sets its own entry, so its processes count toward its own cap.
+// The nested run itself counts once toward the outer one.
+// Off Linux `proc.PIDsWithEnv` reports `errors.ErrUnsupported`, and the cap logs that none applies and ends.
+//
 // # Example
 //
 // loomyard declares tiers and a go scoper; this block shows its `gate.yaml` tier section.

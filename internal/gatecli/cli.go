@@ -209,6 +209,9 @@ type testRequest struct {
 	observer TierObserver
 	// phase, when set, hears where the call stands as each tier waits for slots and runs; only a detached runner sets it.
 	phase func(runPhase)
+	// processCapFor builds the process cap over a tier run's marker; nil means newProcessCap.
+	// A test replaces it so the cap trips without a runaway.
+	processCapFor func(marker string, period time.Duration) processCap
 }
 
 // absoluteDir returns the directory a request runs in: dir made absolute against cwd, or cwd when dir is empty.
