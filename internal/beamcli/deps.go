@@ -15,7 +15,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -248,16 +247,27 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			return cfg.Caps(loomengine.PerchCode), nil
 		},
-		// The stamp runs inside the description's own commit, after the description validated.
-		// One commit then holds both files, and a refused description stamps nothing.
-		Describe: func(slug string, at time.Time) (string, error) {
+		DraftDescription: func(slug string) (string, error) {
 			beam, parentBranch, err := beamAndParent(slug)
 			if err != nil {
 				return "", err
 			}
-			write := beamDescribeDeps(beam, slug, parentBranch, loomengine.ProjectDecisionRecord(beam, slug))
-			commit := write.Commit
-			write.Commit = func() error {
+			draft := beamDraftDeps(beam, slug, parentBranch)
+			if err := landingshed.DraftBeamDescription(draft); err != nil {
+				return "", err
+			}
+			return draft.DescriptionPath, nil
+		},
+		// The stamp runs inside the description's own commit, after the description validated.
+		// One commit then holds both files, and a refused description stamps nothing.
+		// A repeat commit over an unchanged directory is a no-op.
+		RecordDescription: func(slug string, at time.Time) (string, error) {
+			beam, err := beamOf(slug)
+			if err != nil {
+				return "", err
+			}
+			path := summaryparser.Path(loomengine.LandingDir(beam))
+			commit := func() error {
 				stamp := func(rec *pawlengine.LandingRecord) error {
 					rec.DescribedAt = at
 					return nil
@@ -265,12 +275,13 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				if err := pawlengine.UpdateLanding(loomengine.BeamLandingPath(beam), loomengine.BeamLandingLockPath(beam), slug, stamp); err != nil {
 					return err
 				}
-				return commit()
+				_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), beam, []string{loomengine.LandingDirRel()}, fmt.Sprintf("beam: change description for %s", slug), fabricengine.EnvSyncOptions())
+				return err
 			}
-			if err := landingshed.WriteBeamDescription(write); err != nil {
+			if err := landingshed.RecordBeamDescription(slug, path, commit); err != nil {
 				return "", err
 			}
-			return write.DescriptionPath, nil
+			return path, nil
 		},
 		// The API opens only if the origin allows a pull request; a missing origin fact reaches the verb as a refusal naming it.
 		PullRequestSide: func(slug string) (beamPullRequestSide, error) {
@@ -447,20 +458,16 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 	}
 }
 
-// beamDescribeDeps builds the description writer's deps over the beam pair at location.
+// beamDraftDeps builds the draft writer's deps over the beam pair at location.
 // slug names the beam's board entry, and parentBranch is the branch the beam lands on.
-// recordPath is the project record the added decisions are read from.
-// Every closure reads or writes on demand and opens nothing at build time.
+// Every closure reads on demand and opens nothing at build time.
 // Commits lists the beam's line without the records-only commits,
-// so a description lists neither its own commits nor the run's status commits.
+// so a draft lists neither the description's own commits nor the run's status commits.
 // An empty parentBranch, a pair with no origin record, is refused when the beam's commits are read.
-func beamDescribeDeps(location *lymcwd.Location, slug, parentBranch, recordPath string) landingshed.BeamDescribeDeps {
-	return landingshed.BeamDescribeDeps{
+func beamDraftDeps(location *lymcwd.Location, slug, parentBranch string) landingshed.BeamDraftDeps {
+	return landingshed.BeamDraftDeps{
 		Slug:            slug,
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
-		ProjectDecisions: func() ([]string, error) {
-			return discussionparser.AddedDecisionTexts(recordPath)
-		},
 		Entry: func() (string, string, error) {
 			board, err := boardengine.OpenHub(location.HubPath)
 			if err != nil {
@@ -471,7 +478,7 @@ func beamDescribeDeps(location *lymcwd.Location, slug, parentBranch, recordPath 
 				return "", "", err
 			}
 			if !found {
-				return "", "", fmt.Errorf("the board holds no entry %q; way forward: restore the entry with \"lym board upsert\", then run \"lym beam describe %s\" again", slug, slug)
+				return "", "", fmt.Errorf("the board holds no entry %q; way forward: restore the entry with \"lym board upsert\", then run \"lym beam describe %s --draft\" again", slug, slug)
 			}
 			return task.Title, task.Brief, nil
 		},
@@ -487,11 +494,6 @@ func beamDescribeDeps(location *lymcwd.Location, slug, parentBranch, recordPath 
 				}
 			}
 			return commits, nil
-		},
-		// Commit makes a repeat commit over an unchanged directory a no-op.
-		Commit: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LandingDirRel()}, fmt.Sprintf("beam: change description for %s", slug), fabricengine.EnvSyncOptions())
-			return err
 		},
 	}
 }

@@ -1,6 +1,6 @@
 // Package beamcli is the beam module, whose verbs are:
 //   - `lym beam create <slug>` makes a beam from a board project entry;
-//   - `lym beam describe <slug>` writes the beam's change description;
+//   - `lym beam describe <slug>` records the change description the beam's orch wrote;
 //   - `lym beam pr open <slug>`, `update`, `status` and `close` open, update, read and close its pull request;
 //   - `lym beam ready <slug>` flags that a beam is ready to merge;
 //   - `lym beam land <slug>` lands a beam into its parent;
@@ -115,7 +115,9 @@
 //
 // # describe
 //
-// `describe <slug>` writes the beam's change description and returns its path.
+// `describe <slug>` records the beam's change description and returns its path.
+// The beam's orch writes the description, `summary.md` in the beam's landing directory;
+// lym never assembles or rewrites it, so the orch and the operator can change any of it at any time.
 // It runs anywhere in the hub and refuses what `land`'s entry check refuses.
 // It refuses a beam with no pawl run, naming `lym beam create <slug>`.
 // It refuses a beam whose run is not at Beam-Await, in any state, naming `lym batten status <slug>`.
@@ -123,16 +125,20 @@
 // A run at Beam-Await passes in every state, so a halted run is served.
 // Beam-Await halts by an error stop that the status records as failed.
 // `judgeAwaitingRun` and `judgeNotReady` are those two refusals, which every orch verb of the landing reuses.
-// `landingshed.WriteBeamDescription` writes the description and owns `summary.md` in the beam's landing directory.
-// It writes the file whole each run from three sources:
-// the entry's title and brief;
-// the beam's line from `fabricengine.BeamLineCommits`, without its records-only commits;
-// and the project record's added decisions.
+// `landingshed.RecordBeamDescription` validates the description.
+// It refuses a missing file naming `--draft`, and a finding naming the file and the verb to run again.
 // The `pawlengine.LandingRecord` `DescribedAt` stamp and the landing directory share one commit with the description.
 // That commit follows validation of the description, so a refused description stamps nothing.
-// A finding is refused naming `lym board upsert` for the entry's title or brief.
-// The envelope names the description's path and the next verb.
-// That verb is `lym beam pr open <slug>`, or `lym beam pr update <slug>` when a pull request is recorded.
+// With a pull request recorded, `describe` then runs the `pr update` sequence, so the pull request carries the text;
+// a failed update is refused saying the description is recorded, with the update's own way forward.
+// With none, the envelope names `lym beam pr open <slug>`.
+//
+// `describe <slug> --draft` records nothing:
+// `landingshed.DraftBeamDescription` writes a starting point at `summary.md`.
+// It refuses when `summary.md` already stands, so an edited or recorded description is never overwritten.
+// The draft holds the entry's title and brief.
+// It then lists the beam's line from `fabricengine.BeamLineCommits`, without its records-only commits.
+// The project record's added decisions are never drawn on: the description states the end result, not the way there.
 //
 // # pr
 //

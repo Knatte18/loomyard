@@ -29,15 +29,25 @@ it refuses a task worktree and never makes a beam.
 The orch of a beam works the beam's landing at Beam-Await with the operator.
 When the operator says so, run:
 
-- `lym beam describe <slug>` writes the beam's change description.
-  It draws on the entry's title and brief, the beam's landings and the decisions of its project record.
-  Change the description only through the entry's title and brief with `lym board upsert`.
-  Then run `lym beam describe <slug>` again; never edit `summary.md` by hand.
+- `lym beam describe <slug>` records the beam's change description, which you write.
+  `lym beam describe <slug> --draft` first writes a starting point, `summary.md` in the beam's `_lym/landing` directory,
+  from the entry's title and brief and every member pull request.
+  Edit that file, then run `lym beam describe <slug>`;
+  with a pull request recorded, it also updates the pull request.
 - `lym beam pr open <slug>`, `update`, `status` and `close` for the beam's pull request into its parent.
   `status` reads whether it can merge now and what stops it, and changes nothing.
 - `lym beam merge-parent <slug>`, which brings the parent in.
 
-On a dobby notice naming landings into the beam, run `lym beam describe <slug>`, then `lym beam pr update <slug>`.
+Write the description for a reader of the pull request:
+
+- Its heading line is the pull request's title, at most 72 characters.
+- State the end result, what the beam ended up with, never the way there.
+- List every member pull request, so a reader can follow each step to the result on its own.
+- Never list the decisions made along the way, from the project record or elsewhere.
+
+Change any part of it whenever you or the operator want, then run `lym beam describe <slug>` again.
+
+On a dobby notice naming landings into the beam, add them to the description, then run `lym beam describe <slug>`.
 
 Never merge a pull request, and never close one to add work.
 Work lands into the beam while the pull request stays open.

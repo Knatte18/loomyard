@@ -33,9 +33,11 @@ import (
 // FileTask creates the task its fields describe and releases it.
 // CodeReviewCaps reads the hub's Code-Review budget.
 // Only the `merge-parent` verb calls these three.
-// Describe writes the beam's change description and stamps the landing record's DescribedAt with at.
+// DraftDescription writes a starting point for the beam's change description and returns its path.
+// It refuses when a description already stands.
+// RecordDescription validates the change description the orch wrote and stamps the landing record's DescribedAt with at.
 // It commits the landing directory and returns the description's path.
-// Only the `describe` verb calls it.
+// Only the `describe` verb calls these two.
 // PullRequestSide reads the beam pair's origin facts: its branch and its parent branch.
 // It uses the pull request API when the origin allows one.
 // PushBeam pushes the beam branch and returns the head it pushed.
@@ -72,7 +74,9 @@ type landDeps struct {
 	Tasks          func() ([]boardengine.Task, error)
 	FileTask       func(fields map[string]any) error
 	CodeReviewCaps func() (reviewbudget.Caps, error)
-	Describe       func(slug string, at time.Time) (path string, err error)
+
+	DraftDescription  func(slug string) (path string, err error)
+	RecordDescription func(slug string, at time.Time) (path string, err error)
 
 	PullRequestSide func(slug string) (beamPullRequestSide, error)
 	PushBeam        func(slug string) (head string, err error)
@@ -244,7 +248,7 @@ func judgeDescribed(deps landDeps, verb, slug string) (pawlengine.LandingRecord,
 		return record, rerunRefusal(verb, slug, "validate the change description", err)
 	}
 	if len(findings) > 0 {
-		return record, fmt.Errorf("%s: the change description of the beam %s fails validation: %s; way forward: fix the entry's title or brief with `lym board upsert`, run `lym beam describe %s`, then `%s %s` again", verb, slug, strings.Join(findings, "; "), slug, verb, slug)
+		return record, fmt.Errorf("%s: the change description of the beam %s fails validation: %s; way forward: fix summary.md in the beam's _lym/landing directory, run `lym beam describe %s`, then `%s %s` again", verb, slug, strings.Join(findings, "; "), slug, verb, slug)
 	}
 	return record, nil
 }

@@ -83,7 +83,7 @@ It runs anywhere in the hub and refuses, each naming its way forward:
   - a beam, or a beam's parent, that another machine owns
   - a beam with no pawl run, or whose run is not at Beam-Await
   - a beam flagged ready with "lym beam ready <slug>", which is final
-  - a beam with no change description written, "lym beam describe <slug>" writes it
+  - a beam with no change description recorded, "lym beam describe <slug>" records it
   - a beam with no commits beyond its parent
   - an origin that is not on GitHub, or a parent branch with no upstream, or a push skip
   - a failed push or GitHub call, which names its cause
@@ -108,9 +108,9 @@ func prUpdateCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Pushes the beam <slug>'s branch, sets the title and body of its recorded pull
 request from the change description, marks a draft ready for review and records
-the pushed head. Run "lym beam describe <slug>" first when the description should
-change. The orch runs it when the operator says so, and never merges the pull
-request.
+the pushed head. "lym beam describe <slug>" runs this update itself after it
+records a changed description. The orch runs it when the operator says so, and
+never merges the pull request.
 
 It runs anywhere in the hub and refuses what "lym beam pr open" refuses of the
 entry, the owners, the run and the ready record, a beam with no pull request
@@ -198,39 +198,62 @@ Example:
 }
 
 func describeCmd() *cobra.Command {
-	return &cobra.Command{
+	return describeCmdOver(func(cmd *cobra.Command, slug string, draft bool) (*map[string]any, error) {
+		return onHubLandDeps(cmd, "lym beam describe", func(deps landDeps) (map[string]any, error) {
+			return describe(cmd.Context(), deps, slug, draft)
+		})
+	})
+}
+
+// describeCmdOver returns the `beam describe` verb, which hands its slug argument and --draft flag to run.
+func describeCmdOver(run func(cmd *cobra.Command, slug string, draft bool) (*map[string]any, error)) *cobra.Command {
+	var draft bool
+	cmd := &cobra.Command{
 		Use:         "describe <slug>",
-		Short:       "write a beam's change description, which its pull request carries",
+		Short:       "record the change description the orch wrote for a beam, which its pull request carries",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Writes the change description of the beam <slug> to summary.md in the beam
-worktree's _lym/landing directory, whole, on every run: the verb owns the file.
-It is made from the entry's title and brief, the beam's first-parent commits with
-their pull request numbers or commits, merge times and summaries, and the entries
-"lym loom decision add" added to the project record. The orch never edits the file
-by hand and changes its text only through "lym board upsert" of the entry's title
-or brief. The verb stamps the landing record and commits the description and the
-record together; nothing at or after landing rewrites the description.
+		Long: `Records the change description of the beam <slug>: summary.md in the beam
+worktree's _lym/landing directory, which the beam's orch writes. A heading line is
+the pull request's title and the text under it its body. The verb validates the
+file, stamps the landing record and commits the two together. When a pull request
+is recorded it then runs "lym beam pr update <slug>", so the pull request carries
+the text. The orch and the operator change the text at any time by editing the file
+and running the verb again; nothing at or after landing rewrites it.
+
+With --draft it writes a starting point to summary.md instead and records
+nothing: the entry's title and brief, then every commit the beam adds, each member
+pull request by its number, title and merge time. Edit the draft before recording.
+It refuses when summary.md already stands; delete the file to get a fresh draft.
+
+The description states what the beam ended up with, never the way there, and lists
+every member pull request so a reader can follow each step to that result. It
+never lists the decisions made along the way.
 
 It runs anywhere in the hub and refuses, each naming its way forward:
   - an entry that is not an open beam project, or a beam with no pair here
   - a beam with no pawl run, or whose run is not at Beam-Await, in any state
   - a beam flagged ready with "lym beam ready <slug>", which is final
-  - a title or brief that makes the description invalid
+  - a missing description, naming --draft
+  - --draft over a description that already stands, naming the file
+  - a description that fails validation, naming each finding
+  - a failed pull request update, after the description is recorded
 
-Follow it with "lym beam pr open <slug>", or "lym beam pr update <slug>" when a
-pull request is recorded.
+Follow it with "lym beam pr open <slug>" when no pull request is recorded.
 
-Example:
+Examples:
+  lym beam describe payments --draft
   lym beam describe payments`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			result, err := onHubLandDeps(cmd, "lym beam describe", func(deps landDeps) (map[string]any, error) { return describe(deps, args[0]) })
+			result, err := run(cmd, args[0], draft)
 			return finishVerb(cmd, result, err)
 		},
 	}
+	cmd.Flags().BoolVar(&draft, "draft", false, "write a starting point to summary.md, from the entry and the beam's commits, and record nothing; refused when summary.md exists")
+	return cmd
 }
 
 // mergeParentCmd returns the `beam merge-parent` verb.

@@ -1,4 +1,4 @@
-// beamdescribe_test.go covers WriteBeamDescription over told seams and a temp description path.
+// beamdescribe_test.go covers DraftBeamDescription and RecordBeamDescription over told seams and a temp description path.
 
 package landingshed
 
@@ -13,15 +13,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBeamDescribe asserts WriteBeamDescription writes a description carrying the entry's title and brief.
-// The description also carries one entry per commit and the project record's added entries.
-// It cuts an over-long title and refuses an empty body naming the verb to run again.
-// It refuses an unset seam, returns a failed seam, and rewrites the same bytes on a re-run.
-func TestBeamDescribe(t *testing.T) {
+// TestDraftBeamDescription asserts the draft carries the entry's title and brief and one entry per commit, oldest first.
+// It cuts an over-long title and refuses a description already written, leaving it intact.
+// It refuses an unset seam and returns a failed seam.
+func TestDraftBeamDescription(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	const slug = "my-beam"
 	readErr := errors.New("board unreadable")
 	at := func(hour int) time.Time { return time.Date(2026, 10, 30, hour, 5, 0, 0, time.FixedZone("CET", 3600)) }
 	pullRequest := BeamCommit{SHA: "1111111111111111111111111111111111111111", Message: "Tool-joint pressure loss (#266)\n\nAdds the tool-joint loss to the hydraulics. Tests cover the annulus.\n\nCreated using\n - LoomYard", Committed: at(14)}
@@ -37,20 +35,17 @@ func TestBeamDescribe(t *testing.T) {
 		title   string
 		brief   string
 		commits []BeamCommit
-		// decisions are the project record's added entries the seam returns.
-		decisions  []string
-		decErr     error
+		// existing, when set, is a description already at the path.
+		existing   string
 		entryErr   error
 		commitsErr error
-		// dropCommit, when set, leaves the Commit seam unset.
-		dropCommit bool
-		// wantFile is the exact description written; empty wants the call to fail.
+		// dropCommits, when set, leaves the Commits seam unset.
+		dropCommits bool
+		// wantFile is the exact draft written; empty wants the call to fail.
 		wantFile string
 		// wantErr are the substrings the failure carries; a seam failure wants wantIs as well.
 		wantErr []string
 		wantIs  error
-		// unwantedErr are the substrings the failure must not carry.
-		unwantedErr []string
 	}{
 		{
 			name: "PullRequestsAndDirectCommitsAreListedOldestFirst", title: "Ship the beam", brief: "Groups the work.", commits: []BeamCommit{pullRequest, parentMerge, direct},
@@ -62,34 +57,28 @@ func TestBeamDescribe(t *testing.T) {
 			wantFile: "# Ship the beam\n\n## Changes\n\n- 4444 Long change, committed 2026-10-30 11:05 UTC\n  " + strings.TrimSpace(strings.Repeat("word ", 40)) + "…\n",
 		},
 		{
-			name: "ProjectDecisionsFollowTheChanges", title: "Ship the beam", brief: "Groups the work.", commits: []BeamCommit{direct},
-			decisions: []string{"### Added after Discussion (parent, 2026-10-31): Narrow the scope\n\n- **Decision:** Drop the CLI half.\n- **Rationale:** It belongs to a later beam."},
-			wantFile:  "# Ship the beam\n\nGroups the work.\n\n## Changes\n\n" + wantDirectEntry + "\n\n## Project decisions\n\n### Added after Discussion (parent, 2026-10-31): Narrow the scope\n\n- **Decision:** Drop the CLI half.\n- **Rationale:** It belongs to a later beam.\n",
-		},
-		{
-			name: "ProjectDecisionsSeamErrorIsReturned", title: "Ship the beam", brief: "Groups the work.", decErr: readErr,
-			wantErr: []string{"read the project record"}, wantIs: readErr,
-		},
-		{
 			name: "OverLongTitleIsCut", title: strings.Repeat("a", 80), brief: "Groups the work.",
 			wantFile: "# " + strings.Repeat("a", 72) + "\n\nGroups the work.\n",
 		},
 		{
-			name: "EmptyBriefAndNoCommitsAreRefusedNamingTheWayOut", title: "Ship the beam",
-			wantErr:     []string{"body is empty", `"lym board upsert"`, `"lym beam describe my-beam"`},
-			unwantedErr: []string{"lym batten cancel"},
+			name: "EmptyBriefAndNoCommitsWriteTheTitleAlone", title: "Ship the beam",
+			wantFile: "# Ship the beam\n",
+		},
+		{
+			name: "AnExistingDescriptionIsRefusedAndLeftIntact", title: "Ship the beam", brief: "Groups the work.", existing: "# Old text\n\nThe orch's words.\n",
+			wantErr: []string{"a description already stands at", "summary.md", `"lym beam describe my-beam"`, "delete it"},
 		},
 		{
 			name: "EntrySeamErrorIsReturned", entryErr: readErr,
 			wantErr: []string{"read the board entry"}, wantIs: readErr,
 		},
 		{
-			name: "CommitsSeamErrorIsReturned", title: "Ship the beam", brief: "Groups the work.", commitsErr: readErr,
+			name: "CommitsSeamErrorIsReturned", title: "Ship the beam", commitsErr: readErr,
 			wantErr: []string{"read the beam's commits"}, wantIs: readErr,
 		},
 		{
-			name: "UnsetSeamIsRefusedNamingIt", title: "Ship the beam", brief: "Groups the work.", dropCommit: true,
-			wantErr: []string{"Commit is empty"},
+			name: "UnsetSeamIsRefusedNamingIt", title: "Ship the beam", dropCommits: true,
+			wantErr: []string{"Commits is empty"},
 		},
 	}
 	for _, tt := range tests {
@@ -97,59 +86,135 @@ func TestBeamDescribe(t *testing.T) {
 			t.Parallel()
 
 			path := filepath.Join(t.TempDir(), "landing", "summary.md")
-			commits := 0
-			deps := BeamDescribeDeps{
-				Slug:             slug,
-				DescriptionPath:  path,
-				ProjectDecisions: func() ([]string, error) { return tt.decisions, tt.decErr },
-				Entry:            func() (string, string, error) { return tt.title, tt.brief, tt.entryErr },
-				Commits:          func() ([]BeamCommit, error) { return tt.commits, tt.commitsErr },
-				Commit:           func() error { commits++; return nil },
+			if tt.existing != "" {
+				writeDescription(t, path, tt.existing)
 			}
-			if tt.dropCommit {
-				deps.Commit = nil
+			deps := BeamDraftDeps{
+				Slug:            "my-beam",
+				DescriptionPath: path,
+				Entry:           func() (string, string, error) { return tt.title, tt.brief, tt.entryErr },
+				Commits:         func() ([]BeamCommit, error) { return tt.commits, tt.commitsErr },
+			}
+			if tt.dropCommits {
+				deps.Commits = nil
 			}
 
-			err := WriteBeamDescription(deps)
+			err := DraftBeamDescription(deps)
+
+			if tt.existing != "" {
+				if got, readErr := os.ReadFile(path); readErr != nil || string(got) != tt.existing {
+					t.Errorf("existing description = %q, %v; want it left as %q", got, readErr, tt.existing)
+				}
+			}
 
 			if tt.wantFile == "" {
 				if err == nil {
-					t.Fatalf("description call = nil; want an error carrying %q", tt.wantErr)
+					t.Fatalf("DraftBeamDescription() = nil; want an error carrying %q", tt.wantErr)
 				}
 				for _, want := range tt.wantErr {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("error = %q; want it to carry %q", err.Error(), want)
 					}
 				}
-				for _, unwanted := range tt.unwantedErr {
-					if strings.Contains(err.Error(), unwanted) {
-						t.Errorf("error = %q; want it not to carry %q", err.Error(), unwanted)
+				if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+					t.Errorf("error = %v; want it to wrap %v", err, tt.wantIs)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DraftBeamDescription() = %v; want nil", err)
+			}
+			if got, readErr := os.ReadFile(path); readErr != nil || string(got) != tt.wantFile {
+				t.Errorf("draft = %q, %v; want %q", got, readErr, tt.wantFile)
+			}
+		})
+	}
+}
+
+// TestRecordBeamDescription asserts a valid description is committed once and its bytes are left as the orch wrote them.
+// It refuses a missing description naming the draft verb.
+// It refuses a description with a finding naming the file and the verb.
+// Neither refusal commits, and a failed commit is returned.
+func TestRecordBeamDescription(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const (
+		slug  = "my-beam"
+		valid = "# Ship the beam\n\nThe beam adds the hydraulics model.\n\n## Member pull requests\n\n- #266 Tool-joint pressure loss\n"
+	)
+	commitErr := errors.New("index locked")
+	tests := []struct {
+		name string
+		// content is the description at the path; empty leaves no file.
+		content   string
+		commitErr error
+		// wantErr are the substrings the failure carries; empty wants the description recorded.
+		wantErr     []string
+		wantIs      error
+		wantCommits int
+	}{
+		{name: "ValidDescriptionIsCommitted", content: valid, wantCommits: 1},
+		{
+			name:    "MissingDescriptionIsRefusedNamingTheDraft",
+			wantErr: []string{"no description is written at", `"lym beam describe my-beam --draft"`, `"lym beam describe my-beam" again`},
+		},
+		{
+			name: "FindingIsRefusedNamingTheFileAndTheVerb", content: "# Ship the beam\n",
+			wantErr: []string{"empty-body: body is empty", "fix the description at", `"lym beam describe my-beam" again`},
+		},
+		{
+			name: "CommitFailureIsReturned", content: valid, commitErr: commitErr,
+			wantErr: []string{"commit the description"}, wantIs: commitErr, wantCommits: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "landing", "summary.md")
+			if tt.content != "" {
+				writeDescription(t, path, tt.content)
+			}
+			commits := 0
+			commit := func() error { commits++; return tt.commitErr }
+
+			err := RecordBeamDescription(slug, path, commit)
+
+			if commits != tt.wantCommits {
+				t.Errorf("commits = %d; want %d", commits, tt.wantCommits)
+			}
+			if len(tt.wantErr) > 0 {
+				if err == nil {
+					t.Fatalf("RecordBeamDescription() = nil; want an error carrying %q", tt.wantErr)
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error = %q; want it to carry %q", err.Error(), want)
 					}
 				}
 				if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
 					t.Errorf("error = %v; want it to wrap %v", err, tt.wantIs)
 				}
-				if commits != 0 {
-					t.Errorf("commits = %d; want none for a refused description", commits)
-				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("WriteBeamDescription() = %v; want nil", err)
+				t.Fatalf("RecordBeamDescription() = %v; want nil", err)
 			}
-			if got, readErr := os.ReadFile(path); readErr != nil || string(got) != tt.wantFile {
-				t.Errorf("description = %q, %v; want %q", got, readErr, tt.wantFile)
-			}
-			if commits != 1 {
-				t.Errorf("commits = %d; want 1", commits)
-			}
-
-			if err := WriteBeamDescription(deps); err != nil {
-				t.Fatalf("re-run WriteBeamDescription() = %v; want nil", err)
-			}
-			if got, readErr := os.ReadFile(path); readErr != nil || string(got) != tt.wantFile {
-				t.Errorf("description after a re-run = %q, %v; want the same bytes", got, readErr)
+			if got, readErr := os.ReadFile(path); readErr != nil || string(got) != tt.content {
+				t.Errorf("description = %q, %v; want the orch's bytes %q", got, readErr, tt.content)
 			}
 		})
+	}
+}
+
+// writeDescription writes content at path, creating its directory.
+func writeDescription(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 	}
 }

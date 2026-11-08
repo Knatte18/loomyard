@@ -259,10 +259,10 @@ func rerunRefusal(verb, slug, step string, err error) error {
 
 // pullRequestFollowUp names the next steps once the pull request stands.
 // The operator reviews it.
-// After a change, the beam is described and the pull request is updated;
+// After a change, the orch revises the description and records it, which updates the pull request;
 // when the operator says so, it is marked ready.
 func pullRequestFollowUp(slug string) string {
-	return fmt.Sprintf("review the pull request with the operator; after a change run `lym beam describe %s` and `lym beam pr update %s`, and run `lym beam ready %s` when the operator says so", slug, slug, slug)
+	return fmt.Sprintf("review the pull request with the operator; after a change revise the description and run `lym beam describe %s`, which updates the pull request, and run `lym beam ready %s` when the operator says so", slug, slug)
 }
 
 // prStatus reads the pull request the beam slug's landing record names.

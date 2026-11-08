@@ -791,7 +791,7 @@ User-facing modules each get one `lym <module>` namespace:
   a member's Discussion-Write lead and darn writer read each enclosing beam's record from that beam's worktree, the board refuses an edit of the project's body once the record exists,
   and `lym loom decision add <beam-slug>`, run by the beam's orch, is the one way its scope changes, its notice reaching every live member run under the beam.
   The pawl recipe is a loom recipe whose rows are Preflight, Record-Write, Beam-Up, Beam-Await, Finalize and Beam-Down, with Beam-Await as its build row and no review round of its own.
-  At Beam-Await the beam's orch works the landing with the operator through `lym beam describe`, which carries the record's added entries into the beam's change description, `lym beam pr open`, `update`, `status` and `close`, and `lym beam ready`, which is final;
+  At Beam-Await the beam's orch works the landing with the operator through `lym beam describe`, which records the change description the orch writes, the end result and every member pull request, never the record's added entries, and updates a recorded pull request, `lym beam pr open`, `update`, `status` and `close`, and `lym beam ready`, which is final;
   Finalize then merges the beam into its parent, through the pull request the beam's landing record names when one is recorded, and keeps that pull request's text.
   Land starts a short batten run over the `beam` recipe, after a refusal that stops it while members or forked pairs remain under the beam.
   Start brings up a beam's dobby and orch, the one the acting worktree is or the one a slug names, or with `--all` the prime and every beam this machine owns, each part only when it is not live.

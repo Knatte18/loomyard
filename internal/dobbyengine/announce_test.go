@@ -77,12 +77,12 @@ func TestAnnounceLandings(t *testing.T) {
 		wantFile string
 	}{
 		{
-			name:   "OneLandingPastTheRecordsHeadPostsOneNoticeNamingItAndBothVerbsAndWritesTheHead",
+			name:   "OneLandingPastTheRecordsHeadPostsOneNoticeNamingItAndDescribeAndWritesTheHead",
 			stopAt: 1,
 			setup: func(f *announceFake, _ *loopHarness) {
 				f.recorded, f.announceHead, f.line = true, "c0", []announceCommit{base, widgets}
 			},
-			wantNotices: [][2][]string{{{"c1 Add widgets", "lym beam describe b", "lym beam pr update b"}, {"c0 Open the beam"}}},
+			wantNotices: [][2][]string{{{"c1 Add widgets", "lym beam describe b", "updates the pull request"}, {"c0 Open the beam", "lym beam pr update b"}}},
 			wantFile:    "c1\n",
 		},
 		{

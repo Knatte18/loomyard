@@ -52,7 +52,7 @@ func (d *daemon) announceLandings(ctx context.Context) {
 	d.announceRead.Recover("dobbyengine: the beam's landings read again", "worktree", d.geom.WorktreeName)
 
 	if len(landed) > 0 {
-		line := fmt.Sprintf("%s: landed into the beam while its pull request is recorded: %s; run `lym beam describe %s`, then `lym beam pr update %s`", d.geom.Slug, strings.Join(landed, "; "), d.geom.Slug, d.geom.Slug)
+		line := fmt.Sprintf("%s: landed into the beam while its pull request is recorded: %s; add them to the change description, then run `lym beam describe %s`, which updates the pull request", d.geom.Slug, strings.Join(landed, "; "), d.geom.Slug)
 		if err := d.deps.Notice(ctx, line); err != nil {
 			d.announcePost.Fail("dobbyengine: the member landing notice did not go out; the next tick tries again", "worktree", d.geom.WorktreeName, "error", err)
 			return

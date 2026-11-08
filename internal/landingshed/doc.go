@@ -607,17 +607,18 @@
 // and it renders an absent record as `(none)`.
 // The stencil also shows the regression check the landing appends,
 // so the session writes no section of its own for it and lists no check it settled as one to run by hand.
-// WriteBeamDescription starts no agent.
-// It draws the description from the beam's board entry and the commits on the beam branch's own first-parent line.
-// It also draws on the entries `lym loom decision add` added to the beam's project record.
-// It validates the description with the check the Describe gate runs, and it commits it.
+// A beam's change description is written by the beam's orch; this package only drafts and records it, starting no agent.
+// DraftBeamDescription writes a starting point the orch edits:
+// the beam's board entry and the commits on the beam branch's own first-parent line.
+// It never draws on the project record's decisions.
 // Its `## Changes` list is ordered oldest first.
 // It names each pull request a member landed through by the ` (#<number>)` Finalize writes into the merge's subject.
 // Each such entry gives the title, merge time and first sentence of the body.
 // It names each other commit, a merge from the parent included, by its object name, subject and time.
-// It takes its told seams as BeamDescribeDeps, which `lym beam describe` fills.
+// It takes its told seams as BeamDraftDeps, which `lym beam describe --draft` fills.
+// RecordBeamDescription validates the orch's text with the check the Describe gate runs, and it commits it.
 // A finding is an error naming the finding and the way out:
-// fix the title or brief with `lym board upsert` and run `lym beam describe <slug>` again.
+// fix the description file and run `lym beam describe <slug>` again.
 // OriginMissing names the first fact an origin lacks for a pull request, in the order ResolvePullRequest judges them,
 // so `lym beam pr open` refuses an origin the resolver would refuse.
 //

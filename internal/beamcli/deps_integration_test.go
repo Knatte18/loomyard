@@ -148,10 +148,10 @@ func TestHubLandDeps_ParentUnmergedReadsTheUpstreamTip(t *testing.T) {
 	}
 }
 
-// TestHubLandDeps_DescribeStampsAndCommits asserts the Describe seam lists a member's landing.
-// It also asserts that the seam skips a records-only commit.
-// The landing record is stamped with the beam's slug and the time, and both files go in one commit.
-func TestHubLandDeps_DescribeStampsAndCommits(t *testing.T) {
+// TestHubLandDeps_DraftThenRecordStampsAndCommits asserts the DraftDescription seam lists a member's landing.
+// It also asserts that the draft skips a records-only commit.
+// Recording the draft stamps the landing record with the beam's slug and the time, and both files go in one commit.
+func TestHubLandDeps_DraftThenRecordStampsAndCommits(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -188,9 +188,13 @@ func TestHubLandDeps_DescribeStampsAndCommits(t *testing.T) {
 	}
 	at := time.Date(2026, 3, 1, 9, 30, 0, 0, time.UTC)
 
-	path, err := hubLandDeps(prime).Describe("b", at)
+	deps := hubLandDeps(prime)
+	path, err := deps.DraftDescription("b")
 	if err != nil {
-		t.Fatalf("Describe() error = %v; want nil", err)
+		t.Fatalf("DraftDescription() error = %v; want nil", err)
+	}
+	if recorded, err := deps.RecordDescription("b", at); err != nil || recorded != path {
+		t.Fatalf("RecordDescription() = %q, %v; want %q, nil", recorded, err, path)
 	}
 
 	description, err := os.ReadFile(path)

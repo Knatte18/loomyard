@@ -48,9 +48,12 @@ type landWorld struct {
 	tasks []boardengine.Task
 	filed []map[string]any
 	caps  reviewbudget.Caps
-	// described holds the slug of each Describe call, and describeErr is what the Describe seam fails with.
-	described   []string
-	describeErr error
+	// drafted and recorded hold the slug of each DraftDescription and RecordDescription call;
+	// draftErr and recordErr are what those seams fail with.
+	drafted   []string
+	draftErr  error
+	recorded  []string
+	recordErr error
 	// api is the fake GitHub every pull request side holds; origin and sideErr are what PullRequestSide answers with.
 	api     *prkit.API
 	origin  landingshed.Origin
@@ -77,9 +80,11 @@ type landWorld struct {
 	// apiErr, when set, leaves the pull request side with no API and this as the reason.
 	apiErr error
 	// landing holds each beam's landing record, and writes counts the WriteLanding calls, which fail with writeErr.
-	landing  map[string]pawlengine.LandingRecord
-	writes   int
-	writeErr error
+	// landingErr is what the Landing seam fails with.
+	landing    map[string]pawlengine.LandingRecord
+	landingErr error
+	writes     int
+	writeErr   error
 	// title and body are the change description Description reads.
 	title string
 	body  string
@@ -160,10 +165,17 @@ func (w *landWorld) deps() landDeps {
 			return nil
 		},
 		CodeReviewCaps: func() (reviewbudget.Caps, error) { return w.caps, nil },
-		Describe: func(slug string, _ time.Time) (string, error) {
-			w.described = append(w.described, slug)
-			if w.describeErr != nil {
-				return "", w.describeErr
+		DraftDescription: func(slug string) (string, error) {
+			w.drafted = append(w.drafted, slug)
+			if w.draftErr != nil {
+				return "", w.draftErr
+			}
+			return "/hub/" + slug + "/_lym/landing/summary.md", nil
+		},
+		RecordDescription: func(slug string, _ time.Time) (string, error) {
+			w.recorded = append(w.recorded, slug)
+			if w.recordErr != nil {
+				return "", w.recordErr
 			}
 			return "/hub/" + slug + "/_lym/landing/summary.md", nil
 		},
@@ -190,7 +202,7 @@ func (w *landWorld) deps() landDeps {
 		MergedLacks:         func(string, string) ([]string, error) { return w.mergedLacks, nil },
 		Landing: func(slug string) (pawlengine.LandingRecord, bool, error) {
 			record, found := w.landing[slug]
-			return record, found, nil
+			return record, found, w.landingErr
 		},
 		WriteLanding: func(slug string, mutate func(rec *pawlengine.LandingRecord) error) error {
 			w.writes++

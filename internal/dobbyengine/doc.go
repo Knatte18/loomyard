@@ -300,8 +300,9 @@
 //     so a fresh machine repeats at most one notice.
 //     It then reads the landings past that head through Deps.BeamLandingsSince.
 //   - With landings it posts one line through Deps.Notice.
-//     The line names the landings, `lym beam describe <slug>` and `lym beam pr update <slug>`,
-//     so the orch keeps the description and the pull request listing every member.
+//     The line names the landings and `lym beam describe <slug>`,
+//     which records the revised description and updates the pull request,
+//     so the orch keeps both listing every member.
 //     Only after the post succeeds does it write the head the read returned.
 //     A head that moved past only commits that record lym's own state is written with no line,
 //     so the notice cannot feed itself.
