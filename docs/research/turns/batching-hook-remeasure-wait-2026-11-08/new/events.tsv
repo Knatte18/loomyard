@@ -1,0 +1,346 @@
+slug	session	kind	role	type	turn	a	b	c
+guard-watch-patterns	19e16d79-63f3-41cf-bde6-8f40ccbcdb8d	main	describe	check	8	validate	green	
+guard-watch-patterns	1bdb514c-6ca1-4f38-8e74-d6406155deb8	main	darn	check	24	lint	green	
+guard-watch-patterns	1bdb514c-6ca1-4f38-8e74-d6406155deb8	main	darn	check	54	validate	fail	
+guard-watch-patterns	1bdb514c-6ca1-4f38-8e74-d6406155deb8	main	darn	check	55	validate	green	
+guard-watch-patterns	agent-a84640564584458cd	fork	darn+fork	check	1	lint	green	
+webster-time-analysis	5f474df9-2794-4144-8202-64d1e0635f06	main	darn	refusal	84	shell-edit	Bash	
+webster-time-analysis	5f474df9-2794-4144-8202-64d1e0635f06	main	darn	gate	79	other	green	
+webster-time-analysis	5f474df9-2794-4144-8202-64d1e0635f06	main	darn	check	69	lint	green	
+webster-time-analysis	5f474df9-2794-4144-8202-64d1e0635f06	main	darn	check	104	validate	green	
+go-test-cache-disk	2330c8ed-7f62-4932-9c60-b8220f6bcbdc	main	describe	check	6	validate	fail	
+go-test-cache-disk	2330c8ed-7f62-4932-9c60-b8220f6bcbdc	main	describe	check	7	validate	green	
+go-test-cache-disk	255ab2a8-a9ee-40d6-be53-64aff10489b9	main	gate-fixer	gate	7	other	green	
+go-test-cache-disk	a56e92a9-2904-47c3-8f71-aff6c7461e79	main	darn	check	17	lint	green	
+go-test-cache-disk	a56e92a9-2904-47c3-8f71-aff6c7461e79	main	darn	check	19	validate	green	
+go-test-cache-disk	a56e92a9-2904-47c3-8f71-aff6c7461e79	main	darn	check	20	validate	green	
+go-test-cache-disk	a56e92a9-2904-47c3-8f71-aff6c7461e79	main	darn	check	21	validate	green	
+go-test-cache-disk	be9af81d-6a37-4046-bfad-b76dd79f059f	main	code-burler-review	refusal	9	shell-edit	Bash	
+go-test-cache-disk	e483a5f0-57cb-4dc5-ae83-ba1577e8f1df	main	code-burler-fix	gate	7	other	green	
+go-test-cache-disk	e483a5f0-57cb-4dc5-ae83-ba1577e8f1df	main	code-burler-fix	gate	17	other	green	
+slack-login-prompt	1ef8fa66-7800-451d-9b3e-78940535a06a	main	gate-fixer	gate	7	other	green	
+slack-login-prompt	4196c215-ed99-4939-9764-31a52a43e861	main	code-burler-fix	gate	11	other	green	
+slack-login-prompt	4196c215-ed99-4939-9764-31a52a43e861	main	code-burler-fix	gate	20	other	green	
+slack-login-prompt	4196c215-ed99-4939-9764-31a52a43e861	main	code-burler-fix	check	11	lint	green	
+slack-login-prompt	66fe676f-0a13-410d-a200-3f1945c5c366	main	describe	check	5	validate	green	
+slack-login-prompt	d616c294-35e1-4007-ab30-b5bb97583c23	main	darn	check	14	lint	green	
+slack-login-prompt	d616c294-35e1-4007-ab30-b5bb97583c23	main	darn	check	16	validate	green	
+slack-post-decode-repost	0808d047-32fa-4576-b5f0-6d54f98fb5ec	main	gate-fixer	gate	7	other	green	
+slack-post-decode-repost	4a55650b-0866-46ab-9136-f824dbcfb1c4	main	code-burler-fix	gate	9	other	fail	
+slack-post-decode-repost	4a55650b-0866-46ab-9136-f824dbcfb1c4	main	code-burler-fix	gate	12	other	green	
+slack-post-decode-repost	4a55650b-0866-46ab-9136-f824dbcfb1c4	main	code-burler-fix	gate	18	other	green	
+slack-post-decode-repost	4a55650b-0866-46ab-9136-f824dbcfb1c4	main	code-burler-fix	gate	23	other	green	
+slack-post-decode-repost	4a55650b-0866-46ab-9136-f824dbcfb1c4	main	code-burler-fix	check	8	lint	green	
+slack-post-decode-repost	4a55650b-0866-46ab-9136-f824dbcfb1c4	main	code-burler-fix	check	17	lint	green	
+slack-post-decode-repost	6d4cfc39-5566-46a1-b0b0-ca56e5a97586	main	describe	check	8	validate	green	
+slack-post-decode-repost	a64f47f1-b84b-4c4e-b040-9450051e3780	main	darn	refusal	20	rm	Bash	
+slack-post-decode-repost	a64f47f1-b84b-4c4e-b040-9450051e3780	main	darn	check	15	lint	green	
+slack-post-decode-repost	a64f47f1-b84b-4c4e-b040-9450051e3780	main	darn	check	17	lint	green	
+slack-post-decode-repost	a64f47f1-b84b-4c4e-b040-9450051e3780	main	darn	check	24	validate	fail	
+slack-post-decode-repost	a64f47f1-b84b-4c4e-b040-9450051e3780	main	darn	check	26	validate	green	
+fabricengine-per-test-times	a6bab9ac-715a-46f0-ae67-f66af8f0053f	main	darn	gate	12	other	green	
+fabricengine-per-test-times	a6bab9ac-715a-46f0-ae67-f66af8f0053f	main	darn	gate	13	other	green	
+fabricengine-per-test-times	a6bab9ac-715a-46f0-ae67-f66af8f0053f	main	darn	gate	14	other	green	
+fabricengine-per-test-times	a6bab9ac-715a-46f0-ae67-f66af8f0053f	main	darn	check	31	validate	green	
+fabricengine-per-test-times	agent-a2304d7c16c319677	fork	darn+fork	nudge	6	slice	1	Read
+heddle-md-initial-render	122cdfb1-ea23-4a3d-9c6d-005e6322b3ec	main	code-burler-review	gate	15	other	green	
+heddle-md-initial-render	122cdfb1-ea23-4a3d-9c6d-005e6322b3ec	main	code-burler-review	gate	16	other	green	
+heddle-md-initial-render	8ee66754-91e7-446b-aefa-fb56ff0cff6e	main	gate-fixer	gate	7	other	fail	
+heddle-md-initial-render	8ee66754-91e7-446b-aefa-fb56ff0cff6e	main	gate-fixer	gate	13	other	green	
+heddle-md-initial-render	8ee66754-91e7-446b-aefa-fb56ff0cff6e	main	gate-fixer	check	14	lint	green	
+heddle-md-initial-render	a4c2fa89-a723-4e08-ab32-6c5a8d6826aa	main	describe	check	5	validate	green	
+heddle-md-initial-render	b24100cc-0db1-4769-9696-990b51ad0509	main	darn	check	14	lint	green	
+heddle-md-initial-render	b24100cc-0db1-4769-9696-990b51ad0509	main	darn	check	16	validate	green	
+heddle-md-initial-render	b24100cc-0db1-4769-9696-990b51ad0509	main	darn	check	22	validate	green	
+heddle-md-initial-render	f6198a73-6e2e-469c-9ac6-fe1904fdaa64	main	code-burler-fix	gate	9	other	green	
+heddle-md-initial-render	f6198a73-6e2e-469c-9ac6-fe1904fdaa64	main	code-burler-fix	gate	15	other	green	
+heddle-md-initial-render	f6198a73-6e2e-469c-9ac6-fe1904fdaa64	main	code-burler-fix	check	8	lint	green	
+test-targets-bench	c325adae-71c6-4310-b4a8-d374033b92b4	main	darn	refusal	18	rm	Bash	
+test-targets-bench	c325adae-71c6-4310-b4a8-d374033b92b4	main	darn	gate	6	other	green	
+test-targets-bench	c325adae-71c6-4310-b4a8-d374033b92b4	main	darn	gate	10	other	green	
+test-targets-bench	c325adae-71c6-4310-b4a8-d374033b92b4	main	darn	gate	11	other	green	
+test-targets-bench	c325adae-71c6-4310-b4a8-d374033b92b4	main	darn	gate	13	other	green	
+test-targets-bench	c325adae-71c6-4310-b4a8-d374033b92b4	main	darn	check	7	lint	green	
+test-targets-bench	c325adae-71c6-4310-b4a8-d374033b92b4	main	darn	check	22	validate	fail	
+test-targets-bench	c325adae-71c6-4310-b4a8-d374033b92b4	main	darn	check	23	validate	green	
+fabric-test-speed-remeasure	3f687594-25ae-4344-a0b6-78ed1b237b9d	main	darn	gate	6	other	green	
+fabric-test-speed-remeasure	3f687594-25ae-4344-a0b6-78ed1b237b9d	main	darn	gate	11	other	green	
+fabric-test-speed-remeasure	3f687594-25ae-4344-a0b6-78ed1b237b9d	main	darn	gate	12	other	green	
+fabric-test-speed-remeasure	3f687594-25ae-4344-a0b6-78ed1b237b9d	main	darn	gate	13	other	green	
+fabric-test-speed-remeasure	3f687594-25ae-4344-a0b6-78ed1b237b9d	main	darn	gate	15	other	green	
+fabric-test-speed-remeasure	3f687594-25ae-4344-a0b6-78ed1b237b9d	main	darn	gate	19	other	green	
+fabric-test-speed-remeasure	3f687594-25ae-4344-a0b6-78ed1b237b9d	main	darn	check	28	validate	green	
+fabric-test-speed-remeasure	3f687594-25ae-4344-a0b6-78ed1b237b9d	main	darn	check	30	validate	green	
+copyhub-fixtures-and-hook	2153afc6-d96b-45ac-9044-e2a9db7869a5	main	describe	check	5	validate	green	
+copyhub-fixtures-and-hook	b45d46f5-9f51-4556-94f8-be5bfe0b8f05	main	darn	check	16	lint	green	
+copyhub-fixtures-and-hook	b45d46f5-9f51-4556-94f8-be5bfe0b8f05	main	darn	check	18	lint	green	
+copyhub-fixtures-and-hook	b45d46f5-9f51-4556-94f8-be5bfe0b8f05	main	darn	check	22	validate	fail	
+copyhub-fixtures-and-hook	b45d46f5-9f51-4556-94f8-be5bfe0b8f05	main	darn	check	23	validate	green	
+creel-trust-by-repo-name	41453a5f-dc22-4d94-9c40-6f9b65b85b82	main	gate-fixer	gate	7	other	pending	
+creel-trust-by-repo-name	41453a5f-dc22-4d94-9c40-6f9b65b85b82	main	gate-fixer	gate	8	other	green	
+creel-trust-by-repo-name	8441ebbb-d048-4f0a-ab28-2a0117df8ed8	main	darn	nudge	29	slice	1	Read
+creel-trust-by-repo-name	8441ebbb-d048-4f0a-ab28-2a0117df8ed8	main	darn	nudge	33	slice	1	Read
+creel-trust-by-repo-name	8441ebbb-d048-4f0a-ab28-2a0117df8ed8	main	darn	nudge	36	lookup	49	Read
+creel-trust-by-repo-name	8441ebbb-d048-4f0a-ab28-2a0117df8ed8	main	darn	check	38	lint	green	
+creel-trust-by-repo-name	8441ebbb-d048-4f0a-ab28-2a0117df8ed8	main	darn	check	39	lint	green	
+creel-trust-by-repo-name	8441ebbb-d048-4f0a-ab28-2a0117df8ed8	main	darn	check	44	validate	green	
+creel-trust-by-repo-name	d07498e9-f28e-4862-94b9-f0c1506cf9da	main	describe	check	6	validate	green	
+creel-trust-by-repo-name	de926c92-cfc7-41e1-8819-dfef801bd3b0	main	code-burler-fix	gate	18	other	green	
+creel-trust-by-repo-name	de926c92-cfc7-41e1-8819-dfef801bd3b0	main	code-burler-fix	gate	19	other	green	
+creel-trust-by-repo-name	de926c92-cfc7-41e1-8819-dfef801bd3b0	main	code-burler-fix	gate	26	other	green	
+creel-trust-by-repo-name	de926c92-cfc7-41e1-8819-dfef801bd3b0	main	code-burler-fix	gate	32	other	green	
+creel-trust-by-repo-name	de926c92-cfc7-41e1-8819-dfef801bd3b0	main	code-burler-fix	gate	36	other	green	
+creel-trust-by-repo-name	de926c92-cfc7-41e1-8819-dfef801bd3b0	main	code-burler-fix	check	17	lint	green	
+fabric-livestate-merge-templates	2f687c3e-1ed7-4521-9bad-9f76429b0e88	main	code-burler-fix	gate	8	other	green	
+fabric-livestate-merge-templates	2f687c3e-1ed7-4521-9bad-9f76429b0e88	main	code-burler-fix	check	7	lint	green	
+fabric-livestate-merge-templates	5b3ba3d8-5418-45a8-9c4c-ce650543b60b	main	describe	check	6	validate	green	
+fabric-livestate-merge-templates	970ee95a-9ec1-42de-abeb-8e68b26e77a0	main	darn	nudge	17	slice	8	Read
+fabric-livestate-merge-templates	970ee95a-9ec1-42de-abeb-8e68b26e77a0	main	darn	nudge	18	slice	22	Read
+fabric-livestate-merge-templates	970ee95a-9ec1-42de-abeb-8e68b26e77a0	main	darn	nudge	20	edit	1	Edit
+fabric-livestate-merge-templates	970ee95a-9ec1-42de-abeb-8e68b26e77a0	main	darn	nudge	32	slice	2	Read
+fabric-livestate-merge-templates	970ee95a-9ec1-42de-abeb-8e68b26e77a0	main	darn	check	21	lint	green	
+fabric-livestate-merge-templates	970ee95a-9ec1-42de-abeb-8e68b26e77a0	main	darn	check	23	lint	green	
+fabric-livestate-merge-templates	970ee95a-9ec1-42de-abeb-8e68b26e77a0	main	darn	check	27	validate	green	
+fabric-livestate-merge-templates	970ee95a-9ec1-42de-abeb-8e68b26e77a0	main	darn	check	29	validate	green	
+fabric-livestate-merge-templates	970ee95a-9ec1-42de-abeb-8e68b26e77a0	main	darn	check	34	validate	green	
+fabric-livestate-merge-templates	e32271c1-d0b7-44b4-9345-80ee2c6fefe6	main	gate-fixer	gate	7	other	pending	
+fabric-livestate-merge-templates	e32271c1-d0b7-44b4-9345-80ee2c6fefe6	main	gate-fixer	gate	8	other	fail	
+fabric-livestate-merge-templates	e32271c1-d0b7-44b4-9345-80ee2c6fefe6	main	gate-fixer	gate	11	other	green	
+raddle-order-and-deps-table	27b131a8-4764-4f6e-bed9-44c35d87dcdc	main	gate-fixer	gate	7	other	pending	
+raddle-order-and-deps-table	27b131a8-4764-4f6e-bed9-44c35d87dcdc	main	gate-fixer	gate	8	other	fail	
+raddle-order-and-deps-table	27b131a8-4764-4f6e-bed9-44c35d87dcdc	main	gate-fixer	gate	12	other	green	
+raddle-order-and-deps-table	27b131a8-4764-4f6e-bed9-44c35d87dcdc	main	gate-fixer	check	9	lint	green	
+raddle-order-and-deps-table	3fbcb509-9b22-436b-8b45-b5cad86d8a15	main	darn	nudge	20	slice	2	Read
+raddle-order-and-deps-table	3fbcb509-9b22-436b-8b45-b5cad86d8a15	main	darn	check	17	lint	green	
+raddle-order-and-deps-table	3fbcb509-9b22-436b-8b45-b5cad86d8a15	main	darn	check	19	lint	green	
+raddle-order-and-deps-table	3fbcb509-9b22-436b-8b45-b5cad86d8a15	main	darn	check	22	lint	green	
+raddle-order-and-deps-table	3fbcb509-9b22-436b-8b45-b5cad86d8a15	main	darn	check	26	lint	green	
+raddle-order-and-deps-table	3fbcb509-9b22-436b-8b45-b5cad86d8a15	main	darn	check	29	validate	fail	
+raddle-order-and-deps-table	3fbcb509-9b22-436b-8b45-b5cad86d8a15	main	darn	check	30	validate	green	
+raddle-order-and-deps-table	a2345515-2770-480e-8156-204842a37ae4	main	describe	check	6	validate	fail	
+raddle-order-and-deps-table	a2345515-2770-480e-8156-204842a37ae4	main	describe	check	7	validate	green	
+claude-settings-model-effort	3bab45d4-ac68-4dc1-9809-999152811d10	main	describe	check	8	validate	green	
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	nudge	23	lookup	1	Bash
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	nudge	24	lookup	1	Read
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	nudge	28	lookup	6	Bash
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	nudge	32	edit	12	Edit
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	nudge	33	edit	1	Edit
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	check	34	lint	green	
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	check	44	lint	green	
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	check	49	validate	fail	
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	check	51	validate	green	
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	check	55	validate	green	
+claude-settings-model-effort	agent-a57adaec9dcf1865c	fork	darn+fork	check	13	lint	green	
+claude-settings-model-effort	agent-ac6cfee697c070798	fork	darn+fork	check	9	lint	green	
+claude-settings-model-effort	d3ba5e36-0f81-49c7-bbc8-b76b23b327b0	main	code-burler-fix	gate	9	other	green	
+claude-settings-model-effort	d3ba5e36-0f81-49c7-bbc8-b76b23b327b0	main	code-burler-fix	gate	16	other	green	
+claude-settings-model-effort	d3ba5e36-0f81-49c7-bbc8-b76b23b327b0	main	code-burler-fix	check	10	lint	green	
+claude-settings-model-effort	d3ba5e36-0f81-49c7-bbc8-b76b23b327b0	main	code-burler-fix	check	21	lint	green	
+claude-settings-model-effort	d3ba5e36-0f81-49c7-bbc8-b76b23b327b0	main	code-burler-fix	check	24	lint	green	
+claude-settings-model-effort	d3ba5e36-0f81-49c7-bbc8-b76b23b327b0	main	code-burler-fix	check	25	lint	green	
+claude-settings-model-effort	d3ba5e36-0f81-49c7-bbc8-b76b23b327b0	main	code-burler-fix	check	26	lint	green	
+claude-settings-model-effort	f2f816b8-e08b-4c53-a98c-54f2733ba35f	main	gate-fixer	gate	7	other	fail	
+claude-settings-model-effort	f2f816b8-e08b-4c53-a98c-54f2733ba35f	main	gate-fixer	gate	15	other	green	
+fabric-anchor-origin-templates	35c42b9a-2fa3-4a96-880e-3df8c3adccbc	main	code-burler-fix	gate	9	other	green	
+fabric-anchor-origin-templates	35c42b9a-2fa3-4a96-880e-3df8c3adccbc	main	code-burler-fix	gate	10	other	green	
+fabric-anchor-origin-templates	35c42b9a-2fa3-4a96-880e-3df8c3adccbc	main	code-burler-fix	gate	16	other	green	
+fabric-anchor-origin-templates	3b320e2e-36d1-48b9-b7a8-78f35dadb9dc	main	describe	check	6	validate	green	
+fabric-anchor-origin-templates	a4dc118e-3459-4cc1-9f2a-c738b93ce44c	main	gate-fixer	gate	7	other	green	
+fabric-anchor-origin-templates	d90c086b-0e27-4c3a-8eb0-8f49a45cbaf9	main	darn	nudge	24	slice	1	Read
+fabric-anchor-origin-templates	d90c086b-0e27-4c3a-8eb0-8f49a45cbaf9	main	darn	check	16	lint	green	
+fabric-anchor-origin-templates	d90c086b-0e27-4c3a-8eb0-8f49a45cbaf9	main	darn	check	17	lint	green	
+fabric-anchor-origin-templates	d90c086b-0e27-4c3a-8eb0-8f49a45cbaf9	main	darn	check	21	validate	green	
+fabric-anchor-origin-templates	d90c086b-0e27-4c3a-8eb0-8f49a45cbaf9	main	darn	check	26	validate	green	
+git-config-from-go	08246578-a0ca-4290-8ec7-b732fb2663f6	main	describe	check	5	validate	green	
+git-config-from-go	177706dd-71fc-45f4-9163-e1115559a324	main	gate-fixer	gate	7	other	green	
+git-config-from-go	6eeaf67b-3d3b-48b2-a6c7-0e50397b1c75	main	darn	check	10	lint	green	
+git-config-from-go	6eeaf67b-3d3b-48b2-a6c7-0e50397b1c75	main	darn	check	13	validate	green	
+git-config-from-go	9da687f4-e7a6-461d-b369-2b38b1d72e86	main	code-burler-fix	gate	16	other	green	
+git-config-from-go	9da687f4-e7a6-461d-b369-2b38b1d72e86	main	code-burler-fix	gate	17	other	green	
+git-config-from-go	9da687f4-e7a6-461d-b369-2b38b1d72e86	main	code-burler-fix	check	15	lint	green	
+git-config-from-go	bcb0e5f7-aebd-4099-93a5-bfc7b454acfa	main	code-burler-review	refusal	7	rm	Bash	
+fabric-test-folds	0d0a0813-eeec-4cc4-ae79-a583abd4d1f7	main	describe	check	7	validate	green	
+fabric-test-folds	8db0dda2-6b62-40d5-ace4-40f991947393	main	code-burler-fix	gate	10	other	green	
+fabric-test-folds	8db0dda2-6b62-40d5-ace4-40f991947393	main	code-burler-fix	gate	11	other	green	
+fabric-test-folds	8db0dda2-6b62-40d5-ace4-40f991947393	main	code-burler-fix	check	9	lint	green	
+fabric-test-folds	8db0dda2-6b62-40d5-ace4-40f991947393	main	code-burler-fix	check	17	lint	green	
+fabric-test-folds	8db0dda2-6b62-40d5-ace4-40f991947393	main	code-burler-fix	check	21	lint	green	
+fabric-test-folds	8db0dda2-6b62-40d5-ace4-40f991947393	main	code-burler-fix	check	25	lint	green	
+fabric-test-folds	d0a97ab6-f80e-4a2f-8228-611debb568bb	main	gate-fixer	gate	7	other	pending	
+fabric-test-folds	d0a97ab6-f80e-4a2f-8228-611debb568bb	main	gate-fixer	gate	8	other	fail	
+fabric-test-folds	d0a97ab6-f80e-4a2f-8228-611debb568bb	main	gate-fixer	gate	14	other	pending	
+fabric-test-folds	d0a97ab6-f80e-4a2f-8228-611debb568bb	main	gate-fixer	gate	15	other	green	
+fabric-test-folds	d0a97ab6-f80e-4a2f-8228-611debb568bb	main	gate-fixer	gate	18	other	pending	
+fabric-test-folds	d0a97ab6-f80e-4a2f-8228-611debb568bb	main	gate-fixer	gate	19	other	green	
+fabric-test-folds	d0a97ab6-f80e-4a2f-8228-611debb568bb	main	gate-fixer	gate	21	other	pending	
+fabric-test-folds	d0a97ab6-f80e-4a2f-8228-611debb568bb	main	gate-fixer	gate	22	other	green	
+fabric-test-folds	ef680495-8897-49cf-b52e-5847ddc3a644	main	darn	nudge	20	slice	1	Read
+fabric-test-folds	ef680495-8897-49cf-b52e-5847ddc3a644	main	darn	nudge	25	edit	1	Edit
+fabric-test-folds	ef680495-8897-49cf-b52e-5847ddc3a644	main	darn	check	14	lint	green	
+fabric-test-folds	ef680495-8897-49cf-b52e-5847ddc3a644	main	darn	check	26	lint	green	
+fabric-test-folds	ef680495-8897-49cf-b52e-5847ddc3a644	main	darn	check	29	validate	green	
+fabric-test-folds	ef680495-8897-49cf-b52e-5847ddc3a644	main	darn	check	30	validate	green	
+hubforge-slim-copy	0e3dbd0c-1534-4bb5-83ae-d35d7496dd78	main	darn	check	11	lint	green	
+hubforge-slim-copy	0e3dbd0c-1534-4bb5-83ae-d35d7496dd78	main	darn	check	15	lint	green	
+hubforge-slim-copy	0e3dbd0c-1534-4bb5-83ae-d35d7496dd78	main	darn	check	16	validate	fail	
+hubforge-slim-copy	0e3dbd0c-1534-4bb5-83ae-d35d7496dd78	main	darn	check	17	validate	green	
+hubforge-slim-copy	44ac0488-7561-4e33-9f56-9fd174eea7ef	main	code-burler-fix	gate	7	other	green	
+hubforge-slim-copy	44ac0488-7561-4e33-9f56-9fd174eea7ef	main	code-burler-fix	gate	8	other	green	
+hubforge-slim-copy	44ac0488-7561-4e33-9f56-9fd174eea7ef	main	code-burler-fix	gate	10	other	green	
+hubforge-slim-copy	44ac0488-7561-4e33-9f56-9fd174eea7ef	main	code-burler-fix	gate	12	other	green	
+hubforge-slim-copy	44ac0488-7561-4e33-9f56-9fd174eea7ef	main	code-burler-fix	gate	18	other	green	
+hubforge-slim-copy	agent-afc3959a9d3b13e94	fork	code-burler-review+fork	refusal	2	rm	Bash	
+hubforge-slim-copy	a1588933-9e07-4628-a5d1-78ae0f9cc186	main	gate-fixer	gate	7	other	pending	
+hubforge-slim-copy	a1588933-9e07-4628-a5d1-78ae0f9cc186	main	gate-fixer	gate	8	other	green	
+hubforge-slim-copy	e5a208c5-4cb1-42fe-908e-dcdb65ef346e	main	describe	check	5	validate	green	
+hubreconcile-templates	67eb6112-6104-442e-a641-820966d5ccca	main	darn	check	12	lint	green	
+hubreconcile-templates	67eb6112-6104-442e-a641-820966d5ccca	main	darn	check	15	validate	fail	
+hubreconcile-templates	67eb6112-6104-442e-a641-820966d5ccca	main	darn	check	16	validate	green	
+hubreconcile-templates	71667c3f-9634-405e-90e4-1d059b833d8f	main	describe	check	5	validate	fail	
+hubreconcile-templates	71667c3f-9634-405e-90e4-1d059b833d8f	main	describe	check	6	validate	green	
+hubreconcile-templates	d5450c96-0958-447d-85d3-421e1b586836	main	gate-fixer	gate	8	other	pending	
+hubreconcile-templates	d5450c96-0958-447d-85d3-421e1b586836	main	gate-fixer	gate	9	other	green	
+hubreconcile-templates	e25c0c92-c320-45ac-a54e-dc7f455d4159	main	code-burler-review	gate	11	other	green	
+hubreconcile-templates	e25c0c92-c320-45ac-a54e-dc7f455d4159	main	code-burler-review	gate	13	other	green	
+battencli-templates	13f4c6ea-c223-4a2c-a08b-a192e507a2f3	main	darn	check	13	lint	green	
+battencli-templates	13f4c6ea-c223-4a2c-a08b-a192e507a2f3	main	darn	check	16	validate	green	
+battencli-templates	d285ee2b-6243-4575-b1bc-085ff29088d9	main	describe	check	5	validate	green	
+battencli-templates	f1fbb287-d4c6-4d48-8592-b598f13aa72d	main	code-burler-review	gate	9	other	green	
+battencli-templates	f1fbb287-d4c6-4d48-8592-b598f13aa72d	main	code-burler-review	gate	10	other	pending	
+battencli-templates	f1fbb287-d4c6-4d48-8592-b598f13aa72d	main	code-burler-review	gate	11	other	green	
+loomcli-templates	0b5dab6f-62ea-4366-99ca-20a7fbfde48e	main	gate-fixer	gate	7	other	green	
+loomcli-templates	455c54dc-952e-45e0-8d24-15323e732307	main	darn	check	14	lint	green	
+loomcli-templates	455c54dc-952e-45e0-8d24-15323e732307	main	darn	check	16	validate	fail	
+loomcli-templates	455c54dc-952e-45e0-8d24-15323e732307	main	darn	check	17	validate	green	
+loomcli-templates	ae7ea011-e711-43ac-b942-e2922d3e8b26	main	describe	check	7	validate	green	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	nudge	23	lookup	1	Bash
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	nudge	24	lookup	1	Bash
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	nudge	25	lookup	1	Bash
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	nudge	26	lookup	3	Bash
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	nudge	28	edit	3	Write
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	refusal	44	go-run	Bash	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	check	34	lint	green	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	check	44	lint	green	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	check	45	lint	green	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	check	50	lint	green	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	check	66	lint	green	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	check	73	lint	green	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	check	75	lint	green	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	check	76	lint	green	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	check	80	validate	green	
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	check	87	validate	green	
+agent-skills-and-effort	agent-a01e7e1dfc363efcf	fork	darn+fork	check	9	lint	green	
+agent-skills-and-effort	agent-a01e7e1dfc363efcf	fork	darn+fork	check	10	lint	fail	
+agent-skills-and-effort	agent-a0696a00dc42dc345	fork	darn+fork	check	10	lint	green	
+agent-skills-and-effort	agent-a5310997344ba6dc5	fork	darn+fork	check	10	lint	green	
+agent-skills-and-effort	agent-a5310997344ba6dc5	fork	darn+fork	check	12	lint	green	
+agent-skills-and-effort	agent-a5310997344ba6dc5	fork	darn+fork	check	13	lint	green	
+agent-skills-and-effort	agent-a5310997344ba6dc5	fork	darn+fork	check	14	lint	green	
+agent-skills-and-effort	agent-a5ae742c2f6a1e35d	fork	darn+fork	refusal	6	other	Bash	
+agent-skills-and-effort	agent-a5ae742c2f6a1e35d	fork	darn+fork	check	10	lint	green	
+agent-skills-and-effort	agent-acc633983de972ece	fork	darn+fork	check	6	lint	fail	
+agent-skills-and-effort	agent-ad1786fcaec660d96	fork	darn+fork	check	10	lint	green	
+agent-skills-and-effort	agent-ad1786fcaec660d96	fork	darn+fork	check	11	lint	green	
+agent-skills-and-effort	agent-ad1786fcaec660d96	fork	darn+fork	check	12	lint	green	
+agent-skills-and-effort	agent-ad1786fcaec660d96	fork	darn+fork	check	13	lint	green	
+agent-skills-and-effort	agent-ad1786fcaec660d96	fork	darn+fork	check	14	lint	green	
+agent-skills-and-effort	agent-ad1786fcaec660d96	fork	darn+fork	check	15	lint	green	
+agent-skills-and-effort	agent-aef6951a469179bb9	fork	darn+fork	refusal	7	shell-edit	Bash	
+agent-skills-and-effort	75c3361a-d9de-4a2a-86bc-d706fdd2b065	main	code-burler-fix	gate	8	other	green	
+agent-skills-and-effort	75c3361a-d9de-4a2a-86bc-d706fdd2b065	main	code-burler-fix	check	8	lint	green	
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	nudge	15	slice	15	Read
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	nudge	17	edit	1	Edit
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	nudge	26	slice	6	Read
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	nudge	37	lookup	1	Bash
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	nudge	38	lookup	2	Bash
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	gate	19	other	green	
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	gate	20	other	green	
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	gate	28	other	green	
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	gate	33	other	green	
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	gate	41	other	green	
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	check	18	lint	green	
+agent-skills-and-effort	b4ce2df8-afd0-4024-aef2-8af93f26c3a8	main	describe	check	6	validate	green	
+agent-skills-and-effort	d4dcc341-a2f2-463d-865e-e256ef6d4033	main	gate-fixer	gate	8	other	pending	
+agent-skills-and-effort	d4dcc341-a2f2-463d-865e-e256ef6d4033	main	gate-fixer	gate	9	other	fail	
+agent-skills-and-effort	d4dcc341-a2f2-463d-865e-e256ef6d4033	main	gate-fixer	gate	29	other	fail	
+agent-skills-and-effort	d4dcc341-a2f2-463d-865e-e256ef6d4033	main	gate-fixer	gate	39	other	fail	
+agent-skills-and-effort	d4dcc341-a2f2-463d-865e-e256ef6d4033	main	gate-fixer	gate	43	other	green	
+hubforge-registered-templates	3b0a3bdb-c666-4d3f-8310-0e720fa1197f	main	code-burler-review	gate	8	other	green	
+hubforge-registered-templates	3b0a3bdb-c666-4d3f-8310-0e720fa1197f	main	code-burler-review	gate	9	other	green	
+hubforge-registered-templates	3f4cea6c-b158-44c6-8b2f-eaf5ae41972a	main	code-burler-fix	gate	8	other	green	
+hubforge-registered-templates	3f4cea6c-b158-44c6-8b2f-eaf5ae41972a	main	code-burler-fix	gate	9	other	green	
+hubforge-registered-templates	3f4cea6c-b158-44c6-8b2f-eaf5ae41972a	main	code-burler-fix	gate	14	other	green	
+hubforge-registered-templates	6d9d9fdc-d02d-403e-992a-9f09c42ecc53	main	describe	check	7	validate	green	
+hubforge-registered-templates	c0da972f-c962-4fa9-8dc3-4baf21e073ca	main	darn	check	18	lint	green	
+hubforge-registered-templates	c0da972f-c962-4fa9-8dc3-4baf21e073ca	main	darn	check	23	lint	green	
+hubforge-registered-templates	c0da972f-c962-4fa9-8dc3-4baf21e073ca	main	darn	check	24	validate	green	
+hubforge-registered-templates	c0da972f-c962-4fa9-8dc3-4baf21e073ca	main	darn	check	29	validate	green	
+hubforge-registered-templates	ec609c61-7bf5-4a31-a600-18ae817e880e	main	gate-fixer	gate	8	other	pending	
+hubforge-registered-templates	ec609c61-7bf5-4a31-a600-18ae817e880e	main	gate-fixer	gate	9	other	green	
+hubforge-registered-templates	ec609c61-7bf5-4a31-a600-18ae817e880e	main	gate-fixer	check	7	lint	green	
+dotgit-worktree-reader	15a387d2-c706-4377-b12a-32329f56c96d	main	darn	nudge	18	edit	10	Write
+dotgit-worktree-reader	15a387d2-c706-4377-b12a-32329f56c96d	main	darn	nudge	19	edit	3	Edit
+dotgit-worktree-reader	15a387d2-c706-4377-b12a-32329f56c96d	main	darn	check	20	lint	green	
+dotgit-worktree-reader	15a387d2-c706-4377-b12a-32329f56c96d	main	darn	check	21	lint	green	
+dotgit-worktree-reader	15a387d2-c706-4377-b12a-32329f56c96d	main	darn	check	23	validate	green	
+dotgit-worktree-reader	47d5f820-4fcd-459d-82ae-e20310fb3841	main	code-burler-fix	gate	8	other	green	
+dotgit-worktree-reader	47d5f820-4fcd-459d-82ae-e20310fb3841	main	code-burler-fix	gate	14	other	green	
+dotgit-worktree-reader	8d0da637-ff54-488d-bc9f-e8e5f4652c8e	main	gate-fixer	gate	8	other	pending	
+dotgit-worktree-reader	8d0da637-ff54-488d-bc9f-e8e5f4652c8e	main	gate-fixer	gate	9	other	green	
+dotgit-worktree-reader	e89641b8-f715-4baf-bbf8-7aa6082f07e1	main	describe	check	6	validate	green	
+board-sketch-shows-record	351df524-9c85-437f-8739-03c2a2152c0f	main	code-burler-fix	gate	9	other	green	
+board-sketch-shows-record	351df524-9c85-437f-8739-03c2a2152c0f	main	code-burler-fix	check	9	lint	green	
+board-sketch-shows-record	515d3d05-1f72-4fd1-899b-f66ef145b6fc	main	gate-fixer	gate	8	other	pending	
+board-sketch-shows-record	515d3d05-1f72-4fd1-899b-f66ef145b6fc	main	gate-fixer	gate	9	other	green	
+board-sketch-shows-record	a1685a74-12ee-4fb2-a7bc-5931fad42d2c	main	darn	check	12	lint	green	
+board-sketch-shows-record	a1685a74-12ee-4fb2-a7bc-5931fad42d2c	main	darn	check	15	validate	green	
+board-sketch-shows-record	a5fdb208-16a5-4a45-8508-dd400a9037af	main	describe	check	6	validate	green	
+prime-stray-bash-window	33fba540-63fd-404d-bad6-28a5dc4cdd18	main	darn	check	23	lint	green	
+prime-stray-bash-window	33fba540-63fd-404d-bad6-28a5dc4cdd18	main	darn	check	26	validate	green	
+prime-stray-bash-window	35a9ba7c-1892-40e2-8a12-c954ee346bd3	main	describe	check	5	validate	green	
+prime-stray-bash-window	d26a5c6e-2b5f-419a-a9bb-1c0d64f2292f	main	code-burler-fix	gate	18	other	green	
+prime-stray-bash-window	d26a5c6e-2b5f-419a-a9bb-1c0d64f2292f	main	code-burler-fix	gate	24	other	green	
+prime-stray-bash-window	d26a5c6e-2b5f-419a-a9bb-1c0d64f2292f	main	code-burler-fix	gate	29	other	green	
+prime-stray-bash-window	d26a5c6e-2b5f-419a-a9bb-1c0d64f2292f	main	code-burler-fix	gate	34	other	green	
+prime-stray-bash-window	d26a5c6e-2b5f-419a-a9bb-1c0d64f2292f	main	code-burler-fix	check	17	lint	green	
+test-real-time-waits	1c2be195-2667-4a61-8e2c-170f4f284f33	main	describe	check	8	validate	green	
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	nudge	17	slice	3	Read
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	nudge	20	slice	1	Read
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	nudge	23	edit	2	Edit
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	nudge	24	edit	1	Edit
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	nudge	26	slice	1	Read
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	check	25	lint	green	
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	check	32	lint	green	
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	check	36	lint	green	
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	check	38	lint	green	
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	check	42	lint	green	
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	check	49	validate	green	
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	check	50	validate	green	
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	check	54	lint	green	
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	check	55	validate	green	
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	check	58	validate	green	
+test-real-time-waits	agent-a5a0824753e256b18	fork	darn+fork	check	6	lint	green	
+test-real-time-waits	agent-a84556b0b2d2785ca	fork	darn+fork	check	6	lint	green	
+test-real-time-waits	agent-ab50ae1fbe6fad9eb	fork	darn+fork	check	7	lint	green	
+test-real-time-waits	agent-ac400b00b15752c5a	fork	darn+fork	check	16	lint	green	
+test-real-time-waits	agent-ad0a1a5090fe41383	fork	darn+fork	check	5	lint	green	
+test-real-time-waits	d89155d3-167d-450c-aaf5-feae9ca48697	main	code-burler-fix	gate	11	other	fail	
+test-real-time-waits	d89155d3-167d-450c-aaf5-feae9ca48697	main	code-burler-fix	gate	14	other	green	
+test-real-time-waits	d89155d3-167d-450c-aaf5-feae9ca48697	main	code-burler-fix	gate	22	other	green	
+test-real-time-waits	d89155d3-167d-450c-aaf5-feae9ca48697	main	code-burler-fix	check	10	lint	green	
+test-real-time-waits	e5a8d362-a5ca-48f5-adc9-d16c8d13247a	main	gate-fixer	gate	8	other	fail	
+test-real-time-waits	e5a8d362-a5ca-48f5-adc9-d16c8d13247a	main	gate-fixer	gate	15	other	pending	
+test-real-time-waits	e5a8d362-a5ca-48f5-adc9-d16c8d13247a	main	gate-fixer	gate	16	other	green	
+test-real-time-waits	e5a8d362-a5ca-48f5-adc9-d16c8d13247a	main	gate-fixer	gate	20	other	green	
+machine-claude-defaults	107dcebc-46a6-49fd-b222-77bb02ed78dc	main	describe	check	7	validate	fail	
+machine-claude-defaults	107dcebc-46a6-49fd-b222-77bb02ed78dc	main	describe	check	9	validate	green	
+machine-claude-defaults	49cde90f-b2d9-430b-ae30-d784841d4ffc	main	code-burler-fix	gate	11	other	green	
+machine-claude-defaults	49cde90f-b2d9-430b-ae30-d784841d4ffc	main	code-burler-fix	gate	12	other	green	
+machine-claude-defaults	49cde90f-b2d9-430b-ae30-d784841d4ffc	main	code-burler-fix	gate	15	other	green	
+machine-claude-defaults	49cde90f-b2d9-430b-ae30-d784841d4ffc	main	code-burler-fix	gate	24	other	green	
+machine-claude-defaults	49cde90f-b2d9-430b-ae30-d784841d4ffc	main	code-burler-fix	gate	30	other	green	
+machine-claude-defaults	49cde90f-b2d9-430b-ae30-d784841d4ffc	main	code-burler-fix	gate	35	other	green	
+machine-claude-defaults	49cde90f-b2d9-430b-ae30-d784841d4ffc	main	code-burler-fix	gate	37	other	green	
+machine-claude-defaults	49cde90f-b2d9-430b-ae30-d784841d4ffc	main	code-burler-fix	gate	38	other	green	
+machine-claude-defaults	8ce79635-66e4-446e-a021-62761359cd94	main	gate-fixer	gate	7	other	pending	
+machine-claude-defaults	8ce79635-66e4-446e-a021-62761359cd94	main	gate-fixer	gate	8	other	green	

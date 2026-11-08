@@ -1,0 +1,5 @@
+kind	origin	chains	chain_turns	follow_turns	follow_ctx
+fork	all	43	148	105	33749879
+fork	mid-round	43	148	105	33749879
+main	all	28	80	51	12612771
+main	mid-round	28	80	51	12612771
