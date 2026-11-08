@@ -80,6 +80,10 @@
 // A seam line whose argument is not a single `<unit>#<Type>` token is a SeamMalformed error.
 // Whether a glyph names a struct is for the caller to judge.
 //
+// ModuleMainPackages lists the `package main` packages of a module through `go list -e ./...`.
+// It returns them sorted, as module-relative package arguments.
+// A program's own tests are where a change to the packages it wires shows, and no other package imports a main package.
+//
 // HoldsTierTest reports whether a package directory holds a test function a run of given tiers executes.
 // A test function opening with `tiergate.Require(t, N)` counts for tier N alone, and any other for every tier.
 // The gate's `{test_targets}` keeps a package on it, so a tier run starts only the test binaries with a test to run.

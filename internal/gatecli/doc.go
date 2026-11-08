@@ -8,7 +8,7 @@
 //
 // # Verb
 //
-// The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]`.
+// The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--main-packages] [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]`.
 // It runs the tiers the hub declares in gate.yaml in ascending tier number.
 // It then runs the vet step and the guard step below when they are planned.
 // A run that fails does not stop the call: every later tier, vet and guard run still runs.
@@ -134,7 +134,8 @@
 // It says so on stderr.
 // Flag-shape refusals need no config and run first, before hub resolution:
 // `--tags`, naming `--tier`; a negative `--upto`; `-C` without explicit targets, naming them;
-// `--gate` beside `--tier`, `--upto`, `--all` or `--base`; and more than one scope form.
+// `--gate` beside `--tier`, `--upto`, `--all` or `--base`; more than one scope form;
+// and `--main-packages` without `--card`, naming `--card <id>`.
 //
 // # Scoper
 //
@@ -192,6 +193,10 @@
 // The diff runs to the working tree.
 // The scope falls back to whole wherever the derivation does, naming the reason on stderr.
 // A `--card` scope is the cards' packages.
+// With `--main-packages` it also holds every `package main` package of tier0's module.
+// `impactset.ModuleMainPackages` lists them.
+// A main package a card already names is listed once, and a failed listing refuses the call naming the module.
+// Under the `none` and `dotnet` scopers the flag adds nothing.
 // A narrower scope runs each listed tier once per module, in that module's directory with its module-relative targets.
 // One slot hold and one `timeout_min` cover every invocation.
 // An empty scope, such as a diff of Markdown files only, runs no listed tier's command, bar a tier with `carry: false`:

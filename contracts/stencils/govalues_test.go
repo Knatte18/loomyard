@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gatecli"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -39,6 +40,7 @@ func yamlKey(t *testing.T, field string) string {
 //lym:watch contracts/stencils/*.go contracts/stencils/*.md contracts/stencils/*/*.md contracts/stencils/*/*/*.md
 //lym:watch contracts/stencils/*/*/*/*.md contracts/orchrole/* internal/stencil/*.go internal/stencilstore/*.go
 //lym:watch internal/gatecli/*.go internal/shuttleengine/*.go internal/shedrun/*.go internal/websterengine/*.go
+//lym:watch internal/gateslot/*.go
 func TestStencils_NameGoValues(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -48,6 +50,7 @@ func TestStencils_NameGoValues(t *testing.T) {
 		value   string
 	}{
 		{"webster-body-implementer", "`" + strconv.Itoa(gatecli.SlotBusyExit) + "`"},
+		{"webster-body-implementer", "`--" + gateslot.MainPackagesFlag + "`"},
 		{"orch-role", shuttleengine.MessageTail},
 		{"shed-template-driver-notify", shuttleengine.MessageTail},
 		{"shed-template-driver-notify-watched", shuttleengine.MessageTail},

@@ -447,6 +447,28 @@ func TestCallKeyDir(t *testing.T) {
 	}
 }
 
+func TestTestRequestWords_MainPackages(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		request testRequest
+		want    []string
+	}{
+		{"Set", testRequest{cards: []string{"1"}, mainPackages: true}, []string{"--card=1", "--main-packages"}},
+		{"Unset", testRequest{cards: []string{"1"}}, []string{"--card=1"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.request.words(); !slices.Equal(got, tt.want) {
+				t.Errorf("words() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestWriteNewRun_RecordsTheCallersRole(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

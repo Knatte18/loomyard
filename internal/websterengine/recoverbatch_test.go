@@ -1738,7 +1738,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				for _, want := range []string{
 					"- rename Go symbols with `gopls rename`\n",
 					"  - `lym gate test --gate card --card 1-json-flag`\n",
-					"- `lym gate test --gate batch --card 1-json-flag`",
+					"- `lym gate test --gate batch --card 1-json-flag --main-packages`",
 				} {
 					if !strings.Contains(fx.Engine.LastPrompt, want) {
 						t.Errorf("recovery prompt does not contain %q; got:\n%s", want, fx.Engine.LastPrompt)

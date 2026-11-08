@@ -174,6 +174,7 @@
 // Config.GateCall renders the `lym gate test --wait --gate <key>` call, with one `--card <id>` per card given.
 // Its `--wait` form is for a call Go runs.
 // Config.AgentGateCall renders the same call without `--wait`, the form for a call an agent runs.
+// Config.AgentGateCallWithMainPackages renders the agent call with `--main-packages` last.
 // An agent strand's capped front answers it with `done: false` and exit 75 when its keep-warm cap passes.
 // MigrateConfig prunes the retired `gates.publish` list and `guard_tier` key from a gate.yaml document.
 // It also migrates the retired lists, so reconcile rewrites the hub file:

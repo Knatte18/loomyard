@@ -375,6 +375,20 @@ func (c Config) AgentGateCall(key string, cards ...string) (string, error) {
 	return c.renderGateCall(key, false, cards)
 }
 
+// MainPackagesFlag is the `lym gate test` flag, without its dashes, that adds the main packages to a --card scope.
+const MainPackagesFlag = "main-packages"
+
+// AgentGateCallWithMainPackages renders the call an agent runs for the named gate key, as AgentGateCall does.
+// The call ends with MainPackagesFlag, so it also runs the module's main packages.
+// It refuses, with the refusals Gate gives, a key the config cannot run.
+func (c Config) AgentGateCallWithMainPackages(key string, cards ...string) (string, error) {
+	call, err := c.renderGateCall(key, false, cards)
+	if err != nil {
+		return "", err
+	}
+	return call + " --" + MainPackagesFlag, nil
+}
+
 // renderGateCall renders the gate call for key over cards, with `--wait` when wait is set.
 func (c Config) renderGateCall(key string, wait bool, cards []string) (string, error) {
 	if _, err := c.Gate(key); err != nil {

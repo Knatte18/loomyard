@@ -357,6 +357,9 @@ func (r testRequest) words() []string {
 	for _, card := range r.cards {
 		add("card", card)
 	}
+	if r.mainPackages {
+		words = append(words, "--"+gateslot.MainPackagesFlag)
+	}
 	if r.base != "" {
 		add("base", r.base)
 	}

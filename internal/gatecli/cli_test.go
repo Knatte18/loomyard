@@ -33,6 +33,7 @@ func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
 		{name: "--gate with --all names --all", args: []string{"test", "--gate", "card", "--all"}, wantError: "drop --all"},
 		{name: "--gate with --base names --base", args: []string{"test", "--gate", "card", "--base", "main"}, wantError: "drop --base"},
 		{name: "a negative --upto names no tier", args: []string{"test", "--upto", "-1"}, wantError: "--upto -1 names no tier"},
+		{name: "--main-packages without --card names --card", args: []string{"test", "--main-packages"}, wantError: "--card <id>"},
 		{name: "-C directory does not exist", args: []string{"test", "-C", missingDir, "./pkg"}, wantError: "does not exist"},
 	}
 	for _, tc := range tests {

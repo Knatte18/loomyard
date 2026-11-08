@@ -86,7 +86,7 @@ func TestRenderBatchGate(t *testing.T) {
 	t.Run("a two-card batch renders one call over every card", func(t *testing.T) {
 		t.Parallel()
 		cards := []planparser.Card{numberedGateCard(1), numberedGateCard(2)}
-		got, err := renderBatchGate(cards, gateTestConfig())
+		got, err := renderBatchGate(cards, gateTestConfig(), false)
 		if err != nil {
 			t.Fatalf("renderBatchGate() error = %v; want nil", err)
 		}
@@ -96,12 +96,14 @@ func TestRenderBatchGate(t *testing.T) {
 		}
 	})
 
-	t.Run("a dangling batch list is refused naming lym config gate", func(t *testing.T) {
+	t.Run("a dangling batch list is refused naming lym config gate, the last batch's call too", func(t *testing.T) {
 		t.Parallel()
 		config := gateTestConfig()
 		delete(config.Gates, "batch")
-		if _, err := renderBatchGate([]planparser.Card{numberedGateCard(1)}, config); err == nil || !strings.Contains(err.Error(), "lym config gate") {
-			t.Errorf("renderBatchGate() error = %v; want a refusal naming lym config gate", err)
+		for _, last := range []bool{false, true} {
+			if _, err := renderBatchGate([]planparser.Card{numberedGateCard(1)}, config, last); err == nil || !strings.Contains(err.Error(), "lym config gate") {
+				t.Errorf("renderBatchGate(last %v) error = %v; want a refusal naming lym config gate", last, err)
+			}
 		}
 	})
 }
@@ -109,7 +111,7 @@ func TestRenderBatchGate(t *testing.T) {
 // TestRenameBoundary_BatchesCheckAndGateTheirOwnTree runs the shape a rename-after-create plan has end to end:
 // the cost batchifier splits before the rename;
 // each batch's done-checks read a tree still holding its own targets,
-// and each batch's gate call names only its own cards.
+// and each batch's gate call names only its own cards, the last batch's call adding the module's main packages.
 func TestRenameBoundary_BatchesCheckAndGateTheirOwnTree(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -140,7 +142,7 @@ func TestRenameBoundary_BatchesCheckAndGateTheirOwnTree(t *testing.T) {
 
 	for i, tree := range []struct{ root, wantGate string }{
 		{firstTree, "- `lym gate test --gate batch --card 1-gate --card 2-gate`"},
-		{secondTree, "- `lym gate test --gate batch --card 3-gate`"},
+		{secondTree, "- `lym gate test --gate batch --card 3-gate --main-packages`"},
 	} {
 		findings, err := planglyph.DoneChecks(plan, batches[i].Cards, tree.root)
 		if err != nil {
@@ -149,7 +151,7 @@ func TestRenameBoundary_BatchesCheckAndGateTheirOwnTree(t *testing.T) {
 		if len(findings) != 0 {
 			t.Errorf("batch %d: DoneChecks = %+v; want no finding", i+1, findings)
 		}
-		gate, err := renderBatchGate(batches[i].Cards, gateTestConfig())
+		gate, err := renderBatchGate(batches[i].Cards, gateTestConfig(), isLastBatch(batches, batches[i]))
 		if err != nil {
 			t.Fatalf("batch %d: renderBatchGate() error = %v; want nil", i+1, err)
 		}

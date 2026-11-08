@@ -419,7 +419,12 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 				"  - `lym gate test --gate card --card 1-json-flag`\n",
 				"- `lym gate test --gate batch --card 1-json-flag`",
 			},
-			wantNot: []string{"{{.", "## verify:", "-run '^("},
+			wantNot: []string{"{{.", "## verify:", "-run '^(", "--card 1-json-flag --main-packages"},
+		},
+		{
+			name:   "the last batch's gate call ends with --main-packages",
+			number: 2,
+			want:   []string{"- `lym gate test --gate batch --card 2-list-tests --main-packages`"},
 		},
 	}
 	for _, tt := range tests {

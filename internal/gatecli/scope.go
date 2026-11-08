@@ -139,6 +139,7 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 // It leaves the guard tests to the module scan, as a whole tier does.
 // A set that cannot be narrowed falls back to whole, naming the reason on request.stderr.
 // A --card scope is the cards' packages per module.
+// With request.mainPackages it also holds every package main of tier0's module, listed once.
 // It adds the declared tiers whose build tag brings a file into one of those packages.
 // A narrowed share, and a --card scope, skip the `//lym:watch` tests of their packages that no changed file concerns.
 // A --card scope reads its changed files as the diff from the merge base with the parent branch.
@@ -192,11 +193,21 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 	}
 	if form == scopeCard {
 		modules := make([]moduleTargets, len(cardModules))
-		var dirs []string
 		for i, module := range cardModules {
 			modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
-			for _, target := range module.Packages {
-				dir := path.Join(module.Dir, strings.TrimPrefix(target, "./"))
+		}
+		if request.mainPackages {
+			moduleDir := moduleKey(root, tier0.Dir)
+			mains, err := impactset.ModuleMainPackages(ctx, resolveRunDir(root, tier0.Dir))
+			if err != nil {
+				return scope{}, fmt.Errorf("gate test: --%s cannot list the main packages of the module at %s: %w; way forward: fix the module until \"go list ./...\" succeeds there, then re-run the same command", gateslot.MainPackagesFlag, moduleDir, err)
+			}
+			modules = withMainPackages(modules, moduleDir, mains)
+		}
+		var dirs []string
+		for _, module := range modules {
+			for _, target := range module.targets {
+				dir := path.Join(module.dir, strings.TrimPrefix(target, "./"))
 				// A card may name a package it has yet to create.
 				if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(dir))); err == nil && info.IsDir() {
 					dirs = append(dirs, dir)
@@ -265,6 +276,24 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 		return scope{form: form, tiers: shares, guardStep: true, guardDir: tier0.Dir}, nil
 	}
 	return scope{form: form, tiers: shares, guardStep: true, guardDir: ".", guards: guardsByTier(guards)}, nil
+}
+
+// withMainPackages returns modules with mains, the main packages of the module at dir, added to that module's targets.
+// A package the cards already name is not added twice, and a module the cards leave out joins the list last.
+func withMainPackages(modules []moduleTargets, dir string, mains []string) []moduleTargets {
+	if len(mains) == 0 {
+		return modules
+	}
+	index := slices.IndexFunc(modules, func(module moduleTargets) bool { return path.Clean(module.dir) == dir })
+	if index < 0 {
+		return append(modules, moduleTargets{dir: dir, targets: mains})
+	}
+	for _, pkg := range mains {
+		if !slices.Contains(modules[index].targets, pkg) {
+			modules[index].targets = append(modules[index].targets, pkg)
+		}
+	}
+	return modules
 }
 
 // noneScope returns the computed or --base scope under the none scoper for a hub with inert_paths:

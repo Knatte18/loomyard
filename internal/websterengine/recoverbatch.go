@@ -283,7 +283,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	if err != nil {
 		return nil, err
 	}
-	batchGate, err := renderBatchGate(batch.Cards, deps.Gate)
+	batchGate, err := renderBatchGate(batch.Cards, deps.Gate, isLastBatch(deps.Batches, batch))
 	if err != nil {
 		return nil, err
 	}

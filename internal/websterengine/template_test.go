@@ -860,7 +860,7 @@ func TestRenderPrompts(t *testing.T) {
 					"1. Read the card file.\n   It is your whole instruction for that card.",
 					"   Locate them with one `lym quarry resolve <glyph>...` call",
 					"`lym loom lint-pattern` and `lym quarry resolve` are always allowed",
-					"does not make it `FAILED`.\n",
+					"does not make it `FAILED`, except a failure in the packages the last batch's `--main-packages` call adds.\n",
 				}}
 		}},
 		{"recovery reads the card files and locates by quarry", func(t *testing.T) promptCheck {
