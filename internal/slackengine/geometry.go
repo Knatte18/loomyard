@@ -8,10 +8,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// The names of the files the engine holds: the token in the per-user credential directory, the rest in the hub's Slack directory.
+// The names of the files the engine holds.
+// The token and the socket lock live in the per-user credential directory.
+// The rest live in the hub's Slack directory.
 const (
 	// TokenFileName is the machine's bot token file.
 	TokenFileName = "slack.json"
+	// SocketLockFileName is the lock the holder of the machine's one Socket Mode connection holds.
+	SocketLockFileName = "slack-socket.lock"
+	// ChannelMapFileName is the hub's record of the Slack channel of each orch.
+	ChannelMapFileName = "channels.json"
+	// InboxDirName is the directory where the socket holder drops a wake hint for the hub's relay.
+	InboxDirName = "inbox"
 	// SetupFileName is the hub's channel and operator record.
 	SetupFileName = "setup.json"
 	// PresenceFileName is the hub's presence record.
@@ -37,10 +45,18 @@ type Geometry struct {
 	HubPath string
 	// Shortname is the hub's recorded shortname, the prefix of the relay's creel program name.
 	Shortname string
+	// Machine is this machine's name, which is part of every channel name.
+	Machine string
 	// Dir is the hub's Slack directory.
 	Dir string
 	// TokenPath is the machine's bot token file.
 	TokenPath string
+	// ChannelMapPath is the hub's record of the Slack channel of each orch.
+	ChannelMapPath string
+	// InboxDir is the directory where the socket holder drops a wake hint for the hub's relay.
+	InboxDir string
+	// SocketLockPath is the lock the holder of the machine's one Socket Mode connection holds.
+	SocketLockPath string
 	// SetupPath is the hub's channel and operator record.
 	SetupPath string
 	// PresencePath is the hub's presence record.

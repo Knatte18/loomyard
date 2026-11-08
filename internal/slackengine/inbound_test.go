@@ -411,8 +411,12 @@ func newGeometry(t *testing.T) slackengine.Geometry {
 	return slackengine.Geometry{
 		HubPath:        root,
 		Shortname:      "ly",
+		Machine:        "neve",
 		Dir:            dir,
 		TokenPath:      filepath.Join(root, "credentials", slackengine.TokenFileName),
+		ChannelMapPath: filepath.Join(dir, slackengine.ChannelMapFileName),
+		InboxDir:       filepath.Join(dir, slackengine.InboxDirName),
+		SocketLockPath: filepath.Join(root, "credentials", slackengine.SocketLockFileName),
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   filepath.Join(dir, slackengine.PresenceFileName),
 		CursorPath:     filepath.Join(dir, slackengine.CursorFileName),

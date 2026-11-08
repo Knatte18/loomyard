@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -500,12 +501,20 @@ func TestSlackGeometry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Executable() = %v", err)
 	}
+	machine, err := machinename.Name()
+	if err != nil {
+		t.Fatalf("machinename.Name() = %v", err)
+	}
 	dir := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.SlackDirName)
 	want := slackengine.Geometry{
 		HubPath:        hub,
 		Shortname:      "abc",
+		Machine:        machine,
 		Dir:            dir,
 		TokenPath:      filepath.Join(credentialRoot, "lym", slackengine.TokenFileName),
+		ChannelMapPath: filepath.Join(dir, slackengine.ChannelMapFileName),
+		InboxDir:       filepath.Join(dir, slackengine.InboxDirName),
+		SocketLockPath: filepath.Join(credentialRoot, "lym", slackengine.SocketLockFileName),
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   filepath.Join(dir, slackengine.PresenceFileName),
 		CursorPath:     filepath.Join(dir, slackengine.CursorFileName),
