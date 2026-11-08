@@ -340,6 +340,7 @@
 // and a write refuses them before any tmux call, naming the way forward.
 // Reed arranges no panes in the shell window: it computes no layout, pins no pane height and keeps no resize hook.
 // The only layout reed issues is the even layout of a group window, in the window_split direction.
+// The only resize hook reed keeps is a group window's own, which issues that layout again.
 //
 // The move rule: the head of every reconcile (listReconcilePanesLocked) lists the shell window's panes.
 // It breaks any pane a strand is bound to out into a window of its own.
@@ -742,9 +743,14 @@
 // The shared window stays as it is.
 // A pane joins the shared window by a detached split in the window_split direction,
 // so an operator viewing the window keeps the active pane, and the window is then laid out evenly in that direction.
+// Every such layout also pins the window's window-resized hook to issue the same layout after each resize.
+// tmux's own resize of a layout can leave one pane at its old size while the other takes the whole change,
+// and the hook gives every pane of the window an equal share again.
+// The hook skips a zoomed window, so a resize never unzooms it.
+// psmux lacks set-hook, so on Windows no hook is pinned.
 // Removing an own-window strand moves a viewer on its window to the relevant window before the window ends.
 // The move never goes to the shell, and it never moves a viewer on another window.
-// A shared window a strand leaves is laid out again.
+// A shared window a strand leaves is laid out again, and its hook is pinned again.
 // An invalid window_split or window_share_max never refuses a removal:
 // the layout is skipped and the key is reported in Removed.ConfigWarning.
 //
@@ -847,8 +853,8 @@
 // requiredSubcommands (probe.go) fails the capability probe on a binary missing any of them.
 // set-hook is absent from requiredSubcommands.
 // Gating the capability probe on it would take every reed verb down on a psmux lacking it.
-// The hooks it serves are the unseen-clear hook and the window-resized unpin.
-// Both are quality-only and degrade silently.
+// The hooks it serves are the unseen-clear hook, the window-resized unpin and a group window's even-layout hook.
+// All three are quality-only and degrade silently.
 //
 // Load-bearing behavioral assumptions, each with the rationale that makes it load-bearing:
 //

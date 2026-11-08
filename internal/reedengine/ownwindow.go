@@ -7,6 +7,7 @@ package reedengine
 
 import (
 	"fmt"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -288,6 +289,7 @@ func ownWindowsLosingPanes(windows []windowPane, kill []string) (ending, left []
 }
 
 // relayoutSharedWindowsLocked lays out each window in windows evenly in the window_split direction.
+// It also pins each window's resize hook to that layout.
 // An invalid window config skips every layout and returns the config error's text,
 // so a removal still completes.
 // Otherwise it returns the empty string.
@@ -301,8 +303,31 @@ func (e *Engine) relayoutSharedWindowsLocked(windows []string) string {
 		if err := e.tmux.run("select-layout", "-t", window, layout); err != nil {
 			logger.Warn("reed: could not lay out a shared window after a strand left it", "window", window, "layout", layout, "err", err)
 		}
+		e.pinEvenLayoutOnResizeLocked(window, layout)
 	}
 	return ""
+}
+
+// evenLayoutResizeHook returns the window-resized hook command that lays a shared window out in layout again.
+// tmux runs it after its own resize of the layout, against the window that fired it,
+// so the window's panes keep equal shares however the terminal grows or shrinks.
+// A zoomed window is left as it is, since a layout would unzoom it.
+func evenLayoutResizeHook(layout string) string {
+	return "if-shell -F '#{?window_zoomed_flag,0,1}' 'select-layout " + layout + "'"
+}
+
+// pinEvenLayoutOnResizeLocked sets the window-resized hook of target's window to evenLayoutResizeHook(layout).
+// target is a pane or window id.
+// The hook replaces the window's earlier one, so every layout of the window leaves one entry naming the current layout.
+// psmux lacks set-hook, so on Windows it sets nothing and a resize keeps whatever split tmux's own resize gives.
+// A failure is logged and never fails the step.
+func (e *Engine) pinEvenLayoutOnResizeLocked(target, layout string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	if err := e.tmux.run("set-hook", "-w", "-t", target, windowResizedHookName, evenLayoutResizeHook(layout)); err != nil {
+		logger.Warn("reed: could not pin the shared window's even layout on resize, a resize may leave its panes uneven", "target", target, "layout", layout, "err", err)
+	}
 }
 
 // pruneWindowGroups deletes every group record that no strand of st names,

@@ -47,5 +47,6 @@ func NextWakeCadence(current, base, ceiling time.Duration, changed bool) time.Du
 }
 
 // windowResizedHookName is the name of the tmux window-resized hook option.
-// The window-size code removes that hook to unpin the shell window.
+// The window-size code removes that hook to unpin the shell window,
+// and a group's shared window carries one that lays the window out evenly again.
 const windowResizedHookName = "window-resized"

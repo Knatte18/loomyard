@@ -170,7 +170,8 @@ func (e *Engine) killReplacedOwnWindowPaneLocked(previousPaneID, newPaneID strin
 // A grouped strand's placement opens the group's shared window, joins it, or gives it a window of its own.
 // The group record the placement returns is stored in st, which the caller persists with the strand.
 // A refusal returns before anything is created.
-// A shared window is laid out evenly in the window_split direction after a new pane joins or opens it.
+// A shared window is laid out evenly in the window_split direction after a new pane joins or opens it,
+// and its resize hook is pinned to lay it out evenly again whenever the window resizes.
 func (e *Engine) createOwnWindowPaneLocked(st *ReedState, s *Strand) (string, error) {
 	group := s.Display.Window
 	if group == "" {
@@ -213,6 +214,7 @@ func (e *Engine) createOwnWindowPaneLocked(st *ReedState, s *Strand) (string, er
 	if err := e.tmux.run("select-layout", "-t", paneID, layout); err != nil {
 		logger.Warn("reed: could not lay out the shared window", "strand", s.GUID, "pane", paneID, "layout", layout, "err", err)
 	}
+	e.pinEvenLayoutOnResizeLocked(paneID, layout)
 	return paneID, nil
 }
 

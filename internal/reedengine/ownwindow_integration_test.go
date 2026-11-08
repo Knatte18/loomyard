@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -313,6 +314,18 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		}
 		return fields[0], fields[1]
 	}
+	numberOf := func(target, format string) int {
+		t.Helper()
+		n, err := strconv.Atoi(display(target, format))
+		if err != nil {
+			t.Fatalf("%s of %s: %v", format, target, err)
+		}
+		return n
+	}
+	panesEven := func(first, second string) bool {
+		difference := numberOf(first, "#{pane_width}") - numberOf(second, "#{pane_width}")
+		return difference >= -1 && difference <= 1
+	}
 	// restoreConfig puts the config fields a subtest edits back when the subtest ends.
 	restoreConfig := func(t *testing.T) {
 		shareMax, split := e.cfg.WindowShareMax, e.cfg.WindowSplit
@@ -379,6 +392,60 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 			t.Errorf("panes at (%s,%s) and (%s,%s), want them stacked: equal left, different top", firstLeft, firstTop, secondLeft, secondTop)
 		}
 	})
+
+	// psmux lacks set-hook, so the shared window carries no resize hook on Windows and the resize steps are left out there.
+	if runtime.GOOS != "windows" {
+		t.Run("ResizeLaysTheSharedWindowOutEvenlyAgain", func(t *testing.T) {
+			first := addGrouped("ra", "resized", 2, "sleep 300", "")
+			second := addGrouped("rb", "resized", 2, "sleep 300", "")
+			window := windowOfPane(t, e, first.PaneID)
+			if err := e.tmux.run("resize-pane", "-t", first.PaneID, "-x", "10"); err != nil {
+				t.Fatalf("resize-pane: %v", err)
+			}
+			grown := strconv.Itoa(numberOf(window, "#{window_width}") + 40)
+
+			if err := e.tmux.run("resize-window", "-t", window, "-x", grown); err != nil {
+				t.Fatalf("resize-window -x %s: %v", grown, err)
+			}
+
+			waitUntil(t, 10*time.Second, "the resized shared window's panes never took equal widths", func() bool {
+				return panesEven(first.PaneID, second.PaneID)
+			})
+		})
+
+		t.Run("ResizeLeavesAZoomedSharedWindowZoomed", func(t *testing.T) {
+			first := addGrouped("za", "zoomed", 2, "sleep 300", "")
+			addGrouped("zb", "zoomed", 2, "sleep 300", "")
+			window := windowOfPane(t, e, first.PaneID)
+			controlFirst := addGrouped("zc", "zoomed-control", 2, "sleep 300", "")
+			controlSecond := addGrouped("zd", "zoomed-control", 2, "sleep 300", "")
+			control := windowOfPane(t, e, controlFirst.PaneID)
+			if err := e.tmux.run("resize-pane", "-t", controlFirst.PaneID, "-x", "10"); err != nil {
+				t.Fatalf("resize-pane: %v", err)
+			}
+			if err := e.tmux.run("resize-pane", "-Z", "-t", first.PaneID); err != nil {
+				t.Fatalf("resize-pane -Z: %v", err)
+			}
+			grow := func(target string) {
+				t.Helper()
+				grown := strconv.Itoa(numberOf(target, "#{window_width}") + 40)
+				if err := e.tmux.run("resize-window", "-t", target, "-x", grown); err != nil {
+					t.Fatalf("resize-window -x %s: %v", grown, err)
+				}
+			}
+
+			// The control window's hook fires after the zoomed window's, so its even layout shows the zoomed window's hook has run.
+			grow(window)
+			grow(control)
+			waitUntil(t, 10*time.Second, "the control window's panes never took equal widths", func() bool {
+				return panesEven(controlFirst.PaneID, controlSecond.PaneID)
+			})
+
+			if got := display(window, "#{window_zoomed_flag}"); got != "1" {
+				t.Errorf("window_zoomed_flag = %q after the resize, want the window left zoomed", got)
+			}
+		})
+	}
 
 	t.Run("GroupOfFiveGivesEachItsOwnWindow", func(t *testing.T) {
 		seen := map[string]bool{}
@@ -578,19 +645,38 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 	})
 
 	t.Run("LeavingASharedWindowRelaysItOut", func(t *testing.T) {
-		first := addGrouped("lva", "leaving", 2, "sleep 300", "")
-		second := addGrouped("lvb", "leaving", 2, "sleep 300", "")
+		restoreConfig(t)
+		e.cfg.WindowShareMax = 3
+		first := addGrouped("lva", "leaving", 3, "sleep 300", "")
+		second := addGrouped("lvb", "leaving", 3, "sleep 300", "")
+		third := addGrouped("lvc", "leaving", 3, "sleep 300", "")
 		window := windowOfPane(t, e, first.PaneID)
+		stacked := func() bool {
+			firstLeft, firstTop := paneOrigin(first.PaneID)
+			secondLeft, secondTop := paneOrigin(second.PaneID)
+			return firstLeft == secondLeft && firstTop != secondTop
+		}
+		e.cfg.WindowSplit = "height"
 
-		if _, err := e.RemoveStrand(second.GUID, false); err != nil {
+		if _, err := e.RemoveStrand(third.GUID, false); err != nil {
 			t.Fatalf("RemoveStrand: %v", err)
 		}
 
-		if panes := windowPanes(window); len(panes) != 1 {
-			t.Fatalf("shared window panes = %v after one strand left, want one", panes)
+		if panes := windowPanes(window); len(panes) != 2 {
+			t.Fatalf("shared window panes = %v after one strand left, want two", panes)
 		}
-		if width, windowWidth := display(first.PaneID, "#{pane_width}"), display(window, "#{window_width}"); width != windowWidth {
-			t.Errorf("remaining pane width = %s, want the window's full width %s", width, windowWidth)
+		if !stacked() {
+			t.Errorf("remaining panes are not stacked after the leave under window_split height, want them laid out in that split")
+		}
+		// psmux lacks set-hook, so on Windows the window carries no resize hook to re-pin.
+		if runtime.GOOS != "windows" {
+			grown := strconv.Itoa(numberOf(window, "#{window_width}") + 40)
+			if err := e.tmux.run("resize-window", "-t", window, "-x", grown); err != nil {
+				t.Fatalf("resize-window -x %s: %v", grown, err)
+			}
+			waitUntil(t, 10*time.Second, "the shared window never kept the height split after a resize past the leave", func() bool {
+				return stacked() && numberOf(first.PaneID, "#{pane_width}") == numberOf(window, "#{window_width}")
+			})
 		}
 	})
 
