@@ -40,8 +40,11 @@ const boardGuardMinScannedFiles = 5
 // it also fails when a file shells out to `git` via exec.Command or exec.CommandContext.
 // The boardtest subdirectory is skipped.
 // Its integration tests legitimately spawn git via hubforge.NewHub, so the ban does not apply to them.
+// A narrowed gate runs it only when a file under internal/boardengine or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/boardengine/*.go internal/boardengine/*/*.go internal/boardengine/*/*/*.go
+//lym:watch internal/testkit/scankit/*.go
 func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 	tiergate.Require(t, 0)
 	const dir = "internal/boardengine"

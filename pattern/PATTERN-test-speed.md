@@ -153,12 +153,19 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
 
 - A test that guards only some files, such as a cross-compile or a fixture build, carries `//lym:watch <pattern>...`.
   `path.Match` matches a pattern holding a `/` against the worktree-relative path, and any other against the base name.
+- A `//lym:guard` test whose scan reads a bounded set of files carries the marker too.
+  Its patterns cover every file that can change its outcome:
+  the files it scans, a package declaring a value it names, and a helper in another file, `scankit` included.
+  A recursive walk's patterns reach one directory level below the deepest file it scans today.
+- A guard that scans all the Go code of the module, or of `internal/` and `cmd/`, stays unmarked.
+  So does one whose inputs no pattern set bounds, such as a link check whose targets come from the link text.
 - A narrowed gate runs the test only when a changed file matches a pattern or the test's own file changed.
   A diff-scoped key narrows over its diff, and a `card` key over the diff from the merge base with the parent branch.
 - A whole gate always runs it.
 - The marker stacks with `//lym:guard`, `//lym:seam` and `//testtiming:keep` lines in any order.
 - A misplaced marker, or one with no pattern or a malformed one, refuses the gate.
 - Bound: the skip matches by test name, so a test of the same name in another package of the run is skipped too.
+- Bound: a file nested deeper than a guard's patterns reach does not run it in a narrowed gate; a whole gate does.
 
 ## Time is injectable
 

@@ -192,8 +192,10 @@ var destructiveGuardReadOnlyResultTypes = []struct {
 // TestNoDestructiveBypass_FabricengineProductionSource walks internal/fabricengine's non-test .go files.
 // It fails if any of them, other than an allowlisted file, contains one of destructiveGuardBannedTokens.
 // Each token marks a destructive call or token construction reached outside the gate.
+// A narrowed gate runs it only when a file under internal/fabricengine or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/fabricengine/*.go internal/fabricengine/*/*.go internal/testkit/scankit/*.go
 func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(destructiveGuardAllowlist)
@@ -240,9 +242,11 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 //
 // It inspects declarations only,
 // so it does not prove that an executor appends to rec or that what it appends is correct.
+// A narrowed gate runs it only when a file of internal/fabricengine or scankit changes; a whole gate always runs it.
 //
 //testtiming:keep internal/fabricengine/doc.go names this test as the Mutation Record Invariant's guard
 //lym:guard
+//lym:watch internal/fabricengine/*.go internal/testkit/scankit/*.go
 func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 	tiergate.Require(t, 0)
 	moduleRoot := scankit.Root(t)

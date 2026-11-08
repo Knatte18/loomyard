@@ -78,7 +78,11 @@ func TestEnforcement_TestkitInvariant(t *testing.T) {
 	}
 }
 
+// TestEnforcement_ScankitStdlibOnly fails when a non-test scankit file imports a package outside the standard library.
+// A narrowed gate runs it only when a scankit file changes; a whole gate always runs it.
+//
 //lym:guard
+//lym:watch internal/testkit/scankit/*.go
 func TestEnforcement_ScankitStdlibOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/testkit/scankit")

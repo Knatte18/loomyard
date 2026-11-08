@@ -221,8 +221,11 @@ func offside(raw string) bool {
 
 // TestRefKindScan_RealTreeClean checks every production file in internal/planparser and internal/planglyph.
 // Only classify.go and shape.go may name classifyRef, the refKind type, or one of its declared constants.
+// A narrowed gate runs it only when a scanned package or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/planparser/*.go internal/planparser/*/*.go internal/planglyph/*.go internal/planglyph/*/*.go
+//lym:watch internal/testkit/scankit/*.go
 func TestRefKindScan_RealTreeClean(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -253,8 +256,11 @@ func TestRefKindScan_RealTreeClean(t *testing.T) {
 // TestPlanOpScan_RealTreeClean checks every production file in internal/planparser and internal/planglyph.
 // Only classify.go, shape.go and internal/planparser/handle.go may open-code "plan:" string surgery.
 // internal/planglyph/handle.go is not exempt, though it shares a basename with internal/planparser/handle.go.
+// A narrowed gate runs it only when a scanned package or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/planparser/*.go internal/planparser/*/*.go internal/planglyph/*.go internal/planglyph/*/*.go
+//lym:watch internal/testkit/scankit/*.go
 func TestPlanOpScan_RealTreeClean(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

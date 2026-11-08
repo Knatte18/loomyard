@@ -56,8 +56,11 @@ func callsAny(data []byte, token string) bool {
 // TestVerifiedTree_PlanVerifySitesCallVerify fails when a plan-verify site does not call or hold verifytree.Verify.
 // It also fails a site whose code lines contain neither `Hold:` nor `.Hold =`,
 // so a site that drops its pause hold trips it.
+// A narrowed gate runs it only when a plan-verify site or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/websterengine/verifygate.go internal/loomshed/verifygate.go internal/webstercli/verify.go
+//lym:watch internal/landingshed/verifygate.go internal/testkit/scankit/*.go
 func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 	tiergate.Require(t, 0)
 	seen := map[string]bool{}

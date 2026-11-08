@@ -143,9 +143,15 @@ func scanDeniedRecoveryGoFile(t *testing.T, root, path string) []deniedRecoveryH
 }
 
 // TestNoDeniedRecovery_ScannedSurfaceHasNone fails, naming file and line, for every denied form the scanned surface offers.
+// A narrowed gate runs it only when a scanned file, the shell guard table or scankit changes;
+// a whole gate always runs it.
 //
 //testtiming:keep pins that no refusal, stencil or spec names a denied recovery command, the guard itself of PATTERN-refusal-way-forward
 //lym:guard
+//lym:watch contracts/specs/* contracts/specs/*/* plugins/ly/skills/* plugins/ly/skills/*/* plugins/ly/skills/*/*/*
+//lym:watch contracts/stencils/* contracts/stencils/*/* contracts/stencils/*/*/* contracts/stencils/*/*/*/*
+//lym:watch internal/webster*/*.go internal/webster*/*/*.go internal/shed*/*.go internal/shed*/*/*.go
+//lym:watch internal/loom*/*.go internal/loom*/*/*.go internal/shellguard/*.go internal/testkit/scankit/*.go
 func TestNoDeniedRecovery_ScannedSurfaceHasNone(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := scankit.Root(t)

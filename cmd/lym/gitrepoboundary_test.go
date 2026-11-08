@@ -70,8 +70,10 @@ const gitrepoBoundaryMinScannedFiles = 5
 // Such methods, for example `StageAndCommit` and `CommitEmpty`, need their diffs reviewed by hand.
 // The second assertion catches a bare gitexec call written directly in a method.
 // Such a call would satisfy the first assertion while still violating the CLI/go-git boundary.
+// A narrowed gate runs it only when a file of internal/gitrepo or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/gitrepo/*.go internal/testkit/scankit/*.go
 func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 	tiergate.Require(t, 0)
 	const dir = "internal/gitrepo"

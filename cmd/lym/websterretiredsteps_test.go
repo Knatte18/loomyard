@@ -87,9 +87,14 @@ func scanRetiredStepsGoFile(t *testing.T, root, path string) []deniedRecoveryHit
 
 // TestWebsterRetiredSteps_ScannedSurfaceHasNone fails for every retired step the scanned surface names.
 // The failure names the file and line of each hit.
+// A narrowed gate runs it only when a scanned file, the shared token matcher or scankit changes;
+// a whole gate always runs it.
 //
 //testtiming:keep pins that no webster refusal, stencil or spec names git reset --keep or a reset followed by run --fresh, the retirement of both routes
 //lym:guard
+//lym:watch contracts/specs/* contracts/specs/*/* contracts/stencils/webster/* contracts/stencils/webster/*/*
+//lym:watch internal/webster*/*.go internal/webster*/*/*.go cmd/lym/norecoverydeny_test.go
+//lym:watch internal/testkit/scankit/*.go
 func TestWebsterRetiredSteps_ScannedSurfaceHasNone(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := scankit.Root(t)

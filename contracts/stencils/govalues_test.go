@@ -32,8 +32,13 @@ func yamlKey(t *testing.T, field string) string {
 
 // TestStencils_NameGoValues asserts each stencil names the value Go declares for it.
 // Renaming either side without the other fails the test.
+// A narrowed gate runs it only when a stencil, the orch role or a package declaring a value changes;
+// a whole gate always runs it.
 //
 //lym:guard
+//lym:watch contracts/stencils/*.go contracts/stencils/*.md contracts/stencils/*/*.md contracts/stencils/*/*/*.md
+//lym:watch contracts/stencils/*/*/*/*.md contracts/orchrole/* internal/stencil/*.go internal/stencilstore/*.go
+//lym:watch internal/gatecli/*.go internal/shuttleengine/*.go internal/shedrun/*.go internal/websterengine/*.go
 func TestStencils_NameGoValues(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -70,8 +75,11 @@ func TestStencils_NameGoValues(t *testing.T) {
 
 // TestTwillStencils_HostNeutral asserts no twill stencil names a host-specific value,
 // so another host can render it with its own values.
+// A narrowed gate runs it only when a stencil or the stencil registry changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch contracts/stencils/*.go contracts/stencils/*.md contracts/stencils/*/*.md contracts/stencils/*/*/*.md
+//lym:watch contracts/stencils/*/*/*/*.md contracts/orchrole/* internal/stencil/*.go internal/stencilstore/*.go
 func TestTwillStencils_HostNeutral(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -99,8 +107,11 @@ func TestTwillStencils_HostNeutral(t *testing.T) {
 
 // TestHubGenericStencils_NameNoGoTiers asserts the planning and implementer stencils name no Go verify-tier command,
 // so a hub declaring no tier gets none; a hub with tiers gets them through the gate_tiers marker.
+// A narrowed gate runs it only when a stencil or the stencil registry changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch contracts/stencils/*.go contracts/stencils/*.md contracts/stencils/*/*.md contracts/stencils/*/*/*.md
+//lym:watch contracts/stencils/*/*/*/*.md contracts/orchrole/* internal/stencil/*.go internal/stencilstore/*.go
 func TestHubGenericStencils_NameNoGoTiers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

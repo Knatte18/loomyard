@@ -46,9 +46,12 @@ func skillLoadViolations(body string) []string {
 
 // TestStencils_NoSkillLoadInstructions fails for every stencil whose agent-facing body tells an agent to load a skill.
 // A stencil that names the Skill tool fails too.
+// A narrowed gate runs it only when a stencil, the orch role or a package it reads changes; a whole gate always runs it.
 //
 //testtiming:keep pins PATTERN-stencil-ownership's parent-directive ban on a stencil telling an agent to load a skill that lym delivers, or naming the Skill tool, a guard that fires which no other test asserts
 //lym:guard
+//lym:watch contracts/stencils/*.go contracts/stencils/*.md contracts/stencils/*/*.md contracts/stencils/*/*/*.md
+//lym:watch contracts/stencils/*/*/*/*.md contracts/orchrole/* internal/stencil/*.go internal/stencilstore/*.go
 func TestStencils_NoSkillLoadInstructions(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

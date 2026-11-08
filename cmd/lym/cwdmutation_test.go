@@ -49,8 +49,12 @@ var cwdMutationAllowlist = []scankit.Entry{
 
 // TestCwdMutation_MigratedFilesStayChdirFree walks the module tree and fails on any file in cwdMutationSubjectFiles:
 // a raw t.Chdir( or os.Chdir( substring fails the test unless the file is on cwdMutationAllowlist.
+// A narrowed gate runs it only when a subject-set file or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/fabriccli/cli_test.go internal/configcli/configcli_integration_test.go
+//lym:watch internal/webstercli/verbs_test.go internal/idecli/cli_test.go internal/reedcli/cli_integration_test.go
+//lym:watch internal/fabricengine/coalesce_integration_test.go internal/testkit/scankit/*.go
 func TestCwdMutation_MigratedFilesStayChdirFree(t *testing.T) {
 	tiergate.Require(t, 0)
 	subjects := scankit.NewAllowlist(cwdMutationSubjectFiles)
@@ -101,9 +105,11 @@ func firstCwdMutationToken(content string) (string, bool) {
 // TestCwdMutationGuard_NotVacuous proves the matcher fires: a planted violation trips firstCwdMutationToken,
 // and the one allowlisted file, read fresh from disk, still contains a banned token,
 // so its silence comes from the allowlist branch.
+// A narrowed gate runs it only when the allowlisted file or scankit changes; a whole gate always runs it.
 //
 //testtiming:keep proves the TestCwdMutation_MigratedFilesStayChdirFree guard fires on a planted violation and stays silent for its allowlisted file
 //lym:guard
+//lym:watch internal/fabricengine/coalesce_integration_test.go internal/testkit/scankit/*.go
 func TestCwdMutationGuard_NotVacuous(t *testing.T) {
 	tiergate.Require(t, 0)
 	planted := "func TestPlanted(t *testing.T) {\n\tt.Chdir(t.TempDir())\n}\n"
