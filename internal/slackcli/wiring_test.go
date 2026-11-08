@@ -112,8 +112,9 @@ func TestLiveHubGeometries(t *testing.T) {
 			t.Fatalf("WriteFile(%q) = %v", recordPath, err)
 		}
 		got, err := liveHubGeometries()
-		if err == nil || !strings.Contains(err.Error(), recordPath) || !errors.Is(err, state.ErrDecode) {
-			t.Errorf("liveHubGeometries() = (%+v, %v); want an error naming %q and wrapping state.ErrDecode", got, err, recordPath)
+		wantNaming := "read the machine record of hubs " + recordPath
+		if err == nil || !strings.Contains(err.Error(), wantNaming) || !errors.Is(err, state.ErrDecode) {
+			t.Errorf("liveHubGeometries() = (%+v, %v); want an error containing %q and wrapping state.ErrDecode", got, err, wantNaming)
 		}
 	})
 
