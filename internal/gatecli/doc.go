@@ -540,7 +540,7 @@
 // # Trimpath
 //
 // A hub's tiers set `-trimpath` in their GOFLAGS, as the example below does,
-// so a fresh worktree reuses the build and test cache.
+// so a fresh worktree reuses the build cache.
 // Under it `runtime.Caller` reports module-relative file paths,
 // so a test that locates its repository from one fails, though a raw `go test` passes.
 // The verb writes a line when a tier's last GOFLAGS entry, inherited or the tier's own, holds an enabled `-trimpath`.
@@ -549,6 +549,16 @@
 // The line opens the tier's log, before its first command's output.
 // It goes to stderr just before the tier's summary line, so it sits beside a failing run's verdict.
 // A tier with an empty scope runs no command and gets no such line, and a refused tier prints only its JSON envelope.
+//
+// # Test result cache
+//
+// Every tier command runs with `gateslot.TestCacheOffFlag`, `-count=1`, first in its GOFLAGS.
+// It comes ahead of the inherited or tier-set value, which the trimpath line names without it.
+// `go test` therefore keeps no test result cache.
+// It writes no test log into the build cache either.
+// No hub config is needed.
+// The green record carries a pass over an unchanged tree.
+// A hub's own `-count` in GOFLAGS, or one in the words after `--`, still wins.
 //
 // # Child lifetime
 //

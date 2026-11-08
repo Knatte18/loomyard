@@ -1090,8 +1090,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		if want := []string{"./pkg", "-run", "X"}; !slices.Equal(record.Args, want) {
 			t.Errorf("tier args = %q; want %q", record.Args, want)
 		}
-		if record.GoFlags != "-trimpath -p=3" || filepath.Dir(record.Slot) != pool.Dir {
-			t.Errorf("tier environment GOFLAGS = %q, %s = %q; want the tier's own GOFLAGS and a slot of %s", record.GoFlags, gateslot.InheritEnv, record.Slot, pool.Dir)
+		if record.GoFlags != "-count=1 -trimpath -p=3" || filepath.Dir(record.Slot) != pool.Dir {
+			t.Errorf("tier environment GOFLAGS = %q, %s = %q; want the cache-off flag before the tier's own GOFLAGS and a slot of %s", record.GoFlags, gateslot.InheritEnv, record.Slot, pool.Dir)
 		}
 		if record.Cwd != prime {
 			t.Errorf("tier cwd = %q; want the tier's dir under the worktree root %q", record.Cwd, prime)
@@ -1904,7 +1904,7 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
 		record := g.standIn(t)
-		if record.BuildMark != "from-env-module" || record.GoFlags != "-trimpath -p=3" {
+		if record.BuildMark != "from-env-module" || record.GoFlags != "-count=1 -trimpath -p=3" {
 			t.Errorf("tier BUILD_MARK %q, GOFLAGS %q; want the env module's BUILD_MARK over the inherited one and the tier's own GOFLAGS over the env module's", record.BuildMark, record.GoFlags)
 		}
 	})
@@ -1929,7 +1929,7 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
 		record := g.standIn(t)
-		if record.Slot != "" || record.GoFlags != "-trimpath -p=3" || record.Cwd != worktree || record.Strand != "" {
+		if record.Slot != "" || record.GoFlags != "-count=1 -trimpath -p=3" || record.Cwd != worktree || record.Strand != "" {
 			t.Errorf("tier slot %q, GOFLAGS %q, cwd %q, strand %q; want no slot, the tier's GOFLAGS, %q and no strand", record.Slot, record.GoFlags, record.Cwd, record.Strand, worktree)
 		}
 		if !strings.Contains(g.stderr.String(), "no hub bound applies") {

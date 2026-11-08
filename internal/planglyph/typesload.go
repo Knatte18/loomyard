@@ -99,7 +99,9 @@ func (l goListLoader) load(root string, dirs []string) ([]*packages.Package, err
 }
 
 // loadEnv returns the environment of one go list load: the process environment with the proxy off and `-mod=readonly` in GOFLAGS.
-// With a slot pool it appends the flags gateslot.HolderEnv sets for a non-tier holder, `-trimpath` and `-p` from the pool's tier0 parallel, after `-mod=readonly`, and names lease as the slot the load inherits.
+// With a slot pool it applies the flags gateslot.HolderEnv sets for a non-tier holder:
+// `-count=1` ahead of `-mod=readonly`, then `-p` from the pool's tier0 parallel and `-trimpath` after it.
+// It also names lease as the slot the load inherits.
 func (l goListLoader) loadEnv(lease *gateslot.Lease) ([]string, error) {
 	env := append(os.Environ(), "GOPROXY=off", "GOFLAGS=-mod=readonly")
 	if l.slots == nil {

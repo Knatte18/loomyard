@@ -429,8 +429,37 @@ func (l *Lease) Release() error {
 	return errors.Join(errs...)
 }
 
+// TestCacheOffFlag is the go flag that makes `go test` neither read nor write its test result cache.
+// The gate puts it first in the GOFLAGS of every tier command it runs and every non-tier slot holder's child.
+// A cacheable test run logs every file and environment variable its test touches into the build cache.
+// A gate run's tests touch fresh temp directories, so that log grows large and its result is never reused;
+// the gate's own green record already carries a pass over an unchanged tree.
+// The build cache is unaffected, and a later `-count` in GOFLAGS or on the command line wins.
+const TestCacheOffFlag = "-count=1"
+
+// WithTestCacheOff returns a copy of env whose GOFLAGS opens with TestCacheOffFlag.
+// The rest of the value is that of env's last GOFLAGS entry, the one a child sees; env with none gets the flag alone.
+// The copy holds one GOFLAGS entry, last.
+func WithTestCacheOff(env []string) []string {
+	flags := []string{TestCacheOffFlag}
+	kept := make([]string, 0, len(env)+1)
+	existingFlags := ""
+	for _, entry := range env {
+		key, value, _ := strings.Cut(entry, "=")
+		if !strings.EqualFold(key, goFlagsEnvName) {
+			kept = append(kept, entry)
+			continue
+		}
+		existingFlags = value
+	}
+	if existingFlags != "" {
+		flags = append(flags, existingFlags)
+	}
+	return append(kept, goFlagsEnvName+"="+strings.Join(flags, " "))
+}
+
 // HolderEnv returns a copy of base for a non-tier slot holder's child.
-// GOFLAGS is the base's value, when it has one, followed by `-p=<tier0Parallel>` and `-trimpath`.
+// GOFLAGS is TestCacheOffFlag, then the base's value when it has one, then `-p=<tier0Parallel>` and `-trimpath`.
 // The `-p` flag is added only when tier0Parallel is above 0.
 // A non-nil lease also sets InheritEnv to its first slot's lock path,
 // so a gate run inside the child runs without acquiring.
@@ -447,13 +476,14 @@ func HolderEnv(base []string, lease *Lease, tier0Parallel int) []string {
 			env = append(env, entry)
 		}
 	}
-	flags := []string{"-trimpath"}
-	if tier0Parallel > 0 {
-		flags = []string{"-p=" + strconv.Itoa(tier0Parallel), "-trimpath"}
-	}
+	flags := []string{TestCacheOffFlag}
 	if existingFlags != "" {
-		flags = append([]string{existingFlags}, flags...)
+		flags = append(flags, existingFlags)
 	}
+	if tier0Parallel > 0 {
+		flags = append(flags, "-p="+strconv.Itoa(tier0Parallel))
+	}
+	flags = append(flags, "-trimpath")
 	env = append(env, goFlagsEnvName+"="+strings.Join(flags, " "))
 	if lease != nil {
 		env = append(env, InheritEnv+"="+lease.slots[0].lockPath)

@@ -38,7 +38,7 @@
 //
 // A slot's environment is Lease.InheritEnv for a tier run and HolderEnv for a non-tier holder.
 // `-trimpath` makes builds from two checkouts byte-identical and their cache keys independent of the checkout path.
-// A fresh worktree therefore hits the build and test cache.
+// A fresh worktree therefore hits the build cache.
 // A host scanner that holds each unseen executable then sees known hashes.
 // It also makes `runtime.Caller` report module-relative file paths.
 // No code a gate run builds can therefore locate the repo root from them alone.
@@ -50,6 +50,9 @@
 // No GOFLAGS is appended, since a tier's command and env set its own parallelism.
 // HolderEnv returns the environment of a non-tier slot holder's child.
 // GOFLAGS gets `-trimpath` and, when the holder passes a tier0 parallel above 0, `-p=<n>`.
+// It opens with TestCacheOffFlag, `-count=1`, which WithTestCacheOff also puts first in a tier run's GOFLAGS.
+// `go test` then keeps no test result cache, and so writes none of the per-test logs of touched files it keys one by;
+// the gate's own green record carries a pass over an unchanged tree instead.
 // A non-nil lease sets InheritEnv.
 // Limits.Tier0Parallel carries `tier0`'s effective parallel, this machine's override included.
 // It is 0 when the hub declares no `tier0`, and a holder reads it from the pool's Limits at its acquire.

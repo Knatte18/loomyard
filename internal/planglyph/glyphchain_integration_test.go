@@ -657,8 +657,8 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 		if err != nil {
 			t.Fatalf("loadEnv(nil) returned error: %v", err)
 		}
-		if want := "GOFLAGS=-mod=readonly -p=3 -trimpath"; !slices.Contains(env, want) {
-			t.Errorf("loadEnv(nil) holds no %q; want -mod=readonly ahead of the appended flags", want)
+		if want := "GOFLAGS=-count=1 -mod=readonly -p=3 -trimpath"; !slices.Contains(env, want) {
+			t.Errorf("loadEnv(nil) holds no %q; want -mod=readonly between the cache-off flag and the appended flags", want)
 		}
 		if !slices.Contains(env, "GOPROXY=off") {
 			t.Error("loadEnv(nil) holds no GOPROXY=off; want the load offline")

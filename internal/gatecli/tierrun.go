@@ -63,6 +63,7 @@ type tierResult struct {
 // env is the environment every command gets, before the tier's own env is added.
 // When the resulting GOFLAGS carries `-trimpath`, it logs a line saying so before the first command,
 // and it returns that line for the caller to print.
+// Every command's GOFLAGS then opens with gateslot.TestCacheOffFlag, so `go test` keeps no test result cache.
 // A run with no invocation passes at once with nothing discovered.
 func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
 	started := time.Now()
@@ -86,7 +87,7 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	if trimpathNote != "" {
 		logBuffer.WriteString(trimpathNote + "\n")
 	}
-	exit, commands, refusal := runInvocations(tierCtx, run, counter, tierEnv, request)
+	exit, commands, refusal := runInvocations(tierCtx, run, counter, gateslot.WithTestCacheOff(tierEnv), request)
 	if refusal != "" {
 		return tierResult{refusal: refusal}
 	}

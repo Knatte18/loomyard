@@ -533,11 +533,11 @@ func TestLeaseEnv(t *testing.T) {
 		tier0Parallel int
 		want          []string
 	}{
-		{"tier0 parallel above 0 adds -p and -trimpath", []string{"A=1"}, nil, 3, []string{"A=1", "GOFLAGS=-p=3 -trimpath"}},
-		{"tier0 parallel 0 adds -trimpath alone", []string{"A=1"}, nil, 0, []string{"A=1", "GOFLAGS=-trimpath"}},
-		{"existing GOFLAGS is kept ahead of the added flags", []string{"GOFLAGS=-count=1", "A=1"}, nil, 2, []string{"A=1", "GOFLAGS=-count=1 -p=2 -trimpath"}},
-		{"a lease sets the inheritance variable over an older one", []string{"LYM_GATE_SLOT=old", "A=1"}, lease, 0, []string{"A=1", "GOFLAGS=-trimpath", "LYM_GATE_SLOT=" + slotPath}},
-		{"no lease leaves an inherited slot variable alone", []string{"LYM_GATE_SLOT=old", "A=1"}, nil, 0, []string{"LYM_GATE_SLOT=old", "A=1", "GOFLAGS=-trimpath"}},
+		{"tier0 parallel above 0 adds the cache-off flag, -p and -trimpath", []string{"A=1"}, nil, 3, []string{"A=1", "GOFLAGS=-count=1 -p=3 -trimpath"}},
+		{"tier0 parallel 0 adds the cache-off flag and -trimpath alone", []string{"A=1"}, nil, 0, []string{"A=1", "GOFLAGS=-count=1 -trimpath"}},
+		{"existing GOFLAGS sits between the cache-off flag and the added flags", []string{"GOFLAGS=-mod=readonly", "A=1"}, nil, 2, []string{"A=1", "GOFLAGS=-count=1 -mod=readonly -p=2 -trimpath"}},
+		{"a lease sets the inheritance variable over an older one", []string{"LYM_GATE_SLOT=old", "A=1"}, lease, 0, []string{"A=1", "GOFLAGS=-count=1 -trimpath", "LYM_GATE_SLOT=" + slotPath}},
+		{"no lease leaves an inherited slot variable alone", []string{"LYM_GATE_SLOT=old", "A=1"}, nil, 0, []string{"LYM_GATE_SLOT=old", "A=1", "GOFLAGS=-count=1 -trimpath"}},
 	}
 	for _, tc := range holderTests {
 		t.Run("HolderEnv "+tc.name, func(t *testing.T) {
@@ -547,6 +547,28 @@ func TestLeaseEnv(t *testing.T) {
 			}
 			if !slices.Equal(base, tc.base) {
 				t.Errorf("HolderEnv changed its base to %v; want it left as %v", base, tc.base)
+			}
+		})
+	}
+
+	cacheOffTests := []struct {
+		name string
+		base []string
+		want []string
+	}{
+		{"no GOFLAGS gets the cache-off flag alone", []string{"A=1"}, []string{"A=1", "GOFLAGS=-count=1"}},
+		{"the last GOFLAGS follows the cache-off flag in one entry", []string{"GOFLAGS=-inherited", "A=1", "GOFLAGS=-trimpath -p=3"}, []string{"A=1", "GOFLAGS=-count=1 -trimpath -p=3"}},
+		{"an empty GOFLAGS gets the cache-off flag alone", []string{"GOFLAGS="}, []string{"GOFLAGS=-count=1"}},
+		{"a lowercase goflags entry is replaced", []string{"goflags=-trimpath"}, []string{"GOFLAGS=-count=1 -trimpath"}},
+	}
+	for _, tc := range cacheOffTests {
+		t.Run("WithTestCacheOff "+tc.name, func(t *testing.T) {
+			base := slices.Clone(tc.base)
+			if got := WithTestCacheOff(base); !slices.Equal(got, tc.want) {
+				t.Errorf("WithTestCacheOff(%v) = %v; want %v", tc.base, got, tc.want)
+			}
+			if !slices.Equal(base, tc.base) {
+				t.Errorf("WithTestCacheOff changed its base to %v; want it left as %v", base, tc.base)
 			}
 		})
 	}
