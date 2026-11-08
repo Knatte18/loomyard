@@ -34,8 +34,8 @@ func (in *inbound) RetryOwed(ctx context.Context) bool { return in.retryOwed(ctx
 type Outbound = outbound
 
 // NewOutbound builds an outbound read over the seams, with a floor of its own.
-func NewOutbound(geom Geometry, mailbox Mailbox, slack SlackClient, clock Clock) *Outbound {
-	return newOutbound(geom, mailbox, slack, clock, newSharedFloor())
+func NewOutbound(geom Geometry, mailbox Mailbox, slack SlackClient, clock Clock, keeper *ChannelKeeper, hub Hub) *Outbound {
+	return newOutbound(geom, mailbox, slack, clock, newSharedFloor(), keeper, hub)
 }
 
 // Read runs one outbound read and returns the wait before the next.

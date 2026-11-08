@@ -196,7 +196,7 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 		log.recovered("relay-state")
 	}
 	keeper := newChannelKeeper(geom, deps.Slack, deps.LiveHubs, deps.Mailbox, deps.Clock)
-	go runOutbound(loopCtx, newOutbound(geom, deps.Mailbox, deps.Slack, deps.Clock, floor), deps.Clock, log, stampLastHealthy)
+	go runOutbound(loopCtx, newOutbound(geom, deps.Mailbox, deps.Slack, deps.Clock, floor, keeper, deps.Hub), deps.Clock, log, stampLastHealthy)
 	reader := newInbound(geom, deps.Mailbox, deps.Slack, deps.Hub, deps.Clock, keeper)
 	return runInbound(loopCtx, reader, deps, heldLock, log, floor)
 }

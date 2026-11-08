@@ -4,6 +4,7 @@ package slackengine_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -17,16 +18,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// outboundHarness is an outbound read over the harness's seams.
+// outboundHarness is an outbound read over the harness's seams, whose hub lists the payments beam.
 type outboundHarness struct {
 	*harness
 	out *slackengine.Outbound
 }
 
+// newOutboundHarness returns an outbound read whose keeper is the harness's.
+// Its Slack directory holds both channels of the map under names the relay never makes.
+// So a channel the keeper makes is a new one.
 func newOutboundHarness(t *testing.T) *outboundHarness {
 	t.Helper()
 	h := newHarness(t)
-	return &outboundHarness{harness: h, out: slackengine.NewOutbound(h.geom, h.mailbox, h.slack, h.clock)}
+	h.hub.set(func(h *fakeHub) { h.beams = []string{"payments"} })
+	h.slack.seedChannel(slackengine.ChannelInfo{ID: testChannel, Name: "ly-neve-prime-held", Creator: "UBOT", IsMember: true})
+	h.slack.seedChannel(slackengine.ChannelInfo{ID: paymentsChannel, Name: "ly-neve-payments-held", Creator: "UBOT", IsMember: true})
+	return &outboundHarness{harness: h, out: slackengine.NewOutbound(h.geom, h.mailbox, h.slack, h.clock, h.keeper, h.hub.hub())}
 }
 
 // mailFrom returns a message of id from sender, posted a minute before the harness's clock.
@@ -55,38 +62,94 @@ func (h *outboundHarness) wantAcks(want ...[]int64) {
 	}
 }
 
+// wantPosted fails the test unless Slack accepted exactly the posts, each with its channel and sender.
+func (h *outboundHarness) wantPosted(want ...postedText) {
+	h.t.Helper()
+	if got := h.slack.postedTexts(); !cmp.Equal(got, append([]postedText(nil), want...)) && !(len(got) == 0 && len(want) == 0) {
+		h.t.Errorf("Slack posts mismatch (-want +got):\n%s", cmp.Diff(want, got))
+	}
+}
+
+// dropEntry removes the orch's entry from the harness's channel map.
+func (h *outboundHarness) dropEntry(orch string) {
+	h.t.Helper()
+	err := slackengine.UpdateChannelMap(h.geom.ChannelMapPath, func(channelMap *slackengine.ChannelMap) error {
+		delete(channelMap.Channels, orch)
+		return nil
+	})
+	if err != nil {
+		h.t.Fatalf("UpdateChannelMap = %v", err)
+	}
+}
+
+// refusalCount returns how often the outbox record counts Slack's refusals of message id.
+func (h *outboundHarness) refusalCount(id string) int {
+	h.t.Helper()
+	data, err := os.ReadFile(h.geom.OutboxPath)
+	if err != nil {
+		return 0
+	}
+	var record struct {
+		Refusals map[string]int `json:"refusals"`
+	}
+	if err := json.Unmarshal(data, &record); err != nil {
+		h.t.Fatalf("decode the outbox record %q = %v", data, err)
+	}
+	return record.Refusals[id]
+}
+
+// postedTexts returns the posts the fake accepted, oldest first, with their channels and senders.
+func (s *fakeSlack) postedTexts() []postedText {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]postedText(nil), s.posted...)
+}
+
+func orchSender(name string) slackengine.Sender {
+	return slackengine.Sender{Username: name, IconEmoji: ":robot_face:"}
+}
+
+func programSender(name string) slackengine.Sender {
+	return slackengine.Sender{Username: name, IconEmoji: ":gear:"}
+}
+
 func TestOutboundRead(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
+	const logCommand = "lym creel log --to ly:SLACK"
 
-	t.Run("MailFromOrchProgramAndReplyIsPostedOnceAndAcknowledged", func(t *testing.T) {
+	t.Run("MailFromOrchProgramAndReplyIsPostedToTheOrchsChannelOnceAndAcknowledged", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
-		reply := h.mailFrom(3, "ly:orch", "answer")
+		reply := h.mailFrom(3, primeOrch, "answer")
 		reply.Kind, reply.ReplyTo = "reply", 9
 		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{
-			h.mailFrom(1, "ly:orch", "hello"), h.mailFrom(2, "ly:BATTEN", "done"), reply,
+			h.mailFrom(1, primeOrch, "hello"), h.mailFrom(2, "ly:BATTEN", "done"), reply,
 		}})
 		if wait := h.mustRead(); wait != slackengine.Floor {
 			t.Errorf("Read wait = %s; want the floor %s", wait, slackengine.Floor)
 		}
-		h.wantAnswers("[ly:orch] hello", "[ly:BATTEN] done", "[ly:orch] answer")
+		h.wantPosted(
+			postedText{testChannel, "hello", orchSender(primeOrch)},
+			postedText{testChannel, "done", programSender("ly:BATTEN")},
+			postedText{testChannel, "answer", orchSender(primeOrch)},
+		)
 		h.wantAcks([]int64{1, 2, 3})
 	})
 
-	t.Run("TextIsEscapedAndBeamMailCarriesTheAnswerHint", func(t *testing.T) {
+	t.Run("BeamMailIsPostedEscapedToItsBeamsChannelWithNoAnswerHint", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
 		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{
-			h.mailFrom(1, "ly:orch", "a & <b>"),
-			h.mailFrom(2, "ly:payments:orch", "x"),
+			h.mailFrom(1, primeOrch, "a & <b>"),
+			h.mailFrom(2, paymentsOrch, "x"),
 			h.mailFrom(3, "ly:payments:DOBBY", "y"),
 		}})
 		h.mustRead()
-		h.wantAnswers(
-			"[ly:orch] a &amp; &lt;b&gt;",
-			"[ly:payments:orch] x (answer: @payments …)",
-			"[ly:payments:DOBBY] y (answer: @payments …)",
+		h.wantPosted(
+			postedText{testChannel, "a &amp; &lt;b&gt;", orchSender(primeOrch)},
+			postedText{paymentsChannel, "x", orchSender(paymentsOrch)},
+			postedText{paymentsChannel, "y", programSender("ly:payments:DOBBY")},
 		)
 	})
 
@@ -102,10 +165,113 @@ func TestOutboundRead(t *testing.T) {
 		h.wantAcks([]int64{1, 2})
 	})
 
+	t.Run("MailFromAListedBeamWithNoEntryCreatesItsChannelAtThatMail", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		h.dropEntry(paymentsOrch)
+		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, paymentsOrch, "first")}})
+		h.mustRead()
+		if created := h.slack.logged("CreateChannel"); len(created) != 1 || created[0].Arg != "ly-neve-payments" {
+			t.Errorf("CreateChannel calls = %+v; want one for ly-neve-payments", created)
+		}
+		entry := h.entryOf(paymentsOrch)
+		if entry.ID == "" || entry.ID == testChannel || entry.ID == paymentsChannel {
+			t.Errorf("payments entry = %+v; want a new channel", entry)
+		}
+		h.wantPosted(postedText{entry.ID, "first", orchSender(paymentsOrch)})
+	})
+
+	t.Run("MailFromABeamTheHubDoesNotListIsPostedToThePrimesChannelUnderItsName", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, "ly:gone:orch", "bye")}})
+		h.mustRead()
+		h.wantPosted(postedText{testChannel, "bye", orchSender("ly:gone:orch")})
+		if created := len(h.slack.logged("CreateChannel")); created != 0 {
+			t.Errorf("CreateChannel calls = %d; want a gone beam to reopen nothing", created)
+		}
+		h.wantAcks([]int64{1})
+	})
+
+	t.Run("BeamWithNoOpenChannelWhileTheListingFailsHoldsOnlyItsOwnMail", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		h.hub.set(func(h *fakeHub) { h.beamsErr = errors.New("board unreadable") })
+		batch := []creelengine.Message{
+			h.mailFrom(1, "ly:other:orch", "first"), h.mailFrom(2, primeOrch, "second"), h.mailFrom(3, paymentsOrch, "third"),
+		}
+		h.mailbox.scriptReadWait(readStep{messages: batch}, readStep{messages: batch}, readStep{messages: batch})
+		for i := range 2 {
+			if _, err := h.read(); err == nil || !strings.Contains(err.Error(), "no open channel") {
+				t.Fatalf("Read #%d = %v; want the error that the beam has no open channel", i+1, err)
+			}
+		}
+		want := []postedText{
+			{testChannel, "second", orchSender(primeOrch)},
+			{paymentsChannel, "third", orchSender(paymentsOrch)},
+		}
+		h.wantPosted(want...)
+		h.wantAcks()
+		h.hub.set(func(h *fakeHub) { h.beamsErr = nil })
+		h.mustRead()
+		h.wantPosted(append(want, postedText{testChannel, "first", orchSender("ly:other:orch")})...)
+		h.wantAcks([]int64{1, 2, 3})
+	})
+
+	t.Run("PostSlackRefusesRecoversOnceAndIsAcknowledged", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name        string
+			code        string
+			wantJoin    bool
+			wantCreated int
+			// wantChannel is the channel the message ends up in, which is the entry's after the recovery.
+			wantChannel string
+		}{
+			{"IsArchivedCreatesANewChannel", "is_archived", false, 1, "C3"},
+			{"NotInChannelJoinsTheBot", "not_in_channel", true, 0, paymentsChannel},
+			{"ChannelNotFoundDropsTheEntryAndCreatesTheChannelAnew", "channel_not_found", false, 1, "C3"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newOutboundHarness(t)
+				h.slack.failPosts(&slackengine.APIError{Method: "chat.postMessage", Code: tt.code})
+				h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, paymentsOrch, "x")}})
+				h.mustRead()
+				h.wantPosted(postedText{tt.wantChannel, "x", orchSender(paymentsOrch)})
+				h.wantAcks([]int64{1})
+				if entry := h.entryOf(paymentsOrch); entry.ID != tt.wantChannel || entry.Archived {
+					t.Errorf("payments entry = %+v; want it open on %s", entry, tt.wantChannel)
+				}
+				if joins := len(h.slack.logged("Join")); (joins == 1) != tt.wantJoin || joins > 1 {
+					t.Errorf("Join calls = %d; want a join exactly when %v", joins, tt.wantJoin)
+				}
+				if created := len(h.slack.logged("CreateChannel")); created != tt.wantCreated {
+					t.Errorf("CreateChannel calls = %d; want %d", created, tt.wantCreated)
+				}
+			})
+		}
+	})
+
+	t.Run("RefusalFollowedByARefusedJoinCountsOnceTowardTheCap", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		h.slack.failPosts(&slackengine.APIError{Method: "chat.postMessage", Code: "not_in_channel"})
+		h.slack.failNext("Join", &slackengine.APIError{Method: "conversations.join", Code: "missing_scope"})
+		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, primeOrch, "x")}})
+		if _, err := h.read(); err == nil {
+			t.Fatalf("Read = nil; want the refused post")
+		}
+		if got := h.refusalCount("1"); got != 1 {
+			t.Errorf("refusals counted = %d; want 1", got)
+		}
+	})
+
 	t.Run("SlackFailureMidReadPostsEachMessageExactlyOnce", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
-		batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "one"), h.mailFrom(2, "ly:orch", "two"), h.mailFrom(3, "ly:orch", "three")}
+		batch := []creelengine.Message{h.mailFrom(1, primeOrch, "one"), h.mailFrom(2, primeOrch, "two"), h.mailFrom(3, primeOrch, "three")}
 		h.mailbox.scriptReadWait(readStep{messages: batch}, readStep{messages: batch})
 		h.slack.failPosts(nil, errors.New("slack down"))
 		if wait, err := h.read(); err == nil || wait != slackengine.Floor {
@@ -113,7 +279,7 @@ func TestOutboundRead(t *testing.T) {
 		}
 		h.wantAcks()
 		h.mustRead()
-		h.wantAnswers("[ly:orch] one", "[ly:orch] two", "[ly:orch] three")
+		h.wantAnswers("one", "two", "three")
 		h.wantAcks([]int64{1, 2, 3})
 	})
 
@@ -135,7 +301,7 @@ func TestOutboundRead(t *testing.T) {
 				refusal := &slackengine.APIError{Method: "chat.postMessage", Code: "msg_too_long"}
 				h.slack.failPosts(refusal, refusal, refusal, refusal, refusal, tt.replacementFailure)
 				for range 5 {
-					h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(7, "ly:orch", "huge")}})
+					h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(7, primeOrch, "huge")}})
 				}
 				for i := range 4 {
 					if _, err := h.read(); !errors.Is(err, refusal) {
@@ -144,16 +310,17 @@ func TestOutboundRead(t *testing.T) {
 				}
 				h.wantAcks()
 				h.mustRead()
-				answers := h.slack.texts()
+				posted := h.slack.postedTexts()
 				switch {
-				case tt.wantLine && (len(answers) != 1 || !strings.Contains(answers[0], "message 7") || !strings.Contains(answers[0], "ly:orch") || !strings.Contains(answers[0], "lym creel log --to ly:SLACK")):
-					t.Errorf("answers = %q; want one line naming message 7, its sender and the log command", answers)
-				case !tt.wantLine && len(answers) != 0:
-					t.Errorf("answers = %q; want none, the replacement line failed", answers)
+				case tt.wantLine && (len(posted) != 1 || posted[0].Channel != testChannel || posted[0].Sender != programSender("ly:SLACK") ||
+					!strings.Contains(posted[0].Text, "message 7") || !strings.Contains(posted[0].Text, primeOrch) || !strings.Contains(posted[0].Text, logCommand)):
+					t.Errorf("posts = %+v; want one line to %s from ly:SLACK naming message 7, its sender and the log command", posted, testChannel)
+				case !tt.wantLine && len(posted) != 0:
+					t.Errorf("posts = %+v; want none, the replacement line failed", posted)
 				}
 				h.wantAcks([]int64{7})
-				if calls := h.slack.callCount(); calls != 6 {
-					t.Errorf("Slack calls = %d; want 6, five refusals and one try of the replacement line, so the message is not retried", calls)
+				if calls := len(h.slack.logged("PostAs")); calls != 6 {
+					t.Errorf("chat.postMessage calls = %d; want 6, five refusals and one try of the replacement line, so the message is not retried", calls)
 				}
 				record, err := os.ReadFile(h.geom.OutboxPath)
 				if err != nil || strings.Contains(string(record), "refusals") {
@@ -161,6 +328,79 @@ func TestOutboundRead(t *testing.T) {
 				}
 			})
 		}
+	})
+
+	t.Run("ListedBeamWhoseChannelIsRefusedCountsPerReadAndDropsAtTheCap", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name         string
+			primeRefused bool
+		}{
+			{"LineReachesThePrimesChannel", false},
+			{"PrimeRefusedTooSoTheLineReachesTheOrchAsANotice", true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newOutboundHarness(t)
+				h.dropEntry(paymentsOrch)
+				h.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: "ly-neve-payments", Creator: "UOTHER", IsMember: true})
+				if tt.primeRefused {
+					h.dropEntry(primeOrch)
+					h.slack.seedChannel(slackengine.ChannelInfo{ID: "CY", Name: "ly-neve-prime", Creator: "UOTHER", IsMember: true})
+				}
+				for range 5 {
+					h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(7, paymentsOrch, "x")}})
+				}
+				for i := range 4 {
+					if _, err := h.read(); !errors.Is(err, slackengine.ErrChannelRefused) {
+						t.Fatalf("Read #%d = %v; want the refused channel", i+1, err)
+					}
+					if got := h.refusalCount("7"); got != i+1 {
+						t.Errorf("refusals counted after read #%d = %d; want %d", i+1, got, i+1)
+					}
+				}
+				h.mustRead()
+				h.wantAcks([]int64{7})
+				posted := h.slack.postedTexts()
+				if tt.primeRefused {
+					if len(posted) != 0 {
+						t.Errorf("posts = %+v; want none while both channels are refused", posted)
+					}
+					found := false
+					for _, notice := range h.relayNotices() {
+						found = found || (strings.Contains(notice, "message 7") && strings.Contains(notice, logCommand))
+					}
+					if !found {
+						t.Errorf("notices = %q; want one carrying the line about message 7", h.relayNotices())
+					}
+					return
+				}
+				if len(posted) != 1 || posted[0].Channel != testChannel || !strings.Contains(posted[0].Text, "message 7") {
+					t.Errorf("posts = %+v; want the line about message 7 in %s", posted, testChannel)
+				}
+			})
+		}
+	})
+
+	t.Run("ListedBeamWhoseEnsureFailsOnATransportErrorReleasesTheReadWithoutACount", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		h.dropEntry(paymentsOrch)
+		down := errors.New("slack: call conversations.create: connection reset")
+		h.slack.failNext("CreateChannel", down)
+		batch := []creelengine.Message{h.mailFrom(5, paymentsOrch, "x")}
+		h.mailbox.scriptReadWait(readStep{messages: batch}, readStep{messages: batch})
+		if _, err := h.read(); !errors.Is(err, down) {
+			t.Fatalf("Read = %v; want the transport error", err)
+		}
+		if got := h.refusalCount("5"); got != 0 {
+			t.Errorf("refusals counted = %d; want none for a transport failure", got)
+		}
+		h.wantPosted()
+		h.mustRead()
+		h.wantPosted(postedText{h.entryOf(paymentsOrch).ID, "x", orchSender(paymentsOrch)})
+		h.wantAcks([]int64{5})
 	})
 
 	t.Run("TransportFailureAndServerErrorNeverCapOutAMessage", func(t *testing.T) {
@@ -178,14 +418,14 @@ func TestOutboundRead(t *testing.T) {
 				h := newOutboundHarness(t)
 				for range 7 {
 					h.slack.failPosts(tt.err)
-					h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, "ly:orch", "keep me")}})
+					h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, primeOrch, "keep me")}})
 					if _, err := h.read(); !errors.Is(err, tt.err) {
 						t.Fatalf("Read = %v; want the failure", err)
 					}
 				}
-				h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, "ly:orch", "keep me")}})
+				h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, primeOrch, "keep me")}})
 				h.mustRead()
-				h.wantAnswers("[ly:orch] keep me")
+				h.wantAnswers("keep me")
 				h.wantAcks([]int64{1})
 			})
 		}
@@ -195,28 +435,49 @@ func TestOutboundRead(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
 		h.slack.onPost = func() { h.clock.Advance(15 * time.Second) }
-		batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "one"), h.mailFrom(2, "ly:orch", "two"), h.mailFrom(3, "ly:orch", "three")}
+		batch := []creelengine.Message{h.mailFrom(1, primeOrch, "one"), h.mailFrom(2, primeOrch, "two"), h.mailFrom(3, primeOrch, "three")}
 		h.mailbox.scriptReadWait(readStep{messages: batch}, readStep{messages: batch})
 		h.mustRead()
-		h.wantAnswers("[ly:orch] one", "[ly:orch] two")
+		h.wantAnswers("one", "two")
 		h.wantAcks()
 		h.mustRead()
-		h.wantAnswers("[ly:orch] one", "[ly:orch] two", "[ly:orch] three")
+		h.wantAnswers("one", "two", "three")
 		h.wantAcks([]int64{1, 2, 3})
 	})
 
-	t.Run("MailOlderThanADayIsAcknowledgedUnpostedWithOneCountLine", func(t *testing.T) {
+	t.Run("MailOlderThanADayIsAcknowledgedUnpostedWithOneCountLineInThePrimesChannel", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
-		old1, old2 := h.mailFrom(1, "ly:orch", "old"), h.mailFrom(2, "ly:orch", "older")
+		old1, old2 := h.mailFrom(1, primeOrch, "old"), h.mailFrom(2, paymentsOrch, "older")
 		old1.Posted, old2.Posted = h.clock.Now().Add(-25*time.Hour), h.clock.Now().Add(-48*time.Hour)
-		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{old1, old2, h.mailFrom(3, "ly:orch", "fresh")}})
+		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{old1, old2, h.mailFrom(3, primeOrch, "fresh")}})
 		h.mustRead()
-		answers := h.slack.texts()
-		if len(answers) != 2 || answers[0] != "[ly:orch] fresh" || !strings.Contains(answers[1], "2 messages") || !strings.Contains(answers[1], "lym creel log --to ly:SLACK") {
-			t.Errorf("answers = %q; want the fresh mail and one line naming the count and the log command", answers)
+		posted := h.slack.postedTexts()
+		if len(posted) != 2 || posted[0].Text != "fresh" || posted[1].Channel != testChannel || posted[1].Sender != programSender("ly:SLACK") ||
+			!strings.Contains(posted[1].Text, "2 messages") || !strings.Contains(posted[1].Text, logCommand) {
+			t.Errorf("posts = %+v; want the fresh mail and one line to %s naming the count and the log command", posted, testChannel)
 		}
 		h.wantAcks([]int64{1, 2, 3})
+	})
+
+	t.Run("StaleLineRefusedWithNotInChannelJoinsThePrimesChannelAndPostsAndClearsTheCount", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		old := h.mailFrom(1, primeOrch, "old")
+		old.Posted = h.clock.Now().Add(-25 * time.Hour)
+		h.slack.failPosts(&slackengine.APIError{Method: "chat.postMessage", Code: "not_in_channel"})
+		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{old}})
+		h.mustRead()
+		if joins := h.slack.logged("Join"); len(joins) != 1 || joins[0].Channel != testChannel {
+			t.Errorf("Join calls = %+v; want one for %s", joins, testChannel)
+		}
+		if posted := h.slack.postedTexts(); len(posted) != 1 || posted[0].Channel != testChannel || !strings.Contains(posted[0].Text, "1 messages") {
+			t.Errorf("posts = %+v; want the stale line in %s", posted, testChannel)
+		}
+		if record, err := os.ReadFile(h.geom.OutboxPath); err != nil || strings.Contains(string(record), "stale") {
+			t.Errorf("outbox record = %q, %v; want the stale count cleared", record, err)
+		}
+		h.wantAcks([]int64{1})
 	})
 
 	t.Run("StaleMailCountLineSurvivesAFailedReadAndPostsOnce", func(t *testing.T) {
@@ -237,9 +498,9 @@ func TestOutboundRead(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				h := newOutboundHarness(t)
-				old1, old2 := h.mailFrom(1, "ly:orch", "old"), h.mailFrom(2, "ly:orch", "older")
+				old1, old2 := h.mailFrom(1, primeOrch, "old"), h.mailFrom(2, primeOrch, "older")
 				old1.Posted, old2.Posted = h.clock.Now().Add(-25*time.Hour), h.clock.Now().Add(-48*time.Hour)
-				batch := []creelengine.Message{old1, old2, h.mailFrom(3, "ly:orch", "fresh")}
+				batch := []creelengine.Message{old1, old2, h.mailFrom(3, primeOrch, "fresh")}
 				h.mailbox.scriptReadWait(readStep{messages: batch}, readStep{messages: batch})
 				h.slack.failPosts(tt.failures...)
 				if _, err := h.read(); !errors.Is(err, tt.failures[0]) {
@@ -248,8 +509,8 @@ func TestOutboundRead(t *testing.T) {
 				h.wantAcks()
 				h.mustRead()
 				answers := h.slack.texts()
-				if len(answers) != 2 || answers[1-tt.wantLineIndex] != "[ly:orch] fresh" ||
-					!strings.Contains(answers[tt.wantLineIndex], "2 messages") || !strings.Contains(answers[tt.wantLineIndex], "lym creel log --to ly:SLACK") {
+				if len(answers) != 2 || answers[1-tt.wantLineIndex] != "fresh" ||
+					!strings.Contains(answers[tt.wantLineIndex], "2 messages") || !strings.Contains(answers[tt.wantLineIndex], logCommand) {
 					t.Errorf("answers = %q; want the fresh mail once and one count line naming 2 messages at index %d", answers, tt.wantLineIndex)
 				}
 				h.wantAcks([]int64{1, 2, 3})
@@ -277,7 +538,7 @@ func TestOutboundRead(t *testing.T) {
 						t.Errorf("MkdirAll = %v", err)
 					}
 				}
-				batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "once")}
+				batch := []creelengine.Message{h.mailFrom(1, primeOrch, "once")}
 				steps := []readStep{{messages: batch}}
 				if tt.ackRefused {
 					steps = []readStep{{messages: batch, ackErr: errors.New("daemon refused")}, {messages: batch}}
@@ -288,7 +549,7 @@ func TestOutboundRead(t *testing.T) {
 						t.Errorf("Read #%d = %v; want the failed write of the outbox file", i+1, err)
 					}
 				}
-				h.wantAnswers("[ly:orch] once")
+				h.wantAnswers("once")
 				h.wantAcks([]int64{1})
 			})
 		}
@@ -303,9 +564,9 @@ func TestOutboundRead(t *testing.T) {
 				t.Errorf("MkdirAll = %v", err)
 			}
 		}
-		old1, old2 := h.mailFrom(2, "ly:orch", "old"), h.mailFrom(3, "ly:orch", "older")
+		old1, old2 := h.mailFrom(2, primeOrch, "old"), h.mailFrom(3, primeOrch, "older")
 		old1.Posted, old2.Posted = h.clock.Now().Add(-25*time.Hour), h.clock.Now().Add(-48*time.Hour)
-		batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "fresh"), old1, old2}
+		batch := []creelengine.Message{h.mailFrom(1, primeOrch, "fresh"), old1, old2}
 		h.mailbox.scriptReadWait(readStep{messages: batch, ackErr: errors.New("daemon refused")}, readStep{messages: batch})
 		for i := range 2 {
 			if _, err := h.read(); err == nil || !strings.Contains(err.Error(), "outbox file") {
@@ -314,7 +575,7 @@ func TestOutboundRead(t *testing.T) {
 		}
 		lines := 0
 		for _, text := range h.slack.texts() {
-			if strings.Contains(text, "2 messages") && strings.Contains(text, "lym creel log --to ly:SLACK") {
+			if strings.Contains(text, "2 messages") && strings.Contains(text, logCommand) {
 				lines++
 			}
 		}
@@ -350,7 +611,7 @@ func TestOutboundRead(t *testing.T) {
 					}
 				}
 				h.slack.failPosts(tt.failures...)
-				batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "one"), h.mailFrom(2, "ly:orch", "two"), h.mailFrom(3, "ly:orch", "three")}
+				batch := []creelengine.Message{h.mailFrom(1, primeOrch, "one"), h.mailFrom(2, primeOrch, "two"), h.mailFrom(3, primeOrch, "three")}
 				h.mailbox.scriptReadWait(readStep{messages: batch})
 				_, err := h.read()
 				if err == nil || !strings.Contains(err.Error(), "outbox file") {
@@ -371,9 +632,9 @@ func TestOutboundRead(t *testing.T) {
 				t.Errorf("MkdirAll = %v", err)
 			}
 		}
-		rest := []creelengine.Message{h.mailFrom(2, "ly:orch", "two"), h.mailFrom(3, "ly:orch", "three"), h.mailFrom(4, "ly:orch", "four")}
+		rest := []creelengine.Message{h.mailFrom(2, primeOrch, "two"), h.mailFrom(3, primeOrch, "three"), h.mailFrom(4, primeOrch, "four")}
 		h.mailbox.scriptReadWait(
-			readStep{messages: []creelengine.Message{h.mailFrom(1, "ly:orch", "one")}},
+			readStep{messages: []creelengine.Message{h.mailFrom(1, primeOrch, "one")}},
 			readStep{messages: rest},
 			readStep{messages: rest},
 		)
@@ -394,26 +655,26 @@ func TestOutboundRead(t *testing.T) {
 		}
 		// With the file standing in for memory again, the third read skips the messages the second one handled.
 		h.mustRead()
-		h.wantAnswers("[ly:orch] one", "[ly:orch] two", "[ly:orch] three", "[ly:orch] four")
+		h.wantAnswers("one", "two", "three", "four")
 	})
 
 	t.Run("RefusedAcknowledgementKeepsTheRecordSoNothingIsRepostedTwice", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
-		batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "once")}
+		batch := []creelengine.Message{h.mailFrom(1, primeOrch, "once")}
 		h.mailbox.scriptReadWait(readStep{messages: batch, ackErr: errors.New("daemon refused")}, readStep{messages: batch})
 		if _, err := h.read(); err == nil {
 			t.Fatalf("Read = nil; want the refused acknowledgement")
 		}
 		h.mustRead()
-		h.wantAnswers("[ly:orch] once")
+		h.wantAnswers("once")
 		h.wantAcks([]int64{1})
 	})
 
 	t.Run("RateLimitReturnsItsRetryAfterAndRaisesTheFloor", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
-		batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "limited")}
+		batch := []creelengine.Message{h.mailFrom(1, primeOrch, "limited")}
 		h.mailbox.scriptReadWait(readStep{messages: batch}, readStep{messages: batch})
 		h.slack.failPosts(&slackengine.RateLimitError{Method: "chat.postMessage", RetryAfter: 7 * time.Second})
 		var limit *slackengine.RateLimitError
@@ -428,7 +689,7 @@ func TestOutboundRead(t *testing.T) {
 	t.Run("EmptyWaitBacksOffAndKeepsTheRecord", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
-		batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "once")}
+		batch := []creelengine.Message{h.mailFrom(1, primeOrch, "once")}
 		h.mailbox.scriptReadWait(readStep{messages: batch, ackErr: errors.New("daemon refused")})
 		if _, err := h.read(); err == nil {
 			t.Fatalf("Read = nil; want the refused acknowledgement")
@@ -442,13 +703,13 @@ func TestOutboundRead(t *testing.T) {
 		}
 		h.mailbox.scriptReadWait(readStep{messages: batch})
 		h.mustRead()
-		h.wantAnswers("[ly:orch] once")
+		h.wantAnswers("once")
 	})
 
 	t.Run("TimeoutAfterTheHandlerRanKeepsTheRecordAndReturnsTheFloor", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
-		batch := []creelengine.Message{h.mailFrom(1, "ly:orch", "once")}
+		batch := []creelengine.Message{h.mailFrom(1, primeOrch, "once")}
 		h.mailbox.scriptReadWait(
 			readStep{messages: batch, timeoutAfterHandler: true},
 			readStep{messages: batch, timeoutAfterHandler: true},
@@ -458,6 +719,20 @@ func TestOutboundRead(t *testing.T) {
 				t.Fatalf("Read #%d = %s, %v; want the floor with the lost confirmation", i+1, wait, err)
 			}
 		}
-		h.wantAnswers("[ly:orch] once")
+		h.wantAnswers("once")
+	})
+
+	t.Run("ReadWithTheSetupFileGoneReturnsAnErrorNamingTheWayForwardAndPostsNothing", func(t *testing.T) {
+		t.Parallel()
+		h := newOutboundHarness(t)
+		if err := os.Remove(h.geom.SetupPath); err != nil {
+			t.Fatalf("Remove = %v", err)
+		}
+		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, primeOrch, "x")}})
+		_, err := h.read()
+		if err == nil || !strings.Contains(err.Error(), h.geom.SetupPath) || !strings.Contains(err.Error(), "lym slack setup --operator <user-id>") {
+			t.Errorf("Read = %v; want an error naming %s and lym slack setup --operator <user-id>", err, h.geom.SetupPath)
+		}
+		h.wantPosted()
 	})
 }
