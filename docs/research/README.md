@@ -97,6 +97,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [claude-md-rule-map-2026-10-29.md](loom/claude-md-rule-map-2026-10-29.md) — each rule of `CLAUDE.md` mapped to where lym's agents already get it.
 - [plan-writer-audit-2026-10-24](loom/plan-writer-audit-2026-10-24/report.md) — the Plan writer's cost, rounds, wall time and `relevant.md` coverage.
 - [writer-cost-remeasure-2026-11-08](loom/writer-cost-remeasure-2026-11-08/report.md) — writer lookups and Plan phase cost, re-measured on the tapestry runs after the Discussion lookup change.
+- [darn-writer-anatomy-2026-11-08](loom/darn-writer-anatomy-2026-11-08/report.md) — the darn writer's cost by token kind and activity, gate-wait cache rewrites, and what a writer that leaves gate failures to a fixer would save.
 
 ### plan-split — splitting a plan into parts
 
