@@ -1010,6 +1010,10 @@ User-facing modules each get one `lym <module>` namespace:
   A perch key found in `darn.yaml` moves to its `loom.yaml` key at reconcile and in a task's `run_settings`.
   A further embedded recipe, `contracts/recipes/sampler-recipe.yaml`, drives a sampler run.
   Its `Record-Write` row is as in darn.
+  Darn's Drift rows sit around the build row as they sit around darn's writer, off by default:
+  each carries the entry gate `drift.enabled` and `drift.scope == full`,
+  so a task switches them on with `{"drift": {"scope": "full"}}` in its `run_settings`, and otherwise each is recorded skipped.
+  With them on, the `lym drift` verbs serve the run's worktree, and a Drift Stuck routes the code fix to `Sampler-Session`.
   Then one `Sampler-Session` row keeps a single interactive agent session in the run's worktree.
   The agent works with the operator and commits as it goes.
   The operator ends the build with `lym loom sampler-done`.
@@ -1020,7 +1024,7 @@ User-facing modules each get one `lym <module>` namespace:
   The `Code-Review` perch follows, left out unless `sampler.code_review` holds:
   its rows carry that entry gate, so with it off each is recorded skipped and the run goes on to `Describe`.
   `Describe` always runs, because the agent writes no description.
-  Then PR-Review and Finalize, with no discussion, plan, webster, Drift or Parent-Align rows.
+  Then PR-Review and Finalize, with no discussion, plan, webster or Parent-Align rows.
   The build row runs no verify gate, and Finalize's gate checks any code the run lands.
   `loomcli` reads the run's seed once at arming and builds, routes and wires the recipe the seed names.
   A run with no seed gets `tapestry`.
@@ -1219,11 +1223,12 @@ User-facing modules each get one `lym <module>` namespace:
   `Drift-Recheck` runs the `DriftVerify` engine again on code committed after `Drift-Verify`'s last check,
   and its Stuck goes through the stop chain to the parent, with no route back to `Drift-Verify`.
   The regression rows are `Drift-Baseline`, `Drift-Await`, `Drift-Expect`, `Drift-Verify` and `Drift-Recheck`.
-  Each carries the entry gate `drift.enabled` of the hub-wide `drift.yaml`.
-  A hub that leaves it off records each of them skipped and spawns or runs nothing for them.
+  Each carries the entry gate `drift.enabled` of the hub-wide `drift.yaml`;
+  a sampler run's rows also need `drift.scope` set to `full`.
+  A hub that fails either gate records each of them skipped and spawns or runs nothing for them.
   `Drift-Baseline` comes before `Parts-Write` in loom and before `Drift-Await` in darn.
   `Drift-Await` comes before `Drift-Expect`.
-  `Drift-Expect` comes before `Webster` in loom and before `Darn-Write` in darn.
+  `Drift-Expect` comes before `Webster` in loom, before `Darn-Write` in darn and before `Sampler-Session` in sampler.
   `Drift-Baseline` records the scope that `drift.scope` sets, with no agent.
   It reads the setting from config, including a value in a task's `run_settings`.
   Each Drift producer also reads `drift.enabled` at every pass.

@@ -6,8 +6,16 @@
 # durable on-disk identities pinned against internal/loomshed's Name* constants -- a rename here
 # without a matching constant rename breaks resume for any in-flight task.
 #
-# The recipe has no Drift rows and no Parent-Align row: a sampler run's work is prose, board entries and trials,
-# and Finalize merges the parent itself, under the parent lock it takes first.
+# The Drift rows are darn's, with the same names, engines and config, placed around the build row as darn places them:
+# Drift-Baseline, Drift-Await and Drift-Expect before Sampler-Session, Drift-Verify after it, and Drift-Recheck after the perch.
+# They are off by default: each carries the entry gate drift.enabled and drift.scope == full,
+# so they run only when the hub switches drift on and the task's run_settings set {"drift": {"scope": "full"}}.
+# With drift.scope at its default "" or at off, each is recorded Skipped and spawns or runs nothing,
+# and the run goes on as it did before the recipe carried them.
+# The session row carries no drift gate: the operator runs lym drift check on demand, and Drift-Verify is the check.
+# A Stuck of Drift-Verify or Drift-Recheck names lym loom goto --to Sampler-Session as the route that fixes code.
+#
+# The recipe has no Parent-Align row: Finalize merges the parent itself, under the parent lock it takes first.
 # The build row runs no verify gate; Finalize's gate checks any code the run lands.
 #
 # The three Code-Review perch rows carry entry_gate: sampler.code_review, so with that key false each of them is
@@ -30,7 +38,7 @@
 # gates, so a human is the only thing that can fix them.
 # Finalize fixes its own merge and test failures in its merge fixer, and a failure the fixer cannot
 # fix halts the run for the orch.
-# Record-Write, Sampler-Session and Describe carry none either: a Stuck of each halts the run for the parent
+# Record-Write, the Drift rows, Sampler-Session and Describe carry none either: a Stuck of each halts the run for the parent
 # with the ways forward in its reason.
 # PR-Review carries no on_stuck because its Stuck is always a Halt, and Friction-Reflect none because it
 # never returns Stuck.
@@ -57,20 +65,64 @@ producers:
   # It writes only a file that is missing, so a resume or a goto back to it keeps every entry added after Discussion.
   - name: Record-Write
     engine: RecordWrite
+    on_done: Drift-Baseline
+
+  # Drift-Baseline records the task's regression scope from drift.yaml, with no agent, and starts the baseline capture.
+  - name: Drift-Baseline
+    engine: DriftBaseline
+    entry_gate:
+      - drift.enabled
+      - drift.scope == full
+    on_done: Drift-Await
+    config:
+      subject: decision-record
+
+  # Drift-Await holds the run until the baseline capture passed on the branch point, or the parent deferred it.
+  - name: Drift-Await
+    engine: DriftAwait
+    entry_gate:
+      - drift.enabled
+      - drift.scope == full
+    on_done: Drift-Expect
+
+  # Drift-Expect has an agent write expected.yaml, which Go seals before the session starts.
+  - name: Drift-Expect
+    engine: DriftExpect
+    entry_gate:
+      - drift.enabled
+      - drift.scope == full
     on_done: Sampler-Session
+    config:
+      subject: decision-record
+      gates:
+        - name: expectation
+          attempts: 3
 
   # Sampler-Session keeps one interactive agent session and waits, with no timeout, for the operator to end the build.
   # It takes no config key: the agent comes from sampler.yaml and the row's paths and seams from the run's wiring.
   - name: Sampler-Session
     engine: SamplerSession
+    on_done: Drift-Verify
+
+  # Drift-Verify checks the session's committed code against the sealed expectation and has a judge rule on each expected change.
+  - name: Drift-Verify
+    engine: DriftVerify
+    entry_gate:
+      - drift.enabled
+      - drift.scope == full
     on_done: Code-Bouncer
+    config:
+      subject: decision-record
+      gates:
+        - name: judgement
+          attempts: 3
 
   - name: Code-Bouncer
     engine: Bouncer
     segment: Code-Review
     entry_gate: sampler.code_review
     on_stuck: Code-Burler-Review
-    on_done: Describe
+    on_done: Drift-Recheck
     config:
       run_subdir: code
       subject: code
@@ -158,6 +210,19 @@ producers:
         fix-scope: source
         # The round fixes code, so its seat loads the hub's language skills after its own.
         language-skills: true
+
+  # Drift-Recheck runs the Drift-Verify engine again over the code the perch's fixes committed since the last passing check.
+  - name: Drift-Recheck
+    engine: DriftVerify
+    entry_gate:
+      - drift.enabled
+      - drift.scope == full
+    on_done: Describe
+    config:
+      subject: decision-record
+      gates:
+        - name: judgement
+          attempts: 3
 
   # Describe writes the change description from the final diff; the agent writes none.
   - name: Describe

@@ -105,8 +105,9 @@ var (
 	verifyBaseline = map[string]string{"a.txt": "x=1\ny=2\n"}
 	verifyChanged  = map[string]string{"a.txt": "x=1\ny=3\n"}
 
-	// darnRows and tapestryRows are the row orders a run of each recipe holds around the Drift rows.
+	// darnRows, samplerRows and tapestryRows are the row orders a run of each recipe holds around the Drift rows.
 	darnRows     = []string{"Record-Write", "Drift-Baseline", "Drift-Await", expectRow, darnWriteRow, "Drift-Verify", "Drift-Recheck"}
+	samplerRows  = []string{"Record-Write", "Drift-Baseline", "Drift-Await", expectRow, samplerSessionRow, "Drift-Verify", "Code-Bouncer", "Drift-Recheck"}
 	tapestryRows = []string{"Drift-Baseline", "Drift-Await", expectRow, websterRow, "Parent-Align", "Drift-Verify", "Code-Bouncer", "Drift-Recheck"}
 
 	passingCompare = CompareResult{Passed: true}
@@ -591,6 +592,15 @@ func TestDriftVerify(t *testing.T) {
 				},
 				fragments: []string{`key "y"`, "lym drift amend <slug>", "lym loom goto --to Webster then lym loom resume"},
 				absent:    []string{"Darn-Write"},
+			},
+			{
+				name: "AnUnexpectedCellUnderSamplersRows",
+				rows: samplerRows,
+				prepare: func(f *verifyFixture) {
+					f.seedChanged(expectsX)
+				},
+				fragments: []string{`key "y"`, "lym drift amend <slug>", "lym loom goto --to Sampler-Session then lym loom resume"},
+				absent:    []string{"Darn-Write", "Webster"},
 			},
 			{
 				name: "AStoredRulingOfDoesNotMatch",

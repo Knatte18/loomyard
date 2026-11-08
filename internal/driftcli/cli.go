@@ -46,9 +46,10 @@ task's branch point. Drift-Expect has an agent write the changes the task is
 expected to make, and seals them before the writer starts. The drift gate and
 Drift-Verify then diff a capture of the writer's code against the baseline,
 check every changed value against the sealed expectation, and have a judge rule
-on each expected one. The verbs run inside a tapestry or darn run's worktree and
-judge the run's status, so each refusal names its way forward. See lym config
-drift for the capture and compare commands.`,
+on each expected one. The verbs run inside the worktree of a tapestry or darn
+run, or of a sampler run whose task sets drift.scope full, and judge the run's
+status, so each refusal names its way forward. See lym config drift for the
+capture and compare commands.`,
 		RunE: clihelp.GroupRunE,
 	}
 	drift.AddCommand(captureCmd(), checkCmd(), amendCmd(), deferCmd(), statusCmd(), captureChildCmd())

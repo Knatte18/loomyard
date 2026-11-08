@@ -2,7 +2,8 @@
 // The verbs are `check`, `amend`, `capture`, `defer`, `status` and the hidden `capture-child`.
 // The engine holds every rule and is handed paths and seams; this package resolves the worktree and builds them.
 //
-// Every verb resolves its worktree with lymcwd.Resolve and runs only inside a tapestry or darn run's worktree,
+// Every verb resolves its worktree with lymcwd.Resolve and runs only inside the worktree of a run with Drift rows:
+// a tapestry or darn run, or a sampler run whose Drift rows are on,
 // so the module is hub-only and internal/cliwire does not serve it.
 // `check` carries the role audience, since any session of the run's worktree runs it;
 // `capture`, `amend`, `defer` and `status` carry the operator audience, and `capture-child` the internal one.

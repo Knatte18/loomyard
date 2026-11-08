@@ -37,7 +37,9 @@ func TestSamplerRecipe(t *testing.T) {
 			got = append(got, row)
 		}
 		want := []string{
-			loomshed.NamePreflight, loomshed.NameRecordWrite, loomshed.NameSamplerSession, loomshed.NameCodeBouncer,
+			loomshed.NamePreflight, loomshed.NameRecordWrite,
+			loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftExpect,
+			loomshed.NameSamplerSession, loomshed.NameDriftVerify, loomshed.NameCodeBouncer, loomshed.NameDriftRecheck,
 			loomshed.NameDescribe, loomshed.NamePRReview, loomshed.NameFinalize, loomshed.NameFrictionReflect,
 		}
 		if !reflect.DeepEqual(got, want) {

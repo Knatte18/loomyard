@@ -100,7 +100,7 @@ func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
 		return driftengine.VerbStatus{}, err
 	}
 	if !found {
-		return driftengine.VerbStatus{}, errors.New("drift: this worktree has no run status; way forward: lym drift verbs run inside a tapestry or darn run's worktree")
+		return driftengine.VerbStatus{}, errors.New("drift: this worktree has no run status; way forward: lym drift verbs run inside a tapestry, darn or sampler run's worktree")
 	}
 	captureHeld, err := driftengine.ProbeLock(w.paths.CaptureLock)
 	if err != nil {
@@ -183,7 +183,7 @@ func (w *worktree) checkDeps() (driftengine.Deps, error) {
 		return driftengine.Deps{}, err
 	}
 	if !found {
-		return driftengine.Deps{}, errors.New("drift: this worktree has no run seed; way forward: lym drift check runs inside a tapestry or darn run's worktree")
+		return driftengine.Deps{}, errors.New("drift: this worktree has no run seed; way forward: lym drift check runs inside a tapestry, darn or sampler run's worktree")
 	}
 	rows, err := loomrecipe.RowNames(seed.Recipe)
 	if err != nil {

@@ -32,8 +32,10 @@
 // The darn recipe's Code-Review rows are loom's, with the same names, segment, rubric and `loom.yaml` keys;
 // only their answer key differs, the decision record alone in place of the record and the plan.
 //
-// The sampler recipe has no Drift rows and no Parent-Align, and reads:
-// `Preflight → Record-Write → Sampler-Session → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`.
+// The sampler recipe has no Parent-Align, and reads:
+// `Preflight → Record-Write → Drift-Baseline → Drift-Await → Drift-Expect → Sampler-Session → Drift-Verify → Code-Review → Drift-Recheck → Describe → PR-Review → Finalize → Friction-Reflect`.
+// Its Drift rows are the darn recipe's, each gated by `drift.enabled` and `drift.scope == full`,
+// so they are off by default and a task switches them on with `drift.scope` full in its run settings.
 // Its Code-Review rows are the darn recipe's, each gated by `sampler.code_review`.
 // With that key false they are recorded skipped and Code-Bouncer routes on to Describe, which carries no entry gate.
 //

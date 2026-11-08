@@ -1,4 +1,4 @@
-// drift_test.go covers the entry gate of the Drift rows in loom's and darn's recipes.
+// drift_test.go covers the entry gate of the Drift rows in the tapestry, darn and sampler recipes.
 
 package loomrecipe
 
@@ -14,45 +14,54 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDriftRows_EntryGate asserts every Drift row of both recipes follows the template's drift.enabled setting:
-// left out when it is false, entered when it is true,
-// and a row the run already entered is called when it is false.
+// TestDriftRows_EntryGate asserts every Drift row of the three recipes follows its entry gate.
+// A tapestry or darn row is entered when drift.enabled is true and left out when it is false, whatever drift.scope holds.
+// A sampler row is entered only when drift.enabled is true and drift.scope is full,
+// so the template's empty scope leaves it out.
+// A row the run already entered is called when drift.enabled is false.
 func TestDriftRows_EntryGate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
+	driftRows := []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftExpect, loomshed.NameDriftVerify, loomshed.NameDriftRecheck}
 	recipes := []struct {
 		name   string
 		recipe string
-		rows   []string
+		// needsFullScope is true when the rows hold only under drift.scope full.
+		needsFullScope bool
 	}{
-		{"loom", shedrun.RecipeTapestry, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftExpect, loomshed.NameDriftVerify, loomshed.NameDriftRecheck}},
-		{"darn", shedrun.RecipeDarn, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftExpect, loomshed.NameDriftVerify, loomshed.NameDriftRecheck}},
+		{"loom", shedrun.RecipeTapestry, false},
+		{"darn", shedrun.RecipeDarn, false},
+		{"sampler", shedrun.RecipeSampler, true},
 	}
 	for _, recipe := range recipes {
 		t.Run(recipe.name, func(t *testing.T) {
 			t.Parallel()
 			for _, enabled := range []bool{false, true} {
-				env, paths := testEnv(t)
-				if enabled {
+				for _, scope := range []string{"", "off", "full"} {
+					env, paths := testEnv(t)
 					env.Setting = func(module, key string) (any, error) {
-						if module == "drift" && key == "enabled" {
-							return true, nil
+						switch {
+						case module == "drift" && key == "enabled":
+							return enabled, nil
+						case module == "drift" && key == "scope":
+							return scope, nil
 						}
 						return envkit.TemplateSetting(module, key)
 					}
-				}
-				shed, err := New(recipe.recipe, env, paths)
-				if err != nil {
-					t.Fatalf("%s build error = %v; want nil", recipe.name, err)
-				}
-				for _, row := range recipe.rows {
-					def := producerDef(t, shed, row)
-					if def.EntryGate == nil {
-						t.Fatalf("%s EntryGate = nil; want a gate on drift.enabled", row)
+					shed, err := New(recipe.recipe, env, paths)
+					if err != nil {
+						t.Fatalf("%s build error = %v; want nil", recipe.name, err)
 					}
-					if holds, _, err := def.EntryGate(); err != nil || holds != enabled {
-						t.Errorf("%s EntryGate() with drift.enabled %v = %v, %v; want %v, nil", row, enabled, holds, err, enabled)
+					want := enabled && (!recipe.needsFullScope || scope == "full")
+					for _, row := range driftRows {
+						def := producerDef(t, shed, row)
+						if def.EntryGate == nil {
+							t.Fatalf("%s EntryGate = nil; want a gate on drift.enabled", row)
+						}
+						if holds, _, err := def.EntryGate(); err != nil || holds != want {
+							t.Errorf("%s EntryGate() with drift.enabled %v and drift.scope %q = %v, %v; want %v, nil", row, enabled, scope, holds, err, want)
+						}
 					}
 				}
 			}

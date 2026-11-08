@@ -582,7 +582,10 @@
 // All `matches` records the pass, which counts as passing for the skip of a head already checked.
 // Bound: `command` gives up containment by code, and a drifted case the log does not show goes unjudged.
 //
-// The route that fixes code, which every Stuck over a regression names, is derived from Deps.Rows: `lym loom goto --to Darn-Write` then `lym loom resume` when the rows hold Darn-Write, else `lym loom goto --to Webster` then `lym loom resume`.
+// The route that fixes code, which every Stuck over a regression names, is derived from Deps.Rows:
+// It is `lym loom goto --to Darn-Write` then `lym loom resume` when the rows hold Darn-Write.
+// It is `lym loom goto --to Sampler-Session` then `lym loom resume` when they hold Sampler-Session.
+// Otherwise it is `lym loom goto --to Webster` then `lym loom resume`.
 // A re-entered Webster with every card done still starts Merriam, whose run-level `drift` entry meets the cells and hands them to the verify fixer.
 // Every Stuck for the parent opens with shedadapters.DecisionHaltPrefix, and one that names `lym drift defer` carries DeferHaltPrefix right after it.
 // An exhausted `judgement` entry is the shed's Stuck, whose resume respawns the judge under the same spawn id.

@@ -1032,13 +1032,13 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	// A darn run has no plan, so only another recipe's expect agent is told one.
-	darnRun, err := loomrecipe.HasEngine(c.recipe, darnWriteEngine)
+	// Only a recipe with a Plan-Write row has a plan, so only its expect agent is told one.
+	hasPlan, err := loomrecipe.HasEngine(c.recipe, planWriteEngine)
 	if err != nil {
 		return err
 	}
 	driftPlanDir := ""
-	if !darnRun {
+	if hasPlan {
 		driftPlanDir = planparser.PlanDir(location.AnchorPath())
 	}
 	c.env.Drift = driftDeps(location, statusPath, statusLockPath, driftTables{

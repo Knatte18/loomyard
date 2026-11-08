@@ -2,6 +2,7 @@
 // It covers the perch's settings from loom.yaml's Code-Review keys.
 // It covers the early refusals of a malformed or absent darn.yaml and the routing per recipe.
 // It covers the rename of retired darn rows when a verb arms and the Darn-Write row's status and failure-record seams.
+// It covers which recipes tell the Drift expect agent a plan directory.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -20,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -486,13 +488,16 @@ func TestWire_SamplerRecipe(t *testing.T) {
 		status := shedengine.Status{
 			CurrentProducer: loomshed.NameSamplerSession,
 			State:           shedengine.StateRunning,
-			History:         []shedengine.HistoryEntry{{Producer: loomshed.NameRecordWrite, Outcome: shedengine.Done}},
+			History: []shedengine.HistoryEntry{
+				{Producer: loomshed.NameRecordWrite, Outcome: shedengine.Done},
+				{Producer: loomshed.NameDriftExpect, Outcome: shedengine.OutcomeSkipped},
+			},
 		}
 		if err := state.WriteJSON(statusPath, statusLock, status); err != nil {
 			t.Fatalf("state.WriteJSON() = %v; want nil", err)
 		}
 		if stamp, err := sampler.Stamp(); err != nil || stamp != 1 {
-			t.Errorf("Sampler.Stamp() after Record-Write is Done = %d, %v; want 1, nil", stamp, err)
+			t.Errorf("Sampler.Stamp() after Drift-Expect is Skipped = %d, %v; want 1, nil", stamp, err)
 		}
 	})
 
@@ -512,6 +517,58 @@ func TestWire_SamplerRecipe(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestWire_DriftExpectPlanReading pins which recipes tell the Drift expect agent a plan directory:
+// only a recipe with a Plan-Write row does, and a sampler or darn run is told it has no plan.
+func TestWire_DriftExpectPlanReading(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		recipe     string
+		wantHasDir bool
+	}{
+		{name: "sampler", recipe: shedrun.RecipeSampler},
+		{name: "darn", recipe: shedrun.RecipeDarn},
+		{name: "tapestry", recipe: shedrun.RecipeTapestry, wantHasDir: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			seedDarnHubConfig(t, loc.HubPath, "3")
+			writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+			boardConfigDir := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lym", "config")
+			if err := os.WriteFile(filepath.Join(boardConfigDir, "drift.yaml"), []byte(driftengine.ConfigTemplate()), 0o644); err != nil {
+				t.Fatalf("WriteFile drift.yaml = %v; want nil", err)
+			}
+			if tt.recipe == shedrun.RecipeSampler {
+				samplerPath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "sampler")
+				if err := os.WriteFile(samplerPath, []byte(samplerengine.ConfigTemplate()), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", samplerPath, err)
+				}
+			}
+			c := &loomCLI{runID: shedrun.SelfRunID, recipe: tt.recipe}
+			if err := c.wire(loc, loc.AnchorPath()); err != nil {
+				t.Fatalf("wire() = %v; want nil", err)
+			}
+
+			expect, err := c.env.Drift.ExpectTable(filepath.Join(t.TempDir(), "listing.yaml"))
+			if err != nil {
+				t.Fatalf("c.env.Drift.ExpectTable() = _, %v; want nil", err)
+			}
+			reading := expect.Values["plan_reading"]
+			planDir := planparser.PlanDir(loc.AnchorPath())
+			if got := strings.Contains(reading, planDir); got != tt.wantHasDir {
+				t.Errorf("plan_reading of a %s run = %q; want the plan directory %q present = %v", tt.name, reading, planDir, tt.wantHasDir)
+			}
+			if !tt.wantHasDir && !strings.HasPrefix(reading, "none:") {
+				t.Errorf("plan_reading of a %s run = %q; want it to say the run has no plan", tt.name, reading)
+			}
+		})
+	}
 }
 
 // TestArmAt_RenamesRetiredDarnRows pins the status-file rename that arming any verb over a darn run performs:

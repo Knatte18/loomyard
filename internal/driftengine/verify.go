@@ -24,8 +24,9 @@ import (
 
 // The recipe rows that edit code; a Stuck's way forward routes the parent back to one of them.
 const (
-	darnWriteRow = "Darn-Write"
-	websterRow   = "Webster"
+	darnWriteRow      = "Darn-Write"
+	samplerSessionRow = "Sampler-Session"
+	websterRow        = "Webster"
 )
 
 // Reasons of Stuck passes that name no changed value; each states the parent's way forward.
@@ -317,12 +318,15 @@ func (p *DriftVerify) noMatchReason(lead string, ruled []string) string {
 	return fmt.Sprintf("%s: %s; way forward: the parent runs lym drift amend <slug> --entries <file> with entries that explain the change, then lym loom resume; or fix the code with %s", lead, strings.Join(ruled, "; "), p.fixRoute())
 }
 
-// fixRoute returns the parent's route to the row that edits code: Darn-Write when the run's rows hold it;
-// otherwise Webster, whose Master meets the cells in its run-level drift entry.
+// fixRoute returns the parent's route to the row that edits code.
+// That row is Darn-Write or Sampler-Session when the run's rows hold it.
+// Otherwise it is Webster, whose Master meets the cells in its run-level drift entry.
 func (p *DriftVerify) fixRoute() string {
 	row := websterRow
-	if slices.Contains(p.deps.Rows, darnWriteRow) {
-		row = darnWriteRow
+	for _, writer := range []string{darnWriteRow, samplerSessionRow} {
+		if slices.Contains(p.deps.Rows, writer) {
+			row = writer
+		}
 	}
 	return "lym loom goto --to " + row + " then lym loom resume"
 }

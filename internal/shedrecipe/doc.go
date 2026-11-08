@@ -144,14 +144,16 @@
 // # The Drift rows
 //
 // The DriftBaseline, DriftAwait, DriftExpect and DriftVerify entries build regression rows.
-// The tapestry and darn recipes use them.
+// The tapestry, darn and sampler recipes use them.
 // Each reads Env.Drift, a whole-struct passthrough to the producers.
 // Each fills its Seats and Now from Env.Seats and Env.Now.
 // DriftExpect and DriftVerify also fill their GateFindingsFile from Env.GateFindingsFile.
 // A caller leaves those three fields of Env.Drift unset.
 // Each checks the Env.Drift seams its producer reads, and Env.Seats for the agent rows.
 // It refuses a nil one, naming the field.
-// None has a switch of its own: the recipe leaves a row out through its `entry_gate: drift.enabled`.
+// None has a switch of its own.
+// The recipe leaves a row out through its `entry_gate`.
+// That gate is `drift.enabled` in tapestry and darn, and `drift.enabled` with `drift.scope == full` in the sampler.
 // Each producer reads `drift.enabled` again at every pass,
 // so a resume passes a row already entered once the switch went off.
 // DriftBaseline takes a required "subject", `decision-record` or `board-entry`.
