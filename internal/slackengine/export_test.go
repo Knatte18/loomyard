@@ -8,9 +8,11 @@ import (
 )
 
 // Floor and Ceiling are the shortest and longest wait a relay loop takes between passes.
+// WakeFloor is the shortest time between the starts of two wakes of the wake loop.
 const (
-	Floor   = waitFloor
-	Ceiling = waitCeiling
+	Floor     = waitFloor
+	Ceiling   = waitCeiling
+	WakeFloor = wakeFloor
 )
 
 // Inbound is the unexported inbound read of the hub's channels.

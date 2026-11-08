@@ -1,5 +1,5 @@
-// backoff.go holds the waits the relay's two loops take between passes:
-// a floor, doubled while a loop finds nothing, and raised for both loops by a rate limit.
+// backoff.go holds the waits the relay's outbound loop takes between reads:
+// a floor, doubled while a read finds nothing, and raised by a rate limit that the outbound loop or the wake loop meets.
 
 package slackengine
 
@@ -15,7 +15,8 @@ const (
 	waitCeiling = 60 * time.Second
 )
 
-// sharedFloor is the floor both loops of one relay wait at least, which a rate limit doubles for the rest of the run.
+// sharedFloor is the shortest wait of the outbound loop and the first read's retries.
+// A rate limit met by the outbound loop or the wake loop doubles it for the rest of the run.
 type sharedFloor struct {
 	mu    sync.Mutex
 	value time.Duration

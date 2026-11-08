@@ -835,6 +835,9 @@ func TestSlackCLI(t *testing.T) {
 			code, env := h.run("", "stop")
 			wantOK(t, code, env)
 			h.wantCalls("stop")
+			if requests := h.slack.seen(); len(requests) != 0 {
+				t.Errorf("stop made Slack requests %+v; want none, since stop archives nothing", requests)
+			}
 			if h.stopPID != os.Getpid() {
 				t.Errorf("stop spared pid %d; want this process %d", h.stopPID, os.Getpid())
 			}

@@ -83,8 +83,10 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   `post --wait-reply`, `inject --wait`, `read --wait` and `hook-wait` wait on their connection;
   they reconnect from one second;
   the client's connect wait after a spawn also ends when the daemon it started exits, except a lost start race,
-- the Slack relay's loops in `internal/slackengine/relay.go`, the inbound poll and the outbound read:
-  they each wait from five seconds and double to sixty while a pass finds nothing, returning to five on activity.
+- the Slack relay's loops:
+  the outbound read in `internal/slackengine/relay.go`, with the binary check and the retried work after it, from five seconds doubling to sixty;
+  the holder in `internal/slackengine/holder.go`, its lock wait blocking without waking, its 30-second ping spawning nothing and its reconnect from one second doubling to sixty;
+  and the inbox and presence watch in `internal/slackengine/relay.go`, never within a second of the previous wake's start, with its on-disk fallback from one second to sixty.
 
 A bounded wait that ends within a minute is outside the rule.
 

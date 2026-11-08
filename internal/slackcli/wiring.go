@@ -256,12 +256,13 @@ func awaitReparent(clock slackengine.Clock, intermediate int) error {
 }
 
 // runRelay runs the relay of the hub at hubPath, whose prime worktree is primeName, until ctx ends.
+// It reads the credentials without refusing a missing token: the relay itself tells the operator which one is missing.
 func runRelay(ctx context.Context, hubPath, primeName string) error {
 	geom, err := hubgeom.SlackGeometry(hubPath)
 	if err != nil {
 		return err
 	}
-	credentials, _, err := slackengine.RequireConfigured(geom)
+	credentials, err := slackengine.ReadCredentials(geom.TokenPath)
 	if err != nil {
 		return err
 	}
@@ -269,9 +270,11 @@ func runRelay(ctx context.Context, hubPath, primeName string) error {
 	if err != nil {
 		return err
 	}
+	client := &http.Client{}
 	deps := slackengine.RelayDeps{
 		Mailbox: newProgramMailbox(prime),
-		Slack:   slackengine.NewAPI(slackengine.DefaultBaseURL, credentials.BotToken, &http.Client{}),
+		Slack:   slackengine.NewAPI(slackengine.DefaultBaseURL, credentials.BotToken, client),
+		Dial:    slackengine.NewDialer(slackengine.DefaultBaseURL, credentials.AppToken, client, slackengine.HelloTimeout),
 		Hub: slackengine.Hub{
 			Beams:  func() ([]string, error) { return beamSlugs(prime) },
 			Paused: func(receiver string) (bool, error) { return receiverPaused(hubPath, prime, receiver) },
