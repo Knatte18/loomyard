@@ -71,7 +71,7 @@ func answerJSON(w http.ResponseWriter, body string) {
 
 // documentedAnswers holds, by request path, the example answer Slack's API reference shows for each method lym calls.
 // The answers keep Slack's shapes.
-// chat.postMessage sends `channel` as an id string, while conversations.info sends it as an object.
+// chat.postMessage sends `channel` as an id string, while conversations.create sends it as an object.
 var documentedAnswers = map[string]string{
 	"/auth.test": `{
 		"ok": true,
@@ -79,41 +79,23 @@ var documentedAnswers = map[string]string{
 		"team": "Subarachnoid Workspace",
 		"user": "grace",
 		"team_id": "T12345678",
-		"user_id": "W12345678"
+		"user_id": "W12345678",
+		"bot_id": "B12345678"
 	}`,
-	"/conversations.info": `{
-		"ok": true,
-		"channel": {
-			"id": "C012AB3CD",
-			"name": "general",
-			"is_channel": true,
-			"is_group": false,
-			"is_im": false,
-			"is_mpim": false,
-			"is_private": false,
-			"created": 1654868334,
-			"is_archived": false,
-			"is_general": true,
-			"unlinked": 0,
-			"name_normalized": "general",
-			"is_shared": false,
-			"is_org_shared": false,
-			"is_pending_ext_shared": false,
-			"pending_shared": [],
-			"context_team_id": "T123ABCDEF",
-			"updated": 1723215202803,
-			"parent_conversation": null,
-			"creator": "U123ABCDEF",
-			"is_ext_shared": false,
-			"shared_team_ids": ["T123ABCDEF"],
-			"pending_connected_team_ids": [],
-			"is_member": true,
-			"last_read": "1723215190.639619",
-			"topic": {"value": "", "creator": "", "last_set": 0},
-			"purpose": {"value": "This is the one channel that will always include everyone.", "creator": "U123ABCDEF", "last_set": 1654868334},
-			"previous_names": []
-		}
-	}`,
+	"/bots.info":            `{"ok":true,"bot":{"id":"B12345678","app_id":"A161CLERW","name":"beforebot","deleted":false}}`,
+	"/conversations.create": `{"ok":true,"channel":{"id":"C0EAQDV4Z","name":"endeavor","is_archived":false,"creator":"U012A3CDE","is_member":true}}`,
+	"/conversations.list": `{"ok":true,"channels":[{"id":"C012AB3CD","name":"general","is_archived":false,"creator":"U012A3CDE","is_member":true}],` +
+		`"response_metadata":{"next_cursor":""}}`,
+	"/conversations.join":    `{"ok":true,"channel":{"id":"C012AB3CD","name":"general"}}`,
+	"/conversations.invite":  `{"ok":true,"channel":{"id":"C012AB3CD","name":"general"}}`,
+	"/conversations.rename":  `{"ok":true,"channel":{"id":"C012AB3CD","name":"general"}}`,
+	"/conversations.archive": `{"ok":true}`,
+	"/conversations.replies": `{"ok":true,"messages":[` +
+		`{"type":"message","user":"U061F7AUR","text":"island","thread_ts":"1482960137.003543","reply_count":1,` +
+		`"latest_reply":"1483037603.017503","ts":"1482960137.003543"},` +
+		`{"type":"message","user":"U061F7AUR","text":"one island","thread_ts":"1482960137.003543",` +
+		`"parent_user_id":"U061F7AUR","ts":"1483037603.017503"}],"has_more":false}`,
+	"/apps.connections.open": `{"ok":true,"url":"wss://wss-primary.slack.com/link/?ticket=1234-5678"}`,
 	"/conversations.history": `{
 		"ok": true,
 		"messages": [
@@ -189,21 +171,18 @@ func TestAPI(t *testing.T) {
 			answerJSON(w, documentedAnswers[request.path])
 		})
 		api := fake.api()
-		if err := api.AuthTest(ctx); err != nil {
+		identity, err := api.AuthTest(ctx)
+		if err != nil {
 			t.Fatalf("AuthTest = %v", err)
 		}
-		info, err := api.ConversationInfo(ctx, "C1")
-		if err != nil {
-			t.Fatalf("ConversationInfo = %v", err)
-		}
-		if want := (slackengine.ChannelInfo{ID: "C012AB3CD", Name: "general", IsMember: true}); info != want {
-			t.Errorf("ConversationInfo = %+v; want %+v", info, want)
+		if want := (slackengine.Identity{TeamID: "T12345678", UserID: "W12345678", BotID: "B12345678"}); identity != want {
+			t.Errorf("AuthTest = %+v; want %+v", identity, want)
 		}
 		if err := api.UserInfo(ctx, "U1"); err != nil {
 			t.Fatalf("UserInfo = %v", err)
 		}
-		if err := api.PostMessage(ctx, "C1", "hello"); err != nil {
-			t.Fatalf("PostMessage = %v", err)
+		if err := api.PostAs(ctx, "C1", "hello", slackengine.Sender{}); err != nil {
+			t.Fatalf("PostAs = %v", err)
 		}
 		messages, err := api.History(ctx, "C1", "4.0")
 		if err != nil {
@@ -216,16 +195,74 @@ func TestAPI(t *testing.T) {
 		if diff := cmp.Diff(wantMessages, messages); diff != "" {
 			t.Errorf("History() mismatch (-want +got):\n%s", diff)
 		}
+		appID, err := api.BotAppID(ctx, "B12345678")
+		if err != nil || appID != "A161CLERW" {
+			t.Errorf("BotAppID = %q, %v; want A161CLERW", appID, err)
+		}
+		created, err := api.CreateChannel(ctx, "endeavor")
+		wantCreated := slackengine.ChannelInfo{ID: "C0EAQDV4Z", Name: "endeavor", IsMember: true, Creator: "U012A3CDE"}
+		if err != nil || created != wantCreated {
+			t.Errorf("CreateChannel = %+v, %v; want %+v", created, err, wantCreated)
+		}
+		found, ok, err := api.FindChannel(ctx, "general")
+		wantFound := slackengine.ChannelInfo{ID: "C012AB3CD", Name: "general", IsMember: true, Creator: "U012A3CDE"}
+		if err != nil || !ok || found != wantFound {
+			t.Errorf("FindChannel = %+v, %v, %v; want %+v", found, ok, err, wantFound)
+		}
+		for _, step := range []struct {
+			name string
+			call func() error
+		}{
+			{"Join", func() error { return api.Join(ctx, "C1") }},
+			{"Invite", func() error { return api.Invite(ctx, "C1", "U1") }},
+			{"Rename", func() error { return api.Rename(ctx, "C1", "new-name") }},
+			{"Archive", func() error { return api.Archive(ctx, "C1") }},
+		} {
+			if err := step.call(); err != nil {
+				t.Errorf("%s = %v", step.name, err)
+			}
+		}
+		replies, err := api.Replies(ctx, "C1", "1482960137.003543", "0")
+		if err != nil {
+			t.Fatalf("Replies = %v", err)
+		}
+		wantReplies := []slackengine.Message{
+			{TS: "1482960137.003543", ThreadTS: "1482960137.003543", User: "U061F7AUR", Text: "island", LatestReply: "1483037603.017503"},
+			{TS: "1483037603.017503", ThreadTS: "1482960137.003543", User: "U061F7AUR", Text: "one island"},
+		}
+		if diff := cmp.Diff(wantReplies, replies); diff != "" {
+			t.Errorf("Replies() mismatch (-want +got):\n%s", diff)
+		}
+		if err := api.PostAs(ctx, "C1", "hi", slackengine.Sender{Username: "ly-orch", IconEmoji: ":robot_face:"}); err != nil {
+			t.Errorf("PostAs = %v", err)
+		}
+		connectionURL, err := api.OpenConnection(ctx)
+		if wantURL := "wss://wss-primary.slack.com/link/?ticket=1234-5678"; err != nil || connectionURL != wantURL {
+			t.Errorf("OpenConnection = %q, %v; want %q", connectionURL, err, wantURL)
+		}
 		historyForm := url.Values{"channel": {"C1"}, "oldest": {"4.0"}, "limit": {"200"}}
 		want := []recordedRequest{
 			{path: "/auth.test", form: url.Values{}},
-			{path: "/conversations.info", form: url.Values{"channel": {"C1"}}},
 			{path: "/users.info", form: url.Values{"user": {"U1"}}},
 			{path: "/chat.postMessage", form: url.Values{"channel": {"C1"}, "text": {"hello"}}},
 			{path: "/conversations.history", form: historyForm},
 			{path: "/conversations.history", form: url.Values{
 				"channel": {"C1"}, "oldest": {"4.0"}, "limit": {"200"}, "cursor": {"bmV4dF90czoxNTEyMDg1ODYxMDAwNTQz"},
 			}},
+			{path: "/bots.info", form: url.Values{"bot": {"B12345678"}}},
+			{path: "/conversations.create", form: url.Values{"name": {"endeavor"}, "is_private": {"false"}}},
+			{path: "/conversations.list", form: url.Values{
+				"types": {"public_channel"}, "exclude_archived": {"false"}, "limit": {"200"},
+			}},
+			{path: "/conversations.join", form: url.Values{"channel": {"C1"}}},
+			{path: "/conversations.invite", form: url.Values{"channel": {"C1"}, "users": {"U1"}}},
+			{path: "/conversations.rename", form: url.Values{"channel": {"C1"}, "name": {"new-name"}}},
+			{path: "/conversations.archive", form: url.Values{"channel": {"C1"}}},
+			{path: "/conversations.replies", form: url.Values{"channel": {"C1"}, "ts": {"1482960137.003543"}, "oldest": {"0"}}},
+			{path: "/chat.postMessage", form: url.Values{
+				"channel": {"C1"}, "text": {"hi"}, "username": {"ly-orch"}, "icon_emoji": {":robot_face:"},
+			}},
+			{path: "/apps.connections.open", form: url.Values{}},
 		}
 		got := fake.recorded()
 		if len(got) != len(want) {
@@ -267,6 +304,39 @@ func TestAPI(t *testing.T) {
 		}
 	})
 
+	t.Run("FindChannelFollowsThePagesAndReportsAMissingName", func(t *testing.T) {
+		t.Parallel()
+		fake := newFakeSlackAPI(t, func(request recordedRequest, w http.ResponseWriter) {
+			if request.form.Get("cursor") == "page2" {
+				answerJSON(w, `{"ok":true,"channels":[{"id":"C2","name":"wanted","is_archived":true}],"response_metadata":{"next_cursor":""}}`)
+				return
+			}
+			answerJSON(w, `{"ok":true,"channels":[{"id":"C1","name":"other"}],"response_metadata":{"next_cursor":"page2"}}`)
+		})
+		api := fake.api()
+		found, ok, err := api.FindChannel(ctx, "wanted")
+		if want := (slackengine.ChannelInfo{ID: "C2", Name: "wanted", IsArchived: true}); err != nil || !ok || found != want {
+			t.Errorf("FindChannel(wanted) = %+v, %v, %v; want %+v", found, ok, err, want)
+		}
+		if requests := fake.recorded(); len(requests) != 2 || requests[1].form.Get("cursor") != "page2" {
+			t.Errorf("FindChannel sent %+v; want a second request carrying the cursor page2", requests)
+		}
+		if _, ok, err := api.FindChannel(ctx, "absent"); err != nil || ok {
+			t.Errorf("FindChannel(absent) = found %v, %v; want not found", ok, err)
+		}
+	})
+
+	t.Run("PostAsWithAnEmptySenderSendsNoUsernameOrIcon", func(t *testing.T) {
+		t.Parallel()
+		fake := newFakeSlackAPI(t, func(_ recordedRequest, w http.ResponseWriter) { answerJSON(w, `{"ok":true}`) })
+		if err := fake.api().PostAs(ctx, "C1", "hi", slackengine.Sender{}); err != nil {
+			t.Fatalf("PostAs = %v", err)
+		}
+		if got, want := fake.recorded()[0].form, (url.Values{"channel": {"C1"}, "text": {"hi"}}); !cmp.Equal(got, want) {
+			t.Errorf("PostAs sent %v; want %v", got, want)
+		}
+	})
+
 	t.Run("LatestOnAnEmptyChannelFindsNothing", func(t *testing.T) {
 		t.Parallel()
 		fake := newFakeSlackAPI(t, func(_ recordedRequest, w http.ResponseWriter) { answerJSON(w, `{"ok":true,"messages":[]}`) })
@@ -295,37 +365,62 @@ func TestAPI(t *testing.T) {
 					w.Header().Set("Retry-After", "7")
 					w.WriteHeader(http.StatusTooManyRequests)
 				},
-				call:     func(api *slackengine.API) error { return api.PostMessage(ctx, "C1", "x") },
+				call:     func(api *slackengine.API) error { return api.PostAs(ctx, "C1", "x", slackengine.Sender{}) },
 				wantRate: 7 * time.Second,
 			},
 			{
 				name:     "MissingRetryAfterReadsAsOneSecond",
 				reply:    func(w http.ResponseWriter) { w.WriteHeader(http.StatusTooManyRequests) },
-				call:     func(api *slackengine.API) error { return api.PostMessage(ctx, "C1", "x") },
+				call:     func(api *slackengine.API) error { return api.PostAs(ctx, "C1", "x", slackengine.Sender{}) },
 				wantRate: time.Second,
 			},
 			{
 				name:     "RatelimitedCodeIsARateLimit",
 				reply:    func(w http.ResponseWriter) { answerJSON(w, `{"ok":false,"error":"ratelimited"}`) },
-				call:     func(api *slackengine.API) error { return api.PostMessage(ctx, "C1", "x") },
+				call:     func(api *slackengine.API) error { return api.PostAs(ctx, "C1", "x", slackengine.Sender{}) },
 				wantRate: time.Second,
 			},
 			{
 				name:     "MsgTooLongIsAnAPIError",
 				reply:    func(w http.ResponseWriter) { answerJSON(w, `{"ok":false,"error":"msg_too_long"}`) },
-				call:     func(api *slackengine.API) error { return api.PostMessage(ctx, "C1", "x") },
+				call:     func(api *slackengine.API) error { return api.PostAs(ctx, "C1", "x", slackengine.Sender{}) },
 				wantCode: "msg_too_long",
 			},
 			{
-				name:     "InvalidAuthOnAuthTestIsAnAPIError",
-				reply:    func(w http.ResponseWriter) { answerJSON(w, `{"ok":false,"error":"invalid_auth"}`) },
-				call:     func(api *slackengine.API) error { return api.AuthTest(ctx) },
+				name:  "InvalidAuthOnAuthTestIsAnAPIError",
+				reply: func(w http.ResponseWriter) { answerJSON(w, `{"ok":false,"error":"invalid_auth"}`) },
+				call: func(api *slackengine.API) error {
+					_, err := api.AuthTest(ctx)
+					return err
+				},
 				wantCode: "invalid_auth",
+			},
+			{
+				name:  "InviteOfAMemberIsNil",
+				reply: func(w http.ResponseWriter) { answerJSON(w, `{"ok":false,"error":"already_in_channel"}`) },
+				call:  func(api *slackengine.API) error { return api.Invite(ctx, "C1", "U1") },
+			},
+			{
+				name:  "ArchiveOfAnArchivedChannelIsNil",
+				reply: func(w http.ResponseWriter) { answerJSON(w, `{"ok":false,"error":"already_archived"}`) },
+				call:  func(api *slackengine.API) error { return api.Archive(ctx, "C1") },
+			},
+			{
+				name:     "InviteRefusedForAnotherCodeIsAnAPIError",
+				reply:    func(w http.ResponseWriter) { answerJSON(w, `{"ok":false,"error":"user_not_found"}`) },
+				call:     func(api *slackengine.API) error { return api.Invite(ctx, "C1", "U1") },
+				wantCode: "user_not_found",
+			},
+			{
+				name:     "ArchiveRefusedForAnotherCodeIsAnAPIError",
+				reply:    func(w http.ResponseWriter) { answerJSON(w, `{"ok":false,"error":"cant_archive_general"}`) },
+				call:     func(api *slackengine.API) error { return api.Archive(ctx, "C1") },
+				wantCode: "cant_archive_general",
 			},
 			{
 				name:      "ServerErrorIsPlain",
 				reply:     func(w http.ResponseWriter) { w.WriteHeader(http.StatusInternalServerError) },
-				call:      func(api *slackengine.API) error { return api.PostMessage(ctx, "C1", "x") },
+				call:      func(api *slackengine.API) error { return api.PostAs(ctx, "C1", "x", slackengine.Sender{}) },
 				wantPlain: true,
 			},
 		}
@@ -348,6 +443,10 @@ func TestAPI(t *testing.T) {
 				case tt.wantPlain:
 					if err == nil || errors.As(err, &rateLimit) || errors.As(err, &apiErr) {
 						t.Errorf("error = %v; want a plain error", err)
+					}
+				default:
+					if err != nil {
+						t.Errorf("error = %v; want nil", err)
 					}
 				}
 				if err != nil && strings.Contains(err.Error(), "xoxb-secret") {

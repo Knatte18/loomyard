@@ -1,5 +1,6 @@
 // relay.go runs the relay process.
-// It waits to be reparented, takes the relay lock, makes the first creel read, and runs the inbound and outbound loops.
+// It waits to be reparented, takes the relay lock and makes the first creel read.
+// It then runs the socket holder, the outbound loop and the wake loop.
 // It also re-execs onto a replaced binary and writes the relay log.
 
 package slackengine
@@ -10,14 +11,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/state"
 )
+
+// wakeFloor is the shortest time between the starts of two wakes of the wake loop.
+const wakeFloor = time.Second
+
+// removeEventOp is the operation of a file event that wakes nothing: the relay's own removal of a hint.
+const removeEventOp = "remove"
 
 // ErrRelayInStrandPane reports that creel refused the relay's program claim.
 // The relay runs in a strand's pane that is no orch's; the relay releases its lock before it returns this error.
@@ -28,16 +38,23 @@ var ErrRelayInStrandPane = errors.New("slack: the relay runs in a strand pane th
 var errFirstReadAccepted = errors.New("slack: the first read was accepted and its mail left for the outbound read")
 
 // RelayDeps holds the seams a relay process runs against.
-// They are its creel mailbox, Slack client, hub, clock, and process operations.
+// They are its creel mailbox, Slack client, Socket Mode dial, hub, clock, file watch, and process operations.
 type RelayDeps struct {
 	// Mailbox is the relay's creel mailbox.
 	Mailbox Mailbox
-	// Slack is the Slack client, whose successful calls the relay records in its state.
+	// Slack is the Slack client the relay's loops call.
 	Slack SlackClient
+	// Dial opens a Socket Mode connection for the machine's socket holder.
+	Dial Dialer
 	// Hub reads the hub's beams and pauses.
 	Hub Hub
+	// LiveHubs lists the machine's live hubs, which the relay's channel keeper reads to judge a channel.
+	LiveHubs LiveHubs
 	// Clock is the relay's source of time.
 	Clock Clock
+	// Watch opens a file watch on dir for the entries called names, or for every entry when names is empty.
+	// A nil Watch means fswatch.Watch.
+	Watch func(dir string, names ...string) (*fswatch.Watcher, error)
 	// PID returns the relay's process id.
 	PID func() int
 	// ReexecLockWait is how long a re-exec waits for the lock its old image released; zero waits only lock.ProbeGrace.
@@ -114,42 +131,6 @@ func (l *relayLog) appendLine(line string) {
 	}
 }
 
-// recordingSlack is a SlackClient that stamps LastSlackOK in the relay state after each call that succeeds.
-type recordingSlack struct {
-	inner SlackClient
-	geom  Geometry
-	clock Clock
-	log   *relayLog
-}
-
-func (s *recordingSlack) stamp(err error) {
-	if err != nil {
-		return
-	}
-	now := s.clock.Now()
-	if writeErr := updateRelayState(s.geom, func(relayState *RelayState) { relayState.LastSlackOK = now }); writeErr != nil {
-		s.log.fail("relay-state", writeErr)
-	}
-}
-
-func (s *recordingSlack) History(ctx context.Context, channel, oldest string) ([]Message, error) {
-	messages, err := s.inner.History(ctx, channel, oldest)
-	s.stamp(err)
-	return messages, err
-}
-
-func (s *recordingSlack) Latest(ctx context.Context, channel string) (string, bool, error) {
-	ts, found, err := s.inner.Latest(ctx, channel)
-	s.stamp(err)
-	return ts, found, err
-}
-
-func (s *recordingSlack) PostMessage(ctx context.Context, channel, text string) error {
-	err := s.inner.PostMessage(ctx, channel, text)
-	s.stamp(err)
-	return err
-}
-
 // updateRelayState applies mutate to the relay state under the record's lock,
 // so the relay's writes and the starter's keep each other's fields.
 func updateRelayState(geom Geometry, mutate func(*RelayState)) error {
@@ -174,18 +155,17 @@ func waitFor(ctx context.Context, clock Clock, d time.Duration) bool {
 }
 
 // RunRelay runs the hub's relay until ctx ends, and returns nil when it ends or another relay holds the lock.
-// It refuses a hub with no token or no setup file.
-// It takes the relay lock, registers itself, and records its pid.
-// It makes the first creel read before any Slack call, then polls the channel and reads its own mailbox.
-// Each loop waits on its own schedule.
+// It takes the relay lock, registers itself, records its pid, and makes the first creel read before any Slack call.
+// Only then does it refuse a machine missing either token and a hub with no setup file, through missingTokenExit.
+// It ensures the hub's channels and owes the start read of each, then runs three loops:
+// the machine's socket holder, which turns Slack events into hints in the hub's inbox;
+// the outbound read of the relay's mailbox; and the wake loop, which reads the channels on a hint or a presence change.
+// At the end of each outbound read it stamps the relay's last-healthy time in its state,
+// and the wake loop then does the retried work and checks whether the lym binary was replaced.
 // A creel refusal of the program claim from a strand's pane returns ErrRelayInStrandPane with the lock released.
 // Any other first-read refusal is retried while the lock is held.
-// At each poll it checks whether the lym binary was replaced and re-execs onto it.
-// A relay that cannot re-exec retakes its lock, or exits when another relay holds it.
+// A relay that cannot re-exec retakes its lock and its socket holder, or exits when another relay holds the lock.
 func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
-	if _, _, err := RequireConfigured(geom); err != nil {
-		return err
-	}
 	if err := deps.ReapInherited(); err != nil {
 		logger.Warn("slackengine: could not wait on the children the replaced image started", "error", err)
 	}
@@ -216,13 +196,47 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 	if err := firstRead(ctx, geom, deps, heldLock, log, floor); err != nil {
 		return err
 	}
+	if _, _, err := RequireConfigured(geom); err != nil {
+		return missingTokenExit(ctx, geom, deps, err)
+	}
 
 	loopCtx, stopLoops := context.WithCancel(ctx)
 	defer stopLoops()
-	slack := &recordingSlack{inner: deps.Slack, geom: geom, clock: deps.Clock, log: log}
-	go runOutbound(loopCtx, newOutbound(geom, deps.Mailbox, slack, deps.Clock, floor), deps.Clock, log)
-	poller := &inbound{geom: geom, mailbox: deps.Mailbox, slack: slack, hub: deps.Hub, clock: deps.Clock}
-	return runInbound(loopCtx, poller, deps, heldLock, log, floor)
+	keeper := newChannelKeeper(geom, deps.Slack, deps.LiveHubs, deps.Mailbox, deps.Clock)
+	reader := newInbound(geom, deps.Mailbox, deps.Slack, deps.Hub, deps.Clock, keeper)
+	primePending := relayStart(loopCtx, geom, keeper, reader, deps.Hub)
+
+	holder := &holderRun{geom: geom, deps: deps}
+	holder.start(loopCtx)
+	defer holder.stop()
+
+	watchOpen := deps.Watch
+	if watchOpen == nil {
+		watchOpen = fswatch.Watch
+	}
+	wake := &wakeLoop{
+		geom: geom, hub: deps.Hub, clock: deps.Clock, keeper: keeper, in: reader, log: log, floor: floor,
+		watchOpen: watchOpen, checkBinary: deps.CheckBinary, relayLock: heldLock, holder: holder,
+		outbound:     make(chan chan struct{}),
+		primePending: primePending,
+	}
+	stampLastHealthy := func() {
+		now := deps.Clock.Now()
+		if err := updateRelayState(geom, func(relayState *RelayState) { relayState.LastSlackOK = now }); err != nil {
+			log.fail("relay-state", err)
+			return
+		}
+		log.recovered("relay-state")
+	}
+	afterRead := func(readCtx context.Context) {
+		if readCtx.Err() != nil {
+			return
+		}
+		stampLastHealthy()
+		wake.askOutboundWake(readCtx)
+	}
+	go runOutbound(loopCtx, newOutbound(geom, deps.Mailbox, deps.Slack, deps.Clock, floor, keeper, deps.Hub), deps.Clock, log, afterRead)
+	return wake.run(loopCtx)
 }
 
 // takeRelayLock takes the relay lock, and returns nil when another relay holds it.
@@ -284,8 +298,134 @@ func firstRead(ctx context.Context, geom Geometry, deps RelayDeps, heldLock *rel
 	}
 }
 
+// missingTokenExit tells the operator why the relay cannot run, and returns the refusal so the relay exits with it.
+// The hub's orch is mailed a `[slack relay]` notice with the refusal and the `lym slack start` to run after the fix.
+// Neither the login nor a dobby tick while presence is `terminal` starts a relay that has exited.
+// The same line is first posted to the hub's prime channel.
+// That needs a bot token on the machine and the channel in the channel map.
+// With no prime entry it is posted to the channel id an older binary's setup file holds, the only read of that key.
+func missingTokenExit(ctx context.Context, geom Geometry, deps RelayDeps, refusal error) error {
+	line := fmt.Sprintf("%v, then `lym slack start`", refusal)
+	credentials, credentialsErr := ReadCredentials(geom.TokenPath)
+	if credentialsErr == nil && credentials.BotToken != "" {
+		if channel, found := missingTokenChannel(geom); found {
+			err := deps.Slack.PostAs(ctx, channel, slackEscape.Replace(relayNoticePrefix+" "+line), Sender{})
+			if err != nil {
+				logger.Debug("slackengine: could not post the refusal to the hub's channel", "channel", channel, "error", err)
+			}
+		}
+	}
+	receiver, err := orchName(geom.Shortname, "")
+	if err != nil {
+		logger.Warn("slackengine: could not name the orch to notify of the refusal", "error", err)
+		return refusal
+	}
+	if _, err := deps.Mailbox.Post(receiver, relayNoticePrefix+" "+line); err != nil {
+		logger.Warn("slackengine: the relay notice for the refusal was not posted", "receiver", receiver, "error", err)
+	}
+	return refusal
+}
+
+// missingTokenChannel returns the channel a refused relay posts its line to and reports whether there is one.
+// It is the prime's open channel in the hub's map, otherwise the channel id of an older binary's setup file.
+func missingTokenChannel(geom Geometry) (string, bool) {
+	channelMap, err := ReadChannelMap(geom.ChannelMapPath)
+	if err != nil {
+		logger.Debug("slackengine: the refusal's post needs the channel map", "error", err)
+		return "", false
+	}
+	prime, err := orchName(geom.Shortname, "")
+	if err != nil {
+		return "", false
+	}
+	if entry, held := channelMap.Channels[prime]; held {
+		return entry.ID, !entry.Archived
+	}
+	setup, found, err := ReadSetup(geom.SetupPath)
+	if err != nil || !found || setup.ChannelID == "" {
+		return "", false
+	}
+	return setup.ChannelID, true
+}
+
+// relayStart ensures the hub's prime channel.
+// When presence is slack it also ensures every listed beam's channel.
+// It then owes every open channel its start read and makes the reads.
+// It reports whether the prime's channel is still to be ensured, which the outbound wakes retry.
+func relayStart(ctx context.Context, geom Geometry, keeper *channelKeeper, in *inbound, hub Hub) bool {
+	prime, err := orchName(geom.Shortname, "")
+	if err != nil {
+		logger.Warn("slackengine: could not name the hub's orch at the relay's start", "error", err)
+		return false
+	}
+	_, primeErr := keeper.ensure(ctx, prime)
+	if primeErr != nil {
+		logger.Warn("slackengine: could not ensure the hub's prime channel at the start; the outbound wakes retry", "error", primeErr)
+	}
+	if presence, err := ReadPresence(geom.PresencePath); err == nil && presence == PresenceSlack {
+		beams, err := hub.Beams()
+		if err == nil {
+			err = ensureBeamChannels(ctx, geom, keeper, beams)
+		}
+		if err != nil {
+			logger.Warn("slackengine: could not ensure the beams' channels at the start", "error", err)
+		}
+	}
+	in.start()
+	in.retryOwed(ctx)
+	return primeErr != nil
+}
+
+// ensureBeamChannels ensures the channel of each listed beam and returns the joined errors of the ones that failed.
+func ensureBeamChannels(ctx context.Context, geom Geometry, keeper *channelKeeper, beams []string) error {
+	var failures []error
+	for _, slug := range beams {
+		orch, err := orchName(geom.Shortname, slug)
+		if err == nil {
+			_, err = keeper.ensure(ctx, orch)
+		}
+		if err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
+}
+
+// holderRun runs the machine's socket holder in a goroutine of its own, which a re-exec stops and starts again.
+// It is used from one goroutine at a time.
+type holderRun struct {
+	geom   Geometry
+	deps   RelayDeps
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+// start runs a new socket holder under a context of its own, derived from ctx.
+func (r *holderRun) start(ctx context.Context) {
+	socket := newSocketHolder(r.geom, r.deps.Dial, r.deps.LiveHubs, r.deps.Mailbox, r.deps.Slack, r.deps.Clock)
+	holderCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	r.cancel, r.done = cancel, done
+	go func() {
+		defer close(done)
+		socket.run(holderCtx)
+	}()
+}
+
+// stop ends the running holder and waits until its connection is closed and the machine's socket lock is released.
+// Stopping a holder that is not running does nothing.
+func (r *holderRun) stop() {
+	if r.cancel == nil {
+		return
+	}
+	r.cancel()
+	<-r.done
+	r.cancel, r.done = nil, nil
+}
+
 // runOutbound reads the relay's mailbox until ctx ends, waiting between reads as each read asks.
-func runOutbound(ctx context.Context, out *outbound, clock Clock, log *relayLog) {
+// It calls afterRead after each read, whatever the read found, before the wait.
+func runOutbound(ctx context.Context, out *outbound, clock Clock, log *relayLog, afterRead func(ctx context.Context)) {
 	for ctx.Err() == nil {
 		wait, err := out.read(ctx)
 		if err != nil {
@@ -293,58 +433,283 @@ func runOutbound(ctx context.Context, out *outbound, clock Clock, log *relayLog)
 		} else {
 			log.recovered("outbound")
 		}
+		afterRead(ctx)
 		if !waitFor(ctx, clock, wait) {
 			return
 		}
 	}
 }
 
-// runInbound polls the channel until ctx ends.
-// After each poll it checks for a replaced binary and then waits.
-// The wait is the shared floor after activity, doubled while polls find nothing or fail, and a rate limit's retry wait.
-func runInbound(ctx context.Context, in *inbound, deps RelayDeps, heldLock *relayLock, log *relayLog, floor *sharedFloor) error {
-	wait := newLoopWait(floor)
-	exiting := false
-	for ctx.Err() == nil {
-		activity, err := in.poll(ctx)
-		var pause time.Duration
-		limit, rateLimited := isRateLimit(err)
-		switch {
-		case rateLimited:
-			log.fail("inbound", err)
-			pause = wait.afterRateLimit(limit)
-		case err != nil:
-			log.fail("inbound", err)
-			pause = wait.afterIdle()
-			if activity {
-				pause = wait.afterActivity()
-			}
-		case activity:
-			log.recovered("inbound")
-			pause = wait.afterActivity()
-		default:
-			log.recovered("inbound")
-			pause = wait.afterIdle()
-		}
+// wakeLoop does the relay's channel work when a hint or a presence change arrives, and once per outbound read.
+// One goroutine runs it, so one goroutine reads the channels and holds the inbound's owed reads and episodes.
+type wakeLoop struct {
+	geom      Geometry
+	hub       Hub
+	clock     Clock
+	keeper    *channelKeeper
+	in        *inbound
+	log       *relayLog
+	floor     *sharedFloor
+	watchOpen func(dir string, names ...string) (*fswatch.Watcher, error)
+	// checkBinary, relayLock and holder carry the re-exec: a replaced binary stops the holder and frees the relay lock.
+	checkBinary func(beforeExec func(), failed func(error))
+	relayLock   *relayLock
+	holder      *holderRun
+	// outbound carries an outbound read's request for a wake; the loop answers by closing the channel it was sent.
+	outbound chan chan struct{}
 
-		deps.CheckBinary(
-			heldLock.release,
-			func(execErr error) {
-				log.appendLine(fmt.Sprintf("%s re-exec failed: %v", deps.Clock.Now().UTC().Format(time.RFC3339), execErr))
-				if !heldLock.retake() {
-					log.appendLine("another relay holds the lock; this one exits")
-					exiting = true
-				}
-			},
-		)
-		if exiting {
+	// The fields below belong to the loop's own goroutine.
+	// presence is the presence the previous wake read, empty before the first.
+	presence Presence
+	// primePending is set while the prime's channel is still to be ensured.
+	primePending bool
+	// lastWake is the start of the previous wake, valid once woke is set.
+	lastWake time.Time
+	woke     bool
+	// exiting is set when a failed re-exec found the relay lock kept by another relay.
+	exiting bool
+}
+
+// askOutboundWake asks the loop for an outbound wake and waits until it is done or ctx ends.
+func (w *wakeLoop) askOutboundWake(ctx context.Context) {
+	done := make(chan struct{})
+	select {
+	case w.outbound <- done:
+	case <-ctx.Done():
+		return
+	}
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
+}
+
+// run waits for wakes until ctx ends or a failed re-exec leaves the relay lock with another relay.
+// A file event in the inbox, or on the presence file alone, wakes it.
+// A wake never starts within wakeFloor of the previous wake's start:
+// an event inside that second waits the rest of it on the clock.
+// The inbox is created first, and watched whole.
+// When the watch cannot be opened, the loop looks at the inbox and the presence file on disk instead.
+// It waits from wakeFloor, doubling to waitCeiling while it finds nothing, and returns to wakeFloor after a wake.
+func (w *wakeLoop) run(ctx context.Context) error {
+	if err := os.MkdirAll(w.geom.InboxDir, privateDirMode); err != nil {
+		return fmt.Errorf("slack: create the inbox %s: %w", w.geom.InboxDir, err)
+	}
+	var events <-chan struct{}
+	var timer <-chan time.Time
+	wait := wakeFloor
+	signal, closeWatch, err := w.watch()
+	if err != nil {
+		w.log.fail("watch", err)
+		timer = w.clock.After(wait)
+	} else {
+		events = signal
+		defer closeWatch()
+	}
+	for {
+		select {
+		case <-ctx.Done():
 			return nil
+		case done := <-w.outbound:
+			w.wake(ctx, true)
+			close(done)
+		case <-events:
+			if !w.awaitFloor(ctx) {
+				return nil
+			}
+			w.wake(ctx, false)
+		case <-timer:
+			if w.diskCheck() {
+				wait = wakeFloor
+				w.wake(ctx, false)
+			} else {
+				wait = min(wait*2, waitCeiling)
+			}
+			timer = w.clock.After(wait)
 		}
-		if !waitFor(ctx, deps.Clock, pause) {
+		if w.exiting {
 			return nil
 		}
 	}
-	return nil
+}
+
+// awaitFloor waits out what is left of wakeFloor since the previous wake's start, and reports false when ctx ended first.
+func (w *wakeLoop) awaitFloor(ctx context.Context) bool {
+	if !w.woke {
+		return true
+	}
+	rest := wakeFloor - w.clock.Now().Sub(w.lastWake)
+	if rest <= 0 {
+		return true
+	}
+	return waitFor(ctx, w.clock, rest)
+}
+
+// watch watches the inbox whole and the Slack directory for the presence file alone,
+// so the relay's records, outbox, map, log and lock wake nothing.
+// It returns one channel that holds a signal after any event but a removal, and the function that closes both watches.
+func (w *wakeLoop) watch() (<-chan struct{}, func(), error) {
+	inbox, err := w.watchOpen(w.geom.InboxDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("slack: watch the inbox %s: %w", w.geom.InboxDir, err)
+	}
+	presence, err := w.watchOpen(w.geom.Dir, filepath.Base(w.geom.PresencePath))
+	if err != nil {
+		_ = inbox.Close()
+		return nil, nil, fmt.Errorf("slack: watch the presence file %s: %w", w.geom.PresencePath, err)
+	}
+	signal := make(chan struct{}, 1)
+	var forwarders sync.WaitGroup
+	for _, watcher := range []*fswatch.Watcher{inbox, presence} {
+		forwarders.Add(1)
+		go func() {
+			defer forwarders.Done()
+			for event := range watcher.Events() {
+				if event.Op == removeEventOp {
+					continue
+				}
+				select {
+				case signal <- struct{}{}:
+				default:
+				}
+			}
+		}()
+	}
+	closeAll := func() {
+		_ = inbox.Close()
+		_ = presence.Close()
+		forwarders.Wait()
+	}
+	return signal, closeAll, nil
+}
+
+// diskCheck reports whether the inbox holds a hint or the presence differs from the previous wake's.
+// It is the watch's stand-in when the watch cannot be opened.
+// Before the first wake there is no previous presence to differ from.
+func (w *wakeLoop) diskCheck() bool {
+	if entries, err := os.ReadDir(w.geom.InboxDir); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+				return true
+			}
+		}
+	}
+	presence, err := ReadPresence(w.geom.PresencePath)
+	return err == nil && w.presence != "" && presence != w.presence
+}
+
+// wake does the channel work of one wake.
+// It drains the inbox and reads the presence and the hub's beams.
+// It ensures every listed beam's channel when presence turned to slack.
+// It retires the channels of beams that a successful beams read no longer lists.
+// A failed beams read retires nothing.
+// An outbound wake also makes the owed reads again.
+// It invites the setup's operator where an entry records another or none.
+// It retries a refused retire and a prime ensure that did not stand.
+// It then checks whether the lym binary was replaced.
+func (w *wakeLoop) wake(ctx context.Context, fromOutbound bool) {
+	w.lastWake, w.woke = w.clock.Now(), true
+
+	if _, err := w.in.drain(ctx); err != nil {
+		w.log.fail("inbound", err)
+		if _, limited := isRateLimit(err); limited {
+			w.floor.rateLimited()
+		}
+	} else {
+		w.log.recovered("inbound")
+	}
+
+	beams, beamsErr := w.hub.Beams()
+	if beamsErr != nil {
+		w.log.fail("beams", beamsErr)
+	} else {
+		w.log.recovered("beams")
+	}
+	presence, presenceErr := ReadPresence(w.geom.PresencePath)
+	if presenceErr != nil {
+		w.log.fail("presence", presenceErr)
+	} else {
+		w.log.recovered("presence")
+		w.followPresence(ctx, presence, beams, beamsErr)
+	}
+	if beamsErr == nil {
+		if err := w.keeper.retire(ctx, beams, fromOutbound); err != nil {
+			w.log.fail("retire", err)
+		} else {
+			w.log.recovered("retire")
+		}
+	}
+
+	if !fromOutbound {
+		return
+	}
+	w.in.retryOwed(ctx)
+	if err := w.keeper.inviteOperators(ctx); err != nil {
+		w.log.fail("invite", err)
+	} else {
+		w.log.recovered("invite")
+	}
+	w.retryPrime(ctx)
+	w.runBinaryCheck(ctx)
+}
+
+// followPresence records presence and, when it turned to slack, ensures every listed beam's channel.
+// A turn it could not act on, for a beams read that failed or an ensure that failed, is acted on again at the next wake.
+func (w *wakeLoop) followPresence(ctx context.Context, presence Presence, beams []string, beamsErr error) {
+	if presence != PresenceSlack || w.presence == PresenceSlack {
+		w.presence = presence
+		return
+	}
+	if beamsErr != nil {
+		return
+	}
+	if err := ensureBeamChannels(ctx, w.geom, w.keeper, beams); err != nil {
+		w.log.fail("beam-channels", err)
+		return
+	}
+	w.log.recovered("beam-channels")
+	w.presence = presence
+}
+
+// retryPrime ensures the prime's channel again when the start's ensure did not stand.
+func (w *wakeLoop) retryPrime(ctx context.Context) {
+	if !w.primePending {
+		return
+	}
+	prime, err := orchName(w.geom.Shortname, "")
+	if err == nil {
+		_, err = w.keeper.ensure(ctx, prime)
+	}
+	if err != nil {
+		w.log.fail("prime-channel", err)
+		return
+	}
+	w.log.recovered("prime-channel")
+	w.primePending = false
+}
+
+// runBinaryCheck re-execs onto a replaced lym binary.
+// Before an exec it stops the socket holder and releases the relay lock.
+// Stopping the holder closes its connection and releases the machine's socket lock.
+// The exec's image waits its turn for both again.
+// A failed exec retakes the relay lock and starts the holder again,
+// and a relay lock kept by another relay ends this relay.
+func (w *wakeLoop) runBinaryCheck(ctx context.Context) {
+	w.checkBinary(
+		func() {
+			w.holder.stop()
+			w.relayLock.release()
+		},
+		func(execErr error) {
+			w.log.appendLine(fmt.Sprintf("%s re-exec failed: %v", w.clock.Now().UTC().Format(time.RFC3339), execErr))
+			if !w.relayLock.retake() {
+				w.log.appendLine("another relay holds the lock; this one exits")
+				w.exiting = true
+				return
+			}
+			w.holder.start(ctx)
+		},
+	)
 }
 
 // AwaitReparent waits until the process is no longer a child of intermediate, polling its parent once a second.

@@ -1,5 +1,6 @@
 // relay_test.go covers the relay process, its starter and the waits of a start.
-// It runs over the in-memory seams of inbound_test.go and temp-dir files.
+// It runs over the in-memory seams of inbound_test.go and the manual clock and fake dialer of holder_test.go.
+// Its files are in temp directories.
 
 package slackengine_test
 
@@ -17,6 +18,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/slackengine"
@@ -35,6 +37,23 @@ func (m *fakeMailbox) readAllCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.readAllCalls
+}
+
+// hasWait reports whether a wait of d is pending.
+func (c *manualClock) hasWait(d time.Duration) bool {
+	for _, pending := range c.pending() {
+		if pending == d {
+			return true
+		}
+	}
+	return false
+}
+
+// invitedTo returns the users the fake Slack invited to the channel.
+func invitedTo(s *fakeSlack, channel string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.invited[channel]...)
 }
 
 // writeRelayStateJSON writes content as the relay state file of geom.
@@ -63,85 +82,157 @@ func holdRelayLock(t *testing.T, geom slackengine.Geometry) *lock.FileLock {
 	return held
 }
 
-// relayRun is a relay over a configured harness, run synchronously until a test stops it.
+// relayRun is a relay over a configured harness, run in a goroutine of the test until the test stops it.
+// Its clock is a manual one: each loop of the relay blocks at its wait until a row advances the time.
 type relayRun struct {
 	*harness
-	deps       slackengine.RelayDeps
-	registered atomic.Int32
-	waits      atomic.Int32
-	mu         sync.Mutex
-	cancel     context.CancelFunc
-	// outboundParked is closed once the relay's outbound read blocks in the mailbox.
-	outboundParked chan struct{}
+	// clock shadows the harness's clock, which only the harness's own inbound read and keeper use.
+	clock *manualClock
+	// dialer is the relay's Socket Mode dial; with no scripted step a dial blocks until the relay ends.
+	dialer       *fakeDialer
+	deps         slackengine.RelayDeps
+	registered   atomic.Int32
+	binaryChecks atomic.Int32
+	beamReads    atomic.Int32
+
+	mu     sync.Mutex
+	cancel context.CancelFunc
+	done   chan struct{}
+	err    error
 }
 
-// newRelayRun returns a relay whose outbound read blocks as a long poll with no mail does.
+// newRelayRun returns a relay whose outbound read answers at once with no mail, as a read that timed out does.
+// The hub lists the beam of the harness's second channel, so no channel of the map is retired.
 func newRelayRun(t *testing.T) *relayRun {
 	t.Helper()
 	h := newHarness(t)
-	block := make(chan struct{})
-	h.mailbox.blockReadWait = block
-	parked := make(chan struct{})
-	h.mailbox.readWaitEntered = parked
-	t.Cleanup(func() {
-		// The blocked outbound read wakes once the block closes and takes one more wait;
-		// no hook of a finished test may run then.
-		h.clock.mu.Lock()
-		h.clock.onWait = nil
-		h.clock.mu.Unlock()
-		close(block)
-	})
-	r := &relayRun{harness: h, outboundParked: parked}
+	h.hub.set(func(hub *fakeHub) { hub.beams = []string{"payments"} })
+	r := &relayRun{harness: h, clock: newManualClock(), dialer: &fakeDialer{}}
+	hub := h.hub.hub()
 	r.deps = slackengine.RelayDeps{
-		Mailbox:       h.mailbox,
-		Slack:         h.slack,
-		Hub:           h.hub.hub(),
-		Clock:         h.clock,
+		Mailbox: h.mailbox,
+		Slack:   h.slack,
+		Dial:    r.dialer.dial,
+		Hub: slackengine.Hub{
+			Beams: func() ([]string, error) {
+				r.beamReads.Add(1)
+				return hub.Beams()
+			},
+			Paused: hub.Paused,
+		},
+		LiveHubs:      func() ([]slackengine.Geometry, error) { return []slackengine.Geometry{h.geom}, nil },
+		Clock:         r.clock,
 		PID:           func() int { return fakePID },
-		CheckBinary:   func(func(), func(error)) {},
+		CheckBinary:   func(func(), func(error)) { r.binaryChecks.Add(1) },
 		ReapInherited: func() error { return nil },
 		Register:      func() error { r.registered.Add(1); return nil },
 	}
+	t.Cleanup(r.end)
 	return r
 }
 
 func (r *relayRun) setPID(pid int) { r.deps.PID = func() int { return pid } }
 
-// onWait runs hook after each wait the relay takes on the clock, with the wait's 1-based number and length.
-func (r *relayRun) onWait(hook func(n int, d time.Duration)) {
-	r.waits.Store(0)
-	r.clock.onWait = func(d time.Duration) { hook(int(r.waits.Add(1)), d) }
+// start runs the relay in a goroutine.
+func (r *relayRun) start() {
+	r.t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	r.mu.Lock()
+	r.cancel, r.done, r.err = cancel, done, nil
+	r.mu.Unlock()
+	go func() {
+		defer close(done)
+		err := slackengine.RunRelay(ctx, r.geom, r.deps)
+		r.mu.Lock()
+		r.err = err
+		r.mu.Unlock()
+	}()
 }
 
-// awaitOutboundParked waits until the relay's outbound read blocks in the mailbox.
-// A relay ended before then leaves its outbound loop reading the hub's files while the test's cleanup removes them;
-// once parked, the loop touches no file again.
-func (r *relayRun) awaitOutboundParked() {
-	r.t.Helper()
+// end cancels the run in progress and waits for RunRelay to return.
+func (r *relayRun) end() {
+	r.mu.Lock()
+	cancel, done := r.cancel, r.done
+	r.mu.Unlock()
+	if cancel == nil {
+		return
+	}
+	cancel()
 	select {
-	case <-r.outboundParked:
-	case <-time.After(10 * time.Second):
-		r.t.Fatalf("the relay's outbound read never reached the mailbox")
+	case <-done:
+	case <-time.After(awaitTimeout):
+		r.t.Errorf("RunRelay did not return after its context ended")
 	}
 }
 
-// stop ends the run in progress once its outbound read is parked.
-func (r *relayRun) stop() {
-	r.awaitOutboundParked()
+// result returns what RunRelay returned.
+func (r *relayRun) result() error {
 	r.mu.Lock()
-	cancel := r.cancel
-	r.mu.Unlock()
-	cancel()
+	defer r.mu.Unlock()
+	return r.err
 }
 
-// run runs the relay until it returns.
-func (r *relayRun) run() error {
-	ctx, cancel := context.WithCancel(context.Background())
+// finish runs the relay until it returns by itself, and returns what it returned.
+func (r *relayRun) finish() error {
+	r.t.Helper()
+	r.start()
 	r.mu.Lock()
-	r.cancel = cancel
+	done := r.done
 	r.mu.Unlock()
-	defer cancel()
-	return slackengine.RunRelay(ctx, r.geom, r.deps)
+	select {
+	case <-done:
+	case <-time.After(awaitTimeout):
+		r.t.Fatalf("RunRelay did not return by itself")
+	}
+	return r.result()
+}
+
+// awaitOutboundWait blocks until the outbound loop is parked at a wait, and returns that wait.
+// The loop takes its waits from the floor up to the ceiling.
+// No other wait of the relay equals one of them but the holder's ping.
+func (r *relayRun) awaitOutboundWait() time.Duration {
+	r.t.Helper()
+	var found time.Duration
+	eventually(r.t, "the outbound loop to park at a wait", func() bool {
+		for _, wait := range r.clock.pending() {
+			if wait >= slackengine.Floor && wait != slackengine.PingInterval {
+				found = wait
+				return true
+			}
+		}
+		return false
+	})
+	return found
+}
+
+// settle runs the relay and blocks until its start work and its first wake are done, and returns the outbound wait.
+func (r *relayRun) settle() time.Duration {
+	r.t.Helper()
+	r.start()
+	return r.awaitOutboundWait()
+}
+
+// stop ends the relay once the outbound loop is parked at a wait, and returns what RunRelay returned.
+func (r *relayRun) stop() error {
+	r.t.Helper()
+	r.awaitOutboundWait()
+	r.end()
+	return r.result()
+}
+
+// driveUntil advances the clock past each wait of the wake loop's floor until condition holds.
+func (r *relayRun) driveUntil(what string, condition func() bool) {
+	r.t.Helper()
+	eventually(r.t, what, func() bool {
+		if condition() {
+			return true
+		}
+		if r.clock.hasWait(slackengine.WakeFloor) {
+			r.clock.Advance(slackengine.WakeFloor)
+		}
+		return false
+	})
 }
 
 func (r *relayRun) relayState() slackengine.RelayState {
@@ -153,35 +244,131 @@ func (r *relayRun) relayState() slackengine.RelayState {
 	return relayState
 }
 
-// stopAtFirstWait ends the run at the relay's first wait, after one pass of its loop.
-func (r *relayRun) stopAtFirstWait() {
-	r.onWait(func(int, time.Duration) { r.stop() })
+// removeEntry drops the orch's entry from the channel map.
+func (r *relayRun) removeEntry(orch string) {
+	r.t.Helper()
+	err := slackengine.UpdateChannelMap(r.geom.ChannelMapPath, func(channelMap *slackengine.ChannelMap) error {
+		delete(channelMap.Channels, orch)
+		return nil
+	})
+	if err != nil {
+		r.t.Fatalf("UpdateChannelMap = %v", err)
+	}
+}
+
+// setPresence writes the presence.
+func (r *relayRun) setPresence(presence slackengine.Presence) {
+	r.t.Helper()
+	if _, err := slackengine.WritePresence(r.geom.PresencePath, presence, r.clock.Now()); err != nil {
+		r.t.Fatalf("WritePresence = %v", err)
+	}
+}
+
+// createdChannels returns the names of the channels the relay asked Slack to create, in order.
+func (r *relayRun) createdChannels() []string {
+	var names []string
+	for _, call := range r.slack.logged("CreateChannel") {
+		names = append(names, call.Arg)
+	}
+	return names
+}
+
+// forwarded reports whether the relay mailed the operator's text to the hub's orch.
+func (r *relayRun) forwarded(text string) bool {
+	for _, posted := range r.mailbox.accepted() {
+		if posted.Receiver == primeOrch && posted.Body == "[slack] "+text {
+			return true
+		}
+	}
+	return false
+}
+
+// awaitForwarded blocks until the relay mailed the operator's text to the hub's orch.
+func (r *relayRun) awaitForwarded(text string) {
+	r.t.Helper()
+	eventually(r.t, "the operator's text to be forwarded", func() bool { return r.forwarded(text) })
 }
 
 func TestRunRelay(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("HubWithNoTokenOrNoSetupIsRefusedAndTakesNoLock", func(t *testing.T) {
+	t.Run("RefusedHubMailsTheOperatorOnceAndExitsWithTheRefusal", func(t *testing.T) {
 		t.Parallel()
-		r := newRelayRun(t)
-		if err := os.Remove(r.geom.TokenPath); err != nil {
-			t.Fatalf("Remove = %v", err)
+		bothTokens := slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}
+		withOnlyAnOlderSetupChannel := func(r *relayRun) {
+			if err := os.Remove(r.geom.ChannelMapPath); err != nil {
+				r.t.Fatalf("Remove = %v", err)
+			}
+			if err := slackengine.WriteSetup(r.geom.SetupPath, slackengine.Setup{ChannelID: "C7", OperatorID: testOperator}); err != nil {
+				r.t.Fatalf("WriteSetup = %v", err)
+			}
 		}
-		if err := r.run(); err == nil || !strings.Contains(err.Error(), "lym slack login") {
-			t.Errorf("RunRelay(no token) = %v; want an error naming lym slack login", err)
+		tests := []struct {
+			name        string
+			credentials slackengine.Credentials
+			prepare     func(r *relayRun)
+			wantNamed   []string
+			// wantPostTo is the channel the same line is posted to, empty for none.
+			wantPostTo string
+		}{
+			{"BotTokenAloneNamesTheAppLevelTokenAndPostsToThePrimeChannel",
+				slackengine.Credentials{BotToken: "xoxb-secret"}, nil,
+				[]string{"app-level token (xapp-)", "lym slack login", "lym slack start"}, testChannel},
+			{"BotTokenAloneWithOnlyAnOlderSetupChannelPostsThere",
+				slackengine.Credentials{BotToken: "xoxb-secret"}, withOnlyAnOlderSetupChannel,
+				[]string{"app-level token (xapp-)", "lym slack login", "lym slack start"}, "C7"},
+			{"AppLevelTokenAloneNamesTheBotTokenAndPostsNothing",
+				slackengine.Credentials{AppToken: "xapp-secret", AppID: "A1"}, nil,
+				[]string{"bot token (xoxb-)", "lym slack login", "lym slack start"}, ""},
+			{"AppLevelTokenAloneWithOnlyAnOlderSetupChannelPostsNothing",
+				slackengine.Credentials{AppToken: "xapp-secret", AppID: "A1"}, withOnlyAnOlderSetupChannel,
+				[]string{"bot token (xoxb-)", "lym slack login", "lym slack start"}, ""},
+			{"BothTokensAndNoSetupNamesTheOperatorVerbAndPostsToThePrimeChannel",
+				bothTokens, func(r *relayRun) {
+					if err := os.Remove(r.geom.SetupPath); err != nil {
+						r.t.Fatalf("Remove = %v", err)
+					}
+				},
+				[]string{"lym slack setup --operator", "lym slack start"}, testChannel},
 		}
-		if err := slackengine.WriteToken(r.geom.TokenPath, "xoxb-secret"); err != nil {
-			t.Fatalf("WriteToken = %v", err)
-		}
-		if err := os.Remove(r.geom.SetupPath); err != nil {
-			t.Fatalf("Remove = %v", err)
-		}
-		if err := r.run(); err == nil || !strings.Contains(err.Error(), "lym slack setup") {
-			t.Errorf("RunRelay(no setup) = %v; want an error naming lym slack setup", err)
-		}
-		if _, err := os.Stat(r.geom.LockPath); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("Stat(lock) = %v; want no lock file", err)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				r := newRelayRun(t)
+				if err := slackengine.WriteCredentials(r.geom.TokenPath, tt.credentials); err != nil {
+					t.Fatalf("WriteCredentials = %v", err)
+				}
+				if tt.prepare != nil {
+					tt.prepare(r)
+				}
+				err := r.finish()
+				if err == nil || !strings.Contains(err.Error(), tt.wantNamed[0]) {
+					t.Fatalf("RunRelay = %v; want the refusal naming %q", err, tt.wantNamed[0])
+				}
+				notices := r.relayNotices()
+				if len(notices) != 1 {
+					t.Fatalf("notices = %q; want exactly one", notices)
+				}
+				for _, want := range tt.wantNamed {
+					if !strings.Contains(notices[0], want) {
+						t.Errorf("notice = %q; want it to name %q", notices[0], want)
+					}
+				}
+				posts := r.slack.logged("PostAs")
+				switch {
+				case tt.wantPostTo == "" && len(posts) != 0:
+					t.Errorf("PostAs calls = %+v; want none", posts)
+				case tt.wantPostTo != "" && (len(posts) != 1 || posts[0].Channel != tt.wantPostTo || !strings.HasPrefix(posts[0].Arg, "[slack relay]")):
+					t.Errorf("PostAs calls = %+v; want one relay notice to %s", posts, tt.wantPostTo)
+				}
+				if r.mailbox.readAllCount() != 1 {
+					t.Errorf("first creel reads = %d; want 1 before the refusal", r.mailbox.readAllCount())
+				}
+				if live, err := slackengine.RelayLive(r.geom); err != nil || live {
+					t.Errorf("RelayLive = %v, %v; want the lock free after the exit", live, err)
+				}
+			})
 		}
 	})
 
@@ -194,14 +381,12 @@ func TestRunRelay(t *testing.T) {
 		var registeredAtFirstCall int32
 		r.slack.onCall = func() {
 			once.Do(func() {
-				firstReadAtFirstCall = r.relayState().FirstReadAt
+				relayState, _, _ := slackengine.ReadRelayState(r.geom)
+				firstReadAtFirstCall = relayState.FirstReadAt
 				registeredAtFirstCall = r.registered.Load()
 			})
 		}
-		r.stopAtFirstWait()
-		if err := r.run(); err != nil {
-			t.Fatalf("RunRelay = %v", err)
-		}
+		r.settle()
 		if registeredAtFirstCall != 1 || firstReadAtFirstCall.IsZero() {
 			t.Errorf("at the first Slack call: registered %d, FirstReadAt %v; want one registration and a recorded first read", registeredAtFirstCall, firstReadAtFirstCall)
 		}
@@ -215,15 +400,15 @@ func TestRunRelay(t *testing.T) {
 		r := newRelayRun(t)
 		r.startAt("100.000000")
 		r.mailbox.scriptReadAll(readStep{messages: []creelengine.Message{{ID: 1, From: "ly:orch", Body: "waiting"}}})
-		r.stopAtFirstWait()
-		if err := r.run(); err != nil {
-			t.Fatalf("RunRelay = %v", err)
-		}
-		if len(r.mailbox.readAllAcks) != 0 {
-			t.Errorf("first read acknowledged %v; want the mail left unread", r.mailbox.readAllAcks)
+		r.settle()
+		r.mailbox.mu.Lock()
+		acknowledged := r.mailbox.readAllAcks
+		r.mailbox.mu.Unlock()
+		if len(acknowledged) != 0 {
+			t.Errorf("first read acknowledged %v; want the mail left unread", acknowledged)
 		}
 		if r.slack.callCount() == 0 || r.relayState().FirstReadAt.IsZero() {
-			t.Errorf("the relay did not go on to poll after an accepted first read")
+			t.Errorf("the relay did not go on to read its channels after an accepted first read")
 		}
 	})
 
@@ -232,7 +417,7 @@ func TestRunRelay(t *testing.T) {
 		r := newRelayRun(t)
 		r.startAt("100.000000")
 		r.mailbox.scriptReadAll(readStep{err: fmt.Errorf("creel: refused: %w", creelengine.ErrProgramClaimInStrandPane)})
-		err := r.run()
+		err := r.finish()
 		if !errors.Is(err, slackengine.ErrRelayInStrandPane) || !errors.Is(err, creelengine.ErrProgramClaimInStrandPane) || !strings.Contains(err.Error(), "lym slack start") {
 			t.Fatalf("RunRelay = %v; want ErrRelayInStrandPane wrapping creel's refusal and naming lym slack start", err)
 		}
@@ -243,10 +428,7 @@ func TestRunRelay(t *testing.T) {
 			t.Errorf("RelayLive = %v, %v; want the lock free", live, err)
 		}
 		r.setPID(8)
-		r.stopAtFirstWait()
-		if err := r.run(); err != nil {
-			t.Fatalf("RunRelay of another pid = %v", err)
-		}
+		r.settle()
 		if relayState := r.relayState(); relayState.PID != 8 || relayState.FirstReadAt.IsZero() {
 			t.Errorf("state after the second relay = %+v; want pid 8 with a first read", relayState)
 		}
@@ -257,26 +439,18 @@ func TestRunRelay(t *testing.T) {
 		r := newRelayRun(t)
 		r.startAt("100.000000")
 		r.mailbox.scriptReadAll(readStep{err: errors.New("creel: the pane process is unknown")})
-		var liveDuringRetry bool
-		var callsDuringRetry int
-		var refusalDuringRetry string
-		r.onWait(func(n int, _ time.Duration) {
-			if n == 1 {
-				liveDuringRetry, _ = slackengine.RelayLive(r.geom)
-				callsDuringRetry = r.slack.callCount()
-				refusalDuringRetry = r.relayState().FirstReadRefusal
-				return
-			}
-			r.stop()
-		})
-		if err := r.run(); err != nil {
-			t.Fatalf("RunRelay = %v", err)
-		}
+		r.start()
+		r.clock.awaitWait(t, 2*slackengine.Floor)
+		liveDuringRetry, _ := slackengine.RelayLive(r.geom)
+		callsDuringRetry := r.slack.callCount()
+		refusalDuringRetry := r.relayState().FirstReadRefusal
 		if !liveDuringRetry || callsDuringRetry != 0 || !strings.Contains(refusalDuringRetry, "pane process is unknown") {
 			t.Errorf("during the retry: live %v, Slack calls %d, refusal %q; want the lock held, no call and the refusal recorded", liveDuringRetry, callsDuringRetry, refusalDuringRetry)
 		}
+		r.clock.Advance(2 * slackengine.Floor)
+		r.awaitOutboundWait()
 		if relayState := r.relayState(); relayState.FirstReadRefusal != "" || relayState.FirstReadAt.IsZero() || r.slack.callCount() == 0 {
-			t.Errorf("after the retry: state %+v, Slack calls %d; want the refusal cleared, a first read and a poll", relayState, r.slack.callCount())
+			t.Errorf("after the retry: state %+v, Slack calls %d; want the refusal cleared, a first read and the channel reads", relayState, r.slack.callCount())
 		}
 	})
 
@@ -288,17 +462,10 @@ func TestRunRelay(t *testing.T) {
 		other := r.deps
 		other.PID = func() int { return 9 }
 		other.Register = func() error { registeredByOther.Add(1); return nil }
-		var otherErr error
-		readsBefore, readsAfter := 0, 0
-		r.onWait(func(int, time.Duration) {
-			readsBefore = r.mailbox.readAllCount()
-			otherErr = slackengine.RunRelay(context.Background(), r.geom, other)
-			readsAfter = r.mailbox.readAllCount()
-			r.stop()
-		})
-		if err := r.run(); err != nil {
-			t.Fatalf("RunRelay = %v", err)
-		}
+		r.settle()
+		readsBefore := r.mailbox.readAllCount()
+		otherErr := slackengine.RunRelay(context.Background(), r.geom, other)
+		readsAfter := r.mailbox.readAllCount()
 		if otherErr != nil || readsBefore != readsAfter || registeredByOther.Load() != 0 {
 			t.Errorf("second relay: error %v, reads %d -> %d, registrations %d; want a quiet return before any read", otherErr, readsBefore, readsAfter, registeredByOther.Load())
 		}
@@ -315,10 +482,7 @@ func TestRunRelay(t *testing.T) {
 			writeRelayStateJSON(t, r.geom, fmt.Sprintf(`{"pid":%d}`, fakePID))
 			held := holdRelayLock(t, r.geom)
 			time.AfterFunc(2*lock.ProbeGrace, func() { _ = held.Release() })
-			r.stopAtFirstWait()
-			if err := r.run(); err != nil {
-				t.Fatalf("RunRelay = %v", err)
-			}
+			r.settle()
 			if r.relayState().FirstReadAt.IsZero() {
 				t.Errorf("the re-exec gave up on the lock before its old image released it")
 			}
@@ -331,7 +495,7 @@ func TestRunRelay(t *testing.T) {
 			writeRelayStateJSON(t, r.geom, fmt.Sprintf(`{"pid":%d}`, fakePID))
 			holdRelayLock(t, r.geom)
 			r.setPID(8)
-			if err := r.run(); err != nil {
+			if err := r.finish(); err != nil {
 				t.Fatalf("RunRelay = %v", err)
 			}
 			if r.mailbox.readAllCount() != 0 {
@@ -346,10 +510,7 @@ func TestRunRelay(t *testing.T) {
 			held := holdRelayLock(t, r.geom)
 			time.AfterFunc(lock.ProbeGrace/5, func() { _ = held.Release() })
 			r.setPID(8)
-			r.stopAtFirstWait()
-			if err := r.run(); err != nil {
-				t.Fatalf("RunRelay = %v", err)
-			}
+			r.settle()
 			if r.relayState().FirstReadAt.IsZero() {
 				t.Errorf("a fresh relay gave up on a lock a probe held for a moment")
 			}
@@ -386,15 +547,10 @@ func TestRunRelay(t *testing.T) {
 			t.Parallel()
 			r := newRelayRun(t)
 			r.startAt("100.000000")
-			var liveDuringExec, liveAfter bool
+			var liveDuringExec bool
 			r.deps.CheckBinary = replaced(func() { liveDuringExec, _ = slackengine.RelayLive(r.geom) })
-			r.onWait(func(int, time.Duration) {
-				liveAfter, _ = slackengine.RelayLive(r.geom)
-				r.stop()
-			})
-			if err := r.run(); err != nil {
-				t.Fatalf("RunRelay = %v", err)
-			}
+			r.settle()
+			liveAfter, _ := slackengine.RelayLive(r.geom)
 			if liveDuringExec || !liveAfter || !strings.Contains(logged(t, r), "permission denied") {
 				t.Errorf("live during exec %v, live after %v, log %q; want the lock released in beforeExec, retaken in failed and the exec error logged", liveDuringExec, liveAfter, logged(t, r))
 			}
@@ -404,7 +560,6 @@ func TestRunRelay(t *testing.T) {
 			t.Parallel()
 			r := newRelayRun(t)
 			r.startAt("100.000000")
-			var liveAfter bool
 			r.deps.CheckBinary = replaced(func() {
 				probe, acquired, err := lock.TryAcquireWriteLock(r.geom.LockPath)
 				if err != nil || !acquired {
@@ -413,14 +568,8 @@ func TestRunRelay(t *testing.T) {
 				}
 				time.AfterFunc(lock.ProbeGrace/5, func() { _ = probe.Release() })
 			})
-			r.onWait(func(int, time.Duration) {
-				liveAfter, _ = slackengine.RelayLive(r.geom)
-				r.stop()
-			})
-			if err := r.run(); err != nil {
-				t.Fatalf("RunRelay = %v", err)
-			}
-			if !liveAfter {
+			r.settle()
+			if liveAfter, _ := slackengine.RelayLive(r.geom); !liveAfter {
 				t.Errorf("the relay did not retake a lock a probe held for a moment")
 			}
 		})
@@ -430,8 +579,6 @@ func TestRunRelay(t *testing.T) {
 			r := newRelayRun(t)
 			r.startAt("100.000000")
 			r.deps.CheckBinary = replaced(func() {
-				// The relay ends itself here instead of through stop.
-				r.awaitOutboundParked()
 				other, acquired, err := lock.TryAcquireWriteLock(r.geom.LockPath)
 				if err != nil || !acquired {
 					t.Errorf("TryAcquireWriteLock = %v, %v; want the lock the relay released", acquired, err)
@@ -439,26 +586,86 @@ func TestRunRelay(t *testing.T) {
 				}
 				t.Cleanup(func() { _ = other.Release() })
 			})
-			r.onWait(func(int, time.Duration) { t.Errorf("the relay went on polling after another relay took its lock") })
-			if err := r.run(); err != nil {
+			if err := r.finish(); err != nil {
 				t.Fatalf("RunRelay = %v", err)
 			}
 			if !strings.Contains(logged(t, r), "another relay holds the lock") {
 				t.Errorf("log %q; want the exit logged", logged(t, r))
 			}
 		})
+
+		t.Run("BeforeExecFreesTheSocketLockAndAFailedExecDialsAgainOnlyOnceTheHolderHoldsItAgain", func(t *testing.T) {
+			t.Parallel()
+			r := newRelayRun(t)
+			r.startAt("100.000000")
+			dialedFirst := r.dialer.hand(newFakeSocket(t))
+			dialedAgain := r.dialer.hand(newFakeSocket(t))
+			var socketLockFreed bool
+			var dialsWhileTheTestHoldsTheLock int
+			checks := 0
+			r.deps.CheckBinary = func(beforeExec func(), failed func(error)) {
+				checks++
+				if checks > 1 {
+					return
+				}
+				select {
+				case <-dialedFirst:
+				case <-time.After(awaitTimeout):
+					t.Errorf("the holder did not dial before the binary check")
+					return
+				}
+				beforeExec()
+				socketLock, acquired, err := lock.TryAcquireWriteLock(r.geom.SocketLockPath)
+				socketLockFreed = err == nil && acquired
+				failed(errors.New("exec: permission denied"))
+				dialsWhileTheTestHoldsTheLock = r.dialer.count()
+				if socketLockFreed {
+					_ = socketLock.Release()
+				}
+			}
+			r.start()
+			awaitClosed(t, dialedAgain)
+			if !socketLockFreed || dialsWhileTheTestHoldsTheLock != 1 {
+				t.Errorf("socket lock free after beforeExec %v, dials while it was held %d; want the lock free and the one first dial", socketLockFreed, dialsWhileTheTestHoldsTheLock)
+			}
+		})
 	})
 
-	t.Run("SuccessfulSlackCallStampsLastSlackOK", func(t *testing.T) {
+	t.Run("OutboundReadStampsLastHealthyWithNoSlackCall", func(t *testing.T) {
 		t.Parallel()
 		r := newRelayRun(t)
 		r.startAt("100.000000")
-		r.stopAtFirstWait()
-		if err := r.run(); err != nil {
-			t.Fatalf("RunRelay = %v", err)
-		}
+		r.slack.setHistoryErr(errors.New("slack down"))
+		r.settle()
 		if r.relayState().LastSlackOK.IsZero() {
-			t.Errorf("LastSlackOK is zero after a successful Slack call")
+			t.Errorf("LastSlackOK is zero after an outbound read of a relay whose Slack calls all fail")
+		}
+	})
+
+	t.Run("RelayReadingNoMailForElevenMinutesCountsAsHealthyToTheStarter", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.startAt("100.000000")
+		r.setPresence(slackengine.PresenceSlack)
+		spawnedAt := r.clock.Now()
+		if err := slackengine.UpdateRelayState(r.geom, func(relayState *slackengine.RelayState) {
+			relayState.LastSpawnAt = spawnedAt
+			relayState.NextStartAt = spawnedAt.Add(time.Minute)
+		}); err != nil {
+			t.Fatalf("UpdateRelayState = %v", err)
+		}
+		r.start()
+		for r.relayState().LastSlackOK.Sub(spawnedAt) < 11*time.Minute {
+			r.clock.Advance(r.awaitOutboundWait())
+		}
+		r.stop()
+		spawn := &fakeSpawn{}
+		starter := slackengine.NewStarter(spawn.spawn, r.clock, func() int { return 4242 })
+		if got, err := starter.Ensure(r.geom, "main", true); err != nil || got != slackengine.OutcomeStarted {
+			t.Fatalf("Ensure(whileAway) = %q, %v; want started", got, err)
+		}
+		if failures := r.relayState().StartFailures; failures != 0 {
+			t.Errorf("StartFailures = %d after a relay that read no mail for eleven minutes; want 0", failures)
 		}
 	})
 
@@ -467,10 +674,7 @@ func TestRunRelay(t *testing.T) {
 		r := newRelayRun(t)
 		r.startAt("100.000000")
 		writeRelayStateJSON(t, r.geom, `{"start_failures":4,"next_start_at":"2026-11-05T12:30:00Z","last_spawn_at":"2026-11-05T12:00:00Z"}`)
-		r.stopAtFirstWait()
-		if err := r.run(); err != nil {
-			t.Fatalf("RunRelay = %v", err)
-		}
+		r.settle()
 		relayState := r.relayState()
 		if relayState.FirstReadAt.IsZero() || relayState.StartFailures != 4 ||
 			!relayState.NextStartAt.Equal(time.Date(2026, 11, 5, 12, 30, 0, 0, time.UTC)) ||
@@ -479,40 +683,389 @@ func TestRunRelay(t *testing.T) {
 		}
 	})
 
-	t.Run("InboundWaitDoublesToTheCeilingResetsOnActivityAndARateLimitRaisesTheFloor", func(t *testing.T) {
+	t.Run("OutboundWakesRetryTheOwedWorkAndLeaveTheOutboundReadsBackoffAlone", func(t *testing.T) {
+		t.Parallel()
+		refusedInvite := &slackengine.APIError{Method: "conversations.invite", Code: "user_not_found"}
+		tests := []struct {
+			name    string
+			prepare func(r *relayRun)
+			// retries counts the calls the retried work made.
+			retries func(r *relayRun) int
+		}{
+			{"OwedReadFailingOnAServerError",
+				func(r *relayRun) { r.slack.setHistoryErr(errors.New("slack server error")) },
+				func(r *relayRun) int { return len(r.slack.logged("History")) }},
+			{"RefusedOperatorInvite",
+				func(r *relayRun) {
+					for _, orch := range []string{primeOrch, paymentsOrch} {
+						r.updateEntry(orch, func(entry *slackengine.ChannelEntry) { entry.Operator = "" })
+					}
+					refusals := make([]error, 40)
+					for i := range refusals {
+						refusals[i] = refusedInvite
+					}
+					r.slack.failNext("Invite", refusals...)
+				},
+				func(r *relayRun) int { return len(r.slack.logged("Invite")) }},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				r := newRelayRun(t)
+				tt.prepare(r)
+				r.start()
+				var waits []time.Duration
+				retriesAtFirstWait := 0
+				for i := range 5 {
+					wait := r.awaitOutboundWait()
+					if i == 0 {
+						retriesAtFirstWait = tt.retries(r)
+					}
+					waits = append(waits, wait)
+					r.clock.Advance(wait)
+				}
+				want := []time.Duration{10 * time.Second, 20 * time.Second, 40 * time.Second, 60 * time.Second, 60 * time.Second}
+				if diff := cmp.Diff(want, waits); diff != "" {
+					t.Errorf("outbound waits mismatch (-want +got):\n%s", diff)
+				}
+				r.awaitOutboundWait()
+				if got := tt.retries(r); got <= retriesAtFirstWait {
+					t.Errorf("calls of the retried work = %d after five more outbound wakes, %d at the first wait; want them to grow", got, retriesAtFirstWait)
+				}
+			})
+		}
+	})
+
+	t.Run("PrimeEnsureThatDidNotStandAtStartIsMadeAtTheNextOutboundWakes", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name    string
+			failure error
+		}{
+			{"TransportError", errors.New("dial tcp: connection refused")},
+			{"SlackRefusal", &slackengine.APIError{Method: "conversations.create", Code: "restricted_action"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				r := newRelayRun(t)
+				r.removeEntry(primeOrch)
+				r.slack.failNext("CreateChannel", tt.failure, tt.failure)
+				wait := r.settle()
+				if got := len(r.createdChannels()); got != 2 || r.entryOf(primeOrch).ID != "" {
+					t.Errorf("after the start and the first outbound wake: %d create calls, prime entry %+v; want two failed creates and no entry", got, r.entryOf(primeOrch))
+				}
+				r.clock.Advance(wait)
+				r.clock.awaitWait(t, 2*wait)
+				if got := len(r.createdChannels()); got != 3 || r.entryOf(primeOrch).ID == "" {
+					t.Errorf("after the next outbound wake: %d create calls, prime entry %+v; want a third create that stood", got, r.entryOf(primeOrch))
+				}
+			})
+		}
+	})
+
+	t.Run("EventArrivingDuringAnOutboundWakeIsDrainedAfterThatWakeEndsNeverBesideIt", func(t *testing.T) {
 		t.Parallel()
 		r := newRelayRun(t)
 		r.startAt("100.000000")
-		next := 100
-		newTS := func() string {
-			next++
-			return fmt.Sprintf("%d.000001", next)
+		r.deps.CheckBinary = func(func(), func(error)) {
+			if r.binaryChecks.Add(1) != 2 {
+				return
+			}
+			r.slack.add(testChannel, slackengine.Message{TS: "200.000001", User: testOperator, Text: "late"})
+			if err := slackengine.WriteHint(r.geom, testChannel); err != nil {
+				t.Errorf("WriteHint = %v", err)
+			}
 		}
-		r.onWait(func(n int, _ time.Duration) {
-			switch n {
-			case 5:
-				r.say(newTS(), "hello")
-			case 7:
-				r.slack.setHistoryErr(&slackengine.RateLimitError{Method: "conversations.history", RetryAfter: 3 * time.Second})
-			case 8:
-				r.slack.setHistoryErr(nil)
-				r.say(newTS(), "again")
-			case 9:
-				r.stop()
+		wait := r.settle()
+		r.clock.Advance(wait)
+		r.clock.awaitWait(t, slackengine.WakeFloor)
+		if r.forwarded("late") {
+			t.Errorf("the message was forwarded before the wake loop was free of the outbound wake that saw the hint")
+		}
+		r.clock.Advance(slackengine.WakeFloor)
+		r.awaitForwarded("late")
+	})
+
+	t.Run("HintInTheInboxWakesTheRelayThroughItsFileEventWithNoClockWait", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.startAt("100.000000")
+		r.settle()
+		r.clock.Advance(slackengine.WakeFloor)
+		r.say("200.000001", "go ahead")
+		r.hint(testChannel)
+		r.awaitForwarded("go ahead")
+		if r.clock.hasWait(slackengine.WakeFloor) {
+			t.Errorf("the wake waited on the clock for a hint that came a second after the previous wake's start")
+		}
+	})
+
+	t.Run("EventInsideASecondOfAWakesStartWaitsTheRestOfThatSecond", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.startAt("100.000000")
+		r.settle()
+		r.say("200.000001", "wait for it")
+		r.hint(testChannel)
+		r.clock.awaitWait(t, slackengine.WakeFloor)
+		if r.forwarded("wait for it") {
+			t.Errorf("the message was forwarded before the rest of the second passed")
+		}
+		r.clock.Advance(slackengine.WakeFloor)
+		r.awaitForwarded("wait for it")
+	})
+
+	t.Run("WritesToTheRelaysOwnRecordsWakeNothingAndAPresenceChangeWakes", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.settle()
+		r.clock.Advance(slackengine.WakeFloor)
+		beamReadsBefore := r.beamReads.Load()
+
+		watcher, err := fswatch.Watch(r.geom.Dir)
+		if err != nil {
+			t.Fatalf("Watch = %v", err)
+		}
+		t.Cleanup(func() { _ = watcher.Close() })
+		if err := slackengine.UpdateRelayState(r.geom, func(relayState *slackengine.RelayState) { relayState.StartFailures = 1 }); err != nil {
+			t.Fatalf("UpdateRelayState = %v", err)
+		}
+		if err := os.WriteFile(r.geom.OutboxPath, []byte("{}"), 0o600); err != nil {
+			t.Fatalf("write the outbox = %v", err)
+		}
+		r.updateEntry(primeOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "300.000001" })
+		if err := os.WriteFile(r.geom.LogPath, []byte("a note\n"), 0o600); err != nil {
+			t.Fatalf("write the relay log = %v", err)
+		}
+		unseen := map[string]bool{
+			slackengine.RelayStateFileName: true, slackengine.OutboxFileName: true,
+			slackengine.ChannelMapFileName: true, slackengine.RelayLogFileName: true,
+		}
+		deadline := time.After(awaitTimeout)
+		for len(unseen) > 0 {
+			select {
+			case event := <-watcher.Events():
+				delete(unseen, event.Name)
+			case <-deadline:
+				t.Fatalf("the files %v produced no event", unseen)
+			}
+		}
+
+		r.hub.set(func(hub *fakeHub) { hub.beams = []string{"payments", "extra"} })
+		r.setPresence(slackengine.PresenceSlack)
+		eventually(t, "the channel of the new beam to be created", func() bool { return len(r.createdChannels()) == 1 })
+		if got := r.beamReads.Load(); got != beamReadsBefore+1 {
+			t.Errorf("beam reads = %d after the writes and a presence change; want %d, one wake for the presence change alone", got, beamReadsBefore+1)
+		}
+		if r.clock.hasWait(slackengine.WakeFloor) {
+			t.Errorf("the presence change waited on the clock; a write to the relay's own records woke the relay")
+		}
+	})
+
+	t.Run("TwoHubsRelaysSharingASocketLockDialOnceAndTheEventsOwnerForwardsIt", func(t *testing.T) {
+		t.Parallel()
+		a, b := newRelayRun(t), newRelayRun(t)
+		b.geom.SocketLockPath = a.geom.SocketLockPath
+		b.updateEntry(primeOrch, func(entry *slackengine.ChannelEntry) { entry.ID = "CB1" })
+		b.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.ID = "CB2" })
+		live := func() ([]slackengine.Geometry, error) { return []slackengine.Geometry{a.geom, b.geom}, nil }
+		a.deps.LiveHubs, b.deps.LiveHubs = live, live
+		socketA := newFakeSocket(t)
+		dialedA := a.dialer.hand(socketA)
+		dialedB := b.dialer.hand(newFakeSocket(t))
+
+		a.start()
+		awaitClosed(t, dialedA)
+		b.settle()
+		b.sayIn("CB1", "200.000001", "hello from hub B")
+		socketA.sendEventAndAwaitAck(eventsEnvelope("e1", "CB1", "200.000001"))
+		b.driveUntil("hub B to forward the message of its channel", func() bool { return b.forwarded("hello from hub B") })
+		if got := b.dialer.count(); got != 0 {
+			t.Errorf("hub B dialed %d times while hub A held the socket lock; want 0", got)
+		}
+		if a.forwarded("hello from hub B") {
+			t.Errorf("hub A forwarded a message of hub B's channel")
+		}
+
+		a.stop()
+		awaitClosed(t, dialedB)
+	})
+
+	t.Run("PrimeChannelIsEnsuredAtStartAndBeamChannelsOnceThePresenceTurnsToSlack", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.removeEntry(primeOrch)
+		r.removeEntry(paymentsOrch)
+		prime := slackengine.ChannelName(r.geom.Shortname, r.geom.Machine, "")
+		payments := slackengine.ChannelName(r.geom.Shortname, r.geom.Machine, "payments")
+		r.settle()
+		if diff := cmp.Diff([]string{prime}, r.createdChannels()); diff != "" {
+			t.Errorf("channels created at the start mismatch (-want +got):\n%s", diff)
+		}
+		r.clock.Advance(slackengine.WakeFloor)
+		r.setPresence(slackengine.PresenceSlack)
+		eventually(t, "the beam's channel to be created", func() bool { return len(r.createdChannels()) == 2 })
+		if diff := cmp.Diff([]string{prime, payments}, r.createdChannels()); diff != "" {
+			t.Errorf("channels created after the presence turned to slack mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("PresenceSlackAtStartEnsuresEveryListedBeamsChannelAtTheStart", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.removeEntry(primeOrch)
+		r.removeEntry(paymentsOrch)
+		r.setPresence(slackengine.PresenceSlack)
+		prime := slackengine.ChannelName(r.geom.Shortname, r.geom.Machine, "")
+		payments := slackengine.ChannelName(r.geom.Shortname, r.geom.Machine, "payments")
+		r.settle()
+		if diff := cmp.Diff([]string{prime, payments}, r.createdChannels()); diff != "" {
+			t.Errorf("channels created at the start mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("RefusedOperatorInviteIsRetriedAtTheNextOutboundWake", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		for _, orch := range []string{primeOrch, paymentsOrch} {
+			r.updateEntry(orch, func(entry *slackengine.ChannelEntry) { entry.Operator = "" })
+		}
+		r.slack.failNext("Invite", &slackengine.APIError{Method: "conversations.invite", Code: "user_not_found"})
+		r.settle()
+		for _, channel := range []string{testChannel, paymentsChannel} {
+			if diff := cmp.Diff([]string{testOperator}, invitedTo(r.slack, channel)); diff != "" {
+				t.Errorf("users invited to %s mismatch (-want +got):\n%s", channel, diff)
+			}
+		}
+		if notices := r.relayNotices(); len(notices) != 1 || !strings.Contains(notices[0], "lym slack setup --operator") {
+			t.Errorf("notices = %q; want one for the refused invite naming lym slack setup --operator", notices)
+		}
+	})
+
+	t.Run("NewOperatorInTheSetupFileIsInvitedAtTheNextOutboundWakeWithTheRelayRunning", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		wait := r.settle()
+		if err := slackengine.WriteSetup(r.geom.SetupPath, slackengine.Setup{OperatorID: "U2"}); err != nil {
+			t.Fatalf("WriteSetup = %v", err)
+		}
+		r.clock.Advance(wait)
+		for _, channel := range []string{testChannel, paymentsChannel} {
+			eventually(t, "the new operator to be invited to "+channel, func() bool {
+				return cmp.Equal(invitedTo(r.slack, channel), []string{"U2"})
+			})
+		}
+	})
+
+	t.Run("RetiredBeams", func(t *testing.T) {
+		t.Parallel()
+		// retireRig returns a settled relay whose second channel exists in Slack and whose hub lists no beam.
+		retireRig := func(t *testing.T) *relayRun {
+			t.Helper()
+			r := newRelayRun(t)
+			r.slack.seedChannel(slackengine.ChannelInfo{ID: paymentsChannel, Name: "ly-neve-payments", Creator: "UBOT", IsMember: true})
+			r.settle()
+			r.hub.set(func(hub *fakeHub) { hub.beams = nil })
+			r.clock.Advance(slackengine.WakeFloor)
+			return r
+		}
+
+		t.Run("UnlistedBeamsChannelIsRenamedAndArchivedAtAWake", func(t *testing.T) {
+			t.Parallel()
+			r := retireRig(t)
+			r.setPresence(slackengine.PresenceSlack)
+			eventually(t, "the unlisted beam's entry to be archived", func() bool { return r.entryOf(paymentsOrch).Archived })
+			dated := slackengine.ArchivedName("ly-neve-payments", r.clock.Now(), 1)
+			wantRenames := []slackCall{{Method: "Rename", Channel: paymentsChannel, Arg: dated}}
+			if diff := cmp.Diff(wantRenames, r.slack.logged("Rename")); diff != "" {
+				t.Errorf("rename calls mismatch (-want +got):\n%s", diff)
+			}
+			if entry := r.entryOf(paymentsOrch); entry.Name != dated {
+				t.Errorf("archived entry = %+v; want the dated name %s", entry, dated)
+			}
+			if r.entryOf(primeOrch).Archived {
+				t.Errorf("the prime's entry was archived")
 			}
 		})
-		if err := r.run(); err != nil {
-			t.Fatalf("RunRelay = %v", err)
+
+		t.Run("FailingBeamsReadRetiresNothing", func(t *testing.T) {
+			t.Parallel()
+			r := retireRig(t)
+			r.hub.set(func(hub *fakeHub) { hub.beamsErr = errors.New("beams unreadable") })
+			before := r.beamReads.Load()
+			r.setPresence(slackengine.PresenceSlack)
+			eventually(t, "the wake to read the beams", func() bool { return r.beamReads.Load() > before })
+			wait := r.awaitOutboundWait()
+			r.clock.Advance(wait)
+			r.clock.awaitWait(t, 2*wait)
+			if renames, archives := r.slack.logged("Rename"), r.slack.logged("Archive"); len(renames)+len(archives) != 0 {
+				t.Errorf("rename calls %+v and archive calls %+v; want none after a failed beams read", renames, archives)
+			}
+		})
+
+		t.Run("RefusedArchiveIsRetriedAtTheNextOutboundWakeAndNotAtAFileEventWake", func(t *testing.T) {
+			t.Parallel()
+			r := retireRig(t)
+			r.slack.failNext("Archive", &slackengine.APIError{Method: "conversations.archive", Code: "restricted_action"})
+			r.setPresence(slackengine.PresenceSlack)
+			eventually(t, "the first archive call", func() bool { return len(r.slack.logged("Archive")) == 1 })
+
+			// An event inside the second of the first wake's start waits on the clock only once that wake has ended.
+			r.say("200.000001", "one")
+			r.hint(testChannel)
+			r.clock.awaitWait(t, slackengine.WakeFloor)
+			r.clock.Advance(slackengine.WakeFloor)
+			r.awaitForwarded("one")
+			r.say("200.000002", "two")
+			r.hint(testChannel)
+			r.clock.awaitWait(t, slackengine.WakeFloor)
+			if got := len(r.slack.logged("Archive")); got != 1 {
+				t.Errorf("archive calls = %d after a file-event wake; want the refused archive not retried", got)
+			}
+
+			r.clock.Advance(r.awaitOutboundWait())
+			eventually(t, "the refused archive to be retried", func() bool { return r.entryOf(paymentsOrch).Archived })
+			if got := len(r.slack.logged("Archive")); got != 2 {
+				t.Errorf("archive calls = %d after the outbound wake; want the one retry", got)
+			}
+		})
+	})
+
+	t.Run("HintedReadFailingOnAServerErrorIsForwardedAfterTheNextOutboundWakeWithNoNewHint", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.startAt("100.000000")
+		wait := r.settle()
+		r.clock.Advance(slackengine.WakeFloor)
+		r.say("200.000001", "retry me")
+		r.slack.failNext("History", errors.New("slack server error"))
+		historyCalls := len(r.slack.logged("History"))
+		r.hint(testChannel)
+		eventually(t, "the hinted read to fail", func() bool { return len(r.slack.logged("History")) > historyCalls })
+		if r.forwarded("retry me") {
+			t.Errorf("the message was forwarded by a read that failed")
 		}
-		want := []time.Duration{
-			2 * slackengine.Floor, 4 * slackengine.Floor, 8 * slackengine.Floor, slackengine.Ceiling, slackengine.Ceiling,
-			slackengine.Floor, 2 * slackengine.Floor,
-			3 * time.Second,
-			2 * slackengine.Floor,
+		r.clock.Advance(wait)
+		r.awaitForwarded("retry me")
+	})
+
+	t.Run("WatchThatFailsToOpenFallsBackToTheOnDiskCheckWithItsOwnBackoff", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.startAt("100.000000")
+		r.deps.Watch = func(string, ...string) (*fswatch.Watcher, error) { return nil, errors.New("inotify is unavailable") }
+		r.start()
+		for _, wait := range []time.Duration{time.Second, 2 * time.Second} {
+			r.clock.awaitWait(t, wait)
+			r.clock.Advance(wait)
 		}
-		if got := r.clock.recordedWaits(); !cmp.Equal(got, want) {
-			t.Errorf("inbound waits mismatch (-want +got):\n%s", cmp.Diff(want, got))
-		}
+		r.clock.awaitWait(t, 4*time.Second)
+		r.say("200.000001", "found on disk")
+		r.hint(testChannel)
+		r.clock.Advance(4 * time.Second)
+		r.awaitForwarded("found on disk")
+		r.clock.awaitWait(t, time.Second)
 	})
 }
 
@@ -627,8 +1180,15 @@ func TestEnsureRelay(t *testing.T) {
 		if got, err := e.starter.Ensure(e.geom, "main", false); err != nil || got != slackengine.OutcomeNotConfigured {
 			t.Errorf("Ensure(no token) = %q, %v; want not-configured", got, err)
 		}
-		if err := slackengine.WriteToken(e.geom.TokenPath, "xoxb-secret"); err != nil {
-			t.Fatalf("WriteToken = %v", err)
+		if err := slackengine.WriteCredentials(e.geom.TokenPath, slackengine.Credentials{BotToken: "xoxb-secret"}); err != nil {
+			t.Fatalf("WriteCredentials = %v", err)
+		}
+		if got, err := e.starter.Ensure(e.geom, "main", false); err != nil || got != slackengine.OutcomeNotConfigured {
+			t.Errorf("Ensure(bot token alone) = %q, %v; want not-configured", got, err)
+		}
+		bothTokens := slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}
+		if err := slackengine.WriteCredentials(e.geom.TokenPath, bothTokens); err != nil {
+			t.Fatalf("WriteCredentials = %v", err)
 		}
 		if err := os.Remove(e.geom.SetupPath); err != nil {
 			t.Fatalf("Remove = %v", err)

@@ -1,1 +1,1 @@
-remind_after_min: 30  # minutes between dobby's reminders of a run waiting on the operator while presence is slack; the channel, the operator and the token are never config, since `lym slack setup` and `lym slack login` write them
+remind_after_min: 30  # minutes between dobby's reminders of a run waiting on the operator while presence is slack; the operator, the channels and the tokens are never config, since `lym slack setup`, the relay and `lym slack login` write them

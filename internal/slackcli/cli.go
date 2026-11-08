@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -27,22 +28,32 @@ import (
 const (
 	// relayVerb is the name of the hidden verb that a started relay process runs.
 	relayVerb = "relay"
-	// botScopes names the bot scopes the app needs, in the words the way-forward messages use.
-	botScopes = "channels:history and channels:read for a public channel or groups:history and groups:read for a private one, users:read and chat:write"
-	// noTokenMessage is the refusal of a verb that needs the machine's token when none is stored.
-	noTokenMessage = "slack: no Slack token on this machine; way forward: run `lym slack login` from the operator's terminal"
+	// botScopes names the scopes the app needs and the document that lists them, in the words the way-forward messages use.
+	botScopes = "the bot scopes channels:history, channels:join, channels:manage, channels:read, chat:write, chat:write.customize and users:read " +
+		"and the app-level scope connections:write, as docs/slack-app.md lists them"
+	// noTokenMessage is the refusal of a verb that needs the machine's tokens when none is stored.
+	noTokenMessage = "slack: no Slack tokens on this machine; way forward: run `lym slack login` from the operator's terminal " +
+		"and give the " + botTokenKind + " and the " + appTokenKind + " in one run"
 	// missingScopeCode is the error code Slack answers a call the token's scopes do not cover with.
 	missingScopeCode = "missing_scope"
-	// tokenPrompt is what `login` prints on a terminal before it reads the token with echo off.
-	tokenPrompt = "Paste the Slack app's Bot User OAuth Token (xoxb-…) and press Enter: "
+	// tokenPrompt is what `login` prints on a terminal before it reads each token with echo off.
+	tokenPrompt = "Paste one Slack token, the bot token (xoxb-…) or the app-level token (xapp-…), and press Enter: "
+	// botTokenKind and appTokenKind name the two kinds of token `login` takes, in the words the messages use.
+	botTokenKind = "bot token (xoxb-)"
+	appTokenKind = "app-level token (xapp-)"
+	// botTokenPrefix and appTokenPrefix are the prefixes by which `login` files a token under its kind.
+	botTokenPrefix = "xoxb-"
+	appTokenPrefix = "xapp-"
+	// tokensPerLogin is how many tokens one `login` run takes: one of each kind.
+	tokensPerLogin = 2
 )
 
-// slackChecks is the Slack calls that `login` and `setup` make to check the token, a channel and a user.
+// slackChecks is the Slack calls that `login` and `setup` make to check the tokens and a user.
 type slackChecks interface {
-	// AuthTest checks the token.
-	AuthTest(ctx context.Context) error
-	// ConversationInfo reads the channel.
-	ConversationInfo(ctx context.Context, channel string) (slackengine.ChannelInfo, error)
+	// AuthTest checks the token and tells who it belongs to.
+	AuthTest(ctx context.Context) (slackengine.Identity, error)
+	// BotAppID reads the id of the Slack app the bot belongs to.
+	BotAppID(ctx context.Context, botID string) (string, error)
 	// UserInfo checks that the Slack user exists.
 	UserInfo(ctx context.Context, user string) error
 }
@@ -69,6 +80,10 @@ type slackCLI struct {
 	readHiddenLine func(in io.Reader, prompt string) (line string, onTerminal bool, err error)
 	// newSlack builds the Slack calls that `login` and `setup` make, against baseURL with token.
 	newSlack func(baseURL, token string) slackChecks
+	// newDialer builds the Socket Mode dial that `login` makes with the app-level token, against baseURL.
+	newDialer func(baseURL, appToken string) slackengine.Dialer
+	// liveHubs lists the Slack geometries of the machine's live hubs, whose relays `login` ends when it replaces a token.
+	liveHubs slackengine.LiveHubs
 	// newMailbox builds the creel mailbox signing as the SLACK program, which carries the presence notices.
 	newMailbox func() slackengine.Mailbox
 	// ensure starts the relay when it is down, for the hub's prime.
@@ -103,14 +118,15 @@ func Command() *cobra.Command {
 func (c *slackCLI) command() *cobra.Command {
 	slack := &cobra.Command{
 		Use:   "slack",
-		Short: "relay the operator's Slack channel to the hub's orchs and post their mail back",
-		Long: `slack connects a hub to one Slack channel, so the operator can talk to the
-hub's orchs while away. login stores the app's bot token on this machine and
-setup names the hub's channel and the one operator whose messages count. While
-the presence is slack, a relay forwards the operator's channel messages to the
-orchs as creel mail from SLACK and posts the orchs' mail for SLACK to the
-channel. away and back set the presence, start and stop run the relay, and
-status shows both.`,
+		Short: "relay the operator's Slack channels to the hub's orchs and post their mail back",
+		Long: `slack connects a hub to Slack, so the operator can talk to the hub's orchs
+while away. lym makes one channel per orch. login stores the app's bot and
+app-level tokens on this machine and setup names the one operator whose
+messages count; a running relay takes up a new operator at its next wake, with
+no restart. While the presence is slack, a relay forwards the operator's
+messages in an orch's channel to that orch as creel mail from SLACK and posts
+the orchs' mail for SLACK to their channels. away and back set the presence,
+start and stop run the relay, and status shows both.`,
 		RunE: clihelp.GroupRunE,
 	}
 	slack.AddCommand(c.loginCmd(), c.setupCmd(), c.startCmd(), c.stopCmd(), c.awayCmd(), c.backCmd(), c.statusCmd(), c.relayCmd())
@@ -191,20 +207,24 @@ func orchWayForward(verb, slackText string) string {
 func (c *slackCLI) loginCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "login",
-		Short:       "store the Slack app's bot token on this machine",
+		Short:       "store the Slack app's bot and app-level tokens on this machine",
 		Annotations: operatorAnnotations(),
-		Long: `login reads the app's Bot User OAuth Token from standard input, never an
-argument, checks it with Slack and only then stores it in this machine's
-credential file, private to the user. Slack rejecting the token stores nothing.
-On a terminal it prompts for the token and reads one line with echo off, so the
-token never shows; otherwise it reads standard input to its end, so a script
-can pipe the token in.
+		Long: `login reads two tokens in one run, the app's Bot User OAuth Token (xoxb-...)
+and its app-level token (xapp-...), never from an argument. It files each by its
+prefix, checks both with Slack and only then stores them in this machine's
+credential file, private to the user. Slack rejecting a token, or tokens of two
+different apps, stores nothing. On a terminal it prompts for each token and
+reads one line with echo off, so a token never shows; otherwise it reads
+standard input to its end and splits it at white space, so a script can pipe
+both in. Replacing a stored token ends the relay of each live hub of this
+machine; run lym slack start in each to bring it back.
 
-Create a Slack app, give it the bot scopes channels:history and channels:read
-for a public channel or groups:history and groups:read for a private one,
-users:read and chat:write, install it, and copy the token (xoxb-...) from the
-app's OAuth & Permissions page. Run it from the operator's terminal; a strand
-refuses.
+Make the Slack app from the manifest in docs/slack-app.md: the bot scopes
+channels:history, channels:join, channels:manage, channels:read, chat:write,
+chat:write.customize and users:read, and Socket Mode on. Install it, copy the
+bot token from the app's OAuth & Permissions page, and make an app-level token
+with the scope connections:write on its Basic Information page. Run it from the
+operator's terminal; a strand refuses.
 
 Example:
   lym slack login`,
@@ -215,129 +235,236 @@ Example:
 	}
 }
 
-// login stores the token read from standard input once Slack accepts it.
+// login stores the bot and app-level tokens read from the terminal or standard input once Slack accepts both.
+// It ends the relay of each live hub when it replaces a stored token.
 func (c *slackCLI) login(cmd *cobra.Command) (map[string]any, error) {
+	ctx := cmd.Context()
 	if err := paneRefusal(c.pane(), false, terminalWayForward("login")); err != nil {
 		return nil, err
 	}
-	token, err := c.readToken(cmd.InOrStdin())
+	tokens, err := c.readTokens(cmd.InOrStdin())
 	if err != nil {
 		return nil, err
 	}
-	if err := c.newSlack(c.slackBaseURL, token).AuthTest(cmd.Context()); err != nil {
-		return nil, tokenRefusal(err)
-	}
-	if err := slackengine.WriteToken(c.geom.TokenPath, token); err != nil {
+	credentials, err := fileTokens(tokens)
+	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"token_file": c.geom.TokenPath}, nil
+	api := c.newSlack(c.slackBaseURL, credentials.BotToken)
+	identity, err := api.AuthTest(ctx)
+	if err != nil {
+		return nil, tokenRefusal(botTokenKind, err)
+	}
+	botAppID, err := api.BotAppID(ctx, identity.BotID)
+	if err != nil {
+		return nil, tokenRefusal(botTokenKind, err)
+	}
+	// The connection is opened to prove the app-level token and read its app, and closed at once.
+	// An event Slack hands it meanwhile goes unacknowledged, so Slack retries it.
+	socket, helloAppID, err := c.newDialer(c.slackBaseURL, credentials.AppToken)(ctx)
+	if err != nil {
+		return nil, tokenRefusal(appTokenKind, err)
+	}
+	_ = socket.Close()
+	if botAppID == "" {
+		return nil, appIDMissingRefusal(botTokenKind)
+	}
+	if helloAppID == "" {
+		return nil, appIDMissingRefusal(appTokenKind)
+	}
+	if helloAppID != botAppID {
+		return nil, fmt.Errorf("slack: the %s belongs to app %s but the %s belongs to app %s; nothing was stored; way forward: run `lym slack login` with an app-level token of app %s, made on that app's Basic Information page",
+			appTokenKind, helloAppID, botTokenKind, botAppID, botAppID)
+	}
+	stored, err := slackengine.ReadCredentials(c.geom.TokenPath)
+	if err != nil {
+		return nil, err
+	}
+	replaced := replacesToken(stored.BotToken, credentials.BotToken) || replacesToken(stored.AppToken, credentials.AppToken)
+	credentials.AppID = botAppID
+	if err := slackengine.WriteCredentials(c.geom.TokenPath, credentials); err != nil {
+		return nil, err
+	}
+	fields := map[string]any{"token_file": c.geom.TokenPath}
+	if !replaced {
+		return fields, nil
+	}
+	return fields, c.endLiveRelays(fields)
 }
 
-// readToken reads the trimmed token from in: one hidden line after a prompt on a terminal, and all of in otherwise.
-// An empty token is refused, so no empty token reaches Slack.
-func (c *slackCLI) readToken(in io.Reader) (string, error) {
-	line, onTerminal, err := c.readHiddenLine(in, tokenPrompt)
+// appIDMissingRefusal is the refusal of a login whose token of the given kind came back from Slack without an app id.
+// Without it the two tokens cannot be proven to belong to one app.
+func appIDMissingRefusal(kind string) error {
+	return fmt.Errorf("slack: Slack gave no app id for the %s, so the two tokens cannot be shown to belong to one app; nothing was stored; way forward: run `lym slack login` again with tokens of the app made from docs/slack-app.md",
+		kind)
+}
+
+// replacesToken reports whether a login that brings token replaces a stored token that differs from it.
+func replacesToken(stored, token string) bool {
+	return stored != "" && stored != token
+}
+
+// endLiveRelays ends the relay of each hub the machine record lists.
+// When every relay ended, it names those hubs under relays_ended in fields.
+// The tokens are stored by now, so every refusal says so and names how to bring the relays back.
+// A hub whose relay will not end does not stop the others from being ended;
+// the one refusal names every hub not ended with its error, and every hub ended.
+// The bound: a hub absent from the machine record keeps its older relay until its own `lym slack stop`.
+func (c *slackCLI) endLiveRelays(fields map[string]any) error {
+	hubs, err := c.liveHubs()
 	if err != nil {
-		return "", fmt.Errorf("slack: read the token from the terminal: %w; nothing was stored; way forward: run `lym slack login` again", err)
+		return fmt.Errorf("slack: both tokens are stored, but the machine's live hubs could not be read: %w; way forward: run `lym slack stop` then `lym slack start` in each hub of this machine, since a second login with the same tokens ends no relay", err)
 	}
-	if onTerminal {
+	ended := make([]string, 0, len(hubs))
+	var failures []string
+	for _, hub := range hubs {
+		if _, err := c.stop(hub, os.Getpid()); err != nil {
+			failures = append(failures, fmt.Sprintf("%s (%v)", hub.HubPath, err))
+			continue
+		}
+		ended = append(ended, hub.HubPath)
+	}
+	if len(failures) > 0 {
+		message := fmt.Sprintf("slack: both tokens are stored, but the relay was not ended in: %s; way forward: run `lym slack stop` then `lym slack start` in each of those hubs",
+			strings.Join(failures, ", "))
+		if len(ended) > 0 {
+			message += fmt.Sprintf("; the relays ended in %s come back with `lym slack start` in each", strings.Join(ended, ", "))
+		}
+		return errors.New(message)
+	}
+	if len(ended) > 0 {
+		fields["relays_ended"] = ended
+		fields["way_forward"] = "run `lym slack start` in each hub under relays_ended"
+	}
+	return nil
+}
+
+// readTokens reads the trimmed tokens from in:
+// one hidden line per token after a prompt on a terminal, and all of in split at white space otherwise.
+// An empty token is refused, so no empty token reaches Slack.
+func (c *slackCLI) readTokens(in io.Reader) ([]string, error) {
+	line, onTerminal, err := c.readHiddenLine(in, tokenPrompt)
+	if err == nil && !onTerminal {
+		raw, err := io.ReadAll(in)
+		if err != nil {
+			return nil, fmt.Errorf("slack: read the tokens from standard input: %w", err)
+		}
+		tokens := strings.Fields(string(raw))
+		if len(tokens) == 0 {
+			return nil, fmt.Errorf("slack: no token on standard input; way forward: pipe the %s and the %s into `lym slack login`, or run it from a terminal and paste each token at the prompt", botTokenKind, appTokenKind)
+		}
+		return tokens, nil
+	}
+	tokens := make([]string, 0, tokensPerLogin)
+	for {
+		if err != nil {
+			return nil, fmt.Errorf("slack: read a token from the terminal: %w; nothing was stored; way forward: run `lym slack login` again", err)
+		}
 		token := strings.TrimSpace(line)
 		if token == "" {
-			return "", errors.New("slack: no token entered at the prompt; way forward: run `lym slack login` again and paste the app's Bot User OAuth Token (`xoxb-…`) at the prompt")
+			return nil, fmt.Errorf("slack: no token entered at the prompt; way forward: run `lym slack login` again and paste the %s and the %s at the prompts", botTokenKind, appTokenKind)
 		}
-		return token, nil
+		tokens = append(tokens, token)
+		if len(tokens) == tokensPerLogin {
+			return tokens, nil
+		}
+		line, _, err = c.readHiddenLine(in, tokenPrompt)
 	}
-	raw, err := io.ReadAll(in)
-	if err != nil {
-		return "", fmt.Errorf("slack: read the token from standard input: %w", err)
-	}
-	token := strings.TrimSpace(string(raw))
-	if token == "" {
-		return "", errors.New("slack: no token on standard input; way forward: pipe the app's Bot User OAuth Token (`xoxb-…`) into `lym slack login`, or run it from a terminal and paste the token at the prompt")
-	}
-	return token, nil
 }
 
-// tokenRefusal is the refusal of a token Slack's auth check failed on.
-func tokenRefusal(err error) error {
-	var refused *slackengine.APIError
-	if errors.As(err, &refused) {
-		return fmt.Errorf("slack: Slack rejected the token with %s; way forward: copy the app's Bot User OAuth Token (`xoxb-…`) from its OAuth & Permissions page and run `lym slack login` again", refused.Code)
+// fileTokens files each token under its kind by its prefix.
+// It refuses a token of any other prefix,
+// and a run that does not give exactly one token of each kind.
+// The refusal names neither token.
+func fileTokens(tokens []string) (slackengine.Credentials, error) {
+	var credentials slackengine.Credentials
+	var bots, apps int
+	for _, token := range tokens {
+		switch {
+		case strings.HasPrefix(token, botTokenPrefix):
+			credentials.BotToken = token
+			bots++
+		case strings.HasPrefix(token, appTokenPrefix):
+			credentials.AppToken = token
+			apps++
+		default:
+			return slackengine.Credentials{}, tokenKindsRefusal()
+		}
 	}
-	return fmt.Errorf("slack: the token could not be checked: %w; way forward: check the network and run `lym slack login` again", err)
+	if bots != 1 || apps != 1 {
+		return slackengine.Credentials{}, tokenKindsRefusal()
+	}
+	return credentials, nil
+}
+
+// tokenKindsRefusal is the refusal of a login run that did not give one token of each kind.
+func tokenKindsRefusal() error {
+	return fmt.Errorf("slack: `lym slack login` takes exactly one %s and one %s in one run, and no token of another kind; nothing was stored; way forward: run `lym slack login` again with both, the bot token from the app's OAuth & Permissions page and the app-level token from its Basic Information page",
+		botTokenKind, appTokenKind)
+}
+
+// tokenRefusal is the refusal of a token of the given kind that Slack's check failed on.
+func tokenRefusal(kind string, err error) error {
+	var refused *slackengine.APIError
+	if !errors.As(err, &refused) {
+		return fmt.Errorf("slack: the %s could not be checked: %w; way forward: check the network and run `lym slack login` again", kind, err)
+	}
+	if refused.Code == missingScopeCode {
+		return scopeRefusal("login")
+	}
+	source := "copy the app's Bot User OAuth Token (`xoxb-…`) from its OAuth & Permissions page"
+	if kind == appTokenKind {
+		source = "make an app-level token with the scope connections:write on the app's Basic Information page"
+	}
+	return fmt.Errorf("slack: Slack rejected the %s with %s; way forward: %s and run `lym slack login` again", kind, refused.Code, source)
 }
 
 // setupCmd returns the `slack setup` verb.
 func (c *slackCLI) setupCmd() *cobra.Command {
-	var channel, operator string
+	var operator string
 	cmd := &cobra.Command{
-		Use:         "setup --channel <id> --operator <user-id>",
-		Short:       "name the hub's Slack channel and operator",
+		Use:         "setup --operator <user-id>",
+		Short:       "name the hub's Slack operator",
 		Annotations: operatorAnnotations(),
-		Long: `setup checks the channel and the operator with Slack and only then records them
-for this hub. The relay reads the channel and forwards only the messages of that
-one operator. Invite the app to the channel first, with /invite in the channel.
-Copy the operator's Slack user id from their profile, under More, Copy member
-ID. Give each machine's hub its own channel.
+		Long: `setup checks the operator with Slack and only then records them for this hub.
+lym makes one channel per orch, so setup names only the operator, and the relay
+forwards only the messages of that one operator. A running relay takes up a new
+operator at its next wake, with no restart. Copy the operator's Slack user id
+from their profile, under More, Copy member ID.
 
 Run it from the operator's terminal; a strand refuses.
 
 Example:
-  lym slack setup --channel C0123456789 --operator U0123456789`,
+  lym slack setup --operator U0123456789`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.runVerb(cmd, func() (map[string]any, error) { return c.setup(cmd.Context(), channel, operator) })
+			return c.runVerb(cmd, func() (map[string]any, error) { return c.setup(cmd.Context(), operator) })
 		},
 	}
-	cmd.Flags().StringVar(&channel, "channel", "", "Slack id of the channel the relay reads and posts in")
 	cmd.Flags().StringVar(&operator, "operator", "", "Slack user id of the operator whose messages the relay forwards")
-	_ = cmd.MarkFlagRequired("channel")
 	_ = cmd.MarkFlagRequired("operator")
 	return cmd
 }
 
-// setup records the channel and the operator once Slack confirms both.
-func (c *slackCLI) setup(ctx context.Context, channel, operator string) (map[string]any, error) {
+// setup records the operator once Slack confirms the user exists.
+func (c *slackCLI) setup(ctx context.Context, operator string) (map[string]any, error) {
 	if err := paneRefusal(c.pane(), false, terminalWayForward("setup")); err != nil {
 		return nil, err
 	}
-	token, found, err := slackengine.ReadToken(c.geom.TokenPath)
+	credentials, err := slackengine.ReadCredentials(c.geom.TokenPath)
 	if err != nil {
 		return nil, err
 	}
-	if !found {
+	if credentials.BotToken == "" {
 		return nil, errors.New(noTokenMessage)
 	}
-	api := c.newSlack(c.slackBaseURL, token)
-	info, err := api.ConversationInfo(ctx, channel)
-	if err != nil {
-		return nil, channelRefusal(channel, err)
-	}
-	if !info.IsMember {
-		return nil, fmt.Errorf("slack: the bot is not a member of channel %s; way forward: run `/invite @<app>` in that channel, naming this app, then run `lym slack setup` again", channel)
-	}
-	if err := api.UserInfo(ctx, operator); err != nil {
+	if err := c.newSlack(c.slackBaseURL, credentials.BotToken).UserInfo(ctx, operator); err != nil {
 		return nil, userRefusal(operator, err)
 	}
-	if err := slackengine.WriteSetup(c.geom.SetupPath, slackengine.Setup{ChannelID: channel, OperatorID: operator}); err != nil {
+	if err := slackengine.SetOperator(c.geom.SetupPath, operator); err != nil {
 		return nil, err
 	}
-	return map[string]any{"channel": channel, "channel_name": info.Name, "operator": operator}, nil
-}
-
-// channelRefusal is the refusal of a channel Slack's channel check failed on.
-func channelRefusal(channel string, err error) error {
-	var refused *slackengine.APIError
-	if !errors.As(err, &refused) {
-		return fmt.Errorf("slack: channel %s could not be checked: %w; way forward: check the network and run `lym slack setup` again", channel, err)
-	}
-	switch refused.Code {
-	case "channel_not_found":
-		return fmt.Errorf("slack: Slack shows no channel %s to the bot (channel_not_found), as it does for a private channel the bot was not invited to; way forward: run `/invite @<app>` in that channel, naming this app, then run `lym slack setup` again", channel)
-	case missingScopeCode:
-		return scopeRefusal()
-	}
-	return fmt.Errorf("slack: Slack refused the check of channel %s with %s; way forward: fix what that code names, then run `lym slack setup` again", channel, refused.Code)
+	return map[string]any{"operator": operator}, nil
 }
 
 // userRefusal is the refusal of an operator Slack's user check failed on.
@@ -350,14 +477,14 @@ func userRefusal(operator string, err error) error {
 	case "user_not_found":
 		return fmt.Errorf("slack: Slack knows no user %s (user_not_found); way forward: copy the operator's member id from their Slack profile, under More, Copy member ID, and run `lym slack setup` again", operator)
 	case missingScopeCode:
-		return scopeRefusal()
+		return scopeRefusal("setup")
 	}
 	return fmt.Errorf("slack: Slack refused the check of user %s with %s; way forward: fix what that code names, then run `lym slack setup` again", operator, refused.Code)
 }
 
-// scopeRefusal is the refusal of a check the token's scopes do not cover.
-func scopeRefusal() error {
-	return fmt.Errorf("slack: the token lacks a bot scope (%s); way forward: give the app %s on its OAuth & Permissions page, reinstall the app, then run `lym slack setup` again", missingScopeCode, botScopes)
+// scopeRefusal is the refusal of a check the token's scopes do not cover, with the verb to run again.
+func scopeRefusal(verb string) error {
+	return fmt.Errorf("slack: the token lacks a scope (%s); way forward: give the app %s on its OAuth & Permissions page, reinstall the app, then run `lym slack %s` again", missingScopeCode, botScopes, verb)
 }
 
 // startCmd returns the `slack start` verb.
@@ -521,8 +648,9 @@ func (c *slackCLI) statusCmd() *cobra.Command {
 		Short:       "show the presence, the relay and the hub's Slack setup",
 		Annotations: operatorAnnotations(),
 		Long: `status prints the presence, whether the relay is live, whether a pause covers
-the prime orch, the channel and the operator the setup names, and when a Slack
-call of the relay last succeeded. Any process may run it.
+the prime orch, the operator the setup names, the hub's channels, one per orch
+with its name, id and whether it is archived, and when the relay was last
+healthy. Any process may run it.
 
 Example:
   lym slack status`,
@@ -533,7 +661,22 @@ Example:
 	}
 }
 
-// status reads the presence, the relay's health, the pause and the setup.
+// channelRows lists the entries of the channel map as status fields, sorted by orch.
+func channelRows(channelMap slackengine.ChannelMap) []map[string]any {
+	orchs := make([]string, 0, len(channelMap.Channels))
+	for orch := range channelMap.Channels {
+		orchs = append(orchs, orch)
+	}
+	sort.Strings(orchs)
+	rows := make([]map[string]any, 0, len(orchs))
+	for _, orch := range orchs {
+		entry := channelMap.Channels[orch]
+		rows = append(rows, map[string]any{"orch": orch, "name": entry.Name, "id": entry.ID, "archived": entry.Archived})
+	}
+	return rows
+}
+
+// status reads the presence, the relay's health, the pause, the operator and the channels.
 func (c *slackCLI) status() (map[string]any, error) {
 	presence, err := slackengine.ReadPresence(c.geom.PresencePath)
 	if err != nil {
@@ -553,14 +696,21 @@ func (c *slackCLI) status() (map[string]any, error) {
 		return nil, err
 	}
 	if found {
-		fields["channel"], fields["operator"] = setup.ChannelID, setup.OperatorID
+		fields["operator"] = setup.OperatorID
+	}
+	channelMap, err := slackengine.ReadChannelMap(c.geom.ChannelMapPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(channelMap.Channels) > 0 {
+		fields["channels"] = channelRows(channelMap)
 	}
 	relayState, found, err := slackengine.ReadRelayState(c.geom)
 	if err != nil {
 		return nil, err
 	}
 	if found && !relayState.LastSlackOK.IsZero() {
-		fields["last_slack_ok"] = relayState.LastSlackOK.UTC().Format(time.RFC3339)
+		fields["last_healthy"] = relayState.LastSlackOK.UTC().Format(time.RFC3339)
 	}
 	return fields, nil
 }

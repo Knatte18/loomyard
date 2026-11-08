@@ -22,8 +22,8 @@
 //
 // SlackGeometry converts a hub path into the slackengine.Geometry the Slack engine is told.
 // That geometry holds the hub's Slack directory and its files under the board-level `.lym`.
-// It holds the token file in the per-user credential directory.
-// It also holds the process-owner directory and the running `lym` binary.
+// It holds the token file and the machine socket lock in the per-user credential directory.
+// It also holds the machine name, the process-owner directory and the running `lym` binary.
 //
 // ReedGeometry tells reed the hub-level discover signal file in DiscoverSignalPath, beside LogsDir:
 // reedengine.DiscoverSignalFileName under fabricengine.HubScratchDir.

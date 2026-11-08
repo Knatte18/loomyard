@@ -132,8 +132,8 @@ func TestHubDobbyDeps_PrimeTickEnsuresRelay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SlackGeometry = %v; want nil", err)
 	}
-	if err := slackengine.WriteToken(geom.TokenPath, "xoxb-test"); err != nil {
-		t.Fatalf("WriteToken = %v", err)
+	if err := slackengine.WriteCredentials(geom.TokenPath, slackengine.Credentials{BotToken: "xoxb-test", AppToken: "xapp-test", AppID: "A1"}); err != nil {
+		t.Fatalf("WriteCredentials = %v", err)
 	}
 	if err := slackengine.WriteSetup(geom.SetupPath, slackengine.Setup{ChannelID: "C1", OperatorID: "U1"}); err != nil {
 		t.Fatalf("WriteSetup = %v", err)

@@ -1,4 +1,5 @@
 // api.go is the Slack Web API client: the calls the relay and `lym slack` make, and the failure kinds it tells apart.
+// A client calls Slack with one token: the bot token, or the app-level token for OpenConnection.
 
 package slackengine
 
@@ -30,7 +31,7 @@ const (
 	rateLimitedCode = "ratelimited"
 )
 
-// API calls Slack's Web API with one bot token.
+// API calls Slack's Web API with one token: the bot token, or the app-level token for OpenConnection.
 type API struct {
 	baseURL string
 	token   string
@@ -38,6 +39,7 @@ type API struct {
 }
 
 // NewAPI returns an API that posts to baseURL, which ends in a slash, with token as its bearer token, over client.
+// The token is the bot token, or the app-level token for an API that only calls OpenConnection.
 func NewAPI(baseURL, token string, client *http.Client) *API {
 	return &API{baseURL: baseURL, token: token, client: client}
 }
@@ -56,9 +58,37 @@ type Message struct {
 	BotID string `json:"bot_id"`
 	// Text is the message text as Slack delivers it.
 	Text string `json:"text"`
+	// LatestReply is the timestamp of the newest reply of the thread this message starts, empty for a message with none.
+	LatestReply string `json:"latest_reply"`
+	// Files are the files attached to the message.
+	Files []File `json:"files"`
 }
 
-// ChannelInfo is what conversations.info tells about a channel.
+// File is a file attached to a message.
+type File struct {
+	// Name is the file's name.
+	Name string `json:"name"`
+}
+
+// Identity is who a token belongs to, as auth.test tells.
+type Identity struct {
+	// TeamID is the Slack workspace the token belongs to.
+	TeamID string `json:"team_id"`
+	// UserID is the Slack user the token acts as.
+	UserID string `json:"user_id"`
+	// BotID is the bot the token belongs to, empty for a token that is not a bot's.
+	BotID string `json:"bot_id"`
+}
+
+// Sender is the name and icon a post carries; a field left empty leaves Slack's default for the bot.
+type Sender struct {
+	// Username is the display name the post shows.
+	Username string
+	// IconEmoji is the emoji, such as `:robot_face:`, the post shows as its icon.
+	IconEmoji string
+}
+
+// ChannelInfo is what Slack tells about a channel.
 type ChannelInfo struct {
 	// ID is the channel's Slack id.
 	ID string `json:"id"`
@@ -68,6 +98,10 @@ type ChannelInfo struct {
 	IsMember bool `json:"is_member"`
 	// IsPrivate reports whether the channel is private.
 	IsPrivate bool `json:"is_private"`
+	// Creator is the Slack user id of the user who created the channel.
+	Creator string `json:"creator"`
+	// IsArchived reports whether the channel is archived.
+	IsArchived bool `json:"is_archived"`
 }
 
 // APIError is a call Slack answered with ok false and an error code.
@@ -103,8 +137,8 @@ type envelope struct {
 	Error string `json:"error"`
 }
 
-// conversationInfoAnswer is the part of a conversations.info answer the client reads.
-type conversationInfoAnswer struct {
+// createChannelAnswer is the part of a conversations.create answer the client reads.
+type createChannelAnswer struct {
 	Channel ChannelInfo `json:"channel"`
 }
 
@@ -113,6 +147,24 @@ type historyAnswer struct {
 	Messages         []Message      `json:"messages"`
 	HasMore          bool           `json:"has_more"`
 	ResponseMetadata responseCursor `json:"response_metadata"`
+}
+
+// botInfoAnswer is the part of a bots.info answer the client reads.
+type botInfoAnswer struct {
+	Bot struct {
+		AppID string `json:"app_id"`
+	} `json:"bot"`
+}
+
+// channelListAnswer is the part of a conversations.list answer the client reads: one page and the cursor of the next.
+type channelListAnswer struct {
+	Channels         []ChannelInfo  `json:"channels"`
+	ResponseMetadata responseCursor `json:"response_metadata"`
+}
+
+// openConnectionAnswer is the part of an apps.connections.open answer the client reads.
+type openConnectionAnswer struct {
+	URL string `json:"url"`
 }
 
 // responseCursor holds the cursor of the next page of a paginated answer.
@@ -181,25 +233,128 @@ func retryAfter(httpResponse *http.Response) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
-// AuthTest checks the token with auth.test.
+// AuthTest checks the token with auth.test and returns who it belongs to.
 // A refused token is an *APIError.
-func (a *API) AuthTest(ctx context.Context) error {
-	_, err := a.call(ctx, "auth.test", url.Values{})
-	return err
+func (a *API) AuthTest(ctx context.Context) (Identity, error) {
+	const method = "auth.test"
+	body, err := a.call(ctx, method, url.Values{})
+	if err != nil {
+		return Identity{}, err
+	}
+	return decodeAnswer[Identity](method, body)
 }
 
-// ConversationInfo reads the channel with conversations.info.
-func (a *API) ConversationInfo(ctx context.Context, channel string) (ChannelInfo, error) {
-	const method = "conversations.info"
-	body, err := a.call(ctx, method, url.Values{"channel": {channel}})
+// BotAppID reads with bots.info the id of the Slack app the bot belongs to; the call needs the bot scope users:read.
+func (a *API) BotAppID(ctx context.Context, botID string) (string, error) {
+	const method = "bots.info"
+	body, err := a.call(ctx, method, url.Values{"bot": {botID}})
+	if err != nil {
+		return "", err
+	}
+	answer, err := decodeAnswer[botInfoAnswer](method, body)
+	if err != nil {
+		return "", err
+	}
+	return answer.Bot.AppID, nil
+}
+
+// CreateChannel creates a public channel called name with conversations.create and returns it.
+// A name that is taken is an *APIError with the code `name_taken`.
+func (a *API) CreateChannel(ctx context.Context, name string) (ChannelInfo, error) {
+	const method = "conversations.create"
+	body, err := a.call(ctx, method, url.Values{"name": {name}, "is_private": {"false"}})
 	if err != nil {
 		return ChannelInfo{}, err
 	}
-	answer, err := decodeAnswer[conversationInfoAnswer](method, body)
+	answer, err := decodeAnswer[createChannelAnswer](method, body)
 	if err != nil {
 		return ChannelInfo{}, err
 	}
 	return answer.Channel, nil
+}
+
+// FindChannel lists the public channels, archived ones included, and returns the one called name.
+// It reports found false when no channel has that name.
+func (a *API) FindChannel(ctx context.Context, name string) (ChannelInfo, bool, error) {
+	const method = "conversations.list"
+	cursor := ""
+	for {
+		form := url.Values{
+			"types":            {"public_channel"},
+			"exclude_archived": {"false"},
+			"limit":            {strconv.Itoa(historyPageLimit)},
+		}
+		if cursor != "" {
+			form.Set("cursor", cursor)
+		}
+		body, err := a.call(ctx, method, form)
+		if err != nil {
+			return ChannelInfo{}, false, err
+		}
+		page, err := decodeAnswer[channelListAnswer](method, body)
+		if err != nil {
+			return ChannelInfo{}, false, err
+		}
+		for _, channel := range page.Channels {
+			if channel.Name == name {
+				return channel, true, nil
+			}
+		}
+		cursor = page.ResponseMetadata.NextCursor
+		if cursor == "" {
+			return ChannelInfo{}, false, nil
+		}
+	}
+}
+
+// Join makes the bot a member of the public channel with conversations.join.
+func (a *API) Join(ctx context.Context, channel string) error {
+	_, err := a.call(ctx, "conversations.join", url.Values{"channel": {channel}})
+	return err
+}
+
+// Invite adds the Slack user to the channel with conversations.invite.
+// A user who is already a member counts as invited.
+func (a *API) Invite(ctx context.Context, channel, user string) error {
+	_, err := a.call(ctx, "conversations.invite", url.Values{"channel": {channel}, "users": {user}})
+	return ignoreCode(err, "already_in_channel")
+}
+
+// Rename renames the channel to name with conversations.rename.
+// A name that is taken is an *APIError with the code `name_taken`.
+func (a *API) Rename(ctx context.Context, channel, name string) error {
+	_, err := a.call(ctx, "conversations.rename", url.Values{"channel": {channel}, "name": {name}})
+	return err
+}
+
+// Archive archives the channel with conversations.archive.
+// A channel that is already archived counts as archived.
+func (a *API) Archive(ctx context.Context, channel string) error {
+	_, err := a.call(ctx, "conversations.archive", url.Values{"channel": {channel}})
+	return ignoreCode(err, "already_archived")
+}
+
+// OpenConnection asks apps.connections.open for a Socket Mode WebSocket URL and returns it.
+// The API it runs on is built with the app-level token.
+func (a *API) OpenConnection(ctx context.Context) (string, error) {
+	const method = "apps.connections.open"
+	body, err := a.call(ctx, method, url.Values{})
+	if err != nil {
+		return "", err
+	}
+	answer, err := decodeAnswer[openConnectionAnswer](method, body)
+	if err != nil {
+		return "", err
+	}
+	return answer.URL, nil
+}
+
+// ignoreCode turns an *APIError with the given code into nil and returns any other outcome of a call as it is.
+func ignoreCode(err error, code string) error {
+	if apiErr, ok := isAPIError(err); ok && apiErr.Code == code {
+		return nil
+	}
+	return err
 }
 
 // UserInfo checks with users.info that the Slack user exists.
@@ -211,22 +366,35 @@ func (a *API) UserInfo(ctx context.Context, user string) error {
 // History reads every message of the channel posted after oldest, which is exclusive, oldest first.
 // It follows Slack's pagination until the channel has no more.
 func (a *API) History(ctx context.Context, channel, oldest string) ([]Message, error) {
+	return a.messagePages(ctx, "conversations.history",
+		url.Values{"channel": {channel}, "oldest": {oldest}, "limit": {strconv.Itoa(historyPageLimit)}})
+}
+
+// Replies reads every message of the thread started at thread posted after oldest, which is exclusive, oldest first.
+// The thread's own first message is among them when its timestamp is after oldest.
+// It follows Slack's pagination until the thread has no more.
+func (a *API) Replies(ctx context.Context, channel, thread, oldest string) ([]Message, error) {
+	return a.messagePages(ctx, "conversations.replies", url.Values{"channel": {channel}, "ts": {thread}, "oldest": {oldest}})
+}
+
+// messagePages reads every page of the paginated method for form and returns the messages oldest first.
+func (a *API) messagePages(ctx context.Context, method string, form url.Values) ([]Message, error) {
 	var messages []Message
-	cursor := ""
 	for {
-		form := url.Values{"channel": {channel}, "oldest": {oldest}, "limit": {strconv.Itoa(historyPageLimit)}}
-		if cursor != "" {
-			form.Set("cursor", cursor)
+		body, err := a.call(ctx, method, form)
+		if err != nil {
+			return nil, err
 		}
-		page, err := a.history(ctx, form)
+		page, err := decodeAnswer[historyAnswer](method, body)
 		if err != nil {
 			return nil, err
 		}
 		messages = append(messages, page.Messages...)
-		cursor = page.ResponseMetadata.NextCursor
+		cursor := page.ResponseMetadata.NextCursor
 		if !page.HasMore || cursor == "" {
 			break
 		}
+		form.Set("cursor", cursor)
 	}
 	sort.SliceStable(messages, func(i, j int) bool { return compareTS(messages[i].TS, messages[j].TS) < 0 })
 	return messages, nil
@@ -234,7 +402,12 @@ func (a *API) History(ctx context.Context, channel, oldest string) ([]Message, e
 
 // Latest returns the timestamp of the channel's newest message, and reports found false for an empty channel.
 func (a *API) Latest(ctx context.Context, channel string) (string, bool, error) {
-	page, err := a.history(ctx, url.Values{"channel": {channel}, "limit": {"1"}})
+	const method = "conversations.history"
+	body, err := a.call(ctx, method, url.Values{"channel": {channel}, "limit": {"1"}})
+	if err != nil {
+		return "", false, err
+	}
+	page, err := decodeAnswer[historyAnswer](method, body)
 	if err != nil {
 		return "", false, err
 	}
@@ -244,21 +417,19 @@ func (a *API) Latest(ctx context.Context, channel string) (string, bool, error) 
 	return page.Messages[0].TS, true, nil
 }
 
-// history reads one page of conversations.history for form.
-func (a *API) history(ctx context.Context, form url.Values) (historyAnswer, error) {
-	const method = "conversations.history"
-	body, err := a.call(ctx, method, form)
-	if err != nil {
-		return historyAnswer{}, err
-	}
-	return decodeAnswer[historyAnswer](method, body)
-}
-
-// PostMessage posts text to the channel with chat.postMessage.
+// PostAs posts text to the channel with chat.postMessage under the sender's name and icon.
+// A Sender field left empty is not sent.
 // It returns nil once Slack accepted the post and reads nothing more of the answer,
 // so a post Slack accepted never reads as a failure that would post it again.
-func (a *API) PostMessage(ctx context.Context, channel, text string) error {
-	_, err := a.call(ctx, "chat.postMessage", url.Values{"channel": {channel}, "text": {text}})
+func (a *API) PostAs(ctx context.Context, channel, text string, sender Sender) error {
+	form := url.Values{"channel": {channel}, "text": {text}}
+	if sender.Username != "" {
+		form.Set("username", sender.Username)
+	}
+	if sender.IconEmoji != "" {
+		form.Set("icon_emoji", sender.IconEmoji)
+	}
+	_, err := a.call(ctx, "chat.postMessage", form)
 	return err
 }
 
