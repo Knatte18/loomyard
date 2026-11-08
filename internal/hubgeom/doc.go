@@ -80,6 +80,9 @@
 //
 // ReedGeometry also tells reed a lazy button-context closure (buttons.go).
 // It carries the place, the placeholder values and desktop's machine buttons.
+// A pair's place is the beam's when its origin record carries the beam mark.
+// It is also the beam's when its board entry is a project with the beam flag.
+// So a beam reads as one before its pawl run marks the pair.
 // It also carries a {beam} resolver that reads the parent through ParentOf over the prime's location only when called.
 //
 // Standalone CLIs do not call hubgeom:

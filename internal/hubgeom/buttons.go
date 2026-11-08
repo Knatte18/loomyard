@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/desktophook"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -16,19 +17,18 @@ import (
 )
 
 // buttonContext returns the function reed calls, at boot and attach only, to learn l's button context.
-// The place is the prime's when prime is set.
-// Otherwise it is the beam's when the pair's origin record exists and carries the beam mark, and the task's when not.
+// The place is the prime's when prime is set, the beam's when the pair is a beam, and the task's otherwise.
 // A failed desktop load is logged and leaves the machine's buttons empty, so the session's own buttons still render.
 func buttonContext(l *lymcwd.Location, prime bool) func() (reedengine.ButtonContext, error) {
 	return func() (reedengine.ButtonContext, error) {
 		place := reedengine.ButtonPlacePrime
 		if !prime {
-			origin, found, err := fabricengine.ReadOriginFor(l, l.WorktreeName)
+			beam, err := pairIsBeam(l)
 			if err != nil {
-				return reedengine.ButtonContext{}, fmt.Errorf("hubgeom: read origin record for %q: %w", l.WorktreeName, err)
+				return reedengine.ButtonContext{}, err
 			}
 			place = reedengine.ButtonPlaceTask
-			if found && origin.Beam {
+			if beam {
 				place = reedengine.ButtonPlaceBeam
 			}
 		}
@@ -48,6 +48,32 @@ func buttonContext(l *lymcwd.Location, prime bool) func() (reedengine.ButtonCont
 		}
 		return buttons, nil
 	}
+}
+
+// pairIsBeam reports whether l's pair is a beam.
+// It is when the pair's origin record carries the beam mark.
+// It is also when the local board's entry of the pair's slug is a project with the beam flag.
+// The board flag is read because a beam's pair is made without the mark and its pawl run marks it later.
+// A session booted in between still reads as the beam.
+// A read error from the record or the board is returned.
+func pairIsBeam(l *lymcwd.Location) (bool, error) {
+	origin, found, err := fabricengine.ReadOriginFor(l, l.WorktreeName)
+	if err != nil {
+		return false, fmt.Errorf("hubgeom: read origin record for %q: %w", l.WorktreeName, err)
+	}
+	if found && origin.Beam {
+		return true, nil
+	}
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(l.HubPath))
+	if err != nil {
+		return false, fmt.Errorf("hubgeom: read the board for the beam flag of %q: %w", l.WorktreeName, err)
+	}
+	for _, task := range tasks {
+		if task.Slug == l.WorktreeName {
+			return task.Kind == boardengine.KindProject && task.Beam, nil
+		}
+	}
+	return false, nil
 }
 
 // buttonBeam returns the function reed calls to resolve the beam directory for a session of the given place.
