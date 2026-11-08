@@ -91,3 +91,30 @@ func (h *socketHolder) Run(ctx context.Context) { h.run(ctx) }
 
 // WriteHint writes the named hint into the hub's inbox as the holder does.
 func WriteHint(geom Geometry, name string) error { return writeHint(geom, name) }
+
+// ChannelKeeper is the unexported keeper of a hub's Slack channels.
+type ChannelKeeper = channelKeeper
+
+// ErrChannelRefused is the error a refused channel wraps.
+var ErrChannelRefused = errChannelRefused
+
+// NewChannelKeeper builds a keeper over the seams.
+func NewChannelKeeper(geom Geometry, slack SlackClient, liveHubs LiveHubs, mailbox Mailbox, clock Clock) *ChannelKeeper {
+	return newChannelKeeper(geom, slack, liveHubs, mailbox, clock)
+}
+
+// Ensure ensures the orch's channel.
+func (k *channelKeeper) Ensure(ctx context.Context, orch string) (ChannelEntry, error) {
+	return k.ensure(ctx, orch)
+}
+
+// Join joins the orch's open channel.
+func (k *channelKeeper) Join(ctx context.Context, orch string) error { return k.join(ctx, orch) }
+
+// InviteOperators invites the setup's operator into every open channel that lacks the operator.
+func (k *channelKeeper) InviteOperators(ctx context.Context) error { return k.inviteOperators(ctx) }
+
+// Retire retires the channels of the beams the list does not name.
+func (k *channelKeeper) Retire(ctx context.Context, beams []string, retryRefused bool) error {
+	return k.retire(ctx, beams, retryRefused)
+}
