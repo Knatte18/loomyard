@@ -28,7 +28,7 @@ const (
 type Socket interface {
 	// Read returns the next envelope, and returns the connection's error once it failed or closed.
 	Read(ctx context.Context) (Envelope, error)
-	// Ack acknowledges the envelope with the id, which Slack asks for within three seconds of delivering it.
+	// Ack acknowledges the envelope with the id, which Slack sends again when it goes unacknowledged.
 	Ack(ctx context.Context, envelopeID string) error
 	// Ping sends a WebSocket ping and returns once the pong arrives or ctx ends.
 	Ping(ctx context.Context) error
