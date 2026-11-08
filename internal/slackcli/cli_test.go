@@ -166,9 +166,11 @@ type harness struct {
 	dialToken string
 	sockets   []*fakeLoginSocket
 	// liveHubs and liveHubsErr are what the live-hub seam answers; stoppedHubs lists the hubs the stop seam was told.
+	// stopErrs makes the stop seam fail for the hubs it names, over stopErr for the rest.
 	liveHubs    []slackengine.Geometry
 	liveHubsErr error
 	stoppedHubs []string
+	stopErrs    map[string]error
 	// beams, paused and the errors are what the seams answer.
 	beams                                     []string
 	paused                                    bool
@@ -279,6 +281,9 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 			h.calls = append(h.calls, "stop")
 			h.stoppedHubs = append(h.stoppedHubs, geom.HubPath)
 			h.stopPID = callerPID
+			if hubErr, ok := h.stopErrs[geom.HubPath]; ok {
+				return nil, hubErr
+			}
 			return nil, h.stopErr
 		},
 		awaitFirstRead: func(slackengine.Geometry, slackengine.Clock, time.Duration) error {
@@ -521,16 +526,28 @@ func TestSlackCLI(t *testing.T) {
 			})
 		}
 
-		t.Run("AHelloFromAnotherAppIsRefusedAndStoresNothing", func(t *testing.T) {
-			t.Parallel()
-			h := newHarness(t, nil)
-			h.appID = "A2"
-			code, env := h.run("xoxb-good xapp-good\n", "login")
-			wantRefused(t, code, env, "A1", "A2", "lym slack login")
-			if fileExists(h.geom.TokenPath) {
-				t.Error("login stored tokens of two different apps; want no file")
-			}
-		})
+		appRefusals := []struct {
+			name    string
+			answers map[string]string
+			appID   string
+			wants   []string
+		}{
+			{"AHelloFromAnotherApp", nil, "A2", []string{"A1", "A2", "lym slack login"}},
+			{"AnEmptyBotsInfoAppID", map[string]string{"/bots.info": `{"ok":true,"bot":{"app_id":""}}`}, "", []string{"bot token (xoxb-)", "no app id", "nothing was stored"}},
+			{"AnEmptyHelloAppID", nil, "", []string{"app-level token (xapp-)", "no app id", "nothing was stored"}},
+		}
+		for _, tt := range appRefusals {
+			t.Run(tt.name+"IsRefusedAndStoresNothing", func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t, tt.answers)
+				h.appID = tt.appID
+				code, env := h.run("xoxb-good xapp-good\n", "login")
+				wantRefused(t, code, env, tt.wants...)
+				if fileExists(h.geom.TokenPath) {
+					t.Error("login stored tokens of no proven single app; want no file")
+				}
+			})
+		}
 
 		rejections := []struct {
 			name    string
@@ -609,6 +626,23 @@ func TestSlackCLI(t *testing.T) {
 				}
 			})
 		}
+
+		t.Run("AFailedStopOfOneHubStillEndsTheOthersAndNamesBoth", func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, nil)
+			h.liveHubs = liveHubs
+			h.stopErrs = map[string]error{"/hubs/a": errors.New("relay would not end")}
+			h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-old", AppToken: "xapp-same", AppID: "A1"})
+			code, env := h.run("xoxb-new xapp-same\n", "login")
+			wantRefused(t, code, env, "/hubs/a", "relay would not end", "/hubs/b", "tokens are stored", "lym slack stop", "lym slack start")
+			if diff := cmp.Diff([]string{"/hubs/a", "/hubs/b"}, h.stoppedHubs); diff != "" {
+				t.Errorf("stopped hubs mismatch (-want +got):\n%s", diff)
+			}
+			wantStored := slackengine.Credentials{BotToken: "xoxb-new", AppToken: "xapp-same", AppID: "A1"}
+			if stored, err := slackengine.ReadCredentials(h.geom.TokenPath); err != nil || stored != wantStored {
+				t.Errorf("ReadCredentials = %+v, %v; want the new tokens stored: %+v", stored, err, wantStored)
+			}
+		})
 
 		t.Run("AFailedLiveHubReadAfterTheWriteStoresBothTokensAndNamesTheWayForward", func(t *testing.T) {
 			t.Parallel()

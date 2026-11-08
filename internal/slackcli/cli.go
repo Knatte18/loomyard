@@ -266,6 +266,12 @@ func (c *slackCLI) login(cmd *cobra.Command) (map[string]any, error) {
 		return nil, tokenRefusal(appTokenKind, err)
 	}
 	_ = socket.Close()
+	if botAppID == "" {
+		return nil, appIDMissingRefusal(botTokenKind)
+	}
+	if helloAppID == "" {
+		return nil, appIDMissingRefusal(appTokenKind)
+	}
 	if helloAppID != botAppID {
 		return nil, fmt.Errorf("slack: the %s belongs to app %s but the %s belongs to app %s; nothing was stored; way forward: run `lym slack login` with an app-level token of app %s, made on that app's Basic Information page",
 			appTokenKind, helloAppID, botTokenKind, botAppID, botAppID)
@@ -286,6 +292,13 @@ func (c *slackCLI) login(cmd *cobra.Command) (map[string]any, error) {
 	return fields, c.endLiveRelays(fields)
 }
 
+// appIDMissingRefusal is the refusal of a login whose token of the given kind came back from Slack without an app id.
+// Without it the two tokens cannot be proven to belong to one app.
+func appIDMissingRefusal(kind string) error {
+	return fmt.Errorf("slack: Slack gave no app id for the %s, so the two tokens cannot be shown to belong to one app; nothing was stored; way forward: run `lym slack login` again with tokens of the app made from docs/slack-app.md",
+		kind)
+}
+
 // replacesToken reports whether a login that brings token replaces a stored token that differs from it.
 func replacesToken(stored, token string) bool {
 	return stored != "" && stored != token
@@ -293,6 +306,8 @@ func replacesToken(stored, token string) bool {
 
 // endLiveRelays ends the relay of each hub the machine record lists and names those hubs under relays_ended in fields.
 // The tokens are stored by now, so every refusal says so and names how to bring the relays back.
+// A hub whose relay will not end does not stop the others from being ended;
+// the one refusal names every hub not ended with its error, and every hub ended.
 // The bound: a hub absent from the machine record keeps its older relay until its own `lym slack stop`.
 func (c *slackCLI) endLiveRelays(fields map[string]any) error {
 	hubs, err := c.liveHubs()
@@ -300,11 +315,17 @@ func (c *slackCLI) endLiveRelays(fields map[string]any) error {
 		return fmt.Errorf("slack: both tokens are stored, but the machine's live hubs could not be read: %w; way forward: run `lym slack stop` then `lym slack start` in each hub of this machine, since a second login with the same tokens ends no relay", err)
 	}
 	ended := make([]string, 0, len(hubs))
+	var failures []string
 	for _, hub := range hubs {
 		if _, err := c.stop(hub, os.Getpid()); err != nil {
-			return fmt.Errorf("slack: both tokens are stored, but the relay of the hub at %s was not ended: %w; way forward: run `lym slack stop` then `lym slack start` in that hub", hub.HubPath, err)
+			failures = append(failures, fmt.Sprintf("%s (%v)", hub.HubPath, err))
+			continue
 		}
 		ended = append(ended, hub.HubPath)
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("slack: both tokens are stored, but the relay was not ended in: %s; way forward: run `lym slack stop` then `lym slack start` in each of those hubs; relays ended in: %s, where `lym slack start` brings them back",
+			strings.Join(failures, ", "), strings.Join(ended, ", "))
 	}
 	if len(ended) > 0 {
 		fields["relays_ended"] = ended
