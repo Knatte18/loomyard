@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -32,10 +33,20 @@ func TestOpenLaunch(t *testing.T) {
 		spec shuttleengine.OpenSpec
 		// setup changes the worktree before OpenLaunch.
 		setup func(t *testing.T, anchor string)
+		// wantSandboxMode is the sandbox the launch line carries; empty means sandboxWorkspaceWrite.
+		wantSandboxMode string
 		// wantErr holds the texts a refusal must carry; empty means the launch goes ahead.
 		wantErr []string
 	}{
 		{name: "BypassDefault", spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Engine: "codex", Model: "gpt-6-luna", Effort: "high"}}},
+		{
+			name: "FullAccessSandboxMode",
+			spec: shuttleengine.OpenSpec{Role: "explore"},
+			setup: func(t *testing.T, anchor string) {
+				writeFile(t, configengine.ConfigFile(anchor, "codex"), "writable_roots: []\nsandbox_mode: "+sandboxFullAccess+"\n")
+			},
+			wantSandboxMode: sandboxFullAccess,
+		},
 		{name: "PromptPermissionMode", spec: shuttleengine.OpenSpec{Role: "explore", PermissionMode: "prompt"}, wantErr: []string{`permission mode "prompt"`, "way forward"}},
 		{name: "EffortOutsideEfforts", spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Effort: "xhigh"}}, wantErr: []string{`effort "xhigh"`, "way forward"}},
 		{
@@ -78,9 +89,14 @@ func TestOpenLaunch(t *testing.T) {
 				t.Fatalf("OpenLaunch() error: %v", err)
 			}
 
+			wantMode := tt.wantSandboxMode
+			if wantMode == "" {
+				wantMode = sandboxWorkspaceWrite
+			}
 			want := shuttleengine.Launch{Cmd: codexCommand(shell.ForGOOS(), launchLine{
 				bin:           "codex",
 				home:          repo.lymHome,
+				sandboxMode:   wantMode,
 				writableRoots: append([]string{records}, repo.wantGitDirs(anchor)...),
 				model:         tt.spec.Model,
 				effort:        tt.spec.Effort,

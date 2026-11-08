@@ -90,8 +90,10 @@ const uncontainedWriteMinScannedFiles = 30
 // It fails when a file outside the allowlist holds a banned token.
 // A raw write must route through an os.Root rooted at the hub, the write-side containment chokepoint.
 // Otherwise its file needs a reasoned allowlist entry.
+// A narrowed gate runs it only when a file under internal/fabricengine or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/fabricengine/*.go internal/fabricengine/*/*.go internal/testkit/scankit/*.go
 func TestNoUncontainedWrite_FabricengineProductionSource(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(uncontainedWriteAllowlist)

@@ -236,7 +236,9 @@ func fixWork(reviewPath, gateFindingsPath string, decisionsRouted bool) string {
 }
 
 // routedDecisionsLine tells a fixer the review's decision-class findings went to the run's parent, not to it.
-const routedDecisionsLine = "Those went to your parent, who makes each call: you neither fix, dispute nor defer them, and your fixer-report leaves them out."
+// That holds until the parent's ruling on one reaches the fixer during the round.
+const routedDecisionsLine = "Those went to your parent, who makes each call: you neither fix, dispute nor defer them, and your fixer-report leaves them out, " +
+	"until your parent's ruling on one reaches you this round, which the parent ruling rule below covers."
 
 // focusDirectiveBlock renders the focus-directive stencil for engine and focusPath.
 // The result is the value injected as the explore step's optional focus_directive marker.

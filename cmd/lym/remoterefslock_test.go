@@ -28,8 +28,10 @@ const remoteRefsLockMinScannedFiles = 20
 // TestRemoteRefsLock_FabricengineFetchesWritingTrackingRefsGoThroughGitrepo fails on each violating fetch.
 // A violation is an argument list holding "fetch" without "--refmap=" and outside the allowlist.
 // The scan covers the non-test source of internal/fabricengine.
+// A narrowed gate runs it only when a file of internal/fabricengine or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/fabricengine/*.go internal/testkit/scankit/*.go
 func TestRemoteRefsLock_FabricengineFetchesWritingTrackingRefsGoThroughGitrepo(t *testing.T) {
 	tiergate.Require(t, 0)
 	allowlist := scankit.NewAllowlist(remoteRefsLockFetchAllowlist)

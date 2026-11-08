@@ -333,6 +333,9 @@ func flagShapeRefusal(request testRequest) string {
 	if forms > 1 {
 		return "gate test: explicit targets, --all, --base and --card are each one scope form, and a call takes one; way forward: keep one scope form, then re-run the same command"
 	}
+	if request.mainPackages && len(request.cards) == 0 {
+		return fmt.Sprintf("gate test: --%s adds to a --card scope, and the call names no card; way forward: pass --card <id> once per card, or drop --%s, then re-run the same command", gateslot.MainPackagesFlag, gateslot.MainPackagesFlag)
+	}
 	return ""
 }
 

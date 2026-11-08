@@ -1,0 +1,9 @@
+slug	session	kind	role	start_turn	chain_turns	follow_turns	follow_ctx	origin
+fabric-livestate-merge-templates	970ee95a-9ec1-42de-abeb-8e68b26e77a0	main	darn	19	2	1	200348	mid-round
+claude-settings-model-effort	a7b2c7f6-60a7-4d8f-b94a-22efe2b46f70	main	darn	31	3	2	416526	mid-round
+fabric-test-folds	ef680495-8897-49cf-b52e-5847ddc3a644	main	darn	24	2	1	183472	mid-round
+agent-skills-and-effort	4c416a05-62ce-4f25-ac7d-3bd796fdb8a1	main	darn	27	3	2	355728	mid-round
+agent-skills-and-effort	985b1f40-4e33-408a-bad0-afc288c48560	main	code-burler-fix	16	2	1	166723	mid-round
+dotgit-worktree-reader	15a387d2-c706-4377-b12a-32329f56c96d	main	darn	16	4	3	492931	mid-round
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	22	3	2	414269	mid-round
+test-real-time-waits	938fb242-61f7-4c9d-836f-255e2cea7d69	main	darn	30	2	1	230079	mid-round

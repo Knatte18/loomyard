@@ -559,7 +559,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	batchGate, err := renderBatchGate(batch.Cards, deps.Gate)
+	batchGate, err := renderBatchGate(batch.Cards, deps.Gate, isLastBatch(deps.Batches, batch))
 	if err != nil {
 		return nil, err
 	}

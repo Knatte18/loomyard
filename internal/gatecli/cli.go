@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/impactset"
 )
 
@@ -61,7 +62,7 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 	var tiers []int
 	var upto int
 	var cards []string
-	var all, guards, wait bool
+	var all, guards, wait, mainPackages bool
 	testCmd := &cobra.Command{
 		Use:         "test [<targets>...]",
 		Short:       "run the hub's test tiers once their gate slots are free",
@@ -100,7 +101,7 @@ Examples:
 			}
 			request := testRequest{
 				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
-				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, base: base, all: all, guards: guards, targets: args,
+				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, mainPackages: mainPackages, base: base, all: all, guards: guards, targets: args,
 				upto: upto, uptoGiven: cmd.Flags().Changed("upto"),
 				phase: phaseFrom(cmd.Context()),
 			}
@@ -121,6 +122,7 @@ Examples:
 	testCmd.Flags().IntSliceVar(&tiers, "tier", nil, "tier number to run; repeatable, default 0")
 	testCmd.Flags().IntVar(&upto, "upto", 0, "run every declared tier numbered 0 through N but the manual ones")
 	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages are the scope; repeatable")
+	testCmd.Flags().BoolVar(&mainPackages, gateslot.MainPackagesFlag, false, "with --card under the go scoper, add every package main of tier0's module to the scope")
 	testCmd.Flags().StringVar(&base, "base", "", "revision whose diff to the working tree is the scope")
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
 	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers, run every //lym:guard test of the module under the tier its file belongs to")
@@ -180,6 +182,8 @@ type testRequest struct {
 	uptoGiven bool
 	// cards are the --card values.
 	cards []string
+	// mainPackages is the --main-packages flag: a --card scope under the go scoper adds the module's main packages.
+	mainPackages bool
 	// base is the --base revision.
 	base string
 	// all is the --all flag: every listed tier runs over its all_targets.

@@ -1,0 +1,7 @@
+band	group	calls	messages	median_ms	p90_ms	mean_ms	over_2s	added_s
+below	all	2708	941	66	145	105	1	51
+below	single	400	400	74	233	109	0	17
+below	multi	2308	541	65	137	104	1	33
+above	all	544	122	1791	2868	1446	268	77
+above	multi	502	80	2079	2892	1552	267	73
+above	single	42	42	145	180	178	1	5

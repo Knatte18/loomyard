@@ -10,6 +10,7 @@
 // Its never-tracked machine override is `<BoardDir>/.lym/config/<module>.machine.yaml`.
 // The override holds only the module's machine keys and never sits in a worktree.
 // `<BoardDir>/_lym/config/` also holds each per-worktree module's repo default, the base layer of that module's stack.
+// A per-worktree module with machine keys reads the same machine override, above its worktree file.
 // Module.HubWide tells the two kinds of file apart.
 // A hub-wide module also reads the reading worktree's local override, restricted to the module's LocalKeys.
 //

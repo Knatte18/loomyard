@@ -121,6 +121,9 @@
 // Go therefore renders no package list and scans for no guard test.
 // The batch gate is the hub's `batch` gate call, `lym gate test --gate batch`.
 // It names every card of the batch, `--card <card id>` once per card.
+// The last batch of the execution order adds `--main-packages`, from `gateslot.Config.AgentGateCallWithMainPackages`.
+// Under the `go` scoper that call also runs the module's main packages, which the plan-level gate runs next;
+// the implementer body makes a failure there the last fork's to fix, whichever batch caused it.
 // Both calls are rendered from `BeginDeps.Gate` and `RecoverDeps.Gate`.
 // `webstercli` loads them from the hub's `gate.yaml`.
 // begin-batch and recover-batch refuse before they mutate anything when the config gives no `card` or `batch` list.

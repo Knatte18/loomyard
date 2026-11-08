@@ -14,8 +14,14 @@
 // After startup the engine reads config.toml back and warns about a root Codex's own write dropped;
 // the trust prompt's accept is the backstop.
 //
-// The launch line runs `-a never -s workspace-write`, so no approval prompt shows;
-// it adds writable roots, each symlink-resolved as the trusted roots are.
+// The launch line runs `-a never`, so no approval prompt shows, and `-s` with codex.yaml's sandbox_mode.
+// The mode is workspace-write unless a layer sets danger-full-access, which runs the session with no sandbox.
+// That serves a machine whose bubblewrap may not create a user namespace.
+// There every shell command under workspace-write fails and the session writes no output.
+// The key is a machine key: the hub's machine override sets it for one machine, and a local override may not.
+// A value other than the two refuses the load.
+// The rest of this paragraph describes the workspace-write line; a danger-full-access line carries none of it.
+// The line adds writable roots, each symlink-resolved as the trusted roots are.
 // The records checkout it is told through its Dirs lets the session write under the anchor's `.lym`.
 // A Claude seat can write there too.
 // It is kept as told, with a Warn, when it cannot be resolved.
@@ -106,7 +112,7 @@
 // it validates the model choice and readies the lym home as Prepare does,
 // and its line runs Codex with no hooks and no first turn,
 // so the session carries no shell guard and waits at its composer.
-// The line keeps the network access, so an opened session reaches creel too.
+// The line keeps the sandbox mode and, under workspace-write, the network access, so an opened session reaches creel too.
 // It appends no exit record, since an opened session has no events file.
 // An opened session carries no creel hooks either, since it has no prompt file to hold the creel trust sentence.
 // It is a pane-mail strand.

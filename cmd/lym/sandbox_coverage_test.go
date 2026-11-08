@@ -66,9 +66,13 @@ var excludedModules = []scankit.Entry{
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.
+// A narrowed gate runs it only when a suite file, the root command or a module's CLI package changes;
+// a whole gate always runs it.
 //
 //testtiming:keep pins that every registered module is covered by the sandbox suite or excluded with a reason, a guard no covering test asserts
 //lym:guard
+//lym:watch tools/sandbox/*SUITE.md cmd/lym/main.go internal/*cli/*.go internal/shortcutcli/*
+//lym:watch internal/testkit/scankit/*.go
 func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 	tiergate.Require(t, 0)
 	// Collect the module names registered on the live cobra root.

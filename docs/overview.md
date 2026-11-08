@@ -510,7 +510,7 @@ User-facing modules each get one `lym <module>` namespace:
   The embedded template comes first, then the repo default at `<BoltDir>/_lym/config/<module>.yaml`.
   The worktree's sparse file follows, and the untracked local override at `<anchor>/.lym/config/<module>.local.yaml` is last.
   See [internal/configengine](../internal/configengine/doc.go).
-  A hub-wide module's machine keys, such as gate's `slots` and `tier_parallel`, also take a machine override.
+  A module's machine keys, such as gate's `slots` and `tier_parallel` and codex's `sandbox_mode`, also take a machine override.
   The override lives at `<BoltDir>/.lym/config/<module>.machine.yaml` and is never tracked.
   It is written from the prime beside the local override.
   `lym config --layer default|worktree|machine|local` picks the layer a verb addresses,
@@ -690,7 +690,7 @@ User-facing modules each get one `lym <module>` namespace:
   The provider is swappable behind an **engine** seam;
   the engine is picked from the registry by `shuttle.yaml`'s `engine:` key, or per run by a model-spec naming it.
   The registered engines are `claude` and `codex`.
-  `codex` drives the Codex CLI's TUI under one shared lym Codex home (`codex.yaml`'s `home`, linked to the operator's own login and sessions, its folder trust rendered by lym), with `-a never -s workspace-write` and, as writable roots, the records checkout it is told through its config dirs (none outside a hub), the checkout's git dir and the common git dir it links to, so a session in a linked worktree can commit, and the folders of `codex.yaml`'s `writable_roots` that exist (template: the Go build cache);
+  `codex` drives the Codex CLI's TUI under one shared lym Codex home (`codex.yaml`'s `home`, linked to the operator's own login and sessions, its folder trust rendered by lym), with `-a never -s` and `codex.yaml`'s `sandbox_mode` (`workspace-write`, or `danger-full-access` for a machine whose bubblewrap cannot create a user namespace, a machine key set in the hub's machine override) and, under `workspace-write`, as writable roots, the records checkout it is told through its config dirs (none outside a hub), the checkout's git dir and the common git dir it links to, so a session in a linked worktree can commit, and the folders of `codex.yaml`'s `writable_roots` that exist (template: the Go build cache);
   it loads skills as SKILL.md files the model reads by absolute path under `codex.yaml`'s `skill_roots`, and installs the shell guard rows of the `shellguard` table as `PreToolUse` hooks matching `Bash` with Codex's own steer and notice texts (`apply_patch` in place of Read, Edit and Write), the python and publish rows following their switches and the refuse-raw row a non-empty `refuse_raw` list;
   a Codex run in a hub carries creel's hook delivery, the mail handed over as a hook block after a tool call and at a turn end, an idle session woken by its async waiter hook through `codex queue`, and the creel trust sentence in its prompt file, while an opened Codex session stays a pane-mail strand;
   it has no fork audit, and the model registry's `sol`, `astra` and `luna` aliases name it.

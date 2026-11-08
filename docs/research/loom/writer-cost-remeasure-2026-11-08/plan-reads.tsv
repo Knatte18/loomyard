@@ -1,0 +1,9 @@
+sample	slug	session	reads_whole	reads_whole_tokens	reads_slice	reads_slice_tokens	searches	searches_tokens	bash	bash_tokens
+2026-11-04	batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	41	111952	1	2579	0	0	25	29224
+2026-11-04	decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	31	113611	12	19785	0	0	13	13964
+2026-11-04	shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	56	130671	5	9006	0	0	15	15239
+2026-11-08	pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	56	133531	12	17365	0	0	25	18317
+2026-11-08	raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	42	87632	10	17457	0	0	22	19546
+2026-11-08	drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	65	166312	8	349	0	0	31	32374
+2026-11-08	slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	47	93483	0	0	0	0	39	38768
+2026-11-08	creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	55	160689	7	7585	0	0	9	14664

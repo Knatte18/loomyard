@@ -40,4 +40,4 @@ Read the fix step only when its step is reached, never early.
 
 You never write the review file `{{.review_path}}`.
 The only round file you ever write is your fixer-report; the fix step names the rest of your write surface.
-You send no message to any other session about the review.
+You send no message to any other session about the review, but the one flag to your parent the fix step's parent ruling rule names.

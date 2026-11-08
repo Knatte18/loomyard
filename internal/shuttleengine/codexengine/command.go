@@ -46,7 +46,9 @@ type launchLine struct {
 	bin string
 	// home is the lym Codex home the session runs under.
 	home string
-	// writableRoots are the folders outside the workspace the sandbox lets the session write.
+	// sandboxMode is the Codex sandbox the session runs in, sandboxWorkspaceWrite or sandboxFullAccess.
+	sandboxMode string
+	// writableRoots are the folders outside the workspace the workspace-write sandbox lets the session write.
 	writableRoots []string
 	// model is the model slug; empty takes Codex's default.
 	model string
@@ -69,18 +71,24 @@ func buildLaunchCmd(sh shell.Shell, line launchLine) string {
 }
 
 // codexCommand composes the command that starts a Codex session under the lym home.
-// It runs `-a never -s workspace-write`, so no approval prompt shows.
-// The sandbox bounds writes to the workspace, the writable roots and the temporary folders.
-// It turns on the sandbox's network access, so the session's shell commands reach the creel daemon's socket.
+// It runs `-a never`, so no approval prompt shows, and `-s` with the line's sandbox mode.
+// The workspace-write sandbox bounds writes to the workspace, the writable roots and the temporary folders.
+// Under it the command turns on the sandbox's network access.
+// That lets the session's shell commands reach the creel daemon's socket.
+// The danger-full-access mode has no sandbox, so the command sets neither the network access nor the writable roots.
 // A hook given by `-c` otherwise waits on a review prompt,
 // so the command passes `--dangerously-bypass-hook-trust` with the hook settings.
 // It passes the first turn as the positional prompt when there is one,
 // and it loads CLAUDE.md as the project instructions of a directory with no AGENTS.md.
 // CODEX_HOME names the lym home as a command-scoped assignment.
 func codexCommand(sh shell.Shell, line launchLine) string {
-	cmd := sh.Invoke(line.bin) + " --no-alt-screen -a never -s workspace-write -c " + sh.Quote(sandboxNetworkAccess)
-	if len(line.writableRoots) > 0 {
-		cmd += " -c " + sh.Quote("sandbox_workspace_write.writable_roots="+tomlArray(line.writableRoots))
+	// The mode is one of two fixed words the config load admits, so it needs no quoting.
+	cmd := sh.Invoke(line.bin) + " --no-alt-screen -a never -s " + line.sandboxMode
+	if line.sandboxMode == sandboxWorkspaceWrite {
+		cmd += " -c " + sh.Quote(sandboxNetworkAccess)
+		if len(line.writableRoots) > 0 {
+			cmd += " -c " + sh.Quote("sandbox_workspace_write.writable_roots="+tomlArray(line.writableRoots))
+		}
 	}
 	if line.model != "" {
 		cmd += " -m " + sh.Quote(line.model)

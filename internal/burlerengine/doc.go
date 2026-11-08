@@ -125,7 +125,12 @@
 // A fixer can neither ask for nor record the call.
 // Fix then counts those findings as no work:
 // a review holding only them is handled as one with none, its skipped report naming the routing;
-// a spawned fixer's work line says they are not its own.
+// a spawned fixer's work line says they are not its own until the parent rules on one.
+// A ruling that reaches the fixer during the round makes the ruled finding its work.
+// The ruling arrives as parent mail or as a decision notice.
+// The fixer carries it out.
+// It flags a ruling that is redundant or mistaken against the code with one creel post to its parent.
+// Either way the fixer-report records the ruling in its own Rulings section.
 // The fixer reads the review, validates each finding against the code, and fixes it.
 // Its spec declares the fixer-report as its only output file.
 // Its gate is RunOpts.Gate with every entry wrapped by repairReportBeforeGate.

@@ -1,0 +1,16 @@
+sample	slug	role	turns	lookups	first_lookup_turn	ctx_at_first_lookup	explore_turns	explore_before	explore_after	chains	explore_cost_usd	session_cost_usd
+2026-11-04	batten-remote-order	discussion	32	3	7	62914	19	4	15	2	1.27	2.79
+2026-11-04	batten-remote-order	plan	46	4	10	193015	22	7	15	3	2.22	5.63
+2026-11-04	decision-record-on-board	plan	32	3	12	217184	16	9	7	2	1.93	4.15
+2026-11-04	decision-record-on-board	discussion	33	0			22	22	0	1	1.89	3.33
+2026-11-04	decision-record-on-board	discussion	6	0			4	4	0	1	0.23	0.36
+2026-11-04	shed-sub-run-block	discussion	26	0			17	17	0	1	1.50	2.80
+2026-11-04	shed-sub-run-block	plan	37	4	11	175093	19	8	11	4	2.00	4.70
+2026-11-08	pawl-orch-landing	discussion	35	4	6	60979	19	2	17	4	1.53	3.39
+2026-11-08	pawl-orch-landing	plan	56	4	9	151182	32	6	26	5	4.72	8.76
+2026-11-08	raddle-recipe	discussion	35	5	6	59573	19	2	17	3	1.29	3.19
+2026-11-08	raddle-recipe	plan	56	7	8	110333	28	5	23	4	3.56	7.58
+2026-11-08	drift-rework	plan	59	6	12	223578	29	9	20	6	4.68	9.88
+2026-11-08	drift-rework	discussion	29	5	7	65286	12	4	8	3	0.87	2.81
+2026-11-08	slack-relay	plan	62	4	26	174223	36	18	18	6	4.01	6.90
+2026-11-08	creel-cross-hub-build	plan	21	2	7	240629	5	3	2	1	0.64	4.42

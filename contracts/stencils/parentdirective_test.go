@@ -113,9 +113,13 @@ func registeredBodies(t *testing.T) map[string]string {
 
 // TestStencils_OpeningStencilsRenderParentDirective fails when a role's opening stencil is unregistered;
 // it also fails when that stencil lacks the parent directive marker.
+// A narrowed gate runs it only when a stencil, the orch role or a package it reads changes; a whole gate always runs it.
 //
 //testtiming:keep pins PATTERN-stencil-ownership's parent-directive marker on every role's opening stencil, a guard that fires which no other test asserts
 //lym:guard
+//lym:watch contracts/stencils/*.go contracts/stencils/*.md contracts/stencils/*/*.md contracts/stencils/*/*/*.md
+//lym:watch contracts/stencils/*/*/*/*.md contracts/orchrole/* internal/stencil/*.go internal/stencilstore/*.go
+//lym:watch internal/parentdirective/*.go internal/editdirective/*.go
 func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -127,9 +131,13 @@ func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 
 // TestStencils_OpeningStencilsRenderEditDirective fails when a role's opening stencil is unregistered;
 // it also fails when that stencil lacks the edit directive marker.
+// A narrowed gate runs it only when a stencil, the orch role or a package it reads changes; a whole gate always runs it.
 //
 //testtiming:keep pins PATTERN-stencil-ownership's parent-directive marker on every role's opening stencil, a guard that fires which no other test asserts
 //lym:guard
+//lym:watch contracts/stencils/*.go contracts/stencils/*.md contracts/stencils/*/*.md contracts/stencils/*/*/*.md
+//lym:watch contracts/stencils/*/*/*/*.md contracts/orchrole/* internal/stencil/*.go internal/stencilstore/*.go
+//lym:watch internal/parentdirective/*.go internal/editdirective/*.go
 func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -140,9 +148,12 @@ func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 }
 
 // TestStencils_NoEditRuleRestatement fails when a stencil besides edit-directive restates the edit rule in a sentence.
+// A narrowed gate runs it only when a stencil, the orch role or a package it reads changes; a whole gate always runs it.
 //
 //testtiming:keep pins the rule that only the edit-directive stencil states the edit rule, a guard that fires which no other test asserts
 //lym:guard
+//lym:watch contracts/stencils/*.go contracts/stencils/*.md contracts/stencils/*/*.md contracts/stencils/*/*/*.md
+//lym:watch contracts/stencils/*/*/*/*.md contracts/orchrole/* internal/stencil/*.go internal/stencilstore/*.go
 func TestStencils_NoEditRuleRestatement(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -160,9 +171,12 @@ func TestStencils_NoEditRuleRestatement(t *testing.T) {
 
 // TestStencils_NoUnboundedAskOperator fails for any registered stencil outside the orch family.
 // Such a stencil fails when one of its sentences tells the agent to ask the operator and carries no prohibition word.
+// A narrowed gate runs it only when a stencil, the orch role or a package it reads changes; a whole gate always runs it.
 //
 //testtiming:keep pins PATTERN-stencil-ownership's parent-directive ban on an unbounded ask-the-operator sentence in a spawned role's stencil, a guard that fires which no other test asserts
 //lym:guard
+//lym:watch contracts/stencils/*.go contracts/stencils/*.md contracts/stencils/*/*.md contracts/stencils/*/*/*.md
+//lym:watch contracts/stencils/*/*/*/*.md contracts/orchrole/* internal/stencil/*.go internal/stencilstore/*.go
 func TestStencils_NoUnboundedAskOperator(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

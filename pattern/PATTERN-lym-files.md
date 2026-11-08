@@ -22,7 +22,7 @@ Every never-tracked file lives under `.lym`, at the mirrored subpath of the `_ly
 - No engine derives its own `.lym` path; each module exposes a scratch accessor beside its durable one.
 - A module's local config override sits in the mirrored directory, as `.lym/config/<module>.local.yaml`.
   It never sits at the mirrored file path `.lym/config/<module>.yaml`, which is the editor staging copy's.
-- A hub-wide module's machine override sits under the board dir's `.lym/config/`, as `.lym/config/<module>.machine.yaml`.
+- A module's machine override sits under the board dir's `.lym/config/`, as `.lym/config/<module>.machine.yaml`.
 - The split is structural, held in `fabricengine.structuralCommittedDirs` and `structuralNeverCommittedDirs`.
   It is never read from `fabric.yaml`'s `pathspec`.
 - Weft content is per-branch and is never a merge participant in either direction.

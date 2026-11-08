@@ -63,8 +63,11 @@ var bannedWiringDeclarations = map[string]bool{
 // It inspects each top-level declaration and flags any whose name is banned.
 // The match is on the AST, never on raw text, so a doc comment naming a function cannot trip it.
 // _test.go files are skipped: the invariant is about production wiring, and a test helper is not a second copy of it.
+// A narrowed gate runs it only when a policed package or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/webstercli/*.go internal/webstercli/*/*.go internal/burlercli/*.go internal/burlercli/*/*.go
+//lym:watch internal/testkit/scankit/*.go
 func TestBannedDeclarations_CliPackagesCallIntoCliwire(t *testing.T) {
 	tiergate.Require(t, 0)
 	var failures []string

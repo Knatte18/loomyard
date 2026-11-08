@@ -1,0 +1,86 @@
+slug	session	role	batch	kind	description	model	questions	turns	cost_usd
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	1	lookup	Finalize and PR landing code	sonnet	6	8	0.2227931
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	1	lookup	In-flight run migration mechanism	sonnet	4	6	0.15367920000000002
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	1	lookup	Beam verbs, dobby, locks	sonnet	5	7	0.15717420000000001
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	1	lookup	Pawl recipe and Beam-Await	sonnet	5	5	0.16828920000000003
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	2	fork	Lens leanness	inherit	4	2	0.1985468
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	2	fork	Lens existing-paths	inherit	4	7	0.4633322
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	2	fork	Lens board-scope	inherit	4	5	0.28308880000000003
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	2	fork	Lens walkthrough	inherit	4	4	0.3027732
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	2	fork	Lens bound-breaker	inherit	4	4	0.4013454
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	2	fork	Lens interactions	inherit	4	2	0.1959568
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	1	lookup	Find dobby land and beam fork code	sonnet	7	7	0.2324774
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	1	lookup	Find pawl wiring of deps	sonnet	6	6	0.1960065
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	1	lookup	Find recipe parser and driver rules	sonnet	5	8	0.2212192
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	1	lookup	Find reopen/PR-Review pawl references	sonnet	6	5	0.20025020000000002
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	2	fork	fork0 writes the plan	inherit	5	51	5.772854400000001
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	3	fork	Lens forced-edits review	inherit	4	8	1.0888372
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	3	fork	Lens way-forward review	inherit	4	4	0.7410052
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	3	fork	Lens guard-reach review	inherit	4	9	1.0965798
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	3	fork	Lens row-validity review	inherit	4	7	0.872655
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	3	fork	Lens coverage review	inherit	4	4	0.6729806
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	1	lookup	Orch handoff and glossary	sonnet	4	7	0.14287650000000002
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	1	lookup	Board filing paths and locks	sonnet	6	6	0.1839441
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	1	lookup	Cost data: report timing, audits	sonnet	4	5	0.12289800000000001
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	1	lookup	Motif recipe and batten flow	sonnet	4	6	0.1773337
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	1	lookup	Interactive Discussion-Write mode	sonnet	3	10	0.2218015
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	2	fork	Lens: bound-breaker	inherit	4	8	0.3969356
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	2	fork	Lens: board-scope	inherit	4	3	0.18584260000000002
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	2	fork	Lens: existing-paths	inherit	4	8	0.431677
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	2	fork	Lens: leanness	inherit	4	2	0.204967
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	2	fork	Lens: interactions	inherit	4	4	0.3045068
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	2	fork	Lens: walkthrough	inherit	4	5	0.3556076
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	lookup	Map board engine seams	sonnet	8	7	0.2709719
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	lookup	Map loom verbs and gates	sonnet	7	9	0.3987606
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	lookup	Map shuttle usage seams	sonnet	7	5	0.19967669999999998
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	lookup	Map recipe and batten wiring	sonnet	8	7	0.2898177
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	lookup	Map report packages	sonnet	6	7	0.29769769999999995
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	lookup	Map shed session end and records	sonnet	6	8	0.2546429
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	lookup	Map pawl BeamUp and beam create	sonnet	6	8	0.2219527
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	2	fork	fork0 writes the plan	inherit	5	69	7.176241199999996
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	3	fork	Lens coverage review	inherit	4	2	0.5328526
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	3	fork	Lens row-validity review	inherit	4	8	0.8552578
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	3	fork	Lens way-forward review	inherit	4	3	0.47924160000000005
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	3	fork	Lens forced-edits review	inherit	4	5	0.6210264
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	3	fork	Lens guard-reach review	inherit	4	7	0.8543016000000001
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	lookup	Fabric commit and trailer seams	sonnet	6	5	0.2231149
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	lookup	Loom caller check, goto, runproc	sonnet	7	9	0.29834150000000004
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	lookup	Config migration and reinterpretation	sonnet	6	9	0.2533359
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	lookup	Webster run-level gate wiring	sonnet	5	7	0.2556985
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	lookup	Drift tests, fakes, seams	sonnet	7	6	0.20069340000000002
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	lookup	Drift stencils, docs, references	sonnet	5	8	0.20571309999999998
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	2	fork	fork0 writes the plan	inherit	5	70	8.9279138
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	3	fork	Lens row-validity review	inherit	4	7	1.0246574000000002
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	3	fork	Lens coverage review	inherit	4	5	1.015895
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	3	fork	Lens way-forward review	inherit	4	7	1.1801205999999997
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	3	fork	Lens guard-reach review	inherit	4	6	1.0129408
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	3	fork	Lens forced-edits review	inherit	4	8	1.2965849999999999
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	1	lookup	Recipes and drift rows	sonnet	4	5	0.1291238
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	1	lookup	Commits and seal facts	sonnet	4	11	0.18182370000000003
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	1	lookup	Writer gate seams	sonnet	4	6	0.163819
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	1	lookup	Drift config and parent verbs	sonnet	5	8	0.258486
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	1	lookup	Map drift module today	sonnet	7	7	0.17430850000000003
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	2	fork	Lens: bound-breaker	inherit	4	3	0.35932379999999997
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	2	fork	Lens: interactions	inherit	4	2	0.196909
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	2	fork	Lens: existing-paths	inherit	4	5	0.33491439999999995
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	2	fork	Lens: board-scope	inherit	4	5	0.2744398
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	2	fork	Lens: walkthrough	inherit	4	2	0.223929
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	2	fork	Lens: leanness	inherit	4	2	0.173959
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	1	lookup	Orch bring-up and dobby hooks lookup	sonnet	4	7	0.19178040000000002
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	1	lookup	Config and CLI registration lookup	sonnet	5	6	0.1565126
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	1	lookup	Spawn/re-exec precedents lookup	sonnet	5	8	0.21212330000000001
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	1	lookup	Resume pointer, pause, index lookup	sonnet	5	6	0.1775503
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	2	fork	fork0 writes the plan files	inherit	5	28	3.4664392000000004
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	3	fork	Lens fork: forced-edits	inherit	4	8	0.7865644
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	3	fork	Lens fork: guard-reach	inherit	4	4	0.6360543999999999
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	3	fork	Lens fork: coverage	inherit	4	2	0.384419
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	3	fork	Lens fork: way-forward	inherit	4	4	0.579183
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	3	fork	Lens fork: row-validity	inherit	4	6	0.7735019999999999
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	plan	1	lookup	Find consumers of creel line formats	sonnet	5	10	0.2514883
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	plan	1	lookup	Find registrations for new verb and module	sonnet	0	10	0.2934812
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	plan	2	fork	fork0 writes the plan	inherit	5	8	2.2030781999999998
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	plan	3	fork	Coverage lens review	inherit	4	3	0.8297934
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	plan	3	fork	Guard-reach lens review	inherit	4	3	0.8276976
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	plan	3	fork	Forced-edits lens review	inherit	4	5	1.0750336
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	plan	3	fork	Row-validity lens review	inherit	4	3	0.9816210000000001
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	plan	3	fork	Way-forward lens review	inherit	4	3	0.8126979999999999

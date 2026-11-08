@@ -556,6 +556,36 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	})
 
+	t.Run("--card with --main-packages adds the module's main packages to the card's packages", func(t *testing.T) {
+		plankit.WriteTree(t, pair, map[string]string{"tool/main.go": "package main\n\nfunc main() {}\n"})
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "tool")) })
+		wantArgs(t, gate(t, pair, nil, "--card", "1", "--main-packages"), []string{"./lib", "./tool"}, []string{"."}, guardInvocation)
+	})
+
+	t.Run("--card with --main-packages is refused naming the module and the way forward when go list fails there", func(t *testing.T) {
+		edit(t, "go.mod", "this is not a go.mod\n")
+		wantRefusal(t, gate(t, pair, nil, "--card", "1", "--main-packages"), "--main-packages", "module at .", "way forward")
+	})
+
+	t.Run("--card with --main-packages adds nothing under the none scoper", func(t *testing.T) {
+		writeScoper(t, "none")
+		defer writeScoper(t, "go")
+		plankit.WriteTree(t, pair, map[string]string{"tool/main.go": "package main\n\nfunc main() {}\n"})
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "tool")) })
+		wantArgs(t, gate(t, pair, nil, "--card", "1", "--main-packages"), []string{"./..."})
+	})
+
+	t.Run("--card with --main-packages adds nothing under dotnet", func(t *testing.T) {
+		writeDotnet(t, nil)
+		defer writeScoper(t, "go")
+		csharpPlan := plan
+		csharpPlan.Language = "csharp"
+		csharpPlan.Cards = []plankit.Card{{Number: 1, Slug: "span", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"Lib#Circle.Area"}}}}}
+		plankit.Write(t, planparser.PlanDir(pair), csharpPlan)
+		t.Cleanup(func() { plankit.Write(t, planparser.PlanDir(pair), plan) })
+		wantArgs(t, gate(t, pair, nil, "--card", "1", "--main-packages"), circleTestsArgs)
+	})
+
 	t.Run("a passing --card call leaves a tier a listed tier covers out of the tiers it did not run", func(t *testing.T) {
 		edit(t, "docs/note.md", "a dirtying note\n")
 		g := gate(t, pair, nil, "--card", "1", "--tier", "1")

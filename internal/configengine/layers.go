@@ -40,7 +40,7 @@ const (
 	// LayerWorktree is the worktree's own tracked file under its anchor.
 	LayerWorktree Layer = "worktree"
 	// LayerMachine is the untracked machine override file under the board dir's .lym, between the worktree and local layers.
-	// It applies only to a hub-wide module with a machine key, and only when both Anchor and Board are set.
+	// It applies only to a module with a machine key, and only when both Anchor and Board are set.
 	LayerMachine Layer = "machine"
 	// LayerLocal is the untracked local override file under the anchor's .lym.
 	LayerLocal Layer = "local"
@@ -121,7 +121,7 @@ func MachineFile(board, module string) string {
 // LayerFile returns the file of a layer and whether that layer applies under dirs.
 // The default layer applies when Board is set;
 // the worktree layer when Anchor is set and the module is not hub-wide or Board is empty;
-// the machine layer when the module is hub-wide with a [MachineKeys] entry and both Anchor and Board are set,
+// the machine layer when the module has a [MachineKeys] entry and both Anchor and Board are set,
 // so a load that sets only Board, as a hub-file check does, stacks none;
 // the local layer when Anchor is set.
 // The template layer never has a file.
@@ -136,7 +136,7 @@ func LayerFile(dirs Dirs, spec Spec, layer Layer) (string, bool) {
 			return ConfigFile(dirs.Anchor, spec.Name), true
 		}
 	case LayerMachine:
-		if spec.HubWide && dirs.Anchor != "" && dirs.Board != "" && len(MachineKeys(spec)) > 0 {
+		if dirs.Anchor != "" && dirs.Board != "" && len(MachineKeys(spec)) > 0 {
 			return MachineFile(dirs.Board, spec.Name), true
 		}
 	case LayerLocal:

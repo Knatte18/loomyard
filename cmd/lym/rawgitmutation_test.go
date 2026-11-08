@@ -43,8 +43,10 @@ const rawGitMutationMinScannedFiles = 4
 // TestNoRawGitMutation_WebsterProductionSource walks the non-test .go files of internal/websterengine.
 // It fails if one contains the raw substring "gitrepo.New(" or "gitexec.Run(" and is not allowlisted.
 // Those two tokens are the construction and call forms a raw, fabric-bypassing git mutation carries.
+// A narrowed gate runs it only when a file under internal/websterengine or scankit changes; a whole gate always runs it.
 //
 //lym:guard
+//lym:watch internal/websterengine/*.go internal/websterengine/*/*.go internal/testkit/scankit/*.go
 func TestNoRawGitMutation_WebsterProductionSource(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(rawGitMutationAllowlist)
