@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -121,6 +122,12 @@ type harness struct {
 
 	// caller is the process the pane check sees.
 	caller paneCaller
+	// onTerminal makes standard input read as a terminal, which answers terminalLine or terminalErr;
+	// prompts records every prompt the hidden read printed.
+	onTerminal   bool
+	terminalLine string
+	terminalErr  error
+	prompts      []string
 	// beams, paused and the errors are what the seams answer.
 	beams                                     []string
 	paused                                    bool
@@ -194,6 +201,13 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 			return nil
 		},
 		pane: func() paneCaller { return h.caller },
+		readHiddenLine: func(_ io.Reader, prompt string) (string, bool, error) {
+			if !h.onTerminal {
+				return "", false, nil
+			}
+			h.prompts = append(h.prompts, prompt)
+			return h.terminalLine, true, h.terminalErr
+		},
 		newSlack: func(baseURL, token string) slackChecks {
 			return slackengine.NewAPI(baseURL, token, h.slack.server.Client())
 		},
@@ -368,7 +382,48 @@ func TestSlackCLI(t *testing.T) {
 			if diff := cmp.Diff([]slackRequest{{path: "/auth.test", authorization: "Bearer xoxb-good"}}, h.slack.seen(), cmp.AllowUnexported(slackRequest{})); diff != "" {
 				t.Errorf("Slack requests mismatch (-want +got):\n%s", diff)
 			}
+			if len(h.prompts) != 0 {
+				t.Errorf("piped login printed prompts %q; want none", h.prompts)
+			}
 		})
+
+		t.Run("OnATerminalPromptsAndStoresTheHiddenLine", func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, nil)
+			h.onTerminal = true
+			h.terminalLine = " xoxb-typed "
+			code, env := h.run("xoxb-piped\n", "login")
+			wantOK(t, code, env)
+			if diff := cmp.Diff([]string{tokenPrompt}, h.prompts); diff != "" {
+				t.Errorf("prompts mismatch (-want +got):\n%s", diff)
+			}
+			if token, found, err := slackengine.ReadToken(h.geom.TokenPath); err != nil || !found || token != "xoxb-typed" {
+				t.Errorf("ReadToken = %q, %v, %v; want the trimmed line read at the prompt", token, found, err)
+			}
+		})
+
+		terminalRefusals := []struct {
+			name  string
+			line  string
+			err   error
+			wants []string
+		}{
+			{"AnEmptyLineIsRefusedNamingThePrompt", " ", nil, []string{"no token entered at the prompt", "lym slack login"}},
+			{"AnInterruptedReadIsRefusedNamingLogin", "", errors.New("interrupted"), []string{"interrupted", "nothing was stored", "lym slack login"}},
+		}
+		for _, tt := range terminalRefusals {
+			t.Run("OnATerminal"+tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t, nil)
+				h.onTerminal = true
+				h.terminalLine, h.terminalErr = tt.line, tt.err
+				code, env := h.run("", "login")
+				wantRefused(t, code, env, tt.wants...)
+				if len(h.slack.seen()) != 0 || fileExists(h.geom.TokenPath) {
+					t.Error("a refused terminal read reached Slack or the token file; want neither")
+				}
+			})
+		}
 
 		t.Run("RefusedTokenNamesTheOAuthPageAndStoresNothing", func(t *testing.T) {
 			t.Parallel()

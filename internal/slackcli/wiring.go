@@ -1,16 +1,23 @@
 // wiring.go fills a slackCLI's seams with their production values over a real hub.
-// The seams cover the hub's geometry, the creel mailbox, the beam and pause readers, and the relay's dependencies.
+// The seams cover the hub's geometry, the creel mailbox, and the beam and pause readers.
+// They also cover the relay's dependencies and the hidden read of the token on a terminal.
 
 package slackcli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
+
+	"golang.org/x/term"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/creelcli"
@@ -35,6 +42,46 @@ func productionCLI() *slackCLI {
 		clock:           slackengine.SystemClock{},
 		resolveLocation: lymcwd.Resolve,
 		wire:            wireProduction,
+		readHiddenLine:  readHiddenTerminalLine,
+	}
+}
+
+// readHiddenTerminalLine prints prompt to standard error and reads one line with echo off when in is a terminal.
+// Any other input is left unread and reported as no terminal.
+// An interrupt or termination signal during the read restores the terminal's echo and ends the read with an error,
+// so the operator's shell is never left with echo off.
+func readHiddenTerminalLine(in io.Reader, prompt string) (string, bool, error) {
+	file, ok := in.(*os.File)
+	if !ok || !term.IsTerminal(int(file.Fd())) {
+		return "", false, nil
+	}
+	fd := int(file.Fd())
+	state, err := term.GetState(fd)
+	if err != nil {
+		return "", true, err
+	}
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	type readResult struct {
+		line []byte
+		err  error
+	}
+	// Buffered, so the read's goroutine never blocks once an interrupt has ended the wait for it.
+	read := make(chan readResult, 1)
+	fmt.Fprint(os.Stderr, prompt)
+	go func() {
+		line, err := term.ReadPassword(fd)
+		read <- readResult{line, err}
+	}()
+	// Echo off swallows the operator's Enter, so the newline is printed here to end the prompt's line.
+	defer fmt.Fprintln(os.Stderr)
+	select {
+	case result := <-read:
+		return string(result.line), true, result.err
+	case <-signals:
+		_ = term.Restore(fd, state)
+		return "", true, errors.New("interrupted")
 	}
 }
 

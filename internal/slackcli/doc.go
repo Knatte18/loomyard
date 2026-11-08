@@ -6,6 +6,10 @@
 // `start` and `stop` bring the relay up and down, `away` and `back` set the presence, and `status` prints it with the relay's health.
 // `relay` is hidden: the double fork's intermediate runs it with `--fork`, and the relay it starts runs it with `--after`.
 //
+// `login` reads the token from standard input.
+// On a terminal it prints a prompt to standard error and reads one line with echo off;
+// any other input it reads to its end, so a script can pipe the token in.
+//
 // Every verb but `status` and `relay` first checks which pane its process runs in, with creel's own walk.
 // `login` and `setup` refuse any strand's pane, and the other verbs refuse every strand's pane but an orch's.
 // A strand must not store the operator's credentials or move the operator's presence.

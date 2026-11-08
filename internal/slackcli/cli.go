@@ -33,6 +33,8 @@ const (
 	noTokenMessage = "slack: no Slack token on this machine; way forward: run `lym slack login` from the operator's terminal"
 	// missingScopeCode is the error code Slack answers a call the token's scopes do not cover with.
 	missingScopeCode = "missing_scope"
+	// tokenPrompt is what `login` prints on a terminal before it reads the token with echo off.
+	tokenPrompt = "Paste the Slack app's Bot User OAuth Token (xoxb-…) and press Enter: "
 )
 
 // slackChecks is the Slack calls that `login` and `setup` make to check the token, a channel and a user.
@@ -62,6 +64,9 @@ type slackCLI struct {
 
 	// pane describes the process the verb runs in, which the pane check reads to decide whether the verb may run.
 	pane func() paneCaller
+	// readHiddenLine prints prompt and reads one line with echo off when in is a terminal, reporting onTerminal;
+	// it reads nothing from any other input.
+	readHiddenLine func(in io.Reader, prompt string) (line string, onTerminal bool, err error)
 	// newSlack builds the Slack calls that `login` and `setup` make, against baseURL with token.
 	newSlack func(baseURL, token string) slackChecks
 	// newMailbox builds the creel mailbox signing as the SLACK program, which carries the presence notices.
@@ -191,6 +196,9 @@ func (c *slackCLI) loginCmd() *cobra.Command {
 		Long: `login reads the app's Bot User OAuth Token from standard input, never an
 argument, checks it with Slack and only then stores it in this machine's
 credential file, private to the user. Slack rejecting the token stores nothing.
+On a terminal it prompts for the token and reads one line with echo off, so the
+token never shows; otherwise it reads standard input to its end, so a script
+can pipe the token in.
 
 Create a Slack app, give it the bot scopes channels:history and channels:read
 for a public channel or groups:history and groups:read for a private one,
@@ -212,13 +220,9 @@ func (c *slackCLI) login(cmd *cobra.Command) (map[string]any, error) {
 	if err := paneRefusal(c.pane(), false, terminalWayForward("login")); err != nil {
 		return nil, err
 	}
-	raw, err := io.ReadAll(cmd.InOrStdin())
+	token, err := c.readToken(cmd.InOrStdin())
 	if err != nil {
-		return nil, fmt.Errorf("slack: read the token from standard input: %w", err)
-	}
-	token := strings.TrimSpace(string(raw))
-	if token == "" {
-		return nil, errors.New("slack: no token on standard input; way forward: pipe the app's Bot User OAuth Token (`xoxb-…`) into `lym slack login`, or paste it and end the input with Ctrl-D")
+		return nil, err
 	}
 	if err := c.newSlack(c.slackBaseURL, token).AuthTest(cmd.Context()); err != nil {
 		return nil, tokenRefusal(err)
@@ -227,6 +231,31 @@ func (c *slackCLI) login(cmd *cobra.Command) (map[string]any, error) {
 		return nil, err
 	}
 	return map[string]any{"token_file": c.geom.TokenPath}, nil
+}
+
+// readToken reads the trimmed token from in: one hidden line after a prompt on a terminal, and all of in otherwise.
+// An empty token is refused, so no empty token reaches Slack.
+func (c *slackCLI) readToken(in io.Reader) (string, error) {
+	line, onTerminal, err := c.readHiddenLine(in, tokenPrompt)
+	if err != nil {
+		return "", fmt.Errorf("slack: read the token from the terminal: %w; nothing was stored; way forward: run `lym slack login` again", err)
+	}
+	if onTerminal {
+		token := strings.TrimSpace(line)
+		if token == "" {
+			return "", errors.New("slack: no token entered at the prompt; way forward: run `lym slack login` again and paste the app's Bot User OAuth Token (`xoxb-…`) at the prompt")
+		}
+		return token, nil
+	}
+	raw, err := io.ReadAll(in)
+	if err != nil {
+		return "", fmt.Errorf("slack: read the token from standard input: %w", err)
+	}
+	token := strings.TrimSpace(string(raw))
+	if token == "" {
+		return "", errors.New("slack: no token on standard input; way forward: pipe the app's Bot User OAuth Token (`xoxb-…`) into `lym slack login`, or run it from a terminal and paste the token at the prompt")
+	}
+	return token, nil
 }
 
 // tokenRefusal is the refusal of a token Slack's auth check failed on.
