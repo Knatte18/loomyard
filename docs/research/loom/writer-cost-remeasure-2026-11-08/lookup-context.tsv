@@ -1,0 +1,52 @@
+sample	slug	session	role	batch	description	first_ctx	last_ctx
+2026-11-04	batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	1	Trace bug 2: archive tag push	18812	53413
+2026-11-04	batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	1	Trace bug 3: cancel push race	18625	79444
+2026-11-04	batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	1	Trace bug 1: pair gone	18679	54262
+2026-11-04	batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	1	Fabric pushes and locks lookup	19050	78869
+2026-11-04	batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	1	Batten pre-run flow lookup	18935	81594
+2026-11-04	batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	1	Fabric remove way-forward lookup	18701	61180
+2026-11-04	batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	1	Origin reconcile entry lookup	18699	70467
+2026-11-04	decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	1	Find docs naming board get, decision verbs	18623	46621
+2026-11-04	decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	1	Map boardengine tests and helpers	18706	42647
+2026-11-04	decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	1	Map loomcli decision and seam tests	18787	42600
+2026-11-04	shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	1	Registry coverage guards lookup	18616	58415
+2026-11-04	shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	1	Status rendering lookup	18377	54792
+2026-11-04	shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	1	Tapestry-by-name sites	18483	53894
+2026-11-04	shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	1	Profile block lookup	18354	39533
+2026-11-08	pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	1	Finalize and PR landing code	18972	56050
+2026-11-08	pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	1	In-flight run migration mechanism	18894	43039
+2026-11-08	pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	1	Beam verbs, dobby, locks	18852	39615
+2026-11-08	pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	discussion	1	Pawl recipe and Beam-Await	18895	42652
+2026-11-08	pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	1	Find dobby land and beam fork code	18987	54081
+2026-11-08	pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	1	Find pawl wiring of deps	19008	48092
+2026-11-08	pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	1	Find recipe parser and driver rules	19004	47969
+2026-11-08	pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	plan	1	Find reopen/PR-Review pawl references	19036	44180
+2026-11-08	raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	1	Orch handoff and glossary	18698	37118
+2026-11-08	raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	1	Board filing paths and locks	18806	51766
+2026-11-08	raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	1	Cost data: report timing, audits	18714	35489
+2026-11-08	raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	1	Motif recipe and batten flow	18794	44585
+2026-11-08	raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	discussion	1	Interactive Discussion-Write mode	18744	53042
+2026-11-08	raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	Map board engine seams	19520	61362
+2026-11-08	raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	Map loom verbs and gates	19333	85347
+2026-11-08	raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	Map shuttle usage seams	19373	47465
+2026-11-08	raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	Map recipe and batten wiring	19353	65128
+2026-11-08	raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	Map report packages	19119	73718
+2026-11-08	raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	Map shed session end and records	19248	60484
+2026-11-08	raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	plan	1	Map pawl BeamUp and beam create	19184	48384
+2026-11-08	drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	Fabric commit and trailer seams	18977	61860
+2026-11-08	drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	Loom caller check, goto, runproc	18980	67570
+2026-11-08	drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	Config migration and reinterpretation	18950	57268
+2026-11-08	drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	Webster run-level gate wiring	18969	60107
+2026-11-08	drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	Drift tests, fakes, seams	18911	43855
+2026-11-08	drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	plan	1	Drift stencils, docs, references	19007	44582
+2026-11-08	drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	1	Recipes and drift rows	18615	36277
+2026-11-08	drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	1	Commits and seal facts	18718	38416
+2026-11-08	drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	1	Writer gate seams	18607	45473
+2026-11-08	drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	1	Drift config and parent verbs	18710	64465
+2026-11-08	drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	discussion	1	Map drift module today	18715	39451
+2026-11-08	slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	1	Orch bring-up and dobby hooks lookup	18967	48765
+2026-11-08	slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	1	Config and CLI registration lookup	19000	40073
+2026-11-08	slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	1	Spawn/re-exec precedents lookup	18999	46415
+2026-11-08	slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	plan	1	Resume pointer, pause, index lookup	19017	43904
+2026-11-08	creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	plan	1	Find consumers of creel line formats	10144	51560
+2026-11-08	creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	plan	1	Find registrations for new verb and module	9975	61244

@@ -1,0 +1,902 @@
+slug	session	kind	role	turn	call	ts	tool	class	key
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	1	1	2026-11-05T07:13:43.510Z	Skill	skill	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	1	2	2026-11-05T07:13:43.510Z	Skill	skill	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	3	1	2026-11-05T07:13:47.108Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/.lym/shuttle/0c48060668440b712c951b61b3bb51c7/prompt.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	4	1	2026-11-05T07:13:48.708Z	Bash	lym-read	lym board get '{"slug":"pawl-orch-landing"}'; echo ---; lym board list
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	5	1	2026-11-05T07:13:50.882Z	Bash	other-bash	for s in pr-review-wait-silent dormant-orch beam-orch-root-project reparent-running-task; do lym board get "{\"slug\":\"$s\"}" | head -c 6000; echo; echo ---; d
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	5	2	2026-11-05T07:13:50.882Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-discussion-spec.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	6	1	2026-11-05T07:13:56.367Z	Agent	agent	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	6	2	2026-11-05T07:13:56.367Z	Agent	agent	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	6	3	2026-11-05T07:13:56.367Z	Agent	agent	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	6	4	2026-11-05T07:13:56.367Z	Agent	agent	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	7	1	2026-11-05T07:14:22.048Z	Bash	search	ls pattern/ 2>/dev/null | head; ls docs/pattern 2>/dev/null | head; find . -path ./node_modules -prune -o -name 'PATTERN-shed-recipe-registry.md' -print 2>/dev/
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	7	2	2026-11-05T07:14:22.048Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/contracts/recipes/pawl-recipe.yaml
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	8	1	2026-11-05T07:14:25.188Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/pattern/PATTERN-shed-recipe-registry.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	8	2	2026-11-05T07:14:25.188Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/pattern/PATTERN-refusal-way-forward.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	8	3	2026-11-05T07:14:25.188Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/pattern/PATTERN-durable-vs-ephemeral-state.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	9	1	2026-11-05T07:14:27.846Z	Bash	git-read	git log --oneline -12 -- contracts/recipes/pawl-recipe.yaml internal/landingshed 2>/dev/null; ls internal | grep -iE 'beam|landing|pawl|prreview|describe|align|
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	10	1	2026-11-05T07:14:29.739Z	Bash	search	ls internal/pawlengine internal/landingshed internal/beamcli internal/githubclient
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	11	1	2026-11-05T07:14:32.972Z	Bash	read	wc -l internal/pawlengine/*.go internal/landingshed/{beamdescribe,prreview,prsession,pullrequestmode,finalize_pr,finalize_land,parentalign}.go internal/beamcli/
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	12	1	2026-11-05T07:14:36.601Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/pawlengine/doc.go
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	12	2	2026-11-05T07:14:36.601Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/beamcli/land.go
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	12	3	2026-11-05T07:14:36.601Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/pawlengine/beamawait.go
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	13	1	2026-11-05T07:14:53.144Z	Bash	search	grep -n "holdFreeProducers\|func RunHolds" -A12 internal/boardengine/runlock.go | head -60; grep -rn "RunHolds(" --include=*.go internal | grep -v _test | head
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	14	1	2026-11-05T07:14:56.472Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/landingshed/pullrequestmode.go
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	14	2	2026-11-05T07:14:56.472Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/landingshed/beamdescribe.go
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	14	3	2026-11-05T07:14:56.472Z	Bash	search	ls internal/pullrequest; grep -n "^func \|^type \|^// [A-Z]" internal/pullrequest/record.go | head -40; grep -n "^func \|^type " internal/pullrequest/client.go 
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	14	4	2026-11-05T07:14:56.472Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/landingshed/finalize_pr.go
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	15	1	2026-11-05T07:16:32.675Z	Bash	search	sed -n 1,200p internal/battencli/beamland.go | grep -n "^//\|^func\|// " | head -50; grep -n "Ready\|ready" internal/dobbyengine/land.go | head -30
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	16	1	2026-11-05T07:16:40.671Z	ToolSearch	other	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	17	1	2026-11-05T07:16:42.804Z	WebSearch	other	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	18	1	2026-11-05T07:17:20.194Z	Bash	search	sed -n 1,80p internal/loomshed/interruptpolicy.go; grep -n "func \|flock\|Lock(" internal/fabricengine/pushlockholder.go | head -20; grep -n "pushLockBusyError\
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	19	1	2026-11-05T07:18:08.721Z	Bash	search	ls internal/dobbyengine/landnotice.go internal/dobbyengine/land.go internal/orchcli/refusal.go contracts/orchrole/orch-role.md internal/shedengine/run.go intern
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	20	1	2026-11-05T07:18:13.231Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/decision-record.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	21	1	2026-11-05T07:19:30.636Z	Bash	search	grep -rn "pattern-entry-line-cap\|patternRuleTextCap\|RuleTextCap" --include=*.go internal | grep -v _test | head -5
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	22	1	2026-11-05T07:19:32.659Z	Bash	search	grep -rn "MaxEntryTextChars *=" --include=*.go internal
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	23	1	2026-11-05T07:19:39.351Z	Bash	read	printf '%s' "Deciding if a landing uses a pull request: only landingshed's one resolver, from the receiving \`beam.pull_request\`, the entry's \`pull_request\` 
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	24	1	2026-11-05T07:19:45.905Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/decision-record.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	25	1	2026-11-05T07:19:47.438Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/relevant.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	25	2	2026-11-05T07:19:47.438Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/decision-record.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	25	3	2026-11-05T07:19:47.438Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/support-log.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	26	1	2026-11-05T07:20:09.968Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/stencils/loom/loom-rubric-discussion-review.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	27	1	2026-11-05T07:20:15.804Z	Agent	agent	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	27	2	2026-11-05T07:20:15.804Z	Agent	agent	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	27	3	2026-11-05T07:20:15.804Z	Agent	agent	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	27	4	2026-11-05T07:20:15.804Z	Agent	agent	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	27	5	2026-11-05T07:20:15.804Z	Agent	agent	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	27	6	2026-11-05T07:20:15.804Z	Agent	agent	
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	28	1	2026-11-05T07:20:38.232Z	Bash	other-bash	lym shuttle await-forks
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	29	1	2026-11-05T07:22:13.897Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/twill/twill-lens-report-spec.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	30	1	2026-11-05T07:22:16.035Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/support-log.lens-leanness.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	30	2	2026-11-05T07:22:16.035Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/support-log.lens-board-scope.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	30	3	2026-11-05T07:22:16.035Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/support-log.lens-interactions.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	30	4	2026-11-05T07:22:16.035Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/support-log.lens-bound-breaker.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	30	5	2026-11-05T07:22:16.035Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/support-log.lens-existing-paths.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	30	6	2026-11-05T07:22:16.035Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/support-log.lens-walkthrough.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	31	1	2026-11-05T07:24:15.726Z	Bash	search	grep -rn "InterruptPolicyFor\|InterruptPolicyReinvoke\|driveRepairCap\b" --include=*.go internal | grep -v _test | grep -v "^internal/loomshed/interruptpolicy.g
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	32	1	2026-11-05T07:24:46.514Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/decision-record.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	33	1	2026-11-05T07:25:57.525Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/support-log.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	33	2	2026-11-05T07:25:57.525Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/support-log.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	33	3	2026-11-05T07:25:57.525Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/support-log.md
+pawl-orch-landing	8a5b3389-9acd-452e-a0e5-309131c7969f	main	discussion	34	1	2026-11-05T07:26:21.268Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/relevant.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	1	1	2026-11-05T07:45:39.027Z	Skill	skill	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	1	2	2026-11-05T07:45:39.027Z	Skill	skill	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	3	1	2026-11-05T07:45:43.915Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/.lym/shuttle/218030009e5a17527050ee0b31dfb511/prompt.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	4	1	2026-11-05T07:45:45.272Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/decision-record.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	4	2	2026-11-05T07:45:45.272Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/discussion/relevant.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	5	1	2026-11-05T07:45:47.907Z	Bash	git-read	ls internal/pawlengine internal/beamcli internal/landingshed internal/dobbyengine internal/shedrecipe internal/sheddriver internal/loomshed internal/orchcli int
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	6	1	2026-11-05T07:45:51.473Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/pawlengine/landrequest.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	6	2	2026-11-05T07:45:51.473Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/pawlengine/doc.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	6	3	2026-11-05T07:45:51.473Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/pawlengine/ready.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	6	4	2026-11-05T07:45:51.473Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/pawlengine/beamawait.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	6	5	2026-11-05T07:45:51.473Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/pawlengine/deps.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	6	6	2026-11-05T07:45:51.473Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/shedrecipe/entries_pawl.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	6	7	2026-11-05T07:45:51.473Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/contracts/recipes/pawl-recipe.yaml
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	7	1	2026-11-05T07:45:57.947Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/beamcli/deps.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	7	2	2026-11-05T07:45:57.947Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/beamcli/mergeparent.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	7	3	2026-11-05T07:45:57.947Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/beamcli/cli.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	7	4	2026-11-05T07:45:57.947Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/beamcli/land.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	7	5	2026-11-05T07:45:57.947Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/beamcli/doc.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	8	1	2026-11-05T07:46:04.233Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/pullrequest/record.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	8	2	2026-11-05T07:46:04.233Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/landingshed/pullrequestmode.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	8	3	2026-11-05T07:46:04.233Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/landingshed/beamdescribe.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	8	4	2026-11-05T07:46:04.233Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/landingshed/finalize_pr.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	8	5	2026-11-05T07:46:04.233Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/pullrequest/client.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	9	1	2026-11-05T07:46:16.765Z	Agent	agent	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	9	2	2026-11-05T07:46:16.765Z	Agent	agent	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	9	3	2026-11-05T07:46:16.765Z	Agent	agent	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	9	4	2026-11-05T07:46:16.765Z	Agent	agent	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	10	1	2026-11-05T07:46:46.971Z	Bash	read	wc -l internal/landingshed/finalize.go internal/landingshed/deps.go internal/landingshed/prreview.go internal/landingshed/finalize_land.go internal/shedrecipe/r
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	11	1	2026-11-05T07:46:50.156Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/landingshed/deps.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	11	2	2026-11-05T07:46:50.156Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/loomshed/interruptpolicy.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	11	3	2026-11-05T07:46:50.156Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/orchcli/refusal.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	11	4	2026-11-05T07:46:50.156Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/dobbyengine/land.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	11	5	2026-11-05T07:46:50.156Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/sheddriver/driverules.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	11	6	2026-11-05T07:46:50.156Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/battencli/beamfork.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	11	7	2026-11-05T07:46:50.156Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/shedrecipe/registry.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	12	1	2026-11-05T07:46:55.968Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/boardengine/runlock.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	12	2	2026-11-05T07:46:55.968Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/dobbyengine/landnotice.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	12	3	2026-11-05T07:46:55.968Z	Bash	search	grep -n "pullRequestLanding\|mergeOnGitHub\|openAtOnce\|prLanding\|func (fz \*Finalize)\|Squash\|DescriptionPath\|title, message\|commitMessage\|readDescription
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	13	1	2026-11-05T07:47:00.790Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/landingshed/finalize.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	14	1	2026-11-05T07:47:02.874Z	Bash	search	grep -n "Reopen\|reopen\|Beam-Await\|reroute\|Reroute" internal/landingshed/prreview.go internal/landingshed/prsession.go | head -60; grep -n "beam\|Beam" contr
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	15	1	2026-11-05T07:47:07.568Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/contracts/orchrole/orch-role.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	16	1	2026-11-05T07:47:10.685Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/loomcli/pawlwiring.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	16	2	2026-11-05T07:47:10.685Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/loomcli/landingdeps.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	16	3	2026-11-05T07:47:10.685Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/loomcli/beamwiring.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	17	1	2026-11-05T07:47:25.906Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/loomengine/config.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	17	2	2026-11-05T07:47:25.906Z	Bash	search	cat pattern/PATTERN-tracked-file-locks.md | head -40; grep -rn "^func " internal/lock/*.go | grep -v _test | head -30; grep -n "beam\|Beam" internal/hubgeom/dob
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	18	1	2026-11-05T07:47:37.918Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/shedengine/run.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	18	2	2026-11-05T07:47:37.918Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/sheddriver/drive.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	18	3	2026-11-05T07:47:37.918Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/sheddriver/drive.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	19	1	2026-11-05T07:47:44.029Z	Bash	search	grep -n "^type Shed struct" -A60 internal/shedengine/*.go | grep -n "^\|" | head -90 | cut -c1-200
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	19	2	2026-11-05T07:47:44.029Z	Bash	search	grep -rn "HandsBack:\|StartCheck:\|sheddriver.Deps{" internal --include=*.go | grep -v _test | head; grep -n "func NewShed\|func Build\|Producers\|Terminals" in
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	20	1	2026-11-05T07:47:50.686Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/loomcli/drivewiring.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	20	2	2026-11-05T07:47:50.686Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/shedbuild/newshed.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	20	3	2026-11-05T07:47:50.686Z	Bash	search	grep -n "^func Test\|t.Run(\"" internal/loomrecipe/pawlrecipe_test.go | head -20; grep -n "^func Test" internal/pawlengine/*_test.go internal/beamcli/land_test.
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	21	1	2026-11-05T07:47:57.854Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/stencils/loom/loom-rubric-plan-review.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	22	1	2026-11-05T07:47:59.984Z	Agent	agent	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	1	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/01-shed-retired-rows.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	2	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/15-beam-ready-refusals.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	3	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/14-beam-pr-status-close.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	4	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/12-beam-describe-verb.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	5	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/04-describe-function.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	6	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/06-remove-reopen.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	7	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/18-orch-role-landing.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	8	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/05-pawl-rows.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	9	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/10-beam-await-entry.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	10	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/07-ready-beam-starts-no-member.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	11	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/16-member-landing-notice.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	12	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/03-pr-merge-state.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	13	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/02-landing-record.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	14	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/13-beam-pr-open-update.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	15	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/00-overview.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	16	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/17-beam-start-in-landing.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	17	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/08-retired-move-pawl.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	18	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/11-finalize-beam-record.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	24	19	2026-11-05T08:00:52.729Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/09-await-survives-loop-exit.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	25	1	2026-11-05T08:01:05.514Z	Agent	agent	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	25	2	2026-11-05T08:01:05.514Z	Agent	agent	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	25	3	2026-11-05T08:01:05.514Z	Agent	agent	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	25	4	2026-11-05T08:01:05.514Z	Agent	agent	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	25	5	2026-11-05T08:01:05.514Z	Agent	agent	
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	26	1	2026-11-05T08:01:31.499Z	Bash	other-bash	lym shuttle await-forks
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	27	1	2026-11-05T08:03:36.433Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/twill/twill-lens-report-spec.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	28	1	2026-11-05T08:03:38.395Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/lens-review.lens-coverage.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	28	2	2026-11-05T08:03:38.395Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/lens-review.lens-forced-edits.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	28	3	2026-11-05T08:03:38.395Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/lens-review.lens-row-validity.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	28	4	2026-11-05T08:03:38.395Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/lens-review.lens-guard-reach.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	28	5	2026-11-05T08:03:38.395Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/lens-review.lens-way-forward.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	29	1	2026-11-05T08:06:41.385Z	Bash	search	sed -n 95,130p internal/fabriccli/merge_verbs.go; grep -n "^func (r \*Repo)\|^func (r Repo)" internal/gitrepo/*.go | grep -i "diff\|path\|changed\|name\|log\|co
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	29	2	2026-11-05T08:06:41.385Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/shedengine/run.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	29	3	2026-11-05T08:06:41.385Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/loomcli/wiring.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	30	1	2026-11-05T08:07:07.059Z	Bash	other-bash	grep -rhn "Use: *\"" internal/fabriccli/*.go | grep -v _test | cut -c1-120; grep -n "func.*mergeIn\|ResolveSHA\|refs/remotes\|upstream" internal/fabricengine/me
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	31	1	2026-11-05T08:07:10.569Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/internal/fabricengine/mergeguards.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	32	1	2026-11-05T08:07:17.532Z	Bash	search	grep -h "Knatte18/loomyard/internal/" internal/orchcli/*.go | grep -v _test | sort -u | tr -d '\t'; grep -rn "loomrecipe\|battenrecipe" internal/orchcli/*.go | 
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	33	1	2026-11-05T08:07:35.055Z	Bash	search	grep -n "^func Test\|startDobby\|dobbyStarted\|readBeamFacts" internal/orchcli/start_test.go | head -40; grep -n "func (c \*orchCLI) readBeamFacts" -A30 interna
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	34	1	2026-11-05T08:07:38.422Z	Bash	search	grep -n "readBeamFacts" internal/orchcli/*.go | grep -v _test | head; sed -n 930,1006p internal/orchcli/start_test.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	35	1	2026-11-05T08:07:43.248Z	Bash	search	grep -rn "readBeamFacts(" internal/orchcli/*_test.go | head -5; sed -n 37,80p internal/orchcli/ownerpause.go; grep -n "func newLoopHarness" -A25 internal/dobbye
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	36	1	2026-11-05T08:07:47.739Z	Bash	search	sed -n 285,320p internal/gitrepo/blobread.go; grep -n "func (f \*Fabric) CommitLog\|func (f \*Fabric) HeadHoldsCommitsNotIn\|func ReadOriginFor\|func (f \*Fabri
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	37	1	2026-11-05T08:08:32.386Z	Bash	quarry	lym quarry glyphs --text internal/dobbyengine | grep -i "view\.go\|WaitingTask\|BuildView\|buildView" | head -20; sed -n 100,125p internal/dobbyengine/view.go
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	38	1	2026-11-05T08:08:39.144Z	Bash	quarry	lym quarry resolve internal/battencli#DobbyLines internal/dobbyengine#TestStartReady_RefusalsAndBackoff internal/orchcli#readBeamFacts internal/beamcli#TestHubD
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	39	1	2026-11-05T08:08:46.824Z	Bash	quarry	lym quarry resolve internal/battencli#DobbyLines internal/dobbyengine#TestStartReady_RefusalsAndBackoff internal/orchcli#readBeamFacts internal/beamcli#TestHubD
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	40	1	2026-11-05T08:08:50.726Z	Bash	quarry	grep -n "^func Test" internal/battencli/overviewdobby_test.go; lym quarry resolve internal/beamcli#TestHubDobbyDeps_LandsOnlyAFlaggedBeam internal/beamcli#TestH
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	1	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/13-beam-pr-open-update.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	2	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/10-beam-await-entry.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	3	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/08-retired-move-pawl.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	4	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/15-beam-ready-refusals.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	5	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/06-remove-reopen.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	6	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/16-member-landing-notice.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	7	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/03-pr-merge-state.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	8	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/17-beam-start-in-landing.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	9	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/09-await-survives-loop-exit.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	10	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/01-shed-retired-rows.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	11	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/14-beam-pr-status-close.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	12	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/12-beam-describe-verb.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	13	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/07-ready-beam-starts-no-member.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	41	14	2026-11-05T08:08:57.780Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/11-finalize-beam-record.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	42	1	2026-11-05T08:12:56.721Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/lens-review.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	42	2	2026-11-05T08:12:56.721Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/00-overview.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	42	3	2026-11-05T08:12:56.721Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/05-pawl-rows.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	44	1	2026-11-05T08:17:12.075Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/.lym/shuttle/218030009e5a17527050ee0b31dfb511/gate-findings.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	45	1	2026-11-05T08:17:28.244Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/05-pawl-rows.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	45	2	2026-11-05T08:17:28.244Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/15-beam-ready-refusals.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	46	1	2026-11-05T08:17:41.664Z	Bash	other-bash	a='Deciding if a landing uses a pull request: only landingshed'"'"'s one resolver, from the receiving `beam.pull_request`, the entry'"'"'s `pull_request` or a b
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	47	1	2026-11-05T08:17:47.889Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/15-beam-ready-refusals.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	47	2	2026-11-05T08:17:47.889Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/15-beam-ready-refusals.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	47	3	2026-11-05T08:17:47.889Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/05-pawl-rows.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	47	4	2026-11-05T08:17:47.889Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/05-pawl-rows.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	47	5	2026-11-05T08:17:47.889Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/15-beam-ready-refusals.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	47	6	2026-11-05T08:17:47.889Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/15-beam-ready-refusals.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	47	7	2026-11-05T08:17:47.889Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/15-beam-ready-refusals.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	47	8	2026-11-05T08:17:47.889Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/lens-review.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	47	9	2026-11-05T08:17:47.889Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/05-pawl-rows.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	48	1	2026-11-05T08:18:07.871Z	Bash	other-bash	lym creel post --parent --expect-reply "pawl-orch-landing Plan-Write: the plan gate's pattern-headroom check fails. The two PATTERN changes the decision record 
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	50	1	2026-11-05T08:18:56.310Z	Bash	search	grep -n "Shorten PATTERN" -A6 _lym/discussion/decision-record.md; sed -n '/## PATTERN changes/,/## Notes/p' _lym/discussion/decision-record.md; grep -n "PATTERN
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	51	1	2026-11-05T08:18:58.850Z	Bash	search	grep -n "PATTERN-heddle-instructions\|PATTERN-owner-machine" PATTERN.md; sed -n 58,66p _lym/plan/11-finalize-beam-record.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	52	1	2026-11-05T08:19:01.828Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/00-overview.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	52	2	2026-11-05T08:19:01.828Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/_lym/plan/11-finalize-beam-record.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	54	1	2026-11-05T08:19:17.098Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/pawl-orch-landing/.lym/shuttle/218030009e5a17527050ee0b31dfb511/gate-findings.md
+pawl-orch-landing	e940a999-ae26-4684-9d8a-0c70e934ebd6	main	plan	55	1	2026-11-05T08:19:19.241Z	Bash	validate	grep -n "PATTERN-" _lym/plan/00-overview.md; grep -c "PATTERN-owner-machine" _lym/plan/11-finalize-beam-record.md; lym loom validate-plan 2>&1 | tail -5
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	1	1	2026-11-05T08:33:10.424Z	Skill	skill	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	1	2	2026-11-05T08:33:10.424Z	Skill	skill	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	3	1	2026-11-05T08:33:14.427Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/.lym/shuttle/24901dc2f3f9a0dd31a7673a0a4aa029/prompt.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	4	1	2026-11-05T08:33:15.850Z	Bash	lym-read	lym board get '{"slug":"raddle-recipe"}'; echo ----; lym board list
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	5	1	2026-11-05T08:33:18.164Z	Bash	other-bash	for s in sketch-board-type discussed-task-split plan-after-dependency beam-orch-root-project reparent-running-task parts-plan-and-build; do echo "==== $s"; lym 
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	6	1	2026-11-05T08:33:25.553Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	6	2	2026-11-05T08:33:25.553Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-discussion-spec.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	6	3	2026-11-05T08:33:25.553Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	6	4	2026-11-05T08:33:25.553Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	6	5	2026-11-05T08:33:25.553Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	6	6	2026-11-05T08:33:25.553Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	7	1	2026-11-05T08:33:53.101Z	Bash	search	ls pattern/ 2>/dev/null | head -50; ls
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	8	1	2026-11-05T08:33:54.866Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/pattern/PATTERN-sole-parsers.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	8	2	2026-11-05T08:33:54.866Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/pattern/PATTERN-no-hard-coded-choice.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	8	3	2026-11-05T08:33:54.866Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/pattern/PATTERN-shed-recipe-registry.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	8	4	2026-11-05T08:33:54.866Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/pattern/PATTERN-stencil-ownership.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	10	1	2026-11-05T08:34:00.576Z	Bash	lym-read	lym loom peers 2>&1 | head -40
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	12	1	2026-11-05T08:34:06.065Z	Bash	search	grep -rln "input_tokens\|cache_read\|TokenUsage\|CostUSD\|cost_usd" internal cmd --include=*.go | head -20
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	13	1	2026-11-05T08:34:09.072Z	Bash	search	sed -n 1,60p internal/shuttleengine/claudeengine/usage.go; echo ======; sed -n 1,80p internal/shedadapters/roundusage.go; grep -rn "roundusage\|RoundUsage" inte
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	14	1	2026-11-05T08:34:10.533Z	Bash	search	grep -rn "SessionUsage\|UsageReader" internal --include=*.go | grep -v _test | head -20
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	15	1	2026-11-05T08:34:12.872Z	Bash	search	sed -n 1,40p internal/shuttleengine/sessionusage.go; grep -rn "\.Usage\b" internal --include=*.go | grep -v _test | grep -v "shuttleengine/" | head -20
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	16	1	2026-11-05T08:34:22.272Z	Bash	search	cat contracts/recipes/motif-recipe.yaml; sed -n 530,580p internal/battencli/wire.go; sed -n 190,250p internal/loomcli/wiring.go; ls contracts/recipes/
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	17	1	2026-11-05T08:34:31.410Z	Bash	search	sed -n 1,40p contracts/recipes/sampler-recipe.yaml; echo =====; cat internal/boardengine/sketch.go | sed -n 1,100p; echo ====; grep -rn "RecordWrite" internal/s
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	18	1	2026-11-05T08:34:56.534Z	Bash	search	grep -rn "sampler-done" --include=*.go internal cmd | grep -v _test | head -8; grep -rn "sampler-done" contracts/stencils | head -5
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	19	1	2026-11-05T08:35:29.264Z	Bash	search	grep -n "^contract\|^entry\|engine:" contracts/recipes/*.yaml | head -60; grep -rn "LoomRecordEngines" internal --include=*.go | grep -v _test
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	20	1	2026-11-05T08:35:32.339Z	Bash	search	sed -n 1,40p internal/shedrecipe/entries_recordwrite.go 2>/dev/null || grep -rln "recordWriteEntry" internal/shedrecipe; grep -rn "Record-Write" internal/loomsh
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	21	1	2026-11-05T08:36:38.296Z	Bash	search	sed -n 1,120p internal/orchcli/notify.go; grep -n "func ClearMotifRun" -A30 internal/battencli/cleanup.go | head -50
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	22	1	2026-11-05T08:37:26.014Z	Bash	search	ls contracts/specs | head -30; ls contracts/stencils; ls internal/reportengine internal/runprofile | head -30; ls internal/discussionparser
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	23	1	2026-11-05T08:37:28.491Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	24	1	2026-11-05T08:38:39.230Z	Bash	search	find . -type d \( -name loom -o -name report -o -name lymdirs -o -name state \) -not -path "./.git/*" | head; ls docs/research/token-audit-2026-10-22/ | head -3
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	25	1	2026-11-05T08:38:44.965Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	25	2	2026-11-05T08:38:44.965Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	25	3	2026-11-05T08:38:44.965Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	25	4	2026-11-05T08:38:44.965Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	25	5	2026-11-05T08:38:44.965Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	25	6	2026-11-05T08:38:44.965Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	25	7	2026-11-05T08:38:44.965Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	26	1	2026-11-05T08:38:59.959Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	26	2	2026-11-05T08:38:59.959Z	Bash	search	ls docs/research/weaving-glossary.md; grep -n "raddle" docs/research/weaving-glossary.md | head
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	27	1	2026-11-05T08:39:03.478Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/support-log.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	27	2	2026-11-05T08:39:03.478Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/relevant.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	27	3	2026-11-05T08:39:03.478Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	28	1	2026-11-05T08:39:29.316Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/stencils/loom/loom-rubric-discussion-review.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	28	2	2026-11-05T08:39:29.316Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/twill/twill-lens-report-spec.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	29	1	2026-11-05T08:39:35.857Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	29	2	2026-11-05T08:39:35.857Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	29	3	2026-11-05T08:39:35.857Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	29	4	2026-11-05T08:39:35.857Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	29	5	2026-11-05T08:39:35.857Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	29	6	2026-11-05T08:39:35.857Z	Agent	agent	
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	30	1	2026-11-05T08:39:58.385Z	Bash	other-bash	lym shuttle await-forks
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	31	1	2026-11-05T08:41:20.816Z	Bash	search	sed -n 1,80p internal/beamcli/create.go | grep -n "" | sed -n 1,80p; grep -rn "Beam\b\|IsBeam\|KindProject" internal/dobbyengine/*.go | grep -v _test | head -15
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	32	1	2026-11-05T08:42:33.113Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/support-log.lens-bound-breaker.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	32	2	2026-11-05T08:42:33.113Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/support-log.lens-board-scope.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	32	3	2026-11-05T08:42:33.113Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/support-log.lens-existing-paths.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	32	4	2026-11-05T08:42:33.113Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/support-log.lens-walkthrough.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	32	5	2026-11-05T08:42:33.113Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/support-log.lens-interactions.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	32	6	2026-11-05T08:42:33.113Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/support-log.lens-leanness.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	33	1	2026-11-05T08:44:00.561Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	34	1	2026-11-05T08:44:58.525Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/support-log.md
+raddle-recipe	45a6e5c6-2692-4f21-bb50-4d02cd8afc8b	main	discussion	34	2	2026-11-05T08:44:58.525Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/relevant.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	1	1	2026-11-05T09:29:56.665Z	Skill	skill	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	1	2	2026-11-05T09:29:56.665Z	Skill	skill	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	3	1	2026-11-05T09:30:00.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/.lym/shuttle/8dbda374b0b650769b512a44ff826745/prompt.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	4	1	2026-11-05T09:30:01.874Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	4	2	2026-11-05T09:30:01.874Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/relevant.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	5	1	2026-11-05T09:30:05.447Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-plan-spec.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	5	2	2026-11-05T09:30:05.447Z	Bash	git-read	git log --oneline -15; ls; ls internal | head -300 | tr '\n' ' '; ls contracts contracts/recipes contracts/specs contracts/stencils
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	5	3	2026-11-05T09:30:05.447Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-plan-checks-spec.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	5	4	2026-11-05T09:30:05.447Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/stencils/loom/loom-rubric-plan-review.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	6	1	2026-11-05T09:30:16.210Z	Bash	search	cat contracts/recipes/motif-recipe.yaml contracts/recipes/sampler-recipe.yaml contracts/recipes/recipes.go; ls internal/shedrecipe internal/loomcli internal/loo
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	7	1	2026-11-05T09:30:20.305Z	Read	read	/home/knatte/.claude/projects/-home-knatte-Code-loomyard-LYMHUB-raddle-recipe/edb465a8-2bf5-4565-b49c-00b5559a62c4/tool-results/brqiwlylf.txt
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	8	1	2026-11-05T09:30:30.395Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	8	2	2026-11-05T09:30:30.395Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	8	3	2026-11-05T09:30:30.395Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	8	4	2026-11-05T09:30:30.395Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	8	5	2026-11-05T09:30:30.395Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	8	6	2026-11-05T09:30:30.395Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	8	7	2026-11-05T09:30:30.395Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	9	1	2026-11-05T09:31:41.439Z	Bash	search	grep -n "^type \|^func \|^\t[A-Z][A-Za-z]* .*//\|^\t[A-Z][A-Za-z]* " internal/shuttleengine/run.go | head -120; grep -n "^func \|^type " internal/shuttleengine/
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	10	1	2026-11-05T09:31:44.395Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/shuttleengine/wait.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	10	2	2026-11-05T09:31:44.395Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/shuttleengine/spec.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	10	3	2026-11-05T09:31:44.395Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/shuttleengine/run.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	11	1	2026-11-05T09:31:54.603Z	Bash	search	grep -rn "type StepTie" -A 14 internal/shuttleengine/; grep -rn "SetStep\b\|SetStep(" internal --include=*.go | grep -v _test | head; grep -rln "shuttleengine.N
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	12	1	2026-11-05T09:31:58.535Z	Bash	search	grep -rn "StepTie\|\.step\b\|r.step" internal --include=*.go | grep -v _test | head -30; grep -n "shuttleengine.New" internal/loomcli/wiring.go internal/loomcli
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	13	1	2026-11-05T09:32:00.373Z	Bash	search	grep -rn "StepTie" internal --include=*.go | grep -v _test; sed -n 500,560p internal/loomcli/wiring.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	14	1	2026-11-05T09:32:10.284Z	Bash	search	sed -n 1,80p internal/shuttleengine/stepstop.go; sed -n 380,420p internal/loomcli/sharedbootstrap.go; grep -h "^\s*\"github.com/Knatte18/loomyard/internal" inte
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	15	1	2026-11-05T09:32:14.577Z	Bash	search	grep -rn -i "releas" internal/boardengine/*.go | grep -v _test | head -20; grep -rn -i "sketch" internal/boardengine/render.go internal/boardengine/template.yam
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	16	1	2026-11-05T09:32:19.105Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/boardengine/decision.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	16	2	2026-11-05T09:32:19.105Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/boardengine/slugrule.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	16	3	2026-11-05T09:32:19.105Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/boardengine/replay.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	16	4	2026-11-05T09:32:19.105Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/boardengine/board.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	16	5	2026-11-05T09:32:19.105Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/boardengine/sketch.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	17	1	2026-11-05T09:32:27.010Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/loomshed/recordwrite.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	17	2	2026-11-05T09:32:27.010Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/shedbuild/loomcontract.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	17	3	2026-11-05T09:32:27.010Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/loomcli/discussionrecord.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	17	4	2026-11-05T09:32:27.010Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/lymdirs/dirs.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	18	1	2026-11-05T09:32:39.274Z	Bash	search	grep -n "sole-parsers\|shed-shared-machinery\|headroom\|^## " PATTERN.md; grep -n "motif" docs/research/weaving-glossary.md | head -5; grep -n "record" internal
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	19	1	2026-11-05T09:32:44.078Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/battencli/startguard.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	20	1	2026-11-05T09:32:48.049Z	Bash	search	sed -n 160,200p internal/boardcli/cli.go; sed -n 1,40p internal/runprofile/template.yaml; sed -n 1,12p internal/loomengine/template.yaml; grep -n "^func \|^type
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	21	1	2026-11-05T09:32:58.525Z	Bash	search	grep -n "type Row struct" -A 40 internal/shedbuild/*.go | grep -v "^\s*//" | head -50; grep -n "^func \|Interactive\|interactive" internal/loomengine/discussion
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	22	1	2026-11-05T09:33:02.132Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/loomengine/config.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	22	2	2026-11-05T09:33:02.132Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/internal/loomengine/discussiontable.go
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	23	1	2026-11-05T09:33:10.897Z	Bash	search	grep -rn "StrandName:" internal/boardengine/*.go internal/boardcli/*.go | grep -v _test | head; grep -n "func OpenHub" -A 25 internal/boardengine/*.go | grep -n
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	24	1	2026-11-05T09:33:13.789Z	Bash	search	grep -rn "StrandName\b\|\.StrandName =" internal --include=*.go | grep -i "board\|cfg\.\|config" | grep -v _test | head
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	25	1	2026-11-05T09:33:15.843Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	27	1	2026-11-05T09:49:56.061Z	Bash	search	ls /home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	1	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/01-shuttle-usage-split.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	2	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/11-discussion-part-splice.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	3	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/04-usage-record-writer.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	4	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/09-raddle-paths-and-keys.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	5	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/02-codex-usage-reader.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	6	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/10-raddle-proposal-spec.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	7	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/08-report-cost.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	8	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/06-seed-and-landed-size.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	9	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/13-board-promote-raddle.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	10	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/05-usage-wiring.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	11	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/12-raddleparser.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	12	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/03-shuttle-session-end-hook.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	13	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/07-report-config.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	28	14	2026-11-05T09:49:58.423Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/00-overview.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	1	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/23-raddle-recipe.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	2	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/27-raddle-docs.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	3	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/20-raddle-verbs.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	4	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/14-raddle-store-slug-rule.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	5	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/16-board-raddle-writes.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	6	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/17-board-raddle-verb.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	7	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/24-batten-raddle-start-guard.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	8	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/18-record-write-stored.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	9	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/25-pawl-raddle-handoff.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	10	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/22-raddle-file-producer.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	11	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/21-raddle-write-producer.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	12	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/26-report-raddle.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	13	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/15-raddle-store-replay.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	29	14	2026-11-05T09:50:07.738Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/19-raddle-checks-and-state.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	30	1	2026-11-05T09:50:16.695Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	30	2	2026-11-05T09:50:16.695Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	30	3	2026-11-05T09:50:16.695Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	30	4	2026-11-05T09:50:16.695Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	30	5	2026-11-05T09:50:16.695Z	Agent	agent	
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	31	1	2026-11-05T09:50:42.223Z	Bash	other-bash	lym shuttle await-forks
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	32	1	2026-11-05T09:52:55.865Z	Bash	search	cat /home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/twill/twill-lens-report-spec.md; wc -c PATTERN.md; grep -rn "headroom\|Headroom" PATTERN.md pattern/*.md 
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	33	1	2026-11-05T09:54:38.587Z	Bash	quarry	sed -n 555,585p internal/loomengine/config.go; grep -n "Category[A-Z][a-zA-Z]* *Category\|Category[A-Z][a-zA-Z]* *=" internal/configengine/*.go | head; sed -n 1
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	34	1	2026-11-05T09:54:45.041Z	Bash	quarry	lym quarry resolve internal/boardengine#TestPromote internal/boardengine_test#TestPromote internal/boardengine_test#TestSlugRule internal/boardcli_test#TestCLI 
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	35	1	2026-11-05T09:55:00.082Z	Bash	quarry	lym quarry resolve internal/boardengine_test#TestFabricReplay internal/boardengine#TestFabricReplay internal/battencli#TestStartGuard_Refuse internal/pawlengine
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	36	1	2026-11-05T09:55:05.716Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/lens-review.lens-guard-reach.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	36	2	2026-11-05T09:55:05.716Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/lens-review.lens-forced-edits.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	36	3	2026-11-05T09:55:05.716Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/lens-review.lens-coverage.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	36	4	2026-11-05T09:55:05.716Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/lens-review.lens-way-forward.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	36	5	2026-11-05T09:55:05.716Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/lens-review.lens-row-validity.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	37	1	2026-11-05T09:56:31.938Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/06-seed-and-landed-size.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	37	2	2026-11-05T09:56:31.938Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/05-usage-wiring.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	37	3	2026-11-05T09:56:31.938Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/03-shuttle-session-end-hook.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	38	1	2026-11-05T09:57:10.336Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/09-raddle-paths-and-keys.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	38	2	2026-11-05T09:57:10.336Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/08-report-cost.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	39	1	2026-11-05T09:57:39.010Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/12-raddleparser.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	39	2	2026-11-05T09:57:39.010Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/12-raddleparser.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	39	3	2026-11-05T09:57:39.010Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/13-board-promote-raddle.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	40	1	2026-11-05T09:58:01.435Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/15-raddle-store-replay.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	40	2	2026-11-05T09:58:01.435Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/14-raddle-store-slug-rule.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	41	1	2026-11-05T09:58:26.010Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/17-board-raddle-verb.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	41	2	2026-11-05T09:58:26.010Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/17-board-raddle-verb.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	41	3	2026-11-05T09:58:26.010Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/17-board-raddle-verb.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	41	4	2026-11-05T09:58:26.010Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/16-board-raddle-writes.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	41	5	2026-11-05T09:58:26.010Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/18-record-write-stored.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	42	1	2026-11-05T09:58:53.453Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/17-board-raddle-verb.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	42	2	2026-11-05T09:58:53.453Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/17-board-raddle-verb.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	42	3	2026-11-05T09:58:53.453Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/20-raddle-verbs.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	42	4	2026-11-05T09:58:53.453Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/19-raddle-checks-and-state.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	43	1	2026-11-05T09:59:07.994Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/21-raddle-write-producer.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	44	1	2026-11-05T09:59:31.957Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/21-raddle-write-producer.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	44	2	2026-11-05T09:59:31.957Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/22-raddle-file-producer.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	44	3	2026-11-05T09:59:31.957Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/21-raddle-write-producer.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	45	1	2026-11-05T09:59:54.382Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/23-raddle-recipe.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	45	2	2026-11-05T09:59:54.382Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/23-raddle-recipe.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	45	3	2026-11-05T09:59:54.382Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/23-raddle-recipe.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	45	4	2026-11-05T09:59:54.382Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/23-raddle-recipe.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	45	5	2026-11-05T09:59:54.382Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/23-raddle-recipe.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	46	1	2026-11-05T10:00:12.616Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/25-pawl-raddle-handoff.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	46	2	2026-11-05T10:00:12.616Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/24-batten-raddle-start-guard.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	46	3	2026-11-05T10:00:12.616Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/25-pawl-raddle-handoff.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	47	1	2026-11-05T10:00:30.618Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/00-overview.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	48	1	2026-11-05T10:00:40.442Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/lens-review.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	49	1	2026-11-05T10:01:18.825Z	Bash	other-bash	lym creel post --parent --expect-reply "Plan-Write for raddle-recipe needs a recorded PATTERN decision. PATTERN.md is 15560 bytes, and the headroom line (intern
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	51	1	2026-11-05T10:02:44.573Z	Bash	search	grep -n "Added after Discussion\|PATTERN changes" _lym/discussion/decision-record.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	52	1	2026-11-05T10:02:46.825Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	52	2	2026-11-05T10:02:46.825Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/discussion/decision-record.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	53	1	2026-11-05T10:02:51.946Z	Bash	search	grep -n "PATTERN-shed-recipe-registry\`\|PATTERN-test-speed\`\|PATTERN-stencil-ownership\`\|PATTERN-cwd-resolution\`\|PATTERN-durable-vs-ephemeral-state\`\|PATT
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	54	1	2026-11-05T10:02:57.881Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/04-usage-record-writer.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	54	2	2026-11-05T10:02:57.881Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/00-overview.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	54	3	2026-11-05T10:02:57.881Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/00-overview.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	54	4	2026-11-05T10:02:57.881Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/04-usage-record-writer.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	54	5	2026-11-05T10:02:57.881Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/04-usage-record-writer.md
+raddle-recipe	edb465a8-2bf5-4565-b49c-00b5559a62c4	main	plan	55	1	2026-11-05T10:03:25.831Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/raddle-recipe/_lym/plan/lens-review.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	1	1	2026-11-05T14:16:38.449Z	Skill	skill	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	1	2	2026-11-05T14:16:38.449Z	Skill	skill	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	3	1	2026-11-05T14:16:42.262Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/.lym/shuttle/2ec04c6a272e28c04b6c0f5ad8d02731/prompt.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	4	1	2026-11-05T14:16:43.761Z	Bash	search	ls /home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/ /home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan 2>&1; wc -l /home/knatte/Code/loomya
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	5	1	2026-11-05T14:16:46.452Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/relevant.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	5	2	2026-11-05T14:16:46.452Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/stencils/loom/loom-rubric-plan-review.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	5	3	2026-11-05T14:16:46.452Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/decision-record.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	6	1	2026-11-05T14:16:49.921Z	Bash	git-read	ls internal/driftengine internal/driftcli && wc -l internal/driftengine/*.go internal/driftcli/*.go internal/shedrecipe/entries_drift.go internal/shedrecipe/ent
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	1	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/template.yaml
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	2	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/config.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	3	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/accepted.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	4	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/records.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	5	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/verify.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	6	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/paths.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	7	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/verdict.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	8	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/seats.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	9	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/recheck.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	10	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/deps.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	7	11	2026-11-05T14:16:54.001Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/baseline.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	8	1	2026-11-05T14:17:01.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/capture.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	8	2	2026-11-05T14:17:01.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/doc.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	8	3	2026-11-05T14:17:01.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/wait.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	8	4	2026-11-05T14:17:01.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/checkmain.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	8	5	2026-11-05T14:17:01.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/await.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	8	6	2026-11-05T14:17:01.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/spawn.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	8	7	2026-11-05T14:17:01.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/verbs.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	8	8	2026-11-05T14:17:01.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/steprun.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	8	9	2026-11-05T14:17:01.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/dirbase.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	8	10	2026-11-05T14:17:01.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftengine/compare.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	9	1	2026-11-05T14:17:09.424Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/loomcli/gatefixer.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	9	2	2026-11-05T14:17:09.424Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/loomcli/driftwiring.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	9	3	2026-11-05T14:17:09.424Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftcli/wiring.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	9	4	2026-11-05T14:17:09.424Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/shedrecipe/entries_gate.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	9	5	2026-11-05T14:17:09.424Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/shedrecipe/entries_drift.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	9	6	2026-11-05T14:17:09.424Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftcli/doc.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	9	7	2026-11-05T14:17:09.424Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/internal/driftcli/cli.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	10	1	2026-11-05T14:17:16.258Z	Bash	search	grep -n -i "drift" contracts/recipes/darn-recipe.yaml contracts/recipes/tapestry-recipe.yaml | head -80; echo ---; cat internal/fabricengine/trailer.go; echo --
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	11	1	2026-11-05T14:17:20.078Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/contracts/recipes/darn-recipe.yaml
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	11	2	2026-11-05T14:17:20.078Z	Bash	search	sed -n 1,70p contracts/recipes/tapestry-recipe.yaml; echo ....; sed -n 115,135p contracts/recipes/tapestry-recipe.yaml; echo ....; sed -n 300,360p contracts/rec
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	12	1	2026-11-05T14:17:32.436Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	12	2	2026-11-05T14:17:32.436Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	12	3	2026-11-05T14:17:32.436Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	12	4	2026-11-05T14:17:32.436Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	12	5	2026-11-05T14:17:32.436Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	12	6	2026-11-05T14:17:32.436Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	13	1	2026-11-05T14:18:22.903Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom && wc -l loom-plan-spec.md loom-plan-checks-spec.md; ls /home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	14	1	2026-11-05T14:18:25.943Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-plan-spec.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	14	2	2026-11-05T14:18:25.943Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-plan-checks-spec.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	15	1	2026-11-05T14:18:29.575Z	Bash	quarry	cd /home/knatte/Code/loomyard-LYMHUB/drift-rework && lym quarry glyphs --text internal/driftengine 2>&1 | awk '{print $NF}' | grep -v '\.go#$' | tr '\n' ' ' | h
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	16	1	2026-11-05T14:18:34.037Z	Bash	quarry	lym quarry glyphs --text internal/driftengine 2>&1 | awk '{print $NF}' | grep -v '\.go#$' | sed -n '/#verifyRow$/,$p' | tr '\n' ' '; echo; echo ===; lym quarry 
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	17	1	2026-11-05T14:18:37.359Z	Bash	search	grep -n "Drift\b\|Drift " internal/shedrecipe/recipe.go | head; grep -n "Drift" internal/shedrecipe/registry.go; sed -n 930,975p internal/loomcli/wiring.go; ls 
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	18	1	2026-11-05T14:18:41.785Z	Bash	search	cat internal/lymdirs/*.go | grep -v _test | grep -n "^func\|^const\|^\t[A-Z][A-Za-z]* *=\|^var" | head -40; ls internal/lymdirs
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	19	1	2026-11-05T14:18:45.131Z	Bash	search	grep -rn "func RunProcDir" internal/fabricengine/ ; grep -rn "RunProcDirName" --include=*.go internal | grep -v _test | head
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	20	1	2026-11-05T14:18:46.458Z	Bash	search	sed -n 215,235p internal/fabricengine/junctionnames.go; grep -n "func HubScratchDir" -A4 internal/fabricengine/*.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	24	1	2026-11-05T14:19:06.420Z	Bash	search	grep -n "PATTERN-sole-parsers" PATTERN.md; grep -n -i "headroom" PATTERN.md | head -3; head -30 pattern/PATTERN-sole-parsers.md; ls _lym/plan 2>&1
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	25	1	2026-11-05T14:19:11.865Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	27	1	2026-11-05T14:39:56.530Z	Bash	search	ls _lym/plan && wc -l _lym/plan/*.md | tail -1
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	1	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/18-drift-baseline-await.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	2	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/20-drift-verdict.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	3	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/27-drift-retire-verify-gate-key.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	4	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/17-drift-verify-command.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	5	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/04-drift-config-keys.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	6	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/22-driftcli-retire-verbs.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	7	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/15-drift-judge-seat.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	8	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	9	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/01-fabric-trailer-commits.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	10	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/25-driftengine-retire-acceptance.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	11	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/24-drift-retire-old-seats.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	12	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/02-fabric-checkout-states.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	13	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/11-webster-runlevel-entry-report.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	14	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/14-drift-expect-rows.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	15	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/26-drift-retire-skip-keys.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	16	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/08-drift-seal-baseline-checks.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	17	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/06-drift-judgement-parser.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	18	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/09-drift-current-capture.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	19	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/12-drift-check-verb.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	20	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/03-drift-capture-diff.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	21	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/21-drift-writer-stencils.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	22	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/05-drift-expectation-parser.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	23	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/13-drift-expect-producer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	24	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	25	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/10-drift-containment-check.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	26	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/07-drift-records-guard.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	27	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	28	28	2026-11-05T14:39:58.184Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/23-drift-retire-recheck-engine.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	29	1	2026-11-05T14:40:15.318Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	29	2	2026-11-05T14:40:15.318Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	29	3	2026-11-05T14:40:15.318Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	29	4	2026-11-05T14:40:15.318Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	29	5	2026-11-05T14:40:15.318Z	Agent	agent	
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	30	1	2026-11-05T14:40:41.286Z	Bash	other-bash	lym shuttle await-forks
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	31	1	2026-11-05T14:42:57.390Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/twill/twill-lens-report-spec.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	32	1	2026-11-05T14:43:00.227Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/lens-review.lens-way-forward.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	32	2	2026-11-05T14:43:00.227Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/lens-review.lens-forced-edits.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	32	3	2026-11-05T14:43:00.227Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/lens-review.lens-row-validity.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	32	4	2026-11-05T14:43:00.227Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/lens-review.lens-coverage.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	32	5	2026-11-05T14:43:00.227Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/lens-review.lens-guard-reach.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	33	1	2026-11-05T14:44:33.743Z	Bash	read	sed -n 95,125p internal/reportengine/timingspans.go; echo ----; sed -n 50,60p internal/loomrecipe/shape_test.go; sed -n 95,110p internal/loomrecipe/shape_test.g
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	34	1	2026-11-05T14:44:38.320Z	Bash	search	grep -n "func Run\b\|func Run(" internal/websterengine/*.go; grep -n -i "all cards\|every card\|plan complete\|allDone\|completed\b\|nothing left\|no batch" int
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	35	1	2026-11-05T14:44:41.929Z	Bash	read	sed -n 389,450p internal/websterengine/runlevel.go; sed -n 990,1035p internal/websterengine/runlevel.go
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	36	1	2026-11-05T14:44:44.747Z	Bash	search	awk 'NR>=600 && NR<=800 && /return|if |StartMaster|pending|remaining|Batches/' internal/websterengine/runlevel.go | head -80
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	37	1	2026-11-05T14:44:48.049Z	Bash	search	grep -n "Done\|outcome" internal/loomshed/webster.go | head -40
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	38	1	2026-11-05T14:46:09.277Z	Bash	quarry	sed -n 1,12p contracts/stencils/parentdirective_test.go; lym quarry glyphs --text internal/loomrecipe 2>&1 | awk '{print $NF}' | grep -i -E "shape|driftRecheckT
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	39	1	2026-11-05T14:46:18.397Z	Bash	quarry	lym quarry toc contracts/stencils/parentdirective_test.go 2>&1 | head -30; lym quarry glyphs --text internal/shedrecipe 2>&1 | awk '{print $NF}' | grep -E "Test
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	40	1	2026-11-05T14:46:24.497Z	Bash	quarry	lym quarry toc contracts/stencils/parentdirective_test.go 2>&1 | grep '"id"' | sed 's/.*"id": "\(.*\)".*/\1/'
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	41	1	2026-11-05T14:46:53.614Z	Bash	search	ls internal/loomrecipe/doc.go internal/driftengine/doc.go; grep -n "driftVerifyType\b" internal/loomrecipe/*_test.go | head -3; grep -n "func captureState\|func
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	1	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/20-drift-verdict.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	2	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/07-drift-records-guard.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	3	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/18-drift-baseline-await.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	4	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/08-drift-seal-baseline-checks.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	5	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/20-drift-verdict.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	6	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	7	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/26-drift-retire-skip-keys.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	8	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/21-drift-writer-stencils.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	9	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/12-drift-check-verb.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	10	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	11	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/09-drift-current-capture.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	12	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/03-drift-capture-diff.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	13	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/22-driftcli-retire-verbs.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	14	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	15	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/12-drift-check-verb.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	16	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	17	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/10-drift-containment-check.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	18	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	19	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/10-drift-containment-check.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	20	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/10-drift-containment-check.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	21	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/08-drift-seal-baseline-checks.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	22	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/26-drift-retire-skip-keys.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	23	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/18-drift-baseline-await.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	24	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/10-drift-containment-check.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	25	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/24-drift-retire-old-seats.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	26	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	27	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/18-drift-baseline-await.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	28	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/18-drift-baseline-await.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	29	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/24-drift-retire-old-seats.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	30	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	31	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/17-drift-verify-command.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	32	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/17-drift-verify-command.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	33	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/13-drift-expect-producer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	34	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/14-drift-expect-rows.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	35	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/01-fabric-trailer-commits.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	36	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	37	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/09-drift-current-capture.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	38	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/20-drift-verdict.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	39	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/20-drift-verdict.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	40	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/07-drift-records-guard.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	41	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	42	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	43	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/25-driftengine-retire-acceptance.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	44	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/09-drift-current-capture.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	45	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/08-drift-seal-baseline-checks.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	46	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/20-drift-verdict.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	47	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/26-drift-retire-skip-keys.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	48	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/14-drift-expect-rows.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	49	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/09-drift-current-capture.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	50	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/17-drift-verify-command.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	51	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/07-drift-records-guard.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	52	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/20-drift-verdict.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	53	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/08-drift-seal-baseline-checks.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	54	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/14-drift-expect-rows.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	55	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	56	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	57	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	58	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/11-webster-runlevel-entry-report.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	59	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/15-drift-judge-seat.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	60	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/13-drift-expect-producer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	61	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/13-drift-expect-producer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	62	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/25-driftengine-retire-acceptance.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	63	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	64	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/22-driftcli-retire-verbs.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	65	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/13-drift-expect-producer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	66	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	42	67	2026-11-05T14:46:58.573Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/10-drift-containment-check.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	43	1	2026-11-05T14:51:17.663Z	Bash	other-bash	lym loom insert-card --help 2>&1 | head -30; lym loom remove-card --help 2>&1 | head -20
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	44	1	2026-11-05T14:51:22.927Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/22-driftcli-retire-verbs.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	44	2	2026-11-05T14:51:22.927Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/25-driftengine-retire-acceptance.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	45	1	2026-11-05T14:51:28.866Z	Bash	other-write	mkdir -p .scratch && cp _lym/plan/12-drift-check-verb.md .scratch/card12.md && lym loom remove-card 12 && lym loom insert-card 14 drift-check-verb --intent "lym
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	46	1	2026-11-05T14:51:39.417Z	Bash	read	cat _lym/plan/14-drift-check-verb.md; sed -n 60,75p _lym/plan/00-overview.md; sed -n 13,45p _lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	47	1	2026-11-05T14:51:43.984Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	47	2	2026-11-05T14:51:43.984Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/14-drift-check-verb.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	47	3	2026-11-05T14:51:43.984Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	47	4	2026-11-05T14:51:43.984Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	48	1	2026-11-05T14:52:02.144Z	Bash	other-write	rm .scratch/card12.md && lym creel post --parent "Plan-Write (drift-rework) asks you to record one decision with lym loom decision add: D4 names runproc.EndRole
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	49	1	2026-11-05T14:52:49.137Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/lens-review.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	50	1	2026-11-05T14:52:50.848Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/lens-review.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	50	2	2026-11-05T14:52:50.848Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	52	1	2026-11-05T14:54:18.970Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/.lym/shuttle/2ec04c6a272e28c04b6c0f5ad8d02731/gate-findings.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	53	1	2026-11-05T14:54:45.276Z	Bash	other-bash	for f in await_test.go:200 await_test.go:201 baseline_test.go:74 baseline_test.go:538 verify_test.go:227 verify_test.go:244 verify_test.go:833; do file=${f%%:*}
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	54	1	2026-11-05T14:55:08.204Z	Bash	other-bash	lym creel post --parent --expect-reply "Plan-Write (drift-rework) needs a PATTERN decision recorded: the declared PATTERN-sole-parsers text grows PATTERN.md 42 
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	55	1	2026-11-05T14:55:15.680Z	Bash	other-bash	cd /home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan && for f in 07 08 09 12 15 16 19 23 24 25 26; do echo "=== $f"; awk '/^\*\*Intent/{exit} {print}' $f
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	56	1	2026-11-05T14:55:24.796Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	56	2	2026-11-05T14:55:24.796Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	56	3	2026-11-05T14:55:24.796Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/26-drift-retire-skip-keys.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	56	4	2026-11-05T14:55:24.796Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/23-drift-retire-recheck-engine.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	56	5	2026-11-05T14:55:24.796Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/15-drift-judge-seat.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	56	6	2026-11-05T14:55:24.796Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/24-drift-retire-old-seats.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	56	7	2026-11-05T14:55:24.796Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/12-drift-expect-producer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	56	8	2026-11-05T14:55:24.796Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/25-driftengine-retire-acceptance.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	57	1	2026-11-05T14:55:32.065Z	Bash	search	grep -n -A4 "^## PATTERN changes" /home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/decision-record.md; grep -n "PATTERN-sole-parsers" /home/knatte
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	1	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	2	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	3	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/09-drift-current-capture.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	4	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/26-drift-retire-skip-keys.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	5	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/23-drift-retire-recheck-engine.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	6	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/00-overview.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	7	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/08-drift-seal-baseline-checks.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	8	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/15-drift-judge-seat.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	9	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/24-drift-retire-old-seats.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	10	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/14-drift-check-verb.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	11	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/25-driftengine-retire-acceptance.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	12	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	13	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/25-driftengine-retire-acceptance.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	14	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	15	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/07-drift-records-guard.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	16	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	17	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/06-drift-judgement-parser.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	18	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/23-drift-retire-recheck-engine.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	19	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/19-drift-amend-defer.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	20	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/16-drift-verify-lines.md
+drift-rework	89b4b1d4-3c5e-4c3a-bf47-fbf2600b4df1	main	plan	58	21	2026-11-05T14:55:35.543Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/plan/12-drift-expect-producer.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	1	1	2026-11-05T13:15:41.800Z	Skill	skill	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	1	2	2026-11-05T13:15:41.800Z	Skill	skill	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	3	1	2026-11-05T13:15:46.903Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/.lym/shuttle/5e3fd080d32c9961dc6f16b2315e06e3/prompt.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	4	1	2026-11-05T13:15:48.529Z	Bash	lym-read	lym board get '{"slug":"drift-rework"}'; echo ---; lym board list
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	5	1	2026-11-05T13:15:50.384Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-discussion-spec.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	5	2	2026-11-05T13:15:50.384Z	Bash	lym-read	lym board get '{"slug":"sampler-drift-trial"}'; ls /home/knatte/Code/loomyard-LYMHUB/drift-rework/docs/research/ | grep -i drift; ls /home/knatte/Code/loomyard-
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	6	1	2026-11-05T13:15:53.765Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/docs/research/drift-whole-review-2026-11-04.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	7	1	2026-11-05T13:16:00.816Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	7	2	2026-11-05T13:16:00.816Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	7	3	2026-11-05T13:16:00.816Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	7	4	2026-11-05T13:16:00.816Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	7	5	2026-11-05T13:16:00.816Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	8	1	2026-11-05T13:16:29.198Z	Bash	other-bash	lym shuttle await-forks
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	9	1	2026-11-05T13:16:31.447Z	Bash	search	ls /home/knatte/Code/loomyard-LYMHUB/drift-rework/pattern/ | head -80; wc -l /home/knatte/Code/loomyard-LYMHUB/drift-rework/pattern/PATTERN-sole-parsers.md /hom
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	10	1	2026-11-05T13:16:34.584Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/pattern/PATTERN-tolerant-records.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	10	2	2026-11-05T13:16:34.584Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/pattern/PATTERN-no-hard-coded-choice.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	10	3	2026-11-05T13:16:34.584Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/pattern/PATTERN-shed-recipe-registry.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	10	4	2026-11-05T13:16:34.584Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/pattern/PATTERN-sole-parsers.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	10	5	2026-11-05T13:16:34.584Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/drift-rework/pattern/PATTERN-durable-vs-ephemeral-state.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	16	1	2026-11-05T13:19:14.936Z	Bash	search	grep -rn "RuleTextCap\|ruleTextCap\|entryLineCap\|EntryLineCap" --include=*.go internal | grep -v _test | head -5; grep -n "docs" internal/runprofile/*.yaml 2>/
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	17	1	2026-11-05T13:19:19.180Z	Bash	search	grep -rn "MaxEntryTextChars *=" internal/pattern; sed -n 55,95p internal/runprofile/template.yaml
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	18	1	2026-11-05T13:19:22.745Z	Bash	search	ls internal/driftengine internal/driftcli contracts/stencils/drift contracts/recipes/darn-recipe.yaml contracts/recipes/tapestry-recipe.yaml internal/shedrecipe
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	19	1	2026-11-05T13:19:37.714Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/decision-record.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	20	1	2026-11-05T13:21:15.299Z	Bash	search	ls -d internal/battencli/runsettings.go internal/stencilstore internal/lymdirs internal/state internal/fabricengine internal/shedrecipe; grep -n "func RenamePro
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	21	1	2026-11-05T13:21:17.755Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	21	2	2026-11-05T13:21:17.755Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/relevant.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	22	1	2026-11-05T13:21:42.615Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/stencils/loom/loom-rubric-discussion-review.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	23	1	2026-11-05T13:21:48.382Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	23	2	2026-11-05T13:21:48.382Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	23	3	2026-11-05T13:21:48.382Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	23	4	2026-11-05T13:21:48.382Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	23	5	2026-11-05T13:21:48.382Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	23	6	2026-11-05T13:21:48.382Z	Agent	agent	
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	24	1	2026-11-05T13:22:11.108Z	Bash	other-bash	lym shuttle await-forks
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	25	1	2026-11-05T13:23:54.096Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/twill/twill-lens-report-spec.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	26	1	2026-11-05T13:23:56.273Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.lens-board-scope.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	26	2	2026-11-05T13:23:56.273Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.lens-leanness.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	26	3	2026-11-05T13:23:56.273Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.lens-bound-breaker.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	26	4	2026-11-05T13:23:56.273Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.lens-existing-paths.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	26	5	2026-11-05T13:23:56.273Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.lens-interactions.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	26	6	2026-11-05T13:23:56.273Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.lens-walkthrough.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	27	1	2026-11-05T13:26:07.856Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/decision-record.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	28	1	2026-11-05T13:27:39.299Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	28	2	2026-11-05T13:27:39.299Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	28	3	2026-11-05T13:27:39.299Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.md
+drift-rework	dd4557e4-1447-46c1-83cb-11f519653af6	main	discussion	28	4	2026-11-05T13:27:39.299Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/drift-rework/_lym/discussion/support-log.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	1	1	2026-11-05T17:14:20.016Z	Skill	skill	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	1	2	2026-11-05T17:14:20.016Z	Skill	skill	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	3	1	2026-11-05T17:14:23.447Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/.lym/shuttle/d4773ae7977a95330153b5f9c45ed207/prompt.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	4	1	2026-11-05T17:14:24.934Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/discussion/decision-record.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	4	2	2026-11-05T17:14:24.934Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/discussion/relevant.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	4	3	2026-11-05T17:14:24.934Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/stencils/loom/loom-rubric-plan-review.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	4	4	2026-11-05T17:14:24.934Z	Bash	git-read	ls /home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/ /home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan 2>&1; git -C /home/knatte/Code/loomyard-LYMHUB/sl
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	5	1	2026-11-05T17:14:35.058Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; ls pattern/ ; wc -l PATTERN.md pattern/*.md | tail -1; ls internal | tr '\n' ' '; echo; ls internal/creelcli i
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	1	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-tolerant-records.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	2	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-daemon-wakeups.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	3	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-test-isolation.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	4	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-code-conventions.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	5	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-agent-addressing.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	6	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-child-processes.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	7	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-config-layers.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	8	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-refusal-way-forward.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	9	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-cli-cobra.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	10	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-test-speed.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	11	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-leaf-packages.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	12	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/pattern/PATTERN-lym-files.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	6	13	2026-11-05T17:14:38.764Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/PATTERN.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	7	1	2026-11-05T17:14:49.514Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom; wc -l loom-plan-spec.md loom-plan-checks-spec.md; grep -n -i "pattern" loom-plan-spec.md loom-plan-c
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	8	1	2026-11-05T17:14:52.464Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-plan-checks-spec.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	8	2	2026-11-05T17:14:52.464Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-plan-spec.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	9	1	2026-11-05T17:15:03.954Z	Bash	search	ls -R /home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/loom /home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/shed /home/knatte/Code/loomyard-LYMHUB/slack-re
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	10	1	2026-11-05T17:15:08.561Z	Bash	search	cat /home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/shed/slack-relay/seed.json | head -60; echo; cat /home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/p
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	11	1	2026-11-05T17:15:10.704Z	Bash	search	grep -n "MaxOverviewBytes\s*=" -r /home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/pattern/; grep -rn "pattern-line-unprescribed\|PatternLineUnprescribed"
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	12	1	2026-11-05T17:15:12.044Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/loomshed/patternplan.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	13	1	2026-11-05T17:15:16.720Z	Bash	search	ls /home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/patternlint/; grep -n "^func \|^// [A-Z]" /home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/patte
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	14	1	2026-11-05T17:15:33.094Z	Bash	other-bash	lym loom decision add --help 2>&1 | head -40
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	15	1	2026-11-05T17:15:35.886Z	Bash	other-bash	lym creel post --parent --expect-reply "Plan-Write on slack-relay: the record's ## PATTERN changes declares PATTERN-reap-children (changes) and PATTERN-slack-bo
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	16	1	2026-11-05T17:15:41.739Z	Bash	other-bash	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay && lym creel post --parent --expect-reply "Plan-Write on slack-relay: the record's ## PATTERN changes declares 
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	17	1	2026-11-05T17:15:54.028Z	Bash	quarry	for d in internal/creelcli internal/lymdirs internal/runproc internal/configreg internal/githubclient internal/hubgeom; do echo "== $d"; lym quarry glyphs --tex
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	18	1	2026-11-05T17:15:57.919Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/githubclient/cache.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	18	2	2026-11-05T17:15:57.919Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/lymdirs/dirs.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	18	3	2026-11-05T17:15:57.919Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/hubgeom/creelgeom.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	18	4	2026-11-05T17:15:57.919Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/runproc/record.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	18	5	2026-11-05T17:15:57.919Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/creelengine/identity.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	18	6	2026-11-05T17:15:57.919Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/creelcli/goclient.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	19	1	2026-11-05T17:16:04.574Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; wc -l internal/creelengine/*.go | sort -n | tail -15; grep -n "ackReadTimeout\|Wait \|WaitSeconds\|func (c \*C
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	20	1	2026-11-05T17:16:07.649Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/creelengine/client.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	20	2	2026-11-05T17:16:07.649Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/creelengine/protocol.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	21	1	2026-11-05T17:16:13.067Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -n "type Message struct" -A 25 internal/creelengine/*.go | head -40; grep -rn "ackReadTimeout\s*=\|4 KiB\
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	22	1	2026-11-05T17:16:17.579Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -n "Added after Discussion" -A 12 _lym/discussion/decision-record.md; sed -n '/## PATTERN changes/,$p' _l
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	23	1	2026-11-05T17:16:21.301Z	Bash	other-bash	lym creel post --reply 764 "Thanks. Yes, it will: internal/loomshed/patternplan.go patternPlanFindings raises pattern-line-unprescribed (blocking) for every add
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	24	1	2026-11-05T17:16:27.103Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -n "parentPID\|ParentPID\|resolveSender(" internal/creelengine/server.go internal/creelengine/verbs.go in
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	25	1	2026-11-05T17:16:30.175Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -rn "ParentPID:" internal --include=*.go | grep -v _test; grep -n "^func " internal/proc/*.go | grep -v _
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	26	1	2026-11-05T17:16:38.256Z	Agent	agent	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	26	2	2026-11-05T17:16:38.256Z	Agent	agent	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	26	3	2026-11-05T17:16:38.256Z	Agent	agent	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	26	4	2026-11-05T17:16:38.256Z	Agent	agent	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	27	1	2026-11-05T17:17:09.692Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -n "^func \|tiergate.Require" internal/creelcli/goclient_test.go | head -40; grep -n "type clientSeam" -A
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	28	1	2026-11-05T17:17:13.695Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -n "^func Test\|tiergate.Require\|creelengine.Serve\|Serve(" internal/creelcli/cli_test.go | head -40; gr
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	29	1	2026-11-05T17:17:17.170Z	Bash	read	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; sed -n 1,120p internal/creelcli/cli_test.go; sed -n 356,420p internal/creelcli/cli_test.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	30	1	2026-11-05T17:17:18.508Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; ls internal/testkit/; ls internal/testkit/creelfake; sed -n 1,60p internal/testkit/creelfake/*.go | head -120
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	31	1	2026-11-05T17:17:27.858Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; wc -l contracts/orchrole/*; grep -n "^#\|creel\|LOOM\|DOBBY" contracts/orchrole/orch-role.md | head -60; cat c
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	32	1	2026-11-05T17:17:36.016Z	Bash	quarry	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; for f in internal/orchcli/start.go internal/orchcli/cli.go internal/orchcli/resumecontext.go internal/orchengi
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	33	1	2026-11-05T17:17:44.313Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/orchengine/prompt.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	33	2	2026-11-05T17:17:44.313Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/orchcli/resumecontext.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	33	3	2026-11-05T17:17:44.313Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/orchengine/resumecontext.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	33	4	2026-11-05T17:17:44.313Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/internal/orchengine/resumecontext_test.go
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	34	1	2026-11-05T17:17:51.853Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -n "RenderReloadPrompt\|RenderResumePrompt\|RenderStartPrompt" internal --include=*.go -r | grep -v _test
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	35	1	2026-11-05T17:18:06.637Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; sed -n 180,215p internal/beamcli/dobbydeps.go; echo ----; sed -n 355,470p internal/fabriccli/anchor.go; echo -
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	36	1	2026-11-05T17:18:11.868Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -n "^func \|tiergate.Require\|EnsureDobbies" internal/fabriccli/anchor_test.go | head -40; sed -n 120,160
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	37	1	2026-11-05T17:18:23.357Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -ln '"github.com/Knatte18/loomyard/internal/hubgeom"' internal/fabriccli/*.go | head -3; grep -n "loomyar
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	38	1	2026-11-05T17:18:29.584Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; sed -n 236,262p internal/orchcli/cli.go; grep -n "startDobby" internal/orchcli/*_test.go | head -5; grep -n "^
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	39	1	2026-11-05T17:18:34.418Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; sed -n 140,200p internal/configreg/configreg.go; sed -n 40,75p internal/configreg/configreg_test.go; sed -n 19
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	39	2	2026-11-05T17:18:34.418Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; sed -n 19,96p internal/orchcli/startdobbies_test.go; echo ----; sed -n 30,90p internal/beamcli/dobbydeps_integ
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	40	1	2026-11-05T17:18:45.854Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -n "newHubDelivery(" internal/creelcli/*.go | grep -v _test; grep -n "func (d \*hubDelivery) worktreeStra
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	41	1	2026-11-05T17:18:58.142Z	Bash	other-bash	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; sed -n 1,30p cmd/lym/agentmessaging_test.go | grep -v "^import\|^\s*\"" ; grep -n "^// \|allow\|exempt" cmd/ly
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	42	1	2026-11-05T17:19:02.955Z	Bash	git-read	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; sed -n '/^## PATTERN changes/,$p' _lym/discussion/decision-record.md | cut -c1-80; git log --oneline -3 -- _ly
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	43	1	2026-11-05T17:19:08.978Z	Agent	agent	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	1	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/00-overview.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	2	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/03-creel-seams.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	3	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/13-anchor-relay-restart.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	4	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/07-slackengine-inbound.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	5	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/09-slackengine-relay.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	6	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/06-slackengine-api.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	7	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/08-slackengine-outbound.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	8	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/01-pattern-clusters.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	9	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/11-orch-relay-presence.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	10	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/12-dobby-relay-tick.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	11	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/05-slack-config.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	12	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/04-slackengine-files.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	13	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/10-slack-cli.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	14	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/14-orch-role-slack.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	46	15	2026-11-05T17:29:46.538Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/02-slack-names.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	47	1	2026-11-05T17:29:57.695Z	Agent	agent	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	47	2	2026-11-05T17:29:57.695Z	Agent	agent	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	47	3	2026-11-05T17:29:57.695Z	Agent	agent	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	47	4	2026-11-05T17:29:57.695Z	Agent	agent	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	47	5	2026-11-05T17:29:57.695Z	Agent	agent	
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	48	1	2026-11-05T17:30:24.127Z	Bash	other-bash	lym shuttle await-forks
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	49	1	2026-11-05T17:32:02.929Z	Bash	read	cat /home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/twill/twill-lens-report-spec.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	50	1	2026-11-05T17:32:05.290Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/lens-review.lens-coverage.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	50	2	2026-11-05T17:32:05.290Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/lens-review.lens-forced-edits.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	50	3	2026-11-05T17:32:05.290Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/lens-review.lens-row-validity.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	50	4	2026-11-05T17:32:05.290Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/lens-review.lens-guard-reach.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	50	5	2026-11-05T17:32:05.290Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/lens-review.lens-way-forward.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	51	1	2026-11-05T17:33:21.848Z	Bash	quarry	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; sed -n 1,60p cmd/lym/sandbox_coverage_test.go | grep -n "var \|hibernate\|func Test"; grep -n "func Test" cmd/
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	52	1	2026-11-05T17:33:59.565Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; sed -n 60,110p cmd/lym/sandbox_coverage_test.go; sed -n 10,60p cmd/lym/seamsignature_test.go | grep -n "var \|
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	53	1	2026-11-05T17:34:09.072Z	Bash	search	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; grep -n "^func (w \*Watcher) \(startClearing\|reloadAfterCompaction\|startAutoReload\)" -B3 internal/orchengin
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	54	1	2026-11-05T17:34:17.110Z	Bash	quarry	cd /home/knatte/Code/loomyard-LYMHUB/slack-relay; lym quarry resolve cmd/lym#excludedModules internal/orchengine#TestCompact_RequestedCycleClearsRequestAndCompa
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	55	1	2026-11-05T17:34:23.014Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/02-slack-names.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	55	2	2026-11-05T17:34:23.014Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/02-slack-names.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	55	3	2026-11-05T17:34:23.014Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/00-overview.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	55	4	2026-11-05T17:34:23.014Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/02-slack-names.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	55	5	2026-11-05T17:34:23.014Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/02-slack-names.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	55	6	2026-11-05T17:34:23.014Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/00-overview.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	56	1	2026-11-05T17:34:36.017Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/05-slack-config.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	56	2	2026-11-05T17:34:36.017Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/03-creel-seams.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	56	3	2026-11-05T17:34:36.017Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/04-slackengine-files.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	56	4	2026-11-05T17:34:36.017Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/05-slack-config.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	56	5	2026-11-05T17:34:36.017Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/03-creel-seams.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	56	6	2026-11-05T17:34:36.017Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/04-slackengine-files.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	56	7	2026-11-05T17:34:36.017Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/04-slackengine-files.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	57	1	2026-11-05T17:34:51.054Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/07-slackengine-inbound.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	57	2	2026-11-05T17:34:51.054Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/08-slackengine-outbound.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	57	3	2026-11-05T17:34:51.054Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/08-slackengine-outbound.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	57	4	2026-11-05T17:34:51.054Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/07-slackengine-inbound.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	57	5	2026-11-05T17:34:51.054Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/08-slackengine-outbound.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	58	1	2026-11-05T17:35:07.150Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/09-slackengine-relay.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	58	2	2026-11-05T17:35:07.150Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/08-slackengine-outbound.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	59	1	2026-11-05T17:35:49.031Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/10-slack-cli.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	60	1	2026-11-05T17:36:22.414Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/12-dobby-relay-tick.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	60	2	2026-11-05T17:36:22.414Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/13-anchor-relay-restart.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	60	3	2026-11-05T17:36:22.414Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/13-anchor-relay-restart.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	60	4	2026-11-05T17:36:22.414Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/11-orch-relay-presence.md
+slack-relay	6d4bff8c-1897-407c-addb-3f607c5c3e57	main	plan	61	1	2026-11-05T17:36:54.677Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/slack-relay/_lym/plan/lens-review.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	1	1	2026-11-06T09:00:56.457Z	Skill	skill	
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	1	2	2026-11-06T09:00:56.457Z	Skill	skill	
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	3	1	2026-11-06T09:01:02.225Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/.lym/shuttle/3172083e3a8b58ba57f650daa4d2fab6/prompt.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	4	1	2026-11-06T09:01:04.098Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-plan-spec.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	4	2	2026-11-06T09:01:04.098Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/discussion/relevant.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	4	3	2026-11-06T09:01:04.098Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/discussion/decision-record.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	4	4	2026-11-06T09:01:04.098Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/stencils/loom/loom-rubric-plan-review.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	4	5	2026-11-06T09:01:04.098Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/loom/loom-plan-checks-spec.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	4	6	2026-11-06T09:01:04.098Z	Bash	git-read	git -C /home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build log --oneline -15; ls /home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan 2>/dev/nu
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	4	7	2026-11-06T09:01:04.098Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-agent-addressing.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	1	2026-11-06T09:01:09.997Z	Bash	search	wc -l internal/creelengine/*.go internal/creelcli/*.go internal/agentname/*.go internal/standalonestate/*.go internal/configengine/*.go 2>/dev/null | tail -120;
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	2	2026-11-06T09:01:09.997Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-config-layers.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	3	2026-11-06T09:01:09.997Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-daemon-wakeups.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	4	2026-11-06T09:01:09.997Z	Bash	quarry	lym quarry glyphs --text internal/creelengine | grep -v '_test' | wc -l; lym quarry glyphs --text internal/creelcli | wc -l; lym quarry toc internal/creelengine
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	5	2026-11-06T09:01:09.997Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelcli/spawn.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	6	2026-11-06T09:01:09.997Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/standalonestate/standalonestate.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	7	2026-11-06T09:01:09.997Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-child-processes.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	8	2026-11-06T09:01:09.997Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-refusal-way-forward.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	9	2026-11-06T09:01:09.997Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-test-speed.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	10	2026-11-06T09:01:09.997Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/server.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	5	11	2026-11-06T09:01:09.997Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/doc.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	1	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/protocol.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	2	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/reminder.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	3	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/journal.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	4	2026-11-06T09:01:20.876Z	Bash	search	ls internal/hibernateconfig internal/reportconfig internal/configreg; grep -n 'hibernateconfig\|reportconfig' -r internal/configreg cmd/lym internal/hubreconcil
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	5	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/seam.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	6	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/hubgeom/creelgeom.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	7	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/fold.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	8	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelcli/cli.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	9	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/pool.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	10	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelcli/goclient.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	11	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/verbs.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	12	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/sweep.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	13	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/chase.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	14	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/geometry.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	15	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelcli/doc.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	16	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/seam_enforcement_test.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	17	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/deliver.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	18	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/client.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	6	19	2026-11-06T09:01:20.876Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/export_test.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	7	1	2026-11-06T09:01:44.623Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelcli/delivery.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	7	2	2026-11-06T09:01:44.623Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/daemonlog.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	7	3	2026-11-06T09:01:44.623Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/reportconfig/config.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	7	4	2026-11-06T09:01:44.623Z	Agent	agent	
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	7	5	2026-11-06T09:01:44.623Z	Bash	quarry	grep -n 'creel' internal/shuttleengine/claudeengine/settings.go | sed -n '30,80p'; grep -n -i 'lym creel\|trust' internal/shuttleengine/claudeengine/*.go | grep
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	7	6	2026-11-06T09:01:44.623Z	Agent	agent	
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	7	7	2026-11-06T09:01:44.623Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/identity.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	8	1	2026-11-06T09:02:06.578Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelcli/cli_test.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	8	2	2026-11-06T09:02:06.578Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/verbs_test.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	8	3	2026-11-06T09:02:06.578Z	Bash	other-bash	grep -rn 'CreelTrustSentence' internal --include=*.go | grep -v _test | head; grep -n -B2 -A6 'CreelTrustSentence =' internal/shuttleengine/*.go; grep -n 'func 
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	8	4	2026-11-06T09:02:06.578Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/creelengine/server_test.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	9	1	2026-11-06T09:02:14.398Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-tolerant-records.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	9	2	2026-11-06T09:02:14.398Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-cli-cobra.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	9	3	2026-11-06T09:02:14.398Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-lym-files.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	9	4	2026-11-06T09:02:14.398Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-leaf-packages.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	9	5	2026-11-06T09:02:14.398Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/pattern/PATTERN-cwd-resolution.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	12	1	2026-11-06T09:03:03.170Z	Agent	agent	
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	1	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/03-cross-hub-records.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	2	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/09-replies-across-hubs.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	3	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/01-hub-registry.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	4	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/02-creel-config.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	5	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/04-hub-directory.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	6	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/07-receive-and-confirm.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	7	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/05-hubs-verb.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	8	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/00-overview.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	9	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/08-outbound-worker.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	10	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/10-agent-instructions-and-trial.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	14	11	2026-11-06T09:12:36.579Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/06-post-to-another-hub.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	15	1	2026-11-06T09:12:44.714Z	Agent	agent	
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	15	2	2026-11-06T09:12:44.714Z	Agent	agent	
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	15	3	2026-11-06T09:12:44.714Z	Agent	agent	
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	15	4	2026-11-06T09:12:44.714Z	Agent	agent	
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	15	5	2026-11-06T09:12:44.714Z	Agent	agent	
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	16	1	2026-11-06T09:13:10.351Z	Bash	other-bash	lym shuttle await-forks
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	17	1	2026-11-06T09:17:12.644Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/testkit/tmuxkit/tmuxkit_test.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	17	2	2026-11-06T09:17:12.644Z	Bash	quarry	sed -n 30,45p pattern/PATTERN-test-isolation.md; grep -n 'func ' internal/testkit/creelfake/creelfake.go | head -50; lym quarry resolve internal/testkit/tmuxkit
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	17	3	2026-11-06T09:17:12.644Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/fabriccli/shortname.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	17	4	2026-11-06T09:17:12.644Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/reportengine/replies.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	17	5	2026-11-06T09:17:12.644Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/internal/testkit/tmuxkit/tmuxkit.go
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	17	6	2026-11-06T09:17:12.644Z	Read	read	/home/knatte/Code/loomyard-LYMHUB/_bolt/_lym/specs/twill/twill-lens-report-spec.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	18	1	2026-11-06T09:17:23.454Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/lens-review.lens-row-validity.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	18	2	2026-11-06T09:17:23.454Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/lens-review.lens-guard-reach.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	18	3	2026-11-06T09:17:23.454Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/lens-review.lens-forced-edits.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	18	4	2026-11-06T09:17:23.454Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/lens-review.lens-coverage.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	18	5	2026-11-06T09:17:23.454Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/lens-review.lens-way-forward.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	19	1	2026-11-06T09:20:33.513Z	Bash	quarry	lym fabric clone --help 2>&1 | grep -n -E 'reset|shortname' | head; ls internal/reportengine/doc.go; lym quarry glyphs --text internal/reportengine | grep -E 'T
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	1	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/01-hub-registry.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	2	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/06-post-to-another-hub.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	3	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/03-cross-hub-records.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	4	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/01-hub-registry.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	5	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/05-hubs-verb.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	6	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/10-agent-instructions-and-trial.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	7	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/06-post-to-another-hub.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	8	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/09-replies-across-hubs.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	9	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/01-hub-registry.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	10	2026-11-06T09:21:17.737Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/lens-review.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	11	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/03-cross-hub-records.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	12	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/09-replies-across-hubs.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	13	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/03-cross-hub-records.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	14	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/04-hub-directory.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	15	2026-11-06T09:21:17.737Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/07-receive-and-confirm.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	16	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/09-replies-across-hubs.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	17	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/04-hub-directory.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	18	2026-11-06T09:21:17.737Z	Write	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/08-outbound-worker.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	19	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/03-cross-hub-records.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	20	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/04-hub-directory.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	21	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/00-overview.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	22	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/06-post-to-another-hub.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	23	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/01-hub-registry.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	24	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/04-hub-directory.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	25	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/03-cross-hub-records.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	26	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/04-hub-directory.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	27	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/05-hubs-verb.md
+creel-cross-hub-build	cffe1866-1136-4b62-8c4c-797427511164	main	plan	20	28	2026-11-06T09:21:17.737Z	Edit	edit	/home/knatte/Code/loomyard-LYMHUB/creel-cross-hub-build/_lym/plan/05-hubs-verb.md
