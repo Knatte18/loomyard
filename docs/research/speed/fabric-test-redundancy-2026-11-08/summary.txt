@@ -1,0 +1,7 @@
+tier 1 top-level tests	590
+cost of all, seconds	236.3
+covered blocks in the union	6369
+contained tests	370
+cost of contained, seconds	101.9
+greedy droppable together	329
+cost of greedy set, seconds	91.5
