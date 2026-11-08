@@ -1,0 +1,11 @@
+run	recipe	part	cost_usd	start	end
+fabric-test-speed	motif	Discussion writer	2.84	2026-11-07T13:13:53Z	2026-11-07T13:53:58Z
+fabric-test-speed	motif	Discussion writer forks	1.97	2026-11-07T13:13:53Z	2026-11-07T13:53:58Z
+fabric-test-speed	motif	Discussion reviewer	4.14	2026-11-07T13:13:53Z	2026-11-07T13:53:58Z
+fabric-test-speed	motif	Discussion reviewer forks	3.79	2026-11-07T13:13:53Z	2026-11-07T13:53:58Z
+fabric-test-speed	motif	Discussion fixer	2.24	2026-11-07T13:13:53Z	2026-11-07T13:53:58Z
+fabric-test-speed	motif	Discussion fixer forks	0.99	2026-11-07T13:13:53Z	2026-11-07T13:53:58Z
+fabric-test-speed	motif	Discussion judge	0.22	2026-11-07T13:13:53Z	2026-11-07T13:53:58Z
+fabric-test-speed	motif	Discussion seed	0.15	2026-11-07T13:13:53Z	2026-11-07T13:53:58Z
+fabric-test-speed	raddle	raddle	2.00	2026-11-07T13:57:32Z	2026-11-07T14:15:11Z
+fabric-test-speed	raddle	raddle forks	0.31	2026-11-07T13:57:32Z	2026-11-07T14:15:11Z

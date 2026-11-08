@@ -1,0 +1,12 @@
+fabric-test-folds
+hubforge-registered-templates
+hubforge-slim-copy
+dotgit-worktree-reader
+hubreconcile-templates
+loomcli-templates
+battencli-templates
+git-config-from-go
+fabric-anchor-origin-templates
+fabric-livestate-merge-templates
+copyhub-fixtures-and-hook
+fabric-test-speed-remeasure
