@@ -870,7 +870,7 @@ User-facing modules each get one `lym <module>` namespace:
   The app's scopes and events are the manifest in `docs/slack-app.md`.
   Each orch has a channel of its own, named by hub, machine and orch, and the relay makes it, adopts a live one the bot made, and joins it.
   One relay of the machine holds the Socket Mode connection, and each event it receives wakes the relay of the hub whose channel it belongs to.
-  The relay forwards the operator's messages in an orch's channel to that orch as `[slack]` creel mail from `<shortname>:SLACK`, answers `away`, `back` and `status` in the channel, and posts the mail the orchs and programs leave for `SLACK` to their own channel under their own name, at least once, and a message Slack accepted is not posted again within one relay process.
+  The relay forwards the operator's messages in an orch's channel to that orch as creel mail from `<shortname>:SLACK` that carries their text alone, answers `away`, `back` and `status` in the channel, and posts the mail the orchs and programs leave for `SLACK` to their own channel under their own name, at least once, and a message Slack accepted is not posted again within one relay process.
   A channel is archived only when its orch retires, under a dated name, and `lym slack stop` archives nothing.
   It starts through a double fork, so no pane's tree holds it, and its files sit in the hub's `.lym/slack/` directory.
   While the presence is `slack`, each worktree's dobby leaves `SLACK` one line for a run waiting at PR-Review or Sampler-Session, every `remind_after_min` minutes of the wait.

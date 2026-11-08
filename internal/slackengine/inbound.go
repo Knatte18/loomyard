@@ -24,8 +24,6 @@ import (
 const SlackProgram = "SLACK"
 
 const (
-	// forwardPrefix opens the body of every operator message the relay forwards to an orch.
-	forwardPrefix = "[slack] "
 	// presenceNoticePrefix opens the body of a presence notice, which asks for no reply.
 	presenceNoticePrefix = "[slack presence]"
 	// relayNoticePrefix opens the body of a notice about the relay itself, which carries no operator authority.
@@ -675,8 +673,13 @@ func (in *inbound) status(ctx context.Context, channel string, message Message) 
 
 // forward posts a message of the operator to orch, the orch of the channel it was written in.
 // The text goes as it stands, an `@<slug>` prefix included, followed by a line per attached file.
+// The body carries no marker of its own: the sender `<shortname>:SLACK` already names Slack as its source.
 func (in *inbound) forward(ctx context.Context, orch, channel string, message Message, text string) (bool, error) {
-	posted := forwardPrefix + strings.TrimPrefix(text+fileLines(message.Files), "\n")
+	posted := strings.TrimPrefix(text+fileLines(message.Files), "\n")
+	if strings.TrimSpace(posted) == "" {
+		logger.Debug("slackengine: skipped a message with no text and no files", "ts", message.TS)
+		return true, nil
+	}
 	if len(posted) > creelBodyLimit {
 		in.answer(ctx, channel, fmt.Sprintf("that message is %d bytes, over the %d the hub's mail takes; send a shorter one", len(posted), creelBodyLimit))
 		return true, nil

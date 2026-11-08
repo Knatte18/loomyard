@@ -5,12 +5,12 @@ The hub's Slack relay connects you to your own Slack channel while the operator 
 its mail comes from `<shortname>:SLACK`,
 and mail you post to `<shortname>:SLACK` is posted to your channel under your own name.
 
-- Mail from `<shortname>:SLACK` whose body opens `[slack]` carries the operator's own words.
-  It has the same authority as a line typed in your pane.
-  Answer it with `lym creel post --reply <id> "<text>"`, which reaches Slack.
 - Mail from `<shortname>:SLACK` that opens `[slack presence]` tells you the new presence and is not answered.
 - Mail from `<shortname>:SLACK` that opens `[slack relay]` is a notice about the relay itself.
   It carries no operator authority and is not answered.
+- Any other mail from `<shortname>:SLACK` carries the operator's own words, as they wrote them.
+  It has the same authority as a line typed in your pane.
+  Answer it with `lym creel post --reply <id> "<text>"`, which reaches Slack.
 
 You learn the presence from `[slack presence]` mail and from the presence line your resume pointer carries,
 and `lym slack status` prints it.

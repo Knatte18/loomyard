@@ -276,7 +276,7 @@ func (r *relayRun) createdChannels() []string {
 // forwarded reports whether the relay mailed the operator's text to the hub's orch.
 func (r *relayRun) forwarded(text string) bool {
 	for _, posted := range r.mailbox.accepted() {
-		if posted.Receiver == primeOrch && posted.Body == "[slack] "+text {
+		if posted.Receiver == primeOrch && posted.Body == text {
 			return true
 		}
 	}

@@ -869,18 +869,18 @@ func TestInboundRead(t *testing.T) {
 		if !h.mustDrain() {
 			t.Errorf("Drain reported no activity for a forwarded message")
 		}
-		h.wantPosts(mail{paymentsOrch, "[slack] deploy prod"})
+		h.wantPosts(mail{paymentsOrch, "deploy prod"})
 		if got := h.entryOf(paymentsOrch).Cursor; got != "101.000001" {
 			t.Errorf("payments cursor = %q; want 101.000001", got)
 		}
 		h.mustReadC1()
-		h.wantPosts(mail{paymentsOrch, "[slack] deploy prod"}, mail{primeOrch, "[slack] @payments x"})
+		h.wantPosts(mail{paymentsOrch, "deploy prod"}, mail{primeOrch, "@payments x"})
 		h.wantCursorTS("102.000001")
 		h.hint(paymentsChannel)
 		if h.mustDrain() {
 			t.Errorf("a second Drain over read messages reported activity")
 		}
-		h.wantPosts(mail{paymentsOrch, "[slack] deploy prod"}, mail{primeOrch, "[slack] @payments x"})
+		h.wantPosts(mail{paymentsOrch, "deploy prod"}, mail{primeOrch, "@payments x"})
 	})
 
 	t.Run("HintFileContentIsNeverForwarded", func(t *testing.T) {
@@ -900,7 +900,7 @@ func TestInboundRead(t *testing.T) {
 		h.sayIn(paymentsChannel, "101.000001", "what Slack returns")
 		h.hint(paymentsChannel)
 		h.mustDrain()
-		h.wantPosts(mail{paymentsOrch, "[slack] what Slack returns"})
+		h.wantPosts(mail{paymentsOrch, "what Slack returns"})
 	})
 
 	t.Run("ResyncAndStartReadEveryChannelAfterItsCursorAndEveryThreadPastItsCursor", func(t *testing.T) {
@@ -913,7 +913,7 @@ func TestInboundRead(t *testing.T) {
 				h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
 				h.sayIn(paymentsChannel, "101.000001", "two")
 				tt.fire(h)
-				h.wantPosts(mail{primeOrch, "[slack] one"}, mail{primeOrch, "[slack] reply"}, mail{paymentsOrch, "[slack] two"})
+				h.wantPosts(mail{primeOrch, "one"}, mail{primeOrch, "reply"}, mail{paymentsOrch, "two"})
 				entry := h.entryOf(primeOrch)
 				if got := entry.Threads[h.ago(2*time.Hour)]; got != h.ago(time.Hour) {
 					t.Errorf("thread cursor = %q; want the reply's %q", got, h.ago(time.Hour))
@@ -934,7 +934,7 @@ func TestInboundRead(t *testing.T) {
 				if joins := h.slack.logged("Join"); len(joins) != 1 || joins[0].Channel != testChannel {
 					t.Errorf("Join calls = %+v; want one for %s", joins, testChannel)
 				}
-				h.wantPosts(mail{primeOrch, "[slack] one"}, mail{primeOrch, "[slack] reply"})
+				h.wantPosts(mail{primeOrch, "one"}, mail{primeOrch, "reply"})
 			})
 		}
 	})
@@ -975,9 +975,9 @@ func TestInboundRead(t *testing.T) {
 				if !h.retry() {
 					t.Errorf("RetryOwed reported no activity for the owed read")
 				}
-				want := []mail{{primeOrch, "[slack] one"}}
+				want := []mail{{primeOrch, "one"}}
 				if tt.wantReply {
-					want = append(want, mail{primeOrch, "[slack] reply"})
+					want = append(want, mail{primeOrch, "reply"})
 				}
 				h.wantPosts(want...)
 				if h.retry() {
@@ -1020,7 +1020,7 @@ func TestInboundRead(t *testing.T) {
 			!strings.Contains(notices[0], "docs/slack-app.md") || strings.Contains(notices[0], "lym slack setup") {
 			t.Fatalf("notices = %q; want one naming invalid_auth, lym slack login and docs/slack-app.md", notices)
 		}
-		h.wantPosts(mail{primeOrch, notices[0]}, mail{paymentsOrch, "[slack] ok1"}, mail{paymentsOrch, "[slack] ok2"})
+		h.wantPosts(mail{primeOrch, notices[0]}, mail{paymentsOrch, "ok1"}, mail{paymentsOrch, "ok2"})
 		h.slack.failChannel(testChannel, nil)
 		h.mustReadC1()
 		h.slack.failChannel(testChannel, refusal)
@@ -1067,7 +1067,7 @@ func TestInboundRead(t *testing.T) {
 		}
 		h.wantPosts()
 		h.mustDrain()
-		h.wantPosts(mail{paymentsOrch, "[slack] two"})
+		h.wantPosts(mail{paymentsOrch, "two"})
 	})
 
 	t.Run("CursorForwardsEachMessageOnceWhicheverReadFindsItFirst", func(t *testing.T) {
@@ -1080,7 +1080,7 @@ func TestInboundRead(t *testing.T) {
 		h.say("102.000001", "after a lost hint")
 		h.say("103.000001", "hinted")
 		h.mustReadC1()
-		h.wantPosts(mail{primeOrch, "[slack] read by Start"}, mail{primeOrch, "[slack] after a lost hint"}, mail{primeOrch, "[slack] hinted"})
+		h.wantPosts(mail{primeOrch, "read by Start"}, mail{primeOrch, "after a lost hint"}, mail{primeOrch, "hinted"})
 	})
 
 	t.Run("ThreadCursorOlderThanADayIsPrunedAndTheFloorRaised", func(t *testing.T) {
@@ -1096,7 +1096,7 @@ func TestInboundRead(t *testing.T) {
 		h.slack.add(paymentsChannel, slackengine.Message{TS: newer, ThreadTS: parent, User: testOperator, Text: "later reply"})
 		h.hint(paymentsChannel + "_" + parent)
 		h.mustDrain()
-		h.wantPosts(mail{paymentsOrch, "[slack] later reply"})
+		h.wantPosts(mail{paymentsOrch, "later reply"})
 		entry := h.entryOf(paymentsOrch)
 		if wantFloor := fmt.Sprintf("%d.000000", h.clock.Now().Add(-24*time.Hour).Unix()); entry.ThreadFloor != wantFloor {
 			t.Errorf("thread floor = %q; want the cut-off %q", entry.ThreadFloor, wantFloor)
@@ -1137,12 +1137,12 @@ func TestInboundRead(t *testing.T) {
 			h := prepare(t)
 			h.hint(paymentsChannel + "_" + parent(h))
 			h.mustDrain()
-			h.wantPosts(mail{paymentsOrch, "[slack] reply"})
+			h.wantPosts(mail{paymentsOrch, "reply"})
 			h.hint(paymentsChannel)
 			h.mustDrain()
 			h.hint(paymentsChannel + "_" + parent(h))
 			h.mustDrain()
-			h.wantPosts(mail{paymentsOrch, "[slack] reply"}, mail{paymentsOrch, "[slack] both"})
+			h.wantPosts(mail{paymentsOrch, "reply"}, mail{paymentsOrch, "both"})
 		})
 
 		t.Run("StartReadsTheChannelAndTheThread", func(t *testing.T) {
@@ -1150,7 +1150,7 @@ func TestInboundRead(t *testing.T) {
 			h := prepare(t)
 			h.in.Start()
 			h.retry()
-			h.wantPosts(mail{paymentsOrch, "[slack] both"}, mail{paymentsOrch, "[slack] reply"})
+			h.wantPosts(mail{paymentsOrch, "both"}, mail{paymentsOrch, "reply"})
 		})
 	})
 
@@ -1166,9 +1166,20 @@ func TestInboundRead(t *testing.T) {
 			Files: []slackengine.File{{Name: "a.png"}, {Name: "b.pdf"}},
 		})
 		h.mustReadC1()
-		h.wantPosts(mail{primeOrch, "[slack] see https://x.io/a\n(file not relayed: a.png)\n(file not relayed: b.pdf)"})
+		h.wantPosts(mail{primeOrch, "see https://x.io/a\n(file not relayed: a.png)\n(file not relayed: b.pdf)"})
 		h.wantAnswers()
 		h.wantCursorTS("104.000001")
+	})
+
+	t.Run("MessageWithNoTextAndNoFilesPostsNothingAndAdvancesTheCursor", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.startAt("100.000000")
+		h.slack.add(testChannel, slackengine.Message{TS: "101.000001", User: testOperator, Text: ""})
+		h.mustReadC1()
+		h.wantPosts()
+		h.wantAnswers()
+		h.wantCursorTS("101.000001")
 	})
 
 	t.Run("OperatorChangedInTheSetupIsTheOneForwardedAtTheNextDrain", func(t *testing.T) {
@@ -1183,7 +1194,7 @@ func TestInboundRead(t *testing.T) {
 		h.say("102.000001", "from the first operator again")
 		h.slack.add(testChannel, slackengine.Message{TS: "103.000001", User: "U2", Text: "from the second operator"})
 		h.mustReadC1()
-		h.wantPosts(mail{primeOrch, "[slack] from the first operator"}, mail{primeOrch, "[slack] from the second operator"})
+		h.wantPosts(mail{primeOrch, "from the first operator"}, mail{primeOrch, "from the second operator"})
 	})
 
 	t.Run("SlackMarkupReachesTheOrchAsPlainText", func(t *testing.T) {
@@ -1192,7 +1203,7 @@ func TestInboundRead(t *testing.T) {
 		h.startAt("100.000000")
 		h.say("101.000001", "see <https://x.io/a|label> <https://x.io/a> <#C1|general> <!here> <@U1> &amp; &lt;c&gt;")
 		h.mustReadC1()
-		h.wantPosts(mail{primeOrch, "[slack] see https://x.io/a https://x.io/a <#C1|general> <!here> <@U1> & <c>"})
+		h.wantPosts(mail{primeOrch, "see https://x.io/a https://x.io/a <#C1|general> <!here> <@U1> & <c>"})
 	})
 
 	t.Run("PresenceCommandsInAnyChannelSetAndReadThePresenceAndAreAnsweredThere", func(t *testing.T) {
@@ -1254,7 +1265,7 @@ func TestInboundRead(t *testing.T) {
 				t.Errorf("RetryOwed reported no activity for the held messages")
 			}
 			h.wantCursorTS("102.000001")
-			h.wantPosts(mail{primeOrch, "[slack] m1"}, mail{primeOrch, "[slack presence] presence is now slack"})
+			h.wantPosts(mail{primeOrch, "m1"}, mail{primeOrch, "[slack presence] presence is now slack"})
 		})
 
 		t.Run("PastFiveMinutesIsAnsweredOnceAndPassed", func(t *testing.T) {
@@ -1282,8 +1293,8 @@ func TestInboundRead(t *testing.T) {
 			textBytes  int
 			wantPosted bool
 		}{
-			{"AtTheCap", 4096 - len("[slack] "), true},
-			{"OverTheCap", 4097 - len("[slack] "), false},
+			{"AtTheCap", 4096, true},
+			{"OverTheCap", 4097, false},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -1310,7 +1321,7 @@ func TestInboundRead(t *testing.T) {
 		h.startAt("100.000000")
 		h.say("101.000001", "hello")
 		h.mustReadC1()
-		h.wantPosts(mail{primeOrch, "[slack] hello"})
+		h.wantPosts(mail{primeOrch, "hello"})
 		h.wantAnswers("the hub is paused; your message waits for the resume")
 	})
 
@@ -1322,7 +1333,7 @@ func TestInboundRead(t *testing.T) {
 		h.say("101.000001", "hello")
 		h.mustReadC1()
 		h.mustReadC1()
-		h.wantPosts(mail{primeOrch, "[slack] hello"})
+		h.wantPosts(mail{primeOrch, "hello"})
 		h.wantAnswers()
 		h.wantCursorTS("101.000001")
 	})

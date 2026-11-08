@@ -43,7 +43,7 @@
 // It turns each Slack event into a wake hint in the inbox of the hub whose channel map holds the event's channel.
 // The inbound read of a channel is made on a wake hint, on a resync and at the relay's start.
 // It reads the configured operator's messages after the channel's cursor.
-// It hands each, once, to the orch of the channel it was written in as `[slack]` mail.
+// It hands each, once, to the orch of the channel it was written in as mail whose body is the operator's text alone.
 // `away`, `back` and `status` are presence commands answered in Slack and sent to no orch.
 // `SetPresence` mails the orchs a notice when the presence changes.
 // A message that cannot be handled holds the later ones until it succeeds or is five minutes old.
