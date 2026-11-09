@@ -75,6 +75,14 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	if primeDeps.PrimeTidyShuttle != nil {
 		t.Errorf("prime PrimeTidyShuttle = %#v; want nil", primeDeps.PrimeTidyShuttle)
 	}
+
+	// Only the prime's dobby takes the test-map refresh step.
+	if primeDeps.TestMapRunning == nil || primeDeps.StartTestMap == nil {
+		t.Errorf("prime TestMapRunning, StartTestMap nil = %v, %v; want both filled", primeDeps.TestMapRunning == nil, primeDeps.StartTestMap == nil)
+	}
+	if beamDeps.TestMapRunning != nil || beamDeps.StartTestMap != nil {
+		t.Errorf("beam TestMapRunning, StartTestMap nil = %v, %v; want both nil", beamDeps.TestMapRunning == nil, beamDeps.StartTestMap == nil)
+	}
 	// The watch opens only a directory that exists, and a tick creates it as a side effect.
 	// So the check comes before any tick.
 	if info, err := os.Stat(filepath.Dir(hibernatecli.RequestPath(prime))); err != nil || !info.IsDir() {

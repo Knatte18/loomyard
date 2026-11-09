@@ -37,6 +37,10 @@ type Config struct {
 	BoardTidyEvery int `yaml:"board_tidy_every"`
 	// BoardTidyTimeoutMin is the minutes the board-tidy agent may run.
 	BoardTidyTimeoutMin int `yaml:"board_tidy_timeout_min"`
+	// TestMapEvery is the landings between the prime dobby's test-map refreshes; 0 never refreshes.
+	TestMapEvery int `yaml:"test_map_every"`
+	// TestMapBatch is the most stale packages one test-map refresh builds a map for, its `--max`; at least 1.
+	TestMapBatch int `yaml:"test_map_batch"`
 	// TaskHeadroom is the fewest free tasks under the cgroup task limit for dobby to start a run; 0 never holds a start.
 	TaskHeadroom int `yaml:"task_headroom"`
 	// PullRequest is the pull-request mode: "on", "off", "required" or "merge" (squash-merged at once, no review).
@@ -57,6 +61,8 @@ func ConfigSpec() configengine.Spec {
 			"max_runs":               configengine.CategoryNone,
 			"board_tidy_every":       configengine.CategoryNone,
 			"board_tidy_timeout_min": configengine.CategoryNone,
+			"test_map_every":         configengine.CategoryNone,
+			"test_map_batch":         configengine.CategoryNone,
 			"task_headroom":          configengine.CategoryNone,
 			"pull_request":           configengine.CategoryCrossPair,
 			"land_notice":            configengine.CategoryNone,
@@ -66,7 +72,7 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig resolves beam.yaml strictly from the layer stack under dirs, since dobby only ever runs inside a hub.
-// A negative value is refused, naming its key.
+// A negative value is refused, naming its key, and so is a test_map_batch below 1.
 // A pull_request other than on, off, required or merge is refused too.
 // So is a land_notice other than all, per-task or off.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
@@ -85,12 +91,16 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		{"max_runs", cfg.MaxRuns},
 		{"board_tidy_every", cfg.BoardTidyEvery},
 		{"board_tidy_timeout_min", cfg.BoardTidyTimeoutMin},
+		{"test_map_every", cfg.TestMapEvery},
 		{"task_headroom", cfg.TaskHeadroom},
 		{"adopt_fix_tries", cfg.AdoptFixTries},
 	} {
 		if key.value < 0 {
 			return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %d: must not be negative; way forward: fix it with `lym config beam --set %s=<value>`", key.name, key.value, key.name))
 		}
+	}
+	if cfg.TestMapBatch < 1 {
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %d: must be at least 1; way forward: fix it with `lym config beam --set test_map_batch=<value>`", "test_map_batch", cfg.TestMapBatch))
 	}
 	switch cfg.PullRequest {
 	case "on", "off", "required", "merge":

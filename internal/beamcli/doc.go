@@ -317,6 +317,8 @@
 //
 // `stop [slug]` resolves its target as `start` does and calls `orchcli.BeamDown`.
 // That removes the orch strand and ends the beam's dobby through `runproc.EndRole`, each only when live.
+// For the prime it then ends the test-map refresh the dobby started, whether or not the dobby was live.
+// It does so through `runproc.EndRole` with `runproc.RoleTestMap`.
 // It prints what it stopped and takes no `--all`.
 //
 // # status
@@ -352,6 +354,13 @@
 // `registerDobby` runs only once `Run` holds the lock, through `Deps.Locked`.
 // It writes `runproc.SelfRecord(runproc.RoleDobby)` under the beam's slug, or `runproc.HubOwner` for the prime.
 // That record lets the pair teardown of a landed beam end that beam's dobby.
+// For the prime, `hubDobbyDeps` also fills the test-map refresh seams.
+// `testMapRunning` reads whether a live `runproc.RoleTestMap` record stands under `runproc.HubOwner`.
+// `startTestMap` starts `lym gate testmap --max <n>` with the binary `selfexec.LymBinary` names.
+// The process runs in the prime's anchor and its own process group.
+// `startTestMap` registers it under `runproc.HubOwner` as `runproc.RoleTestMap`.
+// The dobby waits on it in the background.
+// A registration that fails is logged, and the refresh is left to end on its own.
 // It prints `already_running` when the lock stays held past the lock wait, with nothing registered.
 //
 // `runDobbyWith` takes the wiring and the notice as seams, and each exit it takes before `Run` leaves a trace:

@@ -36,6 +36,8 @@ type State struct {
 	// LandingsMachineOnly reports whether LandedSinceTidy holds only this machine's landings.
 	// A record without the key decodes as false, and the next landing count empties its list once.
 	LandingsMachineOnly bool `json:"landings_machine_only,omitempty"`
+	// LandingsSinceTestMap counts the landings since the prime's dobby last started a test-map refresh.
+	LandingsSinceTestMap int `json:"landings_since_test_map,omitempty"`
 	// Tidy is the board-tidy agent in flight, nil when none is.
 	Tidy *TidyState `json:"tidy,omitempty"`
 	// LandNotices is the memory of the landing notices of the runs seen ahead of their Land row, keyed by slug.

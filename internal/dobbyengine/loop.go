@@ -118,6 +118,13 @@ type Deps struct {
 	StencilsDir string
 	// NearestOrch returns the name of the nearest live orch the tidy agent's parent directive names; empty means none.
 	NearestOrch func() (string, error)
+	// TestMapRunning reports whether a live test-map refresh is registered for the hub.
+	// A nil TestMapRunning or StartTestMap, as on a beam's dobby, leaves the test-map refresh off.
+	TestMapRunning func() (bool, error)
+	// StartTestMap starts `lym gate testmap --max <maxPackages>` in the prime worktree and returns once it runs.
+	// The process is registered for the hub, so TestMapRunning reads it live, and this dobby waits on it.
+	// A registration that fails leaves the process unregistered to end on its own, and the start still succeeds.
+	StartTestMap func(maxPackages int) error
 	// RunNotices are the seams the run notices of the runs this dobby drives read; a nil RunNotices.ReadChild sends none.
 	RunNotices RunNoticeDeps
 	// WaitReminders are the seams the reminders of a child waiting on the operator read; nil WaitReminders.Post sends none.
@@ -321,6 +328,8 @@ type daemon struct {
 	landNoticeBoard  logger.Episode
 	// landNoticePosts guards each owed landing notice's post by its slug.
 	landNoticePosts logger.EpisodeSet
+	// testMapFailures is the failure episode of the test-map refresh step, which never ends the tick.
+	testMapFailures logger.Episode
 	// listedRuns is the run listing of the tick's pass step, done runs included.
 	listedRuns []RunView
 
@@ -585,10 +594,12 @@ func (d *daemon) standingMove() string {
 // tick folds one awake reading into the sleep watch and runs the per-tick work, ending with the beam's landing step.
 // It records the sleeps the watch saw and fills in the state record's pid when none is set.
 // A sleep the watch sees, and a record found without a pid, owe every run a full pass until a tick returns nil.
-// While an anchor-move record of the geometry exists, a tick spawns no pass, starts no task and runs no tidy step.
+// An anchor-move record of the geometry holds the scheduling.
+// While one exists, a tick spawns no pass, starts no task and runs no tidy or test-map step.
 // It still owes what it owed before.
 // That is logged once per episode,
 // and the state record's upkeep and the landing count go on.
+// A test-map step that fails is logged once per episode and does not end the tick, since the refresh is optional.
 func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	d.sleepWatch.Observe(now, d.deps.Awake())
 	seen := d.sleepWatch.Sleeps()
@@ -637,6 +648,11 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	if moving == "" {
 		if err := d.tidyStep(ctx, now); err != nil {
 			return err
+		}
+		if err := d.testMapStep(now); err != nil {
+			d.testMapFailures.Fail("dobbyengine: the test-map refresh step failed; the tick goes on and the step is tried again", "worktree", d.geom.WorktreeName, "error", err)
+		} else {
+			d.testMapFailures.Recover("dobbyengine: the test-map refresh step works again", "worktree", d.geom.WorktreeName)
 		}
 	}
 	if err := d.landBeam(ctx); err != nil {

@@ -47,6 +47,8 @@ const (
 	RoleTeardown = "teardown"
 	// RoleSlackRelay is the hub's Slack relay, registered under HubOwner.
 	RoleSlackRelay = "slack-relay"
+	// RoleTestMap is the `lym gate testmap` refresh the prime's dobby starts, registered under HubOwner.
+	RoleTestMap = "test-map"
 )
 
 // Record is one registered process of a run.

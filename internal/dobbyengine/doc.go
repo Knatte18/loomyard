@@ -32,6 +32,8 @@
 //     Its `land_notice` key, all, per-task or off, decides which runs get a landing notice.
 //     Its `adopt_fix_tries` key is the adopt check's try limit, which dobby itself never reads.
 //     It caps the fix tasks a failed adopt check files for the worktree's subject between two hand adopts.
+//     Its `test_map_every` and `test_map_batch` keys drive the prime dobby's test-map refresh;
+//     a `test_map_batch` below 1 is refused.
 //   - Run is the daemon loop, with every seam it reads in Deps.
 //   - `dobby.log` holds the dobby's own lines only.
 //     AppendLog appends each line through its own open, which creates no directory.
@@ -103,7 +105,7 @@
 //     a cancelled context ends it after the tick in flight.
 //   - Any existing path of Geometry.MoveRecords means an anchor change stands.
 //     The change is on the dobby's own records worktree or the prime's.
-//     While it stands, a tick spawns no pass, starts no task and runs no board-tidy step.
+//     While it stands, a tick spawns no pass, starts no task and runs no board-tidy or test-map step.
 //     The tidy agent is a strand whose state sits at the anchor.
 //     The state record's upkeep and the landing count go on.
 //     A full pass the dobby owes stays owed, and the first tick of the episode logs the change once.
@@ -444,6 +446,30 @@
 //   - Bound: a fresh record loses a tidy in flight and the slugs landed since the last tidy,
 //     and the next tidy may spawn while the old agent runs until its timeout.
 //     A landing whose run records `lym batten cleanup --apply` removed before dobby read them is not counted.
+//
+// The test-map refresh:
+//
+//   - Only the prime's dobby takes the step: the hub wiring fills Deps.TestMapRunning and Deps.StartTestMap for it alone.
+//   - The board tidy's landing count also adds each landing it counts to State.LandingsSinceTestMap.
+//     The first read of a record counts none, as for the tidy.
+//   - Once that count reaches `test_map_every`, 0 meaning never, a tick starts the refresh through Deps.StartTestMap.
+//     The refresh is `lym gate testmap --max <test_map_batch>`, and the count starts again from zero.
+//     While `test_map_every` is 0 the step zeroes the count, so enabling the key later counts only later landings.
+//     It builds the packages stale when it runs, at most `test_map_batch`;
+//     what the cap left unbuilt waits for the next refresh.
+//   - No refresh starts while Deps.TestMapRunning reads one live, so a restarted or re-exec'd dobby starts no second.
+//     The count stays, and the refresh starts at the first tick after the live one ended.
+//     A start that fails keeps the count and is tried at the next tick.
+//     The failure is logged once per episode and does not hold the rest of the tick.
+//   - The hub wiring registers the refresh under `runproc.HubOwner` as `runproc.RoleTestMap`,
+//     and `lym beam stop` of the prime ends it after the dobby, whether or not the dobby is live.
+//     A registration that fails leaves the refresh unregistered to end on its own, and the count starts again from zero.
+//   - Bound: while a board-tidy agent is in flight no landing is counted,
+//     so a refresh can start up to `board_tidy_timeout_min` late.
+//     A dobby that dies without a stop leaves the refresh running until the verb ends within its own timeouts.
+//   - Bound: an anchor move of the prime counts a running refresh as a pass in flight and waits for it,
+//     so the move can wait out a whole build-and-test run.
+//     The dobby starts no new refresh while the move stands.
 //
 // The view:
 //

@@ -75,6 +75,39 @@ func TestRegisterDobby(t *testing.T) {
 	}
 }
 
+func TestTestMapRunning(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// owner and role name the one live record registered; an empty role registers none.
+		owner, role string
+		want        bool
+	}{
+		{"NoRecordReadsAsNotRunning", runproc.HubOwner, "", false},
+		{"AHubRecordOfAnotherRoleReadsAsNotRunning", runproc.HubOwner, runproc.RoleSlackRelay, false},
+		{"ATestMapRecordUnderARunsSlugReadsAsNotRunning", "payments", runproc.RoleTestMap, false},
+		{"ALiveTestMapRecordUnderTheHubOwnerReadsAsRunning", runproc.HubOwner, runproc.RoleTestMap, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			if tt.role != "" {
+				if err := runproc.Register(dir, tt.owner, runproc.SelfRecord(tt.role)); err != nil {
+					t.Fatalf("Register() = %v; want nil", err)
+				}
+			}
+
+			got, err := testMapRunning(dir)
+			if err != nil || got != tt.want {
+				t.Errorf("testMapRunning() = %v, %v; want %v, nil", got, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestPassErrorText(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

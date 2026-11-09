@@ -1,9 +1,13 @@
-// beamdown_test.go pins that `lym beam stop` removes the orch strand first and then ends the dobby only when it is live, so a second call stops nothing.
+// beamdown_test.go pins the order of `lym beam stop`.
+// It removes the orch strand first and ends the dobby only when it is live.
+// It ends the prime's test-map refresh whether or not the dobby is live, so a second call stops nothing.
 
 package orchcli
 
 import (
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -20,14 +24,22 @@ func TestBeamDown_StopsOrchThenTheDobbyByRole(t *testing.T) {
 		// dobbyLive is whether the dobby holds its lock when beamDown reads it.
 		dobbyLive bool
 		// noStrand leaves reed tracking no orch strand.
-		noStrand       bool
+		noStrand bool
+		// testMap wires the refresh end, as for the prime; testMapFails makes it fail.
+		testMap        bool
+		testMapFails   bool
 		wantCalls      []string
 		wantOrchGone   bool
 		wantDobbyEnded bool
+		// wantErr is the text the returned error holds, empty for none.
+		wantErr string
 	}{
 		{name: "the tracked orch is removed and then the live dobby ended", dobbyLive: true, wantCalls: []string{"remove", "end-dobby"}, wantOrchGone: true, wantDobbyEnded: true},
 		{name: "a dead dobby is not ended", wantCalls: []string{"remove"}, wantOrchGone: true},
 		{name: "a second call stops nothing", noStrand: true, wantCalls: nil},
+		{name: "the prime's refresh is ended after its live dobby", dobbyLive: true, testMap: true, wantCalls: []string{"remove", "end-dobby", "end-test-map"}, wantOrchGone: true, wantDobbyEnded: true},
+		{name: "the prime's refresh is ended though its dobby is dead", testMap: true, wantCalls: []string{"remove", "end-test-map"}, wantOrchGone: true},
+		{name: "a refresh end that fails is returned after the dobby ended", dobbyLive: true, testMap: true, testMapFails: true, wantCalls: []string{"remove", "end-dobby", "end-test-map"}, wantOrchGone: true, wantDobbyEnded: true, wantErr: "end the test-map refresh"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -46,11 +58,23 @@ func TestBeamDown_StopsOrchThenTheDobbyByRole(t *testing.T) {
 				h.calls = append(h.calls, "end-dobby")
 				return nil
 			}
+			if tt.testMap {
+				h.cli.endTestMap = func() error {
+					h.calls = append(h.calls, "end-test-map")
+					if tt.testMapFails {
+						return errors.New("survivors")
+					}
+					return nil
+				}
+			}
 
 			report, err := h.cli.beamDown()
 
-			if err != nil {
+			if tt.wantErr == "" && err != nil {
 				t.Fatalf("beamDown() error = %v; want none", err)
+			}
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.Contains(err.Error(), "survivors")) {
+				t.Fatalf("beamDown() error = %v; want one holding %q and the end's cause", err, tt.wantErr)
 			}
 			if !slices.Equal(h.calls, tt.wantCalls) {
 				t.Errorf("calls = %v; want %v", h.calls, tt.wantCalls)

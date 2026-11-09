@@ -106,6 +106,8 @@ func TidySpec(prompt, reportPath string, model shuttleengine.ModelChoice, timeou
 // so the record's slugs since the last tidy are exactly the agent's.
 // A baselined record not yet marked machine-only has its landed-since-tidy list emptied once, ahead of the count.
 // The list may hold other machines' landings.
+// Where the test-map refresh is wired, each landing counted also adds one to the refresh's count.
+// The test-map step zeroes that count while test_map_every is 0.
 func (d *daemon) countLandings(now time.Time) error {
 	if d.deps.Landings == nil {
 		return nil
@@ -138,6 +140,9 @@ func (d *daemon) countLandings(now time.Time) error {
 		for _, slug := range fresh {
 			s.CountedLandings[slug] = true
 			s.LandedSinceTidy = append(s.LandedSinceTidy, slug)
+		}
+		if d.deps.StartTestMap != nil {
+			s.LandingsSinceTestMap += len(fresh)
 		}
 		return nil
 	})

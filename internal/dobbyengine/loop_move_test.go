@@ -15,8 +15,8 @@ import (
 )
 
 // TestRun_NoPassWhileAMoveStands drives ticks with a move record present and then removed.
-// While the record stands, no pass, task or tidy agent starts, though a landing is still counted.
-// The next tick starts the due pass, the ready task and the tidy agent.
+// While the record stands, no pass, task, tidy agent or test-map refresh starts, though a landing is still counted.
+// The next tick starts the due pass, the ready task, the tidy agent and the refresh.
 func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -33,7 +33,7 @@ func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 
 	passes, fullPasses := map[string]int{}, map[string]int{}
 	shuttle := &tidyShuttleFake{}
-	landingReads := 0
+	landingReads, refreshes := 0, 0
 	h.deps.Runs = func() ([]RunView, error) { return []RunView{runningRun("due")}, nil }
 	h.deps.SpawnPass = func(slug string, continuePass, _ bool) (<-chan PassExit, error) {
 		passes[slug]++
@@ -49,7 +49,14 @@ func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 	h.deps.Tasks = func() ([]TaskView, error) {
 		return []TaskView{{Slug: "fresh", Kind: boardengine.KindTask, Parent: h.geom.WorktreeName}}, nil
 	}
-	h.deps.LoadConfig = func() (Config, error) { return Config{MaxRuns: 5, BoardTidyEvery: 1, BoardTidyTimeoutMin: 30}, nil }
+	h.deps.LoadConfig = func() (Config, error) {
+		return Config{MaxRuns: 5, BoardTidyEvery: 1, BoardTidyTimeoutMin: 30, TestMapEvery: 1, TestMapBatch: testMapBatch}, nil
+	}
+	h.deps.TestMapRunning = func() (bool, error) { return false, nil }
+	h.deps.StartTestMap = func(int) error {
+		refreshes++
+		return nil
+	}
 	// The first read baselines the landings, so the one landing shows from the second tick on.
 	h.deps.Landings = func() ([]string, error) {
 		landingReads++
@@ -66,8 +73,8 @@ func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 	h.perTick = func(n int) error {
 		switch n {
 		case 1, 2:
-			if len(passes) != 0 || len(shuttle.started) != 0 {
-				t.Errorf("after tick %d with the record standing, passes = %v and tidy agents = %d; want none", n, passes, len(shuttle.started))
+			if len(passes) != 0 || len(shuttle.started) != 0 || refreshes != 0 {
+				t.Errorf("after tick %d with the record standing, passes = %v, tidy agents = %d and refreshes = %d; want none", n, passes, len(shuttle.started), refreshes)
 			}
 			if n == 2 {
 				if err := os.Remove(record); err != nil {
@@ -75,8 +82,8 @@ func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 				}
 			}
 		case 3:
-			if passes["due"] != 1 || passes["fresh"] != 1 || len(shuttle.started) != 1 {
-				t.Errorf("after tick 3 with the record gone, passes = %v and tidy agents = %d; want one pass of the due run, one first pass of the ready task and one tidy agent", passes, len(shuttle.started))
+			if passes["due"] != 1 || passes["fresh"] != 1 || len(shuttle.started) != 1 || refreshes != 1 {
+				t.Errorf("after tick 3 with the record gone, passes = %v, tidy agents = %d and refreshes = %d; want one pass of the due run, one first pass of the ready task, one tidy agent and one refresh", passes, len(shuttle.started), refreshes)
 			}
 		}
 		return nil

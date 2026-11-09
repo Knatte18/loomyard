@@ -1,7 +1,8 @@
 // dobbydeps.go fills the seams of dobbyengine.Run over a hub.
 // It covers the runs and tasks it reads, the pass it spawns, and the notices it sends.
 // It also covers the owner pause and board tidy it sends.
-// It also covers the hibernate request the prime's dobby carries, and the registration of the dobby process itself.
+// It also covers the hibernate request and the test-map refresh the prime's dobby carries,
+// and the registration of the dobby process itself.
 
 package beamcli
 
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -212,6 +214,11 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			return false, errors.Join(carrier.Tick(), ensureSlackRelay(prime, &relayEpisodes))
 		}
 		deps.CheckBinary = holdReexec(carrier.HoldsReexec, deps.CheckBinary)
+		runProcDir := fabricengine.RunProcDir(prime.HubPath)
+		deps.TestMapRunning = func() (bool, error) { return testMapRunning(runProcDir) }
+		deps.StartTestMap = func(maxPackages int) error {
+			return startTestMap(selfexec.LymBinary, geom.PrimeAnchor, runProcDir, maxPackages)
+		}
 	}
 	if geom.Slug != "" {
 		// The removed worktree's config is gone by the time this stops a strand, so the runner is built over the prime.
@@ -541,6 +548,49 @@ func spawnPass(geom dobbyengine.Geometry, slug string, continuePass, noReopen bo
 		exit <- dobbyengine.PassExit{Code: cmd.ProcessState.ExitCode(), Error: passErrorText(output.Bytes(), waitErr)}
 	}()
 	return exit, nil
+}
+
+// testMapRunning reports whether a live process registered under the hub owner in runProcDir is the test-map refresh.
+func testMapRunning(runProcDir string) (bool, error) {
+	records, err := runproc.List(runProcDir, runproc.HubOwner)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(records, func(record runproc.Record) bool { return record.Role == runproc.RoleTestMap }), nil
+}
+
+// startTestMap starts `<lym> gate testmap --max <maxPackages>` in primeAnchor, with the binary lookupLymBinary returns.
+// The process gets its own process group and its output is discarded.
+// It registers the process under the hub owner in runProcDir as the test-map refresh,
+// so a restarted dobby reads it live and the prime's stop ends it.
+// The dobby waits on it in the background and logs its exit.
+// A registration that fails is logged at Warn and is no error:
+// the unregistered refresh is left to end on its own, and the caller counts it as started.
+// A binary that does not resolve fails and starts nothing; in a test binary the lym binary does not resolve.
+func startTestMap(lookupLymBinary func() (string, error), primeAnchor, runProcDir string, maxPackages int) error {
+	executable, err := lookupLymBinary()
+	if err != nil {
+		return err
+	}
+	args := []string{"gate", "testmap", "--max", strconv.Itoa(maxPackages)}
+	cmd := exec.Command(executable, args...)
+	cmd.Dir = primeAnchor
+	proc.Detach(cmd)
+	if err := cmd.Start(); err != nil {
+		logger.Warn("beamcli: spawn the test-map refresh failed", "exe", executable, "args", args, "dir", primeAnchor, "error", err)
+		return err
+	}
+	pid := cmd.Process.Pid
+	logger.Info("beamcli: spawned the test-map refresh", "exe", executable, "args", args, "dir", primeAnchor, "pid", pid)
+	record := runproc.ChildRecord(pid, runproc.RoleTestMap, append([]string{executable}, args...))
+	go func() {
+		waitErr := cmd.Wait()
+		logger.Info("beamcli: the test-map refresh exited", "pid", pid, "code", cmd.ProcessState.ExitCode(), "error", waitErr)
+	}()
+	if err := runproc.Register(runProcDir, runproc.HubOwner, record); err != nil {
+		logger.Warn("beamcli: the test-map refresh is not registered and is left to end on its own", "pid", pid, "error", err)
+	}
+	return nil
 }
 
 // tailBuffer keeps the last limit bytes written to it.
