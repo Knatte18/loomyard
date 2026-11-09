@@ -476,6 +476,7 @@ User-facing modules each get one `lym <module>` namespace:
   Every project, the root included as `P0` with its file `project-root.md`, renders through one project section.
   A section nests the projects under it, each with its own slug, age, owner, Tasks, Notes and Done.
   The README therefore shows every open project's entries split the same way, with the root's section last.
+  Each of its top-level sections, the root's included, is a `<details open>` block the reader can collapse.
   A project file shows its project and the projects under it.
   An entry may carry a priority, `high` or `low`, absent meaning normal.
   The priority orders the entry first or last within its subsection.

@@ -1,7 +1,7 @@
 // render.go turns the entry list into the board's output files.
 // Those are README.md, a project-<slug>.md for each project and the root, and a design-*.md for each entry with a body.
 // Render is a pure function from the entries to a map of filename to content; the caller writes the files.
-// README.md is the overview of every top-level project, with the root's own section last.
+// README.md is the overview of every top-level project, each in a collapsible section, with the root's own section last.
 // A project file holds its heading, its facts and brief, and its own entries.
 // Each open sub-project gets a section one heading level below the project's heading.
 // The root project P0 renders the same way, but its projects stand beside it rather than under it.
@@ -18,6 +18,7 @@ package boardengine
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"slices"
@@ -371,11 +372,15 @@ func (b boardView) upLink(project Task) string {
 
 // projectLink is a markdown link to project's own board file, its text the project's handle and title.
 func projectLink(project Task) string {
-	file := rootProjectFile
-	if project.Slug != "" {
-		file = projectFileName(project.Slug)
+	return "[" + cellText(project.Handle+" "+project.Title) + "](" + projectFile(project) + ")"
+}
+
+// projectFile is the name of project's own board file, the root's included.
+func projectFile(project Task) string {
+	if project.Slug == "" {
+		return rootProjectFile
 	}
-	return "[" + cellText(project.Handle+" "+project.Title) + "](" + file + ")"
+	return projectFileName(project.Slug)
 }
 
 // renderedLine is the line every board file states its render time on.
@@ -498,15 +503,32 @@ func (b boardView) projectFacts(project Task) string {
 
 // renderReadme builds README.md, the overview of every project.
 // Its header names the render time and the prime owner, then comes the intro.
-// Each open project directly under the root gets a section at heading level two, and the root's own section comes last.
+// Each open project directly under the root gets a collapsible section, and the root's own section comes last.
 func (b boardView) renderReadme() string {
 	lines := []string{"# " + rootTitle, "", b.renderedLine(), "Prime owner: " + primeOwnerText(b.primeOwner) + ".", ""}
 	lines = append(lines, boardIntro...)
 	for _, child := range b.childProjects(rootProject) {
-		lines = append(lines, b.projectSection(child.Task, 2)...)
+		lines = append(lines, b.collapsibleProjectSection(child.Task)...)
 	}
-	lines = append(lines, b.projectSection(rootProject, 2)...)
+	lines = append(lines, b.collapsibleProjectSection(rootProject)...)
 	return joinLines(lines)
+}
+
+// readmeSectionLevel is the heading level a README section's summary stands in for;
+// the section's own headings sit one level below it.
+const readmeSectionLevel = 2
+
+// collapsibleProjectSection renders project as one README section the reader can collapse, open by default.
+// Its summary links the project's handle and title to its file and counts its open members.
+// The summary is HTML, since markdown does not render inside it.
+// Blank lines around the section's contents let the markdown there render.
+func (b boardView) collapsibleProjectSection(project Task) []string {
+	title := html.EscapeString(strings.Join(strings.Fields(project.Handle+" "+project.Title), " "))
+	summary := fmt.Sprintf(`<summary><strong><a href="%s">%s</a> (%d)</strong></summary>`,
+		html.EscapeString(projectFile(project)), title, b.openMembers(project))
+	lines := append([]string{"<details open>", summary, ""}, b.projectSectionContent(project, readmeSectionLevel)...)
+	// The contents end in a blank line, as every section of a board file does.
+	return append(lines, "</details>", "")
 }
 
 // renderProjectFile builds the board file of project.
@@ -519,8 +541,13 @@ func (b boardView) renderProjectFile(project Task) string {
 
 // projectSection renders project as one section at the heading level given.
 // Its heading links the project's handle and title to its file and counts its open members.
-// The section then holds its facts line, its brief when it has one, and its body.
 func (b boardView) projectSection(project Task, level int) []string {
+	heading := countedHeading(level, projectLink(project), b.openMembers(project))
+	return append([]string{heading, ""}, b.projectSectionContent(project, level)...)
+}
+
+// openMembers counts the entries directly under project that are not done.
+func (b boardView) openMembers(project Task) int {
 	members := 0
 	for _, twl := range b.ordered {
 		// The root's projects stand beside it, not under it, so they are not its members.
@@ -529,7 +556,13 @@ func (b boardView) projectSection(project Task, level int) []string {
 			members++
 		}
 	}
-	lines := []string{countedHeading(level, projectLink(project), members), "", b.projectFacts(project), ""}
+	return members
+}
+
+// projectSectionContent is what a section of project at heading level level holds under its heading:
+// its facts line, its brief when it has one, and its body.
+func (b boardView) projectSectionContent(project Task, level int) []string {
+	lines := []string{b.projectFacts(project), ""}
 	if project.Brief != "" {
 		lines = append(lines, project.Brief, "")
 	}

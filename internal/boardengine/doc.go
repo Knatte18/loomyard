@@ -310,7 +310,11 @@
 // Its section and its file hold its own entries alone, and its open members are its open tasks and notes.
 // Heading levels nest with the project depth and stop at six, so a deep project still renders.
 // An open project under a done project counts as under the root, since a done project has no section.
-// README.md holds a `##` section per open project under the root, by handle, and the root's `##` section comes last.
+// README.md holds a section per open project under the root, by handle, and the root's section comes last.
+// Each is a `<details open>` block the reader can collapse, open by default.
+// Its `<summary>` stands in for a `##` heading and carries what that heading would, as an HTML link.
+// Markdown does not render inside a summary, so the link is HTML.
+// The section's contents keep their levels below `##`.
 // So every open project shows there with its own Running, Ready, Tasks, Notes and Done.
 // A project file's header stands as its project's heading.
 // After it come the project's sub-projects at `##`.
