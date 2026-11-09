@@ -44,8 +44,9 @@
 // Seed-Child refuses a profile or `defaults` that holds a recipe only under its former name.
 // The refusal names that reconcile as the way forward.
 // Each profile, like `defaults`, is one whole entry,
-// and `lym config profiles --set <name>='<json object>'` adds or replaces one whole entry;
-// renaming one is adding it under the new name and removing the old block in the editor, `lym config profiles`.
+// and `lym config profiles --set <name>='<json object>'` adds or replaces one whole entry.
+// A dotted key sets one value inside a profile and keeps the rest, as in `--set docs.darn.loom.code_max_bounces=0`.
+// Renaming a profile is adding it under the new name and removing the old block in the editor, `lym config profiles`.
 // No key is open to the local layer.
 //
 // `Load` decodes the stacked file without filling it from the template,

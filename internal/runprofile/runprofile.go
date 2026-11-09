@@ -35,7 +35,9 @@ func ConfigTemplate() string {
 }
 
 // ConfigSpec returns the module's layered-load spec.
-// It is hub-wide, and each profile, like the defaults entry, is one whole entry set from a JSON object.
+// It is hub-wide.
+// Each profile, like the defaults entry, is one whole entry set from a JSON object.
+// A dotted key sets one value below an entry instead.
 // No entry is open to the local layer:
 // each template entry is classified cross-pair, since every pair naming it reads it,
 // and a hub-wide module refuses an unclassified one.

@@ -24,7 +24,8 @@
 //
 // [Set] writes dotted key=value pairs into a module's file with no editor and no validation loop.
 // It scaffolds an absent standalone or seed-only base from the template and writes a hub's base sparse.
-// For a spec with `JSONEntries`, it writes each pair as one whole top-level entry from a JSON object.
+// For a spec with `JSONEntries`, it writes a pair with an undotted key as one whole top-level entry from a JSON object,
+// and a pair with a dotted key as the one value below an entry that the key names.
 // That path makes no template key check.
 // [Edit] is the interactive counterpart.
 // An editor that leaves the file empty or whitespace-only aborts the edit with [ErrAborted] before the YAML parse:

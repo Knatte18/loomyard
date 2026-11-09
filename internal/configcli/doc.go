@@ -129,7 +129,13 @@
 // A spec that sets `configengine.Spec.JSONEntries`, as `profiles` does, takes a top-level name and a JSON object.
 // An example is `lym config profiles --set wide='{"tapestry":{"loom":{"code_max_bounces":2}}}'`.
 // The object replaces that entry whole or is appended as a new one, and the other entries stay as they are.
-// A value that is not a JSON object is refused.
+// A value for a top-level name that is not a JSON object is refused, and the refusal names the dotted form.
+// Such a spec also takes a dotted key.
+// It sets the one value below the entry it names and leaves the rest of the entry as it is.
+// An example is `lym config profiles --set docs.darn.loom.code_max_bounces=0`.
+// A value starting with `{` or `[` is a flow mapping or list, and an empty value is an empty string.
+// Any other value is a scalar under the type its text spells, so `0` is a number and `sonnet[medium]` a string.
+// A dot in a key always separates levels, so a top-level name holding a dot cannot be set by `--set`.
 // An absent hub file starts from the template.
 // A module with a template overlay picks its layer through a selector key that only the base file may hold.
 // A hub worktree write that picks a layer the base does not pick is refused.

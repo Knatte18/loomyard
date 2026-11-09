@@ -835,10 +835,18 @@ func rootMappingNode(node *yaml.Node) *yaml.Node {
 	return node
 }
 
-// SetEntries sets each pair's key, a top-level key, to the JSON object its value spells.
-// It replaces the key's value whole or appends the key, and returns the new document.
-// The other keys keep their order and comments, and the set entry keeps its key's comments.
-// A value that is not a JSON object, or an empty key, is an error naming the pair, and nothing is returned.
+// SetEntries sets each pair's key in existing and returns the new document.
+// A key with no dot names a top-level entry;
+// its value must be a JSON object, which replaces the entry whole or is appended as a new one.
+// A dotted key names one value below an entry and sets that value alone, creating every missing mapping on the way.
+// Its value is written as a flow mapping or list when its first non-blank character is { or [.
+// Any other value is a scalar under the tag its own text resolves to, so a number decodes as a number,
+// and an empty value is an empty string.
+// The other keys keep their order and comments, and a set key keeps its comments.
+// A dot in a key always separates levels, so a top-level name holding a dot cannot be set.
+// A top-level value that is not a JSON object is an error naming the dotted form;
+// so is a key with an empty segment, or a dotted key through a value that is neither a mapping nor null.
+// On an error nothing is returned.
 func SetEntries(existing []byte, pairs []KV) ([]byte, error) {
 	doc, root, err := parseMappingRoot(existing, "existing")
 	if err != nil {
@@ -849,12 +857,18 @@ func SetEntries(existing []byte, pairs []KV) ([]byte, error) {
 		doc = &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{root}}
 	}
 	for _, pair := range pairs {
-		if pair.Key == "" {
-			return nil, fmt.Errorf("an entry name must not be empty, got %q", pair.Key+"="+pair.Value)
+		if slices.Contains(strings.Split(pair.Key, "."), "") {
+			return nil, fmt.Errorf("config key %q holds an empty segment: an entry name and each key below it must not be empty", pair.Key)
+		}
+		if strings.Contains(pair.Key, ".") {
+			if err := setEntryValue(root, pair); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		var object map[string]any
 		if err := json.Unmarshal([]byte(pair.Value), &object); err != nil || object == nil {
-			return nil, fmt.Errorf("value for %s must be a JSON object such as {\"module\": {\"key\": 1}}, got %q", pair.Key, pair.Value)
+			return nil, fmt.Errorf("value for %s must be a JSON object, since %s names a whole entry, got %q: set one value below it with a dotted key instead, such as %s.<key>.<key>=1", pair.Key, pair.Key, pair.Value, pair.Key)
 		}
 		var parsed yaml.Node
 		if err := yaml.Unmarshal([]byte(pair.Value), &parsed); err != nil {
@@ -866,6 +880,36 @@ func SetEntries(existing []byte, pairs []KV) ([]byte, error) {
 		setEntry(root, pair.Key, value)
 	}
 	return yaml.Marshal(doc)
+}
+
+// setEntryValue sets the one value that pair's dotted key names in the mapping tree under root.
+// It creates every missing mapping on the way.
+// A value whose first non-blank character is { or [ is a flow mapping or list.
+// An empty value is an empty string, and any other value a scalar under the tag its own text resolves to.
+// A value on the way that is neither a mapping nor null is an error naming its path and the key.
+func setEntryValue(root *yaml.Node, pair KV) error {
+	var value *yaml.Node
+	trimmed := strings.TrimSpace(pair.Value)
+	switch {
+	case strings.HasPrefix(trimmed, "{"), strings.HasPrefix(trimmed, "["):
+		entry, err := openMapEntryNode(pair)
+		if err != nil {
+			return err
+		}
+		plainScalars(entry)
+		value = entry
+	case pair.Value == "":
+		value = stringNode("")
+	default:
+		// A null leaf tag makes scalarSetTag resolve the tag from the value's own text.
+		value = &yaml.Node{Kind: yaml.ScalarNode, Tag: scalarSetTag("!!null", pair.Value), Value: pair.Value}
+	}
+	parent, name, err := parentMappingOf(root, pair.Key)
+	if err != nil {
+		return fmt.Errorf("%w: set it whole, or rewrite it as a map, to set %s", err, pair.Key)
+	}
+	setEntry(parent, name, value)
+	return nil
 }
 
 // plainScalars clears the quoting style of every scalar under node,

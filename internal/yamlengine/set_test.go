@@ -831,11 +831,12 @@ func assertMergedKeyValue(t *testing.T, result SetResult, key, want string) {
 	}
 }
 
-// TestSetEntries pins whole-entry sets:
+// TestSetEntries pins entry sets:
 // a new entry is appended;
 // an existing one is replaced whole with its key's comment kept;
+// a dotted key sets one value below an entry, creating the mappings it lacks;
 // the other entries and comments are untouched;
-// and a value that is not a JSON object or an empty name is refused.
+// and a top-level value that is not a JSON object, an empty segment or a key through a scalar is refused.
 func TestSetEntries(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -873,13 +874,73 @@ func TestSetEntries(t *testing.T) {
 			name:     "a value that is not a JSON object is refused",
 			existing: existing,
 			pairs:    []KV{{Key: "light", Value: `[1]`}},
-			wantErr:  []string{"light", "JSON object"},
+			wantErr:  []string{"light", "JSON object", "light.<key>.<key>=1"},
 		},
 		{
 			name:     "an empty name is refused",
 			existing: existing,
 			pairs:    []KV{{Key: "", Value: `{}`}},
 			wantErr:  []string{"entry name"},
+		},
+		{
+			name:     "a dotted key sets one value inside an entry and keeps the rest",
+			existing: existing,
+			pairs:    []KV{{Key: "docs.darn.writer", Value: "opus"}},
+			want:     "# head\nlight:\n    loom: {plan_max_bounces: 1}\n# about docs\ndocs:\n    darn: {writer: opus}\n",
+		},
+		{
+			name:  "a dotted key creates the mappings it lacks and writes a number as a number",
+			pairs: []KV{{Key: "docs.darn.loom.code_max_bounces", Value: "0"}},
+			want:  "docs:\n    darn:\n        loom:\n            code_max_bounces: 0\n",
+		},
+		{
+			name:  "a dotted value that is no number stays a string, and an empty value is an empty string",
+			pairs: []KV{{Key: "docs.darn.writer", Value: "sonnet[medium]"}, {Key: "docs.darn.fan", Value: ""}},
+			want:  "docs:\n    darn:\n        writer: sonnet[medium]\n        fan: \"\"\n",
+		},
+		{
+			name:  "a dotted value starting with a brace is a mapping at the key's own depth",
+			pairs: []KV{{Key: "docs.darn", Value: `{"loom":{"code_max_bounces":0}}`}},
+			want:  "docs:\n    darn:\n        loom: {code_max_bounces: 0}\n",
+		},
+		{
+			name:  "a dotted value starting with a bracket is a flow list",
+			pairs: []KV{{Key: "docs.darn.fan", Value: "[a, b]"}},
+			want:  "docs:\n    darn:\n        fan: [a, b]\n",
+		},
+		{
+			name:    "a dotted value with a malformed flow mapping is refused",
+			pairs:   []KV{{Key: "docs.darn", Value: "{a: 1"}},
+			wantErr: []string{"docs.darn", "double-quote"},
+		},
+		{
+			name:  "a dotted boolean and null keep their own tags",
+			pairs: []KV{{Key: "docs.darn.on", Value: "true"}, {Key: "docs.darn.x", Value: "null"}},
+			want:  "docs:\n    darn:\n        on: true\n        x: null\n",
+		},
+		{
+			name:     "a dotted key over a null entry creates the mapping",
+			existing: "docs:\n  darn:\n",
+			pairs:    []KV{{Key: "docs.darn.writer", Value: "opus"}},
+			want:     "docs:\n    darn:\n        writer: opus\n",
+		},
+		{
+			name:     "a dotted key over a leaf keeps the leaf's line comment",
+			existing: "docs:\n  darn:\n    writer: sonnet # the writer\n",
+			pairs:    []KV{{Key: "docs.darn.writer", Value: "opus"}},
+			want:     "docs:\n    darn:\n        writer: opus # the writer\n",
+		},
+		{
+			name:     "a dotted key through a scalar is refused",
+			existing: "docs:\n  darn: sonnet\n",
+			pairs:    []KV{{Key: "docs.darn.writer", Value: "opus"}},
+			wantErr:  []string{"docs.darn", "not a map", "docs.darn.writer"},
+		},
+		{
+			name:     "a dotted key with an empty segment is refused",
+			existing: existing,
+			pairs:    []KV{{Key: "docs..writer", Value: "opus"}},
+			wantErr:  []string{"docs..writer", "empty segment"},
 		},
 	}
 	for _, tt := range tests {

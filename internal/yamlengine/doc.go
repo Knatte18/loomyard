@@ -10,7 +10,7 @@
 // [MissingKeys] reports the template leaf paths the file lacks.
 // It treats a template list as a default, not a minimum length.
 // [SetValues] applies dotted key=value pairs to the template-shaped tree and refuses a key the template does not know.
-// [SetEntries] sets whole top-level entries from JSON objects.
+// [SetEntries] sets whole top-level entries from JSON objects, or one value below an entry by a dotted key.
 // It serves a module whose top-level keys are names the operator owns.
 // [RaiseIntFloor] raises one top-level integer key to a floor, for a module's migration hook.
 // It carries every other key and comment through unchanged.

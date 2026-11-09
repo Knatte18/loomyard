@@ -75,7 +75,8 @@ const (
 // a layer adds to or overrides each entry by name.
 // HubWide marks a module whose file lives at the hub only;
 // WholeEntries makes each top-level key one unit, open to the local layer.
-// JSONEntries makes a set write each pair as one whole top-level entry from a JSON object, with no template key check.
+// JSONEntries makes a set write a pair with an undotted key as one whole top-level entry from a JSON object,
+// and a pair with a dotted key as the one value below an entry, with no template key check.
 // Categories classifies the template by dotted path: an entry covers its own path and every path under it.
 // RetiredKeys maps each dotted key the module has retired to the category it held as a template key;
 // they stay out of Categories and OpenMaps; the local and machine layers admit them by that category,

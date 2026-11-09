@@ -1232,6 +1232,18 @@ func TestDispatchSetProfiles(t *testing.T) {
 			wantFile: seeded,
 			wantErr:  `run profile "odd", recipe "tapestry"`,
 		},
+		{
+			name:     "a dotted key changes one value and keeps the rest of the profile",
+			setFlag:  `light.loom.loom.plan_max_bounces=2`,
+			wantFile: "# operator notes\nlight:\n    loom:\n        loom: {plan_max_bounces: 2}\n",
+		},
+		{
+			name:     "a dotted key leaving the profile in a wrong shape is refused and the file restored",
+			setFlag:  `light.loom.loom.no_such_key=1`,
+			wantCode: 1,
+			wantFile: seeded,
+			wantErr:  `run profile "light"`,
+		},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {

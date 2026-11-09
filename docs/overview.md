@@ -524,7 +524,8 @@ User-facing modules each get one `lym <module>` namespace:
   Seed-Child writes the profile's block for the task's recipe under the task's `run_settings`.
   A task naming no profile takes its recipe's default profile.
   The starting profiles are the ladder `speed`, `light`, `solid` and `wide`, plus the darn-only `docs`.
-  `lym config profiles --set <name>='<json object>'` adds or replaces one whole profile.
+  `lym config profiles --set <name>='<json object>'` adds or replaces one whole profile,
+  and a dotted key such as `docs.darn.loom.code_max_bounces=0` sets one value inside it.
   See [internal/runprofile](../internal/runprofile/doc.go). ✅ Implemented.
 - **fabric** — the sole git-coordination module over the code and its records (`internal/fabriccli` + `internal/fabricengine`).
   It unifies two `internal/gitrepo.Repo` instances in one command tree.

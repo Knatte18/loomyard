@@ -45,7 +45,8 @@ func layerPath(dirs Dirs, spec Spec, layer Layer) (path, owner string, err error
 // the one the written base document picks, or for a layer above the base the one the base file picks.
 // An unknown selector value fails before anything is written,
 // and a hub worktree write that leaves the selector with a value other than the default file's is refused.
-// A spec with JSONEntries writes each pair as one whole top-level entry on every layer:
+// A spec with JSONEntries writes a pair with an undotted key as one whole top-level entry on every layer,
+// and a pair with a dotted key as the one value below an entry that the key names;
 // an absent base layer is scaffolded from the template first.
 // Returns the sorted list of pre-existing keys not in the template that were preserved verbatim;
 // nil on any error.
@@ -105,7 +106,8 @@ func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, er
 	return result.Preserved, nil
 }
 
-// setEntries writes each pair as a whole top-level entry into the layer file at path.
+// setEntries writes each pair into the layer file at path:
+// an undotted key as a whole top-level entry, a dotted key as the one value below an entry it names.
 // An absent base file starts from the template and any other absent file from nothing;
 // a local or machine write is checked against its layer's rule first, and a refused write leaves the file as it was.
 func setEntries(spec Spec, layer Layer, path string, base bool, pairs []yamlengine.KV) error {
