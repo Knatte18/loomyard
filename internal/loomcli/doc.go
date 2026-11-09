@@ -746,6 +746,12 @@
 // It falls back to the merge base with the local parent branch when there is no merge record.
 // A merge record that cannot be decoded is logged at Warn and treated the same way.
 //
+// The Code-Review rubric's `redundancy_report` marker is filled from the worktree's redundancy report.
+// A `lym gate test` call with the `redundancy` report step writes that report.
+// The marker lists the report's tests when `gatecli.RedundancyReportMatches` matches the report against HEAD.
+// Otherwise it is one line saying no current report exists and why.
+// That line names the gate key of a report written on a red tier.
+//
 // Every loom recipe builds its Describe session from one `landingshed.DescribeTable`.
 // It lists the run records that exist.
 // It renders `(none)` for a run that has none, as a darn run has no webster summary.

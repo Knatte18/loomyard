@@ -114,6 +114,20 @@ Do not flag any of the following as a finding:
 
   A redundancy finding is raised only by naming the existing test that covers the behavior, so it cannot block on a vague suspicion.
 
+  Each test the redundancy report below lists as contained is a test-economy candidate.
+  Coverage blocks do not see assertions, so check the candidate's assertions against those of its covering tests before filing anything.
+  When the covering tests assert what it asserts, file a finding to fold it into one of them or delete it, naming the covering tests.
+  When it pins what coverage cannot see, such as an error message, an output shape, an ordering or a side effect the covering tests never check, accept it:
+  file a finding to mark it `//testtiming:keep <reason>` directly above its `func Test…` line, the reason naming what it pins.
+  A test the report lists as unique or not judged is no finding on that ground; judge it by the bullets above.
+
+## Redundancy report
+
+{{.redundancy_report}}
+
+The note above is the advisory report `lym gate test` writes on the diff's new and changed Go tests, read only when it still matches HEAD's tree.
+When it is `none`, or says no current report exists, judge test economy by the bullets above alone, and raise no finding about the report's absence.
+
 ## Amendment
 
 {{.amendment}}

@@ -17,11 +17,11 @@ import (
 )
 
 // rubricMarkerAllowlist is the complete set of top-level stencil markers a rubric may carry:
-// only specs_dir, stencils_dir, webster_record, gate_tiers, amendment and review_base.
+// only specs_dir, stencils_dir, webster_record, gate_tiers, amendment, review_base and redundancy_report.
 // internal/shedadapters.ReadRubric fills these markers as the rubric's own template at read time.
 // A marker outside this set would sit inside the value the Bouncer and Burler prompts interpolate the rubric as.
 // The fill's required-marker check cannot see such a marker, so this test must fail on it.
-var rubricMarkerAllowlist = map[string]bool{"specs_dir": true, "stencils_dir": true, "webster_record": true, "gate_tiers": true, "amendment": true, "review_base": true}
+var rubricMarkerAllowlist = map[string]bool{"specs_dir": true, "stencils_dir": true, "webster_record": true, "gate_tiers": true, "amendment": true, "review_base": true, "redundancy_report": true}
 
 // TestLoomRubrics asserts, for each stencil-sourced rubric:
 //   - its top-level marker set is a subset of rubricMarkerAllowlist, the same allowed set for every rubric:
@@ -80,7 +80,11 @@ func TestLoomRubrics(t *testing.T) {
 			const tier = "- tier1: the hub's first tier"
 			const amendment = "Review only the change since commit abc123."
 			const reviewBase = "0123abcd4567ef"
-			got, err := shedadapters.ReadRubric(dir, tt.name, "/abs/specs/dir", shedadapters.RubricNotes{WebsterRecord: record, GateTiers: tier, Amendment: amendment, ReviewBase: reviewBase})
+			const redundancyReport = "No current redundancy report: none written."
+			got, err := shedadapters.ReadRubric(dir, tt.name, "/abs/specs/dir", shedadapters.RubricNotes{
+				WebsterRecord: record, GateTiers: tier, Amendment: amendment, ReviewBase: reviewBase,
+				RedundancyReport: func() string { return redundancyReport },
+			})
 			if err != nil {
 				t.Fatalf("shedadapters.ReadRubric(%q, %q) = _, %v; want nil error", dir, tt.name, err)
 			}
@@ -95,6 +99,9 @@ func TestLoomRubrics(t *testing.T) {
 			}
 			if carriesBase := strings.Contains(got, "git diff "+reviewBase+"..HEAD"); carriesBase != (tt.name == "loom-rubric-code-review") {
 				t.Errorf("rendered %s carries the review range over the review base = %v; only the Code-Review rubric carries the marker", tt.name, carriesBase)
+			}
+			if carriesReport := strings.Contains(got, redundancyReport); carriesReport != (tt.name == "loom-rubric-code-review") {
+				t.Errorf("rendered %s carries the redundancy report note = %v; only the Code-Review rubric carries the marker", tt.name, carriesReport)
 			}
 			if carriesSpecs := strings.Contains(got, "/abs/specs/dir"); carriesSpecs != tt.namesSpecs {
 				t.Errorf("rendered %s carries the specs directory = %v; want %v", tt.name, carriesSpecs, tt.namesSpecs)

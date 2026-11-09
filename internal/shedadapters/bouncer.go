@@ -88,6 +88,9 @@ type BouncerConfig struct {
 	// ReviewBase returns the commit the rubric's review_base marker is filled from.
 	// Nil, an error and an empty answer render `none`, which the Code-Review rubric reads as an undetermined review range.
 	ReviewBase func() (string, error)
+	// RedundancyReport returns the note the rubric's redundancy_report marker is filled from.
+	// It is called each time the seed or judge reads a rubric carrying the marker; nil renders `none`.
+	RedundancyReport func() string
 	// RubricStencil is the stencilstore name of the rubric this Bouncer's judge applies.
 	RubricStencil string
 	// Models holds the already-resolved seed and judge pairs, threaded verbatim into the shuttleengine.Spec of each pass.
@@ -1651,7 +1654,7 @@ func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.
 // rubricNotes gathers the notes that fill the rubric's markers.
 // Each note is blank when no function is configured for it.
 func (b *Bouncer) rubricNotes() RubricNotes {
-	notes := RubricNotes{GateTiers: b.cfg.GateTiers, Amendment: AmendmentNote(b.cfg.RunDir)}
+	notes := RubricNotes{GateTiers: b.cfg.GateTiers, Amendment: AmendmentNote(b.cfg.RunDir), RedundancyReport: b.cfg.RedundancyReport}
 	if b.cfg.WebsterRecord != nil {
 		notes.WebsterRecord = b.cfg.WebsterRecord()
 	}

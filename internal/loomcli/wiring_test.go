@@ -940,6 +940,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	} else if got := c.env.WebsterRecord(); got != "none" {
 		t.Errorf("c.env.WebsterRecord() = %q; want none for an anchor with no webster run record", got)
 	}
+	if c.env.RedundancyReport == nil {
+		t.Error("c.env.RedundancyReport = nil; want the closure over the worktree's redundancy report")
+	} else if got, want := c.env.RedundancyReport(), "No current redundancy report: no gate call of this worktree has written one."; got != want {
+		t.Errorf("c.env.RedundancyReport() = %q; want %q for a worktree with no report", got, want)
+	}
 
 	// Each loom segment's entry joins the models, keys and Bouncer pair with its resolved budget and hard cap:
 	// plan_max_bounces, code_max_bounces and plan_hard_max_bounces name their own keys;

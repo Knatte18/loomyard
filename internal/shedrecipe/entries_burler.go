@@ -92,7 +92,7 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	if err != nil {
 		return nil, err
 	}
-	notes := shedadapters.RubricNotes{GateTiers: env.GateTiers, Amendment: shedadapters.AmendmentNote(runDir)}
+	notes := shedadapters.RubricNotes{GateTiers: env.GateTiers, Amendment: shedadapters.AmendmentNote(runDir), RedundancyReport: env.RedundancyReport}
 	if env.WebsterRecord != nil {
 		notes.WebsterRecord = env.WebsterRecord()
 	}

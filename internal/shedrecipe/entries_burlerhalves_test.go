@@ -183,6 +183,17 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 		}
 	})
 
+	t.Run("FillsTheRedundancyReportNote", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.RedundancyReport = func() string { return "No current redundancy report: none written." }
+		writeStencil(t, env.StencilsDir, "round-rubric", "Redundancy: {{.redundancy_report}}\n")
+
+		profile, _ := captureReview(t, "review-row", stencilCfg, env)
+		if profile.Rubric != "Redundancy: No current redundancy report: none written.\n" {
+			t.Errorf("profile.Rubric = %q; want the env's redundancy report note filled into the marker", profile.Rubric)
+		}
+	})
+
 	t.Run("FillsTheGateTiers", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.GateTiers = "- tier1: build first\n- gate card: [1]"

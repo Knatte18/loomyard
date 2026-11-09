@@ -140,6 +140,8 @@
 // A named seam the Env does not carry, and a value outside the two, are refused when the row is built;
 // an absent key tells no subject.
 // BurlerReview renders the amendment note of its run directory into the rubric's amendment marker.
+// BurlerReview and the Bouncer hand Env.RedundancyReport to the rubric's redundancy_report marker.
+// The rubric reads it only when it carries the marker.
 //
 // # The Drift rows
 //

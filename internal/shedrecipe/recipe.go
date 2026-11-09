@@ -280,6 +280,10 @@ type Env struct {
 	// Nil is legal and renders the marker as `none`.
 	// The Code-Review rubric reads `none` as an unknown range.
 	ReviewBase func() (string, error)
+	// RedundancyReport returns the gate's redundancy report as a code review reads it.
+	// It is filled into the redundancy_report marker.
+	// It is read only for a rubric carrying the marker; nil renders the marker as `none`.
+	RedundancyReport func() string
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per Call.
 	// It returns the reflection's status string.
 	// It arrives as a closure because its dependencies are already resolved in internal/loomcli.

@@ -30,7 +30,7 @@ func writeStampedRubric(t *testing.T, dir, name, body string) {
 // TestReadRubric covers the fill, the strip and the errors; "{dir}" in want stands for the
 // stencils dir the row was read from. An exact want also pins the stamp banner stripped.
 //
-//testtiming:keep pins the rubric fill and strip: both markers substituted, the stamp banner removed, a markerless rubric unchanged, and the errors for an empty specs dir or an unreadable rubric
+//testtiming:keep pins the rubric fill and strip: both markers substituted, the stamp banner removed, a markerless rubric unchanged, the redundancy report read only for its marker, and the errors for an empty specs dir or an unreadable rubric
 func TestReadRubric(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -47,9 +47,44 @@ func TestReadRubric(t *testing.T) {
 		reviewBase string
 		// gateTiers is the text ReadRubric fills the gate_tiers marker from.
 		gateTiers string
-		want      string
-		wantErr   string
+		// redundancyReport is the note ReadRubric fills the redundancy_report marker from.
+		redundancyReport func() string
+		want             string
+		wantErr          string
 	}{
+		{
+			name:             "renders the redundancy report note",
+			rubric:           "bouncer-rubric-test",
+			body:             "# Rubric\n\nRedundancy: {{.redundancy_report}}\n",
+			specsDir:         "/abs/specs",
+			redundancyReport: func() string { return "No current redundancy report." },
+			want:             "# Rubric\n\nRedundancy: No current redundancy report.\n",
+		},
+		{
+			name:     "no redundancy report renders none",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nRedundancy: {{.redundancy_report}}\n",
+			specsDir: "/abs/specs",
+			want:     "# Rubric\n\nRedundancy: none\n",
+		},
+		{
+			name:             "a blank redundancy report renders none",
+			rubric:           "bouncer-rubric-test",
+			body:             "# Rubric\n\nRedundancy: {{.redundancy_report}}\n",
+			specsDir:         "/abs/specs",
+			redundancyReport: func() string { return " " },
+			want:             "# Rubric\n\nRedundancy: none\n",
+		},
+		{
+			name:     "a rubric without the redundancy marker never reads the report",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nNo report here.\n",
+			specsDir: "/abs/specs",
+			redundancyReport: func() string {
+				panic("the redundancy report was read for a rubric without its marker")
+			},
+			want: "# Rubric\n\nNo report here.\n",
+		},
 		{
 			name:      "renders the gate tiers verbatim",
 			rubric:    "bouncer-rubric-test",
@@ -167,7 +202,7 @@ func TestReadRubric(t *testing.T) {
 				writeStampedRubric(t, dir, tt.rubric, tt.body)
 			}
 
-			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{WebsterRecord: tt.websterRecord, Amendment: tt.amendment, GateTiers: tt.gateTiers, ReviewBase: tt.reviewBase})
+			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{WebsterRecord: tt.websterRecord, Amendment: tt.amendment, GateTiers: tt.gateTiers, ReviewBase: tt.reviewBase, RedundancyReport: tt.redundancyReport})
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("ReadRubric() = nil error; want one containing %q", tt.wantErr)

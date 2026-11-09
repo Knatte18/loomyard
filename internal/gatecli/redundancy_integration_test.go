@@ -326,9 +326,10 @@ func TestRedundancyStep(t *testing.T) {
 			}
 		}
 		wantMatch(t, true)
-		plankit.WriteTree(t, pair, map[string]string{"notes.md": "note\n"})
-		gitkit.Git(t, pair, "add", "notes.md")
-		gitkit.Git(t, pair, "commit", "-q", "-m", "touch no Go file")
+		// The pair's _lym is a link that git cannot add through, so the record sits beside the packages.
+		plankit.WriteTree(t, pair, map[string]string{"records/notes.md": "note\n"})
+		gitkit.Git(t, pair, "add", "records/notes.md")
+		gitkit.Git(t, pair, "commit", "-q", "-m", "touch only run records")
 		wantMatch(t, true)
 		plankit.WriteTree(t, pair, map[string]string{"alpha/alpha.go": testMapSource("alpha") + "// edited\n"})
 		gitkit.Git(t, pair, "commit", "-q", "-am", "edit a Go file of a judged package")

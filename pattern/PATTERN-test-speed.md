@@ -210,6 +210,10 @@ so every run takes its slots, its timeout and its log.
 
 - Tests run only through `lym gate test` over `gate.yaml`'s tiers.
   Two things run outside it: a card `**Verify:**` line and `cmd/testtiming`'s runs in every mode.
+- Two coverage runs take a tier's `env` and a gate slot as a tier run does:
+  `lym gate testmap`, which rebuilds the per-package coverage maps from the hub's prime worktree,
+  and the `redundancy` report step a gate key's `reports` lists, which runs after the key's tiers released their slots.
+  Each runs every test alone under a coverage binary, since coverage counters are process-wide.
 - A card `**Verify:**` line runs through the shared `internal/cardverify` runner,
   and `cmd/testtiming` measures outside the gate because its modes measure what a tier run hides.
 - A site or stencil names a gate key, never a tier list, scope form, test command or target list.
@@ -270,3 +274,29 @@ this section keeps only what is project-specific or stricter here.
   and a tier0 test is always judged.
 - The scan does not see a hook, alias or helper a test installs so that git runs module code,
   so the hand check before deleting a candidate also asks whether the candidate makes git run module code.
+
+### The coverage map and the gate's redundancy report
+
+- `lym gate testmap` keeps one coverage map per package under `internal/testcover`.
+  A map records, for each tier0 and tier1 test, its function hash and the blocks it covers of its own package's files,
+  and the hashes of the package's Go files at the commit it was built from.
+  It is rebuilt when those files change, when it outgrows `test_map_max_age_days` and after a failed build once HEAD moves.
+  The prime's dobby starts the verb every `test_map_every` landings.
+- A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
+  It takes the diff's new and changed top-level tests against the merge base with the parent branch,
+  leaving out tier2 and tier3 tests, tests marked `//testtiming:keep` and tests that may run module code in another process.
+  It judges each against its package's map, package-scoped like `cmd/testtiming`'s verdict,
+  and writes `redundancy.json` in the worktree's gate directory with each test contained, unique or not judged.
+- The step is advisory and bounded: it never changes the gate's result,
+  and `redundancy_max_tests` and `redundancy_budget_min` cap what it judges.
+  Bound: it lets a redundant test through when an edited block is uncovered or a test lies past the cap or the budget.
+  Bound: it can flag a test falsely, since a map test whose own text is unchanged counts as a cover
+  even when a helper or callee change stops it reaching a block.
+  Bound: a map rebuilt since the report can make a contained verdict stale.
+- Code-Review's rubric reads the report when it matches the reviewed HEAD's tree:
+  every judged package's Go files hash the same and the step's selection over HEAD gives the recorded tests with the recorded hashes.
+  A report written on a red tier never matches, and the rubric then reads a line naming that gate key.
+- A gate finding is evidence for Code-Review exactly as a report candidate is:
+  the reviewer checks a contained test's assertions against its covering tests,
+  then files a finding to fold or delete it, naming the covering tests,
+  or accepts it with a `//testtiming:keep <reason>` finding when it pins what coverage cannot see.

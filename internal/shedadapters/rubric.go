@@ -4,14 +4,18 @@ package shedadapters
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// noNote is what the webster_record, gate_tiers, amendment and review_base markers render when their note is blank.
+// noNote is what each optional rubric marker renders when its note is blank.
 const noNote = "none"
+
+// redundancyReportMarker is the marker the Code-Review rubric carries for the gate's redundancy report.
+const redundancyReportMarker = "redundancy_report"
 
 // RubricNotes are the optional notes a rubric's markers are filled from.
 // A blank note fills its marker as `none`, and a rubric with no such marker ignores it.
@@ -24,6 +28,10 @@ type RubricNotes struct {
 	Amendment string
 	// ReviewBase fills review_base with the commit the Code-Review rubric's review range starts from.
 	ReviewBase string
+	// RedundancyReport returns the note redundancy_report is filled from, the gate's redundancy report as review reads it.
+	// It is called only for a rubric carrying the marker, since reading the report matches it against a commit's tree.
+	// Nil and a blank answer render `none`.
+	RedundancyReport func() string
 }
 
 // ReadRubric reads the rubric stencil name from stencilsDir and strips its stamp banner.
@@ -47,18 +55,39 @@ func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, 
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
 	}
 	stripped := stencil.StripLeadingComment(string(raw))
+	redundancyReport, err := redundancyReportNote([]byte(stripped), notes.RedundancyReport)
+	if err != nil {
+		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
+	}
 	filled, err := stencil.Fill([]byte(stripped), map[string]string{
-		"specs_dir":      specsDir,
-		"stencils_dir":   stencilsDir,
-		"webster_record": noteOrNone(notes.WebsterRecord),
-		"gate_tiers":     noteOrNone(notes.GateTiers),
-		"amendment":      noteOrNone(notes.Amendment),
-		"review_base":    noteOrNone(notes.ReviewBase),
+		"specs_dir":            specsDir,
+		"stencils_dir":         stencilsDir,
+		"webster_record":       noteOrNone(notes.WebsterRecord),
+		"gate_tiers":           noteOrNone(notes.GateTiers),
+		"amendment":            noteOrNone(notes.Amendment),
+		"review_base":          noteOrNone(notes.ReviewBase),
+		redundancyReportMarker: redundancyReport,
 	})
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
 	}
 	return string(filled), nil
+}
+
+// redundancyReportNote returns the redundancy_report value for rubric.
+// read is called only when rubric carries the marker.
+func redundancyReportNote(rubric []byte, read func() string) (string, error) {
+	if read == nil {
+		return noNote, nil
+	}
+	markers, err := stencil.TopLevelMarkers(rubric)
+	if err != nil {
+		return "", err
+	}
+	if !slices.Contains(markers, redundancyReportMarker) {
+		return noNote, nil
+	}
+	return noteOrNone(read()), nil
 }
 
 // noteOrNone returns note, or `none` when it is blank.

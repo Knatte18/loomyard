@@ -136,13 +136,14 @@ func TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint(t *testing.T) {
 	}
 }
 
-// The rubric carries the webster_record marker.
+// The rubric carries the webster_record and redundancy_report markers.
 //
-//testtiming:keep pins that the exclude_lenses example line and rule reach the seed and judge prompts exactly when ClusterExcludes is set, and that the WebsterRecord note reaches the rubric in both
+//testtiming:keep pins that the exclude_lenses example line and rule reach the seed and judge prompts exactly when ClusterExcludes is set, and that the WebsterRecord and RedundancyReport notes reach the rubric in both
 func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 	tiergate.Require(t, 0)
 	const websterRecord = "Webster has begun these batches."
-	rubric := withStencilOverrides(map[string]string{bouncerFixtureRubricName: "Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\n"})
+	const redundancyReport = "No current redundancy report: none written."
+	rubric := withStencilOverrides(map[string]string{bouncerFixtureRubricName: "Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\nRedundancy: {{.redundancy_report}}\n"})
 	const gateTiers = "- tier1: build first\n- gate card: [1]"
 	for _, clusterExcludes := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Seed_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {
@@ -151,6 +152,7 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			cfg.Shuttle = shuttle
 			cfg.ClusterExcludes = clusterExcludes
 			cfg.WebsterRecord = func() string { return websterRecord }
+			cfg.RedundancyReport = func() string { return redundancyReport }
 			cfg.GateTiers = gateTiers
 			b, err := NewBouncer(cfg)
 			if err != nil {
@@ -165,6 +167,9 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			if !strings.Contains(shuttle.GotSpec.Prompt, "Record: "+websterRecord) {
 				t.Errorf("seed prompt = %q; want the rubric to carry the WebsterRecord note", shuttle.GotSpec.Prompt)
 			}
+			if !strings.Contains(shuttle.GotSpec.Prompt, "Redundancy: "+redundancyReport) {
+				t.Errorf("seed prompt = %q; want the rubric to carry the RedundancyReport note", shuttle.GotSpec.Prompt)
+			}
 			if !strings.Contains(shuttle.GotSpec.Prompt, gateTiers) {
 				t.Errorf("seed prompt = %q; want the rubric to carry the gate tier lines", shuttle.GotSpec.Prompt)
 			}
@@ -176,6 +181,7 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			cfg.Shuttle = shuttle
 			cfg.ClusterExcludes = clusterExcludes
 			cfg.WebsterRecord = func() string { return websterRecord }
+			cfg.RedundancyReport = func() string { return redundancyReport }
 			cfg.GateTiers = gateTiers
 			b, err := NewBouncer(cfg)
 			if err != nil {
@@ -196,6 +202,9 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			assertExcludeLensesText(t, shuttle.GotSpec.Prompt, clusterExcludes)
 			if !strings.Contains(shuttle.GotSpec.Prompt, "Record: "+websterRecord) {
 				t.Errorf("judge prompt = %q; want the rubric to carry the WebsterRecord note", shuttle.GotSpec.Prompt)
+			}
+			if !strings.Contains(shuttle.GotSpec.Prompt, "Redundancy: "+redundancyReport) {
+				t.Errorf("judge prompt = %q; want the rubric to carry the RedundancyReport note", shuttle.GotSpec.Prompt)
 			}
 			if !strings.Contains(shuttle.GotSpec.Prompt, gateTiers) {
 				t.Errorf("judge prompt = %q; want the rubric to carry the gate tier lines", shuttle.GotSpec.Prompt)
