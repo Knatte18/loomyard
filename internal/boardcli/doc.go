@@ -110,6 +110,10 @@
 // the running pair takes it through `lym config <module> --layer local --set` in the pair.
 // Value semantics, such as a positive integer, stay with the module's load.
 //
+// `set-status` with a null status on a project whose status is empty releases its draft member tasks in the same write.
+// Its success envelope's `notice` then names the released members.
+// A null status on a project with a run status or done is refused, naming each draft member's release.
+//
 // `set-deps`, `upsert`, `upsert-batch` and `merge` add the sibling warning to the success envelope's `notice`.
 // It is joined after a run-settings notice, one line per pair, a batch pair once;
 // `set-deps` prints `notice` only then.

@@ -543,6 +543,21 @@ func stepRemoveCommandParses(t *testing.T, f *cliFixture) {
 	}
 }
 
+// stepProjectRelease pins that set-status with a null status on a project releases its draft member task,
+// and that the success envelope's notice names the released member.
+func stepProjectRelease(t *testing.T, f *cliFixture) {
+	mustUpsert(t, `{"slug":"proj","title":"Proj","kind":"project","labels":["bug"]}`)
+	mustUpsert(t, `{"slug":"member","title":"Member","kind":"task","labels":["bug"],"project":"proj"}`)
+
+	result := runJSON(t, 0, "set-status", `{"slug":"proj","status":null}`)
+	if notice, _ := result["notice"].(string); notice != "released the project's draft member tasks with it: member" {
+		t.Errorf("set-status proj null: notice = %q, want it to name member", notice)
+	}
+	if task := runJSON(t, 0, "get", `{"slug":"member"}`)["task"].(map[string]any); task["status"] != nil {
+		t.Errorf("get member after the project release: status = %v, want none", task["status"])
+	}
+}
+
 // stepProjects drives the project kind through a seeded hub:
 // list and get carry parent_beam.
 // It is empty under a grouping project, and it names the beam once the project is hand-marked a beam.

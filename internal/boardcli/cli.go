@@ -674,6 +674,8 @@ Example:
 		Short:       "set the status of a task, or release it with null",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Set the lifecycle status of a task. A new task is "draft"; null releases it, leaving it with no status, and an empty string on a task gives "draft" again.
+Null on a project with no status also releases its draft member tasks in the same write, and the notice names them.
+Null on a project with a run status or done is refused, naming the release of each draft member.
 
 Fields:
   "slug"   string      — task slug (one of slug, id or handle)
@@ -702,10 +704,14 @@ Examples:
 				status = &s
 			}
 
-			if err := board().SetStatus(selector, status); err != nil {
+			released, err := board().SetStatusReleasingProject(selector, status)
+			if err != nil {
 				return outputError(out, err.Error())
 			}
-			return outputSuccess(out)
+			if len(released) == 0 {
+				return outputSuccess(out)
+			}
+			return outputSuccessWithNotice(out, "released the project's draft member tasks with it: "+strings.Join(released, ", "))
 		}),
 	}
 

@@ -146,6 +146,7 @@ func TestCLI(t *testing.T) {
 		{"Profiles", stepProfiles},
 		{"SiblingWarning", stepSiblingWarning},
 		{"Projects", stepProjects},
+		{"ProjectRelease", stepProjectRelease},
 	}
 	for _, step := range steps {
 		if !t.Run(step.name, func(t *testing.T) {

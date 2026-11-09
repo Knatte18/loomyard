@@ -458,6 +458,12 @@
 // A task is released by a null status.
 // `lym board set-status '{"slug":"<slug>","status":null}'` writes it.
 // So does an upsert setting `status` to null on a task, and so does a merge whose `set_status` sets null.
+// Board.SetStatusReleasingProject, which `lym board set-status` alone calls, also releases a project's family.
+// A null status on a project whose status is empty releases, in the same write, each direct member task in draft.
+// A member already released, run-held or done, a nested project and its members, and every other entry stay as they are.
+// Each member is validated as its own release, and one failing refuses the whole write.
+// A null status on a project whose status is a run status or done is refused, naming each draft member's release.
+// No other write releases a member: Board.SetStatus, an upsert, a batch and a merge release only the entry they name.
 // An empty string written to a task whose loaded status differs is `draft`, not a release.
 // A write may release the tasks it makes: the draft rule skips the slugs it is told.
 // That is the promoted task of a promotion with recipe `raddle`.
