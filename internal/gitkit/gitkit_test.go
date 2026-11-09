@@ -202,6 +202,63 @@ func TestCopiedRepoScenario(t *testing.T) {
 	})
 }
 
+// TestRevParse_HeadReadFromFilesMatchesGit checks where RevParse answers HEAD from the repository's files.
+// In each worktree the files answer, the answer must equal `git rev-parse HEAD`;
+// an unborn branch and a bare repository leave the answer to git.
+func TestRevParse_HeadReadFromFilesMatchesGit(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	repo := CopyRepo(t).Repo
+	CommitFile(t, repo, "sub/f.txt", "x", "second")
+	linked := filepath.Join(t.TempDir(), "linked")
+	Git(t, repo, "worktree", "add", "-b", "linked", linked)
+	detached := filepath.Join(t.TempDir(), "detached")
+	Git(t, repo, "worktree", "add", "--detach", detached, "HEAD~1")
+	Git(t, repo, "pack-refs", "--all")
+	// The commit after pack-refs leaves a loose ref for linked beside its stale packed one.
+	CommitFile(t, linked, "g.txt", "y", "on linked")
+
+	symlinked := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(repo, symlinked); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	unborn := t.TempDir()
+	MustRun(t, unborn, "git", "init", "-b", "main")
+	bare := filepath.Join(t.TempDir(), "bare")
+	MustRun(t, filepath.Dir(bare), "git", "init", "--bare", bare)
+
+	tests := []struct {
+		name      string
+		dir       string
+		fromFiles bool
+	}{
+		{"PackedBranchInTheMainWorktree", repo, true},
+		{"Subdirectory", filepath.Join(repo, "sub"), true},
+		{"LooseRefShadowsPackedRef", linked, true},
+		{"DetachedHead", detached, true},
+		{"SymlinkedWorktree", symlinked, true},
+		{"UnbornBranch", unborn, false},
+		{"BareRepository", bare, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if _, ok := headCommit(tt.dir); ok != tt.fromFiles {
+				t.Fatalf("headCommit(%s) ok = %t; want %t", tt.dir, ok, tt.fromFiles)
+			}
+			if !tt.fromFiles {
+				return
+			}
+			if got, want := RevParse(t, tt.dir, "HEAD"), Git(t, tt.dir, "rev-parse", "HEAD"); got != want {
+				t.Errorf("RevParse(%s, HEAD) = %q; want %q", tt.dir, got, want)
+			}
+		})
+	}
+}
+
 // TestFixtureGitMarker_ReachesHelperChildren verifies that git spawned by Git carries the fixture marker.
 // The marker is read back through git's trace2 env-var events.
 // It sets process environment variables through t.Setenv, so it does not call t.Parallel.

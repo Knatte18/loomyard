@@ -1706,6 +1706,7 @@
 //
 // Geometry and ref lookups run in-process through `gitrepo`.
 // They cover the git dir, common dir, branch existence, a ref's SHA, the current branch, a branch's upstream and a ref's tree.
+// A file's bytes at a revision are read through `gitrepo` too, so reading a committed file starts no git process.
 // A `rev-parse` spawn survives only where git derives the answer from config or revision syntax:
 //
 //   - `InstallPostCheckoutHook` asks `--git-path hooks`, which honours `core.hooksPath`.

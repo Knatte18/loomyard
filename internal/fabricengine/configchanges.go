@@ -3,6 +3,8 @@
 package fabricengine
 
 import (
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -109,20 +111,31 @@ func ReadConfigChanges(l *lymcwd.Location, taskBranch, parentBranch string, conf
 }
 
 // showFile returns the bytes of path at rev in the repo at dir, or nil when rev holds no such file.
+// rev is a full commit SHA or a name that resolves to a commit, such as HEAD or a full ref name.
+// It reads the object store in-process, with no git process, and returns the blob's bytes unchanged.
 func showFile(dir, rev, path string) ([]byte, error) {
-	listed, err := gitexec.Run([]string{"ls-tree", "--name-only", rev, "--", path}, dir)
-	if err != nil {
-		return nil, err
+	repo := gitrepo.New(dir)
+	sha := rev
+	if _, err := hex.DecodeString(rev); err != nil || (len(rev) != sha1HexLength && len(rev) != sha256HexLength) {
+		if sha, err = repo.ResolveSHA(rev); err != nil {
+			return nil, err
+		}
 	}
-	if strings.TrimSpace(listed) == "" {
+	data, err := repo.FileAtRevision(sha, path)
+	if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
 		return nil, nil
 	}
-	out, err := gitexec.Run([]string{"show", rev + ":" + path}, dir)
 	if err != nil {
 		return nil, err
 	}
-	return []byte(out), nil
+	return data, nil
 }
+
+// The lengths of a full object name in hex, for a SHA-1 and a SHA-256 repository.
+const (
+	sha1HexLength   = 40
+	sha256HexLength = 64
+)
 
 // diffNames lists the sorted paths `git diff --name-only from to` reports in the repo at dir, limited by pathspec.
 func diffNames(dir, from, to string, pathspec []string) ([]string, error) {

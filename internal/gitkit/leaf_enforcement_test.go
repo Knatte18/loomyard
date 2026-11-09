@@ -15,6 +15,7 @@ import (
 // allowedImports are the only non-stdlib import paths production code in this package may use.
 var allowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/configengine",
+	"github.com/Knatte18/loomyard/internal/dotgit",
 	"github.com/Knatte18/loomyard/internal/lymcwd",
 	"github.com/Knatte18/loomyard/internal/lymdirs",
 	"github.com/Knatte18/loomyard/internal/lymtemp",

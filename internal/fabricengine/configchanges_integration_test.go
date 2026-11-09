@@ -1,5 +1,6 @@
 // configchanges_integration_test.go proves ReadConfigChanges reports a task's changes to per-worktree config files.
 // ReadConfigChanges reads the files it is told about from the task's weft branch since its fork point.
+// It also pins the read of a file's bytes at a revision that ReadConfigChanges and the anchor reads share.
 //
 // It reuses hubforge.CopyHub and the mustRecordsRepoRoot helper from add_rollback_adopt_test.go.
 // It shares the single TestMain in testmain_test.go.
@@ -20,6 +21,53 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// TestShowFile_ReadsCommittedBytes reads files at several kinds of revision.
+// The revisions are HEAD, full and short commit SHAs, an annotated tag and a full ref name.
+// Each answer must be the bytes `git show <rev>:<path>` prints, nil for a path the revision lacks.
+func TestShowFile_ReadsCommittedBytes(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	repo := fabricengine.NewPlainWarpRepoForTest(t)
+	first := gitkit.CommitFile(t, repo, "a.txt", "first\n", "first a")
+	gitkit.CommitFile(t, repo, "a.txt", "second \n\n", "second a")
+	gitkit.CommitFile(t, repo, "dir/empty", "", "empty file")
+	gitkit.Git(t, repo, "branch", "side", first)
+	gitkit.Git(t, repo, "tag", "-a", "-m", "tag", "v1", first)
+
+	tests := []struct {
+		name    string
+		rev     string
+		path    string
+		want    []byte
+		wantErr bool
+	}{
+		{"HeadKeepsTrailingWhitespace", "HEAD", "a.txt", []byte("second \n\n"), false},
+		{"CommitSHA", first, "a.txt", []byte("first\n"), false},
+		{"FullRefName", "refs/heads/side", "a.txt", []byte("first\n"), false},
+		{"ShortSHA", first[:7], "a.txt", []byte("first\n"), false},
+		{"AnnotatedTag", "v1", "a.txt", []byte("first\n"), false},
+		{"DirectoryPathIsNil", "HEAD", "dir", nil, false},
+		{"NestedEmptyFileIsPresent", "HEAD", "dir/empty", []byte{}, false},
+		{"AbsentPathIsNil", "HEAD", "missing.txt", nil, false},
+		{"PathAddedLaterIsNilAtAnOlderCommit", first, "dir/empty", nil, false},
+		{"UnknownRefIsAnError", "refs/heads/missing", "a.txt", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := fabricengine.ShowFileForTest(repo, tt.rev, tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("showFile(%s, %s) error = %v; want error: %t", tt.rev, tt.path, err, tt.wantErr)
+			}
+			if (got == nil) != (tt.want == nil) || !bytes.Equal(got, tt.want) {
+				t.Errorf("showFile(%s, %s) = %q (nil: %t); want %q (nil: %t)", tt.rev, tt.path, got, got == nil, tt.want, tt.want == nil)
+			}
+		})
+	}
+}
 
 // TestReadConfigChanges forks a pair from the prime and commits on the pair's weft branch.
 // The test then calls ReadConfigChanges against the prime's branch.

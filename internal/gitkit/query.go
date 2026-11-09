@@ -9,13 +9,59 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/dotgit"
 )
 
 // RevParse returns `git rev-parse <rev>` in dir.
 // dir may be a bare repository.
+// HEAD in a worktree whose HEAD names a commit is read from the repository's files with no git process;
+// every other rev is answered by git.
 func RevParse(tb testing.TB, dir, rev string) string {
 	tb.Helper()
+	if rev == "HEAD" {
+		if sha, ok := headCommit(dir); ok {
+			return sha
+		}
+	}
 	return Git(tb, dir, "rev-parse", rev)
+}
+
+// headCommit returns the commit HEAD resolves to in the worktree holding dir, as `git rev-parse HEAD` prints it.
+// ok is false where the files cannot answer:
+// dir in no worktree, a bare repository, refs that are not files, and a HEAD that names no commit yet.
+func headCommit(dir string) (sha string, ok bool) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	root, _, err := dotgit.FindRoot(abs)
+	if err != nil {
+		return "", false
+	}
+	worktrees, err := dotgit.ListWorktrees(abs)
+	if err != nil {
+		return "", false
+	}
+	want := resolvedPath(root)
+	for _, worktree := range worktrees {
+		if resolvedPath(worktree.Path) != want {
+			continue
+		}
+		if strings.Trim(worktree.Head, "0") == "" {
+			return "", false
+		}
+		return worktree.Head, true
+	}
+	return "", false
+}
+
+// resolvedPath returns path with its symlinks resolved, or cleaned when it cannot be resolved.
+func resolvedPath(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return filepath.Clean(path)
 }
 
 // CurrentBranch returns the branch HEAD points at in dir.

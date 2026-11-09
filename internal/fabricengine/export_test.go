@@ -381,6 +381,9 @@ func swapPushRecorder(t *testing.T) *pushRecorder {
 // A table test pins that rule through it.
 var TreeAnchorForTest = treeAnchor
 
+// ShowFileForTest exposes showFile, the read of a file's bytes at a revision.
+var ShowFileForTest = showFile
+
 // WriteWeftConfigContentForTest exposes writeWeftConfigContent to tests outside the package.
 var WriteWeftConfigContentForTest = writeWeftConfigContent
 

@@ -4,7 +4,7 @@ Each package below imports a closed set and never a feature package; a reverse i
 
 ## `internal/gitkit`
 
-Imports only the standard library, `lymcwd`, `weftname`, `configengine`, `lymdirs` and `lymtemp`.
+Imports only the standard library, `lymcwd`, `weftname`, `configengine`, `lymdirs`, `lymtemp` and `dotgit`.
 It also reaches `gofrs/flock` through `lymtemp`.
 - `gitkit.CopyRepo` is callable from `lymcwd` alone; everyone else takes a hub from `hubforge`.
 - Test git plumbing lives in `gitkit`; a package-local `_test.go` helper that shells out to git is a review flag.

@@ -12,11 +12,13 @@
 //
 // Git is the one spawning primitive for queries.
 // query.go builds the rev, branch, ancestry, ls-files and exclude queries and the commit helpers on it.
+// RevParse reads HEAD from the repository's files through internal/dotgit when they answer, and asks git otherwise.
 // Every new spawn stays in gitkit.go, the file the spawn-observability guard allowlists.
 // This package cannot import internal/logger.
 //
 // Leaf Invariant: internal/gitkit production code imports only the standard library and these packages.
-// They are internal/lymcwd, internal/weftname, internal/configengine, internal/lymdirs, and internal/lymtemp.
+// They are internal/lymcwd, internal/weftname and internal/configengine.
+// They also include internal/lymdirs, internal/lymtemp and internal/dotgit.
 // internal/configreg is excluded by construction.
 // So is every feature package: the engine and cli pairs for board, fabric, ide and selfreport.
 // Feature packages' own tests import gitkit, so a reverse import would close a test-build cycle.
