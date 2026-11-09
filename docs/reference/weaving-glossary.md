@@ -133,7 +133,7 @@ Agent nouns name the one who does the work.
 | pile | flor †, polvarp (pile warp) | sv lugg; fr velours; de Flor | raised loops or cut ends on the surface | state | – |
 | terry | frotté | fr éponge; de Frottee | pile of uncut loops | state | – |
 | tapestry | billedvev, gobelenger (pl.) | sv gobelängvävnad; fr tapisserie; de Gobelin | weft-faced pictorial weave | recipe, artifact | Taken: `tapestry`, the full task recipe: Discussion, Plan, Webster, Code review, Describe and Finalize, each review step followed by its own fix step. |
-| arras | – | fr arras | a tapestry hung as a wall covering | recipe | Taken: `arras`, the recipe that discusses a task and splits its decision record into board entries under the split perch's review. |
+| arras | – | fr arras | a tapestry hung as a wall covering | recipe | Taken: `arras`, the recipe a board task names for a tapestry-sized note. It discusses the task and splits its decision record into board entries under the split perch's review, and the entry becomes the family's project. |
 | overshot | – † | sv opphämta †; de Überschuss | pattern from long weft floats on a plain ground | state | – |
 | rep, ribbed weave | rips † | fr reps; de Rips | weave with fine crosswise ribs | state | – |
 | double cloth | dobbeltvev | fr double étoffe; de Doppelgewebe | two layers woven at once | state, recipe | – |

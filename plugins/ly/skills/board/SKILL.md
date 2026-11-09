@@ -60,8 +60,11 @@ Beside its type label, every entry carries a label for each lym module it touche
 an entry that spans the whole tool takes the modules its work would change first.
 A label in neither map is refused.
 Add it with `lym config board --set labels.<name>=<description>`, or edit the maps in the `lym config board` editor.
-A recipe name goes in `recipe`, never in a label: `tapestry`, `darn` or `motif`.
+A recipe name goes in `recipe`, never in a label: `tapestry`, `darn`, `arras` or `motif`.
 An empty `recipe` means the hub's `default_recipe` in `board.yaml`, which is `darn` unless the hub changed it.
+An `arras` task discusses the entry and splits its decision record into board entries in one run, and lands no code.
+A review of the split, the split perch, approves the proposal in place of the operator.
+The family filing turns the entry into the family's project and re-points the entries that depended on it to the new tasks.
 A `motif` task runs Discussion alone:
 it stores the approved decision record on the entry, flags it `discussed`, lands no code and makes the entry a Sketch.
 A Sketch is a note of the built-in type `sketch` (handle `S`) that keeps its module labels and never runs;
