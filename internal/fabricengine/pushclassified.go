@@ -280,7 +280,7 @@ func (j *pushJob) record(class PushFailureClass, cause error, paths, commits []s
 	if errors.As(cause, &anchorStop) {
 		f.WayForward = anchorStop.WayForward
 	}
-	if err := RecordPushFailure(j.hubPath, f, time.Now()); err != nil {
+	if err := recordPushFailure(j.hubPath, f, time.Now(), j.opts.notifier()); err != nil {
 		logger.Warn("fabricengine: failed-push record not written", "side", j.side, "branch", j.branch, "error", err)
 	}
 	return f

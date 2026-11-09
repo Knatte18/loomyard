@@ -20,14 +20,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
-// SetGCAutoThresholdForTest sets gcAutoThreshold until the test ends.
-// It changes process-global state, so the calling test must not be parallel.
-func SetGCAutoThresholdForTest(t *testing.T, threshold int) {
-	t.Helper()
+// SetGCAutoThresholdForTest sets the loose-object estimate above which t's removal gc packs a store.
+// It sets the threshold on the one Topology, so parallel tests inject per instance.
+func SetGCAutoThresholdForTest(t *Topology, threshold int) {
+	t.gcAutoThreshold = threshold
+}
 
-	previous := gcAutoThreshold
-	gcAutoThreshold = threshold
-	t.Cleanup(func() { gcAutoThreshold = previous })
+// GCAutoThresholdForTest returns the loose-object estimate above which t's removal gc packs a store.
+func GCAutoThresholdForTest(t *Topology) int {
+	return t.gcAutoThreshold
 }
 
 // SetScratchBeforeLinkHookForTest sets scratchBeforeLinkHook until the test ends.
@@ -39,23 +40,19 @@ func SetScratchBeforeLinkHookForTest(t *testing.T, hook func()) {
 	t.Cleanup(func() { scratchBeforeLinkHook = nil })
 }
 
-// SetAnchorFailHookForTest installs hook as the anchor-failure hook until the test ends.
-// It changes process-global state, so the calling test must not be parallel.
-func SetAnchorFailHookForTest(t *testing.T, hook func(afterCommit bool) error) {
-	t.Helper()
-
-	anchorFailHook = hook
-	t.Cleanup(func() { anchorFailHook = nil })
+// SetAnchorFailHookForTest makes every anchor change t begins afterwards call hook around its weft commit or branch move.
+// hook is called with afterCommit false before the step and true after it.
+// An error it returns fails the change there.
+// A nil hook restores production.
+// It sets the hook on the one Topology, so parallel tests inject per instance.
+func SetAnchorFailHookForTest(t *Topology, hook func(afterCommit bool) error) {
+	t.anchor.fail = hook
 }
 
-// SetWeftHeadSHAForTest replaces the weft head-SHA lookup with fn until the test ends.
-// It changes process-global state, so the calling test must not be parallel.
-func SetWeftHeadSHAForTest(t *testing.T, fn func(weftPath string) (string, error)) {
-	t.Helper()
-
-	original := weftHeadSHA
-	weftHeadSHA = fn
-	t.Cleanup(func() { weftHeadSHA = original })
+// SetWeftHeadSHAForTest makes every anchor change t begins afterwards read the weft's commit after its move through fn.
+// It sets the lookup on the one Topology, so parallel tests inject per instance.
+func SetWeftHeadSHAForTest(t *Topology, fn func(weftPath string) (string, error)) {
+	t.anchor.weftHead = fn
 }
 
 // SetScratchPathTrackedForTest replaces the scratch-path tracking check with fn until the test ends.
@@ -833,23 +830,9 @@ type EntryFactsForTest = entryFacts
 // A test drives its precedence as table rows.
 var ClassifyEntryForTest = classifyEntry
 
-// SetOriginCallHookForTest installs hook as the observer of every remote call an origin reconcile makes.
-// It returns the function that removes the hook.
-// It changes process-global state, so the calling test must not be parallel.
-func SetOriginCallHookForTest(hook func(args []string)) (restore func()) {
-	previous := originCallHook
-	originCallHook = hook
-	return func() { originCallHook = previous }
-}
-
-// SetOriginVerdictHookForTest installs hook to run just before each branch verdict an origin reconcile reaches.
-// It returns the function that removes the hook.
-// It changes process-global state, so the calling test must not be parallel.
-func SetOriginVerdictHookForTest(hook func()) (restore func()) {
-	previous := originVerdictHook
-	originVerdictHook = hook
-	return func() { originVerdictHook = previous }
-}
+// RecordPushFailureNotifyingForTest exposes recordPushFailure.
+// It writes a failed-push record and mails it through the notifier the test passes, never the installed one.
+var RecordPushFailureNotifyingForTest = recordPushFailure
 
 // HoldHubPauseForTest installs a Defer gate for slug over a temp pause record that holds one live hub entry.
 // The gate stays installed until the test ends.

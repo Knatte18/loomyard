@@ -16,24 +16,30 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// anchorFailHook, nil in production, stands in for a failure of the move's commit or of the integration's branch move.
-// It is called with afterCommit false before the commit or the branch move, and with afterCommit true after it.
-// An error it returns is that failure.
-// A test that sets it must not be parallel.
-var anchorFailHook func(afterCommit bool) error
-
-// weftHeadSHA reads the commit the weft worktree at weftPath is on.
-// It is a variable so a test can fail the read that follows the move commit.
-var weftHeadSHA = func(weftPath string) (string, error) {
-	return gitrepo.New(weftPath).CurrentSHA()
+// anchorSeams stands in for the failures of a weft move that a test cannot provoke; its zero value is production.
+type anchorSeams struct {
+	// fail stands in for a failure of the move's commit or of the integration's branch move.
+	// It is called with afterCommit false before the commit or the branch move, and with afterCommit true after it.
+	// An error it returns is that failure.
+	fail func(afterCommit bool) error
+	// weftHead reads the commit the weft worktree at weftPath is on; nil reads it from git.
+	weftHead func(weftPath string) (string, error)
 }
 
-// runAnchorFailHook calls anchorFailHook when one is set.
-func runAnchorFailHook(afterCommit bool) error {
-	if anchorFailHook == nil {
+// runFail calls fail when one is set.
+func (s anchorSeams) runFail(afterCommit bool) error {
+	if s.fail == nil {
 		return nil
 	}
-	return anchorFailHook(afterCommit)
+	return s.fail(afterCommit)
+}
+
+// headSHA returns the commit the weft worktree at weftPath is on.
+func (s anchorSeams) headSHA(weftPath string) (string, error) {
+	if s.weftHead != nil {
+		return s.weftHead(weftPath)
+	}
+	return gitrepo.New(weftPath).CurrentSHA()
 }
 
 // moveWeftContent moves the tracked content of each wired name in names from anchor `from` to anchor `to`.
@@ -45,8 +51,8 @@ func runAnchorFailHook(afterCommit bool) error {
 // A name that is not tracked under from is left alone,
 // and a path already standing where a name or `.lym` would land is refused before anything moves.
 // A failure before the commit returns committed false and leaves the staged and moved paths for the caller to restore;
-// a failure after it, from reading the commit or from the hook, returns committed true beside the error.
-func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string) (bool, error) {
+// a failure after it, from reading the commit or from seams, returns committed true beside the error.
+func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, seams anchorSeams) (bool, error) {
 	root, err := os.OpenRoot(weftPath)
 	if err != nil {
 		return false, fmt.Errorf("fabricengine: open the weft root %s: %w", weftPath, err)
@@ -109,19 +115,19 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string) 
 	}
 	rec.Append(KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
 
-	if err := runAnchorFailHook(false); err != nil {
+	if err := seams.runFail(false); err != nil {
 		return false, err
 	}
 	commitArgs := append([]string{"commit", "-q", "-m", fmt.Sprintf("fabric anchor: move the weft from %s to %s", from, to), "--"}, specs...)
 	if _, err := gitexec.RunWithEnv(commitArgs, weftPath, []string{"GIT_LITERAL_PATHSPECS=1"}); err != nil {
 		return false, fmt.Errorf("fabricengine: commit the move of the weft from %s to %s: %w", from, to, err)
 	}
-	sha, err := weftHeadSHA(weftPath)
+	sha, err := seams.headSHA(weftPath)
 	if err != nil {
 		return true, fmt.Errorf("fabricengine: read the weft's commit after the move of the weft from %s to %s: %w", from, to, err)
 	}
 	rec.Append(KindCommitCreated, weftPath, sha)
-	return true, runAnchorFailHook(true)
+	return true, seams.runFail(true)
 }
 
 // requireAbsent returns an error unless nothing stands at rel in the weft root, naming the path.

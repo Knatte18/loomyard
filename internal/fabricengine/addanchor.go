@@ -89,7 +89,7 @@ func moveForkedWeftToAnchor(rec *Mutations, fork *lymcwd.Location, slug, to stri
 			return err
 		}
 	}
-	_, err = moveWeftContent(rec, weftPath, fork.AnchorRel, to, names)
+	_, err = moveWeftContent(rec, weftPath, fork.AnchorRel, to, names, anchorSeams{})
 	return err
 }
 

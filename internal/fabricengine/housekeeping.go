@@ -16,9 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// gcAutoThreshold is git's default gc.auto, the loose-object estimate above which `gc --auto` packs.
-// It is a variable only so a test can lower it.
-var gcAutoThreshold = 6700
+// defaultGCAutoThreshold is git's default gc.auto, the loose-object estimate above which `gc --auto` packs.
+const defaultGCAutoThreshold = 6700
 
 // namedStore is one of the hub's two object stores with the name its log lines use.
 type namedStore struct {
@@ -68,12 +67,12 @@ type InFlightProbe func(slug string) ([]string, error)
 // The gc is skipped, with the keys still written, when probe reports another pair's live session or fails.
 // A live step may hold objects no ref reaches yet, which is why the gc is skipped.
 // A nil probe reports none.
-// The gc runs only when a store is above gcAutoThreshold.
+// The gc runs only when a store's loose-object estimate is above gcAutoThreshold.
 // It prunes unreachable loose objects older than gcPruneExpire,
 // and it never prunes a worktree's admin entry, which stays under the destruction gate.
 // It is best-effort and returns nothing: a failure is logged as a warning and never fails the caller.
 // A store another gc already holds is skipped silently, since git exits 0 without packing then.
-func housekeepStores(l *lymcwd.Location, slug string, probe InFlightProbe) {
+func housekeepStores(l *lymcwd.Location, slug string, probe InFlightProbe, gcAutoThreshold int) {
 	if err := disableStoreAutoGC(l); err != nil {
 		logger.Warn("fabricengine: disabling store auto gc failed (non-fatal)", "error", err)
 	}

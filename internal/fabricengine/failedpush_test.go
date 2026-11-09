@@ -1,5 +1,4 @@
 // failedpush_test.go covers the failed-push record store: its once-per-episode notice and its way-forward lines.
-// The notifier is process-global, so the tests that install one run without t.Parallel.
 
 package fabricengine_test
 
@@ -33,22 +32,20 @@ func codePushFailure() fabricengine.FailedPush {
 
 // TestFailedPushRecord covers the record's lifecycle and its single notice per episode.
 // It also checks the way-forward line that each side and class of push writes.
-//
-// It runs without t.Parallel: the notifier it installs is process-global.
 func TestFailedPushRecord(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	base := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 	t.Run("FirstFailureMailsOnceAndLaterOnesOnlyUpdate", func(t *testing.T) {
 		hub := t.TempDir()
 		fake := &fakePushNotifier{hub: hub, posted: true}
-		installFakePushNotifier(t, fake)
 		failure := codePushFailure()
 
-		if err := fabricengine.RecordPushFailure(hub, failure, base); err != nil {
+		if err := fabricengine.RecordPushFailureNotifyingForTest(hub, failure, base, fake.notify); err != nil {
 			t.Fatalf("RecordPushFailure: %v", err)
 		}
-		if err := fabricengine.RecordPushFailure(hub, failure, base.Add(time.Minute)); err != nil {
+		if err := fabricengine.RecordPushFailureNotifyingForTest(hub, failure, base.Add(time.Minute), fake.notify); err != nil {
 			t.Fatalf("RecordPushFailure second: %v", err)
 		}
 
@@ -68,10 +65,9 @@ func TestFailedPushRecord(t *testing.T) {
 	t.Run("NotPostedLeavesNotifiedUnsetSoTheNextFailureMails", func(t *testing.T) {
 		hub := t.TempDir()
 		fake := &fakePushNotifier{hub: hub, posted: false}
-		installFakePushNotifier(t, fake)
 
 		for i := range 2 {
-			if err := fabricengine.RecordPushFailure(hub, codePushFailure(), base.Add(time.Duration(i)*time.Minute)); err != nil {
+			if err := fabricengine.RecordPushFailureNotifyingForTest(hub, codePushFailure(), base.Add(time.Duration(i)*time.Minute), fake.notify); err != nil {
 				t.Fatalf("RecordPushFailure: %v", err)
 			}
 		}
@@ -88,10 +84,9 @@ func TestFailedPushRecord(t *testing.T) {
 	t.Run("NotifierErrorLeavesTheRecordWrittenAndUnnotified", func(t *testing.T) {
 		hub := t.TempDir()
 		fake := &fakePushNotifier{hub: hub, posted: true, err: errors.New("creel down")}
-		installFakePushNotifier(t, fake)
 
 		for i := range 2 {
-			if err := fabricengine.RecordPushFailure(hub, codePushFailure(), base.Add(time.Duration(i)*time.Minute)); err != nil {
+			if err := fabricengine.RecordPushFailureNotifyingForTest(hub, codePushFailure(), base.Add(time.Duration(i)*time.Minute), fake.notify); err != nil {
 				t.Fatalf("RecordPushFailure: %v", err)
 			}
 		}
@@ -108,11 +103,10 @@ func TestFailedPushRecord(t *testing.T) {
 	t.Run("DeferredWritesTheRecordAndNeverMails", func(t *testing.T) {
 		hub := t.TempDir()
 		fake := &fakePushNotifier{hub: hub, posted: true}
-		installFakePushNotifier(t, fake)
 		failure := codePushFailure()
 		failure.Class = fabricengine.PushFailureDeferred
 
-		if err := fabricengine.RecordPushFailure(hub, failure, base); err != nil {
+		if err := fabricengine.RecordPushFailureNotifyingForTest(hub, failure, base, fake.notify); err != nil {
 			t.Fatalf("RecordPushFailure: %v", err)
 		}
 

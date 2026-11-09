@@ -213,9 +213,9 @@ func writeStatus(tb testing.TB, hub *originHub, slug, producer string) {
 }
 
 // TestReconcileOrigin_Judge covers the origin reconcile's judgment, its network calls and its entry classification.
-// It runs without t.Parallel because it sets the process-global origin call hook.
 func TestReconcileOrigin_Judge(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	boardkit.InstallReplay(t)
 
 	t.Run("A judge-only reconcile of an origin that moved a records branch, Bolt and the prime's code branch reads fast_forward for each, fetching only moved heads", func(t *testing.T) {
@@ -231,8 +231,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		gitkit.Git(t, boltOther, "push", "origin", "main")
 
 		var calls callLog
-		t.Cleanup(fabricengine.SetOriginCallHookForTest(calls.record))
-		report := reconcile(t, hub, fabricengine.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{})
+		report := reconcile(t, hub, fabricengine.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{CallHook: calls.record})
 
 		code := requireState(t, report, "code", hub.primeBranch, fabricengine.BranchFastForward)
 		records := requireState(t, report, "records", hub.primeRecords, fabricengine.BranchFastForward)
@@ -275,8 +274,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		hub, _, _ := newOriginTaskHub(t)
 
 		var calls callLog
-		t.Cleanup(fabricengine.SetOriginCallHookForTest(calls.record))
-		report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+		report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{CallHook: calls.record})
 
 		for _, outcome := range report.Branches {
 			if outcome.State != fabricengine.BranchLevel {
@@ -303,21 +301,23 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 
 		var calls callLog
 		var freeDuringCalls callLog
-		t.Cleanup(fabricengine.SetOriginCallHookForTest(func(args []string) {
-			calls.record(args)
-			if free := freeRemoteRefsLocks(t, lockPaths); len(free) > 0 {
-				freeDuringCalls.record(append([]string{args[0]}, free...))
-			}
-		}))
 		verdicts := 0
 		var freeDuringVerdicts [][]string
-		t.Cleanup(fabricengine.SetOriginVerdictHookForTest(func() {
-			verdicts++
-			if free := freeRemoteRefsLocks(t, lockPaths); len(free) > 0 {
-				freeDuringVerdicts = append(freeDuringVerdicts, free)
-			}
-		}))
-		report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+		opts := fabricengine.ReconcileOptions{
+			CallHook: func(args []string) {
+				calls.record(args)
+				if free := freeRemoteRefsLocks(t, lockPaths); len(free) > 0 {
+					freeDuringCalls.record(append([]string{args[0]}, free...))
+				}
+			},
+			VerdictHook: func() {
+				verdicts++
+				if free := freeRemoteRefsLocks(t, lockPaths); len(free) > 0 {
+					freeDuringVerdicts = append(freeDuringVerdicts, free)
+				}
+			},
+		}
+		report := reconcile(t, hub, fabricengine.ReconcileScope{}, opts)
 
 		if len(calls.withVerb("ls-remote")) != 2 || len(calls.withVerb("fetch")) != 1 {
 			t.Fatalf("remote calls = %v; want two ls-remote calls and one fetch", calls.calls)
@@ -557,10 +557,10 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			refuse()
 			var calls callLog
 			sleeps := 0
-			t.Cleanup(fabricengine.SetOriginCallHookForTest(calls.record))
 			opts := fabricengine.ReconcileOptions{
 				RetryBound:    3 * time.Second,
 				RetryInterval: time.Second,
+				CallHook:      calls.record,
 				Sleep: func(time.Duration) {
 					sleeps++
 					if row.restoreOnSleep {
@@ -594,13 +594,13 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		hub := newOriginHub(t)
 		gitkit.Git(t, hub.PrimeRecords(), "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-repository"))
 		var calls callLog
-		t.Cleanup(fabricengine.SetOriginCallHookForTest(calls.record))
 		sleeps := 0
 
 		_, err := fabricengine.ReconcileOrigin(hub.Location, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{
 			RetryBound:    3 * time.Second,
 			RetryInterval: time.Second,
 			Sleep:         func(time.Duration) { sleeps++ },
+			CallHook:      calls.record,
 		})
 
 		if err == nil || !strings.Contains(err.Error(), "records repository") {
@@ -619,13 +619,13 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		refsBefore := refsOf(t, hub.PrimeRecords())
 		localBefore := gitkit.RevParse(t, hub.PrimeRecords(), "HEAD")
 		lockPaths := remoteRefsLockPaths(t, hub)
-		t.Cleanup(fabricengine.SetOriginCallHookForTest(func(args []string) {
+		opts := fabricengine.ReconcileOptions{CallHook: func(args []string) {
 			if args[0] == "fetch" && slices.ContainsFunc(args, func(arg string) bool { return strings.Contains(arg, hub.primeRecords) }) {
 				gitkit.Git(t, hub.RecordsBare, "update-ref", "-d", "refs/heads/"+hub.primeRecords)
 			}
-		}))
+		}}
 
-		_, err := fabricengine.ReconcileOrigin(hub.Location, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
+		_, err := fabricengine.ReconcileOrigin(hub.Location, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, opts)
 
 		if err == nil || !strings.Contains(err.Error(), hub.primeRecords) {
 			t.Fatalf("ReconcileOrigin() error = %v; want a fetch error naming %s", err, hub.primeRecords)

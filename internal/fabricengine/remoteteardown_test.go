@@ -119,6 +119,50 @@ func TestNoticeRemoteTeardown(t *testing.T) {
 	})
 }
 
+// TestSyncOptionsNotifier covers which notifier a push's options mail through:
+// its own Notifier when set, otherwise the process's installed one.
+// The rows install the process's push notifier, so neither the test nor its rows are parallel.
+func TestSyncOptionsNotifier(t *testing.T) {
+	tiergate.Require(t, 0)
+	tests := []struct {
+		name          string
+		setOwn        bool
+		wantInstalled int
+		wantOwn       int
+	}{
+		{"NilNotifierFallsBackToTheInstalledOne", false, 1, 0},
+		{"OwnNotifierShadowsTheInstalledOne", true, 0, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			installed := recordNotices(t)
+			var own []string
+			options := SyncOptions{}
+			if tt.setOwn {
+				options.Notifier = func(hubPath, line string) (bool, error) {
+					own = append(own, line)
+					return true, nil
+				}
+			}
+
+			notify := options.notifier()
+			if notify == nil {
+				t.Fatalf("SyncOptions.notifier() = nil; want a notifier")
+			}
+			if _, err := notify("hub", "line"); err != nil {
+				t.Fatalf("notifier error = %v; want nil", err)
+			}
+
+			if got := len(installed()); got != tt.wantInstalled {
+				t.Errorf("installed notifier mails = %d; want %d", got, tt.wantInstalled)
+			}
+			if len(own) != tt.wantOwn {
+				t.Errorf("own notifier mails = %d; want %d", len(own), tt.wantOwn)
+			}
+		})
+	}
+}
+
 // TestNoticeRemoteTeardownEnded covers the notice of a teardown that ended before its last step:
 // it carries the slug, the reason and a way forward naming the command of every job kind.
 // The rows install the process's push notifier, so neither the test nor its rows are parallel.

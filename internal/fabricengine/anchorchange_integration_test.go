@@ -72,12 +72,10 @@ func completeAnchorChange(t *testing.T, c *fabricengine.AnchorChange) {
 	}
 }
 
-// killAt installs a hook that panics with anchorKill at the commit or the branch move.
+// killAt sets a hook on h's topology that panics with anchorKill at the commit or the branch move.
 // It panics before the step when afterCommit is false, and after it otherwise.
-func killAt(t *testing.T, afterCommit bool) {
-	t.Helper()
-
-	fabricengine.SetAnchorFailHookForTest(t, func(after bool) error {
+func killAt(h *hubforge.Hub, afterCommit bool) {
+	fabricengine.SetAnchorFailHookForTest(h.Topology, func(after bool) error {
 		if after == afterCommit {
 			panic(anchorKill{afterCommit})
 		}
@@ -206,8 +204,7 @@ func requireAnchorRefusal(t *testing.T, h *hubforge.Hub, slug, target string, wa
 
 func TestAnchorChange(t *testing.T) {
 	tiergate.Require(t, 1)
-	// Not parallel: the failure hook is process-global, so every subtest that sets it runs in turn;
-	// the other subtests are parallel and resume once this function has returned and its hooks are gone.
+	t.Parallel()
 	const mover = "mover"
 
 	t.Run("A pair moves to sub with its content, wiring, launcher and workspace entry", func(t *testing.T) {
@@ -493,12 +490,13 @@ func TestAnchorChange(t *testing.T) {
 	})
 
 	t.Run("A failure before the move commit leaves the pair wired where it was", func(t *testing.T) {
+		t.Parallel()
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		weft := h.PairRecordsSibling(mover)
 		head := gitkit.RevParse(t, weft, "HEAD")
 		hookErr := errors.New("injected failure before the commit")
-		fabricengine.SetAnchorFailHookForTest(t, func(afterCommit bool) error {
+		fabricengine.SetAnchorFailHookForTest(h.Topology, func(afterCommit bool) error {
 			if afterCommit {
 				return nil
 			}
@@ -526,12 +524,13 @@ func TestAnchorChange(t *testing.T) {
 	})
 
 	t.Run("A failure after the move commit leaves the record, and a re-run of the same target finishes at sub", func(t *testing.T) {
+		t.Parallel()
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		weft := h.PairRecordsSibling(mover)
 		hookErr := errors.New("injected failure after the commit")
 		failing := true
-		fabricengine.SetAnchorFailHookForTest(t, func(afterCommit bool) error {
+		fabricengine.SetAnchorFailHookForTest(h.Topology, func(afterCommit bool) error {
 			if afterCommit && failing {
 				return hookErr
 			}
@@ -562,11 +561,12 @@ func TestAnchorChange(t *testing.T) {
 	})
 
 	t.Run("A failing read of the commit after the move commit keeps the record and does not roll back", func(t *testing.T) {
+		t.Parallel()
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		weft := h.PairRecordsSibling(mover)
 		readErr := errors.New("injected failure reading the commit")
-		fabricengine.SetWeftHeadSHAForTest(t, func(string) (string, error) { return "", readErr })
+		fabricengine.SetWeftHeadSHAForTest(h.Topology, func(string) (string, error) { return "", readErr })
 
 		c, err := beginAnchorChange(t, h, mover, "sub")
 		if err != nil {
@@ -587,10 +587,11 @@ func TestAnchorChange(t *testing.T) {
 	})
 
 	t.Run("A restore that fails keeps the record, and the re-run refuses over both .lym directories", func(t *testing.T) {
+		t.Parallel()
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		weft := h.PairRecordsSibling(mover)
-		fabricengine.SetAnchorFailHookForTest(t, func(afterCommit bool) error {
+		fabricengine.SetAnchorFailHookForTest(h.Topology, func(afterCommit bool) error {
 			if afterCommit {
 				return nil
 			}
@@ -629,18 +630,19 @@ func TestAnchorChange(t *testing.T) {
 	})
 
 	t.Run("A re-run after a kill before the commit finishes at sub keeping the file in .lym", func(t *testing.T) {
+		t.Parallel()
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		weft := h.PairRecordsSibling(mover)
 		writeFile(t, filepath.Join(weft, lymdirs.DotLymDirName, "kept.txt"), "kept\n")
-		killAt(t, false)
+		killAt(h, false)
 
 		c, err := beginAnchorChange(t, h, mover, "sub")
 		if err != nil {
 			t.Fatalf("BeginAnchorChange() error = %v; want nil", err)
 		}
 		applyUntilKilled(t, c)
-		fabricengine.SetAnchorFailHookForTest(t, nil)
+		fabricengine.SetAnchorFailHookForTest(h.Topology, nil)
 
 		rerun, err := beginAnchorChange(t, h, mover, "sub")
 		if err != nil {
@@ -654,11 +656,12 @@ func TestAnchorChange(t *testing.T) {
 	})
 
 	t.Run("A re-run after a kill between the commit and the wiring finishes at sub keeping the file in .lym", func(t *testing.T) {
+		t.Parallel()
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		weft := h.PairRecordsSibling(mover)
 		writeFile(t, filepath.Join(weft, lymdirs.DotLymDirName, "kept.txt"), "kept\n")
-		killAt(t, true)
+		killAt(h, true)
 
 		c, err := beginAnchorChange(t, h, mover, "sub")
 		if err != nil {
@@ -668,7 +671,7 @@ func TestAnchorChange(t *testing.T) {
 		if marker := gitkit.Git(t, weft, "show", "HEAD:"+lymcwd.AnchorFileName); marker != "sub" {
 			t.Fatalf("committed marker after the kill = %q; want the commit to have landed", marker)
 		}
-		fabricengine.SetAnchorFailHookForTest(t, nil)
+		fabricengine.SetAnchorFailHookForTest(h.Topology, nil)
 
 		rerun, err := beginAnchorChange(t, h, mover, "sub")
 		if err != nil {
@@ -682,6 +685,7 @@ func TestAnchorChange(t *testing.T) {
 	})
 
 	t.Run("The integration of a change a second clone made carries the local commits", func(t *testing.T) {
+		t.Parallel()
 		h, prime := newIntegrateHub(t)
 		primeWeft := h.PrimeRecords()
 		upstream := gitkit.RevParse(t, primeWeft, "@{upstream}")
@@ -710,11 +714,12 @@ func TestAnchorChange(t *testing.T) {
 	})
 
 	t.Run("A failure before an integration moves the branch leaves the pair wired where it was", func(t *testing.T) {
+		t.Parallel()
 		h, prime := newIntegrateHub(t)
 		primeWeft := h.PrimeRecords()
 		head := gitkit.RevParse(t, primeWeft, "HEAD")
 		hookErr := errors.New("injected failure before the branch moves")
-		fabricengine.SetAnchorFailHookForTest(t, func(afterCommit bool) error {
+		fabricengine.SetAnchorFailHookForTest(h.Topology, func(afterCommit bool) error {
 			if afterCommit {
 				return nil
 			}
@@ -742,10 +747,11 @@ func TestAnchorChange(t *testing.T) {
 	})
 
 	t.Run("A re-run after a killed integration on a checkout already at sub finishes", func(t *testing.T) {
+		t.Parallel()
 		h, prime := newIntegrateHub(t)
 		primeWeft := h.PrimeRecords()
 		writeFile(t, filepath.Join(primeWeft, lymdirs.DotLymDirName, "kept.txt"), "kept\n")
-		killAt(t, true)
+		killAt(h, true)
 
 		c, err := h.Topology.BeginAnchorChange(prime, "sub")
 		if err != nil {
@@ -755,7 +761,7 @@ func TestAnchorChange(t *testing.T) {
 		if marker := gitkit.Git(t, primeWeft, "show", "HEAD:"+lymcwd.AnchorFileName); marker != "sub" {
 			t.Fatalf("committed marker after the kill = %q; want the integration to have landed", marker)
 		}
-		fabricengine.SetAnchorFailHookForTest(t, nil)
+		fabricengine.SetAnchorFailHookForTest(h.Topology, nil)
 
 		rerun, err := beginAnchorChange(t, h, prime.WorktreeName, "sub")
 		if err != nil {

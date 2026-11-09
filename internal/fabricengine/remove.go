@@ -417,7 +417,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		if housekeepHook != nil {
 			housekeepHook(slug)
 		}
-		housekeepStores(l, slug, t.inFlight)
+		housekeepStores(l, slug, t.inFlight, t.gcAutoThreshold)
 	}
 
 	strayPath := ""

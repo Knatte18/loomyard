@@ -49,11 +49,30 @@ type ReconcileScope struct {
 // RetryBound and RetryInterval together bound how often the ls-remote pair is retried after a transport failure.
 // There is one retry per whole interval in the bound.
 // AttemptDeadline bounds each remote call, and Sleep waits out one interval; nil sleeps for real.
+// CallHook sees the arguments of every remote call just before it runs.
+// VerdictHook runs just before each branch verdict.
+// Both are nil in production.
 type ReconcileOptions struct {
 	RetryBound      time.Duration
 	RetryInterval   time.Duration
 	AttemptDeadline time.Duration
 	Sleep           func(time.Duration)
+	CallHook        func(args []string)
+	VerdictHook     func()
+}
+
+// callHook hands the arguments of one remote call to CallHook, if set.
+func (o ReconcileOptions) callHook(args []string) {
+	if o.CallHook != nil {
+		o.CallHook(args)
+	}
+}
+
+// verdictHook runs VerdictHook, if set.
+func (o ReconcileOptions) verdictHook() {
+	if o.VerdictHook != nil {
+		o.VerdictHook()
+	}
 }
 
 // attempts returns how many times the ls-remote pair runs at most.
@@ -449,28 +468,6 @@ func classifyEntry(f entryFacts) EntryState {
 	return EntryActive
 }
 
-// originCallHook sees the arguments of every remote call a reconcile makes, just before it runs.
-// It is nil in production; a test sets it through `SetOriginCallHookForTest`.
-var originCallHook func(args []string)
-
-// callOriginHook hands the arguments of one remote call to the hook, if any.
-func callOriginHook(args []string) {
-	if originCallHook != nil {
-		originCallHook(args)
-	}
-}
-
-// originVerdictHook runs just before each branch verdict a reconcile reaches.
-// It is nil in production; a test sets it through `SetOriginVerdictHookForTest`.
-var originVerdictHook func()
-
-// callOriginVerdictHook runs the verdict hook, if any.
-func callOriginVerdictHook() {
-	if originVerdictHook != nil {
-		originVerdictHook()
-	}
-}
-
 // lsRemotePair returns each repository's branch heads by branch name.
 // It runs `git ls-remote origin` for both repositories in parallel, each under the attempt deadline.
 // A transport failure in either call retries the pair together after one interval, while attempts remain.
@@ -478,7 +475,7 @@ func callOriginVerdictHook() {
 // It is returned as soon as it is seen, naming the repository and git's error line.
 func lsRemotePair(warpDir, recordsDir string, opts ReconcileOptions) (warp, records map[string]string, err error) {
 	for attempt := 1; ; attempt++ {
-		warp, records, err = lsRemoteOnce(warpDir, recordsDir, opts.deadline())
+		warp, records, err = lsRemoteOnce(warpDir, recordsDir, opts)
 		if err == nil || !gitexec.IsTransportFailure(err) || attempt >= opts.attempts() {
 			return warp, records, err
 		}
@@ -488,17 +485,17 @@ func lsRemotePair(warpDir, recordsDir string, opts ReconcileOptions) (warp, reco
 
 // lsRemoteOnce runs the two ls-remote calls once, in parallel.
 // A non-transport failure wins over a transport one, so a retrying caller never retries a refusal.
-func lsRemoteOnce(warpDir, recordsDir string, deadline time.Duration) (warp, records map[string]string, err error) {
+func lsRemoteOnce(warpDir, recordsDir string, opts ReconcileOptions) (warp, records map[string]string, err error) {
 	var warpErr, recordsErr error
 	var wait sync.WaitGroup
 	wait.Add(2)
 	go func() {
 		defer wait.Done()
-		warp, warpErr = lsRemoteHeads(failedPushSideCode, warpDir, deadline)
+		warp, warpErr = lsRemoteHeads(failedPushSideCode, warpDir, opts)
 	}()
 	go func() {
 		defer wait.Done()
-		records, recordsErr = lsRemoteHeads(failedPushSideRecords, recordsDir, deadline)
+		records, recordsErr = lsRemoteHeads(failedPushSideRecords, recordsDir, opts)
 	}()
 	wait.Wait()
 
@@ -515,11 +512,11 @@ func lsRemoteOnce(warpDir, recordsDir string, deadline time.Duration) (warp, rec
 	return warp, records, nil
 }
 
-// lsRemoteHeads returns origin's branch heads of the repository at dir by branch name.
-func lsRemoteHeads(side, dir string, deadline time.Duration) (map[string]string, error) {
+// lsRemoteHeads returns origin's branch heads of the repository at dir by branch name, under opts' attempt deadline.
+func lsRemoteHeads(side, dir string, opts ReconcileOptions) (map[string]string, error) {
 	args := []string{"ls-remote", "--heads", originRemote}
-	callOriginHook(args)
-	out, err := gitexec.RunWithin(args, dir, deadline)
+	opts.callHook(args)
+	out, err := gitexec.RunWithin(args, dir, opts.deadline())
 	if err != nil {
 		return nil, fmt.Errorf("read origin's branches of the %s repository at %s: %w", side, dir, err)
 	}
@@ -541,7 +538,8 @@ func lsRemoteHeads(side, dir string, deadline time.Duration) (map[string]string,
 // The caller holds the repository's remote-refs lock, which this fetch does not take.
 // With `judgeOnly` it fetches the objects by SHA into no ref and writes no FETCH_HEAD, so a dry run moves nothing.
 // No head makes no call.
-func fetchMovedHeads(dir string, heads map[string]string, judgeOnly bool) error {
+// opts' call hook sees the fetch's arguments.
+func fetchMovedHeads(dir string, heads map[string]string, judgeOnly bool, opts ReconcileOptions) error {
 	if len(heads) == 0 {
 		return nil
 	}
@@ -563,7 +561,7 @@ func fetchMovedHeads(dir string, heads map[string]string, judgeOnly bool) error 
 			args = append(args, fmt.Sprintf("+refs/heads/%s:%s", branch, trackingRefOf(branch)))
 		}
 	}
-	callOriginHook(args)
+	opts.callHook(args)
 	if _, err := gitexec.Run(args, dir); err != nil {
 		return fmt.Errorf("fetch the moved branches %s from origin into %s: %w", strings.Join(branches, " "), dir, err)
 	}
@@ -870,7 +868,7 @@ func judgeAgainstOrigin(targets []originTarget, warpDir, recordsDir string, judg
 		}
 	}
 	for _, dir := range []string{warpDir, recordsDir} {
-		if err := fetchMovedHeads(dir, moved[dir], judgeOnly); err != nil {
+		if err := fetchMovedHeads(dir, moved[dir], judgeOnly, opts); err != nil {
 			return nil, false, err
 		}
 	}
@@ -880,7 +878,7 @@ func judgeAgainstOrigin(targets []originTarget, warpDir, recordsDir string, judg
 		if target.side == failedPushSideCode {
 			heads = warpHeads
 		}
-		callOriginVerdictHook()
+		opts.verdictHook()
 		outcome, err := judgeBranch(target.repoDir, target.branch, heads[target.branch], target.side != failedPushSideCode)
 		if err != nil {
 			return nil, false, err

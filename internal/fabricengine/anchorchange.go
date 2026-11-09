@@ -45,6 +45,8 @@ type AnchorChange struct {
 	// recovered holds what the recovery of a killed change did while the change was begun;
 	// the recorder Apply is given receives it.
 	recovered *Mutations
+	// seams stands in for the failures of the weft move; its zero value is production.
+	seams anchorSeams
 }
 
 // NoOp reports whether the worktree already sits at the requested anchor, so applying or finishing it does nothing.
@@ -130,7 +132,7 @@ func (t *Topology) BeginAnchorChange(pair *lymcwd.Location, target string) (*Anc
 		return nil, heldMoveRefusal(slug, weftPath, to)
 	}
 
-	c := &AnchorChange{pair: basis, weftPath: weftPath, names: names, from: basis.AnchorRel, to: to, moveLock: moveLock, recovered: NewMutations(pair.HubPath)}
+	c := &AnchorChange{pair: basis, weftPath: weftPath, names: names, from: basis.AnchorRel, to: to, moveLock: moveLock, recovered: NewMutations(pair.HubPath), seams: t.anchor}
 	if standing {
 		err = c.resume(record)
 	} else {
@@ -447,7 +449,7 @@ func (c *AnchorChange) moveWeft(rec *Mutations) (committed bool, err error) {
 	if c.kind == MoveKindIntegrate {
 		return c.integrate(rec)
 	}
-	committed, err = moveWeftContent(rec, c.weftPath, c.from, c.to, c.names)
+	committed, err = moveWeftContent(rec, c.weftPath, c.from, c.to, c.names, c.seams)
 	if !committed {
 		return false, c.rollback(rec, err)
 	}
@@ -472,13 +474,13 @@ func (c *AnchorChange) integrate(rec *Mutations) (committed bool, err error) {
 	if err := writeMoveRecordFile(c.weftPath, record); err != nil {
 		return false, c.rollback(rec, err)
 	}
-	if err := runAnchorFailHook(false); err != nil {
+	if err := c.seams.runFail(false); err != nil {
 		return false, c.rollback(rec, err)
 	}
 	if _, err := integrateWeft(rec, c.weftPath, c.upstream, c.to, c.names, c.from); err != nil {
 		return false, c.rollback(rec, err)
 	}
-	if err := runAnchorFailHook(true); err != nil {
+	if err := c.seams.runFail(true); err != nil {
 		return true, err
 	}
 	return true, c.settleLymDirAfterLanding(rec)

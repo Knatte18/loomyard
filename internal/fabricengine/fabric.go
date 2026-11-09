@@ -82,6 +82,8 @@ type SyncOptions struct {
 	SkipPush bool // Skip push operations if true; affects push only.
 	// BackoffSleep sleeps one push backoff delay before a missing branch or unreachable origin is recorded; nil means sleep.
 	BackoffSleep func(time.Duration)
+	// Notifier mails a failed push's record to the hub's orch; nil mails through the process's installed notifier.
+	Notifier PushNotifier
 }
 
 // EnvSyncOptions reads FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH and returns the SyncOptions they describe.

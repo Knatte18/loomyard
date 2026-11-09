@@ -103,15 +103,21 @@ func writeUnreachableObject(t *testing.T, dir, content string) string {
 }
 
 // TestStoreHousekeeping drives Add's key writes and Remove's foreground gc over hubs from hubforge.
-// It is not parallel: it lowers fabricengine's gc threshold and captures the logger's output at Info.
-// Both settings are process-global.
 // hubforge's clones may or may not carry the keys,
 // so each subtest unsets them in both stores right before the step whose write it checks.
+// One subtest builds no hub and pins the gc threshold that NewTopology starts with.
 func TestStoreHousekeeping(t *testing.T) {
 	tiergate.Require(t, 1)
-	logs := logcapture.CaptureVerbose(t)
+	t.Parallel()
 
 	const slug = "gc-pair"
+
+	t.Run("NewTopology starts at git's default gc.auto", func(t *testing.T) {
+		const gitDefaultGCAuto = 6700
+		if got := fabricengine.GCAutoThresholdForTest(fabricengine.NewTopology(fabricengine.Config{})); got != gitDefaultGCAuto {
+			t.Errorf("NewTopology gc threshold = %d; want %d", got, gitDefaultGCAuto)
+		}
+	})
 
 	t.Run("Add writes both keys into both stores", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -142,59 +148,32 @@ func TestStoreHousekeeping(t *testing.T) {
 		requireHousekeepingKeys(t, records, true)
 	})
 
-	// The probe answers for the pair being removed.
-	// Sessions of other pairs or an error skip the gc and keep the keys;
+	// The probe answers for the pair being removed;
 	// an empty answer packs the stores, like the nil probe the default-probe subtest below runs on.
-	for _, tc := range []struct {
-		name     string
-		probe    fabricengine.InFlightProbe
-		wantPack bool
-		wantLog  string
-	}{
-		{
-			name:    "live sessions of other pairs skip the gc",
-			probe:   func(string) ([]string, error) { return []string{"other-pair-session"}, nil },
-			wantLog: "other-pair-session",
-		},
-		{
-			name:     "an empty answer packs the stores",
-			probe:    func(string) ([]string, error) { return nil, nil },
-			wantPack: true,
-		},
-		{
-			name:    "a failing probe skips the gc",
-			probe:   func(string) ([]string, error) { return nil, fmt.Errorf("probe-boom") },
-			wantLog: "probe-boom",
-		},
-	} {
-		t.Run("the in-flight probe: "+tc.name, func(t *testing.T) {
-			fabricengine.SetGCAutoThresholdForTest(t, 1)
-			h := hubforge.NewHub(t, ".")
-			hubforge.AddPair(t, h, slug)
-			h.Topology.SetInFlightProbe(tc.probe)
-			code, records := hubStorePaths(t, h)
-			unsetHousekeepingKeys(t, code)
-			unsetHousekeepingKeys(t, records)
-			fillSampledLooseObjects(t, code)
+	t.Run("the in-flight probe: an empty answer packs the stores", func(t *testing.T) {
+		h := hubforge.NewHub(t, ".")
+		fabricengine.SetGCAutoThresholdForTest(h.Topology, 1)
+		hubforge.AddPair(t, h, slug)
+		h.Topology.SetInFlightProbe(func(string) ([]string, error) { return nil, nil })
+		code, records := hubStorePaths(t, h)
+		unsetHousekeepingKeys(t, code)
+		unsetHousekeepingKeys(t, records)
+		fillSampledLooseObjects(t, code)
 
-			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
-				t.Fatalf("Remove: %v", err)
-			}
+		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+			t.Fatalf("Remove: %v", err)
+		}
 
-			requireHousekeepingKeys(t, code, true)
-			requireHousekeepingKeys(t, records, true)
-			if packed := sampledLooseObjects(t, code) == 0; packed != tc.wantPack {
-				t.Errorf("objects/17 packed = %v; want %v", packed, tc.wantPack)
-			}
-			if tc.wantLog != "" && !strings.Contains(logs.String(), tc.wantLog) {
-				t.Errorf("log lacks %q:\n%s", tc.wantLog, logs.String())
-			}
-		})
-	}
+		requireHousekeepingKeys(t, code, true)
+		requireHousekeepingKeys(t, records, true)
+		if n := sampledLooseObjects(t, code); n != 0 {
+			t.Errorf("objects/17 still holds %d loose objects after Remove; want them packed", n)
+		}
+	})
 
 	t.Run("Remove on the default nil probe packs the stores, pruning unreachable loose objects older than a day and keeping younger ones", func(t *testing.T) {
-		fabricengine.SetGCAutoThresholdForTest(t, 1)
 		h := hubforge.NewHub(t, ".")
+		fabricengine.SetGCAutoThresholdForTest(h.Topology, 1)
 		hubforge.AddPair(t, h, slug)
 		code, records := hubStorePaths(t, h)
 		unsetHousekeepingKeys(t, code)
@@ -223,6 +202,58 @@ func TestStoreHousekeeping(t *testing.T) {
 			t.Errorf("the fresh unreachable object is gone: %v; want it kept", err)
 		}
 	})
+}
+
+// TestStoreHousekeeping_Warnings covers what a removal's housekeeping logs when it skips its gc or the gc fails.
+// It is not parallel: it captures the logger's output at Info, which is process-global.
+func TestStoreHousekeeping_Warnings(t *testing.T) {
+	tiergate.Require(t, 1)
+	logs := logcapture.CaptureVerbose(t)
+
+	const slug = "gc-pair"
+
+	// The probe answers for the pair being removed.
+	// Sessions of other pairs or an error skip the gc, keep the keys and leave the stores unpacked.
+	for _, tc := range []struct {
+		name    string
+		probe   fabricengine.InFlightProbe
+		wantLog string
+	}{
+		{
+			name:    "live sessions of other pairs skip the gc",
+			probe:   func(string) ([]string, error) { return []string{"other-pair-session"}, nil },
+			wantLog: "other-pair-session",
+		},
+		{
+			name:    "a failing probe skips the gc",
+			probe:   func(string) ([]string, error) { return nil, fmt.Errorf("probe-boom") },
+			wantLog: "probe-boom",
+		},
+	} {
+		t.Run("the in-flight probe: "+tc.name, func(t *testing.T) {
+			h := hubforge.NewHub(t, ".")
+			fabricengine.SetGCAutoThresholdForTest(h.Topology, 1)
+			hubforge.AddPair(t, h, slug)
+			h.Topology.SetInFlightProbe(tc.probe)
+			code, records := hubStorePaths(t, h)
+			unsetHousekeepingKeys(t, code)
+			unsetHousekeepingKeys(t, records)
+			fillSampledLooseObjects(t, code)
+
+			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+				t.Fatalf("Remove: %v", err)
+			}
+
+			requireHousekeepingKeys(t, code, true)
+			requireHousekeepingKeys(t, records, true)
+			if n := sampledLooseObjects(t, code); n == 0 {
+				t.Errorf("objects/17 holds no loose object after Remove; want the skipped gc to leave them unpacked")
+			}
+			if !strings.Contains(logs.String(), tc.wantLog) {
+				t.Errorf("log lacks %q:\n%s", tc.wantLog, logs.String())
+			}
+		})
+	}
 
 	t.Run("a failing gc is a warning and never fails Remove", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

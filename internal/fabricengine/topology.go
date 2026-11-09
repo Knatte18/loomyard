@@ -13,6 +13,10 @@ type Topology struct {
 	leftover leftoverSeam
 	// inFlight answers which other pairs' sessions are live when a pair is removed; nil answers none.
 	inFlight InFlightProbe
+	// gcAutoThreshold is the loose-object estimate above which a removal's foreground gc packs a store.
+	gcAutoThreshold int
+	// anchor stands in for the failures of an anchor change's weft move; its zero value is production.
+	anchor anchorSeams
 	// teardownWait bounds how long a mutation of a pair waits for the pair's teardown lock.
 	teardownWait time.Duration
 	// archiveSleep sleeps between the attempts of an archive-tag push; nil sleeps for real.
@@ -31,7 +35,8 @@ func (t *Topology) SetInFlightProbe(probe InFlightProbe) {
 // NewTopology returns a Topology operating with the given config.
 func NewTopology(cfg Config) *Topology {
 	return &Topology{
-		cfg:          cfg,
-		teardownWait: StatusPushLockWait,
+		cfg:             cfg,
+		teardownWait:    StatusPushLockWait,
+		gcAutoThreshold: defaultGCAutoThreshold,
 	}
 }

@@ -1,5 +1,5 @@
 // failedpush.go holds the failed-push record, one machine-local file per repository side and branch.
-// It also holds the once-per-episode notice to the orch, sent through the installed notifier.
+// It also holds the once-per-episode notice to the orch, sent through the push's notifier or the installed one.
 // The way-forward line for each side and class is built there too.
 
 package fabricengine
@@ -90,6 +90,23 @@ func InstallPushNotifier(n PushNotifier) (restore func()) {
 	return func() { installedPushNotifier.Store(previous) }
 }
 
+// installedNotifier returns the process's push notifier, nil when none is installed.
+func installedNotifier() PushNotifier {
+	if n := installedPushNotifier.Load(); n != nil {
+		return *n
+	}
+	return nil
+}
+
+// notifier returns the notifier a failed push of these options mails through:
+// Notifier, or the process's installed one when Notifier is nil.
+func (o SyncOptions) notifier() PushNotifier {
+	if o.Notifier != nil {
+		return o.Notifier
+	}
+	return installedNotifier()
+}
+
 func failedPushDir(hubPath string) string {
 	return filepath.Join(HubScratchDir(hubPath), lymdirs.FailedPushDirName)
 }
@@ -112,6 +129,12 @@ func failedPushLockPath(path string) string {
 // The record is marked notified only when the notifier reports the mail posted.
 // A notifier error is logged and leaves the record unnotified, so the next failure mails again.
 func RecordPushFailure(hubPath string, f FailedPush, now time.Time) error {
+	return recordPushFailure(hubPath, f, now, installedNotifier())
+}
+
+// recordPushFailure writes f as the failed-push record of its repository side and branch under the record's lock.
+// It mails a record that is neither notified nor deferred through notify, once per episode; a nil notify mails nothing.
+func recordPushFailure(hubPath string, f FailedPush, now time.Time, notify PushNotifier) error {
 	path := failedPushPath(hubPath, f.Repo, f.Branch)
 	return state.UpdateJSON(path, failedPushLockPath(path), func(cur FailedPush, found bool) (FailedPush, error) {
 		f.FirstSeen = now
@@ -125,12 +148,11 @@ func RecordPushFailure(hubPath string, f FailedPush, now time.Time) error {
 		if f.Notified || f.Class == PushFailureDeferred {
 			return f, nil
 		}
-		notifier := installedPushNotifier.Load()
-		if notifier == nil {
+		if notify == nil {
 			return f, nil
 		}
 		line := fmt.Sprintf("a push of %s branch %s failed (%s): %s; way forward: %s", f.Repo, f.Branch, f.Class, f.Error, FailedPushWayForward(f))
-		posted, err := (*notifier)(hubPath, line)
+		posted, err := notify(hubPath, line)
 		if err != nil {
 			logger.Warn("fabricengine: failed-push notice not posted", "repo", f.Repo, "branch", f.Branch, "error", err)
 			return f, nil

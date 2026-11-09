@@ -1421,6 +1421,8 @@
 // It records the failure only once the backoff runs out.
 // A held write lock or an uncommitted change on a path the replay touches is a deferral.
 // The push returns nil and writes a `deferred` record that mails nothing.
+// Every other record mails the hub's orch once per episode.
+// The mail goes through `SyncOptions.Notifier`, or through the process's installed push notifier when that field is nil.
 // It leaves the commits to the next push of the branch, whose landing removes the record.
 // A replay that stops on a conflict is a `not_fast_forward` failure.
 // The failure carries the conflicting paths and the local commits.

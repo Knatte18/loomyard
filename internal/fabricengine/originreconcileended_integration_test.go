@@ -117,9 +117,9 @@ func endedHub(t *testing.T) *originHub {
 
 // TestReconcileOrigin_Ended covers the origin reconcile's handling of runs origin has ended.
 // It checks which entries it ends, what it hands the teardown seam, and how it reports each outcome.
-// It runs without t.Parallel because it sets the process-global origin call hook.
 func TestReconcileOrigin_Ended(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	boardkit.InstallReplay(t)
 
 	t.Run("An entry done on origin with a local pair is handed to the teardown seam once and reported ended as landed", func(t *testing.T) {
@@ -163,9 +163,8 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		originBoard(t, hub, branch, boardEntry("ghost", withBoardStatus("done")))
 		recorder := &teardownRecorder{}
 		var calls callLog
-		t.Cleanup(fabricengine.SetOriginCallHookForTest(calls.record))
 
-		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
+		report := moveReconcileWith(t, hub, fabricengine.ReconcileScope{}, recorder.seams(), fabricengine.ReconcileOptions{CallHook: calls.record})
 
 		if len(recorder.calls) != 0 {
 			t.Errorf("teardown calls = %v; want none for a run with no local pair", recorder.slugsCalled())

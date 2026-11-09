@@ -37,7 +37,13 @@ const (
 // moveReconcile runs the origin reconcile over hub with scope and seams, failing the test on error.
 func moveReconcile(t *testing.T, hub *originHub, scope fabricengine.ReconcileScope, seams fabricengine.OriginSeams) fabricengine.OriginReport {
 	t.Helper()
-	report, err := fabricengine.ReconcileOrigin(hub.Location, scope, seams, fabricengine.ReconcileOptions{})
+	return moveReconcileWith(t, hub, scope, seams, fabricengine.ReconcileOptions{})
+}
+
+// moveReconcileWith runs the origin reconcile over hub with scope, seams and opts, failing the test on error.
+func moveReconcileWith(t *testing.T, hub *originHub, scope fabricengine.ReconcileScope, seams fabricengine.OriginSeams, opts fabricengine.ReconcileOptions) fabricengine.OriginReport {
+	t.Helper()
+	report, err := fabricengine.ReconcileOrigin(hub.Location, scope, seams, opts)
 	if err != nil {
 		t.Fatalf("ReconcileOrigin(%+v) error = %v; want nil", scope, err)
 	}
@@ -145,9 +151,9 @@ func newMovesPair(t *testing.T) *movesPair {
 
 // TestReconcileOrigin_Moves covers the origin reconcile's moves: what it fast-forwards or replays.
 // It also covers what a dirty path, a live pair, a held lock or a conflict leaves where it was.
-// It runs without t.Parallel because it sets the process-global origin call hook.
 func TestReconcileOrigin_Moves(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 	boardkit.InstallReplay(t)
 
 	t.Run("A hub reconcile fast-forwards a weft, Bolt and the prime's code branch and a judge-only one moves nothing", func(t *testing.T) {
@@ -166,8 +172,7 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		}
 
 		var calls callLog
-		t.Cleanup(fabricengine.SetOriginCallHookForTest(calls.record))
-		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{})
+		report := moveReconcileWith(t, hub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{CallHook: calls.record})
 
 		for _, row := range []struct {
 			name, repo, branch, want, dir string
@@ -459,9 +464,8 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		local := gitkit.CommitFile(t, board, "board.json", boardFileOf(t, running), "neve runs")
 		originHead := originCommitFile(t, hub.RecordsBare, branch, "board.json", boardFileOf(t, boardEntry("neve", withBoardStatus("done"))))
 		var calls callLog
-		t.Cleanup(fabricengine.SetOriginCallHookForTest(calls.record))
 
-		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{})
+		report := moveReconcileWith(t, hub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{CallHook: calls.record})
 
 		outcome := requireState(t, report, "bolt", branch, fabricengine.BranchLevel)
 		if !outcome.Moved || gitkit.RevParse(t, board, "HEAD") != originHead {
