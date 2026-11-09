@@ -99,8 +99,16 @@
 // A note's letter cannot be decided when its type label is not configured or the board is path-only.
 // Such a note keeps its stored handle unless an entry of lower id holds it, which clears it.
 // A handle is not scope: the run lock and the revised date ignore it.
-// `TitleWithHandle` opens a window's name with its run's handle, `T4: <name>`, reading the local board file.
+// `TitleWithHandle` opens the name of a run's `runs` window with its run's handle, `T4: <name>`.
+// It reads the local board file.
 // It leaves the name alone when the board names no handle for the slug or cannot be read.
+// `IDEWindowTitle` and `TerminalWindowTitle` give a console window's title through `internal/consoletitle`.
+// The title reads `<shortname>: <P#>: <T#>: <slug>`, from the hub shortname and the board at the call.
+// <P#> is the handle of the nearest open beam above the entry, else of its project.
+// The prime's and a beam's own windows carry a label in place of the slug.
+// The label is `prime` or `beam` in VS Code, and `orch` in a terminal.
+// `RecipeWindowTitle` gives the title of a run's status window.
+// It is the worktree's console title with the recipe in place of the slug.
 // Every Board and Store method that takes a selector takes a Handle beside a slug string and a numeric id.
 // A handle's letter matches case-insensitively.
 //

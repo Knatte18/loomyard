@@ -1659,7 +1659,7 @@
 // A beam's file splices the beam's own `.vscode/settings.json` when it exists and can be read, and the prime's otherwise.
 // An unreadable beam settings file logs a Warn.
 // Each file splices its settings with the workspace look `vscode.WorkspaceSettings` sets.
-// The title is `<SHORTNAME>: <name> workspace`, named after the repository or the beam,
+// The title is `<shortname>: <name> workspace` through `internal/consoletitle`, named after the repository or the beam,
 // so a workspace window is told apart from the worktree whose settings it carries.
 // A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory.
 // It lists the folders only after taking the lock, so a pair created while the regeneration waits is listed.

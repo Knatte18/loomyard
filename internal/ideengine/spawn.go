@@ -283,6 +283,7 @@ func resolveSpawnTarget(l, own *lymcwd.Location, slug string) (worktreeDir strin
 
 // lookFor returns the window look of the worktree slug, whose location is own:
 // its title, its project's colour and its own colour.
+// The title is the VS Code window's console title, with the hub shortname and the board handles read at the call.
 // The prime takes `vscode.PrimeColor` for both colours, and a beam takes its board-recorded colour for both.
 // A task takes its parent's colour as its project colour:
 // the prime's colour under the prime, or the beam's colour under a beam.
@@ -291,10 +292,7 @@ func resolveSpawnTarget(l, own *lymcwd.Location, slug string) (worktreeDir strin
 // An empty primeName, an unreadable board or an unresolvable parent reads slug as a task under the prime;
 // the failure is logged at Warn.
 func lookFor(l, own *lymcwd.Location, slug, primeName string) vscode.Look {
-	title := slug
-	if shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(l.HubPath)); found {
-		title = strings.ToUpper(shortname) + ": " + slug
-	}
+	title := boardengine.IDEWindowTitle(l.HubPath, primeName, slug)
 	if primeName != "" && slug == primeName {
 		return vscode.Look{Title: title, ProjectColor: vscode.PrimeColor, WorktreeColor: vscode.PrimeColor}
 	}

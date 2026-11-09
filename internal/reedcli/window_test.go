@@ -24,6 +24,7 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 	t.Parallel()
 
 	const standInLym = "/stand-in/lym"
+	const formedTitle = "ly: P3: T7: task"
 	existing := t.TempDir()
 	tests := []struct {
 		name string
@@ -41,11 +42,11 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 		wantErr string
 	}{
 		{name: "TitleFlag", args: []string{existing, "--title", "t"}, wantTitle: "t", wantCalls: 1},
-		{name: "DefaultTitleIsTheBaseName", args: []string{existing}, wantTitle: filepath.Base(existing), wantCalls: 1},
+		{name: "DefaultTitleIsTheFormedTitle", args: []string{existing}, wantTitle: formedTitle, wantCalls: 1},
 		{name: "MissingDirectoryRunsNoLauncher", args: []string{filepath.Join(existing, "absent")}, wantCode: 1, wantErr: "absent"},
-		{name: "LauncherErrorIsCarried", args: []string{existing}, openErr: errors.New("no terminal window launcher known here"), wantCode: 1, wantTitle: filepath.Base(existing), wantCalls: 1, wantErr: "no terminal window launcher"},
+		{name: "LauncherErrorIsCarried", args: []string{existing}, openErr: errors.New("no terminal window launcher known here"), wantCode: 1, wantTitle: formedTitle, wantCalls: 1, wantErr: "no terminal window launcher"},
 		{name: "DefaultLookupRefusesTheTestBinaryAndRunsNoLauncher", args: []string{existing}, defaultLookup: true, wantCode: 1, wantErr: "window: resolve the running lym"},
-		{name: "WindowCommandFailureOnlyWarns", args: []string{existing}, placeErr: errors.New("window command failed"), wantTitle: filepath.Base(existing), wantCalls: 1},
+		{name: "WindowCommandFailureOnlyWarns", args: []string{existing}, placeErr: errors.New("window command failed"), wantTitle: formedTitle, wantCalls: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -60,6 +61,12 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 				placeWindow: func(dir string) error {
 					placed = append(placed, dir)
 					return tt.placeErr
+				},
+				windowTitle: func(dir string) string {
+					if dir != existing {
+						t.Errorf("window title formed for %q; want %q", dir, existing)
+					}
+					return formedTitle
 				},
 			}
 			if !tt.defaultLookup {

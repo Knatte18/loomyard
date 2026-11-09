@@ -335,7 +335,7 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	if len(*launched) != 0 {
 		t.Errorf("CodeLauncher calls after Seed = %v, want none", *launched)
 	}
-	if want, got := "TST: "+slug+" workspace", readWorkspaceLook(t, beamPath).Title; got != want {
+	if want, got := "tst: "+slug+" workspace", readWorkspaceLook(t, beamPath).Title; got != want {
 		t.Errorf("beam workspace window.title = %q, want %q", got, want)
 	}
 	if err := os.Remove(beamPath); err != nil {
@@ -531,7 +531,7 @@ func checkPrimeSeedWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	if len(*launched) != 0 {
 		t.Errorf("CodeLauncher calls = %v, want none", *launched)
 	}
-	want := "TST: " + l.RepoName + " workspace"
+	want := "tst: " + l.RepoName + " workspace"
 	if got := readWorkspaceLook(t, fabricengine.HubWorkspacePath(l)).Title; got != want {
 		t.Errorf("hub workspace window.title = %q, want %q", got, want)
 	}
@@ -558,14 +558,14 @@ func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
 		t.Fatalf("Spawn with JSONC settings: %v", err)
 	}
 	settings := readPrimeLook(t, settingsPath)
-	if settings.TabSize != 2 || settings.Title != "TST: "+prime || settings.Colors["titleBar.activeBackground"] != vscode.PrimeColor || settings.Colors["activityBar.background"] != vscode.PrimeColor {
-		t.Errorf("prime settings after Spawn = %+v; want tabSize 2 kept, title %q and green on both bars", settings, "TST: "+prime)
+	if settings.TabSize != 2 || settings.Title != "tst: prime" || settings.Colors["titleBar.activeBackground"] != vscode.PrimeColor || settings.Colors["activityBar.background"] != vscode.PrimeColor {
+		t.Errorf("prime settings after Spawn = %+v; want tabSize 2 kept, title %q and green on both bars", settings, "tst: prime")
 	}
 	first, err := os.ReadFile(wsPath)
 	if err != nil {
 		t.Fatalf("read workspace: %v", err)
 	}
-	workspaceTitle := "TST: " + l.RepoName + " workspace"
+	workspaceTitle := "tst: " + l.RepoName + " workspace"
 	if ws := readWorkspaceLook(t, wsPath); ws.TabSize != 2 || ws.Title != workspaceTitle || ws.Colors["titleBar.activeBackground"] != vscode.PrimeColor || ws.Colors["activityBar.background"] != vscode.WorkspaceColor {
 		t.Fatalf("workspace settings = %+v; want the prime's tabSize 2, title %q, green on the title bar and %s on the activity bar", ws, workspaceTitle, vscode.WorkspaceColor)
 	}

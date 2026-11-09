@@ -136,8 +136,8 @@ func checkOverwritesTasksKeepsSettings(t *testing.T, h *hubforge.Hub, slug strin
 
 	assertAttachTaskOnly(t, filepath.Dir(vscodeDir))
 	got := readPrimeLook(t, filepath.Join(vscodeDir, "settings.json"))
-	if got.TabSize != 2 || got.Title != "TST: "+slug || got.Colors["titleBar.activeBackground"] != vscode.PrimeColor || got.Colors["activityBar.background"] == "" || got.Colors["activityBar.background"] == vscode.PrimeColor {
-		t.Errorf("settings.json = %+v; want tabSize 2 kept, title %q, green title bar and a non-green activity bar", got, "TST: "+slug)
+	if got.TabSize != 2 || got.Title != "tst: "+slug || got.Colors["titleBar.activeBackground"] != vscode.PrimeColor || got.Colors["activityBar.background"] == "" || got.Colors["activityBar.background"] == vscode.PrimeColor {
+		t.Errorf("settings.json = %+v; want tabSize 2 kept, title %q, green title bar and a non-green activity bar", got, "tst: "+slug)
 	}
 }
 

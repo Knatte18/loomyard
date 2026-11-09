@@ -712,27 +712,38 @@ func TestStatusStrandSpec_TitlesTheWindowWithTheRunsHandleAndRecipe(t *testing.T
 	}
 }
 
-// TestStatusWindowTitle pins that the status window opens its recipe with the run's board handle.
-// It also pins that the bare recipe is kept when the board names none.
+// TestStatusWindowTitle pins that the status window opens its recipe with the worktree's console title parts.
+// It also pins that the bare recipe is kept when the hub and board name none.
 func TestStatusWindowTitle(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
-		// entry is the one board entry the hub's board holds; empty means the hub has no board.
-		entry string
-		want  string
+		// shortname is the hub's recorded shortname; empty records none.
+		shortname string
+		// entries are the board entries the hub's board holds; none means the hub has no board.
+		entries []string
+		want    string
 	}{
-		{"TheRunsHandleOpensTheRecipe", `{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}`, "T4: tapestry"},
-		{"AnEntryOfAnotherSlugKeepsTheRecipe", `{"id":1,"slug":"other","kind":"task","labels":["bug"],"handle":"T4"}`, "tapestry"},
-		{"NoBoardKeepsTheRecipe", "", "tapestry"},
+		{"TheRunsHandleOpensTheRecipe", "", []string{`{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}`}, "T4: tapestry"},
+		{"TheShortnameAndProjectHandleOpenTheRecipe", "ly", []string{
+			`{"id":1,"slug":"proj","kind":"project","labels":["bug"],"handle":"P3"}`,
+			`{"id":2,"slug":"run","kind":"task","labels":["bug"],"project":"proj","handle":"T4"}`,
+		}, "ly: P3: T4: tapestry"},
+		{"AnEntryOfAnotherSlugKeepsTheRecipe", "", []string{`{"id":1,"slug":"other","kind":"task","labels":["bug"],"handle":"T4"}`}, "tapestry"},
+		{"NoBoardKeepsTheRecipe", "", nil, "tapestry"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			location := locationkit.Location(t.TempDir(), "run", "")
-			if tt.entry != "" {
-				boardkit.WriteBoard(t, fabricengine.BoardDir(location.HubPath), tt.entry)
+			if len(tt.entries) > 0 {
+				boardkit.WriteBoard(t, fabricengine.BoardDir(location.HubPath), tt.entries...)
+			}
+			if tt.shortname != "" {
+				if err := fabricengine.WriteShortname(fabricengine.BoardDir(location.HubPath), tt.shortname); err != nil {
+					t.Fatalf("record the shortname: %v", err)
+				}
 			}
 			if got := statusWindowTitle(location, "tapestry"); got != tt.want {
 				t.Errorf("statusWindowTitle(run, tapestry) = %q; want %q", got, tt.want)

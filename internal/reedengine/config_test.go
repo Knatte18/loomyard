@@ -95,12 +95,12 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		{Label: "HALT", Run: "lym tender pause {slug}"},
 		{Label: "CANCEL", Run: "lym batten cancel {slug}", Confirm: "Cancel {slug}?"},
 		{Label: "code", Run: "lym ide spawn {slug}"},
-		{Label: "terminal", Run: "lym reed window {worktree} --title {slug}"},
+		{Label: "terminal", Run: "lym reed window {worktree}"},
 		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'", Ask: "Agent name:", AskDefault: "agent"},
 	}
 	wantBeamButtons := []buttonWant{
 		{Label: "code", Run: "lym ide spawn {slug}"},
-		{Label: "terminal", Run: "lym reed window {worktree} --title {slug}"},
+		{Label: "terminal", Run: "lym reed window {worktree}"},
 		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'", Ask: "Agent name:", AskDefault: "agent"},
 		{Label: "distill", Run: "lym orch distill", Confirm: "Distill the orch?"},
 		{Label: "refresh", Run: "lym orch refresh", Confirm: "Refresh the orch?"},
@@ -112,7 +112,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	// and the board refuses a task write from a slug-carrying session.
 	wantPrimeButtons := []buttonWant{
 		{Label: "code", Run: "lym ide spawn {slug}"},
-		{Label: "terminal", Run: "lym reed window {worktree} --title {slug}"},
+		{Label: "terminal", Run: "lym reed window {worktree}"},
 		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'", Ask: "Agent name:", AskDefault: "agent"},
 		{Label: "board", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]' --skill scribe:prose --skill scribe:conversation --skill ly:board-policy --skill ly:board", Ask: "Board agent name:", AskDefault: "board"},
 		{Label: "distill", Run: "lym orch distill", Confirm: "Distill the orch?"},

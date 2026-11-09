@@ -84,6 +84,10 @@ Imports only the standard library, `internal/logger`, `internal/stencil` and `in
 
 Imports only the standard library.
 
+## `internal/consoletitle`
+
+Imports only the standard library, so `fabricengine`, which learns nothing of the board, forms a workspace title with the same function the board's titles use.
+
 ## `internal/lensreport`
 
 Imports only the standard library, so every lens review host and `planparser` can share the lens report naming.

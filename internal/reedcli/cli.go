@@ -62,6 +62,10 @@ type reedCLI struct {
 	// nil means placeTerminalWindow.
 	placeWindow func(dir string) error
 
+	// windowTitle is the test seam for the title the window verb forms when no --title is told.
+	// nil means terminalWindowTitle.
+	windowTitle func(dir string) string
+
 	// watchdogTiming, when non-nil, replaces watchdogDefaultTiming() in watchdogCmd's loop.
 	// It lets a test shorten the wait on the daemon; production never sets it.
 	watchdogTiming *watchdogTiming

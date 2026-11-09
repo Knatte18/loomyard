@@ -1,5 +1,5 @@
 // look_test.go covers `lookFor` over a hub of plain directories.
-// It checks the window title from the hub shortname.
+// It checks the window title from the hub shortname and the board handles.
 // It also checks the project and worktree colours of the prime, of a beam, and of a task.
 
 package ideengine
@@ -42,11 +42,11 @@ func lookHub(t *testing.T, shortname string) *lymcwd.Location {
 		t.Fatal(err)
 	}
 	boardJSON := `{"version":1,"entries":[` +
-		`{"id":0,"slug":"bm","title":"BM","kind":"project","labels":["bug"],"beam":true,"beam_color":"` + violet + `"},` +
-		`{"id":1,"slug":"bn","title":"BN","kind":"project","labels":["bug"],"beam":true},` +
-		`{"id":2,"slug":"gone","title":"Gone","kind":"project","labels":["bug"],"beam":true,"beam_color":"` + purple + `","status":"done"},` +
-		`{"id":3,"slug":"t1","title":"T1","kind":"task","labels":["bug"],"project":"bm"},` +
-		`{"id":4,"slug":"t2","title":"T2","kind":"task","labels":["bug"],"project":"bm"}]}`
+		`{"id":0,"slug":"bm","title":"BM","kind":"project","labels":["bug"],"beam":true,"beam_color":"` + violet + `","handle":"P1"},` +
+		`{"id":1,"slug":"bn","title":"BN","kind":"project","labels":["bug"],"beam":true,"handle":"P2"},` +
+		`{"id":2,"slug":"gone","title":"Gone","kind":"project","labels":["bug"],"beam":true,"beam_color":"` + purple + `","status":"done","handle":"P3"},` +
+		`{"id":3,"slug":"t1","title":"T1","kind":"task","labels":["bug"],"project":"bm","handle":"T1"},` +
+		`{"id":4,"slug":"t2","title":"T2","kind":"task","labels":["bug"],"project":"bm","handle":"T2"}]}`
 	if err := os.WriteFile(filepath.Join(board, "board.json"), []byte(boardJSON), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -84,12 +84,12 @@ func TestLookFor(t *testing.T) {
 		slug string
 		want vscode.Look
 	}{
-		{"prime", vscode.Look{Title: "TST: prime", ProjectColor: vscode.PrimeColor, WorktreeColor: vscode.PrimeColor}},
-		{"bm", vscode.Look{Title: "TST: bm", ProjectColor: violet, WorktreeColor: violet}},
-		{"bn", vscode.Look{Title: "TST: bn", ProjectColor: purple, WorktreeColor: purple}},
-		{"t1", vscode.Look{Title: "TST: t1", ProjectColor: violet, WorktreeColor: purple}},
-		{"t3", vscode.Look{Title: "TST: t3", ProjectColor: vscode.PrimeColor, WorktreeColor: blue}},
-		{"t5", vscode.Look{Title: "TST: t5", ProjectColor: vscode.PrimeColor, WorktreeColor: brown}},
+		{"prime", vscode.Look{Title: "tst: prime", ProjectColor: vscode.PrimeColor, WorktreeColor: vscode.PrimeColor}},
+		{"bm", vscode.Look{Title: "tst: P1: beam", ProjectColor: violet, WorktreeColor: violet}},
+		{"bn", vscode.Look{Title: "tst: P2: beam", ProjectColor: purple, WorktreeColor: purple}},
+		{"t1", vscode.Look{Title: "tst: P1: T1: t1", ProjectColor: violet, WorktreeColor: purple}},
+		{"t3", vscode.Look{Title: "tst: t3", ProjectColor: vscode.PrimeColor, WorktreeColor: blue}},
+		{"t5", vscode.Look{Title: "tst: t5", ProjectColor: vscode.PrimeColor, WorktreeColor: brown}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.slug, func(t *testing.T) {

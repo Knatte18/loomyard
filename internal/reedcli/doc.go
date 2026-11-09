@@ -45,7 +45,9 @@
 //
 // `window <worktree-dir> [--title <title>]` opens one desktop terminal window through `internal/termwindow`.
 // Its shell runs `lym reed attach` in that directory, and the verb returns once the launcher process has started.
-// It reads no location, config or engine; a directory that does not exist is refused before any launcher runs;
+// With no `--title` it titles the window with the console title of the worktree holding the directory.
+// That title is read from the hub's board.
+// It reads no acting location, config or engine; a directory that does not exist is refused before any launcher runs;
 // a machine with no launcher reports why on the envelope.
 //
 // `follow` turns follow on for a session told by `--socket`, `--session` and `--tmux`.

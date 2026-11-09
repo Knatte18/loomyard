@@ -3,6 +3,7 @@
 // It then runs the machine's window command through internal/desktophook.
 // It runs that command with the config of the worktree holding the told directory.
 // It needs no acting location or engine, so the root pre-run skips it.
+// With no told title it titles the window from the told directory's worktree and the hub's board.
 
 package reedcli
 
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/desktophook"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -44,6 +46,22 @@ func placeTerminalWindow(dir string) error {
 	return desktophook.AfterWindow(fabricengine.ConfigDirs(l), dir)
 }
 
+// terminalWindowTitle returns the title of a terminal window on dir:
+// the console title of the reed session of the worktree holding dir, or dir's base name when dir is in no worktree.
+// A prime it cannot resolve is logged at Warn, and the worktree is then titled as a task.
+func terminalWindowTitle(dir string) string {
+	l, err := lymcwd.ResolveWorktree(dir)
+	if err != nil {
+		logger.Debug("reed window: the window's directory is in no worktree, titling it with its base name", "dir", dir, "cause", err)
+		return filepath.Base(dir)
+	}
+	primeName, err := fabricengine.PrimeName(l)
+	if err != nil {
+		logger.Warn("reed window: could not resolve the prime, titling the window as a task's", "dir", dir, "cause", err)
+	}
+	return boardengine.TerminalWindowTitle(l.HubPath, primeName, l.WorktreeName)
+}
+
 // windowCmd builds the `window` subcommand.
 // It opens a window on any directory the caller names;
 // the window runs only `lym reed attach` there, which attaches to that worktree's own reed session and nothing else.
@@ -59,12 +77,17 @@ func (c *reedCLI) windowCmd() *cobra.Command {
 launcher process has started, so the window outlives this command. When
 the machine names a window command in desktop.yaml, it runs it next, after
 the configured wait, and a failure of that command only warns. The
-title defaults to the directory's base name. A directory that does not
-exist is refused before any launcher runs, and a machine with no terminal
-launcher reports why on the envelope.
+title defaults to the console title of the worktree holding the
+directory, read from the hub's board: "<hub shortname>: <P#>: <T#>: <slug>"
+for a task, "<hub shortname>: orch" for the prime and
+"<hub shortname>: <P#>: orch" for a beam, whose sessions hold an orch,
+with a part that does not exist left out. A directory in no worktree
+takes its base name. A directory that does not exist is refused before
+any launcher runs, and a machine with no terminal launcher reports why
+on the envelope.
 
 Example:
-  lym reed window /path/to/hub/my-task --title my-task`,
+  lym reed window /path/to/hub/my-task`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -79,7 +102,11 @@ Example:
 			}
 			windowTitle := title
 			if windowTitle == "" {
-				windowTitle = filepath.Base(dir)
+				formTitle := c.windowTitle
+				if formTitle == nil {
+					formTitle = terminalWindowTitle
+				}
+				windowTitle = formTitle(dir)
 			}
 			resolveLym := c.lymBinary
 			if resolveLym == nil {
@@ -111,7 +138,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().StringVar(&title, "title", "", "window title (default: the directory's base name)")
+	cmd.Flags().StringVar(&title, "title", "", "window title (default: the worktree's console title, or the directory's base name outside a worktree)")
 
 	return cmd
 }

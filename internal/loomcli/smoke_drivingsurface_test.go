@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/consoletitle"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -249,8 +251,9 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 		if got := display(statusPane, "#{@lym_overview}"); got != "1" {
 			t.Errorf("status window @lym_overview = %q; want 1; output: %s", got, out)
 		}
-		if got := display(statusPane, "#{window_name}"); got != shedrun.RecipeTapestry {
-			t.Errorf("status window name = %q; want %q, the seeded recipe; output: %s", got, shedrun.RecipeTapestry, out)
+		wantName := consoletitle.Title(hubforge.TestShortname, "", "", shedrun.RecipeTapestry)
+		if got := display(statusPane, "#{window_name}"); got != wantName {
+			t.Errorf("status window name = %q; want %q, the hub shortname and the seeded recipe; output: %s", got, wantName, out)
 		}
 		statusIndex, err := strconv.Atoi(display(statusPane, "#{window_index}"))
 		if err != nil {

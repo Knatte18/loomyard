@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/consoletitle"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -92,13 +92,10 @@ func beamWorkspaceSettings(l *lymcwd.Location, beam string, primeSettings []byte
 }
 
 // workspaceWindowTitle returns the window title of the workspace file named after name, a repository or a beam:
-// "<SHORTNAME>: <name> workspace", or "<name> workspace" when the board at the hub records no shortname.
+// "<shortname>: <name> workspace", or "<name> workspace" when the board at the hub records no shortname.
 func workspaceWindowTitle(hubPath, name string) string {
-	title := name + " workspace"
-	if shortname, found := ReadShortname(BoltDir(hubPath)); found {
-		return strings.ToUpper(shortname) + ": " + title
-	}
-	return title
+	shortname, _ := ReadShortname(BoltDir(hubPath))
+	return consoletitle.Workspace(shortname, name)
 }
 
 // regenerateAfterVerb regenerates the hub workspace file at the end of a fabric verb that changed the hub's worktrees.

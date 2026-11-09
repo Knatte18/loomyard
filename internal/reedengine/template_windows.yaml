@@ -29,7 +29,7 @@ buttons:  # status-bar buttons in the groups task, beam and prime; an entry has 
     - label: code
       run: lym ide spawn {slug}
     - label: terminal
-      run: lym reed window {worktree} --title {slug}
+      run: lym reed window {worktree}
     - label: agent
       ask: "Agent name:"
       ask_default: agent
@@ -38,7 +38,7 @@ buttons:  # status-bar buttons in the groups task, beam and prime; an entry has 
     - label: code
       run: lym ide spawn {slug}
     - label: terminal
-      run: lym reed window {worktree} --title {slug}
+      run: lym reed window {worktree}
     - label: agent
       ask: "Agent name:"
       ask_default: agent
@@ -59,7 +59,7 @@ buttons:  # status-bar buttons in the groups task, beam and prime; an entry has 
     - label: code
       run: lym ide spawn {slug}
     - label: terminal
-      run: lym reed window {worktree} --title {slug}
+      run: lym reed window {worktree}
     - label: agent
       ask: "Agent name:"
       ask_default: agent

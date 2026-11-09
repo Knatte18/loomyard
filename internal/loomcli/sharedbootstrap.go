@@ -370,16 +370,18 @@ func (c *loomCLI) ensureStatusStrand() error {
 
 // statusStrandSpec builds the spec for adding or replacing the status strand.
 // The spec runs the checklist pane command of the lym binary at exe.
-// Its window is titled for this run's recipe and board handle.
+// Its window is titled with the worktree's console title, the recipe standing where the slug does.
 func (c *loomCLI) statusStrandSpec(exe string) reedengine.AddSpec {
 	return statusStrandAddSpec(statusStrandCmd(shell.ForGOOS(), exe), statusWindowTitle(c.location, c.recipe))
 }
 
 // statusWindowTitle returns the name of the status strand's window for a run of recipe in the worktree at location.
-// It reads the board at the call and gives the recipe with the run's board handle, such as `T4: tapestry`.
-// It gives the recipe alone when the board names no handle for the worktree's slug or cannot be read.
+// It reads the hub's shortname and the board at the call.
+// It gives the recipe the worktree's console title parts, such as `ly: P3: T4: tapestry`.
+// A part the hub or board does not give is left out, so the recipe stands alone when none is given.
+// No prime name is passed, so the prime's own label is never used.
 func statusWindowTitle(location *lymcwd.Location, recipe string) string {
-	return boardengine.TitleWithHandle(fabricengine.BoardDir(location.HubPath), location.WorktreeName, recipe)
+	return boardengine.RecipeWindowTitle(location.HubPath, location.WorktreeName, recipe)
 }
 
 // wireLanding assembles Env.Landing.

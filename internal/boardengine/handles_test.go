@@ -1,5 +1,5 @@
 // handles_test.go — tests of entry handles: their assignment on write and load, and the Handle selector.
-// It also covers the title a handle opens.
+// It also covers the titles that carry handles.
 
 package boardengine_test
 
@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -219,6 +220,127 @@ func TestTitleWithHandle(t *testing.T) {
 			}
 			if got := boardengine.TitleWithHandle(boardPath, tt.slug, "window"); got != tt.want {
 				t.Errorf("TitleWithHandle(%q, %q) = %q; want %q", tt.slug, "window", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestWindowTitles pins the VS Code and terminal window titles of the prime, a beam and a task,
+// and that a part the hub or board does not give is left out.
+func TestWindowTitles(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const prime = "main"
+	const board = `{"version":1,"entries":[` +
+		`{"id":1,"slug":"bm","kind":"project","labels":["bug"],"beam":true,"handle":"P2"},` +
+		`{"id":2,"slug":"proj","kind":"project","labels":["bug"],"handle":"P3"},` +
+		`{"id":3,"slug":"inner","kind":"project","labels":["bug"],"project":"bm","handle":"P6"},` +
+		`{"id":4,"slug":"gate-shard","kind":"task","labels":["bug"],"project":"proj","handle":"T7"},` +
+		`{"id":5,"slug":"adopt","kind":"task","labels":["bug"],"handle":"T12"},` +
+		`{"id":6,"slug":"wellbore","kind":"task","labels":["bug"],"project":"bm","handle":"T4"},` +
+		`{"id":7,"slug":"deep","kind":"task","labels":["bug"],"project":"inner","handle":"T5"},` +
+		`{"id":8,"slug":"closed","kind":"project","labels":["bug"],"beam":true,"status":"done","handle":"P8"},` +
+		`{"id":9,"slug":"after-closed","kind":"task","labels":["bug"],"project":"closed","handle":"T9"},` +
+		`{"id":10,"slug":"orphan","kind":"task","labels":["bug"],"project":"gone","handle":"T10"}]}`
+	tests := []struct {
+		name string
+		// shortname is the hub's recorded shortname; empty records none.
+		shortname string
+		// board is the board.json the board directory holds; empty means none.
+		board string
+		slug  string
+		// noPrime passes an empty primeName, as a caller that cannot resolve the prime does.
+		noPrime      bool
+		wantIDE      string
+		wantTerminal string
+	}{
+		{name: "ThePrime", shortname: "ly", board: board, slug: prime, wantIDE: "ly: prime", wantTerminal: "ly: orch"},
+		{name: "ABeam", shortname: "ly", board: board, slug: "bm", wantIDE: "ly: P2: beam", wantTerminal: "ly: P2: orch"},
+		{name: "ATaskInAProject", shortname: "ly", board: board, slug: "gate-shard", wantIDE: "ly: P3: T7: gate-shard", wantTerminal: "ly: P3: T7: gate-shard"},
+		{name: "ATaskInNoProject", shortname: "ly", board: board, slug: "adopt", wantIDE: "ly: T12: adopt", wantTerminal: "ly: T12: adopt"},
+		{name: "ATaskUnderABeam", shortname: "ly", board: board, slug: "wellbore", wantIDE: "ly: P2: T4: wellbore", wantTerminal: "ly: P2: T4: wellbore"},
+		{name: "ATaskInAProjectUnderABeamTakesTheBeam", shortname: "ly", board: board, slug: "deep", wantIDE: "ly: P2: T5: deep", wantTerminal: "ly: P2: T5: deep"},
+		{name: "ATaskUnderADoneBeamTakesTheBeamsHandle", shortname: "ly", board: board, slug: "after-closed", wantIDE: "ly: P8: T9: after-closed", wantTerminal: "ly: P8: T9: after-closed"},
+		{name: "ATaskWhoseProjectIsMissingLeavesOutTheProject", shortname: "ly", board: board, slug: "orphan", wantIDE: "ly: T10: orphan", wantTerminal: "ly: T10: orphan"},
+		{name: "AWorktreeOffTheBoard", shortname: "ly", board: board, slug: "stray", wantIDE: "ly: stray", wantTerminal: "ly: stray"},
+		{name: "NoShortname", board: board, slug: "gate-shard", wantIDE: "P3: T7: gate-shard", wantTerminal: "P3: T7: gate-shard"},
+		{name: "NoPrimeNameTitlesThePrimesSlugAsATask", shortname: "ly", board: board, slug: prime, noPrime: true, wantIDE: "ly: main", wantTerminal: "ly: main"},
+		{name: "AnUnreadableBoardLeavesOutTheHandles", shortname: "ly", board: `{"version":1,"entries":[`, slug: "gate-shard", wantIDE: "ly: gate-shard", wantTerminal: "ly: gate-shard"},
+		{name: "AnUnreadableBoardTitlesABeamBySlug", shortname: "ly", board: `{"version":1,"entries":[`, slug: "bm", wantIDE: "ly: bm", wantTerminal: "ly: bm"},
+		{name: "NoBoardStillTitlesThePrime", shortname: "ly", slug: prime, wantIDE: "ly: prime", wantTerminal: "ly: orch"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			hub := t.TempDir()
+			boardDir := fabricengine.BoardDir(hub)
+			if err := os.MkdirAll(boardDir, 0o755); err != nil {
+				t.Fatalf("make the board directory: %v", err)
+			}
+			if tt.board != "" {
+				if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(tt.board), 0o644); err != nil {
+					t.Fatalf("write board.json: %v", err)
+				}
+			}
+			if tt.shortname != "" {
+				if err := fabricengine.WriteShortname(boardDir, tt.shortname); err != nil {
+					t.Fatalf("record the shortname: %v", err)
+				}
+			}
+
+			primeName := prime
+			if tt.noPrime {
+				primeName = ""
+			}
+
+			if got := boardengine.IDEWindowTitle(hub, primeName, tt.slug); got != tt.wantIDE {
+				t.Errorf("IDEWindowTitle(%q) = %q; want %q", tt.slug, got, tt.wantIDE)
+			}
+			if got := boardengine.TerminalWindowTitle(hub, primeName, tt.slug); got != tt.wantTerminal {
+				t.Errorf("TerminalWindowTitle(%q) = %q; want %q", tt.slug, got, tt.wantTerminal)
+			}
+		})
+	}
+}
+
+// TestRecipeWindowTitle pins that a run's status window takes the worktree's console title.
+// The recipe stands where the slug does.
+func TestRecipeWindowTitle(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const board = `{"version":1,"entries":[` +
+		`{"id":1,"slug":"bm","kind":"project","labels":["bug"],"beam":true,"handle":"P2"},` +
+		`{"id":2,"slug":"proj","kind":"project","labels":["bug"],"handle":"P3"},` +
+		`{"id":3,"slug":"gate-shard","kind":"task","labels":["bug"],"project":"proj","handle":"T7"}]}`
+	tests := []struct {
+		name string
+		// board is the board.json the board directory holds; empty means none.
+		board string
+		slug  string
+		want  string
+	}{
+		{"ATaskInAProject", board, "gate-shard", "ly: P3: T7: pawl"},
+		{"ABeam", board, "bm", "ly: P2: pawl"},
+		{"AWorktreeOffTheBoard", board, "stray", "ly: pawl"},
+		{"AnUnreadableBoardLeavesOutTheHandles", `{"version":1,"entries":[`, "gate-shard", "ly: pawl"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			hub := t.TempDir()
+			boardDir := fabricengine.BoardDir(hub)
+			if err := os.MkdirAll(boardDir, 0o755); err != nil {
+				t.Fatalf("make the board directory: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(tt.board), 0o644); err != nil {
+				t.Fatalf("write board.json: %v", err)
+			}
+			if err := fabricengine.WriteShortname(boardDir, "ly"); err != nil {
+				t.Fatalf("record the shortname: %v", err)
+			}
+
+			if got := boardengine.RecipeWindowTitle(hub, tt.slug, "pawl"); got != tt.want {
+				t.Errorf("RecipeWindowTitle(%q, pawl) = %q; want %q", tt.slug, got, tt.want)
 			}
 		})
 	}

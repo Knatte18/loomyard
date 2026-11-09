@@ -360,8 +360,8 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		tests := []struct {
 			file, source, title, titleBar string
 		}{
-			{path, "prime", "TST: " + h.Location.RepoName + " workspace", vscode.PrimeColor},
-			{beamPath, "beam", "TST: b workspace", beamColor},
+			{path, "prime", "tst: " + h.Location.RepoName + " workspace", vscode.PrimeColor},
+			{beamPath, "beam", "tst: b workspace", beamColor},
 		}
 		for _, tt := range tests {
 			settings := workspaceSettings(t, tt.file)

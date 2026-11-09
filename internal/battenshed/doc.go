@@ -148,7 +148,8 @@
 // `lym config batten --layer default --set <key>=<value>` from the prime changes one,
 // and a different value in another layer is ignored with a warning.
 // A command may hold the placeholders {lym}, {slug}, {task_dir} and {title}.
-// {title} is the slug opened with the task's board handle, `T4: <slug>`, or the slug alone when the board names none;
+// {title} is the console title of the task's terminal window, `<shortname>: <P#>: <T#>: <slug>`.
+// A part the hub or board does not give is left out.
 // Open-Window's default command titles the window with {title}.
 // A run resumed past Open-Window runs that command again when no client is attached to the pair's reed session.
 // That needs batten.open_window on;
