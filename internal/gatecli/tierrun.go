@@ -273,7 +273,7 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		return 0, nil, "", ""
 	}
 	if run.tier.PrebuiltLym {
-		bin, cleanup, err := prebuildLym(ctx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore)
+		bin, cleanup, err := prebuildLym(ctx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore, request.pipeWaitDelay, nil)
 		if err != nil {
 			if ctx.Err() != nil {
 				return 1, nil, "", ""

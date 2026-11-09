@@ -62,6 +62,7 @@
 // The non-tier holders hold one slot and set their own Go flags through HolderEnv.
 // Each passes the `-p` value it reads from the pool's Limits at its acquire,
 // so a hub that declares `tier0` bounds them by its parallel and a hub that declares none adds no `-p`.
+// `lym gate testmap` is one: it holds one slot from its first build to its end.
 //
 // # Prebuilt store
 //
@@ -156,6 +157,11 @@
 // Only the `card` key may hold one; the template sets `sonnet[medium]` there, and an empty value turns the fixer off.
 // `fixer_timeout_min` bounds how long the callers of a cold gate fixer wait for it.
 // LoadConfig refuses a value below 1, and Config.FixerTimeout returns it as a duration.
+// `lym gate testmap` builds coverage maps under three bounds.
+// `test_map_max_age_days` is the age past which a map is rebuilt whatever changed.
+// `redundancy_build_timeout_min` bounds each build in minutes.
+// `redundancy_test_timeout_sec` bounds each test in seconds.
+// They are cross-pair keys, since every worktree of the hub reads the maps, and LoadConfig refuses a value below 1.
 // LoadConfig refuses a `fixer` on any key but `card`, and a `fixer` that `modelspec.Parse` rejects.
 // Each refusal names the key and its way forward.
 // A `gates` entry still in the retired list shape, such as `card: [0]`, is refused naming `lym fabric reconcile`.

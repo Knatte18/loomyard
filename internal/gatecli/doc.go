@@ -2,6 +2,7 @@
 // Its verb `test` is the sanctioned route for running the hub's test tiers.
 // Its verb `status` shows who holds the hub's gate slots, and its verb `report` totals the run records per gate key.
 // Its verb `card-verify` runs a plan card's `**Verify:**` line.
+// Its verb `testmap` rebuilds the per-package coverage maps from the hub's prime worktree.
 //
 // The module is not standalone-capable and does not go through internal/cliwire.
 // It has no target directory, state, plan or stencils to wire, and it resolves hub membership itself.
@@ -887,6 +888,51 @@
 // Bound: on Linux a dead runner's line runs on until a front supersedes it, or to its own end when no front comes.
 // Bound: the key is the card's id,
 // so a call after an edit of the card's `**Verify:**` line joins the run of the old line while its lease holds.
+//
+// # Coverage maps
+//
+// `lym gate testmap [--max <n>] [<package>...]` rebuilds the `internal/testcover` map of each named package.
+// With none named, it rebuilds every stale package.
+// It builds at most `--max` (default 5) per call, in package path order.
+// The module root is the dir of the lowest declared of tier0 and tier1, and its go.mod names the import path.
+// A package is a directory relative to that root holding a Go file, found as `go list ./...` finds one:
+// testdata, a directory whose name opens with a dot or an underscore, and a nested module are left out.
+// A map is stale when it is missing or unreadable;
+// when the Go files its directory tracks at HEAD differ from the map's, as a set or in content;
+// when it is older than `test_map_max_age_days`; and when it records a build failure and HEAD differs from its commit.
+// A change to a dependency or to a non-Go file of the directory leaves it fresh; the age limit bounds that drift.
+// The verb runs only in the hub's prime worktree, told by `hubgeom.IsPrime`.
+// Elsewhere it refuses, naming the prime worktree.
+// It reads HEAD and the tracked files through `Fabric.HeadSHA`, `Fabric.CodeDirAt` and `Fabric.CodeFileAt`,
+// and the uncommitted and untracked files once, through `Fabric.Status`.
+// A package with an uncommitted or untracked Go file is skipped naming the file, since a map records HEAD;
+// so is a package whose build lock, beside its map, another call holds.
+// So is a package named on the command line that tracks no Go file at HEAD.
+// All are skipped before any build and none counts against `--max`; a package past the cap counts as unbuilt.
+//
+// A package's build reads HEAD and its file hashes first, and the map records that HEAD as its commit.
+// Its tests are the top-level Test functions whose `tiergate.Require` names a tier0 or tier1 the hub declares.
+// A package with none gets a map of its file hashes and no tests, with no build.
+// For any other the call takes one gate slot, held to its end, unless it runs inside an enclosing gate run's slot.
+// It builds the package's coverage binary over the package alone, under the slot's `gateslot.HolderEnv`.
+// It runs each test alone in the package directory, under its tier's env, through `testcover.Toolchain.RunAlone`.
+// A tier with `prebuilt_lym` gets the `lym` the call builds once into the pool's prebuilt store, as a tier run does.
+// Each build is bounded by `redundancy_build_timeout_min` and each test by `redundancy_test_timeout_sec`.
+// Past its bound the process group is killed.
+// The wait for its exit and output then lasts at most the pipe wait the gate already uses.
+// A failed or timed-out build gives a map of the file hashes with no tests and the failure, listed as failed.
+// Such a map is rebuilt once HEAD moves and never twice at one HEAD.
+// A timed-out test is listed and left out of the map, and so is, unlisted, a test that failed or skipped.
+// A passing test that covers a block of the package's own files enters the map.
+// Its entry holds the tier, function hash, duration and blocks.
+// Once the tests ended the call reads HEAD and the hashes again.
+// When a hash differs, as when a landing changed the package's files, it discards the map.
+// It then reports the package skipped, and the package counts against `--max`.
+//
+// The call prints `built`, `skipped` with each cause, `failed` with each failure, `timed_out` and `unbuilt`.
+// `unbuilt` is the count the cap left.
+// As it exits, a call that got past the prime check writes `testcover.ExitRecord`: its pid and that count, zero included.
+// It exits 0 once it walked its packages, and 1 for a refusal or a read, slot or write failure that ends the walk.
 //
 // # In-process run
 //

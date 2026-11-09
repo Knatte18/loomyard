@@ -34,6 +34,12 @@ type Config struct {
 	BusyQuitSec int `yaml:"busy_quit_sec"`
 	// FixerTimeoutMin is the minutes a cold gate fixer may run before its caller stops waiting for it.
 	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
+	// TestMapMaxAgeDays is the days after which a coverage map is rebuilt whatever changed.
+	TestMapMaxAgeDays int `yaml:"test_map_max_age_days"`
+	// RedundancyBuildTimeoutMin is the minutes each build of a coverage map run may take.
+	RedundancyBuildTimeoutMin int `yaml:"redundancy_build_timeout_min"`
+	// RedundancyTestTimeoutSec is the seconds each test a coverage map run runs alone may take.
+	RedundancyTestTimeoutSec int `yaml:"redundancy_test_timeout_sec"`
 	// Tiers are the declared test tiers keyed tier0, tier1, and so on.
 	Tiers map[string]Tier `yaml:"tiers"`
 	// Gates maps a gate key to the tiers and scope that site runs.
@@ -77,16 +83,19 @@ type buildFile struct {
 // A tier_parallel entry is a node because a scalar --set writes it as a string.
 // A gates entry is a node so decodeGates names the key a bad entry sits under.
 type configFile struct {
-	Slots           int                  `yaml:"slots"`
-	BusyQuitSec     int                  `yaml:"busy_quit_sec"`
-	FixerTimeoutMin int                  `yaml:"fixer_timeout_min"`
-	Tiers           map[string]tierFile  `yaml:"tiers"`
-	Gates           map[string]yaml.Node `yaml:"gates"`
-	Scoper          string               `yaml:"scoper"`
-	RefuseRaw       []string             `yaml:"refuse_raw"`
-	TierParallel    map[string]yaml.Node `yaml:"tier_parallel"`
-	Build           buildFile            `yaml:"build"`
-	InertPaths      []string             `yaml:"inert_paths"`
+	Slots                     int                  `yaml:"slots"`
+	BusyQuitSec               int                  `yaml:"busy_quit_sec"`
+	FixerTimeoutMin           int                  `yaml:"fixer_timeout_min"`
+	TestMapMaxAgeDays         int                  `yaml:"test_map_max_age_days"`
+	RedundancyBuildTimeoutMin int                  `yaml:"redundancy_build_timeout_min"`
+	RedundancyTestTimeoutSec  int                  `yaml:"redundancy_test_timeout_sec"`
+	Tiers                     map[string]tierFile  `yaml:"tiers"`
+	Gates                     map[string]yaml.Node `yaml:"gates"`
+	Scoper                    string               `yaml:"scoper"`
+	RefuseRaw                 []string             `yaml:"refuse_raw"`
+	TierParallel              map[string]yaml.Node `yaml:"tier_parallel"`
+	Build                     buildFile            `yaml:"build"`
+	InertPaths                []string             `yaml:"inert_paths"`
 }
 
 // ErrConfigAbsent is LoadConfig's error for a layer stack whose hub gate.yaml is missing.
@@ -109,6 +118,7 @@ func ConfigPerNameMaps() []string {
 // ConfigSpec returns gate's layered-load spec.
 // `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
 // `fixer_timeout_min` is cross-pair like `busy_quit_sec`; a gate key's `fixer` sits inside `gates`, a guard key.
+// The coverage map keys are cross-pair too, since every worktree of the hub reads the maps they bound.
 // `tiers` and `build` run any shell command in a task worktree, so they are executable.
 // The gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
 // `cli_wait_sec`, `go_parallel` and `guard_tier` are retired;
@@ -128,16 +138,19 @@ func ConfigSpec() configengine.Spec {
 		PerNameMaps: ConfigPerNameMaps(),
 		HubWide:     true,
 		Categories: map[string]configengine.Category{
-			"slots":             configengine.CategoryMachine,
-			"tier_parallel":     configengine.CategoryMachine,
-			"busy_quit_sec":     configengine.CategoryCrossPair,
-			"fixer_timeout_min": configengine.CategoryCrossPair,
-			"tiers":             configengine.CategoryExecutable,
-			"gates":             configengine.CategoryGuard,
-			"scoper":            configengine.CategoryGuard,
-			"refuse_raw":        configengine.CategoryGuard,
-			"build":             configengine.CategoryExecutable,
-			"inert_paths":       configengine.CategoryGuard,
+			"slots":                        configengine.CategoryMachine,
+			"tier_parallel":                configengine.CategoryMachine,
+			"busy_quit_sec":                configengine.CategoryCrossPair,
+			"fixer_timeout_min":            configengine.CategoryCrossPair,
+			"test_map_max_age_days":        configengine.CategoryCrossPair,
+			"redundancy_build_timeout_min": configengine.CategoryCrossPair,
+			"redundancy_test_timeout_sec":  configengine.CategoryCrossPair,
+			"tiers":                        configengine.CategoryExecutable,
+			"gates":                        configengine.CategoryGuard,
+			"scoper":                       configengine.CategoryGuard,
+			"refuse_raw":                   configengine.CategoryGuard,
+			"build":                        configengine.CategoryExecutable,
+			"inert_paths":                  configengine.CategoryGuard,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"cli_wait_sec": configengine.CategoryCrossPair,
@@ -258,8 +271,18 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	if file.BusyQuitSec < 0 {
 		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 0", "busy_quit_sec", file.BusyQuitSec)
 	}
-	if file.FixerTimeoutMin < 1 {
-		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", "fixer_timeout_min", file.FixerTimeoutMin)
+	for _, bound := range []struct {
+		key   string
+		value int
+	}{
+		{"fixer_timeout_min", file.FixerTimeoutMin},
+		{"test_map_max_age_days", file.TestMapMaxAgeDays},
+		{"redundancy_build_timeout_min", file.RedundancyBuildTimeoutMin},
+		{"redundancy_test_timeout_sec", file.RedundancyTestTimeoutSec},
+	} {
+		if bound.value < 1 {
+			return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", bound.key, bound.value)
+		}
 	}
 	tiers, err := decodeTiers(file.Tiers)
 	if err != nil {
@@ -289,16 +312,19 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		return Config{}, err
 	}
 	return Config{
-		Slots:           file.Slots,
-		BusyQuitSec:     file.BusyQuitSec,
-		FixerTimeoutMin: file.FixerTimeoutMin,
-		Tiers:           tiers,
-		Gates:           gates,
-		Scoper:          file.Scoper,
-		RefuseRaw:       file.RefuseRaw,
-		TierParallel:    tierParallel,
-		Build:           build,
-		InertPaths:      file.InertPaths,
+		Slots:                     file.Slots,
+		BusyQuitSec:               file.BusyQuitSec,
+		FixerTimeoutMin:           file.FixerTimeoutMin,
+		TestMapMaxAgeDays:         file.TestMapMaxAgeDays,
+		RedundancyBuildTimeoutMin: file.RedundancyBuildTimeoutMin,
+		RedundancyTestTimeoutSec:  file.RedundancyTestTimeoutSec,
+		Tiers:                     tiers,
+		Gates:                     gates,
+		Scoper:                    file.Scoper,
+		RefuseRaw:                 file.RefuseRaw,
+		TierParallel:              tierParallel,
+		Build:                     build,
+		InertPaths:                file.InertPaths,
 	}, nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -64,13 +65,30 @@ func TestBuildBinaryAndListTests(t *testing.T) {
 	}
 }
 
+func TestBuildBinaryTimesOut(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tc, _ := standIn(t)
+	tc.Env = append(tc.Env, standInHangBuildEnv+"=1")
+	tc.BuildTimeout, tc.Grace = 2*time.Second, time.Second
+	err := tc.BuildBinary("m/p", "m/p", "", filepath.Join(t.TempDir(), "pkg.test"))
+	if err == nil || !strings.Contains(err.Error(), "timed out after 2s") {
+		t.Errorf("BuildBinary error = %v; want one saying the build timed out after 2s", err)
+	}
+}
+
 func TestRunAlone(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		test    string
+		name string
+		test string
+		// timeout is the run's TestTimeout; zero leaves it unbounded.
+		timeout time.Duration
+		// within, when above zero, is the longest the run may take.
+		within  time.Duration
 		want    testcover.RunResult
 		wantErr string
 	}{
@@ -91,13 +109,36 @@ func TestRunAlone(t *testing.T) {
 			}},
 		},
 		{name: "PassWithoutProfile", test: standInNoProfile, wantErr: "wrote no coverage profile"},
+		{
+			name: "PassWithinTheTimeout", test: standInPass, timeout: time.Minute,
+			want: testcover.RunResult{Name: standInPass, Elapsed: 0.25, Action: testcover.ActionPass, Profile: []testcover.ProfileBlock{
+				{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1, Count: 1},
+			}},
+		},
+		{
+			// The timeout leaves the stand-in time to start and record its arguments before the kill, even on a loaded machine.
+			name: "TimedOut", test: standInHang, timeout: 3 * time.Second,
+			want: testcover.RunResult{Name: standInHang, Action: testcover.ActionFail, TimedOut: true},
+		},
+		{
+			// The test passes and exits, but a child it left holds the output pipe past the grace.
+			name: "ReturnsWithinTheGraceWhileADescendantHoldsTheOutput", test: standInHoldsPipe, timeout: time.Minute, within: standInChildSleep - time.Second,
+			want: testcover.RunResult{Name: standInHoldsPipe, Elapsed: 0.25, Action: testcover.ActionPass, Profile: []testcover.ProfileBlock{
+				{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1, Count: 1},
+			}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tc, record := standIn(t)
+			tc.TestTimeout, tc.Grace = tt.timeout, time.Second
 			profile := filepath.Join(t.TempDir(), "cover.out")
+			started := time.Now()
 			got, err := tc.RunAlone(tc.Go, t.TempDir(), profile, tt.test)
+			if elapsed := time.Since(started); tt.within > 0 && elapsed > tt.within {
+				t.Errorf("RunAlone(%s) took %s; want at most %s, the grace bounding the wait for the output", tt.test, elapsed, tt.within)
+			}
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("RunAlone(%s) error = %v; want one holding %q", tt.test, err, tt.wantErr)

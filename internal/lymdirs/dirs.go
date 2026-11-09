@@ -53,6 +53,10 @@ const DriftJudgeDirName = "drift-judge"
 // Every worktree of the hub on the machine shares them.
 const TestCoverDirName = "testcover"
 
+// TestMapExitFileName is the file under TestCoverDirName that `lym gate testmap` writes as it exits.
+// It holds the call's process ID and the count of stale packages its package cap left unbuilt.
+const TestMapExitFileName = "testmap-exit.json"
+
 // BeamDirName is the directory under a worktree's `.lym` that holds dobby's lock, state record and markers.
 const BeamDirName = "beam"
 

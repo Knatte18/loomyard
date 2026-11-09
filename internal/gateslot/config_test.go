@@ -69,6 +69,7 @@ func TestConfigSpec_SetNestedKeys(t *testing.T) {
 
 var templateDefaults = Config{
 	Slots: 2, BusyQuitSec: 120, FixerTimeoutMin: 30,
+	TestMapMaxAgeDays: 7, RedundancyBuildTimeoutMin: 10, RedundancyTestTimeoutSec: 120,
 	Gates: map[string]GateKey{
 		"card":            {Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}, Fixer: "sonnet[medium]"},
 		"batch":           {Tiers: []int{0}, Scope: "card"},
@@ -284,6 +285,9 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{"an unparsable fixer on the card key", baseKeys + "gates:\n  card: {fixer: \"???\"}\n", Config{}, unparsableFixerRefusal("???")},
 		{"fixer_timeout_min zero", baseKeys + "fixer_timeout_min: 0\n", Config{}, `gate config key "fixer_timeout_min": 0; want at least 1` + fixIt},
+		{"test_map_max_age_days zero", baseKeys + "test_map_max_age_days: 0\n", Config{}, `gate config key "test_map_max_age_days": 0; want at least 1` + fixIt},
+		{"redundancy_build_timeout_min zero", baseKeys + "redundancy_build_timeout_min: 0\n", Config{}, `gate config key "redundancy_build_timeout_min": 0; want at least 1` + fixIt},
+		{"redundancy_test_timeout_sec zero", baseKeys + "redundancy_test_timeout_sec: 0\n", Config{}, `gate config key "redundancy_test_timeout_sec": 0; want at least 1` + fixIt},
 		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.parent-align": scope card is only for the card and batch keys` + fixIt},
 		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.parent-align": scope "some"; want card, diff or all` + fixIt},
 		{"an unknown lint", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [spelling]}\n", Config{}, `gate config key "gates.parent-align": lint "spelling"; want comments or pattern` + fixIt},

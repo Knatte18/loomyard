@@ -132,18 +132,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 
 	exe.green = green
 
-	// The tiers run without the strand name, so a test driving `lym fabric` never meets a role guard that reads it.
-	// They also run without this process's trace id.
-	// That id is new at every run, and it would change the test cache key of every package that reads it.
-	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
-		return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, logger.TraceIDEnv+"=")
-	})
-	env = gateslot.StripPrebuilt(env)
-	// The env module's variables replace inherited ones of the same name.
-	// A tier's or the build's own env, appended later, replaces them.
-	env = append(env, hubEnv.Entries()...)
-	// The build-server switches come after the module's entries, so a variable of the module never undoes them.
-	env = withBuildServerOff(env)
+	env := gateEnv(os.Environ(), hubEnv)
 	watching, reason := watchdogApplies(request.busyQuit, request.args, os.Getenv(enclosingGateEnv), proc.IsAncestor)
 	logger.Info("gate test: CPU watchdog decision", "applies", watching, "reason", reason)
 	exe.request.watching = watching
@@ -743,6 +732,23 @@ func tierExitCodeOf(runErr error) int {
 		}
 	}
 	return exitCodeOf(runErr)
+}
+
+// gateEnv returns the environment a gate call's children start from.
+// It is base without the strand name, this process's trace id and an inherited prebuilt `lym`.
+// The hub env module's variables follow, then the build-server switches.
+// Without the strand name a test driving `lym fabric` never meets a role guard that reads it.
+// The trace id is new at every run, and it would change the test cache key of every package that reads it.
+// The module's variables replace inherited ones of the same name.
+// A tier's or a build's own env, appended later, replaces them.
+// The build-server switches come last, so a variable of the module never undoes them.
+func gateEnv(base []string, hubEnv envconfig.Config) []string {
+	env := slices.DeleteFunc(slices.Clone(base), func(entry string) bool {
+		return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, logger.TraceIDEnv+"=")
+	})
+	env = gateslot.StripPrebuilt(env)
+	env = append(env, hubEnv.Entries()...)
+	return withBuildServerOff(env)
 }
 
 // withBuildServerOff returns env with every proc.BuildServerOffEnv variable set to its value.

@@ -7,11 +7,18 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // mapFileName is the file name of a package's coverage map within its directory.
 const mapFileName = "map.json"
+
+// Dir returns the directory under the board directory boardDir that holds the coverage maps and the exit record.
+// Every worktree of the hub on the machine shares it.
+func Dir(boardDir string) string {
+	return filepath.Join(boardDir, lymdirs.DotLymDirName, lymdirs.TestCoverDirName)
+}
 
 // Map is one package's coverage map.
 // It records which blocks of the package's own files each judged test covers, and the tree it was built from.

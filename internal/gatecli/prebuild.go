@@ -1,4 +1,5 @@
-// prebuild.go builds `lym` once for a tagged `lym gate test` run, so every package of the run shares one binary.
+// prebuild.go builds `lym` once for a tagged `lym gate test` run or a `lym gate testmap` call.
+// Every package of that run or call shares the one binary.
 // Every package reaches it through gateslot.PrebuiltLymEnv.
 // Inside a hub, the binary is kept in the hub's content-addressed store.
 
@@ -21,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // prebuiltRetention is how long a stored binary stays after its last use before a later prebuild prunes it.
@@ -47,7 +49,10 @@ func buildRoot(location *lymcwd.Location, dir string) string {
 // With storeDir empty the returned path is the build directory's, which the cleanup removes.
 // A root without `cmd/lym` builds nothing and returns an empty path and a cleanup that does nothing.
 // A build failure returns an error carrying the build's output.
-func prebuildLym(ctx context.Context, goBinary, root string, parallel int, storeDir string) (bin string, cleanup func(), err error) {
+// A cancelled ctx kills the build's whole process group.
+// Once the build ended or was killed, its output is still read for at most pipeWait.
+// A non-nil env is the build's whole environment; nil leaves it the process's.
+func prebuildLym(ctx context.Context, goBinary, root string, parallel int, storeDir string, pipeWait time.Duration, env []string) (bin string, cleanup func(), err error) {
 	if info, statErr := os.Stat(filepath.Join(root, "cmd", "lym")); statErr != nil || !info.IsDir() {
 		return "", func() {}, nil
 	}
@@ -59,8 +64,16 @@ func prebuildLym(ctx context.Context, goBinary, root string, parallel int, store
 
 	bin = filepath.Join(dir, "lym")
 	cmd := exec.CommandContext(ctx, goBinary, "build", "-C", root, "-p", strconv.Itoa(parallel), "-trimpath", "-o", bin, "./cmd/lym")
+	proc.ConfigureGroupKill(cmd, func(pid int, groupErr error) {
+		logger.Info("gate test: killed the process group of the go build of lym", "pid", pid, "error", groupErr)
+	})
+	cmd.WaitDelay = pipeWait
+	cmd.Env = env
 	logger.Info("gate test: spawning go build of lym", "binary", goBinary, "args", strings.Join(cmd.Args[1:], " "))
 	out, buildErr := cmd.CombinedOutput()
+	if errors.Is(buildErr, exec.ErrWaitDelay) {
+		buildErr = nil
+	}
 	logger.Info("gate test: go build of lym ended", "error", buildErr)
 	if buildErr != nil {
 		cleanup()

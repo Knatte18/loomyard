@@ -3,6 +3,7 @@ package testcover_test
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -10,6 +11,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestWriteExitRecordReadExitRecord(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "testcover")
+	if _, found, err := testcover.ReadExitRecord(dir); err != nil || found {
+		t.Fatalf("ReadExitRecord before any write = found %v, err %v; want not found and no error", found, err)
+	}
+	for _, written := range []testcover.ExitRecord{{PID: 4321}, {PID: 4322, Unbuilt: 3}} {
+		if err := testcover.WriteExitRecord(dir, written); err != nil {
+			t.Fatal(err)
+		}
+		read, found, err := testcover.ReadExitRecord(dir)
+		if err != nil || !found || read != written {
+			t.Errorf("ReadExitRecord after writing %+v = %+v, found %v, err %v; want the written record", written, read, found, err)
+		}
+	}
+}
 
 func TestWriteMapReadMap(t *testing.T) {
 	tiergate.Require(t, 0)
