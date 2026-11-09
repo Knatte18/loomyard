@@ -52,6 +52,7 @@ type commitStatusDeps struct {
 	// Spawn starts the detached push of the fabric sibling worktree's unpushed commits.
 	Spawn func() error
 	// SetBoardStatus writes status onto the run's board entry, leaving an absent or already done entry untouched.
+	// It writes nothing once the run's filing mark stands.
 	// A nil SetBoardStatus writes nothing.
 	SetBoardStatus func(status string) error
 }
@@ -62,7 +63,7 @@ var spawnStatusPush = fabricengine.SpawnStatusPush
 
 // battenRunCommitPaths returns the anchor-relative paths a commit of the run's records stages.
 // It always stages the run's status file.
-// It stages the seed, dobby's run notice marker, settle records and child-recipe record whenever each is on disk.
+// It stages the seed, dobby's notice marker, settle records, child-recipe record and filing mark when each is on disk.
 // It stages the driver's drive-reports, tackler and arbiter directories whenever each holds a file.
 //
 // The status and the seed belong on the pair, since a run directory is durable, fabric-synced state.
@@ -87,6 +88,9 @@ func battenRunCommitPaths(location *lymcwd.Location, runID string) []string {
 	}
 	if _, err := os.Stat(shedrun.ChildRecipeFile(location, runID)); err == nil {
 		paths = append(paths, shedrun.ChildRecipeRel(location, runID))
+	}
+	if _, err := os.Stat(shedrun.FilingMarkFile(location, runID)); err == nil {
+		paths = append(paths, shedrun.FilingMarkRel(location, runID))
 	}
 	return append(paths, shedrun.DriverRecordsRel(location, runID)...)
 }
@@ -117,6 +121,7 @@ func commitRunRecords(deps commitStatusDeps, slug string) error {
 
 // battenCommitStatusDeps builds the commitStatusDeps that drive the fabric pair for location and runID.
 // SetBoardStatus writes the hub board's entry runID names, a batten run's id being its task's slug.
+// It writes nothing once the run's filing mark stands, since a family filing made that entry the family's project.
 // The spawned push runs from the prime, so it covers only the prime's records side,
 // and it waits under the pair's pause entry with runID as its gate slug.
 func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatusDeps {
@@ -133,6 +138,9 @@ func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatu
 			return err
 		},
 		SetBoardStatus: func(status string) error {
+			if marked, err := shedrun.FilingMarked(location, runID); err != nil || marked {
+				return err
+			}
 			board, err := boardengine.OpenHub(location.HubPath)
 			if err != nil {
 				return err

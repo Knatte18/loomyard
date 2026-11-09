@@ -545,7 +545,7 @@ func TestCleanup_HoldsTheStatusLockUntilTheCommitAndLeavesTheSlugRunnable(t *tes
 	}
 }
 
-func TestClearMotifRun_RemovesOnlyADoneMotifRun(t *testing.T) {
+func TestClearMotifRun_RemovesOnlyADoneMotifOrArrasRun(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -555,6 +555,8 @@ func TestClearMotifRun_RemovesOnlyADoneMotifRun(t *testing.T) {
 		runState string
 		// childRecipe is the child-recipe record; empty means none.
 		childRecipe string
+		// filingMark writes the run's filing mark, which a removal takes with the run.
+		filingMark  bool
 		holdRunLock bool
 		// commitErr is what the records commit fails with; the run then stays and the error is returned.
 		commitErr error
@@ -571,6 +573,7 @@ func TestClearMotifRun_RemovesOnlyADoneMotifRun(t *testing.T) {
 		{name: "PushSpawnFailureStillClearsTheRun", runState: "done", childRecipe: shedrun.RecipeMotif, spawnErr: errors.New("remote refused"), wantCleared: true},
 		{name: "ScratchEmptyFailureStillClearsTheRun", runState: "done", childRecipe: shedrun.RecipeMotif, blockScratch: true, wantCleared: true},
 		{name: "DoneMotifRunTheRecordsHeadDoesNotTrackIsRemovedWithNoCommit", runState: "done", childRecipe: shedrun.RecipeMotif, untracked: true, wantCleared: true},
+		{name: "DoneArrasRunIsRemovedWithItsFilingMark", runState: "done", childRecipe: shedrun.RecipeArras, filingMark: true, wantCleared: true},
 		{name: "DoneDarnRunStays", runState: "done", childRecipe: shedrun.RecipeDarn},
 		{name: "DoneRunWithNoChildRecipeRecordStays", runState: "done"},
 		{name: "RunningMotifRunStays", runState: "running", childRecipe: shedrun.RecipeMotif},
@@ -609,6 +612,11 @@ func TestClearMotifRun_RemovesOnlyADoneMotifRun(t *testing.T) {
 			if tt.childRecipe != "" {
 				if err := shedrun.WriteChildRecipe(location, slug, tt.childRecipe); err != nil {
 					t.Fatalf("write child recipe: %v", err)
+				}
+			}
+			if tt.filingMark {
+				if err := shedrun.WriteFilingMark(location, slug); err != nil {
+					t.Fatalf("write filing mark: %v", err)
 				}
 			}
 			if tt.holdRunLock {
@@ -658,14 +666,20 @@ func TestClearMotifRun_FinishesTheRemovalOfARunWhoseRecordsCommitFailed(t *testi
 	const slug = "codex-engine"
 	writeCleanupFile(t, shedrun.StatusFile(location, slug), statusJSON(t, "done"))
 	stubs.committed[shedrun.StatusRel(location, slug)] = statusJSON(t, "done")
-	if err := shedrun.WriteChildRecipe(location, slug, shedrun.RecipeMotif); err != nil {
+	if err := shedrun.WriteChildRecipe(location, slug, shedrun.RecipeArras); err != nil {
 		t.Fatalf("write child recipe: %v", err)
+	}
+	if err := shedrun.WriteFilingMark(location, slug); err != nil {
+		t.Fatalf("write filing mark: %v", err)
 	}
 
 	stubs.commitErr = errors.New("records commit refused")
 	cleared, err := clearMotifRun(location, slug, stubs.deps())
 	if !errors.Is(err, stubs.commitErr) || cleared {
 		t.Fatalf("clearMotifRun() with a failing commit = (%v, %v); want false and an error wrapping %v", cleared, err, stubs.commitErr)
+	}
+	if marked, err := shedrun.FilingMarked(location, slug); err != nil || !marked {
+		t.Errorf("FilingMarked() after the failed removal = %t, %v; want the mark written back", marked, err)
 	}
 
 	stubs.commitErr = nil

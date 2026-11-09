@@ -263,6 +263,12 @@
 // Every filed task is draft, so a release stays the operator's.
 // A further step makes the project a beam for the beam shape.
 // The last steps notify the parent once and end the run's entry.
+// A family filing, whose project is the run's own entry, turns that entry into the project instead:
+// it writes the run's filing mark once its board write landed and never ends the entry.
+// A call that finds that filing as its own first writes the mark and clears any run status from the project.
+// A call that finds the entry already a project it did not file halts naming `lym batten cancel`.
+// The filing moves the dependencies on the run's entry onto the filed parts;
+// a board refusal of that halts the run naming the refusing entry.
 // A step whose outputs carry the hash of the proposal now approved is skipped,
 // so a retry after a crash finishes the steps it missed.
 // A failure after the filing is Stuck with Halt naming the resume.

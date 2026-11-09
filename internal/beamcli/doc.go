@@ -53,8 +53,8 @@
 //     A run in flight, meaning a batten status file not done, is reported live and starts nothing.
 //     A flagged beam with no run status, or a legacy beam with a marked pair and no pawl run, gets its pawl run.
 //     A done run whose pair is gone is first passed to `battencli.ClearMotifRun`.
-//     It removes the run when its child ran the motif recipe.
-//     A project split after its motif run thus starts its pawl run under the same slug.
+//     It removes the run when its child ran the motif or arras recipe.
+//     A project split after its motif run, or filed by its arras run, thus starts its pawl run under the same slug.
 //     The envelope says so with `motif_run_cleared`.
 //     Any other done run stays, and the first pass refuses it naming `lym batten cleanup --apply`.
 //     A first pass whose envelope is not ok, such as one a covering pause refused, leaves no run.

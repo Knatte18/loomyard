@@ -1302,6 +1302,7 @@ User-facing modules each get one `lym <module>` namespace:
   A run with no `Finalize` row ends by closing its entry.
   A motif run makes the entry a Sketch, a note of the built-in type `sketch` that never runs and waits for triage.
   A raddle run ends the entry done in its own Raddle-File, never as a Sketch.
+  An arras family filing is the exception: it turns the entry into the family's project, and no status write of the run reaches it afterwards.
   `Parent-Align` and `Finalize` each run the plan's verify command after a parent merge-in that changed the task tree.
   A failure halts Stuck, with the command's output in the loom verify-output log.
   A pending-verify marker keeps the gate armed across a resume until a verify passes.

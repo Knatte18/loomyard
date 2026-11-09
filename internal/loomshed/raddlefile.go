@@ -1,6 +1,7 @@
 // raddlefile.go implements the Raddle-File producer, the row that runs in Go without an agent.
 // It checks an approved raddle proposal once more and stages its store files and part records.
-// It files the entries on the board and ends the run's entry.
+// It files the entries on the board.
+// It then ends the run's entry, unless a family filing turned that entry into the family's project.
 
 package loomshed
 
@@ -44,12 +45,19 @@ const recordHashSuffix = ".hash"
 
 // RaddleRunEntry is the raddle run's own board entry as Raddle-File reads it.
 // It holds the slug, the created stamp, the labels that are not type labels, and the project field.
+// It also holds the kind, the order and the producer of the run status.
 type RaddleRunEntry struct {
 	Slug         string
 	Created      time.Time
 	ModuleLabels []string
 	// Project is the project the Sketch belongs to, the level its entries are filed at; empty for the top level.
 	Project string
+	// Kind is the entry's kind; a project means a filing already turned the entry into a family's project.
+	Kind string
+	// Order is the entry's order, the parts filed under it when it is a project.
+	Order []string
+	// StatusProducer is the producer half of the entry's run status, empty when its status is no run status.
+	StatusProducer string
 }
 
 // RaddleFileDeps are the paths and seams the Raddle-File producer is built with.
@@ -87,6 +95,12 @@ type RaddleFileDeps struct {
 	EndEntry func() error
 	// Commit commits the raddle directory.
 	Commit func() error
+	// ClaimStatus writes status, the row's own run status, on the run's board entry.
+	ClaimStatus func(status string) error
+	// MarkFiled writes the run's filing mark, after which the run's status writes leave its board entry alone.
+	MarkFiled func() error
+	// ClearStatus clears a run status from the run's board entry once a family filing made it a project.
+	ClearStatus func() error
 }
 
 // raddleFile is the Raddle-File producer.
@@ -108,15 +122,22 @@ func NewRaddleFile(name string, deps RaddleFileDeps) shedengine.ShedProducer {
 // In that state, with the stage still holding this proposal's hash, the checks and the approval match are skipped:
 // the filed slugs would count as taken.
 // Only the entries the re-check names as landed are read, and steps 1 to 3 run so the store is written.
+// A family filing found as its own by either test is repaired first:
+// the filing mark is written, then any run status is cleared from the project the filing made of the run's entry.
+// A run's entry that is already a project while neither test holds is a filing not made from the current proposal:
+// Call files nothing and is Stuck with Halt naming `lym batten cancel`.
 // Otherwise Call runs the checks, the approval match in interactive mode and the board re-check;
 // auto and perch mode file with no approval match.
 // A failure of one sends the proposal back, deleting the stage and the part records.
 // Step 1 stages the store files, step 2 writes the part records and commits, and step 3 files the entries.
+// A board refusal of step 3's move of the dependencies on the run's entry is Stuck with Halt naming the refusing entry.
+// A family filing writes the filing mark once step 3 landed.
 // A step whose outputs carry the hash of the proposal now approved is skipped,
 // so a retry after a crash finishes the steps it missed.
 // Every filed task is draft, so a release stays the operator's.
 // Step 4 makes the project a beam for the beam shape;
 // step 5 notifies the parent once, and step 6 ends the run's entry, leaving the row Done.
+// A family filing skips step 6, since its entry is the family's project.
 // A failure of steps 4 to 6 is Stuck with Halt naming the step and the resume that re-runs the row.
 func (p *raddleFile) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
@@ -150,6 +171,19 @@ func (p *raddleFile) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 		}
 	}
 
+	if !filed && !resumed && entry.Kind == boardengine.KindProject {
+		return p.haltOverProject(ctx, entry)
+	}
+	family := parseErr == nil && isFamilyOutcome(proposal, entry)
+	repaired := family && (filed || resumed)
+	if repaired {
+		if err := p.repairFamily(); err != nil {
+			return "", shedengine.OutputPointer{}, p.fail("repair the family filing", err)
+		}
+		// The repair cleared the status, so the store-only filing below must not claim one back onto the project.
+		entry.StatusProducer = ""
+	}
+
 	var landed []string
 	if resumed {
 		// The filed entries hold the slugs,
@@ -175,14 +209,53 @@ func (p *raddleFile) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 	}
 	if !filed {
 		reason, err := p.stageAndFile(proposal, data, hash, entry)
+		if errors.Is(err, boardengine.ErrRaddleRepointRefused) {
+			return p.halt(ctx, "move the dependencies on "+entry.Slug+" onto the filed parts", err)
+		}
 		if err != nil {
 			return "", shedengine.OutputPointer{}, p.fail("file the proposal", err)
 		}
 		if reason != "" {
 			return p.sendBack(ctx, current, reason)
 		}
+		if family && !repaired {
+			if err := p.deps.MarkFiled(); err != nil {
+				return "", shedengine.OutputPointer{}, p.fail("write the filing mark", err)
+			}
+		}
 	}
-	return p.finish(ctx, current, proposal, landed)
+	return p.finish(ctx, current, proposal, landed, family)
+}
+
+// isFamilyOutcome reports whether the proposal files its project under the run's own slug:
+// the family outcome, whose filing turns the run's entry into that project.
+func isFamilyOutcome(proposal raddleparser.Proposal, entry RaddleRunEntry) bool {
+	return proposal.Project != nil && proposal.Project.Slug == entry.Slug
+}
+
+// repairFamily writes the filing mark, then clears any run status from the family's project, the run's entry.
+// A crash or a failed store write after the board write lets the run's status hook write a status there on resume.
+func (p *raddleFile) repairFamily() error {
+	if err := p.deps.MarkFiled(); err != nil {
+		return fmt.Errorf("write the filing mark: %w", err)
+	}
+	if err := p.deps.ClearStatus(); err != nil {
+		return fmt.Errorf("clear the run status from the family's project: %w", err)
+	}
+	return nil
+}
+
+// haltOverProject is the Stuck verdict with Halt for a run whose entry is a project the current proposal did not file.
+// Another writer's filing made it one, or the run's own before a goto re-split the proposal.
+// Its reason names the project's order and the cancel that leaves that filing to the operator.
+func (p *raddleFile) haltOverProject(ctx context.Context, entry RaddleRunEntry) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if cancelled := cancelErr(ctx, p.name); cancelled != nil {
+		return "", shedengine.OutputPointer{}, cancelled
+	}
+	return shedengine.Stuck, shedengine.OutputPointer{
+		Reason: fmt.Sprintf("%s: the run's entry %s is already a project with order [%s], a filing not made from the current proposal, so nothing was filed; way forward: run lym batten cancel %s, which ends the run and leaves that filing for the operator to keep, edit or remove", p.name, entry.Slug, strings.Join(entry.Order, ", "), entry.Slug),
+		Halt:   true,
+	}, nil
 }
 
 // verify returns the reason the proposal is sent back, empty when it passes every check.
@@ -220,6 +293,8 @@ func (p *raddleFile) verify(current RaddleState, hash string) (reason string, la
 
 // stageAndFile runs steps 1 to 3.
 // It stages the store files, writes the part records and commits them, and files the entries.
+// Before the filing it writes the row's own run status on the run's entry when that status names another producer,
+// so the run lock judges the filing against this row.
 // It returns the reason the proposal is sent back when the board write's own re-check refuses.
 // Any other failure is returned as an error.
 func (p *raddleFile) stageAndFile(proposal raddleparser.Proposal, data []byte, hash string, entry RaddleRunEntry) (reason string, err error) {
@@ -240,6 +315,11 @@ func (p *raddleFile) stageAndFile(proposal raddleparser.Proposal, data []byte, h
 	filing, err := p.filing(proposal, hash, entry)
 	if err != nil {
 		return "", err
+	}
+	if entry.StatusProducer != "" && entry.StatusProducer != p.name {
+		if err := p.deps.ClaimStatus(boardengine.RunStatus(string(shedengine.StateRunning), p.name)); err != nil {
+			return "", fmt.Errorf("write the row's run status on the run's entry: %w", err)
+		}
 	}
 	if err := p.deps.File(filing); err != nil {
 		if errors.Is(err, boardengine.ErrRaddleRecheck) {
@@ -500,7 +580,8 @@ func dependencyOrder(parts []raddleparser.Part) []raddleparser.Part {
 // Each is skipped when its result is there:
 // the beam is an idempotent call, the notice is marked in the state,
 // and the entry's end is the last write.
-func (p *raddleFile) finish(ctx context.Context, current RaddleState, proposal raddleparser.Proposal, landed []string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+// A family filing never ends the entry, which it made the family's project.
+func (p *raddleFile) finish(ctx context.Context, current RaddleState, proposal raddleparser.Proposal, landed []string, family bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if proposal.Shape == raddleparser.ShapeBeam {
 		if err := p.deps.CreateBeam(proposal.Project.Slug); err != nil {
 			return p.halt(ctx, "make the project a beam", err)
@@ -515,8 +596,10 @@ func (p *raddleFile) finish(ctx context.Context, current RaddleState, proposal r
 			return "", shedengine.OutputPointer{}, p.fail("record the notice", err)
 		}
 	}
-	if err := p.deps.EndEntry(); err != nil {
-		return p.halt(ctx, "end the run's board entry", err)
+	if !family {
+		if err := p.deps.EndEntry(); err != nil {
+			return p.halt(ctx, "end the run's board entry", err)
+		}
 	}
 	if err := cancelErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err

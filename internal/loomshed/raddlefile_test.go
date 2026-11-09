@@ -46,6 +46,23 @@ func raddleFileProposal(shape string) raddleparser.Proposal {
 	return proposal
 }
 
+// familyProposal returns the project-shape proposal whose project slug is the run's entry sketch-x: the family outcome.
+func familyProposal() raddleparser.Proposal {
+	proposal := raddleFileProposal(raddleparser.ShapeProject)
+	proposal.Project.Slug = "sketch-x"
+	return proposal
+}
+
+// stageFiling writes the stage a filing that crashed after its board write leaves:
+// every staged file, the proposal's hash last.
+func (f *raddleFileFixture) stageFiling() {
+	f.t.Helper()
+	f.write(filepath.Join(f.deps.StageDir, "proposal.yaml"), string(marshalRaddleProposal(f.t, f.proposal)))
+	f.write(filepath.Join(f.deps.StageDir, "cold-proposal.yaml"), "cold")
+	f.write(filepath.Join(f.deps.StageDir, "decision-record.md"), raddleFileRecord)
+	f.write(filepath.Join(f.deps.StageDir, "hash"), raddleparser.Hash(marshalRaddleProposal(f.t, f.proposal)))
+}
+
 // raddleFileFixture is a Raddle-File producer over files in a temp directory and recording seams.
 type raddleFileFixture struct {
 	t        *testing.T
@@ -59,6 +76,10 @@ type raddleFileFixture struct {
 	recheck  raddleparser.Recheck
 	filings  []boardengine.RaddleFiling
 	notices  []string
+	claimed  []string
+
+	// entry is the run's board entry the Entry seam reads.
+	entry loomshed.RaddleRunEntry
 
 	stored     bool
 	storedHash string
@@ -73,6 +94,7 @@ func newRaddleFileFixture(t *testing.T, proposal raddleparser.Proposal, mode loo
 	t.Helper()
 	dir := t.TempDir()
 	f := &raddleFileFixture{t: t, proposal: proposal, created: time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), failing: map[string]error{}}
+	f.entry = loomshed.RaddleRunEntry{Slug: "sketch-x", Created: f.created, ModuleLabels: []string{"mod-a"}, Project: "grouping", Kind: boardengine.KindTask, StatusProducer: "Raddle-File"}
 	f.deps = loomshed.RaddleFileDeps{
 		ProposalPath:   filepath.Join(dir, "proposal.yaml"),
 		ColdPath:       filepath.Join(dir, "cold-proposal.yaml"),
@@ -89,7 +111,7 @@ func newRaddleFileFixture(t *testing.T, proposal raddleparser.Proposal, mode loo
 			return f.recheck, f.seam("recheck")
 		},
 		Entry: func() (loomshed.RaddleRunEntry, error) {
-			return loomshed.RaddleRunEntry{Slug: "sketch-x", Created: f.created, ModuleLabels: []string{"mod-a"}, Project: "grouping"}, nil
+			return f.entry, nil
 		},
 		StoreDone: func(created time.Time, hash string) (bool, error) {
 			return f.stored && created.Equal(f.created) && hash == f.storedHash, nil
@@ -116,6 +138,12 @@ func newRaddleFileFixture(t *testing.T, proposal raddleparser.Proposal, mode loo
 		},
 		EndEntry: func() error { return f.seam("end_entry") },
 		Commit:   func() error { return f.seam("commit") },
+		ClaimStatus: func(status string) error {
+			f.claimed = append(f.claimed, status)
+			return f.seam("claim_status")
+		},
+		MarkFiled:   func() error { return f.seam("mark_filed") },
+		ClearStatus: func() error { return f.seam("clear_status") },
 	}
 
 	f.writeProposal(proposal)
@@ -449,11 +477,7 @@ func TestRaddleFile(t *testing.T) {
 		t.Parallel()
 		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModeAuto, false)
 		f.alreadyFiled = true
-		// The stage a filing that crashed after its board write leaves: every staged file, the proposal's hash last.
-		f.write(filepath.Join(f.deps.StageDir, "proposal.yaml"), string(marshalRaddleProposal(t, f.proposal)))
-		f.write(filepath.Join(f.deps.StageDir, "cold-proposal.yaml"), "cold")
-		f.write(filepath.Join(f.deps.StageDir, "decision-record.md"), raddleFileRecord)
-		f.write(filepath.Join(f.deps.StageDir, "hash"), raddleparser.Hash(marshalRaddleProposal(t, f.proposal)))
+		f.stageFiling()
 		f.recheck.Landed = []string{"gone"}
 		// The filed entries already hold the slugs, so a check or a re-check run over them would send the proposal back.
 		f.findings = []raddleparser.Finding{{Check: raddleparser.CheckSlugTaken, Detail: "filed parts now hold the slugs"}}
@@ -564,6 +588,153 @@ func TestRaddleFile(t *testing.T) {
 		requireDone(t, outcome, err)
 		if len(f.notices) != 1 || !strings.Contains(f.notices[0], "gone") {
 			t.Errorf("notices = %q; want one naming the landed entry gone", f.notices)
+		}
+	})
+
+	t.Run("TheBoardsRaddleFileProducerIsTheRow", func(t *testing.T) {
+		t.Parallel()
+		if boardengine.RaddleFileProducer != loomshed.NameRaddleFile {
+			t.Errorf("boardengine.RaddleFileProducer = %q; want the row name %q", boardengine.RaddleFileProducer, loomshed.NameRaddleFile)
+		}
+	})
+
+	t.Run("AFamilyFilingMarksTheRunAndNeverEndsTheEntry", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name        string
+			producer    string
+			wantSteps   []string
+			wantClaimed []string
+		}{
+			{"UnderTheRowsOwnStatus", "Raddle-File", []string{"commit", "file", "mark_filed", "notify"}, nil},
+			{"UnderAnotherProducersStatus", "Raddle-Write", []string{"commit", "claim_status", "file", "mark_filed", "notify"}, []string{"running · Raddle-File"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newRaddleFileFixture(t, familyProposal(), loomengine.RaddleModePerch, false)
+				f.entry.StatusProducer = tt.producer
+
+				outcome, _, err := f.call()
+				requireDone(t, outcome, err)
+
+				if got := f.steps(); !slices.Equal(got, tt.wantSteps) {
+					t.Errorf("steps = %v; want %v", got, tt.wantSteps)
+				}
+				if !slices.Equal(f.claimed, tt.wantClaimed) {
+					t.Errorf("claimed statuses = %q; want %q", f.claimed, tt.wantClaimed)
+				}
+				if project := f.filings[0].ProjectEntry; project == nil || project.Slug != "sketch-x" {
+					t.Errorf("project entry = %+v; want the run's entry sketch-x", project)
+				}
+			})
+		}
+	})
+
+	t.Run("AFamilyFilingFoundAsItsOwnIsRepairedAndNotFiledTwice", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name      string
+			setup     func(f *raddleFileFixture)
+			wantSteps []string
+		}{
+			{"WithTheStoreWritten", func(f *raddleFileFixture) {
+				f.stored, f.storedHash = true, raddleparser.Hash(marshalRaddleProposal(f.t, f.proposal))
+			}, []string{"mark_filed", "clear_status", "notify"}},
+			{"WithTheStoreWriteLost", func(f *raddleFileFixture) {
+				f.alreadyFiled = true
+				f.stageFiling()
+			}, []string{"mark_filed", "clear_status", "commit", "file", "notify"}},
+			{"WithTheStoreWriteLostAndAnotherProducersStatusOnTheEntry", func(f *raddleFileFixture) {
+				f.alreadyFiled = true
+				f.stageFiling()
+				f.entry.StatusProducer = "Raddle-Write"
+			}, []string{"mark_filed", "clear_status", "commit", "file", "notify"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newRaddleFileFixture(t, familyProposal(), loomengine.RaddleModePerch, false)
+				f.entry.Kind, f.entry.Order = boardengine.KindProject, []string{"part-a", "part-b"}
+				f.entry.StatusProducer = "Raddle-File"
+				tt.setup(f)
+
+				outcome, _, err := f.call()
+				requireDone(t, outcome, err)
+
+				if got := f.steps(); !slices.Equal(got, tt.wantSteps) {
+					t.Errorf("steps = %v; want %v, the mark before the status clear and no end of the entry", got, tt.wantSteps)
+				}
+			})
+		}
+	})
+
+	t.Run("AFailingMarkOrStatusClearStopsTheRepairBeforeAnythingElseRuns", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			seam      string
+			wantSteps []string
+		}{
+			{"mark_filed", []string{"mark_filed"}},
+			{"clear_status", []string{"mark_filed", "clear_status"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.seam, func(t *testing.T) {
+				t.Parallel()
+				f := newRaddleFileFixture(t, familyProposal(), loomengine.RaddleModePerch, false)
+				f.entry.Kind, f.entry.Order = boardengine.KindProject, []string{"part-a", "part-b"}
+				f.stored, f.storedHash = true, raddleparser.Hash(marshalRaddleProposal(f.t, f.proposal))
+				f.failing[tt.seam] = errors.New("seam down")
+
+				outcome, _, err := f.call()
+
+				if outcome != "" || err == nil || !strings.Contains(err.Error(), "repair the family filing") || !strings.Contains(err.Error(), "seam down") {
+					t.Errorf("Call() = %q, %v; want the repair's error naming the seam's failure", outcome, err)
+				}
+				if got := f.steps(); !slices.Equal(got, tt.wantSteps) {
+					t.Errorf("steps = %v; want %v, nothing after the failing step", got, tt.wantSteps)
+				}
+			})
+		}
+	})
+
+	t.Run("AnEntryAlreadyAProjectNotFiledFromTheProposalHalts", func(t *testing.T) {
+		t.Parallel()
+		f := newRaddleFileFixture(t, familyProposal(), loomengine.RaddleModePerch, false)
+		f.entry.Kind, f.entry.Order = boardengine.KindProject, []string{"other-a", "other-b"}
+
+		outcome, pointer, err := f.call()
+
+		if err != nil || outcome != shedengine.Stuck || !pointer.Halt {
+			t.Fatalf("Call() = %q, %+v, %v; want Stuck with Halt", outcome, pointer, err)
+		}
+		for _, want := range []string{"other-a, other-b", "lym batten cancel sketch-x"} {
+			if !strings.Contains(pointer.Reason, want) {
+				t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
+			}
+		}
+		if len(f.calls) != 0 {
+			t.Errorf("calls = %v; want none, since nothing is checked or filed", f.calls)
+		}
+	})
+
+	t.Run("ARefusedMoveOfTheDependenciesHaltsNamingTheEntry", func(t *testing.T) {
+		t.Parallel()
+		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModeAuto, false)
+		f.failing["file"] = fmt.Errorf("%w: entry %q: held by a run", boardengine.ErrRaddleRepointRefused, "waiter")
+
+		outcome, pointer, err := f.call()
+
+		if err != nil || outcome != shedengine.Stuck || !pointer.Halt {
+			t.Fatalf("Call() = %q, %+v, %v; want Stuck with Halt", outcome, pointer, err)
+		}
+		for _, want := range []string{`"waiter"`, "lym loom resume"} {
+			if !strings.Contains(pointer.Reason, want) {
+				t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
+			}
+		}
+		if got := f.state(); got.Returns != 0 {
+			t.Errorf("returns = %d; want 0, since no new split settles the refusal", got.Returns)
 		}
 	})
 }

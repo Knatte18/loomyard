@@ -162,7 +162,7 @@ func TestNewCommitStatusSeam_BoardWriteFailureDoesNotStopTheCommit(t *testing.T)
 }
 
 // TestBattenCommitStatusDeps_SetBoardStatusWritesTheRunsEntry pins that the real SetBoardStatus writes the status.
-// The status lands on the board entry whose slug is the run id.
+// The status lands on the board entry whose slug is the run id, and no status does once the run's filing mark stands.
 // The test sets the board skip variables, which are process-global, so it does not call t.Parallel.
 func TestBattenCommitStatusDeps_SetBoardStatusWritesTheRunsEntry(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -191,6 +191,16 @@ func TestBattenCommitStatusDeps_SetBoardStatusWritesTheRunsEntry(t *testing.T) {
 	}
 	if task.Status == nil || *task.Status != status {
 		t.Errorf("board status = %v; want %q", task.Status, status)
+	}
+
+	if err := shedrun.WriteFilingMark(location, slug); err != nil {
+		t.Fatalf("WriteFilingMark() = %v; want nil", err)
+	}
+	if err := battenCommitStatusDeps(location, slug).SetBoardStatus(boardengine.RunStatus("running", "Preflight")); err != nil {
+		t.Fatalf("SetBoardStatus() under the filing mark = %v; want nil", err)
+	}
+	if task, _, err := board.GetTask(slug); err != nil || task.Status == nil || *task.Status != status {
+		t.Errorf("board status under the filing mark = %v, %v; want %q left as it was", task.Status, err, status)
 	}
 }
 
@@ -285,6 +295,14 @@ func TestBattenRunCommitPaths(t *testing.T) {
 	got = battenRunCommitPaths(loc, runID)
 	if want = append(want, shedrun.ChildRecipeRel(loc, runID)); !reflect.DeepEqual(got, want) {
 		t.Errorf("battenRunCommitPaths with a child-recipe record on disk = %v; want %v", got, want)
+	}
+
+	if err := shedrun.WriteFilingMark(loc, runID); err != nil {
+		t.Fatalf("write filing mark: %v", err)
+	}
+	got = battenRunCommitPaths(loc, runID)
+	if want = append(want, shedrun.FilingMarkRel(loc, runID)); !reflect.DeepEqual(got, want) {
+		t.Errorf("battenRunCommitPaths with a filing mark on disk = %v; want %v", got, want)
 	}
 
 	// A driver directory holding only an empty attempt directory is nothing to commit.

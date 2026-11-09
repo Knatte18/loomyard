@@ -229,7 +229,7 @@ func commitStatusDepsGuardedBy(check prePushCheck, location *lymcwd.Location, ru
 
 // finishesAsSketch reports whether a finished run of recipe makes its board entry a Sketch.
 // A recipe with a Finalize row does not, since its landing marks the entry done.
-// Neither does one with a Raddle-File row, which ends the entry done itself.
+// Neither does one with a Raddle-File row, which ends the entry done itself or turns it into a family's project.
 // A recipe with neither lands nothing: its run ends at the Discussion approval with the decision record stored,
 // so its entry becomes a Sketch, a note that leaves the run lock, never runs, and waits for the operator's triage.
 func finishesAsSketch(recipe string) bool {
@@ -238,6 +238,7 @@ func finishesAsSketch(recipe string) bool {
 
 // commitStatusDeps returns the status-commit dependencies for the run at location.
 // It sets Finish only for a recipe whose finished run leaves its board entry a Sketch.
+// For a recipe with a RaddleFile row, its board status write stops once the run's filing mark stands.
 func (c *loomCLI) commitStatusDeps(location *lymcwd.Location) commitStatusDeps {
 	deps := loomCommitStatusDeps(location, c.runID)
 	if finishesAsSketch(c.recipe) {
@@ -246,7 +247,32 @@ func (c *loomCLI) commitStatusDeps(location *lymcwd.Location) commitStatusDeps {
 			return err
 		})
 	}
+	if recipeHasEngine(c.recipe, raddleFileEngine) {
+		deps.SetBoardStatus = skipAfterFamilyFiling(func() (bool, error) { return raddleFilingMarked(location, c.runID) }, deps.SetBoardStatus)
+	}
 	return deps
+}
+
+// skipAfterFamilyFiling wraps setBoardStatus so it writes nothing once marked reports the run's filing mark:
+// the run's family filing turned its entry into the family's project, which no status of the run may change.
+// A failed read of the mark writes nothing and returns the failure, so the seam's next transition retries.
+func skipAfterFamilyFiling(marked func() (bool, error), setBoardStatus func(status string) error) func(status string) error {
+	return func(status string) error {
+		filed, err := marked()
+		if err != nil || filed {
+			return err
+		}
+		return setBoardStatus(status)
+	}
+}
+
+// raddleFilingMarked reports whether the run at location has a filing mark among the slug's run records in the prime.
+func raddleFilingMarked(location *lymcwd.Location, runID string) (bool, error) {
+	prime, err := primeOfHub(location)
+	if err != nil {
+		return false, err
+	}
+	return shedrun.FilingMarked(prime, shedrun.ResolveRunID(location, runID))
 }
 
 // sketchFinish returns the Finish that makes the board entry of the run at location a Sketch.

@@ -136,6 +136,44 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 	}
 }
 
+// TestSkipAfterFamilyFiling asserts a raddle run's board status write goes through only while its filing mark is absent.
+// A failed read of the mark writes nothing and returns the failure.
+func TestSkipAfterFamilyFiling(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	readFailure := errors.New("stat failed")
+	tests := []struct {
+		name        string
+		marked      bool
+		markErr     error
+		wantWritten []string
+	}{
+		{"UnmarkedWrites", false, nil, []string{"running · Raddle-File"}},
+		{"MarkedWritesNothing", true, nil, nil},
+		{"UnreadableMarkWritesNothing", false, readFailure, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var written []string
+			set := skipAfterFamilyFiling(
+				func() (bool, error) { return tt.marked, tt.markErr },
+				func(status string) error { written = append(written, status); return nil },
+			)
+
+			err := set("running · Raddle-File")
+
+			if !errors.Is(err, tt.markErr) {
+				t.Errorf("SetBoardStatus() error = %v; want %v", err, tt.markErr)
+			}
+			if !reflect.DeepEqual(written, tt.wantWritten) {
+				t.Errorf("board writes = %q; want %q", written, tt.wantWritten)
+			}
+		})
+	}
+}
+
 // TestNewCommitStatusSeam_Finish asserts a finished run calls the seam's Finish after the run status it last wrote.
 // It retries a failed Finish at the next finished transition and calls it no more once it succeeded.
 func TestNewCommitStatusSeam_Finish(t *testing.T) {

@@ -209,7 +209,8 @@ func raddleFileDeps(location *lymcwd.Location, slug string) loomshed.RaddleFileD
 				return loomshed.RaddleRunEntry{}, err
 			}
 			vocabulary := boardConfig.Vocabulary()
-			entry := loomshed.RaddleRunEntry{Slug: task.Slug, Created: task.Created, Project: task.Project}
+			entry := loomshed.RaddleRunEntry{Slug: task.Slug, Created: task.Created, Project: task.Project, Kind: task.Kind, Order: task.Order}
+			entry.StatusProducer, _ = boardengine.RunStatusProducer(task.Status)
 			for _, label := range task.Labels {
 				if !vocabulary.IsType(label) {
 					entry.ModuleLabels = append(entry.ModuleLabels, label)
@@ -253,6 +254,28 @@ func raddleFileDeps(location *lymcwd.Location, slug string) loomshed.RaddleFileD
 			return board.EndRaddleEntry(slug)
 		},
 		Commit: func() error { return commitRaddle(location, slug) },
+		ClaimStatus: func(status string) error {
+			board, err := openHubBoard(location)
+			if err != nil {
+				return err
+			}
+			return board.SetRunStatus(slug, status)
+		},
+		// The mark goes among the slug's run records in the prime, beside a batten run's status and child-recipe records.
+		MarkFiled: func() error {
+			prime, err := primeOfHub(location)
+			if err != nil {
+				return err
+			}
+			return shedrun.WriteFilingMark(prime, slug)
+		},
+		ClearStatus: func() error {
+			board, err := openHubBoard(location)
+			if err != nil {
+				return err
+			}
+			return board.ClearProjectRunStatus(slug)
+		},
 	}
 }
 

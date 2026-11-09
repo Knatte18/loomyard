@@ -143,6 +143,9 @@ func (e *ProjectRecordLockedError) Is(target error) bool {
 // A held entry whose net change turns it into a Sketch, as the vocabulary's type labels judge it, passes.
 // It passes only when its status is cleared and it makes no other scope change.
 // That change ends its Discussion-only run; a title, body or other scope change alongside it is refused.
+// A held task whose net change turns it into the project of a family the same write adds passes too.
+// That holds while its status names RaddleFileProducer;
+// that change must be exactly the project the entry and the added parts derive, as endsAsFamilyProject judges it.
 // A beam project whose run holds nothing is refused only when it is absent from after.
 // It is refused with a BeamRunLockedError also when its project, kind, recipe or beam differs.
 // Its body change is refused with a ProjectRecordLockedError once ProjectRecordHeld accepts it.
@@ -153,6 +156,10 @@ func checkRunLocks(loaded, after []Task, vocab Vocabulary) error {
 	for _, task := range after {
 		afterBySlug[task.Slug] = task
 	}
+	loadedSlugs := make(map[string]bool, len(loaded))
+	for _, task := range loaded {
+		loadedSlugs[task.Slug] = true
+	}
 	removedDone := removedDoneSlugs(loaded, after)
 
 	for _, before := range loaded {
@@ -161,7 +168,7 @@ func checkRunLocks(loaded, after []Task, vocab Vocabulary) error {
 		}
 		now, kept := afterBySlug[before.Slug]
 		if RunHolds(before) {
-			if kept && endsAsSketch(before, now, vocab, removedDone) {
+			if kept && (endsAsSketch(before, now, vocab, removedDone) || endsAsFamilyProject(before, now, loadedSlugs, after, removedDone)) {
 				continue
 			}
 			if !kept || scopeChanged(before, now, removedDone) {

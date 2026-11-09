@@ -53,8 +53,14 @@ func sketchOf(t Task, vocab Vocabulary) Task {
 			labels = append(labels, label)
 		}
 	}
+	t = withoutRunFields(t)
 	t.Kind = KindNote
 	t.Labels = labels
+	return t
+}
+
+// withoutRunFields returns t with no status and with every field a run, a landing or the dependency graph reads cleared.
+func withoutRunFields(t Task) Task {
 	t.Status = nil
 	t.DependsOn = []string{}
 	t.Isolated = false

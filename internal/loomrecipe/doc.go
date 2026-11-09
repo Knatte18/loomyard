@@ -52,7 +52,9 @@
 // It takes the loom contract's record-only form.
 // Record-Write writes the Sketch's stored decision record.
 // Raddle-Write is one agent session gated by the `raddle` check.
-// Raddle-File, a Go row, files the approved proposal on the board and ends the run's entry, so the run lands no code.
+// Raddle-File, a Go row, files the approved proposal on the board and ends the run's entry.
+// A family filing turns that entry into the family's project instead.
+// The run lands no code.
 // Raddle-File's Stuck returns to Raddle-Write,
 // and a third failing gate attempt of Raddle-Write halts the run for its parent.
 //

@@ -427,6 +427,12 @@
 // MakeSketch writes it, and a hand write making the same change passes too, as set-status does.
 // A write that also changes the entry's title, body or any other scope field is refused.
 // So is one that makes it a note without the sketch label.
+// A held task whose net change turns it into the project of a family the same write adds passes too.
+// That holds while its status names the Raddle-File producer, whatever its state.
+// The family's parts are the discussed draft tasks the write adds under the entry, each after the parts it depends on.
+// The entry must become exactly their project.
+// It has no status and the run fields cleared.
+// Its order and part list name the parts in their sequence, and the write makes no other scope change.
 // set-status is itself unguarded, so a live run's status can be cleared by hand.
 // Prune passes, since a held entry's dependency on a done entry that the same write removes is not a change;
 // every other depends_on change is refused.
@@ -627,9 +633,14 @@
 // The parts are filed draft, so a release stays the operator's.
 // The run's own entry stays open.
 // A part's dependency on the run's entry, or on a slug no longer on the board, is dropped.
+// A family filing, whose project is the run's own entry, turns that entry into the project instead of adding one.
+// When the write fails, the entry's former decision record is written back.
+// Every filing moves each open entry's dependency on the run's entry onto the filed parts no other part depends on.
+// A refusal of that move is wrapped in ErrRaddleRepointRefused and names the refusing entry.
 // EndRaddleEntry marks the run's entry done and clears its notify_on_land.
 // The run lock admits both changes, since neither is scope.
 // It writes nothing for an absent or done entry.
+// ClearProjectRunStatus clears a run status from a family's project and releases no member.
 //
 // # Siblings
 //

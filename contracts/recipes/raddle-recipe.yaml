@@ -1,7 +1,7 @@
 # raddle-recipe.yaml is the recipe that splits a Sketch into the board entries the operator approves, and files them: Record-Write, Raddle-Write and Raddle-File.
 # Record-Write writes the Sketch's stored decision record into the run, as the darn and pawl recipes do for their records.
 # Raddle-Write is one agent session that proposes the split, the order, the recipes and the profiles, and ends on the operator's approval of the proposal, or on the finished proposal when the run is in auto mode.
-# Raddle-File is a Go row with no agent: it checks the approved proposal once more, files the entries on the board in one write and ends the run's own entry, so a raddle run lands no code.
+# Raddle-File is a Go row with no agent: it checks the approved proposal once more, files the entries on the board in one write and ends the run's own entry unless a family filing turned it into the family's project, so a raddle run lands no code.
 #
 # contract: loom takes the loom contract's record-only form: one record row, Record-Write, and neither a build row nor a Finalize row, so it needs no verify_source.
 # Neither new engine is a build or Finalize engine, so the loader accepts the recipe with no change to the contract.

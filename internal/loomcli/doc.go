@@ -63,7 +63,9 @@
 // The entry thus names the first row while it runs.
 // A finished run of a recipe with a Finalize row writes nothing, its landing having marked the entry done.
 // A finished run of a recipe with a RaddleFile row, a raddle or arras run, writes nothing either.
-// Its Raddle-File row ended the entry done instead of as a Sketch.
+// Its Raddle-File row ended the entry done instead of as a Sketch, or a family filing turned the entry into its project.
+// Such a filing writes the run's filing mark among the slug's run records in the prime.
+// From then on, no status write of the run reaches the entry.
 // A finished run of a recipe with neither a Finalize row nor a RaddleFile row, a motif run, makes its entry a Sketch.
 // A Sketch is a note of the built-in type `sketch`.
 // It leaves its run lock, never runs and waits for the operator's triage with its record stored.

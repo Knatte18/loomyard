@@ -107,6 +107,69 @@ func TestWiredCommitStatus_FinishedRunEntry(t *testing.T) {
 	}
 }
 
+// TestCommitStatusDeps_SkipsTheBoardStatusAfterAFilingMark drives the board status write of commitStatusDeps.
+// It runs against a real hub board.
+// A recipe with a Raddle-File row writes nothing once the run's filing mark stands in the prime.
+// A recipe with no such row writes whether or not a mark stands.
+// It is serial because it sets the board skip variable, which is process-global.
+func TestCommitStatusDeps_SkipsTheBoardStatusAfterAFilingMark(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+
+	before := boardengine.RunStatus("running", "Raddle-Write")
+	written := boardengine.RunStatus("running", "Raddle-File")
+	tests := []struct {
+		name       string
+		slug       string
+		recipe     string
+		marked     bool
+		wantStatus string
+	}{
+		{"ARaddleFileRecipeWithoutTheMarkWrites", "arrasopen", shedrun.RecipeArras, false, written},
+		{"ARaddleFileRecipeWithTheMarkWritesNothing", "arrasmarked", shedrun.RecipeArras, true, before},
+		{"ARecipeWithNoRaddleFileRowWritesDespiteTheMark", "tapestrymarked", shedrun.RecipeTapestry, true, written},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hubforge.AddPair(t, hub, tt.slug)
+			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(tt.slug))
+			if err != nil {
+				t.Fatalf("ResolveWorktree() error = %v; want nil", err)
+			}
+			board, err := boardengine.OpenHub(location.HubPath)
+			if err != nil {
+				t.Fatalf("OpenHub() error = %v; want nil", err)
+			}
+			if _, err := board.UpsertTask(map[string]any{"slug": tt.slug, "title": "Run", "kind": "task", "labels": []string{"bug"}}); err != nil {
+				t.Fatalf("UpsertTask() error = %v; want nil", err)
+			}
+			if err := board.SetRunStatus(tt.slug, before); err != nil {
+				t.Fatalf("SetRunStatus() error = %v; want nil", err)
+			}
+			if tt.marked {
+				prime, err := primeOfHub(location)
+				if err != nil {
+					t.Fatalf("primeOfHub() error = %v; want nil", err)
+				}
+				if err := shedrun.WriteFilingMark(prime, tt.slug); err != nil {
+					t.Fatalf("WriteFilingMark() error = %v; want nil", err)
+				}
+			}
+
+			c := &loomCLI{recipe: tt.recipe, runID: shedrun.SelfRunID}
+			if err := c.commitStatusDeps(location).SetBoardStatus(written); err != nil {
+				t.Fatalf("SetBoardStatus() error = %v; want nil", err)
+			}
+
+			task, found, err := board.GetTask(tt.slug)
+			if err != nil || !found || task.Status == nil || *task.Status != tt.wantStatus {
+				t.Errorf("board entry = %+v, found %t, error %v; want status %q", task, found, err, tt.wantStatus)
+			}
+		})
+	}
+}
+
 // TestSketchFinish_TellsTheParentOnlyOfARefusedSketch drives a finished motif run's Finish against a real hub board.
 // The finish posts one notice when the board refuses the Sketch, naming the dependent entry and both ways forward.
 // It posts none when the board takes the Sketch.
