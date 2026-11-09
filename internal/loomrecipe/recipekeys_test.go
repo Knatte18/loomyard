@@ -19,7 +19,7 @@ import (
 const splitPerchFixtureFile = "split-perch-recipe.yaml"
 
 // TestHoldsSplitPerch covers the rows test that decides a raddle run's perch mode.
-// A fixture recipe's Bouncer over the raddle proposal holds a split perch;
+// A fixture recipe's Bouncer over the raddle proposal holds a split perch, and so does the arras recipe's;
 // the raddle recipe holds no Bouncer, and the motif and tapestry recipes hold Bouncers over other artifacts.
 func TestHoldsSplitPerch(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -46,6 +46,9 @@ func TestHoldsSplitPerch(t *testing.T) {
 		if got, err := HoldsSplitPerch(recipe); err != nil || got {
 			t.Errorf("HoldsSplitPerch(%q) = %v, %v; want false, nil", recipe, got, err)
 		}
+	}
+	if got, err := HoldsSplitPerch(shedrun.RecipeArras); err != nil || !got {
+		t.Errorf("HoldsSplitPerch(%q) = %v, %v; want true, nil", shedrun.RecipeArras, got, err)
 	}
 	if _, err := HoldsSplitPerch("nope"); err == nil || !strings.Contains(err.Error(), "nope") {
 		t.Errorf("HoldsSplitPerch(%q) error = %v; want a refusal naming the recipe", "nope", err)
@@ -168,6 +171,14 @@ func TestRecipeKeys(t *testing.T) {
 			wantRecord:  "RecordWrite",
 			wantVerify:  "tree_scope",
 			wantEngines: map[string]bool{"SamplerSession": true, "RecordWrite": true, "DarnWrite": false},
+		},
+		{
+			name:          "Arras",
+			recipe:        shedrun.RecipeArras,
+			wantLoom:      true,
+			wantRecord:    "DiscussionWrite",
+			wantEngines:   map[string]bool{"Block": true, "RaddleWrite": true, "RaddleFile": true, "RecordWrite": false, "Finalize": false},
+			wantEngineRow: map[string]string{"Block": "Motif", "RaddleWrite": "Raddle-Write"},
 		},
 		{
 			name:        "BattenIsNeither",

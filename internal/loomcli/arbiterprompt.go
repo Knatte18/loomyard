@@ -25,9 +25,11 @@ const arbiterRepairVerbs = "Its repair verbs, run with `<slug>` the task named a
 // The pawl recipe is described as a beam's life driven through the loom engine.
 // A recipe with a `SamplerSession` row is described as a task's result made with the operator.
 // The result is made in one interactive session.
-// A recipe with a `RaddleFile` row is described as a run that splits a Sketch's stored decision record.
+// A recipe with a `RaddleFile` row and a `DiscussionWrite` row is described as a task's Discussion and its split.
+// Its split perch approves the parts it files as board entries, and the run lands no code.
+// A recipe with a `RaddleFile` row alone is described as a run that splits a Sketch's stored decision record.
 // The record's parts become board entries the operator approves, and the run lands no code.
-// The `RaddleFile` case is checked before the no-Finalize case, which it would otherwise match.
+// The `RaddleFile` cases are checked before the no-Finalize case, which they would otherwise match.
 // A recipe with a `PlanWrite` row is described as a task driven from discussion to landing, labelled with its name.
 // A recipe with no `Finalize` row is described as a task's Discussion that lands no code.
 // Any other recipe is described as a task's code change driven from its decision record through one build session.
@@ -41,6 +43,10 @@ func arbiterRecipeDescription(recipe string) string {
 	if recipeHasEngine(recipe, planWriteEngine) {
 		label := recipeLabel(recipe)
 		return "This is " + indefiniteArticle(label) + " " + label + " run, a task driven from discussion to landing. " + arbiterRepairVerbs
+	}
+	if recipeHasEngine(recipe, raddleFileEngine) && recipeHasEngine(recipe, discussionWriteEngine) {
+		label := recipeLabel(recipe)
+		return "This is " + indefiniteArticle(label) + " " + label + " run, a task's Discussion followed by its split into board entries its split perch reviews and approves; the run lands no code. " + arbiterRepairVerbs
 	}
 	if recipeHasEngine(recipe, raddleFileEngine) {
 		return "This is a " + recipeLabel(recipe) + " run that splits a Sketch's stored decision record into board entries the operator approves; the run lands no code. " + arbiterRepairVerbs

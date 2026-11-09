@@ -16,12 +16,14 @@ const (
 	PerchPlan Perch = "plan"
 	// PerchCode is the Code-Review perch.
 	PerchCode Perch = "code"
+	// PerchSplit is the split perch, the Raddle-Review perch over a raddle proposal.
+	PerchSplit Perch = "split"
 )
 
 // reviewPerches lists the review perches whose keys loom.yaml holds.
 // Config loading, its spec and local-value validation take the perches from here.
 // The plan perch's keys live in tapestry.yaml, so it is not listed here.
-var reviewPerches = []Perch{PerchDiscussion, PerchCode}
+var reviewPerches = []Perch{PerchDiscussion, PerchCode, PerchSplit}
 
 // reviewPerchNames returns reviewPerches' names as reviewbudget takes them.
 func reviewPerchNames() []string {
@@ -45,6 +47,8 @@ func (cfg Config) Caps(p Perch) reviewbudget.Caps {
 		ownSoft, ownHard = cfg.PlanMaxBounces, cfg.PlanHardMaxBounces
 	case PerchCode:
 		ownSoft, ownHard = cfg.CodeMaxBounces, cfg.CodeHardMaxBounces
+	case PerchSplit:
+		ownSoft, ownHard = cfg.SplitMaxBounces, cfg.SplitHardMaxBounces
 	}
 	return reviewbudget.Resolve(string(p), cfg.ReviewMaxBounces, cfg.ReviewHardMaxBounces, ownSoft, ownHard)
 }

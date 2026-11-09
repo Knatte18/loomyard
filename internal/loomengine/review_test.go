@@ -71,6 +71,10 @@ func TestResolveReview(t *testing.T) {
 	if !reflect.DeepEqual(settings.Code, settings.Models) {
 		t.Errorf("ResolveReview(...).Code = %+v; want the run-wide %+v", settings.Code, settings.Models)
 	}
+	// With no split lists and no raddle key, the split perch keeps the run-wide fixer.
+	if !reflect.DeepEqual(settings.Split, settings.Models) {
+		t.Errorf("ResolveReview(...).Split = %+v; want the run-wide %+v, since raddle is empty", settings.Split, settings.Models)
+	}
 	wantTimeout := 240 * time.Minute
 	if settings.Timeout != wantTimeout {
 		t.Errorf("ResolveReview(...).Timeout = %s; want %s", settings.Timeout, wantTimeout)
@@ -88,6 +92,7 @@ func TestResolveReview(t *testing.T) {
 		{"Discussion", settings.DiscussionKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("discussion_fixer_model")}},
 		{"Plan", settings.PlanKeys, SegmentKeys{Review: tapestryKey("plan_reviewer_model"), Fix: loomKey("fixer_model")}},
 		{"Code", settings.CodeKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("fixer_model")}},
+		{"Split", settings.SplitKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("fixer_model")}},
 	} {
 		if tt.got != tt.want {
 			t.Errorf("ResolveReview(...).%sKeys = %+v; want %+v", tt.segment, tt.got, tt.want)
@@ -124,6 +129,18 @@ func TestResolveReview(t *testing.T) {
 	}
 	if got := engineSettings.Models.Fix; len(got) != 1 || got[0].Engine != "other" {
 		t.Errorf("ResolveReview(engine registry).Models.Fix = %+v; want one entry on engine other", got)
+	}
+
+	// An unset split fixer list takes the raddle key's model while that key is set.
+	raddleSettings, err := ResolveReview(Config{ReviewerModel: burlerengine.ModelSpecList{"alpha"}, FixerModel: burlerengine.ModelSpecList{"alpha"}, Raddle: "beta"}, engineReg)
+	if err != nil {
+		t.Fatalf("ResolveReview(raddle set) = _, %v; want nil error", err)
+	}
+	if got := raddleSettings.Split.Fix; len(got) != 1 || got[0].Engine != "other" {
+		t.Errorf("ResolveReview(raddle set).Split.Fix = %+v; want one entry on engine other, the raddle key's model", got)
+	}
+	if want := (SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("raddle")}); raddleSettings.SplitKeys != want {
+		t.Errorf("ResolveReview(raddle set).SplitKeys = %+v; want %+v", raddleSettings.SplitKeys, want)
 	}
 }
 
@@ -266,55 +283,77 @@ func TestCapAssistTimeout(t *testing.T) {
 
 // TestResolveJudge verifies ResolveJudge resolves each segment's judge and seed through the fallback order:
 // a segment's judge key, else judge; a segment's seed key, else seed, else the segment's resolved judge.
+// The split perch has no seed key, so its seed is seed, else its resolved judge.
 func TestResolveJudge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	// segmentModels is the seed and judge model of one segment, in discussion, plan, code order.
 	type segmentModels struct{ seed, judge string }
 	tests := []struct {
-		name string
-		cfg  Config
-		want [3]segmentModels
+		name  string
+		cfg   Config
+		want  [3]segmentModels
+		split segmentModels
 	}{
 		{
-			name: "all keys empty resolves every pass to judge",
-			cfg:  Config{Judge: "sonnet[medium]"},
-			want: [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"sonnet", "sonnet"}},
+			name:  "all keys empty resolves every pass to judge",
+			cfg:   Config{Judge: "sonnet[medium]"},
+			want:  [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"sonnet", "sonnet"}},
+			split: segmentModels{"sonnet", "sonnet"},
 		},
 		{
-			name: "seed moves every seed",
-			cfg:  Config{Judge: "sonnet[medium]", Seed: "haiku"},
-			want: [3]segmentModels{{"haiku", "sonnet"}, {"haiku", "sonnet"}, {"haiku", "sonnet"}},
+			name:  "seed moves every seed",
+			cfg:   Config{Judge: "sonnet[medium]", Seed: "haiku"},
+			want:  [3]segmentModels{{"haiku", "sonnet"}, {"haiku", "sonnet"}, {"haiku", "sonnet"}},
+			split: segmentModels{"haiku", "sonnet"},
 		},
 		{
-			name: "plan_judge alone moves plan's judge and seed together",
-			cfg:  Config{Judge: "sonnet[medium]", PlanJudge: "opus"},
-			want: [3]segmentModels{{"sonnet", "sonnet"}, {"opus", "opus"}, {"sonnet", "sonnet"}},
+			name:  "plan_judge alone moves plan's judge and seed together",
+			cfg:   Config{Judge: "sonnet[medium]", PlanJudge: "opus"},
+			want:  [3]segmentModels{{"sonnet", "sonnet"}, {"opus", "opus"}, {"sonnet", "sonnet"}},
+			split: segmentModels{"sonnet", "sonnet"},
 		},
 		{
-			name: "plan_judge with seed keeps plan's seed off the judge",
-			cfg:  Config{Judge: "sonnet[medium]", PlanJudge: "opus", Seed: "haiku"},
-			want: [3]segmentModels{{"haiku", "sonnet"}, {"haiku", "opus"}, {"haiku", "sonnet"}},
+			name:  "plan_judge with seed keeps plan's seed off the judge",
+			cfg:   Config{Judge: "sonnet[medium]", PlanJudge: "opus", Seed: "haiku"},
+			want:  [3]segmentModels{{"haiku", "sonnet"}, {"haiku", "opus"}, {"haiku", "sonnet"}},
+			split: segmentModels{"haiku", "sonnet"},
 		},
 		{
-			name: "plan_judge with plan_seed keeps plan's seed off the judge",
-			cfg:  Config{Judge: "sonnet[medium]", PlanJudge: "opus", PlanSeed: "haiku"},
-			want: [3]segmentModels{{"sonnet", "sonnet"}, {"haiku", "opus"}, {"sonnet", "sonnet"}},
+			name:  "plan_judge with plan_seed keeps plan's seed off the judge",
+			cfg:   Config{Judge: "sonnet[medium]", PlanJudge: "opus", PlanSeed: "haiku"},
+			want:  [3]segmentModels{{"sonnet", "sonnet"}, {"haiku", "opus"}, {"sonnet", "sonnet"}},
+			split: segmentModels{"sonnet", "sonnet"},
 		},
 		{
-			name: "code_seed alone moves only code's seed",
-			cfg:  Config{Judge: "sonnet[medium]", CodeSeed: "haiku"},
-			want: [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"haiku", "sonnet"}},
+			name:  "code_seed alone moves only code's seed",
+			cfg:   Config{Judge: "sonnet[medium]", CodeSeed: "haiku"},
+			want:  [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"haiku", "sonnet"}},
+			split: segmentModels{"sonnet", "sonnet"},
 		},
 		{
-			name: "plan_seed beats seed for plan alone",
-			cfg:  Config{Judge: "sonnet[medium]", Seed: "haiku", PlanSeed: "opus"},
-			want: [3]segmentModels{{"haiku", "sonnet"}, {"opus", "sonnet"}, {"haiku", "sonnet"}},
+			name:  "plan_seed beats seed for plan alone",
+			cfg:   Config{Judge: "sonnet[medium]", Seed: "haiku", PlanSeed: "opus"},
+			want:  [3]segmentModels{{"haiku", "sonnet"}, {"opus", "sonnet"}, {"haiku", "sonnet"}},
+			split: segmentModels{"haiku", "sonnet"},
 		},
 		{
-			name: "discussion_judge and code_judge move their own segments",
-			cfg:  Config{Judge: "sonnet[medium]", DiscussionJudge: "opus", CodeJudge: "haiku"},
-			want: [3]segmentModels{{"opus", "opus"}, {"sonnet", "sonnet"}, {"haiku", "haiku"}},
+			name:  "discussion_judge and code_judge move their own segments",
+			cfg:   Config{Judge: "sonnet[medium]", DiscussionJudge: "opus", CodeJudge: "haiku"},
+			want:  [3]segmentModels{{"opus", "opus"}, {"sonnet", "sonnet"}, {"haiku", "haiku"}},
+			split: segmentModels{"sonnet", "sonnet"},
+		},
+		{
+			name:  "split_judge alone moves split's judge and seed together",
+			cfg:   Config{Judge: "sonnet[medium]", SplitJudge: "opus"},
+			want:  [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"sonnet", "sonnet"}},
+			split: segmentModels{"opus", "opus"},
+		},
+		{
+			name:  "split_judge with seed keeps split's seed off the judge",
+			cfg:   Config{Judge: "sonnet[medium]", SplitJudge: "opus", Seed: "haiku"},
+			want:  [3]segmentModels{{"haiku", "sonnet"}, {"haiku", "sonnet"}, {"haiku", "sonnet"}},
+			split: segmentModels{"haiku", "opus"},
 		},
 	}
 	for _, tt := range tests {
@@ -328,6 +367,12 @@ func TestResolveJudge(t *testing.T) {
 			settings, err := ResolveJudge(tt.cfg, reg)
 			if err != nil {
 				t.Fatalf("ResolveJudge(...) = _, %v; want nil error", err)
+			}
+			if !strings.Contains(settings.Split.Seed.Model, tt.split.seed) {
+				t.Errorf("ResolveJudge(...).Split seed model = %q; want a %s model", settings.Split.Seed.Model, tt.split.seed)
+			}
+			if !strings.Contains(settings.Split.Judge.Model, tt.split.judge) {
+				t.Errorf("ResolveJudge(...).Split judge model = %q; want a %s model", settings.Split.Judge.Model, tt.split.judge)
 			}
 			got := [3]BouncerModels{settings.Discussion, settings.Plan, settings.Code}
 			for i, segment := range []string{"discussion", "plan", "code"} {

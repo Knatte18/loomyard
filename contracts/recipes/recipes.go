@@ -46,3 +46,9 @@ var BattenRecipe []byte
 //
 //go:embed raddle-recipe.yaml
 var RaddleRecipe []byte
+
+// ArrasRecipe is the arras recipe's producer graph, in internal/shedbuild's recipe format.
+// Its rows discuss a task, split its decision record into board entries under the split perch's review, and file them.
+//
+//go:embed arras-recipe.yaml
+var ArrasRecipe []byte

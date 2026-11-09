@@ -604,13 +604,13 @@ func boardRecipe(board *boardengine.Board, task boardengine.Task) string {
 // childRecipeSupported reports whether a task worktree's bootstrap verb can run recipe as the child's own run.
 // The admitted recipes are the ones `lym loom start` serves.
 func childRecipeSupported(recipe string) bool {
-	return recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeMotif || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl || recipe == shedrun.RecipeSampler || recipe == shedrun.RecipeRaddle
+	return recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeMotif || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl || recipe == shedrun.RecipeSampler || recipe == shedrun.RecipeRaddle || recipe == shedrun.RecipeArras
 }
 
 // unsupportedChildRecipeRefusal returns the refusal for a recipe that a task worktree's bootstrap verb cannot run.
 // It wraps battenshed.ErrUnsupportedChildRecipe and names the admitted recipes.
 func unsupportedChildRecipeRefusal(recipe string) error {
-	return fmt.Errorf("%w: only %q, %q, %q, %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q, %q, %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipePawl, recipe)
+	return fmt.Errorf("%w: only %q, %q, %q, %q, %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q, %q, %q, %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipePawl, recipe)
 }
 
 // childSeedParams returns the params of a child's seed.

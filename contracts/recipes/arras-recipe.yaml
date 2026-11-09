@@ -1,0 +1,137 @@
+# arras-recipe.yaml is the recipe that discusses a task too large for one tapestry and splits it into board entries.
+# It runs the Motif block, motif-recipe.yaml's Discussion-Write and Discussion-Review ring,
+# then raddle's Raddle-Write and Raddle-File rows with the split perch between them, so the run lands no code.
+#
+# contract: loom takes the loom contract's record-only form:
+# the Motif block's Discussion-Write is its one record row, and it holds neither a build row nor a Finalize row,
+# so it needs no verify_source.
+# It holds no Record-Write row: Raddle-Write reads the decision record at the path Discussion-Write writes it.
+# The Motif block's block_gate undiscussed enters the block unless the run's board entry is flagged discussed.
+# For a discussed entry the gate writes the stored decision record into _lym/discussion
+# and passes over the block to Raddle-Write, so a run restarted after its Discussion approval resumes at Raddle-Write.
+#
+# The split perch is the Raddle-Review segment over the raddle proposal:
+# Raddle-Bouncer, Raddle-Burler-Review and Raddle-Burler-Fix.
+# Its rows follow the shared-segment ring tapestry-recipe.yaml's header states, with role_prefix split,
+# and their budget is loom.yaml's split_max_bounces, or review_max_bounces when it is absent.
+# Raddle-Bouncer's artifact_paths name the proposal, which records the raddle run's perch mode:
+# the perch's approval files the proposal in place of the operator's.
+# The Bouncer sets no carry_over, so no round writes into the decision record,
+# and no approve_seam, so Discussion-Bouncer's stays the recipe's one approval.
+# It sets no commit_seam either: Raddle-File's commit of the raddle directory commits the approved proposal.
+# It sets no subject, so it keeps no settle record:
+# its next entry over a settled verdict clears its run directory and reviews the new proposal from round 1.
+# A Raddle-File return or a goto into Raddle-Write is such an entry, so a new proposal gets the segment's full budget.
+# Raddle-Burler-Fix is a cold fixer gated by the raddle check, so a fixed proposal passes every proposal check
+# before the next round sees it.
+#
+# Raddle-Write carries no on_stuck: the third failing gate attempt halts the run for its parent.
+# Raddle-Write and Raddle-File share segment Raddle, which holds no Bouncer row,
+# so Raddle-File's Stuck returns to Raddle-Write.
+# Raddle-File's max_bounces stays above its own two-return halt, so the producer, not the budget, halts the third failure.
+# on_done is empty on Raddle-File, which ends the run.
+
+version: 1
+entry: Motif
+contract: loom
+terminals:
+  - Raddle-File
+
+producers:
+  # Motif runs the motif recipe inline: Discussion-Write and the Discussion-Review ring, defined once in motif-recipe.yaml.
+  - name: Motif
+    block: motif
+    block_gate: undiscussed
+    on_done: Raddle-Write
+
+  - name: Raddle-Write
+    engine: RaddleWrite
+    segment: Raddle
+    on_done: Raddle-Bouncer
+    config:
+      # gates holds this row's handoff until the proposal is mechanically valid: the raddle gate re-prompts the live session up to attempts times.
+      gates:
+        - name: raddle
+          attempts: 3
+
+  - name: Raddle-Bouncer
+    engine: Bouncer
+    segment: Raddle-Review
+    on_stuck: Raddle-Burler-Review
+    on_done: Raddle-File
+    config:
+      run_subdir: split
+      role_prefix: split
+      reviewer_fan_setting: loom.split_reviewer_fan
+      auto_accept_setting: loom.split_auto_accept
+      artifact_paths:
+        - _lym/raddle/proposal.yaml
+      rubric_stencil: loom-rubric-raddle-review
+      # escalate_decisions makes this Bouncer send a round's decision-class findings to the run's parent;
+      # Raddle-Burler-Fix sets decisions_escalated so its fixer is given none and posts no notice of its own.
+      escalate_decisions: true
+      # No model/effort/version key: loom.yaml's judge, seed and split_judge keys are the only source of this row's passes' models.
+
+  - name: Raddle-Burler-Review
+    engine: BurlerReview
+    segment: Raddle-Review
+    on_stuck: Raddle-Burler-Fix
+    # BurlerReviewProducer never returns Done, so this edge is unreachable, but an empty on_done ends the run silently.
+    on_done: Raddle-Burler-Fix
+    config:
+      # The same run_subdir value as Raddle-Bouncer makes the three rows write into one shared run directory.
+      run_subdir: split
+      role_prefix: split
+      reviewer_fan_setting: loom.split_reviewer_fan
+      fixer_fan_setting: loom.split_fixer_fan
+      profile:
+        target:
+          paths:
+            - _lym/raddle/proposal.yaml
+        fasit:
+          paths:
+            - _lym/discussion/decision-record.md
+          instructions: >
+            The decision record named above is the authority the split is judged against, every
+            Added after Discussion entry included, and it is read-only: no finding asks to change it.
+            The format authority is the raddle proposal spec, and its mechanical checks are already
+            enforced by the raddle gate over every proposal and every fix, so re-deriving them here
+            is duplicated work.
+        rubric_stencil: loom-rubric-raddle-review
+        # fix-scope: overlay: the proposal is records content reached through the junction,
+        # which only the loop owner commits, and Raddle-File commits the raddle directory.
+        fix-scope: overlay
+        # tool-use is required: the round reads the decision record and the board the split is filed on.
+        tool-use: true
+
+  - name: Raddle-Burler-Fix
+    engine: BurlerFix
+    segment: Raddle-Review
+    on_stuck: Raddle-Bouncer
+    # BurlerFixProducer never returns Done, so this edge is unreachable, but an empty on_done ends the run silently.
+    on_done: Raddle-Bouncer
+    config:
+      run_subdir: split
+      role_prefix: split
+      fixer_fan_setting: loom.split_fixer_fan
+      # decisions_escalated says Raddle-Bouncer's escalate_decisions sends the round's decision-class findings to the parent.
+      decisions_escalated: true
+      # review_row names this segment's review row, which a refusal's way forward sends the operator back to.
+      review_row: Raddle-Burler-Review
+      # The raddle gate holds the fixer's handoff until the fixed proposal passes every proposal check.
+      gates:
+        - name: raddle
+          attempts: 3
+      profile:
+        target:
+          paths:
+            - _lym/raddle/proposal.yaml
+        # fix-scope: overlay, for the reason the review row gives.
+        fix-scope: overlay
+
+  - name: Raddle-File
+    engine: RaddleFile
+    segment: Raddle
+    on_stuck: Raddle-Write
+    max_bounces: 3
+    on_done: ""

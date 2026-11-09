@@ -82,13 +82,16 @@ const (
 	// RecipeRaddle names the raddle recipe, the run that splits a Sketch into the entries the operator approves and files them on the board.
 	// It is the one recipe whose task may carry a Sketch's decision record and its sketch type label.
 	RecipeRaddle = "raddle"
+	// RecipeArras names the arras recipe, the run that discusses a task and splits its decision record into board entries.
+	// Its split perch approves the split in place of the operator, and it lands no code.
+	RecipeArras = "arras"
 )
 
 // RecipeNames returns the closed recipe-name vocabulary as a freshly allocated, sorted slice.
 // Callers must not rely on a fixed order beyond "sorted" and must not mutate the vocabulary through
 // the returned slice affecting any other caller, since each call allocates its own.
 func RecipeNames() []string {
-	return []string{RecipeBatten, RecipeDarn, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
+	return []string{RecipeArras, RecipeBatten, RecipeDarn, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
 }
 
 // ValidateRecipe reports whether name is a legal Seed.Recipe value.

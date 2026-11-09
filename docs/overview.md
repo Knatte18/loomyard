@@ -327,12 +327,12 @@ github.com/Knatte18/loomyard/
 ├── internal/shedcheck/           authoring-time structural checker over an assembled OnDone/OnStuck producer graph
 ├── internal/loomcli/             loom's cobra module: the session bootstrap, arming `internal/shedverbs`' generic status and pause verb bodies, and mounting `internal/sheddriver` for `lym loom drive`
 ├── internal/loomshed/            loom's own row-name constants and producer constructors over `shedengine`
-├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the tapestry, darn, pawl, sampler, motif and raddle recipes from their embedded files, and expands tapestry's `Motif` block from motif, the recipe that makes a sketch, the decision record
+├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the tapestry, darn, pawl, sampler, motif, raddle and arras recipes from their embedded files, and expands tapestry's and arras's `Motif` block from motif, the recipe that makes a sketch, the decision record
 ├── internal/shedrecipe/          the engine registry — the name to `ShedProducer`-constructor mapping a recipe loader resolves each row's `Engine` against
 ├── internal/shedbuild/           the recipe file format's loader and builder — decodes a recipe document and assembles the producer-definition list the shed engine already consumes
 ├── internal/shedverbs/           the generic run/step/status/pause/goto cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
 ├── internal/sheddriver/          the shed layer's Go driver: its settle loop, rule table and hand-back, the tackler agent call, and the `shed` config module, told its paths and seams by the arming module
-├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, motif, raddle, darn, pawl, sampler and batten recipes plus the three CLI seams that register it under the lym root
+├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, motif, raddle, arras, darn, pawl, sampler and batten recipes plus the three CLI seams that register it under the lym root
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push spawn warns) that `loomcli` and `battencli` wrap
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's general ShedProducers, Parent-Align, the PR-Review row and Finalize, shared by reference across producer lists
@@ -1039,7 +1039,7 @@ User-facing modules each get one `lym <module>` namespace:
   A run with no seed gets `tapestry`.
   `lym loom start` never rewrites a recorded recipe.
   The `lym loom` verbs serve loom runs only:
-  a recipe declaring `contract: loom` is served, among them tapestry, motif, raddle, darn, pawl and sampler.
+  a recipe declaring `contract: loom` is served, among them tapestry, motif, raddle, arras, darn, pawl and sampler.
   A run of any other recipe is refused, naming the `lym shed` verbs;
   a seed naming no recipe this lym knows is refused, naming the re-seed.
   A verb that applies to some loom recipes refuses on the others by the recipe's rows, never its name:
@@ -1327,10 +1327,14 @@ User-facing modules each get one `lym <module>` namespace:
   `discussion_judge`/`code_judge` and `discussion_seed`/`code_seed` override the judge and seed per review segment.
   An empty one takes its fallback.
   `<segment>_reviewer_model`/`<segment>_fixer_model` for Discussion and Code override them per review segment.
+  `split_reviewer_model`/`split_fixer_model` do the same for the arras recipe's split perch, Raddle-Review.
+  An empty `split_fixer_model` takes the `raddle` key's model while that key is set.
+  `split_judge` overrides the judge for the split perch, which has no seed key of its own.
   `discussion_reviewer_fan`/`code_reviewer_fan` cluster-review Discussion-Review or Code-Review.
   Each names a `lenses.yaml` fan, or lists one per round.
   `discussion_fixer_fan`/`code_fixer_fan` do the same for the fixer, an empty entry running the single fixer.
   `code_reviewer_fan` is open to the local layer, and the other three are closed to it.
+  `split_reviewer_fan`/`split_fixer_fan` do the same for the split perch, and both are closed to the local layer.
   The assistant reviewer sits beside the Discussion-Review or Code-Review chair.
   `discussion_assist_reviewer_model`/`code_assist_reviewer_model` name its model, as one model-spec or a per-round list.
   An empty entry runs no assistant that round.
@@ -1354,6 +1358,8 @@ User-facing modules each get one `lym <module>` namespace:
   A per-perch 0 takes `review_hard_max_bounces`, and a hard cap below its perch's budget is refused at load.
   `discussion_auto_accept`/`code_auto_accept` make a perch accept a harvested round at a spent budget.
   The perch then skips the soft-cap rule.
+  `split_max_bounces`, `split_hard_max_bounces` and `split_auto_accept` are the split perch's budget, hard cap and auto-accept.
+  `split_auto_accept` defaults to false, and a null `split_max_bounces` and a 0 `split_hard_max_bounces` take the shared values.
   `tapestry.yaml` is the tapestry recipe's module, per-worktree, and holds the plan perch's own keys.
   Those are the `plan` model-spec, `plan_timeout_min`, `implementer` and `plan_lenses`.
   They also include `plan_reviewer_model`/`plan_fixer_model` and `plan_reviewer_fan`/`plan_fixer_fan`.
@@ -1503,6 +1509,7 @@ User-facing modules each get one `lym <module>` namespace:
   The keys are `discussion_reviewer_fan` and `code_reviewer_fan` in `loom.yaml`.
   The third is `plan_reviewer_fan` in `tapestry.yaml`.
   Each has a `*_fixer_fan` partner, and the last pair serves a darn run's Code-Review too.
+  The arras recipe's split perch has its own pair, `split_reviewer_fan` and `split_fixer_fan` in `loom.yaml`.
   Each perch's `*_assist_reviewer_fan` key names the fan its assistant reviewer runs.
   The forks of a code perch reach the diff through read-only git.
   `lenses.yaml`'s `review-code` and `fix-code` fans carry lenses for a committed diff.
@@ -1527,10 +1534,11 @@ User-facing modules each get one `lym <module>` namespace:
 - **batten** — drives one task worktree's whole lifecycle as a single Shed run from the hub's prime worktree.
   The lifecycle is to create the worktree, seed the child's own inner run from the Board task's own `recipe`,
   run it to a terminal state, land it into the prime, and tear down.
-  The `recipe` is one of `tapestry`, `motif`, `raddle`, `darn` and `sampler`.
+  The `recipe` is one of `tapestry`, `motif`, `raddle`, `arras`, `darn` and `sampler`.
   An empty `recipe` means `board.yaml`'s `default_recipe`.
   `motif` is for a Discussion-only child that lands no code.
   `raddle` is for a child that files a Sketch's split on the board.
+  `arras` is for a child that discusses a task and splits its decision record into board entries.
   `darn` is for a darn child, and `sampler` for a sampler child.
   The code is `internal/battenshed`, `internal/battenrecipe` and `internal/battencli`.
   Its verbs are `lym batten run|step|status|pause|goto|cancel <run-id>` and `lym batten cleanup [--apply]`.
@@ -1796,7 +1804,7 @@ and the baseline capture is a detached registered process, not a gate tier.
 See [internal/driftengine](../internal/driftengine/doc.go).
 
 The batten Shed nests loom's, as its own recipe.
-Its `Run-Shed` row seeds a task's run, tapestry, motif, raddle, darn or sampler and drives it as a child process,
+Its `Run-Shed` row seeds a task's run, tapestry, motif, raddle, arras, darn or sampler and drives it as a child process,
 and it polls that run's own persisted status for the verdict.
 There are two status files by design:
 the task's, committed on the task branch, and batten's own, durable under prime's own `_lym/shed/<slug>/`.

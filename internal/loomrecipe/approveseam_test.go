@@ -153,7 +153,7 @@ func TestDiscussionApprovalRowsCarryApproveSeam(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	for _, recipe := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler} {
+	for _, recipe := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeArras} {
 		isLoom, err := IsLoom(recipe)
 		if err != nil || !isLoom {
 			continue

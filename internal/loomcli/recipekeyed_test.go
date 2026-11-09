@@ -21,7 +21,7 @@ import (
 )
 
 // TestRecipeKeyedWiring asserts that each recipe-keyed branch picks the answer the recipe's rows and keys give.
-// It runs for tapestry, motif, darn, pawl, sampler and raddle.
+// It runs for tapestry, motif, darn, pawl, sampler, raddle and arras.
 func TestRecipeKeyedWiring(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -48,6 +48,7 @@ func TestRecipeKeyedWiring(t *testing.T) {
 		{"Pawl", shedrun.RecipePawl, false, false, "a beam's life", false},
 		{"Sampler", shedrun.RecipeSampler, true, false, "made with the operator in one interactive session", false},
 		{"Raddle", shedrun.RecipeRaddle, false, false, "splits a Sketch's stored decision record into board entries the operator approves", false},
+		{"Arras", shedrun.RecipeArras, false, false, "an arras run, a task's Discussion followed by its split into board entries its split perch reviews", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -7,16 +7,19 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // standIn returns a toolchain whose go command is the test binary acting as a stand-in.
 // It also returns the file the stand-in records its arguments into.
+// At cleanup it kills any child the stand-in left running, so no child outlives the package's run.
 func standIn(t *testing.T) (testcover.Toolchain, string) {
 	t.Helper()
 	testBinary, err := os.Executable()
@@ -24,6 +27,18 @@ func standIn(t *testing.T) (testcover.Toolchain, string) {
 		t.Fatal(err)
 	}
 	record := filepath.Join(t.TempDir(), "args")
+	t.Cleanup(func() {
+		recorded, err := os.ReadFile(record + standInChildPIDSuffix)
+		if err != nil {
+			return
+		}
+		pid, err := strconv.Atoi(string(recorded))
+		if err != nil {
+			t.Errorf("stand-in child pid file holds %q: %v", recorded, err)
+			return
+		}
+		_ = proc.KillPID(pid)
+	})
 	return testcover.Toolchain{Go: testBinary, Env: append(os.Environ(), standInRecordEnv+"="+record)}, record
 }
 

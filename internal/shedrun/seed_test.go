@@ -171,7 +171,7 @@ func TestValidateRecipe(t *testing.T) {
 	}{
 		{"tapestry", RecipeTapestry, false},
 		{"motif", RecipeMotif, false},
-		{"former arras name", "arras", true},
+		{"arras", RecipeArras, false},
 		{"batten", RecipeBatten, false},
 		{"darn", RecipeDarn, false},
 		{"pawl", RecipePawl, false},
@@ -203,7 +203,7 @@ func TestValidateRecipe(t *testing.T) {
 func TestRecipeNames(t *testing.T) {
 	tiergate.Require(t, 0)
 	got := RecipeNames()
-	want := []string{RecipeBatten, RecipeDarn, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
+	want := []string{RecipeArras, RecipeBatten, RecipeDarn, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
 	if len(got) != len(want) {
 		t.Fatalf("RecipeNames() = %v; want %v", got, want)
 	}

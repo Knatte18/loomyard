@@ -50,6 +50,7 @@ func TestLoomRubrics(t *testing.T) {
 		{"loom-rubric-discussion-review", LoomRubricDiscussionReview, "loom-template-discussion", true},
 		{"loom-rubric-plan-review", LoomRubricPlanReview, "loom-template-plan", true},
 		{"loom-rubric-code-review", LoomRubricCodeReview, "", true},
+		{"loom-rubric-raddle-review", LoomRubricRaddleReview, "raddle-template-agent", true},
 	}
 
 	for _, tt := range tests {

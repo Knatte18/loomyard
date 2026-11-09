@@ -56,6 +56,14 @@
 // Raddle-File's Stuck returns to Raddle-Write,
 // and a third failing gate attempt of Raddle-Write halts the run for its parent.
 //
+// The arras recipe discusses a task and splits its decision record into board entries, landing no code.
+// It reads `Motif → Raddle-Write → Raddle-Review → Raddle-File`, in the loom contract's record-only form.
+// Its Motif block is tapestry's, so a discussed entry's stored record seeds the run and it goes on at Raddle-Write.
+// Raddle-Review is the split perch: a Bouncer ring over the raddle proposal.
+// Its cold fixer is gated by the `raddle` check.
+// Its Bouncer holds no subject seam, so a fresh entry over its settled verdict reviews the new proposal from round 1.
+// The perch's rows read loom.yaml's `split_*` keys, and its approval files the proposal in place of the operator's.
+//
 // One table, embeddedRecipes, maps each recipe name to its embedded bytes.
 // It is the resolver every expansion is told.
 // Every accessor reads the expanded recipe:
@@ -131,7 +139,7 @@
 // AmendmentTarget answers the optional `amendment_target` key of a recipe.
 // That key is the row a plan amendment routes to, empty when the recipe sets none.
 //
-// Every review segment of the tapestry and darn recipes sets one `role_prefix`.
+// Every review segment of the tapestry, darn and arras recipes sets one `role_prefix`.
 // It sits on the segment's Bouncer, BurlerReview and BurlerFix rows, and no two segments share a value.
 // A test pins that value.
 // Another test, the carry-over check, pins that each Bouncer row's `carry_over` names the row's own segment.

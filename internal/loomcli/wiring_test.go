@@ -355,6 +355,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 			"Discussion-Review": want.Discussion,
 			"Plan-Review":       want.Plan,
 			"Code-Review":       want.Code,
+			"Raddle-Review":     want.Split,
 		} {
 			if got := c.env.Segments[segment].Models; !reflect.DeepEqual(got, wantModels) {
 				t.Errorf("c.env.Segments[%q].Models = %+v; want %+v", segment, got, wantModels)
@@ -976,6 +977,15 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			Bouncer:    wantBouncerModels["Code-Review"],
 			Assist:     defaultAssist("loom", "code"),
 			MaxBounces: 1, MaxBouncesKey: "code_max_bounces",
+			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
+		},
+		// The split perch has no assistant: its lists and keys are empty, its bound the default one.
+		// Its empty reviewer key takes reviewer_model, and its empty fixer key takes the raddle key's model.
+		"Raddle-Review": {
+			Models: c.env.Segments["Raddle-Review"].Models, ReviewKey: loomKey("reviewer_model"), FixKey: loomKey("raddle"),
+			Bouncer:    shedadapters.BouncerModels{Seed: wantBouncerModels["Discussion-Review"].Seed, Judge: wantBouncerModels["Discussion-Review"].Judge},
+			Assist:     shedadapters.AssistSettings{Timeout: 60 * time.Minute},
+			MaxBounces: 2, MaxBouncesKey: "split_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 	}

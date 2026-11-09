@@ -102,7 +102,7 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 // The tapestry recipe holds a block row, so its parsed recipe is expanded before it is built.
 func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
 	tiergate.Require(t, 0)
-	for name, source := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe, "pawl": recipes.PawlRecipe, "motif": recipes.MotifRecipe} {
+	for name, source := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe, "pawl": recipes.PawlRecipe, "motif": recipes.MotifRecipe, "arras": recipes.ArrasRecipe} {
 		t.Run(name, func(t *testing.T) {
 			env, _ := testEnv(t)
 
@@ -237,6 +237,7 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 		{shedrun.RecipeSampler, recipes.SamplerRecipe},
 		{shedrun.RecipeMotif, recipes.MotifRecipe},
 		{shedrun.RecipeRaddle, recipes.RaddleRecipe},
+		{shedrun.RecipeArras, recipes.ArrasRecipe},
 	} {
 		t.Run(tt.recipe, func(t *testing.T) {
 			parsed, err := shedbuild.Parse(tt.source)
@@ -351,6 +352,13 @@ func TestEntryNumbers(t *testing.T) {
 		}},
 		{"motif", shedrun.RecipeMotif, map[string]int{
 			"Discussion-Write": 1, "Discussion-Bouncer": 2, "Discussion-Burler-Review": 2, "Discussion-Burler-Fix": 2,
+		}},
+		{"arras", shedrun.RecipeArras, map[string]int{
+			"Motif": 1, "Discussion-Write": 2,
+			"Discussion-Bouncer": 3, "Discussion-Burler-Review": 3, "Discussion-Burler-Fix": 3,
+			"Raddle-Write":   4,
+			"Raddle-Bouncer": 5, "Raddle-Burler-Review": 5, "Raddle-Burler-Fix": 5,
+			"Raddle-File": 6,
 		}},
 		{"batten", shedrun.RecipeBatten, map[string]int{"Run-Shed": 6, "Land": 7}},
 		{"darn", shedrun.RecipeDarn, map[string]int{"Record-Write": 2, "Drift-Baseline": 3, "Drift-Await": 4, "Drift-Expect": 5, "Darn-Write": 6, "Drift-Verify": 7, "Code-Bouncer": 8, "Code-Burler-Review": 8, "Code-Burler-Fix": 8, "Drift-Recheck": 9, "Describe": 10, "PR-Review": 11, "Finalize": 12, "Friction-Reflect": 13}},

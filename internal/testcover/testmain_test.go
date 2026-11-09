@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,9 @@ const (
 	standInProfileLine = "m/p/x.go:3.21,5.2 1 1"
 )
 
+// standInChildPIDSuffix, appended to a stand-in's record path, names the file standInHoldsPipe records its child's pid into.
+const standInChildPIDSuffix = ".child-pid"
+
 // standInHangBuildEnv makes the stand-in `go test -c` never end.
 const standInHangBuildEnv = "TESTCOVER_STAND_IN_HANG_BUILD"
 
@@ -51,7 +55,8 @@ func TestMain(m *testing.M) {
 // As a coverage binary, it reports the outcome of the one test its `-test.run` names.
 // It writes a profile for a passing test, and for a skipped one that standInSkipProfile names.
 // The test standInHang never ends on its own.
-// The test standInHoldsPipe passes and exits, leaving a child that holds the output pipe for standInChildSleep.
+// The test standInHoldsPipe passes and exits, leaving a child that holds the output pipe for standInChildSleep;
+// it records the child's pid in the file standInChildPIDSuffix names.
 func runStandIn(record string, args []string) int {
 	if err := os.WriteFile(record, []byte(strings.Join(args, "\n")), 0o644); err != nil {
 		return 1
@@ -104,6 +109,9 @@ func runStandIn(record string, args []string) int {
 		child.Env = append(os.Environ(), standInRecordEnv+"="+record+".child")
 		child.Stdout, child.Stderr = os.Stdout, os.Stderr
 		if err := child.Start(); err != nil {
+			return 1
+		}
+		if err := os.WriteFile(record+standInChildPIDSuffix, []byte(strconv.Itoa(child.Process.Pid)), 0o644); err != nil {
 			return 1
 		}
 	case standInSleeps:

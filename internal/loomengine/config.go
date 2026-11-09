@@ -450,14 +450,20 @@ type Config struct {
 	PlanFixerModel          burlerengine.ModelSpecList `yaml:"-"`
 	CodeReviewerModel       burlerengine.ModelSpecList `yaml:"code_reviewer_model"`
 	CodeFixerModel          burlerengine.ModelSpecList `yaml:"code_fixer_model"`
+	// SplitReviewerModel and SplitFixerModel are the split perch's own lists.
+	// An empty SplitFixerModel takes the raddle key's model, so the split is fixed by a model of the raddle agent's strength.
+	SplitReviewerModel burlerengine.ModelSpecList `yaml:"split_reviewer_model"`
+	SplitFixerModel    burlerengine.ModelSpecList `yaml:"split_fixer_model"`
 
 	// Each review segment's per-round reviewer and fixer fan lists.
 	DiscussionReviewerFan lenses.FanList `yaml:"discussion_reviewer_fan"`
 	PlanReviewerFan       lenses.FanList `yaml:"-"`
 	CodeReviewerFan       lenses.FanList `yaml:"code_reviewer_fan"`
+	SplitReviewerFan      lenses.FanList `yaml:"split_reviewer_fan"`
 	DiscussionFixerFan    lenses.FanList `yaml:"discussion_fixer_fan"`
 	PlanFixerFan          lenses.FanList `yaml:"-"`
 	CodeFixerFan          lenses.FanList `yaml:"code_fixer_fan"`
+	SplitFixerFan         lenses.FanList `yaml:"split_fixer_fan"`
 
 	// Each review segment's assistant reviewer model list and fan list, one entry per round;
 	// an empty model entry runs no assistant that round.
@@ -477,6 +483,7 @@ type Config struct {
 	DiscussionJudge    string `yaml:"discussion_judge"`
 	PlanJudge          string `yaml:"-"`
 	CodeJudge          string `yaml:"code_judge"`
+	SplitJudge         string `yaml:"split_judge"`
 	DiscussionSeed     string `yaml:"discussion_seed"`
 	PlanSeed           string `yaml:"-"`
 	CodeSeed           string `yaml:"code_seed"`
@@ -534,6 +541,9 @@ type Config struct {
 	DiscussionAutoAccept     bool `yaml:"discussion_auto_accept"`
 	PlanAutoAccept           bool `yaml:"-"`
 	CodeAutoAccept           bool `yaml:"code_auto_accept"`
+	SplitMaxBounces          *int `yaml:"split_max_bounces"`
+	SplitHardMaxBounces      int  `yaml:"split_hard_max_bounces"`
+	SplitAutoAccept          bool `yaml:"split_auto_accept"`
 
 	// PRReviewAskParent makes the PR-Review row ask the parent orch for a review of the run's open pull request.
 	// It is open to the local layer, so a task's run_settings turns it on or off for one run.
@@ -589,8 +599,9 @@ func ConfigOpenMaps() []string {
 		"reviewer_model", "fixer_model",
 		"discussion_reviewer_model", "discussion_fixer_model",
 		"code_reviewer_model", "code_fixer_model",
-		"discussion_reviewer_fan", "code_reviewer_fan",
-		"discussion_fixer_fan", "code_fixer_fan",
+		"split_reviewer_model", "split_fixer_model",
+		"discussion_reviewer_fan", "code_reviewer_fan", "split_reviewer_fan",
+		"discussion_fixer_fan", "code_fixer_fan", "split_fixer_fan",
 		"discussion_assist_reviewer_model", "code_assist_reviewer_model",
 		"discussion_assist_reviewer_fan", "code_assist_reviewer_fan",
 		"discussion_advisors",
@@ -637,6 +648,11 @@ func ConfigSpec() configengine.Spec {
 			"code_reviewer_fan":         none,
 			"discussion_fixer_fan":      guard,
 			"code_fixer_fan":            guard,
+			"split_reviewer_model":      none,
+			"split_fixer_model":         none,
+			"split_reviewer_fan":        guard,
+			"split_fixer_fan":           guard,
+			"split_judge":               none,
 
 			"discussion_assist_reviewer_model": none,
 			"code_assist_reviewer_model":       none,
@@ -697,6 +713,8 @@ func segmentModelKeys(cfg Config) []segmentModelList {
 		{"discussion_fixer_model", cfg.DiscussionFixerModel},
 		{"code_reviewer_model", cfg.CodeReviewerModel},
 		{"code_fixer_model", cfg.CodeFixerModel},
+		{"split_reviewer_model", cfg.SplitReviewerModel},
+		{"split_fixer_model", cfg.SplitFixerModel},
 	}
 }
 
@@ -753,6 +771,8 @@ func fanKeys(cfg Config) []lenses.FanKey {
 		{Key: "code_reviewer_fan", Fans: cfg.CodeReviewerFan},
 		{Key: "discussion_fixer_fan", Fans: cfg.DiscussionFixerFan},
 		{Key: "code_fixer_fan", Fans: cfg.CodeFixerFan},
+		{Key: "split_reviewer_fan", Fans: cfg.SplitReviewerFan},
+		{Key: "split_fixer_fan", Fans: cfg.SplitFixerFan},
 		{Key: "discussion_assist_reviewer_fan", Fans: cfg.DiscussionAssistReviewerFan},
 		{Key: "code_assist_reviewer_fan", Fans: cfg.CodeAssistReviewerFan},
 	}
@@ -1303,6 +1323,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		{"seed", cfg.Seed},
 		{"discussion_judge", cfg.DiscussionJudge},
 		{"code_judge", cfg.CodeJudge},
+		{"split_judge", cfg.SplitJudge},
 		{"discussion_seed", cfg.DiscussionSeed},
 		{"code_seed", cfg.CodeSeed},
 	} {
@@ -1379,10 +1400,12 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		PerchSoft: map[string]*int{
 			string(PerchDiscussion): cfg.DiscussionMaxBounces,
 			string(PerchCode):       cfg.CodeMaxBounces,
+			string(PerchSplit):      cfg.SplitMaxBounces,
 		},
 		PerchHard: map[string]int{
 			string(PerchDiscussion): cfg.DiscussionHardMaxBounces,
 			string(PerchCode):       cfg.CodeHardMaxBounces,
+			string(PerchSplit):      cfg.SplitHardMaxBounces,
 		},
 	}); err != nil {
 		return Config{}, err

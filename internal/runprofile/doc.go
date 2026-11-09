@@ -18,9 +18,10 @@
 // The template's starting profiles are a ladder of review rounds per perch, `speed`, `light`, `solid` and `wide`.
 // Each perch's hard cap is its rounds plus one.
 // `docs` is a darn-only profile for prose and config value edits.
-// The template's defaults are `solid` for tapestry and motif and `light` for darn, pawl and raddle.
+// The template's defaults are `solid` for tapestry, motif and arras and `light` for darn, pawl and raddle.
 // Sampler has no default.
 // Each ladder profile's motif block carries its tapestry block's Discussion perch values, a motif run's only perch.
+// Each ladder profile's arras block carries the same Discussion perch values, and the same rounds for the split perch.
 // Each ladder profile's pawl block carries the same perch values as its darn block.
 // Its sampler block carries them too, and also turns the review on with `sampler.code_review` from `light` up.
 // A `speed` sampler run and a sampler run naming no profile skip the Code-Review perch.

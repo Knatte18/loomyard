@@ -34,6 +34,7 @@
 // The tree-scope verify seams follow `verify_source: tree_scope`.
 // The Darn-Write seams are filled for a recipe with a Darn-Write row.
 // The perch-off reading follows the Code-Review rows' entry gate as well as the budget.
+// The arras recipe's split perch, the Raddle-Review segment, reads loom.yaml's `split_*` keys as perch `split`.
 // The merge fixer's plan directory and failure tracer follow a Plan-Write row.
 // A recipe with a SamplerSession row loads the hub's `sampler.yaml` strictly in `wire`.
 // `wire` refuses a malformed file before any row builds, and it fills the row's seams from `samplerDeps`.
@@ -61,7 +62,7 @@
 // Each status transition writes `<state> · <producer>` on the run's board entry, the run's start write included.
 // The entry thus names the first row while it runs.
 // A finished run of a recipe with a Finalize row writes nothing, its landing having marked the entry done.
-// A finished run of a recipe with a RaddleFile row, a raddle run, writes nothing either.
+// A finished run of a recipe with a RaddleFile row, a raddle or arras run, writes nothing either.
 // Its Raddle-File row ended the entry done instead of as a Sketch.
 // A finished run of a recipe with neither a Finalize row nor a RaddleFile row, a motif run, makes its entry a Sketch.
 // A Sketch is a note of the built-in type `sketch`.

@@ -83,6 +83,11 @@ var recipes = map[string]entry{
 		Verbs:         []string{"run", "step", "status", "pause", "goto"},
 		BootstrapVerb: loomcli.BootstrapVerb,
 	},
+	shedrun.RecipeArras: {
+		Arm:           loomcli.ArmAt,
+		Verbs:         []string{"run", "step", "status", "pause", "goto"},
+		BootstrapVerb: loomcli.BootstrapVerb,
+	},
 }
 
 // lookup returns the entry for the recipe name, or an error for an unknown name.

@@ -909,7 +909,7 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 	if want := []string{"docs", "light", "solid", "speed", "wide"}; !slices.Equal(names, want) {
 		t.Errorf("profile names = %v, want %v", names, want)
 	}
-	if want := map[string]any{"tapestry": "solid", "motif": "solid", "darn": "light", "pawl": "light", "raddle": "light"}; !reflect.DeepEqual(result["defaults"], want) {
+	if want := map[string]any{"tapestry": "solid", "arras": "solid", "motif": "solid", "darn": "light", "pawl": "light", "raddle": "light"}; !reflect.DeepEqual(result["defaults"], want) {
 		t.Errorf("defaults = %v, want %v", result["defaults"], want)
 	}
 

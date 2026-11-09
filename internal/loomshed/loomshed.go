@@ -51,6 +51,12 @@ const (
 	// NameRaddleFile is the raddle recipe's Go row that files the approved proposal on the board.
 	NameRaddleFile = "Raddle-File"
 
+	// NameRaddleBouncer, NameRaddleBurlerReview and NameRaddleBurlerFix are the arras recipe's split perch.
+	// They are the Raddle-Review ring over the raddle proposal.
+	NameRaddleBouncer      = "Raddle-Bouncer"
+	NameRaddleBurlerReview = "Raddle-Burler-Review"
+	NameRaddleBurlerFix    = "Raddle-Burler-Fix"
+
 	NameDriftBaseline = "Drift-Baseline"
 	NameDriftAwait    = "Drift-Await"
 	NameDriftExpect   = "Drift-Expect"

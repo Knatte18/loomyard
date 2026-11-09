@@ -76,6 +76,11 @@ var InterruptPolicies = map[string]string{
 	// Every step of Raddle-File is idempotent, so a re-invocation finishes whatever a crash left.
 	NameRaddleFile: shedverbs.InterruptPolicyReinvoke,
 
+	// The split perch's rows probe for a live session and resume it, as every review segment's rows do.
+	NameRaddleBouncer:      shedverbs.InterruptPolicyReinvoke,
+	NameRaddleBurlerReview: shedverbs.InterruptPolicyReinvoke,
+	NameRaddleBurlerFix:    shedverbs.InterruptPolicyReinvoke,
+
 	// Each pawl row spawns no agent and is idempotent, so re-invoking an interrupted one repeats nothing.
 	pawlengine.NameBeamUp:    shedverbs.InterruptPolicyReinvoke,
 	pawlengine.NameBeamAwait: shedverbs.InterruptPolicyReinvoke,

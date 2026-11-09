@@ -17,13 +17,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly asserts both switches are true on exactly two rows.
-// Those rows are Discussion-Bouncer and Discussion-Burler-Fix in the tapestry recipe; no darn row carries them.
+// TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly asserts which rows carry both switches.
+// In the tapestry recipe they are Discussion-Bouncer and Discussion-Burler-Fix; no darn row carries them.
+// The arras recipe carries them on those two rows and on its split perch's Raddle-Bouncer and Raddle-Burler-Fix.
 // The Plan-Review and Code-Review rows therefore keep the fix row's own parent notice.
 func TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn} {
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeArras} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			recipe, err := parseEmbeddedRecipe(name)
@@ -42,9 +43,13 @@ func TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly(t *testing.T) {
 			sort.Strings(gotEscalate)
 			sort.Strings(gotEscalated)
 			var wantEscalate, wantEscalated []string
-			if name == shedrun.RecipeTapestry {
+			switch name {
+			case shedrun.RecipeTapestry:
 				wantEscalate = []string{"Discussion-Bouncer"}
 				wantEscalated = []string{"Discussion-Burler-Fix"}
+			case shedrun.RecipeArras:
+				wantEscalate = []string{"Discussion-Bouncer", "Raddle-Bouncer"}
+				wantEscalated = []string{"Discussion-Burler-Fix", "Raddle-Burler-Fix"}
 			}
 			if !reflect.DeepEqual(gotEscalate, wantEscalate) {
 				t.Errorf("rows with escalate_decisions = %v; want %v", gotEscalate, wantEscalate)

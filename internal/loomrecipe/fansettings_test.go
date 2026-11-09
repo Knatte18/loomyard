@@ -108,9 +108,13 @@ func TestShippedRecipes_FanSettingsAgreeWithinSegment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("shedbuild.Parse(recipes.PawlRecipe) error = %v; want nil", err)
 	}
+	arras, err := parseEmbeddedRecipe(shedrun.RecipeArras)
+	if err != nil {
+		t.Fatalf("parseEmbeddedRecipe(arras) error = %v; want nil", err)
+	}
 
 	t.Run("ShippedRecipesAgree", func(t *testing.T) {
-		for name, recipe := range map[string]shedbuild.Recipe{"tapestry": loom, "darn": darn, "pawl": pawl} {
+		for name, recipe := range map[string]shedbuild.Recipe{"tapestry": loom, "darn": darn, "pawl": pawl, "arras": arras} {
 			if mismatches := fanSettingMismatches(recipe); len(mismatches) != 0 {
 				t.Errorf("fanSettingMismatches(%s) = %q; want none", name, mismatches)
 			}
@@ -129,6 +133,8 @@ func TestShippedRecipes_FanSettingsAgreeWithinSegment(t *testing.T) {
 			{loom, "Plan-Review", "tapestry.plan_reviewer_fan", "tapestry.plan_fixer_fan", "tapestry.plan_auto_accept"},
 			{loom, "Code-Review", "loom.code_reviewer_fan", "loom.code_fixer_fan", "loom.code_auto_accept"},
 			{darn, "Code-Review", "loom.code_reviewer_fan", "loom.code_fixer_fan", "loom.code_auto_accept"},
+			{arras, "Discussion-Review", "loom.discussion_reviewer_fan", "loom.discussion_fixer_fan", "loom.discussion_auto_accept"},
+			{arras, "Raddle-Review", "loom.split_reviewer_fan", "loom.split_fixer_fan", "loom.split_auto_accept"},
 		}
 		for _, p := range perches {
 			want := map[string]map[string]string{

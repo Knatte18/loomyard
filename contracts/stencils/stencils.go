@@ -194,6 +194,11 @@ var LoomRubricDiscussionReview []byte
 //go:embed loom/loom-rubric-plan-review.md
 var LoomRubricPlanReview []byte
 
+// LoomRubricRaddleReview is the Raddle-Review rubric, read by every row of the split perch over a raddle proposal.
+//
+//go:embed loom/loom-rubric-raddle-review.md
+var LoomRubricRaddleReview []byte
+
 // LoomRubricCodeReview is the Code-Review rubric.
 // Every row of the Code-Review perch reads it, in whichever recipes hold one.
 //
@@ -754,6 +759,7 @@ var entries = []registryEntry{
 	{"loom-template-arbiter", &LoomTemplateArbiter},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
+	{"loom-rubric-raddle-review", &LoomRubricRaddleReview},
 	{"loom-rubric-code-review", &LoomRubricCodeReview},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"burler-step-1-explore", &BurlerStep1Explore},

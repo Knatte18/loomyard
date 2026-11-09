@@ -5,6 +5,7 @@
 //
 // The recipe names a seed may hold are the closed vocabulary RecipeNames returns.
 // Motif, the recipe that makes a sketch, the decision record, runs alone and is also the tapestry recipe's Motif block.
+// Arras runs it as its Motif block too, then splits the record into board entries.
 //
 // "Seed" here names one thing only: the run-identity artefact this package reads and writes via ReadSeed and WriteSeed.
 // It is not the status file; this package does not touch a status file.

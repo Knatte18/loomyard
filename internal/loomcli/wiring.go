@@ -1200,6 +1200,7 @@ var loomPerches = map[string]loomengine.Perch{
 	loomshed.NameDiscussionBouncer: loomengine.PerchDiscussion,
 	loomshed.NamePlanBouncer:       loomengine.PerchPlan,
 	loomshed.NameCodeBouncer:       loomengine.PerchCode,
+	loomshed.NameRaddleBouncer:     loomengine.PerchSplit,
 }
 
 // loomSegmentPerches maps each loom review segment's name to its review perch.
@@ -1209,6 +1210,7 @@ var loomSegmentPerches = map[string]loomengine.Perch{
 	"Discussion-Review": loomengine.PerchDiscussion,
 	planReviewSegment:   loomengine.PerchPlan,
 	"Code-Review":       loomengine.PerchCode,
+	"Raddle-Review":     loomengine.PerchSplit,
 }
 
 // loomSegmentBudgets maps each loom review segment to its perch's resolved soft bounce cap.
@@ -1252,6 +1254,7 @@ func segmentAssistBounds(location *lymcwd.Location, geom burlerengine.Geometry, 
 // Models and their keys come from review, and the Bouncer pair comes from judge.
 // The budget and hard cap, with their keys, come from cfg.Caps, which resolves them through reviewbudget.
 // The assistant's lists come from review too, and each segment's assistant takes its perch's entry of assistBounds.
+// The split perch has no assistant, so its segment's assistant lists are empty.
 func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings, assistBounds map[loomengine.Perch]assistBound) map[string]shedrecipe.SegmentSettings {
 	assists := map[loomengine.Perch]loomengine.AssistModels{
 		loomengine.PerchDiscussion: review.DiscussionAssist,
@@ -1262,16 +1265,19 @@ func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings
 		loomengine.PerchDiscussion: review.Discussion,
 		loomengine.PerchPlan:       review.Plan,
 		loomengine.PerchCode:       review.Code,
+		loomengine.PerchSplit:      review.Split,
 	}
 	keys := map[loomengine.Perch]loomengine.SegmentKeys{
 		loomengine.PerchDiscussion: review.DiscussionKeys,
 		loomengine.PerchPlan:       review.PlanKeys,
 		loomengine.PerchCode:       review.CodeKeys,
+		loomengine.PerchSplit:      review.SplitKeys,
 	}
 	bouncers := map[loomengine.Perch]loomengine.BouncerModels{
 		loomengine.PerchDiscussion: judge.Discussion,
 		loomengine.PerchPlan:       judge.Plan,
 		loomengine.PerchCode:       judge.Code,
+		loomengine.PerchSplit:      judge.Split,
 	}
 	settings := make(map[string]shedrecipe.SegmentSettings, len(loomSegmentPerches))
 	for segment, perch := range loomSegmentPerches {

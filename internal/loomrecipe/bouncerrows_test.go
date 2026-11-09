@@ -203,6 +203,7 @@ func TestBouncerRunSubdir(t *testing.T) {
 		loomshed.NameDiscussionBouncer: "discussion",
 		loomshed.NamePlanBouncer:       "plan",
 		loomshed.NameCodeBouncer:       "code",
+		loomshed.NameRaddleBouncer:     "split",
 	}
 	for row, want := range bouncers {
 		got, ok, err := BouncerRunSubdir(row)

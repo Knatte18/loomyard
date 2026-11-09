@@ -761,7 +761,7 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			module:        "profiles",
 			hubFile:       "# operator note\ndefaults: {loom: solid}\nsolid:\n  loom:\n    loom: {plan_max_bounces: 7}\n",
 			wantSeed:      SeedHub,
-			wantContains:  []string{"# operator note", "defaults: {tapestry: solid, motif: solid, darn: light, pawl: light, raddle: light}", "  tapestry:\n    loom: {plan_max_bounces: 7, discussion_max_bounces: 2,"},
+			wantContains:  []string{"# operator note", "defaults: {tapestry: solid, motif: solid, darn: light, pawl: light, raddle: light, arras: solid}", "  tapestry:\n    loom: {plan_max_bounces: 7, discussion_max_bounces: 2,"},
 			wantAbsent:    []string{"loom: solid", "  loom:\n    loom:"},
 			wantMigrated:  []string{"defaults.loom: renamed to defaults.tapestry", "solid.loom: renamed to solid.tapestry"},
 			wantUnsettled: []string{},

@@ -23,15 +23,18 @@ type ReviewSettings struct {
 	// Models holds the resolved shared reviewer and fixer model lists.
 	// They are the fallback of every segment whose own key is empty.
 	Models burlerengine.RoundModels
-	// Discussion, Plan and Code hold each loom review segment's resolved models.
+	// Discussion, Plan, Code and Split hold each loom review segment's resolved models.
 	// A segment uses its own list where loom.yaml sets one, else the shared list in Models.
+	// The split perch's fixer falls back to the raddle key's model instead.
 	Discussion burlerengine.RoundModels
 	Plan       burlerengine.RoundModels
 	Code       burlerengine.RoundModels
-	// DiscussionKeys, PlanKeys and CodeKeys name the config keys each of those segments' models came from.
+	Split      burlerengine.RoundModels
+	// DiscussionKeys, PlanKeys, CodeKeys and SplitKeys name the config keys each of those segments' models came from.
 	DiscussionKeys SegmentKeys
 	PlanKeys       SegmentKeys
 	CodeKeys       SegmentKeys
+	SplitKeys      SegmentKeys
 	// Timeout is one review round's shuttle-run deadline, derived from cfg.ReviewTimeoutMin.
 	Timeout time.Duration
 	// DiscussionAssist, PlanAssist and CodeAssist hold each loom review segment's resolved assistant reviewer lists.
@@ -129,12 +132,14 @@ type JudgeSettings struct {
 	Discussion BouncerModels
 	Plan       BouncerModels
 	Code       BouncerModels
+	Split      BouncerModels
 }
 
 // ResolveJudge resolves each review segment's judge and seed models from cfg.
 // The caller threads the returned JudgeSettings onto shedrecipe.Env.
 // A segment's judge is its own judge key when non-empty, else judge.
 // A segment's seed is its own seed key when non-empty, else seed when non-empty, else the segment's resolved judge.
+// The split perch has no seed key of its own.
 // An error names the key the failing value came from.
 func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
 	discussion, err := resolveSegmentBouncerModels("discussion", cfg.DiscussionJudge, cfg.DiscussionSeed, cfg, reg)
@@ -149,7 +154,11 @@ func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
 	if err != nil {
 		return JudgeSettings{}, err
 	}
-	return JudgeSettings{Discussion: discussion, Plan: plan, Code: code}, nil
+	split, err := resolveSegmentBouncerModels(string(PerchSplit), cfg.SplitJudge, "", cfg, reg)
+	if err != nil {
+		return JudgeSettings{}, err
+	}
+	return JudgeSettings{Discussion: discussion, Plan: plan, Code: code, Split: split}, nil
 }
 
 // resolveSegmentBouncerModels resolves one segment's judge and seed models.
@@ -193,8 +202,12 @@ func resolveKeyedModelChoice(key, raw string, reg modelspec.Registry) (shuttleen
 	return shuttleengine.NewModelChoice(resolved), nil
 }
 
+// splitFixerFallbackKey is the loom.yaml key whose model an empty split_fixer_model takes: the raddle agent's.
+const splitFixerFallbackKey = "raddle"
+
 // ResolveReview resolves every entry of the shared reviewer and fixer model-spec lists through reg.
 // It also resolves the list each loom segment sets, and pairs the result with the review round timeout.
+// The split perch's fixer list, when unset, is the raddle key's model while that key is set.
 // It returns the ReviewSettings the caller threads onto shedrecipe.Env.
 // Every entry is resolved at run start, so a bad later-round entry fails before round 1.
 func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
@@ -211,6 +224,11 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 		Models:  burlerengine.RoundModels{Review: review, Fix: fix},
 		Timeout: time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
 	}
+	split := loomSegmentModelSource(string(PerchSplit), cfg.SplitReviewerModel, cfg.SplitFixerModel)
+	if split.fix.Unset() && cfg.Raddle != "" {
+		split.fixKey = shuttleengine.ModelKey{Module: loomModule, Key: splitFixerFallbackKey}
+		split.fix = burlerengine.ModelSpecList{cfg.Raddle}
+	}
 	for _, segment := range []struct {
 		source segmentModelSource
 		models *burlerengine.RoundModels
@@ -219,6 +237,7 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 		{loomSegmentModelSource("discussion", cfg.DiscussionReviewerModel, cfg.DiscussionFixerModel), &settings.Discussion, &settings.DiscussionKeys},
 		{loomSegmentModelSource("plan", cfg.PlanReviewerModel, cfg.PlanFixerModel), &settings.Plan, &settings.PlanKeys},
 		{loomSegmentModelSource("code", cfg.CodeReviewerModel, cfg.CodeFixerModel), &settings.Code, &settings.CodeKeys},
+		{split, &settings.Split, &settings.SplitKeys},
 	} {
 		*segment.models, *segment.keys, err = resolveSegmentModels(segment.source, settings.Models, reg)
 		if err != nil {
