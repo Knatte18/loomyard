@@ -30,8 +30,13 @@ import (
 // Profiles names the profiles that hold a block for each recipe a part may name.
 // LivePattern answers from the worktree's PATTERN.md, and a worktree with none holds no live entry.
 // The filing flag goes to the context unchanged.
+// Perch is set when the run's raddle state records perch mode; a run with no state yet is not in it.
 // A board with no entry for the run is an error naming the way forward.
 func raddleBoardContext(location *lymcwd.Location, filing bool) (raddleparser.BoardContext, error) {
+	recorded, err := loomshed.ReadRaddleState(loomengine.RaddleStatePath(location), loomengine.RaddleStateLockPath(location))
+	if err != nil {
+		return raddleparser.BoardContext{}, fmt.Errorf("read the raddle run's state: %w", err)
+	}
 	boardDir := fabricengine.BoardDir(location.HubPath)
 	tasks, err := boardengine.ReadTasks(boardDir)
 	if err != nil {
@@ -64,6 +69,7 @@ func raddleBoardContext(location *lymcwd.Location, filing bool) (raddleparser.Bo
 		TypeLabels: vocabulary.Types,
 		Profiles:   map[string][]string{},
 		Filing:     filing,
+		Perch:      recorded.Mode == loomengine.RaddleModePerch,
 		LivePattern: func(id string) bool {
 			_, live := pattern.EntryBullet(overview, id)
 			return live

@@ -29,6 +29,8 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/discussionparser",
 	"github.com/Knatte18/loomyard/internal/shedadapters",
 	"github.com/Knatte18/loomyard/internal/loomshed",
+	// internal/loomengine is imported for the RaddleMode type of RaddleWriteEnv.Table; it resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/loomengine",
 	"github.com/Knatte18/loomyard/internal/modelspec",
 	"github.com/Knatte18/loomyard/internal/seatengine",
 	"github.com/Knatte18/loomyard/internal/segmentcolor",

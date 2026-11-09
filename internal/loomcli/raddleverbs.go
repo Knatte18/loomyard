@@ -99,6 +99,7 @@ func refuseOutsideRaddleWrite(out io.Writer, verb string, deps raddleVerbDeps) (
 // On the first pass of a Raddle-Write session it also posts the parent orch that a proposal waits for the operator.
 // A failed notice leaves the session without one, so the next passing call posts it again;
 // raddle-approve refuses until it is posted.
+// A perch-mode run posts no notice, since its split perch, not the operator, reviews the proposal.
 func raddleProposeVerb(out io.Writer, deps raddleVerbDeps) int {
 	const verb = "raddle-propose"
 	if code, refused := refuseOutsideRaddleWrite(out, verb, deps); refused {
@@ -121,7 +122,7 @@ func raddleProposeVerb(out io.Writer, deps raddleVerbDeps) int {
 	needsNotice := false
 	recorded, err := loomshed.UpdateRaddleState(deps.statePath, deps.stateLockPath, func(stored *loomshed.RaddleState) {
 		stored.ProposedSession = stored.Session
-		needsNotice = stored.NoticeSession < stored.Session
+		needsNotice = stored.Mode != loomengine.RaddleModePerch && stored.NoticeSession < stored.Session
 	})
 	if err != nil {
 		return raddleVerbFailure(out, verb, "record the passing proposal", err)
@@ -135,11 +136,15 @@ func raddleProposeVerb(out io.Writer, deps raddleVerbDeps) int {
 			return raddleVerbFailure(out, verb, "record the waiting notice", err)
 		}
 	}
+	note := "the proposal passes its checks; put it to the operator and run lym loom raddle-approve only on the operator's explicit approval"
+	if recorded.Mode == loomengine.RaddleModePerch {
+		note = "the proposal passes its checks; end your turn on it, and the run's split perch reviews it"
+	}
 	return output.Ok(out, map[string]any{
 		"valid":         true,
 		"session":       recorded.Session,
 		"notice_posted": needsNotice,
-		"note":          "the proposal passes its checks; put it to the operator and run lym loom raddle-approve only on the operator's explicit approval",
+		"note":          note,
 	})
 }
 
@@ -148,6 +153,7 @@ func raddleProposeVerb(out io.Writer, deps raddleVerbDeps) int {
 // It refuses, each with its way forward:
 // a recipe with no RaddleWrite row;
 // a run whose current row is not that row;
+// a run in perch mode, whose split perch's approval files the proposal;
 // a Raddle-Write session with no passing propose;
 // a session whose waiting notice was not posted;
 // a proposal that is not valid;
@@ -165,6 +171,9 @@ func raddleApproveVerb(out io.Writer, deps raddleVerbDeps) int {
 	stored, err := loomshed.ReadRaddleState(deps.statePath, deps.stateLockPath)
 	if err != nil {
 		return raddleVerbFailure(out, verb, "read the run's state", err)
+	}
+	if stored.Mode == loomengine.RaddleModePerch {
+		return output.Err(out, "loom: raddle-approve: this run is in perch mode, where the approval of the run's split perch files the proposal and no operator approval is recorded; way forward: none is needed: end your turn on the finished proposal, and the split perch reviews it")
 	}
 	if stored.ProposedSession == 0 || stored.ProposedSession < stored.Session {
 		return output.Err(out, fmt.Sprintf("loom: raddle-approve: no proposal has passed its checks in this Raddle-Write session (session %d); way forward: run lym loom raddle-propose, fix what it finds, put the proposal to the operator, then run lym loom raddle-approve", stored.Session))
@@ -270,7 +279,8 @@ worktree once the proposal is complete, in interactive mode, before it puts
 the proposal to the operator. On a pass it stores the run's first passing
 proposal as the cold proposal, records the session as proposed, and posts the
 parent orch that a proposal waits for the operator, once per Raddle-Write
-session. Findings come back in the envelope. It takes no arguments, and is
+session; a perch-mode run, whose split perch reviews the proposal, posts no
+such notice. Findings come back in the envelope. It takes no arguments, and is
 refused while the run stands at another row or its recipe has no Raddle-Write
 row.
 
@@ -285,9 +295,10 @@ raddle agent runs it only on the operator's explicit approval. It is refused
 until a raddle-propose has passed and posted its waiting notice in the current
 Raddle-Write session, while
 the proposal fails a check, and when the board moved since the proposal was
-checked; the refusal names what to fix. On success it records the hash of the
-proposal with the session and names the board entries that landed since the
-proposal read them. It takes no arguments.
+checked; the refusal names what to fix. It is refused in perch mode, where the
+approval of the run's split perch files the proposal. On success it records the
+hash of the proposal with the session and names the board entries that landed
+since the proposal read them. It takes no arguments.
 
 Example:
   lym loom raddle-approve`, raddleApproveVerb)

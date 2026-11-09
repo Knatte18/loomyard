@@ -13,6 +13,8 @@
 // Check is pure.
 // It judges a Proposal against the decision record's bytes and a BoardContext the caller builds.
 // It returns one Finding per broken rule of the spec.
+// A BoardContext with Perch set is a perch-mode run's, whose split perch approves the proposal:
+// Check then allows one task or one project whose slug is the run's own entry, which the slug rules exempt.
 // A part's `pattern_clusters` map a PATTERN change of the Sketch onto the live entry that absorbs it:
 // Check refuses a mapping the filing could not write;
 // Part.PatternEntryIDs names the ids the part's record declares.

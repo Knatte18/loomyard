@@ -290,6 +290,12 @@ type decisionDeps struct {
 	storeRecord func(record []byte) error
 	// approvalRow reports whether the run's recipe has a Discussion approval row.
 	approvalRow func() bool
+	// raddleFileRow answers the name of the recipe's RaddleFile row, and false when the recipe has none.
+	raddleFileRow func() (string, bool, error)
+	// raddlePerch reports whether the run's raddle state records perch mode.
+	raddlePerch func() (bool, error)
+	// raddleFiled returns the slugs the run's raddle filing put on the board, and false while the run has filed none.
+	raddleFiled func() ([]string, bool, error)
 }
 
 // decisionNoticeError is one notice the verb could not send, reported on its success envelope.
@@ -677,6 +683,7 @@ func planApprovedReader(anchorPath string) func() (bool, error) {
 // Only the run's parent, the operator's own shell or the run's own arbiter therefore declares a change after Discussion.
 // The form rewrites only the record's bullet for the same entry ID, which its new bullet replaces.
 // Its `withdraws` action strikes that bullet instead, and is refused when the record declares none.
+// A perch-mode raddle run standing at its RaddleFile row is refused, since no split reads a decision recorded there.
 func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionInput) int {
 	refuse := func(format string, args ...any) int {
 		return output.Err(out, fmt.Sprintf("loom: %s add: ", decisionGroup)+fmt.Sprintf(format, args...))
@@ -734,6 +741,13 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	currentRow := ""
 	if found {
 		currentRow = st.CurrentProducer
+	}
+	perchRefusal, err := perchFilingRefusal(deps, currentRow)
+	if err != nil {
+		return refuse("read the run's raddle filing: %s; %s", err, decisionWayRetry)
+	}
+	if perchRefusal != "" {
+		return refuse("%s", perchRefusal)
 	}
 	// A run past its Discussion approval has a board copy of the record to refresh once the commit lands.
 	wayCommit := decisionWayFabricCommit
@@ -881,6 +895,29 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		result["commit_error"] = commitErr.Error()
 	}
 	return output.Ok(out, result)
+}
+
+// perchFilingRefusal returns the refusal text for a perch-mode raddle run standing at its RaddleFile row, done or not.
+// It returns empty for any other run.
+// Before the filing the decision still reaches a new split through a goto to Raddle-Write.
+// After it the decision belongs on the filed part it concerns, so the refusal names the filed slugs.
+func perchFilingRefusal(deps decisionDeps, currentRow string) (string, error) {
+	row, hasRow, err := deps.raddleFileRow()
+	if err != nil || !hasRow || currentRow != row {
+		return "", err
+	}
+	perch, err := deps.raddlePerch()
+	if err != nil || !perch {
+		return "", err
+	}
+	filed, done, err := deps.raddleFiled()
+	if err != nil {
+		return "", err
+	}
+	if !done {
+		return fmt.Sprintf(`the run stands at %s in perch mode, filing the proposal its split perch approved, so no split reads a decision recorded now; way forward: run "lym loom goto --to %s", re-run this verb, then run "lym loom resume", which splits again with the decision recorded first`, row, loomshed.NameRaddleWrite), nil
+	}
+	return fmt.Sprintf(`the run in perch mode has filed %s, so no split reads a decision recorded on its entry; way forward: once the operator has released the part the decision concerns and its run has passed its record row, run "lym loom decision add <part-slug>" on that part`, strings.Join(filed, ", ")), nil
 }
 
 // addedDecisionHeading is the heading of a decision added after a Discussion, without its leading marker.
@@ -1075,6 +1112,12 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 			_, hasRow, _ := loomrecipe.DiscussionApprovalRow(recipe)
 			return hasRow
 		},
+		raddleFileRow: func() (string, bool, error) { return loomrecipe.EngineRow(recipe, raddleFileEngine) },
+		raddlePerch: func() (bool, error) {
+			recorded, err := loomshed.ReadRaddleState(loomengine.RaddleStatePath(target), loomengine.RaddleStateLockPath(target))
+			return recorded.Mode == loomengine.RaddleModePerch, err
+		},
+		raddleFiled: func() ([]string, bool, error) { return raddleRunFiling(target, seedSlug(target.WorktreeName)) },
 	}
 	return nil
 }

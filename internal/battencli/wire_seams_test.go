@@ -139,6 +139,7 @@ var intentionallyNil = map[string]string{
 	"RecordWrite.ReadBody":                   "loom-only seam, batten wires no loom record",
 	"RecordWrite.ReadStored":                 "loom-only seam, batten wires no loom record",
 	"RecordWrite.Commit":                     "loom-only seam, batten wires no loom record",
+	"RaddleWrite.Deps.SplitPerch":            "raddle-only seam, batten runs no raddle row",
 	"RaddleWrite.Deps.AutoApprove":           "raddle-only seam, batten runs no raddle row",
 	"RaddleWrite.Deps.FreshEntry":            "raddle-only seam, batten runs no raddle row",
 	"RaddleWrite.Deps.StoreCold":             "raddle-only seam, batten runs no raddle row",

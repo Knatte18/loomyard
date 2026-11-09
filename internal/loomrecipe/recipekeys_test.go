@@ -4,13 +4,53 @@
 package loomrecipe
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// splitPerchFixtureFile is the testdata recipe whose rows hold a split perch.
+const splitPerchFixtureFile = "split-perch-recipe.yaml"
+
+// TestHoldsSplitPerch covers the rows test that decides a raddle run's perch mode.
+// A fixture recipe's Bouncer over the raddle proposal holds a split perch;
+// the raddle recipe holds no Bouncer, and the motif and tapestry recipes hold Bouncers over other artifacts.
+func TestHoldsSplitPerch(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	source, err := os.ReadFile(filepath.Join("testdata", splitPerchFixtureFile))
+	if err != nil {
+		t.Fatalf("read the fixture recipe: %v", err)
+	}
+	fixture, err := shedbuild.Parse(source)
+	if err != nil {
+		t.Fatalf("shedbuild.Parse(fixture) = %v; want nil", err)
+	}
+	if !RowsHoldSplitPerch(fixture.Producers) {
+		t.Errorf("RowsHoldSplitPerch(fixture rows) = false; want true for a Bouncer over the raddle proposal")
+	}
+
+	unclean := []shedbuild.Row{{Engine: bouncerEngine, Config: map[string]any{"artifact_paths": []any{"./_lym/raddle/proposal.yaml"}}}}
+	if !RowsHoldSplitPerch(unclean) {
+		t.Errorf("RowsHoldSplitPerch(Bouncer over ./_lym/raddle/proposal.yaml) = false; want true, since the path names the proposal")
+	}
+
+	for _, recipe := range []string{shedrun.RecipeRaddle, shedrun.RecipeMotif, shedrun.RecipeTapestry} {
+		if got, err := HoldsSplitPerch(recipe); err != nil || got {
+			t.Errorf("HoldsSplitPerch(%q) = %v, %v; want false, nil", recipe, got, err)
+		}
+	}
+	if _, err := HoldsSplitPerch("nope"); err == nil || !strings.Contains(err.Error(), "nope") {
+		t.Errorf("HoldsSplitPerch(%q) error = %v; want a refusal naming the recipe", "nope", err)
+	}
+}
 
 // TestGateFixerSetting covers the setting each writer row's gate element names for its cold fixer.
 // It also covers a gate element that names none, and the refusals of a recipe or engine that does not exist.

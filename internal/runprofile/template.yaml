@@ -1,6 +1,6 @@
 # profiles.yaml — the hub's named run profiles, and the profile each recipe takes by default.
 # Each top-level key but defaults is a profile name, and its value holds one block per recipe, tapestry, motif, darn, pawl, sampler or raddle;
-# a raddle block sets loom.raddle_auto_approve, which tells a raddle run to file its proposal without waiting for the operator's approval;
+# a raddle block sets loom.raddle_auto_approve, which tells a raddle run to file its proposal without waiting for the operator's approval, and which a run whose recipe rows hold a split perch never reads;
 # a block has the shape of a board task's run_settings: module name to that module's config keys.
 # A task names a profile in its board entry's profile field, or takes its recipe's entry under defaults when it names none;
 # batten's Seed-Child writes the block of the recipe the task runs into the pair's local config, with the task's own run_settings layered on top.

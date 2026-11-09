@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -222,6 +223,23 @@ func TestRaddleProposeVerb(t *testing.T) {
 		}
 	})
 
+	t.Run("APerchRunPassesWithNoWaitingNotice", func(t *testing.T) {
+		t.Parallel()
+		f := newRaddleVerbFixture(t, raddleTestProposal(t, "one tapestry part"))
+		f.updateState(t, func(stored *loomshed.RaddleState) {
+			stored.Mode = loomengine.RaddleModePerch
+			stored.Session = 1
+		})
+
+		code, out := f.run(raddleProposeVerb)
+		if code != 0 || !strings.Contains(out, "split perch reviews it") {
+			t.Fatalf("raddleProposeVerb() = %d, %s; want exit 0 naming the split perch", code, out)
+		}
+		if got := f.readState(t); !got.ColdStored || got.ProposedSession != 1 || got.NoticeSession != 0 || len(f.notices) != 0 {
+			t.Errorf("state after the pass = %+v with %d notices; want cold stored, proposed 1 and no notice", got, len(f.notices))
+		}
+	})
+
 	t.Run("AFailedNoticeIsPostedOnTheNextPass", func(t *testing.T) {
 		t.Parallel()
 		f := newRaddleVerbFixture(t, raddleTestProposal(t, "one tapestry part"))
@@ -262,6 +280,9 @@ func TestRaddleApproveVerb(t *testing.T) {
 		{name: "OutsideRaddleWriteIsRefused", current: "Raddle-File", proposal: raddleTestProposal(t, "line"),
 			state: loomshed.RaddleState{Session: 1, ProposedSession: 1, NoticeSession: 1}, wantCode: 1,
 			wantOutput: []string{"current row is Raddle-File", "way forward: run lym loom raddle-approve while the run stands at Raddle-Write"}},
+		{name: "PerchModeIsRefusedNamingThePerch", current: raddleTestRow, proposal: raddleTestProposal(t, "line"),
+			state: loomshed.RaddleState{Mode: loomengine.RaddleModePerch, Session: 1, ProposedSession: 1, NoticeSession: 1}, wantCode: 1,
+			wantOutput: []string{"perch mode", "split perch", "way forward: none is needed"}},
 		{name: "NoPassingProposeThisSessionIsRefusedNamingPropose", current: raddleTestRow, proposal: raddleTestProposal(t, "line"),
 			state: loomshed.RaddleState{Session: 1}, wantCode: 1,
 			wantOutput: []string{"no proposal has passed", "lym loom raddle-propose"}},

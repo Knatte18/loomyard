@@ -49,9 +49,10 @@ import (
 // Shuttle's startup step blocks Start until it sees a ready marker, and the color step waits for a ready pane;
 // a script without the fixture would make every call time out instead of returning fast.
 // The one typed line is the `/color` command shuttle types for the driver's colored segment.
-// It then sleeps settleDelay, so the caller can observe the run in flight, past readiness, before the report exists.
+// It then holds its driver session open until releasePath exists,
+// so the session cannot finish before the caller releases it.
 // After that it writes a one-line report and exits.
-func integrationWriteStubDriverScript(t *testing.T, settleDelay time.Duration) string {
+func integrationWriteStubDriverScript(t *testing.T, releasePath string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
 	script := fmt.Sprintf(`#!/bin/sh
@@ -66,13 +67,13 @@ box
 IFS= read -r line
 box
 report=$(grep -o '"[^"]*drive-report[^"]*"' "$prompt_file" | head -1 | tr -d '"')
-sleep %s
+while [ ! -e '%s' ]; do sleep 0.1; done
 if [ -n "$report" ]; then
   mkdir -p "$(dirname "$report")"
   printf 'stub driver report\n' > "$report"
 fi
 exit 0
-`, stubRecordSessionStart, claudeengine.IdleInputBoxFixture, settleDelay)
+`, stubRecordSessionStart, claudeengine.IdleInputBoxFixture, releasePath)
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write stub driver script: %v", err)
 	}
@@ -80,11 +81,10 @@ exit 0
 }
 
 // integrationDriverShuttleConfig returns shuttle's shipped config template with startup probed on every poll.
-// The shipped template probes every tenth poll (5s); this sets liveness_every_n_polls: 1 and a 500ms interval.
+// The shipped template probes every tenth poll; this sets liveness_every_n_polls: 1.
 // Shuttle's startup step probes once immediately, before the stub prints its ready marker;
-// it then sleeps a whole probe interval.
-// At the shipped cadence Start therefore returns no sooner than 5s regardless of how fast the provider is ready.
-// That is longer than the stub's settle delay this file's assertion measures against.
+// it then sleeps a whole probe interval,
+// so at the shipped cadence Start waits ten polls however fast the provider is ready.
 func integrationDriverShuttleConfig() string {
 	cfg := shuttleengine.ConfigTemplate()
 	return strings.Replace(cfg, "liveness_every_n_polls: 10 ", "liveness_every_n_polls: 1 ", 1)
@@ -110,17 +110,16 @@ func waitForDriveReport(t *testing.T, dir string, timeout time.Duration) string 
 // TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver launches one llm driver end to end.
 // The fixture hub is built through hubforge and seeded with the llm driver.
 // It asserts three things.
-// The launch call returns once the stub's ready marker lands and well before its settle delay elapses.
-// That shows shuttle's own blocking Start returns past the provider's startup gates.
-// It does not wait on the whole driver session to finish.
+// The launch call returns while the stub holds its driver session open.
+// That shows shuttle's own blocking Start returns past the provider's startup gates
+// without waiting on the whole driver session to finish.
 // The started run's persisted state file exists under the run directory the handle reports.
-// The drive report the stubbed driver writes and exits lands under the run's durable drive-reports directory.
+// The drive report the stubbed driver writes once released lands under the run's durable drive-reports directory.
 // It never lands in the ephemeral scratch directory.
 func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.T) {
 	tiergate.Require(t, 2)
-	// The settle delay outlasts Start's own startup probing and its typing and settling of the color command.
-	const stubSettleDelay = 5 * time.Second
-	stubPath := integrationWriteStubDriverScript(t, stubSettleDelay)
+	releasePath := filepath.Join(t.TempDir(), "release-driver")
+	stubPath := integrationWriteStubDriverScript(t, releasePath)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
@@ -157,18 +156,32 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 		t.Fatalf("reed.Up: %v", err)
 	}
 
-	start := time.Now()
-	run, err := c.startLLMDriverArm(driverStrandNone, "", c.runID)
-	elapsed := time.Since(start)
-	if err != nil {
-		t.Fatalf("startLLMDriverArm: %v", err)
+	type launchResult struct {
+		run driverHandle
+		err error
+	}
+	launched := make(chan launchResult, 1)
+	go func() {
+		run, err := c.startLLMDriverArm(driverStrandNone, "", c.runID)
+		launched <- launchResult{run: run, err: err}
+	}()
+	// The stub's session cannot finish before the release file exists,
+	// so a launch that waits on the whole session never returns before this deadline.
+	const launchDeadline = 60 * time.Second
+	var launch launchResult
+	select {
+	case launch = <-launched:
+	case <-time.After(launchDeadline):
+		t.Fatalf("startLLMDriverArm did not return within %s while the stub held its driver session open -- Start must return once the provider is ready, not wait on the whole driver session", launchDeadline)
+	}
+	if launch.err != nil {
+		t.Fatalf("startLLMDriverArm: %v", launch.err)
+	}
+	if err := os.WriteFile(releasePath, nil, 0o644); err != nil {
+		t.Fatalf("release the stub driver: %v", err)
 	}
 
-	if elapsed >= stubSettleDelay {
-		t.Errorf("startLLMDriverArm took %s; want well under the stub's own %s settle delay -- Start must return once the provider is ready, not wait on the whole driver session", elapsed, stubSettleDelay)
-	}
-
-	runStatePath := filepath.Join(run.RunDir(), "run.json")
+	runStatePath := filepath.Join(launch.run.RunDir(), "run.json")
 	if _, err := os.Stat(runStatePath); err != nil {
 		t.Errorf("run state file %s: %v; want it persisted under the run directory the handle reports", runStatePath, err)
 	}

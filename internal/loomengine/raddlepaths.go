@@ -39,9 +39,15 @@ func RaddleDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), RaddleDirRel())
 }
 
+// RaddleProposalRel returns the worktree-anchor-relative path of the proposal the raddle agent writes.
+// A recipe row names the proposal by this path.
+func RaddleProposalRel() string {
+	return filepath.Join(RaddleDirRel(), raddleProposalFileName)
+}
+
 // RaddleProposal returns the path of the proposal the raddle agent writes, in the worktree at l.
 func RaddleProposal(l *lymcwd.Location) string {
-	return filepath.Join(RaddleDir(l), raddleProposalFileName)
+	return filepath.Join(l.AnchorPath(), RaddleProposalRel())
 }
 
 // RaddleColdProposal returns the path of the cold proposal, the first proposal of the run, stored once, in the worktree at l.

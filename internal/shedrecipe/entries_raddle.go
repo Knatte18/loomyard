@@ -6,6 +6,7 @@ package shedrecipe
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -17,9 +18,9 @@ import (
 type RaddleWriteEnv struct {
 	// Deps are the paths and seams of the Raddle-Write producer.
 	Deps loomshed.RaddleWriteDeps
-	// Table builds the seat table for one session from the seat's mode and the last return reason, empty on a first session.
+	// Table builds the seat table for one session from the run's mode and the last return reason, empty on a first session.
 	// It arrives as a closure because building the table needs a *lymcwd.Location, which this package may not import.
-	Table func(interactive bool, returnReason string) (seatengine.Table, error)
+	Table func(mode loomengine.RaddleMode, returnReason string) (seatengine.Table, error)
 	// Check carries the proposal and decision record paths and the board context the gate judges the proposal against.
 	Check loomshed.RaddleCheck
 }
@@ -58,6 +59,7 @@ func raddleWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 		field string
 		value any
 	}{
+		{"RaddleWrite.Deps.SplitPerch", deps.SplitPerch},
 		{"RaddleWrite.Deps.AutoApprove", deps.AutoApprove},
 		{"RaddleWrite.Deps.FreshEntry", deps.FreshEntry},
 		{"RaddleWrite.Deps.StoreCold", deps.StoreCold},
@@ -75,7 +77,7 @@ func raddleWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("shedrecipe: %s: read the run's state: %w", entry, err)
 		}
-		table, err := env.RaddleWrite.Table(recorded.Mode == loomshed.RaddleModeInteractive, recorded.ReturnReason)
+		table, err := env.RaddleWrite.Table(recorded.Mode, recorded.ReturnReason)
 		if err != nil {
 			return seatengine.Table{}, err
 		}

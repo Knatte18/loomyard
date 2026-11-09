@@ -117,6 +117,10 @@
 // Both read the recipe's expanded rows and never its name:
 // darn, sampler and pawl answer no approval row, and tapestry's approval row is the one inside its Motif block.
 //
+// HoldsSplitPerch answers whether a recipe's rows hold a split perch, a Bouncer row over the raddle proposal.
+// RowsHoldSplitPerch answers it for rows from any source.
+// A raddle run over such rows records perch mode, read from the rows and never the recipe's name.
+//
 // GateFixerSetting answers which setting a writer row's gate element names for its cold fixer's model-spec,
 // so a caller reads whether a row's fixer is on from the recipe's own `fixer` key rather than from a row name.
 //

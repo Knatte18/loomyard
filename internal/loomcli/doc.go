@@ -145,6 +145,11 @@
 // It admits it only with `--by operator`; any other label from it is refused naming `--by operator`.
 // A strand it does not admit meets the parent rule.
 //
+// `decision add` refuses a raddle run in perch mode, whose recipe rows hold the split perch, from its Raddle-File row on.
+// `perchFilingRefusal` words the refusal.
+// Before the filing it names the goto to Raddle-Write.
+// After the filing it names the filed parts, each to record on once released.
+//
 // # Start
 //
 // `lym loom start` works in order.

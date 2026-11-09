@@ -60,6 +60,18 @@ A part holds:
 
 Shape `tapestry` has exactly one part, which builds every decision.
 Every filed slug, each part's and the project's, is new: free on the board and in the raddle store, and not the Sketch's.
+The one exception is a perch-mode run's project, whose slug is the run's own entry.
+
+## Perch mode
+
+A run whose recipe rows hold a split perch, a Bouncer row over the proposal, records perch mode in its raddle state at Raddle-Write's first call.
+The perch's approval files the proposal in place of the operator's, so `raddle_auto_approve` is never read.
+In perch mode the checks allow two outcomes:
+
+- One task: shape `tapestry`, or shape `tasks` with one part.
+- A family: shape `project` whose `project.slug` is the run's own entry.
+
+Shape `beam`, shape `tasks` with more than one part and shape `project` under another slug fail `perch-outcome`.
 
 ## Checks
 
@@ -86,9 +98,10 @@ The gate, `raddle-propose` and `raddle-approve` run the checks of the proposal a
 - `profile-unknown` — a profile that `profiles.yaml` does not hold, or holds without a block for the part's recipe.
 - `type-invalid` — a part's or the project's type that is not in the board's vocabulary, or is `sketch`.
 - `slug-taken` — a new slug already on the board or in the raddle store; the run's own entry is exempt, which `slug-sketch` judges.
-- `slug-sketch` — a filed slug equal to the Sketch's.
+- `slug-sketch` — a filed slug equal to the Sketch's; a perch-mode project whose slug is the run's own entry is exempt.
 - `slug-duplicate` — a slug that two filed entries share.
 - `shape-invalid` — a `tapestry` shape with other than one part or with a part that does not build every decision, a `project` or `beam` shape with no project, or another shape with one.
+- `perch-outcome` — in perch mode, a proposal that is neither one task nor one project under the run's own entry.
 - `cost-missing` — a missing proposal cost line or next-best cost line.
 
 The re-check against the board runs at `raddle-approve` and in Raddle-File, which runs it before its first step and again inside its board write.
@@ -108,6 +121,7 @@ A proposal edited since is not skipped: the stage then holds another hash, and e
 
 The approval hash is the SHA-256 of the proposal file's bytes, in hex.
 `raddle-approve` records it, and in interactive mode Raddle-File files only a proposal whose hash matches the recorded approval.
+Auto and perch mode file with no approval match, and `raddle-approve` refuses in perch mode.
 
 ## Example
 

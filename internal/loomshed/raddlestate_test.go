@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -28,7 +29,7 @@ func TestRaddleState(t *testing.T) {
 		}
 
 		want := loomshed.RaddleState{
-			Mode: loomshed.RaddleModeInteractive, ColdStored: true, Session: 3, ProposedSession: 2, NoticeSession: 2,
+			Mode: loomengine.RaddleModeInteractive, ColdStored: true, Session: 3, ProposedSession: 2, NoticeSession: 2,
 			Approval: &loomshed.RaddleApprovalRecord{Hash: "abc", Session: 2}, Returns: 1, ReturnReason: "board moved",
 			EntryPosition: 7, NoticeSent: true,
 		}
@@ -51,7 +52,7 @@ func TestRaddleState(t *testing.T) {
 		}
 
 		got, err := loomshed.ReadRaddleState(path, lockPath)
-		if err != nil || got.Mode != loomshed.RaddleModeAuto {
+		if err != nil || got.Mode != loomengine.RaddleModeAuto {
 			t.Fatalf("ReadRaddleState() = %+v, %v; want mode auto and nil", got, err)
 		}
 		if _, err := loomshed.UpdateRaddleState(path, lockPath, func(stored *loomshed.RaddleState) { stored.Session++ }); err != nil {

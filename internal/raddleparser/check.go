@@ -39,6 +39,7 @@ const (
 	CheckSlugSketch             = "slug-sketch"
 	CheckSlugDuplicate          = "slug-duplicate"
 	CheckShapeInvalid           = "shape-invalid"
+	CheckPerchOutcome           = "perch-outcome"
 	CheckCostMissing            = "cost-missing"
 	CheckRevisedMoved           = "revised-moved"
 )
@@ -82,6 +83,8 @@ type BoardEntry struct {
 // TypeLabels are the board's type labels.
 // Profiles maps each part recipe to the profiles of `profiles.yaml` that hold a block for it.
 // Filing is true at Raddle-File's run, where a dependency on an entry gone from the board is dropped.
+// Perch is true in a perch-mode run, whose split perch approves the proposal in place of the operator:
+// the checks then allow only one task, or one project whose slug is the run's own entry.
 // LivePattern reports whether the run's PATTERN.md holds the entry id.
 type BoardContext struct {
 	Sketch       string
@@ -92,6 +95,7 @@ type BoardContext struct {
 	TypeLabels   []string
 	Profiles     map[string][]string
 	Filing       bool
+	Perch        bool
 	LivePattern  func(id string) bool
 }
 
@@ -116,6 +120,7 @@ func Check(p Proposal, record []byte, board BoardContext) []Finding {
 	findings = append(findings, c.vocabulary()...)
 	findings = append(findings, c.slugs()...)
 	findings = append(findings, c.shape()...)
+	findings = append(findings, c.perchOutcome()...)
 	findings = append(findings, c.costLines()...)
 	return findings
 }
@@ -437,12 +442,23 @@ func takenSlug(slug string, board BoardContext) bool {
 	return slices.ContainsFunc(board.Entries, func(entry BoardEntry) bool { return entry.Slug == slug }) || slices.Contains(board.Store, slug)
 }
 
+// perchProject reports whether the proposal is a perch run's project under the run's own entry.
+// The slug rules exempt its slug.
+func (c *checker) perchProject() bool {
+	p := c.proposal
+	return c.board.Perch && p.Shape == ShapeProject && p.Project != nil && p.Project.Slug == c.board.Entry
+}
+
 // slugs reports a filed slug that is the Sketch's, taken, or used twice.
+// A perch run's project slug that is the run's own entry is not reported as the Sketch's;
+// the run's own entry is never reported as taken.
 func (c *checker) slugs() []Finding {
 	var findings []Finding
 	var seen []string
-	for _, slug := range filedSlugs(c.proposal) {
-		if slug == c.board.Sketch {
+	for i, slug := range filedSlugs(c.proposal) {
+		// filedSlugs puts the project's slug first.
+		exempt := i == 0 && c.perchProject()
+		if slug == c.board.Sketch && !exempt {
 			findings = append(findings, Finding{Check: CheckSlugSketch, Part: slug, Detail: "a filed slug equals the Sketch's slug"})
 		}
 		if takenSlug(slug, c.board) {
@@ -486,6 +502,29 @@ func (c *checker) shape() []Finding {
 		return invalid(fmt.Sprintf("shape %q is none of %s, %s, %s and %s", p.Shape, ShapeTapestry, ShapeTasks, ShapeProject, ShapeBeam))
 	}
 	return nil
+}
+
+// perchOutcome reports a perch run's proposal that is neither one task nor one project under the run's own entry.
+// One task is shape tapestry, or shape tasks with one part.
+// A beam is refused, since it would start the family's runs and take their release from the operator.
+// It reports nothing outside a perch run.
+func (c *checker) perchOutcome() []Finding {
+	if !c.board.Perch {
+		return nil
+	}
+	p := c.proposal
+	var problem string
+	switch {
+	case p.Shape == ShapeTasks && len(p.Parts) > 1:
+		problem = fmt.Sprintf("shape %s with %d parts", ShapeTasks, len(p.Parts))
+	case p.Shape == ShapeBeam:
+		problem = fmt.Sprintf("shape %s", ShapeBeam)
+	case p.Shape == ShapeProject && p.Project != nil && p.Project.Slug != c.board.Entry:
+		problem = fmt.Sprintf("shape %s under the slug %q", ShapeProject, p.Project.Slug)
+	default:
+		return nil
+	}
+	return []Finding{{Check: CheckPerchOutcome, Detail: fmt.Sprintf("a perch run does not file %s; it files one task, as shape %s or shape %s with one part, or one project, as shape %s whose project slug is the run's entry %q; way forward: reshape the proposal into one of those", problem, ShapeTapestry, ShapeTasks, ShapeProject, c.board.Entry)}}
 }
 
 // costLines reports a missing proposal cost line and a missing next-best cost line.

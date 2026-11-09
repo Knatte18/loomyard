@@ -22,6 +22,9 @@ import (
 // loomrecipeAllowedImports lists the only non-stdlib import paths that production code in this package may use.
 var loomrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/contracts/recipes",
+	// internal/loomengine gives the raddle proposal's path, which the split-perch rows test matches.
+	// It resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/loomengine",
 	"github.com/Knatte18/loomyard/internal/loomshed",
 	"github.com/Knatte18/loomyard/internal/shedbuild",
 	"github.com/Knatte18/loomyard/internal/shedrecipe",

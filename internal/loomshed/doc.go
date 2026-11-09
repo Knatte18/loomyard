@@ -242,17 +242,20 @@
 // StoreColdProposal stores the run's first passing proposal as the cold proposal once and never overwrites it.
 //
 // The Raddle-Write row's producer (NewRaddleWrite) wraps the table-driven raddle session.
-// The run's first call records its mode from the `raddle_auto_approve` key.
+// The run's first call records its mode.
+// It is perch when the recipe's rows hold a split perch, a Bouncer row over the proposal, whose approval files it;
+// otherwise the `raddle_auto_approve` key makes it auto or interactive.
 // Every later call and Raddle-File read the mode from the state, and every call raises the session count.
 // A fresh entry, a Raddle-File return or an operator goto sets the last attempt's output aside.
 // It does so once per history position.
-// Auto mode moves the proposal to the returned-proposal file.
+// Auto and perch mode move the proposal to the returned-proposal file.
 // Interactive mode removes the approval record and clears the state's approval.
 // On Done it commits the raddle directory.
 //
 // The Raddle-File row's producer (NewRaddleFile) is a Go row with no agent.
 // It runs the proposal's checks unless the raddle store already holds the filing.
-// The checks are the approval match in interactive mode and the board re-check.
+// The checks are the approval match in interactive mode and the board re-check;
+// auto and perch mode file with no approval match.
 // A proposal that fails one goes back to Raddle-Write.
 // Raddle-File deletes its stage and part records and counts a return.
 // The failure after two returns halts the run for its parent.

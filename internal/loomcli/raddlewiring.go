@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -36,6 +37,7 @@ const raddleFileEngine = "RaddleFile"
 
 // raddleSettingModule and raddleAutoApproveKey name the raddle auto-approve setting.
 // When it is true, a raddle run files without waiting for the operator's approval.
+// A run whose recipe rows hold a split perch never reads it.
 const (
 	raddleSettingModule  = "loom"
 	raddleAutoApproveKey = "raddle_auto_approve"
@@ -52,18 +54,47 @@ func raddleRunHistory(location *lymcwd.Location) ([]shedengine.HistoryEntry, err
 }
 
 // freshRaddleEntry reports whether the run's current attempt at Raddle-Write began with a return or a goto into the row.
-// The last history entry decides: a Raddle-File Stuck routed to Raddle-Write, or a goto routed to it.
+// The last history entry decides.
+// A return is a Raddle-File Stuck routed to Raddle-Write.
+// A goto is the entry a goto or relaunch writes: Raddle-Write itself as its producer, outcome goto and no route.
 // It returns the 1-based history position of that entry, zero when the entry is not fresh.
 func freshRaddleEntry(history []shedengine.HistoryEntry) (fresh bool, position int) {
 	if len(history) == 0 {
 		return false, 0
 	}
 	last := history[len(history)-1]
-	returned := last.Producer == loomshed.NameRaddleFile && last.Outcome == shedengine.Stuck
-	if (returned || last.Outcome == shedengine.OutcomeGoto) && last.RoutedTo == loomshed.NameRaddleWrite {
+	returned := last.Producer == loomshed.NameRaddleFile && last.Outcome == shedengine.Stuck && last.RoutedTo == loomshed.NameRaddleWrite
+	wentTo := last.Producer == loomshed.NameRaddleWrite && last.Outcome == shedengine.OutcomeGoto
+	if returned || wentTo {
 		return true, len(history)
 	}
 	return false, 0
+}
+
+// raddleRunFiling returns the slugs the raddle run slug at location filed, read from the raddle store.
+// The bool is false while the run has filed none.
+// A store entry left by an earlier board entry of the same slug is not the run's, since its created stamp differs.
+func raddleRunFiling(location *lymcwd.Location, slug string) ([]string, bool, error) {
+	store, err := boardengine.ReadRaddleStore(fabricengine.BoardDir(location.HubPath))
+	if err != nil {
+		return nil, false, err
+	}
+	held, isHeld := store.Holds(slug)
+	if !isHeld || held.Sketch != slug {
+		return nil, false, nil
+	}
+	board, err := openHubBoard(location)
+	if err != nil {
+		return nil, false, err
+	}
+	task, found, err := board.GetTask(slug)
+	if err != nil {
+		return nil, false, fmt.Errorf("read the run's board entry: %w", err)
+	}
+	if found && !held.Created.Equal(task.Created) {
+		return nil, false, nil
+	}
+	return held.Filed, true, nil
 }
 
 // openHubBoard opens the board of the hub at location, naming the board in the error.
@@ -82,11 +113,12 @@ func commitRaddle(location *lymcwd.Location, slug string) error {
 	return err
 }
 
-// raddleWriteEnv returns the Raddle-Write row's seams for the run slug at location.
-// It covers the run's raddle paths, the auto-approve mode read from the setting, the history seam and the commit.
+// raddleWriteEnv returns the Raddle-Write row's seams for the run slug of the recipe at location.
+// It covers the run's raddle paths, the history seam and the commit.
+// It covers the mode's sources too: the split perch read from the recipe's rows and the auto-approve setting.
 // It also covers the seat table source and the proposal check.
 // Every closure reads or writes on demand and opens nothing at build time.
-func raddleWriteEnv(location *lymcwd.Location, cfg loomengine.Config, stencilsDir, specsDir string, reg modelspec.Registry, slug string, setting func(module, key string) (any, error)) shedrecipe.RaddleWriteEnv {
+func raddleWriteEnv(location *lymcwd.Location, cfg loomengine.Config, stencilsDir, specsDir string, reg modelspec.Registry, slug, recipe string, setting func(module, key string) (any, error)) shedrecipe.RaddleWriteEnv {
 	statePath := loomengine.RaddleStatePath(location)
 	stateLockPath := loomengine.RaddleStateLockPath(location)
 	proposalPath := loomengine.RaddleProposal(location)
@@ -99,6 +131,7 @@ func raddleWriteEnv(location *lymcwd.Location, cfg loomengine.Config, stencilsDi
 			ReturnedPath:  loomengine.RaddleReturnedProposal(location),
 			ColdPath:      coldPath,
 			ApprovalPath:  loomengine.RaddleApproval(location),
+			SplitPerch:    func() (bool, error) { return loomrecipe.HoldsSplitPerch(recipe) },
 			AutoApprove: func() (bool, error) {
 				value, err := setting(raddleSettingModule, raddleAutoApproveKey)
 				if err != nil {
@@ -118,21 +151,22 @@ func raddleWriteEnv(location *lymcwd.Location, cfg loomengine.Config, stencilsDi
 				fresh, position := freshRaddleEntry(history)
 				return fresh, position, nil
 			},
-			// Interactive mode stores the cold proposal in the propose verb, so the gate's pass stores it only in auto mode.
+			// Interactive mode stores the cold proposal in the propose verb,
+			// so the gate's pass stores it only in auto and perch mode.
 			StoreCold: func() error {
 				recorded, err := loomshed.ReadRaddleState(statePath, stateLockPath)
 				if err != nil {
 					return err
 				}
-				if recorded.Mode == loomshed.RaddleModeInteractive {
+				if recorded.Mode == loomengine.RaddleModeInteractive {
 					return nil
 				}
 				return loomshed.StoreColdProposal(proposalPath, coldPath, statePath, stateLockPath)
 			},
 			Commit: func() error { return commitRaddle(location, slug) },
 		},
-		Table: func(interactive bool, returnReason string) (seatengine.Table, error) {
-			return loomengine.RaddleTable(location, stencilsDir, specsDir, cfg, reg, slug, interactive, returnReason)
+		Table: func(mode loomengine.RaddleMode, returnReason string) (seatengine.Table, error) {
+			return loomengine.RaddleTable(location, stencilsDir, specsDir, cfg, reg, slug, mode, returnReason)
 		},
 		Check: raddleCheckFor(location),
 	}

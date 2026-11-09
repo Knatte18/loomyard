@@ -1,0 +1,28 @@
+# split-perch-recipe.yaml is a fixture recipe whose rows hold a split perch: Raddle-Bouncer reviews the raddle proposal.
+# It serves the rows test that decides a raddle run's perch mode, and no run builds it.
+
+version: 1
+entry: Raddle-Write
+contract: loom
+terminals:
+  - Raddle-File
+
+producers:
+  - name: Raddle-Write
+    engine: RaddleWrite
+    segment: Raddle
+    on_done: Raddle-Bouncer
+
+  - name: Raddle-Bouncer
+    engine: Bouncer
+    segment: Raddle-Review
+    on_done: Raddle-File
+    config:
+      artifact_paths:
+        - _lym/raddle/proposal.yaml
+
+  - name: Raddle-File
+    engine: RaddleFile
+    segment: Raddle
+    on_stuck: Raddle-Write
+    on_done: ""

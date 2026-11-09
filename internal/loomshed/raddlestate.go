@@ -7,17 +7,8 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/state"
-)
-
-// RaddleMode is how a raddle run gets its approval.
-// An auto run files without an operator; an interactive run waits for the operator's approval.
-type RaddleMode string
-
-// The two modes of a raddle run.
-const (
-	RaddleModeAuto        RaddleMode = "auto"
-	RaddleModeInteractive RaddleMode = "interactive"
 )
 
 // RaddleApprovalRecord is the approval of one proposal:
@@ -40,7 +31,7 @@ type RaddleApprovalRecord struct {
 // EntryPosition is the history position of the row entry the last fresh-entry reset took up.
 // NoticeSent marks Raddle-File's notice of what it filed.
 type RaddleState struct {
-	Mode            RaddleMode            `json:"mode"`
+	Mode            loomengine.RaddleMode `json:"mode"`
 	ColdStored      bool                  `json:"cold_stored"`
 	Session         int                   `json:"session"`
 	ProposedSession int                   `json:"proposed_session"`

@@ -8,9 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
@@ -97,6 +100,77 @@ func TestRaddleBoardContext(t *testing.T) {
 		if len(got.Profiles[recipe]) == 0 {
 			t.Errorf("Profiles[%s] = none; want the profiles that hold a block for it", recipe)
 		}
+	}
+}
+
+// forgeRaddleRun forges a hub with a pair worktree for slug and writes board as its board.json.
+// It returns the pair's location.
+func forgeRaddleRun(t *testing.T, slug, board string) *lymcwd.Location {
+	t.Helper()
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, hub, slug)
+	if err := os.WriteFile(filepath.Join(hub.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	if err != nil {
+		t.Fatalf("ResolveWorktree() error = %v; want nil", err)
+	}
+	return location
+}
+
+func TestRaddleBoardContextPerch(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const board = `{"version":1,"entries":[{"id":1,"slug":"the-sketch","title":"Sketch","kind":"task","labels":["sketch"]}]}`
+	tests := []struct {
+		name string
+		// mode is the mode the run's state records, empty for a run with no state file.
+		mode loomengine.RaddleMode
+		// rawState, when set, is written to the state file in place of a recorded mode.
+		rawState  string
+		wantPerch bool
+		wantErr   string
+	}{
+		{name: "PerchModeState", mode: loomengine.RaddleModePerch, wantPerch: true},
+		{name: "InteractiveModeState", mode: loomengine.RaddleModeInteractive},
+		{name: "NoStateFile"},
+		{name: "UnreadableState", rawState: "{not json", wantErr: "read the raddle run's state"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := forgeRaddleRun(t, "the-sketch", board)
+			statePath := loomengine.RaddleStatePath(location)
+			switch {
+			case tt.rawState != "":
+				if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+					t.Fatalf("create the raddle directory: %v", err)
+				}
+				if err := os.WriteFile(statePath, []byte(tt.rawState), 0o644); err != nil {
+					t.Fatalf("write the state file: %v", err)
+				}
+			case tt.mode != "":
+				if _, err := loomshed.UpdateRaddleState(statePath, loomengine.RaddleStateLockPath(location), func(stored *loomshed.RaddleState) { stored.Mode = tt.mode }); err != nil {
+					t.Fatalf("UpdateRaddleState() = %v; want nil", err)
+				}
+			}
+
+			got, err := raddleBoardContext(location, false)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("raddleBoardContext() error = %v; want it containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("raddleBoardContext() error = %v; want nil", err)
+			}
+			if got.Perch != tt.wantPerch {
+				t.Errorf("Perch = %v; want %v", got.Perch, tt.wantPerch)
+			}
+		})
 	}
 }
 

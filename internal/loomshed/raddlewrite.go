@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -20,13 +21,15 @@ type RaddleWriteDeps struct {
 	// StatePath and StateLockPath are the run's state record and its lock.
 	StatePath     string
 	StateLockPath string
-	// ProposalPath is the proposal file; ReturnedPath is where a return in auto mode sets it aside.
+	// ProposalPath is the proposal file; ReturnedPath is where a return in auto or perch mode sets it aside.
 	ProposalPath string
 	ReturnedPath string
 	// ColdPath is where the run's first passing proposal is stored once.
 	ColdPath string
 	// ApprovalPath is the approval record the approve verb writes.
 	ApprovalPath string
+	// SplitPerch reports whether the recipe's rows hold a split perch, a Bouncer row over the proposal.
+	SplitPerch func() (bool, error)
 	// AutoApprove reports the raddle_auto_approve loom key.
 	// The key is read through the run's setting lookup, so a profile's raddle block may set it.
 	AutoApprove func() (bool, error)
@@ -34,7 +37,8 @@ type RaddleWriteDeps struct {
 	// It reads the status history and gives the history position of that entry, which is zero when fresh is false.
 	FreshEntry func() (fresh bool, position int, err error)
 	// StoreCold copies the proposal to ColdPath and sets cold_stored unless already stored.
-	// It is the raddle gate's onPass in auto mode and a no-op in interactive mode, where the propose verb stores the cold proposal.
+	// It is the raddle gate's onPass in auto and perch mode.
+	// It is a no-op in interactive mode, where the propose verb stores the cold proposal.
 	StoreCold func() error
 	// Commit commits the raddle directory.
 	Commit func() error
@@ -57,11 +61,13 @@ func NewRaddleWrite(name string, inner shedengine.ShedProducer, deps RaddleWrite
 
 // Call implements shedengine.ShedProducer.
 // Each state update is one step, so a resume after a crash repeats none of them.
-// The first call records the run's mode from AutoApprove.
+// The first call records the run's mode.
+// It is perch when SplitPerch reports a split perch, with no read of AutoApprove.
+// Otherwise it is auto or interactive from AutoApprove.
 // Every later call and the Raddle-File read take the mode from the state instead.
 // Every call raises the session count.
 // A fresh entry not yet taken up at its history position sets the last attempt's output aside.
-// Auto mode moves the proposal to ReturnedPath.
+// Auto and perch mode move the proposal to ReturnedPath.
 // Interactive mode removes the approval record and clears the state's approval.
 // Either way the seat starts a new session.
 // The inner producer then runs; on Done the return reason is cleared and the raddle directory committed.
@@ -77,14 +83,11 @@ func (p *raddleWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	}
 	mode := recorded.Mode
 	if mode == "" {
-		auto, err := p.deps.AutoApprove()
+		first, err := p.firstMode()
 		if err != nil {
-			return "", shedengine.OutputPointer{}, p.fail("read the raddle_auto_approve setting", err)
+			return "", shedengine.OutputPointer{}, err
 		}
-		mode = RaddleModeInteractive
-		if auto {
-			mode = RaddleModeAuto
-		}
+		mode = first
 	}
 	current, err := UpdateRaddleState(p.deps.StatePath, p.deps.StateLockPath, func(stored *RaddleState) {
 		if stored.Mode == "" {
@@ -106,7 +109,7 @@ func (p *raddleWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		}
 		if _, err := UpdateRaddleState(p.deps.StatePath, p.deps.StateLockPath, func(stored *RaddleState) {
 			stored.EntryPosition = position
-			if current.Mode == RaddleModeInteractive {
+			if current.Mode == loomengine.RaddleModeInteractive {
 				stored.Approval = nil
 			}
 		}); err != nil {
@@ -128,15 +131,36 @@ func (p *raddleWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	return outcome, pointer, nil
 }
 
+// firstMode returns the mode the run's first call records.
+// It is perch when the recipe's rows hold a split perch, and then the raddle_auto_approve setting is never read;
+// otherwise it is auto or interactive by that setting.
+func (p *raddleWrite) firstMode() (loomengine.RaddleMode, error) {
+	perch, err := p.deps.SplitPerch()
+	if err != nil {
+		return "", p.fail("read the recipe's rows for a split perch", err)
+	}
+	if perch {
+		return loomengine.RaddleModePerch, nil
+	}
+	auto, err := p.deps.AutoApprove()
+	if err != nil {
+		return "", p.fail("read the raddle_auto_approve setting", err)
+	}
+	if auto {
+		return loomengine.RaddleModeAuto, nil
+	}
+	return loomengine.RaddleModeInteractive, nil
+}
+
 // clearLastAttempt removes the output of the last attempt in mode.
 // The seat's output file must not exist when its new session starts.
 // A file already gone is no error, since a crash may have cleared it before the state recorded the entry.
-func (p *raddleWrite) clearLastAttempt(mode RaddleMode) error {
+func (p *raddleWrite) clearLastAttempt(mode loomengine.RaddleMode) error {
 	var err error
-	if mode == RaddleModeAuto {
-		err = os.Rename(p.deps.ProposalPath, p.deps.ReturnedPath)
-	} else {
+	if mode == loomengine.RaddleModeInteractive {
 		err = os.Remove(p.deps.ApprovalPath)
+	} else {
+		err = os.Rename(p.deps.ProposalPath, p.deps.ReturnedPath)
 	}
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil

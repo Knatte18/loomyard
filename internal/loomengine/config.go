@@ -435,6 +435,7 @@ type Config struct {
 
 	// Raddle is the model-spec of the raddle agent, which proposes how a Sketch splits into tasks.
 	// RaddleAutoApprove makes a raddle run file its proposal once the proposal's gate passes, with no operator approval.
+	// A run whose recipe rows hold a split perch never reads it, since the perch's approval files the proposal.
 	Raddle            string `yaml:"raddle"`
 	RaddleAutoApprove bool   `yaml:"raddle_auto_approve"`
 
@@ -608,7 +609,7 @@ func ConfigOpenMaps() []string {
 // raddle_auto_approve is the one approval key open to the local layer.
 // A run profile's raddle block sets it, and batten writes that block into the pair's local config.
 // The key is the sanctioned way to file a raddle proposal with no operator approval.
-// It is read once, at Raddle-Write's first spawn in a run.
+// It is read once, at Raddle-Write's first spawn in a run, and never in a run whose recipe rows hold a split perch.
 func ConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
 	guard := configengine.CategoryGuard

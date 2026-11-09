@@ -23,15 +23,18 @@ func TestRaddleTable(t *testing.T) {
 	reg := discussionTableRegistry(t)
 
 	const reason = "the board moved: the entry other was revised"
+	modes := []RaddleMode{RaddleModeAuto, RaddleModeInteractive, RaddleModePerch}
 	tests := []struct {
 		name         string
-		interactive  bool
+		mode         RaddleMode
 		returnReason string
 	}{
-		{name: "FirstSessionAuto"},
-		{name: "FirstSessionInteractive", interactive: true},
-		{name: "ReturnAuto", returnReason: reason},
-		{name: "ReturnInteractive", interactive: true, returnReason: reason},
+		{name: "FirstSessionAuto", mode: RaddleModeAuto},
+		{name: "FirstSessionInteractive", mode: RaddleModeInteractive},
+		{name: "FirstSessionPerch", mode: RaddleModePerch},
+		{name: "ReturnAuto", mode: RaddleModeAuto, returnReason: reason},
+		{name: "ReturnInteractive", mode: RaddleModeInteractive, returnReason: reason},
+		{name: "ReturnPerch", mode: RaddleModePerch, returnReason: reason},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -39,14 +42,15 @@ func TestRaddleTable(t *testing.T) {
 			layout := discussionTableLayout(t)
 			stencilsDir := newTestStencilsDir(t)
 			cfg := Config{Raddle: "opus[effort=high]", DiscussionTimeoutMin: 480, SubagentModel: "haiku"}
+			interactive := tt.mode == RaddleModeInteractive
 
-			table, err := RaddleTable(layout, stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, tt.interactive, tt.returnReason)
+			table, err := RaddleTable(layout, stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, tt.mode, tt.returnReason)
 			if err != nil {
 				t.Fatalf("RaddleTable(...) = _, %v; want nil error", err)
 			}
 
-			if table.RolePrefix != raddleRole || table.Segment != segmentcolor.Discussion || table.Timeout != 480*time.Minute || table.Interactive != tt.interactive {
-				t.Errorf("table prefix/segment/timeout/interactive = %q/%q/%s/%v; want %q/%q/480m0s/%v", table.RolePrefix, table.Segment, table.Timeout, table.Interactive, raddleRole, segmentcolor.Discussion, tt.interactive)
+			if table.RolePrefix != raddleRole || table.Segment != segmentcolor.Discussion || table.Timeout != 480*time.Minute || table.Interactive != interactive {
+				t.Errorf("table prefix/segment/timeout/interactive = %q/%q/%s/%v; want %q/%q/480m0s/%v", table.RolePrefix, table.Segment, table.Timeout, table.Interactive, raddleRole, segmentcolor.Discussion, interactive)
 			}
 			if want := []string{"return_note"}; !slices.Equal(table.Optional, want) {
 				t.Errorf("table.Optional = %v; want %v", table.Optional, want)
@@ -56,7 +60,7 @@ func TestRaddleTable(t *testing.T) {
 			}
 			seat := table.Chair()
 			wantOutput := RaddleProposal(layout)
-			if tt.interactive {
+			if interactive {
 				wantOutput = RaddleApproval(layout)
 			}
 			if !slices.Equal(seat.Outputs, []string{wantOutput}) {
@@ -81,11 +85,11 @@ func TestRaddleTable(t *testing.T) {
 			}
 
 			prompt := prompts[""]
-			wants := []string{"`ly:orch`", discussionTableSlug, DiscussionDecisionRecord(layout), RaddleProposal(layout), discussionTableSpecsDir + "/raddle/raddle-proposal-spec.md", `model: "haiku"`, raddleModeRules(tt.interactive, RaddleProposal(layout))}
+			wants := []string{"`ly:orch`", discussionTableSlug, DiscussionDecisionRecord(layout), RaddleProposal(layout), discussionTableSpecsDir + "/raddle/raddle-proposal-spec.md", `model: "haiku"`, raddleModeRules(tt.mode, RaddleProposal(layout), discussionTableSlug)}
 			if tt.returnReason != "" {
 				wants = append(wants, tt.returnReason)
 			}
-			if tt.returnReason != "" && !tt.interactive {
+			if tt.returnReason != "" && !interactive {
 				wants = append(wants, RaddleReturnedProposal(layout))
 			}
 			for _, want := range wants {
@@ -93,8 +97,10 @@ func TestRaddleTable(t *testing.T) {
 					t.Errorf("prompt does not contain %q", want)
 				}
 			}
-			if strings.Contains(prompt, raddleModeRules(!tt.interactive, RaddleProposal(layout))) {
-				t.Errorf("prompt carries the %v-mode text; want only the %v-mode text", !tt.interactive, tt.interactive)
+			for _, other := range modes {
+				if other != tt.mode && strings.Contains(prompt, raddleModeRules(other, RaddleProposal(layout), discussionTableSlug)) {
+					t.Errorf("prompt carries the %s-mode text; want only the %s-mode text", other, tt.mode)
+				}
 			}
 			if strings.Contains(prompt, "{{") || strings.Contains(prompt, "scribe:") || unboundedAskOperator(prompt) {
 				t.Errorf("prompt carries an unrendered marker, a skill name or an ask-the-operator sentence:\n%s", prompt)
@@ -105,7 +111,7 @@ func TestRaddleTable(t *testing.T) {
 	t.Run("AnEmptySlugIsRefused", func(t *testing.T) {
 		t.Parallel()
 		layout := discussionTableLayout(t)
-		if _, err := RaddleTable(layout, newTestStencilsDir(t), discussionTableSpecsDir, Config{Raddle: "opus[high]"}, reg, "", false, ""); err == nil {
+		if _, err := RaddleTable(layout, newTestStencilsDir(t), discussionTableSpecsDir, Config{Raddle: "opus[high]"}, reg, "", RaddleModeAuto, ""); err == nil {
 			t.Error("RaddleTable() with an empty slug = nil error; want one")
 		}
 	})

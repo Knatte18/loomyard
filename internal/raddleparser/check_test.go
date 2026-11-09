@@ -103,6 +103,41 @@ func TestCheck(t *testing.T) {
 		{"ProjectShapeWithNoProject", func(p *Proposal, _ *BoardContext) { p.Shape = ShapeProject }, []string{CheckShapeInvalid}},
 		{"TasksShapeWithAProject", func(p *Proposal, _ *BoardContext) { p.Project = &Project{Slug: "proj-new", Type: "feature"} }, []string{CheckShapeInvalid}},
 		{"ShapeOutsideTheFour", func(p *Proposal, _ *BoardContext) { p.Shape = "epic" }, []string{CheckShapeInvalid}},
+		{"PerchTapestryPasses", func(p *Proposal, b *BoardContext) {
+			mergeIntoOnePart(p)
+			p.Shape = ShapeTapestry
+			b.Perch = true
+		}, nil},
+		{"PerchTasksShapeWithOnePartPasses", func(p *Proposal, b *BoardContext) {
+			mergeIntoOnePart(p)
+			b.Perch = true
+		}, nil},
+		{"PerchProjectUnderTheRunsEntryPasses", func(p *Proposal, b *BoardContext) {
+			p.Shape = ShapeProject
+			p.Project = &Project{Slug: "sketch-x", Title: "Project", Type: "feature"}
+			b.Perch = true
+		}, nil},
+		{"ProjectUnderTheRunsEntryOutsidePerch", func(p *Proposal, _ *BoardContext) {
+			p.Shape = ShapeProject
+			p.Project = &Project{Slug: "sketch-x", Title: "Project", Type: "feature"}
+		}, []string{CheckSlugSketch}},
+		{"PerchTasksShapeWithTwoParts", func(_ *Proposal, b *BoardContext) { b.Perch = true }, []string{CheckPerchOutcome}},
+		{"PerchBeam", func(p *Proposal, b *BoardContext) {
+			p.Shape = ShapeBeam
+			p.Project = &Project{Slug: "proj-new", Title: "Project", Type: "feature"}
+			b.Perch = true
+		}, []string{CheckPerchOutcome}},
+		{"PerchProjectUnderAnotherSlug", func(p *Proposal, b *BoardContext) {
+			p.Shape = ShapeProject
+			p.Project = &Project{Slug: "proj-new", Title: "Project", Type: "feature"}
+			b.Perch = true
+		}, []string{CheckPerchOutcome}},
+		{"PerchPartUnderTheSketchsSlug", func(p *Proposal, b *BoardContext) {
+			p.Shape = ShapeProject
+			p.Project = &Project{Slug: "sketch-x", Title: "Project", Type: "feature"}
+			p.Parts[1].Slug = "sketch-x"
+			b.Perch = true
+		}, []string{CheckSlugDuplicate, CheckSlugSketch}},
 		{"ProposalCostLineMissing", func(p *Proposal, _ *BoardContext) { p.Cost.Line = "" }, []string{CheckCostMissing}},
 		{"NextBestCostLineMissing", func(p *Proposal, _ *BoardContext) { p.Cost.NextBest.Line = "" }, []string{CheckCostMissing}},
 	}
@@ -119,6 +154,17 @@ func TestCheck(t *testing.T) {
 			}
 		})
 	}
+}
+
+// mergeIntoOnePart folds the second part into the first, leaving one part that builds every decision.
+func mergeIntoOnePart(p *Proposal) {
+	first, second := p.Parts[0], p.Parts[1]
+	first.Decisions = append(first.Decisions, second.Decisions...)
+	first.OpenRisks = append(first.OpenRisks, second.OpenRisks...)
+	first.Criteria = append(first.Criteria, second.Criteria...)
+	first.PatternChanges = append(first.PatternChanges, second.PatternChanges...)
+	first.Packages = append(first.Packages, second.Packages...)
+	p.Parts = []Part{first}
 }
 
 // dependOnGoneEntry makes the second part depend on an entry the proposal weighed that is not on the board.

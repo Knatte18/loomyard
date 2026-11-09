@@ -11,8 +11,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -38,8 +40,16 @@ func TestFreshRaddleEntry(t *testing.T) {
 			},
 			true, 3,
 		},
-		{"GotoIntoTheRow", []shedengine.HistoryEntry{{Producer: loomshed.NameRaddleFile, Outcome: shedengine.OutcomeGoto, RoutedTo: loomshed.NameRaddleWrite}}, true, 1},
-		{"GotoElsewhere", []shedengine.HistoryEntry{{Producer: loomshed.NameRaddleFile, Outcome: shedengine.OutcomeGoto, RoutedTo: loomshed.NameRecordWrite}}, false, 0},
+		{
+			"GotoIntoTheRow",
+			[]shedengine.HistoryEntry{
+				{Producer: loomshed.NameRaddleFile, Outcome: shedengine.Stuck},
+				{Producer: loomshed.NameRaddleWrite, Outcome: shedengine.OutcomeGoto},
+			},
+			true, 2,
+		},
+		{"GotoElsewhere", []shedengine.HistoryEntry{{Producer: loomshed.NameRecordWrite, Outcome: shedengine.OutcomeGoto}}, false, 0},
+		{"RaddleFileStuckRoutedElsewhere", []shedengine.HistoryEntry{{Producer: loomshed.NameRaddleFile, Outcome: shedengine.Stuck, RoutedTo: loomshed.NameRecordWrite}}, false, 0},
 		{"StuckAtTheRowItself", []shedengine.HistoryEntry{{Producer: loomshed.NameRaddleWrite, Outcome: shedengine.Stuck}}, false, 0},
 	}
 	for _, tt := range tests {
@@ -48,6 +58,53 @@ func TestFreshRaddleEntry(t *testing.T) {
 			fresh, position := freshRaddleEntry(tt.history)
 			if fresh != tt.wantFresh || position != tt.wantPosition {
 				t.Errorf("freshRaddleEntry() = %v, %d; want %v, %d", fresh, position, tt.wantFresh, tt.wantPosition)
+			}
+		})
+	}
+}
+
+func TestRaddleWriteEnvStoreCold(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		mode loomengine.RaddleMode
+		want bool
+	}{
+		{"PerchModeStores", loomengine.RaddleModePerch, true},
+		{"AutoModeStores", loomengine.RaddleModeAuto, true},
+		{"InteractiveModeSkips", loomengine.RaddleModeInteractive, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			proposalPath := loomengine.RaddleProposal(location)
+			if err := os.MkdirAll(filepath.Dir(proposalPath), 0o755); err != nil {
+				t.Fatalf("create the raddle directory: %v", err)
+			}
+			if err := os.WriteFile(proposalPath, []byte("proposal"), 0o644); err != nil {
+				t.Fatalf("write the proposal: %v", err)
+			}
+			statePath, lockPath := loomengine.RaddleStatePath(location), loomengine.RaddleStateLockPath(location)
+			if _, err := loomshed.UpdateRaddleState(statePath, lockPath, func(stored *loomshed.RaddleState) { stored.Mode = tt.mode }); err != nil {
+				t.Fatalf("UpdateRaddleState() = %v; want nil", err)
+			}
+
+			env := raddleWriteEnv(location, loomengine.Config{}, "", "", modelspec.Registry{}, "pair", "", nil)
+			if err := env.Deps.StoreCold(); err != nil {
+				t.Fatalf("StoreCold() = %v; want nil", err)
+			}
+
+			cold, err := os.ReadFile(loomengine.RaddleColdProposal(location))
+			stored := err == nil && string(cold) == "proposal"
+			recorded, err := loomshed.ReadRaddleState(statePath, lockPath)
+			if err != nil {
+				t.Fatalf("ReadRaddleState() = %v; want nil", err)
+			}
+			if stored != tt.want || recorded.ColdStored != tt.want {
+				t.Errorf("in %s mode the cold proposal stored = %v and cold_stored = %v; want both %v", tt.mode, stored, recorded.ColdStored, tt.want)
 			}
 		})
 	}

@@ -857,7 +857,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		RecordWrite: recordWriteDeps(location, record),
 		// RaddleWrite and RaddleFile are filled for every recipe: only a recipe with a raddle row reads them,
 		// and every closure reads the board, the status or the setting on a call, never at wire time.
-		RaddleWrite: raddleWriteEnv(location, loomCfg, websterGeom.StencilsDir, websterGeom.SpecsDir, registry, seedSlug(location.WorktreeName), settingLookup),
+		RaddleWrite: raddleWriteEnv(location, loomCfg, websterGeom.StencilsDir, websterGeom.SpecsDir, registry, seedSlug(location.WorktreeName), c.recipe, settingLookup),
 		RaddleFile:  raddleFileDeps(location, seedSlug(location.WorktreeName)),
 		// DescriptionPath is the change description Describe writes and its gate and the landing
 		// rows read.

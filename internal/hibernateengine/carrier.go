@@ -20,6 +20,9 @@ type Carrier struct {
 	// The phase field is the last phase that sequence wrote.
 	running bool
 	phase   Phase
+	// sequences tracks the goroutine of every sequence, so a caller in the package can wait for each to end,
+	// its last write to the request file included.
+	sequences sync.WaitGroup
 }
 
 // NewCarrier returns the Carrier for deps, carrying no request yet.
@@ -52,7 +55,7 @@ func (c *Carrier) Tick() error {
 		return err
 	}
 	c.running, c.phase = true, r.Phase
-	go func() {
+	c.sequences.Go(func() {
 		ended, err := carry(c.deps, r)
 		if err != nil {
 			logger.Warn("hibernate: the request's sequence ended on an error", "phase", ended.Phase, "error", err)
@@ -63,7 +66,7 @@ func (c *Carrier) Tick() error {
 		c.running = false
 		c.mu.Unlock()
 		c.wakeWatch()
-	}()
+	})
 	return nil
 }
 

@@ -14,6 +14,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// newWaitedCarrier returns the Carrier for w's deps, and waits at cleanup for every sequence it started to end,
+// so no write of a sequence's goroutine races the removal of the test's directory.
+func newWaitedCarrier(t *testing.T, w *fakeWorld) *Carrier {
+	t.Helper()
+	carrier := NewCarrier(w.deps())
+	t.Cleanup(carrier.sequences.Wait)
+	return carrier
+}
+
 // waitTerminal polls the request file until it holds a terminal request.
 // It fails the test past a deadline, since the carrier's goroutine gives no signal when it ends.
 func waitTerminal(t *testing.T, w *fakeWorld) Request {
@@ -156,7 +165,7 @@ func TestCarrier(t *testing.T) {
 				<-leaveConfirmation
 			}
 		}
-		carrier := NewCarrier(w.deps())
+		carrier := newWaitedCarrier(t, w)
 
 		if err := carrier.Tick(); err != nil {
 			t.Fatal(err)
@@ -203,7 +212,7 @@ func TestCarrier(t *testing.T) {
 				<-leaveNotice
 			})
 		}
-		carrier := NewCarrier(w.deps())
+		carrier := newWaitedCarrier(t, w)
 
 		if err := carrier.Tick(); err != nil {
 			t.Fatal(err)
@@ -238,7 +247,7 @@ func TestCarrier(t *testing.T) {
 				<-leaveTriggerWait
 			})
 		}
-		carrier := NewCarrier(w.deps())
+		carrier := newWaitedCarrier(t, w)
 		if err := carrier.Tick(); err != nil {
 			t.Fatal(err)
 		}

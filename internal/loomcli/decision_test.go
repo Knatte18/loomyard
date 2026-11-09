@@ -125,6 +125,16 @@ type decisionFake struct {
 	stored   [][]byte
 	// hasApprovalRow is whether the fake's recipe has a Discussion approval row.
 	hasApprovalRow bool
+	// raddleFileRow names the recipe's RaddleFile row, empty for a recipe with none.
+	raddleFileRow string
+	// raddlePerch is whether the run's raddle state records perch mode.
+	raddlePerch bool
+	// raddleFiled holds the slugs the run's filing put on the board.
+	raddleFiled []string
+	// raddleFileRowErr, raddlePerchErr and raddleFiledErr make the matching raddle seam fail.
+	raddleFileRowErr error
+	raddlePerchErr   error
+	raddleFiledErr   error
 }
 
 // decisionPost is one notice the verb posted.
@@ -290,7 +300,19 @@ func (f *decisionFake) deps() decisionDeps {
 			return nil
 		},
 		approvalRow: func() bool { return f.hasApprovalRow },
+		raddleFileRow: func() (string, bool, error) {
+			return f.raddleFileRow, f.raddleFileRow != "", f.raddleFileRowErr
+		},
+		raddlePerch: func() (bool, error) { return f.raddlePerch, f.raddlePerchErr },
+		raddleFiled: func() ([]string, bool, error) { return f.raddleFiled, f.raddleFiled != nil, f.raddleFiledErr },
 	}
+}
+
+// atRaddleFile puts the fake's run at its RaddleFile row, in perch mode when perch is set, and returns the fake.
+func (f *decisionFake) atRaddleFile(perch bool) *decisionFake {
+	f.raddleFileRow, f.raddlePerch = loomshed.NameRaddleFile, perch
+	f.status.CurrentProducer, f.found = loomshed.NameRaddleFile, true
+	return f
 }
 
 // atPastRow puts the fake's run at row, which the fake judges past the Discussion approval, and returns the fake.
@@ -352,7 +374,16 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		fromFile bool
 		// programNameFails makes the LOOM program name resolver fail.
 		programNameFails bool
+		// atRaddleFile puts the run at its RaddleFile row in a mode other than perch.
+		atRaddleFile bool
+		// perchAtRaddleWrite puts a perch-mode run at its Raddle-Write row, before the filing row.
+		perchAtRaddleWrite bool
+		// perchWithoutFileRow runs a perch-mode raddle state over a recipe with no RaddleFile row.
+		perchWithoutFileRow bool
 	}{
+		{name: "a raddle run outside perch mode at its Raddle-File row", by: "parent", atRaddleFile: true},
+		{name: "a perch-mode raddle run at its Raddle-Write row", by: "parent", perchAtRaddleWrite: true},
+		{name: "a perch-mode raddle state over a recipe with no Raddle-File row", by: "parent", perchWithoutFileRow: true},
 		{name: "parent label withdrawing a PATTERN change through a --from file", by: "parent", withdraw: true, fromFile: true},
 		{name: "parent label with the PATTERN-change form", by: "parent", pattern: true},
 		{name: "parent label withdrawing a PATTERN change", by: "parent", withdraw: true},
@@ -381,6 +412,15 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			f.samplerErr = tc.samplerErr
 			if tc.programNameFails {
 				f.programNameErr = errors.New("geometry boom")
+			}
+			if tc.atRaddleFile {
+				f.atRaddleFile(false)
+			}
+			if tc.perchAtRaddleWrite {
+				f.atRaddleFile(true).status.CurrentProducer = loomshed.NameRaddleWrite
+			}
+			if tc.perchWithoutFileRow {
+				f.raddlePerch = true
 			}
 			f.parent = hubgeom.Parent{Name: tc.parentName}
 			input := goodDecisionInput()
@@ -607,6 +647,43 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 				f.found = true
 			},
 			want: []string{"loom: decision add:", "Discussion-Write is running", "way forward:", "message the Discussion-Write session"},
+		},
+		{
+			name:         "perch-mode raddle run at Raddle-File before the filing",
+			setup:        func(f *decisionFake, _ *decisionInput) { f.atRaddleFile(true) },
+			inputRefusal: true,
+			want:         []string{"stands at Raddle-File in perch mode", "way forward:", `"lym loom goto --to Raddle-Write"`, `"lym loom resume"`},
+		},
+		{
+			name: "perch-mode raddle run at Raddle-File after the filing",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.atRaddleFile(true).raddleFiled = []string{"part-a", "part-b"}
+			},
+			inputRefusal: true,
+			want:         []string{"has filed part-a, part-b", "way forward:", "released the part", `"lym loom decision add <part-slug>"`},
+			notWant:      []string{"goto"},
+		},
+		{
+			name:         "raddle file row read failure",
+			setup:        func(f *decisionFake, _ *decisionInput) { f.raddleFileRowErr = errors.New("row boom") },
+			inputRefusal: true,
+			want:         []string{"read the run's raddle filing: row boom", "way forward:"},
+		},
+		{
+			name: "raddle perch mode read failure",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.atRaddleFile(false).raddlePerchErr = errors.New("perch boom")
+			},
+			inputRefusal: true,
+			want:         []string{"read the run's raddle filing: perch boom", "way forward:"},
+		},
+		{
+			name: "raddle filing read failure",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.atRaddleFile(true).raddleFiledErr = errors.New("filing boom")
+			},
+			inputRefusal: true,
+			want:         []string{"read the run's raddle filing: filing boom", "way forward:"},
 		},
 		{
 			name:         "empty title",

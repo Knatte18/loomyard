@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -107,7 +108,8 @@ func NewRaddleFile(name string, deps RaddleFileDeps) shedengine.ShedProducer {
 // In that state, with the stage still holding this proposal's hash, the checks and the approval match are skipped:
 // the filed slugs would count as taken.
 // Only the entries the re-check names as landed are read, and steps 1 to 3 run so the store is written.
-// Otherwise Call runs the checks, the approval match in interactive mode and the board re-check.
+// Otherwise Call runs the checks, the approval match in interactive mode and the board re-check;
+// auto and perch mode file with no approval match.
 // A failure of one sends the proposal back, deleting the stage and the part records.
 // Step 1 stages the store files, step 2 writes the part records and commits, and step 3 files the entries.
 // A step whose outputs carry the hash of the proposal now approved is skipped,
@@ -197,7 +199,7 @@ func (p *raddleFile) verify(current RaddleState, hash string) (reason string, la
 		return "the proposal fails its checks: " + FormatRaddleFindings(findings), nil, nil
 	}
 
-	if current.Mode == RaddleModeInteractive {
+	if current.Mode == loomengine.RaddleModeInteractive {
 		switch {
 		case current.Approval == nil:
 			return "the proposal has no recorded approval, so it is not filed until the operator approves it", nil, nil

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -37,6 +38,8 @@ type raddleWriteFixture struct {
 	deps             RaddleWriteDeps
 	inner            *raddleInner
 	commits          commitRecorder
+	splitPerch       bool
+	splitPerchErr    error
 	autoApprove      bool
 	autoApproveErr   error
 	autoApproveCalls int
@@ -56,6 +59,7 @@ func newRaddleWriteFixture(t *testing.T) *raddleWriteFixture {
 		ReturnedPath:  filepath.Join(dir, "returned-proposal.yaml"),
 		ColdPath:      filepath.Join(dir, "cold-proposal.yaml"),
 		ApprovalPath:  filepath.Join(dir, "approval.json"),
+		SplitPerch:    func() (bool, error) { return f.splitPerch, f.splitPerchErr },
 		AutoApprove: func() (bool, error) {
 			f.autoApproveCalls++
 			return f.autoApprove, f.autoApproveErr
@@ -100,16 +104,21 @@ func TestRaddleWrite(t *testing.T) {
 	t.Run("RecordsTheModeAtTheFirstCallOnlyAndRaisesTheSessionAtEveryCall", func(t *testing.T) {
 		t.Parallel()
 		for _, tt := range []struct {
-			name string
-			auto bool
-			want RaddleMode
+			name  string
+			perch bool
+			auto  bool
+			want  loomengine.RaddleMode
+			// keyReads is how many times the raddle_auto_approve key is read across the calls.
+			keyReads int
 		}{
-			{"KeyOffIsInteractive", false, RaddleModeInteractive},
-			{"KeyOnIsAuto", true, RaddleModeAuto},
+			{"KeyOffIsInteractive", false, false, loomengine.RaddleModeInteractive, 1},
+			{"KeyOnIsAuto", false, true, loomengine.RaddleModeAuto, 1},
+			{"ASplitPerchIsPerchAndReadsNoKey", true, true, loomengine.RaddleModePerch, 0},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				f := newRaddleWriteFixture(t)
+				f.splitPerch = tt.perch
 				f.autoApprove = tt.auto
 				if outcome, err := f.call(); err != nil || outcome != shedengine.Done {
 					t.Fatalf("first Call() = %q, %v; want Done", outcome, err)
@@ -125,8 +134,8 @@ func TestRaddleWrite(t *testing.T) {
 				if got := f.state(t); got.Mode != tt.want || got.Session != 3 {
 					t.Errorf("state after three calls = %+v; want mode %q kept and session 3", got, tt.want)
 				}
-				if f.autoApproveCalls != 1 {
-					t.Errorf("AutoApprove calls = %d; want 1, the key is read once", f.autoApproveCalls)
+				if f.autoApproveCalls != tt.keyReads {
+					t.Errorf("AutoApprove calls = %d; want %d, the key is read at most once", f.autoApproveCalls, tt.keyReads)
 				}
 				if want := []int{1, 2, 3}; !slices.Equal(f.inner.sessions, want) {
 					t.Errorf("sessions the inner producer saw = %v; want %v, raised before it runs", f.inner.sessions, want)
@@ -135,20 +144,37 @@ func TestRaddleWrite(t *testing.T) {
 		}
 	})
 
-	t.Run("AnAutoApproveErrorIsReturnedAndRecordsNothing", func(t *testing.T) {
+	t.Run("AModeSourceErrorIsReturnedAndRecordsNothing", func(t *testing.T) {
 		t.Parallel()
-		f := newRaddleWriteFixture(t)
-		f.autoApproveErr = errors.New("setting unreadable")
+		for _, tt := range []struct {
+			name  string
+			setup func(f *raddleWriteFixture)
+			want  []string
+		}{
+			{"AutoApproveError", func(f *raddleWriteFixture) { f.autoApproveErr = errors.New("setting unreadable") }, []string{"setting unreadable", "raddle_auto_approve"}},
+			{"SplitPerchError", func(f *raddleWriteFixture) { f.splitPerchErr = errors.New("recipe unreadable") }, []string{"recipe unreadable", "split perch"}},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newRaddleWriteFixture(t)
+				tt.setup(f)
 
-		_, err := f.call()
-		if err == nil || !strings.Contains(err.Error(), "setting unreadable") || !strings.Contains(err.Error(), "re-step") {
-			t.Fatalf("Call() error = %v; want the fault with a re-step way forward", err)
-		}
-		if got := f.state(t); got != (RaddleState{}) {
-			t.Errorf("state after the error = %+v; want nothing recorded", got)
-		}
-		if len(f.inner.sessions) != 0 {
-			t.Errorf("inner producer ran %d times; want 0", len(f.inner.sessions))
+				_, err := f.call()
+				if err == nil {
+					t.Fatal("Call() error = nil; want the fault")
+				}
+				for _, want := range append(tt.want, "re-step") {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("Call() error = %v; want it containing %q", err, want)
+					}
+				}
+				if got := f.state(t); got != (RaddleState{}) {
+					t.Errorf("state after the error = %+v; want nothing recorded", got)
+				}
+				if len(f.inner.sessions) != 0 {
+					t.Errorf("inner producer ran %d times; want 0", len(f.inner.sessions))
+				}
+			})
 		}
 	})
 
@@ -157,18 +183,22 @@ func TestRaddleWrite(t *testing.T) {
 		tests := []struct {
 			name          string
 			auto          bool
+			perch         bool
 			approvalState bool
 			returnReason  string
 		}{
 			{name: "ReturnInAutoMode", auto: true, returnReason: "the board moved"},
+			{name: "ReturnInPerchMode", perch: true, returnReason: "the board moved"},
 			{name: "ReturnInInteractiveMode", approvalState: true, returnReason: "the board moved"},
 			{name: "GotoWithAnApprovalRecordPresent"},
+			{name: "GotoInPerchMode", perch: true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				f := newRaddleWriteFixture(t)
 				f.autoApprove = tt.auto
+				f.splitPerch = tt.perch
 				f.call()
 				f.write(t, f.deps.ProposalPath, "proposal")
 				f.write(t, f.deps.ApprovalPath, `{"hash":"h","session":1}`)
@@ -187,7 +217,7 @@ func TestRaddleWrite(t *testing.T) {
 				if got.EntryPosition != 4 || got.Approval != nil {
 					t.Errorf("state after the fresh entry = %+v; want position 4 and no approval", got)
 				}
-				if tt.auto {
+				if tt.auto || tt.perch {
 					if exists(f.deps.ProposalPath) {
 						t.Error("proposal still in place; want it moved to the set-aside path")
 					}

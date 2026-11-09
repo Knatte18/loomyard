@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -320,12 +321,13 @@ func raddleWriteEnv(dir string) shedrecipe.RaddleWriteEnv {
 			ReturnedPath:  filepath.Join(raddleDir, "returned-proposal.yaml"),
 			ColdPath:      filepath.Join(raddleDir, "cold-proposal.yaml"),
 			ApprovalPath:  filepath.Join(raddleDir, "approval.json"),
+			SplitPerch:    func() (bool, error) { return false, nil },
 			AutoApprove:   func() (bool, error) { return false, nil },
 			FreshEntry:    func() (bool, int, error) { return false, 0, nil },
 			StoreCold:     func() error { return nil },
 			Commit:        func() error { return nil },
 		},
-		Table: func(bool, string) (seatengine.Table, error) {
+		Table: func(loomengine.RaddleMode, string) (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "raddle",
 				Segment:    segmentcolor.Discussion,

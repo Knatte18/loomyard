@@ -1332,7 +1332,7 @@ User-facing modules each get one `lym <module>` namespace:
   `discussion_advisors` lists the Discussion-Write advisors, one `{name, model}` entry each.
   An empty list runs the lead alone, deciding each question itself.
   `raddle` is the raddle agent's model-spec.
-  `raddle_auto_approve` files a raddle proposal once its gate passes, with no operator approval.
+  `raddle_auto_approve` files a raddle proposal once its gate passes, with no operator approval; a run whose recipe rows hold a split perch never reads it.
   `pr_review_ask_parent` has PR-Review ask the parent orch to review the open pull request.
   It is open to the local layer, so a task's `run_settings` sets it for one run.
   `discussion_lenses` names the `lenses.yaml` fan whose lenses the Discussion-Write lead forks itself for.

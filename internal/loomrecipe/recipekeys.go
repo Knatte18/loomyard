@@ -6,8 +6,10 @@ package loomrecipe
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -127,6 +129,40 @@ func CodePerchGate(recipe string, env shedrecipe.Env) (shedengine.EntryGate, err
 	}
 
 	return nil, nil
+}
+
+// HoldsSplitPerch reports whether the named recipe's rows hold a split perch.
+// A split perch is a Bouncer row whose artifact_paths name the raddle proposal.
+// A raddle run over such rows records perch mode, so the perch's approval files the proposal in place of the operator's.
+// An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
+func HoldsSplitPerch(recipe string) (bool, error) {
+	parsed, err := parseEmbeddedRecipe(recipe)
+	if err != nil {
+		return false, err
+	}
+
+	return RowsHoldSplitPerch(parsed.Producers), nil
+}
+
+// RowsHoldSplitPerch reports whether rows hold a split perch.
+// A split perch is a Bouncer row whose artifact_paths name the raddle proposal.
+// It is the rows test that decides a raddle run's perch mode, over rows parsed from any recipe source.
+func RowsHoldSplitPerch(rows []shedbuild.Row) bool {
+	proposal := loomengine.RaddleProposalRel()
+	for _, row := range rows {
+		if row.Engine != bouncerEngine {
+			continue
+		}
+		paths, _ := row.Config["artifact_paths"].([]any)
+		if slices.ContainsFunc(paths, func(path any) bool {
+			text, _ := path.(string)
+			return filepath.Clean(filepath.FromSlash(text)) == proposal
+		}) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // RecordEngine returns the engine of the named recipe's row that writes the decision record.

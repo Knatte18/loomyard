@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -68,7 +69,7 @@ type raddleFileFixture struct {
 }
 
 // newRaddleFileFixture writes the proposal, the cold proposal, the record and the run's state, with the approval of the proposal recorded when approved is set.
-func newRaddleFileFixture(t *testing.T, proposal raddleparser.Proposal, mode loomshed.RaddleMode, approved bool) *raddleFileFixture {
+func newRaddleFileFixture(t *testing.T, proposal raddleparser.Proposal, mode loomengine.RaddleMode, approved bool) *raddleFileFixture {
 	t.Helper()
 	dir := t.TempDir()
 	f := &raddleFileFixture{t: t, proposal: proposal, created: time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), failing: map[string]error{}}
@@ -217,7 +218,7 @@ func TestRaddleFile(t *testing.T) {
 				t.Parallel()
 				proposal := raddleFileProposal(shape)
 				proposal.Parts[0].PatternClusters = []raddleparser.PatternCluster{{SketchID: "PATTERN-a", Entry: "PATTERN-live", Text: "Live rule."}}
-				f := newRaddleFileFixture(t, proposal, loomshed.RaddleModeAuto, false)
+				f := newRaddleFileFixture(t, proposal, loomengine.RaddleModeAuto, false)
 
 				outcome, _, err := f.call()
 				requireDone(t, outcome, err)
@@ -254,7 +255,7 @@ func TestRaddleFile(t *testing.T) {
 		} {
 			t.Run(tt.shape, func(t *testing.T) {
 				t.Parallel()
-				f := newRaddleFileFixture(t, raddleFileProposal(tt.shape), loomshed.RaddleModeAuto, false)
+				f := newRaddleFileFixture(t, raddleFileProposal(tt.shape), loomengine.RaddleModeAuto, false)
 				outcome, _, err := f.call()
 				requireDone(t, outcome, err)
 
@@ -340,7 +341,7 @@ func TestRaddleFile(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomshed.RaddleModeInteractive, tt.approved)
+				f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModeInteractive, tt.approved)
 				f.write(filepath.Join(f.deps.StageDir, "hash"), "stale")
 				f.write(f.deps.PartRecordPath("part-a"), "stale")
 				tt.setup(f)
@@ -370,7 +371,7 @@ func TestRaddleFile(t *testing.T) {
 
 	t.Run("AThirdFailureHaltsForTheParentNamingTheGoto", func(t *testing.T) {
 		t.Parallel()
-		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomshed.RaddleModeAuto, false)
+		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModeAuto, false)
 		f.recheck.Failures = moved
 		f.updateState(func(stored *loomshed.RaddleState) { stored.Returns = 2 })
 
@@ -390,7 +391,7 @@ func TestRaddleFile(t *testing.T) {
 
 	t.Run("AFileErrorOtherThanTheRecheckIsReturned", func(t *testing.T) {
 		t.Parallel()
-		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomshed.RaddleModeAuto, false)
+		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModeAuto, false)
 		f.failing["file"] = errors.New("board write failed")
 
 		outcome, _, err := f.call()
@@ -415,7 +416,7 @@ func TestRaddleFile(t *testing.T) {
 		} {
 			t.Run(tt.seam, func(t *testing.T) {
 				t.Parallel()
-				f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeBeam), loomshed.RaddleModeAuto, false)
+				f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeBeam), loomengine.RaddleModeAuto, false)
 				f.failing[tt.seam] = errors.New("seam down")
 
 				outcome, pointer, err := f.call()
@@ -446,7 +447,7 @@ func TestRaddleFile(t *testing.T) {
 
 	t.Run("AHalfDoneFilingIsFinishedWithoutTheChecks", func(t *testing.T) {
 		t.Parallel()
-		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomshed.RaddleModeAuto, false)
+		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModeAuto, false)
 		f.alreadyFiled = true
 		// The stage a filing that crashed after its board write leaves: every staged file, the proposal's hash last.
 		f.write(filepath.Join(f.deps.StageDir, "proposal.yaml"), string(marshalRaddleProposal(t, f.proposal)))
@@ -477,7 +478,7 @@ func TestRaddleFile(t *testing.T) {
 
 	t.Run("AHalfDoneFilingOfAnEditedProposalIsCheckedAgain", func(t *testing.T) {
 		t.Parallel()
-		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomshed.RaddleModeAuto, false)
+		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModeAuto, false)
 		f.alreadyFiled = true
 		f.write(filepath.Join(f.deps.StageDir, "hash"), "hash of the proposal that was filed")
 		f.findings = []raddleparser.Finding{{Check: raddleparser.CheckSlugTaken, Detail: "filed parts now hold the slugs"}}
@@ -494,7 +495,7 @@ func TestRaddleFile(t *testing.T) {
 
 	t.Run("ACrashBeforeTheFilingRewritesTheOutputsOfAnEarlierProposal", func(t *testing.T) {
 		t.Parallel()
-		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomshed.RaddleModeInteractive, true)
+		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModeInteractive, true)
 		f.failing["commit"] = errors.New("git commit failed")
 		if _, _, err := f.call(); err == nil {
 			t.Fatal("Call() = nil error; want the commit fault")
@@ -522,9 +523,20 @@ func TestRaddleFile(t *testing.T) {
 		}
 	})
 
+	t.Run("APerchRunFilesWithNoApproval", func(t *testing.T) {
+		t.Parallel()
+		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModePerch, false)
+
+		outcome, _, err := f.call()
+		requireDone(t, outcome, err)
+		if len(f.filings) != 1 {
+			t.Errorf("filings = %d; want 1, filed on the split perch's approval with no approval recorded", len(f.filings))
+		}
+	})
+
 	t.Run("AReturnedProposalIsNotFiledUntilApprovedAgain", func(t *testing.T) {
 		t.Parallel()
-		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomshed.RaddleModeInteractive, true)
+		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModeInteractive, true)
 		f.recheck.Failures = moved
 		if outcome, _, err := f.call(); err != nil || outcome != shedengine.Stuck {
 			t.Fatalf("first Call() = %q, %v; want Stuck", outcome, err)
@@ -545,7 +557,7 @@ func TestRaddleFile(t *testing.T) {
 
 	t.Run("LandedEntriesAreNamedInTheNoticeAndFailNothing", func(t *testing.T) {
 		t.Parallel()
-		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomshed.RaddleModeAuto, false)
+		f := newRaddleFileFixture(t, raddleFileProposal(raddleparser.ShapeTasks), loomengine.RaddleModeAuto, false)
 		f.recheck.Landed = []string{"gone"}
 
 		outcome, _, err := f.call()
