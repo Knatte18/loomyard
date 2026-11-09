@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -46,6 +47,14 @@ type ButtonRequest struct {
 // buttonAnswerOption is the session user option an ask prompt stores its answer in, which the answered click reads.
 // The answer travels through an option rather than the answered line because tmux can escape it for its own parser but not quote it for a shell.
 const buttonAnswerOption = "@lym_button_answer"
+
+// buttonAnswerMarker leads the value an ask prompt stores, escaped the way tmux's %%% escapes the answer.
+// tmux escapes every $ of the answer as \$, and some tmux builds keep that backslash where a variable name follows,
+// so the stored marker shows whether this server kept it.
+const buttonAnswerMarker = "$A"
+
+// keptDollarEscape matches a backslash that tmux's parser kept before a $ starting a variable name.
+var keptDollarEscape = regexp.MustCompile(`\\\$([A-Za-z_{])`)
 
 // buttonDeps holds the process-level calls of a button click, so a test can replace them.
 type buttonDeps struct {
@@ -164,7 +173,7 @@ func runButtonVia(cmd TmuxCmd, req ButtonRequest, deps buttonDeps) {
 			// %%% is the first %% of the template, so tmux puts the answer there.
 			// The answer's quotes, backslashes, dollars, semicolons and tildes are escaped for the double-quoted string.
 			line := composeButtonReentryLine(deps.sh, exe, req, runDir, buttonStageAnswered, hash, values)
-			template := "set-option -t " + tmuxString(exactSessionWindowTarget(req.Session)) + " " + buttonAnswerOption + ` "%%%" ; run-shell -b ` + tmuxQuote(line)
+			template := "set-option -t " + tmuxString(exactSessionWindowTarget(req.Session)) + " " + buttonAnswerOption + ` "\` + buttonAnswerMarker + `%%%" ; run-shell -b ` + tmuxQuote(line)
 			argv = []string{"command-prompt", "-t", req.Client, "-p", ask + " ", template}
 		} else {
 			line := composeButtonReentryLine(deps.sh, exe, req, runDir, buttonStageConfirmed, hash, values)
@@ -246,7 +255,7 @@ func buttonStrand(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (strand
 
 // buttonAnswer returns the value that fills {answer} for an answered or confirmed click, or the message to show instead.
 // A confirmed click carries the value.
-// An answered click reads the session's buttonAnswerOption, trimmed of surrounding space,
+// An answered click reads the session's buttonAnswerOption, decoded and trimmed of surrounding space,
 // and an empty answer takes the entry's ask default.
 func buttonAnswer(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (answer, problem string) {
 	if req.Confirmed {
@@ -257,11 +266,22 @@ func buttonAnswer(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (answer
 		logger.Warn("reed: could not read a button's answer", "label", entry.Label, "session", req.Session, "err", err)
 		return "", "lym: " + entry.Label + " could not read its answer; click again"
 	}
-	answer = strings.TrimSpace(raw)
+	answer = strings.TrimSpace(decodeStoredAnswer(raw))
 	if answer == "" {
 		answer = entry.AskDefault
 	}
 	return answer, ""
+}
+
+// decodeStoredAnswer returns the typed answer from the value an ask prompt stored behind buttonAnswerMarker.
+// A marker stored with its backslash shows a tmux that kept the backslash of every \$ before a variable name,
+// so each such kept backslash is dropped from the answer.
+// tmux escapes each backslash the answer holds as well, so a kept one always stands directly before the $.
+func decodeStoredAnswer(stored string) string {
+	if rest, ok := strings.CutPrefix(stored, `\`+buttonAnswerMarker); ok {
+		return keptDollarEscape.ReplaceAllString(rest, "$$${1}")
+	}
+	return strings.TrimPrefix(stored, buttonAnswerMarker)
 }
 
 // runButtonScript starts shellPath with flag and script in dir and waits for it with no timeout.

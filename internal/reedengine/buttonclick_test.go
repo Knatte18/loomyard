@@ -54,7 +54,7 @@ func TestRunButtonVia(t *testing.T) {
 	askFor := func(entry buttonSpecEntry, prompt string, values map[string]string) func(dir string) []string {
 		return func(dir string) []string {
 			line := composeButtonReentryLine(posix, exe, promptRequest, dir, buttonStageAnswered, buttonRunHash(entry.Run), values)
-			return []string{"command-prompt", "-t", "c1", "-p", prompt, `set-option -t "=sess:" @lym_button_answer "%%%" ; run-shell -b ` + tmuxQuote(line)}
+			return []string{"command-prompt", "-t", "c1", "-p", prompt, `set-option -t "=sess:" @lym_button_answer "\$A%%%" ; run-shell -b ` + tmuxQuote(line)}
 		}
 	}
 
@@ -112,8 +112,10 @@ func TestRunButtonVia(t *testing.T) {
 		{name: "AskEntryNamingStrandCarriesTheStrandInTheAnsweredLine", entry: strandedAsking, strandRead: strandName, wantPrompt: askFor(strandedAsking, "Say: ", map[string]string{"strand": strandName})},
 		{name: "AskAndConfirmEntryRaisesTheAnswerPromptFirst", entry: askingConfirming, wantPrompt: askFor(askingConfirming, "Name: ", nil)},
 		{name: "AskTextHoldingACommaFromAStrandValueRaisesNoPrompt", entry: strandNamingAsk, strandRead: "a,b", wantMessage: "lym: go: the ask text holds a ','"},
-		{name: "AnsweredCallRunsWithTheStoredAnswerTrimmedAndQuoted", entry: asking, answered: true, hash: buttonRunHash(asking.Run), answerRead: " a b\n", wantRun: true, wantRunText: "open " + posix.Quote("a b")},
-		{name: "AnsweredCallWithAnEmptyAnswerTakesTheAskDefault", entry: asking, answered: true, hash: buttonRunHash(asking.Run), answerRead: "\n", wantRun: true, wantRunText: "open " + posix.Quote("dflt")},
+		{name: "AnsweredCallRunsWithTheStoredAnswerTrimmedAndQuoted", entry: asking, answered: true, hash: buttonRunHash(asking.Run), answerRead: "$A a b\n", wantRun: true, wantRunText: "open " + posix.Quote("a b")},
+		{name: "AnsweredCallWithAnEmptyAnswerTakesTheAskDefault", entry: asking, answered: true, hash: buttonRunHash(asking.Run), answerRead: "$A\n", wantRun: true, wantRunText: "open " + posix.Quote("dflt")},
+		{name: "AnsweredCallFromATmuxThatUnescapesEveryDollarKeepsTheAnswersBackslashes", entry: asking, answered: true, hash: buttonRunHash(asking.Run), answerRead: `$A\$HOME $-` + "\n", wantRun: true, wantRunText: "open " + posix.Quote(`\$HOME $-`)},
+		{name: "AnsweredCallFromATmuxThatKeepsDollarEscapesDropsOnlyTheKeptBackslashes", entry: asking, answered: true, hash: buttonRunHash(asking.Run), answerRead: `\$A\\$HOME \$x_1 \${y} $- \$_z` + "\n", wantRun: true, wantRunText: "open " + posix.Quote(`\$HOME $x_1 ${y} $- $_z`)},
 		{name: "AnsweredCallWithAFailedAnswerReadRunsNothing", entry: asking, answered: true, hash: buttonRunHash(asking.Run), answerErr: errors.New("no server"), wantMessage: "lym: go could not read its answer; click again"},
 		{name: "AnsweredCallWithAnotherHashRunsNothing", entry: asking, answered: true, hash: "other", answerRead: "a", wantMessage: "lym: the buttons changed since go asked; click again"},
 		{name: "AnsweredStrandEntryRunsWithTheCarriedNameNotThePanes", entry: strandedAsking, answered: true, hash: buttonRunHash(strandedAsking.Run), strand: strandName, answerRead: "hi", wantRun: true, wantRunText: "tell " + posix.Quote(strandName) + " " + posix.Quote("hi")},

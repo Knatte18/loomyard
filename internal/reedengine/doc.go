@@ -131,6 +131,9 @@
 // and a lym verb refuses anywhere but its worktree's anchor.
 // An entry with an ask text raises `command-prompt` on the clicking client.
 // Its template stores the answer, escaped by tmux's `%%%`, in the session option @lym_button_answer.
+// An escaped `$A` marker leads the stored answer.
+// Some tmux builds keep the backslash of a `\$` before a variable name;
+// a stored marker that kept it tells the answered call to drop each such kept backslash from the answer.
 // The template then runs a line (composeButtonReentryLine) that opens in that anchor.
 // The line calls the verb again with `--answered`, the hash of the entry's run text and the strand name.
 // The answered call reads the option and takes the entry's ask_default for an empty answer.
