@@ -2,8 +2,10 @@ slots: 2  # how many gate builds and test runs the hub executes at once; a lower
 busy_quit_sec: 120  # seconds a Go test binary under lym gate test may keep a CPU core at least 90 percent busy before it gets one SIGQUIT and dumps its goroutine stacks; 0 turns the watchdog off; raise it for a package that is CPU-bound but healthy
 fixer_timeout_min: 30  # minutes a cold gate fixer may run before the call that spawned it stops waiting; it bounds the card gate's fixer and the row gate fixers, and webster's fix-verify keeps its own recovery_timeout_min
 test_map_max_age_days: 7  # days after which lym gate testmap rebuilds a package's coverage map even when no Go file of the package changed, so a change to a dependency or a non-Go file of the package lasts at most this long unmapped
-redundancy_build_timeout_min: 10  # minutes each coverage build and lym build of a coverage map run may take before its process group is killed and the build counts as failed
-redundancy_test_timeout_sec: 120  # seconds each test a coverage map run runs alone may take before its process group is killed and the test is left out of the map
+redundancy_build_timeout_min: 10  # minutes each coverage build and lym build of a coverage map run or the redundancy report step may take before its process group is killed and the build counts as failed
+redundancy_test_timeout_sec: 120  # seconds each test a coverage map run or the redundancy report step runs alone may take before its process group is killed and the test is left out
+redundancy_max_tests: 40  # the most new and changed tests the redundancy report step judges in one call, taken in file then name order; the rest are listed as not judged
+redundancy_budget_min: 10  # minutes the redundancy report step may spend on its builds and tests once it holds its gate slot; past it the step starts no further build or test
 
 # The hub's test tiers, keyed tier0, tier1, and so on; the template declares none.
 # A tier is written whole with one flow mapping: lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}'
@@ -18,18 +20,19 @@ tiers: {}
 # The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree), and webster-fix, darn-write, code-burler-fix and pr-review (scope diff, the diff from the merge base).
 # The scope card is only for the card and batch keys.
 # A key may also hold lints, the lint steps its call runs after the tiers against HEAD: comments (fixed-column-wrapped breaks and over-long lines in // comments) and pattern (PATTERN.md grown past its headroom line).
+# A key may also hold reports, the advisory steps its call runs after the lints, which never change its result: redundancy (judges the diff's new and changed Go tests against the coverage maps and writes the verdicts into the worktree's gate directory); reports: [] turns them off.
 # The card key alone may also hold fixer, a model-spec such as sonnet[medium]: the cold fixer an agent's red lym gate test --gate card call hands its failures to; "" turns it off.
 # No tier list may be empty, and a tier a key names must be declared above when the gate runs.
 gates:
   card: {tiers: [0], scope: card, lints: [comments, pattern], fixer: "sonnet[medium]"}
   batch: {tiers: [0], scope: card}
-  webster: {tiers: [0], scope: all}
-  parent-align: {tiers: [0], scope: all}
+  webster: {tiers: [0], scope: all, reports: [redundancy]}
+  parent-align: {tiers: [0], scope: all, reports: [redundancy]}
   finalize: {tiers: [0], scope: all}
   adopt: {tiers: [0], scope: all}
   webster-fix: {tiers: [0], scope: diff}
-  darn-write: {tiers: [0], scope: diff}
-  code-burler-fix: {tiers: [0], scope: diff}
+  darn-write: {tiers: [0], scope: diff, reports: [redundancy]}
+  code-burler-fix: {tiers: [0], scope: diff, reports: [redundancy]}
   pr-review: {tiers: [0], scope: diff}
 
 # How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, dotnet derives the impacted C# test projects and classes from the type-name closure over test classes, none runs every tier whole.

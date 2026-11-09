@@ -100,7 +100,7 @@ Examples:
 				return nil
 			}
 			request := testRequest{
-				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
+				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, secondUnit: time.Second, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
 				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, mainPackages: mainPackages, base: base, all: all, guards: guards, targets: args,
 				upto: upto, uptoGiven: cmd.Flags().Changed("upto"),
 				phase: phaseFrom(cmd.Context()),
@@ -163,8 +163,10 @@ type testRequest struct {
 	samplePeriod time.Duration
 	// preTierCeiling bounds the work before the first tier.
 	preTierCeiling time.Duration
-	// timeoutUnit is the length of one `timeout_min` minute.
+	// timeoutUnit is the length of one `timeout_min` minute, and of one minute of the redundancy step's minute keys.
 	timeoutUnit time.Duration
+	// secondUnit is the length of one second of `redundancy_test_timeout_sec`.
+	secondUnit time.Duration
 	// rerunDelay is how long a tier waits before its one rerun after a resource shortage or a crashed test runner.
 	rerunDelay time.Duration
 	// pipeWaitDelay is how long a tier's or the build's output is still read after its shell exits.

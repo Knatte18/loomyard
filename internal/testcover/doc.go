@@ -13,10 +13,13 @@
 // The wait for its exit and output then lasts at most Grace, so a descendant holding the output pipe cannot stall it.
 // A test past its bound comes back marked TimedOut, never as an error.
 // ScanTestFuncs reads a package's top-level Test functions.
-// Each comes with the tier its `tiergate.Require` names and the hash of its source text.
+// Each comes with its file, the tier its `tiergate.Require` names and the hash of its source text.
+// ParseTestFuncs reads them from one test file's source, such as the file as a commit stores it.
 //
 // Judge marks a test contained when another judged test of the same run covers each of its covered blocks.
 // It picks the removable set greedily among the contained tests, slowest first.
+// JudgeAgainst does the same with a set of kept tests that cover blocks but are never judged or removed,
+// so a caller judges new tests against tests a coverage map already holds.
 // A test that is skipped, failed or covers nothing is not judged.
 // Nor is a test judged that the static spawn scan marks as possibly running module code in another process.
 // Its in-process coverage cannot see that code.
@@ -27,6 +30,8 @@
 // An unchanged block keeps its key when lines above it move; an edited block gets a new one.
 // Bound: two blocks with the same text in one function differ by ordinal alone.
 // So inserting a block that repeats the text of one in the same function shifts every later identical ordinal.
+// BlockKey.String renders a key as the text a BlockSet holds.
+// CoveredKeys turns one run's profile into the rendered keys of the package blocks it covered.
 //
 // The coverage map is one JSON record per package, read and written through internal/state.
 // It keeps the block key table and, for each judged test, the indexes of the blocks it covers.

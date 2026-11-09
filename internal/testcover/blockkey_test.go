@@ -3,6 +3,7 @@ package testcover_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testcover"
@@ -115,5 +116,38 @@ func TestKeyBlocks(t *testing.T) {
 	}
 	if _, err := testcover.KeyBlocks(dir, []testcover.ProfileBlock{block(99, 1, 99, 2)}); err == nil {
 		t.Error("KeyBlocks of a line past the file's end = nil error; want an error")
+	}
+}
+
+// TestCoveredKeys pins that a profile's covered blocks of the package come back as the keys KeyBlocks gives them.
+// A block the profile lists twice counts once and as covered when either line counts it,
+// and a block of a package nested below is left out.
+func TestCoveredKeys(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "p.go"), []byte(keyedSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	block := func(file string, startLine, startCol, endLine, endCol, count int) testcover.ProfileBlock {
+		return testcover.ProfileBlock{File: file, StartLine: startLine, StartCol: startCol, EndLine: endLine, EndCol: endCol, Statements: 1, Count: count}
+	}
+	profile := []testcover.ProfileBlock{
+		block("m/p/p.go", 3, 21, 5, 2, 0),
+		block("m/p/p.go", 7, 22, 9, 2, 0),
+		block("m/p/p.go", 3, 21, 5, 2, 1),
+		block("m/p/sub/s.go", 1, 1, 1, 2, 1),
+	}
+	keys, err := testcover.KeyBlocks(dir, []testcover.ProfileBlock{block("m/p/p.go", 3, 21, 5, 2, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := testcover.CoveredKeys(dir, "m/p", profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := blockSet(keys[0].String()); !reflect.DeepEqual(got, want) {
+		t.Errorf("CoveredKeys() = %v; want %v, A.Do's key alone", got, want)
 	}
 }

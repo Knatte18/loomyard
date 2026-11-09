@@ -32,8 +32,8 @@ func TestScanTestFuncs(t *testing.T) {
 				"c.go":      "package p\n\nfunc TestInAFileThatIsNoTestFile() {}\n",
 			},
 			want: []testcover.TestFunc{
-				{Name: "TestTiered", Tier: 1, Tiered: true, Hash: testcover.ContentHash([]byte(tiered))},
-				{Name: "TestUntiered", Hash: testcover.ContentHash([]byte(untiered))},
+				{Name: "TestTiered", File: "a_test.go", Tier: 1, Tiered: true, Hash: testcover.ContentHash([]byte(tiered))},
+				{Name: "TestUntiered", File: "b_test.go", Hash: testcover.ContentHash([]byte(untiered))},
 			},
 		},
 		{name: "UnparsableTestFile", files: map[string]string{"x_test.go": "package p\n\nfunc {"}, wantErr: "x_test.go"},

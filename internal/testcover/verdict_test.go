@@ -92,3 +92,45 @@ func TestJudge(t *testing.T) {
 		})
 	}
 }
+
+func TestJudgeAgainst_KeptRunsCoverButAreNeverJudged(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		runs []testcover.Run
+		kept []testcover.Run
+		want []testcover.Verdict
+	}{
+		{
+			name: "a run whose blocks kept runs cover is removable, naming them largest overlap first",
+			runs: []testcover.Run{passRun("A", 1, "b1", "b2")},
+			kept: []testcover.Run{passRun("K1", 1, "b1"), passRun("K2", 1, "b1", "b2")},
+			want: []testcover.Verdict{{Name: "A", Contained: true, Removable: true, Covering: []string{"K2"}}},
+		},
+		{
+			name: "a block no kept run covers keeps the run unique",
+			runs: []testcover.Run{passRun("A", 1, "b1", "b9")},
+			kept: []testcover.Run{passRun("K", 1, "b1")},
+			want: []testcover.Verdict{{Name: "A"}},
+		},
+		{
+			name: "two runs covering only each other's blocks are never both removable",
+			runs: []testcover.Run{passRun("C", 2, "b1"), passRun("D", 1, "b1")},
+			kept: []testcover.Run{passRun("K", 1, "b2")},
+			want: []testcover.Verdict{
+				{Name: "C", Contained: true, Removable: true, Covering: []string{"D"}},
+				{Name: "D", Contained: true, Covering: []string{"C"}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := testcover.JudgeAgainst(tt.runs, tt.kept); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("JudgeAgainst = %+v\nwant           %+v", got, tt.want)
+			}
+		})
+	}
+}

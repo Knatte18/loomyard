@@ -894,6 +894,7 @@ User-facing modules each get one `lym <module>` namespace:
   so a tag-set compile break fails at the card;
   a failing tier stops no later tier, vet or guard run;
   the gate key's lint steps run after the tiers;
+  a gate key's advisory `redundancy` report step runs last, judging the diff's new and changed Go tests against the coverage maps without changing the result;
   a failure report lists every failure with its package, test and first lines, the files the change touches and each failed run's log;
   a closing line names every failed run,
   and the call exits with the first failing run's code.

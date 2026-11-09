@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -21,6 +22,8 @@ import (
 // TestFunc is one top-level Test function of a package's test files.
 type TestFunc struct {
 	Name string
+	// File is the base name of the test file that declares the function.
+	File string
 	// Tier is the tier the function's opening tiergate.Require names; Tiered is false, and Tier 0, when it opens with none.
 	Tier   int
 	Tiered bool
@@ -42,27 +45,41 @@ func ScanTestFuncs(dir string) ([]TestFunc, error) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
-		path := filepath.Join(dir, entry.Name())
-		src, err := os.ReadFile(path)
+		filename := filepath.Join(dir, entry.Name())
+		src, err := os.ReadFile(filename)
 		if err != nil {
 			return nil, err
 		}
-		fset := token.NewFileSet()
-		file, err := parser.ParseFile(fset, path, src, parser.SkipObjectResolution)
+		found, err := ParseTestFuncs(filename, src)
 		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", path, err)
+			return nil, err
 		}
-		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Recv != nil || !isTestFuncName(fn.Name.Name) {
-				continue
-			}
-			tier, tiered := impactset.RequiredTier(file, fn)
-			start, end := fset.Position(fn.Pos()).Offset, fset.Position(fn.End()).Offset
-			funcs = append(funcs, TestFunc{Name: fn.Name.Name, Tier: tier, Tiered: tiered, Hash: ContentHash(src[start:end])})
-		}
+		funcs = append(funcs, found...)
 	}
 	sort.Slice(funcs, func(i, j int) bool { return funcs[i].Name < funcs[j].Name })
+	return funcs, nil
+}
+
+// ParseTestFuncs returns the top-level Test functions of the test file source src, in source order.
+// It reads source from any tree, such as a file as a commit stores it.
+// filename names the file in a parse error, and its base name fills each function's File.
+func ParseTestFuncs(filename string, src []byte) ([]TestFunc, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filename, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", filename, err)
+	}
+	base := path.Base(filepath.ToSlash(filename))
+	var funcs []TestFunc
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || !isTestFuncName(fn.Name.Name) {
+			continue
+		}
+		tier, tiered := impactset.RequiredTier(file, fn)
+		start, end := fset.Position(fn.Pos()).Offset, fset.Position(fn.End()).Offset
+		funcs = append(funcs, TestFunc{Name: fn.Name.Name, File: base, Tier: tier, Tiered: tiered, Hash: ContentHash(src[start:end])})
+	}
 	return funcs, nil
 }
 

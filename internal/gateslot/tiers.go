@@ -98,6 +98,9 @@ type GateKey struct {
 	Scope string `yaml:"scope"`
 	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
 	Lints []string `yaml:"lints"`
+	// Reports are the advisory report steps the key's call runs after its lints, each ReportRedundancy; empty runs none.
+	// A report step never changes the call's result.
+	Reports []string `yaml:"reports"`
 	// Fixer is the model-spec of the cold fixer that a red agent call of this key hands its verdict to; empty turns it off.
 	// Only the card key may hold one.
 	Fixer string `yaml:"fixer"`
@@ -121,6 +124,11 @@ const (
 	// LintPattern is the PATTERN headroom lint: it flags PATTERN.md growth past its headroom line versus HEAD.
 	LintPattern = "pattern"
 )
+
+// ReportRedundancy names the redundancy report step a gate key's reports may hold.
+// It judges the diff's new and changed tests against the per-package coverage maps.
+// It writes the verdicts to the worktree.
+const ReportRedundancy = "redundancy"
 
 // goReadGates are the gate keys the Go verify sites read, in the order TiersValue lists them.
 var goReadGates = []string{"card", "batch", "webster", "parent-align", "finalize", "adopt", "webster-fix", "darn-write", "code-burler-fix", "pr-review"}
@@ -346,7 +354,7 @@ func (c Config) Gate(key string) (GateKey, error) {
 			return GateKey{}, useRefusal("gates.%s lists %s, which the hub does not declare", key, tierKey(number))
 		}
 	}
-	return GateKey{Tiers: slices.Clone(gate.Tiers), Scope: gate.Scope, Lints: slices.Clone(gate.Lints)}, nil
+	return GateKey{Tiers: slices.Clone(gate.Tiers), Scope: gate.Scope, Lints: slices.Clone(gate.Lints), Reports: slices.Clone(gate.Reports)}, nil
 }
 
 // TierList returns the tier numbers the named gate key runs, in order, with the refusals Gate gives.

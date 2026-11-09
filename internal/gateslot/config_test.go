@@ -69,17 +69,17 @@ func TestConfigSpec_SetNestedKeys(t *testing.T) {
 
 var templateDefaults = Config{
 	Slots: 2, BusyQuitSec: 120, FixerTimeoutMin: 30,
-	TestMapMaxAgeDays: 7, RedundancyBuildTimeoutMin: 10, RedundancyTestTimeoutSec: 120,
+	TestMapMaxAgeDays: 7, RedundancyBuildTimeoutMin: 10, RedundancyTestTimeoutSec: 120, RedundancyMaxTests: 40, RedundancyBudgetMin: 10,
 	Gates: map[string]GateKey{
 		"card":            {Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}, Fixer: "sonnet[medium]"},
 		"batch":           {Tiers: []int{0}, Scope: "card"},
-		"webster":         {Tiers: []int{0}, Scope: "all"},
-		"parent-align":    {Tiers: []int{0}, Scope: "all"},
+		"webster":         {Tiers: []int{0}, Scope: "all", Reports: []string{"redundancy"}},
+		"parent-align":    {Tiers: []int{0}, Scope: "all", Reports: []string{"redundancy"}},
 		"finalize":        {Tiers: []int{0}, Scope: "all"},
 		"adopt":           {Tiers: []int{0}, Scope: "all"},
 		"webster-fix":     {Tiers: []int{0}, Scope: "diff"},
-		"darn-write":      {Tiers: []int{0}, Scope: "diff"},
-		"code-burler-fix": {Tiers: []int{0}, Scope: "diff"},
+		"darn-write":      {Tiers: []int{0}, Scope: "diff", Reports: []string{"redundancy"}},
+		"code-burler-fix": {Tiers: []int{0}, Scope: "diff", Reports: []string{"redundancy"}},
 		"pr-review":       {Tiers: []int{0}, Scope: "diff"},
 	},
 	Scoper: "none",
@@ -288,6 +288,18 @@ func TestLoadConfig(t *testing.T) {
 		{"test_map_max_age_days zero", baseKeys + "test_map_max_age_days: 0\n", Config{}, `gate config key "test_map_max_age_days": 0; want at least 1` + fixIt},
 		{"redundancy_build_timeout_min zero", baseKeys + "redundancy_build_timeout_min: 0\n", Config{}, `gate config key "redundancy_build_timeout_min": 0; want at least 1` + fixIt},
 		{"redundancy_test_timeout_sec zero", baseKeys + "redundancy_test_timeout_sec: 0\n", Config{}, `gate config key "redundancy_test_timeout_sec": 0; want at least 1` + fixIt},
+		{"redundancy_max_tests zero", baseKeys + "redundancy_max_tests: 0\n", Config{}, `gate config key "redundancy_max_tests": 0; want at least 1` + fixIt},
+		{"redundancy_budget_min zero", baseKeys + "redundancy_budget_min: 0\n", Config{}, `gate config key "redundancy_budget_min": 0; want at least 1` + fixIt},
+		{"an unknown report", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, reports: [speed]}\n", Config{}, `gate config key "gates.webster": report "speed"; want redundancy` + fixIt},
+		{
+			"a tuned webster without reports takes the template's, and reports [] on another key turns them off",
+			baseKeys + "gates:\n  webster: {tiers: [0, 1], scope: all}\n  darn-write: {tiers: [0], scope: diff, reports: []}\n",
+			hubWith(func(c *Config) {
+				c.Gates = maps.Clone(templateDefaults.Gates)
+				c.Gates["webster"] = GateKey{Tiers: []int{0, 1}, Scope: "all", Reports: []string{"redundancy"}}
+				c.Gates["darn-write"] = GateKey{Tiers: []int{0}, Scope: "diff"}
+			}), "",
+		},
 		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.parent-align": scope card is only for the card and batch keys` + fixIt},
 		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.parent-align": scope "some"; want card, diff or all` + fixIt},
 		{"an unknown lint", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [spelling]}\n", Config{}, `gate config key "gates.parent-align": lint "spelling"; want comments or pattern` + fixIt},
@@ -295,7 +307,7 @@ func TestLoadConfig(t *testing.T) {
 			"a key's lints load in order", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [pattern, comments]}\n",
 			hubWith(func(c *Config) {
 				c.Gates = maps.Clone(templateDefaults.Gates)
-				c.Gates["parent-align"] = GateKey{Tiers: []int{0}, Scope: "all", Lints: []string{"pattern", "comments"}}
+				c.Gates["parent-align"] = GateKey{Tiers: []int{0}, Scope: "all", Lints: []string{"pattern", "comments"}, Reports: []string{"redundancy"}}
 			}), "",
 		},
 		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `gate config key "gates.card": the retired list shape; fix it with "lym fabric reconcile" (or "lym config reconcile --layer default --apply") from the prime, which migrates it` + roleClause},

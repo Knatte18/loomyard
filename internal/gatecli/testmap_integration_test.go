@@ -42,12 +42,19 @@ const helperRoleTestMapGo = "testmap-go"
 // They also name the import path whose coverage build fails, and the one whose coverage build never ends.
 // testMapLymBuildsEnv names the file the stand-in appends a line to for each `lym` build it acts as.
 // testMapLymSeenEnv names the file a coverage run appends the prebuilt `lym` path it was given to, empty when none.
+// testMapCoverBuildsEnv names the file the stand-in appends the import path of each coverage build it acts as to.
+// testMapFailLymBuildEnv, when set, makes every `lym` build the stand-in acts as fail.
 const (
-	testMapModuleEnv    = "GATECLI_TESTMAP_MODULE"
-	testMapFailBuildEnv = "GATECLI_TESTMAP_FAIL_BUILD"
-	testMapHangBuildEnv = "GATECLI_TESTMAP_HANG_BUILD"
-	testMapLymBuildsEnv = "GATECLI_TESTMAP_LYM_BUILDS"
-	testMapLymSeenEnv   = "GATECLI_TESTMAP_LYM_SEEN"
+	testMapModuleEnv      = "GATECLI_TESTMAP_MODULE"
+	testMapFailBuildEnv   = "GATECLI_TESTMAP_FAIL_BUILD"
+	testMapHangBuildEnv   = "GATECLI_TESTMAP_HANG_BUILD"
+	testMapLymBuildsEnv   = "GATECLI_TESTMAP_LYM_BUILDS"
+	testMapLymSeenEnv     = "GATECLI_TESTMAP_LYM_SEEN"
+	testMapCoverBuildsEnv = "GATECLI_TESTMAP_COVER_BUILDS"
+
+	testMapFailLymBuildEnv = "GATECLI_TESTMAP_FAIL_LYM_BUILD"
+	// testMapHangingEnv names the file a coverage run appends the test name to once it is about to hang.
+	testMapHangingEnv = "GATECLI_TESTMAP_HANGING"
 )
 
 func init() {
@@ -80,7 +87,7 @@ func testMapTestFile(pkg string, tiers map[string]int) string {
 // As a coverage binary run in a package directory, it reports the test `-test.run` names as passing.
 // Its profile covers the first function of the package's `<package>.go`.
 // A test ending in Two covers the second function too.
-// A test ending in Hangs never ends.
+// A test ending in Hangs never ends, after it records its name in the file testMapHangingEnv names.
 // One ending in Moves first commits a change to the package's file.
 // One ending in Lands first commits a change to a file outside the package.
 // A test run without LYM_TEST_TIER fails, so a map entry proves its tier's env reached it.
@@ -117,6 +124,11 @@ func runTestMapStandIn() int {
 		fmt.Printf("--- FAIL: %s (0.00s)\n", name)
 		return 1
 	case strings.HasSuffix(name, "Hangs"):
+		if hanging := os.Getenv(testMapHangingEnv); hanging != "" {
+			if appendLine(hanging, name) != nil {
+				return 1
+			}
+		}
 		time.Sleep(time.Hour)
 	case strings.HasSuffix(name, "Moves"):
 		if appendAndCommit(dir, pkg+".go") != nil {
@@ -142,6 +154,7 @@ func runTestMapStandIn() int {
 
 // runTestMapStandInBuild acts as `go test -c ... <import path>`.
 // It fails when its working directory holds no go.mod, as the go command does outside a module.
+// It records the import path in the file testMapCoverBuildsEnv names, when one is named.
 // It fails for the import path testMapFailBuildEnv names, and never ends for the one testMapHangBuildEnv names.
 // Otherwise it copies the test binary to the `-o` path, so the copy runs as the package's coverage binary.
 func runTestMapStandInBuild(args []string) int {
@@ -150,6 +163,11 @@ func runTestMapStandInBuild(args []string) int {
 		return 1
 	}
 	importPath := args[len(args)-1]
+	if builds := os.Getenv(testMapCoverBuildsEnv); builds != "" {
+		if appendLine(builds, importPath) != nil {
+			return 1
+		}
+	}
 	if importPath == os.Getenv(testMapFailBuildEnv) {
 		fmt.Fprintln(os.Stderr, "stand-in: the coverage build failed")
 		return 1
@@ -161,12 +179,17 @@ func runTestMapStandInBuild(args []string) int {
 }
 
 // runTestMapStandInLymBuild acts as `go build ... -o <path> ./cmd/lym`.
-// It records the build in the file testMapLymBuildsEnv names, then copies the test binary to the `-o` path.
+// It records the build in the file testMapLymBuildsEnv names, then fails when testMapFailLymBuildEnv is set.
+// Otherwise it copies the test binary to the `-o` path.
 func runTestMapStandInLymBuild(args []string) int {
 	if builds := os.Getenv(testMapLymBuildsEnv); builds != "" {
 		if appendLine(builds, "built") != nil {
 			return 1
 		}
+	}
+	if os.Getenv(testMapFailLymBuildEnv) != "" {
+		fmt.Fprintln(os.Stderr, "stand-in: the lym build failed")
+		return 1
 	}
 	return copyTestBinary(args[slices.Index(args, "-o")+1])
 }

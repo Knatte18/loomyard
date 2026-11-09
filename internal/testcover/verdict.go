@@ -3,7 +3,10 @@
 
 package testcover
 
-import "sort"
+import (
+	"slices"
+	"sort"
+)
 
 // Reasons a test is not judged.
 const (
@@ -48,8 +51,18 @@ type Verdict struct {
 // The removable set is a greedy pass over the contained tests, slowest first, then by name.
 // It re-checks each contained test against the tests still kept.
 func Judge(runs []Run) []Verdict {
+	return JudgeAgainst(runs, nil)
+}
+
+// JudgeAgainst returns the verdict of every run, in the order given.
+// It counts the runs of kept as covering tests that are never judged or removed themselves.
+// A kept run covers its blocks for every run,
+// and the greedy pass drops a contained run only while the runs left keep its blocks covered.
+// A caller judging new tests against tests it already holds passes those as kept.
+func JudgeAgainst(runs, kept []Run) []Verdict {
+	all := slices.Concat(runs, kept)
 	counts := map[string]int{}
-	for _, r := range runs {
+	for _, r := range all {
 		if notJudgedReason(r) == "" {
 			for b := range r.Blocks {
 				counts[b]++
@@ -65,30 +78,30 @@ func Judge(runs []Run) []Verdict {
 		return true
 	}
 
-	out := make([]Verdict, len(runs))
+	out := make([]Verdict, len(all))
 	var contained []int
-	for i, r := range runs {
+	for i, r := range all {
 		out[i].Name = r.Name
 		out[i].Reason = notJudgedReason(r)
-		if out[i].Reason == "" && covered(r) {
+		if i < len(runs) && out[i].Reason == "" && covered(r) {
 			out[i].Contained = true
 			contained = append(contained, i)
 		}
 	}
 
 	sort.SliceStable(contained, func(a, b int) bool {
-		ra, rb := runs[contained[a]], runs[contained[b]]
+		ra, rb := all[contained[a]], all[contained[b]]
 		if ra.Elapsed != rb.Elapsed {
 			return ra.Elapsed > rb.Elapsed
 		}
 		return ra.Name < rb.Name
 	})
 	for _, i := range contained {
-		if !covered(runs[i]) {
+		if !covered(all[i]) {
 			continue
 		}
 		out[i].Removable = true
-		for b := range runs[i].Blocks {
+		for b := range all[i].Blocks {
 			counts[b]--
 		}
 	}
@@ -98,9 +111,9 @@ func Judge(runs []Run) []Verdict {
 		if !out[i].Removable {
 			inPool = func(j int) bool { return out[j].Reason == "" }
 		}
-		out[i].Covering = coveringTests(i, runs, inPool)
+		out[i].Covering = coveringTests(i, all, inPool)
 	}
-	return out
+	return out[:len(runs)]
 }
 
 // notJudgedReason returns why a run is not judged, or "" for a run that is.

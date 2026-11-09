@@ -36,10 +36,14 @@ type Config struct {
 	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
 	// TestMapMaxAgeDays is the days after which a coverage map is rebuilt whatever changed.
 	TestMapMaxAgeDays int `yaml:"test_map_max_age_days"`
-	// RedundancyBuildTimeoutMin is the minutes each build of a coverage map run may take.
+	// RedundancyBuildTimeoutMin is the minutes each build of a coverage map run or the redundancy report step may take.
 	RedundancyBuildTimeoutMin int `yaml:"redundancy_build_timeout_min"`
-	// RedundancyTestTimeoutSec is the seconds each test a coverage map run runs alone may take.
+	// RedundancyTestTimeoutSec is the seconds each test a coverage map run or the redundancy report step runs alone may take.
 	RedundancyTestTimeoutSec int `yaml:"redundancy_test_timeout_sec"`
+	// RedundancyMaxTests caps the tests the redundancy report step judges in one call.
+	RedundancyMaxTests int `yaml:"redundancy_max_tests"`
+	// RedundancyBudgetMin is the minutes the redundancy report step may spend on builds and tests once it holds its slot.
+	RedundancyBudgetMin int `yaml:"redundancy_budget_min"`
 	// Tiers are the declared test tiers keyed tier0, tier1, and so on.
 	Tiers map[string]Tier `yaml:"tiers"`
 	// Gates maps a gate key to the tiers and scope that site runs.
@@ -89,6 +93,8 @@ type configFile struct {
 	TestMapMaxAgeDays         int                  `yaml:"test_map_max_age_days"`
 	RedundancyBuildTimeoutMin int                  `yaml:"redundancy_build_timeout_min"`
 	RedundancyTestTimeoutSec  int                  `yaml:"redundancy_test_timeout_sec"`
+	RedundancyMaxTests        int                  `yaml:"redundancy_max_tests"`
+	RedundancyBudgetMin       int                  `yaml:"redundancy_budget_min"`
 	Tiers                     map[string]tierFile  `yaml:"tiers"`
 	Gates                     map[string]yaml.Node `yaml:"gates"`
 	Scoper                    string               `yaml:"scoper"`
@@ -118,7 +124,8 @@ func ConfigPerNameMaps() []string {
 // ConfigSpec returns gate's layered-load spec.
 // `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
 // `fixer_timeout_min` is cross-pair like `busy_quit_sec`; a gate key's `fixer` sits inside `gates`, a guard key.
-// The coverage map keys are cross-pair too, since every worktree of the hub reads the maps they bound.
+// The coverage map and redundancy report keys are cross-pair too:
+// every worktree of the hub reads the maps they bound.
 // `tiers` and `build` run any shell command in a task worktree, so they are executable.
 // The gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
 // `cli_wait_sec`, `go_parallel` and `guard_tier` are retired;
@@ -145,6 +152,8 @@ func ConfigSpec() configengine.Spec {
 			"test_map_max_age_days":        configengine.CategoryCrossPair,
 			"redundancy_build_timeout_min": configengine.CategoryCrossPair,
 			"redundancy_test_timeout_sec":  configengine.CategoryCrossPair,
+			"redundancy_max_tests":         configengine.CategoryCrossPair,
+			"redundancy_budget_min":        configengine.CategoryCrossPair,
 			"tiers":                        configengine.CategoryExecutable,
 			"gates":                        configengine.CategoryGuard,
 			"scoper":                       configengine.CategoryGuard,
@@ -279,6 +288,8 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		{"test_map_max_age_days", file.TestMapMaxAgeDays},
 		{"redundancy_build_timeout_min", file.RedundancyBuildTimeoutMin},
 		{"redundancy_test_timeout_sec", file.RedundancyTestTimeoutSec},
+		{"redundancy_max_tests", file.RedundancyMaxTests},
+		{"redundancy_budget_min", file.RedundancyBudgetMin},
 	} {
 		if bound.value < 1 {
 			return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", bound.key, bound.value)
@@ -318,6 +329,8 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		TestMapMaxAgeDays:         file.TestMapMaxAgeDays,
 		RedundancyBuildTimeoutMin: file.RedundancyBuildTimeoutMin,
 		RedundancyTestTimeoutSec:  file.RedundancyTestTimeoutSec,
+		RedundancyMaxTests:        file.RedundancyMaxTests,
+		RedundancyBudgetMin:       file.RedundancyBudgetMin,
 		Tiers:                     tiers,
 		Gates:                     gates,
 		Scoper:                    file.Scoper,
@@ -459,7 +472,7 @@ func (c Config) FixerTimeout() time.Duration {
 	return time.Duration(c.FixerTimeoutMin) * time.Minute
 }
 
-// decodeGates decodes the gates entries into keys and validates each key's scope, lints and fixer.
+// decodeGates decodes the gates entries into keys and validates each key's scope, lints, reports and fixer.
 func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 	gates := make(map[string]GateKey, len(entries))
 	for _, name := range sortedKeys(entries) {
@@ -481,6 +494,11 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 		for _, lint := range key.Lints {
 			if lint != LintComments && lint != LintPattern {
 				return nil, guidedError{fmt.Errorf("gate config key %q: lint %q; want %s or %s; fix it with \"lym config gate\" from the prime%s", path, lint, LintComments, LintPattern, roleClause)}
+			}
+		}
+		for _, report := range key.Reports {
+			if report != ReportRedundancy {
+				return nil, guidedError{fmt.Errorf("gate config key %q: report %q; want %s; fix it with \"lym config gate\" from the prime%s", path, report, ReportRedundancy, roleClause)}
 			}
 		}
 		if key.Fixer != "" {

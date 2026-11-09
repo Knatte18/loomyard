@@ -1493,6 +1493,43 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
+	t.Run("a gate key's redundancy report step runs after its tiers and leaves the call's exit code to them", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["gates"] = map[string]any{"reported": map[string]any{"tiers": []int{6}, "scope": "all", "reports": []string{gateslot.ReportRedundancy}}}
+		}))
+		defer writeConfig(t, gateConfig)
+		reportPath := filepath.Join(waitDir, redundancyReportFileName)
+
+		tests := []struct {
+			name     string
+			env      []string
+			wantCode int
+			wantRed  bool
+		}{
+			{"AGreenTier", nil, 0, false},
+			{"ARedTier", []string{helperExitEnv + "=7"}, 7, true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
+					t.Fatal(err)
+				}
+				g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "reported"}, env: tt.env})
+				if code := g.wait(t); code != tt.wantCode {
+					t.Errorf("exit code = %d, stdout %q; want the tier's %d", code, g.stdout.String(), tt.wantCode)
+				}
+				report, found, err := readRedundancyReport(reportPath)
+				if err != nil || !found || report.GateKey != "reported" || report.RedGate != tt.wantRed {
+					t.Errorf("report = %+v, found %v, err %v; want one for gate key reported with red gate %v", report, found, err, tt.wantRed)
+				}
+				if !strings.Contains(g.stdout.String(), "gate test: redundancy report: ") {
+					t.Errorf("stdout = %q; want the report's summary line", g.stdout.String())
+				}
+				requireFree(t)
+			})
+		}
+	})
+
 	// A stand-in exiting 134 with no test event is a tier whose test runner crashed on SIGABRT, as a shell reports one.
 	crashEnv := []string{helperExitEnv + "=134"}
 	// closingOf returns the last closing line of failed runs in output.

@@ -189,6 +189,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	}
 	// The lint steps run after the tiers, so a call that fails both reports the two in one go.
 	if request.gate != "" && runCtx.Err() == nil {
+		red := code != 0
 		for _, lint := range runLints(request.root, cfg.Gates[request.gate].Lints) {
 			judged = true
 			exe.failed = append(exe.failed, lint)
@@ -196,6 +197,10 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			if code == 0 {
 				code, firstFailed = 1, lint.label
 			}
+		}
+		// The report steps run last and never change the code.
+		if slices.Contains(cfg.Gates[request.gate].Reports, gateslot.ReportRedundancy) {
+			exe.redundancyStep().run(red, inHub)
 		}
 	}
 	exe.printReport(inHub)

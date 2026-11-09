@@ -63,7 +63,8 @@
 // `--card` ids beside a key of another scope are ignored.
 // Explicit `<targets>` beside `--gate` replace the key's scope.
 // Each run record carries the key as `gate_key`, empty for a call with manual flags.
-// `--gate` opens no flag combination the manual flags lack, bar the key's lint steps the Lint steps section describes.
+// `--gate` opens no flag combination the manual flags lack.
+// The exception is the key's lint and report steps, described in the Lint steps and Redundancy report sections.
 // `--tier` names a tier and may repeat.
 // The default is tier0 when neither `--tier` nor `--upto` is given.
 // A tier another listed tier covers is dropped and named as covered on stderr.
@@ -514,6 +515,62 @@
 // The template's `card` key lists both, so a card gate is one call, and a call with manual flags runs none.
 // Bound: a step reads only the working tree against HEAD, so on a clean tree it finds nothing;
 // the round and darn gates lint their own range through `loomshed`.
+//
+// # Redundancy report
+//
+// A `--gate` key whose `reports` lists `gateslot.ReportRedundancy` runs the redundancy report step last.
+// It runs after the key's lints in an uncancelled call, whatever the key's scope.
+// The step is advisory: every failure it meets is a line of its report, and it never changes the exit code.
+// It writes `RedundancyReport` through `internal/state` as `redundancy.json` in the worktree's gate directory.
+// It prints one stderr line with its counts and path.
+// A report it cannot write is logged at Warn.
+// A call one of whose runs failed gets a report marked `red_gate` that judges nothing.
+// So does a call outside every hub, a hub whose `scoper` is not `go`, or a worktree with no parent branch.
+// Each such report carries a note.
+//
+// The step judges the module of the lowest declared of tier0 and tier1, as `lym gate testmap` maps it.
+// It diffs the working tree from the merge base with the parent branch through `impactset.ChangedPaths`.
+// It reads the test files of each package holding a changed `_test.go` file at the merge base.
+// The reads go through `Fabric.CodeDirAt` and `Fabric.CodeFileAt`.
+// It takes each top-level test of a changed file whose name the merge base lacks or whose text differs there.
+// So a test file moved within its package adds none of its unchanged tests, and a deleted one adds none.
+// It drops, each listed with its reason, a tier2 or higher test and a test of a tier the hub does not declare.
+// It also drops a test marked `//testtiming:keep`, with the marker's reason,
+// and a test the spawn scan marks as possibly running module code in another process.
+// A test that opens with no `tiergate.Require` counts as tier0.
+// It keeps the first `redundancy_max_tests` of the rest in file then name order, and lists the others.
+// A package with no coverage map, an unreadable one or one recording a build failure is not judged.
+// Nor are its tests.
+// Before any build the step takes one gate slot, after the call's tiers released theirs.
+// It takes none inside an enclosing gate run's slot.
+// It holds the slot to its end, and its wait has no bound but the call's context.
+// `redundancy_budget_min` counts from the hold.
+// Once it is spent the step starts no further build or test.
+// It lists each test it did not run as not judged for the spent budget.
+// Per package it builds the coverage binary under the slot's `gateslot.HolderEnv`.
+// It runs each test alone under its tier's env, as `lym gate testmap` does.
+// It builds `lym` once for a tier with `prebuilt_lym`.
+// Each build is bounded by `redundancy_build_timeout_min` and each test by `redundancy_test_timeout_sec`.
+// A skipped, failed, timed-out or block-free test is not judged.
+// The tests of the map that still exist with the same function hash cover each judged test, the judged tests left out;
+// so do the other judged tests.
+// `testcover.JudgeAgainst` runs the greedy pass, slowest first, keeping every map test.
+// A test the pass drops is contained, with its covering tests largest overlap first; any other judged test is unique.
+// The report records the function hash of every test the step took and the hashes of each judged package's Go files.
+// A judged package's line names its map's commit and age,
+// and the files whose text at the merge base hashes otherwise than the map, its drift from the run's base.
+// A later call on a tree that matches the report runs no build and no test and keeps the report.
+// A report never matches when it judged nothing, holds an error line or a package with no usable map.
+// It never matches either when it lists a test the spent budget or a cancelled call left unrun.
+// `ReadRedundancyReport` reads a worktree's report.
+// `RedundancyReportMatches` matches one against a commit:
+// the step's selection over the commit's tree, and the judged packages' file hashes there.
+// Bound: the step can let a redundant test through.
+// An edited block is uncovered, and a test changed since the map covers nothing.
+// It can flag a test falsely: a map test counts as a cover whenever its own text is unchanged.
+// A change outside that text can stop it reaching a block it reached when the map was built.
+// Such a change is one to a helper or a callee.
+// Review reading each finding against its covering tests bounds that.
 //
 // # Failure report
 //

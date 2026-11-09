@@ -31,6 +31,42 @@ type BlockKey struct {
 	Ordinal int `json:"ordinal"`
 }
 
+// String renders the key as one comparable text, the form a BlockSet holds a keyed block in.
+func (k BlockKey) String() string {
+	return fmt.Sprintf("%s|%s|%s|%d", k.File, k.Func, k.Hash, k.Ordinal)
+}
+
+// CoveredKeys returns the rendered keys of the blocks of the package at importPath that profile counts as covered.
+// It keys every block of the package's own files in profile, covered or not,
+// so each ordinal equals the one a coverage map built from a whole profile of the same files holds.
+// The blocks' files are read from the package directory dir.
+// A block the profile lists twice counts as covered when either line counts it.
+func CoveredKeys(dir, importPath string, profile []ProfileBlock) (BlockSet, error) {
+	var blocks []ProfileBlock
+	index := map[string]int{}
+	for _, block := range PackageBlocks(profile, importPath) {
+		if i, seen := index[block.Position()]; seen {
+			if block.Count != 0 {
+				blocks[i].Count = block.Count
+			}
+			continue
+		}
+		index[block.Position()] = len(blocks)
+		blocks = append(blocks, block)
+	}
+	keys, err := KeyBlocks(dir, blocks)
+	if err != nil {
+		return nil, err
+	}
+	covered := BlockSet{}
+	for i, block := range blocks {
+		if block.Count != 0 {
+			covered[keys[i].String()] = struct{}{}
+		}
+	}
+	return covered, nil
+}
+
 // ContentHash returns the hex SHA-256 of data.
 // It is the hash a block key, and a coverage map's file and test entries, carry.
 func ContentHash(data []byte) string {
