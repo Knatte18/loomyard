@@ -52,14 +52,16 @@ type reportSection struct {
 // A measured package's section is replaced, or inserted in import-path order when it has none yet.
 // A package that lists no tests has its section removed.
 // A failed package keeps its old section and gets its error section only when it had none.
-// The header and every section of an unmeasured package come back byte-identical.
+// The header is rewritten to the current one, so the header and the sections describe one judging method.
+// Every section of an unmeasured package comes back byte-identical.
 // It refuses, writing nothing, when the existing report was made under a different tag set.
 func spliceReport(existing, tags string, measured []measuredPackage) (string, error) {
 	if err := requireSameTags(existing, tags); err != nil {
 		return "", err
 	}
 
-	header, sections := splitReport(existing)
+	_, sections := splitReport(existing)
+	header := renderReport(tags, nil)
 	for _, m := range measured {
 		at := -1
 		for i, s := range sections {

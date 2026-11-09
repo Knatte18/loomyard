@@ -5,141 +5,55 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-func blockSet(names ...string) map[string]struct{} {
-	set := map[string]struct{}{}
-	for _, n := range names {
-		set[n] = struct{}{}
-	}
-	return set
-}
-
-func passRun(name string, elapsed float64, blocks ...string) testRun {
-	return testRun{name: name, elapsed: elapsed, action: "pass", blocks: blockSet(blocks...)}
-}
-
-func TestClassify(t *testing.T) {
+func TestJudgePackage(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	skipped := passRun("Skipped", 0, "b1")
-	skipped.action = "skip"
-	spawning := passRun("OutOfProcess", 1, "b1")
-	spawning.spawn = spawnVerdict{outOfProcess: true}
-	unresolved := passRun("Unresolved", 1, "b1")
-	unresolved.spawn = spawnVerdict{unresolved: true}
-
-	rows := []struct {
-		name string
-		runs []testRun
-		want []verdict
-	}{
-		{
-			name: "subset of another test is removable, the superset is not a candidate",
-			runs: []testRun{passRun("A", 1, "b1", "b2"), passRun("B", 1, "b1", "b2", "b3")},
-			want: []verdict{
-				{name: "A", candidate: true, removable: true, covering: []string{"B"}},
-				{name: "B"},
-			},
-		},
-		{
-			name: "mutual pair: the slowest is removed and the other kept",
-			runs: []testRun{passRun("C", 2, "b1"), passRun("D", 1, "b1"), passRun("E", 1, "b9")},
-			want: []verdict{
-				{name: "C", candidate: true, removable: true, covering: []string{"D"}},
-				{name: "D", candidate: true, covering: []string{"C"}},
-				{name: "E"},
-			},
-		},
-		{
-			name: "the removable set keeps the superset, whose covering tests come by overlap and skip one that adds nothing",
-			runs: []testRun{
-				passRun("P", 1, "b1", "b2", "b3"), passRun("Q", 1, "b4"),
-				passRun("R", 1, "b1"), passRun("T", 1, "b1", "b2", "b3", "b4"),
-			},
-			want: []verdict{
-				{name: "P", candidate: true, removable: true, covering: []string{"T"}},
-				{name: "Q", candidate: true, removable: true, covering: []string{"T"}},
-				{name: "R", candidate: true, removable: true, covering: []string{"T"}},
-				{name: "T", candidate: true, covering: []string{"P", "Q"}},
-			},
-		},
-		{
-			name: "no blocks, skipped, out-of-process and unresolved tests are never candidates",
-			runs: []testRun{
-				passRun("Empty", 1), skipped, spawning, unresolved, passRun("Base", 1, "b1", "b2"),
-			},
-			want: []verdict{
-				{name: "Empty", reason: reasonNoBlocks},
-				{name: "Skipped", reason: reasonSkipped},
-				{name: "OutOfProcess", reason: reasonOutOfProcess},
-				{name: "Unresolved", reason: reasonUnresolved},
-				{name: "Base"},
-			},
-		},
+	covered := func(file string, line int) testcover.ProfileBlock {
+		return testcover.ProfileBlock{File: file, StartLine: line, StartCol: 1, EndLine: line, EndCol: 2, Statements: 1, Count: 1}
 	}
-	for _, row := range rows {
-		t.Run(row.name, func(t *testing.T) {
-			t.Parallel()
-			got := classify(row.runs)
-			if !reflect.DeepEqual(got, row.want) {
-				t.Fatalf("classify = %+v\nwant     %+v", got, row.want)
-			}
-		})
+	run := func(name string, elapsed float64, blocks ...testcover.ProfileBlock) measuredRun {
+		return measuredRun{result: testcover.RunResult{Name: name, Elapsed: elapsed, Action: testcover.ActionPass, Profile: blocks}}
 	}
-}
-
-func TestRunAloneArgs(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	rows := []struct {
-		name string
-		test string
-		want []string
-	}{
-		{
-			name: "plain name",
-			test: "TestPlain",
-			want: []string{"-test.run=^TestPlain$", "-test.coverprofile=/tmp/cover.out", "-test.v=true"},
-		},
-		{
-			name: "regexp metacharacters are quoted",
-			test: "Test.Dot(a+b)",
-			want: []string{`-test.run=^Test\.Dot\(a\+b\)$`, "-test.coverprofile=/tmp/cover.out", "-test.v=true"},
-		},
+	// TestNarrow's package blocks are a subset of TestWide's, and its one block in m/q is its own.
+	// TestFixtureOnly covers blocks of m/q alone, so it covers nothing of its package.
+	runs := []measuredRun{
+		run("TestNarrow", 2, covered("m/p/x.go", 1), covered("m/q/y.go", 1)),
+		run("TestWide", 1, covered("m/p/x.go", 1), covered("m/p/x.go", 2), covered("m/q/y.go", 2)),
+		run("TestFixtureOnly", 1, covered("m/q/y.go", 3)),
 	}
-	for _, row := range rows {
-		t.Run(row.name, func(t *testing.T) {
-			t.Parallel()
-			if got := runAloneArgs(row.test, "/tmp/cover.out"); !reflect.DeepEqual(got, row.want) {
-				t.Fatalf("runAloneArgs = %q, want %q", got, row.want)
-			}
-		})
+	got := judgePackage("m/p", runs, map[string]string{"TestWide": "pins the order"})
+	want := []verdict{
+		{name: "TestNarrow", candidate: true, removable: true, covering: []string{"TestWide"}},
+		{name: "TestWide", keep: "pins the order"},
+		{name: "TestFixtureOnly", reason: testcover.ReasonNoBlocks},
 	}
-}
-
-func TestParseProfile(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	profile := "mode: set\n" +
-		"a/x.go:1.1,2.2 1 1\n" +
-		"a/x.go:3.1,4.2 2 0\n" +
-		"b/y.go:5.1,6.2 1 3\n"
-	got, err := parseProfile(strings.NewReader(profile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := blockSet("a/x.go:1.1,2.2 1", "b/y.go:5.1,6.2 1")
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("blocks = %v, want %v", got, want)
+		t.Fatalf("judgePackage =\n%+v\nwant\n%+v", got, want)
 	}
 
-	if _, err := parseProfile(strings.NewReader("mode: set\nno-count-here\n")); err == nil {
-		t.Error("a profile line without a count must be an error")
+	section := renderPackage(pkgReport{pkg: "p", tests: 3, verdicts: got})
+	if wantRow := "| `TestNarrow` | `TestWide` | yes | no |\n"; !strings.Contains(section, wantRow) {
+		t.Errorf("section =\n%s\nwant the row %q marking the candidate not contained module-wide", section, wantRow)
+	}
+
+	// TestSmall's only block is also TestBig's, so it is contained in the package and in the module.
+	// Its keep reason leaves the classification as it is.
+	containedRuns := []measuredRun{
+		run("TestSmall", 2, covered("m/p/x.go", 1)),
+		run("TestBig", 1, covered("m/p/x.go", 1), covered("m/p/x.go", 2), covered("m/q/y.go", 1)),
+	}
+	gotContained := judgePackage("m/p", containedRuns, map[string]string{"TestSmall": "pins the error text"})
+	wantContained := []verdict{
+		{name: "TestSmall", candidate: true, removable: true, covering: []string{"TestBig"}, moduleContained: true, keep: "pins the error text"},
+		{name: "TestBig"},
+	}
+	if !reflect.DeepEqual(gotContained, wantContained) {
+		t.Fatalf("judgePackage =\n%+v\nwant\n%+v", gotContained, wantContained)
 	}
 }
 
@@ -157,15 +71,15 @@ func TestRenderPackage(t *testing.T) {
 			in: pkgReport{
 				pkg: "internal/x", tests: 3, wall: 0.5, serial: 0.75,
 				verdicts: []verdict{
-					{name: "TestA", candidate: true, removable: true, covering: []string{"TestB", "TestD"}},
+					{name: "TestA", candidate: true, removable: true, covering: []string{"TestB", "TestD"}, moduleContained: true},
 					{name: "TestB"},
-					{name: "TestC", reason: reasonSkipped},
+					{name: "TestC", reason: testcover.ReasonSkipped},
 				},
 			},
 			want: "## internal/x\n\n" +
 				"3 tests, wall 0.50s, serial 0.75s.\n\n" +
-				"| Test | Covering tests | Removable |\n|---|---|---|\n" +
-				"| `TestA` | `TestB`, `TestD` | yes |\n\n" +
+				"| Test | Covering tests | Removable | Contained module-wide |\n|---|---|---|---|\n" +
+				"| `TestA` | `TestB`, `TestD` | yes | yes |\n\n" +
 				"No coverage:\n\n" +
 				"- `TestC`: skipped\n",
 		},
@@ -182,8 +96,8 @@ func TestRenderPackage(t *testing.T) {
 			},
 			want: "## internal/k\n\n" +
 				"4 tests, wall 0.50s, serial 0.75s.\n\n" +
-				"| Test | Covering tests | Removable |\n|---|---|---|\n" +
-				"| `TestOther` | `TestKeptCandidate` | yes |\n\n" +
+				"| Test | Covering tests | Removable | Contained module-wide |\n|---|---|---|---|\n" +
+				"| `TestOther` | `TestKeptCandidate` | yes | no |\n\n" +
 				"Kept:\n\n" +
 				"- `TestKeptCandidate`: pins the error text\n" +
 				"- `TestKeptPlain`: pins the ordering\n\n" +

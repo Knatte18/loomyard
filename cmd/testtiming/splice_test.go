@@ -96,6 +96,23 @@ func TestSpliceReport(t *testing.T) {
 	}
 }
 
+func TestSpliceReportRefreshesStaleHeader(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const tags = "integration,tmux"
+	a, b := spliceFixtureSection("internal/a", 1), spliceFixtureSection("internal/b", 2)
+	stale := strings.Replace(renderReport(tags, []pkgReport{a}), "# Test redundancy\n", "# Test redundancy\n\nJudged over the whole module.\n", 1)
+
+	got, err := spliceReport(stale, tags, []measuredPackage{spliceMeasured(b)})
+	if err != nil {
+		t.Fatalf("spliceReport: %v", err)
+	}
+	if want := renderReport(tags, []pkgReport{a, b}); got != want {
+		t.Errorf("spliced report differs:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
 func TestSpliceReportRejectsReportWithoutTagsHeader(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

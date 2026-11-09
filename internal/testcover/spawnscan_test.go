@@ -1,4 +1,4 @@
-package main
+package testcover_test
 
 import (
 	"os"
@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -148,14 +149,14 @@ func TestScanSpawns(t *testing.T) {
 	writeFixture(t, filepath.Join(kitRoot, "gokit"), "gokit.go", fixtureGoKit)
 	writeFixture(t, filepath.Join(kitRoot, "quietkit"), "quietkit.go", fixtureQuietKit)
 
-	got, err := scanSpawns(fixtureModule, kitRoot, pkgDir)
+	got, err := testcover.ScanSpawns(fixtureModule, kitRoot, pkgDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	outOfProcess := spawnVerdict{outOfProcess: true}
-	unresolved := spawnVerdict{unresolved: true}
-	want := map[string]spawnVerdict{
+	outOfProcess := testcover.SpawnVerdict{OutOfProcess: true}
+	unresolved := testcover.SpawnVerdict{Unresolved: true}
+	want := map[string]testcover.SpawnVerdict{
 		"TestUntaggedLymbin":     {},
 		"TestUntaggedUnresolved": {},
 		"TestLymbin":             outOfProcess,
@@ -183,6 +184,6 @@ func TestScanSpawns(t *testing.T) {
 		"TestRequireTier2":       outOfProcess,
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("scanSpawns =\n%+v\nwant\n%+v", got, want)
+		t.Errorf("ScanSpawns =\n%+v\nwant\n%+v", got, want)
 	}
 }

@@ -63,25 +63,22 @@
 // -pkg takes comma-separated package patterns, each passed to `go` as its own argument.
 // -tags defaults to tier0,tier1,tier2 in this mode, every tier but tier3.
 // A run over every package of the module, or with no report at -out yet, writes the whole report.
-// Any other run splices into the existing report: only the measured packages' sections change.
+// Any other run splices into the existing report.
+// The measured packages' sections change, and the header is rewritten to the current one.
 // A package with no section yet is inserted in import-path order, and a package that lists no tests loses its section.
-// The header and every unmeasured section stay byte-identical,
+// Every unmeasured section stays byte-identical,
 // and a run whose tags differ from the report's header refuses and writes nothing.
 // A package that fails to list or build keeps its old section,
 // and the run exits 1 after writing the others.
-// For each package it runs every top-level test alone under one coverage binary.
-// Per package it writes the tests whose covered blocks other tests already cover.
+// For each package it runs every top-level test alone through internal/testcover's runner.
+// The one coverage binary per package is instrumented over the whole module.
+// It judges each test by the blocks of its package's own files:
+// per package it writes the tests whose covered blocks other tests of the package already cover.
 // It also writes the removable set among them, and the tests whose coverage cannot be judged.
-// Coverage cannot be judged for a test that is skipped or covers nothing.
-// Nor can it be judged for one that may run this module's code in another process.
-// The static scan in spawnscan.go decides the last of these.
-// It excludes a test as out of process when it references the lymbin kit or os.Executable.
-// It also excludes one that references os.Args[0] or exec.Command("go", ...).
-// Either reference counts directly or through a followed same-package or testkit call.
-// It also excludes a test that sits in a tmux-tier file.
-// A test in a tier0 file is always judged,
-// and a test above tier0 with a call the scan cannot resolve is excluded as an unclassifiable call.
-// The scan does not see a hook, alias or helper that a test installs so that git runs module code.
+// Each candidate's row also says whether it is contained over every block of the module, the safer cut.
+// Coverage cannot be judged for a test that is skipped, failed or covers nothing of its package.
+// The same holds for a test that the static spawn scan of internal/testcover marks in one of two ways.
+// Either it may run this module's code in another process, or it makes a call the scan cannot resolve.
 // Reading each candidate before deleting it is the backstop.
 // A test the prune keeps carries `//testtiming:keep <reason>` on the line directly above its `func Test…` line.
 // A test that also carries `//lym:guard` stacks both directives above its `func Test…` line.

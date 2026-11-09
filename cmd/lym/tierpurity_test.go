@@ -30,7 +30,7 @@ var allowedSpawners = []scankit.Entry{
 	{Key: "internal/proc/", Why: "process control is the package's subject — its tests must spawn"},
 	{Key: "cmd/lym/tierpurity_test.go", Why: "contains the banned token strings as its own test data"},
 	{Key: "cmd/lym/llmtier_test.go", Why: "contains the banned `exec.Command` token string as its own fixture data (LLM-tier guard)"},
-	{Key: "cmd/testtiming/spawnscan_test.go", Why: "contains the banned `exec.Command` token string as fixture source for the spawn scan, which only parses it"},
+	{Key: "internal/testcover/spawnscan_test.go", Why: "contains the banned `exec.Command` token string as fixture source for the spawn scan, which only parses it"},
 	{Key: "cmd/lym/hermeticenv_test.go", Why: "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)"},
 	{Key: "tools/sandbox/pathresolve_guard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)"},
 	{Key: "cmd/lym/ghguard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)"},

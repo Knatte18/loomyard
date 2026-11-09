@@ -1,21 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"slices"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/testcover"
 )
 
 const (
@@ -24,36 +20,21 @@ const (
 	defaultRedundancyPkg  = "./..."
 )
 
-// Reasons a test is listed under "no coverage" rather than judged for redundancy.
-const (
-	reasonSkipped      = "skipped"
-	reasonOutOfProcess = "out of process"
-	reasonUnresolved   = "unclassifiable call"
-	reasonNoBlocks     = "no blocks"
-	reasonFailed       = "failed"
-)
-
-// testRun is one top-level test run alone under the coverage binary.
-type testRun struct {
-	name    string
-	elapsed float64
-	action  string // "pass" | "fail" | "skip"
-	blocks  map[string]struct{}
-	spawn   spawnVerdict
-}
-
-// eligible reports whether the run passed and covered at least one block;
-// only an eligible run's blocks count toward coverage.
-func (r testRun) eligible() bool { return r.action == "pass" && len(r.blocks) > 0 }
-
-// verdict is the redundancy classification of one test.
+// verdict is the redundancy classification of one test, judged by the blocks of its own package's files.
 type verdict struct {
-	name      string
-	reason    string   // non-empty: listed under "no coverage"
-	candidate bool     // every block is covered by other tests of the package
-	removable bool     // dropped by the greedy pass, so deletable together with the other removable tests
-	covering  []string // candidates only: tests that together cover its blocks, most overlap first
-	keep      string   // non-empty: the reason of its //testtiming:keep directive, listed under "Kept"
+	name string
+	// reason is non-empty for a test listed under "no coverage".
+	reason string
+	// candidate is set when other tests of the package cover every block of the package the test covers.
+	candidate bool
+	// removable is set when the greedy pass drops the test, so it is deletable together with the other removable tests.
+	removable bool
+	// covering names, for a candidate, the tests that together cover its blocks, most overlap first.
+	covering []string
+	// moduleContained is set when other tests of the package also cover every block of the module the test covers.
+	moduleContained bool
+	// keep is the reason of the test's //testtiming:keep directive, non-empty for a test listed under "Kept".
+	keep string
 }
 
 // pkgReport is one package's section of the report.
@@ -79,160 +60,43 @@ func redundancyTags(full bool, tags string) (string, error) {
 	return resolved, nil
 }
 
-// parseProfile returns the covered blocks of a coverage profile.
-// A block is a profile line with a non-zero count, keyed by the line text without its count.
-func parseProfile(r io.Reader) (map[string]struct{}, error) {
-	blocks := map[string]struct{}{}
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		line := sc.Text()
-		if line == "" || strings.HasPrefix(line, "mode:") {
-			continue
-		}
-		cut := strings.LastIndexByte(line, ' ')
-		if cut < 0 {
-			return nil, fmt.Errorf("malformed profile line %q", line)
-		}
-		count, err := strconv.Atoi(line[cut+1:])
-		if err != nil {
-			return nil, fmt.Errorf("malformed profile line %q: %w", line, err)
-		}
-		if count != 0 {
-			blocks[line[:cut]] = struct{}{}
-		}
-	}
-	return blocks, sc.Err()
+// measuredRun is one test run alone under the coverage binary, with the spawn scan's verdict on its function.
+type measuredRun struct {
+	result testcover.RunResult
+	spawn  testcover.SpawnVerdict
 }
 
-// classify judges every run.
-// A candidate is covered block for block by the other tests.
-// The removable set is a greedy pass over the candidates, slowest first.
-// It re-checks each candidate against the tests still kept.
-// A test that is skipped, failed, runs module code out of process or cannot be classified is never a candidate.
-// Nor is a test that covers no block.
-func classify(runs []testRun) []verdict {
-	counts := map[string]int{}
-	for _, r := range runs {
-		if r.eligible() {
-			for b := range r.blocks {
-				counts[b]++
-			}
+// judgePackage classifies the runs of the package at importPath by the blocks of the package's own files.
+// It marks as well which of them are contained over every block of the module the runs cover.
+// A test named in keeps carries its keep reason, which changes the report only, never the classification.
+func judgePackage(importPath string, runs []measuredRun, keeps map[string]string) []verdict {
+	packageRuns := make([]testcover.Run, len(runs))
+	moduleRuns := make([]testcover.Run, len(runs))
+	for i, m := range runs {
+		moduleRuns[i] = testcover.Run{
+			Name:    m.result.Name,
+			Elapsed: m.result.Elapsed,
+			Action:  m.result.Action,
+			Blocks:  testcover.CoveredPositions(m.result.Profile),
+			Spawn:   m.spawn,
+		}
+		packageRuns[i] = moduleRuns[i]
+		packageRuns[i].Blocks = testcover.CoveredPositions(testcover.PackageBlocks(m.result.Profile, importPath))
+	}
+	moduleVerdicts := testcover.Judge(moduleRuns)
+	verdicts := make([]verdict, len(runs))
+	for i, v := range testcover.Judge(packageRuns) {
+		verdicts[i] = verdict{
+			name:            v.Name,
+			reason:          v.Reason,
+			candidate:       v.Contained,
+			removable:       v.Removable,
+			covering:        v.Covering,
+			moduleContained: moduleVerdicts[i].Contained,
+			keep:            keeps[v.Name],
 		}
 	}
-	covered := func(r testRun) bool {
-		for b := range r.blocks {
-			if counts[b] < 2 {
-				return false
-			}
-		}
-		return true
-	}
-
-	out := make([]verdict, len(runs))
-	var candidates []int
-	for i, r := range runs {
-		out[i].name = r.name
-		out[i].reason = noCoverageReason(r)
-		if out[i].reason == "" && covered(r) {
-			out[i].candidate = true
-			candidates = append(candidates, i)
-		}
-	}
-
-	sort.SliceStable(candidates, func(a, b int) bool {
-		ra, rb := runs[candidates[a]], runs[candidates[b]]
-		if ra.elapsed != rb.elapsed {
-			return ra.elapsed > rb.elapsed
-		}
-		return ra.name < rb.name
-	})
-	for _, i := range candidates {
-		if !covered(runs[i]) {
-			continue
-		}
-		out[i].removable = true
-		for b := range runs[i].blocks {
-			counts[b]--
-		}
-	}
-
-	for _, i := range candidates {
-		kept := func(j int) bool { return runs[j].eligible() && !out[j].removable }
-		if !out[i].removable {
-			kept = func(j int) bool { return runs[j].eligible() }
-		}
-		out[i].covering = coveringTests(i, runs, kept)
-	}
-	return out
-}
-
-func noCoverageReason(r testRun) string {
-	switch {
-	case r.action == "skip":
-		return reasonSkipped
-	case r.action != "pass":
-		return reasonFailed
-	case r.spawn.outOfProcess:
-		return reasonOutOfProcess
-	case r.spawn.unresolved:
-		return reasonUnresolved
-	case len(r.blocks) == 0:
-		return reasonNoBlocks
-	}
-	return ""
-}
-
-// coveringTests names the tests of the pool that together cover runs[self]'s blocks.
-// It takes the largest overlap first and skips a test that adds no block still uncovered.
-func coveringTests(self int, runs []testRun, inPool func(int) bool) []string {
-	type overlap struct {
-		idx int
-		n   int
-	}
-	var overlaps []overlap
-	for j, r := range runs {
-		if j == self || !inPool(j) {
-			continue
-		}
-		n := 0
-		for b := range runs[self].blocks {
-			if _, ok := r.blocks[b]; ok {
-				n++
-			}
-		}
-		if n > 0 {
-			overlaps = append(overlaps, overlap{j, n})
-		}
-	}
-	sort.Slice(overlaps, func(a, b int) bool {
-		if overlaps[a].n != overlaps[b].n {
-			return overlaps[a].n > overlaps[b].n
-		}
-		return runs[overlaps[a].idx].name < runs[overlaps[b].idx].name
-	})
-
-	remaining := map[string]struct{}{}
-	for b := range runs[self].blocks {
-		remaining[b] = struct{}{}
-	}
-	var names []string
-	for _, o := range overlaps {
-		if len(remaining) == 0 {
-			break
-		}
-		hit := false
-		for b := range remaining {
-			if _, ok := runs[o.idx].blocks[b]; ok {
-				delete(remaining, b)
-				hit = true
-			}
-		}
-		if hit {
-			names = append(names, runs[o.idx].name)
-		}
-	}
-	return names
+	return verdicts
 }
 
 // renderPackage renders one package's section of the report.
@@ -261,13 +125,9 @@ func renderPackage(r pkgReport) string {
 	if len(candidates) == 0 {
 		b.WriteString("No candidates.\n\n")
 	} else {
-		b.WriteString("| Test | Covering tests | Removable |\n|---|---|---|\n")
+		b.WriteString("| Test | Covering tests | Removable | Contained module-wide |\n|---|---|---|---|\n")
 		for _, v := range candidates {
-			removable := "no"
-			if v.removable {
-				removable = "yes"
-			}
-			fmt.Fprintf(&b, "| `%s` | %s | %s |\n", v.name, codeList(v.covering), removable)
+			fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", v.name, codeList(v.covering), yesNo(v.removable), yesNo(v.moduleContained))
 		}
 		b.WriteString("\n")
 	}
@@ -289,6 +149,13 @@ func renderPackage(r pkgReport) string {
 	return b.String()
 }
 
+func yesNo(set bool) string {
+	if set {
+		return "yes"
+	}
+	return "no"
+}
+
 func codeList(names []string) string {
 	quoted := make([]string, len(names))
 	for i, n := range names {
@@ -302,7 +169,9 @@ func renderReport(tags string, pkgs []pkgReport) string {
 	var b strings.Builder
 	b.WriteString("# Test redundancy\n\n")
 	fmt.Fprintf(&b, "Generated by `go run ./cmd/testtiming -redundancy` under the tags `%s`.\n", tags)
-	b.WriteString("Each test ran alone under one coverage binary per package, and a candidate has every covered block also covered by another test of its package.\n")
+	b.WriteString("Each test ran alone under one coverage binary per package, instrumented over the whole module.\n")
+	b.WriteString("A candidate has every covered block of its own package's files also covered by another test of its package.\n")
+	b.WriteString("The last column says whether that holds over every block of the module too; a cut contained under both is the safer one.\n")
 	b.WriteString("A candidate is evidence, not a verdict: coverage blocks do not see assertions.\n")
 	b.WriteString("Only the removable set may be deleted together; the reading rules are in `pattern/PATTERN-test-speed.md`'s test economy section.\n")
 	for _, p := range pkgs {
@@ -322,7 +191,7 @@ type moduleLayout struct {
 // runRedundancy writes the redundancy report for the packages matching pkgFlag.
 // pkgFlag is a comma-separated list of package patterns.
 // A missing report, or a run over every package of the module, writes the whole report.
-// Any other run rewrites only its own packages' sections of the existing one.
+// Any other run rewrites the header and its own packages' sections of the existing one.
 // It must run from the module root.
 func runRedundancy(tags, pkgFlag, outPath string) error {
 	layout, err := loadLayout(tags)
@@ -354,7 +223,7 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 		if !ok {
 			continue
 		}
-		if keeps[importPath], err = scanKeeps(dir); err != nil {
+		if keeps[importPath], err = testcover.ScanKeeps(dir); err != nil {
 			return fmt.Errorf("keep directive: %w", err)
 		}
 	}
@@ -427,123 +296,41 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 }
 
 // measurePackage builds the package's coverage binary, runs each top-level test alone and classifies the runs.
+// A test the spawn scan does not find counts as unclassifiable.
 // A test named in keeps carries its keep reason on its verdict.
-// The keep reason changes the report only, never the classification.
-// env is the environment each test runs under.
+// env is the environment every command runs under.
 func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string, keeps map[string]string, env []string) ([]verdict, error) {
 	dir := layout.dirs[importPath]
-	names, err := listTests(tags, importPath)
+	toolchain := testcover.Toolchain{Go: "go", Env: env}
+	names, err := toolchain.ListTests(importPath, tags)
 	if err != nil {
 		return nil, err
 	}
 	bin := filepath.Join(tmp, "pkg.test")
-	args := []string{"test", "-c", "-o", bin, "-cover", "-covermode=set", "-coverpkg=" + coverpkg}
-	if tags != "" {
-		args = append(args, "-tags", tags)
-	}
-	if _, err := goOutput(append(slices.Clone(env), "CGO_ENABLED=1"), args, importPath); err != nil {
-		return nil, fmt.Errorf("coverage binary: %w", err)
+	if err := toolchain.BuildBinary(importPath, coverpkg, tags, bin); err != nil {
+		return nil, err
 	}
 	defer os.Remove(bin)
 
-	spawns, err := scanSpawns(layout.path, filepath.Join(layout.dir, "internal", "testkit"), dir)
+	spawns, err := testcover.ScanSpawns(layout.path, filepath.Join(layout.dir, "internal", "testkit"), dir)
 	if err != nil {
 		return nil, fmt.Errorf("spawn scan: %w", err)
 	}
 
-	runs := make([]testRun, 0, len(names))
+	profile := filepath.Join(tmp, "cover.out")
+	runs := make([]measuredRun, 0, len(names))
 	for _, name := range names {
-		run, err := runAlone(bin, dir, tmp, name, env)
+		result, err := toolchain.RunAlone(bin, dir, profile, name)
 		if err != nil {
 			return nil, err
 		}
-		if v, ok := spawns[name]; ok {
-			run.spawn = v
-		} else {
-			run.spawn = spawnVerdict{unresolved: true}
+		spawn, ok := spawns[name]
+		if !ok {
+			spawn = testcover.SpawnVerdict{Unresolved: true}
 		}
-		runs = append(runs, run)
+		runs = append(runs, measuredRun{result: result, spawn: spawn})
 	}
-	verdicts := classify(runs)
-	for i := range verdicts {
-		verdicts[i].keep = keeps[verdicts[i].name]
-	}
-	return verdicts, nil
-}
-
-var testResultLine = regexp.MustCompile(`(?m)^--- (PASS|FAIL|SKIP): (\S+) \(([0-9.]+)s\)$`)
-
-// runAloneArgs returns the coverage binary's arguments for running one top-level test alone.
-// Every flag is one `-flag=value` argument, the form `go test` passes:
-// a test that runs a cobra command without `SetArgs` reads the process's arguments,
-// and a separate flag value would show up there as a positional argument.
-func runAloneArgs(name, profile string) []string {
-	return []string{
-		"-test.run=^" + regexp.QuoteMeta(name) + "$",
-		"-test.coverprofile=" + profile,
-		"-test.v=true",
-	}
-}
-
-// runAlone runs one top-level test under the coverage binary and reads its elapsed time, outcome and covered blocks.
-// A failing run is returned as such, never as an error.
-func runAlone(bin, dir, tmp, name string, env []string) (testRun, error) {
-	prof := filepath.Join(tmp, "cover.out")
-	os.Remove(prof)
-	cmd := exec.Command(bin, runAloneArgs(name, prof)...)
-	cmd.Dir = dir
-	cmd.Env = env
-	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &out
-	var exitErr *exec.ExitError
-	if err := cmd.Run(); err != nil && !errors.As(err, &exitErr) {
-		return testRun{}, fmt.Errorf("run %s: %w", name, err)
-	}
-
-	run := testRun{name: name, action: "fail"}
-	for _, m := range testResultLine.FindAllStringSubmatch(out.String(), -1) {
-		if m[2] == name {
-			run.action = strings.ToLower(m[1])
-			run.elapsed, _ = strconv.ParseFloat(m[3], 64)
-		}
-	}
-	if run.action == "fail" {
-		// A failing test has no coverage to judge and is listed as failed.
-		return run, nil
-	}
-	f, err := os.Open(prof)
-	if err != nil {
-		if run.action == "skip" {
-			return run, nil
-		}
-		return testRun{}, fmt.Errorf("test %s wrote no coverage profile: %w", name, err)
-	}
-	defer f.Close()
-	if run.blocks, err = parseProfile(f); err != nil {
-		return testRun{}, fmt.Errorf("test %s: %w", name, err)
-	}
-	return run, nil
-}
-
-var testNameLine = regexp.MustCompile(`^(Test|Example|Fuzz)\w*$`)
-
-// listTests returns the package's top-level test names under the tags.
-func listTests(tags, importPath string) ([]string, error) {
-	args := []string{"test", "-list", ".*"}
-	if tags != "" {
-		args = append(args, "-tags", tags)
-	}
-	out, err := goOutput(nil, args, importPath)
-	if err != nil {
-		return nil, fmt.Errorf("list tests: %w", err)
-	}
-	var names []string
-	for _, line := range strings.Split(out, "\n") {
-		if testNameLine.MatchString(strings.TrimSpace(line)) {
-			names = append(names, strings.TrimSpace(line))
-		}
-	}
-	return names, nil
+	return judgePackage(importPath, runs, keeps), nil
 }
 
 // coversModule reports whether targets are every package of the module.

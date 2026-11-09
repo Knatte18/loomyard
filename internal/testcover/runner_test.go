@@ -1,0 +1,119 @@
+// runner_test.go drives the runner against the test binary re-exec'd as a stand-in `go` and a stand-in coverage binary,
+// so no test builds a real test binary or runs `go test`.
+
+package testcover_test
+
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testcover"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+)
+
+// standIn returns a toolchain whose go command is the test binary acting as a stand-in.
+// It also returns the file the stand-in records its arguments into.
+func standIn(t *testing.T) (testcover.Toolchain, string) {
+	t.Helper()
+	testBinary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := filepath.Join(t.TempDir(), "args")
+	return testcover.Toolchain{Go: testBinary, Env: append(os.Environ(), standInRecordEnv+"="+record)}, record
+}
+
+func recordedArgs(t *testing.T, record string) []string {
+	t.Helper()
+	recorded, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Split(string(recorded), "\n")
+}
+
+func TestBuildBinaryAndListTests(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tc, record := standIn(t)
+	out := filepath.Join(t.TempDir(), "pkg.test")
+	if err := tc.BuildBinary("m/p", "m/p,m/q", "tier0,tier1", out); err != nil {
+		t.Fatal(err)
+	}
+	wantBuild := []string{"test", "-c", "-o", out, "-cover", "-covermode=set", "-coverpkg=m/p,m/q", "-tags", "tier0,tier1", "m/p"}
+	if got := recordedArgs(t, record); !reflect.DeepEqual(got, wantBuild) {
+		t.Errorf("BuildBinary ran go %q; want %q", got, wantBuild)
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Errorf("BuildBinary left no binary at %s: %v", out, err)
+	}
+
+	names, err := tc.ListTests("m/p", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"TestAlpha", "ExampleBeta"}; !reflect.DeepEqual(names, want) {
+		t.Errorf("ListTests = %q; want %q, without the package's ok line", names, want)
+	}
+	if got, want := recordedArgs(t, record), []string{"test", "-list", ".*", "m/p"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("ListTests ran go %q; want %q, with no -tags for empty tags", got, want)
+	}
+}
+
+func TestRunAlone(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		test    string
+		want    testcover.RunResult
+		wantErr string
+	}{
+		{
+			name: "Pass",
+			test: standInPass,
+			want: testcover.RunResult{Name: standInPass, Elapsed: 0.25, Action: testcover.ActionPass, Profile: []testcover.ProfileBlock{
+				{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1, Count: 1},
+			}},
+		},
+		{name: "Fail", test: standInFail, want: testcover.RunResult{Name: standInFail, Elapsed: 0.1, Action: testcover.ActionFail}},
+		{name: "SkipWithoutProfile", test: standInSkip, want: testcover.RunResult{Name: standInSkip, Action: testcover.ActionSkip}},
+		{
+			name: "SkipWithProfile",
+			test: standInSkipProfile,
+			want: testcover.RunResult{Name: standInSkipProfile, Action: testcover.ActionSkip, Profile: []testcover.ProfileBlock{
+				{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1, Count: 1},
+			}},
+		},
+		{name: "PassWithoutProfile", test: standInNoProfile, wantErr: "wrote no coverage profile"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tc, record := standIn(t)
+			profile := filepath.Join(t.TempDir(), "cover.out")
+			got, err := tc.RunAlone(tc.Go, t.TempDir(), profile, tt.test)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("RunAlone(%s) error = %v; want one holding %q", tt.test, err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("RunAlone(%s) = %+v; want %+v", tt.test, got, tt.want)
+			}
+			wantArgs := []string{"-test.run=^" + tt.test + "$", "-test.coverprofile=" + profile, "-test.v=true"}
+			if args := recordedArgs(t, record); !reflect.DeepEqual(args, wantArgs) {
+				t.Errorf("RunAlone ran the binary with %q; want %q, each flag one -flag=value argument", args, wantArgs)
+			}
+		})
+	}
+}

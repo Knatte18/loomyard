@@ -400,6 +400,7 @@ github.com/Knatte18/loomyard/
 ├── internal/commentlint/        the comment line lint: fixed-column wraps and over-long lines in the `//` comment blocks a diff creates, over a told worktree and base
 ├── internal/patternlint/        the PATTERN headroom lint: growth of the overview past its headroom line, over a told worktree and base
 ├── internal/impactset/          the impacted-set command a gate key's `diff` scope runs: the packages a diff reaches over the import graph, plus the `//lym:guard` tests, or a fallback reason to run the full verify
+├── internal/testcover/          the per-test coverage engine: runs each test of a package alone under a coverage binary, keys blocks by content, judges contained and removable tests, and reads and writes the per-package coverage map
 ├── internal/dotnetimpact/       the `dotnet` scoper's derivation: the test projects and test classes a C# diff or a card's targets reach, by type-name closure over the source, or a fallback reason to run the tier whole
 ├── internal/verifytree/         the one plan-verify function: clean-tree check, verified-tree record and running marker, used by landing, both webster gates and `lym webster verify`
 └── internal/verifyrun/          in-process shell-command runner behind `internal/verifytree` and webster's card-verify rerun

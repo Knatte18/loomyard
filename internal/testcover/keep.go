@@ -1,4 +1,6 @@
-package main
+// keep.go reads the `//testtiming:keep <reason>` directives of a package's test files.
+
+package testcover
 
 import (
 	"fmt"
@@ -17,11 +19,11 @@ const (
 
 var topLevelTestDecl = regexp.MustCompile(`^func (Test\w*)\(`)
 
-// scanKeeps maps each test of the package directory marked with a `//testtiming:keep <reason>` line to its reason.
+// ScanKeeps maps each test of the package directory marked with a `//testtiming:keep <reason>` line to its reason.
 // The directive sits above the test's `func Test…` line, with only `//lym:` directive lines allowed between them.
 // A directive with an empty reason, or one not placed above a top-level test declaration, is an error.
 // The error names the file and line.
-func scanKeeps(dir string) (map[string]string, error) {
+func ScanKeeps(dir string) (map[string]string, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
 	if err != nil {
 		return nil, err

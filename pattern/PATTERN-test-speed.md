@@ -245,8 +245,10 @@ this section keeps only what is project-specific or stricter here.
   The finding names the existing test that already covers the behavior,
   so it stays grounded and fixable by folding or deleting.
 - `go run ./cmd/testtiming -redundancy` writes the per-test coverage report, `docs/benchmarks/test-redundancy.md`.
-  A run narrowed with `-pkg` rewrites only its own packages' sections of the existing report,
+  A run narrowed with `-pkg` rewrites the header and only its own packages' sections of the existing report,
   so parallel tasks pruning different packages merge cleanly.
+  The run judges a candidate over the blocks of its own package's files,
+  and adds a "Contained module-wide" column saying whether the candidate is also contained over every block of the module.
   A candidate in it is evidence, not a verdict:
   coverage blocks do not see assertions,
   so a candidate whose assertions differ from its covering tests is kept or folded.
@@ -258,7 +260,7 @@ this section keeps only what is project-specific or stricter here.
   the report lists it under "Kept".
   A test in the "no coverage" list is outside the report's judgment, not exempt from the rules above.
 - The "no coverage" list holds:
-  - a test that is skipped, failed or covers nothing;
+  - a test that is skipped, failed or covers nothing of its own package;
   - a test above tier0 with a call the static scan cannot resolve;
   - a test that may run this module's code in another process:
     one that sits in a `tier2` file;

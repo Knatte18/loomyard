@@ -1,4 +1,7 @@
-package main
+// spawnscan.go statically marks the tests whose in-process coverage cannot be judged.
+// Such a test may run this module's code in another process or call something the scan cannot resolve.
+
+package testcover
 
 import (
 	"go/ast"
@@ -16,36 +19,46 @@ import (
 // tmuxTierNumber is the tier whose tests start tmux servers, and so run lym in reed panes.
 const tmuxTierNumber = 2
 
-// spawnVerdict is the static classification of one test for the redundancy mode.
-// A test whose verdict has either field set is never a redundancy candidate:
+// SpawnVerdict is the static classification of one test.
+// A test whose verdict has either field set is never judged:
 // its in-process coverage does not see the module code another process ran.
-type spawnVerdict struct {
-	outOfProcess bool // may run this module's code in another process, directly or through a followed call, or sits in a tmux-tier file
-	unresolved   bool // calls something the scan cannot resolve to source
+type SpawnVerdict struct {
+	// OutOfProcess is set when the test may run this module's code in another process.
+	// That covers a followed call, and a test in a tmux-tier file.
+	OutOfProcess bool
+	// Unresolved is set when the test calls something the scan cannot resolve to source.
+	Unresolved bool
 }
 
-func (v *spawnVerdict) merge(o spawnVerdict) {
-	v.outOfProcess = v.outOfProcess || o.outOfProcess
-	v.unresolved = v.unresolved || o.unresolved
+func (v *SpawnVerdict) merge(o SpawnVerdict) {
+	v.OutOfProcess = v.OutOfProcess || o.OutOfProcess
+	v.Unresolved = v.Unresolved || o.Unresolved
 }
 
 // funcInfo is one declared function or method with the imports and build tier of its file.
 type funcInfo struct {
-	decl     *ast.FuncDecl
-	imports  map[string]string // file-level import name -> import path
-	isTest   bool              // declared in a _test.go file
-	tmuxTier bool              // the file's tier, as impactset.FileTier reads it, is tier2
-	tagged   bool              // the file's tier is above tier0
+	decl *ast.FuncDecl
+	// imports maps each file-level import name to its import path.
+	imports map[string]string
+	// isTest is set for a function declared in a _test.go file.
+	isTest bool
+	// tmuxTier is set when the file's tier, as impactset.FileTier reads it, is the tmux tier.
+	tmuxTier bool
+	// tagged is set when the file's tier is above tier0.
+	tagged bool
 }
 
 // pkgSource indexes the declarations of one directory's Go sources.
 type pkgSource struct {
-	funcs        map[string][]*funcInfo // package-level functions by name
-	methods      map[string][]*funcInfo // methods by name, whatever the receiver
-	varNames     map[string]bool        // package-level vars
-	typeNames    map[string]bool        // package-level types
-	ifaceMethods map[string]bool        // method names of package-declared interfaces
-	funcFields   map[string]bool        // struct fields of function type
+	// funcs holds the package-level functions by name.
+	funcs map[string][]*funcInfo
+	// methods holds the methods by name, whatever the receiver.
+	methods      map[string][]*funcInfo
+	varNames     map[string]bool
+	typeNames    map[string]bool
+	ifaceMethods map[string]bool
+	// funcFields holds the struct fields of function type.
+	funcFields map[string]bool
 }
 
 var builtinNames = map[string]bool{
@@ -145,31 +158,37 @@ func (src *pkgSource) indexGenDecl(d *ast.GenDecl) {
 
 // spawnScanner classifies functions against the module's spawn primitives.
 type spawnScanner struct {
-	module  string // module import path
-	kitRoot string // directory holding the testkits, internal/testkit
+	// module is the module import path.
+	module string
+	// kitRoot is the directory holding the testkits.
+	kitRoot string
 	kits    map[string]map[string]bool
 }
 
-// scanSpawns returns the verdict of every Test, Example and Fuzz function declared in pkgDir's _test.go files.
+// ScanSpawns returns the verdict of every Test, Example and Fuzz function declared in pkgDir's _test.go files.
+// module is the module's import path, and kitRoot the directory holding its testkits, whose functions the scan follows.
+// The out-of-process references are the lymbin kit, os.Executable, os.Args[0] and exec.Command("go", ...).
+// A test is out of process when it references one, directly or through a followed same-package or testkit call.
 // A test in a tier0 file always gets an empty verdict, because a tier0 test spawns nothing;
 // a test in a tmux-tier file is always out of process, because reed panes run lym.
-func scanSpawns(module, kitRoot, pkgDir string) (map[string]spawnVerdict, error) {
+// Bound: the scan does not see a hook, alias or helper that a test installs so that git runs module code.
+func ScanSpawns(module, kitRoot, pkgDir string) (map[string]SpawnVerdict, error) {
 	src, err := loadPkgSource(pkgDir, true)
 	if err != nil {
 		return nil, err
 	}
 	s := &spawnScanner{module: module, kitRoot: kitRoot, kits: map[string]map[string]bool{}}
-	memo := map[*funcInfo]*spawnVerdict{}
-	out := map[string]spawnVerdict{}
+	memo := map[*funcInfo]*SpawnVerdict{}
+	out := map[string]SpawnVerdict{}
 	for name, fns := range src.funcs {
 		for _, fn := range fns {
 			if fn.isTest && isTestEntry(name) {
 				found := s.analyze(src, fn, memo)
 				switch {
 				case !fn.tagged:
-					found = spawnVerdict{}
+					found = SpawnVerdict{}
 				case fn.tmuxTier:
-					found.outOfProcess = true
+					found.OutOfProcess = true
 				}
 				v := out[name]
 				v.merge(found)
@@ -186,11 +205,11 @@ func isTestEntry(name string) bool {
 
 // analyze follows fn's body, merging the verdicts of the same-package functions it calls.
 // A call cycle contributes its partial verdict once, then stops.
-func (s *spawnScanner) analyze(src *pkgSource, fn *funcInfo, memo map[*funcInfo]*spawnVerdict) spawnVerdict {
+func (s *spawnScanner) analyze(src *pkgSource, fn *funcInfo, memo map[*funcInfo]*SpawnVerdict) SpawnVerdict {
 	if v, ok := memo[fn]; ok {
 		return *v
 	}
-	v := &spawnVerdict{}
+	v := &SpawnVerdict{}
 	memo[fn] = v
 	if fn.decl.Body == nil {
 		return *v
@@ -201,16 +220,16 @@ func (s *spawnScanner) analyze(src *pkgSource, fn *funcInfo, memo map[*funcInfo]
 		case *ast.SelectorExpr:
 			if id, ok := x.X.(*ast.Ident); ok {
 				if p, isImport := fn.imports[id.Name]; isImport && !locals[id.Name] && s.spawnRef(p, x.Sel.Name) {
-					v.outOfProcess = true
+					v.OutOfProcess = true
 				}
 			}
 		case *ast.IndexExpr:
 			if readsOSArgsProgram(fn, x, locals) {
-				v.outOfProcess = true
+				v.OutOfProcess = true
 			}
 		case *ast.CallExpr:
 			if runsGoCommand(fn, x, locals) {
-				v.outOfProcess = true
+				v.OutOfProcess = true
 			}
 			v.merge(s.analyzeCall(src, fn, x, locals, localTypes, memo))
 		}
@@ -219,21 +238,21 @@ func (s *spawnScanner) analyze(src *pkgSource, fn *funcInfo, memo map[*funcInfo]
 	return *v
 }
 
-func (s *spawnScanner) analyzeCall(src *pkgSource, fn *funcInfo, call *ast.CallExpr, locals, localTypes map[string]bool, memo map[*funcInfo]*spawnVerdict) spawnVerdict {
-	var out spawnVerdict
+func (s *spawnScanner) analyzeCall(src *pkgSource, fn *funcInfo, call *ast.CallExpr, locals, localTypes map[string]bool, memo map[*funcInfo]*SpawnVerdict) SpawnVerdict {
+	var out SpawnVerdict
 	switch f := unwrapCallee(call.Fun).(type) {
 	case *ast.Ident:
 		switch {
 		case builtinNames[f.Name] || localTypes[f.Name]:
 		case locals[f.Name], src.varNames[f.Name]:
-			out.unresolved = true
+			out.Unresolved = true
 		case len(src.funcs[f.Name]) > 0:
 			for _, callee := range src.funcs[f.Name] {
 				out.merge(s.analyze(src, callee, memo))
 			}
 		case src.typeNames[f.Name]:
 		default:
-			out.unresolved = true
+			out.Unresolved = true
 		}
 	case *ast.SelectorExpr:
 		if id, ok := f.X.(*ast.Ident); ok {
@@ -245,10 +264,10 @@ func (s *spawnScanner) analyzeCall(src *pkgSource, fn *funcInfo, call *ast.CallE
 			out.merge(s.analyze(src, callee, memo))
 		}
 		if src.ifaceMethods[f.Sel.Name] || src.funcFields[f.Sel.Name] {
-			out.unresolved = true
+			out.Unresolved = true
 		}
 	case *ast.CallExpr:
-		out.unresolved = true
+		out.Unresolved = true
 	}
 	return out
 }
@@ -394,15 +413,16 @@ func (s *spawnScanner) kitSpawns(importPath, kit string) map[string]bool {
 		return funcs
 	}
 	funcs := map[string]bool{}
-	s.kits[importPath] = funcs // a kit calling itself or a cycle sees the partial map
+	// A kit calling itself, or a cycle through kits, sees this partial map.
+	s.kits[importPath] = funcs
 	src, err := loadPkgSource(filepath.Join(s.kitRoot, kit), false)
 	if err != nil {
 		return funcs
 	}
-	memo := map[*funcInfo]*spawnVerdict{}
+	memo := map[*funcInfo]*SpawnVerdict{}
 	for name, fns := range src.funcs {
 		for _, fn := range fns {
-			if v := s.analyze(src, fn, memo); v.outOfProcess || v.unresolved {
+			if v := s.analyze(src, fn, memo); v.OutOfProcess || v.Unresolved {
 				funcs[name] = true
 			}
 		}

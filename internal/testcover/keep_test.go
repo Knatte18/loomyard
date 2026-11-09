@@ -1,4 +1,4 @@
-package main
+package testcover_test
 
 import (
 	"os"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -83,10 +84,10 @@ func TestScanKeeps(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "x_test.go"), []byte(row.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			got, err := scanKeeps(dir)
+			got, err := testcover.ScanKeeps(dir)
 			if row.wantErr != "" {
 				if err == nil || !strings.HasSuffix(strings.ReplaceAll(err.Error(), dir+string(filepath.Separator), ""), row.wantErr) {
-					t.Fatalf("scanKeeps error = %v, want one ending %q", err, row.wantErr)
+					t.Fatalf("ScanKeeps error = %v, want one ending %q", err, row.wantErr)
 				}
 				return
 			}
@@ -94,7 +95,7 @@ func TestScanKeeps(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(got, row.want) {
-				t.Fatalf("scanKeeps = %v, want %v", got, row.want)
+				t.Fatalf("ScanKeeps = %v, want %v", got, row.want)
 			}
 		})
 	}
