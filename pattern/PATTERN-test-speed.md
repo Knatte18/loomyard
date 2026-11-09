@@ -175,6 +175,13 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
   and the tests that replace them run serially.
 - Production always passes today's value; the test passes a short one.
 - No test in any tier waits out a production duration.
+- No test compares a measured real time to a bound a loaded machine can reach.
+  A test that proves a call does not wait on something makes that thing outlast a generous deadline, a minute,
+  by a release the test controls or a duration far past the deadline.
+  Where an outcome already tells the two paths apart, such as an exit code, an error or a pid,
+  the test asserts that outcome instead of a time.
+- Exception: a cost budget that no outcome can stand in for may compare a measured time to a bound.
+  The bound sits far above what load adds to the work it measures, so only a gross regression reaches it.
 
 ## Tests run in parallel
 

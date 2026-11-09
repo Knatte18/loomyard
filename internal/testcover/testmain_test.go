@@ -40,7 +40,8 @@ const standInChildPIDSuffix = ".child-pid"
 const standInHangBuildEnv = "TESTCOVER_STAND_IN_HANG_BUILD"
 
 // standInChildSleep is how long the child standInHoldsPipe leaves behind holds the output pipe.
-const standInChildSleep = 5 * time.Second
+// The test's cleanup kills the child long before.
+const standInChildSleep = 5 * time.Minute
 
 // TestMain runs a stand-in when standInRecordEnv is set, and the tests under tmuxkit.Main otherwise.
 func TestMain(m *testing.M) {

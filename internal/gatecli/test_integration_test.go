@@ -1658,20 +1658,16 @@ func TestGateTest_Scenario(t *testing.T) {
 			writeConfig(t, scenarioConfig(t, func(cfg map[string]any) { cfg["busy_quit_sec"] = 1 }))
 			defer writeConfig(t, gateConfig)
 
-			started := time.Now()
 			g := startGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "--tier", "5", "-C", spinModule, "./..."}})
 			code := g.wait(t)
-			elapsed := time.Since(started)
 
 			stdout := g.stdout.String()
 			if code == 0 || !strings.Contains(stdout, "SIGQUIT: quit") || !strings.Contains(stdout, "goroutine ") {
 				t.Errorf("spin run = exit %d, stdout %q; want a non-zero exit and the Go runtime's SIGQUIT stacks", code, stdout)
 			}
+			// The watchdog's own quit line, not the tier's timeout, proves what ended the run.
 			if window, ok := gateslot.FindWatchdogQuit(stdout); !ok || window != "1s" {
 				t.Errorf("FindWatchdogQuit(stdout) = %q, %v; want the run's own 1s window, which the template's 120s cannot produce", window, ok)
-			}
-			if elapsed > time.Minute {
-				t.Errorf("spin run took %s; want the quit to end it long before the tier's timeout", elapsed)
 			}
 			requireFree(t)
 		})

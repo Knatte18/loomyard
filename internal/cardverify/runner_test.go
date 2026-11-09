@@ -229,14 +229,15 @@ func TestRunner(t *testing.T) {
 				cancel()
 			}()
 
+			// The sleeper outlasts the minute the test allows, so a line that waits on it fails however loaded the machine.
 			start := time.Now()
-			got := Runner{Worktree: dir}.RunLine(ctx, "sleep 30 & echo $! > "+pidFile+"; wait", io.Discard)
+			got := Runner{Worktree: dir}.RunLine(ctx, "sleep 300 & echo $! > "+pidFile+"; wait", io.Discard)
 
 			if got == "" {
 				t.Error("RunLine() passed; want a failure for the cancelled line")
 			}
-			if elapsed := time.Since(start); elapsed > 10*time.Second {
-				t.Errorf("RunLine took %s; want it back within the wait delay", elapsed)
+			if elapsed := time.Since(start); elapsed > time.Minute {
+				t.Errorf("RunLine took %s; want it back after the cancel, not after the sleeper ends", elapsed)
 			}
 			waitUntilGone(t, waitForPID(t, pidFile))
 		})

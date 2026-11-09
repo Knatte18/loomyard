@@ -435,7 +435,8 @@ func TestRun_LockOwnerAndWakeups(t *testing.T) {
 	t.Run("a record with this pid and other ticks is a fresh start refused after the probe grace without a notice", func(t *testing.T) {
 		t.Parallel()
 		h := newLoopHarness(t, 1)
-		h.deps.ReexecLockWait = 3 * time.Second
+		// The re-exec wait outlasts the minute the test allows, so a Run that waits it out fails however loaded the machine.
+		h.deps.ReexecLockWait = 10 * time.Minute
 		writeLoopRecord(t, h, os.Getpid(), "other")
 		holdLoopLock(t, h)
 
@@ -443,7 +444,7 @@ func TestRun_LockOwnerAndWakeups(t *testing.T) {
 		if err := h.run(t); !errors.Is(err, ErrDobbyRunning) {
 			t.Fatalf("Run() = %v; want ErrDobbyRunning", err)
 		}
-		if waited := time.Since(started); waited > 2*time.Second {
+		if waited := time.Since(started); waited > time.Minute {
 			t.Errorf("Run() waited %v; want only the probe grace", waited)
 		}
 		if notices := h.noticed(); len(notices) != 0 {

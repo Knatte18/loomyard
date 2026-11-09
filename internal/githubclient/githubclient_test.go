@@ -111,7 +111,7 @@ func newScriptedServer(t *testing.T, statuses []int, captured *[]capturedRequest
 // TestResolveToken_Chain covers the full resolution order end to end.
 // Env vars always win over the cache, and GH_TOKEN comes before GITHUB_TOKEN.
 // A fresh cache entry is used when both env vars are empty, and a stale one is not.
-// An unresolvable token surfaces as ErrTokenUnresolvable with an empty token, without blocking or prompting.
+// An unresolvable token surfaces as ErrTokenUnresolvable with an empty token.
 func TestResolveToken_Chain(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -185,13 +185,8 @@ func TestResolveToken_Chain(t *testing.T) {
 				return tt.ghCLIToken, tt.ghCLIErr
 			})
 
-			start := time.Now()
 			gotToken, gotSource, err := resolveToken()
-			elapsed := time.Since(start)
 
-			if elapsed > time.Second {
-				t.Errorf("resolveToken() took %v; want a fast result, never a wait or prompt", elapsed)
-			}
 			if tt.wantErr {
 				if !errors.Is(err, ErrTokenUnresolvable) {
 					t.Fatalf("resolveToken() error = %v; want ErrTokenUnresolvable", err)
@@ -501,8 +496,13 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	ghAuthTokenTimeout = 10 * time.Millisecond
 	t.Cleanup(func() { ghAuthTokenTimeout = origTimeout })
 
-	// The fake respects ctx's deadline instead of running forever, as the real `gh auth token` subprocess does.
+	// The fake records the time its context has left at entry.
+	// It then respects the deadline instead of running forever, as the real `gh auth token` subprocess does.
+	var deadlineSet bool
+	var leftAtEntry time.Duration
 	withFakeGHAuthToken(t, func(ctx context.Context) (string, error) {
+		deadline, ok := ctx.Deadline()
+		deadlineSet, leftAtEntry = ok, time.Until(deadline)
 		<-ctx.Done()
 		return "", ctx.Err()
 	})
@@ -517,11 +517,10 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	if elapsed < ghAuthTokenTimeout {
 		t.Errorf("resolveToken() returned after %v; want at least ghAuthTokenTimeout (%v) -- an early return here would mean this test is not exercising the timeout at all", elapsed, ghAuthTokenTimeout)
 	}
-	// The slack outlasts a scheduling stall under a loaded suite;
-	// it stays under the real ~5s wait an override that silently fails to apply would cost.
-	const slack = 2 * time.Second
-	if elapsed > ghAuthTokenTimeout+slack {
-		t.Errorf("resolveToken() took %v; want close to ghAuthTokenTimeout (%v), not an unbounded hang", elapsed, ghAuthTokenTimeout)
+	// The time left at entry only shrinks on a loaded machine,
+	// so it tells the shortened timeout from the production one an override that silently fails to apply would leave.
+	if !deadlineSet || leftAtEntry > ghAuthTokenTimeout {
+		t.Errorf("gh auth token context deadline set = %v with %v left at entry; want a deadline within ghAuthTokenTimeout (%v)", deadlineSet, leftAtEntry, ghAuthTokenTimeout)
 	}
 }
 
@@ -739,10 +738,10 @@ func TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease(t *testing.T) {
 	})
 
 	t.Run("cancelled after release ends the call", func(t *testing.T) {
-		started := time.Now()
+		// A call that waited out its deadline would end with context.DeadlineExceeded instead.
 		got := run(t, 10*time.Second, true, func(e *env) { e.setLive(false) }, blockUntilGone)
-		if !errors.Is(got.err, context.Canceled) || time.Since(started) > 5*time.Second {
-			t.Fatalf("err = %v after %v; want context.Canceled well within the deadline", got.err, time.Since(started))
+		if !errors.Is(got.err, context.Canceled) {
+			t.Fatalf("err = %v; want context.Canceled, not the deadline", got.err)
 		}
 	})
 

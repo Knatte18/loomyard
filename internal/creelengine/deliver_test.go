@@ -1596,6 +1596,9 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			e.start(t)
 			e.sweepStep()
 			e.sweepStep()
+			// The return wakes the sweep, which re-arms its 50-second wait at the 30-second base.
+			// Awaiting that fourth wait keeps the next step from advancing by the stale one.
+			e.sweepWaits(4)
 			held := holderOf(t, e, orch2)
 			if len(held) != 1 || held[0].Holder != orch2 || held[0].EndedUnreadBy != alpha || len(held[0].Path) != 0 {
 				t.Fatalf("after two sweeps the message is %+v; want it back with %s, marked as ended unread by %s", held, orch2, alpha)

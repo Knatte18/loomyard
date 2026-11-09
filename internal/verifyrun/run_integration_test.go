@@ -163,9 +163,11 @@ func TestRun_Cancellation(t *testing.T) {
 	buf := runCapture(t)
 	// The sleep starts before the first write, so that write means a child is running.
 	// On Windows ping prints its banner once it runs.
-	long := "sleep 30 & echo up; wait"
+	// The command outlasts the minute the test allows after the cancel,
+	// so a run that waits on it fails however loaded the machine.
+	long := "sleep 300 & echo up; wait"
 	if runtime.GOOS == "windows" {
-		long = "ping -n 30 127.0.0.1"
+		long = "ping -n 300 127.0.0.1"
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -184,7 +186,7 @@ func TestRun_Cancellation(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || code != -1 {
 		t.Fatalf("run = (%d, %v); want (-1, context.Canceled)", code, err)
 	}
-	if elapsed := returned.Sub(<-cancelled); elapsed > 4*delay {
+	if elapsed := returned.Sub(<-cancelled); elapsed > time.Minute {
 		t.Errorf("run took %s after cancel; want well under the command's own duration", elapsed)
 	}
 	if strings.Contains(buf.String(), "WARN") {

@@ -15,7 +15,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -87,6 +86,8 @@ func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 
 	// The test kit pre-starts a session-less hermetic server on this key;
 	// the cold boot must reuse it, not wait out the stale-holder grace and replace it.
+	// A boot that waited out the grace would find the holder still there and replace it,
+	// so an unchanged server pid proves the reuse however loaded the machine.
 	serverPID := func() string {
 		t.Helper()
 		out, err := e.tmux.output("display-message", "-p", "#{pid}")
@@ -97,16 +98,12 @@ func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 	}
 	pidBefore := serverPID()
 
-	start := time.Now()
 	booted, err := e.EnsureSession()
 	if err != nil {
 		t.Fatalf("EnsureSession (cold) = %v, want a nil error", err)
 	}
 	if !booted {
 		t.Errorf("EnsureSession (cold) booted = false, want true — nothing usable existed to attach to")
-	}
-	if elapsed := time.Since(start); elapsed >= staleSocketGrace {
-		t.Errorf("EnsureSession (cold) took %v, want less than the %v stale-holder grace", elapsed, staleSocketGrace)
 	}
 	if pidAfter := serverPID(); pidAfter != pidBefore {
 		t.Errorf("server pid after the cold boot = %s, want the pre-started server's %s", pidAfter, pidBefore)

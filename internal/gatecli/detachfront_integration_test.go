@@ -550,12 +550,13 @@ func TestGateTest_DetachedRun(t *testing.T) {
 		t.Parallel()
 		rig := newDetachRig(t)
 
+		// The claim bound outlasts the minute the test allows, so a call that waits it out fails however loaded the machine.
 		started := time.Now()
-		g := rig.call("5s", []string{helperLaunchEnv + "=error"}, "./pkg")
+		g := rig.call("5s", []string{helperLaunchEnv + "=error", helperClaimBoundEnv + "=10m"}, "./pkg")
 		if code := g.wait(t); code != 1 {
 			t.Fatalf("call = exit %d, stdout %q; want 1", code, g.stdout.String())
 		}
-		if elapsed := time.Since(started); elapsed > 4*time.Second {
+		if elapsed := time.Since(started); elapsed > time.Minute {
 			t.Errorf("call took %s; want it to end at once, not wait out the claim bound", elapsed)
 		}
 		for _, want := range []string{"the launch failed", "--wait", "run the same command again"} {
@@ -584,13 +585,11 @@ func TestGateTest_DetachedRun(t *testing.T) {
 		t.Parallel()
 		rig := newDetachRig(t)
 
-		started := time.Now()
-		g := rig.call("12s", []string{helperLaunchEnv + "=late", helperClaimBoundEnv + "=4s"}, "./pkg")
+		// The runner starts two seconds late, far inside the claim bound however loaded the machine.
+		// A call that reached its cap would answer SlotBusyExit, so the stand-in's 0 proves it answered before the cap.
+		g := rig.call("2m", []string{helperLaunchEnv + "=late", helperClaimBoundEnv + "=1m"}, "./pkg")
 		if code := g.wait(t); code != 0 {
 			t.Errorf("call = exit %d, stdout %q; want the stand-in's 0", code, g.stdout.String())
-		}
-		if elapsed := time.Since(started); elapsed >= 12*time.Second {
-			t.Errorf("call took %s; want it to answer before its 12s cap", elapsed)
 		}
 	})
 
@@ -755,13 +754,14 @@ func TestGateTest_DetachedRun(t *testing.T) {
 			t.Parallel()
 			rig := newDetachRig(t)
 
-			waiting := rig.call("60s", holdEnv, "./pkg")
+			// The cap outlasts the minute the test allows, so a call that waits it out fails however loaded the machine.
+			waiting := rig.call("10m", holdEnv, "./pkg")
 			held := rig.waitInvocations(1)
 			run := rig.currentRun("./pkg")
 			signalPID(t, runnerPIDOf(t, run), syscall.SIGTERM)
 			started := time.Now()
 			requireGoing(t, waiting, "")
-			if elapsed := time.Since(started); elapsed > 30*time.Second {
+			if elapsed := time.Since(started); elapsed > time.Minute {
 				t.Errorf("waiting call took %s after the runner ended; want it to answer without waiting out its cap", elapsed)
 			}
 			if exit := waitExitOf(t, run); exit != (detachExit{Code: 128 + int(syscall.SIGTERM), Abandoned: true}) {

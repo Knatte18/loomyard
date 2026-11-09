@@ -137,7 +137,8 @@ func TestRunAlone(t *testing.T) {
 		},
 		{
 			// The test passes and exits, but a child it left holds the output pipe past the grace.
-			name: "ReturnsWithinTheGraceWhileADescendantHoldsTheOutput", test: standInHoldsPipe, timeout: time.Minute, within: standInChildSleep - time.Second,
+			// The child outlasts the minute the row allows, so a run that waits on it fails however loaded the machine.
+			name: "ReturnsWithinTheGraceWhileADescendantHoldsTheOutput", test: standInHoldsPipe, timeout: time.Minute, within: time.Minute,
 			want: testcover.RunResult{Name: standInHoldsPipe, Elapsed: 0.25, Action: testcover.ActionPass, Profile: []testcover.ProfileBlock{
 				{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1, Count: 1},
 			}},

@@ -39,7 +39,8 @@ func TestAfterWindow(t *testing.T) {
 		{name: "BlankCommandRunsNothing", machine: "window_command: \"   \"\nwindow_wait_ms: 7\n"},
 		{name: "SetCommandRunsInWindowDirAfterTheWait", machine: "window_command: \"pwd > marker\"\nwindow_wait_ms: 40\n", wantMarker: true, wantSleeps: []time.Duration{40 * time.Millisecond}},
 		{name: "FailingCommandReportsOutput", machine: "window_command: \"echo boom; exit 3\"\nwindow_wait_ms: 0\n", wantErr: "boom", wantSleeps: []time.Duration{0}},
-		{name: "HangingCommandIsCutOffAtTheTimeout", machine: "window_command: \"exec sleep 60\"\nwindow_wait_ms: 0\n", timeout: 50 * time.Millisecond, wantErr: "window command", wantSleeps: []time.Duration{0}},
+		// The hanging command outlasts the minute every row allows, so a call that waits on it fails however loaded the machine.
+		{name: "HangingCommandIsCutOffAtTheTimeout", machine: "window_command: \"exec sleep 300\"\nwindow_wait_ms: 0\n", timeout: 50 * time.Millisecond, wantErr: "window command", wantSleeps: []time.Duration{0}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -70,7 +71,7 @@ func TestAfterWindow(t *testing.T) {
 			if markerPresentAtSleep {
 				t.Errorf("the command had already run when the wait began; want it to run after the wait")
 			}
-			if elapsed > 10*time.Second {
+			if elapsed > time.Minute {
 				t.Errorf("AfterWindow took %v; want it to return promptly", elapsed)
 			}
 			if tt.wantErr != "" {

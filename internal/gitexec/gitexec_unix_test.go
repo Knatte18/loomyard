@@ -144,8 +144,9 @@ func TestRun_RemoteBounds(t *testing.T) {
 		armed := gitexec.SetDeadlineForTest(t, hangStarted)
 		start := time.Now()
 		_, err := gitexec.Run(args, repoDir)
-		if elapsed := time.Since(start); elapsed > 10*deadline {
-			t.Errorf("Run took %v; want it to return shortly after the deadline fires", elapsed)
+		// The hang script sleeps far past this bound, so a Run that waits on it fails however loaded the machine.
+		if elapsed := time.Since(start); elapsed > time.Minute {
+			t.Errorf("Run took %v; want it to return after the deadline fires, not after the hang ends", elapsed)
 		}
 
 		var gitErr *gitexec.GitError
