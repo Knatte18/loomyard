@@ -147,11 +147,21 @@ func (h *socketHolder) run(ctx context.Context) {
 }
 
 // takeSocketLock takes the machine's socket lock and reports whether the holder holds it.
+// A free lock is taken in the caller's goroutine,
+// so no acquisition outlives a holder that never had to wait.
 func (h *socketHolder) takeSocketLock(ctx context.Context) (*lock.FileLock, bool) {
 	path := h.geom.SocketLockPath
 	if err := os.MkdirAll(filepath.Dir(path), privateDirMode); err != nil {
 		logger.Warn("slackengine: could not create the directory of the socket lock", "path", path, "error", err)
 		return nil, false
+	}
+	free, took, err := lock.TryAcquireWriteLock(path)
+	if err != nil {
+		logger.Warn("slackengine: could not take the socket lock", "path", path, "error", err)
+		return nil, false
+	}
+	if took {
+		return free, true
 	}
 	type acquisition struct {
 		held *lock.FileLock

@@ -10,6 +10,7 @@ package loomengine
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -90,60 +91,90 @@ func writeLoomConfigWithKeys(t *testing.T, baseDir string, values map[string]str
 
 func intPtr(v int) *int { return &v }
 
-// templateConfig is the Config the shipped template's own values load to.
-func templateConfig() Config {
-	return Config{
-		Discussion:                    "opus[medium]",
-		DiscussionTimeoutMin:          480,
-		DiscussionInteractive:         false,
-		Raddle:                        "opus[high]",
-		RaddleAutoApprove:             false,
-		ReviewerModel:                 burlerengine.ModelSpecList{"opus[medium]"},
-		FixerModel:                    burlerengine.ModelSpecList{"opus[medium]"},
-		DiscussionLenses:              "twill-discussion",
-		DiscussionGateFixer:           "sonnet[medium]",
-		SubagentModel:                 "sonnet",
-		DiscussionReviewerModel:       burlerengine.ModelSpecList{"opus[medium]", "opus[medium]", "sonnet[high]"},
-		DiscussionFixerModel:          burlerengine.ModelSpecList{""},
-		CodeReviewerModel:             burlerengine.ModelSpecList{"sonnet[medium]"},
-		CodeFixerModel:                burlerengine.ModelSpecList{"sonnet[medium]"},
-		SplitReviewerModel:            burlerengine.ModelSpecList{""},
-		SplitFixerModel:               burlerengine.ModelSpecList{""},
-		SplitReviewerFan:              lenses.FanList{""},
-		SplitFixerFan:                 lenses.FanList{""},
-		DiscussionReviewerFan:         lenses.FanList{"review-discussion", ""},
-		CodeReviewerFan:               lenses.FanList{"review-code", ""},
-		DiscussionFixerFan:            lenses.FanList{"fix-discussion"},
-		CodeFixerFan:                  lenses.FanList{"fix-code"},
-		DiscussionAssistReviewerModel: burlerengine.ModelSpecList{""},
-		CodeAssistReviewerModel:       burlerengine.ModelSpecList{""},
-		DiscussionAssistReviewerFan:   lenses.FanList{""},
-		CodeAssistReviewerFan:         lenses.FanList{""},
-		AssistReviewerTimeoutMin:      60,
-		Judge:                         "sonnet[medium]",
-		ReviewTimeoutMin:              240,
-		Friction:                      "sonnet[medium]",
-		FrictionTimeoutMin:            30,
-		Driver:                        "haiku[medium]",
-		StepIdleTimeoutMin:            60,
-		ReviewCirclingCheckpoint:      3,
-		ReviewMaxBounces:              3,
-		ReviewHardMaxBounces:          4,
-		ReviewAmendMaxBounces:         1,
-		DiscussionMaxBounces:          intPtr(2),
-		CodeMaxBounces:                intPtr(1),
-		SplitMaxBounces:               intPtr(2),
-		DiscussionAutoAccept:          false,
-		CodeAutoAccept:                true,
-	}
+// templateDefaults maps a Config field name to the value the shipped template's own line for that key loads to.
+// It pins how the template's values parse; a key added to the template needs no entry here.
+var templateDefaults = map[string]any{
+	"Discussion":                    "opus[medium]",
+	"DiscussionTimeoutMin":          480,
+	"DiscussionInteractive":         false,
+	"Raddle":                        "opus[high]",
+	"RaddleAutoApprove":             false,
+	"ReviewerModel":                 burlerengine.ModelSpecList{"opus[medium]"},
+	"FixerModel":                    burlerengine.ModelSpecList{"opus[medium]"},
+	"DiscussionLenses":              "twill-discussion",
+	"DiscussionGateFixer":           "sonnet[medium]",
+	"SubagentModel":                 "sonnet",
+	"DiscussionReviewerModel":       burlerengine.ModelSpecList{"opus[medium]", "opus[medium]", "sonnet[high]"},
+	"DiscussionFixerModel":          burlerengine.ModelSpecList{""},
+	"CodeReviewerModel":             burlerengine.ModelSpecList{"sonnet[medium]"},
+	"CodeFixerModel":                burlerengine.ModelSpecList{"sonnet[medium]"},
+	"SplitReviewerModel":            burlerengine.ModelSpecList{""},
+	"SplitFixerModel":               burlerengine.ModelSpecList{""},
+	"SplitReviewerFan":              lenses.FanList{""},
+	"SplitFixerFan":                 lenses.FanList{""},
+	"DiscussionReviewerFan":         lenses.FanList{"review-discussion", ""},
+	"CodeReviewerFan":               lenses.FanList{"review-code", ""},
+	"DiscussionFixerFan":            lenses.FanList{"fix-discussion"},
+	"CodeFixerFan":                  lenses.FanList{"fix-code"},
+	"DiscussionAssistReviewerModel": burlerengine.ModelSpecList{""},
+	"CodeAssistReviewerModel":       burlerengine.ModelSpecList{""},
+	"DiscussionAssistReviewerFan":   lenses.FanList{""},
+	"CodeAssistReviewerFan":         lenses.FanList{""},
+	"AssistReviewerTimeoutMin":      60,
+	"Judge":                         "sonnet[medium]",
+	"ReviewTimeoutMin":              240,
+	"Friction":                      "sonnet[medium]",
+	"FrictionTimeoutMin":            30,
+	"Driver":                        "haiku[medium]",
+	"StepIdleTimeoutMin":            60,
+	"ReviewCirclingCheckpoint":      3,
+	"ReviewMaxBounces":              3,
+	"ReviewHardMaxBounces":          4,
+	"ReviewAmendMaxBounces":         1,
+	"DiscussionMaxBounces":          intPtr(2),
+	"CodeMaxBounces":                intPtr(1),
+	"SplitMaxBounces":               intPtr(2),
+	"DiscussionAutoAccept":          false,
+	"CodeAutoAccept":                true,
 }
 
-// TestLoadConfig_Loads verifies each loom.yaml shape that must load, against the whole Config it yields.
+// loadTemplateConfig returns the Config the shipped template loads to, read from an anchor that holds only the template.
+func loadTemplateConfig(t *testing.T) Config {
+	t.Helper()
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, ConfigTemplate())
+	config, err := LoadConfig(configengine.Dirs{Anchor: baseDir}, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(template) = _, %v; want nil error", err)
+	}
+	return config
+}
+
+// TestLoadConfig_Loads verifies each loom.yaml shape that must load.
+// Each case names only the fields its file changes, and every other field must equal the template's own load,
+// so a key added to the template leaves the table alone.
 // Zero timeouts must load as zero, since shuttleengine.Spec reads zero as "defer to shuttle's run_timeout_min",
 // so the negative guard must not sweep them up.
 func TestLoadConfig_Loads(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
+	templateLoad := loadTemplateConfig(t)
+
+	t.Run("template defaults", func(t *testing.T) {
+		t.Parallel()
+		loaded := reflect.ValueOf(templateLoad)
+		for _, name := range slices.Sorted(maps.Keys(templateDefaults)) {
+			field := loaded.FieldByName(name)
+			if !field.IsValid() {
+				t.Errorf("Config has no field %q; rename or drop its templateDefaults entry", name)
+				continue
+			}
+			if got, want := field.Interface(), templateDefaults[name]; !reflect.DeepEqual(got, want) {
+				t.Errorf("LoadConfig(template).%s = %#v; want %#v", name, got, want)
+			}
+		}
+	})
+
 	// legacyContents is a file seeded before the friction, driver, judge, parent-review and review-budget keys existed.
 	const legacyContents = `discussion: opus[effort=high]
 discussion_timeout_min: 480
@@ -159,7 +190,6 @@ review_timeout_min: 240
 		mutate     func(*Config)
 		wantSoft   map[Perch]int
 	}{
-		{name: "template defaults", mutate: func(*Config) {}},
 		{
 			name:       "empty fan keys never read a malformed lenses.yaml",
 			lensesYAML: malformedLensesYAML,
@@ -431,7 +461,7 @@ review_timeout_min: 240
 				seedLensesConfig(t, baseDir, tt.lensesYAML)
 			}
 
-			want := templateConfig()
+			want := templateLoad
 			tt.mutate(&want)
 
 			got, err := LoadConfig(configengine.Dirs{Anchor: baseDir}, "loom")
@@ -504,7 +534,7 @@ review_timeout_min: 240
 					writeLocalLoomConfig(t, anchor, tt.local)
 				}
 
-				want := templateConfig()
+				want := templateLoad
 				tt.mutate(&want)
 				got, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
 				if err != nil {

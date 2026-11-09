@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -123,7 +125,9 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 
 // TestModules_EveryTemplateKeyClassified pins that each module's Categories classify every template unit.
 // It also pins that Categories name only paths the template holds.
-// The derived LocalKeys and LocalDenied must match the record.
+// The derived LocalKeys, LocalDenied and MachineKeys must match the record.
+// It is the one test that pins each module's whole key set, so a key nobody classified fails here,
+// and each failure names the key and the list or function it goes in.
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -151,25 +155,26 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		t.Run(m.Name, func(t *testing.T) {
 			t.Parallel()
 			spec := m.Spec()
+			specFunc := runtime.FuncForPC(reflect.ValueOf(m.Spec).Pointer()).Name()
 			units, err := yamlengine.LeafPaths([]byte(m.Template()), spec.OpenMaps, spec.WholeEntries)
 			if err != nil {
 				t.Fatalf("LeafPaths(%s template) error: %v", m.Name, err)
 			}
 			for _, unit := range units {
 				if !coveredByEntry(spec, unit) {
-					t.Errorf("template unit %q of %s is not covered by a Categories entry; classify it", unit, m.Name)
+					t.Errorf("template unit %q of %s is not classified; add %q to the Categories map %s returns, as configengine.CategoryNone to open it to the local layer or as the category that bars it", unit, m.Name, unit, specFunc)
 				}
 			}
 			for entry := range spec.Categories {
 				if !holdsPath(units, entry) {
-					t.Errorf("Categories entry %q of %s names no template path", entry, m.Name)
+					t.Errorf("Categories entry %q of %s names no template path; drop it from the Categories map %s returns, or add its line to the %s template", entry, m.Name, specFunc, m.Name)
 				}
 			}
 			if want := wantLocalKeys[m.Name]; m.HubWide && !slices.Equal(m.LocalKeys, want) {
-				t.Errorf("%s LocalKeys = %v; want %v", m.Name, m.LocalKeys, want)
+				t.Errorf("%s LocalKeys = %v; want %v; %s", m.Name, m.LocalKeys, want, keyListWayForward(fmt.Sprintf("wantLocalKeys[%q]", m.Name), m.LocalKeys, want))
 			}
 			if want := wantLocalDenied[m.Name]; !m.HubWide && !slices.Equal(m.LocalDenied, want) {
-				t.Errorf("%s LocalDenied = %v; want %v", m.Name, m.LocalDenied, want)
+				t.Errorf("%s LocalDenied = %v; want %v; %s", m.Name, m.LocalDenied, want, keyListWayForward(fmt.Sprintf("wantLocalDenied[%q]", m.Name), m.LocalDenied, want))
 			}
 			if m.HubWide && len(m.LocalDenied) != 0 || !m.HubWide && len(m.LocalKeys) != 0 {
 				t.Errorf("%s LocalKeys = %v, LocalDenied = %v; want only the list of its own kind", m.Name, m.LocalKeys, m.LocalDenied)
@@ -188,10 +193,63 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 				wantMachineKeys = []string{"sandbox_mode"}
 			}
 			if got := configengine.MachineKeys(spec); !slices.Equal(got, wantMachineKeys) {
-				t.Errorf("%s MachineKeys = %v; want %v, so no stray machine file is read by a registered loader", m.Name, got, wantMachineKeys)
+				t.Errorf("%s MachineKeys = %v; want %v, so no stray machine file is read by a registered loader; %s", m.Name, got, wantMachineKeys, keyListWayForward(fmt.Sprintf("the wantMachineKeys of %s", m.Name), got, wantMachineKeys))
 			}
 		})
 	}
+}
+
+// keyListWayForward names the keys to add to and drop from the expected list called list in this test,
+// so that it matches got.
+// It is the way forward when the classification change behind the mismatch is meant.
+func keyListWayForward(list string, got, want []string) string {
+	var steps []string
+	if added := keysOutside(want, got); len(added) > 0 {
+		steps = append(steps, fmt.Sprintf("add %q to %s", added, list))
+	}
+	if dropped := keysOutside(got, want); len(dropped) > 0 {
+		steps = append(steps, fmt.Sprintf("drop %q from %s", dropped, list))
+	}
+	if len(steps) == 0 {
+		return fmt.Sprintf("sort %s in this test", list)
+	}
+	return "if the classification is meant, " + strings.Join(steps, " and ") + " in this test"
+}
+
+// TestKeyListWayForward pins the message that tells which keys to add to or drop from an expected list.
+func TestKeyListWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		got  []string
+		want []string
+		msg  string
+	}{
+		{"AddOnly", []string{"a", "b"}, []string{"a"}, `if the classification is meant, add ["b"] to wantList in this test`},
+		{"DropOnly", []string{"a"}, []string{"a", "b"}, `if the classification is meant, drop ["b"] from wantList in this test`},
+		{"AddAndDrop", []string{"a", "c"}, []string{"a", "b"}, `if the classification is meant, add ["c"] to wantList and drop ["b"] from wantList in this test`},
+		{"OrderOnly", []string{"b", "a"}, []string{"a", "b"}, "sort wantList in this test"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := keyListWayForward("wantList", tt.got, tt.want); got != tt.msg {
+				t.Errorf("keyListWayForward(%v, %v) = %q; want %q", tt.got, tt.want, got, tt.msg)
+			}
+		})
+	}
+}
+
+// keysOutside returns the keys that list does not hold, in their own order.
+func keysOutside(list, keys []string) []string {
+	var outside []string
+	for _, key := range keys {
+		if !slices.Contains(list, key) {
+			outside = append(outside, key)
+		}
+	}
+	return outside
 }
 
 // coveredByEntry reports whether a Categories entry equals path or is an ancestor of it.
