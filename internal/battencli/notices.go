@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -14,6 +15,7 @@ import (
 )
 
 // notifyRunParent sends line as creel mail to the nearest live orch above the run slug, signed as batten.
+// The mail is tagged with slug as its run, so the run's teardown drops it while it is unread.
 // It reports whether the mail was posted.
 // The walk starts at the run's pair when it is present here.
 // Otherwise it starts at the worktree the pair forks or forked from, if that worktree is present here.
@@ -26,7 +28,13 @@ func notifyRunParent(prime *lymcwd.Location, slug, line string) (bool, error) {
 	if isPair {
 		return orchcli.NotifyParent(site, battenProgram, line)
 	}
-	return orchcli.NotifyFrom(site, battenProgram, line)
+	return orchcli.NotifyRunFrom(site, "", battenProgram, runNotifyTags(slug), line)
+}
+
+// runNotifyTags returns the creel tags of batten's notice about the run slug.
+// The run lets the run's teardown drop the mail while it is unread.
+func runNotifyTags(slug string) creelengine.PostTags {
+	return creelengine.PostTags{Run: slug}
 }
 
 // runParentRecorded reports whether the live orch above the run slug records an orch strand.

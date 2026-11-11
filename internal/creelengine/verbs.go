@@ -1,5 +1,5 @@
 // verbs.go implements the pool's verbs and the privilege rules that gate them.
-// The verbs are post, reply, read, inbox, forward, log, inject, interrupt, hold, release and withdraw.
+// The verbs are post, reply, read, inbox, forward, log, inject, interrupt, hold, release, withdraw and drop-run.
 
 package creelengine
 
@@ -105,6 +105,18 @@ type PostOptions struct {
 	Interrupt bool
 	// ExpectReply marks the message as expecting a reply from its holder.
 	ExpectReply bool
+	// Tags are the topic and run the message carries.
+	Tags PostTags
+}
+
+// PostTags are what a notice is about, set only through the Go client; a post to another hub drops them.
+type PostTags struct {
+	// Topic names what the notice reports on.
+	// A post with a topic returns undelivered its sender's unread, unreserved mail to the same receiver under the same topic,
+	// so the receiver reads only the newest notice of each topic.
+	Topic string
+	// Run is the slug of the run the message concerns, which DropRun drops the unread mail of once the run is gone.
+	Run string
 }
 
 // PostResult is what a post did and what it learned of its receiver.
@@ -207,7 +219,7 @@ func (s *Store) post(sender Sender, receiver, body string, opts PostOptions) (Po
 			return PostResult{Interrupted: true}, storedAfterInterrupt(receiver, err)
 		}
 	}
-	posted, err := s.storePost(sender, receiver, body, opts.Wait, opts.ExpectReply || opts.Wait)
+	posted, err := s.storePost(sender, receiver, body, opts.Wait, opts.ExpectReply || opts.Wait, opts.Tags)
 	if err != nil && interrupted {
 		return PostResult{Interrupted: true}, storedAfterInterrupt(receiver, err)
 	}
@@ -220,10 +232,11 @@ func storedAfterInterrupt(receiver string, cause error) error {
 	return fmt.Errorf("creel: the turn of %s was interrupted, but the post was not stored: %w; way forward: post again without --interrupt", receiver, cause)
 }
 
-// storePost journals a validated post to receiver, marked as expecting a reply when expect is set.
+// storePost journals a validated post to receiver, marked as expecting a reply when expect is set and carrying tags.
 // With wait, it also registers the wait for the reply.
+// The new message supersedes the sender's unread mail to receiver under the same topic.
 // A stored post answers its receiver's liveness from the same strand listing the receiver check read.
-func (s *Store) storePost(sender Sender, receiver, body string, wait, expect bool) (PostResult, error) {
+func (s *Store) storePost(sender Sender, receiver, body string, wait, expect bool, tags PostTags) (PostResult, error) {
 	strands, err := s.readStrands()
 	if err != nil {
 		return PostResult{}, err
@@ -234,7 +247,11 @@ func (s *Store) storePost(sender Sender, receiver, body string, wait, expect boo
 			return err
 		}
 		var err error
-		if posted.ID, err = s.appendPostedLocked(sender, record{To: receiver, Kind: kindMail, Body: body, ExpectReply: expect}); err != nil {
+		rec := record{To: receiver, Kind: kindMail, Body: body, ExpectReply: expect, Topic: tags.Topic, Run: tags.Run}
+		if posted.ID, err = s.appendPostedLocked(sender, rec); err != nil {
+			return err
+		}
+		if err := s.supersedeLocked(sender.Name, receiver, tags.Topic, posted.ID); err != nil {
 			return err
 		}
 		if wait {
@@ -249,6 +266,30 @@ func (s *Store) storePost(sender Sender, receiver, body string, wait, expect boo
 	}
 	posted.ReceiverLive, posted.Warning = s.receiverLiveness(strands, receiver)
 	return posted, nil
+}
+
+// SupersededReason is the journal reason of a message returned undelivered.
+// A newer post under its topic replaced that message.
+const SupersededReason = "superseded"
+
+// supersedeLocked returns undelivered every unread, unreserved message from to holder under topic.
+// The message with id kept stays.
+// Each is journaled undelivered with reason `SupersededReason`, and a wait on its reply is answered returned.
+// An empty topic supersedes nothing.
+func (s *Store) supersedeLocked(from, holder, topic string, kept int64) error {
+	if topic == "" {
+		return nil
+	}
+	for _, msg := range s.unreadLocked(holder, from) {
+		if msg.ID == kept || msg.Topic != topic {
+			continue
+		}
+		if err := s.writer.append(record{Event: eventUndelivered, ID: msg.ID, Reason: SupersededReason}); err != nil {
+			return err
+		}
+		s.answerLocked(waitKey{kind: waitReply, id: msg.ID}, Outcome{Kind: OutcomeReturned, Message: *msg})
+	}
+	return nil
 }
 
 // receiverLiveness reports whether receiver has a live pane among strands.
@@ -1389,6 +1430,42 @@ func (s *Store) Withdraw(sender Sender, receiver string) (WithdrawResult, error)
 		return nil
 	})
 	return result, err
+}
+
+// RunGoneReason is the journal reason of a message returned undelivered because the run it concerns is gone.
+const RunGoneReason = "run-gone"
+
+// DropRun returns undelivered every unread, unreserved message tagged with run, whatever its sender and holder.
+// Each is journaled undelivered with reason `RunGoneReason`, and a wait on its reply is answered returned.
+// A message already read or being read is left alone.
+// Only a program may drop; any other sender, and an empty run, get an error.
+// It answers the dropped messages in id order, none when no unread message carries the run.
+func (s *Store) DropRun(sender Sender, run string) ([]WithdrawnMessage, error) {
+	if sender.Kind != KindProgram {
+		return nil, fmt.Errorf("creel: %s may not drop a run's mail; only a program may, through the Go client", sender.Name)
+	}
+	if run == "" {
+		return nil, errors.New("creel: drop-run names no run")
+	}
+	var dropped []WithdrawnMessage
+	err := s.do(func() error {
+		var tagged []*Message
+		for id, msg := range s.state.messages {
+			if msg.Run == run && msg.Status == StatusUnread && s.reserved[id] == "" {
+				tagged = append(tagged, msg)
+			}
+		}
+		sort.Slice(tagged, func(i, j int) bool { return tagged[i].ID < tagged[j].ID })
+		for _, msg := range tagged {
+			if err := s.writer.append(record{Event: eventUndelivered, ID: msg.ID, Reason: RunGoneReason}); err != nil {
+				return err
+			}
+			s.answerLocked(waitKey{kind: waitReply, id: msg.ID}, Outcome{Kind: OutcomeReturned, Message: *msg})
+			dropped = append(dropped, WithdrawnMessage{ID: msg.ID, Subject: msg.Subject})
+		}
+		return nil
+	})
+	return dropped, err
 }
 
 // Release ends the caller's hold on receiver and reports whether there was one, even when the strand is gone.

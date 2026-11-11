@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelcli"
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fronttask"
@@ -57,6 +58,8 @@ import (
 const (
 	// dobbyProgram is the program name dobby signs its notices with, scoped to its beam's slug.
 	dobbyProgram = "DOBBY"
+	// runNoticeTopicPrefix leads the creel topic of a run notice, followed by the run's slug.
+	runNoticeTopicPrefix = "dobby-run-notice/"
 	// defaultNoticeProbe is the probe interval when the batten recipe's Run-Shed row names none.
 	defaultNoticeProbe = 30 * time.Second
 	// defaultNoticeQuiet is the run notices' quiet window when the batten recipe's Run-Shed row names none.
@@ -68,6 +71,23 @@ const (
 	// passErrorTextRunes bounds the error text of a pass that printed no envelope.
 	passErrorTextRunes = 500
 )
+
+// runNoticeTags returns the creel tags of dobby's notice about the run slug.
+// The topic lets a newer notice about the run replace an unread one, and the run lets the run's teardown drop it.
+func runNoticeTags(slug string) creelengine.PostTags {
+	return creelengine.PostTags{Topic: runNoticeTopicPrefix + slug, Run: slug}
+}
+
+// requirePosted turns a notice that no orch strand was recorded to receive into an error, so dobby tries it again.
+func requirePosted(posted bool, err error) error {
+	if err != nil {
+		return err
+	}
+	if !posted {
+		return errors.New("no orch strand is recorded to receive the notice")
+	}
+	return nil
+}
 
 // registerDobby records this process as the dobby of geom in the run-process registry under runProcDir.
 // The owner is the beam's slug, so the pair teardown of a landed beam ends its dobby;
@@ -121,6 +141,10 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		hibernateRequestPath = hibernatecli.RequestPath(prime)
 	}
 	underAdopt := orchcli.UnderAdoptWatch(prime)
+	runNotices := battencli.DobbyRunNotices(prime, pause.RecordPath, quiet)
+	runNotices.Post = func(_ context.Context, slug, line string) error {
+		return requirePosted(orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, runNoticeTags(slug), line))
+	}
 	deps := dobbyengine.Deps{
 		Now:   time.Now,
 		Awake: pauserecord.MonotonicAwake(),
@@ -152,14 +176,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		},
 		TearDownEnded: func(slugs []string) <-chan map[string]error { return tearDownEnded(prime, slugs) },
 		Notice: func(_ context.Context, line string) error {
-			posted, err := orchcli.NotifyFromScoped(worktree, geom.Slug, dobbyProgram, line)
-			if err != nil {
-				return err
-			}
-			if !posted {
-				return errors.New("no orch strand is recorded to receive the notice")
-			}
-			return nil
+			return requirePosted(orchcli.NotifyFromScoped(worktree, geom.Slug, dobbyProgram, line))
 		},
 		PauseOwned: func(_ context.Context, slug string) error { return tendercli.PauseOwnedElsewhere(prime, slug) },
 		ReleaseParentLock: func(_ context.Context, slug string) error {
@@ -186,7 +203,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			coverage, err := pauserecord.ReadCoverage(pause.RecordPath, slug, time.Now())
 			return coverage.Covered, err
 		},
-		RunNotices:    battencli.DobbyRunNotices(prime, pause.RecordPath, quiet),
+		RunNotices:    runNotices,
 		WaitReminders: waitReminderDeps(prime, worktree, geom.Slug, pause.RecordPath, dirs),
 		ClearNotifyOnLand: func(slug string) error {
 			board, err := boardengine.OpenHub(prime.HubPath)

@@ -16,18 +16,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// recordNotices installs a push notifier that records every line it is given until the test ends.
-// It returns a reader of the recorded lines.
+// recordNotices installs a push notifier that records every notice it is given until the test ends.
+// It returns a reader of the recorded notices.
 // It changes process-global state, so the calling test must not be parallel.
-func recordNotices(t *testing.T) (lines func() []string) {
+func recordNotices(t *testing.T) (notices func() []PushNotice) {
 	t.Helper()
-	var got []string
-	restore := InstallPushNotifier(func(hubPath, line string) (bool, error) {
-		got = append(got, line)
+	var got []PushNotice
+	restore := InstallPushNotifier(func(hubPath string, notice PushNotice) (bool, error) {
+		got = append(got, notice)
 		return true, nil
 	})
 	t.Cleanup(restore)
-	return func() []string { return slices.Clone(got) }
+	return func() []PushNotice { return slices.Clone(got) }
 }
 
 // TestNoticeRemoteTeardown covers the log line and the one creel notice of a failed remote step.
@@ -98,14 +98,17 @@ func TestNoticeRemoteTeardown(t *testing.T) {
 			if len(got) != 1 {
 				t.Fatalf("noticeRemoteTeardown() posted %d notices %q; want exactly one", len(got), got)
 			}
+			if got[0].Topic != "remote-teardown/"+slug || got[0].Run != "" {
+				t.Errorf("notice topic %q run %q; want topic %q and no run", got[0].Topic, got[0].Run, "remote-teardown/"+slug)
+			}
 			for _, want := range tt.wantInLine {
-				if !strings.Contains(got[0], want) {
-					t.Errorf("notice = %q; want it to hold %q", got[0], want)
+				if !strings.Contains(got[0].Line, want) {
+					t.Errorf("notice = %q; want it to hold %q", got[0].Line, want)
 				}
 			}
 			for _, absent := range tt.wantAbsent {
-				if strings.Contains(got[0], absent) {
-					t.Errorf("notice = %q; want it free of %q", got[0], absent)
+				if strings.Contains(got[0].Line, absent) {
+					t.Errorf("notice = %q; want it free of %q", got[0].Line, absent)
 				}
 			}
 		})
@@ -139,8 +142,8 @@ func TestSyncOptionsNotifier(t *testing.T) {
 			var own []string
 			options := SyncOptions{}
 			if tt.setOwn {
-				options.Notifier = func(hubPath, line string) (bool, error) {
-					own = append(own, line)
+				options.Notifier = func(hubPath string, notice PushNotice) (bool, error) {
+					own = append(own, notice.Line)
 					return true, nil
 				}
 			}
@@ -149,7 +152,7 @@ func TestSyncOptionsNotifier(t *testing.T) {
 			if notify == nil {
 				t.Fatalf("SyncOptions.notifier() = nil; want a notifier")
 			}
-			if _, err := notify("hub", "line"); err != nil {
+			if _, err := notify("hub", PushNotice{Line: "line"}); err != nil {
 				t.Fatalf("notifier error = %v; want nil", err)
 			}
 
@@ -187,8 +190,8 @@ func TestNoticeRemoteTeardownEnded(t *testing.T) {
 				t.Fatalf("NoticeRemoteTeardownEnded() posted %d notices %q; want exactly one", len(got), got)
 			}
 			for _, want := range []string{slug, "ended before its last step", tt.reason, "`lym fabric remove " + slug + " --remote`", "`lym fabric cleanup --apply --remote`", "discarded the task branch"} {
-				if !strings.Contains(got[0], want) {
-					t.Errorf("notice = %q; want it to hold %q", got[0], want)
+				if !strings.Contains(got[0].Line, want) {
+					t.Errorf("notice = %q; want it to hold %q", got[0].Line, want)
 				}
 			}
 		})
@@ -213,8 +216,8 @@ func TestRunTeardownChild_NoticesAnUnreadableJob(t *testing.T) {
 		t.Fatalf("notices = %q; want exactly one", got)
 	}
 	for _, want := range []string{slug, "reading its job", "way forward", "`lym fabric remove " + slug + " --remote`", "`lym fabric cleanup --apply --remote`", "discarded the task branch"} {
-		if !strings.Contains(got[0], want) {
-			t.Errorf("notice = %q; want it to hold %q", got[0], want)
+		if !strings.Contains(got[0].Line, want) {
+			t.Errorf("notice = %q; want it to hold %q", got[0].Line, want)
 		}
 	}
 }

@@ -1453,6 +1453,8 @@
 // The push returns nil and writes a `deferred` record that mails nothing.
 // Every other record mails the hub's orch once per episode.
 // The mail goes through `SyncOptions.Notifier`, or through the process's installed push notifier when that field is nil.
+// It carries the side and branch as its topic, so a newer notice of the branch replaces one the orch has not read.
+// A pair's branch also carries the pair's slug as its run, so the pair's teardown drops the notice while it is unread.
 // It leaves the commits to the next push of the branch, whose landing removes the record.
 // A replay that stops on a conflict is a `not_fast_forward` failure.
 // The failure carries the conflicting paths and the local commits.

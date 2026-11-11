@@ -15,13 +15,16 @@ type fakePushNotifier struct {
 	posted bool
 	err    error
 	lines  []string
+	// notices holds the whole notice of every counted call, in the order the calls came.
+	notices []fabricengine.PushNotice
 }
 
-func (n *fakePushNotifier) notify(hubPath, line string) (bool, error) {
+func (n *fakePushNotifier) notify(hubPath string, notice fabricengine.PushNotice) (bool, error) {
 	if hubPath != n.hub {
 		return true, nil
 	}
-	n.lines = append(n.lines, line)
+	n.lines = append(n.lines, notice.Line)
+	n.notices = append(n.notices, notice)
 	return n.posted, n.err
 }
 

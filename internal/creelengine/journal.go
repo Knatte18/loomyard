@@ -145,6 +145,9 @@ type record struct {
 	DeliveredTo string `json:"delivered_to,omitempty"`
 	// Answers is the id of the local message an outbound reply answers.
 	Answers int64 `json:"answers,omitempty"`
+	// Topic and Run are the tags of a posted record, and of a carried snapshot of its message.
+	Topic string `json:"topic,omitempty"`
+	Run   string `json:"run,omitempty"`
 }
 
 // journalDay returns the UTC day t falls on, as YYYY-MM-DD, the stem of a journal file name.

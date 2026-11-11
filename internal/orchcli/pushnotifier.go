@@ -1,5 +1,5 @@
 // pushnotifier.go installs the process-wide route for failed-push notices.
-// The route mails each notice to the hub's prime orch, signed as the FABRIC program.
+// The route mails each notice to the hub's prime orch, signed as the FABRIC program and carrying the notice's tags.
 
 package orchcli
 
@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -31,7 +32,7 @@ func InstallPushNotifier(ctx context.Context) {
 		return
 	}
 	hubPath := filepath.Clean(location.HubPath)
-	fabricengine.InstallPushNotifier(func(failedHubPath, line string) (bool, error) {
+	fabricengine.InstallPushNotifier(func(failedHubPath string, notice fabricengine.PushNotice) (bool, error) {
 		if filepath.Clean(failedHubPath) != hubPath {
 			return false, nil
 		}
@@ -39,7 +40,8 @@ func InstallPushNotifier(ctx context.Context) {
 		if err != nil {
 			return false, err
 		}
-		return NotifyPrime(sender, fabricProgram, line)
+		tags := creelengine.PostTags{Topic: notice.Topic, Run: notice.Run}
+		return postNotice(sender, "", fabricProgram, notice.Line, tags, func() (string, bool, error) { return PrimeOrchStrand(sender) })
 	})
 }
 

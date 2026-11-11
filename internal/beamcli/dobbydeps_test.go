@@ -9,10 +9,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestRunNoticeTags(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	got := runNoticeTags("pay")
+	want := creelengine.PostTags{Topic: "dobby-run-notice/pay", Run: "pay"}
+	if got != want {
+		t.Errorf("runNoticeTags(pay) = %+v; want %+v", got, want)
+	}
+}
 
 func TestEndedTeardownResults(t *testing.T) {
 	tiergate.Require(t, 0)

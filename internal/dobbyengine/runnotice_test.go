@@ -34,6 +34,8 @@ type noticeFake struct {
 	pause     pauserecord.Coverage
 	marker    string
 	revives   int
+	// postedSlugs is the slug each run notice post named, in order.
+	postedSlugs []string
 }
 
 // newNoticeHarness returns a pass harness over one running run, task, and the fake its notice seams read.
@@ -55,7 +57,12 @@ func newNoticeHarness(t *testing.T) (*passHarness, *noticeFake) {
 		NewestAgentEnd: func(context.Context, string) (time.Time, error) { return f.newestEnd, f.endErr },
 		Pause:          func(string) (pauserecord.Coverage, error) { return f.pause, nil },
 		MarkerPath:     func(string) string { return f.marker },
-		Quiet:          45 * time.Minute,
+		Post: func(_ context.Context, slug, line string) error {
+			f.postedSlugs = append(f.postedSlugs, slug)
+			h.fake.notices = append(h.fake.notices, line)
+			return nil
+		},
+		Quiet: 45 * time.Minute,
 	}
 	return h, f
 }
@@ -397,6 +404,9 @@ func TestRunNotice_Conditions(t *testing.T) {
 					t.Errorf("run notice = %q; want it to hold %q", got[0], want)
 				}
 			}
+			if !slices.Equal(f.postedSlugs, []string{"task"}) {
+				t.Errorf("run notice post slugs = %q; want the run's slug %q once", f.postedSlugs, "task")
+			}
 			if strings.Contains(got[0], "3h") {
 				t.Errorf("run notice = %q; want no slept time in the idle time", got[0])
 			}
@@ -554,10 +564,8 @@ func TestRunNotice_DeliveryIsRetriedOnProbeTicksThenDropped(t *testing.T) {
 	f.alive = false
 	h.advance(driverStartGrace)
 	attempts := 0
-	h.d.deps.Notice = func(_ context.Context, line string) error {
-		if strings.HasPrefix(line, runNoticePrefix) {
-			attempts++
-		}
+	h.d.deps.RunNotices.Post = func(context.Context, string, string) error {
+		attempts++
 		return errors.New("no orch strand is recorded to receive the notice")
 	}
 

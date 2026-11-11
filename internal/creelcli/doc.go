@@ -135,6 +135,8 @@
 // They start the daemon through the spawn seam when none answers, and they connect on the first call.
 // Every call but ReadWait passes a 30-second timeout, so a caller under a lock waits at most that long per call.
 // Post, Inject, InjectCommand, Hold, Release and Withdraw send the matching verb; withdraw has no CLI verb.
+// PostTagged posts with a topic and a run, and DropRun sends drop-run; neither has a CLI verb.
+// DropRun on a hub with no creel journal sends nothing, since such a hub holds no mail, and starts no daemon.
 // ReadAll reads every unread message without waiting and hands them to its handler.
 // The client acknowledges them after the handler returns, so a handler error leaves them unread.
 // Log answers the journal entries matching a filter.

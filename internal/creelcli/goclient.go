@@ -6,6 +6,7 @@ package creelcli
 import (
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -24,6 +25,8 @@ const goCallTimeout = 30 * time.Second
 type GoClient struct {
 	client    *creelengine.Client
 	shortname string
+	// journalDir is the hub's creel journal directory, which exists once a daemon has served the hub.
+	journalDir string
 }
 
 // NewProgramClient returns a client that signs as the program named program under the hub's shortname.
@@ -83,7 +86,7 @@ func newGoClient(location *lymcwd.Location, claim func(shortname string) (creele
 	}
 	hubPath := location.HubPath
 	client := creelengine.NewClient(geometry, signed, func() (creelengine.Spawn, error) { return seam.spawn(hubPath, geometry.DaemonLogPath) }, seam.clock)
-	return &GoClient{client: client, shortname: geometry.Shortname}, nil
+	return &GoClient{client: client, shortname: geometry.Shortname, journalDir: geometry.JournalDir}, nil
 }
 
 // Shortname returns the shortname of the client's hub.
@@ -91,8 +94,25 @@ func (c *GoClient) Shortname() string { return c.shortname }
 
 // Post leaves body as a message for receiver and returns its id.
 func (c *GoClient) Post(receiver, body string) (int64, error) {
-	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: receiver, Text: body}, goCallTimeout, nil)
+	return c.PostTagged(receiver, body, creelengine.PostTags{})
+}
+
+// PostTagged leaves body as a message for receiver carrying tags and returns its id.
+// A topic replaces the caller's unread mail to receiver under the same topic.
+func (c *GoClient) PostTagged(receiver, body string, tags creelengine.PostTags) (int64, error) {
+	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: receiver, Text: body, Topic: tags.Topic, Run: tags.Run}, goCallTimeout, nil)
 	return resp.ID, err
+}
+
+// DropRun returns undelivered the hub's unread mail tagged with run, whoever sent it, and answers what it dropped.
+// Only a program client may drop.
+// A hub whose creel journal does not exist holds no mail, so the call answers none and starts no daemon.
+func (c *GoClient) DropRun(run string) ([]creelengine.WithdrawnMessage, error) {
+	if _, err := os.Stat(c.journalDir); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbDropRun, Run: run}, goCallTimeout, nil)
+	return resp.Dropped, err
 }
 
 // ReadAll reads every unread message of the caller without waiting and hands them to handle.

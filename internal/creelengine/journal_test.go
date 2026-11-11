@@ -630,7 +630,7 @@ func TestJournal_Retention(t *testing.T) {
 
 	// Day one: the messages (one read), the injects (one finished), and the holds.
 	// The holds are one live hold renewed to a later expiry, one expiring before the carry, and one released.
-	appendRecord(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "unread", ExpectReply: true})
+	appendRecord(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "unread", ExpectReply: true, Topic: "tidy", Run: "pay"})
 	appendRecord(record{Event: eventForwarded, ID: 1, By: beta, To: gamma})
 	appendRecord(record{Event: eventPosted, ID: 2, From: alpha, To: beta, Body: "read"})
 	appendRecord(record{Event: eventRead, ID: 2, By: beta})
@@ -697,6 +697,12 @@ func TestJournal_Retention(t *testing.T) {
 		}
 		if !p.messages[1].ExpectReply || p.messages[5].ExpectReply {
 			t.Errorf("%s: ExpectReply of messages 1 and 5 = %v and %v, want the carried unread message to keep its mark and the unmarked one none", label, p.messages[1].ExpectReply, p.messages[5].ExpectReply)
+		}
+		if got, want := [2]string{p.messages[1].Topic, p.messages[1].Run}, [2]string{"tidy", "pay"}; got != want {
+			t.Errorf("%s: topic and run of the carried message 1 = %q, want %q", label, got, want)
+		}
+		if p.messages[5].Topic != "" || p.messages[5].Run != "" {
+			t.Errorf("%s: topic and run of the untagged message 5 = %q and %q, want none", label, p.messages[5].Topic, p.messages[5].Run)
 		}
 		if !p.programs["ly:BATTEN"] || p.maxID != 6 {
 			t.Errorf("%s: programs = %v and maxID = %d, want ly:BATTEN known and 6", label, p.programs, p.maxID)

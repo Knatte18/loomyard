@@ -80,6 +80,9 @@ type Message struct {
 	RemotePosted time.Time
 	// DeliveredTo is the receiver the delivery named, which never changes, since Holder moves on a forward.
 	DeliveredTo string
+	// Topic and Run are the tags the post carried, empty on untagged mail.
+	Topic string
+	Run   string
 
 	// origin is the journal day of the file holding the record that created the entry.
 	origin string
@@ -477,7 +480,7 @@ func (p *pool) applyPosted(rec record, day string) {
 	p.messages[rec.ID] = &Message{
 		ID: rec.ID, From: rec.From, Envelope: rec.Envelope, Holder: rec.To, Kind: kind,
 		Subject: firstLine(rec.Body), Body: rec.Body, ReplyTo: rec.ReplyTo,
-		Posted: rec.At, Status: StatusUnread, ExpectReply: rec.ExpectReply, ChaseOf: rec.Chased, origin: day,
+		Posted: rec.At, Status: StatusUnread, ExpectReply: rec.ExpectReply, ChaseOf: rec.Chased, Topic: rec.Topic, Run: rec.Run, origin: day,
 	}
 	if chased := p.messages[rec.Chased]; chased != nil {
 		chased.Chases = max(chased.Chases, rec.Chase)
@@ -606,7 +609,7 @@ func (p *pool) applyCarried(rec record, day string) bool {
 				ID: rec.ID, From: rec.From, Envelope: rec.Envelope, Holder: rec.To, Path: rec.Path, Kind: kind,
 				Subject: firstLine(rec.Body), Body: rec.Body, ReplyTo: rec.ReplyTo,
 				Posted: rec.OrigAt, Status: StatusUnread, ExpectReply: rec.ExpectReply, ChaseOf: rec.Chased,
-				EndedUnreadBy: rec.Receiver, EndedUnreadAt: rec.ReceiverAt, origin: day,
+				EndedUnreadBy: rec.Receiver, EndedUnreadAt: rec.ReceiverAt, Topic: rec.Topic, Run: rec.Run, origin: day,
 				SendingHub: rec.SendingHub, SendingRepository: rec.SendingRepository, SendingID: rec.SendingID, Trusted: rec.Trusted, RemotePosted: rec.RemotePosted, DeliveredTo: rec.DeliveredTo,
 			}
 			if !rec.ReadAt.IsZero() {
@@ -712,7 +715,7 @@ func (p *pool) carryRecords(cutoffDay string, now time.Time) []record {
 				Event: eventCarried, At: now, Of: of, ID: msg.ID, From: msg.From, Envelope: msg.Envelope, To: msg.Holder,
 				Kind: msg.Kind, Body: msg.Body, ReplyTo: msg.ReplyTo, Path: msg.Path, ExpectReply: msg.ExpectReply, Chased: msg.ChaseOf,
 				ReadAt: msg.ReadAt, ConsumedSeconds: int64(msg.ChaseConsumed / time.Second), Chase: msg.Chases, MarkSeconds: int64(msg.ChaseMark / time.Second),
-				Receiver: msg.EndedUnreadBy, ReceiverAt: msg.EndedUnreadAt, OrigAt: msg.Posted,
+				Receiver: msg.EndedUnreadBy, ReceiverAt: msg.EndedUnreadAt, OrigAt: msg.Posted, Topic: msg.Topic, Run: msg.Run,
 				SendingHub: msg.SendingHub, SendingRepository: msg.SendingRepository, SendingID: msg.SendingID, Trusted: msg.Trusted, RemotePosted: msg.RemotePosted, DeliveredTo: msg.DeliveredTo,
 			})
 		}

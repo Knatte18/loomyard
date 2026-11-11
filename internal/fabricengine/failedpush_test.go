@@ -64,6 +64,54 @@ func TestFailedPushRecord(t *testing.T) {
 		}
 	})
 
+	noticeTagRows := []struct {
+		name    string
+		failure fabricengine.FailedPush
+		want    fabricengine.PushNotice
+	}{
+		{
+			"PairCodeBranchRunsAsTheWorktreeBaseName",
+			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/task", Branch: "task", Class: fabricengine.PushFailureTransport, Error: "connection refused"},
+			fabricengine.PushNotice{Topic: "push/code/task", Run: "task"},
+		},
+		{
+			"RecordsBranchRunsAsTheCodeWorktreeBaseName",
+			fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/task-weft", CodeWorktree: "/hub/task", Branch: "task-weft", Class: fabricengine.PushFailureTransport, Error: "connection refused"},
+			fabricengine.PushNotice{Topic: "push/records/task-weft", Run: "task"},
+		},
+		{
+			"PrimeCodeBranchHasNoRun",
+			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/main", Branch: "main", Prime: true, Class: fabricengine.PushFailureTransport, Error: "connection refused"},
+			fabricengine.PushNotice{Topic: "push/code/main"},
+		},
+		{
+			"RecordsBranchWithNoPairedCodeWorktreeHasNoRun",
+			fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/stray", Branch: "stray", Class: fabricengine.PushFailureTransport, Error: "connection refused"},
+			fabricengine.PushNotice{Topic: "push/records/stray"},
+		},
+		{
+			"BoltBranchHasNoRun",
+			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/" + fabricengine.BoltDirName, Branch: "main", Class: fabricengine.PushFailureTransport, Error: "connection refused"},
+			fabricengine.PushNotice{Topic: "push/bolt/main"},
+		},
+	}
+	for _, tt := range noticeTagRows {
+		t.Run("NoticeTags_"+tt.name, func(t *testing.T) {
+			hub := t.TempDir()
+			fake := &fakePushNotifier{hub: hub, posted: true}
+
+			if err := fabricengine.RecordPushFailureNotifyingForTest(hub, tt.failure, base, fake.notify); err != nil {
+				t.Fatalf("RecordPushFailure: %v", err)
+			}
+
+			want := tt.want
+			want.Line = composedPushLine(tt.failure)
+			if len(fake.notices) != 1 || fake.notices[0] != want {
+				t.Errorf("notices = %+v; want one %+v", fake.notices, want)
+			}
+		})
+	}
+
 	t.Run("NotPostedLeavesNotifiedUnsetSoTheNextFailureMails", func(t *testing.T) {
 		hub := t.TempDir()
 		fake := &fakePushNotifier{hub: hub, posted: false}

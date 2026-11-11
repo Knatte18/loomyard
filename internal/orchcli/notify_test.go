@@ -13,15 +13,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakePoster records each post as "<identity> <receiver>" and answers the error it is given.
+// fakePoster records each post as "<identity> <receiver> <body>" and the tags it carried.
+// It answers the error it is given.
 type fakePoster struct {
 	identity string
 	posts    *[]string
+	tags     *[]creelengine.PostTags
 	err      error
 }
 
-func (f fakePoster) Post(receiver, body string) (int64, error) {
+func (f fakePoster) PostTagged(receiver, body string, tags creelengine.PostTags) (int64, error) {
 	*f.posts = append(*f.posts, f.identity+" "+receiver+" "+body)
+	*f.tags = append(*f.tags, tags)
 	return 1, f.err
 }
 
@@ -30,6 +33,7 @@ func TestNotifyPrime_SignsAndPosts(t *testing.T) {
 	t.Parallel()
 
 	const line = "[batten notice] a-slug: blocked"
+	tags := creelengine.PostTags{Topic: "blocked", Run: "a-slug"}
 	refused := errors.New("creel: the receiver is not a listed strand")
 	tests := []struct {
 		name         string
@@ -75,19 +79,26 @@ func TestNotifyPrime_SignsAndPosts(t *testing.T) {
 			t.Parallel()
 
 			var posts []string
+			var postedTags []creelengine.PostTags
 			clients := notifyClients{
 				strand: func(string) (notifyPoster, error) {
-					return fakePoster{identity: "strand", posts: &posts, err: tt.strandErr}, nil
+					return fakePoster{identity: "strand", posts: &posts, tags: &postedTags, err: tt.strandErr}, nil
 				},
 				program: func() (notifyPoster, error) {
-					return fakePoster{identity: "program", posts: &posts, err: tt.programErr}, nil
+					return fakePoster{identity: "program", posts: &posts, tags: &postedTags, err: tt.programErr}, nil
 				},
 			}
 
-			posted, err := notifyPrime(func() (string, bool, error) { return "tst:orch", tt.recorded, nil }, line, tt.strandClaim, clients)
+			posted, err := notifyPrime(func() (string, bool, error) { return "tst:orch", tt.recorded, nil }, line, tags, tt.strandClaim, clients)
 
 			if !slices.Equal(posts, tt.wantPosts) {
 				t.Errorf("posts = %q; want %q", posts, tt.wantPosts)
+			}
+			// Every post, the strand attempt and the program fallback alike, carries the caller's tags unchanged.
+			for i, got := range postedTags {
+				if got != tags {
+					t.Errorf("post %d tags = %+v; want %+v", i, got, tags)
+				}
 			}
 			if posted != tt.wantPosted {
 				t.Errorf("notifyPrime() posted = %v; want %v", posted, tt.wantPosted)

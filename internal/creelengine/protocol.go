@@ -29,6 +29,8 @@ const (
 	VerbRelease    = "release"
 	// VerbWithdraw removes a program's own queued injects and unread mail to one receiver; only the Go client sends it.
 	VerbWithdraw = "withdraw"
+	// VerbDropRun drops the unread mail tagged with one run, whatever its sender; only the Go client sends it.
+	VerbDropRun = "drop-run"
 	// VerbClaim hands a strand's tool-boundary hook its unread mail, which the client acknowledges on the same connection.
 	VerbClaim = "claim"
 	// VerbHookWait holds a strand's idle waiter until the daemon rings it or a newer waiter supersedes it.
@@ -67,6 +69,9 @@ type Request struct {
 	Interrupt bool `json:"interrupt,omitempty"`
 	// ExpectReply marks a post as expecting a reply, which Wait implies.
 	ExpectReply bool `json:"expect_reply,omitempty"`
+	// Topic and Run are the tags of a post, which only the Go client sets; Run is also the run drop-run names.
+	Topic string `json:"topic,omitempty"`
+	Run   string `json:"run,omitempty"`
 	// TTLSeconds is the TTL of an inject, 0 for the default.
 	TTLSeconds int64 `json:"ttl_s,omitempty"`
 	// ForSeconds is how long a hold lasts.
@@ -128,6 +133,8 @@ type Response struct {
 	Released bool        `json:"released,omitempty"`
 	// Withdrawn is what a withdraw removed.
 	Withdrawn *WithdrawResult `json:"withdrawn,omitempty"`
+	// Dropped is the mail a drop-run returned undelivered.
+	Dropped []WithdrawnMessage `json:"dropped,omitempty"`
 	// Delivery is a deliver's answer, accepted or refused; Reason is the refusal's cause, ID the receiver's id.
 	Delivery string `json:"delivery,omitempty"`
 	Reason   string `json:"reason,omitempty"`

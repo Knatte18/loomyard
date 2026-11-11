@@ -18,9 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchroute"
 )
 
-// notifyPoster is the one creel call a notice makes: leaving a body as mail for a receiver.
+// notifyPoster is the one creel call a notice makes: leaving a body as mail for a receiver, carrying tags.
 type notifyPoster interface {
-	Post(receiver, body string) (int64, error)
+	PostTagged(receiver, body string, tags creelengine.PostTags) (int64, error)
 }
 
 // notifyClients holds the functions that build the creel clients a notice posts through.
@@ -35,29 +35,40 @@ type notifyClients struct {
 // A prime with no orch strand recorded is not an error: the notice is logged and nothing is posted.
 // A refusal or failure comes back as an error carrying the full line, and the notice is not retried.
 func NotifyPrime(location *lymcwd.Location, program, line string) (posted bool, err error) {
-	return postNotice(location, "", program, line, func() (string, bool, error) { return PrimeOrchStrand(location) })
+	return postNotice(location, "", program, line, creelengine.PostTags{}, func() (string, bool, error) { return PrimeOrchStrand(location) })
 }
 
 // NotifyParent sends line as creel mail to the nearest live orch up the beam chain of the pair's parent.
 // It is signed as program, and it reports whether the notice was posted.
+// The mail is tagged with the pair's slug as its run, so the pair's teardown drops it while it is unread.
 // The destination is resolved at each call; the prime's orch is the answer when no orch above the pair is live.
 // A destination with no orch strand recorded is not an error: the notice is logged and nothing is posted.
 // A refusal or failure comes back as an error carrying the full line, and the notice is not retried.
 func NotifyParent(pair *lymcwd.Location, program, line string) (posted bool, err error) {
-	return postNotice(pair, "", program, line, func() (string, bool, error) { return parentOrchStrand(pair, OrchLive) })
+	tags := creelengine.PostTags{Run: pair.WorktreeName}
+	return postNotice(pair, "", program, line, tags, func() (string, bool, error) { return parentOrchStrand(pair, OrchLive) })
 }
 
 // NotifyFrom sends line as creel mail to the nearest live orch on the beam chain at or above from.
 // It is signed as program, and it reports whether the notice was posted.
 // It serves a notice of a run whose pair is absent, which the run's beam worktree stands in for.
 func NotifyFrom(from *lymcwd.Location, program, line string) (posted bool, err error) {
-	return postNotice(from, "", program, line, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
+	return postNotice(from, "", program, line, creelengine.PostTags{}, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
 }
 
 // NotifyFromScoped sends line as creel mail to the nearest live orch on the beam chain at or above from.
 // It is signed as program scoped to slug, as "<shortname>:<slug>:<NAME>", and it reports whether the notice was posted.
 func NotifyFromScoped(from *lymcwd.Location, slug, program, line string) (posted bool, err error) {
-	return postNotice(from, slug, program, line, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
+	return postNotice(from, slug, program, line, creelengine.PostTags{}, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
+}
+
+// NotifyRunFrom sends line as creel mail carrying tags to the nearest live orch on the beam chain at or above from.
+// It is signed as program scoped to slug, the unscoped program for an empty slug,
+// and it reports whether the notice was posted.
+// It serves a notice about one run: its run tag lets the run's teardown drop it unread,
+// and its topic lets a newer notice of the same topic replace it unread.
+func NotifyRunFrom(from *lymcwd.Location, slug, program string, tags creelengine.PostTags, line string) (posted bool, err error) {
+	return postNotice(from, slug, program, line, tags, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
 }
 
 // NotifyAsker sends line as creel mail to the orch the agents of location reach as their parent.
@@ -68,7 +79,7 @@ func NotifyFromScoped(from *lymcwd.Location, slug, program, line string) (posted
 // A destination with no orch strand recorded is not an error: the notice is logged and nothing is posted.
 // A refusal or failure comes back as an error carrying the full line, and the notice is not retried.
 func NotifyAsker(location *lymcwd.Location, program, line string) (posted bool, err error) {
-	return postNotice(location, "", program, line, func() (string, bool, error) { return askerOrchStrand(location, OrchLive) })
+	return postNotice(location, "", program, line, creelengine.PostTags{}, func() (string, bool, error) { return askerOrchStrand(location, OrchLive) })
 }
 
 // NotifyOrchAt sends line as creel mail to the orch strand of worktree itself.
@@ -77,7 +88,7 @@ func NotifyAsker(location *lymcwd.Location, program, line string) (posted bool, 
 // A worktree whose orch state records no strand is not an error: the notice is logged and nothing is posted.
 // A refusal or failure comes back as an error carrying the full line, and the notice is not retried.
 func NotifyOrchAt(worktree *lymcwd.Location, program, line string) (posted bool, err error) {
-	return postNotice(worktree, "", program, line, func() (string, bool, error) { return OrchStrandOf(worktree) })
+	return postNotice(worktree, "", program, line, creelengine.PostTags{}, func() (string, bool, error) { return OrchStrandOf(worktree) })
 }
 
 // ParentOrchRecorded reports whether the orch a notice of pair goes to records an orch strand.
@@ -87,9 +98,9 @@ func ParentOrchRecorded(pair *lymcwd.Location) (bool, error) {
 	return recorded, err
 }
 
-// postNotice posts line through creel to the orch strand orch answers, signing the call as program scoped to slug from location.
-// An empty slug signs as the unscoped program.
-func postNotice(location *lymcwd.Location, slug, program, line string, orch func() (string, bool, error)) (bool, error) {
+// postNotice posts line carrying tags through creel to the orch strand orch answers.
+// It signs the call as program scoped to slug from location, and an empty slug signs as the unscoped program.
+func postNotice(location *lymcwd.Location, slug, program, line string, tags creelengine.PostTags, orch func() (string, bool, error)) (bool, error) {
 	clients := notifyClients{
 		strand: func(strandClaim string) (notifyPoster, error) {
 			return creelcli.NewStrandClient(location, strandClaim)
@@ -98,7 +109,7 @@ func postNotice(location *lymcwd.Location, slug, program, line string, orch func
 			return creelcli.NewScopedProgramClient(location, slug, program)
 		},
 	}
-	return notifyPrime(orch, line, os.Getenv(agentname.StrandNameEnv), clients)
+	return notifyPrime(orch, line, tags, os.Getenv(agentname.StrandNameEnv), clients)
 }
 
 // NearestLiveParent answers the orch a notice of pair goes to, as the orch's agent name and worktree.
@@ -171,10 +182,10 @@ func resolvePrime(location *lymcwd.Location) (*lymcwd.Location, error) {
 	return orchroute.Prime(location)
 }
 
-// notifyPrime posts line to the orch strand orch answers.
+// notifyPrime posts line carrying tags to the orch strand orch answers.
 // A strand claim naming a strand that is not an orch is tried first.
 // A claim creel refuses as coming from outside that strand's pane falls back to posting once as the program.
-func notifyPrime(orch func() (string, bool, error), line, strandClaim string, clients notifyClients) (bool, error) {
+func notifyPrime(orch func() (string, bool, error), line string, tags creelengine.PostTags, strandClaim string, clients notifyClients) (bool, error) {
 	receiver, recorded, err := orch()
 	if err != nil {
 		return false, err
@@ -188,7 +199,7 @@ func notifyPrime(orch func() (string, bool, error), line, strandClaim string, cl
 		if err != nil {
 			return false, noticeError(line, err)
 		}
-		_, err = poster.Post(receiver, line)
+		_, err = poster.PostTagged(receiver, line, tags)
 		switch {
 		case err == nil:
 			return true, nil
@@ -200,7 +211,7 @@ func notifyPrime(orch func() (string, bool, error), line, strandClaim string, cl
 	if err != nil {
 		return false, noticeError(line, err)
 	}
-	if _, err := poster.Post(receiver, line); err != nil {
+	if _, err := poster.PostTagged(receiver, line, tags); err != nil {
 		return false, noticeError(line, err)
 	}
 	return true, nil

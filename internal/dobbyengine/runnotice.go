@@ -1,7 +1,7 @@
 // runnotice.go implements the run notices dobby sends for the running child of each run it drives:
 // a dead driver, a usage limit, an API-error stall and a quiet child.
 // It decides each condition on a probe tick and keeps the episode keys of the notices sent in the run's marker.
-// It posts each notice through the Notice seam.
+// It posts each notice through the run notices' Post seam.
 
 package dobbyengine
 
@@ -120,6 +120,11 @@ type RunNoticeDeps struct {
 	ReviveAPIError func(ctx context.Context, slug string) error
 	// MarkerPath returns the path of the marker holding the episode keys of the notices sent for slug, one per line.
 	MarkerPath func(slug string) string
+	// Post posts one run notice about the run slug to the nearest live orch.
+	// The mail is tagged with slug, so a newer run notice of the run replaces one the orch has not read,
+	// and the run's teardown drops one still unread.
+	// A nil Post sends no run notice.
+	Post func(ctx context.Context, slug, line string) error
 	// Quiet is how long every agent of a running child may stay idle before the quiet notice; zero sends none.
 	Quiet time.Duration
 }
@@ -389,7 +394,7 @@ func (d *daemon) apiErrorNoticeDue(ctx context.Context, slug, key string, status
 	return memory.APIRevives >= apiErrorReviveStreak
 }
 
-// deliverRunNotice makes one attempt to post line through the Notice seam, and reports whether it was posted.
+// deliverRunNotice makes one attempt to post line through the run notices' Post seam, and reports whether it was posted.
 // A notice not posted after runNoticeMaxAttempts probe ticks is dropped with a Warn.
 func (d *daemon) deliverRunNotice(ctx context.Context, slug, key, condition, line string) bool {
 	deliveryKey := slug + "|" + key
@@ -401,10 +406,11 @@ func (d *daemon) deliverRunNotice(ctx context.Context, slug, key, condition, lin
 		delivery = &noticeDelivery{}
 		d.deliveries[deliveryKey] = delivery
 	}
-	if delivery.dropped || d.deps.Notice == nil {
+	post := d.deps.RunNotices.Post
+	if delivery.dropped || post == nil {
 		return false
 	}
-	err := d.deps.Notice(ctx, line)
+	err := post(ctx, slug, line)
 	if err == nil {
 		delete(d.deliveries, deliveryKey)
 		return true

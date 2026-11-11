@@ -26,7 +26,7 @@ func TestRootPreRun_InstallsTheHubNotifiers(t *testing.T) {
 		t.Fatalf("%s holds no root PersistentPreRunE", path)
 	}
 	preRun, _, _ := strings.Cut(afterPreRun, "seedStencils(cmd)")
-	for _, call := range []string{"orchcli.InstallPushNotifier(cmd.Context())", "orchcli.InstallReconcileNotifier(cmd.Context())"} {
+	for _, call := range []string{"orchcli.InstallPushNotifier(cmd.Context())", "orchcli.InstallReconcileNotifier(cmd.Context())", "orchcli.InstallRunMailDropper()"} {
 		if !strings.Contains(preRun, call) {
 			t.Errorf("%s: the root pre-run = %q; want it to call %s", path, preRun, call)
 		}

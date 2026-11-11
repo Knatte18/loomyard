@@ -141,7 +141,9 @@ type Teardown struct {
 	archive func(slug string)
 	// closePR closes the run's open pull request, since an unlanded teardown would leave it pending; it never fails.
 	closePR func(slug string)
-	sleep   func(ctx context.Context, d time.Duration) error
+	// dropRunMail drops the hub's unread creel mail tagged with the removed pair's run; it never fails.
+	dropRunMail func(slug string)
+	sleep       func(ctx context.Context, d time.Duration) error
 
 	// landed reports whether the present task worktree's run finished a Finalize.
 	landed func(slug string) (bool, error)
@@ -208,6 +210,7 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	t.endSession = t.endReedSession
 	t.archive = t.archivePairLogs
 	t.closePR = t.closePairPullRequest
+	t.dropRunMail = t.dropPairRunMail
 	t.killCapture = t.killPairCapture
 	t.killLoop = t.killPairLoop
 	t.seizeLoop = t.holdPairLoopLock
@@ -425,9 +428,13 @@ func (t *Teardown) driverLockBusyError(slug, retry string) error {
 //
 // With req.ClearStray, a non-worktree directory at the task worktree's path is deleted before the claim is settled.
 // It follows a removal that left the pair gone, succeeded, found nothing of the pair, or kept a refilled directory.
+//
 // RemovePair removes the task's pair.
 // When req.Snapshot is set, it keeps the uncommitted paths under a snapshot tag first.
 // A failed delete returns its error; a delete that clears a kept directory reports the removal as succeeded.
+//
+// A successful removal drops the hub's unread creel mail tagged with the pair's run,
+// so no notice about the gone run reaches an orch as live; a failed drop never fails the teardown.
 func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 	var snap snapshotOutcome
 	if req.Snapshot {
@@ -466,6 +473,7 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 	if err != nil {
 		return res, err
 	}
+	t.dropRunMail(req.Slug)
 	if landedKnown {
 		t.settleBoardClaim(req.Slug, landed)
 	}

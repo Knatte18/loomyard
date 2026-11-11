@@ -153,6 +153,8 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				orchcli.InstallPushNotifier(cmd.Context())
 				// A reconcile that rewrites or flags a reinterpreted hub config value reaches the prime orch as creel mail from RECONCILE.
 				orchcli.InstallReconcileNotifier(cmd.Context())
+				// A pair's teardown drops the unread creel mail about its run, so no orch reads it as live.
+				orchcli.InstallRunMailDropper()
 				// lym beam start pauses a run another machine owns through tender, which imports orchcli.
 				orchcli.InstallOwnerPause(tendercli.PauseOwnedElsewhere)
 				// A records replay merges the board by entry through boardengine's Bolt replayer, in the detached push child and in a pull-first Bolt write.

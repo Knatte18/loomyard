@@ -302,7 +302,9 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 	ok := Response{OK: true, Sender: sender.Name}
 	switch req.Verb {
 	case VerbPost:
-		posted, err := store.PostWith(sender, req.Receiver, req.Text, PostOptions{Wait: req.Wait, Interrupt: req.Interrupt, ExpectReply: req.ExpectReply})
+		posted, err := store.PostWith(sender, req.Receiver, req.Text, PostOptions{
+			Wait: req.Wait, Interrupt: req.Interrupt, ExpectReply: req.ExpectReply, Tags: PostTags{Topic: req.Topic, Run: req.Run},
+		})
 		if err != nil {
 			return err
 		}
@@ -405,6 +407,12 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 			return err
 		}
 		ok.Withdrawn = &withdrawn
+	case VerbDropRun:
+		dropped, err := store.DropRun(sender, req.Run)
+		if err != nil {
+			return err
+		}
+		ok.Dropped = dropped
 	default:
 		return fmt.Errorf("creel: unknown verb %q", req.Verb)
 	}

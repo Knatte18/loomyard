@@ -79,9 +79,20 @@ type FailedPush struct {
 	Notified     bool             `json:"notified"`
 }
 
-// PushNotifier posts line to the orch of the hub at hubPath and reports whether the mail was posted.
+// PushNotice is the mail a failed push sends the orch.
+type PushNotice struct {
+	// Line names the branch, the class, the error and the way forward.
+	Line string
+	// Topic names the repository side and branch, so a newer notice of the branch replaces one still unread.
+	Topic string
+	// Run is the slug of the pair whose branch failed, empty for the prime's code branch and the board branch.
+	// The pair's teardown drops the notice while it is unread.
+	Run string
+}
+
+// PushNotifier posts notice to the orch of the hub at hubPath and reports whether the mail was posted.
 // A notifier reporting false, because no orch is recorded, leaves the failure to be mailed by a later one.
-type PushNotifier func(hubPath, line string) (posted bool, err error)
+type PushNotifier func(hubPath string, notice PushNotice) (posted bool, err error)
 
 var installedPushNotifier atomic.Pointer[PushNotifier]
 
@@ -126,7 +137,8 @@ func failedPushLockPath(path string) string {
 // The first failure creates the record.
 // Later failures keep its first-seen time and notified flag, replace the other fields and bump the count.
 // While the record is not notified and its class is not deferred, the installed notifier is called once.
-// The line it receives names the branch, the class, the error and the way forward.
+// The notice it receives names the branch, the class, the error and the way forward.
+// It carries the side and branch as its topic and the pair's slug as its run.
 // The record is marked notified only when the notifier reports the mail posted.
 // A notifier error is logged and leaves the record unnotified, so the next failure mails again.
 func RecordPushFailure(hubPath string, f FailedPush, now time.Time) error {
@@ -152,8 +164,12 @@ func recordPushFailure(hubPath string, f FailedPush, now time.Time, notify PushN
 		if notify == nil {
 			return f, nil
 		}
-		line := fmt.Sprintf("a push of %s branch %s failed (%s): %s; way forward: %s", f.Repo, f.Branch, f.Class, f.Error, FailedPushWayForward(f))
-		posted, err := notify(hubPath, line)
+		notice := PushNotice{
+			Line:  fmt.Sprintf("a push of %s branch %s failed (%s): %s; way forward: %s", f.Repo, f.Branch, f.Class, f.Error, FailedPushWayForward(f)),
+			Topic: "push/" + f.Repo + "/" + f.Branch,
+			Run:   f.pairSlug(),
+		}
+		posted, err := notify(hubPath, notice)
 		if err != nil {
 			logger.Warn("fabricengine: failed-push notice not posted", "repo", f.Repo, "branch", f.Branch, "error", err)
 			return f, nil
@@ -161,6 +177,23 @@ func recordPushFailure(hubPath string, f FailedPush, now time.Time, notify PushN
 		f.Notified = posted
 		return f, nil
 	})
+}
+
+// pairSlug names the pair whose branch f records.
+// It is the base name of the pair's code worktree, which the hub names by its slug.
+// The prime's code branch, the board branch and a records branch with no paired code worktree answer empty.
+// A records branch with a paired code worktree answers that worktree's name.
+// That includes the prime's, since a records record never marks the prime.
+// No pair's teardown shares the prime's name, so none drops that mail.
+func (f FailedPush) pairSlug() string {
+	switch {
+	case f.Repo == failedPushSideRecords && f.CodeWorktree != "":
+		return filepath.Base(f.CodeWorktree)
+	case f.Repo == failedPushSideCode && !f.Prime:
+		return filepath.Base(f.RepoPath)
+	default:
+		return ""
+	}
 }
 
 // ClearPushFailure removes the failed-push record of a repository side and branch, and does nothing when none exists.

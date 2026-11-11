@@ -357,8 +357,9 @@
 //   - A notice reads `[dobby notice] <slug>: <state> at <row>; <condition>`.
 //     The child's reason follows as `waiting:`, `since` and `history`.
 //     Paths under the task pair are rendered relative to it.
-//     The notice goes through Deps.Notice;
-//     one not posted is tried on each probe tick, at most three times, then dropped with a Warn.
+//     The notice goes through RunNotices.Post, tagged with the run's slug:
+//     a newer run notice of the run replaces one the orch has not read, and the run's teardown drops one still unread.
+//     One not posted is tried on each probe tick, at most three times, then dropped with a Warn.
 //   - A notice goes once per episode:
 //     its key is the condition, the child's state and a stamp.
 //     The marker RunNotices.MarkerPath names keeps the keys, one per line.

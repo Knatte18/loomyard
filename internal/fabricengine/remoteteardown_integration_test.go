@@ -76,8 +76,8 @@ func TestRunTeardownChild_RunsTheRemoteStepsInOrderUnderTheLock(t *testing.T) {
 				return !acquired
 			}
 			var notices []string
-			t.Cleanup(fabricengine.InstallPushNotifier(func(hubPath, line string) (bool, error) {
-				notices = append(notices, line)
+			t.Cleanup(fabricengine.InstallPushNotifier(func(hubPath string, notice fabricengine.PushNotice) (bool, error) {
+				notices = append(notices, notice.Line)
 				return true, nil
 			}))
 			var events []string

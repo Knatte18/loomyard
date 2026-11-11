@@ -98,6 +98,8 @@ type fakeSubstrates struct {
 	writeLockBusy bool
 	// driverLockHeldByProbe answers each driver-lock probe in turn, ahead of the driverLockHeld flag.
 	driverLockHeldByProbe []bool
+	// droppedRunMail holds the slug of each run mail drop, in call order.
+	droppedRunMail []string
 }
 
 // awaitCall is one call of the pre-end run-lock wait.
@@ -182,6 +184,10 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			}
 			return fabricengine.RemoveResult{StrayPath: f.removeStrayPath}, f.removeErr
 		},
+		dropRunMail: func(slug string) {
+			f.calls = append(f.calls, "dropRunMail")
+			f.droppedRunMail = append(f.droppedRunMail, slug)
+		},
 		removeStray: func(string) (bool, error) {
 			f.calls = append(f.calls, "removeStray")
 			return f.strayRemoved, f.strayErr
@@ -254,7 +260,18 @@ func (f *fakeSubstrates) teardown() *Teardown {
 
 var busy = quietState{driver: "tst:slug:driver"}
 
+// wantDroppedRunMail is the slugs the run mail drop must have seen when the expected call order holds it:
+// the removal's slug once after a removal that returned no error, and none otherwise.
+func wantDroppedRunMail(wantCalls string) []string {
+	if strings.Contains(wantCalls, "dropRunMail") {
+		return []string{"slug"}
+	}
+	return nil
+}
+
 // TestRemovePair_ClearStray asserts a request with ClearStray deletes a stray path at the task worktree's location once the removal left the pair gone, reads a kept refilled directory the delete clears as success, returns a failed delete, and leaves the path alone without the flag or after a removal that may have left the pair standing.
+// It also pins that the run mail drop follows only a removal that returned no error.
+// The drop happens once with the slug, before the claim settles.
 func TestRemovePair_ClearStray(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -278,8 +295,8 @@ func TestRemovePair_ClearStray(t *testing.T) {
 		wantCalls   string
 	}{
 		{name: "WithoutTheFlagAKeptDirectoryIsReturned", removeErr: kept, strayPath: strayPath, wantErrIs: fabricengine.ErrStrayPathKept, wantStrayPath: strayPath, wantCalls: "archive,remove"},
-		{name: "SuccessfulRemovalLooksForAStrayThenSettlesTheClaim", clearStray: true, wantDeleted: true, wantCalls: "archive,remove,removeStray,readClaim"},
-		{name: "KeptDirectoryTheDeleteClearsReadsAsSuccess", clearStray: true, removeErr: kept, strayPath: strayPath, wantDeleted: true, wantCalls: "archive,remove,removeStray,readClaim"},
+		{name: "SuccessfulRemovalLooksForAStrayThenSettlesTheClaim", clearStray: true, wantDeleted: true, wantCalls: "archive,remove,removeStray,dropRunMail,readClaim"},
+		{name: "KeptDirectoryTheDeleteClearsReadsAsSuccess", clearStray: true, removeErr: kept, strayPath: strayPath, wantDeleted: true, wantCalls: "archive,remove,removeStray,dropRunMail,readClaim"},
 		{name: "NothingOfThePairLeftClearsTheStrayAndStaysNotFound", clearStray: true, removeErr: notFound, strayPath: strayPath, wantErrIs: fabricengine.ErrPairNotFound, wantDeleted: true, wantCalls: "archive,remove,removeStray"},
 		{name: "FailedDeleteIsReturned", clearStray: true, removeErr: kept, strayPath: strayPath, strayErr: deleteFailed, wantErrIs: deleteFailed, wantStrayPath: strayPath, wantCalls: "archive,remove,removeStray"},
 		{name: "RefusedRemovalLeavesThePathAlone", clearStray: true, removeErr: refused, wantErrIs: refused, wantCalls: "archive,remove"},
@@ -305,6 +322,9 @@ func TestRemovePair_ClearStray(t *testing.T) {
 			}
 			if got := strings.Join(f.calls, ","); got != tt.wantCalls {
 				t.Errorf("RemovePair calls = %q; want %q", got, tt.wantCalls)
+			}
+			if got, want := f.droppedRunMail, wantDroppedRunMail(tt.wantCalls); !slices.Equal(got, want) {
+				t.Errorf("RemovePair dropped run mail for %v; want %v", got, want)
 			}
 		})
 	}
@@ -437,7 +457,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			run:       true,
 			quiets:    []quietState{{quiet: true}},
 			request:   Request{Slug: "slug"},
-			wantCalls: sessionEnd + ",landed,archive,remove,readClaim",
+			wantCalls: sessionEnd + ",landed,archive,remove,dropRunMail,readClaim",
 		},
 		{
 			name:        "DoneEntryIsKeptAndSkipsTheDriverChecksWhateverBattenReads",
@@ -447,7 +467,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			claim:       text("done"),
 			claimFound:  true,
 			battenAlive: true,
-			wantCalls:   "readClaim," + skippedEnd + ",landed,archive,remove,readClaim",
+			wantCalls:   "readClaim," + skippedEnd + ",landed,archive,remove,dropRunMail,readClaim",
 		},
 		{
 			name:       "EntryWithoutTheRunFormIsKept",
@@ -456,7 +476,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:    Request{Slug: "slug"},
 			claim:      text("wip"),
 			claimFound: true,
-			wantCalls:  sessionEnd + ",landed,archive,remove,readClaim",
+			wantCalls:  sessionEnd + ",landed,archive,remove,dropRunMail,readClaim",
 		},
 		{
 			name:       "LandedFromTheRequestMarksDoneWithoutReadingTheChild",
@@ -465,7 +485,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:    Request{Slug: "slug", Landed: true},
 			claim:      runClaim,
 			claimFound: true,
-			wantCalls:  sessionEnd + ",archive,remove,readClaim,write=done",
+			wantCalls:  sessionEnd + ",archive,remove,dropRunMail,readClaim,write=done",
 		},
 		{
 			name:        "LandedFromTheChildReadMarksDone",
@@ -476,7 +496,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenAlive: true,
 			claim:       runClaim,
 			claimFound:  true,
-			wantCalls:   sessionEnd + ",landed,archive,remove,readClaim,write=done",
+			wantCalls:   sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,write=done",
 		},
 		{
 			name:       "UnseededRunIsCleared",
@@ -485,7 +505,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:    Request{Slug: "slug"},
 			claim:      runClaim,
 			claimFound: true,
-			wantCalls:  sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=draft",
+			wantCalls:  sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,battenRun,write=draft",
 		},
 		{
 			name:         "PausedBattenRunIsCleared",
@@ -496,7 +516,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "paused",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=draft",
+			wantCalls:    sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,battenRun,write=draft",
 		},
 		{
 			name:         "BlockedBattenRunIsCleared",
@@ -507,7 +527,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "blocked",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=draft",
+			wantCalls:    sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,battenRun,write=draft",
 		},
 		{
 			name:         "FailedBattenRunIsCleared",
@@ -518,7 +538,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "failed",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=draft",
+			wantCalls:    sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,battenRun,write=draft",
 		},
 		{
 			name:         "AwaitingBattenRunIsCleared",
@@ -529,7 +549,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "awaiting",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=draft",
+			wantCalls:    sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,battenRun,write=draft",
 		},
 		{
 			name:         "DoneBattenRunMarksDone",
@@ -540,7 +560,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "done",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=done",
+			wantCalls:    sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,battenRun,write=done",
 		},
 		{
 			name:         "RunningBattenRunIsHeldWithNoWrite",
@@ -551,7 +571,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "running",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun",
+			wantCalls:    sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,battenRun",
 		},
 		{
 			name:         "ClaimReadFailureAfterTheRemovalWritesNothing",
@@ -559,7 +579,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:       []quietState{{quiet: true}},
 			request:      Request{Slug: "slug", Verdict: fabricengine.EntryEnded},
 			claimReadErr: errors.New("board unreadable"),
-			wantCalls:    skippedEnd + ",landed,archive,remove,readClaim",
+			wantCalls:    skippedEnd + ",landed,archive,remove,dropRunMail,readClaim",
 		},
 		{
 			name:         "ClaimReadFailureInTheSkipReadingIsReturnedWithNothingEnded",
@@ -578,7 +598,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:     Request{Slug: "slug", RefuseWhenBusy: true},
 			claim:       runClaim,
 			claimFound:  true,
-			wantCalls:   "refusal,endOwned,killCapture,end,archive,remove,readClaim,battenRun,write=draft",
+			wantCalls:   "refusal,endOwned,killCapture,end,archive,remove,dropRunMail,readClaim,battenRun,write=draft",
 			wantSawGone: true,
 		},
 		{
@@ -717,7 +737,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:    Request{Slug: "slug", Local: true, RefuseWhenBusy: true},
 			claim:      runClaim,
 			claimFound: true,
-			wantCalls:  sessionEnd + ",archive,remove-local",
+			wantCalls:  sessionEnd + ",archive,remove-local,dropRunMail",
 		},
 		{
 			name:              "LocalSnapshotRunsSnapshotThenAfterSnapshotThenRemove",
@@ -725,7 +745,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:            []quietState{{quiet: true}},
 			request:           Request{Slug: "slug", Local: true, Snapshot: true},
 			withAfterSnapshot: true,
-			wantCalls:         sessionEnd + ",snapshot,after,archive,remove-local",
+			wantCalls:         sessionEnd + ",snapshot,after,archive,remove-local,dropRunMail",
 			wantSnapshotTag:   "set-aside/slug/abc",
 		},
 		{
@@ -734,7 +754,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:            []quietState{{quiet: true}},
 			request:           Request{Slug: "slug", Snapshot: true},
 			withAfterSnapshot: true,
-			wantCalls:         sessionEnd + ",snapshot,after,landed,archive,remove,readClaim",
+			wantCalls:         sessionEnd + ",snapshot,after,landed,archive,remove,dropRunMail,readClaim",
 			wantSnapshotTag:   "set-aside/slug/abc",
 		},
 		{
@@ -753,7 +773,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:    Request{Slug: "slug", Verdict: fabricengine.EntryEnded, LeaveClaim: true},
 			claim:      runClaim,
 			claimFound: true,
-			wantCalls:  skippedEnd + ",archive,remove",
+			wantCalls:  skippedEnd + ",archive,remove,dropRunMail",
 		},
 		{
 			name:        "BattenRecordBeforeLandWarnsWithTheCancelFollowUp",
@@ -761,7 +781,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:      []quietState{{quiet: true}},
 			request:     Request{Slug: "slug"},
 			runRecord:   runShed,
-			wantCalls:   sessionEnd + ",landed,archive,remove,readClaim",
+			wantCalls:   sessionEnd + ",landed,archive,remove,dropRunMail,readClaim",
 			wantWarning: "the batten run of slug still stands; " + BattenFollowUp("slug", *runShed, true, false),
 		},
 		{
@@ -771,7 +791,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:     Request{Slug: "slug"},
 			runRecord:   runShed,
 			ownerPaused: true,
-			wantCalls:   sessionEnd + ",landed,archive,remove,readClaim",
+			wantCalls:   sessionEnd + ",landed,archive,remove,dropRunMail,readClaim",
 		},
 		{
 			name:      "LeaveClaimGivesNoWarning",
@@ -779,7 +799,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:    []quietState{{quiet: true}},
 			request:   Request{Slug: "slug", Verdict: fabricengine.EntryEnded, LeaveClaim: true},
 			runRecord: runShed,
-			wantCalls: skippedEnd + ",archive,remove",
+			wantCalls: skippedEnd + ",archive,remove,dropRunMail",
 		},
 		{
 			name:              "SnapshotRefusedBusyStopsBeforeAfterSnapshotAndRemove",
@@ -967,6 +987,9 @@ func TestTeardown_CallSequence(t *testing.T) {
 			}
 			if got := strings.Join(f.calls, ","); got != tt.wantCalls {
 				t.Errorf("calls = %s, want %s", got, tt.wantCalls)
+			}
+			if got, want := f.droppedRunMail, wantDroppedRunMail(tt.wantCalls); !slices.Equal(got, want) {
+				t.Errorf("run mail dropped for %v, want %v", got, want)
 			}
 			if removal.SnapshotTag != tt.wantSnapshotTag {
 				t.Errorf("SnapshotTag = %q, want %q", removal.SnapshotTag, tt.wantSnapshotTag)

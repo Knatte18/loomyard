@@ -3,11 +3,24 @@
 package creelcli
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestGoClient_DropRunOnAHubWithNoJournalAnswersNothingAndConnectsToNoDaemon(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	// The client has no connection behind it, so any call it made would panic.
+	client := &GoClient{journalDir: filepath.Join(t.TempDir(), "journal")}
+	dropped, err := client.DropRun("pay")
+	if dropped != nil || err != nil {
+		t.Errorf("DropRun on a hub with no journal directory = %v, %v; want no messages and no error", dropped, err)
+	}
+}
 
 func TestProgramClaim(t *testing.T) {
 	tiergate.Require(t, 0)

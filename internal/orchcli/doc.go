@@ -286,6 +286,7 @@
 // so the pause checks match an orch caller or network operation marker against that name.
 // The prime's watcher keeps matching an orch name with no slug.
 // `InstallPushNotifier` routes fabric's failed-push notice to the prime orch as mail signed `FABRIC`.
+// The mail carries the notice's topic and run as creel tags.
 // The root pre-run installs it for every lym process.
 // It resolves the hub from the working directory as the network gate does.
 // A detached push child starting in the board worktree is therefore covered, and nothing is installed outside a hub.
@@ -293,4 +294,7 @@
 // The mail is signed `RECONCILE`.
 // The notice says what a binary's change of a config value's meaning rewrote or flagged in the hub's files.
 // It resolves the hub from the working directory, as the network gate does.
+// `InstallRunMailDropper` gives pairteardown the drop of a removed run's unread creel mail, signed `TEARDOWN`;
+// the root pre-run installs it for every lym process.
+// `NotifyParent` tags its mail with the pair's slug as the run, and `NotifyRunFrom` posts with the tags its caller names.
 package orchcli

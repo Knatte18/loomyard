@@ -69,6 +69,9 @@ and its removal leaves the board claim to the cancel, which clears it.
   So every teardown route releases the claim.
   A `running` record with no live registered batten process means the run is gone.
   The composite keeps the claim and warns with `lym batten cancel <slug>`.
+- After a successful removal the composite drops the hub's unread creel mail tagged with the pair's slug as its run,
+  through the run mail dropper the root pre-run installs, so no notice about a gone run reaches an orch as live.
+  A failed drop never fails the teardown.
 - A request with `ClearStray` deletes a directory that is no worktree at the task worktree's path.
   It does so once the removal left the pair gone, through `fabricengine`'s `RemoveStrayTaskPath`.
   A failed delete fails the teardown.

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -23,6 +24,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestRunNotifyTags(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	got := runNotifyTags("pay")
+	want := creelengine.PostTags{Run: "pay"}
+	if got != want {
+		t.Errorf("runNotifyTags(pay) = %+v; want %+v", got, want)
+	}
+}
 
 // noticeTaskWorktree creates a directory the repository walk accepts as the root of the task worktree slug.
 // The directory sits under a new hub, and it returns the hub's prime location.

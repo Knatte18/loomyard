@@ -1340,6 +1340,161 @@ func TestStore_InjectAndHold(t *testing.T) {
 	}
 }
 
+// postTagged posts as from with the tags, optionally waiting on the reply, and returns the id and the waiter.
+func (e *env) postTagged(t *testing.T, from creelengine.Sender, to, body string, tags creelengine.PostTags, wait bool) (int64, *creelengine.Waiter) {
+	t.Helper()
+	posted, err := e.store.PostWith(from, to, body, creelengine.PostOptions{Wait: wait, Tags: tags})
+	if err != nil {
+		t.Fatalf("PostWith(%s -> %s): %v", from.Name, to, err)
+	}
+	return posted.ID, posted.Waiter
+}
+
+// undeliveredReason returns the reason of the undelivered record of message id, and whether it has one.
+func (e *env) undeliveredReason(id int64) (string, bool) {
+	for _, entry := range e.store.Log(creelengine.LogFilter{ID: id}) {
+		if entry.Event == "undelivered" {
+			return entry.Reason, true
+		}
+	}
+	return "", false
+}
+
+// waiterOutcome returns the outcome standing in the waiter, and whether it has been answered.
+func waiterOutcome(waiter *creelengine.Waiter) (creelengine.Outcome, bool) {
+	select {
+	case outcome := <-waiter.C:
+		return outcome, true
+	default:
+		return creelengine.Outcome{}, false
+	}
+}
+
+func TestStore_SupersedeReturnsTheSendersUnreadMailUnderTheSameTopic(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name         string
+		priorSender  creelengine.Sender
+		priorTo      string
+		priorTopic   string
+		priorRead    bool
+		newTopic     string
+		wantReturned bool
+	}{
+		{"SameSenderReceiverAndTopic", strand(alpha), beta, "tidy", false, "tidy", true},
+		{"EmptyTopicSupersedesNothing", strand(alpha), beta, "tidy", false, "", false},
+		{"OtherTopic", strand(alpha), beta, "tidy", false, "sweep", false},
+		{"OtherSender", strand(orch), beta, "tidy", false, "tidy", false},
+		{"OtherReceiver", strand(alpha), orch, "tidy", false, "tidy", false},
+		{"AMessageAlreadyRead", strand(alpha), beta, "tidy", true, "tidy", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t)
+			prior, waiter := e.postTagged(t, tt.priorSender, tt.priorTo, "old", creelengine.PostTags{Topic: tt.priorTopic}, true)
+			if tt.priorRead {
+				wantBodies(t, e.readBodies(t, strand(tt.priorTo), ""), "old")
+			}
+			fresh, _ := e.postTagged(t, strand(alpha), beta, "new", creelengine.PostTags{Topic: tt.newTopic}, false)
+
+			reason, returned := e.undeliveredReason(prior)
+			if returned != tt.wantReturned || (returned && reason != creelengine.SupersededReason) {
+				t.Errorf("undelivered record of the earlier post = %q, %v; want returned %v with reason %q", reason, returned, tt.wantReturned, creelengine.SupersededReason)
+			}
+			outcome, answered := waiterOutcome(waiter)
+			if answered != tt.wantReturned || (answered && (outcome.Kind != creelengine.OutcomeReturned || outcome.Message.ID != prior)) {
+				t.Errorf("wait on the earlier post = %+v, answered %v; want OutcomeReturned for #%d exactly when superseded (%v)", outcome, answered, prior, tt.wantReturned)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: fresh})); !slices.Equal(got, []string{"posted"}) {
+				t.Errorf("events of the new post = %v; want posted only", got)
+			}
+			if tt.wantReturned {
+				wantBodies(t, e.readBodies(t, strand(beta), ""), "new")
+			}
+		})
+	}
+}
+
+func TestStore_DropRun(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const run = "pay"
+	tests := []struct {
+		name string
+		run  func(t *testing.T, e *env)
+	}{
+		{"ReturnsTheRunsUnreadMailFromEverySenderAndHolderInIdOrderAndLeavesTheRest", func(t *testing.T, e *env) {
+			tagged := creelengine.PostTags{Run: run}
+			readTagged, _ := e.postTagged(t, strand(alpha), beta, "already read", tagged, false)
+			wantBodies(t, e.readBodies(t, strand(beta), ""), "already read")
+			first, firstWaiter := e.postTagged(t, strand(alpha), beta, "first\nmore", tagged, true)
+			second, _ := e.postTagged(t, program(batten), orch, "second", creelengine.PostTags{Topic: "tidy", Run: run}, false)
+			e.post(t, strand(alpha), beta, "untagged")
+			e.postTagged(t, strand(alpha), beta, "other run", creelengine.PostTags{Run: "ship"}, false)
+			reservedID, _ := e.postTagged(t, strand(alpha), orch2, "reserved", tagged, false)
+			reserving, err := e.store.Read(strand(orch2), "")
+			if err != nil || len(reserving.Messages) != 1 {
+				t.Fatalf("Read as %s = %+v, %v; want the one message reserved", orch2, reserving, err)
+			}
+
+			got, err := e.store.DropRun(program(webster), run)
+			if err != nil {
+				t.Fatalf("DropRun: %v", err)
+			}
+			want := []creelengine.WithdrawnMessage{{ID: first, Subject: "first"}, {ID: second, Subject: "second"}}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("DropRun = %+v; want %+v", got, want)
+			}
+			for _, id := range []int64{first, second} {
+				if reason, returned := e.undeliveredReason(id); !returned || reason != creelengine.RunGoneReason {
+					t.Errorf("undelivered record of #%d = %q, %v; want reason %q", id, reason, returned, creelengine.RunGoneReason)
+				}
+			}
+			for _, id := range []int64{readTagged, reservedID} {
+				if _, returned := e.undeliveredReason(id); returned {
+					t.Errorf("DropRun returned #%d undelivered; want a read or reserved message left", id)
+				}
+			}
+			if outcome, answered := waiterOutcome(firstWaiter); !answered || outcome.Kind != creelengine.OutcomeReturned || outcome.Message.ID != first {
+				t.Errorf("wait on the dropped #%d = %+v, answered %v; want OutcomeReturned", first, outcome, answered)
+			}
+			wantBodies(t, e.readBodies(t, strand(beta), ""), "untagged", "other run")
+			wantBodies(t, e.readBodies(t, strand(orch), ""))
+			reserving.Release()
+		}},
+		{"AnswersNoneWhenNoUnreadMessageCarriesTheRun", func(t *testing.T, e *env) {
+			e.post(t, strand(alpha), beta, "untagged")
+			got, err := e.store.DropRun(program(webster), run)
+			if err != nil || len(got) != 0 {
+				t.Errorf("DropRun = %+v, %v; want no messages and no error", got, err)
+			}
+			if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 1 {
+				t.Errorf("an empty DropRun journaled %v; want only the post", eventsOf(entries))
+			}
+		}},
+		{"IsRefusedForAnythingButAProgramAndForAnEmptyRun", func(t *testing.T, e *env) {
+			id, _ := e.postTagged(t, strand(alpha), beta, "stays", creelengine.PostTags{Run: run}, false)
+			for _, sender := range []creelengine.Sender{strand(orch2), external()} {
+				_, err := e.store.DropRun(sender, run)
+				wantErr(t, err, "only a program")
+			}
+			_, err := e.store.DropRun(program(webster), "")
+			wantErr(t, err, "no run")
+			if _, returned := e.undeliveredReason(id); returned {
+				t.Errorf("a refused DropRun returned #%d undelivered; want it kept", id)
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tt.run(t, newEnv(t))
+		})
+	}
+}
+
 // inboundLine renders the journal line of mail from another hub's strand id, delivered to the receiver.
 // extra is more JSON members, such as `,"trusted":true`.
 func inboundLine(id int, from, to, body, extra string) string {

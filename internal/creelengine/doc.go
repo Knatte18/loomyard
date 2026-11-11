@@ -528,6 +528,21 @@
 // Each inject queued for the gone holder expires.
 // Creel learns only that the strand no longer exists, never why.
 //
+// # Notice tags
+//
+// A post can carry two tags, which only the Go client sets: a topic and a run.
+// A post to another hub drops them, and retention carries them with the message.
+// A post with a topic returns undelivered the sender's unread, unreserved mail to the same receiver under the same topic.
+// Each is journaled `undelivered` with the reason `superseded`, and a wait on its reply is answered returned.
+// So a receiver whose mail waited, an orch that was down among them, reads only the newest notice of each topic.
+// A message already read or being read stays.
+// The run is the slug of the run the message concerns.
+// drop-run is a Go-client verb that only a program may send, naming a run.
+// Store.DropRun returns undelivered every unread, unreserved message tagged with that run.
+// It does so whatever the sender and holder, with the reason `run-gone`, and answers each one's id and subject.
+// A pair's teardown sends it once the pair is removed.
+// So mail about a run that is gone never reaches an orch as live.
+//
 // # Orch strands
 //
 // Creel delivers into an orch strand as into any strand:

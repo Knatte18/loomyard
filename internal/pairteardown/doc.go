@@ -111,6 +111,16 @@
 // Every failure logs a Warn naming the pull request's URL where it is known, and never stops the teardown.
 // Failures include an unreadable record, the client, the status read and the close.
 //
+// # Run mail
+//
+// After a successful removal, RemovePair drops the hub's unread creel mail tagged with the removed pair's slug.
+// The slug is the mail's run tag.
+// So a notice about the gone run never reaches an orch as live.
+// It drops through the process's run mail dropper, which `InstallRunMailDropper` sets;
+// the package cannot reach creel's client itself, since that client's tests import this package.
+// With no dropper installed nothing is dropped.
+// A failed drop logs a Warn and never fails the teardown.
+//
 // # Log archive
 //
 // RemovePair copies the pair's trace logs and its `verify-<n>.log` files into the hub's log archive.

@@ -40,6 +40,8 @@ func startCreelDaemon(t *testing.T, h *hubforge.Hub, receiver string) {
 	}
 	delivery := creelfake.NewDelivery()
 	delivery.SetStrands(creelfake.LiveStrand(receiver))
+	// Busy, so a posted mail is not carried into the pane and marked read before the test drops or supersedes it.
+	delivery.SetIdle(receiver, false)
 	epoch := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
 	ready := make(chan struct{})
@@ -107,6 +109,108 @@ func postedMails(t *testing.T, h *hubforge.Hub) []creelengine.LogEntry {
 	return posted
 }
 
+// undeliveredEntries returns the log entry of each message the hub's creel daemon returned undelivered, by message id.
+func undeliveredEntries(t *testing.T, h *hubforge.Hub) map[int64]creelengine.LogEntry {
+	t.Helper()
+	reader, err := creelcli.NewProgramClient(h.Location, "CHECK")
+	if err != nil {
+		t.Fatalf("NewProgramClient: %v", err)
+	}
+	entries, err := reader.Log(creelengine.LogFilter{})
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	undelivered := map[int64]creelengine.LogEntry{}
+	for _, entry := range entries {
+		if entry.Event == "undelivered" {
+			undelivered[entry.ID] = entry
+		}
+	}
+	return undelivered
+}
+
+// TestCreelNoticeTags drives the tags a notice carries through a real creel client and daemon:
+// the topic supersedes the sender's earlier unread notice, and the run lets the teardown dropper drop it.
+//
+// It runs without t.Parallel: the push notifier and the strand environment variable are process-global.
+func TestCreelNoticeTags(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	// failedPushNotice records a push failure of the pair branch "task" over a hub whose prime orch is live.
+	// It returns the hub, the orch's strand name and the id of the mail the notifier posted.
+	failedPushNotice := func(t *testing.T) (*hubforge.Hub, string, int64) {
+		t.Helper()
+		t.Setenv(agentname.StrandNameEnv, "")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		receiver := startHubOrchDaemon(t, h)
+		t.Cleanup(fabricengine.InstallPushNotifier(func(string, fabricengine.PushNotice) (bool, error) { return false, nil }))
+		InstallPushNotifier(lymcwd.WithCwd(context.Background(), fabricengine.BoardDir(h.Path)))
+		failure := fabricengine.FailedPush{
+			Repo: "code", RepoPath: h.PairCodeWorktree("task"), Branch: "task",
+			Class: fabricengine.PushFailureTransport, Error: "connection refused",
+		}
+		if err := fabricengine.RecordPushFailure(h.Path, failure, time.Now()); err != nil {
+			t.Fatalf("RecordPushFailure: %v", err)
+		}
+		posted := postedMails(t, h)
+		if len(posted) != 1 {
+			t.Fatalf("posted events = %+v; want exactly one", posted)
+		}
+		return h, receiver, posted[0].ID
+	}
+
+	t.Run("FailedPushNoticeIsSupersededByANewerPostOfItsTopic", func(t *testing.T) {
+		h, receiver, first := failedPushNotice(t)
+		fabric, err := creelcli.NewProgramClient(h.Location, fabricProgram)
+		if err != nil {
+			t.Fatalf("NewProgramClient: %v", err)
+		}
+
+		if _, err := fabric.PostTagged(receiver, "newer", creelengine.PostTags{Topic: "push/code/task"}); err != nil {
+			t.Fatalf("PostTagged: %v", err)
+		}
+
+		if got := undeliveredEntries(t, h)[first].Reason; got != creelengine.SupersededReason {
+			t.Errorf("undelivered reason of the failed-push notice #%d = %q; want %q", first, got, creelengine.SupersededReason)
+		}
+	})
+
+	t.Run("FailedPushNoticeIsDroppedWithItsRun", func(t *testing.T) {
+		h, _, first := failedPushNotice(t)
+
+		dropped, err := dropRunMail(h.Location, "task")
+
+		if err != nil || dropped != 1 {
+			t.Fatalf("dropRunMail(task) = %d, %v; want 1, nil", dropped, err)
+		}
+		if got := undeliveredEntries(t, h)[first].Reason; got != creelengine.RunGoneReason {
+			t.Errorf("undelivered reason of the failed-push notice #%d = %q; want %q", first, got, creelengine.RunGoneReason)
+		}
+		if again, err := dropRunMail(h.Location, "other"); err != nil || again != 0 {
+			t.Errorf("dropRunMail(other) = %d, %v; want 0, nil", again, err)
+		}
+	})
+
+	t.Run("NotifyParentMailIsDroppedWithThePairsSlug", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPair(t, h, "task1")
+		startHubOrchDaemon(t, h)
+		pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task1"))
+		if err != nil {
+			t.Fatalf("ResolveWorktree: %v", err)
+		}
+
+		if posted, err := NotifyParent(pair, "CHECK", "a pair notice"); err != nil || !posted {
+			t.Fatalf("NotifyParent() = %v, %v; want posted", posted, err)
+		}
+
+		if dropped, err := dropRunMail(h.Location, "task1"); err != nil || dropped != 1 {
+			t.Errorf("dropRunMail(task1) = %d, %v; want the pair's notice dropped", dropped, err)
+		}
+	})
+}
+
 // TestInstallPushNotifier covers the install from the board worktree and from outside a hub.
 //
 // It runs without t.Parallel: the push notifier and the strand environment variable are process-global.
@@ -116,7 +220,7 @@ func TestInstallPushNotifier(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		receiver := startHubOrchDaemon(t, h)
-		t.Cleanup(fabricengine.InstallPushNotifier(func(string, string) (bool, error) { return false, nil }))
+		t.Cleanup(fabricengine.InstallPushNotifier(func(string, fabricengine.PushNotice) (bool, error) { return false, nil }))
 
 		InstallPushNotifier(lymcwd.WithCwd(context.Background(), fabricengine.BoardDir(h.Path)))
 		failure := fabricengine.FailedPush{
@@ -143,7 +247,7 @@ func TestInstallPushNotifier(t *testing.T) {
 
 	t.Run("OutsideAHubInstallsNothing", func(t *testing.T) {
 		calls := 0
-		t.Cleanup(fabricengine.InstallPushNotifier(func(string, string) (bool, error) {
+		t.Cleanup(fabricengine.InstallPushNotifier(func(string, fabricengine.PushNotice) (bool, error) {
 			calls++
 			return true, nil
 		}))

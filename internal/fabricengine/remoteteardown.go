@@ -240,13 +240,15 @@ func NoticeRemoteTeardownEnded(hubPath, slug, reason string) {
 }
 
 // postRemoteTeardownNotice logs line at Warn and mails it to the hub's orch through the installed notifier; with none installed it only logs.
+// The notice's topic names the slug's remote teardown, so a newer one replaces one the orch has not read.
+// It carries no run, since it asks for a step the pair's teardown already left behind.
 func postRemoteTeardownNotice(hubPath, slug, line string) {
 	logger.Warn("fabricengine: "+line, "slug", slug)
 	notifier := installedPushNotifier.Load()
 	if notifier == nil {
 		return
 	}
-	if _, err := (*notifier)(hubPath, line); err != nil {
+	if _, err := (*notifier)(hubPath, PushNotice{Line: line, Topic: "remote-teardown/" + slug}); err != nil {
 		logger.Warn("fabricengine: remote teardown notice not posted", "slug", slug, "error", err)
 	}
 }
