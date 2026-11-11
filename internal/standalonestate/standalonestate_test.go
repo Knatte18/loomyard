@@ -374,6 +374,7 @@ func TestUserConfigDir(t *testing.T) {
 		{"AbsoluteXDG", "linux", "/appdata", "/xdg", "/home/user", filepath.Join("/xdg", "lym"), filepath.Join("/xdg", "lym"), ""},
 		{"HomeFallback", "linux", "", "", "/home/user", filepath.Join("/home/user", ".config", "lym"), filepath.Join("/home/user", ".config", "lym"), ""},
 		{"RelativeXDG", "linux", "", ".xdg", "/home/user", filepath.Join(".xdg", "lym"), filepath.Join("/home/user", ".config", "lym"), ""},
+		{"RelativeXDGWithNoHome", "linux", "", ".xdg", "", filepath.Join(".xdg", "lym"), "", ""},
 		{"RelativeHome", "linux", "", "", "home/user", filepath.Join("home/user", ".config", "lym"), "", "HOME"},
 		{"Unset", "linux", "", "", "", "", "", ""},
 	}
