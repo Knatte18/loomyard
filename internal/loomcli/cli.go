@@ -225,7 +225,7 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleen
 // resolvePersistentPreRun reads cwd through lymcwd.CwdFrom, arms the invoked verb, and stores the result on c.spec.
 // Arming resolves the location and builds the engine stack through c.wire (wiring.go).
 // The pre-run skips the loom group command, so a bare listing or an unknown subcommand needs no git repository.
-// It also skips the circling, decision and peers groups and their verbs.
+// It also skips the circling, decision, parent-review and peers groups and their verbs.
 // Those resolve their own target worktree in their own PersistentPreRunE.
 // cmd/lym sets cobra.EnableTraverseRunHooks, so cobra runs this pre-run for them too;
 // without the skip it would arm them and read a slug as a run-id.
@@ -281,12 +281,13 @@ func (c *loomCLI) reportArmFailure(out io.Writer, cmd *cobra.Command, args []str
 	}, err)
 }
 
-// inReviewGroup reports whether cmd is loom's circling, decision or peers group, or a command under any of them.
+// inReviewGroup reports whether cmd is loom's circling, decision, parent-review or peers group.
+// It also reports a command under any of them.
 // They resolve their own target worktree, from an optional slug or the caller's cwd.
 // The loom pre-run must never arm them as a run-id.
 func inReviewGroup(cmd *cobra.Command) bool {
 	for p := cmd; p.HasParent(); p = p.Parent() {
-		if (p.Name() == "circling" || p.Name() == decisionGroup || p.Name() == peersGroup) && p.Parent().Name() == "loom" {
+		if (p.Name() == "circling" || p.Name() == decisionGroup || p.Name() == parentReviewGroup || p.Name() == peersGroup) && p.Parent().Name() == "loom" {
 			return true
 		}
 	}
@@ -505,7 +506,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validatePartsCmd(), c.joinPartsCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.prContinueCmd(), c.samplerDoneCmd(), c.raddleProposeCmd(), c.raddleApproveCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validatePartsCmd(), c.joinPartsCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.prContinueCmd(), c.samplerDoneCmd(), c.raddleProposeCmd(), c.raddleApproveCmd(), c.circlingCmd(), c.decisionCmd(), c.parentReviewCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
 
 	return parent
 }

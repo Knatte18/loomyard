@@ -168,6 +168,14 @@
 // `recordHistory` reads the record's versions from the newest such trailer's cut onward,
 // so the dropped-entry check no longer holds the record to an entry a replace dropped.
 //
+// `parent-review answer` records the parent orch's answer to the run's latest Discussion-Review ask.
+// It admits the operator's unnamed shell, the run's parent orch resolved at call time, and the strand the ask went to.
+// A refused answer names `decision add` as the way forward, run by the run's parent orch or the operator's shell.
+// An older ask while the latest awaits an answer is instead sent to review the record again under the latest ask.
+// `parent-review await` is the chair's capped wait on the same ask.
+// It reads the record once a second up to the caller's keep-warm cap.
+// It sets an ask past its deadline timeout and writes nothing else.
+//
 // # Start
 //
 // `lym loom start` works in order.

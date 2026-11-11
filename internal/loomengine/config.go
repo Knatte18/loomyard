@@ -548,6 +548,14 @@ type Config struct {
 	// PRReviewAskParent makes the PR-Review row ask the parent orch for a review of the run's open pull request.
 	// It is open to the local layer, so a task's run_settings turns it on or off for one run.
 	PRReviewAskParent bool `yaml:"pr_review_ask_parent"`
+
+	// DiscussionReviewAskParent makes each Discussion-Review round ask the parent orch to review the decision record.
+	// It is open to the local layer, so a task's run_settings turns it on or off for one run.
+	DiscussionReviewAskParent bool `yaml:"discussion_review_ask_parent"`
+	// DiscussionReviewParentTimeoutMin is the minutes from a parent-review ask to its deadline, before the cap.
+	// The cap leaves the reviewer room to consolidate.
+	// It is a positive integer.
+	DiscussionReviewParentTimeoutMin int `yaml:"discussion_review_parent_timeout_min"`
 }
 
 // DiscussionAdvisor is one Discussion-Write advisor: Name is its seat name and Model its model-spec.
@@ -672,6 +680,9 @@ func ConfigSpec() configengine.Spec {
 			"step_idle_timeout_min":            none,
 			"review_circling_checkpoint":       none,
 			"pr_review_ask_parent":             none,
+
+			"discussion_review_ask_parent":         none,
+			"discussion_review_parent_timeout_min": none,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"fan_review": none,
@@ -1390,6 +1401,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	// A checkpoint above the budget is accepted: such a run never rules CIRCLING and reaches the soft-cap rule instead.
 	if cfg.ReviewCirclingCheckpoint < 1 {
 		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", "review_circling_checkpoint", cfg.ReviewCirclingCheckpoint)
+	}
+
+	if cfg.DiscussionReviewParentTimeoutMin < 1 {
+		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", "discussion_review_parent_timeout_min", cfg.DiscussionReviewParentTimeoutMin)
 	}
 
 	if err := reviewbudget.CheckResolved(dirs, spec, reviewbudget.Values{

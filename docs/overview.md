@@ -1010,7 +1010,7 @@ User-facing modules each get one `lym <module>` namespace:
   The list is `contracts/recipes/tapestry-recipe.yaml`, assembled by `internal/loomrecipe`.
   The packages are `internal/loomcli` + `internal/loomengine` + `internal/loomshed`.
   Two more packages serve it: `internal/loomrecipe` and `internal/shedverbs`.
-  The verbs are `lym loom start|resume|run|step|status|pause|commit-records|validate-discussion|validate-plan|validate-parts|join-parts|insert-card|remove-card|restore-renumber|validate-description|lint-comments|lint-pattern|fmt|circling accept|continue|decision add|decision replace|decision store|peers|peers show|raddle-propose|raddle-approve`.
+  The verbs are `lym loom start|resume|run|step|status|pause|commit-records|validate-discussion|validate-plan|validate-parts|join-parts|insert-card|remove-card|restore-renumber|validate-description|lint-comments|lint-pattern|fmt|circling accept|continue|decision add|decision replace|decision store|parent-review answer|parent-review await|peers|peers show|raddle-propose|raddle-approve`.
   `lym loom raddle-propose` checks the raddle agent's proposal against the format checks.
   `lym loom raddle-approve` records the operator's approval of a proposal that passed.
   `internal/shedverbs` owns the generic `run`/`step`/`status`/`pause` verb bodies that `loomcli` arms;
@@ -1391,6 +1391,10 @@ User-facing modules each get one `lym <module>` namespace:
   `raddle_auto_approve` files a raddle proposal once its gate passes, with no operator approval; a run whose recipe rows hold a split perch never reads it.
   `pr_review_ask_parent` has PR-Review ask the parent orch to review the open pull request.
   It is open to the local layer, so a task's `run_settings` sets it for one run.
+  `discussion_review_ask_parent` has each Discussion-Review round ask the parent orch to review the decision record.
+  `discussion_review_parent_timeout_min` sets the minutes from that ask to its deadline,
+  capped so the reviewer keeps room to consolidate before `review_timeout_min`; both are open to `run_settings`.
+  The parent answers with `lym loom parent-review answer`, and the reviewer waits with `lym loom parent-review await`.
   `discussion_lenses` names the `lenses.yaml` fan whose lenses the Discussion-Write lead forks itself for.
   Empty turns the forks off, and the key is closed to the local layer.
   `subagent_model` names the model of the fresh subagents that Plan, Discussion-Write and darn writers hand lookups to.

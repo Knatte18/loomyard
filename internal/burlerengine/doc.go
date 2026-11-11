@@ -106,6 +106,17 @@
 // ProbeReview and ResumeReview build the same table from the same RunOpts.
 // So the caller passes the recorded token and assistant.
 //
+// # Parent-review asks
+//
+// A run's asks to its parent orch to review a round live in a never-tracked record that ParentReviewFilesOf locates.
+// RecordParentAsk numbers each ask from 1 up in recording order.
+// An ask moves only from pending-post to open and from either to an end state: done, timeout, no-parent or not-sent.
+// Every move takes the record's one lock, so an answer and a timeout never both land.
+// AnswerParentAsk writes the parent's report beside the record and sets the latest ask done.
+// It numbers the report's findings P1 up and refuses with a ParentAnswerRefusal that names its kind.
+// An ask at or past its deadline is set timeout instead.
+// ExpireParentAsk sets the latest active ask timeout once its deadline has passed.
+//
 // # The fix half
 //
 // Engine.Fix runs one fresh fixer session as the chair of the fix table.

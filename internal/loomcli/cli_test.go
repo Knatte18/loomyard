@@ -26,7 +26,7 @@ import (
 )
 
 // TestResolvePersistentPreRun_SkipsSlugGroups asserts that the loom pre-run arms no slug group:
-// the circling, decision and peers groups and their verbs, and loom has no review group.
+// the circling, decision, peers and parent-review groups and their verbs, and loom has no review group.
 // cmd/lym sets cobra.EnableTraverseRunHooks, so cobra calls that pre-run for a group verb too;
 // over a non-git cwd an arm would write an error envelope and abort, so silence proves the skip.
 func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
@@ -37,7 +37,7 @@ func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
 			t.Fatal(`loom has a "review" child; want "lym loom review" to be no command`)
 		}
 	}
-	for _, name := range []string{"circling", decisionGroup, peersGroup} {
+	for _, name := range []string{"circling", decisionGroup, peersGroup, parentReviewGroup} {
 		group, _, err := parent.Find([]string{name})
 		if err != nil || group.Name() != name {
 			t.Fatalf("Find(%q) = %v, %v; want the %s group", name, group, err, name)

@@ -65,6 +65,10 @@ const BeamDirName = "beam"
 // CreelFlagDirName is the directory under the `creel` directory that holds one flag file per strand with unread mail.
 const CreelFlagDirName = "flags"
 
+// ParentReviewDirName is the directory under a worktree's `.lym` that holds a run's parent-review asks.
+// It holds the ask record and the parent orch's report for each answered ask.
+const ParentReviewDirName = "parent-review"
+
 // HeddleDirName is the directory under a worktree's `.lym` that holds heddle's render lock.
 const HeddleDirName = "heddle"
 
