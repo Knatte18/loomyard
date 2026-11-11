@@ -216,7 +216,7 @@
 // Optional seams let the arming module hook the loop.
 // Spec.Loop.OnStart runs once in the loop.
 // It runs after the pid file is written and the start is logged, and before the first step.
-// It also runs once in the keeper, after the loop process has started.
+// It also runs once in the keeper, after the loop process has started, whether or not that loop then refuses.
 // The arming module registers the loop and its keeper as run processes there.
 // This package never imports the owner record.
 // Spec.Loop.OnWake runs on every wake of the child watch.
@@ -225,7 +225,7 @@
 // Spec.Loop.OnExit runs once at every stop except one that a terminating signal ends while the loop steps.
 // It runs after the stop is final and a failed stop is written, and before the envelope is written.
 // It receives the stop and the status file as it then reads.
-// A loop that refuses before its first step, and a dead loop the waiter reports, never run OnStart or OnExit.
+// The loop's own run of a loop that refuses before its first step runs neither OnStart nor OnExit, and the waiter's report of a dead loop runs neither.
 //
 // A loop that is gone without an envelope ends in the dead-loop stop.
 // It kills what is left of the loop's step tree from the pid file's child record.
@@ -237,7 +237,7 @@
 // Its loop.detail names:
 // the loop log;
 // the producer the in-flight child started at and its trace id;
-// the status file's producer, when the status file has moved since, as a child that skips gated rows moves it;
+// the status file's producer, when it differs from the in-flight child's, as a child that skips gated rows moves it;
 // how the loop ended;
 // an excerpt of the in-flight child's captured stderr;
 // and whether that child's step tree was still running and was killed, which a loop killed from outside leaves behind.
