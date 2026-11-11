@@ -487,6 +487,8 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 			loopLog     string
 			stepStderr  string
 			statusMoved bool
+			// statusProducer is the producer the moved status file reads; it applies only when statusMoved is set.
+			statusProducer string
 			// noChild records the child as exited, as the loop does once its child ends.
 			noChild      bool
 			wantProducer string
@@ -519,26 +521,46 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
-				name:          "StatusMovedByTheChild_StepFilesStillNamed",
-				traceID:       "trace-9",
-				traceBodies:   []string{"skipped gated rows\n"},
-				stepStderr:    "in-flight step's stderr\n",
-				statusMoved:   true,
-				wantProducer:  "B",
-				wantCause:     "; step A was in flight under trace trace-9, and the status file now reads B; loop exit: not recorded; step stderr: in-flight step's stderr",
-				wantFile:      func(w *waitWorld) string { return w.traces["trace-9"][0] },
-				wantTraceCopy: true,
+				name:           "StatusMovedByTheChild_StepFilesStillNamed",
+				traceID:        "trace-9",
+				traceBodies:    []string{"skipped gated rows\n"},
+				stepStderr:     "in-flight step's stderr\n",
+				statusMoved:    true,
+				statusProducer: "B",
+				wantProducer:   "B",
+				wantCause:      "; step A was in flight under trace trace-9, and the status file now reads B; loop exit: not recorded; step stderr: in-flight step's stderr",
+				wantFile:       func(w *waitWorld) string { return w.traces["trace-9"][0] },
+				wantTraceCopy:  true,
 			},
 			{
-				name:         "ChildExited_NoInFlightClause_NoStepFiles_LoopLog",
-				traceID:      "trace-11",
-				traceBodies:  []string{"finished step\n"},
-				stepStderr:   "finished step's stderr\n",
-				statusMoved:  true,
-				noChild:      true,
-				wantProducer: "B",
-				wantCause:    "; loop exit: not recorded",
-				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
+				name:           "StatusMovedWithTheSameProducer_NoNowReadsClause",
+				traceID:        "trace-12",
+				statusMoved:    true,
+				statusProducer: "A",
+				wantProducer:   "A",
+				wantCause:      "; step A was in flight under trace trace-12; loop exit: not recorded",
+				wantFile:       func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+			{
+				name:           "StatusMovedToNoProducer_NoNowReadsClause",
+				traceID:        "trace-13",
+				statusMoved:    true,
+				statusProducer: "",
+				wantProducer:   "A",
+				wantCause:      "; step A was in flight under trace trace-13; loop exit: not recorded",
+				wantFile:       func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+			{
+				name:           "ChildExited_NoInFlightClause_NoStepFiles_LoopLog",
+				traceID:        "trace-11",
+				traceBodies:    []string{"finished step\n"},
+				stepStderr:     "finished step's stderr\n",
+				statusMoved:    true,
+				statusProducer: "B",
+				noChild:        true,
+				wantProducer:   "B",
+				wantCause:      "; loop exit: not recorded",
+				wantFile:       func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
 				name:    "LoopExitMarksAndStderr_OnlyTheDeadLoopsLines",
@@ -566,7 +588,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				w := newWaitWorld(t)
 				if tt.statusMoved {
-					w.setStatus("B", shedengine.StateRunning, 1)
+					w.setStatus(tt.statusProducer, shedengine.StateRunning, 1)
 				} else {
 					w.setStatus("A", shedengine.StateRunning, 0)
 				}
@@ -611,7 +633,13 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 
 				env, code := w.wait()
 
-				assertLoopExited(t, w, env, code)
+				// A status file with no producer leaves the stop naming the recorded producer, which assertLoopExited does not read.
+				if tt.statusProducer != "" || !tt.statusMoved {
+					assertLoopExited(t, w, env, code)
+				}
+				if got, want := loopOf(t, env)["status_moved"], tt.statusMoved && !tt.noChild; got != want {
+					t.Errorf("loop status_moved = %v; want %v", got, want)
+				}
 				wantCause := "loop-exited: loop dead-1 ended without an envelope; its output is in " + w.spec.Loop.LogPath + tt.wantCause
 				if producer != tt.wantProducer || cause != wantCause || file != tt.wantFile(w) {
 					t.Errorf("AfterInterrupt(%q, %q, %q); want (%q, %q, %q)", producer, cause, file, tt.wantProducer, wantCause, tt.wantFile(w))
@@ -631,6 +659,28 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 					}
 				}
 			})
+		}
+	})
+
+	t.Run("a waiter that did not spawn the keeper waits for the loop process's exit mark", func(t *testing.T) {
+		w := deadLoopWorld(t)
+		appendLoopLogMark(w.spec.Loop.LogPath, loopLogMark("dead-1", loopStartingMark))
+		exitMark := loopLogMark("dead-1", "process 9 exited: exit status 2")
+		w.onSleep = func(call int) {
+			if call == 2 {
+				appendLoopLogMark(w.spec.Loop.LogPath, exitMark)
+			}
+		}
+
+		env, code := w.wait()
+
+		assertLoopExited(t, w, env, code)
+		detail, _ := loopOf(t, env)["detail"].(string)
+		if want := "; loop exit: " + strings.TrimSuffix(exitMark, "\n"); !strings.Contains(detail, want) {
+			t.Errorf("loop.detail = %q; want it to carry %q", detail, want)
+		}
+		if got := len(w.recordedSleeps()); got != 2 {
+			t.Errorf("waits = %d; want 2, ending as soon as the mark is read", got)
 		}
 	})
 

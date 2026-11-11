@@ -91,12 +91,12 @@ func runUntilStop(ctx context.Context, spec *Spec, argv []string, out io.Writer)
 		var follow loopFollow
 		switch {
 		case lockFree && hasRecord && record.LoopID == TeardownLoopID:
-			return deadLoopStop(ctx, spec, record, out)
+			return deadLoopStop(ctx, spec, record, out, false)
 		case !lockFree && hasRecord:
 			follow.id = record.LoopID
 		case !lockFree:
 		case hasRecord && !hasEnvelope:
-			return deadLoopStop(ctx, spec, record, out)
+			return deadLoopStop(ctx, spec, record, out, true)
 		case hasEnvelope:
 			status, present := readStatusFile(spec)
 			if present && envelopeCurrent(file.Envelope, status) {
@@ -129,7 +129,7 @@ func runUntilStop(ctx context.Context, spec *Spec, argv []string, out io.Writer)
 			}
 			return deliverEnvelope(spec, out, result.file)
 		case waitDead:
-			return deadLoopStop(ctx, spec, result.record, out)
+			return deadLoopStop(ctx, spec, result.record, out, follow.spawned == nil)
 		case waitExitedEarly:
 			return loopExitedEarlyStop(ctx, spec, follow.id, out)
 		}
@@ -494,7 +494,7 @@ func (r LoopPIDRecord) inFlightAt(status shedengine.Status) bool {
 // deadLoopStop reports a loop that is gone without an envelope, or the teardown's mark, as an interrupted stop with cause loop-exited.
 // It first kills what is left of the loop's step tree, then writes the run failed while the status file reads running.
 // The stop's detail names the step the pid file records in flight, with its trace id.
-// It also names the status file's step when the status file has moved since that child started.
+// It also names the status file's step when that step differs from the in-flight one.
 // Then come how the loop ended, from the loop log, and an excerpt of the in-flight child's captured stderr;
 // and last whether its step tree was still running, which a loop killed from outside leaves behind.
 // A child moves the status file itself when it skips gated rows.
@@ -502,12 +502,16 @@ func (r LoopPIDRecord) inFlightAt(status shedengine.Status) bool {
 // For a dead loop it then writes the stop as the loop's envelope under its recorded id, delivers it and retires the pid file.
 // The teardown's mark writes no envelope and stays, so every invocation until the pair is removed stops the same way and spawns nothing.
 // Another holder of the run lock makes the stop busy: nothing is written and the pid file stays for the next invocation to retry.
-func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Writer) int {
+// A waiter that did not spawn the loop's keeper sets awaitExitMark, so the stop first waits a bounded time for the keeper's mark of the loop process's exit.
+func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Writer, awaitExitMark bool) int {
 	teardown := rec.LoopID == TeardownLoopID
 	detail := fmt.Sprintf("loop %s ended without an envelope; its output is in %s", rec.LoopID, spec.Loop.LogPath)
 	if teardown {
 		detail = "the pair's session end stopped the loop; no loop runs again until the pair is removed"
 	} else {
+		if awaitExitMark {
+			awaitLoopProcessMark(ctx, spec.Loop, rec.LoopID)
+		}
 		status, _ := readStatusFile(spec)
 		inFlight := rec.hasChild()
 		if inFlight {
@@ -515,7 +519,7 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 			if rec.TraceID != "" {
 				detail += " under trace " + rec.TraceID
 			}
-			if !rec.inFlightAt(status) && status.CurrentProducer != "" {
+			if status.CurrentProducer != "" && status.CurrentProducer != rec.CurrentProducer {
 				detail += ", and the status file now reads " + status.CurrentProducer
 			}
 		}
@@ -544,6 +548,27 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 		return 1
 	}
 	return deliverEnvelope(spec, out, file)
+}
+
+// keeperMarkPolls and keeperMarkPoll bound how long a dead-loop stop waits for the keeper's mark of the loop process's exit.
+const (
+	keeperMarkPolls = 5
+	keeperMarkPoll  = 100 * time.Millisecond
+)
+
+// awaitLoopProcessMark waits, for a bounded time, until the loop log holds the exit mark of loop loopID's process.
+// A loop releases its lock before its keeper writes that mark, so a waiter that did not spawn the keeper can see the loop gone just before the mark lands.
+// It gives up silently when the mark does not come, as with a keeper that was killed.
+func awaitLoopProcessMark(ctx context.Context, loop LoopSpec, loopID string) {
+	processMark := loopLogMarkPrefix + loopID + " process "
+	for attempt := 0; attempt < keeperMarkPolls; attempt++ {
+		if strings.Contains(loopExitEvidence(loop.LogPath, loopID), processMark) {
+			return
+		}
+		if pauseWait(ctx, loop, keeperMarkPoll, nil, nil) != nil {
+			return
+		}
+	}
 }
 
 // loopExitedEarlyStop reports a loop the waiter spawned that exited before it recorded itself, as an interrupted stop with cause loop-exited.
