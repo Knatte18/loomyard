@@ -1,4 +1,6 @@
-// loopwait.go implements the --until-stop invocation: the waiter that starts the loop's keeper or follows the detached loop and prints its envelope, and the stop it reports for a loop that is gone.
+// loopwait.go implements the --until-stop invocation.
+// It holds the waiter that starts the loop's keeper or follows the detached loop and prints its envelope,
+// and the stop it reports for a loop that is gone.
 // The loop itself, which the waiter's keeper starts, is runLoop in loop.go.
 
 package shedverbs
@@ -67,11 +69,12 @@ type loopWaitResult struct {
 	record LoopPIDRecord
 }
 
-// runUntilStop is the --until-stop invocation: it prints the one envelope of the run's loop, spawning the loop's keeper first when none runs.
+// runUntilStop is the --until-stop invocation.
+// It prints the one envelope of the run's loop, spawning the loop's keeper first when none runs.
 // argv is the command line a loop's child steps run, which the keeper receives with the flags that select it.
 // It first reads the loop lock, the pid file and the envelope file:
-// a free lock beside the teardown's mark, or beside a pid file and no envelope, reports a dead loop,
-// after a bounded wait for the keeper's exit mark when the waiter did not spawn the keeper;
+// a free lock beside the teardown's mark, or beside a pid file and no envelope, reports a dead loop;
+// a waiter that did not spawn the keeper first waits a bounded time for the keeper's exit mark before it reports one;
 // a held lock follows the loop the pid file names, or waits for a pid file;
 // a free lock beside an envelope delivers it while it is current and retires it undelivered otherwise;
 // anything else spawns a loop and follows it.
@@ -503,7 +506,8 @@ func (r LoopPIDRecord) inFlightAt(status shedengine.Status) bool {
 // For a dead loop it then writes the stop as the loop's envelope under its recorded id, delivers it and retires the pid file.
 // The teardown's mark writes no envelope and stays, so every invocation until the pair is removed stops the same way and spawns nothing.
 // Another holder of the run lock makes the stop busy: nothing is written and the pid file stays for the next invocation to retry.
-// A waiter that did not spawn the loop's keeper sets awaitExitMark, so the stop first waits a bounded time for the keeper's mark of the loop process's exit.
+// A waiter that did not spawn the loop's keeper sets awaitExitMark.
+// The stop then first waits a bounded time for the keeper's mark of the loop process's exit.
 func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Writer, awaitExitMark bool) int {
 	teardown := rec.LoopID == TeardownLoopID
 	detail := fmt.Sprintf("loop %s ended without an envelope; its output is in %s", rec.LoopID, spec.Loop.LogPath)
@@ -551,14 +555,15 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 	return deliverEnvelope(spec, out, file)
 }
 
-// keeperMarkPolls and keeperMarkPoll bound how long a dead-loop stop waits for the keeper's mark of the loop process's exit.
+// keeperMarkPolls and keeperMarkPoll bound how long a dead-loop stop waits for the keeper's exit mark.
 const (
 	keeperMarkPolls = 5
 	keeperMarkPoll  = 100 * time.Millisecond
 )
 
 // awaitLoopProcessMark waits, for a bounded time, until the loop log holds the exit mark of loop loopID's process.
-// A loop releases its lock before its keeper writes that mark, so a waiter that did not spawn the keeper can see the loop gone just before the mark lands.
+// A loop releases its lock before its keeper writes that mark.
+// A waiter that did not spawn the keeper can therefore see the loop gone just before the mark lands.
 // It gives up silently when the mark does not come, as with a keeper that was killed.
 func awaitLoopProcessMark(ctx context.Context, loop LoopSpec, loopID string) {
 	processMark := loopLogMarkPrefix + loopID + " process "

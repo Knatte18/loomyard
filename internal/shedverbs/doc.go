@@ -225,7 +225,8 @@
 // Spec.Loop.OnExit runs once at every stop except one that a terminating signal ends while the loop steps.
 // It runs after the stop is final and a failed stop is written, and before the envelope is written.
 // It receives the stop and the status file as it then reads.
-// The loop's own run of a loop that refuses before its first step runs neither OnStart nor OnExit, and the waiter's report of a dead loop runs neither.
+// The loop's own run of a loop that refuses before its first step runs neither OnStart nor OnExit.
+// The waiter's report of a dead loop runs neither.
 //
 // A loop that is gone without an envelope ends in the dead-loop stop.
 // It kills what is left of the loop's step tree from the pid file's child record.

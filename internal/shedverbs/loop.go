@@ -87,7 +87,8 @@ type LoopSpec struct {
 	OnWatchdogKill func(kill WatchdogKill) string
 	// OnStart runs once in runLoop after the pid file is written and the start is logged, and before the first step; nil is skipped.
 	// A loop that refuses before its first step never runs it there.
-	// It also runs once in the loop's keeper, after the keeper has started the loop process, whether or not that loop then refuses.
+	// It also runs once in the loop's keeper, after the keeper has started the loop process.
+	// The keeper runs it whether or not that loop then refuses.
 	OnStart func()
 	// OnExit runs once in runLoop after the stop is final, with the stop and the status file as it then reads, and before the envelope is written; nil is skipped.
 	// A loop that refuses before its first step, or that a terminating signal ends while it steps, never runs it.
@@ -97,7 +98,8 @@ type LoopSpec struct {
 	OnWake func()
 	// Delivered is the path of the delivered record of a loop id, where a retired envelope of that loop lands.
 	Delivered func(loopID string) string
-	// Spawn starts the loop's keeper with the given command line after the executable and returns a channel closed when the keeper exits; nil selects spawnLoop.
+	// Spawn starts the loop's keeper with the given command line after the executable.
+	// It returns a channel closed when the keeper exits; nil selects spawnLoop.
 	Spawn func(argv []string) (<-chan struct{}, error)
 	// Watch reports file events in dir for the named entries through the channel it returns, with the function that stops watching; nil selects fswatch.
 	// An error makes the waiter poll on its timer alone.
