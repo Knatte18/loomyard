@@ -27,7 +27,7 @@ func TestLandingRecord(t *testing.T) {
 	describedAt := time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)
 	withPullRequest := func(rec *pawlengine.LandingRecord) error {
 		rec.DescribedAt = describedAt
-		rec.PullRequest = &pawlengine.LandingPullRequest{Number: 7, URL: "https://example.test/pull/7", PushedHead: "aaa", AnnounceHead: "bbb"}
+		rec.PullRequest = &pawlengine.LandingPullRequest{Number: 7, URL: "https://example.test/pull/7", PushedHead: "aaa"}
 		return nil
 	}
 
@@ -55,7 +55,7 @@ func TestLandingRecord(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadLanding(b) = _, _, %v; want nil", err)
 		}
-		want := pawlengine.LandingRecord{Slug: "b", DescribedAt: describedAt, PullRequest: &pawlengine.LandingPullRequest{Number: 7, URL: "https://example.test/pull/7", PushedHead: "aaa", AnnounceHead: "bbb"}}
+		want := pawlengine.LandingRecord{Slug: "b", DescribedAt: describedAt, PullRequest: &pawlengine.LandingPullRequest{Number: 7, URL: "https://example.test/pull/7", PushedHead: "aaa"}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("ReadLanding(b) = %+v; want %+v", got, want)
 		}

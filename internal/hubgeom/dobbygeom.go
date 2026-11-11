@@ -19,7 +19,7 @@ import (
 )
 
 // DobbyGeometry tells dobbyengine its paths for the worktree named worktree, the prime's name or a beam's slug.
-// The lock, state, log, output, announced-head and tidy paths lie in the worktree's `.lym/beam/` directory.
+// The lock, state, log, output and tidy paths lie in the worktree's `.lym/beam/` directory.
 // That directory is at the worktree's own anchor, and the batten runs directory lies under the prime.
 // The slug is empty for the prime.
 // MoveRecords holds the anchor-move record paths of the worktree's own records worktree and of the prime's.
@@ -60,7 +60,6 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		StatePath:     filepath.Join(beamDir, dobbyengine.StateFileName),
 		LogPath:       filepath.Join(beamDir, dobbyengine.LogFileName),
 		OutPath:       filepath.Join(beamDir, dobbyengine.OutFileName),
-		AnnouncePath:  filepath.Join(beamDir, dobbyengine.AnnounceFileName),
 		PrimeLogPath:  filepath.Join(DobbyBeamDir(prime), dobbyengine.LogFileName),
 		TidyDir:       filepath.Join(beamDir, dobbyengine.TidyDirName),
 		PrimeRunsDir:  shedrun.RunsRoot(prime),

@@ -152,13 +152,13 @@ type Deps struct {
 	// While it reports true the dobby starts no task and notices each open member once; an error changes nothing.
 	// A nil BeamReady, as on the prime, holds nothing.
 	BeamReady func() (bool, error)
-	// LandingPullRequest reads the beam's landing record: recorded is false when it holds no pull request;
-	// announceHead is the head its pull request was last opened or announced at; nil, as on the prime, announces nothing.
-	LandingPullRequest func() (announceHead string, recorded bool, err error)
-	// BeamLandingsSince reads the beam branch's head and the landings on its first-parent line past from, oldest first.
-	// Each landing is a short object name and subject, without the commits that only record lym's own state.
-	// A from not on the line lists the whole line; a nil BeamLandingsSince, as on the prime, announces nothing.
-	BeamLandingsSince func(from string) (head string, landed []string, err error)
+	// PullRequestRecorded reads whether the beam's landing record holds a pull request.
+	// While it does, the dobby flags the beam's open members and their landed line carries the beam's follow-up.
+	// A nil PullRequestRecorded, as on the prime, reads none.
+	PullRequestRecorded func() (bool, error)
+	// SetNotifyOnLand sets notify_on_land on the entry slug, a member of a beam whose pull request is recorded.
+	// A nil SetNotifyOnLand sets nothing.
+	SetNotifyOnLand func(slug string) error
 	// ClearNotifyOnLand clears notify_on_land after the notice; nil clears nothing, and flagged entries recur each tick.
 	ClearNotifyOnLand func(slug string) error
 	// SettleFronts settles the front tasks of this dobby's worktree, running the land action of each one that landed.
@@ -342,12 +342,13 @@ type daemon struct {
 	// readyRead and readyPost are the failure episodes of the ready record's read and of the member notices a beam owes.
 	readyRead logger.Episode
 	readyPost logger.Episode
-	// announceRead and announcePost are the failure episodes of the member announcement's reads and of its post and record.
-	announceRead logger.Episode
-	announcePost logger.Episode
-	// landNoticeConfig and landNoticeBoard are the failure episodes of the landing notices' beam.yaml and board reads.
-	landNoticeConfig logger.Episode
-	landNoticeBoard  logger.Episode
+	// landNoticeConfig, landNoticeBoard and landNoticePullRequest are the failure episodes of the landing notices' reads:
+	// beam.yaml, the board and the beam's landing record.
+	landNoticeConfig      logger.Episode
+	landNoticeBoard       logger.Episode
+	landNoticePullRequest logger.Episode
+	// landNoticeFlag is the failure episode of the writes that flag a beam's members for the landing notice.
+	landNoticeFlag logger.Episode
 	// landNoticePosts guards each owed landing notice's post by its slug.
 	landNoticePosts logger.EpisodeSet
 	// testMapFailures is the failure episode of the test-map refresh step, which never ends the tick.
@@ -689,7 +690,6 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
-	d.announceLandings(ctx)
 	d.inFlight = d.busy
 	if d.deps.Tick != nil {
 		hookInFlight, err := d.deps.Tick(ctx, TickInput{Now: now, ProbeDue: d.probeDue, OwesAll: d.owesAll})

@@ -536,7 +536,46 @@ func TestHubLandDeps_FileTaskReleasesTheTaskAndCodeReviewCapsReadTheHubConfig(t 
 	}
 }
 
-func TestHubDobbyDeps_ClearNotifyOnLandClearsTheHubBoardEntry(t *testing.T) {
+func TestHubDobbyDeps_PullRequestRecordedReadsTheBeamLandingRecord(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h, deps := landingHub(t)
+	beam, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(h.Location, "b"))
+	if err != nil {
+		t.Fatalf("resolve the beam worktree: %v", err)
+	}
+	path, lockPath := loomengine.BeamLandingPath(beam), loomengine.BeamLandingLockPath(beam)
+	for _, dir := range []string{filepath.Dir(path), filepath.Dir(lockPath)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("create %s: %v", dir, err)
+		}
+	}
+
+	if recorded, err := deps.PullRequestRecorded(); recorded || err != nil {
+		t.Errorf("PullRequestRecorded() with no landing record = %v, %v; want false, nil", recorded, err)
+	}
+
+	if err := pawlengine.UpdateLanding(path, lockPath, "b", func(*pawlengine.LandingRecord) error { return nil }); err != nil {
+		t.Fatalf("write a landing record with no pull request: %v", err)
+	}
+	if recorded, err := deps.PullRequestRecorded(); recorded || err != nil {
+		t.Errorf("PullRequestRecorded() with a record holding no pull request = %v, %v; want false, nil", recorded, err)
+	}
+
+	err = pawlengine.UpdateLanding(path, lockPath, "b", func(record *pawlengine.LandingRecord) error {
+		record.PullRequest = &pawlengine.LandingPullRequest{Number: 7, URL: "https://example.test/pull/7", PushedHead: "abc"}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("write a landing record holding a pull request: %v", err)
+	}
+	if recorded, err := deps.PullRequestRecorded(); !recorded || err != nil {
+		t.Errorf("PullRequestRecorded() with a record holding a pull request = %v, %v; want true, nil", recorded, err)
+	}
+}
+
+func TestHubDobbyDeps_NotifyOnLandSeamsWriteTheHubBoardEntry(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -547,8 +586,12 @@ func TestHubDobbyDeps_ClearNotifyOnLandClearsTheHubBoardEntry(t *testing.T) {
 	}
 	cfg.Path = h.BoardDir()
 	board := boardengine.New(cfg)
-	if _, err := board.UpsertTask(map[string]any{"slug": "b", "notify_on_land": true}); err != nil {
-		t.Fatalf("set notify_on_land on b: %v", err)
+
+	if err := deps.SetNotifyOnLand("b"); err != nil {
+		t.Fatalf("SetNotifyOnLand(b) = %v; want nil", err)
+	}
+	if task, found, err := board.GetTask("b"); err != nil || !found || !task.NotifyOnLand {
+		t.Fatalf("GetTask(b) = NotifyOnLand %v, found %v, err %v; want it set", task.NotifyOnLand, found, err)
 	}
 
 	if err := deps.ClearNotifyOnLand("b"); err != nil {

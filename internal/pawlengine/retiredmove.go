@@ -39,8 +39,10 @@ type RetiredMoveDeps struct {
 }
 
 // MoveOffRetired gives the pawl run of the beam moved from the retired row `from` to the row `to` the side effects an in-flight landing under the old rows needs.
-// It ends the PR-Review session and carries the run's scratch pull request into the landing record, with the beam's head as both its pushed and announce head, unless GitHub reports it closed or merged;
-// a pull request whose state does not read is carried too, so a transient failure never drops it.
+// It ends the PR-Review session.
+// It carries the run's scratch pull request into the landing record unless GitHub reports it closed or merged.
+// The carried pull request takes the beam's head as its pushed head.
+// A pull request whose state does not read is carried too, so a transient failure never drops it.
 // A move repeated after the scratch record was removed finds no scratch pull request, and names the one the landing record already holds unless GitHub reports it closed or merged.
 // It then removes the scratch record, the ready record, the land request, the dobby-stop marker and the reopen request, commits the landing directory, writes the status naming `to`, which lifts the landing hold, and posts one notice telling the orch how to go on.
 // A resumed move, one made by a halted run stepped again, tells the orch to resume a second time, since the resume that made the move ends at the pause.
@@ -126,7 +128,7 @@ func (d RetiredMoveDeps) carryPullRequest() (*LandingPullRequest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read the beam head: %w", err)
 	}
-	carried := LandingPullRequest{Number: number, URL: url, PushedHead: head, AnnounceHead: head}
+	carried := LandingPullRequest{Number: number, URL: url, PushedHead: head}
 	err = UpdateLanding(d.LandingPath, d.LandingLockPath, d.Slug, func(rec *LandingRecord) error {
 		rec.PullRequest = &carried
 		return nil

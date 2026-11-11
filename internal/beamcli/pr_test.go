@@ -27,7 +27,7 @@ import (
 const prURL = "https://github.com/o/r/pull/7"
 
 // recordedPullRequest is the pull request a landing record names in the rows that start from a recorded one.
-var recordedPullRequest = &pawlengine.LandingPullRequest{Number: 5, URL: "https://github.com/o/r/pull/5", PushedHead: "old", AnnounceHead: "old"}
+var recordedPullRequest = &pawlengine.LandingPullRequest{Number: 5, URL: "https://github.com/o/r/pull/5", PushedHead: "old"}
 
 func TestPROpen(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -43,7 +43,7 @@ func TestPROpen(t *testing.T) {
 		check func(t *testing.T, w *landWorld, got map[string]any)
 	}{
 		{
-			name: "NoneRecordedNoneOpenPushedCreatedAndRecordedWithBothHeads",
+			name: "NoneRecordedNoneOpenPushedCreatedAndRecordedWithThePushedHead",
 			setup: func(w *landWorld) {
 				w.api.Script(prkit.MethodCreate, prkit.Answer{Ref: pullrequest.Ref{Number: 7, URL: prURL}})
 			},
@@ -51,7 +51,7 @@ func TestPROpen(t *testing.T) {
 				if want := []string{"b|main|Ship the beam|Groups the work."}; !slices.Equal(w.api.Calls(prkit.MethodCreate), want) {
 					t.Errorf("Create calls = %v; want %v", w.api.Calls(prkit.MethodCreate), want)
 				}
-				want := &pawlengine.LandingPullRequest{Number: 7, URL: prURL, PushedHead: "head1", AnnounceHead: "head1"}
+				want := &pawlengine.LandingPullRequest{Number: 7, URL: prURL, PushedHead: "head1"}
 				if w.pushed != 1 || w.landing["b"].PullRequest == nil || *w.landing["b"].PullRequest != *want {
 					t.Errorf("pushed %d times, recorded %+v; want one push and %+v", w.pushed, w.landing["b"].PullRequest, want)
 				}
@@ -320,8 +320,8 @@ func TestPRUpdate(t *testing.T) {
 				t.Errorf("SetDraft calls = %v; want %v", w.api.Calls(prkit.MethodSetDraft), tt.wantSetDraft)
 			}
 			pull := w.landing["b"].PullRequest
-			if pull == nil || pull.PushedHead != "head2" || pull.AnnounceHead != "old" || got["head"] != "head2" {
-				t.Errorf("recorded %+v, answer %v; want PushedHead head2 and AnnounceHead left at old", pull, got)
+			if pull == nil || pull.PushedHead != "head2" || got["head"] != "head2" {
+				t.Errorf("recorded %+v, answer %v; want PushedHead head2", pull, got)
 			}
 		})
 	}

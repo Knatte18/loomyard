@@ -408,6 +408,8 @@
 // A done entry takes it too: its run already landed, and its parent's dobby sends the line at its next tick.
 // Prune keeps a done entry while it carries the field,
 // so the request outlives the landing until the dobby has sent its line.
+// SetNotifyOnLand sets it on a member of a beam whose pull request is recorded.
+// It writes nothing when the entry is gone or already carries it.
 // ClearNotifyOnLand clears it once the line went out, and writes nothing when the entry is gone or does not carry it.
 //
 // # Run lock

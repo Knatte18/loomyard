@@ -31,8 +31,6 @@ type LandingPullRequest struct {
 	URL string `json:"url"`
 	// PushedHead is the beam head the beam branch was last pushed with.
 	PushedHead string `json:"pushed_head"`
-	// AnnounceHead is the beam head the member-landing notice announces from.
-	AnnounceHead string `json:"announce_head"`
 }
 
 // errNoPullRequestToDrop aborts DropLandingPullRequest's update, so a record with nothing to drop is not rewritten.

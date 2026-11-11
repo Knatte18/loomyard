@@ -16,7 +16,7 @@
 // PauseGeometry converts a Location into the pauserecord.Geometry every reader of a pause is told:
 // the record under the board-level `.lym` and the pair's slug, empty for the prime.
 // DobbyGeometry converts a worktree's name into the dobbyengine.Geometry its dobby is told.
-// That geometry holds its lock, state, log, output and announced-head files.
+// That geometry holds its lock, state, log and output files.
 // It holds its tidy directory under the worktree's own `.lym/beam/`.
 // It also holds the batten runs directory under the prime and the anchor-move records that stop it.
 //

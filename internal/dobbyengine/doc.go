@@ -328,27 +328,6 @@
 //     A nil BeamReady holds nothing.
 //     The view shows every waiting task as held by the flag.
 //
-// The member landing announcement:
-//
-//   - After the landing step, each tick of a beam's dobby reads Deps.LandingPullRequest.
-//     With no pull request recorded in the beam's landing record, it does nothing.
-//     Otherwise it reads the last announced head from Geometry.AnnouncePath, a never-tracked file.
-//     When the file is missing, it reads the record's announce head instead,
-//     so a fresh machine repeats at most one notice.
-//     It then reads the landings past that head through Deps.BeamLandingsSince.
-//   - With landings it posts one line through Deps.Notice.
-//     The line names the landings and `lym beam describe <slug>`,
-//     which records the revised description and updates the pull request,
-//     so the orch keeps both listing every member.
-//     Only after the post succeeds does it write the head the read returned.
-//     A head that moved past only commits that record lym's own state is written with no line,
-//     so the notice cannot feed itself.
-//   - Every landing counts, a member filed after the pull request opened included.
-//     No entry's `notify_on_land` is read; a member that carries one also gets its own landing notice.
-//   - A failed read, post or record is logged once per episode and retried at the next tick;
-//     nothing else depends on it.
-//     The prime's dobby and a nil LandingPullRequest or BeamLandingsSince announce nothing.
-//
 // The run notices:
 //
 //   - On each probe tick, after the scheduling steps, dobby reads children through Deps.RunNotices.
@@ -426,7 +405,9 @@
 //
 //   - Each tick with no anchor change standing runs this step after the run notices.
 //     Dobby remembers in the state record every listed run ahead of its Land row.
-//     The memory holds whether the board entry carries `notify_on_land`, refreshed while the entry is on the board.
+//     The memory holds whether the board entry carries `notify_on_land`.
+//     It also holds whether the entry is a member of the dobby's beam.
+//     Both are refreshed while the entry is on the board.
 //     A RunView tells a run past its Land row, and whether it landed, from `battenrecipe.LandOutcomeOf`.
 //     It carries the landing commit Finalize recorded.
 //   - A remembered run seen past its Land row owes one line through Deps.Notice to the nearest live orch.
@@ -437,6 +418,22 @@
 //     With no commit recorded it reads `landed, commit unknown`.
 //     For a run that did not land it reads `ended without landing` with `lym batten status <slug>`.
 //     A beam's batten run is driven by its parent's dobby, so a beam's landing gets its line the same way.
+//   - The landing notice is the one land notice a beam's members get while the beam's pull request is recorded.
+//     While Deps.PullRequestRecorded reads one recorded in the beam's landing record,
+//     each tick sets `notify_on_land` through Deps.SetNotifyOnLand on every open member of the beam that lacks it.
+//     A member is a task or project entry whose project is the beam's slug.
+//     An open one is not done and has a listed run ahead of its Land row,
+//     so a flag its landed line cleared is not set again, even once the run is no longer listed.
+//     A member filed while the pull request is recorded is therefore flagged too, in the tick after the dobby starts it.
+//     A landed line the dobby decides meanwhile ends with the beam's follow-up:
+//     `; add it to the change description, then run `lym beam describe <slug>`, which updates the pull request`.
+//     A member that already carries `notify_on_land` gets that same one line.
+//     So does a member remembered ahead of Land that was never flagged.
+//     One whose run lands in the tick the pull request is first recorded is such a member.
+//     A failed read of the landing record decides no line that tick; a failed write is tried again at the next tick.
+//     Each is logged once per episode.
+//     Under `land_notice: off` no member gets a line, so none carries the follow-up.
+//     The prime's dobby and a nil PullRequestRecorded flag nothing and add no follow-up.
 //   - A done board entry owes the landed line as well when all of these hold:
 //     its parent is the dobby's worktree;
 //     this machine owns it;

@@ -39,7 +39,7 @@ func TestBeamLandingRecordSeams_DropRewritesTheRecordAndCommitsTheLandingDirecto
 		t.Fatalf("lymcwd.ResolveWorktree(b) error = %v; want nil", err)
 	}
 	path, lockPath := loomengine.BeamLandingPath(beam), loomengine.BeamLandingLockPath(beam)
-	held := pawlengine.LandingPullRequest{Number: 7, URL: beamPullRequestURL, PushedHead: "abc", AnnounceHead: "abc"}
+	held := pawlengine.LandingPullRequest{Number: 7, URL: beamPullRequestURL, PushedHead: "abc"}
 	err = pawlengine.UpdateLanding(path, lockPath, "b", func(rec *pawlengine.LandingRecord) error {
 		rec.PullRequest = &held
 		return nil
@@ -118,7 +118,7 @@ func TestPawlRetiredMove_CarriesTheScratchPullRequestIntoTheLandingRecord(t *tes
 
 	beamHead := gitkit.Git(t, worktree, "rev-parse", "HEAD")
 	record, found, err := pawlengine.ReadLanding(loomengine.BeamLandingPath(beam), loomengine.BeamLandingLockPath(beam), "b")
-	want := pawlengine.LandingPullRequest{Number: 7, URL: beamPullRequestURL, PushedHead: beamHead, AnnounceHead: beamHead}
+	want := pawlengine.LandingPullRequest{Number: 7, URL: beamPullRequestURL, PushedHead: beamHead}
 	if err != nil || !found || record.PullRequest == nil || *record.PullRequest != want {
 		t.Errorf("ReadLanding() = %+v, %v, %v; want the pull request carried as %+v", record, found, err, want)
 	}

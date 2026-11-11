@@ -161,8 +161,8 @@ func TestMoveOffRetired(t *testing.T) {
 					t.Fatal(err)
 				}
 				switch {
-				case tt.wantCarried && (!found || record.PullRequest == nil || *record.PullRequest != pawlengine.LandingPullRequest{Number: 7, URL: moveScratchURL, PushedHead: moveHead, AnnounceHead: moveHead}):
-					t.Errorf("landing record = %+v, %v; want the pull request carried with the beam head as pushed and announce head", record, found)
+				case tt.wantCarried && (!found || record.PullRequest == nil || *record.PullRequest != pawlengine.LandingPullRequest{Number: 7, URL: moveScratchURL, PushedHead: moveHead}):
+					t.Errorf("landing record = %+v, %v; want the pull request carried with the beam head as pushed head", record, found)
 				case !tt.wantCarried && found && record.PullRequest != nil:
 					t.Errorf("landing record = %+v; want no pull request carried", record)
 				}

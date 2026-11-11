@@ -163,7 +163,7 @@
 // With none recorded it pushes the beam branch through `fabricengine.PushPairAnchored`.
 // It finds an open pull request from the branch into the parent or creates one with the description's title and body.
 // It marks a draft it found ready for review and leaves its text.
-// It records `Number`, `URL` and the pushed head as both `PushedHead` and `AnnounceHead`.
+// It records `Number`, `URL` and the pushed head as `PushedHead`.
 // A record write that fails after a pull request stands is refused, naming its URL and `lym beam pr open <slug>`.
 // That verb finds the pull request open and records it.
 //
@@ -455,10 +455,9 @@
 //     the beam's ready record, read through the same `hubLandDeps(prime).Ready` as `CanLand`;
 //     the dobby starts no member while it stands;
 //     the prime's dobby is given none;
-//   - the member landing announcement of a beam's dobby:
-//     `LandingPullRequest`, the announce head of the landing record's pull request, read through `pawlengine.ReadLanding`;
-//     `BeamLandingsSince`, the beam pair's HEAD with the landings of `fabricengine.BeamLineCommits` past a head;
-//     records-only commits are dropped, and a head not on the line lists the whole line;
+//   - the member flagging of a beam's dobby:
+//     `PullRequestRecorded`, whether the landing record holds a pull request, read through `pawlengine.ReadLanding`;
+//     `SetNotifyOnLand`, which sets a member's request through `boardengine`;
 //     the prime's dobby is given neither;
 //   - the board and the owners through `boardengine`, and the pause record through `pauserecord`;
 //   - the file watch through `internal/fswatch`, one watcher per directory merged into the loop's one channel;

@@ -47,7 +47,7 @@ Write the description for a reader of the pull request:
 
 Change any part of it whenever you or the operator want, then run `lym beam describe <slug>` again.
 
-On a dobby notice naming landings into the beam, add them to the description, then run `lym beam describe <slug>`.
+While the pull request is recorded, every member of the beam gets `notify_on_land`, and its one landing notice asks you to add the landing to the description and run `lym beam describe <slug>`; do so.
 
 Never merge a pull request, and never close one to add work.
 Work lands into the beam while the pull request stays open.

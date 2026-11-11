@@ -100,7 +100,7 @@ func prOpen(ctx context.Context, deps landDeps, slug string) (map[string]any, er
 		}
 	}
 	err = deps.WriteLanding(slug, func(rec *pawlengine.LandingRecord) error {
-		rec.PullRequest = &pawlengine.LandingPullRequest{Number: ref.Number, URL: ref.URL, PushedHead: head, AnnounceHead: head}
+		rec.PullRequest = &pawlengine.LandingPullRequest{Number: ref.Number, URL: ref.URL, PushedHead: head}
 		return nil
 	})
 	if err != nil {

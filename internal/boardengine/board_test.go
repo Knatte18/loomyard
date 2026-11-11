@@ -777,6 +777,7 @@ func TestSetRunStatus(t *testing.T) {
 }
 
 // TestNotifyOnLand pins the notify_on_land field: an upsert stores it only when true, and a note carrying it is refused.
+// SetNotifyOnLand sets it, and leaves board.json byte-identical when the entry is absent or already carries it.
 // ClearNotifyOnLand clears it, and leaves board.json byte-identical when the entry is absent or does not carry it.
 func TestNotifyOnLand(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -813,6 +814,12 @@ func TestNotifyOnLand(t *testing.T) {
 				_, err := b.UpsertTask(map[string]any{"slug": "x", "notify_on_land": true})
 				return err
 			}, wantErr: `note "x" has notify_on_land`, unchanged: true},
+		{name: "set sets it", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels},
+			act: func(b *boardengine.Board) error { return b.SetNotifyOnLand("x") }, wantStored: true},
+		{name: "set of an entry carrying it writes nothing", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true},
+			act: func(b *boardengine.Board) error { return b.SetNotifyOnLand("x") }, wantStored: true, unchanged: true},
+		{name: "set of an absent slug writes nothing", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels},
+			act: func(b *boardengine.Board) error { return b.SetNotifyOnLand("ghost") }, unchanged: true},
 		{name: "clear clears it", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true},
 			act: func(b *boardengine.Board) error { return b.ClearNotifyOnLand("x") }},
 		{name: "clear of an entry without it writes nothing", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels},
