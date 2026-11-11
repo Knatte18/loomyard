@@ -429,8 +429,9 @@ func (b BranchOutcome) anchorStopWayForward() string {
 }
 
 // dirtyWayForward names where each uncommitted path of a dirty branch is committed or restored.
-// A records path under the record pathspec is committed by `lym fabric commit` in fabricDir,
-// the anchored directory of the pair's code worktree, since the records sibling refuses every fabric verb.
+// A records path under the record pathspec is committed by `lym fabric commit` in fabricDir.
+// fabricDir is the anchored directory of the pair's code worktree.
+// The records sibling refuses every fabric verb.
 // Any path, including one outside that pathspec, is committed or restored by git in the branch's worktree.
 func (b BranchOutcome) dirtyWayForward(fabricDir string) string {
 	paths := joinOrNone(b.Paths)

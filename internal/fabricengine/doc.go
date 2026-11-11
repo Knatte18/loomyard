@@ -1460,10 +1460,11 @@
 // `Unwrap` returns the push's error,
 // so `errors.Is` against `gitrepo.ErrPushRejected` or `gitrepo.ErrPushAuthRefused` still holds.
 // Its text is the push's error followed by `; way forward: ` and `FailedPushWayForward` of the record.
-// A code or records record carries `FabricDir`, the anchored directory of the pair's code worktree,
-// read from the worktree's recorded anchor when the record is written.
-// Its way forward names `lym fabric push` there, since a fabric verb refuses any other cwd,
-// and names each git command in the branch's worktree.
+// A code or records record carries `FabricDir`, the anchored directory of the pair's code worktree.
+// It is read from the worktree's recorded anchor when the record is written.
+// Its way forward names `lym fabric push` in that directory.
+// A fabric verb refuses any other cwd.
+// It names each git command in the branch's worktree.
 // A caller appending a way forward of its own does so only when `HasUnclassifiedFailure` reports a failure without one.
 // The detached push returns nil for a recorded failure;
 // the synchronous pushes return the error.

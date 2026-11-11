@@ -58,9 +58,9 @@ const (
 // FailedPush is the record of a push origin refused, one per repository side and branch.
 // Repo is "code", "records" or "bolt", the last being the records repository's board branch.
 // CodeWorktree is set for a records record only: the root of the pair's code worktree.
-// FabricDir is set for a code or records record: the anchored directory of the pair's code worktree,
-// the one directory a fabric verb accepts as its cwd;
-// a record written without it reads as anchored at the code worktree's root.
+// FabricDir is set for a code or records record: the anchored directory of the pair's code worktree.
+// It is the one directory a fabric verb accepts as its cwd.
+// A record written without it reads as anchored at the code worktree's root.
 // Prime marks a code record of the hub prime's own branch.
 // Paths, Commits and OriginHead are set where the failure has them, such as a replay stop or a rewind.
 // WayForward is set for the anchor-change class only, which carries its own commands.
@@ -323,7 +323,8 @@ func recordsConflictWayForward(worktree, branch string, paths, commits []string,
 
 // codeDivergedWayForward names the merge that settles a code branch origin moved past.
 // The merge runs in worktree, and the push that follows in fabricDir, the worktree's anchored directory.
-// A prime's branch is pushed by a plain git push in worktree, since the pair push leaves the prime's code branch unpushed.
+// A prime's branch is pushed by a plain git push in worktree.
+// The pair push leaves the prime's code branch unpushed.
 func codeDivergedWayForward(worktree, fabricDir, branch string, prime bool) string {
 	push := fmt.Sprintf("`lym fabric push` in %s", fabricDir)
 	if prime {
