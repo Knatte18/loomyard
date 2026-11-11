@@ -158,6 +158,7 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
+//lym:seam internal/loomshed#VerifyBudget
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps

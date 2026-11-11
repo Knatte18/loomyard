@@ -7,6 +7,8 @@
 // `tree_scope`, described in the tree scope paragraph below;
 // `verify_attempts`, how many times a verify gate re-prompts its session before it halts the run for the parent.
 // A verify gate is the writer's or a Code-Review fix round's.
+// `verify_budget_min` is how long, in minutes, a verify gate runs before the run's parent gets one notice.
+// The attempts go on, and 0 turns the notice off.
 // The darn recipe's Code-Review perch takes its models, fans, budgets and auto-accept flag from `loom.yaml`.
 // darn.yaml holds none of them.
 // A `verify` key in the hub file is dropped at load and pruned by `lym config reconcile`;

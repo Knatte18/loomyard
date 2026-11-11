@@ -146,6 +146,17 @@
 // An empty told command is the gate's returned error, and so is a read error of the command, merge base or tree scope.
 // An impact-scoped pass lets through a break only the whole module shows;
 // Parent-Align's whole run catches it for every diff touching production code.
+// The darn wiring adds `--stop-on-fail` to the `darn-write` key's told and tree-scoped command.
+// Darn-Write's run therefore stops at its first failed tier.
+// In the darn form a failed run whose failure report names failed tests alone keeps them for the next arrival.
+// That arrival first runs them alone through verifytree.Verify, the command gateslot.FailedTestsCall renders.
+// Tests that fail again fail the arrival with their findings alone, so the fixer and the writer get only those.
+// A run of them that passes, or fails naming no failed test, leaves the arrival to the full command.
+// A timed-out run, a runner crash and a failure outside any test keep nothing, so the next arrival runs the full command.
+// A told VerifyBudget notices the run's parent once the gate has run past its limit from its first arrival.
+// The notice goes out at an arrival or while a verify command runs.
+// It names the attempt and the failed runs so far, and it stops nothing: the attempts go on.
+// Bound: the kept tests and the budget's clock live in the gate, so a restarted driver starts both afresh.
 //
 // The Plan-Write rotation archives the prior plan.
 // It appends a prior-plan block naming that archive to the respawned session's prompt.

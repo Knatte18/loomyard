@@ -1,7 +1,8 @@
 // verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff.
 // It holds the handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree.
 // The told command is the site's own gate call.
-// In the darn form it is the diff's tree-scoped command when the diff is wholly under the configured trees.
+// In the darn form it is the diff's tree-scoped command when the diff is wholly under the configured trees,
+// and the last run's failed tests run alone before it.
 
 package loomshed
 
@@ -10,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"unicode/utf8"
 
@@ -34,6 +36,10 @@ const verifyFailuresBytes = 8192
 // verifyFailureTruncated ends a failure cut to verifyFailuresBytes.
 const verifyFailureTruncated = "\n[truncated]"
 
+// failedAloneNote opens the findings of failed tests that failed again when run alone.
+const failedAloneNote = "The tests that failed the last verify run were run alone first, and they fail again, " +
+	"so the full verify command did not run; it runs once they pass.\n\n"
+
 // NewVerifyGate returns a must-pass shuttleengine.Gate.
 // At each arrival the gate reads the told verify command and lints the comments the work added.
 // It then runs the command through verifytree.Verify over worktreeRoot.
@@ -44,6 +50,9 @@ const verifyFailureTruncated = "\n[truncated]"
 // A pass keeps its record entry, so a later arrival on the same tree skips.
 // hold is the told pause hold of the worktree's scope.
 // A non-nil hold holds the verify under a pause covering the worktree, and nil holds nothing.
+// budget is the told time budget, counted from the gate's first arrival; a zero Limit or a nil Notify turns it off.
+// Once it is spent, Notify gets one line naming the attempt and the failed runs so far, and the attempts go on.
+// The line goes out at an arrival or while a verify command runs, never after the gate stopped running.
 //
 // With treeScope nil the gate takes the round form.
 // The comment lint runs before any test, from its own base.
@@ -64,6 +73,11 @@ const verifyFailureTruncated = "\n[truncated]"
 // Any other diff runs the told command.
 // The form has no skip path.
 // An empty told command is an error naming the source, never a pass, and so is a nil mergeBase.
+// A failed run whose log's failure report names failed tests alone keeps them for the next arrival.
+// That arrival first runs them alone through verifytree.Verify, the command gateslot.FailedTestsCall renders.
+// Tests that fail again fail the arrival with their findings alone and are kept for the arrival after.
+// A run of them that passes, or fails naming no failed test, leaves the arrival to the full command.
+// A timed-out run, a runner crash and a failure outside any test keep nothing, so the next arrival runs the full command.
 //
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
@@ -78,12 +92,16 @@ const verifyFailureTruncated = "\n[truncated]"
 // A command, merge base or tree scope read error is a returned error.
 // So is a failure to read git, a lint run error or a cancelled verify.
 // None is a defect the writer can fix.
-func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), hold *verifytree.PauseHold) shuttleengine.Gate {
+func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), hold *verifytree.PauseHold, budget VerifyBudget) shuttleengine.Gate {
 	attempt := 0
 	darnForm := treeScope != nil
 	paths := verifytree.NewPaths(worktreeRoot, verifyDir)
+	clock := &budgetClock{budget: budget, site: siteLabel}
+	// failedBefore holds the failed tests of the darn form's latest failed run, nil when it named none.
+	var failedBefore []gateslot.FailedTest
 	return func() (shuttleengine.GateResult, error) {
 		attempt++
+		clock.arrive(attempt)
 		told, err := command()
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: read the verify command: %w", err)
@@ -149,7 +167,21 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 		}
 
 		site := verifytree.Site{Label: siteLabel, Attempt: attempt, BaseCommand: told, Hold: hold}
+		if darnForm && len(failedBefore) > 0 {
+			rerun := failedBefore
+			failedBefore = nil
+			result, stillFailed, decided, err := runFailedTestsAlone(paths, site, rerun, clock)
+			if err != nil {
+				return shuttleengine.GateResult{}, err
+			}
+			if decided {
+				failedBefore = stillFailed
+				return result, nil
+			}
+		}
+		disarm := clock.arm()
 		res, err := verifytree.Verify(context.Background(), paths, site, runCommand)
+		disarm()
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: %w", err)
 		}
@@ -157,15 +189,70 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 		case verifytree.StatusPassed, verifytree.StatusSkipped:
 			return shuttleengine.GateResult{Passed: true}, nil
 		case verifytree.StatusDirty:
-			findings := fmt.Sprintf("The worktree has uncommitted changes, so the verify command did not run: %s. Commit or discard them.", strings.Join(res.Dirty, ", "))
-			logger.Warn("loomshed: verify gate found a dirty tree", "gate", siteLabel, "attempt", attempt, "paths", strings.Join(res.Dirty, ", "))
-			return shuttleengine.GateResult{Passed: false, Findings: findings}, nil
+			return dirtyResult(res, siteLabel, attempt), nil
 		default:
+			clock.failed(attempt, res)
+			if darnForm {
+				failedBefore, _ = namedFailures(res)
+			}
 			findings := verifyFailureFindings(res, res.Log)
 			logger.Warn("loomshed: verify gate failed", "gate", siteLabel, "attempt", attempt, "exitCode", res.ExitCode, "runnerCrash", res.RunnerCrash, "log", res.Log)
 			return shuttleengine.GateResult{Passed: false, Findings: findings, Terminal: res.RunnerCrash}, nil
 		}
 	}
+}
+
+// runFailedTestsAlone runs failed alone through verifytree.Verify before the full command.
+// It reports whether that run settles the arrival.
+// A dirty tree settles it with the dirty paths and keeps failed for the next arrival.
+// Tests that fail again settle it with their findings alone, and stillFailed holds them.
+// A run that passes, fails naming no failed test or cannot be rendered leaves the arrival to the full command.
+func runFailedTestsAlone(paths verifytree.Paths, site verifytree.Site, failed []gateslot.FailedTest, clock *budgetClock) (result shuttleengine.GateResult, stillFailed []gateslot.FailedTest, decided bool, err error) {
+	call, err := gateslot.FailedTestsCall(runtime.GOOS, failed)
+	if err != nil {
+		logger.Warn("loomshed: verify gate cannot render the run of the failed tests alone; it runs the full command", "gate", site.Label, "attempt", site.Attempt, "error", err)
+		return shuttleengine.GateResult{}, nil, false, nil
+	}
+	disarm := clock.arm()
+	res, err := verifytree.Verify(context.Background(), paths, site, call)
+	disarm()
+	if err != nil {
+		return shuttleengine.GateResult{}, nil, false, fmt.Errorf("loomshed: verify gate: run the failed tests alone: %w", err)
+	}
+	switch res.Status {
+	case verifytree.StatusDirty:
+		return dirtyResult(res, site.Label, site.Attempt), failed, true, nil
+	case verifytree.StatusFailed:
+		if again, ok := namedFailures(res); ok {
+			clock.failed(site.Attempt, res)
+			logger.Warn("loomshed: verify gate's failed tests fail again alone", "gate", site.Label, "attempt", site.Attempt, "tests", len(again), "log", res.Log)
+			return shuttleengine.GateResult{Passed: false, Findings: failedAloneNote + verifyFailureFindings(res, res.Log)}, again, true, nil
+		}
+		logger.Info("loomshed: verify gate's run of the failed tests alone named no failed test; it runs the full command", "gate", site.Label, "attempt", site.Attempt, "log", res.Log)
+	default:
+		logger.Info("loomshed: verify gate's failed tests pass alone; it runs the full command", "gate", site.Label, "attempt", site.Attempt)
+	}
+	return shuttleengine.GateResult{}, nil, false, nil
+}
+
+// namedFailures returns the failed tests res's log names, when its failure report names failed tests alone.
+// A timed-out run and a runner crash name none.
+func namedFailures(res verifytree.Result) ([]gateslot.FailedTest, bool) {
+	if res.TimedOut || res.RunnerCrash || res.Log == "" {
+		return nil, false
+	}
+	log, err := os.ReadFile(res.Log)
+	if err != nil {
+		return nil, false
+	}
+	return gateslot.FailedTests(string(log))
+}
+
+// dirtyResult is the failing verdict of a verify that found the worktree dirty and ran nothing.
+func dirtyResult(res verifytree.Result, siteLabel string, attempt int) shuttleengine.GateResult {
+	findings := fmt.Sprintf("The worktree has uncommitted changes, so the verify command did not run: %s. Commit or discard them.", strings.Join(res.Dirty, ", "))
+	logger.Warn("loomshed: verify gate found a dirty tree", "gate", siteLabel, "attempt", attempt, "paths", strings.Join(res.Dirty, ", "))
+	return shuttleengine.GateResult{Passed: false, Findings: findings}
 }
 
 // isAncestorOfHead reports whether commit is an ancestor of HEAD in worktreeRoot;

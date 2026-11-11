@@ -101,6 +101,9 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   Darn-Write, and Code-Burler-Fix in a darn run, lint from the merge base on every attempt.
   For a diff wholly under `darn.yaml`'s `tree_scope` they run their own key's call over the touched trees' targets;
   otherwise they run their own key's call alone.
+  Darn-Write's call carries `--stop-on-fail`, so it ends at its first failed tier.
+  After a run whose failure report names failed tests alone, the next arrival first runs those tests alone through `Verify`.
+  `gateslot.FailedTestsCall` renders that call from the report, the one call a site spells with tiers and targets.
 - PR-Review runs its own `pr-review` key's call through `Verify` over each clean head its agent commits,
   and it shares no pass with another site.
 - Parent-Align and Finalize run the `landing` call through `Verify` with `BaseCommand` set to the base command.

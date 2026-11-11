@@ -139,7 +139,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	// A nested `lym gate test` reads the variable to learn this run's watchdog already sees its test binaries.
 	exe.env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), enclosingGateEnv+"="+strconv.Itoa(os.Getpid()))
 
-	// A failed run does not stop the call, so every later tier and guard run stays checked.
+	// Without --stop-on-fail a failed run does not stop the call, so every later tier and guard run stays checked.
 	// That holds even when the change under test did not cause the failure.
 	var failures []string
 	code, firstFailed := 0, ""
@@ -149,7 +149,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	// The call closes with the runner crash line only when no failure judged the code.
 	var crashed []string
 	judged := false
-	for _, run := range plan {
+	for i, run := range plan {
 		var end runEnd
 		if run.guardStep {
 			end = exe.runGuard(run)
@@ -185,6 +185,14 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			exe.printReport(inHub)
 			printFailedRuns(request.stderr, failures, firstFailed, true)
 			return exitAfterSignal(caught, haltExitCode(end, code))
+		}
+		if request.stopOnFail && stopsCall(end) && i+1 < len(plan) {
+			failed := runLabel(run)
+			if end.blocked {
+				failed = "build"
+			}
+			printLine(request.stderr, stopOnFailLine(failed, plan[i+1:]))
+			break
 		}
 	}
 	// The lint steps run after the tiers, so a call that fails both reports the two in one go.
@@ -239,6 +247,23 @@ func printFailedRuns(stderr io.Writer, failures []string, firstFailed string, ha
 		suffix = "; the call stopped there, so later runs did not run"
 	}
 	printLine(stderr, fmt.Sprintf("%s%s; the exit code is %s's%s", gateslot.FailedRunsPrefix, strings.Join(failures, ", "), firstFailed, suffix))
+}
+
+// stopsCall reports whether a run that ended so stops a --stop-on-fail call.
+// A failed or blocked run does.
+// A run that crashed its test runner in its run and its rerun judged no code, so it does not.
+func stopsCall(end runEnd) bool {
+	return end.blocked || (end.ran && end.code != 0 && end.crash == "")
+}
+
+// stopOnFailLine returns the stderr line a --stop-on-fail call prints when the failed run stops it.
+// The line names the failed run and every run of skipped.
+func stopOnFailLine(failed string, skipped []tierRun) string {
+	labels := make([]string, len(skipped))
+	for i, run := range skipped {
+		labels[i] = runLabel(run)
+	}
+	return fmt.Sprintf("gate test: --%s ended the call after %s failed, so %s did not run", gateslot.StopOnFailFlag, failed, strings.Join(labels, ", "))
 }
 
 // notRunSuffix closes the line a passing card-scope call prints naming the declared tiers it did not run.

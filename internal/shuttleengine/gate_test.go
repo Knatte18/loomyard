@@ -436,9 +436,18 @@ func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
 		sendTextErr   error
 		reprompt      func(findingsPath string) string
 		wantSendCalls int
+		// wantEndedEarly is a text the gate's EndedEarly holds.
+		wantEndedEarly string
 	}{
-		{name: "the pane swallows the input", sendTextErr: errors.New("pane swallowed input"), wantSendCalls: 1},
-		{name: "an entry's renderer returns two lines", reprompt: func(findingsPath string) string { return "line one\nline two " + findingsPath }},
+		{
+			name: "the pane swallows the input", sendTextErr: errors.New("pane swallowed input"), wantSendCalls: 1,
+			wantEndedEarly: "pane swallowed input",
+		},
+		{
+			name:           "an entry's renderer returns two lines",
+			reprompt:       func(findingsPath string) string { return "line one\nline two " + findingsPath },
+			wantEndedEarly: "its re-prompt could not be sent",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -480,6 +489,9 @@ func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
 			}
 			if result.Gate != nil && result.Gate.Attempts != 0 {
 				t.Errorf("Attempts = %d, want 0 (the failed send charges no attempt)", result.Gate.Attempts)
+			}
+			if result.Gate != nil && !strings.Contains(result.Gate.EndedEarly, tt.wantEndedEarly) {
+				t.Errorf("EndedEarly = %q, want it to hold %q", result.Gate.EndedEarly, tt.wantEndedEarly)
 			}
 			if len(reed.SendTextCalls) != tt.wantSendCalls {
 				t.Errorf("SendText calls = %d, want %d (no retry after a failed send)", len(reed.SendTextCalls), tt.wantSendCalls)
@@ -574,6 +586,9 @@ func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
 			}
 			if result.Gate.Attempts != 1 {
 				t.Errorf("Attempts = %d, want 1 (the one re-prompt sent before the run ended)", result.Gate.Attempts)
+			}
+			if want := "the session ended, or the run reached its deadline"; !strings.Contains(result.Gate.EndedEarly, want) {
+				t.Errorf("EndedEarly = %q, want it to hold %q", result.Gate.EndedEarly, want)
 			}
 			if gateCalls != 2 {
 				t.Errorf("gate closure invoked %d times, want 2 (the failed attempt, then once more on the run's own Done)", gateCalls)
@@ -922,6 +937,8 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 		wantAttempts int
 		// wantCachedSlug is the slug the run caches from reed's status, empty for none.
 		wantCachedSlug string
+		// wantEndedEarly is a text the gate's EndedEarly holds; empty leaves it unchecked.
+		wantEndedEarly string
 	}{
 		{
 			name: "a failing gate's arrival under a hub entry waits for the resume and re-prompts once", events: "STOP:turn1\n",
@@ -981,7 +998,7 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 				entry.Expired = func() (bool, error) { return true, nil }
 				return entry
 			},
-			wantEvalsAtResume: -1, wantSendsAtResume: -1, wantAttempts: 0,
+			wantEvalsAtResume: -1, wantSendsAtResume: -1, wantAttempts: 0, wantEndedEarly: "entry's wait ran out",
 		},
 		{
 			name: "a gated arrival on the first uncovered tick evaluates the boundary once, not again for the arrival held while covered", events: "STOP:turn1\n",
@@ -1073,6 +1090,9 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 			}
 			if tt.wantAttempts >= 0 && (result.Gate == nil || result.Gate.Attempts != tt.wantAttempts) {
 				t.Errorf("Gate = %+v, want %d attempts spent", result.Gate, tt.wantAttempts)
+			}
+			if tt.wantEndedEarly != "" && (result.Gate == nil || !strings.Contains(result.Gate.EndedEarly, tt.wantEndedEarly)) {
+				t.Errorf("Gate = %+v, want EndedEarly to hold %q", result.Gate, tt.wantEndedEarly)
 			}
 			if rig.run.sessionSlugKnown != (tt.wantCachedSlug != "") || rig.run.sessionSlug != tt.wantCachedSlug {
 				t.Errorf("cached slug = %q (known %v), want %q", rig.run.sessionSlug, rig.run.sessionSlugKnown, tt.wantCachedSlug)
@@ -1307,6 +1327,8 @@ func TestGate_RepromptOverPicker(t *testing.T) {
 		// wantEndAtLeast bounds the clock at the end from below, from the start; zero leaves it unchecked.
 		wantEndAtLeast time.Duration
 		wantBoundWarn  bool
+		// wantEndedEarly is a text the gate's EndedEarly holds; empty leaves it unchecked.
+		wantEndedEarly string
 	}{
 		{
 			name: "a known picker is dismissed and the re-prompt delivered", picker: "COMPACT-PICKER",
@@ -1314,15 +1336,15 @@ func TestGate_RepromptOverPicker(t *testing.T) {
 		},
 		{
 			name: "a known picker its key does not close ends the loop after the bound", picker: "COMPACT-PICKER", sticky: true,
-			wantEscapes: maxNoInputBoxReprompts, wantEndBefore: 30 * time.Second, wantBoundWarn: true,
+			wantEscapes: maxNoInputBoxReprompts, wantEndBefore: 30 * time.Second, wantBoundWarn: true, wantEndedEarly: "no input box",
 		},
 		{
 			name: "a known picker whose key cannot be sent ends the loop after the bound", picker: "COMPACT-PICKER", sticky: true, sendKeyErr: true,
-			wantEscapes: maxNoInputBoxReprompts, wantEndBefore: 30 * time.Second, wantBoundWarn: true,
+			wantEscapes: maxNoInputBoxReprompts, wantEndBefore: 30 * time.Second, wantBoundWarn: true, wantEndedEarly: "no input box",
 		},
 		{
 			name: "an unknown picker ends the loop after the bound with no key", picker: "some menu", sticky: true,
-			wantEndBefore: 30 * time.Second, wantBoundWarn: true,
+			wantEndBefore: 30 * time.Second, wantBoundWarn: true, wantEndedEarly: "no input box",
 		},
 		{
 			name: "an operator active over a known picker gets no key and holds until the deadline", picker: "COMPACT-PICKER", active: true,
@@ -1350,6 +1372,9 @@ func TestGate_RepromptOverPicker(t *testing.T) {
 			}
 			if result.Gate == nil || result.Gate.Attempts != tt.wantAttempts {
 				t.Errorf("Gate = %+v, want %d attempts spent", result.Gate, tt.wantAttempts)
+			}
+			if tt.wantEndedEarly != "" && (result.Gate == nil || !strings.Contains(result.Gate.EndedEarly, tt.wantEndedEarly)) {
+				t.Errorf("Gate = %+v, want EndedEarly to hold %q", result.Gate, tt.wantEndedEarly)
 			}
 			escapes := 0
 			for _, call := range rig.reed.SendKeyCalls {
@@ -1400,5 +1425,47 @@ func TestAwaitIdleSession_FailedDismissalKeyHoldsAsNoInputBox(t *testing.T) {
 	}
 	if keys := rig.reed.SendKeyCalls; len(keys) != 1 || keys[0].Key != "Escape" {
 		t.Errorf("keys = %+v, want one Escape", keys)
+	}
+}
+
+// TestGate_EndedEarlyStaysEmpty pins that GateOutcome.EndedEarly names no cause when the run did not end early.
+// A pass, a terminal failure and a failure whose entry spent its attempts all leave it empty.
+func TestGate_EndedEarlyStaysEmpty(t *testing.T) {
+	tiergate.Require(t, 0)
+	tests := []struct {
+		name         string
+		result       GateResult
+		attempts     int
+		wantAttempts int
+	}{
+		{name: "a passing gate", result: GateResult{Passed: true}, attempts: 3},
+		{name: "a terminal failure", result: GateResult{Findings: "bad", Terminal: true}, attempts: 3},
+		{name: "a failure whose entry spent its attempts", result: GateResult{Findings: "bad"}, attempts: 1, wantAttempts: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			entry := GateEntry{Attempts: tt.attempts, Gate: func() (GateResult, error) { return tt.result, nil }}
+			rig := newGateRig(t, Config{}, "STOP:turn1\n", withGateEntry(entry))
+			appended := false
+			rig.clock.onSleep = func(time.Time) {
+				if !appended && len(rig.reed.SendTextCalls) > 0 {
+					appended = true
+					appendEventsLine(t, rig.eventsPath, "STOP:turn2")
+				}
+			}
+
+			result, err := rig.run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Gate == nil || result.Gate.Attempts != tt.wantAttempts {
+				t.Fatalf("Gate = %+v, want %d attempts spent", result.Gate, tt.wantAttempts)
+			}
+			if result.Gate.EndedEarly != "" {
+				t.Errorf("EndedEarly = %q, want it empty", result.Gate.EndedEarly)
+			}
+		})
 	}
 }

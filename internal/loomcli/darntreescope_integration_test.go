@@ -115,6 +115,17 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		}
 	}
 
+	// wired is the pair's wiring of the verify seams.
+	// Its tree scope reader adds `--stop-on-fail` to the darn-write key alone.
+	wired := func(t *testing.T, slug string) *loomCLI {
+		t.Helper()
+		c := &loomCLI{}
+		if err := c.wireTreeScope(resolve(t, slug)); err != nil {
+			t.Fatalf("wireTreeScope() = %v; want nil", err)
+		}
+		return c
+	}
+
 	const slug = "scoped"
 	hubforge.AddPair(t, hub, slug)
 	worktree := hub.PairCodeWorktree(slug)
@@ -132,6 +143,9 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.CommitFile(t, worktree, "docs/ä.md", "docs\n", "docs change")
 		assertAnswer(t, seam, "", true)
 		assertLanding(t, deps, "")
+		if command, scoped, err := wired(t, slug).env.VerifyTreeScope("darn-write"); err != nil || !scoped || command != "" {
+			t.Errorf("wired VerifyTreeScope(darn-write) = %q, %v, %v; want an empty command left empty, true, nil", command, scoped, err)
+		}
 	}) {
 		return
 	}
@@ -145,6 +159,17 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 			}
 		}
 		assertLanding(t, deps, scopedCall("finalize", "./tools/..."))
+
+		c := wired(t, slug)
+		for _, tt := range []struct{ gateKey, want string }{
+			{"darn-write", scopedCall("darn-write", "./tools/...") + " --stop-on-fail"},
+			{"code-burler-fix", scopedCall("code-burler-fix", "./tools/...")},
+			{"finalize", scopedCall("finalize", "./tools/...")},
+		} {
+			if command, scoped, err := c.env.VerifyTreeScope(tt.gateKey); err != nil || !scoped || command != tt.want {
+				t.Errorf("wired VerifyTreeScope(%s) = %q, %v, %v; want %q, true, nil", tt.gateKey, command, scoped, err, tt.want)
+			}
+		}
 	}) {
 		return
 	}

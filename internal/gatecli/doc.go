@@ -9,11 +9,16 @@
 //
 // # Verb
 //
-// The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--main-packages] [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]`.
+// The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--main-packages] [--base <rev>] [--all] [--guards] [--stop-on-fail] [--wait] [<targets>...] [-- <args>]`.
 // It runs the tiers the hub declares in gate.yaml in ascending tier number.
 // It then runs the vet step and the guard step below when they are planned.
 // A run that fails does not stop the call: every later tier, vet and guard run still runs.
 // A failure the change under test did not cause, such as one present at the base, therefore hides no later check.
+// `--stop-on-fail` ends the call at its first failed run instead, a tier the build blocked included.
+// No later tier, vet or guard run starts, and a stderr line names the failed run and every run it skipped.
+// A run that crashed its test runner in its run and its rerun judged no code, so it stops nothing.
+// The key's lint and report steps still run, and the failure report and closing line follow as for any failed call.
+// Darn-Write's verify gate adds the flag, so its fixer hears of a failed tier before a slower tier runs.
 // When a run failed, the verb closes with one stderr line naming each failed run.
 // The line follows the failure report the Failure report section describes.
 // It names a vet run as `vet tierN`, a guard run as `guard tierN` and a lint step as `lint <name>`.

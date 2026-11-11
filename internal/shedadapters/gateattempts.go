@@ -26,6 +26,7 @@ const gateFindingsReasonLimit = 400
 // gateFailedReason is the one-line Stuck reason for a gate that did not pass.
 // The gated producers share it so the wording never diverges.
 // A terminal entry's own explanation (GateOutcome.Reason) replaces the generic text and writes no file.
+// A run that ended with re-prompts left says why, so a gate that failed its first check never reads as a spent budget.
 // With a non-empty findingsPath it keeps gate.Findings there, overwriting an earlier file, and names that file;
 // a failed write is logged and the reason carries the findings text, cut to one line, in place of the path.
 // With an empty findingsPath the reason names gate.FindingsPath.
@@ -34,7 +35,7 @@ func gateFailedReason(gate *shuttleengine.GateOutcome, findingsPath string) stri
 		return gate.Reason
 	}
 	if findingsPath == "" {
-		return fmt.Sprintf("gate did not pass after %d attempts; findings: %s", gate.Attempts, gate.FindingsPath)
+		return fmt.Sprintf("%s; findings: %s", gateFailedLead(gate), gate.FindingsPath)
 	}
 	err := os.MkdirAll(filepath.Dir(findingsPath), 0o755)
 	if err == nil {
@@ -48,7 +49,20 @@ func gateFailedReason(gate *shuttleengine.GateOutcome, findingsPath string) stri
 		}
 		return fmt.Sprintf("findings could not be kept at %s: %v; findings: %s", findingsPath, err, text)
 	}
-	return fmt.Sprintf("gate did not pass after %d attempts; findings: %s", gate.Attempts, findingsPath)
+	return fmt.Sprintf("%s; findings: %s", gateFailedLead(gate), findingsPath)
+}
+
+// gateFailedLead opens the reason of a gate that did not pass with no terminal entry's explanation.
+// It counts the re-prompts sent, and when the run ended with re-prompts left it says why.
+func gateFailedLead(gate *shuttleengine.GateOutcome) string {
+	switch {
+	case gate.EndedEarly == "":
+		return fmt.Sprintf("gate did not pass after %d attempts", gate.Attempts)
+	case gate.Attempts == 0:
+		return fmt.Sprintf("gate failed its first check and the session was never re-prompted, since %s", gate.EndedEarly)
+	default:
+		return fmt.Sprintf("gate did not pass after %d attempts and the run ended with re-prompts left, since %s", gate.Attempts, gate.EndedEarly)
+	}
 }
 
 // clearGateFindings removes the gate findings file at path, so a call whose gate passed leaves none behind.

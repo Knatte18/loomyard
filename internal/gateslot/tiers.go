@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
 // Tier is one test tier the hub declares in gate.yaml: its command, bounds and how its output is counted.
@@ -395,6 +396,61 @@ func (c Config) AgentGateCallWithMainPackages(key string, cards ...string) (stri
 		return "", err
 	}
 	return call + " --" + MainPackagesFlag, nil
+}
+
+// StopOnFailFlag is the `lym gate test` flag, without its dashes, that ends a call at its first failed run.
+const StopOnFailFlag = "stop-on-fail"
+
+// StopOnFailCall returns call, a `lym gate test` call that holds no `--`, with StopOnFailFlag added last.
+func StopOnFailCall(call string) string {
+	return call + " --" + StopOnFailFlag
+}
+
+// FailedTestsCall renders the command that runs failed alone, quoted for the shell of goos.
+// It holds one `lym gate test --wait` call per tier of failed, in ascending tier order, joined by `&&`,
+// so a tier whose tests fail again stops the command before the next tier.
+// Each call carries StopOnFailFlag, `--tier` and the tier's packages as explicit targets.
+// After `--` it carries a `-run` pattern that matches exactly the tier's test names.
+// A name failed in one package of a tier also runs in the tier's other listed packages.
+// It refuses an empty failed, and a package or pattern the shell of goos cannot quote.
+func FailedTestsCall(goos string, failed []FailedTest) (string, error) {
+	if len(failed) == 0 {
+		return "", fmt.Errorf("gateslot: no failed test to run")
+	}
+	packages, tests := map[int][]string{}, map[int][]string{}
+	for _, test := range failed {
+		packages[test.Tier] = append(packages[test.Tier], test.Package)
+		tests[test.Tier] = append(tests[test.Tier], test.Test)
+	}
+	tiers := make([]int, 0, len(packages))
+	for tier := range packages {
+		tiers = append(tiers, tier)
+	}
+	slices.Sort(tiers)
+	calls := make([]string, 0, len(tiers))
+	for _, tier := range tiers {
+		words := []string{"lym", "gate", "test", "--wait", "--" + StopOnFailFlag, "--tier", strconv.Itoa(tier)}
+		for _, pkg := range uniqueSorted(packages[tier]) {
+			quoted, err := verifyrun.QuoteArg(goos, pkg)
+			if err != nil {
+				return "", fmt.Errorf("gateslot: quote the package %q: %w", pkg, err)
+			}
+			words = append(words, quoted)
+		}
+		pattern, err := verifyrun.QuoteArg(goos, "^("+strings.Join(uniqueSorted(tests[tier]), "|")+")$")
+		if err != nil {
+			return "", fmt.Errorf("gateslot: quote the -run pattern of %s: %w", tierKey(tier), err)
+		}
+		calls = append(calls, strings.Join(append(words, "--", "-run", pattern), " "))
+	}
+	return strings.Join(calls, " && "), nil
+}
+
+// uniqueSorted returns values sorted, with each value once.
+func uniqueSorted(values []string) []string {
+	sorted := slices.Clone(values)
+	slices.Sort(sorted)
+	return slices.Compact(sorted)
 }
 
 // renderGateCall renders the gate call for key over cards, with `--wait` when wait is set.

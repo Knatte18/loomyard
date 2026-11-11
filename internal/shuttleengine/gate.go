@@ -174,6 +174,11 @@ type GateOutcome struct {
 	// It rides the outcome because finalize deletes the run directory and the findings file with it,
 	// so a terminal entry's explanation reaches the producer only here.
 	Reason string
+	// EndedEarly says why the run ended while its failing entry still had re-prompts left, and is empty otherwise:
+	// on a pass, on a terminal failure and on a failure whose entry spent its budget.
+	// The cause is a re-prompt that could not be sent, or a pane that showed no input box past the bound.
+	// It is also an entry whose wait ran out, or a session that ended or a deadline that passed before the re-prompt.
+	EndedEarly string
 }
 
 func (run *Run) endReworkSpans(at time.Time) {

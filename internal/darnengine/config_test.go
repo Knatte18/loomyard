@@ -34,7 +34,7 @@ func seedDarnConfig(t *testing.T, baseDir, contents string) {
 // templateConfig returns the Config the embedded template loads as, changed by mutate.
 func templateConfig(mutate func(*Config)) Config {
 	cfg := Config{
-		Writer: "opus[medium]", WriterTimeoutMin: 180, VerifyAttempts: 3, GateFixer: "sonnet[medium]",
+		Writer: "opus[medium]", WriterTimeoutMin: 180, VerifyAttempts: 3, VerifyBudgetMin: 30, GateFixer: "sonnet[medium]",
 		TreeScope: map[string]string{},
 	}
 	mutate(&cfg)

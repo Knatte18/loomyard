@@ -107,6 +107,9 @@ type Env struct {
 	// VerifyHold is the told pause hold of the worktree's verify sites, read by the gate resolver's "verify" gate.
 	// Nil holds nothing.
 	VerifyHold *verifytree.PauseHold
+	// VerifyBudget is the told time budget of the "verify" gate; its zero value turns the budget off.
+	// A darn run tells darn.yaml's verify_budget_min and a notice to the run's parent.
+	VerifyBudget loomshed.VerifyBudget
 	// GateFixer is the told wrap that hands a row's gate failure to a cold fixer; nil leaves every gate as written.
 	// The Darn-Write, Plan-Write and Discussion-Write entries read it for a gate with a "fixer" key.
 	// It receives the row's complete gate spec and returns the spec the row runs.

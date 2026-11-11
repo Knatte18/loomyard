@@ -11,15 +11,18 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -216,6 +219,10 @@ func (c *loomCLI) renameRetiredRows(renames map[string]string) error {
 // The start, run, step and resume verbs therefore refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key gets the editor way forward instead of the hub reconcile one.
 // The reason is that `--set` cannot remove a key the hub file holds.
+// The Darn-Write key's told and tree-scoped commands carry `--stop-on-fail`.
+// Its verify therefore stops at its first failed tier.
+// Every other key keeps its whole call, the landing call included.
+// The verify budget is darn.yaml's verify_budget_min, and its notice goes to the run's parent orch.
 func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")
@@ -228,10 +235,34 @@ func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 
 	// Each gate row's told command is the call of its own gate key;
 	// the tree-scoped command reaches the gate through `VerifyTreeScope`, never through this source.
-	c.env.VerifyCommand = gateCallSource(dirs)
+	call := gateCallSource(dirs)
+	c.env.VerifyCommand = func(key string) (string, error) {
+		command, err := call(key)
+		if err != nil {
+			return "", err
+		}
+		if key != darnWriteGateKey {
+			return command, nil
+		}
+		return gateslot.StopOnFailCall(command), nil
+	}
 	c.env.VerifyMergeBase = taskMergeBase(location)
-	c.env.VerifyTreeScope = darnTreeScope(location)
+	scope := darnTreeScope(location)
+	c.env.VerifyTreeScope = func(key string) (string, bool, error) {
+		command, scoped, err := scope(key)
+		if err != nil || command == "" || key != darnWriteGateKey {
+			return command, scoped, err
+		}
+		return gateslot.StopOnFailCall(command), scoped, nil
+	}
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
+	c.env.VerifyBudget = loomshed.VerifyBudget{
+		Limit: time.Duration(cfg.VerifyBudgetMin) * time.Minute,
+		Notify: func(line string) error {
+			_, err := orchcli.NotifyParent(location, loomProgram, line)
+			return err
+		},
+	}
 
 	return nil
 }

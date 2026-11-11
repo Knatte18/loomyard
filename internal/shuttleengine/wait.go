@@ -405,6 +405,7 @@ func (run *Run) Wait() (Result, error) {
 				run.lastGateEvalAt = run.clock.Now()
 				if name, expired := run.probeExpiry(); expired {
 					logger.Info("shuttle: gate: entry wait expired off the boundary, finalizing", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", name)
+					run.gateEndCause = fmt.Sprintf("the %s entry's wait ran out", name)
 					run.gateVerdict = nil
 					return run.finalize(OutcomeDone)
 				}
@@ -607,6 +608,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 			}
 			if run.noBoxReprompts >= maxNoInputBoxReprompts {
 				logger.Warn("shuttle: gate: re-prompt held by a pane with no input box past the bound, ending the loop with the attempts spent so far", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[failed].Name, "holds", run.noBoxReprompts, "error", serr)
+				run.gateEndCause = fmt.Sprintf("its pane showed no input box through %d re-prompt sends", run.noBoxReprompts)
 				result, ferr := run.finalize(OutcomeDone)
 				return result, true, ferr
 			}
@@ -625,6 +627,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 			return Result{}, false, nil
 		}
 		logger.Warn("shuttle: gate: re-prompt send failed, ending the loop with the attempts spent so far", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "error", serr)
+		run.gateEndCause = fmt.Sprintf("its re-prompt could not be sent: %v", serr)
 		result, ferr := run.finalize(OutcomeDone)
 		return result, true, ferr
 	}
@@ -1965,6 +1968,7 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		if gateOutcome != nil {
 			run.closeGateSpans(result.EndedAt)
 			gateOutcome = run.withGateSpans(gateOutcome)
+			gateOutcome.EndedEarly = run.gateEndedEarly(gateOutcome)
 		}
 		result.Gate = gateOutcome
 	}
@@ -2046,6 +2050,20 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 
 // diedCaptureFileName names the run-directory file that holds an ended run's last pane capture.
 const diedCaptureFileName = "died-capture.txt"
+
+// gateEndedEarly returns why the run ends while outcome's failing entry still has re-prompts left.
+// It returns "" on a pass, a terminal failure and a failure whose entry spent its budget.
+// A finalize that no boundary step gave a cause ends on the session's end or the run's deadline.
+func (run *Run) gateEndedEarly(outcome *GateOutcome) string {
+	failed := run.gateFailedAt
+	if outcome.Passed || failed < 0 || run.gateTerminal || run.gateFails[failed] >= run.gate[failed].Attempts {
+		return ""
+	}
+	if run.gateEndCause != "" {
+		return run.gateEndCause
+	}
+	return "the session ended, or the run reached its deadline, before the writer was re-prompted"
+}
 
 // finalizeAndRemoveDiedWindow finalizes the run with outcome, then ends the window of a died run's own-window strand.
 func (run *Run) finalizeAndRemoveDiedWindow(outcome Outcome) (Result, error) {

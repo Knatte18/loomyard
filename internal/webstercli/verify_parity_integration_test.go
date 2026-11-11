@@ -95,7 +95,7 @@ func TestGateParity_VerifyGate(t *testing.T) {
 			if got, err := finalCall(); err != nil || got != "lym gate test --wait --gate webster" {
 				t.Fatalf("webster verify call = (%q, %v); want (%q, nil)", got, err, "lym gate test --wait --gate webster")
 			}
-			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", finalCall, nil, nil, nil)())
+			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", finalCall, nil, nil, nil, loomshed.VerifyBudget{})())
 
 			websterFx := prepare()
 			wgeom := websterFx.CLI.geom

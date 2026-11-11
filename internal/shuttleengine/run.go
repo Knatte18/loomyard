@@ -456,6 +456,9 @@ type Run struct {
 	unsentReprompt bool
 	// noBoxReprompts counts consecutive re-prompts held by a pane with no input box; any other held send clears it.
 	noBoxReprompts int
+	// gateEndCause is why the loop finalized while the failing entry still had re-prompts left, empty when it did not.
+	// A finalize that no boundary step gave a cause reads as the session's end or the run's deadline.
+	gateEndCause string
 	// lastGateEvalAt is the run clock's time of the last boundary gate evaluation, zero before the first.
 	lastGateEvalAt time.Time
 

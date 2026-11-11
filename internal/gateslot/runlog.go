@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -263,6 +264,90 @@ func FindRunnerCrash(log string) (runs string, ok bool) {
 // FailedRunsPrefix opens the stderr line that a gate call with a failed run closes with, naming each failed run.
 // A reader of the call's output finds the failed runs by it.
 const FailedRunsPrefix = "gate test: failed runs: "
+
+// FailureReportHeader opens the failure report a failing `lym gate test` call prints before its closing line.
+const FailureReportHeader = "gate test: failure report, every failure of this call:"
+
+// failureReportEnd opens each line the gate prints after the failure report's runs, such as the closing line.
+const failureReportEnd = "gate test: "
+
+// FailedTest is one failed test a failure report names.
+type FailedTest struct {
+	// Tier is the number of the tier or guard run that failed the test.
+	Tier int
+	// Package is the test's import path.
+	Package string
+	// Test is the top-level test, so a failed subtest names the test that holds it.
+	Test string
+}
+
+// FailedTests returns the failed tests the first failure report in log names, each once, in report order.
+// ok is false unless every failure of the report is a named test of a tier or guard run.
+// So a build, vet or lint step, a run that names no failed test and a failure outside any test give false.
+// So do a cause line such as a timeout, output no test event carried, a cut report and a log with no report.
+func FailedTests(log string) (failed []FailedTest, ok bool) {
+	lines := strings.Split(strings.ReplaceAll(log, "\r\n", "\n"), "\n")
+	start := slices.Index(lines, FailureReportHeader)
+	if start < 0 {
+		return nil, false
+	}
+	tier, named := -1, 0
+	for _, line := range lines[start+1:] {
+		if line == "" || strings.HasPrefix(line, failureReportEnd) {
+			break
+		}
+		switch {
+		case strings.HasPrefix(line, "    "):
+			// A failure's own output.
+		case strings.HasPrefix(line, "  "):
+			test, isTest := reportTestLine(line)
+			if !isTest || tier < 0 {
+				return nil, false
+			}
+			test.Tier = tier
+			named++
+			if !slices.Contains(failed, test) {
+				failed = append(failed, test)
+			}
+		default:
+			number, isRun := reportRunTier(line)
+			if !isRun || (tier >= 0 && named == 0) {
+				return nil, false
+			}
+			tier, named = number, 0
+		}
+	}
+	if named == 0 {
+		return nil, false
+	}
+	return failed, true
+}
+
+// reportRunTier returns the tier of a failure report's run header, such as `tier1 (exit 1), log <path>:`.
+// A guard run's header names its tier too; any other run, such as a build, vet or lint step, names none.
+func reportRunTier(line string) (int, bool) {
+	label, _, found := strings.Cut(line, " (")
+	digits, isTier := strings.CutPrefix(strings.TrimPrefix(label, "guard "), "tier")
+	if !found || !isTier {
+		return 0, false
+	}
+	number, err := strconv.Atoi(digits)
+	return number, err == nil && number >= 0
+}
+
+// reportTestLine returns the failed test a failure report's `  <package> <test>:` line names.
+// Any other line under a run, such as a failure outside any test or a cause, names none.
+func reportTestLine(line string) (FailedTest, bool) {
+	fields := strings.Fields(line)
+	if len(fields) != 2 || !strings.HasSuffix(fields[1], ":") {
+		return FailedTest{}, false
+	}
+	top, _, _ := strings.Cut(strings.TrimSuffix(fields[1], ":"), "/")
+	if !strings.HasPrefix(top, "Test") {
+		return FailedTest{}, false
+	}
+	return FailedTest{Package: fields[0], Test: top}, true
+}
 
 // TierSummaryLine renders the one stderr line the gate prints after each tier run.
 // A carried tier is marked with `carried` after its scope form.

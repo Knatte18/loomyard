@@ -25,7 +25,7 @@ import (
 
 const (
 	// failureReportHeader opens the failure report.
-	failureReportHeader = "gate test: failure report, every failure of this call:"
+	failureReportHeader = gateslot.FailureReportHeader
 	// failureReportLines caps the lines below the header; the closing line of a cut report says where the rest is.
 	failureReportLines = 80
 	// failureReportLineBytes caps one report line so a long panic or diff line cannot crowd out later failures.

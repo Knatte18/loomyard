@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
@@ -35,6 +36,9 @@ import (
 // wantDarnLandingCall is the landing call the two-tier gate config renders for the `finalize` key.
 const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 
+// wantDarnWriteCall is the call of the `darn-write` key, which alone carries `--stop-on-fail`.
+const wantDarnWriteCall = "lym gate test --wait --gate darn-write --stop-on-fail"
+
 //lym:seam internal/agentconfig#Config
 //lym:seam internal/battenshed#InnerRunDeps
 //lym:seam internal/battenshed#LandDeps
@@ -56,6 +60,7 @@ const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
+//lym:seam internal/loomshed#VerifyBudget
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
@@ -80,7 +85,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 				t.Fatalf("Remove(tapestry.yaml in %q) = %v; want nil", dir, err)
 			}
 		}
-		seedDarnHubConfig(t, loc.HubPath, "5")
+		seedDarnHubConfig(t, loc.HubPath, "5", "verify_budget_min: 30", "verify_budget_min: 45")
 		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
 		driftConfig := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lym", "config", "drift.yaml")
 		if err := os.WriteFile(driftConfig, []byte(driftengine.ConfigTemplate()), 0o644); err != nil {
@@ -172,6 +177,14 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if command, err := c.env.VerifyCommand("finalize"); err != nil || command != wantDarnLandingCall {
 			t.Errorf("c.env.VerifyCommand(finalize) = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
+		}
+		for key, want := range map[string]string{"darn-write": wantDarnWriteCall, "code-burler-fix": "lym gate test --wait --gate code-burler-fix"} {
+			if command, err := c.env.VerifyCommand(key); err != nil || command != want {
+				t.Errorf("c.env.VerifyCommand(%s) = %q, %v; want %q, nil", key, command, err, want)
+			}
+		}
+		if budget := c.env.VerifyBudget; budget.Limit != 45*time.Minute || budget.Notify == nil {
+			t.Errorf("c.env.VerifyBudget = limit %v, Notify nil %v; want darn.yaml's 45 minutes and a Notify", budget.Limit, budget.Notify == nil)
 		}
 	})
 

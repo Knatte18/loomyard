@@ -43,6 +43,7 @@ import (
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
+//lym:seam internal/loomshed#VerifyBudget
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
@@ -117,6 +118,7 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
+//lym:seam internal/loomshed#VerifyBudget
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
@@ -164,6 +166,7 @@ func TestNilSeams_ReportsExactPaths(t *testing.T) {
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
+//lym:seam internal/loomshed#VerifyBudget
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
@@ -184,6 +187,7 @@ func TestNilSeams_SkipsNilLegalPaths(t *testing.T) {
 }
 
 //lym:seam internal/loomshed#SamplerDeps
+//lym:seam internal/loomshed#VerifyBudget
 //lym:seam internal/shedrecipe#Env
 //lym:seam internal/shedrecipe#RaddleWriteEnv
 func TestFullEnv_PathFieldsAbsoluteUnderOneRoot(t *testing.T) {

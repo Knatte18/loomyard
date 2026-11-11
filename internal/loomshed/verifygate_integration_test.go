@@ -51,7 +51,7 @@ func TestVerifyGate_Scenario(t *testing.T) {
 	}
 	runGate := func(t *testing.T) (passed bool, findings string) {
 		t.Helper()
-		got, err := NewVerifyGate(worktree, verifyDir, "Webster-Burler gate", func() (string, error) { return told, nil }, nil, nil, nil)()
+		got, err := NewVerifyGate(worktree, verifyDir, "Webster-Burler gate", func() (string, error) { return told, nil }, nil, nil, nil, VerifyBudget{})()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -182,7 +182,7 @@ func (f roundGateFixture) commitFiles(t *testing.T, files map[string]string) str
 // runGate runs the round form of the gate once, told the fixture's command and the given merge base reader, which may be nil.
 func (f roundGateFixture) runGate(t *testing.T, mergeBase func() (string, error)) (passed bool, findings string) {
 	t.Helper()
-	got, err := NewVerifyGate(f.worktree, f.verifyDir, "Code-Burler-Fix gate", func() (string, error) { return f.command, nil }, mergeBase, nil, nil)()
+	got, err := NewVerifyGate(f.worktree, f.verifyDir, "Code-Burler-Fix gate", func() (string, error) { return f.command, nil }, mergeBase, nil, nil, VerifyBudget{})()
 	if err != nil {
 		t.Fatalf("gate() error = %v; want nil", err)
 	}
@@ -191,7 +191,7 @@ func (f roundGateFixture) runGate(t *testing.T, mergeBase func() (string, error)
 
 // diffGate runs the darn form of the gate once, told the given command source, merge base reader and tree scope reader.
 func (f roundGateFixture) diffGate(command, mergeBase func() (string, error), treeScope func() (string, bool, error)) (shuttleengine.GateResult, error) {
-	return NewVerifyGate(f.worktree, f.verifyDir, "Darn-Write gate", command, mergeBase, treeScope, nil)()
+	return NewVerifyGate(f.worktree, f.verifyDir, "Darn-Write gate", command, mergeBase, treeScope, nil, VerifyBudget{})()
 }
 
 // TestVerifyGate_RoundScenario drives NewVerifyGate over a repo holding a small Go module and its gate.yaml, through the told command, the lint and the refusals.
@@ -364,7 +364,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 			{"TreeScopeError", toldCommand, baseOf(firstPass.Commit), func() (string, bool, error) { return "", false, errors.New("tree scope unreadable") }, "tree scope unreadable"},
 		}
 		for _, tt := range tests {
-			got, err := NewVerifyGate(f.worktree, f.verifyDir, "Darn-Write gate", tt.command, tt.mergeBase, tt.treeScope, nil)()
+			got, err := NewVerifyGate(f.worktree, f.verifyDir, "Darn-Write gate", tt.command, tt.mergeBase, tt.treeScope, nil, VerifyBudget{})()
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("%s: gate() error = %v; want it to contain %q", tt.name, err, tt.want)
 			}

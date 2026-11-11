@@ -167,7 +167,7 @@ func planContextOf(env Env) loomshed.PlanContext {
 // resolvePlainGateClosure resolves the validator names of the gate vocabulary.
 // The "parts" gate requires the absolute env.AnchorPath and env.DecisionRecordPath and a non-nil env.Setting.
 // It reads its cap from the tapestry.parts_max setting.
-// The "verify" gate is told env.VerifyHold, which holds its verify under a pause.
+// The "verify" gate is told env.VerifyHold, which holds its verify under a pause, and env.VerifyBudget.
 func resolvePlainGateClosure(entry, row, gateKey string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {
 	case "clean":
@@ -273,7 +273,7 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		if env.VerifyTreeScope != nil {
 			treeScope = func() (string, bool, error) { return env.VerifyTreeScope(gateKey) }
 		}
-		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", command, env.VerifyMergeBase, treeScope, env.VerifyHold), nil
+		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", command, env.VerifyMergeBase, treeScope, env.VerifyHold, env.VerifyBudget), nil
 	case "drift":
 		d := env.Drift
 		err := requireDriftSeams(entry, driftSeams{

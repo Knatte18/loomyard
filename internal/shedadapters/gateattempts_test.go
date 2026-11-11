@@ -42,6 +42,18 @@ func TestGateFailedReason_NamesAttemptsAndFindingsPath(t *testing.T) {
 			wantReason: "gate did not pass after 3 attempts; findings: /run/gate-findings.md",
 		},
 		{
+			name:       "a gate that ended before any re-prompt says why instead of counting zero attempts",
+			gate:       &shuttleengine.GateOutcome{FindingsPath: "/run/gate-findings.md", EndedEarly: "its re-prompt could not be sent: pane gone"},
+			wantReason: "gate failed its first check and the session was never re-prompted, since its re-prompt could not be sent: pane gone; findings: /run/gate-findings.md",
+		},
+		{
+			name:       "a gate that ended with re-prompts left counts them and says why",
+			gate:       &shuttleengine.GateOutcome{Attempts: 1, Findings: "kept", EndedEarly: "the session ended"},
+			path:       func(dir string) string { return filepath.Join(dir, "row.md") },
+			wantReason: "gate did not pass after 1 attempts and the run ended with re-prompts left, since the session ended; findings: {path}",
+			wantFile:   "kept",
+		},
+		{
 			name:       "told path receives the findings and is named",
 			gate:       &shuttleengine.GateOutcome{Attempts: 3, FindingsPath: "/run/gate-findings.md", Findings: "first findings"},
 			path:       func(dir string) string { return filepath.Join(dir, "gate-findings", "row.md") },

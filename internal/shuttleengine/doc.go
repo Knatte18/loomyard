@@ -710,6 +710,9 @@
 // One held by a pane showing no input box maxNoInputBoxReprompts times in a row ends the loop.
 // It ends with the attempts spent so far.
 // So a picker shuttle cannot dismiss ends the wait instead of holding the run until its deadline.
+// A run that finalizes while its failing entry still has re-prompts left says why on GateOutcome.EndedEarly:
+// a re-prompt that could not be sent, a pane with no input box past the bound, an entry's wait that ran out,
+// or a session that ended or a deadline that passed before a re-prompt.
 // A pending answer holds the run at a turn boundary without re-prompting or counting a failure:
 // the wait loop sends the entry's carried text once and keeps polling;
 // it re-evaluates with no new arrival while the writer is idle at most once per gateRecheckEvery.

@@ -190,6 +190,9 @@
 // Its `--wait` form is for a call Go runs.
 // Config.AgentGateCall renders the same call without `--wait`, the form for a call an agent runs.
 // Config.AgentGateCallWithMainPackages renders the agent call with `--main-packages` last.
+// StopOnFailCall adds `--stop-on-fail` to a call, which ends it at its first failed run.
+// FailedTestsCall renders the command that runs a failure report's failed tests alone:
+// one `--wait` call per tier, joined by `&&`, each over the tier's packages with a `-run` pattern of its test names.
 // An agent strand's capped front answers it with `done: false` and exit 75 when its keep-warm cap passes.
 // MigrateConfig prunes the retired `gates.publish` list and `guard_tier` key from a gate.yaml document.
 // It also migrates the retired lists, so reconcile rewrites the hub file:
@@ -243,6 +246,9 @@
 // RunnerCrashLine renders the line a gate call closes with when every failed run crashed its test runner.
 // That covers the run and its one rerun.
 // FindRunnerCrash finds the line and returns the runs it names, so a site tells a runtime's crash from a failing test.
+// FailureReportHeader opens the failure report a failing call prints.
+// FailedTests reads the report's failed tests, each with the tier of the run that failed it.
+// It reports false unless every failure of the report is a named test of a tier or guard run.
 //
 // # Run log
 //

@@ -41,7 +41,7 @@ func TestVerifyGate_TerminalOnlyForARunnerCrash(t *testing.T) {
 			}
 			command := "cat '" + logSource + "'; exit " + tt.exit
 
-			got, err := NewVerifyGate(worktree, verifyDir, "Webster-Burler gate", func() (string, error) { return command, nil }, nil, nil, nil)()
+			got, err := NewVerifyGate(worktree, verifyDir, "Webster-Burler gate", func() (string, error) { return command, nil }, nil, nil, nil, VerifyBudget{})()
 
 			if err != nil {
 				t.Fatalf("gate() error = %v; want nil", err)

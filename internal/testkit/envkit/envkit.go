@@ -58,6 +58,7 @@ var nilLegal = map[string]bool{
 	"ReviewBase":                       true,
 	"RedundancyReport":                 true,
 	"VerifyTreeScope":                  true,
+	"VerifyBudget.Notify":              true,
 	"GateFixer":                        true,
 	"WebsterRecord":                    true,
 	"PreflightBatcher":                 true,

@@ -1720,6 +1720,69 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
+	t.Run("--stop-on-fail ends the call at the first failing tier and names the tier it skipped", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["command"] = "exit 9"
+		}))
+		defer writeConfig(t, gateConfig)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--stop-on-fail", "--tier", "0", "--tier", "6", "./pkg"}, env: []string{helperExitEnv + "=7"}})
+		if code := g.wait(t); code != 7 {
+			t.Errorf("exit code = %d, stdout %q; want tier0's 7", code, g.stdout.String())
+		}
+		for _, want := range []string{
+			"gate test: --stop-on-fail ended the call after tier0 failed, so tier6 did not run\n",
+			"gate test: failed runs: tier0 (exit 7); the exit code is tier0's\n",
+		} {
+			if !strings.Contains(g.stdout.String(), want) {
+				t.Errorf("stdout = %q; want the line %q", g.stdout.String(), want)
+			}
+		}
+		if strings.Contains(g.stdout.String(), "gate test: tier6 ") {
+			t.Errorf("stdout = %q; want no tier6 summary line, since tier6 never ran", g.stdout.String())
+		}
+		requireFree(t)
+	})
+
+	t.Run("--stop-on-fail ends the call at a tier the build blocked and names the build as the failure", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			withSharedBuild(buildDir)(cfg)
+			cfg["gates"] = map[string]any{"built": map[string]any{"tiers": []int{0, 2}, "scope": "all"}}
+		}))
+		defer writeConfig(t, gateConfig)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--stop-on-fail", "--gate", "built"}, env: []string{helperBuildExitEnv + "=3"}})
+		g.wait(t)
+		if want := "gate test: --stop-on-fail ended the call after build failed, so tier2 did not run\n"; !strings.Contains(g.stdout.String(), want) {
+			t.Errorf("stdout = %q; want the line %q", g.stdout.String(), want)
+		}
+		if strings.Contains(g.stdout.String(), "gate test: tier2 ") {
+			t.Errorf("stdout = %q; want no tier2 summary line, since tier2 never ran", g.stdout.String())
+		}
+		requireFree(t)
+	})
+
+	t.Run("--stop-on-fail does not stop the call at a tier that crashed its test runner twice", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["tiers"].(map[string]any)["tier7"] = map[string]any{"command": "exit 1", "all_targets": "./pkg", "timeout_min": 1, "counter": "go-json"}
+			cfg["gates"] = map[string]any{"mixed": map[string]any{"tiers": []int{6, 7}, "scope": "all"}}
+		}))
+		defer writeConfig(t, gateConfig)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--stop-on-fail", "--gate", "mixed"}, env: crashEnv})
+		g.wait(t)
+		if strings.Contains(g.stdout.String(), "--stop-on-fail ended the call") {
+			t.Errorf("stdout = %q; want no stop, since a crashed runner judged no code", g.stdout.String())
+		}
+		closing := closingOf(g.stdout.String())
+		for _, want := range []string{"tier6 (exit 134, a runner crash, SIGABRT", "tier7 (exit 1)"} {
+			if !strings.Contains(closing, want) {
+				t.Errorf("closing line = %q; want it to name %q", closing, want)
+			}
+		}
+		requireFree(t)
+	})
+
 	t.Run("a refusal after a failed tier ends the call with the closing line and the refusal's code", func(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)

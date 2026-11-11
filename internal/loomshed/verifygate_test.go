@@ -14,6 +14,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
+// TestRunFailedTestsAlone_UnrenderableCallLeavesTheArrivalToTheFullCommand pins an arrival whose call cannot be rendered.
+// The call cannot be rendered, so nothing runs alone, and the arrival is left to the full command with no error.
+func TestRunFailedTestsAlone_UnrenderableCallLeavesTheArrivalToTheFullCommand(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	site := verifytree.Site{Label: "Darn-Write gate", Attempt: 2}
+	result, stillFailed, decided, err := runFailedTestsAlone(verifytree.Paths{}, site, nil, &budgetClock{})
+
+	if err != nil || decided || stillFailed != nil || result.Passed || result.Findings != "" {
+		t.Errorf("runFailedTestsAlone() = %+v, %v, %v, %v; want an undecided arrival with no findings and no error", result, stillFailed, decided, err)
+	}
+}
+
 // TestVerifyFailureFindings pins how a failed verify result renders: the exit code, the could-not-start cause or the timeout sentence, then the full log path and either the failing tests the log names with the gate's closing line, or the log tail when it names none.
 func TestVerifyFailureFindings(t *testing.T) {
 	tiergate.Require(t, 0)

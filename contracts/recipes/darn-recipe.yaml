@@ -117,6 +117,10 @@ producers:
       # and lints the comments from the merge base on every attempt; gate_key names another key of
       # the hub's gate.yaml. The verify gate's attempts here is a
       # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
+      # The verify call stops at its first failed tier. After a run whose failures are all named
+      # tests, the next attempt runs those tests alone first and the full call once they pass.
+      # darn.yaml's verify_budget_min sends the parent one notice once the gate has run past it,
+      # and the attempts go on.
       # The decision record is no gate: Go checks it once the session returns and halts the run
       # when the writer left it invalid. The clean gate goes first, so a writer that left an
       # uncommitted or untracked file commits or deletes it before its session ends.

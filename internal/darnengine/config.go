@@ -38,6 +38,9 @@ type Config struct {
 	WriterTimeoutMin int `yaml:"writer_timeout_min"`
 	// VerifyAttempts caps the re-prompts of a verify gate, the writer's or a Code-Review fix round's, before the run halts.
 	VerifyAttempts int `yaml:"verify_attempts"`
+	// VerifyBudgetMin is how many minutes a verify gate may run from its first check before the run's parent gets a notice.
+	// 0 turns the notice off.
+	VerifyBudgetMin int `yaml:"verify_budget_min"`
 	// GateFixer is the model-spec of the cold fixer of Darn-Write's verify gate; empty turns the fixer off.
 	GateFixer string `yaml:"gate_fixer"`
 	// TreeScope maps each worktree-relative tree path, without a trailing slash, to its test target at a tree-scoped site.
@@ -62,6 +65,7 @@ func ConfigSpec() configengine.Spec {
 		"writer":             configengine.CategoryNone,
 		"writer_timeout_min": configengine.CategoryNone,
 		"verify_attempts":    configengine.CategoryNone,
+		"verify_budget_min":  configengine.CategoryNone,
 		"gate_fixer":         configengine.CategoryNone,
 		"tree_scope":         configengine.CategoryGuard,
 	}
