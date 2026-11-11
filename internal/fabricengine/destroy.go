@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	pathpkg "path"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
@@ -1365,6 +1367,114 @@ func (t *Topology) RemoveStrayTaskPath(l *lymcwd.Location, slug string) (bool, e
 	}
 	if err := removeWorktreeLeftover(NewMutations(l.HubPath), l.HubPath, target, t.leftover); err != nil {
 		return false, fmt.Errorf("%w: %w; way forward: stop whatever writes into it, such as a build or language server, then delete it", ErrStrayPathKept, err)
+	}
+	return true, nil
+}
+
+// ignoredTaskPathDeletable reports whether the directory at target, a task worktree path, holds only files git ignores.
+// It reads and deletes nothing.
+// A build or language server leaves such a directory when it writes into the path of a pair that was removed.
+// The ownership proof is git's own answer:
+// each file, at the same path in the repository checked out at l, is untracked and ignored there.
+// It reports false when the path is no real directory or is a registered linked worktree.
+// It does the same for a directory holding a `.git` entry at any depth or any file git does not ignore.
+// A step that fails proves nothing, so it reports false and logs the failure.
+func ignoredTaskPathDeletable(l *lymcwd.Location, target string) bool {
+	keep := func(cause error) bool {
+		logger.Warn("fabricengine: the files at a task worktree path could not be judged as git-ignored, so the path is kept", "path", target, "cause", cause)
+		return false
+	}
+	info, err := os.Lstat(target)
+	if err != nil {
+		return keep(err)
+	}
+	if !info.IsDir() {
+		return false
+	}
+	entries, err := List(l.WorktreePath())
+	if err != nil {
+		return keep(fmt.Errorf("list the worktrees: %w", err))
+	}
+	if listsLinkedWorktree(entries, target) {
+		return false
+	}
+	files, holdsRepository, err := filesUnderTaskPath(target)
+	if err != nil {
+		return keep(err)
+	}
+	if holdsRepository {
+		return false
+	}
+	ignored, err := ignoresEveryPath(l.WorktreePath(), files)
+	if err != nil {
+		return keep(err)
+	}
+	return ignored
+}
+
+// removeIgnoredTaskPath deletes the directory at target, a task worktree path, that ignoredTaskPathDeletable approved.
+// The delete is contained by an os.Root under hubPath and retried against a late writer;
+// it is appended to rec as KindPathRemoved.
+// No dirtiness check runs and no force applies, since what stands there is no worktree.
+// A delete that fails after the retries returns an error wrapping ErrStrayPathKept and leaves the path on disk.
+func (t *Topology) removeIgnoredTaskPath(rec *Mutations, hubPath, target string) error {
+	if err := removeWorktreeLeftover(rec, hubPath, target, t.leftover); err != nil {
+		return fmt.Errorf("%w: %w; way forward: stop whatever writes into it, such as a build or language server, then delete it", ErrStrayPathKept, err)
+	}
+	return nil
+}
+
+// filesUnderTaskPath returns the slash-separated paths, relative to root, of every entry under root that is no directory.
+// It also reports whether a `.git` entry stands anywhere under root, and it stops listing at the first one.
+func filesUnderTaskPath(root string) (files []string, holdsRepository bool, err error) {
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Name() == ".git" {
+			holdsRepository = true
+			return filepath.SkipAll
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return relErr
+		}
+		files = append(files, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("list the files under %s: %w", root, err)
+	}
+	return files, holdsRepository, nil
+}
+
+// ignoresEveryPath reports whether git ignores every path in rels.
+// Each path is relative to the root of the repository checked out at worktreeDir.
+// A tracked path is never ignored, and an empty rels is ignored vacuously.
+func ignoresEveryPath(worktreeDir string, rels []string) (bool, error) {
+	if len(rels) == 0 {
+		return true, nil
+	}
+	stdout, err := gitexec.RunStdin([]string{"check-ignore", "--stdin", "-z"}, worktreeDir, strings.Join(rels, "\x00")+"\x00")
+	if err != nil {
+		// check-ignore exits 1 when it ignores none of the paths.
+		var gitErr *gitexec.GitError
+		if errors.As(err, &gitErr) && gitErr.ExitCode == 1 {
+			return false, nil
+		}
+		return false, fmt.Errorf("git check-ignore in %s: %w", worktreeDir, err)
+	}
+	ignored := make(map[string]bool)
+	for _, path := range strings.Split(stdout, "\x00") {
+		ignored[path] = true
+	}
+	for _, rel := range rels {
+		if !ignored[rel] {
+			return false, nil
+		}
 	}
 	return true, nil
 }

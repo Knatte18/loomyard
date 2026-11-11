@@ -50,8 +50,8 @@ func (e siblingDirtyRefusal) Unwrap() error { return ErrPairSiblingDirty }
 var ErrPairNotFound = errors.New("pair not found")
 
 // ErrStrayPathKept is the sentinel an error wraps when a non-worktree directory stays at a pair's task worktree path.
-// Deleting it failed after the pair's removal.
-// The pair itself is gone; the directory blocks the slug's next pair until it is deleted.
+// Deleting it failed, after the pair's removal or when Add met a directory of git-ignored output there.
+// The pair itself is gone, or never made; the directory blocks the slug's next pair until it is deleted.
 var ErrStrayPathKept = errors.New("a directory that is no worktree stays at the pair's task worktree path")
 
 // The steps a Remove call reports in RemoveResult.Steps, a closed set; each is appended only after it changed state.

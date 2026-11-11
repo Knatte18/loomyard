@@ -790,6 +790,7 @@
 // The path must be no registered worktree and hold no `.git` entry.
 // It is for a caller that knows the slug's pair stood there;
 // a failed delete wraps `ErrStrayPathKept`.
+// `Add` returns an error wrapping `ErrStrayPathKept` too when it fails to delete a directory of git-ignored output.
 // `PairWorktreeStands` reports whether a slug's task worktree stands as a registered linked worktree.
 // A caller thus never reads a leftover directory as a pair.
 // `Prune` reports every hub directory named as a pair slug that no registration covers as `Unowned`.
@@ -998,6 +999,10 @@
 // and a rollback leaves the worktree and its branch in place.
 // A records worktree directory that stands without being such a worktree returns `*ErrRecordsWorktreeNotPair`.
 // An existing task worktree path returns `*ErrTaskPathTaken`.
+// One exception: a directory that no worktree registers, holds no `.git` entry and holds only files git ignores.
+// `Add` deletes such a directory, the output a build left at a removed pair's path, and makes the pair there.
+// It deletes it only once its pre-flight refusals have passed.
+// A delete that fails returns an error wrapping `ErrStrayPathKept` and leaves the path on disk.
 // Under `AdoptOnly` the checked-out guard has one more case.
 // It covers a records branch another records worktree holds when the task branch comes from origin.
 // `PruneRegistrations` runs `git worktree prune` in the code and the records repository.
@@ -1316,14 +1321,18 @@
 // deleting a branch on a remote (`git push <remote> --delete`);
 // moving a task branch on a remote (a leased force push);
 // a warp checkout's `ResetHard`; and the board checkout's seed-commit drop.
-// There are two exceptions.
+// There are three exceptions.
 // `removeWorktreeLeftover` keeps containment through `os.Root`.
 // It takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
 // `Topology.RemoveStrayTaskPath` reaches the same delete with no git run before it.
 // Its caller proves ownership.
 // That caller is either the run that created the pair at that path or an operator who asked to remove the slug's pair.
 // It refuses a registered linked worktree and a directory holding a `.git` entry.
-// Neither `force` nor dirtiness applies.
+// `Add` reaches the same delete for a directory at the task worktree path through `removeIgnoredTaskPath`.
+// Its ownership proof is `git check-ignore`, which must ignore every file under the directory;
+// `ignoredTaskPathDeletable` judges it in the pre-flight and deletes nothing.
+// It refuses a registered linked worktree and a directory holding a `.git` entry at any depth.
+// In none of them do `force` or dirtiness apply.
 // `PATTERN-fabric-boundary` holds the rules;
 // this section is the rationale the invariant omits.
 //

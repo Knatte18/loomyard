@@ -70,9 +70,11 @@ func (e *ErrAdoptLocalCheckedOut) Error() string {
 	return fmt.Sprintf("--adopt-local: branch %q is checked out in %s; way forward: run `lym fabric checkout <other branch>` in %s to move it off the branch, then re-run `lym fabric add %s --adopt-local`", e.Branch, e.Path, e.Path, e.slug)
 }
 
-// ErrTaskPathTaken is the refusal to create a pair when the task worktree's directory already exists.
+// ErrTaskPathTaken is the refusal to create a pair when the task worktree's path holds something Add does not delete.
+// That is a registered worktree, a directory holding a `.git` entry or a file git does not ignore, or a non-directory.
+// A directory holding only git-ignored files is deleted by Add, unless the path cannot be judged.
 type ErrTaskPathTaken struct {
-	// Path is the directory that exists.
+	// Path is the path that holds it.
 	Path string
 }
 
@@ -84,7 +86,7 @@ func (e *ErrTaskPathTaken) Error() string {
 	// `lym fabric prune` reports leftovers, so the message names it.
 	// If it is a live pair, a different slug is the answer.
 	return fmt.Sprintf(
-		"worktree directory %q already exists; if it is a live pair, use a different slug; if it is a leftover directory that is not a worktree, which `lym fabric prune` reports, save anything worth keeping from it, delete it and retry",
+		"worktree path %q already exists and fabric does not delete it, since fabric deletes only a directory of git-ignored output; if it is a live pair, use a different slug; if it is a leftover directory that is not a worktree, which `lym fabric prune` reports, save anything worth keeping from it, delete it and retry",
 		e.Path)
 }
 

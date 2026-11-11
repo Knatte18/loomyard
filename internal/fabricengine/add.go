@@ -173,6 +173,10 @@ func SourceDirtyPaths(l *lymcwd.Location) ([]string, error) {
 // Both refusals are *ErrAdoptLocalCheckedOut, which names the worktree and the way forward.
 // A records worktree directory that is not a registered worktree is refused with *ErrRecordsWorktreeNotPair.
 // A task worktree path that already exists is refused with *ErrTaskPathTaken.
+// One exception: a directory that no worktree registers, holds no `.git` entry and holds only files git ignores.
+// Add deletes such a directory, the output a build left at a removed pair's path, and goes on.
+// It deletes it only once its pre-flight refusals have passed, so a refused Add leaves the directory.
+// A delete that fails returns an error wrapping ErrStrayPathKept and leaves the path on disk.
 // With opts.AdoptOnly, Add re-makes a live pair and forks nothing.
 // A weft branch that is not live is refused with *ErrNotLive (Records true).
 // A task branch that is neither local nor on origin is refused with *ErrNotLive too.
@@ -334,8 +338,13 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	target := WorktreePath(l, slug)
+	// A directory of only git-ignored output is judged here and deleted once the pre-flight refusals have passed.
+	deleteIgnoredLeftover := false
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		return AddResult{}, &ErrTaskPathTaken{Path: target}
+		if !ignoredTaskPathDeletable(l, target) {
+			return AddResult{}, &ErrTaskPathTaken{Path: target}
+		}
+		deleteIgnoredLeftover = true
 	}
 
 	stdout, err := gitexec.Run([]string{"remote"}, l.WorktreePath())
@@ -480,6 +489,18 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 			return AddResult{}, fmt.Errorf("fetch warp branch %q from %q: %w", warpBranch, originRemoteName, err)
 		}
 	}
+	if deleteIgnoredLeftover {
+		// The pre-flight can take a network round, so the path is judged again just before the delete:
+		// a file saved there since the first judgement must keep it.
+		if !ignoredTaskPathDeletable(l, target) {
+			return AddResult{}, &ErrTaskPathTaken{Path: target}
+		}
+		if err := t.removeIgnoredTaskPath(rec, l.HubPath, target); err != nil {
+			return AddResult{}, err
+		}
+		logger.Info("fabricengine: deleted a directory of git-ignored output at the task worktree path", "verb", "add", "slug", slug, "path", target)
+	}
+
 	warpTok, branchTok, err := createGitWorktree(rec, l.WorktreePath(), l.HubPath, target, warpBranch, func(worktreePath string) []string {
 		if warpAdopted {
 			return []string{"worktree", "add", worktreePath, warpBranch}
