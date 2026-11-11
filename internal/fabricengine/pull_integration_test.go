@@ -682,7 +682,7 @@ func TestPull_ReflogJudgesUnpushedAndRewinds(t *testing.T) {
 			if !errors.Is(err, fabricengine.ErrWarpRewound) {
 				t.Fatalf("Pull() error = %v; want errors.Is(err, ErrWarpRewound)", err)
 			}
-			wantLine := fabricengine.RewoundWayForwardForTest(pairCode, branch, base, []string{second, first})
+			wantLine := fabricengine.RewoundWayForwardForTest(pairCode, pairCode, branch, base, []string{second, first})
 			if !strings.Contains(err.Error(), wantLine) {
 				t.Errorf("Pull() error = %q; want it to carry the way forward %q", err.Error(), wantLine)
 			}

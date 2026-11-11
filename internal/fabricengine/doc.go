@@ -133,6 +133,8 @@
 // A moving reconcile replaces that state with the result of its replay.
 // The states a move adds, dirty, busy, live and anchor_stopped, and the stops themselves, carry a `WayForward` line.
 // That line is the repair step alone; each caller appends its own re-entry.
+// A fabric verb it names runs in `BranchOutcome.FabricDir`, the anchored directory of the pair's code worktree;
+// a git command runs in the branch's worktree.
 // A weft records branch that is not Bolt and needs a move, hub-wide or run-scoped, first refuses an empty own marker.
 // It then runs `weftAnchorStop` on its tip and origin's head.
 // The fallback anchor is the `NamedWorktree` anchor of its pair or the prime.
@@ -1458,6 +1460,10 @@
 // `Unwrap` returns the push's error,
 // so `errors.Is` against `gitrepo.ErrPushRejected` or `gitrepo.ErrPushAuthRefused` still holds.
 // Its text is the push's error followed by `; way forward: ` and `FailedPushWayForward` of the record.
+// A code or records record carries `FabricDir`, the anchored directory of the pair's code worktree,
+// read from the worktree's recorded anchor when the record is written.
+// Its way forward names `lym fabric push` there, since a fabric verb refuses any other cwd,
+// and names each git command in the branch's worktree.
 // A caller appending a way forward of its own does so only when `HasUnclassifiedFailure` reports a failure without one.
 // The detached push returns nil for a recorded failure;
 // the synchronous pushes return the error.

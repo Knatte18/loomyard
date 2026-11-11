@@ -439,7 +439,7 @@ func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr e
 		return &WeftStopError{
 			Branch:     branch,
 			Paths:      outcome.Conflicts,
-			WayForward: recordsConflictWayForward(f.weftPath, branch, outcome.Conflicts, ahead, fmt.Sprintf("`lym fabric push` in %s", f.warpPath)),
+			WayForward: recordsConflictWayForward(f.weftPath, branch, outcome.Conflicts, ahead, fmt.Sprintf("`lym fabric push` in %s", l.AnchorPath())),
 			Err:        err,
 		}, nil
 	case errors.Is(err, ErrReplayDirty):
@@ -684,7 +684,7 @@ func (f *Fabric) refuseUnsafeRewrite(weftPulled bool, localHEAD, upstreamSHA str
 			if err != nil {
 				return partial("reflog", err)
 			}
-			return fmt.Errorf("%w: %s", ErrWarpRewound, rewoundWayForward(f.warpPath, branch, upstreamSHA, dropped))
+			return fmt.Errorf("%w: %s", ErrWarpRewound, rewoundWayForward(f.warpPath, l.AnchorPath(), branch, upstreamSHA, dropped))
 		}
 	}
 

@@ -326,6 +326,31 @@ func TestFailedPushRecord(t *testing.T) {
 			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/main", Branch: "main", Prime: true, Class: fabricengine.PushFailureNotFastForward},
 			"origin/main holds commits this branch lacks; run `git merge origin/main` in /hub/main, settle any conflict and commit, then run `git push` in /hub/main",
 		},
+		{
+			"AnchoredCodeTransportPushesInTheAnchoredDirectory",
+			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/task", FabricDir: "/hub/task/src/app", Branch: "task", Class: fabricengine.PushFailureTransport},
+			"run `lym fabric push` in /hub/task/src/app to retry the push",
+		},
+		{
+			"AnchoredRecordsAuthPushesInTheAnchoredDirectory",
+			fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/task-weft", CodeWorktree: "/hub/task", FabricDir: "/hub/task/src/app", Branch: "task-weft", Class: fabricengine.PushFailureAuth},
+			"fix this machine's permission to push task-weft on origin, then run `lym fabric push` in /hub/task/src/app",
+		},
+		{
+			"AnchoredCodeNotFastForwardMergesAtTheRootAndPushesInTheAnchoredDirectory",
+			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/task", FabricDir: "/hub/task/src/app", Branch: "task", Class: fabricengine.PushFailureNotFastForward},
+			"origin/task holds commits this branch lacks; run `git merge origin/task` in /hub/task, settle any conflict and commit, then run `lym fabric push` in /hub/task/src/app",
+		},
+		{
+			"AnchoredCodeRewoundResetsAtTheRootAndPushesInTheAnchoredDirectory",
+			fabricengine.FailedPush{
+				Repo: "code", RepoPath: "/hub/task", FabricDir: "/hub/task/src/app", Branch: "task", Class: fabricengine.PushFailureRewound,
+				OriginHead: "abc123", Commits: []string{"def456"},
+			},
+			"origin rewound task to abc123, dropping def456; " +
+				"to accept the rewind, run `git reset --keep abc123` in /hub/task, which drops the local commits past origin's head, then `lym fabric push` in /hub/task/src/app; " +
+				"to restore the dropped commits, run `git push origin task` in /hub/task, a plain fast-forward",
+		},
 	}
 	for _, tt := range wayForwardRows {
 		t.Run("WayForward_"+tt.name, func(t *testing.T) {

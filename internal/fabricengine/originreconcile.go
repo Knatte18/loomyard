@@ -196,7 +196,8 @@ func (s BranchState) Stops() bool {
 // BranchOutcome is the verdict on one judged branch, with what a reader of a stop needs.
 // Repo is the repository side: "code", "records" or "bolt".
 // Worktree is where the branch is checked out;
-// CodeWorktree is the pair's code worktree, where every fabric verb of a records branch runs.
+// CodeWorktree is the root of the pair's code worktree;
+// FabricDir is its anchored directory, where every fabric verb of a code or records branch runs.
 // Paths are the conflicting or dirty paths, and Commits those a rewind dropped or a replay stopped on.
 // BusyLock names the held lock of a busy branch;
 // PushLockHeld is set when it was the push lock, which a parked push holds.
@@ -215,6 +216,7 @@ type BranchOutcome struct {
 	Prime          bool
 	Worktree       string
 	CodeWorktree   string
+	FabricDir      string
 	State          BranchState
 	OriginHead     string
 	Paths          []string
@@ -375,15 +377,15 @@ func (b BranchOutcome) stopWayForward() string {
 	if b.MoveWayForward != "" {
 		return b.MoveWayForward
 	}
-	record := FailedPush{Repo: b.Repo, RepoPath: b.Worktree, CodeWorktree: b.CodeWorktree, Branch: b.Branch, Prime: b.Prime}
+	record := FailedPush{Repo: b.Repo, RepoPath: b.Worktree, CodeWorktree: b.CodeWorktree, FabricDir: b.FabricDir, Branch: b.Branch, Prime: b.Prime}
 	switch b.State {
 	case BranchRewound:
-		return rewoundWayForward(b.Worktree, b.Branch, b.OriginHead, b.Commits)
+		return rewoundWayForward(b.Worktree, record.fabricDir(), b.Branch, b.OriginHead, b.Commits)
 	case BranchRewritten:
-		return fmt.Sprintf("`lym fabric pull` in %s", b.Worktree)
+		return fmt.Sprintf("`lym fabric pull` in %s", record.fabricDir())
 	case BranchDiverged:
 		if b.Repo == failedPushSideCode {
-			return codeDivergedWayForward(b.Worktree, b.Branch, b.Prime)
+			return codeDivergedWayForward(b.Worktree, record.fabricDir(), b.Branch, b.Prime)
 		}
 		return recordsConflictWayForward(b.Worktree, b.Branch, b.Paths, b.Commits, pushStep(record))
 	case BranchGone:
@@ -393,7 +395,7 @@ func (b BranchOutcome) stopWayForward() string {
 		}
 		return fmt.Sprintf("origin no longer has branch %s; run %s to publish it again", b.Branch, pushStep(record))
 	case BranchDirty:
-		return b.dirtyWayForward()
+		return b.dirtyWayForward(record.fabricDir())
 	case BranchBusy:
 		if b.PushLockHeld && b.Slug != "" {
 			return fmt.Sprintf("`lym tender resume %s`", b.Slug)
@@ -427,14 +429,14 @@ func (b BranchOutcome) anchorStopWayForward() string {
 }
 
 // dirtyWayForward names where each uncommitted path of a dirty branch is committed or restored.
-// A records path under the record pathspec is committed by `lym fabric commit` in the pair's code worktree.
-// The records sibling refuses every fabric verb, so that commit runs in the pair's code worktree.
+// A records path under the record pathspec is committed by `lym fabric commit` in fabricDir,
+// the anchored directory of the pair's code worktree, since the records sibling refuses every fabric verb.
 // Any path, including one outside that pathspec, is committed or restored by git in the branch's worktree.
-func (b BranchOutcome) dirtyWayForward() string {
+func (b BranchOutcome) dirtyWayForward(fabricDir string) string {
 	paths := joinOrNone(b.Paths)
 	git := fmt.Sprintf("`git commit` or `git checkout -- <path>` in %s", b.Worktree)
 	if b.Repo == failedPushSideRecords {
-		return fmt.Sprintf("commit the uncommitted paths (%s) with `lym fabric commit` in %s, or any of them with %s", paths, b.CodeWorktree, git)
+		return fmt.Sprintf("commit the uncommitted paths (%s) with `lym fabric commit` in %s, or any of them with %s", paths, fabricDir, git)
 	}
 	return fmt.Sprintf("commit or restore the uncommitted paths (%s) with %s", paths, git)
 }
@@ -647,6 +649,7 @@ type originTarget struct {
 	repoDir      string
 	worktree     string
 	codeWorktree string
+	fabricDir    string
 	slug         string
 	prime        bool
 	tracking     string
@@ -714,11 +717,12 @@ func originTargets(l *lymcwd.Location, scope ReconcileScope) (targets []originTa
 			slug = name
 			pairs = append(pairs, slug)
 		}
-		targets = append(targets, originTarget{side: failedPushSideCode, branch: entry.Branch, worktree: worktree, codeWorktree: worktree, slug: slug, prime: entry.Main})
+		fabricDir := anchoredFabricDir(l.HubPath, worktree)
+		targets = append(targets, originTarget{side: failedPushSideCode, branch: entry.Branch, worktree: worktree, codeWorktree: worktree, fabricDir: fabricDir, slug: slug, prime: entry.Main})
 
 		sibling := RecordsWorktreePath(l, name)
 		if i := slices.IndexFunc(recordsEntries, func(candidate WorktreeEntry) bool { return samePath(candidate.Path, sibling) }); i >= 0 && recordsEntries[i].Branch != "" {
-			targets = append(targets, originTarget{side: failedPushSideRecords, branch: recordsEntries[i].Branch, worktree: sibling, codeWorktree: worktree, slug: slug, prime: entry.Main})
+			targets = append(targets, originTarget{side: failedPushSideRecords, branch: recordsEntries[i].Branch, worktree: sibling, codeWorktree: worktree, fabricDir: fabricDir, slug: slug, prime: entry.Main})
 		}
 	}
 
@@ -888,6 +892,7 @@ func judgeAgainstOrigin(targets []originTarget, warpDir, recordsDir string, judg
 		outcome.Prime = target.prime
 		outcome.Worktree = target.worktree
 		outcome.CodeWorktree = target.codeWorktree
+		outcome.FabricDir = target.fabricDir
 		outcome.WayForward = outcome.stopWayForward()
 		branches = append(branches, outcome)
 	}

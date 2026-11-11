@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -56,7 +57,10 @@ const (
 
 // FailedPush is the record of a push origin refused, one per repository side and branch.
 // Repo is "code", "records" or "bolt", the last being the records repository's board branch.
-// CodeWorktree is set for a records record only: the pair's code worktree, where every fabric verb runs.
+// CodeWorktree is set for a records record only: the root of the pair's code worktree.
+// FabricDir is set for a code or records record: the anchored directory of the pair's code worktree,
+// the one directory a fabric verb accepts as its cwd;
+// a record written without it reads as anchored at the code worktree's root.
 // Prime marks a code record of the hub prime's own branch.
 // Paths, Commits and OriginHead are set where the failure has them, such as a replay stop or a rewind.
 // WayForward is set for the anchor-change class only, which carries its own commands.
@@ -64,6 +68,7 @@ type FailedPush struct {
 	Repo         string           `json:"repo"`
 	RepoPath     string           `json:"repo_path"`
 	CodeWorktree string           `json:"code_worktree,omitempty"`
+	FabricDir    string           `json:"fabric_dir,omitempty"`
 	Branch       string           `json:"branch"`
 	Prime        bool             `json:"prime,omitempty"`
 	Class        PushFailureClass `json:"class"`
@@ -231,19 +236,43 @@ func FailedPushFields(hubPath string) ([]map[string]any, error) {
 	return rows, nil
 }
 
+// anchoredFabricDir returns the anchored directory of the code worktree at codeWorktree, where every fabric verb runs.
+// The anchor is the worktree's own recorded one, read from the hub at hubPath.
+// An anchor that cannot be read is logged and leaves the worktree's root.
+func anchoredFabricDir(hubPath, codeWorktree string) string {
+	l, err := lymcwd.NamedWorktree(hubPath, filepath.Base(codeWorktree))
+	if err != nil {
+		logger.Warn("fabricengine: anchor of the code worktree not read, its root is named instead", "worktree", codeWorktree, "error", err)
+		return codeWorktree
+	}
+	return filepath.Join(codeWorktree, l.AnchorRel)
+}
+
+// fabricDir returns the directory a fabric verb named for the record runs in:
+// FabricDir, or the code worktree's root for a record written without it.
+func (f FailedPush) fabricDir() string {
+	switch {
+	case f.FabricDir != "":
+		return f.FabricDir
+	case f.Repo == failedPushSideRecords:
+		return f.CodeWorktree
+	default:
+		return f.RepoPath
+	}
+}
+
 // pushStep names the push that retries f, with the directory it runs in.
 // A bolt record is pushed by the board sync, since the pair push never reaches Bolt.
 // A prime's code branch is pushed by a plain git push, since the prime's pair push is records-only.
+// Any other record is pushed by `lym fabric push` in the anchored directory of its code worktree.
 func pushStep(f FailedPush) string {
 	switch {
 	case f.Repo == failedPushSideBolt:
 		return "`lym board sync` from the prime worktree"
 	case f.Repo == failedPushSideCode && f.Prime:
 		return fmt.Sprintf("`git push` in %s", f.RepoPath)
-	case f.Repo == failedPushSideRecords:
-		return fmt.Sprintf("`lym fabric push` in %s", f.CodeWorktree)
 	default:
-		return fmt.Sprintf("`lym fabric push` in %s", f.RepoPath)
+		return fmt.Sprintf("`lym fabric push` in %s", f.fabricDir())
 	}
 }
 
@@ -254,11 +283,11 @@ func FailedPushWayForward(f FailedPush) string {
 		return fmt.Sprintf("fix this machine's permission to push %s on origin, then run %s", f.Branch, pushStep(f))
 	case PushFailureNotFastForward:
 		if f.Repo == failedPushSideCode {
-			return codeDivergedWayForward(f.RepoPath, f.Branch, f.Prime)
+			return codeDivergedWayForward(f.RepoPath, f.fabricDir(), f.Branch, f.Prime)
 		}
 		return recordsConflictWayForward(f.RepoPath, f.Branch, f.Paths, f.Commits, pushStep(f))
 	case PushFailureRewound:
-		return rewoundWayForward(f.RepoPath, f.Branch, f.OriginHead, f.Commits)
+		return rewoundWayForward(f.RepoPath, f.fabricDir(), f.Branch, f.OriginHead, f.Commits)
 	case PushFailureAnchorChange:
 		return f.WayForward
 	case PushFailureGone:
@@ -293,9 +322,10 @@ func recordsConflictWayForward(worktree, branch string, paths, commits []string,
 }
 
 // codeDivergedWayForward names the merge that settles a code branch origin moved past.
-// A prime's branch is pushed by a plain git push, since the pair push leaves the prime's code branch unpushed.
-func codeDivergedWayForward(worktree, branch string, prime bool) string {
-	push := fmt.Sprintf("`lym fabric push` in %s", worktree)
+// The merge runs in worktree, and the push that follows in fabricDir, the worktree's anchored directory.
+// A prime's branch is pushed by a plain git push in worktree, since the pair push leaves the prime's code branch unpushed.
+func codeDivergedWayForward(worktree, fabricDir, branch string, prime bool) string {
+	push := fmt.Sprintf("`lym fabric push` in %s", fabricDir)
 	if prime {
 		push = fmt.Sprintf("`git push` in %s", worktree)
 	}
@@ -305,11 +335,12 @@ func codeDivergedWayForward(worktree, branch string, prime bool) string {
 
 // rewoundWayForward names the two ways to settle a task branch origin rewound to originHead.
 // dropped holds the commits the rewind removed from origin.
-func rewoundWayForward(worktree, branch, originHead string, dropped []string) string {
+// The git steps run in worktree, and `lym fabric push` in fabricDir, the worktree's anchored directory.
+func rewoundWayForward(worktree, fabricDir, branch, originHead string, dropped []string) string {
 	return fmt.Sprintf("origin rewound %s to %s, dropping %s; "+
-		"to accept the rewind, run `git reset --keep %s` in %s, which drops the local commits past origin's head, then `lym fabric push` there; "+
+		"to accept the rewind, run `git reset --keep %s` in %s, which drops the local commits past origin's head, then `lym fabric push` in %s; "+
 		"to restore the dropped commits, run `git push origin %s` in %s, a plain fast-forward",
-		branch, originHead, joinOrNone(dropped), originHead, worktree, branch, worktree)
+		branch, originHead, joinOrNone(dropped), originHead, worktree, fabricDir, branch, worktree)
 }
 
 func joinOrNone(items []string) string {

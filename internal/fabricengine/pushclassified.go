@@ -273,8 +273,14 @@ func (j *pushJob) record(class PushFailureClass, cause error, paths, commits []s
 		Commits:    commits,
 		OriginHead: originHead,
 	}
-	if j.side == failedPushSideRecords {
+	switch j.side {
+	case failedPushSideCode:
+		f.FabricDir = anchoredFabricDir(j.hubPath, j.path)
+	case failedPushSideRecords:
 		f.CodeWorktree = pairedCodeWorktree(j.hubPath, j.path)
+		if f.CodeWorktree != "" {
+			f.FabricDir = anchoredFabricDir(j.hubPath, f.CodeWorktree)
+		}
 	}
 	var anchorStop *AnchorStopError
 	if errors.As(cause, &anchorStop) {

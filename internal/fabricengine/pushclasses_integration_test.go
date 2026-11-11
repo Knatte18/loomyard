@@ -33,12 +33,19 @@ const refusedOriginURL = "http://127.0.0.1:1/x"
 // authRefusingHook is a pre-receive hook that declines every push the way GitHub declines one for want of permission.
 const authRefusingHook = "#!/bin/sh\necho 'Permission to hub denied to tester.' >&2\nexit 1\n"
 
-// newFailureFixture builds a hub with the board replay installed and a notifier counting the mails of its own hub.
+// newFailureFixture builds a hub anchored at its root with the board replay installed,
+// and a notifier counting the mails of its own hub.
 // A push reaches the notifier only through the options the notifier builds.
 func newFailureFixture(t *testing.T) (*recordsFixture, *fakePushNotifier) {
 	t.Helper()
+	return newFailureFixtureAt(t, ".")
+}
+
+// newFailureFixtureAt builds the failure fixture over a hub anchored at anchor.
+func newFailureFixtureAt(t *testing.T, anchor string) (*recordsFixture, *fakePushNotifier) {
+	t.Helper()
 	boardkit.InstallReplay(t)
-	f := &recordsFixture{t: t, hub: hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})}
+	f := &recordsFixture{t: t, hub: hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})}
 	return f, &fakePushNotifier{hub: f.hub.Location.HubPath, posted: true}
 }
 
@@ -113,7 +120,13 @@ type pairFixture struct {
 
 func newPairFixture(t *testing.T, slug string) *pairFixture {
 	t.Helper()
-	f, fake := newFailureFixture(t)
+	return newPairFixtureAt(t, slug, ".")
+}
+
+// newPairFixtureAt builds the pair fixture over a hub anchored at anchor.
+func newPairFixtureAt(t *testing.T, slug, anchor string) *pairFixture {
+	t.Helper()
+	f, fake := newFailureFixtureAt(t, anchor)
 	added := hubforge.AddPair(t, f.hub, slug)
 	location, err := lymcwd.ResolveWorktree(f.hub.PairCodeWorktree(slug))
 	if err != nil {
@@ -635,6 +648,42 @@ func TestPushFailureClasses(t *testing.T) {
 				})
 			}
 		})
+	})
+
+	t.Run("APairPushFailingInASubpathAnchoredHubNamesTheAnchoredDirectory", func(t *testing.T) {
+		const anchor = "backend"
+		tests := []struct {
+			name string
+			side string
+			// refused returns the worktree of the side whose push origin refuses.
+			refused func(p *pairFixture) string
+		}{
+			{"Code", "code", func(p *pairFixture) string { return p.warpPath }},
+			{"Records", "records", func(p *pairFixture) string { return p.weftPath }},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				p := newPairFixtureAt(t, "anchoredpair", anchor)
+				refused := tt.refused(p)
+				gitkit.CommitFile(t, refused, "local.txt", "local\n", "local")
+				gitkit.Git(t, refused, "remote", "set-url", "origin", refusedOriginURL)
+
+				_, err := fabricengine.PushAnchored(p.location, p.fake.options(countingBackoff(new(int), nil)), fabricengine.LockWaitUnbounded)
+
+				if err == nil {
+					t.Fatal("PushAnchored() error = nil; want the refused push's failure")
+				}
+				record := requireOneFailedPush(t, p.hub.Location.HubPath, tt.side, fabricengine.PushFailureTransport)
+				anchored := filepath.Join(p.warpPath, anchor)
+				if record.FabricDir != anchored {
+					t.Errorf("record FabricDir = %q; want the pair's anchored directory %q", record.FabricDir, anchored)
+				}
+				want := fmt.Sprintf("way forward: run `lym fabric push` in %s to retry the push", anchored)
+				if len(p.fake.lines) != 1 || !strings.HasSuffix(p.fake.lines[0], want) {
+					t.Errorf("mails = %q; want one ending in %q", p.fake.lines, want)
+				}
+			})
+		}
 	})
 
 	t.Run("APushFailingForNoNamedReasonWritesAnOtherRecordAndMails", func(t *testing.T) {

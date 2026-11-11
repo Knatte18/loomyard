@@ -387,7 +387,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
 
 			outcome := requireState(t, report, "code", row.branch, fabricengine.BranchDiverged)
-			want := fabricengine.CodeDivergedWayForwardForTest(row.worktree, row.branch, row.prime)
+			want := fabricengine.CodeDivergedWayForwardForTest(row.worktree, row.worktree, row.branch, row.prime)
 			if outcome.WayForward != want {
 				t.Errorf("%s WayForward = %q; want %q", row.name, outcome.WayForward, want)
 			}
@@ -431,7 +431,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 					if !slices.Equal(outcome.Commits, []string{rewound.second, rewound.first}) {
 						t.Errorf("scope %+v dropped commits = %v; want %v", scope, outcome.Commits, []string{rewound.second, rewound.first})
 					}
-					want := fabricengine.RewoundWayForwardForTest(rewound.worktree, rewound.branch, rewound.base, []string{rewound.second, rewound.first})
+					want := fabricengine.RewoundWayForwardForTest(rewound.worktree, rewound.worktree, rewound.branch, rewound.base, []string{rewound.second, rewound.first})
 					if outcome.WayForward != want || !strings.Contains(report.Summary(), want) {
 						t.Errorf("scope %+v WayForward = %q, Summary() = %q; want both to carry %q", scope, outcome.WayForward, report.Summary(), want)
 					}
