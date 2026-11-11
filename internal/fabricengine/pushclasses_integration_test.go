@@ -668,10 +668,10 @@ func TestPushFailureClasses(t *testing.T) {
 				gitkit.CommitFile(t, refused, "local.txt", "local\n", "local")
 				gitkit.Git(t, refused, "remote", "set-url", "origin", refusedOriginURL)
 
-				_, err := fabricengine.PushAnchored(p.location, p.fake.options(countingBackoff(new(int), nil)), fabricengine.LockWaitUnbounded)
+				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(countingBackoff(new(int), nil)), fabricengine.LockWaitUnbounded)
 
 				if err == nil {
-					t.Fatal("PushAnchored() error = nil; want the refused push's failure")
+					t.Fatal("PushPairAnchored() error = nil; want the refused push's failure")
 				}
 				record := requireOneFailedPush(t, p.hub.Location.HubPath, tt.side, fabricengine.PushFailureTransport)
 				anchored := filepath.Join(p.warpPath, anchor)

@@ -403,7 +403,15 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 		if result.WeftPulled {
 			t.Errorf("Pull() WeftPulled = true; want false beside a weft stop")
 		}
-		pushVerb := "`lym fabric push` in " + fx.warpPath
+		slug, ok := fabricengine.WeftWarpSlug(filepath.Base(fx.weftPath))
+		if !ok {
+			t.Fatalf("WeftWarpSlug(%q) ok = false; want the weft sibling's warp slug", filepath.Base(fx.weftPath))
+		}
+		loc, err := lymcwd.ResolveWorktree(filepath.Join(filepath.Dir(fx.weftPath), slug))
+		if err != nil {
+			t.Fatalf("ResolveWorktree(%s): %v", slug, err)
+		}
+		pushVerb := "`lym fabric push` in " + loc.AnchorPath()
 		wantLine := fabricengine.RecordsConflictWayForwardForTest(fx.weftPath, fx.weftBranch, []string{"status.json"}, []string{fx.localSHA}, pushVerb)
 		if !strings.Contains(err.Error(), wantLine) {
 			t.Errorf("Pull() error = %q; want it to carry the way forward %q", err.Error(), wantLine)
