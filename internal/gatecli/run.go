@@ -219,6 +219,11 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if code == 0 && sc.form == scopeCard {
 		printNotRunTiers(request.stderr, notRunTiers(cfg, plan))
 	}
+	if cfg.Scoper == "dotnet" {
+		for _, line := range unrunProjectLines(cfg, plan, sc) {
+			printLine(request.stderr, line)
+		}
+	}
 	return exitAfterSignal(caught, code)
 }
 
@@ -503,9 +508,6 @@ func (e *execution) printReport(inHub bool) {
 func (e *execution) runListed(run tierRun) runEnd {
 	if run.tier.SharedBuild && e.buildFailure != "" {
 		return e.reportBlocked(run)
-	}
-	if run.ignoresTargets {
-		printLine(e.request.stderr, fmt.Sprintf("gate test: the command of %s holds neither {targets} nor {test_targets}, so it runs whole", tierName(run.number)))
 	}
 	if len(run.invocations) == 0 && !run.buildOnly {
 		printLine(e.request.stderr, fmt.Sprintf("gate test: the scope is empty, so %s runs no command", tierName(run.number)))

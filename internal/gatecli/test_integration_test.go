@@ -971,8 +971,10 @@ func TestGateTest_Scenario(t *testing.T) {
 			OK    bool   `json:"ok"`
 			Error string `json:"error"`
 		}
-		if err := json.Unmarshal(g.stdout.Bytes(), &envelope); err != nil {
-			t.Fatalf("stdout %q is not a JSON envelope: %v", g.stdout.String(), err)
+		// The notice that tier2's command runs whole precedes the envelope, which is the last line.
+		stdoutLines := strings.Split(strings.TrimSpace(g.stdout.String()), "\n")
+		if err := json.Unmarshal([]byte(stdoutLines[len(stdoutLines)-1]), &envelope); err != nil {
+			t.Fatalf("stdout %q does not end in a JSON envelope: %v", g.stdout.String(), err)
 		}
 		missing := filepath.Join(prime, "missing")
 		if code != 1 || envelope.OK || !strings.Contains(envelope.Error, "could not start the shell for the build in "+missing) || !strings.Contains(envelope.Error, "make build.dir an existing directory and put the platform shell on PATH, then re-run the same command") {
@@ -1797,19 +1799,6 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Errorf("stdout = %q; want the closing line %q", g.stdout.String(), want)
 		}
 		requireFree(t)
-	})
-
-	t.Run("a command without {targets} runs whole under explicit targets", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "2", "./pkg"}})
-		if code := g.wait(t); code != 0 {
-			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
-		}
-		if got := g.tierArgs(t); !reflect.DeepEqual(got, [][]string{{"whole"}}) {
-			t.Errorf("tier invocations = %q; want the command as written", got)
-		}
-		if !strings.Contains(g.stdout.String(), "the command of tier2 holds neither {targets} nor {test_targets}") {
-			t.Errorf("stdout = %q; want the notice that the command runs whole", g.stdout.String())
-		}
 	})
 
 	t.Run("a tier that outlives timeout_min is killed with the timeout line", func(t *testing.T) {

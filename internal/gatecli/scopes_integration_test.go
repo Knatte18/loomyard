@@ -431,6 +431,27 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	})
 
+	t.Run("--card under dotnet names a selected project that a tier0 command without {targets} does not reach, and still exits 0", func(t *testing.T) {
+		writeDotnet(t, func(cfg map[string]any) {
+			tiers := cfg["tiers"].(map[string]any)
+			tiers["tier0"].(map[string]any)["command"] = "'" + os.Args[0] + "' cs/Other/Other.csproj {filter}"
+		})
+		defer writeScoper(t, "go")
+		csharpPlan := plan
+		csharpPlan.Language = "csharp"
+		csharpPlan.Cards = []plankit.Card{{Number: 1, Slug: "span", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"Lib#Circle.Area"}}}}}
+		plankit.Write(t, planparser.PlanDir(pair), csharpPlan)
+		t.Cleanup(func() { plankit.Write(t, planparser.PlanDir(pair), plan) })
+		g := gate(t, pair, nil, "--card", "1")
+		if g.exit != 0 {
+			t.Errorf("exit code = %d, stdout %q; want 0, since the line is output only", g.exit, g.stdout.String())
+		}
+		want := "gate test: the scope selected tests in cs/Lib.Tests/Lib.Tests.csproj, and no tier this call runs reaches that project, so this pass is not green for it; way forward: run \"lym gate test --tier 1 cs/Lib.Tests/Lib.Tests.csproj\""
+		if !strings.Contains(g.stdout.String(), want) {
+			t.Errorf("stdout = %q; want it to hold %q", g.stdout.String(), want)
+		}
+	})
+
 	t.Run("--card skips a //lym:watch test of a card's package that no change since the parent merge base concerns, and runs it once one does or with no parent branch", func(t *testing.T) {
 		watchedPlan := plan
 		watchedPlan.Cards = []plankit.Card{{Number: 1, Slug: "span", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"watched/w.go"}}}}}

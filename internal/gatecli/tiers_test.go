@@ -36,7 +36,7 @@ func withManualTier3(cfg *gateslot.Config) {
 // describe renders a run as `tier<N> <scope> dir=<dir> <targets>`.
 // It joins one `dir=… …` part per invocation with ` | `, and renders no invocations as `none`.
 // An invocation that carries terms adds ` terms=<terms>`, and a partial one adds ` partial`.
-// A command that ignores the scope adds ` ignores`, and the guard step adds ` guard`.
+// The guard step adds ` guard`.
 // A run with args adds ` args=<args>`, and one with watch skips adds ` skip=<names>`.
 func describe(run tierRun) string {
 	parts := make([]string, len(run.invocations))
@@ -53,9 +53,6 @@ func describe(run tierRun) string {
 		parts = []string{"none"}
 	}
 	line := fmt.Sprintf("%s %s %s", tierName(run.number), run.scopeForm, strings.Join(parts, " | "))
-	if run.ignoresTargets {
-		line += " ignores"
-	}
 	if run.guardStep {
 		line += " guard"
 	}
@@ -115,6 +112,11 @@ func TestPlanTierRuns(t *testing.T) {
 		{dir: ".", targets: []string{"A/A.csproj"}, terms: []string{"T1", "T2"}},
 		{dir: ".", targets: []string{"B/B.csproj"}, terms: []string{"T3"}},
 	}}
+	wholeTier0 := func(cfg *gateslot.Config) {
+		t0 := cfg.Tiers["tier0"]
+		t0.Command = "make test {args}"
+		cfg.Tiers["tier0"] = t0
+	}
 	tests := []struct {
 		name    string
 		mutate  func(*gateslot.Config)
@@ -187,6 +189,18 @@ func TestPlanTierRuns(t *testing.T) {
 			want:    []string{"tier0 targets dir=/work/nested ./a ./b"},
 		},
 		{
+			name: "explicit targets run a tier whose command cannot take them whole, naming it, beside a tier that takes them",
+			mutate: func(cfg *gateslot.Config) {
+				wholeTier0(cfg)
+				t1 := cfg.Tiers["tier1"]
+				t1.Covers = nil
+				cfg.Tiers["tier1"] = t1
+			},
+			request:    testRequest{tiers: []int{0, 1}, targets: []string{"./a"}},
+			want:       []string{"tier0 targets dir=. ./a", "tier1 targets dir=sub ./a"},
+			wantStderr: "gate test: the command of tier0 holds neither {targets} nor {test_targets}, so it runs whole\n",
+		},
+		{
 			name:    "explicit targets run in the tier's dir without -C",
 			request: testRequest{tiers: []int{1}, targets: []string{"./a"}},
 			want:    []string{"tier1 targets dir=sub ./a"},
@@ -237,14 +251,11 @@ func TestPlanTierRuns(t *testing.T) {
 			want:  []string{"tier0 computed dir=. ./a ./b | dir=nested .", "tier1 guard dir=. guard"},
 		},
 		{
-			name: "a command without {targets} runs once, whole, under a narrower scope",
-			mutate: func(cfg *gateslot.Config) {
-				t0 := cfg.Tiers["tier0"]
-				t0.Command = "make test {args}"
-				cfg.Tiers["tier0"] = t0
-			},
-			scope: narrower,
-			want:  []string{"tier0 computed dir=. ./... ignores", "tier1 guard dir=. guard"},
+			name:       "a command without {targets} runs once, whole, under a narrower scope, naming it",
+			mutate:     wholeTier0,
+			scope:      narrower,
+			want:       []string{"tier0 computed dir=. ./...", "tier1 guard dir=. guard"},
+			wantStderr: "gate test: the command of tier0 holds neither {targets} nor {test_targets}, so it runs whole\n",
 		},
 		{
 			name: "a command holding {test_targets} alone narrows like one holding {targets}",
@@ -310,8 +321,9 @@ func TestPlanTierRuns(t *testing.T) {
 				t0.Command = "dotnet test {filter}"
 				cfg.Tiers["tier0"] = t0
 			},
-			scope: scope{form: scopeComputed, tiers: map[int]tierScope{0: projects}},
-			want:  []string{"tier0 computed dir=. ./... ignores"},
+			scope:      scope{form: scopeComputed, tiers: map[int]tierScope{0: projects}},
+			want:       []string{"tier0 computed dir=. ./..."},
+			wantStderr: "gate test: the command of tier0 holds neither {targets} nor {test_targets}, so it runs whole\n",
 		},
 		{
 			name:    "dotnet shares split by base: one tier narrowed, another whole with no terms",
@@ -473,6 +485,12 @@ func TestPlanTierRuns(t *testing.T) {
 			},
 			request: testRequest{args: []string{"-v"}},
 			want:    "command of tier0 holds no {args}",
+		},
+		{
+			name:    "explicit targets that no listed tier's command takes",
+			mutate:  wholeTier0,
+			request: testRequest{targets: []string{"./a", "./b"}},
+			exact:   `gate test: no command of tier0 holds {targets} or {test_targets}, so the targets ./a ./b reach no tier this call runs; way forward: drop the targets to run tier0 whole, or name with --tier a tier whose command takes targets, then re-run the same command; to add {targets} to a tier's command, run "lym config gate" from the prime` + roleClause,
 		},
 		{name: "an undeclared tier", request: testRequest{tiers: []int{5}}, want: "declares no tier5"},
 		{

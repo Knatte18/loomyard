@@ -50,9 +50,6 @@ type tierRun struct {
 	invocations []invocation
 	// args are the words that fill the command's {args}.
 	args []string
-	// ignoresTargets is set when explicit targets were given and the command holds neither {targets} nor {test_targets},
-	// so it runs whole.
-	ignoresTargets bool
 	// guardStep marks the run of a tier's command over the guard tests of the files that belong to that tier.
 	guardStep bool
 	// vetStep marks the run of `go vet` under a tier's build tag over a --card scope's packages.
@@ -81,6 +78,9 @@ func tierName(number int) string {
 // A guard run is a placeholder whose packages and names the run fills from sc.guards.
 // A covered tier is named on request.stderr when it has one.
 // A tier a no-test-class scope runs whole is named on request.stderr when it has one.
+// So is a tier whose command holds neither {targets} nor {test_targets}, which runs whole over any scope;
+// that line prints only once no refusal can follow.
+// It refuses explicit targets that no kept tier's command takes, since such a call runs none of the tests named.
 // It refuses, naming `lym config gate`: a hub with no tier0; an undeclared tier; a dangling covers entry;
 // words after `--` for a tier whose command lacks {args};
 // a guard group whose tier is undeclared or whose command lacks {targets} and {test_targets}, or lacks {args};
@@ -109,6 +109,8 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 	kept := dropCovered(numbers, tiers, request)
 
 	runs := make([]tierRun, 0, len(kept)+1)
+	// wholeTiers are the kept tiers whose command ignores the scope's targets.
+	var wholeTiers []int
 	for _, number := range kept {
 		tier := tiers[number]
 		if len(request.args) > 0 && !strings.Contains(tier.Command, "{args}") {
@@ -119,14 +121,16 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 			printLine(request.stderr, fmt.Sprintf("gate test: the scope selected no test class, so %s runs whole", tierName(number)))
 		}
 		invocations, ignoresTargets := scopeInvocations(tier, request, share)
+		if ignoresTargets {
+			wholeTiers = append(wholeTiers, number)
+		}
 		run := tierRun{
-			number:         number,
-			tier:           tier,
-			scopeForm:      sc.form,
-			invocations:    invocations,
-			args:           request.args,
-			ignoresTargets: ignoresTargets,
-			buildOnly:      tier.SharedBuild && share.noTests && len(invocations) == 0,
+			number:      number,
+			tier:        tier,
+			scopeForm:   sc.form,
+			invocations: invocations,
+			args:        request.args,
+			buildOnly:   tier.SharedBuild && share.noTests && len(invocations) == 0,
 		}
 		// A caller's own filter decides what runs, so the watch skip stays out of it.
 		if !share.whole && len(share.skip) > 0 && len(invocations) > 0 && strings.Contains(tier.Command, "{args}") && !slices.ContainsFunc(request.args, isFilterFlag) {
@@ -135,6 +139,10 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 			printLine(request.stderr, fmt.Sprintf("gate test: %s skips %s, since no changed file matches their //lym:watch patterns", tierName(number), strings.Join(share.skip, ", ")))
 		}
 		runs = append(runs, run)
+	}
+	if sc.form == scopeTargets && len(wholeTiers) == len(kept) {
+		names := tierNames(kept)
+		return nil, fmt.Errorf("gate test: no command of %s holds {targets} or {test_targets}, so the targets %s reach no tier this call runs; way forward: drop the targets to run %s whole, or name with --tier a tier whose command takes targets, then re-run the same command; to add {targets} to a tier's command, run \"lym config gate\" from the prime%s", names, strings.Join(request.targets, " "), names, roleClause)
 	}
 
 	if sc.form == scopeCard && cfg.Scoper == "go" {
@@ -151,6 +159,7 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 	}
 
 	if !request.guards && !sc.guardStep {
+		printRunWholeNotices(request, wholeTiers)
 		return runs, nil
 	}
 	if cfg.Scoper == "dotnet" {
@@ -193,7 +202,16 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 			guardStep:   true,
 		})
 	}
+	printRunWholeNotices(request, wholeTiers)
 	return runs, nil
+}
+
+// printRunWholeNotices names on request.stderr each tier of wholeTiers, whose command holds no target placeholder.
+// planTierRuns calls it only once no refusal can follow, so a refused call prints none.
+func printRunWholeNotices(request testRequest, wholeTiers []int) {
+	for _, number := range wholeTiers {
+		printLine(request.stderr, fmt.Sprintf("gate test: the command of %s holds neither {targets} nor {test_targets}, so it runs whole", tierName(number)))
+	}
 }
 
 // watchSkipArgs returns the go test words that skip the top-level tests names.

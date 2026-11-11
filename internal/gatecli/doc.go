@@ -139,6 +139,9 @@
 // A command holding neither `{targets}` nor `{test_targets}` runs once, whole.
 // It does so under explicit targets and under a non-empty narrower scope.
 // It says so on stderr.
+// Explicit targets that no listed tier's command takes are refused before any slot.
+// The call would run none of them.
+// The refusal names dropping the targets, a `--tier` whose command takes them, and the prime's `lym config gate` step.
 // Flag-shape refusals need no config and run first, before hub resolution:
 // `--tags`, naming `--tier`; a negative `--upto`; `-C` without explicit targets, naming them;
 // `--gate` beside `--tier`, `--upto`, `--all` or `--base`; more than one scope form;
@@ -183,6 +186,15 @@
 // A narrowed share runs each selected test project once in the tier's `dir`, under one slot hold and one `timeout_min`.
 // The project path is `{targets}`, and its class terms render into `{filter}`.
 // A command holding neither `{targets}` nor `{test_targets}` runs once, whole, with its tier filter only.
+// Such a run is passed none of the selected projects.
+// When no run of the call reaches a selected project, the call closes with one stderr line per such project.
+// The line says the pass is not green for that project.
+// A run reaches a project when its names hold that project's file or its built assembly, or a solution file.
+// It also reaches every project when its names hold no project, solution or built assembly file at all.
+// The names are the run's targets, or for a command without a target placeholder its command's words.
+// The line's way forward runs the lowest declared tier, not manual, whose command reaches the project.
+// With none it is the prime's `lym config gate` step of adding `{targets}` to a tier's command.
+// Bound: the line is output only and changes no exit code or record.
 // Two empty scopes tell apart.
 // Nothing testable changed, such as an inert-only diff: that makes no invocation, as under `go`.
 // Changes that no test class names run a tier with `shared_build` as no invocation.
@@ -214,7 +226,8 @@
 // The import graph cannot see everything a narrower run skips, such as `go build ./...`.
 // That is left to the whole runs at `final` and `landing`.
 // Once the config is loaded, `planTierRuns` refuses these before any slot, naming `lym config gate`:
-// words after `--` for a tier whose command lacks `{args}`; an undeclared tier; a hub with no `tier0`;
+// words after `--` for a tier whose command lacks `{args}`; explicit targets that no listed tier's command takes;
+// an undeclared tier; a hub with no `tier0`;
 // a `covers` entry naming a tier the hub does not declare;
 // and, for the guard step below, a guard group whose tier the hub does not declare.
 // Every such refusal closes with a clause for a session that is not the prime:
