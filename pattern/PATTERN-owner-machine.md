@@ -24,7 +24,7 @@ The rest of a Finalize already past its parent-side merge is exempt.
   A landing in flight is therefore never stranded.
 - An owner is recorded for a beam project as `owner_machine` and for the root as `prime_owner`.
   Only `boardengine`'s owner setter writes either.
-  It takes a project another machine owns only when `lym adopt` asks for it.
+  It takes a project or the prime another machine owns only when `lym adopt` asks for it, or when `lym machine name`'s sweep names that recorded owner among this machine's former names.
   A task and a grouping project record none, and a load drops the key an older machine recorded on one.
 - Every other entry reads the owner of its parent, and so does a beam project with no owner recorded.
   The root of a hub with no prime owner recorded reads as owned by no other machine.

@@ -60,6 +60,10 @@ var excludedModules = []scankit.Entry{
 		Why: "set and remove start the board's detached Bolt sync and render writes into a worktree root; exercised by internal/heddlecli's own hubforge tests instead",
 	},
 	{
+		Key: "machine",
+		Why: "name <name> rewrites the per-user machine file and the owners on every hub of the machine record, which no sandbox scenario may do; exercised by internal/machinecli's own tests instead",
+	},
+	{
 		Key: "slack",
 		Why: "its relay calls the live Slack Web API with the machine's bot token, which no sandbox scenario may reach; exercised by internal/slackcli's and internal/slackengine's own tests instead",
 	},

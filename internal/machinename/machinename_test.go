@@ -42,6 +42,26 @@ func TestFromHostname(t *testing.T) {
 	}
 }
 
+func TestFromThisHost(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	host, err := os.Hostname()
+	if err != nil {
+		t.Fatalf("os.Hostname() error = %v", err)
+	}
+	want, err := FromHostname(host)
+	if err != nil {
+		t.Fatalf("FromHostname(%q) error = %v", host, err)
+	}
+	got, err := FromThisHost()
+	if err != nil {
+		t.Fatalf("FromThisHost() error = %v; want nil", err)
+	}
+	if got != want {
+		t.Errorf("FromThisHost() = %q; want %q", got, want)
+	}
+}
+
 // TestResolveNames pins how the name resolves from the machine file at the path the locator hands in.
 // No file, or no directory, falls back to the hostname rule;
 // a file that yields no valid name, and a relative variable, are errors and never the hostname's name.

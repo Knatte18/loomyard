@@ -985,7 +985,7 @@ func (d *goDriver) handBack(stop Stop, h driveHandBack) error {
 	park.ReportPath = reportPath
 
 	if stop.Error != "" {
-		logger.Warn("sheddriver: drive: handing the run back", "run", d.deps.RunID, "state", stop.Key().State, "producer", stop.CurrentProducer, "error", stop.Error, "report", reportPath)
+		logger.Warn("sheddriver: drive: handing the run back", "run", d.deps.RunID, "state", stop.Key().State, "producer", stop.CurrentProducer, "error", stop.Error, "detail", stop.Detail, "report", reportPath)
 	} else {
 		logger.Info("sheddriver: drive: handing the run back", "run", d.deps.RunID, "state", stop.Key().State, "producer", stop.CurrentProducer, "report", reportPath)
 	}

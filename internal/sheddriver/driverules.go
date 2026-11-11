@@ -50,6 +50,8 @@ type Stop struct {
 	StatusMoved     bool
 	TraceCopy       string
 	StderrPath      string
+	// Detail is the loop's own account of why it stopped, such as how a gone loop ended.
+	Detail string
 
 	Raw        []byte
 	FromStatus bool
@@ -76,6 +78,7 @@ func parseDriveStop(envelope []byte) (Stop, error) {
 		Error        string `json:"error"`
 		Loop         struct {
 			Stop            string `json:"stop"`
+			Detail          string `json:"detail"`
 			CurrentProducer string `json:"current_producer"`
 			HistoryLength   int    `json:"history_length"`
 			State           string `json:"state"`
@@ -106,6 +109,7 @@ func parseDriveStop(envelope []byte) (Stop, error) {
 		EnvelopePath:    decoded.EnvelopePath,
 		Error:           decoded.Error,
 		Stop:            decoded.Loop.Stop,
+		Detail:          decoded.Loop.Detail,
 		CurrentProducer: decoded.Loop.CurrentProducer,
 		HistoryLength:   decoded.Loop.HistoryLength,
 		LoopState:       decoded.Loop.State,

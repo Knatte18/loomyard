@@ -238,6 +238,11 @@ func TestSetOwners(t *testing.T) {
 			wantRecorded: []string{"beamer"}, wantOwners: map[string]string{"beamer": ""}, wantPrime: "neve", wantStatus: map[string]string{"beamer": RunStatus("running", "Worktree-Create")},
 			wantSubject: "board: owner neve for beamer",
 		},
+		{
+			name: "ReplaceSetWithNoMatchingOwnerWritesNothing", primeOwner: "neve",
+			req:       OwnerRequest{Machine: "neve", Replace: []string{"old"}},
+			wantPrime: "neve",
+		},
 	}
 	for _, tt := range outcomes {
 		t.Run("Outcome_"+tt.name, func(t *testing.T) {
@@ -404,6 +409,37 @@ func TestSetOwners(t *testing.T) {
 		})
 	}
 
+	replaceGuards := []struct {
+		name string
+		req  OwnerRequest
+	}{
+		{"WithSlugs", OwnerRequest{Machine: "neve", Replace: []string{"box"}, Slugs: []string{"beamer"}}},
+		{"WithPrime", OwnerRequest{Machine: "neve", Replace: []string{"box"}, Prime: true}},
+		{"WithClaim", OwnerRequest{Machine: "neve", Replace: []string{"box"}, Slugs: []string{"alpha"}, Claim: RunStatus("running", "Worktree-Create")}},
+		{"WithTakeover", OwnerRequest{Machine: "neve", Replace: []string{"box"}, Takeover: true}},
+	}
+	for _, tt := range replaceGuards {
+		t.Run("Refusal_ReplaceSet"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newOwnerFixture(t, "neve")
+			tt.req.Sleep = failOnSleep(t)
+
+			got, err := SetOwners(f.boardDir, tt.req)
+			if err == nil || !strings.Contains(err.Error(), "replace set") {
+				t.Fatalf("SetOwners() error = %v; want a refusal naming the replace set", err)
+			}
+			if len(got.Recorded) != 0 {
+				t.Errorf("SetOwners() Recorded = %v; want none", got.Recorded)
+			}
+			if head := gitkit.RevParse(t, f.boardDir, "HEAD"); head != f.seedHead {
+				t.Errorf("local head = %s; want the seed %s, since nothing was written", head, f.seedHead)
+			}
+			if origin := gitkit.RevParse(t, f.bare, "main"); origin != f.seedHead {
+				t.Errorf("origin head = %s; want the seed %s, since nothing was written", origin, f.seedHead)
+			}
+		})
+	}
+
 	originTasks := func(t *testing.T, f *ownerFixture) map[string]Task {
 		t.Helper()
 		tasks, err := ParseBoardTasks([]byte(gitkit.Git(t, f.bare, "show", "main:board.json")))
@@ -466,6 +502,57 @@ func TestSetOwners(t *testing.T) {
 		}
 		if owner := f.originOwners(t).Entries["beamer"].Owner; owner != "box" {
 			t.Errorf("origin owner of beamer = %q; want origin's own value box to stand", owner)
+		}
+	})
+
+	t.Run("ReplaceSetSelectsAfterThePull", func(t *testing.T) {
+		t.Parallel()
+		f := newOwnerFixture(t, "box")
+		f.pushFromOther(t, func(store *Store) {
+			for _, slug := range []string{"oldbeam", "farbeam", "shipped"} {
+				if _, err := store.UpsertTask(map[string]any{"slug": slug, "title": slug, "kind": "project", "labels": []string{"bug"}}); err != nil {
+					t.Fatalf("upsert %s: %v", slug, err)
+				}
+			}
+			done := StatusDone
+			for i := range store.tasks {
+				switch store.tasks[i].Slug {
+				case "oldbeam":
+					store.tasks[i].Beam = true
+					store.tasks[i].OwnerMachine = "box"
+				case "farbeam":
+					store.tasks[i].Beam = true
+					store.tasks[i].OwnerMachine = "far"
+				case "shipped":
+					store.tasks[i].Beam = true
+					store.tasks[i].OwnerMachine = "box"
+					store.tasks[i].Status = &done
+				}
+			}
+		})
+
+		got, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Replace: []string{"box", "", "old"}, Sleep: failOnSleep(t)})
+		if err != nil {
+			t.Fatalf("SetOwners() error = %v; want nil", err)
+		}
+		recorded := slices.Sorted(slices.Values(got.Recorded))
+		if want := []string{"boxed", "oldbeam", OwnerWritePrime}; !slices.Equal(recorded, want) {
+			t.Errorf("SetOwners() Recorded = %v; want %v", recorded, want)
+		}
+		if len(got.Lost) != 0 {
+			t.Errorf("SetOwners() Lost = %v; want none", got.Lost)
+		}
+		origin := f.originOwners(t)
+		for slug, want := range map[string]string{"boxed": "neve", "oldbeam": "neve", "farbeam": "far", "shipped": "box", "beamer": ""} {
+			if origin.Entries[slug].Owner != want {
+				t.Errorf("origin owner of %q = %q; want %q", slug, origin.Entries[slug].Owner, want)
+			}
+		}
+		if origin.Prime != "neve" {
+			t.Errorf("origin prime owner = %q; want neve", origin.Prime)
+		}
+		if subject, want := gitkit.Git(t, f.bare, "log", "-1", "--format=%s", "main"), "board: owner neve replacing box, old"; subject != want {
+			t.Errorf("origin head subject = %q; want %q", subject, want)
 		}
 	})
 

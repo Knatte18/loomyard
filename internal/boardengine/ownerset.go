@@ -32,6 +32,7 @@ var ErrOwnerOriginUnreachable = errors.New("board: origin is unreachable, so the
 
 // OwnerRequest describes an owner write.
 // It records Machine as the owner of the root project and of beam projects, or claims one entry for it.
+// With Replace it instead takes over the prime and the open beam projects recorded under the names Replace lists.
 type OwnerRequest struct {
 	// Machine is the owner to record, this machine's name; empty is refused.
 	Machine string
@@ -40,8 +41,16 @@ type OwnerRequest struct {
 	Slugs []string
 	// Prime records Machine as the hub's prime owner, the root project's, as well.
 	Prime bool
-	// Takeover writes over an owner that reads as another machine; without it such an entry is left alone and reported in OwnerWrite.Lost.
+	// Takeover writes over an owner that reads as another machine.
+	// Without it such an entry the request names is left alone and reported in OwnerWrite.Lost.
+	// Replace takes only entries whose recorded owner it names.
 	Takeover bool
+	// Replace names the machine names whose recorded owners the write takes over.
+	// They are this machine's former names, and only `lym machine name`'s sweep passes them.
+	// After the write's pull it selects the prime and every open beam project whose recorded owner is one of the names.
+	// It goes with no Slugs, Prime, Claim or Takeover.
+	// Empty entries select nothing.
+	Replace []string
 	// Claim is a run status written on the one slug in the same commit; it records no owner and needs exactly one slug.
 	// Only a task or beam project takes a claim, and an entry another machine owns is reported in OwnerWrite.Lost.
 	Claim string
@@ -59,7 +68,8 @@ type OwnerRequest struct {
 
 // OwnerWrite reports the entries an owner write recorded, and those that another owner keeps.
 type OwnerWrite struct {
-	// Recorded lists the slugs, and OwnerWritePrime when asked, whose owner reads as the request's Machine after the push.
+	// Recorded lists the slugs, and OwnerWritePrime, whose owner reads as the request's Machine after the push.
+	// They are the slugs the request named, the prime when asked, and those its replace set selected.
 	Recorded []string
 	// Lost maps a slug, or OwnerWritePrime, to the owner that stands instead of the request's Machine.
 	Lost map[string]string
@@ -69,8 +79,8 @@ type OwnerWrite struct {
 // It makes one commit of the board at boardDir, then pushes it.
 // With req.Claim it writes the run status of the one slug instead, and records no owner.
 // The commit is made after the board is brought up to date with its upstream, so a stale copy is never written over.
-// Without req.Takeover, an entry whose effective owner is another machine is neither written nor claimed,
-// and it is reported in Lost.
+// Without req.Takeover, a named entry whose effective owner is another machine is neither written nor claimed,
+// and it is reported in Lost; req.Replace selects only entries whose recorded owner it names.
 // A competing write that origin already holds wins over the replay of this one,
 // and the re-read after the push reports what stands.
 // An unreachable origin returns ErrOwnerOriginUnreachable, wrapped with its detail.
@@ -83,6 +93,10 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 	}
 	if req.Claim != "" && len(req.Slugs) != 1 {
 		return OwnerWrite{}, fmt.Errorf("board: a claim status goes with exactly one slug, and the owner write names %d", len(req.Slugs))
+	}
+
+	if len(req.Replace) > 0 && (len(req.Slugs) > 0 || req.Prime || req.Claim != "" || req.Takeover) {
+		return OwnerWrite{}, errors.New("board: the replace set goes with no slugs, prime, claim or takeover: pass it from `lym machine name`'s sweep alone")
 	}
 
 	cfg := ApplySkipEnv(Config{Path: boardDir})
@@ -103,6 +117,9 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 		subjects = append(subjects, OwnerWritePrime)
 	}
 	message := fmt.Sprintf("board: owner %s for %s", req.Machine, strings.Join(subjects, ", "))
+	if replaced := slices.DeleteFunc(slices.Clone(req.Replace), func(name string) bool { return name == "" }); len(replaced) > 0 {
+		message = fmt.Sprintf("board: owner %s replacing %s", req.Machine, strings.Join(replaced, ", "))
+	}
 
 	if cfg.SkipGit || cfg.SkipPush {
 		if _, _, err := bolt.CommitWritten(message, write, opts); err != nil {
@@ -165,6 +182,7 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 }
 
 // writeOwners sets the owners req asks for on the board at boardDir, then saves and renders it.
+// The owners include those its replace set selects.
 // It returns the names it wrote, OwnerWritePrime among them, and the board-relative paths it changed.
 // An entry left alone for an owner elsewhere is added to lost with that owner.
 // The caller holds the board write lock.
@@ -219,6 +237,20 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 			continue
 		}
 		written = append(written, slug)
+	}
+	// The replace set compares recorded owners, never effective ones, and skips the owned-elsewhere check:
+	// its names are this machine's former names, whose owners the sweep takes over.
+	replaced := func(owner string) bool { return owner != "" && slices.Contains(req.Replace, owner) }
+	if replaced(store.primeOwner) {
+		store.primeOwner = req.Machine
+		written = append(written, OwnerWritePrime)
+	}
+	for i := range store.tasks {
+		entry := &store.tasks[i]
+		if entry.Kind == KindProject && entry.Beam && !isDone(*entry) && replaced(entry.OwnerMachine) {
+			entry.OwnerMachine = req.Machine
+			written = append(written, entry.Slug)
+		}
 	}
 	if len(written) == 0 {
 		return nil, nil, nil

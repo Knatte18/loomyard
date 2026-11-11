@@ -112,6 +112,13 @@ func FromHostname(host string) (string, error) {
 	return name, nil
 }
 
+// FromThisHost returns the hostname rule's name of this host and never reads the machine file;
+// it is for the command that shows and sets the machine file, which needs that name beside the file's names.
+// Its error names its way forward.
+func FromThisHost() (string, error) {
+	return nameFromHostname(os.Hostname)
+}
+
 // fileLocator returns the machine file's path, whether one resolves, and the error of a relative variable.
 type fileLocator func() (path string, ok bool, err error)
 

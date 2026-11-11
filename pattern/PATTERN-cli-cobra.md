@@ -59,6 +59,7 @@ Deviations:
   It calls the cleanup functions of `battencli`, `boardengine`, `orchengine`, `logger` and `lymtemp`.
 - `adoptcli` calls the functions of `fabricengine`, `pairteardown`, `boardengine`, `tenderengine`, `tendercli`, `battencli`, `battenshed`, `buildvcs` and `landingshed`, with no engine package of its own.
 - `beamcli` calls the functions of `fabricengine`, `boardengine`, `hubgeom` and `battencli`, with no engine package of its own.
+- `machinecli` calls the functions of `machinename`, `boardengine`, `fabricengine` and `hubregistry`, with no engine package of its own.
 
 ## Sole wiring
 

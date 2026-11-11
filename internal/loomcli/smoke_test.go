@@ -504,6 +504,13 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		killGoDriver(worktree)
 		waitRunLockFree(t, loc, 20*time.Second)
 		waitRecordsIndexLockGone(t, loc, 5*time.Second)
+		// A loop killed mid-step leaves its pid file behind, and the next loop then refuses to step.
+		// The killed loop's record is cleared so the rigged run starts a loop of its own.
+		for _, stale := range []string{shedrun.LoopPIDFile(loc, shedrun.SelfRunID), shedrun.LoopEnvelope(loc, shedrun.SelfRunID)} {
+			if err := os.Remove(stale); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("clear stale loop record %s: %v", stale, err)
+			}
+		}
 		if err := os.Remove(loomengine.LoomDriverLog(loc)); err != nil && !os.IsNotExist(err) {
 			t.Fatalf("clear driver log: %v", err)
 		}

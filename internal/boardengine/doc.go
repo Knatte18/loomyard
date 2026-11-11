@@ -171,7 +171,9 @@
 // An owner change is never a scope change, so the run lock lets a run-held entry take it.
 //
 // SetOwners is the only writer of an owner or the prime owner.
-// It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>", and pushes it.
+// It pulls the board level with its upstream, writes one commit, and pushes it.
+// The commit reads "board: owner <machine> for <slugs>".
+// A replace set makes it "board: owner <machine> replacing <names>".
 // The commit sets each named beam project's owner, the prime owner when asked, and an optional claim status on its slug.
 // A named task or grouping project gets no owner.
 // A Beam request sets the beam flag and `recipe: pawl` on a named project in the same commit.
@@ -181,8 +183,13 @@
 // A claim writes the run status alone, never an owner, and lands only on a task or on a project whose beam flag is set.
 // Any other entry keeps its status.
 // Without Takeover, SetOwners leaves an entry whose effective owner is another machine untouched.
+// The one exception is an entry whose recorded owner Replace names.
 // It reports that entry in OwnerWrite.Lost.
 // Only `lym adopt` passes Takeover.
+// A replace set names this machine's former names.
+// After the pull it takes the prime and every open beam project whose recorded owner is one of those names.
+// It does so even when that owner reads as another machine.
+// It writes no other owner, goes with no slug, prime, claim or takeover, and only `lym machine name` passes it.
 // A competing write origin already holds wins the replay of a rejected push,
 // and the owners re-read from the local board.json after the push decide Recorded and Lost.
 // An origin that does not answer is ErrOwnerOriginUnreachable,

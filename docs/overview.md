@@ -360,6 +360,7 @@ github.com/Knatte18/loomyard/
 ├── internal/durfmt/              the duration formats the status panes and the timing report share, minute-resolution for growing times and second-resolution for closed spans, a stdlib-only leaf
 ├── internal/consoletitle/        the one join of a console window's title, `<T#> [<hub shortname>:<P#>] <name>` or `ORCH [...]` with a missing part left out, shared by VS Code and terminal windows, a stdlib-only leaf
 ├── internal/machinename/         this machine's name, read from the machine file in the per-user config directory before the hostname rule (the hostname cut at the first dot and lowercased), the sole reader of the hostname and of that file, a leaf over the standard library and `internal/standalonestate`
+├── internal/machinecli/          the `lym machine name` command, its seams and the owner sweep
 ├── internal/sleepjournal/        the machine's suspends and hibernates read from systemd-sleep's journal entries, spawning no process, a stdlib-only leaf
 ├── internal/lymdirs/             the two directory-name tokens (`_lym` durable, `.lym` ephemeral), a zero-import leaf
 ├── internal/buildinfo/           the ldflags-stamped build channel, a zero-import leaf
@@ -860,6 +861,10 @@ User-facing modules each get one `lym <module>` namespace:
   Only the orch or an external caller may request or cancel; an agent asks its parent session.
   Bounds: the sequence waits a fixed window for the pause to confirm and for the wake, and fails the request, leaving its reason in the file, when either runs out.
   ✅ Implemented. See the `internal/hibernateengine` and `internal/hibernatecli` package documentation.
+- **machine** — this machine's name (`internal/machinecli` + `internal/machinename`; `lym machine name [<name>]`: show, or set and sweep owners on every live hub and the hub of the working directory, from any directory).
+  The show gives the name, whether it comes from the machine file or the hostname rule, the file's path and the former names the file records.
+  The set writes the machine file and rewrites the owners recorded under the former names, on each swept hub, to the new name.
+  ✅ Implemented. See the `internal/machinecli` package documentation.
 - **creel** — the per-hub message daemon, the one way to reach an agent:
   mail to a Claude strand shuttle launched with creel's hooks arrives in full through those hooks, while every other strand, a hand-added one or a session launched without those hooks included, gets a typed notice or reminder and pulls its mail with `lym creel read`, and lines are injected into a pane (`internal/creelcli` + `internal/creelengine` + `internal/creelconfig`; `lym creel post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and `hubs`, from any worktree of the hub, and the hidden `lym creel daemon`, `lym creel hook-read` and `lym creel hook-wait`).
   A hook strand gets each post in full, quoted with its sender, at its next tool call in the `PostToolUse` hook's additional context and at its turn end in the `Stop` hook's additional context, which continues the turn and records no turn end, at most 6 a turn;
