@@ -247,20 +247,11 @@ func (r *testMapRun) prepare() string {
 	}
 	cfg = cfg.WithDefaultDir(r.location.AnchorRel)
 	root := r.location.WorktreePath()
-	r.tiers = map[int]gateslot.Tier{}
-	for _, number := range mappedTiers {
-		tier, err := cfg.Tier(number)
-		if err != nil {
-			continue
-		}
-		if len(r.tiers) == 0 {
-			r.moduleDir = resolveRunDir(root, tier.Dir)
-		}
-		r.tiers[number] = tier
-	}
+	r.tiers = mappedTierConfigs(cfg)
 	if len(r.tiers) == 0 {
 		return "gate testmap: the hub declares neither tier0 nor tier1, so no test of a package can be mapped; way forward: declare them with lym config gate from the prime, then re-run the same command"
 	}
+	r.moduleDir = resolveRunDir(root, r.tiers[slices.Min(slices.Collect(maps.Keys(r.tiers)))].Dir)
 	rel, err := filepath.Rel(root, r.moduleDir)
 	if r.modulePath = modulePathOf(r.moduleDir); r.modulePath == "" || err != nil || !filepath.IsLocal(rel) {
 		return fmt.Sprintf("gate testmap: %s holds no go.mod naming a module inside the worktree; way forward: set the dir of the lowest of tier0 and tier1 to the Go module's root with lym config gate from the prime, then re-run the same command", r.moduleDir)

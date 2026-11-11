@@ -112,7 +112,7 @@ func guardFunc(name string) string {
 	return "\n//lym:guard" + testFunc(name, 0)
 }
 
-// mapTests returns a map's record of tests named names, none of them marked by the spawn scan.
+// mapTests returns a selection's recorded tests named names, each with a passing measurement.
 func mapTests(names ...string) []testcover.MapTest {
 	tests := make([]testcover.MapTest, len(names))
 	for i, name := range names {
@@ -145,8 +145,8 @@ func TestNarrowCoverage(t *testing.T) {
 	}
 	mixed := testFileHeader + testFunc("TestSel", 0) + testFunc("TestOther", 0) + guardFunc("TestGuard") +
 		testFunc("TestSpawn", 0) + testFunc("TestNew", 0) + testFunc("TestLater", 1)
-	mixedRecord := append(mapTests("TestSel", "TestOther", "TestGuard", "TestLater"),
-		testcover.MapTest{Name: "TestSpawn", Spawn: testcover.SpawnVerdict{OutOfProcess: true}})
+	// TestSpawn and TestNew are declared and unrecorded, as a spawn-marked or new test is.
+	mixedRecord := mapTests("TestSel", "TestOther", "TestGuard", "TestLater")
 	var longNames strings.Builder
 	longNames.WriteString(testFileHeader)
 	for i := range 200 {
@@ -170,7 +170,7 @@ func TestNarrowCoverage(t *testing.T) {
 		labelPrefix bool
 	}{
 		{
-			name:      "an importer runs its selected, unrecorded, out-of-process and guard tests of the tier",
+			name:      "an importer runs its selected, unrecorded and guard tests of the tier",
 			files:     map[string]string{"b_test.go": mixed},
 			selection: testcover.Selection{Tests: []string{"TestLater", "TestSel"}, Recorded: mixedRecord},
 			want: tierScope{
@@ -181,7 +181,7 @@ func TestNarrowCoverage(t *testing.T) {
 			wantLabel: "selected 4 of 5",
 		},
 		{
-			name:      "an importer runs its guard, out-of-process and unrecorded tests when the map selects none",
+			name:      "an importer runs its guard and unrecorded tests when the map selects none",
 			files:     map[string]string{"b_test.go": mixed},
 			selection: testcover.Selection{Recorded: mixedRecord},
 			want: tierScope{
@@ -228,18 +228,6 @@ func TestNarrowCoverage(t *testing.T) {
 			files:     map[string]string{"b_test.go": longNames.String()},
 			want:      tierScope{modules: root("./internal/a", "./internal/b", "./internal/e")},
 			wantLabel: "whole: over budget",
-		},
-		{
-			name:  "an importer runs a recorded test the map marks unresolved",
-			files: map[string]string{"b_test.go": testFileHeader + testFunc("TestOther", 0) + testFunc("TestUnresolved", 0)},
-			selection: testcover.Selection{Recorded: append(mapTests("TestOther"),
-				testcover.MapTest{Name: "TestUnresolved", Spawn: testcover.SpawnVerdict{Unresolved: true}})},
-			want: tierScope{
-				modules:       root("./internal/a", "./internal/e"),
-				selected:      root("./internal/b"),
-				selectedTests: []string{"TestUnresolved"},
-			},
-			wantLabel: "selected 1 of 2",
 		},
 		{
 			name:      "an importer runs a test that opens with no tiergate.Require",

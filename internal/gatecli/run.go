@@ -78,6 +78,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	cfg = cfg.WithDefaultDir(location.AnchorRel)
 	request.root = buildRoot(location, dir)
 	request.busyQuit = cfg.Limits().BusyQuit
+	request.hubEnv = hubEnv
 	if inHub {
 		request.coverageMaps = testcover.Dir(fabricengine.BoltDir(location.HubPath))
 	}

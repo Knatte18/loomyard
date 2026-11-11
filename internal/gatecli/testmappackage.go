@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
@@ -401,34 +402,38 @@ func (r *testMapRun) environmentStamp(commit string) (testcover.EnvironmentStamp
 		}
 		r.toolchain = &testcover.EnvironmentStamp{GoVersion: version, GOOS: goos, GOARCH: goarch}
 	}
-	stamp := *r.toolchain
-	for _, file := range []struct {
-		name string
-		hash *string
-	}{{"go.mod", &stamp.GoModHash}, {"go.sum", &stamp.GoSumHash}} {
-		data, found, err := r.fabric.CodeFileAt(commit, path.Join(r.moduleRel, file.name))
-		if err != nil {
-			return testcover.EnvironmentStamp{}, err
-		}
-		if found {
-			*file.hash = testcover.ContentHash(data)
-		}
-	}
-	stamp.TiersDigest = r.tiersDigest()
-	stamp.HubEnvDigest = testcover.ContentHash([]byte(strings.Join(r.hubEnv.Entries(), "\n")))
-	return stamp, nil
+	stamp := stampEnvironment(*r.toolchain, r.tiers, r.hubEnv)
+	return testcover.StampModuleFiles(stamp, r.moduleRel, func(rel string) ([]byte, bool, error) {
+		return r.fabric.CodeFileAt(commit, rel)
+	})
 }
 
-// tiersDigest digests each mapped tier's command and env as configured.
-// It digests them before the `{parallel}` substitution, so a changed parallel count leaves it as it was.
-func (r *testMapRun) tiersDigest() string {
+// stampEnvironment returns toolchain, a stamp holding the Go version and platform, with its two digests set.
+// tiers are the mapped tiers the hub declares, by number, and hubEnv the hub's env.yaml variables.
+// The tiers digest covers each tier's command and env as configured, before the `{parallel}` substitution,
+// so a changed parallel count leaves it as it was.
+// A map build and a coverage scope both stamp through it, so their stamps agree on one hub.
+func stampEnvironment(toolchain testcover.EnvironmentStamp, tiers map[int]gateslot.Tier, hubEnv envconfig.Config) testcover.EnvironmentStamp {
 	var lines []string
-	for _, number := range slices.Sorted(maps.Keys(r.tiers)) {
-		tier := r.tiers[number]
+	for _, number := range slices.Sorted(maps.Keys(tiers)) {
+		tier := tiers[number]
 		lines = append(lines, fmt.Sprintf("tier%d command %s", number, tier.Command))
 		for _, key := range slices.Sorted(maps.Keys(tier.Env)) {
 			lines = append(lines, fmt.Sprintf("tier%d env %s=%s", number, key, tier.Env[key]))
 		}
 	}
-	return testcover.ContentHash([]byte(strings.Join(lines, "\n")))
+	toolchain.TiersDigest = testcover.ContentHash([]byte(strings.Join(lines, "\n")))
+	toolchain.HubEnvDigest = testcover.ContentHash([]byte(strings.Join(hubEnv.Entries(), "\n")))
+	return toolchain
+}
+
+// mappedTierConfigs returns each of mappedTiers that cfg declares, by number.
+func mappedTierConfigs(cfg gateslot.Config) map[int]gateslot.Tier {
+	tiers := map[int]gateslot.Tier{}
+	for _, number := range mappedTiers {
+		if tier, err := cfg.Tier(number); err == nil {
+			tiers[number] = tier
+		}
+	}
+	return tiers
 }

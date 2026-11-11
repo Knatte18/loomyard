@@ -19,6 +19,9 @@ import (
 // selectCommit is the commit every fixture map was built from.
 const selectCommit = "c0ffee"
 
+// targetCommit is the commit that holds the working tree's files, for a selection whose target is a commit.
+const targetCommit = "7a9e7"
+
 // removedFile marks a fixture file the working tree no longer holds.
 const removedFile = "\x00removed"
 
@@ -67,18 +70,50 @@ func init() {
 }
 `
 
-// committedFiles are the module's files at the map's commit: the importing package b, the linked packages a and c.
+// ownSource is the selected package b's main file at the map's commit.
+const ownSource = "package b\n\nfunc Own() int {\n\treturn 1\n}\n\nfunc Other() int {\n\treturn 2\n}\n"
+
+// ownTestSource is b's test file of Test functions and a helper at the map's commit.
+const ownTestSource = `package b
+
+import "testing"
+
+func helper() int {
+	return 1
+}
+
+func TestOwn(t *testing.T) {
+	if Own() != helper() {
+		t.Fatal("Own")
+	}
+}
+
+func TestOther(t *testing.T) {
+	_ = Other()
+}
+`
+
+// committedFiles are the module's files at the map's commit: the selected package b, the linked packages a and c.
 var committedFiles = map[string]string{
-	"a/a.go":            linkedSource,
-	"a/gone.go":         "package a\n\nimport \"strings\"\n\nfunc H() int {\n\treturn len(strings.TrimSpace(\" \"))\n}\n",
-	"a/assets.go":       "package a\n\nimport \"embed\"\n\n//go:embed static\nvar static embed.FS\n",
-	"a/static/page.txt": "hello\n",
-	"a/notes.md":        "notes\n",
-	"a/a_test.go":       "package a\n",
-	"c/c.go":            "package c\n",
-	"b/b.go":            "package b\n",
-	"b/b_test.go":       "package b\n\nimport \"embed\"\n\n//go:embed note.txt\nvar note embed.FS\n",
-	"b/note.txt":        "note\n",
+	"go.mod":                "module m\n\ngo 1.26\n",
+	"a/a.go":                linkedSource,
+	"a/gone.go":             "package a\n\nimport \"strings\"\n\nfunc H() int {\n\treturn len(strings.TrimSpace(\" \"))\n}\n",
+	"a/assets.go":           "package a\n\nimport \"embed\"\n\n//go:embed static\nvar static embed.FS\n",
+	"a/static/page.txt":     "hello\n",
+	"a/notes.md":            "notes\n",
+	"a/a_test.go":           "package a\n",
+	"c/c.go":                "package c\n",
+	"b/b.go":                ownSource,
+	"b/b_test.go":           "package b\n\nimport \"embed\"\n\n//go:embed note.txt\nvar note embed.FS\n",
+	"b/funcs_test.go":       ownTestSource,
+	"b/note.txt":            "note\n",
+	"b/testdata/in.txt":     "input\n",
+	"b/testdata/fixture.go": "package fixture\n",
+}
+
+// selectEnvironment is the current environment stamp a selection runs under, bar its module file hashes.
+var selectEnvironment = testcover.EnvironmentStamp{
+	GoVersion: "go1.26.8", GOOS: "linux", GOARCH: "amd64", TiersDigest: "tiers", HubEnvDigest: "hub-env",
 }
 
 // applyFileEdits sets each edited file's text in files, and removes a file whose text is removedFile.
@@ -92,39 +127,52 @@ func applyFileEdits(files, edits map[string]string) {
 	}
 }
 
-// fakeCommits serves files at the one commit rev, and fails to read any other.
+// fakeCommits serves the files of each commit in trees, by revision, and fails to read any other revision.
 type fakeCommits struct {
-	rev   string
-	files map[string]string
+	trees map[string]map[string]string
 }
 
 func (f fakeCommits) CodeFileAt(rev, rel string) ([]byte, bool, error) {
-	if rev != f.rev {
+	files, known := f.trees[rev]
+	if !known {
 		return nil, false, fmt.Errorf("object %s not found", rev)
 	}
-	text, found := f.files[rel]
+	text, found := files[rel]
 	return []byte(text), found, nil
 }
 
 // selectFixtureMap returns b's map at selectCommit, recording committed as the module's files.
-// It holds one test per function of a that b covers, and one test the spawn scan marks.
+// It holds one measured test per function of a that b covers and one per function of b.
+// It also holds a test the spawn scan marks and a test whose entry records an outcome.
 func selectFixtureMap(committed map[string]string) testcover.Map {
-	hashesUnder := func(dir string) map[string]string {
+	hashesUnder := func(dir string, goFilesDirectly bool) map[string]string {
 		hashes := map[string]string{}
 		for file, text := range committed {
-			if rel, under := strings.CutPrefix(file, dir+"/"); under {
+			rel, under := strings.CutPrefix(file, dir+"/")
+			if under && goFilesDirectly == (path.Dir(rel) == "." && path.Ext(rel) == ".go") {
 				hashes[rel] = testcover.ContentHash([]byte(text))
 			}
 		}
 		return hashes
 	}
+	allUnder := func(dir string) map[string]string {
+		hashes := hashesUnder(dir, true)
+		maps.Copy(hashes, hashesUnder(dir, false))
+		return hashes
+	}
+	environment := selectEnvironment
+	environment.GoModHash = testcover.ContentHash([]byte(committed["go.mod"]))
 	built := time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
 	return testcover.Map{
-		Commit:  selectCommit,
-		BuiltAt: built,
-		Files:   hashesUnder("b"),
-		Linked:  map[string]map[string]string{"m/a": hashesUnder("a"), "m/c": hashesUnder("c")},
-		Blocks:  []testcover.BlockKey{{File: "b.go", Func: testcover.PackageLevelFunc, Hash: "h"}},
+		Commit:     selectCommit,
+		BuiltAt:    built,
+		Files:      hashesUnder("b", true),
+		OtherFiles: hashesUnder("b", false),
+		Linked:     map[string]map[string]string{"m/a": allUnder("a"), "m/c": allUnder("c")},
+		Blocks: []testcover.BlockKey{
+			{File: "b.go", Func: "Own", Hash: "own"},
+			{File: "b.go", Func: "Other", Hash: "other"},
+		},
 		Funcs: []testcover.FuncKey{
 			{Package: "m/a", File: "a.go", Func: "Box.Size"},
 			{Package: "m/a", File: "a.go", Func: "F"},
@@ -138,14 +186,21 @@ func selectFixtureMap(committed map[string]string) testcover.Map {
 			{Name: "TestG", Funcs: []int{2}},
 			{Name: "TestInit", Funcs: []int{3}},
 			{Name: "TestH", Funcs: []int{4}},
-			{Name: "TestSpawn", Blocks: []int{0}, Spawn: testcover.SpawnVerdict{OutOfProcess: true}},
+			{Name: "TestOwn", Blocks: []int{0}},
+			{Name: "TestOther", Blocks: []int{1}},
+			{Name: "TestSpawn", Funcs: []int{1}, Spawn: testcover.SpawnVerdict{OutOfProcess: true}},
+			{Name: "TestFailed", Funcs: []int{1}, Outcome: testcover.OutcomeFailed},
 		},
-		Format: &testcover.MapFormat{Version: testcover.MapFormatVersion, Commit: selectCommit, BuiltAt: built},
+		Format: &testcover.MapFormat{Version: testcover.MapFormatVersion, Commit: selectCommit, BuiltAt: built, Environment: environment},
 	}
 }
 
-// TestSelectorSelect pins which of b's tests a change to its linked package a selects.
+// fixtureRecorded are the fixture map's tests that record a passing measurement, in its order.
+var fixtureRecorded = []string{"TestSize", "TestF", "TestG", "TestInit", "TestH", "TestOwn", "TestOther"}
+
+// TestSelectorSelect pins which of b's tests a change to b or to its linked package a selects.
 // It also pins the changes the map cannot speak for, so b runs whole.
+// Every case gives the same verdict with the working tree as target and with a commit holding the same files.
 func TestSelectorSelect(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -153,6 +208,9 @@ func TestSelectorSelect(t *testing.T) {
 	inertText := func(rel string) bool { return path.Ext(rel) == ".txt" || path.Ext(rel) == ".md" }
 	embedAssets := func(directive string) map[string]string {
 		return map[string]string{"a/assets.go": "package a\n\nimport \"embed\"\n\n" + directive + "\nvar static embed.FS\n"}
+	}
+	ownTestEdit := func(old, replacement string) map[string]string {
+		return map[string]string{"b/funcs_test.go": strings.Replace(ownTestSource, old, replacement, 1)}
 	}
 	pageChanged := map[string]string{"a/static/page.txt": "changed\n"}
 	tests := []struct {
@@ -174,14 +232,18 @@ func TestSelectorSelect(t *testing.T) {
 		inert     func(string) bool
 		want      []string
 		wantMiss  testcover.MissReason
+		// wantDetail, when set, is the exact detail of the miss.
+		wantDetail string
+		// unrecorded names the tests of fixtureRecorded that editMap leaves with no passing measurement.
+		unrecorded []string
 	}{
 		{name: "NoChange"},
 		{name: "EditInsideFunctionBody", linkedEdits: []string{"strings.ToUpper(s)", "strings.ToLower(s)"},
-			want: []string{"TestF", "TestSpawn"}},
+			want: []string{"TestF"}},
 		{name: "ChangedParameterTypes", linkedEdits: []string{"func F(s string) string {", "func F(s string, _ ...int) string {"},
-			want: []string{"TestF", "TestSpawn"}},
-		{name: "DeletedFile", files: map[string]string{"a/gone.go": removedFile}, want: []string{"TestH", "TestSpawn"}},
-		{name: "EditToOneOfTwoInits", linkedEdits: []string{`"two"`, `"three"`}, want: []string{"TestInit", "TestSpawn"}},
+			want: []string{"TestF"}},
+		{name: "DeletedFile", files: map[string]string{"a/gone.go": removedFile}, want: []string{"TestH"}},
+		{name: "EditToOneOfTwoInits", linkedEdits: []string{`"two"`, `"three"`}, want: []string{"TestInit"}},
 		{name: "CommentAndFormatting", linkedEdits: []string{
 			"func G() string {", "// G renders the limit.\nfunc G() string {",
 			"return b.N", "return b.N // the count",
@@ -198,22 +260,84 @@ func TestSelectorSelect(t *testing.T) {
 		{name: "NestedPackageFile", files: map[string]string{"a/sub/s.go": "package sub\n"}},
 		{name: "InertFileNoGoEmbedNames", files: map[string]string{"a/notes.md": "more notes\n"}, inert: inertText},
 		{name: "InertFileUnderUnrelatedDirectory", files: map[string]string{"a/other/x.txt": "x\n"}, inert: inertText},
-		{name: "EditInsideMethodBody", linkedEdits: []string{"return b.N\n", "return b.N + 1\n"}, want: []string{"TestSize", "TestSpawn"}},
+		{name: "EditInsideMethodBody", linkedEdits: []string{"return b.N\n", "return b.N + 1\n"}, want: []string{"TestSize"}},
 		{name: "RemovedInit", linkedEdits: []string{"\nfunc init() {\n\tregistered = append(registered, \"two\")\n}\n", ""},
-			want: []string{"TestInit", "TestSpawn"}},
+			want: []string{"TestInit"}},
+		{name: "OwnFunctionBodyEdited", files: map[string]string{"b/b.go": strings.Replace(ownSource, "return 1", "return 3", 1)},
+			want: []string{"TestOwn"}},
+		{name: "OwnGoFileAdded", files: map[string]string{"b/extra.go": "package b\n"}},
+		{name: "OwnGoFileRemoved", files: map[string]string{"b/b.go": removedFile}, want: []string{"TestOther", "TestOwn"}},
+		{name: "OwnTestFunctionEdited", files: ownTestEdit("_ = Other()", "_ = Other() + 1"), want: []string{"TestOther"}},
+		{name: "OwnTestFunctionAdded", files: ownTestEdit("func TestOther", "func TestNew(t *testing.T) {}\n\nfunc TestOther"),
+			want: []string{"TestNew"}},
+		{name: "OwnTestFunctionRemoved", files: ownTestEdit("func TestOther(t *testing.T) {\n\t_ = Other()\n}\n", "")},
+		{name: "OwnTestFileWithOnlyTestFunctionsAdded",
+			files: map[string]string{"b/more_test.go": "package b\n\nimport \"testing\"\n\nfunc TestMore(t *testing.T) {}\n"},
+			want:  []string{"TestMore"}},
+		{name: "OwnTestFileImportingTestingRemoved",
+			committed: map[string]string{"b/more_test.go": "package b\n\nimport \"testing\"\n\nfunc TestMore(t *testing.T) {}\n"},
+			files:     map[string]string{"b/more_test.go": removedFile}},
+		{name: "OwnTestFileImportingLinkedPackageRemoved",
+			committed: map[string]string{"b/reg_test.go": "package b\n\nimport _ \"m/c\"\n\nfunc TestReg() {}\n"},
+			files:     map[string]string{"b/reg_test.go": removedFile}, wantMiss: testcover.MissTestFile},
+		{name: "ExternalTestFileImportingOwnPackageAdded",
+			files: map[string]string{"b/ext_test.go": "package b_test\n\nimport (\n\t\"testing\"\n\n\t\"m/b\"\n)\n\nfunc TestExt(t *testing.T) { _ = b.Own() }\n"},
+			want:  []string{"TestExt"}},
+		{name: "OwnTestStandardLibraryImportAdded",
+			files: ownTestEdit(`import "testing"`, "import (\n\t_ \"fmt\"\n\t\"testing\"\n)")},
+		{name: "BuildFailureBesideTestEntries", editMap: func(m *testcover.Map) { m.BuildFailure = "build failed" }},
+		{name: "SpawnMarkedTestDeclaredInNewFile", files: map[string]string{"b/spawn_test.go": "package b\n\nfunc TestSpawn(t *T) {}\n"},
+			want: []string{"TestSpawn"}},
+		{name: "OutcomeEntryIsNoRecordedTest", linkedEdits: []string{"strings.ToUpper(s)", "strings.ToLower(s)"},
+			editMap: func(m *testcover.Map) { m.Tests[1].Outcome = testcover.OutcomeTimedOut }, unrecorded: []string{"TestF"}},
 
 		{name: "NoMap", noMap: true, wantMiss: testcover.MissNoMap},
 		{name: "MapUnreadable", mapText: "{not json", wantMiss: testcover.MissMapUnreadable},
-		{name: "BuildFailure", editMap: func(m *testcover.Map) { m.BuildFailure = "build failed" }, wantMiss: testcover.MissBuildFailure},
+		{name: "BuildFailureWithNoTestEntries",
+			editMap:  func(m *testcover.Map) { m.BuildFailure, m.Tests = "build failed", nil },
+			wantMiss: testcover.MissBuildFailure, wantDetail: "build failed"},
 		{name: "NoMarker", editMap: func(m *testcover.Map) { m.Format = nil }, wantMiss: testcover.MissUnmarked},
 		{name: "MarkerDiffersFromMap", editMap: func(m *testcover.Map) { m.Format.Commit = "older" }, wantMiss: testcover.MissUnmarked},
 		{name: "TestNamesFunctionOutsideTable", editMap: func(m *testcover.Map) { m.Tests[0].Funcs = []int{9} },
 			wantMiss: testcover.MissMapUnreadable},
+		{name: "TestNamesBlockOutsideTable", editMap: func(m *testcover.Map) { m.Tests[0].Blocks = []int{9} },
+			wantMiss: testcover.MissMapUnreadable},
+		{name: "ToolchainVersionDiffers", editMap: func(m *testcover.Map) { m.Format.Environment.GoVersion = "go1.25.0" },
+			wantMiss: testcover.MissEnvironment, wantDetail: "the map's stamp differs in go_version"},
+		{name: "GOOSDiffers", editMap: func(m *testcover.Map) { m.Format.Environment.GOOS = "plan9" },
+			wantMiss: testcover.MissEnvironment, wantDetail: "the map's stamp differs in goos"},
+		{name: "GOARCHDiffers", editMap: func(m *testcover.Map) { m.Format.Environment.GOARCH = "riscv64" },
+			wantMiss: testcover.MissEnvironment, wantDetail: "the map's stamp differs in goarch"},
+		{name: "TiersDigestDiffers", editMap: func(m *testcover.Map) { m.Format.Environment.TiersDigest = "other-tiers" },
+			wantMiss: testcover.MissEnvironment, wantDetail: "the map's stamp differs in tiers_digest"},
+		{name: "HubEnvDigestDiffers", editMap: func(m *testcover.Map) { m.Format.Environment.HubEnvDigest = "other-env" },
+			wantMiss: testcover.MissEnvironment, wantDetail: "the map's stamp differs in hub_env_digest"},
+		{name: "GoModChanged", files: map[string]string{"go.mod": "module m\n\ngo 1.27\n"},
+			wantMiss: testcover.MissEnvironment, wantDetail: "the map's stamp differs in go_mod_hash"},
+		{name: "GoSumAdded", files: map[string]string{"go.sum": "example.com/x v1.0.0 h1:x=\n"},
+			wantMiss: testcover.MissEnvironment, wantDetail: "the map's stamp differs in go_sum_hash"},
 		{name: "CommitUnreadable", commitRev: "other", wantMiss: testcover.MissCommitUnreadable},
-		{name: "OwnTestFileEdited", files: map[string]string{"b/b_test.go": "package b\n\nvar touched int\n"},
-			wantMiss: testcover.MissOwnFiles},
+		{name: "OwnTestHelperEdited", files: ownTestEdit("return 1", "return 2"), wantMiss: testcover.MissTestFile},
+		{name: "OwnTestMainAdded", files: ownTestEdit("func TestOwn", "func TestMain(m *testing.M) {}\n\nfunc TestOwn"),
+			wantMiss: testcover.MissTestFile},
+		{name: "OwnTestImportOutsideLinkedSetAdded",
+			files:    ownTestEdit(`import "testing"`, "import (\n\t_ \"example.com/x\"\n\t\"testing\"\n)"),
+			wantMiss: testcover.MissTestFile},
+		{name: "OwnTestPackageClauseChanged", files: ownTestEdit("package b\n", "package b_test\n"), wantMiss: testcover.MissTestFile},
+		{name: "OwnTestPackageLevelVarAdded", files: ownTestEdit("func helper", "var count int\n\nfunc helper"),
+			wantMiss: testcover.MissTestFile},
+		{name: "OwnTestMethodNamedLikeATestAdded",
+			files:    map[string]string{"b/more_test.go": "package b\n\nfunc (s TestSuite) Run() {}\n"},
+			wantMiss: testcover.MissTestFile},
+		{name: "OwnTestFileDoesNotParse", files: ownTestEdit("func TestOther(t *testing.T) {", "func TestOther(t {"),
+			wantMiss: testcover.MissParse},
+		{name: "OwnTestFileDirectiveRemoved", files: map[string]string{"b/b_test.go": "package b\n\nvar touched int\n"},
+			wantMiss: testcover.MissDirective},
 		{name: "AddedInitInNewFile", files: map[string]string{"a/extra.go": "package a\n\nfunc init() {}\n"},
 			wantMiss: testcover.MissInit},
+		{name: "OwnInitAdded", files: map[string]string{"b/extra.go": "package b\n\nfunc init() {}\n"}, wantMiss: testcover.MissInit},
+		{name: "OwnConstChanged", committed: map[string]string{"b/limits.go": "package b\n\nconst Max = 1\n"},
+			files: map[string]string{"b/limits.go": "package b\n\nconst Max = 2\n"}, wantMiss: testcover.MissNonBody},
 		{name: "EmbeddedFileInert", files: map[string]string{"a/static/page.txt": "changed\n"}, inert: inertText,
 			wantMiss: testcover.MissNonGoFile},
 		{name: "NonGoFileNotInert", files: map[string]string{"a/notes.md": "more notes\n"}, wantMiss: testcover.MissNonGoFile},
@@ -273,9 +397,10 @@ func TestSelectorSelect(t *testing.T) {
 			wantMiss: testcover.MissMethodSet},
 		{name: "AddedImportOfDotlessNonStandardPath", files: map[string]string{"a/link.go": "package a\n\nimport _ \"foo/bar\"\n"},
 			wantMiss: testcover.MissNonBody},
-		{name: "OwnGoFileAdded", files: map[string]string{"b/extra.go": "package b\n"}, wantMiss: testcover.MissOwnFiles},
-		{name: "OwnGoFileRemoved", files: map[string]string{"b/b.go": removedFile}, wantMiss: testcover.MissOwnFiles},
 		{name: "OwnNonGoFileChanged", files: map[string]string{"b/note.txt": "changed\n"}, inert: nil, wantMiss: testcover.MissNonGoFile},
+		{name: "OwnTestdataFileChanged", files: map[string]string{"b/testdata/in.txt": "changed\n"}, wantMiss: testcover.MissNonGoFile},
+		{name: "OwnTestdataGoFileChanged", files: map[string]string{"b/testdata/fixture.go": "package fixture\n\nvar x int\n"},
+			inert: inertText, wantMiss: testcover.MissNonGoFile},
 		{name: "OwnTestFileEmbedsInertFile", files: map[string]string{"b/note.txt": "changed\n"}, inert: inertText,
 			wantMiss: testcover.MissNonGoFile},
 		{name: "RecordedNonGoFileRemoved", files: map[string]string{"a/notes.md": removedFile}, wantMiss: testcover.MissNonGoFile},
@@ -328,6 +453,7 @@ func TestSelectorSelect(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			slices.Sort(workingFiles)
 
 			mapsDir := t.TempDir()
 			switch {
@@ -348,45 +474,73 @@ func TestSelectorSelect(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			rev := selectCommit
+			mapRev := selectCommit
 			if tt.commitRev != "" {
-				rev = tt.commitRev
+				mapRev = tt.commitRev
 			}
 
 			goRoot := t.TempDir()
-			for _, standard := range []string{"embed", "fmt", "strconv", "strings"} {
+			for _, standard := range []string{"embed", "fmt", "strconv", "strings", "testing"} {
 				if err := os.MkdirAll(filepath.Join(goRoot, "src", standard), 0o755); err != nil {
 					t.Fatal(err)
 				}
 			}
-			selector := testcover.NewSelector(testcover.SelectorConfig{
+			config := testcover.SelectorConfig{
 				GoRoot: goRoot, MapsDir: mapsDir, WorktreeRoot: root, ModuleRel: ".", ModulePath: "m",
-				WorkingFiles: slices.Sorted(slices.Values(workingFiles)), Commits: fakeCommits{rev: rev, files: atCommit}, Inert: tt.inert,
-			})
-			got, err := selector.Select("b")
-			if err != nil {
-				t.Fatalf("Select(b) error = %v", err)
+				Commits:     fakeCommits{trees: map[string]map[string]string{mapRev: atCommit, targetCommit: working}},
+				Inert:       tt.inert,
+				Environment: selectEnvironment,
 			}
-			switch {
-			case tt.wantMiss == "" && got.Miss != nil:
-				t.Errorf("Select(b) missed %s; want tests %v", got.Miss, tt.want)
-			case tt.wantMiss != "" && (got.Miss == nil || got.Miss.Reason != tt.wantMiss || got.Miss.Detail == ""):
-				t.Errorf("Select(b) = %+v, miss %v; want a miss for %q with a detail", got, got.Miss, tt.wantMiss)
-			case !reflect.DeepEqual(got.Tests, tt.want):
-				t.Errorf("Select(b).Tests = %v; want %v", got.Tests, tt.want)
+			var wantRecorded []string
+			if tt.wantMiss == "" {
+				wantRecorded = slices.DeleteFunc(slices.Clone(fixtureRecorded), func(name string) bool { return slices.Contains(tt.unrecorded, name) })
 			}
-			var gotRecorded, wantRecorded []string
-			for _, recorded := range got.Recorded {
-				gotRecorded = append(gotRecorded, recorded.Name)
-			}
-			if got.Miss == nil {
-				for _, recorded := range selectFixtureMap(committed).Tests {
-					wantRecorded = append(wantRecorded, recorded.Name)
+			for _, target := range []testcover.Target{{Files: workingFiles}, {Commit: targetCommit, Files: workingFiles}} {
+				got, err := testcover.NewSelector(config, target).Select("b")
+				if err != nil {
+					t.Fatalf("Select(b) against %q error = %v", target.Commit, err)
+				}
+				switch {
+				case tt.wantMiss == "" && got.Miss != nil:
+					t.Errorf("Select(b) against %q missed %s; want tests %v", target.Commit, got.Miss, tt.want)
+				case tt.wantMiss != "" && (got.Miss == nil || got.Miss.Reason != tt.wantMiss || got.Miss.Detail == ""):
+					t.Errorf("Select(b) against %q = %+v, miss %v; want a miss for %q with a detail", target.Commit, got, got.Miss, tt.wantMiss)
+				case tt.wantDetail != "" && got.Miss.Detail != tt.wantDetail:
+					t.Errorf("Select(b) against %q miss detail = %q; want %q", target.Commit, got.Miss.Detail, tt.wantDetail)
+				case !reflect.DeepEqual(got.Tests, tt.want):
+					t.Errorf("Select(b) against %q .Tests = %v; want %v", target.Commit, got.Tests, tt.want)
+				}
+				var gotRecorded []string
+				for _, recorded := range got.Recorded {
+					gotRecorded = append(gotRecorded, recorded.Name)
+				}
+				if !slices.Equal(gotRecorded, wantRecorded) {
+					t.Errorf("Select(b) against %q .Recorded = %v; want %v, the map's passing entries, and none with a miss",
+						target.Commit, gotRecorded, wantRecorded)
 				}
 			}
-			if !slices.Equal(gotRecorded, wantRecorded) {
-				t.Errorf("Select(b).Recorded = %v; want %v, the map's tests, and none with a miss", gotRecorded, wantRecorded)
-			}
 		})
+	}
+}
+
+// TestSelectorSelect_UnreadableTarget pins that a commit target the object store cannot read gives an error and no miss.
+func TestSelectorSelect_UnreadableTarget(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	mapsDir := t.TempDir()
+	if err := testcover.WriteMap(mapsDir, "b", selectFixtureMap(committedFiles)); err != nil {
+		t.Fatal(err)
+	}
+	config := testcover.SelectorConfig{
+		MapsDir: mapsDir, ModuleRel: ".", ModulePath: "m", Environment: selectEnvironment,
+		Commits: fakeCommits{trees: map[string]map[string]string{selectCommit: committedFiles}},
+	}
+	got, err := testcover.NewSelector(config, testcover.Target{Commit: "unknown"}).Select("b")
+	if err == nil {
+		t.Error("Select(b) against an unreadable commit error = nil; want the read failure")
+	}
+	if got.Miss != nil {
+		t.Errorf("Select(b) against an unreadable commit miss = %s; want none, with the error returned", got.Miss)
 	}
 }

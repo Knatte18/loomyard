@@ -376,10 +376,16 @@
 // Nor does it narrow a tier whose command lacks `{args}` or a target placeholder, or one with `carry: false`.
 // `impactset.ModuleTargets` keeps apart the changed packages, the binary builders and the importers.
 // A changed package and a binary builder run every test of the tier, as under `diff`.
-// An importing package runs, per tier, the union of four sets of tests.
-// The first is the tests its coverage map selects through `testcover.Selector`.
-// The next two are the tests the map does not record and those it marks out of process or unresolved.
+// An importing package runs, per tier, the union of three sets of tests.
+// The first is the tests its coverage map selects through `testcover.Selector`, with the working tree as target.
+// The second is the tests the map records no passing measurement for:
+// those it does not hold, and those whose entry records an outcome or a spawn verdict.
 // The last is its `//lym:guard` tests.
+// The selector compares the package's own files with the map as it compares a linked package's.
+// A package the diff touches runs whole, so that narrows only a change that reached the base after the map's commit.
+// The current environment stamp the selector compares a map's with is built as `lym gate testmap` builds it.
+// It holds the Go version and platform `go env` reports under the gate's env and the worktree's go.mod and go.sum.
+// It also holds the digests of the mapped tiers and of the hub's env.yaml variables.
 // The union holds only Test functions the tier runs, read from each one's `tiergate.Require`.
 // They are declared in a test file `go/build` admits on the host under the tier's tag, and the watch skip drops some.
 // A selector miss runs the package whole, and a package with an empty union runs nothing for the tier.

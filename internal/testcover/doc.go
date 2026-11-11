@@ -41,6 +41,7 @@
 // It keeps the block key table of the package's own files and, for each judged test, the indexes of the blocks it covers.
 // It also keeps a function table of the other packages the test binary links.
 // For each test it keeps the indexes of the functions it covers there and its spawn verdict.
+// An entry records a passing measurement, or instead a TestOutcome for a run alone that recorded no coverage.
 // It holds the hashes of the package's Go files, of its other files, and of each linked package's files.
 // Its MapFormat marker names that shape and holds the writer's commit, build time and EnvironmentStamp.
 // A map without the marker, or whose marker's commit and time differ from the map's own, was written otherwise.
@@ -50,18 +51,25 @@
 // A package owns every file under its directory except those below a nested package or module.
 // NestedPackageDirs finds those nested directories.
 //
-// A Selector selects an importing package's tests from its map against the working tree.
-// It compares each linked package's files with the map's record.
-// For a changed Go file it compares the top-level declarations at the map's commit with the working tree's,
+// A Selector selects a package's tests from its map against a Target: the working tree or a commit.
+// It compares the package's files and each linked package's files with the map's record.
+// For a changed Go file it compares the top-level declarations at the map's commit with the target's,
 // ignoring comments and formatting.
 // A function whose declaration differs, or that only the commit holds, is changed.
-// The tests that covered a changed function are selected, and with them every test the spawn scan marks.
-// A Selection also carries the map's recorded tests, so a caller can run the tests the map holds no coverage for.
+// The tests whose passing entry covered a changed function are affected:
+// a linked package's function through the entry's functions, one of the package's own through its blocks.
+// A changed test file of the package is compared with every top-level Test function set apart.
+// A Test function that changed or is new is affected, and any other change to the file is a miss.
+// A linked package's test files are in no binary the map measured, so they are not compared.
+// A Selection also carries the tests the map records a passing measurement for.
+// An entry that records an outcome or a spawn verdict is no recorded test,
+// so a caller runs it as one the map holds no coverage for.
 // A change the map cannot speak for is a Miss, under which the caller runs the package whole.
 // Such changes include:
 //   - the map missing, unreadable, failed or unmarked, or its commit unreadable;
-//   - the package's own Go files;
-//   - a non-Go file, unless inert_paths matches it and no go:embed pattern names it,
+//   - an EnvironmentStamp that differs from the target's, whose go.mod and go.sum hashes StampModuleFiles reads;
+//   - a non-Go file, testdata and the Go files under it included,
+//     unless inert_paths matches it and no go:embed pattern names it,
 //     the package's own test files counting as embed sources;
 //   - a declaration outside functions, bar a few additions no unchanged code can reach;
 //   - an import, bar an added one of a linked or standard-library package,

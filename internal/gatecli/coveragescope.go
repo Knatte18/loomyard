@@ -66,10 +66,9 @@ func coverageTier(cfg gateslot.Config, request testRequest, number int) (gateslo
 // narrowCoverage returns share, the diff share targets derive, narrowed for the tier numbered number.
 // It also returns the scope report's line for each package of the share.
 // A changed package and a binary builder of targets run whole.
-// An importing package runs the union of its Test functions of the tier that match one of four rules.
+// An importing package runs the union of its Test functions of the tier that match one of three rules.
 // selectionOf selects the function.
-// The map does not record it.
-// The map marks it out of process or unresolved.
+// The map records no passing measurement for it.
 // It carries `//lym:guard`.
 // The union holds only the tests a run of the tier executes.
 // Those are declared in a test file the host admits under the tier's tag.
@@ -158,17 +157,16 @@ func importerPackage(entry coveragePackage, tagged build.Context, tiers []int, r
 }
 
 // coverageUnion returns the names of declared, sorted, that the selection selects.
-// It adds the names its map does not record or marks out of process or unresolved, and the names guards holds.
+// It adds the names the selection does not hold as recorded, and the names guards holds.
 func coverageUnion(declared []string, selection testcover.Selection, guards []impactset.GuardTest) []string {
-	recorded, marked := map[string]bool{}, map[string]bool{}
+	recorded := map[string]bool{}
 	for _, test := range selection.Recorded {
 		recorded[test.Name] = true
-		marked[test.Name] = test.Spawn.OutOfProcess || test.Spawn.Unresolved
 	}
 	var union []string
 	for _, name := range declared {
 		guarded := slices.ContainsFunc(guards, func(guard impactset.GuardTest) bool { return guard.Name == name })
-		if guarded || !recorded[name] || marked[name] || slices.Contains(selection.Tests, name) {
+		if guarded || !recorded[name] || slices.Contains(selection.Tests, name) {
 			union = append(union, name)
 		}
 	}
@@ -261,8 +259,9 @@ func coverageSelections(ctx context.Context, cfg gateslot.Config, location *lymc
 	}
 }
 
-// openSelector returns the selector over the hub's coverage maps and the worktree at root.
+// openSelector returns the selector over the hub's coverage maps with the worktree at root as its target.
 // It reads the working tree's files as HEAD's tree and the uncommitted and untracked paths, through fabric.
+// Its current environment stamp holds the toolchain's Go version and platform and the digests a map build stamps.
 // It returns instead the miss every importing package takes: outside a hub there are no maps,
 // and a working tree or toolchain that cannot be read leaves the maps nothing to compare with.
 func openSelector(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest) (*testcover.Selector, *testcover.Miss) {
@@ -294,16 +293,22 @@ func openSelector(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 	if err != nil {
 		return unreadable(err)
 	}
+	reader := testcover.Toolchain{Go: request.goBinary, Env: gateEnv(os.Environ(), request.hubEnv), Dir: root, Ctx: ctx}
+	version, goos, goarch, err := reader.GoEnvironment()
+	if err != nil {
+		return unreadable(err)
+	}
+	toolchain := testcover.EnvironmentStamp{GoVersion: version, GOOS: goos, GOARCH: goarch}
 	return testcover.NewSelector(testcover.SelectorConfig{
 		MapsDir:      request.coverageMaps,
 		WorktreeRoot: root,
 		ModuleRel:    ".",
 		ModulePath:   modulePathOf(root),
 		GoRoot:       goRoot,
-		WorkingFiles: slices.Compact(files),
 		Commits:      fabric,
 		Inert:        cfg.Inert,
-	}), nil
+		Environment:  stampEnvironment(toolchain, mappedTierConfigs(cfg), request.hubEnv),
+	}, testcover.Target{Files: slices.Compact(files)}), nil
 }
 
 // goRootOf returns the root of the Go toolchain goBinary runs, as `go env GOROOT` prints it in dir.

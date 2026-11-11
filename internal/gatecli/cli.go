@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/impactset"
 )
@@ -206,6 +207,8 @@ type testRequest struct {
 	coverage bool
 	// coverageMaps is the hub's coverage map directory; empty outside a hub.
 	coverageMaps string
+	// hubEnv is the hub's env.yaml variables, which the call's children run with.
+	hubEnv envconfig.Config
 	// root is the worktree root the tiers' dirs and a prebuild are relative to.
 	root string
 	// prebuiltStore is the hub's store of prebuilt `lym` binaries; empty outside a hub.

@@ -3,6 +3,7 @@
 package testcover
 
 import (
+	"path"
 	"path/filepath"
 	"time"
 
@@ -72,8 +73,22 @@ type MapTest struct {
 	// Funcs are indexes into Map.Funcs of the linked packages' functions the test covers.
 	Funcs []int `json:"funcs,omitempty"`
 	// Spawn is the static spawn scan's verdict on the test.
+	// An entry whose verdict marks the test out of process or unresolved records no passing measurement.
 	Spawn SpawnVerdict `json:"spawn"`
+	// Outcome is why the test's run alone recorded no coverage, empty for a passing measurement.
+	Outcome TestOutcome `json:"outcome,omitempty"`
 }
+
+// TestOutcome is why a coverage map's entry for a test holds no coverage: its run alone did not pass covering something.
+type TestOutcome string
+
+// The outcomes an entry records instead of a passing measurement.
+const (
+	OutcomeFailed     TestOutcome = "failed"
+	OutcomeTimedOut   TestOutcome = "timed out"
+	OutcomeSkipped    TestOutcome = "skipped"
+	OutcomeNoCoverage TestOutcome = "covered nothing"
+)
 
 // MapFormat is a coverage map's format marker: the shape the map holds and the build that wrote it.
 type MapFormat struct {
@@ -100,6 +115,47 @@ type EnvironmentStamp struct {
 	TiersDigest string `json:"tiers_digest"`
 	// HubEnvDigest digests the hub's env.yaml variables the build passes its children.
 	HubEnvDigest string `json:"hub_env_digest"`
+}
+
+// StampModuleFiles returns stamp with its GoModHash and GoSumHash set from the go.mod and go.sum of the module.
+// moduleRel is the module's worktree-relative slash directory.
+// read reads a file by worktree-relative slash path from the tree the stamp describes, found false for an absent one;
+// an absent file leaves its hash empty.
+// The error is read's.
+func StampModuleFiles(stamp EnvironmentStamp, moduleRel string, read func(rel string) (data []byte, found bool, err error)) (EnvironmentStamp, error) {
+	for _, file := range []struct {
+		name string
+		hash *string
+	}{{"go.mod", &stamp.GoModHash}, {"go.sum", &stamp.GoSumHash}} {
+		data, found, err := read(path.Join(moduleRel, file.name))
+		if err != nil {
+			return EnvironmentStamp{}, err
+		}
+		*file.hash = ""
+		if found {
+			*file.hash = ContentHash(data)
+		}
+	}
+	return stamp, nil
+}
+
+// stampDifferences returns the JSON names of the fields in which the stamps a and b differ, in field order.
+func stampDifferences(a, b EnvironmentStamp) []string {
+	var differing []string
+	for _, field := range []struct{ name, a, b string }{
+		{"go_version", a.GoVersion, b.GoVersion},
+		{"goos", a.GOOS, b.GOOS},
+		{"goarch", a.GOARCH, b.GOARCH},
+		{"go_mod_hash", a.GoModHash, b.GoModHash},
+		{"go_sum_hash", a.GoSumHash, b.GoSumHash},
+		{"tiers_digest", a.TiersDigest, b.TiersDigest},
+		{"hub_env_digest", a.HubEnvDigest, b.HubEnvDigest},
+	} {
+		if field.a != field.b {
+			differing = append(differing, field.name)
+		}
+	}
+	return differing
 }
 
 // MapPath returns the path of the coverage map of the package pkg under the maps directory dir.

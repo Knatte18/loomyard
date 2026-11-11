@@ -141,6 +141,82 @@ func compareGoSources(rel string, before, after goSource) goFileComparison {
 	return comparison
 }
 
+// testFileComparison is what one test file's comparison found.
+type testFileComparison struct {
+	// miss is the first change outside the file's Test functions, nil for none.
+	miss *Miss
+	// tests name each Test function the target's file holds whose declaration differs from the commit's or is new.
+	tests []string
+	// addedImports are the import paths the target's file imports and the commit's does not.
+	// removedImports are the import paths the commit's file imports and the target's does not.
+	// Whether an import change is a miss depends on the map's linked set, so the caller judges them.
+	addedImports, removedImports []string
+}
+
+// compareTestSources compares the test file rel as the map's commit stores it, before, with the target's, after.
+// It sets every top-level Test function apart and compares the rest of the file, ignoring comments and formatting.
+// Any difference in the rest but its imports is a miss: a helper, TestMain, an init or a package-level declaration.
+// It reports the imports added and removed instead of judging them.
+// A removed Test function is neither a miss nor affected.
+// Either side may be absent.
+func compareTestSources(rel string, before, after goSource) testFileComparison {
+	fileMiss := func(reason MissReason, detail string) testFileComparison {
+		return testFileComparison{miss: &Miss{Reason: reason, Detail: detail}}
+	}
+	old, err := parseFileDecls(before)
+	if err != nil {
+		return fileMiss(MissParse, fmt.Sprintf("%s at the map's commit: %v", rel, err))
+	}
+	cur, err := parseFileDecls(after)
+	if err != nil {
+		return fileMiss(MissParse, fmt.Sprintf("%s in the target: %v", rel, err))
+	}
+	if before.present && after.present && old.packageName != cur.packageName {
+		return fileMiss(MissTestFile, rel+" changes its package clause")
+	}
+	if !slices.Equal(old.directives, cur.directives) {
+		return fileMiss(MissDirective, rel+" adds, removes or changes a "+directivePrefix+" line")
+	}
+	for _, key := range sortedKeyUnion(old.values, cur.values) {
+		if !valueDeclsEqual(old.values[key], cur.values[key]) {
+			return fileMiss(MissTestFile, fmt.Sprintf("%s changes, adds or removes %s", rel, key))
+		}
+	}
+	var comparison testFileComparison
+	for _, key := range sortedKeyUnion(old.imports, cur.imports) {
+		if _, held := old.imports[key]; !held {
+			comparison.addedImports = append(comparison.addedImports, cur.imports[key])
+		} else if _, kept := cur.imports[key]; !kept {
+			comparison.removedImports = append(comparison.removedImports, old.imports[key])
+		}
+	}
+	for _, key := range sortedKeyUnion(old.funcs, cur.funcs) {
+		if syntaxListsEqual(old.funcs[key], cur.funcs[key]) {
+			continue
+		}
+		// A method's key holds a dot, so a method named like a test never counts as one.
+		if !isTestFuncName(key) || strings.Contains(key, ".") {
+			return fileMiss(MissTestFile, fmt.Sprintf("%s changes, adds or removes %s, which is no Test function", rel, key))
+		}
+		if len(cur.funcs[key]) > 0 {
+			comparison.tests = append(comparison.tests, key)
+		}
+	}
+	return comparison
+}
+
+// sortedKeyUnion returns the keys of a and b together, sorted, each once.
+func sortedKeyUnion[V any](a, b map[string]V) []string {
+	keys := map[string]struct{}{}
+	for key := range a {
+		keys[key] = struct{}{}
+	}
+	for key := range b {
+		keys[key] = struct{}{}
+	}
+	return slices.Sorted(maps.Keys(keys))
+}
+
 // missed returns a comparison that found the miss reason with detail.
 func missed(reason MissReason, detail string) goFileComparison {
 	return goFileComparison{miss: &Miss{Reason: reason, Detail: detail}}
