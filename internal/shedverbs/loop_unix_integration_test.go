@@ -253,6 +253,8 @@ func TestLoopIntegration_KeeperKeepsWaitingThroughTerminatingSignals(t *testing.
 	gate := t.TempDir()
 	started, release := filepath.Join(gate, "started"), filepath.Join(gate, "release")
 	script := fmt.Sprintf("touch %s; while [ ! -e %s ]; do sleep 0.05; done", started, release)
+	// A failing test releases the loop process, so it does not poll forever.
+	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o644) })
 	returned := make(chan int, 1)
 	go func() { returned <- keepLoop(spec, "loop-x", []string{"-c", script}, log) }()
 	waitUntil(t, 30*time.Second, "the loop process to start", func() bool {

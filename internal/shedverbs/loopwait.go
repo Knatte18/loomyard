@@ -1,5 +1,5 @@
-// loopwait.go implements the --until-stop invocation: the waiter that starts or follows the detached loop and prints its envelope, and the stop it reports for a loop that is gone.
-// The loop itself, which the waiter spawns, is runLoop in loop.go.
+// loopwait.go implements the --until-stop invocation: the waiter that starts the loop's keeper or follows the detached loop and prints its envelope, and the stop it reports for a loop that is gone.
+// The loop itself, which the waiter's keeper starts, is runLoop in loop.go.
 
 package shedverbs
 
@@ -67,10 +67,11 @@ type loopWaitResult struct {
 	record LoopPIDRecord
 }
 
-// runUntilStop is the --until-stop invocation: it prints the one envelope of the run's loop, starting the detached loop first when none runs.
-// argv is the command line a loop's child steps run, which the detached loop receives with the flags that select it.
+// runUntilStop is the --until-stop invocation: it prints the one envelope of the run's loop, spawning the loop's keeper first when none runs.
+// argv is the command line a loop's child steps run, which the keeper receives with the flags that select it.
 // It first reads the loop lock, the pid file and the envelope file:
-// a free lock beside the teardown's mark, or beside a pid file and no envelope, reports a dead loop;
+// a free lock beside the teardown's mark, or beside a pid file and no envelope, reports a dead loop,
+// after a bounded wait for the keeper's exit mark when the waiter did not spawn the keeper;
 // a held lock follows the loop the pid file names, or waits for a pid file;
 // a free lock beside an envelope delivers it while it is current and retires it undelivered otherwise;
 // anything else spawns a loop and follows it.

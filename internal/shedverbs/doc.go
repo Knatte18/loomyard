@@ -242,6 +242,7 @@
 // an excerpt of the in-flight child's captured stderr;
 // and whether that child's step tree was still running and was killed, which a loop killed from outside leaves behind.
 // How the loop ended is read from the loop log's lines after the loop's last starting mark.
+// A waiter that did not spawn the keeper first waits a bounded time for the keeper's mark of the loop process's exit.
 // First come the marks of the loop, its keeper and the waiter's spawn.
 // Such a mark records a signal the loop received or the loop's exit status.
 // With no marks the clause reads "loop exit: not recorded".
