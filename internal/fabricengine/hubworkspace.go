@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/consoletitle"
@@ -57,12 +58,14 @@ func HubWorkspaceLockPath(hubPath string) string {
 // it returns the hub file's path.
 // Each file splices its settings with the workspace look set:
 // a title naming the workspace and the workspace colour on the activity bar.
-// The hub file lists the prime, the board as Bolt, and every pair whose parent is the prime, beams included;
-// it lists no pair under a beam.
+// The hub file lists the prime, the board as Bolt and every pair of the hub.
+// The pairs under each beam are included, so one window shows all of the repository's code.
+// A pair's folder there takes the name the installed PairFolderNamer gives its slug, else the slug itself.
 // A beam's file, BeamWorkspacePath, lists the beam, its parent, Bolt and every pair whose parent is the beam.
+// Each pair there is named by its slug.
 // Its settings come from the beam's own .vscode/settings.json when readable, else from the prime's.
 // A file of a beam that is gone is removed when it carries the generated mark.
-// A pair with no readable origin record is listed in the hub file as a pair of the prime.
+// A pair with no readable origin record is a pair of the prime, in no beam's file.
 // Each file is rewritten only when its bytes change; a write or removal is recorded in rec.
 // When the hub has a board, the regeneration runs under the hub workspace lock:
 // two callers never interleave their listing and write.
@@ -70,6 +73,29 @@ func HubWorkspaceLockPath(hubPath string) string {
 // the prime cannot be resolved, its settings cannot be read, the lock stays held for the wait, or a write fails.
 func RegenerateHubWorkspace(rec *Mutations, l *lymcwd.Location) (string, error) {
 	return regenerateHubWorkspace(rec, l, hubWorkspaceLockWait)
+}
+
+// PairFolderNamer returns hub workspace folder names keyed by pair slug, for the hub at hubPath.
+// A pair whose slug it leaves out, or maps to "", is named by its slug.
+type PairFolderNamer func(hubPath string) map[string]string
+
+var installedPairFolderNamer atomic.Pointer[PairFolderNamer]
+
+// InstallPairFolderNamer stores namer as the process's pair folder namer.
+// It returns a function that reinstates the previous one.
+// With no namer installed every pair's folder in the hub workspace file is named by its slug.
+func InstallPairFolderNamer(namer PairFolderNamer) (restore func()) {
+	previous := installedPairFolderNamer.Swap(&namer)
+	return func() { installedPairFolderNamer.Store(previous) }
+}
+
+// pairFolderNames returns the installed namer's folder names for the hub at hubPath, and nil with none installed.
+func pairFolderNames(hubPath string) map[string]string {
+	namer := installedPairFolderNamer.Load()
+	if namer == nil {
+		return nil
+	}
+	return (*namer)(hubPath)
 }
 
 // beamWorkspaceSettings returns the settings a beam's workspace file splices.
@@ -130,6 +156,9 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 		logger.Warn("prime settings hold relative paths that now resolve against the hub directory, where the workspace file sits", "keys", keys)
 	}
 
+	// The names are read before the lock is taken: the namer may take locks of its own,
+	// and the hub workspace lock is a leaf lock.
+	names := pairFolderNames(l.HubPath)
 	if pathPresent(BoltDir(l.HubPath)) {
 		release, err := lockHubWorkspace(rec, l.HubPath, lockWait)
 		if err != nil {
@@ -138,7 +167,7 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 		defer release()
 	}
 
-	layout, err := hubWorkspaceFolders(l, prime)
+	layout, err := hubWorkspaceFolders(l, prime, names)
 	if err != nil {
 		return "", fmt.Errorf("compute workspace folders: %w", err)
 	}
@@ -276,8 +305,8 @@ type workspacePair struct {
 // hubWorkspaceFolders returns the folders of the hub workspace file and of each beam file.
 // Each path is relative to the hub and slash-separated.
 // The hub file holds the prime's anchor dir, named after its branch (its directory name when HEAD is detached):
-// the board named Bolt, then every pair whose parent is the prime, named after its slug in byte order.
-// A beam file holds the beam, its parent, Bolt, then every pair whose parent is the beam.
+// the board named Bolt, then every pair in slug byte order, named by names[slug], else after its slug.
+// A beam file holds the beam, its parent, Bolt, then every pair whose parent is the beam, each named after its slug.
 // A pair's parent is the ParentWorktree of its origin record.
 // A pair whose parent is empty, names the prime, or names no listed pair is a pair of the prime.
 // A pair whose origin record is absent is a pair of the prime;
@@ -285,7 +314,7 @@ type workspacePair struct {
 // A folder whose directory does not exist is left out, and a stat error other than not-exist is returned.
 // A pair that fails to resolve, or whose worktree is not a direct child of the hub, is skipped with a debug log;
 // one half-made pair never drops the others.
-func hubWorkspaceFolders(l *lymcwd.Location, primeName string) (workspaceLayout, error) {
+func hubWorkspaceFolders(l *lymcwd.Location, primeName string, names map[string]string) (workspaceLayout, error) {
 	var layout workspaceLayout
 	var primeFolder, boltFolder *vscode.WorkspaceFolder
 
@@ -393,9 +422,11 @@ func hubWorkspaceFolders(l *lymcwd.Location, primeName string) (workspaceLayout,
 		layout.hub = append(layout.hub, *boltFolder)
 	}
 	for _, pair := range pairs {
-		if pair.parent == "" {
-			layout.hub = append(layout.hub, pair.folder)
+		folder := pair.folder
+		if name := names[pair.slug]; name != "" {
+			folder.Name = name
 		}
+		layout.hub = append(layout.hub, folder)
 	}
 	for _, beam := range pairs {
 		if !beam.beam {

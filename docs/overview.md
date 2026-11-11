@@ -558,7 +558,8 @@ User-facing modules each get one `lym <module>` namespace:
   `--force` never overrides that check.
   ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
 - **ide** — one-shot VS Code launcher with interactive menu.
-  `lym ide spawn <prime>` opens the hub workspace `<hub>/<RepoName>.code-workspace` (the prime, `Bolt` and every task pair).
+  `lym ide spawn <prime>` opens the hub workspace `<hub>/<RepoName>.code-workspace` (the prime, `Bolt` and every pair, those under beams included).
+  A pair whose board entry belongs to a project is named `<P#>: <slug>` there, from the board at regeneration.
   Its `settings` carry the prime's `.vscode/settings.json`.
   `lym ide spawn <beam>` opens the beam's workspace `<hub>/<RepoName>-<beam>.code-workspace` the same way.
   It holds the beam, its parent, `Bolt` and the beam's pairs.

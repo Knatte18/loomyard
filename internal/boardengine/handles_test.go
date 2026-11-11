@@ -4,6 +4,7 @@
 package boardengine_test
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,6 +221,58 @@ func TestTitleWithHandle(t *testing.T) {
 			}
 			if got := boardengine.TitleWithHandle(boardPath, tt.slug, "window"); got != tt.want {
 				t.Errorf("TitleWithHandle(%q, %q) = %q; want %q", tt.slug, "window", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestWorkspaceFolderNames pins that an entry in a project is named after its project's handle,
+// and that an entry the board cannot give a project handle is left out.
+func TestWorkspaceFolderNames(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const board = `{"version":1,"entries":[` +
+		`{"id":1,"slug":"bm","kind":"project","labels":["bug"],"beam":true,"handle":"P2"},` +
+		`{"id":2,"slug":"proj","kind":"project","labels":["bug"],"handle":"P3"},` +
+		`{"id":3,"slug":"inner","kind":"project","labels":["bug"],"project":"bm","handle":"P6"},` +
+		`{"id":4,"slug":"gate-shard","kind":"task","labels":["bug"],"project":"proj","handle":"T7"},` +
+		`{"id":5,"slug":"adopt","kind":"task","labels":["bug"],"handle":"T12"},` +
+		`{"id":6,"slug":"wellbore","kind":"task","labels":["bug"],"project":"bm","handle":"T4"},` +
+		`{"id":7,"slug":"deep","kind":"task","labels":["bug"],"project":"inner","handle":"T5"},` +
+		`{"id":8,"slug":"orphan","kind":"task","labels":["bug"],"project":"gone","handle":"T10"},` +
+		`{"id":9,"slug":"nohandle","kind":"note","labels":["removed-type"]},` +
+		`{"id":10,"slug":"under-nohandle","kind":"task","labels":["bug"],"project":"nohandle","handle":"T11"}]}`
+	tests := []struct {
+		name string
+		// board is the board.json the board directory holds; empty means none.
+		board string
+		want  map[string]string
+	}{
+		{"EntriesInAProjectTakeItsHandle", board, map[string]string{
+			"inner":      "P2: inner",
+			"gate-shard": "P3: gate-shard",
+			"wellbore":   "P2: wellbore",
+			"deep":       "P6: deep",
+		}},
+		{"AnUnreadableBoardNamesNoEntry", `{"version":1,"entries":[`, nil},
+		{"NoBoardNamesNoEntry", "", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			hub := t.TempDir()
+			boardDir := fabricengine.BoardDir(hub)
+			if err := os.MkdirAll(boardDir, 0o755); err != nil {
+				t.Fatalf("make the board directory: %v", err)
+			}
+			if tt.board != "" {
+				if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(tt.board), 0o644); err != nil {
+					t.Fatalf("write board.json: %v", err)
+				}
+			}
+
+			if got := boardengine.WorkspaceFolderNames(hub); !maps.Equal(got, tt.want) {
+				t.Errorf("WorkspaceFolderNames() = %v; want %v", got, tt.want)
 			}
 		})
 	}

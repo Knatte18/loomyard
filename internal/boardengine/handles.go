@@ -162,6 +162,30 @@ func TitleWithHandle(boardDir, slug, name string) string {
 	return name
 }
 
+// WorkspaceFolderNames returns the hub workspace folder name of each entry that belongs to a project, keyed by slug.
+// The name reads `<P#>: <slug>`, the project's handle read from the board of the hub at hubPath at the call,
+// so the operator sees which project a pair's folder belongs to.
+// An entry with no project, or whose project the board does not hold with a handle, is left out.
+// An unreadable board is logged at Warn and names no entry, since a folder name never fails its caller.
+func WorkspaceFolderNames(hubPath string) map[string]string {
+	tasks, err := ReadTasks(fabricengine.BoardDir(hubPath))
+	if err != nil {
+		logger.Warn("board: could not read the board for the workspace folders' project handles; naming them by slug", "cause", err)
+		return nil
+	}
+	handles := make(map[string]string, len(tasks))
+	for _, task := range tasks {
+		handles[task.Slug] = task.Handle
+	}
+	names := map[string]string{}
+	for _, task := range tasks {
+		if handle := handles[task.Project]; task.Project != "" && handle != "" {
+			names[task.Slug] = handle + handleTitleSeparator + task.Slug
+		}
+	}
+	return names
+}
+
 // ConsoleWindowTitle returns the title of a console window on the worktree slug.
 // The window is a VS Code window or a desktop terminal window.
 // The worktree is in the hub at hubPath, whose prime is named primeName.

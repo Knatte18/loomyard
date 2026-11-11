@@ -157,11 +157,33 @@ func recordedFileWrite(rec *fabricengine.Mutations, hubPath, path string) bool {
 }
 
 // TestRegenerateHubWorkspace covers the folder list, skip exits, mutation record, lock and failures.
-// The top level is not parallel:
-// the lock-ordering and log-capture cases touch process-global state (a test hook and the logger output),
-// so they run before the parallel cases are released and no regeneration runs beside them.
+// The top level is not parallel.
+// The lock-ordering, folder-naming and log-capture cases touch process-global state:
+// a test hook, the pair folder namer and the logger output.
+// They run before the parallel cases are released, so no regeneration runs beside them.
 func TestRegenerateHubWorkspace(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Run("NamesHubFileFoldersByTheInstalledNamer", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		hubforge.AddPairWith(t, h, "m", memberAddOptions("b", false))
+		hubforge.AddPair(t, h, "plain")
+		var namedHub string
+		t.Cleanup(fabricengine.InstallPairFolderNamer(func(hubPath string) map[string]string {
+			namedHub = hubPath
+			return map[string]string{"m": "P1: m", "plain": "", "gone": "P2: gone"}
+		}))
+
+		path, _ := regenerateHub(t, h)
+
+		if namedHub != h.Path {
+			t.Errorf("namer hub path = %q; want %q", namedHub, h.Path)
+		}
+		prime := primeBranch(t, h)
+		requireFolderNames(t, path, prime, "Bolt", "b", "P1: m", "plain")
+		requireFolderNames(t, fabricengine.BeamWorkspacePath(h.Location, "b"), "b", prime, "Bolt", "m")
+	})
+
 	t.Run("ListsFolderAddedWhileWaitingForTheLock", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := *h.Location
@@ -313,7 +335,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		})
 	}
 
-	t.Run("WritesABeamFileAndKeepsItsMembersOutOfTheHubFile", func(t *testing.T) {
+	t.Run("WritesABeamFileAndListsItsMembersInTheHubFileToo", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPairWith(t, h, "b", beamAddOptions)
@@ -322,7 +344,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		path, _ := regenerateHub(t, h)
 
 		prime := primeBranch(t, h)
-		requireFolderNames(t, path, prime, "Bolt", "b")
+		assertFolders(t, h, path, prime, "Bolt", "b", "m")
 		beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
 		requireFolderNames(t, beamPath, "b", prime, "Bolt", "m")
 		for file, want := range map[string]bool{path: false, beamPath: true} {
@@ -450,7 +472,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		}
 	})
 
-	t.Run("ListsSubBeamsInTheirParentBeamsFileByThemselvesOnly", func(t *testing.T) {
+	t.Run("ListsSubBeamsInTheirParentBeamsFileByThemselvesOnlyAndEveryPairInTheHubFile", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPairWith(t, h, "b", beamAddOptions)
@@ -461,7 +483,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		path, _ := regenerateHub(t, h)
 
 		prime := primeBranch(t, h)
-		requireFolderNames(t, path, prime, "Bolt", "b")
+		requireFolderNames(t, path, prime, "Bolt", "b", "c", "m", "n")
 		requireFolderNames(t, fabricengine.BeamWorkspacePath(h.Location, "b"), "b", prime, "Bolt", "c", "m")
 		requireFolderNames(t, fabricengine.BeamWorkspacePath(h.Location, "c"), "c", "b", "Bolt", "n")
 	})

@@ -109,6 +109,8 @@
 // The prime's names the root project, `ORCH [<shortname>:P0] root`, and a beam's names its slug.
 // `RecipeWindowTitle` gives the title of a run's status window.
 // It is the worktree's console title with the recipe in place of the slug, and a beam's has no lead.
+// `WorkspaceFolderNames` names a pair's folder in the hub workspace file `<P#>: <slug>` by its entry's project;
+// the lym root pre-run installs it as fabric's pair folder namer.
 // Every Board and Store method that takes a selector takes a Handle beside a slug string and a numeric id.
 // A handle's letter matches case-insensitively.
 //

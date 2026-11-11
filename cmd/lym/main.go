@@ -161,6 +161,8 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				fabricengine.RegisterBoltReplayer(boardengine.FabricReplay{})
 				// A worktree that fabric makes or moves reaches heddle through the worktree seam, to render its files.
 				fabricengine.InstallWorktreeSeam(heddleengine.Seam{})
+				// The hub workspace file leads a pair's folder name with its project's handle, read from the board.
+				fabricengine.InstallPairFolderNamer(boardengine.WorkspaceFolderNames)
 				// A records replay merges heddle.json by entry through heddle's Bolt replayer.
 				// That replayer also claims HEDDLE.md and renders it afresh after each replay.
 				fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})

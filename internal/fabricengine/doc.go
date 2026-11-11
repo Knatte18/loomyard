@@ -1660,14 +1660,18 @@
 //
 // `RegenerateHubWorkspace` writes `<hub>/<RepoName>.code-workspace`, the hub's own VS Code workspace file.
 // It lists the prime first and `Bolt` second.
-// Then come the pairs whose parent is the prime, each at its anchor dir and sorted by slug, the beams among them.
+// Then comes every pair of the hub, each at its anchor dir and sorted by slug.
+// The beams and the pairs under them are included, so one window shows all of the repository's code.
+// A pair's folder is named by its slug, unless the process's installed `PairFolderNamer` gives the slug a name.
+// The namer is a general seam: fabric hands it the hub path and knows nothing of what it reads.
+// lym's root pre-run installs the board's, which leads a pair's slug with its project's handle, such as `P1: <slug>`.
+// The names are read at every regeneration, so a regeneration after a board change brings them current.
+// Each pair whose origin record carries the beam mark also gets a beam file of its own.
+// `BeamWorkspacePath` names it `<hub>/<RepoName>-<beam>.code-workspace`.
+// It lists the beam, its parent, `Bolt` and every pair whose parent is the beam, each named by its slug.
 // A pair's parent is the `parent_worktree` of its origin record, read with `ReadOriginFor`.
 // The prime is the parent when that field is empty, names the prime or names a pair that is gone.
 // It is also the parent when the record is absent or cannot be read.
-// A pair under a beam is left out of the hub file.
-// Each pair whose origin record carries the beam mark also gets a beam file of its own.
-// `BeamWorkspacePath` names it `<hub>/<RepoName>-<beam>.code-workspace`.
-// It lists the beam, its parent, `Bolt` and every pair whose parent is the beam.
 // A sub-beam appears there by its own worktree only, and has a file of its own.
 // Each beam file carries `lym.generated: true` as its first key.
 // A regeneration removes a marked file only when its beam pair is gone, through the hub's `os.Root`.
@@ -1682,6 +1686,7 @@
 // so a workspace window is told apart from the worktree whose settings it carries.
 // A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory.
 // It lists the folders only after taking the lock, so a pair created while the regeneration waits is listed.
+// It reads the folder names before taking the lock, so the namer's own locks never nest inside it.
 // The write goes through an `os.Root` at the hub, so a symlink planted at the file's path that escapes the hub is refused.
 //
 // # The retired launchers container
