@@ -36,9 +36,13 @@ const UntilStopFlag = "until-stop"
 // ArbiterAttemptFlag is the name of step's flag that names the arbiter attempt the waiter consumes before it starts the loop.
 const ArbiterAttemptFlag = "arbiter-attempt"
 
-// LoopDetachedFlag is the name of step's hidden flag that marks the detached loop process itself and carries its loop id.
-// It only selects runLoop in the process the waiter spawned; the loop refuses to step over a dead loop's record whatever process it runs in.
+// LoopDetachedFlag is the name of step's hidden flag that marks the loop process itself and carries its loop id.
+// It only selects runLoop in the process the loop's keeper started; the loop refuses to step over a dead loop's record whatever process it runs in.
 const LoopDetachedFlag = "loop-detached"
+
+// LoopKeeperFlag is the name of step's hidden flag that marks the loop's keeper and carries the loop id.
+// The keeper is the detached process the waiter spawns: it starts the loop process and records how that process ended.
+const LoopKeeperFlag = "loop-keeper"
 
 // LoopSpec is the told arming of step's --until-stop mode.
 // Every path is told by the arming module; the loop reads and copies only the paths it is handed.
@@ -82,6 +86,7 @@ type LoopSpec struct {
 	OnWatchdogKill func(kill WatchdogKill) string
 	// OnStart runs once in runLoop after the pid file is written and the start is logged, and before the first step; nil is skipped.
 	// A loop that refuses before its first step never runs it.
+	// It also runs once in the loop's keeper, after the keeper has started the loop process.
 	OnStart func()
 	// OnExit runs once in runLoop after the stop is final, with the stop and the status file as it then reads, and before the envelope is written; nil is skipped.
 	// A loop that refuses before its first step, or that a terminating signal ends while it steps, never runs it.

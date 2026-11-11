@@ -124,16 +124,19 @@
 // Anything else spawns a loop and follows it.
 //
 // The spawn mints the loop id with logger.NewTraceID.
-// It starts Spec.Loop.Executable with these arguments:
-// the invocation's own command line, --until-stop and the hidden --loop-detached=<loop id>.
-// That flag marks the detached process, which re-runs its subtree's pre-run and then runLoop.
-// The flag selects runLoop and nothing more.
+// It starts the loop's keeper, Spec.Loop.Executable with these arguments:
+// the invocation's own command line, --until-stop and the hidden --loop-keeper=<loop id>.
+// The keeper re-runs its subtree's pre-run and then starts the loop process in a session of its own.
+// The loop process is the same executable with the same command line, carrying the hidden --loop-detached=<loop id> in place of --loop-keeper.
+// It re-runs the pre-run too and then runLoop; the flag selects runLoop and nothing more.
+// The keeper waits for the loop process and exits once it ends, so it lives as long as the loop and outlives the waiter.
+// It catches SIGINT, SIGTERM and SIGHUP and keeps waiting, so a signal that ends the run's processes ends the keeper only through the loop's end.
 // runLoop itself refuses to step over a dead loop's pid file, the teardown's mark or an undelivered envelope;
 // it returns at once with no envelope.
-// An arming refusal in that second pre-run reaches ReportLoopArmError with the loop id.
+// An arming refusal in the keeper's or the loop's pre-run reaches ReportLoopArmError with the loop id, which DetachedLoopID reads from either flag.
 // That writes the refusal as the loop envelope file instead of printing it, so the waiter prints it.
 //
-// The start handshake: a waiter treats the loop it spawned as starting until the spawned process exits.
+// The start handshake: a waiter treats the loop it spawned as starting until the spawned keeper exits.
 // A free lock seen before the new loop took it therefore never reads as a gone loop.
 // A loop that cannot take the loop lock within the grace period exits at once.
 // Its waiter sees its spawn exited and the lock held, and it adopts the holder's loop id from the pid file.
@@ -200,13 +203,17 @@
 // Once the loop has seen the signal it writes no failed stop, runs no interrupt hook and writes no envelope;
 // the dead-loop stop below reports it.
 // A mark opens its own line in the loop log, even after a last line of output that has no newline.
-// The waiter that spawns a loop marks in the loop log that the loop is starting, before its process starts.
-// It also marks the process's pid and exit status once it reaps it.
+// The waiter that spawns a loop marks in the loop log that the loop is starting, before the keeper starts.
+// It also marks the keeper's pid and exit status once it reaps the keeper.
+// The keeper marks the loop process's pid and its exit status, or the signal that ended it, once that process ends;
+// a loop process that does not start gets a mark naming the start error.
+// The keeper's mark is written even when the waiter is gone, as after a driver handed over to a successor while its loop ran.
 // lym's marks open with "lym shed: loop <loop id> ", which tells them from the output of the loop and its children.
 //
 // Optional seams let the arming module hook the loop.
-// Spec.Loop.OnStart runs once, after the pid file is written and the start is logged and before the first step.
-// The arming module registers the loop as a run process there, without this package importing the owner record.
+// Spec.Loop.OnStart runs once in the loop, after the pid file is written and the start is logged and before the first step.
+// It also runs once in the keeper, after the loop process has started.
+// The arming module registers the loop and its keeper as run processes there, without this package importing the owner record.
 // Spec.Loop.OnWake runs on every wake of the child watch.
 // With a zero idle window and OnWake set, the watch keeps the same wake schedule and never kills the child.
 // It runs until the child exits.
@@ -220,22 +227,24 @@
 // It writes the run failed while the status file still reads running.
 // It reports an interrupted stop with cause loop-exited.
 // loop.status_moved compares the recorded producer and history length against the status file.
+// The in-flight child is the one the pid file records as running; the loop clears the child from the record once it exits.
 // Its loop.detail names:
 // the loop log;
-// the producer of the in-flight child and its trace id, while the status file has not moved past that child;
+// the producer the in-flight child started at and its trace id,
+// with the status file's producer when the status file has moved since, as a child that skips gated rows moves it;
 // how the loop ended;
-// an excerpt of the recorded child's captured stderr, while the status file has not moved past that child;
+// an excerpt of the in-flight child's captured stderr;
 // and whether that child's step tree was still running and was killed, which a loop killed from outside leaves behind.
 // How the loop ended is read from the loop log's lines after the loop's last starting mark:
-// the loop's own marks, its exit status and a signal it recorded, or "loop exit: not recorded" when there are none;
+// the marks of the loop, its keeper and the waiter's spawn, such as a signal the loop received and the loop's exit status,
+// or "loop exit: not recorded" when there are none;
 // then an excerpt of its other lines, a Go crash's first lines or the last lines.
 // A log with no starting mark for the loop gives the first part alone.
-// While the status file has not moved past that child, loop.stderr_path names its captured stderr.
-// loop.trace_copy then holds a copy of its trace files; after the status file has moved, both are empty.
+// With a child in flight, loop.stderr_path names its captured stderr and loop.trace_copy holds a copy of its trace files;
+// with none, both are empty.
 // Spec.Hooks.AfterInterrupt gets loop-exited followed by that detail as its cause.
 // Its trace file is the in-flight child's first trace file.
-// It is the loop log when the record names no trace or no file is listed for it.
-// It is the loop log too when the status file has moved past that child.
+// It is the loop log when no child was in flight, the record names no trace or no file is listed for it.
 // The dead-loop stop is written as the loop's envelope under the dead loop's id, delivered, and the pid file is retired.
 // A record naming no child kills nothing and reports status_moved false.
 // Another holder of the run lock makes the stop busy:

@@ -111,7 +111,7 @@ func runUntilStop(ctx context.Context, spec *Spec, argv []string, out io.Writer)
 			if spawn == nil {
 				spawn = func(spawnArgv []string) (<-chan struct{}, error) { return spawnLoop(spec, loopID, spawnArgv) }
 			}
-			spawned, err := spawn(append(slices.Clone(argv), "--"+UntilStopFlag, "--"+LoopDetachedFlag+"="+loopID))
+			spawned, err := spawn(append(slices.Clone(argv), "--"+UntilStopFlag, "--"+LoopKeeperFlag+"="+loopID))
 			if err != nil {
 				return output.Err(out, fmt.Sprintf("%v; way forward: re-run %s", err, rerun))
 			}
@@ -136,10 +136,10 @@ func runUntilStop(ctx context.Context, spec *Spec, argv []string, out io.Writer)
 	}
 }
 
-// spawnLoop starts the detached loop loopID: spec.Loop.Executable with argv, its output appended to the loop log, and configured to outlive the waiter.
-// A Windows start refused for breakaway is retried without it, so such a loop lives only as long as the shell's job.
-// The loop log gets a mark that the loop is starting before its process starts, and a mark naming its pid and exit status once the spawn reaps it.
-// The channel it returns is closed when the loop process exits, after the exit mark is written.
+// spawnLoop starts the keeper of loop loopID: spec.Loop.Executable with argv, its output appended to the loop log, and configured to outlive the waiter.
+// A Windows start refused for breakaway is retried without it, so such a keeper lives only as long as the shell's job.
+// The loop log gets a mark that the loop is starting before the keeper starts, and a mark naming the keeper's pid and exit status once the spawn reaps it.
+// The channel it returns is closed when the keeper exits, after that mark is written.
 func spawnLoop(spec *Spec, loopID string, argv []string) (<-chan struct{}, error) {
 	loop := spec.Loop
 	if err := os.MkdirAll(filepath.Dir(loop.LogPath), 0o755); err != nil {
@@ -169,16 +169,16 @@ func spawnLoop(spec *Spec, loopID string, argv []string) (<-chan struct{}, error
 		return nil, fmt.Errorf("shedverbs: start the loop %q: %w", loop.Executable, err)
 	}
 	pid := cmd.Process.Pid
-	logger.Info("shed: loop spawned", "pid", pid, "executable", loop.Executable, "log", loop.LogPath)
+	logger.Info("shed: loop keeper spawned", "pid", pid, "executable", loop.Executable, "log", loop.LogPath)
 	exited := make(chan struct{})
 	go func() {
 		waitErr := cmd.Wait()
-		logger.Info("shed: spawned loop exited", "pid", pid, "error", errorText(waitErr))
+		logger.Info("shed: spawned loop keeper exited", "pid", pid, "error", errorText(waitErr))
 		status := "exit status 0"
 		if waitErr != nil {
 			status = waitErr.Error()
 		}
-		appendLoopLogMark(loop.LogPath, loopLogMark(loopID, fmt.Sprintf("process %d exited: %s", pid, status)))
+		appendLoopLogMark(loop.LogPath, loopLogMark(loopID, fmt.Sprintf("keeper process %d exited: %s", pid, status)))
 		close(exited)
 	}()
 	return exited, nil
@@ -196,7 +196,7 @@ func loopLogMark(loopID, text string) string {
 }
 
 // loopExitEvidence returns the clauses a gone loop's stop detail carries about how loop loopID ended, read from the loop log at logPath after that loop's last starting mark.
-// The first clause lists the marks lym wrote about the loop's process, its exit status and a terminating signal it received, or says none was recorded;
+// The first clause lists the marks lym wrote about the loop's processes, such as a terminating signal the loop received and the exit statuses of the loop and its keeper, or says none was recorded;
 // a second clause carries an excerpt of the loop's other lines, a Go crash's first lines or the last lines, when there are any.
 // A log with no starting mark for the loop yields the first clause alone, since its lines cannot be told from other loops' lines.
 func loopExitEvidence(logPath, loopID string) string {
@@ -488,9 +488,10 @@ func (r LoopPIDRecord) inFlightAt(status shedengine.Status) bool {
 
 // deadLoopStop reports a loop that is gone without an envelope, or the teardown's mark, as an interrupted stop with cause loop-exited.
 // It first kills what is left of the loop's step tree, then writes the run failed while the status file reads running.
-// The stop's detail names the step the pid file records in flight, with its trace id, only while the status file still reads that step;
-// then how the loop ended, from the loop log, and, only while the status file still reads that step, an excerpt of the recorded child's captured stderr;
+// The stop's detail names the step the pid file records in flight, with its trace id, and the status file's step when the status file has moved since that child started;
+// then how the loop ended, from the loop log, and an excerpt of the in-flight child's captured stderr;
 // and last whether its step tree was still running, which a loop killed from outside leaves behind.
+// A child moves the status file itself when it skips gated rows, so a moved status file still names the child that was in flight.
 // For a dead loop it then writes the stop as the loop's envelope under its recorded id, delivers it and retires the pid file.
 // The teardown's mark writes no envelope and stays, so every invocation until the pair is removed stops the same way and spawns nothing.
 // Another holder of the run lock makes the stop busy: nothing is written and the pid file stays for the next invocation to retry.
@@ -501,11 +502,14 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 		detail = "the pair's session end stopped the loop; no loop runs again until the pair is removed"
 	} else {
 		status, _ := readStatusFile(spec)
-		inFlight := rec.inFlightAt(status)
+		inFlight := rec.hasChild()
 		if inFlight {
 			detail += fmt.Sprintf("; step %s was in flight", rec.CurrentProducer)
 			if rec.TraceID != "" {
 				detail += " under trace " + rec.TraceID
+			}
+			if !rec.inFlightAt(status) && status.CurrentProducer != "" {
+				detail += ", and the status file now reads " + status.CurrentProducer
 			}
 		}
 		detail += loopExitEvidence(spec.Loop.LogPath, rec.LoopID)
@@ -547,8 +551,8 @@ func loopExitedEarlyStop(ctx context.Context, spec *Spec, loopID string, out io.
 
 // loopExitStop writes failed over a run a gone loop left reading running and builds the interrupted envelope of that stop.
 // A status file in any other state is left as it is and the stop is reported all the same.
-// The interrupt hook gets loop-exited and detail as the cause, and the first trace file of the step rec records in flight, or the loop log when there is none or the status file has moved past that step.
-// loop.stderr_path names the recorded child's captured stderr, and loop.trace_copy a copy of that child's trace files when it has any, both only while the status file still reads that child's step.
+// The interrupt hook gets loop-exited and detail as the cause, and the first trace file of the child rec records in flight, or the loop log when rec records no child in flight or that child has no trace file.
+// loop.stderr_path names that child's captured stderr, and loop.trace_copy a copy of its trace files when it has any; with no child in flight both are empty.
 // It reports busy, with the busy stop as its envelope, when another holder has the run lock; nothing is written then.
 func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail string) (envelope []byte, busy bool) {
 	before, _ := readStatusFile(spec)
@@ -578,7 +582,7 @@ func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail str
 	if spec.Hooks.InterruptPolicyFor != nil {
 		obj.InterruptPolicy = spec.Hooks.InterruptPolicyFor(after.CurrentProducer)
 	}
-	if rec.inFlightAt(after) {
+	if rec.hasChild() {
 		traceCopy, stderrPath := recordedStopFiles(spec.Loop, rec)
 		obj.StderrPath = stderrPath
 		if traceCopy != "" && copyTraceFiles(traceFilesOf(spec.Loop, rec.TraceID), traceCopy) {
@@ -598,7 +602,7 @@ func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail str
 	friction := ""
 	if rec.LoopID != TeardownLoopID && spec.Hooks.AfterInterrupt != nil {
 		traceFile := spec.Loop.LogPath
-		if rec.TraceID != "" && rec.inFlightAt(before) {
+		if rec.TraceID != "" && rec.hasChild() {
 			if files := traceFilesOf(spec.Loop, rec.TraceID); len(files) > 0 {
 				traceFile = files[0]
 			}

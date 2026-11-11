@@ -514,8 +514,9 @@
 //
 // The driver registers itself in the owner record under the run's slug with the role `driver`.
 // It registers before it takes the driver lock.
-// The run's step loop registers itself with the role `loop` once its pid file is written, through its `OnStart` hook;
-// a driver the lock refuses exits at once and its record is pruned at the next read.
+// The run's step loop and the keeper that starts it register themselves with the role `loop` through the loop's `OnStart` hook:
+// the loop once its pid file is written, and the keeper once the loop process has started.
+// A driver the lock refuses exits at once and its record is pruned at the next read.
 //
 // A step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active to the step watchdog.
 // It also reads as a live wait to dobby, so neither dobby nor the watchdog kills it or sends a quiet notice.

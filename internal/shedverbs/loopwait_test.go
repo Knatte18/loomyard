@@ -59,11 +59,13 @@ func newWaitWorld(t *testing.T, scripts ...childScript) *waitWorld {
 	return w
 }
 
-// loopIDOf is the loop id a spawned loop's command line carries.
+// loopIDOf is the loop id a spawned keeper's or loop's command line carries.
 func loopIDOf(argv []string) string {
 	for _, arg := range argv {
-		if id, found := strings.CutPrefix(arg, "--"+LoopDetachedFlag+"="); found {
-			return id
+		for _, flag := range []string{LoopKeeperFlag, LoopDetachedFlag} {
+			if id, found := strings.CutPrefix(arg, "--"+flag+"="); found {
+				return id
+			}
 		}
 	}
 	return ""
@@ -84,9 +86,10 @@ func (w *waitWorld) spawnDetached(argv []string) (<-chan struct{}, error) {
 	return done, nil
 }
 
-// runDetached runs the detached half of the loop for argv to its end.
+// runDetached runs the loop process of the loop argv names to its end.
+// A keeper's command line runs the loop process the keeper would start, since the fake spawn stands in for the keeper.
 func (w *waitWorld) runDetached(argv []string) {
-	clihelp.Execute(stepCmd(stepTexts(), w.spec), io.Discard, argv)
+	clihelp.Execute(stepCmd(stepTexts(), w.spec), io.Discard, detachedArgs(loopIDOf(argv)))
 }
 
 // sleep is the fake Sleep: it records the wait and yields for a millisecond so the loops beside the waiter progress.
@@ -481,9 +484,11 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 			// traceBodies are the contents of the child's trace files, which the test writes and lists for traceID.
 			traceBodies []string
 			// loopLog and stepStderr, when set, are the loop log and the recorded child's captured stderr.
-			loopLog      string
-			stepStderr   string
-			statusMoved  bool
+			loopLog     string
+			stepStderr  string
+			statusMoved bool
+			// noChild records the child as exited, as the loop does once its child ends.
+			noChild      bool
 			wantProducer string
 			// wantCause is what the cause carries after the loop log clause.
 			wantCause string
@@ -514,11 +519,23 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
-				name:         "StatusMoved_NoInFlightClause_NoStepFiles_LoopLog",
-				traceID:      "trace-9",
+				name:          "StatusMovedByTheChild_StepFilesStillNamed",
+				traceID:       "trace-9",
+				traceBodies:   []string{"skipped gated rows\n"},
+				stepStderr:    "in-flight step's stderr\n",
+				statusMoved:   true,
+				wantProducer:  "B",
+				wantCause:     "; step A was in flight under trace trace-9, and the status file now reads B; loop exit: not recorded; step stderr: in-flight step's stderr",
+				wantFile:      func(w *waitWorld) string { return w.traces["trace-9"][0] },
+				wantTraceCopy: true,
+			},
+			{
+				name:         "ChildExited_NoInFlightClause_NoStepFiles_LoopLog",
+				traceID:      "trace-11",
 				traceBodies:  []string{"finished step\n"},
 				stepStderr:   "finished step's stderr\n",
 				statusMoved:  true,
+				noChild:      true,
 				wantProducer: "B",
 				wantCause:    "; loop exit: not recorded",
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
@@ -553,7 +570,11 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				} else {
 					w.setStatus("A", shedengine.StateRunning, 0)
 				}
-				w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: proc.TreeRecord{PID: 4242}, TraceID: tt.traceID, CurrentProducer: "A"})
+				child := proc.TreeRecord{PID: 4242}
+				if tt.noChild {
+					child = proc.TreeRecord{}
+				}
+				w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: child, TraceID: tt.traceID, CurrentProducer: "A"})
 				var traceFiles []string
 				traceDir := t.TempDir()
 				for i, body := range tt.traceBodies {
@@ -569,7 +590,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 					traceCopyPath, stderrPath = w.spec.Loop.StopFiles(tt.traceID)
 				}
 				wantStderrPath, wantTraceCopy := stderrPath, ""
-				if tt.statusMoved {
+				if tt.noChild {
 					wantStderrPath = ""
 				}
 				if tt.wantTraceCopy {
