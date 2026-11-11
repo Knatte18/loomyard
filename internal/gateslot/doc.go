@@ -249,6 +249,9 @@
 // FailureReportHeader opens the failure report a failing call prints.
 // FailedTests reads the report's failed tests, each with the tier of the run that failed it.
 // It reports false unless every failure of the report is a named test of a tier or guard run.
+// TierRunFailures reads every failure of the report, each opened by its run's label.
+// It reports false unless every run the report lists is a tier or guard run.
+// It also reports false for a package that failed outside any test, such as by a compile error, which a rerun repeats.
 //
 // # Run log
 //

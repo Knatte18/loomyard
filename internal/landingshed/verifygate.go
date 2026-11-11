@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -43,6 +44,17 @@ type verifyGate struct {
 	now    func() time.Time
 	// recorder is set by the landing producers: nil leaves a failed verify unrecorded.
 	recorder *failureRecorder
+	// onFlakyPass, when set, makes check run a failure of test runs once more on the same head before judging it.
+	// It gets each failure that rerun did not repeat; nil runs no rerun.
+	onFlakyPass func(flakyPass)
+}
+
+// flakyPass is a failed verify that passed when run once more on the same head.
+type flakyPass struct {
+	// failures name the first run's failures, each opened by its run's label, such as `tier0 example.com/m/a TestA`.
+	failures []string
+	// log is the first run's verify log.
+	log string
 }
 
 // failureRecorder holds what the gate needs to write the landing failure record.
@@ -232,6 +244,8 @@ func (g verifyGate) readBase(producer string) (string, error) {
 // so no test judged the code: the reason is then a halt reason opening with `LandingStopPrefix`.
 // The producer halts with it instead of spawning a fixer.
 // A pass, and a skip over a tree already recorded as passed, remove a landing failure record an earlier failed call left.
+// A gate told onFlakyPass runs a failure once more on the same head when its report lists tier and guard runs alone.
+// It then judges the rerun's result in its place.
 func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (reason string, crashed bool, err error) {
 	if g.command == nil {
 		return "", false, nil
@@ -250,12 +264,18 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (r
 		return "", false, err
 	}
 
+	site := verifytree.Site{Label: producer, BaseCommand: base, Hold: g.hold}
 	g.markWait("")
 	g.markWait("verify " + producer)
-	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: base, Hold: g.hold}, command)
+	result, err := g.verify(ctx, g.paths, site, command)
 	g.markWait("")
 	if err != nil {
 		return "", false, fmt.Errorf("landingshed: %s: %w", producer, err)
+	}
+	if g.onFlakyPass != nil {
+		if result, err = g.rerunTestFailure(ctx, producer, site, command, result); err != nil {
+			return "", false, fmt.Errorf("landingshed: %s: %w", producer, err)
+		}
 	}
 	g.recordFailure(result)
 	reason, err = g.verdict(result, "landing gate", producer, parentBranch)
@@ -263,6 +283,49 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (r
 		g.clearFailure()
 	}
 	return reason, result.Status == verifytree.StatusFailed && result.RunnerCrash, err
+}
+
+// rerunTestFailure runs the failed verify first once more on the same head and returns the result the gate judges.
+// A test can fail on a race with another test, so only a failure whose report lists tier and guard runs alone is rerun.
+// A timeout, a runner crash and a shell that could not start come back as they are.
+// So do a build, vet or lint failure, a package that failed outside any test and a log with no report.
+// The rerun runs the report's failed tests alone when it names Go tests only, and command otherwise.
+// A rerun that passes hands first's failures to onFlakyPass and returns the pass.
+// Any other rerun result comes back, so a failure the rerun repeats is judged on the rerun's log.
+func (g verifyGate) rerunTestFailure(ctx context.Context, producer string, site verifytree.Site, command string, first verifytree.Result) (verifytree.Result, error) {
+	if first.Status != verifytree.StatusFailed || first.TimedOut || first.RunnerCrash || first.ExitCode < 0 || first.Log == "" {
+		return first, nil
+	}
+	content, err := os.ReadFile(first.Log)
+	if err != nil {
+		logger.Warn("landingshed: could not read the failed verify's log, so the verify does not run again", "producer", producer, "log", first.Log, "cause", err)
+		return first, nil
+	}
+	failures, testRuns := gateslot.TierRunFailures(string(content))
+	if !testRuns {
+		return first, nil
+	}
+	rerun := command
+	if tests, named := gateslot.FailedTests(string(content)); named {
+		call, err := gateslot.FailedTestsCall(runtime.GOOS, tests)
+		if err != nil {
+			logger.Warn("landingshed: cannot render the run of the failed tests alone; the whole verify runs again", "producer", producer, "cause", err)
+		} else {
+			rerun = call
+		}
+	}
+	logger.Warn("landingshed: the verify failed in its test runs; it runs once more on the same head before any fixer", "producer", producer, "failures", strings.Join(failures, "; "), "log", first.Log, "rerun", rerun)
+	g.markWait("verify " + producer)
+	second, err := g.verify(ctx, g.paths, site, rerun)
+	g.markWait("")
+	if err != nil {
+		return verifytree.Result{}, err
+	}
+	if second.Status == verifytree.StatusPassed || second.Status == verifytree.StatusSkipped {
+		logger.Warn("landingshed: the failed verify passed when run once more on the same head, so its failures are flaky", "producer", producer, "failures", strings.Join(failures, "; "), "log", first.Log)
+		g.onFlakyPass(flakyPass{failures: failures, log: first.Log})
+	}
+	return second, nil
 }
 
 // checkHead runs the pr-review gate over an agent's commits:

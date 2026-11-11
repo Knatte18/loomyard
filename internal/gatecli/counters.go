@@ -27,6 +27,13 @@ const (
 // vstestSummary matches a VSTest summary line, whose `Passed!` and `Failed!` forms carry the same four counts.
 var vstestSummary = regexp.MustCompile(`(?:Passed|Failed)!\s+-\s+Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+)`)
 
+// vstestResult matches the VSTest console line that reports one test's result, such as `  Failed Ns.Tests.A [12 ms]`.
+// Its first group is the result and its second the test's display name.
+var vstestResult = regexp.MustCompile(`^\s*(Passed|Failed|Skipped)\s+(\S.*?)\s+\[[^\]]*\]\s*$`)
+
+// vstestSections are the headings VSTest prints inside a failed test's block, which state no cause themselves.
+var vstestSections = []string{"Error Message:", "Stack Trace:", "Standard Output Messages:", "Standard Error Messages:"}
+
 // tierCounts is the number of tests a tier run discovered and how each ended.
 type tierCounts struct {
 	discovered int
@@ -406,9 +413,15 @@ func (c *goJSONCounter) handle(line []byte, terminated bool) error {
 }
 
 // vstestCounter passes every line through and sums the counts of the VSTest summary lines.
+// It also reads each failed test's block, which opens with the `Failed <name> [<duration>]` line.
+// The block runs up to a blank line, the next result line or a summary line.
 type vstestCounter struct {
 	lines  lineReader
 	counts tierCounts
+	// failures holds every failed test in the order its result line came, with no package.
+	failures []runFailure
+	// inFailure is set while the lines read belong to the block of the last failed test.
+	inFailure bool
 }
 
 func (c *vstestCounter) Write(p []byte) (int, error) { return c.lines.Write(p) }
@@ -427,14 +440,21 @@ func (c *vstestCounter) TestsRun() map[string]int { return nil }
 // Launches returns nil: a VSTest run reports no per-package launch timing.
 func (c *vstestCounter) Launches() []gateslot.PackageLaunch { return nil }
 
-// Failures returns nil: a VSTest summary line names no test.
-func (c *vstestCounter) Failures() []runFailure { return nil }
+// Failures returns a copy of the failed tests read so far.
+// Each keeps the first failureLines lines of its block, section headings left out,
+// so its error message and the first frames of its stack trace show.
+func (c *vstestCounter) Failures() []runFailure {
+	c.lines.mu.Lock()
+	defer c.lines.mu.Unlock()
+	return slices.Clone(c.failures)
+}
 
 // Unparsed returns nil: a VSTest run's output is all text, so the failure report points at its log instead.
 func (c *vstestCounter) Unparsed() []string { return nil }
 
 // handle runs under the line reader's lock.
 func (c *vstestCounter) handle(line []byte, terminated bool) error {
+	c.observeFailure(string(line))
 	if match := vstestSummary.FindSubmatch(line); match != nil {
 		// The pattern holds only digit groups, so the conversions cannot fail.
 		failed, _ := strconv.Atoi(string(match[1]))
@@ -447,4 +467,27 @@ func (c *vstestCounter) handle(line []byte, terminated bool) error {
 		c.counts.discovered += total
 	}
 	return c.lines.passThrough(line, terminated)
+}
+
+// observeFailure folds line into the failed tests.
+// A `Failed` result line opens a failed test's block;
+// any other result line, a blank line or a summary line closes it.
+// A line inside the block is kept, trimmed, unless it is a section heading or the test already holds failureLines lines.
+func (c *vstestCounter) observeFailure(line string) {
+	text := strings.TrimSpace(line)
+	if match := vstestResult.FindStringSubmatch(line); match != nil {
+		c.inFailure = match[1] == "Failed"
+		if c.inFailure {
+			c.failures = append(c.failures, runFailure{test: match[2]})
+		}
+		return
+	}
+	if text == "" || vstestSummary.MatchString(text) {
+		c.inFailure = false
+		return
+	}
+	last := len(c.failures) - 1
+	if c.inFailure && !slices.Contains(vstestSections, text) && len(c.failures[last].lines) < failureLines {
+		c.failures[last].lines = append(c.failures[last].lines, text)
+	}
 }

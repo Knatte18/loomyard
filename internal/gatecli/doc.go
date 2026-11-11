@@ -510,7 +510,10 @@
 // It keeps them beside `go test`'s status and summary lines, and leaves out a test whose subtest failed.
 // It keeps each failed package that no failed test explains, with its own first lines and its build's.
 // It keeps the first lines that were no JSON event.
-// The record carries each failed test with its first line as `failures`, and a `vstest` run keeps none.
+// The `vstest` counter keeps each test a `Failed <name> [<duration>]` line reports, with no package.
+// It keeps the first lines of the test's block, which hold its error message and stack trace;
+// the block's section headings are left out.
+// The record carries each failed test with its first line as `failures`.
 // A `go-json` tier under the `go` scoper fails when a package holding a test under the tier's tag ran none;
 // the tier's command then lacks its tag.
 // A package holds such a test when a file of it has a `Test` function,
@@ -598,11 +601,11 @@
 // It then names each failed run in plan order, lint steps last.
 // Each name carries the run's outcome and its log path, and for a lint step its way forward.
 // Under a run each failure follows.
-// A failed test shows as its package and test path.
+// A failed test shows as its package and test path, and a `vstest` test as its name alone.
 // A package that failed outside any test, such as by a build error or a crash in `TestMain`, shows as its package.
 // A lint finding shows as its own `file:line` line.
 // Each carries up to `failureLines` lines it printed beside go test's own status and summary lines,
-// so an error's got and want or a panic's first frames show.
+// so an error's got and want, a panic's first frames or a .NET exception's message show.
 // A bare file name a test printed is prefixed with its package's worktree-relative directory.
 // A build error in a package that failed outside any test may print a path relative to the run directory.
 // That path is prefixed with the directory's worktree-relative path.

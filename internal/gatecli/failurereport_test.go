@@ -81,6 +81,19 @@ func TestRenderFailureReport(t *testing.T) {
 			},
 		},
 		{
+			name: "a failed test with no package, as a vstest run reads one, is named by its test alone",
+			runs: []failedRun{{
+				label: "tier0", outcome: "exit 1", log: "/logs/tier0.log",
+				failures: []runFailure{{test: "Ns.Tests.EnumeratesTree", lines: []string{"System.UnauthorizedAccessException : denied"}}},
+			}},
+			want: []string{
+				failureReportHeader,
+				"tier0 (exit 1), log /logs/tier0.log:",
+				"  Ns.Tests.EnumeratesTree:",
+				"    System.UnauthorizedAccessException : denied",
+			},
+		},
+		{
 			name: "a run's cause lines are listed beside its failures, and alone when nothing else was read",
 			runs: []failedRun{
 				{

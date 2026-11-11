@@ -46,6 +46,8 @@ Both consumers append the task's regression check, when the task has one, after 
 It is a `## Regression check` section that `internal/driftengine` renders from the task's Drift records.
 The artifact never holds that section itself,
 so it reaches the pull request and the landing commit whichever producer wrote the artifact last.
+`Finalize` also appends, after the regression check, a `## Flaky test failures` section to its landing commit and its GitHub merge.
+It lists each failure of its landing gate that passed when run once more on the same head, and it is absent when there was none.
 
 `Finalize`'s read is unconditional: a missing or malformed artifact there is a hard error.
 `Publish`'s read is reached only when the parent branch requires a pull request:

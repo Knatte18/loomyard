@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -359,6 +360,115 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			}
 			if result.Status == verifytree.StatusFailed && tc.wantReasonHas != nil && !strings.Contains(reason, result.Log) {
 				t.Errorf("reason %q lacks the log path %q", reason, result.Log)
+			}
+		})
+	}
+}
+
+// TestVerifyGate_RerunsATestFailureOnce pins the rerun of a gate told onFlakyPass before it judges a failure.
+// It pins which failures rerun, the command the rerun runs and the flaky failures reported.
+// It also pins the log a repeated failure is judged on.
+func TestVerifyGate_RerunsATestFailureOnce(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	report := func(lines ...string) string {
+		return gateslot.FailureReportHeader + "\n" + strings.Join(lines, "\n") + "\n" + gateslot.FailedRunsPrefix + "tier0 (exit 1)\n"
+	}
+	goFailure := report("tier0 (exit 1), log /runs/a.log:", "  example.com/m/a TestA:", "    a_test.go:3: got 1; want 2")
+	dotnetFailure := report("tier0 (exit 1), log /runs/a.log:", "  Ns.Tests.EnumeratesTree:", "    System.UnauthorizedAccessException : denied")
+	buildFailure := report("build (exit 2), log /runs/b.log:", "  its output:", "    main.go:1: syntax error")
+	goRerun, err := gateslot.FailedTestsCall(runtime.GOOS, []gateslot.FailedTest{{Tier: 0, Package: "example.com/m/a", Test: "TestA"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
+	passed := verifytree.Result{Status: verifytree.StatusPassed}
+	timedOut := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, TimedOut: true, Detail: "gate tier0 exceeded timeout_min 30m0s and was killed"}
+	crashed := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 134, RunnerCrash: true, Detail: "tier0 (exit 134, SIGABRT)"}
+	cannotStart := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "exec: sh not found"}
+	skipped := verifytree.Result{Status: verifytree.StatusSkipped}
+
+	tests := []struct {
+		name string
+		// log is every verify call's log; empty leaves the failed result with no log.
+		log string
+		// results are the verify calls' results in order.
+		results []verifytree.Result
+		// noSink builds the gate without onFlakyPass.
+		noSink       bool
+		wantCommands []string
+		wantFlaky    []string
+		// wantReasonLog is the 1-based verify call whose log the reason names, 0 for a pass and -1 for a failure with no log.
+		wantReasonLog int
+	}{
+		{
+			name: "a Go test failure reruns its tests alone, and a pass there is flaky and passes the gate", log: goFailure,
+			results: []verifytree.Result{failed, passed}, wantCommands: []string{gateLandingCall, goRerun}, wantFlaky: []string{"tier0 example.com/m/a TestA"},
+		},
+		{
+			name: "a failure naming no Go test reruns the whole call", log: dotnetFailure,
+			results: []verifytree.Result{failed, passed}, wantCommands: []string{gateLandingCall, gateLandingCall}, wantFlaky: []string{"tier0 Ns.Tests.EnumeratesTree"},
+		},
+		{
+			name: "a failure the rerun repeats fails the gate on the rerun's log", log: dotnetFailure,
+			results: []verifytree.Result{failed, failed}, wantCommands: []string{gateLandingCall, gateLandingCall}, wantReasonLog: 2,
+		},
+		{name: "a build failure is not rerun", log: buildFailure, results: []verifytree.Result{failed}, wantCommands: []string{gateLandingCall}, wantReasonLog: 1},
+		{name: "a timed-out failure is not rerun", log: goFailure, results: []verifytree.Result{timedOut}, wantCommands: []string{gateLandingCall}, wantReasonLog: 1},
+		{name: "a gate told no flaky sink runs no rerun", log: goFailure, results: []verifytree.Result{failed}, noSink: true, wantCommands: []string{gateLandingCall}, wantReasonLog: 1},
+		{name: "a runner crash is not rerun", log: goFailure, results: []verifytree.Result{crashed}, wantCommands: []string{gateLandingCall}, wantReasonLog: 1},
+		{name: "a shell that could not start is not rerun", log: goFailure, results: []verifytree.Result{cannotStart}, wantCommands: []string{gateLandingCall}, wantReasonLog: 1},
+		{name: "a failure with no log is not rerun", results: []verifytree.Result{failed}, wantCommands: []string{gateLandingCall}, wantReasonLog: -1},
+		{
+			name: "a rerun that times out fails the gate on the rerun's log", log: dotnetFailure,
+			results: []verifytree.Result{failed, timedOut}, wantCommands: []string{gateLandingCall, gateLandingCall}, wantReasonLog: 2,
+		},
+		{
+			name: "a rerun skipped over a recorded pass is flaky and passes the gate", log: dotnetFailure,
+			results: []verifytree.Result{failed, skipped}, wantCommands: []string{gateLandingCall, gateLandingCall}, wantFlaky: []string{"tier0 Ns.Tests.EnumeratesTree"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newGateFixture(t, "finalize", gateLandingCall, nil)
+			if tt.log != "" {
+				writeVerifyLog(t, f, tt.log)
+			}
+			f.fake.onVerify = func() { f.fake.result = tt.results[min(f.fake.verifyCalls-1, len(tt.results)-1)] }
+			var flaky []flakyPass
+			if !tt.noSink {
+				f.gate.onFlakyPass = func(pass flakyPass) { flaky = append(flaky, pass) }
+			}
+
+			reason, _, err := f.gate.check(context.Background(), "Finalize", "main")
+
+			if err != nil {
+				t.Fatalf("check() error = %v; want nil", err)
+			}
+			if !slices.Equal(f.fake.commands, tt.wantCommands) {
+				t.Errorf("verify commands = %q; want %q", f.fake.commands, tt.wantCommands)
+			}
+			logOf := func(call int) string { return filepath.Join(f.paths.Dir, fmt.Sprintf("verify-%d.log", call)) }
+			switch {
+			case tt.wantReasonLog == 0 && reason != "":
+				t.Errorf("reason = %q; want a pass", reason)
+			case tt.wantReasonLog < 0 && reason == "":
+				t.Error("reason is empty; want the gate's failure")
+			case tt.wantReasonLog > 0 && !strings.Contains(reason, logOf(tt.wantReasonLog)):
+				t.Errorf("reason = %q; want it to name the log %q", reason, logOf(tt.wantReasonLog))
+			}
+			var gotFlaky []string
+			for _, pass := range flaky {
+				gotFlaky = append(gotFlaky, pass.failures...)
+				if pass.log != logOf(1) {
+					t.Errorf("flaky pass log = %q; want the first run's %q", pass.log, logOf(1))
+				}
+			}
+			if !slices.Equal(gotFlaky, tt.wantFlaky) {
+				t.Errorf("flaky failures = %q; want %q", gotFlaky, tt.wantFlaky)
 			}
 		})
 	}

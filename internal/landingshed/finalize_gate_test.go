@@ -14,11 +14,13 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -74,12 +76,8 @@ func newFinalizeGateFixture(t *testing.T) *finalizeGateFixture {
 	writeVerifyLog(t, fx.gate, "FAIL")
 	fx.gate.gate.recorder = &failureRecorder{head: deps.TaskHead}
 	fx.deps = deps
-	fx.fz = &Finalize{
-		deps:         deps,
-		resolver:     &recordingResolver{result: resolved(false)},
-		gate:         fx.gate.gate,
-		parentOpener: func() (parentMerger, error) { return fx.merger, nil },
-	}
+	fx.fz = assembleFinalize(deps, &recordingResolver{result: resolved(false)}, fx.gate.gate)
+	fx.fz.parentOpener = func() (parentMerger, error) { return fx.merger, nil }
 	return fx
 }
 
@@ -217,6 +215,59 @@ type countingResolver struct {
 func (r *countingResolver) Resolve(context.Context, string, string) (mergeresolve.Result, error) {
 	r.calls++
 	return resolved(r.onMerge != nil && r.onMerge(r.calls)), nil
+}
+
+// TestFinalize_FlakyGateFailureLands pins that a gate failure which does not repeat on a rerun lands with no fixer.
+// It also pins that the landing commit lists the failure as flaky.
+func TestFinalize_FlakyGateFailureLands(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	fx := newFinalizeGateFixture(t)
+	writeVerifyLog(t, fx.gate, gateslot.FailureReportHeader+"\ntier0 (exit 1), log /runs/a.log:\n  Ns.Tests.EnumeratesTree:\n    System.UnauthorizedAccessException : denied\n"+
+		gateslot.FailedRunsPrefix+"tier0 (exit 1)\n")
+	fx.scriptGate(verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}, verifytree.Result{Status: verifytree.StatusPassed})
+
+	outcome, ptr := fx.call(t)
+
+	fx.requireLanded(t, outcome, ptr)
+	if roles := fx.sessionRoles(); roles != "" {
+		t.Errorf("sessions = %q; want no fixer after a failure its rerun did not repeat", roles)
+	}
+	if fx.gate.fake.verifyCalls != 2 {
+		t.Errorf("verify calls = %d; want the gate and its one rerun", fx.gate.fake.verifyCalls)
+	}
+	message := fx.merger.calls[0].opts.Message
+	if !strings.Contains(message, flakyHeading+"\n") || !strings.Contains(message, "\n- `tier0 Ns.Tests.EnumeratesTree`") {
+		t.Errorf("landing message = %q; want the flaky section naming the failure", message)
+	}
+}
+
+// TestFinalize_LandingTextsListFlakyFailuresOnce pins the flaky section of the landing texts.
+// Both the GitHub merge's body and the landing commit's message carry it.
+// A failure two passes share is listed once.
+func TestFinalize_LandingTextsListFlakyFailuresOnce(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	fz := &Finalize{flaky: []flakyPass{
+		{failures: []string{"tier0 Ns.Tests.A", "tier0 Ns.Tests.B"}},
+		{failures: []string{"tier0 Ns.Tests.A"}},
+	}}
+
+	_, body, message := fz.landingTexts(summaryparser.Summary{Title: "A title", Body: "A body."}, "")
+
+	for name, text := range map[string]string{"body": body, "message": message} {
+		if !strings.Contains(text, flakyHeading+"\n") {
+			t.Errorf("%s = %q; want the flaky section", name, text)
+		}
+		if got := strings.Count(text, "\n- `tier0 Ns.Tests.A`"); got != 1 {
+			t.Errorf("%s lists tier0 Ns.Tests.A %d times; want once", name, got)
+		}
+		if !strings.Contains(text, "\n- `tier0 Ns.Tests.B`") {
+			t.Errorf("%s = %q; want tier0 Ns.Tests.B listed", name, text)
+		}
+	}
 }
 
 // TestFinalize_GateAndFixer pins Finalize's landing gate and its finalize-mode fixer.

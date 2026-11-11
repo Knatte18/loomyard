@@ -182,7 +182,9 @@ func touchedFiles(ctx context.Context, location *lymcwd.Location, root string, i
 // renderFailureReport returns the failure report's lines for runs, given the files the change touches.
 // It returns nil when no run failed.
 // Each run names its outcome and its log.
-// Then each failure names its package and test, or its package alone for a failure outside any test.
+// Then each failure names its package and test.
+// A failure the counter read no package for names its test alone.
+// A failure outside any test names its package alone.
 // A path a run printed relative to its directory is prefixed with the directory's worktree-relative path.
 // A run lists its cause lines, such as a timeout.
 // Then, when no failure was read, it lists the first lines of output no test event carried,
@@ -244,10 +246,10 @@ func (run failedRun) reportLines() []string {
 		indent := "  "
 		switch {
 		case failure.test != "":
-			body = append(body, fmt.Sprintf("  %s %s:", failure.pkg, failure.test))
+			body = append(body, "  "+strings.TrimSpace(failure.pkg+" "+failure.test)+":")
 			indent = "    "
 		case failure.pkg != "":
-			body = append(body, fmt.Sprintf("  %s, failed outside any test:", failure.pkg))
+			body = append(body, fmt.Sprintf("  %s%s:", failure.pkg, gateslot.ReportOutsideAnyTestSuffix))
 			indent = "    "
 		}
 		for _, line := range failure.lines {
@@ -260,7 +262,7 @@ func (run failedRun) reportLines() []string {
 	switch {
 	case len(run.failures) > 0:
 	case len(run.unparsed) > 0:
-		body = append(body, "  its output:")
+		body = append(body, "  "+gateslot.ReportOutputLine)
 		for _, line := range run.unparsed {
 			body = append(body, "    "+line)
 		}
@@ -289,7 +291,7 @@ func cutLine(cut []cutRun) string {
 	if logged {
 		hints = slices.Insert(hints, 0, "the logs named above hold the cut lines of a run with a log")
 	}
-	return fmt.Sprintf("... %d more lines cut (%s); %s", total, strings.Join(counts, ", "), strings.Join(hints, "; "))
+	return fmt.Sprintf("%s%d more lines cut (%s); %s", gateslot.ReportCutPrefix, total, strings.Join(counts, ", "), strings.Join(hints, "; "))
 }
 
 // qualify prefixes the Go file path line opens with by the worktree-relative module directory.

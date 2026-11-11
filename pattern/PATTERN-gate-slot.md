@@ -104,6 +104,7 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   Darn-Write's call carries `--stop-on-fail`, so it ends at its first failed tier.
   After a run whose failure report names failed tests alone, the next arrival first runs those tests alone through `Verify`.
   `gateslot.FailedTestsCall` renders that call from the report, the one call a site spells with tiers and targets.
+  The rerun the Finalize bullet below describes renders its call the same way.
 - PR-Review runs its own `pr-review` key's call through `Verify` over each clean head its agent commits,
   and it shares no pass with another site.
 - Parent-Align and Finalize run the `landing` call through `Verify` with `BaseCommand` set to the base command.
@@ -112,6 +113,8 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   A darn Finalize runs its `finalize` key's call over the touched trees' targets instead, for a tree-scoped diff.
   The call is resolved each time it runs and is one `lym gate test --wait` call;
   an empty one, rendered when no touched tree contributes a target, runs nothing.
+  A Finalize gate failure whose report lists tier and guard runs alone reruns once on the same head before any fixer,
+  and a passing rerun is recorded as flaky.
 - Each run that spawns its command writes its own `verify-<n>.log` in the verify directory and names it on its result,
   so no later verify overwrites an earlier run's log.
   After each such run, `Verify` keeps the newest logs up to its retention bound plus the one the failure record names,

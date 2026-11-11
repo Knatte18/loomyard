@@ -246,6 +246,16 @@
 // A darn Finalize over a diff wholly under `tree_scope` runs the tree-scoped command.
 // Darn's verify source answers it.
 // A passing gate removes the landing failure record, and a failing one writes it.
+// Finalize's gate runs a failure once more on the same head before it judges it.
+// It does so only when the failure report lists tier and guard runs alone.
+// A test can fail on a race with another test.
+// A timeout, a runner crash, a build, vet or lint failure and a package that failed outside any test are not rerun.
+// The rerun runs the failed tests alone when the report names Go tests only, and the whole call otherwise.
+// A rerun that passes takes the failure as flaky, and the gate passes.
+// The landing commit and the GitHub merge then list each such failure under `## Flaky test failures`.
+// A rerun that fails is the gate's failure, and the failure record names its log.
+// The gate of the fixer's turns reruns the same way; Parent-Align's gate runs no rerun.
+// Bound: the flaky failures live in the process, so a Finalize resumed after a flaky pass lists none found before.
 // A failing gate spawns the merge fixer in finalize mode, which fixes failing tests only.
 // The attempts are what `finalize_fix_attempts` leaves the entry, read from the attempt record under the row's entry.
 // The fixer gets no parent tip to read from and the merged tip the merge record carries.

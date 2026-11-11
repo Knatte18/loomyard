@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -82,7 +83,12 @@ type Finalize struct {
 	// It is the base of the landed diff.
 	// It is empty when this process read none, as in a Finalize resumed past the merge.
 	parentHeadMerged string
+	// flaky holds each gate failure of this process that passed when run once more on the same head.
+	flaky []flakyPass
 }
+
+// flakyHeading opens the landing texts' section listing the gate failures a rerun on the same head did not repeat.
+const flakyHeading = "## Flaky test failures"
 
 var _ shedengine.ShedProducer = (*Finalize)(nil)
 
@@ -139,20 +145,60 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 
 	gate := newVerifyGate(deps)
 	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, traceFailure: deps.TraceFailure, head: deps.TaskHead}
-	return &Finalize{
-		deps:     deps,
-		resolver: res,
-		gate:     gate,
-		premerge: newPreMerge(deps),
-		guard:    newParentGuard(deps),
-		parentOpener: func() (parentMerger, error) {
-			h, err := deps.OpenParentFabric()
-			if err != nil {
-				return nil, err
+	fz := assembleFinalize(deps, res, gate)
+	fz.premerge = newPreMerge(deps)
+	fz.guard = newParentGuard(deps)
+	fz.parentOpener = func() (parentMerger, error) {
+		h, err := deps.OpenParentFabric()
+		if err != nil {
+			return nil, err
+		}
+		return h, nil
+	}
+	return fz, nil
+}
+
+// assembleFinalize builds a Finalize over deps, resolver and gate, and wires the gate to report its flaky passes to it.
+// The wiring enables the gate's rerun of a test failure and the landing texts' flaky section.
+func assembleFinalize(deps Deps, resolver resolver, gate verifyGate) *Finalize {
+	fz := &Finalize{deps: deps, resolver: resolver, gate: gate}
+	fz.gate.onFlakyPass = fz.noteFlakyPass
+	return fz
+}
+
+// noteFlakyPass keeps pass, so the landing texts list its failures.
+func (fz *Finalize) noteFlakyPass(pass flakyPass) {
+	fz.flaky = append(fz.flaky, pass)
+}
+
+// landingTexts composes from summary and credit the GitHub merge's title and body and the landing commit's message.
+// The body and the message carry the flaky section after summary's body.
+// The section lists each gate failure of this process that passed when run once more on the same head.
+func (fz *Finalize) landingTexts(summary summaryparser.Summary, credit string) (title, body, message string) {
+	summary.Body = withSection(summary.Body, fz.flakySection())
+	return summary.Title, bodyWithCredit(summary.Body, credit), summary.LandingMessage(credit)
+}
+
+// flakySection renders the section that lists, each once, the gate failures a rerun on the same head did not repeat.
+// It is empty when there were none.
+func (fz *Finalize) flakySection() string {
+	var failures []string
+	for _, pass := range fz.flaky {
+		for _, failure := range pass.failures {
+			if !slices.Contains(failures, failure) {
+				failures = append(failures, failure)
 			}
-			return h, nil
-		},
-	}, nil
+		}
+	}
+	if len(failures) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(flakyHeading + "\n\nThe landing gate failed on these and passed when run once more on the same head, so no fixer ran for them:\n")
+	for _, failure := range failures {
+		fmt.Fprintf(&b, "\n- `%s`", failure)
+	}
+	return b.String()
 }
 
 // Call runs one Finalize iteration.
@@ -185,6 +231,8 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 // so a lock that something released lands nothing and is a halting Stuck.
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
 // The landing commit carries the change description.
+// A gate failure that passed when run once more on the same head is then listed as flaky.
+// Both the landing commit and the GitHub merge's body list it.
 // After a blank line it carries the credit block, when the config yields one.
 //
 // Right after the lock, Finalize follows the pull-request resolver, which asks GitHub's rules for the parent branch.
@@ -238,7 +286,6 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err)
 	}
 	summary.Body = withSection(summary.Body, verdict)
-	landingMessage := summary.LandingMessage(credit)
 
 	// Step 1b: commit the product's own status file,
 	// so the pair carries no tracked modification when the merge guard below runs.
@@ -262,7 +309,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return "", shedengine.OutputPointer{}, err
 	}
 	for ; ; front = true {
-		outcome, out, err, again := fz.landUnderLock(ctx, front, summary.Title, bodyWithCredit(summary.Body, credit), landingMessage)
+		outcome, out, err, again := fz.landUnderLock(ctx, front, *summary, credit)
 		if !again {
 			return outcome, out, err
 		}
@@ -282,11 +329,11 @@ func (fz *Finalize) returningFromFixer() (bool, error) {
 
 // landUnderLock runs one pass of the steps from the parent lock to the landing.
 // It takes the lock, at the front of the queue when front is set, and releases it on every way out.
-// title and body are the GitHub merge's title and message, and landingMessage is the landing commit's message.
+// summary and credit compose the GitHub merge's title and message and the landing commit's message once the gate passed.
 // again is true when the pass freed the lock for a fixer or fix review whose change was let through,
 // so the caller runs the pass again;
 // otherwise the other values are the pass's outcome, output pointer and error.
-func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, landingMessage string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+func (fz *Finalize) landUnderLock(ctx context.Context, front bool, summary summaryparser.Summary, credit string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	fz.lockFreed = false
 	end := func(outcome shedengine.Outcome, out shedengine.OutputPointer, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 		return outcome, out, err, false
@@ -363,6 +410,7 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 	if fz.lockFreed {
 		return requeue()
 	}
+	title, body, landingMessage := fz.landingTexts(summary, credit)
 
 	// Step 2b: commit the parent pair's own run records,
 	// so a sibling run's uncommitted status record does not trip the parent-side merge guard.
@@ -411,6 +459,7 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 		if fz.lockFreed {
 			return requeue()
 		}
+		_, _, mergeOpts.Message = fz.landingTexts(summary, credit)
 		if outcome, out, err, done := fz.commitParentRecords(ctx); done {
 			return end(outcome, out, err)
 		}

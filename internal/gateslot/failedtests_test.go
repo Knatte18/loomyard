@@ -80,6 +80,81 @@ func TestFailedTests(t *testing.T) {
 	}
 }
 
+// TestTierRunFailures pins which failure reports list tier and guard runs alone, and how each failure is named.
+func TestTierRunFailures(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	report := func(lines ...string) string {
+		return "FAIL\n" + FailureReportHeader + "\n" + strings.Join(lines, "\n") + "\n" +
+			FailedRunsPrefix + "tier0 (exit 1); the exit code is tier0's\n"
+	}
+	tests := []struct {
+		name   string
+		log    string
+		want   []string
+		wantOK bool
+	}{
+		{
+			name: "every failure of tier and guard runs is named with its run's label, a run naming none by its outcome, up to a cut",
+			log: report(
+				"tier0 (exit 1), log /runs/a.log:",
+				"  example.com/m/a TestA/sub:",
+				"    a_test.go:3: got 1; want 2",
+				"  Ns.Tests.EnumeratesTree(x: 1):",
+				"    System.UnauthorizedAccessException : denied",
+				"tier1 (exit 1), log /runs/b.log:",
+				"  its output:",
+				"    some line",
+				"guard tier1 (exit 1), log /runs/g.log:",
+				"  example.com/m/g TestGuard:",
+				"... 3 more lines cut (guard tier1: 3); the logs named above hold the cut lines of a run with a log",
+			),
+			want:   []string{"tier0 example.com/m/a TestA/sub", "tier0 Ns.Tests.EnumeratesTree(x: 1)", "tier1 (exit 1)", "guard tier1 example.com/m/g TestGuard"},
+			wantOK: true,
+		},
+		{
+			name:   "a run with a cause line and no failure is listed by its outcome",
+			log:    report("tier1 (timed out), log /runs/a.log:", "  lym gate test: tier timeout: tier1 exceeded timeout_min 30m0s; find the hang"),
+			want:   []string{"tier1 (timed out)"},
+			wantOK: true,
+		},
+		{
+			name: "a package that failed outside any test is no test run",
+			log:  report("tier0 (exit 1), log /runs/a.log:", "  example.com/m/a TestA:", "  example.com/m/b, failed outside any test:", "    b.go:3: undefined: x"),
+		},
+		{
+			name: "a report that lists no run names none",
+			log:  report(),
+		},
+		{
+			name: "a build step beside a tier run is no test run",
+			log:  report("tier0 (exit 1), log /runs/a.log:", "  example.com/m/a TestA:", "build (exit 2), log /runs/b.log:", "  its output:"),
+		},
+		{
+			name: "a vet run is no test run",
+			log:  report("vet tier1 (exit 1), log /runs/v.log:", "  its output:", "    p.go:3:2: unreachable code"),
+		},
+		{
+			name: "a lint step is no test run",
+			log:  report("lint comments (1 finding); way forward: fix it:", "  a.go:3: // wrapped at the"),
+		},
+		{
+			name: "a log with no report names none",
+			log:  "--- FAIL: TestA (0.00s)\nFAIL\texample.com/m/a\t0.1s\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := TierRunFailures(tt.log)
+			if ok != tt.wantOK || !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("TierRunFailures() = %q, %v; want %q, %v", got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
 // TestFailedTestsCall pins the command that runs failed tests alone: one call per tier in tier order, quoted per shell.
 func TestFailedTestsCall(t *testing.T) {
 	tiergate.Require(t, 0)

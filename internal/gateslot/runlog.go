@@ -77,9 +77,9 @@ type RunRecord struct {
 	// It is empty for a tier that reads no packages and for a run that launched none,
 	// and it is absent from a record written before the field existed.
 	Launches []PackageLaunch `json:"launches,omitempty"`
-	// Failures lists the failed tests of a go-json tier in the order they failed.
-	// It holds leaf tests only, so a test whose subtest failed is left out.
-	// It is empty for a tier that failed no test and for a VSTest tier.
+	// Failures lists the failed tests of the tier run in the order they failed, empty for a run that failed no test.
+	// A go-json tier's list holds leaf tests only, so a test whose subtest failed is left out.
+	// A VSTest tier's tests carry no package.
 	Failures []TestFailure `json:"failures,omitempty"`
 	// CallID identifies the gate call that wrote the record.
 	// Every record of one call carries the same id; a record written before the field has none.
@@ -271,6 +271,15 @@ const FailureReportHeader = "gate test: failure report, every failure of this ca
 // failureReportEnd opens each line the gate prints after the failure report's runs, such as the closing line.
 const failureReportEnd = "gate test: "
 
+// ReportCutPrefix opens the line that closes a failure report cut at its line cap.
+const ReportCutPrefix = "... "
+
+// ReportOutputLine, indented under a run, opens the output lines no test event carried; it names no failure.
+const ReportOutputLine = "its output:"
+
+// ReportOutsideAnyTestSuffix ends the package a failure report names as failed outside any test, before its colon.
+const ReportOutsideAnyTestSuffix = ", failed outside any test"
+
 // FailedTest is one failed test a failure report names.
 type FailedTest struct {
 	// Tier is the number of the tier or guard run that failed the test.
@@ -347,6 +356,67 @@ func reportTestLine(line string) (FailedTest, bool) {
 		return FailedTest{}, false
 	}
 	return FailedTest{Package: fields[0], Test: top}, true
+}
+
+// TierRunFailures returns the failures the first failure report in log names, each opened by its run's label.
+// A failed test reads as `tier0 example.com/m/a TestA` or `tier0 Ns.Tests.A`.
+// A run that names no failure is listed by its label and outcome, such as `tier1 (exit 1)`.
+// ok is false unless the report lists at least one run and every run it lists is a tier or guard run.
+// A build, vet or lint step and a log with no report therefore give false.
+// So does a package that failed outside any test, such as by a compile error, which a rerun repeats.
+// A cut report lists the failures above its cut line.
+func TierRunFailures(log string) (failures []string, ok bool) {
+	lines := strings.Split(strings.ReplaceAll(log, "\r\n", "\n"), "\n")
+	start := slices.Index(lines, FailureReportHeader)
+	if start < 0 {
+		return nil, false
+	}
+	var label, header string
+	named := false
+	closeRun := func() {
+		if header != "" && !named {
+			failures = append(failures, header)
+		}
+	}
+	for _, line := range lines[start+1:] {
+		if line == "" || strings.HasPrefix(line, failureReportEnd) || strings.HasPrefix(line, ReportCutPrefix) {
+			break
+		}
+		switch {
+		case strings.HasPrefix(line, "    "):
+			// A failure's own output.
+		case strings.HasPrefix(line, "  "):
+			if failure, isFailure := reportFailureLine(line); isFailure {
+				if strings.HasSuffix(failure, ReportOutsideAnyTestSuffix) {
+					return nil, false
+				}
+				failures = append(failures, label+" "+failure)
+				named = true
+			}
+		default:
+			if _, isRun := reportRunTier(line); !isRun {
+				return nil, false
+			}
+			closeRun()
+			label, _, _ = strings.Cut(line, " (")
+			outcome, _, _ := strings.Cut(line, ")")
+			header, named = outcome+")", false
+		}
+	}
+	closeRun()
+	return failures, header != ""
+}
+
+// reportFailureLine returns the failure a failure report's `  <failure>:` line under a run names, without its colon.
+// A failed test, a test with no package and a package that failed outside any test each end with a colon.
+// A cause line and the line that opens unparsed output name none.
+func reportFailureLine(line string) (string, bool) {
+	text := strings.TrimSpace(line)
+	failure, isFailure := strings.CutSuffix(text, ":")
+	if !isFailure || text == ReportOutputLine {
+		return "", false
+	}
+	return failure, true
 }
 
 // TierSummaryLine renders the one stderr line the gate prints after each tier run.

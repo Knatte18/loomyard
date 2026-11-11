@@ -65,6 +65,10 @@ func TestCounters(t *testing.T) {
 	splitEvent := goEvent("output", "TestA", "=== RUN   TestA\n") + "\n"
 	vstestPassed := "Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 1 s - x.dll (net8.0)\n"
 	vstestFailed := "Failed!  - Failed:     2, Passed:     3, Skipped:     1, Total:     6, Duration: 2 s - y.dll (net8.0)\n"
+	vstestFailedBlocks := "  Passed Ns.Tests.Kept [3 ms]\n" +
+		"  Failed Ns.Tests.EnumeratesTree [12 ms]\n  Error Message:\n   System.UnauthorizedAccessException : Access to the path '/r/bin/t' is denied.\n" +
+		"  Stack Trace:\n     at System.IO.Enumeration.FileSystemEnumerator`1.Init()\n\n" +
+		"  Failed Ns.Tests.Second(x: 1) [< 1 ms]\n  Error Message:\n   Assert.Equal() Failure\n"
 
 	tests := []struct {
 		name string
@@ -251,6 +255,35 @@ func TestCounters(t *testing.T) {
 			writes:     []string{vstestFailed},
 			wantOut:    vstestFailed,
 			wantCounts: tierCounts{discovered: 6, passed: 3, failed: 2, skipped: 1},
+		},
+		{
+			name:       "each VSTest failed test is named with its block's lines, headings left out, up to a blank or summary line",
+			kind:       "vstest",
+			writes:     []string{vstestFailedBlocks + vstestFailed + "Results File: r.trx\n"},
+			wantOut:    vstestFailedBlocks + vstestFailed + "Results File: r.trx\n",
+			wantCounts: tierCounts{discovered: 6, passed: 3, failed: 2, skipped: 1},
+			wantFailures: []runFailure{
+				{test: "Ns.Tests.EnumeratesTree", lines: []string{"System.UnauthorizedAccessException : Access to the path '/r/bin/t' is denied.", "at System.IO.Enumeration.FileSystemEnumerator`1.Init()"}},
+				{test: "Ns.Tests.Second(x: 1)", lines: []string{"Assert.Equal() Failure"}},
+			},
+		},
+		{
+			name:    "a VSTest failed test keeps its first failureLines lines",
+			kind:    "vstest",
+			writes:  []string{"  Failed Ns.Tests.Long [1 ms]\n  Error Message:\n   l1\n   l2\n   l3\n   l4\n   l5\n   l6\n   l7\n   l8\n   l9\n   l10\n"},
+			wantOut: "  Failed Ns.Tests.Long [1 ms]\n  Error Message:\n   l1\n   l2\n   l3\n   l4\n   l5\n   l6\n   l7\n   l8\n   l9\n   l10\n",
+			wantFailures: []runFailure{
+				{test: "Ns.Tests.Long", lines: []string{"l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8"}},
+			},
+		},
+		{
+			name:    "a VSTest result line closes a failed test's block with no blank line between",
+			kind:    "vstest",
+			writes:  []string{"  Failed Ns.Tests.One [1 ms]\n  Error Message:\n   boom\n  Passed Ns.Tests.Two [1 ms]\n   stray line of the passing test\n"},
+			wantOut: "  Failed Ns.Tests.One [1 ms]\n  Error Message:\n   boom\n  Passed Ns.Tests.Two [1 ms]\n   stray line of the passing test\n",
+			wantFailures: []runFailure{
+				{test: "Ns.Tests.One", lines: []string{"boom"}},
+			},
 		},
 	}
 	for _, tt := range tests {
