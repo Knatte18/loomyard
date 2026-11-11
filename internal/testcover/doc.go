@@ -3,9 +3,10 @@
 // Package testcover measures which blocks each top-level test of a Go package covers when it runs alone.
 // It judges from those block sets which tests are redundant.
 //
-// The runner builds a package's coverage test binary and runs each top-level test alone, serially, with its own profile.
+// The runner builds a package's coverage test binary and runs each top-level test alone, with its own profile.
 // Per-test coverage needs a process per test.
 // Coverage counters are process-wide, so tests that run in parallel in one process mix their counts.
+// Runs in separate processes do not, so a caller may run several at once, each with its own profile path.
 // The runner takes no gate slot; its caller holds one.
 // A Toolchain bounds each go command by BuildTimeout and each test by TestTimeout when it sets them.
 // It runs each go command in Dir, and ends every command once its Ctx is done.
@@ -14,6 +15,8 @@
 // A test past its bound comes back marked TimedOut, never as an error.
 // ScanTestFuncs reads a package's top-level Test functions.
 // Each comes with its file, the tier its `tiergate.Require` names and the hash of its source text.
+// It also says whether the test calls Parallel on its `*testing.T` as a top-level statement.
+// Only `tiergate.Require` calls may come before it; such a test tolerates its package's other parallel tests.
 // ParseTestFuncs reads them from one test file's source, such as the file as a commit stores it.
 //
 // Judge marks a test contained when another judged test of the same run covers each of its covered blocks.

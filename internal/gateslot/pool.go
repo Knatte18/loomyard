@@ -185,6 +185,68 @@ func (p *Pool) TryAcquire(h Holder) (*Lease, error) {
 	return p.tryAcquireAny(limits, h)
 }
 
+// TryAcquireSpare takes one slot for h, held until the lease is released.
+// It takes it only when at least two slots are free and no multi-slot acquire holds the drain lock.
+// One slot thus stays free after the take, for the next gate run that arrives.
+// It returns a nil lease otherwise, and always on a pool of fewer than two slots.
+// It never waits.
+func (p *Pool) TryAcquireSpare(h Holder) (*Lease, error) {
+	if _, err := p.prepare(&h); err != nil {
+		return nil, err
+	}
+	limits, err := p.readLimits()
+	if err != nil || limits.Slots < 2 {
+		return nil, err
+	}
+	draining, err := lockIsHeld(p.drainLockPath())
+	if err != nil || draining {
+		return nil, err
+	}
+	free := 0
+	for number := 1; number <= limits.Slots && free < 2; number++ {
+		held, err := lockIsHeld(p.slotLockPath(number))
+		if err != nil {
+			return nil, err
+		}
+		if !held {
+			free++
+		}
+	}
+	if free < 2 {
+		return nil, nil
+	}
+	return p.tryAcquireAny(limits, h)
+}
+
+// Contended reports whether every slot but those lease holds is held, or a multi-slot acquire holds the drain lock.
+// A holder that took its slot through TryAcquireSpare gives it back in that state,
+// so an arriving gate run waits no longer.
+func (p *Pool) Contended(lease *Lease) (bool, error) {
+	draining, err := p.Draining()
+	if err != nil || draining {
+		return draining, err
+	}
+	limits, err := p.readLimits()
+	if err != nil {
+		return false, err
+	}
+	own := map[string]bool{}
+	for _, slot := range lease.slots {
+		own[slot.lockPath] = true
+	}
+	for number := 1; number <= limits.Slots; number++ {
+		lockPath := p.slotLockPath(number)
+		if own[lockPath] {
+			continue
+		}
+		held, err := lockIsHeld(lockPath)
+		if err != nil || !held {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
 // AcquireSlots holds count slots for h until the lease is released.
 // A count of 1 takes one slot and does not take the drain lock.
 // A count of 0, or above the current Limits().Slots, is clamped to every slot.

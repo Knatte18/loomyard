@@ -15,10 +15,12 @@ import (
 // Its process ID tells a reader the pass it waited on from any other.
 type ExitRecord struct {
 	PID int `json:"pid"`
-	// PlannedHead is the prime's HEAD the pass planned and measured at, empty when it ended before reading it.
+	// PlannedHead is the prime's HEAD the pass planned and measured at.
 	PlannedHead string `json:"planned_head,omitempty"`
 	// Queued counts the queued work left when the pass ended:
 	// the packages its package cap left unmeasured, and those whose map build lock another call held.
+	// It also counts those a HEAD move, an error or a terminating signal left unmeasured,
+	// and every queued package of a pass that could take no slot.
 	Queued int `json:"queued"`
 	// Plan counts the plan's verdicts.
 	Plan PlanCounts `json:"plan"`

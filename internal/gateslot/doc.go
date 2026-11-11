@@ -34,6 +34,12 @@
 // It fills each Holder's slot number from its record's file name, which the record itself never carries.
 // Pool.Draining reports whether the drain lock is held, and creates no file in a pool that never had one.
 //
+// Pool.TryAcquire takes a free slot at once or none, and takes none while the drain lock is held.
+// Pool.TryAcquireSpare takes one only while at least two are free and the drain lock is not held.
+// One thus stays free after the take, and a pool of fewer than two slots gives none.
+// Pool.Contended reports whether every slot but a lease's own is held, or the drain lock is held:
+// the state in which a spare holder gives its slot back.
+//
 // # Inheritance
 //
 // A slot's environment is Lease.InheritEnv for a tier run and HolderEnv for a non-tier holder.
@@ -62,7 +68,9 @@
 // The non-tier holders hold one slot and set their own Go flags through HolderEnv.
 // Each passes the `-p` value it reads from the pool's Limits at its acquire,
 // so a hub that declares `tier0` bounds them by its parallel and a hub that declares none adds no `-p`.
-// `lym gate testmap` is one: it holds one slot from its first build to its end.
+// `lym gate testmap` is one.
+// A call naming packages waits for its slot and holds it from its first build to its end.
+// A pass takes its slot through Pool.TryAcquireSpare and gives it back once Pool.Contended reports true.
 // The redundancy report step of `lym gate test` is another: it takes one slot after the call's tiers released theirs.
 //
 // # Prebuilt store

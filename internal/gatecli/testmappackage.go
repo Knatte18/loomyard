@@ -1,8 +1,10 @@
 // testmappackage.go measures one queued package for `lym gate testmap`, inside the call's slot.
-// It runs the package's tests alone under a coverage binary over every in-module package the test binary links.
+// It runs the package's tests under a coverage binary over every in-module package the test binary links.
+// Each test runs alone in its own process, in rounds that put the tests declaring Parallel side by side.
 // It keys the blocks they cover of the package's own files and names the functions they cover of the others.
-// It merges the runs into the package's map, and re-measures the kept entries the fresh build cannot place.
-// It discards the runs when a linked package's files are dirty or changed under its tests.
+// It merges each round's runs into the package's map and writes it,
+// and it re-measures the kept entries the fresh build cannot place.
+// It discards a round when a linked package's files are dirty or HEAD moved under its tests, and ends the job there.
 
 package gatecli
 
@@ -17,6 +19,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/envconfig"
@@ -34,22 +37,37 @@ type mappedRun struct {
 	outcome testcover.TestOutcome
 }
 
-// mapPackage measures the job's package at the call's HEAD, writes its map and reports the package built.
+// packageRun is one job's state once its package's coverage binary is built.
+type packageRun struct {
+	job testMapJob
+	// ctx ends the job's runs: the call's context, or for a pass the context its yield watch ends.
+	ctx                     context.Context
+	pkgDir, importPath, bin string
+	mapped                  []testcover.TestFunc
+	trees                   map[string]packageTree
+	indexes                 []*testcover.FuncIndex
+	// m is the package's map as the job last wrote it, or as the job started.
+	m testcover.Map
+	// checked is set once the kept entries were checked against a fresh profile; a whole rebuild keeps none to check.
+	// probed is set once a kept entry ran to give the check its profile.
+	checked, probed bool
+	// measure holds the job's build and run time; wrote is set once a round wrote the map.
+	measure testcover.PackageMeasure
+	wrote   bool
+}
+
+// mapPackage measures the job's package at the call's HEAD, writing its map after each round of runs.
+// It reports whether the package was skipped before its build, which then does not count against the call's cap.
 // A whole job starts from an empty map at HEAD:
 // it runs every mapped test but those the spawn scan marks, which enter with their verdict, unrun.
 // Any other job runs its tests into the map the plan wrote at HEAD, each replacing its entry;
 // the package is skipped and counted as queued when that map no longer stands at HEAD.
-// Such a job also re-runs each kept passing entry whose block keys or linked functions the fresh build lacks.
-// It counts each as a self-check mismatch.
-// When none of its runs wrote a profile, it first re-runs one kept passing entry to read the fresh build's blocks.
-// An audit job counts each re-run entry whose fresh coverage differs from the kept one as an audit mismatch.
 // A package with no mapped test gets a map of its file hashes and no tests, with no build.
 // A failed build is recorded through writeFailed.
 // A package gets no map and is reported skipped when a linked package's file is dirty just before its build.
-// The first result is then true, since no build was spent on the package.
-// It is skipped the same way, with the first result false, when such a file is dirty after its tests.
-// It is skipped so too when such a file differs at HEAD once they ended.
-// The error reports a slot, read or write failure, or a cancelled call, that ends the call.
+// The error reports a slot, read or write failure that ends the call.
+// After a terminating signal it is the call context's error.
+// It is errSlotYielded when a pass gave its slot back or found none it may take.
 func (r *testMapRun) mapPackage(job testMapJob) (bool, error) {
 	pkg, head := job.pkg, r.head
 	pkgDir := filepath.Join(r.location.WorktreePath(), filepath.FromSlash(job.dir))
@@ -99,16 +117,18 @@ func (r *testMapRun) mapPackage(job testMapJob) (bool, error) {
 		}
 	}
 
-	if err := r.holdSlot(); err != nil {
+	if err := r.jobSlot(); err != nil {
 		return false, err
 	}
+	ctx, stopWatch := r.watchForYield()
+	defer stopWatch()
 	builder := testcover.Toolchain{
-		Go: r.request.goBinary, Env: r.holderEnv, Dir: r.moduleDir, Ctx: r.ctx, BuildTimeout: r.buildTimeout, Grace: r.request.grace,
+		Go: r.request.goBinary, Env: r.holderEnv, Dir: r.moduleDir, Ctx: ctx, BuildTimeout: r.buildTimeout, Grace: r.request.grace,
 	}
 	linked, err := builder.LinkedPackages(importPath)
 	if err != nil {
-		if cancelled := r.ctx.Err(); cancelled != nil {
-			return false, cancelled
+		if stop := r.interruption(ctx); stop != nil {
+			return false, stop
 		}
 		return false, r.writeFailed(pkg, m, err)
 	}
@@ -131,97 +151,165 @@ func (r *testMapRun) mapPackage(job testMapJob) (bool, error) {
 	defer os.Remove(bin)
 	buildStart := time.Now()
 	if err := builder.BuildBinary(importPath, strings.Join(linked, ","), "", bin); err != nil {
-		// A terminating signal ends the build for a cause outside the package, so no failure is recorded.
-		if cancelled := r.ctx.Err(); cancelled != nil {
-			return false, cancelled
+		// A signal or a yield ends the build for a cause outside the package, so no failure is recorded.
+		if stop := r.interruption(ctx); stop != nil {
+			return false, stop
 		}
 		return false, r.writeFailed(pkg, m, err)
 	}
-	buildSeconds := time.Since(buildStart).Seconds()
+	p := &packageRun{
+		job: job, ctx: ctx, pkgDir: pkgDir, importPath: importPath, bin: bin, mapped: mapped, trees: trees, m: m, checked: job.whole,
+		measure: testcover.PackageMeasure{Package: pkg, BuildSeconds: time.Since(buildStart).Seconds()},
+	}
 	if slices.ContainsFunc(mapped, func(fn testcover.TestFunc) bool { return r.tiers[fn.Tier].PrebuiltLym }) {
-		if err := r.buildLym(); err != nil {
-			if cancelled := r.ctx.Err(); cancelled != nil {
-				return false, cancelled
+		if err := r.buildLym(ctx); err != nil {
+			if stop := r.interruption(ctx); stop != nil {
+				return false, stop
 			}
 			return false, r.writeFailed(pkg, m, err)
 		}
 	}
-	var indexes []*testcover.FuncIndex
 	for _, other := range linked {
 		if other != importPath {
-			indexes = append(indexes, testcover.NewFuncIndex(filepath.Join(r.location.WorktreePath(), filepath.FromSlash(trees[other].dir)), other))
+			p.indexes = append(p.indexes, testcover.NewFuncIndex(filepath.Join(r.location.WorktreePath(), filepath.FromSlash(trees[other].dir)), other))
 		}
 	}
-	runStart := time.Now()
-	runs, err := r.runTests(pkg, pkgDir, bin, toRun)
-	if err != nil {
-		return false, err
-	}
-	if !job.whole {
-		if firstProfile(runs) == nil {
-			probe, err := r.runFirstKeptEntry(pkg, pkgDir, bin, m, mapped, runs)
-			if err != nil {
-				return false, err
-			}
-			runs = append(runs, probe...)
+	defer func() {
+		if p.wrote {
+			r.addMeasure(p.measure)
 		}
-		if profile := firstProfile(runs); profile != nil {
-			ran := map[string]bool{}
-			for _, run := range runs {
-				ran[run.fn.Name] = true
+	}()
+	return false, r.runRounds(p, toRun)
+}
+
+// runRounds runs queue, the job's tests, in rounds and writes the map after each round.
+// A round is one test, or up to the call's tier0 parallel of the queued tests that declare Parallel;
+// each test runs in its own process.
+// After a round it reads the worktree status and HEAD.
+// A dirty file a linked package owns, or a HEAD move, discards the round and ends the job with the package skipped.
+// A job that is no whole rebuild self-checks its kept entries against the first profile a round writes.
+// It drops each entry that fails, queues its test again and counts a self-check mismatch.
+// When no queued run wrote a profile, it runs one kept passing entry to get one.
+// An audit job counts each re-run entry whose fresh coverage differs from the kept one as an audit mismatch.
+// The error reports a read or write failure, a signal or a yield that ends the job.
+func (r *testMapRun) runRounds(p *packageRun, queue []testcover.TestFunc) error {
+	for {
+		if len(queue) == 0 {
+			if p.checked || p.probed {
+				return nil
 			}
-			failing, err := selfCheck(m, pkgDir, importPath, profile, indexes, ran)
+			probe, found := keptEntryTest(p.m, p.mapped)
+			if !found {
+				return nil
+			}
+			p.probed = true
+			queue = []testcover.TestFunc{probe}
+		}
+		var round []testcover.TestFunc
+		round, queue = nextRound(queue, r.parallel)
+		roundStart := time.Now()
+		runs, err := r.runRound(p, round)
+		if err != nil {
+			return err
+		}
+		p.measure.RunSeconds += time.Since(roundStart).Seconds()
+		if profile := firstProfile(runs); !p.checked && profile != nil {
+			p.checked = true
+			failing, err := selfCheck(p.m, p.pkgDir, p.importPath, profile, p.indexes, ranNames(runs))
 			if err != nil {
-				return false, r.writeFailed(pkg, m, err)
+				return r.writeFailed(p.job.pkg, p.m, err)
 			}
 			r.selfCheckMismatches += len(failing)
-			var again []testcover.TestFunc
-			for _, fn := range mapped {
+			p.m.Tests = slices.DeleteFunc(p.m.Tests, func(test testcover.MapTest) bool { return slices.Contains(failing, test.Name) })
+			for _, fn := range p.mapped {
 				if slices.Contains(failing, fn.Name) {
-					again = append(again, fn)
+					queue = append(queue, fn)
 				}
 			}
-			more, err := r.runTests(pkg, pkgDir, bin, again)
-			if err != nil {
-				return false, err
+		}
+		ended, err := r.endRound(p)
+		if err != nil || ended {
+			return err
+		}
+		before := p.m
+		if err := fillMapTests(&p.m, p.pkgDir, p.importPath, runs, p.indexes, r.head, time.Now()); err != nil {
+			return r.writeFailed(p.job.pkg, before, err)
+		}
+		if p.job.audit {
+			for _, run := range runs {
+				if slices.Contains(p.job.tests, run.fn.Name) && entryCoverage(before, run.fn.Name) != entryCoverage(p.m, run.fn.Name) {
+					r.auditMismatches++
+				}
 			}
-			runs = append(runs, more...)
+		}
+		p.m.Failure = nil
+		if err := r.writeMap(p.job.pkg, p.m); err != nil {
+			return err
+		}
+		if !p.wrote && !slices.Contains(r.built, p.job.pkg) {
+			r.built = append(r.built, p.job.pkg)
+		}
+		p.wrote = true
+		p.measure.Tests += len(runs)
+	}
+}
+
+// addMeasure adds m to the call's measures, summing it into the entry of its package when the call measured it before.
+// A package whose job resumed after a yield is therefore reported once.
+func (r *testMapRun) addMeasure(m testcover.PackageMeasure) {
+	at := slices.IndexFunc(r.measures, func(held testcover.PackageMeasure) bool { return held.Package == m.Package })
+	if at < 0 {
+		r.measures = append(r.measures, m)
+		return
+	}
+	r.measures[at].BuildSeconds += m.BuildSeconds
+	r.measures[at].RunSeconds += m.RunSeconds
+	r.measures[at].Tests += m.Tests
+}
+
+// nextRound splits queue into the next round and the rest.
+// The round is the first test alone, unless it declares Parallel and parallel is above one:
+// the round is then the first parallel tests of queue that declare Parallel, in queue order.
+func nextRound(queue []testcover.TestFunc, parallel int) (round, rest []testcover.TestFunc) {
+	if !queue[0].Parallel || parallel < 2 {
+		return queue[:1], queue[1:]
+	}
+	for _, fn := range queue {
+		if fn.Parallel && len(round) < parallel {
+			round = append(round, fn)
+		} else {
+			rest = append(rest, fn)
 		}
 	}
-	runSeconds := time.Since(runStart).Seconds()
+	return round, rest
+}
 
-	file, err = r.dirtyOwnedFile(trees)
+// endRound reads the worktree status and HEAD after a round, and reports whether they end the job.
+// A dirty file that a package of the job's trees owns skips the package.
+// A HEAD move skips it too, naming the files of those packages that changed, and counts it as queued.
+func (r *testMapRun) endRound(p *packageRun) (bool, error) {
+	file, err := r.dirtyOwnedFile(p.trees)
 	if err != nil {
 		return false, err
 	}
 	if file != "" {
-		r.skip(pkg, "modified or untracked file "+file+" after its tests")
-		return false, nil
+		r.skip(p.job.pkg, "modified or untracked file "+file+" after its tests")
+		return true, nil
 	}
-	changed, err := r.changedFiles(head, importPath, trees)
+	if err := r.readHead(); err != nil || !r.headMoved {
+		return false, err
+	}
+	changed, err := r.changedFiles(r.head, p.importPath, p.trees)
 	if err != nil {
 		return false, err
 	}
+	cause := "HEAD moved under its tests"
 	if len(changed) > 0 {
-		r.skip(pkg, "files changed under its tests: "+strings.Join(changed, ", "))
-		return false, nil
+		cause = "files changed under its tests: " + strings.Join(changed, ", ")
 	}
-	r.measures = append(r.measures, testcover.PackageMeasure{
-		Package: pkg, BuildSeconds: buildSeconds, RunSeconds: runSeconds, Tests: len(runs),
-	})
-	before := m
-	if err := fillMapTests(&m, pkgDir, importPath, runs, indexes, head, time.Now()); err != nil {
-		return false, r.writeFailed(pkg, before, err)
-	}
-	if job.audit {
-		for _, name := range job.tests {
-			if entryCoverage(before, name) != entryCoverage(m, name) {
-				r.auditMismatches++
-			}
-		}
-	}
-	m.Failure = nil
-	return false, r.write(pkg, m)
+	r.skip(p.job.pkg, cause)
+	r.queued++
+	return true, nil
 }
 
 // importPath returns the import path of the module-relative package directory pkg.
@@ -284,16 +372,15 @@ func linkedHashes(trees map[string]packageTree, importPath string) map[string]ma
 
 // holdSlot takes one slot of the hub's pool for the rest of the call, waiting with no bound but the call's context.
 func (r *testMapRun) holdSlot() error {
-	_, err := r.takeSlot(true)
+	_, err := r.takeSlot(func(holder gateslot.Holder) (*gateslot.Lease, error) { return r.pool.Acquire(r.ctx, holder) })
 	return err
 }
 
-// takeSlot takes one slot of the hub's pool for the rest of the call, and reports whether the call holds one.
+// takeSlot takes one slot of the hub's pool through acquire, and reports whether the call holds one.
 // It takes none when it holds one already or runs inside the slot an enclosing gate run holds.
-// With wait set it waits for a slot with no bound but the call's context;
-// otherwise it takes one only when one is free at once, and reports false when none is.
-// It fills the slot holder's Go flags into the call's environment and creates the call's temporary directory.
-func (r *testMapRun) takeSlot(wait bool) (bool, error) {
+// It reports false when acquire returns no lease.
+// It fills the slot holder's Go flags into the call's environment and creates the call's temporary directory once.
+func (r *testMapRun) takeSlot(acquire func(gateslot.Holder) (*gateslot.Lease, error)) (bool, error) {
 	if r.holderEnv != nil {
 		return true, nil
 	}
@@ -301,13 +388,8 @@ func (r *testMapRun) takeSlot(wait bool) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read the hub's gate limits: %w", err)
 	}
-	if inherited := envValue(r.request.environ, gateslot.InheritEnv); inherited == "" || !r.pool.Inherited(inherited) {
-		holder := gateslot.Holder{Worktree: r.location.WorktreePath(), Site: testMapSite}
-		if wait {
-			r.lease, err = r.pool.Acquire(r.ctx, holder)
-		} else {
-			r.lease, err = r.pool.TryAcquire(holder)
-		}
+	if !r.inheritsSlot() {
+		r.lease, err = acquire(gateslot.Holder{Worktree: r.location.WorktreePath(), Site: testMapSite})
 		if err != nil {
 			return false, fmt.Errorf("acquire a gate slot: %w", err)
 		}
@@ -315,8 +397,10 @@ func (r *testMapRun) takeSlot(wait bool) (bool, error) {
 			return false, nil
 		}
 	}
-	if r.tmp, err = lymtemp.MkdirTemp("testmap-"); err != nil {
-		return false, fmt.Errorf("create the coverage binary directory: %w", err)
+	if r.tmp == "" {
+		if r.tmp, err = lymtemp.MkdirTemp("testmap-"); err != nil {
+			return false, fmt.Errorf("create the coverage binary directory: %w", err)
+		}
 	}
 	r.parallel = limits.Tier0Parallel
 	if r.parallel < 1 {
@@ -324,6 +408,21 @@ func (r *testMapRun) takeSlot(wait bool) (bool, error) {
 	}
 	r.holderEnv = gateslot.HolderEnv(r.env, r.lease, limits.Tier0Parallel)
 	return true, nil
+}
+
+// inheritsSlot reports whether the call runs inside the slot an enclosing gate run holds, named by gateslot.InheritEnv.
+func (r *testMapRun) inheritsSlot() bool {
+	inherited := envValue(r.request.environ, gateslot.InheritEnv)
+	return inherited != "" && r.pool.Inherited(inherited)
+}
+
+// releaseHeldSlot releases the slot the call holds, if any, so a later take acquires afresh.
+func (r *testMapRun) releaseHeldSlot() {
+	if r.lease == nil {
+		return
+	}
+	releaseSlot(r.lease, r.location.WorktreePath())
+	r.lease, r.holderEnv = nil, nil
 }
 
 // envValue returns the value of the last entry of env named key, or "".
@@ -339,22 +438,22 @@ func envValue(env []string, key string) string {
 
 // buildLym builds `lym` from the worktree into the pool's prebuilt store, once per call, bounded by the build timeout.
 // A failed build is kept, so every later package that needs it fails the same way without building again.
-// A build ended by a terminating signal is not kept and returns the call context's error.
-func (r *testMapRun) buildLym() error {
+// A build that ctx ended is not kept and returns the interruption.
+func (r *testMapRun) buildLym(ctx context.Context) error {
 	if r.lymBuilt {
 		return r.lymErr
 	}
 	r.lymBuilt = true
-	ctx, cancel := context.WithTimeout(r.ctx, r.buildTimeout)
+	bounded, cancel := context.WithTimeout(ctx, r.buildTimeout)
 	defer cancel()
 	// The store keeps the binary, so the cleanup prebuildLym returns for it removes nothing.
-	bin, _, err := prebuildLym(ctx, r.request.goBinary, r.location.WorktreePath(), r.parallel, r.pool.PrebuiltDir(), r.request.grace, r.holderEnv)
-	if cancelled := r.ctx.Err(); cancelled != nil {
+	bin, _, err := prebuildLym(bounded, r.request.goBinary, r.location.WorktreePath(), r.parallel, r.pool.PrebuiltDir(), r.request.grace, r.holderEnv)
+	if stop := r.interruption(ctx); stop != nil {
 		r.lymBuilt = false
-		return cancelled
+		return stop
 	}
 	switch {
-	case err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
+	case err != nil && errors.Is(bounded.Err(), context.DeadlineExceeded):
 		r.lymErr = fmt.Errorf("lym build: timed out after %s", r.buildTimeout)
 	case err != nil:
 		r.lymErr = fmt.Errorf("lym build: %w", err)
@@ -363,42 +462,53 @@ func (r *testMapRun) buildLym() error {
 	return r.lymErr
 }
 
-// runTests runs each of funcs alone, in order, and returns their runs.
-// The error is the call context's once it is done, since a run it ended records nothing.
-func (r *testMapRun) runTests(pkg, pkgDir, bin string, funcs []testcover.TestFunc) ([]mappedRun, error) {
-	var runs []mappedRun
-	for _, fn := range funcs {
-		if err := r.ctx.Err(); err != nil {
-			return nil, err
-		}
-		runs = append(runs, r.runTest(pkg, pkgDir, bin, fn))
+// runRound runs each test of round at once, each alone in its own process with its own profile, and returns their runs.
+// The error is the interruption that ended the job's context, since a run it ended records nothing:
+// the whole round is then discarded.
+// A timed-out test is listed on the call's report.
+func (r *testMapRun) runRound(p *packageRun, round []testcover.TestFunc) ([]mappedRun, error) {
+	if stop := r.interruption(p.ctx); stop != nil {
+		return nil, stop
 	}
-	// A signal during the last test ends it as a failure, which must not enter the map.
-	if err := r.ctx.Err(); err != nil {
-		return nil, err
+	runs := make([]mappedRun, len(round))
+	var wg sync.WaitGroup
+	for i, fn := range round {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runs[i] = r.runTest(p, fn, filepath.Join(r.tmp, fmt.Sprintf("cover-%d.out", i)))
+		}()
+	}
+	wg.Wait()
+	// A signal or a yield during a run ends it as a failure, which must not enter the map.
+	if stop := r.interruption(p.ctx); stop != nil {
+		return nil, stop
+	}
+	for _, run := range runs {
+		if run.outcome == testcover.OutcomeTimedOut {
+			r.timedOut = append(r.timedOut, p.job.pkg+"."+run.fn.Name)
+		}
 	}
 	return runs, nil
 }
 
-// runTest runs the mapped test fn of pkg alone under the coverage binary bin in the package directory pkgDir.
-// It runs with its tier's env and, for a tier with prebuilt_lym, the call's `lym` build.
+// runTest runs the mapped test fn of the job's package alone under its coverage binary, writing the profile to profile.
+// It runs in the package directory with its tier's env and, for a tier with prebuilt_lym, the call's `lym` build.
 // The run's outcome is set unless the test passed: a test that could not run counts as failed.
-// A test that timed out is also listed on the call's report.
-func (r *testMapRun) runTest(pkg, pkgDir, bin string, fn testcover.TestFunc) mappedRun {
+func (r *testMapRun) runTest(p *packageRun, fn testcover.TestFunc, profile string) mappedRun {
 	tier := r.tiers[fn.Tier]
 	env := slices.Concat(r.holderEnv, renderTierEnv(tier))
 	if tier.PrebuiltLym && r.lymBin != "" {
 		env = append(env, gateslot.PrebuiltLymEnv+"="+r.lymBin)
 	}
-	runner := testcover.Toolchain{Env: env, Ctx: r.ctx, TestTimeout: r.testTimeout, Grace: r.request.grace}
-	result, err := runner.RunAlone(bin, pkgDir, filepath.Join(r.tmp, "cover.out"), fn.Name)
+	runner := testcover.Toolchain{Env: env, Ctx: p.ctx, TestTimeout: r.testTimeout, Grace: r.request.grace}
+	result, err := runner.RunAlone(p.bin, p.pkgDir, profile, fn.Name)
 	run := mappedRun{fn: fn, result: result}
 	switch {
 	case err != nil:
-		logger.Warn("gate testmap: a test that could not run is recorded as failed", "package", pkg, "test", fn.Name, "cause", err)
+		logger.Warn("gate testmap: a test that could not run is recorded as failed", "package", p.job.pkg, "test", fn.Name, "cause", err)
 		run.outcome = testcover.OutcomeFailed
 	case result.TimedOut:
-		r.timedOut = append(r.timedOut, pkg+"."+fn.Name)
 		run.outcome = testcover.OutcomeTimedOut
 	case result.Action == testcover.ActionSkip:
 		run.outcome = testcover.OutcomeSkipped
@@ -419,23 +529,27 @@ func firstProfile(runs []mappedRun) []testcover.ProfileBlock {
 	return nil
 }
 
-// runFirstKeptEntry runs alone the first passing entry of m that runs holds no run of and mapped still declares.
-// It returns no run when there is none.
-// A pass whose own runs wrote no profile calls it to get the fresh build's blocks for the self-check.
-func (r *testMapRun) runFirstKeptEntry(pkg, pkgDir, bin string, m testcover.Map, mapped []testcover.TestFunc, runs []mappedRun) ([]mappedRun, error) {
+// ranNames returns the names of the tests runs ran.
+func ranNames(runs []mappedRun) map[string]bool {
 	ran := map[string]bool{}
 	for _, run := range runs {
 		ran[run.fn.Name] = true
 	}
+	return ran
+}
+
+// keptEntryTest returns the test of m's first passing entry that mapped still declares, and reports whether there is one.
+// A job whose own runs wrote no profile runs it to get the fresh build's blocks for the self-check.
+func keptEntryTest(m testcover.Map, mapped []testcover.TestFunc) (testcover.TestFunc, bool) {
 	for _, test := range m.Tests {
-		if ran[test.Name] || !test.Measured() {
+		if !test.Measured() {
 			continue
 		}
 		if i := slices.IndexFunc(mapped, func(fn testcover.TestFunc) bool { return fn.Name == test.Name }); i >= 0 {
-			return r.runTests(pkg, pkgDir, bin, mapped[i:i+1])
+			return mapped[i], true
 		}
 	}
-	return nil, nil
+	return testcover.TestFunc{}, false
 }
 
 // packageBlockTable returns the blocks of the package at importPath in profile, each position once.
@@ -504,10 +618,7 @@ func selfCheck(m testcover.Map, pkgDir, importPath string, profile []testcover.P
 // one that covers neither enters as OutcomeNoCoverage, and any other run with its outcome.
 // Every entry a run gives carries commit and at.
 func fillMapTests(m *testcover.Map, pkgDir, importPath string, runs []mappedRun, indexes []*testcover.FuncIndex, commit string, at time.Time) error {
-	ran := map[string]bool{}
-	for _, run := range runs {
-		ran[run.fn.Name] = true
-	}
+	ran := ranNames(runs)
 	var kept []testcover.MapTest
 	for _, test := range m.Tests {
 		if !ran[test.Name] {

@@ -15,14 +15,19 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -31,6 +36,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -39,6 +46,10 @@ import (
 // helperRoleTestMapGo makes the test binary the stand-in `go` of a `lym gate testmap` call.
 // The same role runs as the coverage binary the stand-in builds.
 const helperRoleTestMapGo = "testmap-go"
+
+// helperRoleTestMapCLI makes the test binary run `lym gate testmap` through its cobra command, as a child process.
+// It is the one way a test reaches the command's flags and a terminating signal without signalling the test process.
+const helperRoleTestMapCLI = "testmap-cli"
 
 // The variables the testmap stand-in reads name the module's import path.
 // They also name the import path whose coverage build fails, and the one whose coverage build never ends.
@@ -80,7 +91,13 @@ const (
 
 	testMapHangListEnv     = "GATECLI_TESTMAP_HANG_LIST"
 	testMapHangLymBuildEnv = "GATECLI_TESTMAP_HANG_LYM_BUILD"
+
+	// testMapMeetEnv names the file a test ending in Meets records itself in before it waits for another to do the same.
+	testMapMeetEnv = "GATECLI_TESTMAP_MEET"
 )
+
+// testMapMeetWait bounds a Meets test's wait for another test to record itself beside it.
+const testMapMeetWait = 10 * time.Second
 
 // The stand-in's `go env GOVERSION GOOS GOARCH` answer.
 const (
@@ -91,6 +108,84 @@ const (
 
 func init() {
 	helperRoles[helperRoleTestMapGo] = runTestMapStandIn
+	helperRoles[helperRoleTestMapCLI] = runTestMapCLIHelper
+}
+
+// runTestMapCLIHelper runs `lym gate testmap` with the process's arguments over the directory helperCwdEnv names.
+// The command's `go` is this test binary, in the helperRoleTestMapGo role.
+func runTestMapCLIHelper() int {
+	os.Setenv(helperEnv, helperRoleTestMapGo)
+	root := &cobra.Command{Use: "gate", Args: cobra.ArbitraryArgs, RunE: clihelp.GroupRunE}
+	root.AddCommand(testMapCmd(os.Args[0], time.Minute, time.Second))
+	code := clihelp.ExecuteIn(root, os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
+	_ = lymtemp.Remove()
+	return code
+}
+
+// startTestMapCLI starts the test binary in the helperRoleTestMapCLI role over the prime worktree prime, under env.
+// The child runs `gate testmap` with args and is killed when the test ends or after two minutes.
+// It returns the child and the buffer its output fills until waitTestMapCLI returns.
+func startTestMapCLI(t *testing.T, prime string, env []string, args ...string) (*exec.Cmd, *bytes.Buffer) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	var out bytes.Buffer
+	cmd := exec.CommandContext(ctx, os.Args[0], args...)
+	cmd.Env = append(slices.Clone(env), helperEnv+"="+helperRoleTestMapCLI, helperCwdEnv+"="+prime)
+	cmd.Stdout = &out
+	cmd.WaitDelay = 5 * time.Second
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start the testmap child: %v", err)
+	}
+	return cmd, &out
+}
+
+// waitTestMapCLI waits for the child cmd to end and returns its exit code.
+func waitTestMapCLI(t *testing.T, cmd *exec.Cmd) int {
+	t.Helper()
+	err := cmd.Wait()
+	if err == nil {
+		return 0
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("wait for the testmap child: %v", err)
+	}
+	return exitErr.ExitCode()
+}
+
+// pollUntil polls until done reports true, failing the test after 30 seconds.
+// what names the condition for the failure.
+func pollUntil(t *testing.T, what string, done func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(30 * time.Second); !done(); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting until %s", what)
+		}
+	}
+}
+
+// seedTestMapModule writes the gate config gate into the hub h and commits a Go module to its prime worktree.
+// The module is named module and holds a package per key of packageTests, declaring the tests that key maps to.
+// A package mapped to nil has a source file and no test file.
+// It returns the prime worktree.
+func seedTestMapModule(t *testing.T, h *hubforge.Hub, module, gate string, packageTests map[string]map[string]int) string {
+	t.Helper()
+	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gate), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prime := h.PrimeWorktree()
+	files := map[string]string{"go.mod": "module " + module + "\n\ngo 1.21\n"}
+	for pkg, tiers := range packageTests {
+		files[pkg+"/"+pkg+".go"] = testMapSource(pkg)
+		if tiers != nil {
+			files[pkg+"/"+pkg+"_test.go"] = testMapTestFile(pkg, tiers)
+		}
+	}
+	plankit.WriteTree(t, prime, files)
+	gitkit.Git(t, prime, append([]string{"add", "go.mod"}, slices.Sorted(maps.Keys(packageTests))...)...)
+	gitkit.Git(t, prime, "commit", "-q", "-m", "seed the "+module+" module")
+	return prime
 }
 
 // testMapSource is the Go file `<pkg>.go` of each fixture package: two one-line functions, each one coverage block.
@@ -131,6 +226,8 @@ func testMapTestFile(pkg string, tiers map[string]int) string {
 // One ending in LandsLinked first commits a change to a file of the package testMapLandEnv names, when it names one:
 // the file testMapLandFileEnv names, its removal when testMapRemoveFileEnv names a file, or else the package's own file.
 // One ending in Dirties first writes the file testMapDirtyEnv names, when it names one.
+// One ending in Meets, when testMapMeetEnv names a file, records itself there.
+// It fails unless another test records itself there within testMapMeetWait, so it passes only beside another.
 // A test run without LYM_TEST_TIER fails, so a map entry proves its tier's env reached it.
 // A run records the prebuilt `lym` path it was given in the file testMapLymSeenEnv names.
 func runTestMapStandIn() int {
@@ -204,6 +301,11 @@ func runTestMapStandIn() int {
 		if dirty := os.Getenv(testMapDirtyEnv); dirty != "" && os.WriteFile(dirty, []byte("dirty\n"), 0o644) != nil {
 			return 1
 		}
+	case strings.HasSuffix(name, "Meets"):
+		if meet := os.Getenv(testMapMeetEnv); meet != "" && !meetsAnother(meet, name) {
+			fmt.Printf("--- FAIL: %s (0.00s)\n", name)
+			return 1
+		}
 	}
 	first, second := 1, 0
 	if strings.HasSuffix(name, "Two") {
@@ -228,6 +330,19 @@ func runTestMapStandIn() int {
 	}
 	fmt.Printf("--- PASS: %s (0.01s)\n", name)
 	return 0
+}
+
+// meetsAnother appends name to the file meet and reports whether the file holds a second line within testMapMeetWait.
+func meetsAnother(meet, name string) bool {
+	if appendLine(meet, name) != nil {
+		return false
+	}
+	for deadline := time.Now().Add(testMapMeetWait); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if data, err := os.ReadFile(meet); err == nil && bytes.Count(data, []byte("\n")) >= 2 {
+			return true
+		}
+	}
+	return false
 }
 
 // testMapLinkOf returns the fixture package that testMapLinksEnv names as linked by the fixture package pkg, or "".
@@ -393,15 +508,20 @@ type testMapOutcome struct {
 }
 
 // runTestMapIn runs `lym gate testmap` over the prime worktree prime with no audit round.
+// A call naming no package runs with --upkeep, so it registers and writes the exit record.
 // It returns the call's exit code and output.
 // It uses the go command goBinary and the environment env.
 // One build minute lasts minuteUnit.
 func runTestMapIn(prime, goBinary string, env []string, minuteUnit time.Duration, maxPackages int, packages ...string) (int, []byte) {
 	return runTestMapRequest(prime, testMapRequest{
-		goBinary: goBinary, maxPackages: maxPackages, packages: packages, environ: env,
+		goBinary: goBinary, maxPackages: maxPackages, packages: packages, environ: env, upkeep: len(packages) == 0,
 		secondUnit: 150 * time.Millisecond, minuteUnit: minuteUnit, grace: time.Second,
+		waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait, yieldPoll: testMapTestWait,
 	})
 }
+
+// testMapTestWait is the first pause of a test call's waits and the pause of its yield checks.
+const testMapTestWait = 10 * time.Millisecond
 
 // runTestMapRequest runs `lym gate testmap` over the prime worktree prime as request asks.
 // It returns the call's exit code and output.
@@ -455,8 +575,9 @@ func TestGateTestMap(t *testing.T) {
 	const module = "example.com/mapped"
 	// A test past 20 seconds of 150 milliseconds each times out: 3 seconds, long enough for a stand-in to start under load.
 	// tierFields adds fields to the flow mapping of tier0 and tier1.
+	// Two slots let a pass take one while the other stays free.
 	gateYAML := func(tierFields string) string {
-		return "slots: 1\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n" +
+		return "slots: 2\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n" +
 			"  tier0: {command: x, timeout_min: 1, counter: go-json, " + tierFields + "env: {LYM_TEST_TIER: \"0\"}}\n" +
 			"  tier1: {command: x, timeout_min: 1, counter: go-json, " + tierFields + "env: {LYM_TEST_TIER: \"1\"}}\n" +
 			"  tier2: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"2\"}}\n"
@@ -469,14 +590,15 @@ func TestGateTestMap(t *testing.T) {
 	}
 	writeGate(t, gateYAML(""))
 
+	// zmoved's test commits a change to its own file, and its name puts its job last.
 	packageTests := map[string]map[string]int{
 		"alpha":   {"TestAlphaOne": 0, "TestAlphaTwo": 1, "TestAlphaHangs": 1, "TestAlphaTier2": 2, "TestAlphaUntiered": -1},
 		"broken":  {"TestBrokenOne": 0},
 		"dirty":   nil,
 		"locked":  {"TestLockedOne": 0},
-		"moved":   {"TestMovedMoves": 0},
+		"zmoved":  {"TestZmovedMoves": 0},
 		"notests": nil,
-		"steady":  {"TestSteadyLands": 0},
+		"steady":  {"TestSteadyOne": 0},
 	}
 	files := map[string]string{"go.mod": "module " + module + "\n\ngo 1.21\n"}
 	for pkg, tiers := range packageTests {
@@ -565,11 +687,31 @@ func TestGateTestMap(t *testing.T) {
 	}
 	dirtySkip := testMapSkip{Package: "dirty", Cause: "modified or untracked file dirty/extra.go"}
 	lockedSkip := testMapSkip{Package: "locked", Cause: "another call holds its map build lock"}
-	movedSkip := testMapSkip{Package: "moved", Cause: "files changed under its tests: moved.go"}
+	movedSkip := testMapSkip{Package: "zmoved", Cause: "files changed under its tests: zmoved.go"}
 	ignoreRunFields := cmpopts.IgnoreFields(testcover.MapTest{}, "FuncHash", "Seconds", "Commit", "MeasuredAt")
 	outsideHub := t.TempDir()
+	// startLivePass registers a live process as the hub's upkeep pass until the test ends, and returns its pid.
+	startLivePass := func(t *testing.T) int {
+		t.Helper()
+		pass := exec.Command(standIn, "-test.run=^TestLivePassHangs$")
+		pass.Dir = t.TempDir()
+		pass.Env = append(slices.Clone(environ), tiergate.EnvVar+"=0")
+		if err := pass.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			pass.Process.Kill()
+			pass.Wait()
+		})
+		record := runproc.ChildRecord(pass.Process.Pid, runproc.RoleTestMap, pass.Args)
+		if err := runproc.Register(fabricengine.RunProcDir(h.Location.HubPath), runproc.HubOwner, record); err != nil {
+			t.Fatal(err)
+		}
+		return pass.Process.Pid
+	}
 
 	t.Run("Refusals", func(t *testing.T) {
+		// The rows run in order: the live pass a row starts ends with the row, before the next registers.
 		tests := []struct {
 			name string
 			dir  string
@@ -577,8 +719,10 @@ func TestGateTestMap(t *testing.T) {
 			want string
 			// setup, when set, changes the hub's gate config for the row.
 			setup func(t *testing.T)
-			// writesRecord marks a refusal after the call's state exists, which still writes the exit record.
-			writesRecord bool
+			// livePass starts a registered upkeep pass for the row; want then holds a %d for its pid.
+			livePass bool
+			// contains, when set, replaces want: the error holds each part, since an OS error's text differs.
+			contains []string
 		}{
 			{
 				name: "OutsideThePrime", dir: pair, args: []string{"testmap"},
@@ -590,7 +734,53 @@ func TestGateTestMap(t *testing.T) {
 			},
 			{name: "MaxBelowOne", dir: prime, args: []string{"testmap", "--max", "0"}, want: "gate testmap: --max 0; way forward: pass --max 1 or more"},
 			{
-				name: "NoMappedTier", dir: prime, args: []string{"testmap"}, writesRecord: true,
+				name: "UpkeepWithAPackage", dir: prime, args: []string{"testmap", "--upkeep", "alpha"},
+				want: "gate testmap: --upkeep takes no package, since a pass plans every package; way forward: drop the packages to run a pass, or drop --upkeep to rebuild the named packages",
+			},
+			{
+				name: "UpkeepBesideALivePass", dir: prime, args: []string{"testmap", "--upkeep"}, livePass: true,
+				want: "gate testmap: the upkeep pass %d is running for the hub; way forward: wait for it to end, then re-run the same command",
+			},
+			{
+				name: "UpkeepRegistrationReadFails", dir: prime, args: []string{"testmap", "--upkeep"},
+				contains: []string{"gate testmap: cannot read the hub's registered processes: ", "; way forward: re-run the same command"},
+				setup: func(t *testing.T) {
+					runprocDir := fabricengine.RunProcDir(h.Location.HubPath)
+					if err := os.RemoveAll(runprocDir); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.MkdirAll(filepath.Dir(runprocDir), 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(runprocDir, []byte("not a directory\n"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { os.Remove(runprocDir) })
+				},
+			},
+			{
+				name: "UpkeepRegistrationWriteFails", dir: prime, args: []string{"testmap", "--upkeep"},
+				contains: []string{"gate testmap: cannot register the upkeep pass, so it plans nothing: ", "; way forward: re-run the same command"},
+				setup: func(t *testing.T) {
+					if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+						t.Skip("a read-only directory stops no write on Windows or for root")
+					}
+					runprocDir := fabricengine.RunProcDir(h.Location.HubPath)
+					ownerDir := filepath.Join(runprocDir, runproc.HubOwner)
+					if err := os.RemoveAll(runprocDir); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.MkdirAll(ownerDir, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Chmod(ownerDir, 0o555); err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { os.Chmod(ownerDir, 0o755) })
+				},
+			},
+			{
+				name: "NoMappedTier", dir: prime, args: []string{"testmap", "--upkeep"},
 				want: "gate testmap: the hub declares neither tier0 nor tier1, so no test of a package can be mapped; way forward: declare them with lym config gate from the prime, then re-run the same command",
 				setup: func(t *testing.T) {
 					writeGate(t, "slots: 1\ntiers:\n  tier2: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"2\"}}\n")
@@ -598,16 +788,18 @@ func TestGateTestMap(t *testing.T) {
 				},
 			},
 			{
-				name: "UnknownPackage", dir: prime, args: []string{"testmap", "nosuch"}, writesRecord: true,
+				name: "UnknownPackage", dir: prime, args: []string{"testmap", "nosuch"},
 				want: "gate testmap: \"nosuch\" names no package directory of the module at " + prime + "; way forward: name a package by its directory relative to the module root, such as internal/foo",
 			},
 		}
-		wantRecord := false
 		for _, tt := range tests {
-			wantRecord = wantRecord || tt.writesRecord
 			t.Run(tt.name, func(t *testing.T) {
 				if tt.setup != nil {
 					tt.setup(t)
+				}
+				want := tt.want
+				if tt.livePass {
+					want = fmt.Sprintf(tt.want, startLivePass(t))
 				}
 				var out bytes.Buffer
 				code := RunCLIIn(tt.dir, &out, tt.args)
@@ -617,20 +809,30 @@ func TestGateTestMap(t *testing.T) {
 				if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 					t.Fatalf("unmarshal %q: %v", out.String(), err)
 				}
-				if code != 1 || envelope.Error != tt.want {
-					t.Errorf("lym gate %q = exit %d, error %q; want exit 1, error %q", tt.args, code, envelope.Error, tt.want)
+				if tt.contains != nil {
+					prefix, suffix := tt.contains[0], tt.contains[len(tt.contains)-1]
+					if code != 1 || !strings.HasPrefix(envelope.Error, prefix) || !strings.HasSuffix(envelope.Error, suffix) {
+						t.Errorf("lym gate %q = exit %d, error %q; want exit 1, error starting %q and ending %q", tt.args, code, envelope.Error, prefix, suffix)
+					}
+					return
+				}
+				if code != 1 || envelope.Error != want {
+					t.Errorf("lym gate %q = exit %d, error %q; want exit 1, error %q", tt.args, code, envelope.Error, want)
 				}
 			})
 		}
-		if _, found, err := testcover.ReadExitRecord(mapsDir); err != nil || found != wantRecord {
-			t.Errorf("ReadExitRecord after the refusals = found %v, err %v; want found %v, written only by a refusal after the call's state exists", found, err, wantRecord)
+		if _, found, err := testcover.ReadExitRecord(mapsDir); err != nil || found {
+			t.Errorf("ReadExitRecord after the refusals = found %v, err %v; want none, since a refusal before HEAD is read writes no exit record", found, err)
+		}
+		if _, found, err := testcover.ReadMap(mapsDir, "alpha"); err != nil || found {
+			t.Errorf("ReadMap(alpha) after the refusals = found %v, err %v; want no map written", found, err)
 		}
 	})
 
 	t.Run("CapLeavesTheRestQueued", func(t *testing.T) {
 		head := gitkit.RevParse(t, prime, "HEAD")
 		got := call(t, 2)
-		// moved, notests and steady lie past the cap, and locked's lock was held at the plan.
+		// notests, steady and zmoved lie past the cap, and locked's lock was held at the plan.
 		wantOutcome(t, got, testMapOutcome{
 			Built: []string{"alpha"}, Skipped: []testMapSkip{dirtySkip, lockedSkip}, TimedOut: []string{"alpha.TestAlphaHangs"}, Queued: 4,
 		})
@@ -670,16 +872,17 @@ func TestGateTestMap(t *testing.T) {
 		alphaBefore := readMap(t, "alpha")
 		head := gitkit.RevParse(t, prime, "HEAD")
 		got := call(t, 10)
-		wantOutcome(t, got, testMapOutcome{Built: []string{"notests", "steady"}, Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, Queued: 1})
+		// zmoved's test moves HEAD, so its round is discarded and it counts as queued beside locked.
+		wantOutcome(t, got, testMapOutcome{Built: []string{"notests", "steady"}, Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, Queued: 2})
 		if len(got.Failed) != 0 {
 			t.Errorf("runTestMap() failed = %+v; want broken not rebuilt at the HEAD of its failure", got.Failed)
 		}
 		steady := readMap(t, "steady")
-		if diff := cmp.Diff([]testcover.MapTest{{Name: "TestSteadyLands", Blocks: []int{0}}}, steady.Tests, ignoreRunFields); diff != "" {
+		if diff := cmp.Diff([]testcover.MapTest{{Name: "TestSteadyOne", Blocks: []int{0}}}, steady.Tests, ignoreRunFields); diff != "" {
 			t.Errorf("steady map tests mismatch (-want +got):\n%s", diff)
 		}
 		if steady.Commit != head {
-			t.Errorf("steady map commit = %s; want %s, the HEAD planned before moved's and steady's tests landed commits", steady.Commit, head)
+			t.Errorf("steady map commit = %s; want %s, the HEAD planned before zmoved's test landed a commit", steady.Commit, head)
 		}
 		if notests := readMap(t, "notests"); len(notests.Tests) != 0 || notests.BuildFailure != "" {
 			t.Errorf("notests map = tests %v, failure %q; want no test and no failure", notests.Tests, notests.BuildFailure)
@@ -688,10 +891,10 @@ func TestGateTestMap(t *testing.T) {
 		if alpha := readMap(t, "alpha"); !alpha.BuiltAt.Equal(alphaBefore.BuiltAt) {
 			t.Errorf("alpha map built at %v; want it left from %v", alpha.BuiltAt, alphaBefore.BuiltAt)
 		}
-		if _, found, err := testcover.ReadMap(mapsDir, "moved"); err != nil || found {
-			t.Errorf("ReadMap(moved) = found %v, err %v; want no map for a package whose files changed under its tests", found, err)
+		if _, found, err := testcover.ReadMap(mapsDir, "zmoved"); err != nil || found {
+			t.Errorf("ReadMap(zmoved) = found %v, err %v; want no map for a package whose files changed under its only round", found, err)
 		}
-		wantExitRecord(t, head, 1)
+		wantExitRecord(t, head, 2)
 	})
 
 	t.Run("HeadMoveRetriesTheFailedBuildAndMovesTheRestWhateverTheirAge", func(t *testing.T) {
@@ -703,7 +906,7 @@ func TestGateTestMap(t *testing.T) {
 		}
 		head := gitkit.RevParse(t, prime, "HEAD")
 		got := call(t, 10)
-		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, Queued: 1})
+		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, Queued: 2})
 		wantBrokenFailed(t, got)
 		for _, pkg := range []string{"alpha", "notests", "steady"} {
 			if m := readMap(t, pkg); m.Commit != head || m.Format == nil || m.Format.Commit != head || !m.Format.BuiltAt.Equal(m.BuiltAt) {
@@ -717,12 +920,20 @@ func TestGateTestMap(t *testing.T) {
 		}
 	})
 
-	t.Run("NamedPackageIsRebuiltWhenFresh", func(t *testing.T) {
+	t.Run("NamedPackageIsRebuiltWhenFreshAndLeavesTheExitRecord", func(t *testing.T) {
 		before := readMap(t, "alpha")
+		recordBefore, _, err := testcover.ReadExitRecord(mapsDir)
+		if err != nil {
+			t.Fatal(err)
+		}
 		got := call(t, 1, "./alpha")
 		wantOutcome(t, got, testMapOutcome{Built: []string{"alpha"}, TimedOut: []string{"alpha.TestAlphaHangs"}})
 		if after := readMap(t, "alpha"); !after.BuiltAt.After(before.BuiltAt) {
 			t.Errorf("alpha map built at %v; want after %v", after.BuiltAt, before.BuiltAt)
+		}
+		recordAfter, _, err := testcover.ReadExitRecord(mapsDir)
+		if diff := cmp.Diff(recordBefore, recordAfter); err != nil || diff != "" {
+			t.Errorf("exit record after a call without --upkeep, err %v, mismatch (-before +after):\n%s; want it left as it was", err, diff)
 		}
 	})
 
@@ -740,7 +951,7 @@ func TestGateTestMap(t *testing.T) {
 		// TestAlphaOne and TestAlphaTwo covered One, and an own-file change drops TestAlphaHangs' outcome entry.
 		got := call(t, 10)
 		wantOutcome(t, got, testMapOutcome{
-			Built: []string{"alpha"}, Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, TimedOut: []string{"alpha.TestAlphaHangs"}, Queued: 1,
+			Built: []string{"alpha"}, Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, TimedOut: []string{"alpha.TestAlphaHangs"}, Queued: 2,
 		})
 		wantBrokenFailed(t, got)
 		if alpha := readMap(t, "alpha"); alpha.Files["alpha.go"] != testcover.ContentHash([]byte(edited)) || len(alpha.Tests) != 3 {
@@ -834,7 +1045,7 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 	// A tier's command holds the {parallel} placeholder, which the tiers digest reads before it is substituted.
 	writeGate := func(t *testing.T, command string, parallel int) {
 		t.Helper()
-		gate := fmt.Sprintf("slots: 1\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n"+
+		gate := fmt.Sprintf("slots: 2\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n"+
 			"  tier0: {command: %q, timeout_min: 1, counter: go-json, parallel: %d, env: {LYM_TEST_TIER: \"0\"}}\n"+
 			"  tier1: {command: %q, timeout_min: 1, counter: go-json, parallel: %d, env: {LYM_TEST_TIER: \"1\"}}\n",
 			command, parallel, command, parallel)
@@ -1062,8 +1273,9 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 			t.Fatal(err)
 		}
 		code, out := runTestMapRequest(prime, testMapRequest{
-			goBinary: standIn, maxPackages: 10, environ: environ, auditTests: 1,
+			goBinary: standIn, maxPackages: 10, environ: environ, auditTests: 1, upkeep: true,
 			secondUnit: 150 * time.Millisecond, minuteUnit: time.Minute, grace: time.Second,
+			waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait, yieldPoll: testMapTestWait,
 		})
 		// Every map stands at HEAD with no gap, so the queue is empty and the round re-measures the oldest entry alone.
 		wantOutcome(t, decodeTestMap(t, code, out), testMapOutcome{Built: []string{"follower"}, AuditMismatches: 1})
@@ -1138,14 +1350,36 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		wantLeft(t, "follower", followerBefore)
 	})
 
-	t.Run("ALinkedFileChangedUnderTheTestsWritesNoMap", func(t *testing.T) {
-		before := readTestMap(t, mapsDir, "dirtier")
-		got := call(t, withEnv(testMapLandEnv, "linked"), "dirtier")
-		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{{Package: "dirtier", Cause: "files changed under its tests: linked/linked.go"}}})
-		wantLeft(t, "dirtier", before)
+	// dirtierEntries returns the names of the entries of dirtier's map.
+	dirtierEntries := func(t *testing.T) []string {
+		t.Helper()
+		var names []string
+		for _, test := range readTestMap(t, mapsDir, "dirtier").Tests {
+			names = append(names, test.Name)
+		}
+		return names
+	}
+
+	t.Run("ALinkedFileChangedUnderARoundDiscardsItKeepsTheRoundsBeforeAndEndsTheCall", func(t *testing.T) {
+		followerBefore := readTestMap(t, mapsDir, "follower")
+		head := gitkit.RevParse(t, prime, "HEAD")
+		got := call(t, withEnv(testMapLandEnv, "linked"), "dirtier", "follower")
+		// dirtier's rounds run in name order, so TestDirtierDirties is written before TestDirtierLandsLinked moves HEAD.
+		// follower's job comes after the move, so the call ends there and counts it queued beside dirtier.
+		wantOutcome(t, got, testMapOutcome{
+			Built:   []string{"dirtier"},
+			Skipped: []testMapSkip{{Package: "dirtier", Cause: "files changed under its tests: linked/linked.go"}},
+			Queued:  2,
+		})
+		dirtier := readTestMap(t, mapsDir, "dirtier")
+		wantTests := []testcover.MapTest{{Name: "TestDirtierDirties", Blocks: []int{0}, Commit: head}}
+		if diff := cmp.Diff(wantTests, dirtier.Tests, cmpopts.EquateEmpty(), cmpopts.IgnoreFields(testcover.MapTest{}, "FuncHash", "Seconds", "MeasuredAt")); diff != "" {
+			t.Errorf("dirtier map tests mismatch (-want +got):\n%s", diff)
+		}
+		wantLeft(t, "follower", followerBefore)
 	})
 
-	t.Run("ALinkedFileAddedOrRemovedUnderTheTestsWritesNoMap", func(t *testing.T) {
+	t.Run("ALinkedFileAddedOrRemovedUnderARoundDiscardsIt", func(t *testing.T) {
 		const added = "landed.txt"
 		// The rows run in order: the second removes the file the first adds.
 		tests := []struct {
@@ -1157,10 +1391,15 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				before := readTestMap(t, mapsDir, "dirtier")
 				got := call(t, tt.env, "dirtier")
-				wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{{Package: "dirtier", Cause: "files changed under its tests: linked/" + added}}})
-				wantLeft(t, "dirtier", before)
+				wantOutcome(t, got, testMapOutcome{
+					Built:   []string{"dirtier"},
+					Skipped: []testMapSkip{{Package: "dirtier", Cause: "files changed under its tests: linked/" + added}},
+					Queued:  1,
+				})
+				if names := dirtierEntries(t); !slices.Equal(names, []string{"TestDirtierDirties"}) {
+					t.Errorf("dirtier map entries = %v; want TestDirtierDirties alone, the round before the change", names)
+				}
 			})
 		}
 	})
@@ -1264,8 +1503,9 @@ func TestGateTestMapUpkeep(t *testing.T) {
 		t.Fatal(err)
 	}
 	const module = "example.com/upkeep"
-	gate := "slots: 1\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n" +
-		"  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n" +
+	// tier0's parallel of two lets two tests that declare Parallel run side by side.
+	gate := "slots: 2\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n" +
+		"  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}, parallel: 2}\n" +
 		"  tier1: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"1\"}}\n"
 	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gate), 0o644); err != nil {
 		t.Fatal(err)
@@ -1299,8 +1539,9 @@ func TestGateTestMapUpkeep(t *testing.T) {
 	}
 	request := func(env []string, maxPackages, auditTests int, packages ...string) testMapRequest {
 		return testMapRequest{
-			goBinary: standIn, maxPackages: maxPackages, packages: packages, environ: env, auditTests: auditTests,
+			goBinary: standIn, maxPackages: maxPackages, packages: packages, environ: env, auditTests: auditTests, upkeep: len(packages) == 0,
 			secondUnit: 150 * time.Millisecond, minuteUnit: time.Minute, grace: time.Second,
+			waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait, yieldPoll: testMapTestWait,
 		}
 	}
 	// call runs the verb under a minute's bound, so a call that waits for a slot it must not take fails the test.
@@ -1454,7 +1695,8 @@ func TestGateTestMapUpkeep(t *testing.T) {
 			}
 		}
 
-		// The plan moves every map to the new HEAD and holds no slot, so the call returns while the test holds the only one.
+		// The plan moves every map to the new HEAD and holds no slot.
+		// The test holds one of the two slots, so a pass may take none, and the call returns with no audit.
 		plankit.WriteTree(t, prime, map[string]string{"landed.txt": "landed\n"})
 		gitkit.Git(t, prime, "add", "landed.txt")
 		gitkit.Git(t, prime, "commit", "-q", "-m", "land a file outside every package")
@@ -1580,6 +1822,461 @@ func TestGateTestMapUpkeep(t *testing.T) {
 					t.Errorf("ReadMap(cancelled) = found %v, err %v; want no map, so no entry and no failure, for a call that was ended", found, err)
 				}
 			})
+		}
+	})
+
+	t.Run("TestsDeclaringParallelRunSideBySideAndMapAsASerialRunDoes", func(t *testing.T) {
+		parallelTest := func(name string) string {
+			return "\nfunc " + name + "(t *testing.T) {\n\ttiergate.Require(t, 0)\n\tt.Parallel()\n}\n"
+		}
+		plankit.WriteTree(t, prime, map[string]string{
+			"sidebyside/sidebyside.go": testMapSource("sidebyside"),
+			"sidebyside/sidebyside_test.go": "package sidebyside\n\nimport (\n\t\"testing\"\n\n\t\"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n)\n" +
+				parallelTest("TestSidebysideFirstMeets") + parallelTest("TestSidebysideSecondMeets"),
+		})
+		gitkit.Git(t, prime, "add", "sidebyside")
+		gitkit.Git(t, prime, "commit", "-q", "-m", "add a package whose tests declare Parallel")
+		// Each test passes only once the other records itself beside it, so a serial run would fail both.
+		got, _ := call(t, withEnv(testMapMeetEnv, filepath.Join(t.TempDir(), "meet")), 10, 0, "sidebyside")
+		wantOutcome(t, got, testMapOutcome{Built: []string{"sidebyside"}})
+		wantTests := []testcover.MapTest{
+			{Name: "TestSidebysideFirstMeets", Blocks: []int{0}},
+			{Name: "TestSidebysideSecondMeets", Blocks: []int{0}},
+		}
+		if diff := cmp.Diff(wantTests, readMap(t, "sidebyside").Tests, cmpopts.EquateEmpty(), ignoreRunFields); diff != "" {
+			t.Errorf("sidebyside map tests mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("ANamedCallWaitsForABuildLockAnotherCallHoldsAndThenRebuildsThePackageWhole", func(t *testing.T) {
+		before := readMap(t, "headmove")
+		buildLock, err := lock.AcquireWriteLock(testMapBuildLockPath(mapsDir, "headmove"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		release := sync.OnceFunc(func() { buildLock.Release() })
+		t.Cleanup(release)
+		ctx, cancel := context.WithTimeout(lymcwd.WithCwd(context.Background(), prime), time.Minute)
+		t.Cleanup(cancel)
+		var out bytes.Buffer
+		done := make(chan int, 1)
+		go func() { done <- runTestMap(ctx, &out, request(environ, 10, 0, "headmove")) }()
+
+		// A call that skipped the locked package would end at once, so one still running after many waits is waiting.
+		select {
+		case code := <-done:
+			t.Fatalf("runTestMap() = exit %d, output %s while another call held the build lock; want it waiting", code, out.Bytes())
+		case <-time.After(20 * testMapTestWait):
+		}
+		release()
+		select {
+		case code := <-done:
+			wantOutcome(t, decodeTestMap(t, code, out.Bytes()), testMapOutcome{Built: []string{"headmove"}})
+		case <-time.After(30 * time.Second):
+			t.Fatal("the named call did not end after the build lock was released")
+		}
+		if after := readMap(t, "headmove"); !after.BuiltAt.After(before.BuiltAt) {
+			t.Errorf("headmove map built at %v; want after %v, rebuilt whole once the lock was free", after.BuiltAt, before.BuiltAt)
+		}
+	})
+}
+
+// TestGateTestMapPassYields runs a pass over a hub of two slots, and takes the other slot as a gate run would.
+// The pass gives its slot back, keeping the round that finished, and a hand call naming the package builds it meanwhile.
+// Once both slots are free again the pass takes one and plans the package afresh.
+// It skips the package as queued when another call holds its build lock then.
+// With no hand call it resumes the package, which it reports once.
+func TestGateTestMapPassYields(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// handCall makes a call naming the package build it while the pass waits for a slot.
+		handCall bool
+		// holdLock makes a call hold the package's build lock from before the pass takes its slot again.
+		holdLock bool
+	}{
+		{"RetakeReplansAndLeavesTheMapAHandCallWrote", true, false},
+		{"RetakeSkipsAPackageAnotherCallLocksAndCountsItQueued", true, true},
+		{"ResumedPackageIsBuiltAndMeasuredOnce", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runPassYields(t, tt.handCall, tt.holdLock)
+		})
+	}
+}
+
+// runPassYields runs one scenario of TestGateTestMapPassYields.
+// handCall makes the test build the package with a hand call while the pass waits.
+// holdLock makes the test hold the package's build lock when the pass takes its slot again.
+func runPassYields(t *testing.T, handCall, holdLock bool) {
+	t.Helper()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
+	prime := h.PrimeWorktree()
+	location, err := lymcwd.ResolveWorktree(prime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const module = "example.com/yielding"
+	gate := "slots: 2\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n" +
+		"  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n"
+	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gate), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The rounds run in name order: TestYieldingAOne finishes before TestYieldingHangs starts.
+	plankit.WriteTree(t, prime, map[string]string{
+		"go.mod":                    "module " + module + "\n\ngo 1.21\n",
+		"yielding/yielding.go":      testMapSource("yielding"),
+		"yielding/yielding_test.go": testMapTestFile("yielding", map[string]int{"TestYieldingAOne": 0, "TestYieldingHangs": 0}),
+	})
+	gitkit.Git(t, prime, "add", "go.mod", "yielding")
+	gitkit.Git(t, prime, "commit", "-q", "-m", "seed the yielding module")
+
+	mapsDir := testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))
+	standIn, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	environ := append(os.Environ(), helperEnv+"="+helperRoleTestMapGo, testMapModuleEnv+"="+module)
+	request := func(env []string, secondUnit time.Duration, packages ...string) testMapRequest {
+		return testMapRequest{
+			goBinary: standIn, maxPackages: 10, packages: packages, environ: env, upkeep: len(packages) == 0,
+			secondUnit: secondUnit, minuteUnit: time.Minute, grace: time.Second,
+			waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait, yieldPoll: testMapTestWait,
+		}
+	}
+	// await polls until done reports true, failing the test after 30 seconds.
+	await := func(t *testing.T, what string, done func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(30 * time.Second); !done(); time.Sleep(10 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting until %s", what)
+			}
+		}
+	}
+
+	// The hanging test would time out after 10 seconds, so the gate run's take comes first.
+	started := filepath.Join(t.TempDir(), "started")
+	ctx, cancel := context.WithTimeout(lymcwd.WithCwd(context.Background(), prime), 2*time.Minute)
+	t.Cleanup(cancel)
+	var passOut bytes.Buffer
+	passDone := make(chan int, 1)
+	go func() {
+		passDone <- runTestMap(ctx, &passOut, request(append(slices.Clone(environ), testMapHangingEnv+"="+started), 500*time.Millisecond))
+	}()
+	await(t, "the pass runs its hanging test", func() bool {
+		_, err := os.Stat(started)
+		return err == nil
+	})
+	pool := hubgeom.GateSlots(location)
+	gateLease, err := pool.Acquire(ctx, gateslot.Holder{Worktree: location.WorktreePath(), Site: "a gate run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, "the pass gives its slot back", func() bool {
+		holders, err := pool.Holders()
+		return err == nil && len(holders) == 1
+	})
+	var names []string
+	for _, test := range readTestMap(t, mapsDir, "yielding").Tests {
+		names = append(names, test.Name)
+	}
+	if want := []string{"TestYieldingAOne"}; !slices.Equal(names, want) {
+		t.Errorf("yielding map entries after the yield = %v; want %v: the finished round kept, the killed test with no entry", names, want)
+	}
+
+	// The waiting pass holds no build lock, so a hand call naming the package takes it at once and rebuilds the package.
+	if handCall {
+		handCtx, handCancel := context.WithTimeout(lymcwd.WithCwd(context.Background(), prime), time.Minute)
+		defer handCancel()
+		var handOut bytes.Buffer
+		code := runTestMap(handCtx, &handOut, request(environ, 150*time.Millisecond, "yielding"))
+		if diff := cmp.Diff(testMapOutcome{Built: []string{"yielding"}, TimedOut: []string{"yielding.TestYieldingHangs"}}, decodeTestMap(t, code, handOut.Bytes()), cmpopts.EquateEmpty()); diff != "" {
+			t.Errorf("hand call mismatch (-want +got):\n%s", diff)
+		}
+	}
+
+	afterHandCall := readTestMap(t, mapsDir, "yielding")
+	if holdLock {
+		retakeLock, err := lock.AcquireWriteLock(testMapBuildLockPath(mapsDir, "yielding"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		release := sync.OnceFunc(func() { retakeLock.Release() })
+		t.Cleanup(release)
+	}
+
+	if err := gateLease.Release(); err != nil {
+		t.Fatal(err)
+	}
+	var passCode int
+	select {
+	case passCode = <-passDone:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the pass did not end after both slots were free")
+	}
+	pass := decodeTestMap(t, passCode, passOut.Bytes())
+	wantQueued := 0
+	var wantSkipped []testMapSkip
+	if holdLock {
+		wantQueued = 1
+		wantSkipped = []testMapSkip{{Package: "yielding", Cause: "another call holds its map build lock"}}
+	}
+	if diff := cmp.Diff(wantSkipped, pass.Skipped, cmpopts.EquateEmpty()); diff != "" || pass.Queued != wantQueued {
+		t.Errorf("pass skipped %+v, queued %d; want queued %d and skipped mismatch (-want +got):\n%s", pass.Skipped, pass.Queued, wantQueued, diff)
+	}
+	if !handCall {
+		// The pass resumed the package after its yield: its second job reruns the hanging test and times out,
+		// and the package still shows one built entry and one measure, summed over both of its jobs.
+		var counts testMapVerbCounts
+		if err := json.Unmarshal(passOut.Bytes(), &counts); err != nil {
+			t.Fatalf("unmarshal %q: %v", passOut.Bytes(), err)
+		}
+		if !slices.Equal(pass.Built, []string{"yielding"}) || !slices.Equal(pass.TimedOut, []string{"yielding.TestYieldingHangs"}) ||
+			len(counts.Packages) != 1 || counts.Packages[0].Package != "yielding" || counts.Packages[0].Tests < 2 {
+			t.Errorf("resumed pass built %v, timed out %v, measured %+v; want yielding once in built and measured, its second job having run",
+				pass.Built, pass.TimedOut, counts.Packages)
+		}
+	} else if afterPass := readTestMap(t, mapsDir, "yielding"); !afterPass.BuiltAt.Equal(afterHandCall.BuiltAt) || len(afterPass.Tests) != len(afterHandCall.Tests) {
+		t.Errorf("yielding map after the pass = built %v, %d tests; want the hand call's map, built %v with %d tests, left as it was",
+			afterPass.BuiltAt, len(afterPass.Tests), afterHandCall.BuiltAt, len(afterHandCall.Tests))
+	}
+	if record, found, err := testcover.ReadExitRecord(mapsDir); err != nil || !found || record.PID != os.Getpid() || record.Queued != wantQueued {
+		t.Errorf("ReadExitRecord() = %+v, found %v, err %v; want the pass's record with %d queued", record, found, err, wantQueued)
+	}
+}
+
+// TestGateTestMapPassSlots runs `lym gate testmap` passes in order over one hub with a package.
+// The hub's slot count changes between them.
+// Each call builds on the maps and HEAD the last one left.
+// Its subtests share that state and run in sequence, so none is parallel.
+func TestGateTestMapPassSlots(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
+	const module = "example.com/slots"
+	gateOf := func(slots int) string {
+		return fmt.Sprintf("slots: %d\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n"+
+			"  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n", slots)
+	}
+	prime := seedTestMapModule(t, h, module, gateOf(2), map[string]map[string]int{"solo": {"TestSoloOne": 0}})
+	location, err := lymcwd.ResolveWorktree(prime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapsDir := testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))
+	standIn, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	environ := append(os.Environ(), helperEnv+"="+helperRoleTestMapGo, testMapModuleEnv+"="+module)
+	request := func(env []string) testMapRequest {
+		return testMapRequest{
+			goBinary: standIn, maxPackages: 10, environ: env, upkeep: true,
+			secondUnit: 150 * time.Millisecond, minuteUnit: time.Minute, grace: time.Second,
+			waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait, yieldPoll: testMapTestWait,
+		}
+	}
+	// call runs a pass under a minute's bound, so a call that waits for a slot it must not take fails the test.
+	call := func(t *testing.T, env []string) testMapOutcome {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(lymcwd.WithCwd(context.Background(), prime), time.Minute)
+		defer cancel()
+		var out bytes.Buffer
+		code := runTestMap(ctx, &out, request(env))
+		return decodeTestMap(t, code, out.Bytes())
+	}
+	writeGate := func(t *testing.T, slots int) {
+		t.Helper()
+		if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gateOf(slots)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// declareTests commits a test file declaring tests to solo, and returns the HEAD it makes.
+	declareTests := func(t *testing.T, tests map[string]int) string {
+		t.Helper()
+		plankit.WriteTree(t, prime, map[string]string{"solo/solo_test.go": testMapTestFile("solo", tests)})
+		gitkit.Git(t, prime, "commit", "-q", "-am", "declare tests of solo")
+		return gitkit.RevParse(t, prime, "HEAD")
+	}
+	soloTests := func(t *testing.T) []string {
+		t.Helper()
+		var names []string
+		for _, test := range readTestMap(t, mapsDir, "solo").Tests {
+			names = append(names, test.Name)
+		}
+		return names
+	}
+	wantSoloTests := func(t *testing.T, want ...string) {
+		t.Helper()
+		if got := soloTests(t); !slices.Equal(got, want) {
+			t.Errorf("solo map tests = %v; want %v", got, want)
+		}
+	}
+
+	t.Run("APassMapsThePackageWhenASlotIsFree", func(t *testing.T) {
+		got := call(t, environ)
+		if !slices.Equal(got.Built, []string{"solo"}) || got.Queued != 0 {
+			t.Errorf("runTestMap() = built %v, queued %d; want solo built with nothing queued", got.Built, got.Queued)
+		}
+		wantSoloTests(t, "TestSoloOne")
+	})
+
+	t.Run("APassOnAHubOfOneSlotPlansTakesNoSlotAndCountsEveryJobQueued", func(t *testing.T) {
+		writeGate(t, 1)
+		head := declareTests(t, map[string]int{"TestSoloOne": 0, "TestSoloTwo": 0})
+		builds := filepath.Join(t.TempDir(), "builds")
+		got := call(t, append(slices.Clone(environ), testMapCoverBuildsEnv+"="+builds))
+		if len(got.Built) != 0 || got.Queued != 1 {
+			t.Errorf("runTestMap() = built %v, queued %d; want nothing built and the one job queued", got.Built, got.Queued)
+		}
+		if _, err := os.Stat(builds); !os.IsNotExist(err) {
+			t.Errorf("coverage builds file, err %v; want none: the pass takes no slot, so it builds nothing", err)
+		}
+		if m := readTestMap(t, mapsDir, "solo"); m.Commit != head {
+			t.Errorf("solo map commit = %s; want the plan to move it to HEAD %s", m.Commit, head)
+		}
+		wantSoloTests(t, "TestSoloOne")
+		if record, found, err := testcover.ReadExitRecord(mapsDir); err != nil || !found || record.PlannedHead != head || record.Queued != 1 {
+			t.Errorf("ReadExitRecord() = %+v, found %v, err %v; want planned HEAD %s and 1 queued", record, found, err, head)
+		}
+	})
+
+	t.Run("ACallInsideAnEnclosingGateRunsSlotTakesNoSlotAndNeverYields", func(t *testing.T) {
+		// The hub has one slot and the test holds it, so a second take would wait for ever.
+		lease, err := hubgeom.GateSlots(location).Acquire(context.Background(), gateslot.Holder{Worktree: location.WorktreePath(), Site: "an enclosing gate run"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { lease.Release() })
+		got := call(t, lease.InheritEnv(environ))
+		if !slices.Equal(got.Built, []string{"solo"}) || got.Queued != 0 {
+			t.Errorf("runTestMap() = built %v, queued %d; want solo measured to the end inside the inherited slot", got.Built, got.Queued)
+		}
+		wantSoloTests(t, "TestSoloOne", "TestSoloTwo")
+	})
+
+	t.Run("AHeadMoveFoundWhenTheSlotWaitWakesEndsThePassWithTheJobQueued", func(t *testing.T) {
+		writeGate(t, 2)
+		head := declareTests(t, map[string]int{"TestSoloOne": 0, "TestSoloThree": 0, "TestSoloTwo": 0})
+		// The test holds one of the two slots, so the pass may take none and waits for one.
+		pool := hubgeom.GateSlots(location)
+		ctx, cancel := context.WithTimeout(lymcwd.WithCwd(context.Background(), prime), 2*time.Minute)
+		t.Cleanup(cancel)
+		gateLease, err := pool.Acquire(ctx, gateslot.Holder{Worktree: location.WorktreePath(), Site: "a gate run"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { gateLease.Release() })
+		var passOut bytes.Buffer
+		passDone := make(chan int, 1)
+		go func() { passDone <- runTestMap(ctx, &passOut, request(environ)) }()
+		// The plan moves the map to HEAD before the pass reaches its slot wait.
+		pollUntil(t, "the pass planned the package at HEAD", func() bool {
+			m, found, err := testcover.ReadMap(mapsDir, "solo")
+			return err == nil && found && m.Commit == head
+		})
+		plankit.WriteTree(t, prime, map[string]string{"landed.txt": "landed\n"})
+		gitkit.Git(t, prime, "add", "landed.txt")
+		gitkit.Git(t, prime, "commit", "-q", "-m", "land a file outside every package")
+		if err := gateLease.Release(); err != nil {
+			t.Fatal(err)
+		}
+		var code int
+		select {
+		case code = <-passDone:
+		case <-time.After(30 * time.Second):
+			t.Fatal("the pass did not end after the slot was free")
+		}
+		got := decodeTestMap(t, code, passOut.Bytes())
+		if len(got.Built) != 0 || got.Queued != 1 {
+			t.Errorf("runTestMap() = built %v, queued %d; want nothing built and the package queued", got.Built, got.Queued)
+		}
+		if m := readTestMap(t, mapsDir, "solo"); m.Commit != head {
+			t.Errorf("solo map commit = %s; want it left at the planned HEAD %s", m.Commit, head)
+		}
+		wantSoloTests(t, "TestSoloOne", "TestSoloTwo")
+	})
+}
+
+// TestGateTestMapCLI runs `lym gate testmap` through its cobra command in a child process over a hub of two slots.
+func TestGateTestMapCLI(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	gate := "slots: 2\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n" +
+		"  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n"
+
+	t.Run("AnUpkeepPassHasNoCapUnlessMaxIsGiven", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
+		const module = "example.com/capped"
+		// One package more than the default cap leaves queued beside the one the first call measures.
+		packageTests := map[string]map[string]int{}
+		for i := 0; i <= defaultTestMapMax; i++ {
+			packageTests[fmt.Sprintf("p%d", i)] = map[string]int{"TestPackageOne": 0}
+		}
+		prime := seedTestMapModule(t, h, module, gate, packageTests)
+		mapsDir := testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))
+		environ := append(os.Environ(), testMapModuleEnv+"="+module)
+
+		cmd, out := startTestMapCLI(t, prime, environ, "testmap", "--upkeep", "--max", "1")
+		capped := decodeTestMap(t, waitTestMapCLI(t, cmd), out.Bytes())
+		if len(capped.Built) != 1 || capped.Queued != len(packageTests)-1 {
+			t.Errorf("testmap --upkeep --max 1 = built %v, queued %d; want one package built and %d queued", capped.Built, capped.Queued, len(packageTests)-1)
+		}
+
+		cmd, out = startTestMapCLI(t, prime, environ, "testmap", "--upkeep")
+		uncapped := decodeTestMap(t, waitTestMapCLI(t, cmd), out.Bytes())
+		if uncapped.Queued != 0 {
+			t.Errorf("testmap --upkeep = queued %d; want every queued package measured, with no cap", uncapped.Queued)
+		}
+		for pkg := range packageTests {
+			if m := readTestMap(t, mapsDir, pkg); len(m.Tests) != 1 {
+				t.Errorf("%s map tests = %+v; want its one test measured", pkg, m.Tests)
+			}
+		}
+	})
+
+	t.Run("ATerminatingSignalKeepsTheRoundsThatFinishedAndExitsWithItsNumber", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows has no catchable terminating signal to send")
+		}
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
+		const module = "example.com/signalled"
+		// The rounds run in name order: TestYieldingAOne finishes before TestYieldingHangs starts.
+		prime := seedTestMapModule(t, h, module, gate, map[string]map[string]int{"yielding": {"TestYieldingAOne": 0, "TestYieldingHangs": 0}})
+		head := gitkit.RevParse(t, prime, "HEAD")
+		mapsDir := testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))
+		hanging := filepath.Join(t.TempDir(), "hanging")
+		environ := append(os.Environ(), testMapModuleEnv+"="+module, testMapHangingEnv+"="+hanging)
+
+		cmd, out := startTestMapCLI(t, prime, environ, "testmap", "--upkeep")
+		pollUntil(t, "the pass runs its hanging test", func() bool {
+			_, err := os.Stat(hanging)
+			return err == nil
+		})
+		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			t.Fatal(err)
+		}
+		if code, want := waitTestMapCLI(t, cmd), 128+int(syscall.SIGTERM); code != want {
+			t.Errorf("testmap --upkeep exit = %d, output %s; want %d, 128 plus the signal number", code, out.Bytes(), want)
+		}
+		var names []string
+		for _, test := range readTestMap(t, mapsDir, "yielding").Tests {
+			names = append(names, test.Name)
+		}
+		if want := []string{"TestYieldingAOne"}; !slices.Equal(names, want) {
+			t.Errorf("yielding map tests = %v; want %v: the finished round kept, the killed test with no entry", names, want)
+		}
+		if record, found, err := testcover.ReadExitRecord(mapsDir); err != nil || !found || record.PlannedHead != head || record.Queued != 1 {
+			t.Errorf("ReadExitRecord() = %+v, found %v, err %v; want planned HEAD %s and the unmeasured package queued", record, found, err, head)
 		}
 	})
 }

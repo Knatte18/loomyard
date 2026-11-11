@@ -17,6 +17,11 @@ func TestScanTestFuncs(t *testing.T) {
 
 	const tiered = "func TestTiered(t *testing.T) {\n\ttiergate.Require(t, 1)\n}"
 	const untiered = "func TestUntiered(t *testing.T) {}"
+	// The parallel cases import tiergate under the name kit, so only a Require call on that name may come first.
+	const parallelAfterRequire = "func TestParallelAfterRequire(t *testing.T) {\n\tkit.Require(t, 0)\n\tt.Parallel()\n}"
+	const parallelFirst = "func TestParallelFirst(tt *testing.T) {\n\ttt.Parallel()\n}"
+	const parallelAfterOther = "func TestParallelAfterOther(t *testing.T) {\n\tt.Helper()\n\tt.Parallel()\n}"
+	const parallelNested = "func TestParallelNested(t *testing.T) {\n\tif true {\n\t\tt.Parallel()\n\t}\n}"
 	tests := []struct {
 		name    string
 		files   map[string]string
@@ -34,6 +39,19 @@ func TestScanTestFuncs(t *testing.T) {
 			want: []testcover.TestFunc{
 				{Name: "TestTiered", File: "a_test.go", Tier: 1, Tiered: true, Hash: testcover.ContentHash([]byte(tiered))},
 				{Name: "TestUntiered", File: "b_test.go", Hash: testcover.ContentHash([]byte(untiered))},
+			},
+		},
+		{
+			name: "ParallelOnlyAsATopLevelCallAfterNothingButRequire",
+			files: map[string]string{
+				"p_test.go": "package p\n\nimport (\n\t\"testing\"\n\n\tkit \"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n)\n\n" +
+					parallelAfterRequire + "\n\n" + parallelFirst + "\n\n" + parallelAfterOther + "\n\n" + parallelNested + "\n",
+			},
+			want: []testcover.TestFunc{
+				{Name: "TestParallelAfterOther", File: "p_test.go", Hash: testcover.ContentHash([]byte(parallelAfterOther))},
+				{Name: "TestParallelAfterRequire", File: "p_test.go", Tier: 0, Tiered: true, Hash: testcover.ContentHash([]byte(parallelAfterRequire)), Parallel: true},
+				{Name: "TestParallelFirst", File: "p_test.go", Hash: testcover.ContentHash([]byte(parallelFirst)), Parallel: true},
+				{Name: "TestParallelNested", File: "p_test.go", Hash: testcover.ContentHash([]byte(parallelNested))},
 			},
 		},
 		{name: "UnparsableTestFile", files: map[string]string{"x_test.go": "package p\n\nfunc {"}, wantErr: "x_test.go"},

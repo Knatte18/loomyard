@@ -37,6 +37,7 @@ var unboundedWaitFiles = []string{
 	"internal/gatecli/watchdog.go",
 	"internal/gatecli/detachrun.go",
 	"internal/gatecli/detachfront.go",
+	"internal/gatecli/testmapyield.go",
 	"internal/hibernateengine/watch.go",
 	"internal/driftengine/wait.go",
 	"internal/pauserecord/hold.go",

@@ -47,6 +47,10 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - the capped gate call's front in `internal/gatecli/detachfront.go`:
   it tries the key directory's lock, looks for the runner's claim and polls the run's exit file once a second each;
   the call's keep-warm cap bounds it,
+- the coverage map waits in `internal/gatecli/testmapyield.go`:
+  an upkeep pass's wait for a slot it may take, and a named call's wait for a map build lock,
+  each poll from one second and double to thirty seconds;
+  while a pass holds its slot, it checks once a second, for as long as its job runs, whether a gate needs the slot,
 - the `--until-stop` waiter in `internal/shedverbs/loopwait.go`:
   its event source is `internal/fswatch` on the run's steps directory, and its timer starts at the one-second floor,
 - the PR-Review row's wait in `internal/landingshed/prreview.go`:

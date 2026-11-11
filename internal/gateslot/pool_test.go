@@ -94,6 +94,100 @@ func TestTryAcquire_TakesAFreeSlotAndNeverWaits(t *testing.T) {
 	}
 }
 
+func TestTryAcquireSpare_TakesASlotOnlyWhileAnotherStaysFree(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// slots is the pool's count, and held how many of them another holder takes first.
+		slots, held int
+		// draining has a multi-slot acquire hold the drain lock.
+		draining bool
+		want     bool
+	}{
+		{name: "TwoFree", slots: 3, held: 1, want: true},
+		{name: "OneFree", slots: 3, held: 2},
+		{name: "NoneFree", slots: 2, held: 2},
+		{name: "FewerThanTwoSlots", slots: 1},
+		{name: "Draining", slots: 3, draining: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			pool := newPool(t, fixedLimits(tt.slots))
+			for range tt.held {
+				lease, err := pool.Acquire(shortContext(t), Holder{Site: "gate"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { lease.Release() })
+			}
+			if tt.draining {
+				if err := os.MkdirAll(pool.Dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				drain, acquired, err := lock.TryAcquireWriteLock(pool.drainLockPath())
+				if err != nil || !acquired {
+					t.Fatalf("take the drain lock = %v, %v; want it taken", acquired, err)
+				}
+				t.Cleanup(func() { drain.Release() })
+			}
+			lease, err := pool.TryAcquireSpare(Holder{Site: "spare"})
+			if err != nil || (lease != nil) != tt.want {
+				t.Fatalf("TryAcquireSpare() = (%v, %v); want a lease %v", lease, err, tt.want)
+			}
+			if lease != nil {
+				if err := lease.Release(); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestContended_ReportsEveryOtherSlotHeldOrADrain(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	pool := newPool(t, fixedLimits(3))
+	spare, err := pool.TryAcquireSpare(Holder{Site: "spare"})
+	if err != nil || spare == nil {
+		t.Fatalf("TryAcquireSpare() = (%v, %v); want a lease", spare, err)
+	}
+	t.Cleanup(func() { spare.Release() })
+	wantContended := func(t *testing.T, want bool, state string) {
+		t.Helper()
+		if got, err := pool.Contended(spare); err != nil || got != want {
+			t.Errorf("Contended() %s = (%v, %v); want %v", state, got, err, want)
+		}
+	}
+	wantContended(t, false, "with two other slots free")
+	gate, err := pool.Acquire(shortContext(t), Holder{Site: "gate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantContended(t, false, "with one other slot free")
+	drain, acquired, err := lock.TryAcquireWriteLock(pool.drainLockPath())
+	if err != nil || !acquired {
+		t.Fatalf("take the drain lock = %v, %v; want it taken", acquired, err)
+	}
+	wantContended(t, true, "while a multi-slot acquire drains")
+	if err := drain.Release(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := pool.Acquire(shortContext(t), Holder{Site: "second gate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantContended(t, true, "with every other slot held")
+	for _, lease := range []*Lease{gate, second} {
+		if err := lease.Release(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // The logger's output is process-global, so this test does not run in parallel.
 func TestAcquire_WaitsForReleaseAndLogsWaitStartAndEnd(t *testing.T) {
 	tiergate.Require(t, 0)

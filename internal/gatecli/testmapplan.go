@@ -17,11 +17,8 @@ import (
 // A package with an uncommitted or untracked Go file is skipped.
 // So is a named package that tracks no Go file at HEAD.
 // A named package is queued for a whole rebuild.
-// Any other is planned under its build lock; one whose lock another call holds is skipped and counted as queued.
-// A package whose map records a failed build at HEAD queues nothing.
-// A selector miss queues a whole rebuild and leaves the map as it is.
-// Otherwise the plan writes the map at HEAD when it changed, and queues the declared tests it holds no entry for.
-// A test or spawn scan that fails queues a whole rebuild, which records the failure.
+// Any other is planned under its build lock through planLockedPackage;
+// one whose lock another call holds is skipped and counted as queued.
 // The error reports a read or write failure that ends the call.
 func (r *testMapRun) planPackage(pkg string, named bool) (testMapJob, bool, error) {
 	dir := path.Join(r.moduleRel, pkg)
@@ -53,7 +50,20 @@ func (r *testMapRun) planPackage(pkg string, named bool) (testMapJob, bool, erro
 		return testMapJob{}, false, nil
 	}
 	defer releaseBuildLock(buildLock, pkg)
+	return r.planLockedPackage(whole, true)
+}
 
+// planLockedPackage plans the package of whole, its whole rebuild job, at the call's HEAD under its build lock.
+// The caller holds the lock.
+// It returns the package's job and whether it queued one.
+// A package whose map records a failed build at HEAD queues nothing.
+// A selector miss queues the whole rebuild and leaves the map as it is.
+// Otherwise the plan writes the map at HEAD when it changed, and queues the declared tests it holds no entry for.
+// A test or spawn scan that fails queues the whole rebuild, which records the failure.
+// tally counts the verdict in the call's plan counts; a pass planning a package again after a yield counts nothing.
+// The error reports a read or write failure that ends the call.
+func (r *testMapRun) planLockedPackage(whole testMapJob, tally bool) (testMapJob, bool, error) {
+	pkg, dir, files := whole.pkg, whole.dir, whole.files
 	m, found, err := testcover.ReadMap(r.mapsDir, pkg)
 	if err == nil && found && m.FailedAt(r.head) {
 		return testMapJob{}, false, nil
@@ -82,14 +92,17 @@ func (r *testMapRun) planPackage(pkg string, named bool) (testMapJob, bool, erro
 	if err != nil {
 		return whole, true, nil
 	}
-	switch plan.Verdict {
-	case testcover.UpkeepMiss:
-		if r.plan.Misses == nil {
-			r.plan.Misses = map[testcover.MissReason]int{}
+	switch {
+	case plan.Verdict == testcover.UpkeepMiss:
+		if tally {
+			if r.plan.Misses == nil {
+				r.plan.Misses = map[testcover.MissReason]int{}
+			}
+			r.plan.Misses[plan.Miss.Reason]++
 		}
-		r.plan.Misses[plan.Miss.Reason]++
 		return whole, true, nil
-	case testcover.UpkeepAffected:
+	case !tally:
+	case plan.Verdict == testcover.UpkeepAffected:
 		r.plan.Affected++
 	default:
 		r.plan.Current++
