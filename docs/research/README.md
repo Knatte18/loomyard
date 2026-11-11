@@ -99,6 +99,8 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [writer-cost-remeasure-2026-11-08](loom/writer-cost-remeasure-2026-11-08/report.md) — writer lookups and Plan phase cost, re-measured on the tapestry runs after the Discussion lookup change.
 - [darn-writer-anatomy-2026-11-08](loom/darn-writer-anatomy-2026-11-08/report.md) — the darn writer's cost by token kind and activity, gate-wait cache rewrites, and what a writer that leaves gate failures to a fixer would save.
 
+- [advisor-model-trial-2026-11-11](loom/advisor-model-trial-2026-11-11/report.md) — tuning a darn writer prompt for an Opus advisor; stopped before any rerun, with the advisor's settings key and what blocks a per-run advisor.
+
 ### plan-split — splitting a plan into parts
 
 - [plan-split-bench-2026-11-01](loom/plan-split/plan-split-bench-2026-11-01/report.md) — Parts-Write and Parts-Plan-Write against Plan-Write.
