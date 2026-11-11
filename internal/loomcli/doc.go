@@ -686,6 +686,8 @@
 // It may also have `pattern_entry`, `pattern_action` and `pattern_text`.
 // `--by` and `--amends-plan` apply to every entry, and all entries land in one write and one commit, or none does.
 // Each live agent gets one notice naming the headings (`headings`).
+// A run that is not running wakes no Webster Master session left live from its last run:
+// the envelope names each such strand and why under `notice_held_back`.
 // Two entries may not share a title or a PATTERN entry.
 // A `pattern_action` of `withdraws`, like `--pattern-action withdraws`, strikes a declared `## PATTERN changes` bullet.
 // The strike lands in the entry's commit, and the envelope names the ID under `pattern_withdrawn`.

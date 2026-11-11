@@ -222,19 +222,19 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 	}
 	cold := r
 	cold.Fixer = FixerCold
-	if got := renderVerifyGateFindings(cold, fixPromptPath); !strings.HasPrefix(got, coldWayForward+"\nVerify gate failed (attempt ") {
+	if got := renderVerifyGateFindings(cold, fixPromptPath); !strings.HasPrefix(got, coldWayForward+"\nVerify gate failed (evaluation ") {
 		t.Errorf("cold-routed findings should open with the cold way forward:\n%s", got)
 	}
 	assertOpensWithWayForward := func(findings string) {
 		t.Helper()
-		if !strings.HasPrefix(findings, wayForward+"\nVerify gate failed (attempt ") {
+		if !strings.HasPrefix(findings, wayForward+"\nVerify gate failed (evaluation ") {
 			t.Errorf("findings should open with the way forward before the failure line:\n%s", findings)
 		}
 	}
 
 	got := renderVerifyGateFindings(r, fixPromptPath)
 	assertOpensWithWayForward(got)
-	for _, want := range []string{"attempt 2 of 3", "m/a.TestX", "m/b", "line one", "line two", "/scratch/verify.log", "03-third"} {
+	for _, want := range []string{"evaluation 2; the session may be re-prompted 3 time(s)", "m/a.TestX", "m/b", "line one", "line two", "/scratch/verify.log", "03-third"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("findings missing %q:\n%s", want, got)
 		}
@@ -247,7 +247,7 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 
 	timedOut := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, TimedOut: "gate tier2 exceeded timeout_min 30m0s and was killed", LogPath: "/scratch/verify.log", LogTail: "hung in TestSlow"}, fixPromptPath)
 	assertOpensWithWayForward(timedOut)
-	for _, want := range []string{"attempt 1 of 3", "timed out: gate tier2 exceeded timeout_min 30m0s and was killed", "not re-run", "/scratch/verify.log", "hung in TestSlow"} {
+	for _, want := range []string{"evaluation 1; the session may be re-prompted 3 time(s)", "timed out: gate tier2 exceeded timeout_min 30m0s and was killed", "not re-run", "/scratch/verify.log", "hung in TestSlow"} {
 		if !strings.Contains(timedOut, want) {
 			t.Errorf("timed-out findings missing %q:\n%s", want, timedOut)
 		}
@@ -277,7 +277,7 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 
 	entry := renderVerifyGateFindings(VerifyGateReport{Attempt: 2, Cap: 3, Entry: "drift", Findings: "cell a.txt:3 changed outside the expectation"}, fixPromptPath)
 	assertOpensWithWayForward(entry)
-	for _, want := range []string{"attempt 2 of 3", `"drift"`, "cell a.txt:3 changed outside the expectation"} {
+	for _, want := range []string{"evaluation 2; the session may be re-prompted 3 time(s)", `"drift"`, "cell a.txt:3 changed outside the expectation"} {
 		if !strings.Contains(entry, want) {
 			t.Errorf("entry findings missing %q:\n%s", want, entry)
 		}
@@ -286,9 +286,22 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 		t.Errorf("entry findings must not list identities:\n%s", entry)
 	}
 
+	tailOnly := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, ExitCode: 2, LogPath: "/scratch/verify.log", LogTail: "build failed: x.go:3"}, fixPromptPath)
+	assertOpensWithWayForward(tailOnly)
+	for _, want := range []string{"exited with code 2", "named no failing test", "/scratch/verify.log", "build failed: x.go:3"} {
+		if !strings.Contains(tailOnly, want) {
+			t.Errorf("tail-only findings missing %q:\n%s", want, tailOnly)
+		}
+	}
+	for _, unwanted := range []string{"Failing identities", "No recorded card touched"} {
+		if strings.Contains(tailOnly, unwanted) {
+			t.Errorf("tail-only findings must not carry %q:\n%s", unwanted, tailOnly)
+		}
+	}
+
 	dirty := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, Dirty: []string{"a.go", "b.txt"}}, fixPromptPath)
 	assertOpensWithWayForward(dirty)
-	for _, want := range []string{"attempt 1 of 3", "a.go", "b.txt"} {
+	for _, want := range []string{"evaluation 1; the session may be re-prompted 3 time(s)", "a.go", "b.txt"} {
 		if !strings.Contains(dirty, want) {
 			t.Errorf("dirty findings missing %q:\n%s", want, dirty)
 		}

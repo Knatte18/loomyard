@@ -190,9 +190,14 @@ You message your parent only on the `waiting` rung below and under "A parent dec
   A dead batch with `recovery_retry: false` ends the run: write `outcome: stuck` naming the batch, as the dead rungs above do.
   A refusal carrying `{"recovery_exhausted": true}` ends the run stuck naming the batch, as the recover-batch rung does, and its reset steps are the operator's.
   Then continue the loop from the next batch.
+- Any verb refuses with `{"run_ended": true}` → no `lym webster run` owns this session any more, so your run is over.
+  End your turn with no tool call and write no file: your parent re-enters the run, which starts a fresh session.
 - Any verb refuses with `{"config_invalid": true}` → a config file under `_lym/config` has broken content, and the operator's fix is not Master's to make.
   Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop without calling another verb.
   A refusal that says a config file could not be read carries no `config_invalid` and is transient: re-run the verb.
+- A bracket verb refuses with the message "could not tell whether a live `lym webster run` owns this state" and no flag → the refusal is transient.
+  Re-run the verb once.
+  When the second call refuses the same way, write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
 
 ## After every batch: the verify gate
 
@@ -240,6 +245,8 @@ You read no decision record for it, and you edit no source, so the decision reac
 - While your own fork, fixer fork, backgrounded `recover-batch`, backgrounded `fix-verify` or backgrounded `fix-plan` runs, end your turn with no tool call; the decision reaches the next fork you spawn.
 - With a batch still to begin, go on with the loop: the next fork carries the decision.
 - With no batch left to begin and nothing of yours running, tell your parent with `lym creel post --parent "<text>"` that every batch is recorded, so the decision reaches the code only through a gate fixer or a plan amendment, then end your turn.
+- After you wrote `outcome: stuck`, your run is over: a notice or any other message that reaches you then starts no work.
+  End your turn with no tool call; the fresh session your parent's re-entry starts carries the decision.
 
 The decisions your parent recorded for this run before this session started are below, `none` when there is none.
 They are answers your parent already gave, often to an earlier stop of this run: follow each like a decision notice, so every fork you spawn inherits it, and never raise a question one of them answers.

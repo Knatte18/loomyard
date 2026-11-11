@@ -387,7 +387,7 @@ func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 	if report.LogPath != "/verify/verify-4.log" {
 		t.Errorf("report log path = %q; want the log of the run it reports on, /verify/verify-4.log", report.LogPath)
 	}
-	for _, want := range []string{"example.com/mod/internal/a", "02-second", "attempt 2 of 3"} {
+	for _, want := range []string{"example.com/mod/internal/a", "02-second", "evaluation 2; the session may be re-prompted 3 time(s)"} {
 		if !strings.Contains(second.Findings, want) {
 			t.Errorf("findings = %q; want %q in it", second.Findings, want)
 		}
@@ -646,11 +646,20 @@ func TestVerifyGateStuckReason_TerminalRejectionEndsInResetToPreFix(t *testing.T
 	}
 }
 
-func TestVerifyGateStuckReason_HungReportNamesTheHang(t *testing.T) {
+// TestVerifyGateStuckReason_NamesTheFailureAndAWayForward pins the stuck reason of a verify gate.
+// The gate spent its re-prompts.
+// It names the verify command and what failed, and ends in a way forward.
+// It quotes the output tail of a failure that named no test.
+func TestVerifyGateStuckReason_NamesTheFailureAndAWayForward(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	const log = "/wt/.lym/verify/verify.log"
+	const (
+		log  = "/wt/.lym/verify/verify.log"
+		cmd  = "lym gate test --gate webster"
+		lead = "verify gate did not pass after 2 of 2 re-prompt(s): "
+		fix  = "way forward: 1) read " + log + " and commit a fix on the task branch; 2) lym webster run"
+	)
 	tests := []struct {
 		name   string
 		report VerifyGateReport
@@ -658,24 +667,69 @@ func TestVerifyGateStuckReason_HungReportNamesTheHang(t *testing.T) {
 	}{
 		{
 			name:   "a timed-out report names the timeout, that nothing was re-run and the log",
-			report: VerifyGateReport{Attempt: 2, Cap: 2, TimedOut: "gate tier2 exceeded timeout_min 30m0s and was killed", LogPath: log},
-			want:   "verify gate failed after 2 attempt(s) of 2: the verify command timed out (gate tier2 exceeded timeout_min 30m0s and was killed) and was not re-run, see " + log,
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Command: cmd, TimedOut: "gate tier2 exceeded timeout_min 30m0s and was killed", LogPath: log},
+			want:   lead + "`" + cmd + "`: the verify command timed out (gate tier2 exceeded timeout_min 30m0s and was killed) and was not re-run, see " + log + "; " + fix,
 		},
 		{
 			name:   "a SIGQUIT report names the hang, the stacks and the log",
-			report: VerifyGateReport{Attempt: 2, Cap: 2, Hang: "SIGQUIT: quit", HangStacks: true, LogPath: log},
-			want:   "verify gate failed after 2 attempt(s) of 2: the verify command hung (SIGQUIT: quit) and was not re-run; its goroutine stacks are in " + log,
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Command: cmd, Hang: "SIGQUIT: quit", HangStacks: true, LogPath: log},
+			want:   lead + "`" + cmd + "`: the verify command hung (SIGQUIT: quit) and was not re-run; its goroutine stacks are in " + log + "; " + fix,
 		},
 		{
-			name:   "a watchdog report names the window, the way forward and the re-entry",
-			report: VerifyGateReport{Attempt: 2, Cap: 2, Hang: "CPU watchdog SIGQUIT", HangStacks: true, WatchdogWindow: "2m0s", LogPath: log},
-			want: "verify gate failed after 2 attempt(s) of 2: the verify command hung (CPU watchdog SIGQUIT) and was not re-run; its goroutine stacks are in " + log +
+			name:   "a watchdog report names the window and its own way forward with the re-entry",
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Command: cmd, Hang: "CPU watchdog SIGQUIT", HangStacks: true, WatchdogWindow: "2m0s", LogPath: log},
+			want: lead + "`" + cmd + "`: the verify command hung (CPU watchdog SIGQUIT) and was not re-run; its goroutine stacks are in " + log +
 				"; the gate test's CPU watchdog quit a test binary busy for 2m0s: if that package is CPU-bound but healthy, " + gateslot.BusyQuitWayForward + ", then lym webster run",
 		},
 		{
 			name:   "an exit-code report names the code and holds no stacks",
-			report: VerifyGateReport{Attempt: 2, Cap: 2, Hang: "exit code 137", LogPath: log},
-			want:   "verify gate failed after 2 attempt(s) of 2: the verify command was killed or exited with exit code 137 and was not re-run, see " + log,
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Command: cmd, Hang: "exit code 137", LogPath: log},
+			want:   lead + "`" + cmd + "`: the verify command was killed or exited with exit code 137 and was not re-run, see " + log + "; " + fix,
+		},
+		{
+			name:   "a report with failing identities names them and the log",
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Command: cmd, ExitCode: 1, Failures: []VerifyFailure{{ID: "example.com/mod/internal/a"}, {ID: "example.com/mod/internal/b.TestX"}}, LogPath: log},
+			want:   lead + "`" + cmd + "`: failing example.com/mod/internal/a, example.com/mod/internal/b.TestX, see " + log + "; " + fix,
+		},
+		{
+			name:   "a failure that named no test says so and quotes the output tail",
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Command: cmd, ExitCode: 2, LogTail: "gate: tier0\nbuild failed: x.go:3: undefined: y", LogPath: log},
+			want: lead + "`" + cmd + "`: the verify command exited with code 2 and its output named no failing test, so the gate itself may have erred; " +
+				"output tail: gate: tier0 build failed: x.go:3: undefined: y; see " + log + "; " + fix,
+		},
+		{
+			name:   "an empty output says so instead of quoting a tail",
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Command: cmd, ExitCode: 3, LogPath: log},
+			want:   lead + "`" + cmd + "`: the verify command exited with code 3 and its output named no failing test, so the gate itself may have erred; its output was empty; see " + log + "; " + fix,
+		},
+		{
+			name:   "an output tail is cut on a rune boundary",
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Command: cmd, ExitCode: 1, LogTail: "xé" + strings.Repeat("a", verifyGateStuckTextBytes-1), LogPath: log},
+			want: lead + "`" + cmd + "`: the verify command exited with code 1 and its output named no failing test, so the gate itself may have erred; " +
+				"output tail: " + strings.Repeat("a", verifyGateStuckTextBytes-1) + "; see " + log + "; " + fix,
+		},
+		{
+			name:   "a long entry findings text is cut to its first bytes on a rune boundary",
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Entry: "drift", Findings: strings.Repeat("a", verifyGateStuckTextBytes-1) + "étail"},
+			want: lead + `the run-level "drift" entry failed: ` + strings.Repeat("a", verifyGateStuckTextBytes-1) + `; ` +
+				`way forward: 1) fix what the "drift" entry's findings name and commit it on the task branch; 2) lym webster run`,
+		},
+		{
+			name:   "a long output tail is cut to its last bytes",
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Command: cmd, ExitCode: 1, LogTail: strings.Repeat("a", 500) + "END", LogPath: log},
+			want: lead + "`" + cmd + "`: the verify command exited with code 1 and its output named no failing test, so the gate itself may have erred; " +
+				"output tail: " + strings.Repeat("a", verifyGateStuckTextBytes-3) + "END; see " + log + "; " + fix,
+		},
+		{
+			name:   "a dirty tree found before any verify names the paths and no command",
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Dirty: []string{"a.go", "b.txt"}},
+			want:   lead + "the worktree held uncommitted paths a.go, b.txt; way forward: 1) commit or remove those paths on the task branch; 2) lym webster run",
+		},
+		{
+			name:   "a run-level entry's failure names the entry and its findings",
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Entry: "drift", Findings: "cell a.txt:3 moved\nsee expected.yaml"},
+			want: lead + `the run-level "drift" entry failed: cell a.txt:3 moved see expected.yaml; ` +
+				`way forward: 1) fix what the "drift" entry's findings name and commit it on the task branch; 2) lym webster run`,
 		},
 	}
 	for _, tt := range tests {
@@ -686,11 +740,164 @@ func TestVerifyGateStuckReason_HungReportNamesTheHang(t *testing.T) {
 			if err := WriteVerifyGateReport(VerifyGateReportPath(reportsDir), tt.report); err != nil {
 				t.Fatal(err)
 			}
+			gate := &shuttleengine.GateOutcome{Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{{Name: verifyGateName, Attempts: 2, State: shuttleengine.GateEntryFailed}}}
 
-			got := verifyGateStuckReason(reportsDir, &shuttleengine.GateOutcome{}, "lym webster run")
+			got := verifyGateStuckReason(reportsDir, gate, "lym webster run")
 
 			if got != tt.want {
 				t.Errorf("verifyGateStuckReason() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestVerifyGateStuckReason_CountsRepromptsAgainstTheLimit pins the stuck reason's opening.
+// It counts the failing entry's own re-prompts against the entry's limit, so the two agree,
+// and a run that ended with re-prompts left says why.
+// With no readable report it counts the re-prompts alone and still ends in the re-entry.
+func TestVerifyGateStuckReason_CountsRepromptsAgainstTheLimit(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	failed := func(name string, sent int) shuttleengine.GateEntryOutcome {
+		return shuttleengine.GateEntryOutcome{Name: name, Attempts: sent, State: shuttleengine.GateEntryFailed}
+	}
+	tests := []struct {
+		name       string
+		gate       shuttleengine.GateOutcome
+		noReport   bool
+		wantPrefix string
+		wantSuffix string
+	}{
+		{
+			name:       "a spent budget counts every re-prompt against the limit",
+			gate:       shuttleengine.GateOutcome{Attempts: 3, Entries: []shuttleengine.GateEntryOutcome{failed(verifyGateName, 3)}},
+			wantPrefix: "verify gate did not pass after 3 of 3 re-prompt(s): ",
+		},
+		{
+			name: "the failing entry's own re-prompts count, not the run's total",
+			gate: shuttleengine.GateOutcome{Attempts: 5, Entries: []shuttleengine.GateEntryOutcome{
+				{Name: verifyGateName, Attempts: 2, State: shuttleengine.GateEntryPassed}, failed("drift", 3),
+			}},
+			wantPrefix: "verify gate did not pass after 3 of 3 re-prompt(s): ",
+		},
+		{
+			name:       "a gate that ended before any re-prompt says why",
+			gate:       shuttleengine.GateOutcome{EndedEarly: "its re-prompt could not be sent: pane gone", Entries: []shuttleengine.GateEntryOutcome{failed(verifyGateName, 0)}},
+			wantPrefix: "verify gate failed its first check and the session was never re-prompted, since its re-prompt could not be sent: pane gone: ",
+		},
+		{
+			name:       "a gate that ended with re-prompts left counts them and says why",
+			gate:       shuttleengine.GateOutcome{Attempts: 1, EndedEarly: "the session ended", Entries: []shuttleengine.GateEntryOutcome{failed(verifyGateName, 1)}},
+			wantPrefix: "verify gate did not pass after 1 of 3 re-prompt(s) and the run ended with re-prompts left, since the session ended: ",
+		},
+		{
+			name:       "a gate with no failed entry counts its own re-prompts",
+			gate:       shuttleengine.GateOutcome{Attempts: 2},
+			wantPrefix: "verify gate did not pass after 2 of 3 re-prompt(s): ",
+		},
+		{
+			name:       "an unreadable report counts the re-prompts and ends in the re-entry",
+			gate:       shuttleengine.GateOutcome{Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{failed(verifyGateName, 2)}},
+			noReport:   true,
+			wantPrefix: "verify gate did not pass after 2 re-prompt(s); its report could not be read: ",
+			wantSuffix: "; way forward: lym webster run",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			reportsDir := t.TempDir()
+			if !tt.noReport {
+				report := VerifyGateReport{Attempt: 4, Cap: 3, Command: "lym gate test --gate webster", Failures: []VerifyFailure{{ID: "example.com/mod/internal/a"}}, LogPath: "/verify.log"}
+				if err := WriteVerifyGateReport(VerifyGateReportPath(reportsDir), report); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got := verifyGateStuckReason(reportsDir, &tt.gate, "lym webster run")
+
+			if !strings.HasPrefix(got, tt.wantPrefix) || !strings.HasSuffix(got, tt.wantSuffix) || strings.Contains(got, "\n") {
+				t.Errorf("verifyGateStuckReason() = %q; want one line opening %q and ending %q", got, tt.wantPrefix, tt.wantSuffix)
+			}
+		})
+	}
+}
+
+// TestVerifyGate_ReportKeepsWhatTheFailedArrivalObserved pins the report of a failed verify.
+// A log that parses to no failing identity keeps the verify command, the exit code and the log tail,
+// so the stuck reason can show what failed.
+// A log that names tests keeps them and no tail.
+// A dirty tree found on a later arrival carries no command, though an earlier arrival rendered one.
+func TestVerifyGate_ReportKeepsWhatTheFailedArrivalObserved(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const noTestOutput = "gate: tier0 could not start: tool missing\n"
+	const command = "lym gate test --gate webster"
+	tests := []struct {
+		name   string
+		output string
+		// dirtyOnSecondArrival makes the tree dirty for a second arrival, which is the one reported.
+		dirtyOnSecondArrival bool
+		wantCommand          string
+		wantExitCode         int
+		wantLogTail          string
+		wantLogPath          string
+		wantFailureIDs       []string
+		wantDirty            []string
+	}{
+		{
+			name: "a failure naming no test keeps the command, exit code and output tail", output: noTestOutput,
+			wantCommand: command, wantExitCode: 2, wantLogTail: strings.TrimSpace(noTestOutput), wantLogPath: "/verify/verify-2.log",
+		},
+		{
+			name: "a failure naming tests keeps them and no output tail", output: failingPackageLog,
+			wantCommand: command, wantExitCode: 2, wantLogPath: "/verify/verify-2.log", wantFailureIDs: []string{"example.com/mod/internal/a"},
+		},
+		{
+			name: "a dirty tree on a later arrival carries no command", output: noTestOutput, dirtyOnSecondArrival: true,
+			wantDirty: []string{"loose.go"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			reports := t.TempDir()
+			f := &gateFake{
+				outcome: outcomeDone,
+				command: command,
+				head:    "head0",
+				results: []verifytree.Result{{Status: verifytree.StatusFailed, ExitCode: 2}},
+				logs:    []string{tt.output},
+			}
+			gate := newVerifyGate(reports, 3, &VerifyGateNotes{}, testFixPromptPath, f.seams())
+
+			if res, err := gate(); err != nil || res.Passed || res.Terminal {
+				t.Fatalf("gate() = %+v, %v; want a plain failure", res, err)
+			}
+			if tt.dirtyOnSecondArrival {
+				f.dirty = []string{"loose.go"}
+				if res, err := gate(); err != nil || res.Passed || res.Terminal {
+					t.Fatalf("second gate() = %+v, %v; want a plain failure", res, err)
+				}
+			}
+
+			report, err := readVerifyGateReport(VerifyGateReportPath(reports))
+			if err != nil {
+				t.Fatalf("readVerifyGateReport() error = %v", err)
+			}
+			if report.Command != tt.wantCommand || report.ExitCode != tt.wantExitCode || report.LogTail != tt.wantLogTail || report.LogPath != tt.wantLogPath {
+				t.Errorf("report command, exit code, log tail and log = (%q, %d, %q, %q); want (%q, %d, %q, %q)",
+					report.Command, report.ExitCode, report.LogTail, report.LogPath, tt.wantCommand, tt.wantExitCode, tt.wantLogTail, tt.wantLogPath)
+			}
+			if got := failureIDs(report.Failures); !slices.Equal(got, tt.wantFailureIDs) {
+				t.Errorf("report failures = %v; want %v", got, tt.wantFailureIDs)
+			}
+			if !slices.Equal(report.Dirty, tt.wantDirty) {
+				t.Errorf("report dirty = %v; want %v", report.Dirty, tt.wantDirty)
 			}
 		})
 	}

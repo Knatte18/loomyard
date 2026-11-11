@@ -28,14 +28,20 @@ func VerifyGateReportPath(reportsDir string) string {
 type VerifyGateReport struct {
 	// Attempt is the failed evaluation's number, counted from one.
 	Attempt int `yaml:"attempt"`
-	// Cap is the gate's attempt cap.
+	// Cap is the gate entry's re-prompt budget, so a failed evaluation's number can run one past it.
 	Cap int `yaml:"cap"`
+	// Command is the verify command the failed evaluation ran.
+	// It is empty for a run-level entry's failure and for a dirty tree found before the command was rendered.
+	Command string `yaml:"command,omitempty"`
+	// ExitCode is the failed verify command's exit code, zero for a failure that ran no command.
+	ExitCode int `yaml:"exit_code,omitempty"`
 	// Dirty lists the paths of a clean-tree failure, which runs no verify and so has no Failures or LogPath.
 	Dirty []string `yaml:"dirty,omitempty"`
 	// TimedOut names the gate tier and the timeout it outlived, and is empty when no tier timed out.
 	// Such a failure has no Failures and carries LogTail instead.
 	TimedOut string `yaml:"timed_out,omitempty"`
 	// LogTail is the bounded tail of the verify log of a timed-out or hung run.
+	// It is also the tail for a failed run whose log named no failing identity.
 	LogTail string `yaml:"log_tail,omitempty"`
 	// Hang is the marker, log line or `exit code <n>` that read the failed run as a hang, and empty for any other failure.
 	// Such a failure carries the Failures its log parses to and LogTail.
@@ -204,9 +210,11 @@ func wrapRunLevelEntry(entry shuttleengine.GateEntry, reportPath, fixPromptPath 
 }
 
 // renderVerifyGateFindings returns the findings text the gate returns to Merriam.
-// The text opens with the way forward to the report's fixer, then the attempt and the cap.
+// The text opens with the way forward to the report's fixer, then the evaluation number and the re-prompt limit.
 // It then gives the named entry's findings.
 // Otherwise it gives the dirty paths, the timeout sentence, a hang or the failing identities.
+// A failure that named no test gives the exit code, the log path and the log tail.
+// It has no identity list and no card hint.
 // A timeout carries the log path and tail.
 // A hang carries its matched marker, identities, log path and tail.
 // Identities carry their output tail, the full log path and the hint.
@@ -215,7 +223,7 @@ func wrapRunLevelEntry(entry shuttleengine.GateEntry, reportPath, fixPromptPath 
 func renderVerifyGateFindings(r VerifyGateReport, fixPromptPath string) string {
 	var b strings.Builder
 	b.WriteString(verifyGateWayForward(r.Fixer, fixPromptPath) + "\n")
-	fmt.Fprintf(&b, "Verify gate failed (attempt %d of %d).\n", r.Attempt, r.Cap)
+	fmt.Fprintf(&b, "Verify gate failed (evaluation %d; the session may be re-prompted %d time(s)).\n", r.Attempt, r.Cap)
 
 	if r.Entry != "" {
 		fmt.Fprintf(&b, "The run-level %q entry failed:\n%s\n", r.Entry, r.Findings)
@@ -248,6 +256,12 @@ func renderVerifyGateFindings(r VerifyGateReport, fixPromptPath string) string {
 		}
 		fmt.Fprintf(&b, "Matched: %s\n", r.Hang)
 		writeFailingIdentities(&b, r.Failures)
+		writeLogLocation(&b, r)
+		return b.String()
+	}
+
+	if len(r.Failures) == 0 {
+		fmt.Fprintf(&b, "The verify command exited with code %d and named no failing test.\n", r.ExitCode)
 		writeLogLocation(&b, r)
 		return b.String()
 	}

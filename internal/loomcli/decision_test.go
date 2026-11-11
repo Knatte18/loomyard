@@ -1048,6 +1048,7 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 
 // TestDecisionVerb_NotifiesLiveAgents asserts a committed entry is announced to each live agent of the run.
 // It skips the tackler, the arbiter and the caller.
+// A run that is not running holds the notice back from its Webster Master session and names it on the envelope.
 // It also asserts that a failed listing or post is reported on a success envelope.
 func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1068,7 +1069,24 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 		want      []string
 		// wantErrors are the strands of the reported failures, "" for a failed listing.
 		wantErrors []string
+		// state is the run's state, empty for a run with no status file.
+		state shedengine.State
+		// wantHeldBack are the strands the envelope names under notice_held_back.
+		wantHeldBack []string
 	}{
+		{
+			name:         "HaltedRun_HoldsBackTheWebsterSession",
+			state:        shedengine.StateBlocked,
+			liveStrands:  []string{"hub:task-a:webster", "hub:task-a:darn"},
+			want:         []string{"hub:task-a:darn"},
+			wantHeldBack: []string{"hub:task-a:webster"},
+		},
+		{
+			name:        "RunningRun_WakesTheWebsterSession",
+			state:       shedengine.StateRunning,
+			liveStrands: []string{"hub:task-a:webster"},
+			want:        []string{"hub:task-a:webster"},
+		},
 		{
 			name:        "Orch_SkipsTacklerArbiterAndUnnamedRun",
 			strandName:  "hub:orch",
@@ -1129,6 +1147,7 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 				f.parent.Name = tt.strandName
 			}
 			f.liveStrands, f.liveErr, f.notifyErrs = tt.liveStrands, tt.liveErr, tt.notifyErrs
+			f.status, f.found = shedengine.Status{State: tt.state}, tt.state != ""
 			input := goodDecisionInput()
 			if tt.arbiter {
 				f.arbiterName = tt.strandName
@@ -1160,6 +1179,19 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 			}
 			if fmt.Sprint(gotErrors) != fmt.Sprint(append([]string{}, tt.wantErrors...)) {
 				t.Errorf("envelope notice_errors strands = %v; want %v", gotErrors, tt.wantErrors)
+			}
+			gotHeldBack := []string{}
+			if items, ok := data["notice_held_back"].([]any); ok {
+				for _, item := range items {
+					entry := item.(map[string]any)
+					if reason, _ := entry["reason"].(string); !strings.Contains(reason, "the run is "+string(tt.state)) {
+						t.Errorf("held-back reason = %q; want it to name the run's state %q", reason, tt.state)
+					}
+					gotHeldBack = append(gotHeldBack, entry["strand"].(string))
+				}
+			}
+			if fmt.Sprint(gotHeldBack) != fmt.Sprint(append([]string{}, tt.wantHeldBack...)) {
+				t.Errorf("envelope notice_held_back strands = %v; want %v", gotHeldBack, tt.wantHeldBack)
 			}
 
 			if tt.from != "" {

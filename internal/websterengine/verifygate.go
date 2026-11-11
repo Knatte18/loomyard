@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 
@@ -308,11 +309,14 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 	failures := 0
 	cold := false
 	lastFixCommits := 0
+	// command is the current arrival's verify command, empty until the arrival renders it.
+	command := ""
 
-	// fail records the pre-fix head on the first failure;
-	// it routes the failure to a fixer, then writes the report and returns its findings.
+	// fail records the pre-fix head on the first failure.
+	// It routes the failure to a fixer, writes the report naming the arrival's verify command, and returns its findings.
 	fail := func(report VerifyGateReport) (shuttleengine.GateResult, error) {
 		failures++
+		report.Command = command
 		if preFix == "" {
 			head, err := s.head()
 			if err != nil {
@@ -407,6 +411,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 
 	return func() (shuttleengine.GateResult, error) {
 		attempt++
+		command = ""
 
 		outcome, err := s.outcome()
 		if err != nil {
@@ -442,7 +447,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 			notes.addCommits(entries)
 		}
 
-		command, err := s.verifyCommand()
+		command, err = s.verifyCommand()
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: verify gate: %w", err)
 		}
@@ -498,7 +503,13 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if hang, hung := classifyHang(res, rerunOutput); hung {
 			return failHung(res, rerunOutput, hang)
 		}
-		return fail(VerifyGateReport{Failures: parseVerifyFailures(rerunOutput, false), LogPath: res.Log})
+		report := VerifyGateReport{Failures: parseVerifyFailures(rerunOutput, false), LogPath: res.Log, ExitCode: res.ExitCode}
+		if len(report.Failures) == 1 && report.Failures[0].Kind == FailureKindOpaque {
+			// A failure that names no test, such as a build error or the gate tool's own error, is shown by its output alone.
+			report.Failures = nil
+			report.LogTail = logTail(rerunOutput)
+		}
+		return fail(report)
 	}
 }
 
@@ -515,14 +526,13 @@ func readVerifyGateReport(path string) (VerifyGateReport, error) {
 	return r, nil
 }
 
-// verifyGateStuckReason is the stuck reason of a done run whose verify gate did not pass.
+// verifyGateStuckReason is the one-line stuck reason of a done run whose verify gate did not pass.
 // A Terminal failure, the rejection of a fixer commit, names the gate's own reason.
 // It ends in the reset to the pre-fix head, then reentry.
 // A Terminal runner crash names the gate's own reason and ends in reentry alone, since no fixer commit exists to reset.
-// Otherwise it names the hang, the failing identities, the dirty paths or the verify timeout.
-// It names the log the report holds, and the attempts spent.
-// After a CPU watchdog quit, the reason also names the busy window.
-// It names the way forward for a package that is CPU-bound but healthy, then reentry.
+// Otherwise it opens with the re-prompts the failing entry sent against its limit.
+// When the run ended with re-prompts left, it says why.
+// It then names the verify command and what failed, and ends in a way forward.
 func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, reentry string) string {
 	if strings.HasPrefix(gate.Reason, verifyGateCrashFindingsPrefix) {
 		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps(reentry)
@@ -532,20 +542,105 @@ func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, r
 	}
 	report, err := readVerifyGateReport(VerifyGateReportPath(reportsDir))
 	if err != nil {
-		return fmt.Sprintf("verify gate failed after %d re-prompt(s); its report could not be read: %v", gate.Attempts, err)
+		return fmt.Sprintf("verify gate did not pass after %d re-prompt(s); its report could not be read: %v; %s", failedEntryReprompts(gate), err, wayForwardSteps(reentry))
 	}
-	what := "none named"
+	return verifyGateStuckLead(gate, report.Cap) + ": " + verifyGateStuckFailure(report, reentry)
+}
+
+// verifyGateStuckLead opens the stuck reason of a verify gate that did not pass with no terminal reason.
+// It counts the failing entry's re-prompts against limit, the entry's re-prompt budget.
+// When the run ended with re-prompts left, it says why.
+func verifyGateStuckLead(gate *shuttleengine.GateOutcome, limit int) string {
+	sent := failedEntryReprompts(gate)
 	switch {
+	case gate.EndedEarly == "":
+		return fmt.Sprintf("verify gate did not pass after %d of %d re-prompt(s)", sent, limit)
+	case sent == 0:
+		return fmt.Sprintf("verify gate failed its first check and the session was never re-prompted, since %s", gate.EndedEarly)
+	default:
+		return fmt.Sprintf("verify gate did not pass after %d of %d re-prompt(s) and the run ended with re-prompts left, since %s", sent, limit, gate.EndedEarly)
+	}
+}
+
+// failedEntryReprompts returns the re-prompts the failed gate entry sent.
+// It returns every entry's re-prompts when none is marked failed.
+func failedEntryReprompts(gate *shuttleengine.GateOutcome) int {
+	for _, entry := range gate.Entries {
+		if entry.State == shuttleengine.GateEntryFailed {
+			return entry.Attempts
+		}
+	}
+	return gate.Attempts
+}
+
+// verifyGateStuckTextBytes bounds each piece of gate output a stuck reason quotes, so the one-line reason stays readable.
+const verifyGateStuckTextBytes = 400
+
+// verifyGateStuckFailure names what the report's failure was and ends in its way forward.
+// A failed verify names its command, then the hang, the failing identities, the dirty paths or the timeout.
+// A failure that named no identity says so.
+// It quotes the tail of the command's output, or says the output was empty, since the gate itself may have erred.
+// A run-level entry's failure names the entry and opens its findings.
+// After a CPU watchdog quit, the hang's own way forward replaces the general one.
+func verifyGateStuckFailure(report VerifyGateReport, reentry string) string {
+	fixStep := fmt.Sprintf("read %s and commit a fix on the task branch", report.LogPath)
+	var what string
+	switch {
+	case report.Entry != "":
+		what = fmt.Sprintf("the run-level %q entry failed: %s", report.Entry, oneLine(cutHead(report.Findings, verifyGateStuckTextBytes)))
+		fixStep = fmt.Sprintf("fix what the %q entry's findings name and commit it on the task branch", report.Entry)
+	case len(report.Dirty) > 0:
+		what = "the worktree held uncommitted paths " + strings.Join(report.Dirty, ", ")
+		fixStep = "commit or remove those paths on the task branch"
 	case report.Hang != "":
 		what = hangStuckReason(report, reentry)
-	case len(report.Failures) > 0:
-		what = strings.Join(failureIDs(report.Failures), ", ")
-	case len(report.Dirty) > 0:
-		what = "uncommitted paths " + strings.Join(report.Dirty, ", ")
+		if report.WatchdogWindow != "" {
+			return withCommand(report.Command, what)
+		}
 	case report.TimedOut != "":
 		what = fmt.Sprintf("the verify command timed out (%s) and was not re-run, see %s", report.TimedOut, report.LogPath)
+	case len(report.Failures) > 0:
+		what = fmt.Sprintf("failing %s, see %s", strings.Join(failureIDs(report.Failures), ", "), report.LogPath)
+	default:
+		output := "its output was empty"
+		if report.LogTail != "" {
+			output = "output tail: " + oneLine(cutTail(report.LogTail, verifyGateStuckTextBytes))
+		}
+		what = fmt.Sprintf("the verify command exited with code %d and its output named no failing test, so the gate itself may have erred; %s; see %s",
+			report.ExitCode, output, report.LogPath)
 	}
-	return fmt.Sprintf("verify gate failed after %d attempt(s) of %d: %s", report.Attempt, report.Cap, what)
+	return withCommand(report.Command, what) + "; " + wayForwardSteps(fixStep, reentry)
+}
+
+// withCommand opens what with the verify command it failed under, and returns what alone when command is empty.
+func withCommand(command, what string) string {
+	if command == "" {
+		return what
+	}
+	return fmt.Sprintf("`%s`: %s", command, what)
+}
+
+// cutHead returns s cut to its first limit bytes on a rune boundary.
+func cutHead(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit]
+}
+
+// cutTail returns s cut to its last limit bytes on a rune boundary.
+func cutTail(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	start := len(s) - limit
+	for start < len(s) && !utf8.RuneStart(s[start]) {
+		start++
+	}
+	return s[start:]
 }
 
 // hangStuckReason describes a hang report for the stuck reason.

@@ -317,18 +317,19 @@ func (c *websterCLI) executionBatches(plan *planparser.Plan, st *websterengine.S
 // A refusal that cobra raises before the verb's RunE stays unnoted.
 // It fires before the friction directory is resolved:
 // a flag-parse or argument-count error, and one raised in resolvePersistentPreRun.
+// The bracket verbs also go through refuseOrphanedMaster, so a Master session whose run ended cannot drive them.
 func (c *websterCLI) addVerbs(parent *cobra.Command) {
 	parent.AddCommand(c.validateCmd())
 	parent.AddCommand(c.verifyCmd())
 	for _, verb := range []*cobra.Command{
 		c.runCmd(),
 		c.statusCmd(),
-		c.beginBatchCmd(),
-		c.awaitBatchCmd(),
-		c.recordBatchCmd(),
-		c.recoverBatchCmd(),
-		c.fixVerifyCmd(),
-		c.fixPlanCmd(),
+		c.refuseOrphanedMaster(c.beginBatchCmd()),
+		c.refuseOrphanedMaster(c.awaitBatchCmd()),
+		c.refuseOrphanedMaster(c.recordBatchCmd()),
+		c.refuseOrphanedMaster(c.recoverBatchCmd()),
+		c.refuseOrphanedMaster(c.fixVerifyCmd()),
+		c.refuseOrphanedMaster(c.fixPlanCmd()),
 		c.rebaselineCmd(),
 		c.acceptAuditCmd(),
 		c.restorePlanCmd(),

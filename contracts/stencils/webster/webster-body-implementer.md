@@ -82,6 +82,8 @@ Make exactly the changes the card describes, in exactly the targets its type lab
 5. If the card declares a `**Verify:**` line, run `lym gate card-verify <card id>` once, as a foreground Bash call under the gate rule, immediately after committing that card; the call runs the card's line itself, so you never run the line as a Bash call of your own.
    A non-zero exit fails the card exactly like the gate in step 3 — there is no separate "deferred verify" concept;
    every card's gate (the steps above, plus its `lym gate card-verify` call when it declares a `**Verify:**` line) is checked right after that card's own commit, never bundled into a later card.
+6. A fix you make after a card's commit, for its `lym gate card-verify` call, the batch gate or a test it broke, lands as a new commit on top, its subject the card's own subject followed by ` (fix)`.
+   Never amend, squash, rebase or reset a commit already made: a status push may have published it, and a rewritten commit leaves the task branch diverged from origin.
 
 A card that departs from its own text because a PATTERN entry forbids the card's way records the departure as a `Pattern-Departure:` trailer in that card's commit, in the shape the `## Pattern-Departure trailer` section of `{{.specs_dir}}/loom/loom-plan-spec.md` defines.
 

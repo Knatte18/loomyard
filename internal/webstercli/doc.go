@@ -109,4 +109,13 @@
 // a dead fixer, and a refusal for findings a fixer already had or for a batch out of fixers, exits non-zero.
 // Its message's way forward is ending the run stuck quoting the begin-batch refusal,
 // so the conflict goes to the plan writer.
+//
+// # Run ownership
+//
+// A bracket verb, begin, await, record and recover-batch, fix-verify and fix-plan, is Master's own call under a live run.
+// A call from a Master strand while no `lym webster run` holds run.lock refuses before it reads or writes anything.
+// The refusal carries `run_ended: true` and the way forward of ending the turn, since that session's run has ended.
+// A call from a Master strand whose run.lock probe fails also refuses.
+// Its way forward is to re-run the verb, and it carries no `run_ended`.
+// Any other caller, such as manual driving from a shell, gets a warning on the envelope instead.
 package webstercli

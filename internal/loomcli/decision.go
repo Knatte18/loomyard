@@ -366,18 +366,49 @@ func decisionNoticeReceiver(strand, caller string) bool {
 		!agentname.MatchesRole(name.Role, sheddriver.TacklerRole) && !agentname.MatchesRole(name.Role, loomengine.ArbiterRole)
 }
 
+// decisionNoticeHeldBack is one live strand the verb did not wake, reported on its success envelope.
+type decisionNoticeHeldBack struct {
+	Strand string `json:"strand"`
+	Reason string `json:"reason"`
+}
+
+// heldBackReason returns why the live strand named strand gets no notice from a run standing in state halted.
+// It returns empty when the strand gets one.
+// halted is empty for a running run or one with no status file.
+// A Webster Master session of a halted run is left over from a run that ended:
+// woken, it would drive the run's bracket verbs with no `lym webster run` owning them.
+// The fresh session a re-entry starts carries the decision in its prompt instead.
+func heldBackReason(strand string, halted shedengine.State) string {
+	if halted == "" {
+		return ""
+	}
+	name, err := agentname.Parse(strand)
+	if err != nil || !agentname.MatchesRole(name.Role, websterengine.MerriamStrandRole) {
+		return ""
+	}
+	return fmt.Sprintf("the run is %s, so this Webster session's run has ended and waking it would start work no run owns; the fresh session the run's re-entry starts carries the decision", halted)
+}
+
 // notifyLiveRuns posts one notice of the entries added to every live run of the target worktree the notice is for.
-// It returns the strands posted to and the failures, each logged at Warn; a failure never stops the next post.
-func notifyLiveRuns(deps decisionDeps, added []discussionparser.AddedDecision) ([]string, []decisionNoticeError) {
+// halted is the run's state when it is not running, and empty otherwise; heldBackReason picks the strands it keeps from.
+// It returns the strands posted to, the strands held back, and the failures, each logged at Warn;
+// a failure never stops the next post.
+func notifyLiveRuns(deps decisionDeps, added []discussionparser.AddedDecision, halted shedengine.State) ([]string, []decisionNoticeHeldBack, []decisionNoticeError) {
 	notified := []string{}
+	heldBack := []decisionNoticeHeldBack{}
 	failures := []decisionNoticeError{}
 	strands, err := deps.liveStrands()
 	if err != nil {
 		logger.Warn("loom: decision add could not list the run's live agents; no notice sent", "error", err)
-		return notified, append(failures, decisionNoticeError{Error: "list the run's live agents: " + err.Error()})
+		return notified, heldBack, append(failures, decisionNoticeError{Error: "list the run's live agents: " + err.Error()})
 	}
 	for _, strand := range strands {
 		if !decisionNoticeReceiver(strand, deps.strandName) {
+			continue
+		}
+		if reason := heldBackReason(strand, halted); reason != "" {
+			logger.Warn("loom: decision add held its notice back from a live agent of a halted run", "strand", strand, "state", string(halted))
+			heldBack = append(heldBack, decisionNoticeHeldBack{Strand: strand, Reason: reason})
 			continue
 		}
 		lines := []string{decisionNoticeLine(deps.recordPath, added, decisionNoticeInline(strand))}
@@ -401,7 +432,7 @@ func notifyLiveRuns(deps decisionDeps, added []discussionparser.AddedDecision) (
 		}
 		notified = append(notified, strand)
 	}
-	return notified, failures
+	return notified, heldBack, failures
 }
 
 // recordWritePending reports whether the run's current row is Record-Write or an earlier one, so Record-Write has yet to finish.
@@ -868,13 +899,20 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		}
 	}
 	recordStoreError := copyRecordToBoard(deps, currentRow)
-	notified, noticeErrors := notifyLiveRuns(deps, added)
+	var halted shedengine.State
+	if found && st.State != shedengine.StateRunning {
+		halted = st.State
+	}
+	notified, heldBack, noticeErrors := notifyLiveRuns(deps, added, halted)
 	result := map[string]any{
 		"slug":          slug,
 		"record":        deps.recordPath,
 		"headings":      headings,
 		"notified":      notified,
 		"notice_errors": noticeErrors,
+	}
+	if len(heldBack) > 0 {
+		result["notice_held_back"] = heldBack
 	}
 	if recordStoreError != "" {
 		result["record_store_error"] = recordStoreError
@@ -1310,7 +1348,7 @@ discussion check (restoring the record on a finding) and commits.
 It changes neither the support log nor the plan. Past Discussion approval it
 also copies the record onto the run's board entry; a failed copy is reported
 as "record_store_error", never fails the verb. It then notifies the run's other
-live agents ("notified", "notice_errors").
+live agents ("notified", "notice_errors", "notice_held_back").
 
 --by is parent, operator or arbiter (the last only from the run's arbiter
 strand). --title, --decision and --rationale are required without --from. A named session other than the run's parent orch, arbiter or sampler
@@ -1335,7 +1373,7 @@ pattern_text. --by and --amends-plan apply to every entry. All land in one
 commit or none does; no two share a title or a PATTERN entry.
 
 Example:
-  lym loom decision add <slug> --by parent --title "Keep cache" --decision "Per run." --rationale "Shared races."`,
+  lym loom decision add <slug> --by parent --title "T" --decision "D" --rationale "R"`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

@@ -1162,6 +1162,7 @@ User-facing modules each get one `lym <module>` namespace:
   The line names the record and the heading of each entry.
   The tackler, the arbiter and the caller get no line.
   It reports the strands told under `notified` and any failed notice under `notice_errors`, without failing.
+  A Webster Master session of a run that is not running gets no notice and is named under `notice_held_back`.
   `validate-plan` runs the same checks a non-twill Plan-Write run's and Plan-Burler-Fix's own gates run, standalone.
   The exit-code and findings-envelope contract is the same as `validate-discussion`'s.
   It works over the current worktree's plan instead of its discussion.

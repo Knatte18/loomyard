@@ -336,7 +336,7 @@
 // Master hands it on through the forks it spawns afterwards.
 // Their implementer and verify-fix bodies let a parent decision win over a card.
 // With no batch left, Master tells its parent the decision reaches the code only through a gate fixer or plan amendment.
-// The notice reaches only a Master already running.
+// The notice reaches only a Master already running, and never one whose run is halted.
 // Run therefore renders every `Added after Discussion` entry of the decision record verbatim into the master prompt.
 // The entries land in the `parent_decisions` marker (`none` without one):
 // a Master that a re-step starts after its parent answered an earlier stop is told that answer, and never asks it again.
@@ -1181,7 +1181,14 @@
 // Every failed evaluation writes the verify-gate report (VerifyGateReportPath).
 // The report is `verify-gate.yaml` in the reports directory.
 // It returns renderVerifyGateFindings of the report as the findings Merriam reads.
-// The report carries the attempt and the cap, the failing identities or the dirty paths, and the verify log's path.
+// The report carries the attempt and the cap.
+// It also carries the verify command and its exit code.
+// It lists the failing identities or the dirty paths, and the verify log's path.
+// The cap is the entry's re-prompt budget, so the evaluation that spends it is numbered one past the cap.
+// A failure whose log names no failing identity keeps the log's tail, since only its output shows what failed.
+// The stuck reason of a run whose gate spent its budget counts the failing entry's re-prompts against that budget.
+// It names the command and what failed, and ends in a way forward.
+// It quotes the output tail of a failure that named no test.
 // It also carries the commits the fixer made since the pre-fix head and a hint:
 // the cards, in trail order, whose commits changed a file directly in a failing package's directory.
 // cardHint computes it over accumulatedCardSHAs.
