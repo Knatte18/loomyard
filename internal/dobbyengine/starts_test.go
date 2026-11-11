@@ -264,6 +264,24 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 		}
 	})
 
+	t.Run("a run whose board entry ended takes no slot whatever batten's state", func(t *testing.T) {
+		t.Parallel()
+		for _, state := range []string{"failed", runStateRunning} {
+			t.Run(state, func(t *testing.T) {
+				t.Parallel()
+				ended := runningRun("ended")
+				ended.State, ended.EntryEnded = state, true
+				h := newPassHarness(t, ended)
+				h.fake.maxRuns = 1
+				h.fake.tasks = []TaskView{readyTask("a")}
+				h.tick(false)
+				if got := len(h.fake.spawnsOf("a")); got != 1 {
+					t.Errorf("passes of the ready task = %d; want it started in the slot the ended run leaves free", got)
+				}
+			})
+		}
+	})
+
 	t.Run("done runs take no slot, get no pass and leave the state record", func(t *testing.T) {
 		t.Parallel()
 		done := func(slug string) RunView {

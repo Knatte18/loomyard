@@ -111,6 +111,7 @@
 //     The second stop removes a strand only while reed still tracks it.
 //     It logs a failed stop when reed's status probe fails.
 //   - Between ticks it calls the binary check, which re-execs onto a changed lym binary.
+//     It skips the check while a teardown of an ended run's pair is in flight, which a re-exec would cut short.
 //     The check logs `re-exec onto the changed lym binary` right before the exec.
 //     An exec that fails logs `re-exec failed` and posts a notice naming `lym beam stop` and `lym beam start`.
 //     The notice goes once per binary identity, and the dobby keeps running.
@@ -200,7 +201,8 @@
 //     and no pause entry covers the hub or the slug.
 //     Each tick reads the local board, which a write of `board.json` and the probe tick both cause.
 //     It starts each ready task while fewer than `max_runs` runs it drives are in flight:
-//     halted runs count; done runs, runs recorded owned elsewhere and pawl runs with no landing hold do not.
+//     halted runs count;
+//     done runs, runs recorded owned elsewhere, pawl runs with no landing hold and runs whose entry ended do not.
 //     `max_runs: 0` starts nothing.
 //   - Right before each start, dobby reads the cgroup task limit it sits under through Deps.TaskLimit.
 //     The limit is that of the level of its own cgroup ancestry with the fewest free tasks, such as the user slice.
@@ -268,7 +270,26 @@
 //     Such a run only waits on its members at Worktree-Create, Preflight, Beam-Up and Beam-Await.
 //     It takes a slot from Finalize on.
 //     The parent's dobby still schedules the run's passes, owed full passes and probes as for every run it drives.
-//     The view's `max_runs` reasons follow, since BuildView counts through the same rule.
+//   - A run whose RunView carries EntryEnded takes no slot either, whatever batten's state says.
+//     EntryEnded marks a run whose board entry is done or gone from the board.
+//     A landed run that batten stopped as failed or halted before its Worktree-Teardown row therefore frees its slot.
+//   - The view's `max_runs` reasons follow, since BuildView counts through the same rule.
+//
+// The ended teardown:
+//
+//   - A run is stranded when its entry ended (RunView.EntryEnded) and its pair is on disk (RunView.PairPresent),
+//     while dobby gives it no pass: batten's state is neither running, nor paused with its work on its parent, nor done.
+//     A run with a pass in flight, a held driver lock, a cancel marker, a covering pause or an owned-elsewhere mark is not.
+//   - After the passes, each tick hands every stranded run whose wait ran out to one call of Deps.TearDownEnded.
+//     The hub wiring runs the hub's origin reconcile there, as `lym cleanup --apply` does,
+//     and that reconcile tears down the pair of each run origin has ended.
+//     The call returns at once, and a later tick reads its one result; only one is in flight at a time.
+//   - A removed pair logs `teardown <slug>: pair removed`.
+//     A teardown that failed logs `teardown <slug> failing: <reason>` once per episode.
+//     Its run waits one probe interval, then twice its last wait after each further failure, up to an hour.
+//     The waits are in memory only, and a run that is no longer stranded forgets its wait.
+//   - A teardown in flight keeps the loop out of its idle backoff, and holds the binary check until it ends.
+//     A nil TearDownEnded tears nothing down.
 //
 // The landing step:
 //

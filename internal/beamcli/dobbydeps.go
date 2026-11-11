@@ -1,6 +1,6 @@
 // dobbydeps.go fills the seams of dobbyengine.Run over a hub.
 // It covers the runs and tasks it reads, the pass it spawns, and the notices it sends.
-// It also covers the owner pause and board tidy it sends.
+// It also covers the owner pause and board tidy it sends, and the teardown of an ended run's pair it starts.
 // It also covers the hibernate request and the test-map refresh the prime's dobby carries,
 // and the registration of the dobby process itself.
 
@@ -40,6 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -149,6 +150,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		SpawnPass: func(slug string, continuePass, noReopen bool) (<-chan dobbyengine.PassExit, error) {
 			return spawnPass(geom, slug, continuePass, noReopen)
 		},
+		TearDownEnded: func(slugs []string) <-chan map[string]error { return tearDownEnded(prime, slugs) },
 		Notice: func(_ context.Context, line string) error {
 			posted, err := orchcli.NotifyFromScoped(worktree, geom.Slug, dobbyProgram, line)
 			if err != nil {
@@ -251,6 +253,62 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		deps.TidyShuttle = &runnerTidyShuttle{worktree: worktree}
 	}
 	return deps, nil
+}
+
+// tearDownEnded runs the hub-scope origin reconcile from prime in a goroutine of its own, as `lym cleanup --apply` does.
+// That reconcile tears down the local pair of every run origin has ended, and moves the hub's branches behind origin.
+// Each entry of its mutation record is logged at Info.
+// The channel delivers once.
+// It maps each of slugs to nil when the reconcile removed its pair, and to the reason otherwise.
+func tearDownEnded(prime *lymcwd.Location, slugs []string) <-chan map[string]error {
+	result := make(chan map[string]error, 1)
+	go func() {
+		teardown, err := pairteardown.New(prime)
+		if err != nil {
+			result <- endedTeardownResults(slugs, fabricengine.OriginReport{}, err)
+			return
+		}
+		report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+		for _, mutation := range report.Mutations.Entries() {
+			logger.Info("beamcli: origin reconcile mutation", "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
+		}
+		result <- endedTeardownResults(slugs, report, err)
+	}()
+	return result
+}
+
+// endedTeardownResults maps each of slugs to nil when report shows its pair removed, and to the reason otherwise.
+// reconcileErr is the error the reconcile behind report returned, which every slug then carries.
+func endedTeardownResults(slugs []string, report fabricengine.OriginReport, reconcileErr error) map[string]error {
+	results := make(map[string]error, len(slugs))
+	for _, slug := range slugs {
+		results[slug] = endedTeardownResult(slug, report, reconcileErr)
+	}
+	return results
+}
+
+// endedTeardownResult reads slug's ended entry in report: nil when its pair was removed, and the reason otherwise.
+func endedTeardownResult(slug string, report fabricengine.OriginReport, reconcileErr error) error {
+	switch {
+	case reconcileErr != nil:
+		return fmt.Errorf("the hub's origin reconcile failed: %w", reconcileErr)
+	case report.Unreachable:
+		return errors.New("origin was unreachable, so the reconcile judged no run ended")
+	}
+	for _, entry := range report.Entries {
+		if entry.Slug != slug || entry.State != fabricengine.EntryEnded {
+			continue
+		}
+		switch {
+		case entry.Removed:
+			return nil
+		case entry.Busy:
+			return fmt.Errorf("its pair is busy; %s", entry.WayForward)
+		case entry.Error != "":
+			return fmt.Errorf("its pair's teardown failed: %s", entry.Error)
+		}
+	}
+	return fmt.Errorf("origin's board does not show %s ended, so the reconcile left its pair; way forward: read lym batten status %s", slug, slug)
 }
 
 // pullBolt brings the Bolt at boardDir, in the hub at hubRoot, up to date from origin.

@@ -79,8 +79,10 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 // Starting runs the task's first pass, a full pass that claims it as batten does.
 // A slug with a pass in flight is never started twice.
 // The count covers the runs listed for this tick, halted and done ones included.
-// It leaves out runs recorded as owned elsewhere and pawl runs without their landing hold;
-// it adds first passes that have not yet left a status file.
+// It leaves out runs recorded as owned elsewhere.
+// It leaves out pawl runs without their landing hold.
+// It leaves out runs whose board entry is done or gone.
+// It adds first passes that have not yet left a status file.
 // A task whose backoff has not run out waits, unless its entry changed since the refusal.
 // While the cgroup task limit leaves fewer than task_headroom tasks free, the step starts no task.
 // While an open front task of the worktree stands, the step starts no other task.
@@ -292,7 +294,7 @@ func (d *daemon) taskLimitHolds(headroom int, now time.Time) bool {
 }
 
 // runsInFlight counts the runs this dobby drives that take a slot.
-// These are the listed runs not recorded owned elsewhere, plus first passes that left no run yet.
+// These are the listed runs slotsTaken counts, plus first passes that left no run yet.
 func (d *daemon) runsInFlight(current State) int {
 	listed := make(map[string]bool, len(d.runs))
 	for _, run := range d.runs {
@@ -308,11 +310,13 @@ func (d *daemon) runsInFlight(current State) int {
 }
 
 // slotsTaken counts the runs that take a slot under max_runs:
-// a run takes one unless the record marks it owned elsewhere, or it is a pawl run without its landing hold.
+// a run takes one unless the record marks it owned elsewhere, it is a pawl run without its landing hold,
+// or its board entry is done or gone.
+// A run whose entry ended has nothing left to start, so batten stopping it short of its teardown holds no slot.
 func slotsTaken(runs []RunView, record State) int {
 	count := 0
 	for _, run := range runs {
-		if !record.Runs[run.Slug].OwnedElsewhere && !run.NoSlot {
+		if !record.Runs[run.Slug].OwnedElsewhere && !run.NoSlot && !run.EntryEnded {
 			count++
 		}
 	}

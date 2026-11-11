@@ -93,6 +93,10 @@ type Deps struct {
 	// It runs in its own process group with the prime's anchor as its working directory, and the spawn is logged at Info.
 	// The pass registers itself in `internal/runproc`, so dobby registers nothing; the channel delivers the exit once.
 	SpawnPass func(slug string, continuePass, noReopen bool) (<-chan PassExit, error)
+	// TearDownEnded starts the teardown of the pairs of slugs, runs whose board entry ended short of their own teardown.
+	// The channel delivers once, mapping each slug to nil when its pair was removed and to the reason otherwise.
+	// A nil TearDownEnded tears nothing down.
+	TearDownEnded func(slugs []string) <-chan map[string]error
 	// Notice posts one line to the nearest live orch.
 	Notice func(ctx context.Context, line string) error
 	// PauseOwned pauses the run slug under the owner caller, since another machine owns it.
@@ -377,6 +381,10 @@ type daemon struct {
 	lastReminders map[string]time.Time
 	// waitFailures guards the wait reads by slug or `|`-prefixed name: Warn first, Debug while it repeats, Info on recovery.
 	waitFailures logger.EpisodeSet
+	// teardown is the teardown of stranded runs' pairs in flight, nil when none is.
+	teardown *endedTeardown
+	// endedRetries holds, by slug, when each stranded run's teardown may start next, in memory only.
+	endedRetries map[string]endedRetry
 }
 
 // releaseLock releases the dobby lock when it is held.
@@ -552,13 +560,16 @@ func (d *daemon) loop(ctx context.Context, events <-chan struct{}) error {
 		}
 		d.rememberKeptTidy(kept, readErr)
 
-		d.deps.CheckBinary(
-			func() { d.logOwn(d.deps.Now(), "re-exec onto the changed lym binary") },
-			func(err error) {
-				d.logOwn(d.deps.Now(), fmt.Sprintf("re-exec failed: %v; the dobby keeps running", err))
-				d.post(ctx, fmt.Sprintf("%s: the dobby could not re-exec onto the changed lym binary: %v; it keeps running on the old binary; way forward: fix the binary, then run lym beam stop and lym beam start", d.geom.WorktreeName, err))
-			},
-		)
+		// A re-exec would cut a teardown in flight short, half done, so the check waits for it to end.
+		if d.teardown == nil {
+			d.deps.CheckBinary(
+				func() { d.logOwn(d.deps.Now(), "re-exec onto the changed lym binary") },
+				func(err error) {
+					d.logOwn(d.deps.Now(), fmt.Sprintf("re-exec failed: %v; the dobby keeps running", err))
+					d.post(ctx, fmt.Sprintf("%s: the dobby could not re-exec onto the changed lym binary: %v; it keeps running on the old binary; way forward: fix the binary, then run lym beam stop and lym beam start", d.geom.WorktreeName, err))
+				},
+			)
+		}
 
 		wait = nextWait(wait, d.inFlight, event)
 		if wait == 0 {
@@ -647,6 +658,9 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	scheduling := moving == "" && !d.adoptHolds
 	if scheduling {
 		if err := d.drivePasses(ctx, now); err != nil {
+			return err
+		}
+		if err := d.tearDownEnded(now); err != nil {
 			return err
 		}
 		d.runNotices(ctx, now)

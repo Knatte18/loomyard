@@ -50,6 +50,11 @@ type RunView struct {
 	Held bool
 	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
 	NoSlot bool
+	// EntryEnded reports whether the run's board entry is done or gone from the board, whatever batten's state says.
+	// Such a run takes no slot under max_runs.
+	EntryEnded bool
+	// PairPresent reports whether the run's task worktree is still on disk.
+	PairPresent bool
 	// PastLand reports whether the run is past its Land row, and Landed whether it landed there rather than ending without landing.
 	PastLand bool
 	Landed   bool

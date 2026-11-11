@@ -1,5 +1,6 @@
 // dobbypairanchor_test.go pins that dobby's two pair-reading callers place a task pair at the pair's own anchor.
-// It also pins what DobbyRuns reads of a run's place against its Land row, over a hubforge hub.
+// It also pins, over a hubforge hub, what DobbyRuns reads of a run's place against its Land row.
+// It pins what DobbyRuns reads of the run's ended board entry and of its pair too.
 
 package beamcli
 
@@ -235,7 +236,7 @@ func TestDobbyRuns_ReadsWhetherAPausedRunsWorkReachedItsParent(t *testing.T) {
 	}
 }
 
-func TestDobbyRuns_ReadsTheLandOutcomeAndTheLandingCommit(t *testing.T) {
+func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -246,6 +247,7 @@ func TestDobbyRuns_ReadsTheLandOutcomeAndTheLandingCommit(t *testing.T) {
 		"landed":     `{"state":"done","current_producer":"Worktree-Teardown","history":[{"producer":"Land","outcome":"done","output":"","at":"2026-10-31T10:00:00Z"}]}`,
 		"unlanded":   `{"state":"done","current_producer":"Worktree-Teardown"}`,
 		"unreadable": `{"state":"done","current_producer":"Worktree-Teardown","history":[{"producer":"Land","outcome":"done","output":"","at":"2026-10-31T10:00:00Z"}]}`,
+		"pairless":   `{"state":"done","current_producer":"Worktree-Teardown"}`,
 	}
 	for slug, status := range statuses {
 		hubforge.AddPair(t, h, slug)
@@ -253,6 +255,22 @@ func TestDobbyRuns_ReadsTheLandOutcomeAndTheLandingCommit(t *testing.T) {
 		if err := os.WriteFile(shedrun.StatusFile(prime, slug), []byte(status), 0o644); err != nil {
 			t.Fatalf("write the status of %s: %v", slug, err)
 		}
+	}
+	pairless, err := lymcwd.NamedWorktree(prime.HubPath, "pairless")
+	if err != nil {
+		t.Fatalf("NamedWorktree(pairless) = _, %v; want nil", err)
+	}
+	if err := os.RemoveAll(pairless.WorktreePath()); err != nil {
+		t.Fatalf("remove the pair of pairless: %v", err)
+	}
+
+	// "ahead" and "unreadable" stay open on the board, "landed" is done, and the others are gone from it.
+	board := `{"version":1,"entries":[` +
+		`{"id":1,"slug":"ahead","title":"Ahead","kind":"task","labels":["bug"]},` +
+		`{"id":2,"slug":"landed","title":"Landed","kind":"task","labels":["bug"],"status":"done"},` +
+		`{"id":3,"slug":"unreadable","title":"Unreadable","kind":"task","labels":["bug"]}]}`
+	if err := os.WriteFile(filepath.Join(h.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
 	}
 	if err := shedrun.WriteLandedCommit(prime, "landed", "abc123"); err != nil {
 		t.Fatalf("WriteLandedCommit() = %v; want nil", err)
@@ -263,19 +281,27 @@ func TestDobbyRuns_ReadsTheLandOutcomeAndTheLandingCommit(t *testing.T) {
 		t.Fatalf("make the landed-commit path a directory: %v", err)
 	}
 
-	views, err := battencli.DobbyRuns(prime, dobbyengine.Geometry{}, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"))
+	geom := dobbyengine.Geometry{BoardDir: h.BoardDir()}
+	views, err := battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"))
 	if err != nil {
 		t.Fatalf("DobbyRuns() = _, %v; want nil", err)
 	}
 	type landing struct {
-		pastLand, landed bool
-		commit           string
+		pastLand, landed        bool
+		commit                  string
+		entryEnded, pairPresent bool
 	}
 	got := map[string]landing{}
 	for _, view := range views {
-		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit}
+		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit, view.EntryEnded, view.PairPresent}
 	}
-	want := map[string]landing{"ahead": {}, "landed": {true, true, "abc123"}, "unlanded": {pastLand: true}, "unreadable": {pastLand: true, landed: true}}
+	want := map[string]landing{
+		"ahead":      {pairPresent: true},
+		"landed":     {true, true, "abc123", true, true},
+		"unlanded":   {pastLand: true, entryEnded: true, pairPresent: true},
+		"unreadable": {pastLand: true, landed: true, pairPresent: true},
+		"pairless":   {pastLand: true, entryEnded: true},
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("DobbyRuns() land readings = %+v; want %+v", got, want)
 	}

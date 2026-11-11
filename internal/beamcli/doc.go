@@ -430,6 +430,14 @@
 //     each run's parent comes through `hubgeom.ParentOf`;
 //   - `battencli.DobbyRuns` also marks each run `NoSlot` through the run's board entry;
 //     a pawl run without its landing hold thus takes no slot under `max_runs`;
+//     it marks the run `EntryEnded` when that entry is done or gone from the board, and reads whether its pair is on disk;
+//   - the teardown of an ended run's pair, `TearDownEnded`, for every dobby:
+//     `tearDownEnded` runs `fabricengine.ReconcileOrigin` over the hub scope from the prime in a goroutine of its own,
+//     with the seams `pairteardown` builds for the hub, as `lym cleanup --apply` does;
+//     that reconcile tears down every pair origin has ended and moves the hub's branches behind origin;
+//     each requested run reads as removed only when the report's ended entry for it says so;
+//     Bound: a teardown in flight when the dobby stops ends half done;
+//     the next attempt or `lym cleanup --apply` finishes it;
 //   - `battencli.DobbyRuns` also reads each run's place against its Land row through `battenrecipe.LandOutcomeOf`;
 //     it reads the landing commit through `shedrun.ReadLandedCommit`;
 //     for a paused run, whether its work already reached its parent, by the judgment `lym batten cancel` refuses on;

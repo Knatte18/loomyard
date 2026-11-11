@@ -135,6 +135,8 @@ var unreadableReachedParent logger.EpisodeSet
 // A run's place against its Land row is read from its status,
 // and a landed run carries the landing commit its landing recorded, empty when none is readable.
 // Whether the run takes no slot is judged from its board entry on the local board at geom.BoardDir.
+// Whether that entry ended, done or gone from the board, is judged from the same board.
+// Whether its pair is present is read from its task worktree's path.
 // A paused run also carries whether its work already reached its parent.
 // That is read from the child's status in the task worktree,
 // and a read that fails leaves the run unreached, with one Warn, so the run stays paused.
@@ -160,13 +162,15 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 	for _, run := range runs {
 		slug := run.slug
 		coverage := record.CoverageOf(slug, now)
+		entry, onBoard := entryOf[slug]
 		view := dobbyengine.RunView{
-			Slug:     slug,
-			State:    string(run.status.State),
-			Producer: run.status.CurrentProducer,
-			Covered:  coverage.Covered,
-			Held:     coverage.Held,
-			NoSlot:   runTakesNoSlot(entryOf[slug]),
+			Slug:       slug,
+			State:      string(run.status.State),
+			Producer:   run.status.CurrentProducer,
+			Covered:    coverage.Covered,
+			Held:       coverage.Held,
+			NoSlot:     runTakesNoSlot(entry),
+			EntryEnded: entryEnded(entry, onBoard),
 		}
 		outcome := battenrecipe.LandOutcomeOf(run.status)
 		view.PastLand, view.Landed = outcome != battenrecipe.LandOutcomeAhead, outcome == battenrecipe.LandOutcomeLanded
@@ -183,6 +187,7 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 			func() (err error) { view.CancelMarker, err = markerExists(shedrun.CancelMarker(prime, slug)); return },
 			func() (err error) { view.OriginOwed, err = markerExists(shedrun.OriginOwedMarker(prime, slug)); return },
 			func() (err error) { view.DriverLockHeld, err = lockHeld(shedrun.DriverLock(prime, slug)); return },
+			func() (err error) { view.PairPresent, err = markerExists(pair.WorktreePath()); return },
 			func() error {
 				if !view.Landed {
 					return nil
@@ -226,6 +231,12 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 // It waits on its members there, and takes a slot from Finalize on.
 func runTakesNoSlot(task boardengine.Task) bool {
 	return task.Kind == boardengine.KindProject && task.Beam && boardengine.IsRunStatus(task.Status) && !boardengine.RunHolds(task)
+}
+
+// entryEnded reports whether a run's board entry ended:
+// entry is done, or onBoard is false because the board no longer holds it.
+func entryEnded(entry boardengine.Task, onBoard bool) bool {
+	return !onBoard || boardengine.IsDoneStatus(entry.Status)
 }
 
 // modTimeOf returns the modification time of path, the zero time when it does not exist.

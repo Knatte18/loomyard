@@ -285,3 +285,29 @@ func TestRunTakesNoSlot(t *testing.T) {
 		})
 	}
 }
+
+func TestEntryEnded(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	done, running := boardengine.StatusDone, boardengine.RunStatus("running", "Run-Shed")
+	tests := []struct {
+		name    string
+		entry   boardengine.Task
+		onBoard bool
+		want    bool
+	}{
+		{"DoneEntry", boardengine.Task{Status: &done}, true, true},
+		{"EntryGoneFromTheBoard", boardengine.Task{}, false, true},
+		{"EntryAtARunStatus", boardengine.Task{Status: &running}, true, false},
+		{"EntryWithNoStatus", boardengine.Task{}, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := entryEnded(tt.entry, tt.onBoard); got != tt.want {
+				t.Errorf("entryEnded(%+v, %v) = %v; want %v", tt.entry, tt.onBoard, got, tt.want)
+			}
+		})
+	}
+}
