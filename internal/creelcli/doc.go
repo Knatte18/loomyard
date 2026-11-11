@@ -44,6 +44,11 @@
 // For post and inject the line names what they already stored.
 // For a forward, hold, release or interrupt it says the verb took effect.
 // The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
+// `post` adds `receiver_live` to the envelope when the daemon answers it, and leaves it out for a program or another hub.
+// A post to a receiver that is not live is stored all the same, and prints one `creel: warning: ` line on stderr.
+// The line names the receiver and the command that starts it, and it is printed before the answer line.
+// A `--wait-reply` prints it as soon as the post is stored.
+// A `--wait-reply` resumed after a dropped connection answers no `receiver_live`.
 // `post --interrupt` stops the receiver's running turn before posting.
 // It adds `interrupted` to the envelope beside the id, and with `--reply` it is refused before any call.
 // A receiver a pause covers is claimed into the pause and interrupted;

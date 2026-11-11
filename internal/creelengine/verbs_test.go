@@ -235,6 +235,47 @@ func TestStore_Mail(t *testing.T) {
 			wantBodies(t, e.readBodies(t, strand(orch), ""), "prime line")
 			wantBodies(t, e.readBodies(t, strand(forwardOrch), ""), "to forward")
 		}},
+		{"PostWith_AnswersWhetherTheReceiverIsLiveAndHowToStartOneThatIsNot", func(t *testing.T, e *env) {
+			const (
+				dormantBeamOrch = "ly:payments:orch"
+				absentBeamOrch  = "ly:gone:orch"
+			)
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.DormantStrand(beta), creelfake.DormantStrand(orch), creelfake.DormantStrand(dormantBeamOrch))
+			e.withHubs()
+			e.post(t, program(batten), alpha, "makes the program known")
+			notLive := func(receiver, start string) string {
+				return receiver + " is not live, so the message waits in its mail until it runs again; way forward: start it with " + start
+			}
+			shown := func(live *bool) any {
+				if live == nil {
+					return nil
+				}
+				return *live
+			}
+			tests := []struct {
+				receiver    string
+				wantLive    *bool
+				wantWarning string
+			}{
+				{alpha, new(true), ""},
+				{beta, new(false), notLive(beta, "lym reed resume in /hub/worktree")},
+				{orch, new(false), notLive(orch, "lym beam start root")},
+				{dormantBeamOrch, new(false), notLive(dormantBeamOrch, "lym beam start payments")},
+				{absentBeamOrch, new(false), notLive(absentBeamOrch, "lym beam start gone")},
+				{batten, nil, ""},
+				{"zz:orch", nil, ""},
+			}
+			for _, tt := range tests {
+				posted, err := e.store.PostWith(strand(alpha), tt.receiver, "hi", creelengine.PostOptions{})
+				if err != nil {
+					t.Fatalf("PostWith(%s): %v", tt.receiver, err)
+				}
+				if !reflect.DeepEqual(posted.ReceiverLive, tt.wantLive) || posted.Warning != tt.wantWarning {
+					t.Errorf("PostWith(%s) = live %v, warning %q; want live %v, warning %q", tt.receiver, shown(posted.ReceiverLive), posted.Warning, shown(tt.wantLive), tt.wantWarning)
+				}
+			}
+			wantBodies(t, e.readBodies(t, strand(beta), ""), "hi")
+		}},
 		{"Post_ToAStrandOfAnotherHubIsJournaledOutboundAndWaitsOpen", func(t *testing.T, e *env) {
 			e.withHubs()
 			id, waiter, err := e.store.PostWait(strand(alpha), "zz:orch", "hello across")
@@ -641,14 +682,14 @@ func TestStore_Mail(t *testing.T) {
 				{"PlainPostCarriesNone", creelengine.PostOptions{}, false},
 			}
 			for _, tt := range tests {
-				id, _, waiter, err := e.store.PostWith(strand(alpha), beta, tt.name, tt.opts)
+				posted, err := e.store.PostWith(strand(alpha), beta, tt.name, tt.opts)
 				if err != nil {
 					t.Fatalf("%s: PostWith: %v", tt.name, err)
 				}
-				if (waiter != nil) != tt.opts.Wait {
-					t.Errorf("%s: waiter = %v; want one exactly when Wait is set", tt.name, waiter)
+				if (posted.Waiter != nil) != tt.opts.Wait {
+					t.Errorf("%s: waiter = %v; want one exactly when Wait is set", tt.name, posted.Waiter)
 				}
-				if entries := e.store.Log(creelengine.LogFilter{ID: id}); len(entries) != 1 || entries[0].ExpectReply != tt.want {
+				if entries := e.store.Log(creelengine.LogFilter{ID: posted.ID}); len(entries) != 1 || entries[0].ExpectReply != tt.want {
 					t.Errorf("%s: posted log entry = %+v; want ExpectReply %v", tt.name, entries, tt.want)
 				}
 			}
@@ -663,10 +704,11 @@ func TestStore_Mail(t *testing.T) {
 			}
 		}},
 		{"Reply_LogEntryCarriesTheIdItAnswers", func(t *testing.T, e *env) {
-			id, _, _, err := e.store.PostWith(strand(alpha), beta, "question", creelengine.PostOptions{ExpectReply: true})
+			posted, err := e.store.PostWith(strand(alpha), beta, "question", creelengine.PostOptions{ExpectReply: true})
 			if err != nil {
 				t.Fatalf("PostWith: %v", err)
 			}
+			id := posted.ID
 			e.readBodies(t, strand(beta), "")
 			replyID, err := e.store.Reply(strand(beta), id, "answer")
 			if err != nil {
@@ -1367,7 +1409,7 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 			}
 		}},
 		{"ClaimedLineOfAMarkedMessageIsTheMarkedFormAndAnUnmarkedOneThePlainForm", func(t *testing.T, e *env) {
-			if _, _, _, err := e.store.PostWith(strand(alpha), beta, "marked", creelengine.PostOptions{ExpectReply: true}); err != nil {
+			if _, err := e.store.PostWith(strand(alpha), beta, "marked", creelengine.PostOptions{ExpectReply: true}); err != nil {
 				t.Fatalf("PostWith: %v", err)
 			}
 			e.post(t, strand(alpha), beta, "plain")

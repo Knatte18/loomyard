@@ -572,10 +572,11 @@ func TestScheduler_Outbound(t *testing.T) {
 			hubs.Add("lyt", receiving.geom)
 			e.store.SetHubs(hubs, "linux")
 			fake := listenHubFake(t, receiving, accepted(4))
-			id, _, _, err := e.store.PostWith(strand(alpha), "lyt:orch", "hi", creelengine.PostOptions{})
+			posted, err := e.store.PostWith(strand(alpha), "lyt:orch", "hi", creelengine.PostOptions{})
 			if err != nil {
 				t.Fatalf("PostWith: %v", err)
 			}
+			id := posted.ID
 			e.store.FailJournalWrites(0)
 			e.start(t)
 			fake.awaitArrivals(t, 1)

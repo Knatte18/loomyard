@@ -160,7 +160,8 @@ func (c *Client) Call(req Request, timeout time.Duration, handle func(Response) 
 }
 
 // CallWatching sends the request as the client's claim and returns the final response.
-// It hands every progress response of a waiting inject to progress, in arrival order; a nil progress ignores them.
+// It hands every progress response of a waiting inject or post to progress, in arrival order.
+// A nil progress ignores them.
 func (c *Client) CallWatching(req Request, timeout time.Duration, handle func(Response) error, progress func(Response)) (Response, error) {
 	req.Claim = c.claim
 	var timer <-chan time.Time

@@ -756,6 +756,38 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("post answers receiver_live and warns on stderr of a receiver that is not live, naming how to start it", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		beta := r.name("beta:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha), creelfake.DormantStrand(beta))
+		r.startDaemon(t)
+
+		var liveStderr bytes.Buffer
+		live := runCreelSplit(r.cwd, &liveStderr, "post", alpha, "hello")
+		if live.code != 0 || live.fields["receiver_live"] != true || liveStderr.String() != "" {
+			t.Errorf("creel post to a live strand = (%d, %q, stderr %q); want exit 0 with receiver_live true and no warning", live.code, live.raw, liveStderr.String())
+		}
+		var dormantStderr bytes.Buffer
+		dormant := runCreelSplit(r.cwd, &dormantStderr, "post", beta, "hello")
+		wantWarning := "creel: warning: " + beta + " is not live, so the message waits in its mail until it runs again; way forward: start it with lym reed resume in /hub/worktree\n"
+		if id, _ := dormant.fields["id"].(float64); dormant.code != 0 || id < 1 || dormant.fields["receiver_live"] != false || dormantStderr.String() != wantWarning {
+			t.Errorf("creel post to a dormant strand = (%d, %q, stderr %q); want exit 0 with its id, receiver_live false and stderr %q", dormant.code, dormant.raw, dormantStderr.String(), wantWarning)
+		}
+
+		var waitingStderr lockedBuffer
+		waiting := make(chan cliRun, 1)
+		go func() {
+			waiting <- runCreelSplit(r.cwd, &waitingStderr, "post", "--wait-reply", "--timeout", "5s", beta, "anyone?")
+		}()
+		r.clientClock.AwaitWaits(1)
+		awaitStderr(t, &waitingStderr, wantWarning)
+		r.clientClock.Advance(5 * time.Second)
+		if timedOut := awaitRun(t, waiting); timedOut.code != ExitWaitTimeout || waitingStderr.String() != wantWarning {
+			t.Errorf("creel post --wait-reply to a dormant strand = (%d, %q, stderr %q); want exit %d with the warning once", timedOut.code, timedOut.raw, waitingStderr.String(), ExitWaitTimeout)
+		}
+	})
+
 	t.Run("post --expect-reply marks the message for its receiver, a reply's log entry names the id it answers, and --reply refuses the flag", func(t *testing.T) {
 		r := newRig(t)
 		alpha := r.name("alpha:driver")

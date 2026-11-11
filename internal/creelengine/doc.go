@@ -96,6 +96,12 @@
 // A dormant strand keeps its mail and its queue, and delivery resumes when its strand is live again.
 // Mail to an orch whose strand is not listed waits in the pool, unread.
 // It is delivered once a strand of that name is listed, so a notice to an orch that is down is never refused for it.
+// A stored post answers whether its receiver had a live pane: a listed strand by its flag, an unlisted orch as not live.
+// A receiver that is not live comes with a warning naming the command that starts it:
+// `lym beam start <slug>` for an orch, `root` for the prime's,
+// and `lym reed resume` in its worktree for any other strand.
+// A waiting post sends that warning in a progress response right after its pending one.
+// A post to a program or to a strand of another hub answers no liveness, since creel cannot tell whether either runs.
 // A terminal is never typed into;
 // a caller that wants an answer waits on the socket with `post --wait-reply` or `read --wait`.
 //

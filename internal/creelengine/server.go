@@ -302,20 +302,22 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 	ok := Response{OK: true, Sender: sender.Name}
 	switch req.Verb {
 	case VerbPost:
-		id, interrupted, waiter, err := store.PostWith(sender, req.Receiver, req.Text, PostOptions{Wait: req.Wait, Interrupt: req.Interrupt, ExpectReply: req.ExpectReply})
+		posted, err := store.PostWith(sender, req.Receiver, req.Text, PostOptions{Wait: req.Wait, Interrupt: req.Interrupt, ExpectReply: req.ExpectReply})
 		if err != nil {
 			return err
 		}
 		if req.Wait {
-			return d.awaitOutcome(conn, reader, waiter, id, sender, interrupted)
+			stamp := postStamp{interrupted: posted.Interrupted, receiverLive: posted.ReceiverLive, warning: posted.Warning}
+			return d.awaitOutcome(conn, reader, posted.Waiter, posted.ID, sender, stamp)
 		}
-		ok.ID, ok.Interrupted = id, interrupted
+		ok.ID, ok.Interrupted = posted.ID, posted.Interrupted
+		ok.ReceiverLive, ok.Warning = posted.ReceiverLive, posted.Warning
 	case VerbWaitReply:
 		waiter, err := store.WaitReply(sender, req.ID)
 		if err != nil {
 			return err
 		}
-		return d.awaitOutcome(conn, reader, waiter, req.ID, sender, false)
+		return d.awaitOutcome(conn, reader, waiter, req.ID, sender, postStamp{})
 	case VerbReply:
 		id, err := store.Reply(sender, req.ID, req.Text)
 		if err != nil {
@@ -335,7 +337,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 		if err != nil {
 			return err
 		}
-		return d.awaitOutcome(conn, reader, waiter, 0, sender, false)
+		return d.awaitOutcome(conn, reader, waiter, 0, sender, postStamp{})
 	case VerbInbox:
 		inbox, err := store.Inbox(sender)
 		if err != nil {
@@ -366,7 +368,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 			if err != nil {
 				return err
 			}
-			return d.awaitOutcome(conn, reader, waiter, result.ID, sender, false)
+			return d.awaitOutcome(conn, reader, waiter, result.ID, sender, postStamp{})
 		}
 		result, err := store.Inject(sender, req.Receiver, req.Text, ttl, req.Interrupt)
 		if err != nil {
@@ -378,7 +380,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 		if err != nil {
 			return err
 		}
-		return d.awaitOutcome(conn, reader, waiter, req.ID, sender, false)
+		return d.awaitOutcome(conn, reader, waiter, req.ID, sender, postStamp{})
 	case VerbInterrupt:
 		sent, err := store.Interrupt(sender, req.Receiver)
 		if err != nil {
@@ -409,15 +411,29 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 	return d.write(conn, ok)
 }
 
+// postStamp is what a waiting post's responses carry about its receiver beside the outcome; other waits carry none.
+type postStamp struct {
+	interrupted  bool
+	receiverLive *bool
+	warning      string
+}
+
 // awaitOutcome answers a waiting verb with an interim response that carries the id at once.
+// A stamp's warning follows at once as a progress response.
 // It then sends a progress response for each stall note of a waiting inject.
 // The outcome follows when the waiter is answered.
-// The interim and final responses carry the resolved sender's name and whether the verb stopped the receiver's turn.
+// The interim and final responses carry the resolved sender's name.
+// They also carry whether the verb stopped the receiver's turn and whether the receiver was live.
 // A client that closes its connection, or a daemon that shuts down, ends the wait with no answer.
-func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waiter, id int64, sender Sender, interrupted bool) error {
+func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waiter, id int64, sender Sender, stamp postStamp) error {
 	defer waiter.Cancel()
-	if err := d.write(conn, Response{OK: true, Pending: true, ID: id, Sender: sender.Name, Interrupted: interrupted}); err != nil {
+	if err := d.write(conn, Response{OK: true, Pending: true, ID: id, Sender: sender.Name, Interrupted: stamp.interrupted, ReceiverLive: stamp.receiverLive}); err != nil {
 		return nil
+	}
+	if stamp.warning != "" {
+		if err := d.write(conn, Response{OK: true, Progress: true, ID: id, Warning: stamp.warning}); err != nil {
+			return nil
+		}
 	}
 	watcher := watchClose(conn, reader)
 	defer watcher.stop()
@@ -446,7 +462,10 @@ func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waite
 				// Handed over even when the write failed: the ack line's failed read then releases the reading.
 				return d.awaitAck(conn, reader, sender, reading)
 			}
-			resp := Response{OK: true, ID: id, Sender: sender.Name, Interrupted: interrupted, Outcome: outcome.Kind, Stall: outcome.Stall, StallAt: outcome.StallAt}
+			resp := Response{
+				OK: true, ID: id, Sender: sender.Name, Interrupted: stamp.interrupted, ReceiverLive: stamp.receiverLive,
+				Outcome: outcome.Kind, Stall: outcome.Stall, StallAt: outcome.StallAt,
+			}
 			if outcome.Kind == OutcomeReply || outcome.Kind == OutcomeReturned || outcome.Kind == OutcomeUnanswered {
 				resp.Message = &outcome.Message
 			}

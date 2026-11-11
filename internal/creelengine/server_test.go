@@ -329,6 +329,48 @@ func (r *rig) rawExchange(line string) creelengine.Response {
 	return resp
 }
 
+// rawResponses reads the responses a daemon sends to one request on a connection of its own.
+type rawResponses struct {
+	t      *testing.T
+	reader *bufio.Reader
+}
+
+// openRawRequest sends req on a new connection, which stays open until the test ends, and returns its responses.
+// The real-time read deadline only bounds a failing test.
+func (r *rig) openRawRequest(req creelengine.Request) *rawResponses {
+	r.t.Helper()
+	conn, err := net.Dial("unix", r.geom.SocketPath)
+	if err != nil {
+		r.t.Fatalf("dial %s: %v", r.geom.SocketPath, err)
+	}
+	r.t.Cleanup(func() { _ = conn.Close() })
+	line, err := json.Marshal(req)
+	if err != nil {
+		r.t.Fatalf("encode %+v: %v", req, err)
+	}
+	if _, err := conn.Write(append(line, '\n')); err != nil {
+		r.t.Fatalf("write: %v", err)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		r.t.Fatalf("set the read deadline: %v", err)
+	}
+	return &rawResponses{t: r.t, reader: bufio.NewReader(conn)}
+}
+
+// next reads the next response of the request.
+func (c *rawResponses) next() creelengine.Response {
+	c.t.Helper()
+	answer, err := c.reader.ReadBytes('\n')
+	if err != nil {
+		c.t.Fatalf("read the response: %v", err)
+	}
+	var resp creelengine.Response
+	if err := json.Unmarshal(answer, &resp); err != nil {
+		c.t.Fatalf("decode %q: %v", answer, err)
+	}
+	return resp
+}
+
 // sweepStep moves the daemon clock by the sweep's current wait and waits until it rearmed.
 func (r *rig) sweepStep() {
 	waits := r.clock.AwaitWaitsWhere(1, isSweepWait)
@@ -699,6 +741,64 @@ func TestDaemon_Protocol(t *testing.T) {
 			r.clock.AdvanceByWaitsWhere(isProbeWait, returned)
 			if got := result(t, done); got.err != nil || got.resp.Outcome != creelengine.OutcomeExpired || got.resp.Stall != creelengine.StallDraft {
 				t.Errorf("wait-inject = %+v, %v; want expired carrying the draft stall", got.resp, got.err)
+			}
+		}},
+		{"PostAnswersWhetherItsReceiverIsLiveAndAWaitingPostHearsTheWarningAtOnce", false, func(t *testing.T, r *rig) {
+			r.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.DormantStrand(beta))
+			r.start()
+			clientClock := creelfake.NewClock(epoch)
+			c := r.client(externalClaim(), nil, clientClock)
+			live := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "hello"})
+			if live.ReceiverLive == nil || !*live.ReceiverLive || live.Warning != "" {
+				t.Errorf("post to a live strand = %+v; want receiver_live true and no warning", live)
+			}
+			dormant := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbPost, Receiver: beta, Text: "hello"})
+			if dormant.ReceiverLive == nil || *dormant.ReceiverLive || !strings.HasPrefix(dormant.Warning, beta+" is not live") {
+				t.Errorf("post to a dormant strand = %+v; want receiver_live false and the warning naming %s", dormant, beta)
+			}
+			progress := make(chan creelengine.Response, 8)
+			done := make(chan callResult, 1)
+			go func() {
+				resp, err := c.CallWatching(creelengine.Request{Verb: creelengine.VerbPost, Receiver: beta, Text: "anyone?", Wait: true}, time.Minute, nil,
+					func(note creelengine.Response) { progress <- note })
+				done <- callResult{resp, err}
+			}()
+			if note := nextProgress(t, progress); !note.Progress || note.Warning != dormant.Warning {
+				t.Errorf("waiting post progress = %+v; want the warning %q", note, dormant.Warning)
+			}
+			clientClock.Advance(time.Minute)
+			if got := result(t, done); !errors.Is(got.err, creelengine.ErrWaitTimeout) {
+				t.Errorf("waiting post to a dormant strand = %+v, %v; want the client's timeout", got.resp, got.err)
+			}
+		}},
+		{"WaitingPostAnswersReceiverLiveOnItsPendingAndFinalResponsesAndWarnsOnlyOfAReceiverThatIsNotLive", false, func(t *testing.T, r *rig) {
+			liveAlpha := creelfake.LiveStrand(alpha)
+			liveAlpha.PanePID = os.Getpid()
+			r.del.SetStrands(liveAlpha, creelfake.DormantStrand(beta))
+			// Busy, so the EXTERNAL mail is not carried into the pane and marked read before alpha reads it.
+			r.del.SetIdle(alpha, false)
+			r.start()
+			toDormant := r.openRawRequest(creelengine.Request{Claim: externalClaim(), Verb: creelengine.VerbPost, Receiver: beta, Text: "anyone?", Wait: true})
+			if pending := toDormant.next(); !pending.Pending || pending.ReceiverLive == nil || *pending.ReceiverLive {
+				t.Errorf("pending response of a waiting post to a dormant strand = %+v; want receiver_live false", pending)
+			}
+			if note := toDormant.next(); !note.Progress || !strings.HasPrefix(note.Warning, beta+" is not live") {
+				t.Errorf("progress response of a waiting post to a dormant strand = %+v; want the warning naming %s", note, beta)
+			}
+
+			toLive := r.openRawRequest(creelengine.Request{Claim: externalClaim(), Verb: creelengine.VerbPost, Receiver: alpha, Text: "question", Wait: true})
+			if pending := toLive.next(); !pending.Pending || pending.ReceiverLive == nil || !*pending.ReceiverLive {
+				t.Errorf("pending response of a waiting post to a live strand = %+v; want receiver_live true", pending)
+			}
+			reader := r.client(strandClaim(alpha), nil, creelfake.NewClock(epoch))
+			mail := mustCall(t, reader, creelengine.Request{Verb: creelengine.VerbRead, Wait: true})
+			if len(mail.Messages) != 1 {
+				t.Fatalf("alpha read %d messages; want the question", len(mail.Messages))
+			}
+			mustCall(t, reader, creelengine.Request{Verb: creelengine.VerbReply, ID: mail.Messages[0].ID, Text: "answer"})
+			// Any warning would come between the pending response and this one.
+			if final := toLive.next(); final.Pending || final.Progress || final.Outcome != creelengine.OutcomeReply || final.ReceiverLive == nil || !*final.ReceiverLive {
+				t.Errorf("final response of a waiting post to a live strand = %+v; want the reply outcome with receiver_live true and no warning before it", final)
 			}
 		}},
 		{"PostWaitReplyIsAnsweredWhenTheMessageReturnsUndelivered", false, func(t *testing.T, r *rig) {

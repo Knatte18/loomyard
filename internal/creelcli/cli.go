@@ -373,7 +373,7 @@ func postCmd() *cobra.Command {
 		Long: `post leaves the text as a message for the receiver strand and prints its id.
 A strand shuttle launched with creel's hooks gets the message in full at its
 next tool call or turn end, an idle one woken with it.
-Any other strand, a hand-added one or a session launched without those hooks included,
+Any other strand, a hand-added one or a session launched without those hooks,
 gets a typed notice or reminder and reads the message with "lym creel read".
 
 With --reply <id> the text answers message <id> and goes to its sender, so no
@@ -385,17 +385,20 @@ post --wait-reply. With --wait-reply the call waits for the reply, up to
 recorded it unanswered after chasing its holder.
 
 --expect-reply marks the message as expecting a reply, without waiting for it;
---wait-reply marks it too. The receiver sees the mark beside the reply command
-in the message's header or line, and the holder's reply clears it.
+--wait-reply marks it too. The receiver sees the mark beside the reply command,
+and the holder's reply clears it.
 
 With --parent the text goes to your parent orch, so no receiver is given: from a
 pair the nearest live orch up from its recorded parent, else the prime's; from a
 beam or the prime that worktree's own orch when live. The answer names the
 resolved strand as receiver.
 
---interrupt stops the receiver's running turn first, so the message arrives as
-the input of the turn after it; it needs a receiver shuttle launched with
-creel's hooks, and answers whether a turn was stopped as interrupted.
+--interrupt stops the receiver's running turn first; it needs a receiver
+shuttle launched with creel's hooks, and the answer says whether a turn was
+stopped as interrupted.
+
+A post to a strand answers receiver_live, and a receiver not live gets a
+"creel: warning:" line on stderr.
 
 A receiver may be a strand of another hub, by its full name from lym creel
 hubs; --interrupt is refused. The daemon delivers such a post, so --wait-reply
@@ -403,7 +406,7 @@ may wait up to an hour, and an undeliverable one returns with a CREEL notice.
 
 Example:
   lym creel post ly:impl "the schema changed, rebase before you go on"
-  lym creel post --parent "blocked: which schema do you want?"
+  lym creel post --parent "blocked: which schema?"
   lym creel post --reply 12 "done"`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -441,16 +444,27 @@ Example:
 				} else {
 					receiver = args[0]
 				}
-				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: receiver, Text: text, Wait: waitReply, Interrupt: interrupt, ExpectReply: expectReply}, timeoutWhenWaiting(waitReply, timeout), nil)
+				// A waiting post hears the warning as progress, as soon as the post is stored, and a plain one in its answer.
+				warn := func(resp creelengine.Response) {
+					if resp.Warning != "" {
+						fmt.Fprintln(cmd.ErrOrStderr(), "creel: warning: "+resp.Warning)
+					}
+				}
+				req := creelengine.Request{Verb: creelengine.VerbPost, Receiver: receiver, Text: text, Wait: waitReply, Interrupt: interrupt, ExpectReply: expectReply}
+				resp, err := client.CallWatching(req, timeoutWhenWaiting(waitReply, timeout), nil, warn)
 				if err != nil {
 					return result{}, err
 				}
+				warn(resp)
 				fields := map[string]any{"id": resp.ID, "sender": resp.Sender}
 				if toParent {
 					fields["receiver"] = receiver
 				}
 				if interrupt {
 					fields["interrupted"] = resp.Interrupted
+				}
+				if resp.ReceiverLive != nil {
+					fields["receiver_live"] = *resp.ReceiverLive
 				}
 				done := fmt.Sprintf("message #%d was posted", resp.ID)
 				if !waitReply {

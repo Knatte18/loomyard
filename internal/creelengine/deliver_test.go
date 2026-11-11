@@ -2726,11 +2726,11 @@ func creelPostTo(e *env, sender, receiver string) int64 {
 // postMarked posts text from sender to receiver expecting a reply and returns the id.
 func (e *env) postMarked(t *testing.T, sender creelengine.Sender, receiver, text string) int64 {
 	t.Helper()
-	id, _, _, err := e.store.PostWith(sender, receiver, text, creelengine.PostOptions{ExpectReply: true})
+	posted, err := e.store.PostWith(sender, receiver, text, creelengine.PostOptions{ExpectReply: true})
 	if err != nil {
 		t.Fatalf("PostWith(%s -> %s): %v", sender.Name, receiver, err)
 	}
-	return id
+	return posted.ID
 }
 
 func TestScheduler_Chases(t *testing.T) {

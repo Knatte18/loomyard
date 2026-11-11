@@ -94,7 +94,9 @@ type Response struct {
 	HubPath string `json:"hub_path"`
 	// Pending marks the interim response of a waiting verb: the request is accepted and the outcome follows.
 	Pending bool `json:"pending,omitempty"`
-	// Progress marks an interim inject response; Stall is the stall its receiver's delivery waits on, read at StallAt.
+	// Progress marks an interim response.
+	// An inject's carries the Stall its receiver's delivery waits on, read at StallAt.
+	// A waiting post's carries its Warning.
 	Progress bool `json:"progress,omitempty"`
 	// Stall and StallAt also ride the expired answer of an inject, as the stall that stood when its TTL ran out.
 	Stall   Stall     `json:"stall,omitempty"`
@@ -116,6 +118,11 @@ type Response struct {
 	// Sent says an interrupt stopped a running turn, and Interrupted that an inject or a post did.
 	Sent        bool `json:"sent,omitempty"`
 	Interrupted bool `json:"interrupted,omitempty"`
+	// ReceiverLive answers a post whether its receiver had a live pane, and is absent when creel cannot tell.
+	ReceiverLive *bool `json:"receiver_live,omitempty"`
+	// Warning names a post's receiver that is not live and the command that starts it.
+	// A waiting post carries it in a progress response right after its pending one.
+	Warning string `json:"warning,omitempty"`
 	// Hold is the hold a hold verb set; Released says a release ended one.
 	Hold     *HoldResult `json:"hold,omitempty"`
 	Released bool        `json:"released,omitempty"`

@@ -4,6 +4,7 @@
 package creelengine
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -14,10 +15,14 @@ import (
 	"unicode"
 	"unicode/utf16"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 const holdTimeLayout = time.RFC3339
+
+// primeBeamSlug is the slug `lym beam start` takes for the prime, whose orch name carries no slug.
+const primeBeamSlug = "root"
 
 // validateBody refuses an empty body and one over the cap.
 // The cap bounds only a reply to an EXTERNAL sender, which only a waiting post receives and no claim hands out.
@@ -102,25 +107,41 @@ type PostOptions struct {
 	ExpectReply bool
 }
 
-// PostWith stores a message for receiver as opts say.
-// It returns the id, whether a running turn was stopped, and the wait the options registered.
+// PostResult is what a post did and what it learned of its receiver.
+type PostResult struct {
+	// ID is the new message's id.
+	ID int64
+	// Interrupted reports whether the post stopped the receiver's running turn.
+	Interrupted bool
+	// Waiter is the wait for the reply the options registered, nil without Wait.
+	Waiter *Waiter
+	// ReceiverLive reports whether the receiver had a live pane when the post was stored.
+	// It is nil when creel cannot tell: for a program and for a strand of another hub.
+	ReceiverLive *bool
+	// Warning names a receiver that is not live and the command that starts it, and is empty for every other post.
+	Warning string
+}
+
+// PostWith stores a message for receiver as opts say and answers what the post did.
+// A receiver that is not live still gets the message, which waits in its mail, and the result warns of it.
 // The post is validated.
 // With Interrupt, the receiver must run creel's hook delivery and be one the sender may interrupt.
 // Both checks run before any key is sent.
-func (s *Store) PostWith(sender Sender, receiver, body string, opts PostOptions) (int64, bool, *Waiter, error) {
+// A post that stopped a turn and then failed to store answers Interrupted beside its error.
+func (s *Store) PostWith(sender Sender, receiver, body string, opts PostOptions) (PostResult, error) {
 	return s.post(sender, receiver, body, opts)
 }
 
 // Post stores a message for receiver and returns its id.
 func (s *Store) Post(sender Sender, receiver, body string) (int64, error) {
-	id, _, _, err := s.post(sender, receiver, body, PostOptions{})
-	return id, err
+	posted, err := s.post(sender, receiver, body, PostOptions{})
+	return posted.ID, err
 }
 
 // PostWait stores a message for receiver and registers a wait for its reply, before any reply can arrive.
 func (s *Store) PostWait(sender Sender, receiver, body string) (int64, *Waiter, error) {
-	id, _, waiter, err := s.post(sender, receiver, body, PostOptions{Wait: true})
-	return id, waiter, err
+	posted, err := s.post(sender, receiver, body, PostOptions{Wait: true})
+	return posted.ID, posted.Waiter, err
 }
 
 // PostInterrupt stores a message for receiver after stopping the receiver's running turn.
@@ -130,7 +151,8 @@ func (s *Store) PostWait(sender Sender, receiver, body string) (int64, *Waiter, 
 // The receiver must run creel's hook delivery and be one the sender may interrupt, both checked before any key is sent.
 // A refusal, and a post whose store fails, say what was and was not done and the way forward.
 func (s *Store) PostInterrupt(sender Sender, receiver, body string, wait bool) (int64, bool, *Waiter, error) {
-	return s.post(sender, receiver, body, PostOptions{Wait: wait, Interrupt: true})
+	posted, err := s.post(sender, receiver, body, PostOptions{Wait: wait, Interrupt: true})
+	return posted.ID, posted.Interrupted, posted.Waiter, err
 }
 
 // interruptBeforePost stops the running turn of receiver for a post from sender and reports whether one was stopped.
@@ -161,35 +183,36 @@ func (s *Store) interruptBeforePost(sender Sender, receiver string) (bool, error
 	}
 }
 
-func (s *Store) post(sender Sender, receiver, body string, opts PostOptions) (int64, bool, *Waiter, error) {
+func (s *Store) post(sender Sender, receiver, body string, opts PostOptions) (PostResult, error) {
 	if opts.Interrupt {
 		if err := s.refuseOtherHub(receiver, "post --interrupt"); err != nil {
-			return 0, false, nil, err
+			return PostResult{}, err
 		}
 	}
 	if shortname, other := s.otherHub(receiver); other && s.hubs != nil {
 		id, waiter, err := s.postOtherHub(sender, receiver, shortname, body, opts)
-		return id, false, waiter, err
+		return PostResult{ID: id, Waiter: waiter}, err
 	}
 	if err := validateLine(sender.Name, body); err != nil {
-		return 0, false, nil, err
+		return PostResult{}, err
 	}
 	var interrupted bool
 	if opts.Interrupt {
 		var err error
 		interrupted, err = s.interruptBeforePost(sender, receiver)
 		if err != nil && !interrupted {
-			return 0, false, nil, err
+			return PostResult{}, err
 		}
 		if err != nil {
-			return 0, true, nil, storedAfterInterrupt(receiver, err)
+			return PostResult{Interrupted: true}, storedAfterInterrupt(receiver, err)
 		}
 	}
-	id, waiter, err := s.storePost(sender, receiver, body, opts.Wait, opts.ExpectReply || opts.Wait)
+	posted, err := s.storePost(sender, receiver, body, opts.Wait, opts.ExpectReply || opts.Wait)
 	if err != nil && interrupted {
-		return 0, true, nil, storedAfterInterrupt(receiver, err)
+		return PostResult{Interrupted: true}, storedAfterInterrupt(receiver, err)
 	}
-	return id, interrupted, waiter, err
+	posted.Interrupted = interrupted
+	return posted, err
 }
 
 // storedAfterInterrupt words a store failure that came after a turn was stopped.
@@ -199,31 +222,62 @@ func storedAfterInterrupt(receiver string, cause error) error {
 
 // storePost journals a validated post to receiver, marked as expecting a reply when expect is set.
 // With wait, it also registers the wait for the reply.
-func (s *Store) storePost(sender Sender, receiver, body string, wait, expect bool) (int64, *Waiter, error) {
+// A stored post answers its receiver's liveness from the same strand listing the receiver check read.
+func (s *Store) storePost(sender Sender, receiver, body string, wait, expect bool) (PostResult, error) {
 	strands, err := s.readStrands()
 	if err != nil {
-		return 0, nil, err
+		return PostResult{}, err
 	}
-	var (
-		id     int64
-		waiter *Waiter
-	)
+	var posted PostResult
 	err = s.do(func() error {
 		if err := s.checkReceiverLocked(strands, receiver); err != nil {
 			return err
 		}
 		var err error
-		if id, err = s.appendPostedLocked(sender, record{To: receiver, Kind: kindMail, Body: body, ExpectReply: expect}); err != nil {
+		if posted.ID, err = s.appendPostedLocked(sender, record{To: receiver, Kind: kindMail, Body: body, ExpectReply: expect}); err != nil {
 			return err
 		}
 		if wait {
-			if waiter, err = s.addWaiterLocked(waitKey{kind: waitReply, id: id}); err != nil {
+			if posted.Waiter, err = s.addWaiterLocked(waitKey{kind: waitReply, id: posted.ID}); err != nil {
 				return err
 			}
 		}
-		return s.deliverMailLocked(id, receiver)
+		return s.deliverMailLocked(posted.ID, receiver)
 	})
-	return id, waiter, err
+	if err != nil {
+		return posted, err
+	}
+	posted.ReceiverLive, posted.Warning = s.receiverLiveness(strands, receiver)
+	return posted, nil
+}
+
+// receiverLiveness reports whether receiver has a live pane among strands.
+// When it has none, it also returns the warning that says so.
+// A listed strand answers its own flag, and an orch name of this hub that no strand lists has no pane.
+// Any other receiver is a program, whose liveness creel cannot tell, and answers nil with no warning.
+func (s *Store) receiverLiveness(strands []Strand, receiver string) (*bool, string) {
+	strand, listed := findStrand(strands, receiver)
+	switch {
+	case listed && strand.Live:
+		return new(true), ""
+	case listed:
+		return new(false), notLiveWarning(receiver, strand.Worktree)
+	case s.isHubOrchName(receiver):
+		return new(false), notLiveWarning(receiver, "")
+	default:
+		return nil, ""
+	}
+}
+
+// notLiveWarning says that receiver has no live pane, so its mail waits, and names the command that starts it.
+// An orch starts with its beam, the prime's under primeBeamSlug.
+// Any other strand starts with `lym reed resume` in worktree.
+func notLiveWarning(receiver, worktree string) string {
+	start := "lym reed resume in " + worktree
+	if name, err := agentname.Parse(receiver); err == nil && agentname.MatchesRole(name.Role, agentname.RoleOrch) {
+		start = "lym beam start " + cmp.Or(name.Slug, primeBeamSlug)
+	}
+	return fmt.Sprintf("%s is not live, so the message waits in its mail until it runs again; way forward: start it with %s", receiver, start)
 }
 
 // Reply posts text as an answer to message id, addressed to the original sender.
