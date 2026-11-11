@@ -407,9 +407,9 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 		if !ok {
 			t.Fatalf("WeftWarpSlug(%q) ok = false; want the weft sibling's warp slug", filepath.Base(fx.weftPath))
 		}
-		loc, err := lymcwd.ResolveWorktree(filepath.Join(filepath.Dir(fx.weftPath), slug))
-		if err != nil {
-			t.Fatalf("ResolveWorktree(%s): %v", slug, err)
+		loc, resolveErr := lymcwd.ResolveWorktree(filepath.Join(filepath.Dir(fx.weftPath), slug))
+		if resolveErr != nil {
+			t.Fatalf("ResolveWorktree(%s): %v", slug, resolveErr)
 		}
 		pushVerb := "`lym fabric push` in " + loc.AnchorPath()
 		wantLine := fabricengine.RecordsConflictWayForwardForTest(fx.weftPath, fx.weftBranch, []string{"status.json"}, []string{fx.localSHA}, pushVerb)
