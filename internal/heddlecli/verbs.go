@@ -1,4 +1,5 @@
-// verbs.go holds the heddle verbs: list, get, set, remove, show and render, and the locked write set and remove share.
+// verbs.go holds the heddle verbs: list, get, set, remove, show and render.
+// It also holds the locked write set and remove share and their render into every live worktree of the hub.
 
 package heddlecli
 
@@ -6,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -14,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -41,6 +45,18 @@ func viewOf(entry heddleengine.LayeredEntry) entryView {
 
 // layerFlagUsage is the help text of the --layer flag set and remove share.
 const layerFlagUsage = "the layer to change: empty for the repository's entries, " + heddleengine.OverrideLayer + " for the hub's override of a shipped entry"
+
+// noRenderFlag is the flag set and remove share that skips the render into every live worktree of the hub.
+const noRenderFlag = "no-render"
+
+// noRenderFlagUsage is the help text of the --no-render flag.
+const noRenderFlagUsage = "save the change without rendering it into the hub's worktrees, such as for all but the last of a run of edits"
+
+// worktreeFailure is a worktree whose render after a write failed or left a file unwritten, as the verbs print it.
+type worktreeFailure struct {
+	Worktree string `json:"worktree"`
+	Error    string `json:"error"`
+}
 
 // overrideLayer reports whether layer names the lym overrides.
 // It refuses any value but the empty layer and heddleengine.OverrideLayer.
@@ -160,6 +176,7 @@ Example:
 func (c *heddleCLI) setCmd() *cobra.Command {
 	var textFile, targets, layer string
 	var order int
+	var noRender bool
 	cmd := &cobra.Command{
 		Use:         "set <slug>",
 		Short:       "create an entry or change the fields given",
@@ -174,13 +191,18 @@ slug lym ships is refused: shipped entries change only with a lym release.
   --layer lym          override the text of the shipped entry with the given
                        slug instead; it takes --text-file alone, and only a hub
                        whose heddle.yaml sets lym_override takes it
+  --no-render          skip the render into the hub's worktrees
 
 An entry aimed at claude-settings holds one JSON object and no other target;
 every render merges it into the worktree's .claude/settings.local.json.
 
 The change is saved under the Bolt write lock with HEDDLE.md, the overview of
-every entry, rendered beside it, and the board's detached Bolt sync then
-commits and pushes both. A refused change saves nothing.
+every entry, rendered beside it. Every file target is then rendered into every
+live worktree of the hub, the prime, beams and task pairs, and the worktrees
+rendered and failed are printed, with render_warnings beside them for the
+warnings of the rendered ones or a failure to list the worktrees; a Claude
+session there takes the change at its next compaction. The board's detached Bolt sync then commits and pushes
+HEDDLE.md and the store. A refused change saves and renders nothing.
 
 Examples:
   lym heddle set house-rules --text-file rules.md --order 10 --targets claude-file,claude-prompt
@@ -197,7 +219,7 @@ Examples:
 			}
 			slug := args[0]
 			if override {
-				return c.setOverride(cmd, slug, textFile)
+				return c.setOverride(cmd, slug, textFile, !noRender)
 			}
 			var patch heddleengine.Patch
 			if cmd.Flags().Changed("text-file") {
@@ -217,20 +239,22 @@ Examples:
 					patch.Targets = []string{}
 				}
 			}
-			return c.finishWrite(cmd, slug, c.repositoryFile(), func(store *heddleengine.Store) error { return store.Set(slug, patch) })
+			return c.finishWrite(cmd, slug, c.repositoryFile(), !noRender, func(store *heddleengine.Store) error { return store.Set(slug, patch) })
 		},
 	}
 	cmd.Flags().StringVar(&textFile, "text-file", "", "read the entry's text from this file, or from stdin for -")
 	cmd.Flags().IntVar(&order, "order", 0, "the entry's place in render order")
 	cmd.Flags().StringVar(&targets, "targets", "", "comma-separated targets the entry is delivered to")
 	cmd.Flags().StringVar(&layer, "layer", "", layerFlagUsage)
+	cmd.Flags().BoolVar(&noRender, noRenderFlag, false, noRenderFlagUsage)
 	return cmd
 }
 
 // setOverride stores the text of textFile as the hub's override of the shipped entry slug.
+// With render set it then renders the hub's worktrees as every write does.
 // It refuses --order and --targets, a missing --text-file, and a hub whose heddle.yaml leaves lym_override off.
 // A refusal saves nothing.
-func (c *heddleCLI) setOverride(cmd *cobra.Command, slug, textFile string) error {
+func (c *heddleCLI) setOverride(cmd *cobra.Command, slug, textFile string, render bool) error {
 	if cmd.Flags().Changed("order") || cmd.Flags().Changed("targets") {
 		return c.fail(cmd, fmt.Errorf("heddle: --layer %s overrides a shipped entry's text alone, so it takes no --order or --targets; way forward: give --text-file only", heddleengine.OverrideLayer))
 	}
@@ -244,19 +268,22 @@ func (c *heddleCLI) setOverride(cmd *cobra.Command, slug, textFile string) error
 	if err != nil {
 		return c.fail(cmd, err)
 	}
-	return c.finishWrite(cmd, slug, c.overrideFile(), func(overrides *heddleengine.Store) error { return overrides.SetOverride(slug, text) })
+	return c.finishWrite(cmd, slug, c.overrideFile(), render, func(overrides *heddleengine.Store) error { return overrides.SetOverride(slug, text) })
 }
 
 // removeCmd returns the `heddle remove` verb.
 func (c *heddleCLI) removeCmd() *cobra.Command {
 	var layer string
+	var noRender bool
 	cmd := &cobra.Command{
 		Use:         "remove <slug>",
 		Short:       "remove an entry",
 		Annotations: operatorAnnotation,
 		Long: `Removes the repository entry with the given slug, saves the store under the
-Bolt write lock with HEDDLE.md rendered beside it, and lets the board's
-detached Bolt sync commit and push both.
+Bolt write lock with HEDDLE.md rendered beside it, renders every file target
+into every live worktree of the hub and prints the worktrees rendered and
+failed and render_warnings, and lets the board's detached Bolt sync commit and push the store and
+HEDDLE.md. --no-render skips the render into the worktrees.
 A slug lym ships is refused unless the repository holds an entry under it.
 With --layer lym it removes the hub's override of
 the shipped entry instead, whatever heddle.yaml's lym_override holds.
@@ -275,12 +302,13 @@ Examples:
 			}
 			slug := args[0]
 			if override {
-				return c.finishWrite(cmd, slug, c.overrideFile(), func(overrides *heddleengine.Store) error { return overrides.RemoveOverride(slug) })
+				return c.finishWrite(cmd, slug, c.overrideFile(), !noRender, func(overrides *heddleengine.Store) error { return overrides.RemoveOverride(slug) })
 			}
-			return c.finishWrite(cmd, slug, c.repositoryFile(), func(store *heddleengine.Store) error { return store.Remove(slug) })
+			return c.finishWrite(cmd, slug, c.repositoryFile(), !noRender, func(store *heddleengine.Store) error { return store.Remove(slug) })
 		},
 	}
 	cmd.Flags().StringVar(&layer, "layer", "", layerFlagUsage)
+	cmd.Flags().BoolVar(&noRender, noRenderFlag, false, noRenderFlagUsage)
 	return cmd
 }
 
@@ -336,16 +364,7 @@ Example:
 				}
 				location = named
 			}
-			event, err := fabricengine.EventFor(location, nil)
-			if err != nil {
-				return c.fail(cmd, fmt.Errorf("heddle: seed the exclude lines of %s: %w", location.WorktreeName, err))
-			}
-			report, err := c.renderer.Render(heddleengine.RenderRequest{
-				Anchor:     event.Anchor,
-				ScratchDir: event.ScratchDir,
-				BoltDir:    event.BoltDir,
-				Excluded:   event.Excluded,
-			})
+			report, err := c.renderInto(location)
 			if err != nil {
 				message := fmt.Sprintf("heddle: render %s: %v", location.WorktreeName, err)
 				if !strings.Contains(message, "lym heddle render") {
@@ -385,35 +404,127 @@ func (c *heddleCLI) overrideFile() storeFile {
 	}
 }
 
-// finishWrite applies change to file through write and prints the result for slug.
-// A refusal prints as the verb's error; a sync that did not start prints beside the result.
-func (c *heddleCLI) finishWrite(cmd *cobra.Command, slug string, file storeFile, change func(*heddleengine.Store) error) error {
-	c.syncWarning = ""
-	if err := c.write(file, change); err != nil {
+// finishWrite applies change to file under the Bolt write lock and prints the result for slug.
+// With render set it then renders every file target into every live worktree of the hub.
+// It prints the worktrees rendered and failed and the warnings of the rendered ones.
+// It starts the board's detached Bolt sync last, so no render waits behind the sync's hold of the lock.
+// A refusal prints as the verb's error and renders and syncs nothing.
+// A sync that did not start prints beside the result.
+// It pulls and commits nothing in the foreground.
+func (c *heddleCLI) finishWrite(cmd *cobra.Command, slug string, file storeFile, render bool, change func(*heddleengine.Store) error) error {
+	if err := c.saveLocked(file, change); err != nil {
 		return c.fail(cmd, err)
 	}
 	fields := map[string]any{"slug": slug}
-	if c.syncWarning != "" {
-		fields["warning"] = c.syncWarning
+	if render {
+		rendered, failed, warnings := c.renderEveryWorktree()
+		if failed == nil {
+			failed = []worktreeFailure{}
+		}
+		fields["rendered"] = nonNil(rendered)
+		fields["failed"] = failed
+		if len(warnings) > 0 {
+			fields["render_warnings"] = warnings
+		}
+	}
+	if warning := c.syncAfterSave(file); warning != "" {
+		fields["warning"] = warning
 	}
 	clihelp.SetExit(cmd.Context(), output.Ok(c.out, fields))
 	return nil
 }
 
-// write applies change to file under the Bolt write lock, saves it and renders the overview.
-// It then starts the board's detached Bolt sync once the lock is released.
-// It pulls and commits nothing in the foreground and touches no worktree.
-// A change the store refuses saves nothing and starts no sync.
-// A sync that fails to start leaves the saved file in place and sets syncWarning.
-func (c *heddleCLI) write(file storeFile, change func(*heddleengine.Store) error) error {
-	if err := c.saveLocked(file, change); err != nil {
-		return err
-	}
+// syncAfterSave starts the board's detached Bolt sync of the checkout once file is saved and the lock released.
+// It returns "" when the sync started.
+// A sync that fails to start leaves the saved file in place;
+// the failure is logged and returned as a warning naming `lym board sync`.
+func (c *heddleCLI) syncAfterSave(file storeFile) string {
 	if err := c.startSync(); err != nil {
 		logger.Warn("heddle: the Bolt sync did not start after the save", "file", file.name, "error", err)
-		c.syncWarning = fmt.Sprintf("%s is saved but the Bolt sync did not start (%v); way forward: run `lym board sync` to commit and push it", file.name, err)
+		return fmt.Sprintf("%s is saved but the Bolt sync did not start (%v); way forward: run `lym board sync` to commit and push it", file.name, err)
 	}
-	return nil
+	return ""
+}
+
+// renderEveryWorktree renders every file target into each live worktree of c's hub, in the order git lists them.
+// A worktree git marks prunable is skipped, since its directory is gone.
+// A worktree still being made, listed under a worktree staging directory, is skipped, since it has no final path yet.
+// A worktree whose path is not a direct child of the hub is skipped, since the hub-level name does not locate it.
+// It returns the names of the worktrees rendered with no file left unwritten.
+// It returns the worktrees whose render failed or left a file unwritten, each with its cause and way forward.
+// It returns the warnings of the rendered worktrees, each opening with its worktree's name.
+// A hub whose worktrees do not list gives one warning and renders nothing.
+func (c *heddleCLI) renderEveryWorktree() (rendered []string, failed []worktreeFailure, warnings []string) {
+	entries, err := fabricengine.List(c.location.WorktreePath())
+	if err != nil {
+		return nil, nil, []string{fmt.Sprintf("the hub's worktrees did not list, so none was rendered: %v; way forward: run `lym heddle render <worktree>` for each worktree `lym fabric list` prints", err)}
+	}
+	for _, entry := range entries {
+		if entry.Prunable || fabricengine.InWorktreeStaging(entry.Path) {
+			continue
+		}
+		path := filepath.Clean(filepath.FromSlash(entry.Path))
+		if !samePath(filepath.Dir(path), c.location.HubPath) {
+			continue
+		}
+		name := filepath.Base(path)
+		location, err := lymcwd.NamedWorktree(c.location.HubPath, name)
+		var report heddleengine.Report
+		if err == nil {
+			report, err = c.renderInto(location)
+		}
+		switch {
+		case err != nil:
+			failed = append(failed, worktreeFailure{Worktree: name, Error: withRenderWayForward(err.Error(), name)})
+		case len(report.Unwritten) > 0:
+			cause := fmt.Sprintf("%s left unwritten: %s", strings.Join(report.Unwritten, ", "), strings.Join(report.Warnings, "; "))
+			failed = append(failed, worktreeFailure{Worktree: name, Error: withRenderWayForward(cause, name)})
+		default:
+			rendered = append(rendered, name)
+			for _, warning := range report.Warnings {
+				warnings = append(warnings, name+": "+warning)
+			}
+		}
+	}
+	return rendered, failed, warnings
+}
+
+// samePath reports whether a and b name the same directory once symlinks are resolved and, on Windows, case is folded.
+// A path that does not resolve is compared as cleaned.
+func samePath(a, b string) bool {
+	normalize := func(path string) string {
+		if resolved, err := filepath.EvalSymlinks(path); err == nil {
+			path = resolved
+		}
+		return filepath.Clean(path)
+	}
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(normalize(a), normalize(b))
+	}
+	return normalize(a) == normalize(b)
+}
+
+// withRenderWayForward appends to cause the way forward of rendering the worktree name by hand.
+// A cause that already names `lym heddle render` is returned as it is.
+func withRenderWayForward(cause, name string) string {
+	if strings.Contains(cause, "lym heddle render") {
+		return cause
+	}
+	return fmt.Sprintf("%s; way forward: run `lym heddle render %s` once the cause is fixed", cause, name)
+}
+
+// renderInto seeds the exclude lines of location's worktree and renders every file target into its anchor.
+func (c *heddleCLI) renderInto(location *lymcwd.Location) (heddleengine.Report, error) {
+	event, err := fabricengine.EventFor(location, nil)
+	if err != nil {
+		return heddleengine.Report{}, fmt.Errorf("seed the exclude lines: %w", err)
+	}
+	return c.renderer.Render(heddleengine.RenderRequest{
+		Anchor:     event.Anchor,
+		ScratchDir: event.ScratchDir,
+		BoltDir:    event.BoltDir,
+		Excluded:   event.Excluded,
+	})
 }
 
 // saveLocked loads file, applies change, saves it and renders the overview, all under the Bolt write lock.

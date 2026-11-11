@@ -22,12 +22,26 @@
 // It changes only the fields given; a new entry needs all three.
 // An entry aimed at `claude-settings` holds one JSON object and names no text target beside it.
 // Both take the Bolt write lock, load the store, apply the change, save it, render `HEDDLE.md` and release the lock.
-// Then they start the board's detached Bolt sync, which commits what is dirty under that lock and pushes.
-// A refused change saves nothing and starts no sync.
+// They then render every file target into every live worktree of the hub: the prime, beams and task pairs.
+// So an agent in a running worktree takes the change at its next compaction instead of waiting for a hand render.
+// A worktree git marks prunable is skipped.
+// So is one still being made in a worktree staging directory.
+// So is one whose path is not a direct child of the hub.
+// They print the worktrees rendered in `rendered`.
+// They print in `failed` each worktree whose render failed or left a file unwritten.
+// Each failed worktree comes with its cause and the `lym heddle render <worktree>` way forward.
+// They print in `render_warnings` the warnings of the rendered worktrees, each opening with its worktree's name,
+// and the failure to list the hub's worktrees, in which case no worktree is rendered.
+// A failed worktree does not fail the verb, since the change is saved.
+// `--no-render` skips the worktree renders, for all but the last of a run of edits.
+// Last they start the board's detached Bolt sync, which commits what is dirty under the lock and pushes,
+// so no render waits behind the sync's hold of the lock.
+// A refused change saves nothing, renders nothing and starts no sync.
 // A failure to start the sync after the save does not fail the verb:
 // it is logged and printed beside the result, naming `lym board sync` as the way to commit and push the saved file.
-// Neither verb pulls, commits or touches a worktree in the foreground.
-// ChangeStore exposes the same write to another module's verb that keeps a heddle entry of its own.
+// Neither verb pulls or commits in the foreground.
+// ChangeStore exposes the same write to another module's verb that keeps a heddle entry of its own;
+// it renders no worktree.
 //
 // `show <target>` prints what the target renders to now for the current worktree and writes nothing.
 //

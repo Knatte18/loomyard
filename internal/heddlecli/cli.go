@@ -35,8 +35,6 @@ type heddleCLI struct {
 	save func(boltDir string, store heddleengine.Store) error
 	// spawnSync starts the board's detached Bolt sync of the checkout.
 	spawnSync func(boltDir string) error
-	// syncWarning is the text a failed sync start left behind for the verb to print beside its result.
-	syncWarning string
 }
 
 // Command returns the cobra command for the heddle module.
@@ -58,11 +56,13 @@ every one, orch-prompt to an orch session alone. A hub whose heddle.yaml sets
 lym_override may override a shipped entry's text with set --layer lym.
 
 set and remove change the store under the Bolt write lock, render HEDDLE.md,
-the overview of every entry, beside it, and start the board's detached Bolt
-sync, which commits and pushes both. A worktree takes a
-change only when lym makes the worktree, at a take-in render or at a hand
-render; a Claude session takes it at its launch or adoption, or at its next
-compaction after a file render. Every verb runs from a code worktree of a hub.`,
+the overview of every entry, beside it, render every file target into every
+live worktree of the hub unless given --no-render, and start the board's
+detached Bolt sync, which commits and pushes the store and HEDDLE.md. A
+worktree also takes a change when lym makes it, at a take-in render and at a
+hand render; a Claude session takes it at its launch or adoption, or at its
+next compaction after a file render. Every verb runs from a code worktree of a
+hub.`,
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
@@ -160,14 +160,16 @@ func ChangeStore(cwd string, change func(*heddleengine.Store) error) (warning st
 }
 
 // changeStore applies change through c's seams, so a test can replace the save and the sync.
+// It renders no worktree.
 func (c *heddleCLI) changeStore(cwd string, change func(*heddleengine.Store) error) (warning string, err error) {
 	if err := c.wire(cwd); err != nil {
 		return "", err
 	}
-	if err := c.write(c.repositoryFile(), change); err != nil {
+	file := c.repositoryFile()
+	if err := c.saveLocked(file, change); err != nil {
 		return "", err
 	}
-	return c.syncWarning, nil
+	return c.syncAfterSave(file), nil
 }
 
 // saveStore writes the store through c's save seam, or heddleengine.Save when none is set.

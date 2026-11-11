@@ -1,5 +1,5 @@
 // cli_integration_test.go drives `lym heddle` through the command tree over hubforge hubs.
-// It covers the entry verbs and their refusals, and the Bolt write lock and sync around a write.
+// It covers the entry verbs and their refusals, and the Bolt write lock, sync and worktree renders around a write.
 // It also covers the hub-resolution refusals, and render's worktree choice, exclude seeding and warnings.
 
 package heddlecli
@@ -88,6 +88,25 @@ func requireRefusal(t *testing.T, run verbRun, wants ...string) {
 		if !strings.Contains(env.Error, want) {
 			t.Errorf("refusal %q; want it to contain %q", env.Error, want)
 		}
+	}
+}
+
+// renderedNames returns the worktrees env lists in rendered, comma-joined.
+func renderedNames(t *testing.T, env envelope.Envelope) string {
+	t.Helper()
+	list, _ := env.Raw["rendered"].([]any)
+	var names []string
+	for _, name := range list {
+		names = append(names, name.(string))
+	}
+	return strings.Join(names, ",")
+}
+
+// requireNoRendered fails when env carries a rendered field, which a write with --no-render must not print.
+func requireNoRendered(t *testing.T, env envelope.Envelope, verb string) {
+	t.Helper()
+	if _, present := env.Raw["rendered"]; present {
+		t.Errorf("output %v of %s; want no rendered field", env.Raw, verb)
 	}
 }
 
@@ -339,7 +358,11 @@ func TestHeddleCLI(t *testing.T) {
 			t.Errorf("syncs = %d; want none after refusals", len(rec.syncs))
 		}
 
-		requireOK(t, runVerb(c, cwd, "tuned", "set", shipped, "--layer", "lym", "--text-file", "-"))
+		prime := filepath.Base(h.PrimeWorktree())
+		env := requireOK(t, runVerb(c, cwd, "tuned", "set", shipped, "--layer", "lym", "--text-file", "-"))
+		if got := renderedNames(t, env); got != prime {
+			t.Errorf("rendered after set --layer lym = %q; want %q", got, prime)
+		}
 		if listed := listedEntry(t, requireOK(t, runVerb(c, cwd, "", "list")), shipped); listed["layer"] != heddleengine.LayerShipped || listed["overridden"] != true {
 			t.Errorf("list entry %v; want layer %s, overridden", listed, heddleengine.LayerShipped)
 		}
@@ -352,9 +375,18 @@ func TestHeddleCLI(t *testing.T) {
 		if listed := listedEntry(t, requireOK(t, runVerb(c, cwd, "", "list")), shipped); listed["overridden"] != nil {
 			t.Errorf("list entry %v with the setting off; want it not overridden", listed)
 		}
-		requireOK(t, runVerb(c, cwd, "", "remove", shipped, "--layer", "lym"))
+		env = requireOK(t, runVerb(c, cwd, "", "remove", shipped, "--layer", "lym"))
+		if got := renderedNames(t, env); got != prime {
+			t.Errorf("rendered after remove --layer lym = %q; want %q", got, prime)
+		}
 		requireRefusal(t, runVerb(c, cwd, "", "remove", shipped, "--layer", "lym"), "lym heddle list")
-		if len(rec.syncs) != 2 || rec.saves != 0 {
+
+		setHubOverride(t, h, true)
+		env = requireOK(t, runVerb(c, cwd, "quiet", "set", shipped, "--layer", "lym", "--text-file", "-", "--no-render"))
+		requireNoRendered(t, env, "set --layer lym --no-render")
+		env = requireOK(t, runVerb(c, cwd, "", "remove", shipped, "--layer", "lym", "--no-render"))
+		requireNoRendered(t, env, "remove --layer lym --no-render")
+		if len(rec.syncs) != 4 || rec.saves != 0 {
 			t.Errorf("syncs = %d, repository saves = %d; want one sync per override write and no heddle.json save", len(rec.syncs), rec.saves)
 		}
 	})
@@ -466,7 +498,7 @@ func TestHeddleCLI(t *testing.T) {
 		boltStatusBefore := git(t, boltDir, "status", "--porcelain", "--untracked-files=no")
 		primeStatusBefore := git(t, cwd, "status", "--porcelain")
 
-		var lockHeldDuringSave, lockFreeDuringSync bool
+		var lockHeldDuringSave, lockFreeDuringSync, primeRenderedAtSync bool
 		syncs := 0
 		c := &heddleCLI{
 			save: func(dir string, store heddleengine.Store) error {
@@ -484,6 +516,8 @@ func TestHeddleCLI(t *testing.T) {
 					_ = probe.Release()
 				}
 				lockFreeDuringSync = err == nil && acquired
+				_, statErr := os.Stat(filepath.Join(h.PrimeWorktree(), "CLAUDE.local.md"))
+				primeRenderedAtSync = statErr == nil
 				if dir != boltDir {
 					t.Errorf("spawnSync(%s); want the Bolt checkout %s", dir, boltDir)
 				}
@@ -498,6 +532,9 @@ func TestHeddleCLI(t *testing.T) {
 		if syncs != 1 || !lockFreeDuringSync {
 			t.Errorf("syncs = %d, lock free during sync = %v; want one sync after the lock is released", syncs, lockFreeDuringSync)
 		}
+		if !primeRenderedAtSync {
+			t.Errorf("the prime's CLAUDE.local.md was absent when the sync started; want the renders done before the sync")
+		}
 		if head := git(t, boltDir, "rev-parse", "HEAD"); head != headBefore {
 			t.Errorf("Bolt HEAD = %s; want %s, no foreground commit", head, headBefore)
 		}
@@ -506,8 +543,9 @@ func TestHeddleCLI(t *testing.T) {
 		if status := git(t, boltDir, "status", "--porcelain", "--untracked-files=no"); status != wantBoltStatus {
 			t.Errorf("Bolt tracked status = %q; want %q", status, wantBoltStatus)
 		}
+		// The set renders into the prime, and the status stays equal only because the rendered files are git-excluded.
 		if status := git(t, cwd, "status", "--porcelain"); status != primeStatusBefore {
-			t.Errorf("prime status = %q; want %q, no worktree file changed", status, primeStatusBefore)
+			t.Errorf("prime status = %q; want %q, no tracked file of the prime changed", status, primeStatusBefore)
 		}
 	})
 
@@ -541,6 +579,106 @@ func TestHeddleCLI(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = os.Rename(moved, boltDir) })
 		requireRefusal(t, runVerb(c, primeCwd(h), "", "list"), "Bolt checkout", "lym fabric clone")
+	})
+
+	t.Run("WriteRendersEveryLiveWorktree", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
+		cwd := primeCwd(h)
+		c := (&recorder{}).cli()
+		pairWorktree := h.PairCodeWorktree(hubforge.TemplatePairSlug)
+		prime, pair := filepath.Base(h.PrimeWorktree()), filepath.Base(pairWorktree)
+		// A worktree being made, in a staging directory, and one outside the hub are no live worktree of it.
+		git(t, cwd, "worktree", "add", "-b", "staged", filepath.Join(filepath.Dir(h.PrimeWorktree()), ".fabric-wt-staging-x", "made"))
+		git(t, cwd, "worktree", "add", "-b", "elsewhere", filepath.Join(t.TempDir(), "outside"))
+		claudeFile := func(worktree string) string {
+			t.Helper()
+			data, err := os.ReadFile(filepath.Join(worktree, "CLAUDE.local.md"))
+			if err != nil {
+				t.Fatalf("read CLAUDE.local.md in %s: %v", worktree, err)
+			}
+			return string(data)
+		}
+		failures := func(env envelope.Envelope) []map[string]any {
+			t.Helper()
+			list, present := env.Raw["failed"].([]any)
+			if !present {
+				t.Fatalf("output %v lacks failed", env.Raw)
+			}
+			var failed []map[string]any
+			for _, item := range list {
+				failed = append(failed, item.(map[string]any))
+			}
+			return failed
+		}
+
+		env := requireOK(t, runVerb(c, cwd, "first rule", "set", "rules", "--text-file", "-", "--order", "1", "--targets", "claude-file"))
+		if got, want := renderedNames(t, env), prime+","+pair; got != want {
+			t.Errorf("rendered = %q; want %q, the prime and the pair", got, want)
+		}
+		if failed := failures(env); len(failed) != 0 {
+			t.Errorf("failed = %v; want none", failed)
+		}
+		for _, worktree := range []string{h.PrimeWorktree(), pairWorktree} {
+			if text := claudeFile(worktree); !strings.Contains(text, "first rule") {
+				t.Errorf("CLAUDE.local.md in %s = %q; want the set entry", worktree, text)
+			}
+		}
+
+		requireOK(t, runVerb(c, cwd, "extra rule", "set", "extra", "--text-file", "-", "--order", "2", "--targets", "claude-file"))
+		env = requireOK(t, runVerb(c, cwd, "", "remove", "extra", "--no-render"))
+		requireNoRendered(t, env, "remove --no-render")
+		if text := claudeFile(pairWorktree); !strings.Contains(text, "extra rule") {
+			t.Errorf("CLAUDE.local.md in the pair after remove --no-render = %q; want the earlier render untouched", text)
+		}
+
+		env = requireOK(t, runVerb(c, cwd, "edited rule", "set", "rules", "--text-file", "-", "--no-render"))
+		requireNoRendered(t, env, "set --no-render")
+		if text := claudeFile(pairWorktree); !strings.Contains(text, "first rule") {
+			t.Errorf("CLAUDE.local.md in the pair after --no-render = %q; want the earlier render untouched", text)
+		}
+
+		writeFile(t, filepath.Join(pairWorktree, "CLAUDE.local.md"), "my own notes\n")
+		env = requireOK(t, runVerb(c, cwd, "", "remove", "rules"))
+		if got := renderedNames(t, env); got != prime {
+			t.Errorf("rendered after remove = %q; want %q alone", got, prime)
+		}
+		failed := failures(env)
+		if len(failed) != 1 || failed[0]["worktree"] != pair || !strings.Contains(failed[0]["error"].(string), "CLAUDE.local.md") ||
+			strings.Count(failed[0]["error"].(string), "lym heddle render") != 1 {
+			t.Errorf("failed after remove = %v; want the pair alone, naming its unmarked CLAUDE.local.md and the render way forward", failed)
+		}
+		if text := claudeFile(h.PrimeWorktree()); strings.Contains(text, "first rule") || strings.Contains(text, "edited rule") {
+			t.Errorf("CLAUDE.local.md in the prime after remove = %q; want the removed entry gone", text)
+		}
+
+		setHubOverride(t, h, true)
+		writeFile(t, filepath.Join(fabricengine.BoltDir(h.Path), heddleengine.OverrideFileName), `{"entries": [`)
+		writeFile(t, filepath.Join(h.PairRecordsSibling(hubforge.TemplatePairSlug), lymcwd.AnchorFileName), "../out\n")
+		env = requireOK(t, runVerb(c, cwd, "broken rule", "set", "rules", "--text-file", "-", "--order", "1", "--targets", "claude-file"))
+		if got := renderedNames(t, env); got != prime {
+			t.Errorf("rendered with the pair's anchor unusable = %q; want %q alone", got, prime)
+		}
+		failed = failures(env)
+		if len(failed) != 1 || failed[0]["worktree"] != pair || !strings.Contains(failed[0]["error"].(string), "lym heddle render "+pair) {
+			t.Errorf("failed with the pair's anchor unusable = %v; want the pair alone, with the render way forward", failed)
+		}
+		renderWarnings, _ := env.Raw["render_warnings"].([]any)
+		if len(renderWarnings) != 1 || !strings.HasPrefix(renderWarnings[0].(string), prime+": ") ||
+			!strings.Contains(renderWarnings[0].(string), heddleengine.OverrideFileName) {
+			t.Errorf("render_warnings = %v; want one opening with %q and naming %s", renderWarnings, prime, heddleengine.OverrideFileName)
+		}
+
+		if err := os.RemoveAll(pairWorktree); err != nil {
+			t.Fatalf("RemoveAll: %v", err)
+		}
+		env = requireOK(t, runVerb(c, cwd, "last rule", "set", "rules", "--text-file", "-", "--order", "1", "--targets", "claude-file"))
+		if got := renderedNames(t, env); got != prime {
+			t.Errorf("rendered with the pair's directory gone = %q; want %q alone", got, prime)
+		}
+		if failed := failures(env); len(failed) != 0 {
+			t.Errorf("failed with the pair's directory gone = %v; want the prunable worktree skipped", failed)
+		}
 	})
 
 	t.Run("RenderChoosesAnExistingWorktree", func(t *testing.T) {

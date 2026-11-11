@@ -17,7 +17,8 @@ import (
 
 // Seam renders heddle's file targets on the events fabric fires for a worktree.
 // A change to the store itself is never an event.
-// A Bolt pull therefore re-renders nothing, and the next take-in or a hand render takes the store as it then stands.
+// A Bolt pull therefore re-renders nothing.
+// The next take-in, heddle write or hand render takes the store as it then stands.
 type Seam struct {
 	Renderer Renderer
 }

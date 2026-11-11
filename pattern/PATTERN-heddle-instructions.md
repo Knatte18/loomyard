@@ -20,7 +20,8 @@ Heddle's instruction text is stored once per layer and rendered from those store
 - No verb writes a shipped entry.
 - `internal/heddleengine` is the only package that reads the layers and renders them.
 - It renders file targets at a worktree's anchor, beside the repository's own CLAUDE and AGENTS files.
-  It does so through fabric's worktree seam or `lym heddle render`.
+  It does so through fabric's worktree seam, `lym heddle render`,
+  and `lym heddle set` and `remove`, which render into every live worktree of the hub after a save.
 - It renders a session's appended system prompt through shuttle's prompt seam.
 - Fabric hands heddle paths and events and names no heddle file.
 - Heddle's file targets are the one place a per-worktree file lym seeds is declared, so a new such file is a new target.
