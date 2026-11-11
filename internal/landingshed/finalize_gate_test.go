@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -240,6 +241,40 @@ func TestFinalize_FlakyGateFailureLands(t *testing.T) {
 	message := fx.merger.calls[0].opts.Message
 	if !strings.Contains(message, flakyHeading+"\n") || !strings.Contains(message, "\n- `tier0 Ns.Tests.EnumeratesTree`") {
 		t.Errorf("landing message = %q; want the flaky section naming the failure", message)
+	}
+}
+
+// TestNewFinalize_WiresTheGateFlakyPassesIntoTheLandingTexts pins NewFinalize's wiring of its gate's flaky sink.
+// A gate failure that passes when run once more then shows in the landing texts' flaky section.
+func TestNewFinalize_WiresTheGateFlakyPassesIntoTheLandingTexts(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	deps := newTestDeps(t)
+	openFabric := func() (*fabricengine.Fabric, error) { return &fabricengine.Fabric{}, nil }
+	deps.OpenFabric, deps.OpenParentFabric = openFabric, openFabric
+	deps.Shuttle = &shedfake.MergeShuttle{}
+	fz, err := NewFinalize(deps)
+	if err != nil {
+		t.Fatalf("NewFinalize() error = %v; want nil", err)
+	}
+	g := newGateFixture(t, "finalize", gateLandingCall, nil)
+	writeVerifyLog(t, g, gateslot.FailureReportHeader+"\ntier0 (exit 1), log /runs/a.log:\n  Ns.Tests.EnumeratesTree:\n    System.UnauthorizedAccessException : denied\n"+
+		gateslot.FailedRunsPrefix+"tier0 (exit 1)\n")
+	results := []verifytree.Result{{Status: verifytree.StatusFailed, ExitCode: 1}, {Status: verifytree.StatusPassed}}
+	g.fake.onVerify = func() { g.fake.result = results[min(g.fake.verifyCalls, len(results))-1] }
+	fz.gate.command, fz.gate.paths, fz.gate.dirty, fz.gate.verify = g.gate.command, g.paths, g.fake.dirty, g.fake.verify
+
+	reason, _, err := fz.gate.check(context.Background(), finalizeName, "main")
+
+	if reason != "" || err != nil {
+		t.Fatalf("check() = (%q, %v); want a pass after the rerun", reason, err)
+	}
+	_, body, message := fz.landingTexts(summaryparser.Summary{Title: "A title", Body: "A body."}, "")
+	for name, text := range map[string]string{"body": body, "message": message} {
+		if !strings.Contains(text, flakyHeading+"\n") || !strings.Contains(text, "\n- `tier0 Ns.Tests.EnumeratesTree`") {
+			t.Errorf("%s = %q; want the flaky section naming the failure", name, text)
+		}
 	}
 }
 
