@@ -127,6 +127,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [task-runtime-before-after-2026-11-06](speed/task-runtime-before-after-2026-11-06/report.md) — whether darn and tapestry runs take less active time since turn-savings, and how much of it P1 can claim.
 - [run-slowness-causes-2026-11-06](speed/run-slowness-causes-2026-11-06/report.md) — where a run's wall time goes, what made darn runs slower, and the changes that would cut it, ranked.
 - [tier1-test-revision-2026-11-06](speed/tier1-test-revision-2026-11-06/report.md) — where a tier 1 pass goes, which levers of the fabricengine survey still stand, which tests can fold, and the changes that would cut a pass, ranked.
+- [testmap-upkeep-2026-11-11](speed/testmap-upkeep-2026-11-11/report.md) — three independent proposals, two by Fable and one by Opus, for keeping the per-test coverage maps fresh, compared side by side.
 
 ## tokens — token use, cost and models
 
