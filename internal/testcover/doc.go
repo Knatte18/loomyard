@@ -33,8 +33,17 @@
 // BlockKey.String renders a key as the text a BlockSet holds.
 // CoveredKeys turns one run's profile into the rendered keys of the package blocks it covered.
 //
+// FuncIndex names the functions that hold one package's covered blocks, as a FuncKey of import path, file and function.
+// LinkedPackages lists the main module's packages a package's test binary links, the coverpkg of a cross-package build.
+// GoEnvironment reads the toolchain's Go version and platform.
+//
 // The coverage map is one JSON record per package, read and written through internal/state.
-// It keeps the block key table and, for each judged test, the indexes of the blocks it covers.
+// It keeps the block key table of the package's own files and, for each judged test, the indexes of the blocks it covers.
+// It also keeps a function table of the other packages the test binary links.
+// For each test it keeps the indexes of the functions it covers there and its spawn verdict.
+// It holds the hashes of the package's Go files, of its other files, and of each linked package's files.
+// Its MapFormat marker names that shape and holds the writer's commit, build time and EnvironmentStamp.
+// A map without the marker, or whose marker's commit and time differ from the map's own, was written otherwise.
 // The maps live under Dir, one directory per package, shared by every worktree of the hub on the machine.
 // Beside them, the exit record holds the process ID of the last refresh.
 // It also holds the count of stale packages the refresh's cap left unbuilt.

@@ -1,8 +1,10 @@
 // blockkey.go keys coverage blocks by their content, so a block keeps its key when lines above it move.
+// It also names the functions that hold a profile's covered blocks.
 
 package testcover
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -10,10 +12,13 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strings"
 )
 
 // PackageLevelFunc is the function a block key names for a block outside every function declaration.
@@ -121,6 +126,60 @@ func KeyBlocks(dir string, blocks []ProfileBlock) ([]BlockKey, error) {
 		}
 	}
 	return keys, nil
+}
+
+// FuncKey names one function of a package by the package's import path, its file and the name a block key gives it.
+type FuncKey struct {
+	Package string `json:"package"`
+	// File is the function's file name within its package directory.
+	File string `json:"file"`
+	// Func is the function, `Type.Method` for a method, or PackageLevelFunc for code outside every function.
+	Func string `json:"func"`
+}
+
+// CompareFuncKeys orders function keys by package, then file, then function.
+func CompareFuncKeys(a, b FuncKey) int {
+	return cmp.Or(strings.Compare(a.Package, b.Package), strings.Compare(a.File, b.File), strings.Compare(a.Func, b.Func))
+}
+
+// FuncIndex names the functions of one package that hold a profile's covered blocks.
+// It parses each of the package's files once, however many profiles it reads.
+// It is not safe for concurrent use.
+type FuncIndex struct {
+	dir, importPath string
+	files           map[string]*sourceFile
+}
+
+// NewFuncIndex returns a FuncIndex over the package at importPath, whose files it reads from the directory dir.
+func NewFuncIndex(dir, importPath string) *FuncIndex {
+	return &FuncIndex{dir: dir, importPath: importPath, files: map[string]*sourceFile{}}
+}
+
+// CoveredFuncs returns the functions of the package holding a block that profile counts as covered, sorted, each once.
+// It ignores every block of another package.
+// A file that does not parse, or a position outside its file, is an error.
+func (x *FuncIndex) CoveredFuncs(profile []ProfileBlock) ([]FuncKey, error) {
+	covered := map[FuncKey]struct{}{}
+	for _, b := range PackageBlocks(profile, x.importPath) {
+		if b.Count == 0 {
+			continue
+		}
+		name := path.Base(b.File)
+		src, parsed := x.files[name]
+		if !parsed {
+			var err error
+			if src, err = parseSourceFile(filepath.Join(x.dir, name)); err != nil {
+				return nil, err
+			}
+			x.files[name] = src
+		}
+		start, err := src.offset(b.StartLine, b.StartCol)
+		if err != nil {
+			return nil, fmt.Errorf("block %s: %w", b.Position(), err)
+		}
+		covered[FuncKey{Package: x.importPath, File: name, Func: src.enclosingFunc(start)}] = struct{}{}
+	}
+	return slices.SortedFunc(maps.Keys(covered), CompareFuncKeys), nil
 }
 
 // sourceFile is one parsed Go file with the offsets of its function declarations.

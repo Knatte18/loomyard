@@ -151,3 +151,49 @@ func TestCoveredKeys(t *testing.T) {
 		t.Errorf("CoveredKeys() = %v; want %v, A.Do's key alone", got, want)
 	}
 }
+
+// TestCoveredFuncs pins that a profile's covered blocks of the package come back as their functions, sorted, each once.
+// An uncovered block's function and a block of a package nested below are left out,
+// and a second profile read through the same index is named from the same files.
+func TestCoveredFuncs(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "p.go"), []byte(keyedSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	block := func(file string, startLine, startCol, endLine, endCol, count int) testcover.ProfileBlock {
+		return testcover.ProfileBlock{File: file, StartLine: startLine, StartCol: startCol, EndLine: endLine, EndCol: endCol, Statements: 1, Count: count}
+	}
+	index := testcover.NewFuncIndex(dir, "m/p")
+	got, err := index.CoveredFuncs([]testcover.ProfileBlock{
+		block("m/p/p.go", 21, 9, 21, 10, 1),
+		block("m/p/p.go", 15, 7, 17, 3, 1),
+		block("m/p/p.go", 12, 7, 14, 3, 1),
+		block("m/p/p.go", 7, 22, 9, 2, 0),
+		block("m/p/p.go", 3, 21, 5, 2, 1),
+		block("m/p/sub/s.go", 1, 1, 1, 2, 1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []testcover.FuncKey{
+		{Package: "m/p", File: "p.go", Func: testcover.PackageLevelFunc},
+		{Package: "m/p", File: "p.go", Func: "A.Do"},
+		{Package: "m/p", File: "p.go", Func: "twice"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("CoveredFuncs() = %+v; want %+v", got, want)
+	}
+	again, err := index.CoveredFuncs([]testcover.ProfileBlock{block("m/p/p.go", 7, 22, 9, 2, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []testcover.FuncKey{{Package: "m/p", File: "p.go", Func: "B.Do"}}; !reflect.DeepEqual(again, want) {
+		t.Errorf("CoveredFuncs() of a second profile = %+v; want %+v", again, want)
+	}
+	if _, err := index.CoveredFuncs([]testcover.ProfileBlock{block("m/p/p.go", 99, 1, 99, 2, 1)}); err == nil {
+		t.Error("CoveredFuncs of a line past the file's end = nil error; want an error")
+	}
+}

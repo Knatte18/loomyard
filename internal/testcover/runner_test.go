@@ -80,6 +80,41 @@ func TestBuildBinaryAndListTests(t *testing.T) {
 	}
 }
 
+func TestLinkedPackages(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tc, record := standIn(t)
+	got, err := tc.LinkedPackages("m/p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"m/p", "m/q"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("LinkedPackages(m/p) = %q; want %q, each once, without the external test package or the test main", got, want)
+	}
+	wantArgs := []string{"list", "-deps", "-test", "-f", `{{if and .Module .Module.Main}}{{.ImportPath}}{{"\t"}}{{.Name}}{{"\t"}}{{.ForTest}}{{end}}`, "m/p"}
+	if args := recordedArgs(t, record); !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("LinkedPackages ran go %q; want %q", args, wantArgs)
+	}
+}
+
+func TestGoEnvironment(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tc, record := standIn(t)
+	version, goos, goarch, err := tc.GoEnvironment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != "go1.26.8" || goos != "linux" || goarch != "amd64" {
+		t.Errorf("GoEnvironment() = %q, %q, %q; want go1.26.8, linux, amd64", version, goos, goarch)
+	}
+	if args, want := recordedArgs(t, record), []string{"env", "GOVERSION", "GOOS", "GOARCH"}; !reflect.DeepEqual(args, want) {
+		t.Errorf("GoEnvironment ran go %q; want %q", args, want)
+	}
+}
+
 func TestBuildBinaryTimesOut(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

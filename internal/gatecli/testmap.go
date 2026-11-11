@@ -72,10 +72,13 @@ func testMapCmd(goBinary string, minuteUnit, grace time.Duration) *cobra.Command
 		Short:       "rebuild the stale per-package coverage maps from the hub's prime worktree",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `testmap rebuilds the coverage map of each named package, or of every stale package when none is named, at most --max per call, in package path order.
-A map records, for each tier0 and tier1 test of the package run alone under a coverage binary, the blocks of the package's own files it covers.
+A map records, for each tier0 and tier1 test of the package run alone under a coverage binary over every in-module package its test binary links, the blocks of the package's own files and the functions of the linked packages it covers.
+It also records the file hashes of the package and of each linked package.
 A map is stale when it is missing, when the package's Go files at HEAD differ from it, when it is older than test_map_max_age_days, or when it records a failed build at another HEAD.
 It runs only in the hub's prime worktree and holds one gate slot from its first build to its end.
 A package with a modified or untracked Go file, or whose map another call is building, is skipped and does not count against --max, as is a named package that tracks no Go file at HEAD.
+A package one of whose linked packages holds a modified or untracked file just before its build is skipped and does not count against --max.
+One whose linked package holds such a file after its tests, or changes under them, gets no new map and is reported skipped, and it counts against --max.
 It prints the packages it built, skipped and failed, the timed-out tests and the count of stale packages --max left unbuilt.
 
 Examples:
@@ -130,7 +133,9 @@ type testMapRun struct {
 	buildTimeout, testTimeout time.Duration
 	// env is the environment the call's children start from, before the slot's Go flags.
 	env []string
-	// dirty holds the worktree-relative slash paths of the uncommitted and untracked files, sorted.
+	// hubEnv is the hub's env.yaml variables, which env holds.
+	hubEnv envconfig.Config
+	// dirty holds the worktree-relative slash paths of the uncommitted and untracked files read before the walk, sorted.
 	dirty []string
 
 	// The fields below fill as the call goes.
@@ -147,6 +152,8 @@ type testMapRun struct {
 	lymBuilt bool
 	lymBin   string
 	lymErr   error
+	// toolchain holds the Go version and platform of the maps' environment stamp, nil until the call reads them.
+	toolchain *testcover.EnvironmentStamp
 
 	built    []string
 	skipped  []testMapSkip
@@ -263,6 +270,7 @@ func (r *testMapRun) prepare() string {
 	r.buildTimeout = time.Duration(cfg.RedundancyBuildTimeoutMin) * r.request.minuteUnit
 	r.testTimeout = time.Duration(cfg.RedundancyTestTimeoutSec) * r.request.secondUnit
 	r.env = gateEnv(r.request.environ, hubEnv)
+	r.hubEnv = hubEnv
 
 	if r.fabric, err = fabricengine.Open(r.location); err != nil {
 		return fmt.Sprintf("gate testmap: %v; way forward: re-run the same command", err)
@@ -351,6 +359,7 @@ func holdsGoFile(dir string) bool {
 // A named package needs one whatever its map holds; any other only when its map is stale.
 // A package with an uncommitted or untracked Go file, or whose build lock another call holds, is skipped and not counted.
 // So is a named package that tracks no Go file at HEAD.
+// So is one whose linked package holds a modified or untracked file just before its build.
 // Each package past the cap that needs a map counts as unbuilt.
 // The error reports a read, slot or write failure, or a cancelled call, that ends the walk.
 func (r *testMapRun) mapPackages(packages []string, named bool) error {
@@ -395,10 +404,13 @@ func (r *testMapRun) mapPackages(packages []string, named bool) error {
 			continue
 		}
 		built++
-		err = r.mapPackage(pkg, dir, head, files)
+		skippedBeforeBuild, err := r.mapPackage(pkg, dir, head, files)
 		releaseBuildLock(buildLock, pkg)
 		if err != nil {
 			return err
+		}
+		if skippedBeforeBuild {
+			built--
 		}
 	}
 	return nil

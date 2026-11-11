@@ -929,8 +929,10 @@ User-facing modules each get one `lym <module>` namespace:
   and with `--guards` the verb also runs every `//lym:guard` test of the module under the command of the tier its file belongs to).
   `lym gate card-verify <card id>` runs a plan card's `**Verify:**` line through the shared `internal/cardverify` runner and exits with the line's code.
   `lym gate testmap [--max <n>] [<package>...]` rebuilds the stale per-package coverage maps of `internal/testcover` from the hub's prime worktree:
-  each tier0 and tier1 test runs alone under a coverage binary inside one gate slot, bounded by `redundancy_build_timeout_min` and `redundancy_test_timeout_sec`,
-  and a package with a modified or untracked Go file, or whose map another call is building, is skipped.
+  each tier0 and tier1 test runs alone inside one gate slot, bounded by `redundancy_build_timeout_min` and `redundancy_test_timeout_sec`,
+  under a coverage binary over every in-module package its test binary links.
+  A package with a modified or untracked Go file, or whose map another call is building, is skipped,
+  and so is one whose linked packages hold a modified or untracked file just before its build or after its tests.
   A run inside a slot an enclosing gate run holds takes no second one,
   and a git worktree outside every hub runs unslotted under its own `gate.yaml`.
   A Go test binary that keeps a core busy past `busy_quit_sec` gets one SIGQUIT,

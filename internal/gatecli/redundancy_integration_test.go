@@ -160,7 +160,13 @@ func TestRedundancyStep(t *testing.T) {
 	alphaMap := mapOf(t, "alpha", mapTest(t, "alpha", "TestAlphaBase"))
 	alphaMap.Files["alpha_test.go"] = "stale"
 	writeMap(t, "alpha", alphaMap)
-	writeMap(t, "beta", mapOf(t, "beta", mapTest(t, "beta", "TestBetaOne")))
+	// beta's map also records a linked package whose file differs at the merge base, and a function of it TestBetaOne covers.
+	// Neither changes beta's verdicts, and its drift names no file of the linked package.
+	betaMap := mapOf(t, "beta", mapTest(t, "beta", "TestBetaOne"))
+	betaMap.Linked = map[string]map[string]string{module + "/alpha": {"alpha.go": "stale"}}
+	betaMap.Funcs = []testcover.FuncKey{{Package: module + "/alpha", File: "alpha.go", Func: "One"}}
+	betaMap.Tests[0].Funcs = []int{0}
+	writeMap(t, "beta", betaMap)
 	writeMap(t, "drops", mapOf(t, "drops"))
 	broken := mapOf(t, "broken")
 	broken.Blocks, broken.BuildFailure = nil, "the coverage build failed"

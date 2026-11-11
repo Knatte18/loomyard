@@ -1,6 +1,8 @@
 // testmappackage.go builds one package's coverage map for `lym gate testmap`.
-// It runs each of the package's mapped tests alone under a coverage binary inside the call's slot.
-// It keys the blocks they cover, and discards the map when the package's files changed under its tests.
+// It runs each of the package's mapped tests alone, inside the call's slot.
+// The tests run under a coverage binary over every in-module package the test binary links.
+// It keys the blocks they cover of the package's own files and names the functions they cover of the others.
+// It discards the map when a linked package's files are dirty or changed under its tests.
 
 package gatecli
 
@@ -8,7 +10,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -31,15 +35,22 @@ type mappedRun struct {
 // It builds from the commit head, whose Go files hash to before.
 // A package with no mapped test gets a map of its file hashes and no tests, with no build;
 // one whose build failed gets the same, naming the failure.
-// A package whose Go files differ at HEAD once its tests ended gets no map and is reported skipped.
+// A package gets no map and is reported skipped when a linked package's file is dirty just before its build;
+// the first result is then true, since no build was spent on the package.
+// It is skipped the same way, with the first result false, when such a file is dirty after its tests.
+// It is also skipped when such a file differs at HEAD once they ended.
 // The error reports a slot, read or write failure, or a cancelled call, that ends the call.
-func (r *testMapRun) mapPackage(pkg, dir, head string, before map[string]string) error {
+func (r *testMapRun) mapPackage(pkg, dir, head string, before map[string]string) (bool, error) {
 	pkgDir := filepath.Join(r.location.WorktreePath(), filepath.FromSlash(dir))
 	importPath := r.importPath(pkg)
-	m := testcover.Map{Commit: head, Files: before}
+	own, err := r.readPackageTree(head, dir)
+	if err != nil {
+		return false, err
+	}
+	m := testcover.Map{Commit: head, Files: before, OtherFiles: own.otherFiles()}
 	funcs, err := testcover.ScanTestFuncs(pkgDir)
 	if err != nil {
-		return r.writeFailed(pkg, m, err)
+		return false, r.writeFailed(pkg, m, err)
 	}
 	var mapped []testcover.TestFunc
 	for _, fn := range funcs {
@@ -48,36 +59,62 @@ func (r *testMapRun) mapPackage(pkg, dir, head string, before map[string]string)
 		}
 	}
 	if len(mapped) == 0 {
-		return r.write(pkg, m)
+		return false, r.write(pkg, m)
+	}
+	spawns, err := testcover.ScanSpawns(r.modulePath, filepath.Join(r.moduleDir, filepath.FromSlash(testKitDir)), pkgDir)
+	if err != nil {
+		return false, r.writeFailed(pkg, m, fmt.Errorf("spawn scan: %w", err))
 	}
 
 	if err := r.holdSlot(); err != nil {
-		return err
+		return false, err
 	}
-	bin := filepath.Join(r.tmp, "pkg.test")
-	defer os.Remove(bin)
 	builder := testcover.Toolchain{
 		Go: r.request.goBinary, Env: r.holderEnv, Dir: r.moduleDir, Ctx: r.ctx, BuildTimeout: r.buildTimeout, Grace: r.request.grace,
 	}
-	if err := builder.BuildBinary(importPath, importPath, "", bin); err != nil {
+	linked, err := builder.LinkedPackages(importPath)
+	if err != nil {
+		if cancelled := r.ctx.Err(); cancelled != nil {
+			return false, cancelled
+		}
+		return false, r.writeFailed(pkg, m, err)
+	}
+	linked = slices.Compact(slices.Sorted(slices.Values(append(linked, importPath))))
+	trees, err := r.linkedTrees(head, importPath, own, linked)
+	if err != nil {
+		return false, err
+	}
+	m.Linked = linkedHashes(trees, importPath)
+	file, err := r.dirtyOwnedFile(trees)
+	if err != nil {
+		return false, err
+	}
+	if file != "" {
+		r.skip(pkg, "modified or untracked file "+file)
+		return true, nil
+	}
+
+	bin := filepath.Join(r.tmp, "pkg.test")
+	defer os.Remove(bin)
+	if err := builder.BuildBinary(importPath, strings.Join(linked, ","), "", bin); err != nil {
 		// A terminating signal ends the build for a cause outside the package, so no failure map records it.
 		if cancelled := r.ctx.Err(); cancelled != nil {
-			return cancelled
+			return false, cancelled
 		}
-		return r.writeFailed(pkg, m, err)
+		return false, r.writeFailed(pkg, m, err)
 	}
 	if slices.ContainsFunc(mapped, func(fn testcover.TestFunc) bool { return r.tiers[fn.Tier].PrebuiltLym }) {
 		if err := r.buildLym(); err != nil {
 			if cancelled := r.ctx.Err(); cancelled != nil {
-				return cancelled
+				return false, cancelled
 			}
-			return r.writeFailed(pkg, m, err)
+			return false, r.writeFailed(pkg, m, err)
 		}
 	}
 	var passed []mappedRun
 	for _, fn := range mapped {
 		if err := r.ctx.Err(); err != nil {
-			return err
+			return false, err
 		}
 		if result, ok := r.runTest(pkg, pkgDir, bin, fn); ok {
 			passed = append(passed, mappedRun{fn: fn, result: result})
@@ -85,21 +122,35 @@ func (r *testMapRun) mapPackage(pkg, dir, head string, before map[string]string)
 	}
 	// A signal during the last test leaves that test out of passed, so the map would miss it.
 	if err := r.ctx.Err(); err != nil {
-		return err
+		return false, err
 	}
 
-	changed, err := r.changedFiles(dir, before)
+	file, err = r.dirtyOwnedFile(trees)
 	if err != nil {
-		return err
+		return false, err
+	}
+	if file != "" {
+		r.skip(pkg, "modified or untracked file "+file+" after its tests")
+		return false, nil
+	}
+	changed, err := r.changedFiles(head, importPath, trees)
+	if err != nil {
+		return false, err
 	}
 	if len(changed) > 0 {
 		r.skip(pkg, "files changed under its tests: "+strings.Join(changed, ", "))
-		return nil
+		return false, nil
 	}
-	if err := fillMapTests(&m, pkgDir, importPath, passed); err != nil {
-		return r.writeFailed(pkg, m, err)
+	var indexes []*testcover.FuncIndex
+	for _, other := range linked {
+		if other != importPath {
+			indexes = append(indexes, testcover.NewFuncIndex(filepath.Join(r.location.WorktreePath(), filepath.FromSlash(trees[other].dir)), other))
+		}
 	}
-	return r.write(pkg, m)
+	if err := fillMapTests(&m, pkgDir, importPath, passed, spawns, indexes); err != nil {
+		return false, r.writeFailed(pkg, m, err)
+	}
+	return false, r.write(pkg, m)
 }
 
 // importPath returns the import path of the module-relative package directory pkg.
@@ -108,6 +159,46 @@ func (r *testMapRun) importPath(pkg string) string {
 		return r.modulePath
 	}
 	return r.modulePath + "/" + pkg
+}
+
+// linkedTrees returns the package tree at the commit head of each package of linked, by import path.
+// own is the tree of the package at importPath, which linked holds.
+// A linked package outside the module is an error.
+func (r *testMapRun) linkedTrees(head, importPath string, own packageTree, linked []string) (map[string]packageTree, error) {
+	trees := map[string]packageTree{importPath: own}
+	for _, other := range linked {
+		if other == importPath {
+			continue
+		}
+		rel, inModule := strings.CutPrefix(other, r.modulePath+"/")
+		if other == r.modulePath {
+			rel, inModule = ".", true
+		}
+		if !inModule {
+			return nil, fmt.Errorf("the test binary of %s links %s, which lies outside the module %s", importPath, other, r.modulePath)
+		}
+		tree, err := r.readPackageTree(head, path.Join(r.moduleRel, rel))
+		if err != nil {
+			return nil, err
+		}
+		trees[other] = tree
+	}
+	return trees, nil
+}
+
+// linkedHashes returns the file hashes of every package of trees but the one at importPath, by import path.
+// It returns nil for none.
+func linkedHashes(trees map[string]packageTree, importPath string) map[string]map[string]string {
+	hashes := map[string]map[string]string{}
+	for linked, tree := range trees {
+		if linked != importPath {
+			hashes[linked] = tree.hashes
+		}
+	}
+	if len(hashes) == 0 {
+		return nil
+	}
+	return hashes
 }
 
 // holdSlot takes one slot of the hub's pool for the rest of the call.
@@ -198,37 +289,13 @@ func (r *testMapRun) runTest(pkg, pkgDir, bin string, fn testcover.TestFunc) (te
 	return result, result.Action == testcover.ActionPass
 }
 
-// changedFiles returns the sorted names of the Go files whose hash at the current HEAD differs from before.
-// The files are those of the worktree-relative directory dir.
-// A file added or removed since counts as changed.
-func (r *testMapRun) changedFiles(dir string, before map[string]string) ([]string, error) {
-	head, err := r.fabric.HeadSHA()
-	if err != nil {
-		return nil, fmt.Errorf("read HEAD: %w", err)
-	}
-	after, err := r.fileHashes(head, dir)
-	if err != nil {
-		return nil, err
-	}
-	var changed []string
-	for name, hash := range before {
-		if after[name] != hash {
-			changed = append(changed, name)
-		}
-	}
-	for name := range after {
-		if _, found := before[name]; !found {
-			changed = append(changed, name)
-		}
-	}
-	slices.Sort(changed)
-	return changed, nil
-}
-
-// fillMapTests fills m's block key table from the blocks of the package at importPath.
-// It reads the blocks from the package directory pkgDir, and adds one test per run that covers one of them.
-// Every run's profile holds every block of the package, covered or not, so the first run's profile gives the table.
-func fillMapTests(m *testcover.Map, pkgDir, importPath string, runs []mappedRun) error {
+// fillMapTests fills m's block key table from the blocks of the package at importPath, and its function table.
+// It reads the blocks from the package directory pkgDir.
+// It reads each linked package's functions through its index in indexes.
+// It adds one test per run that covers a block of the package or a function of a linked package.
+// Each test carries its verdict in spawns.
+// Every run's profile holds every block of the package, covered or not, so the first run's profile gives the block table.
+func fillMapTests(m *testcover.Map, pkgDir, importPath string, runs []mappedRun, spawns map[string]testcover.SpawnVerdict, indexes []*testcover.FuncIndex) error {
 	if len(runs) == 0 {
 		return nil
 	}
@@ -245,18 +312,46 @@ func fillMapTests(m *testcover.Map, pkgDir, importPath string, runs []mappedRun)
 		return fmt.Errorf("key the covered blocks: %w", err)
 	}
 	m.Blocks = keys
-	for _, run := range runs {
+
+	runFuncs := make([][]testcover.FuncKey, len(runs))
+	table := map[testcover.FuncKey]int{}
+	for i, run := range runs {
+		for _, linked := range indexes {
+			covered, err := linked.CoveredFuncs(run.result.Profile)
+			if err != nil {
+				return fmt.Errorf("name the covered functions: %w", err)
+			}
+			runFuncs[i] = append(runFuncs[i], covered...)
+		}
+		for _, key := range runFuncs[i] {
+			table[key] = 0
+		}
+	}
+	m.Funcs = slices.SortedFunc(maps.Keys(table), testcover.CompareFuncKeys)
+	for i, key := range m.Funcs {
+		table[key] = i
+	}
+
+	for i, run := range runs {
 		var covered []int
 		for position := range testcover.CoveredPositions(testcover.PackageBlocks(run.result.Profile, importPath)) {
-			if i, found := index[position]; found {
-				covered = append(covered, i)
+			if block, found := index[position]; found {
+				covered = append(covered, block)
 			}
 		}
-		if len(covered) == 0 {
+		var funcs []int
+		for _, key := range runFuncs[i] {
+			funcs = append(funcs, table[key])
+		}
+		if len(covered) == 0 && len(funcs) == 0 {
 			continue
 		}
 		slices.Sort(covered)
-		m.Tests = append(m.Tests, testcover.MapTest{Name: run.fn.Name, Tier: run.fn.Tier, FuncHash: run.fn.Hash, Seconds: run.result.Elapsed, Blocks: covered})
+		slices.Sort(funcs)
+		m.Tests = append(m.Tests, testcover.MapTest{
+			Name: run.fn.Name, Tier: run.fn.Tier, FuncHash: run.fn.Hash, Seconds: run.result.Elapsed,
+			Blocks: covered, Funcs: funcs, Spawn: spawns[run.fn.Name],
+		})
 	}
 	return nil
 }
@@ -273,7 +368,7 @@ func (r *testMapRun) write(pkg string, m testcover.Map) error {
 // writeFailed writes the map of pkg with no tests and failure as its build failure, and reports pkg failed.
 func (r *testMapRun) writeFailed(pkg string, m testcover.Map, failure error) error {
 	m.BuildFailure = failure.Error()
-	m.Blocks, m.Tests = nil, nil
+	m.Blocks, m.Funcs, m.Tests = nil, nil, nil
 	if err := r.writeMap(pkg, m); err != nil {
 		return err
 	}
@@ -281,11 +376,59 @@ func (r *testMapRun) writeFailed(pkg string, m testcover.Map, failure error) err
 	return nil
 }
 
-// writeMap stamps m with the build time and writes it as the map of pkg.
+// writeMap stamps m with the build time and its format marker, and writes it as the map of pkg.
 func (r *testMapRun) writeMap(pkg string, m testcover.Map) error {
 	m.BuiltAt = time.Now()
+	stamp, err := r.environmentStamp(m.Commit)
+	if err != nil {
+		return err
+	}
+	m.Format = &testcover.MapFormat{Version: testcover.MapFormatVersion, Commit: m.Commit, BuiltAt: m.BuiltAt, Environment: stamp}
 	if err := testcover.WriteMap(r.mapsDir, pkg, m); err != nil {
 		return fmt.Errorf("write the coverage map of %s: %w", pkg, err)
 	}
 	return nil
+}
+
+// environmentStamp returns the environment stamp of a map built from the commit.
+// It asks the go command for the toolchain's version and platform once per call.
+func (r *testMapRun) environmentStamp(commit string) (testcover.EnvironmentStamp, error) {
+	if r.toolchain == nil {
+		reader := testcover.Toolchain{Go: r.request.goBinary, Env: r.env, Dir: r.moduleDir, Ctx: r.ctx, BuildTimeout: r.buildTimeout, Grace: r.request.grace}
+		version, goos, goarch, err := reader.GoEnvironment()
+		if err != nil {
+			return testcover.EnvironmentStamp{}, fmt.Errorf("read the Go toolchain's environment: %w", err)
+		}
+		r.toolchain = &testcover.EnvironmentStamp{GoVersion: version, GOOS: goos, GOARCH: goarch}
+	}
+	stamp := *r.toolchain
+	for _, file := range []struct {
+		name string
+		hash *string
+	}{{"go.mod", &stamp.GoModHash}, {"go.sum", &stamp.GoSumHash}} {
+		data, found, err := r.fabric.CodeFileAt(commit, path.Join(r.moduleRel, file.name))
+		if err != nil {
+			return testcover.EnvironmentStamp{}, err
+		}
+		if found {
+			*file.hash = testcover.ContentHash(data)
+		}
+	}
+	stamp.TiersDigest = r.tiersDigest()
+	stamp.HubEnvDigest = testcover.ContentHash([]byte(strings.Join(r.hubEnv.Entries(), "\n")))
+	return stamp, nil
+}
+
+// tiersDigest digests each mapped tier's command and env as configured.
+// It digests them before the `{parallel}` substitution, so a changed parallel count leaves it as it was.
+func (r *testMapRun) tiersDigest() string {
+	var lines []string
+	for _, number := range slices.Sorted(maps.Keys(r.tiers)) {
+		tier := r.tiers[number]
+		lines = append(lines, fmt.Sprintf("tier%d command %s", number, tier.Command))
+		for _, key := range slices.Sorted(maps.Keys(tier.Env)) {
+			lines = append(lines, fmt.Sprintf("tier%d env %s=%s", number, key, tier.Env[key]))
+		}
+	}
+	return testcover.ContentHash([]byte(strings.Join(lines, "\n")))
 }

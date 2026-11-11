@@ -21,6 +21,19 @@ func (f *Fabric) CodeDirAt(rev, dir string) ([]string, error) {
 	return names, nil
 }
 
+// CodeTreeAt returns the regular files in dir's whole subtree of the code checkout's commit rev, sorted.
+// Each is a slash path relative to dir.
+// dir is slash-separated and relative to the checkout's root; "" or "." names the root.
+// A directory absent at rev gives an empty list and no error.
+// rev is a hex commit name, such as the one HeadSHA returns.
+func (f *Fabric) CodeTreeAt(rev, dir string) ([]string, error) {
+	paths, err := f.code.FilesUnderDirAtRevision(rev, dir)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: list the tree of %s at %s: %w", dir, rev, err)
+	}
+	return paths, nil
+}
+
 // CodeFileAt returns rel as stored in the code checkout's commit rev, unaffected by any later change to the file.
 // rel is slash-separated and relative to the checkout's root, and rev is a hex commit name.
 // found is false with a nil error when rel is absent at rev.

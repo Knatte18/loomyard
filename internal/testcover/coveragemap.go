@@ -14,6 +14,12 @@ import (
 // mapFileName is the file name of a package's coverage map within its directory.
 const mapFileName = "map.json"
 
+// MapFormatVersion is the map shape a MapFormat marker names:
+// The shape holds the own package's blocks and other files.
+// It holds each linked package's covered functions and file hashes.
+// It also holds each test's spawn verdict.
+const MapFormatVersion = 2
+
 // Dir returns the directory under the board directory boardDir that holds the coverage maps and the exit record.
 // Every worktree of the hub on the machine shares it.
 func Dir(boardDir string) string {
@@ -21,7 +27,9 @@ func Dir(boardDir string) string {
 }
 
 // Map is one package's coverage map.
-// It records which blocks of the package's own files each judged test covers, and the tree it was built from.
+// It records which blocks of the package's own files each judged test covers.
+// It also records which functions of the other in-module packages its test binary links each test covers.
+// It names the tree it was built from too.
 type Map struct {
 	// Commit is the commit the map was built from.
 	Commit string `json:"commit"`
@@ -29,12 +37,25 @@ type Map struct {
 	BuiltAt time.Time `json:"built_at"`
 	// Files maps each Go file the package directory tracks, by name, to its ContentHash.
 	Files map[string]string `json:"files"`
+	// OtherFiles maps each other tracked file of the package, by slash path relative to its directory, to its ContentHash.
+	// They are the files under the directory down to the next package directory or nested module.
+	// The Go files Files holds are left out; testdata is included, Go files under it among them.
+	OtherFiles map[string]string `json:"other_files,omitempty"`
+	// Linked maps the import path of each other in-module package the test binary links to the ContentHash of its files.
+	// The files are keyed by slash path relative to that package's directory:
+	// every tracked file under the directory down to the next package directory or nested module.
+	Linked map[string]map[string]string `json:"linked,omitempty"`
 	// Blocks is the block key table that MapTest.Blocks indexes.
 	Blocks []BlockKey `json:"blocks"`
+	// Funcs is the table of linked packages' functions that MapTest.Funcs indexes, sorted by CompareFuncKeys.
+	Funcs []FuncKey `json:"funcs,omitempty"`
 	// Tests holds one entry per judged top-level test.
 	Tests []MapTest `json:"tests"`
 	// BuildFailure is the error of a coverage build that failed, empty when the build succeeded.
 	BuildFailure string `json:"build_failure,omitempty"`
+	// Format marks a map of the MapFormatVersion shape; it is nil in a map no writer of that shape wrote.
+	// Its Commit and BuiltAt equal the map's own unless a writer that does not know it rewrote the map since.
+	Format *MapFormat `json:"format,omitempty"`
 }
 
 // MapTest is one judged top-level test of a coverage map.
@@ -46,8 +67,39 @@ type MapTest struct {
 	FuncHash string `json:"func_hash"`
 	// Seconds is the test's standalone duration.
 	Seconds float64 `json:"seconds"`
-	// Blocks are indexes into Map.Blocks of the blocks the test covers.
+	// Blocks are indexes into Map.Blocks of the blocks of the package's own files the test covers.
 	Blocks []int `json:"blocks"`
+	// Funcs are indexes into Map.Funcs of the linked packages' functions the test covers.
+	Funcs []int `json:"funcs,omitempty"`
+	// Spawn is the static spawn scan's verdict on the test.
+	Spawn SpawnVerdict `json:"spawn"`
+}
+
+// MapFormat is a coverage map's format marker: the shape the map holds and the build that wrote it.
+type MapFormat struct {
+	// Version is the MapFormatVersion of the writer.
+	Version int `json:"version"`
+	// Commit and BuiltAt are the map's own, as the writer set them.
+	Commit  string    `json:"commit"`
+	BuiltAt time.Time `json:"built_at"`
+	// Environment is what besides the module's files shaped the build.
+	Environment EnvironmentStamp `json:"environment"`
+}
+
+// EnvironmentStamp records what besides the module's files shapes the coverage a map records:
+// the Go toolchain, the module's requirements and the test environment the hub configures.
+type EnvironmentStamp struct {
+	GoVersion string `json:"go_version"`
+	GOOS      string `json:"goos"`
+	GOARCH    string `json:"goarch"`
+	// GoModHash and GoSumHash are the ContentHash of the module's go.mod and go.sum at the map's commit.
+	// Each is empty for a file the commit does not hold.
+	GoModHash string `json:"go_mod_hash"`
+	GoSumHash string `json:"go_sum_hash"`
+	// TiersDigest digests the mapped tiers' commands and env as configured, before the `{parallel}` substitution.
+	TiersDigest string `json:"tiers_digest"`
+	// HubEnvDigest digests the hub's env.yaml variables the build passes its children.
+	HubEnvDigest string `json:"hub_env_digest"`
 }
 
 // MapPath returns the path of the coverage map of the package pkg under the maps directory dir.

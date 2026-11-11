@@ -285,9 +285,10 @@ this section keeps only what is project-specific or stricter here.
 ### The coverage map and the gate's redundancy report
 
 - `lym gate testmap` keeps one coverage map per package under `internal/testcover`.
-  A map records, for each tier0 and tier1 test, its function hash and the blocks it covers of its own package's files,
-  and the hashes of the package's Go files at the commit it was built from.
-  It is rebuilt when those files change, when it outgrows `test_map_max_age_days` and after a failed build once HEAD moves.
+  A map records, for each tier0 and tier1 test, its function hash, the blocks it covers of its own package's files,
+  the functions it covers of each other in-module package its test binary links, and its spawn scan verdict.
+  It also records the hashes of the package's files and of each linked package's files at the commit it was built from.
+  It is rebuilt when the package's own Go files change, when it outgrows `test_map_max_age_days` and after a failed build once HEAD moves.
   The prime's dobby starts the verb every `test_map_every` landings.
 - A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
   It takes the diff's new and changed top-level tests against the merge base with the parent branch,

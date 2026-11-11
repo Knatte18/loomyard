@@ -13,6 +13,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -42,8 +43,17 @@ const helperRoleTestMapGo = "testmap-go"
 // They also name the import path whose coverage build fails, and the one whose coverage build never ends.
 // testMapLymBuildsEnv names the file the stand-in appends a line to for each `lym` build it acts as.
 // testMapLymSeenEnv names the file a coverage run appends the prebuilt `lym` path it was given to, empty when none.
-// testMapCoverBuildsEnv names the file the stand-in appends the import path of each coverage build it acts as to.
+// testMapCoverBuildsEnv names the file the stand-in appends a line to for each coverage build it acts as.
+// Each line holds the build's import path and coverpkg.
 // testMapFailLymBuildEnv, when set, makes every `lym` build the stand-in acts as fail.
+// testMapLinksEnv lists, comma-separated, `<package>=<linked package>` pairs of fixture package names:
+// the stand-in lists the linked package as linked by the package's test binary, and profiles its blocks.
+// testMapDirtyEnv names the untracked file a test ending in Dirties writes.
+// testMapFailListEnv, when set, makes every `go list` the stand-in acts as fail.
+// testMapFailGoEnvEnv, when set, does the same for every `go env`.
+// testMapLandEnv names the fixture package whose file a test ending in LandsLinked commits a change to.
+// testMapLandFileEnv, when set, names the file of that package, creating it, instead of its `<package>.go`.
+// testMapRemoveFileEnv, when set, names the file of that package the commit removes instead.
 const (
 	testMapModuleEnv      = "GATECLI_TESTMAP_MODULE"
 	testMapFailBuildEnv   = "GATECLI_TESTMAP_FAIL_BUILD"
@@ -55,6 +65,22 @@ const (
 	testMapFailLymBuildEnv = "GATECLI_TESTMAP_FAIL_LYM_BUILD"
 	// testMapHangingEnv names the file a coverage run appends the test name to once it is about to hang.
 	testMapHangingEnv = "GATECLI_TESTMAP_HANGING"
+	testMapLinksEnv   = "GATECLI_TESTMAP_LINKS"
+	testMapDirtyEnv   = "GATECLI_TESTMAP_DIRTY"
+
+	testMapFailListEnv  = "GATECLI_TESTMAP_FAIL_LIST"
+	testMapFailGoEnvEnv = "GATECLI_TESTMAP_FAIL_GO_ENV"
+	testMapLandEnv      = "GATECLI_TESTMAP_LAND"
+
+	testMapLandFileEnv   = "GATECLI_TESTMAP_LAND_FILE"
+	testMapRemoveFileEnv = "GATECLI_TESTMAP_REMOVE_FILE"
+)
+
+// The stand-in's `go env GOVERSION GOOS GOARCH` answer.
+const (
+	testMapGoVersion = "go1.26.8"
+	testMapGOOS      = "linux"
+	testMapGOARCH    = "amd64"
 )
 
 func init() {
@@ -84,12 +110,20 @@ func testMapTestFile(pkg string, tiers map[string]int) string {
 
 // runTestMapStandIn acts on its arguments and returns the process exit code.
 // As `go test -c` it runs runTestMapStandInBuild, and as `go build` of `lym` it runs runTestMapStandInLymBuild.
+// As `go list` it runs runTestMapStandInList.
+// As `go env` it prints the testMapGoVersion, testMapGOOS and testMapGOARCH lines.
+// Both fail when the variable naming them, testMapFailListEnv or testMapFailGoEnvEnv, is set.
 // As a coverage binary run in a package directory, it reports the test `-test.run` names as passing.
 // Its profile covers the first function of the package's `<package>.go`.
-// A test ending in Two covers the second function too.
+// A test ending in Two covers the second function too, and one ending in Elsewhere neither.
+// The profile of a package testMapLinksEnv links also lists the linked package's two functions,
+// and a test ending in Calls or Elsewhere covers the first of them.
 // A test ending in Hangs never ends, after it records its name in the file testMapHangingEnv names.
 // One ending in Moves first commits a change to the package's file.
 // One ending in Lands first commits a change to a file outside the package.
+// One ending in LandsLinked first commits a change to a file of the package testMapLandEnv names, when it names one:
+// the file testMapLandFileEnv names, its removal when testMapRemoveFileEnv names a file, or else the package's own file.
+// One ending in Dirties first writes the file testMapDirtyEnv names, when it names one.
 // A test run without LYM_TEST_TIER fails, so a map entry proves its tier's env reached it.
 // A run records the prebuilt `lym` path it was given in the file testMapLymSeenEnv names.
 func runTestMapStandIn() int {
@@ -99,6 +133,17 @@ func runTestMapStandIn() int {
 	}
 	if len(args) > 0 && args[0] == "build" {
 		return runTestMapStandInLymBuild(args)
+	}
+	if len(args) > 0 && args[0] == "list" {
+		return runTestMapStandInList(args)
+	}
+	if len(args) > 0 && args[0] == "env" {
+		if os.Getenv(testMapFailGoEnvEnv) != "" {
+			fmt.Fprintln(os.Stderr, "stand-in: go env failed")
+			return 1
+		}
+		fmt.Printf("%s\n%s\n%s\n", testMapGoVersion, testMapGOOS, testMapGOARCH)
+		return 0
 	}
 	var name, profile string
 	for _, arg := range args {
@@ -138,13 +183,33 @@ func runTestMapStandIn() int {
 		if appendAndCommit(filepath.Dir(dir), "landed.txt") != nil {
 			return 1
 		}
+	case strings.HasSuffix(name, "LandsLinked"):
+		if landed := os.Getenv(testMapLandEnv); landed != "" && landInLinked(filepath.Join(filepath.Dir(dir), landed), landed) != nil {
+			return 1
+		}
+	case strings.HasSuffix(name, "Dirties"):
+		if dirty := os.Getenv(testMapDirtyEnv); dirty != "" && os.WriteFile(dirty, []byte("dirty\n"), 0o644) != nil {
+			return 1
+		}
 	}
-	second := 0
+	first, second := 1, 0
 	if strings.HasSuffix(name, "Two") {
 		second = 1
 	}
-	file := os.Getenv(testMapModuleEnv) + "/" + pkg + "/" + pkg + ".go"
-	lines := fmt.Sprintf("mode: set\n%s:3.16,3.28 1 1\n%s:5.16,5.28 1 %d\n", file, file, second)
+	if strings.HasSuffix(name, "Elsewhere") {
+		first = 0
+	}
+	module := os.Getenv(testMapModuleEnv)
+	file := module + "/" + pkg + "/" + pkg + ".go"
+	lines := fmt.Sprintf("mode: set\n%s:3.16,3.28 1 %d\n%s:5.16,5.28 1 %d\n", file, first, file, second)
+	if linked := testMapLinkOf(pkg); linked != "" {
+		calls := 0
+		if strings.HasSuffix(name, "Calls") || strings.HasSuffix(name, "Elsewhere") {
+			calls = 1
+		}
+		linkedFile := module + "/" + linked + "/" + linked + ".go"
+		lines += fmt.Sprintf("%s:3.16,3.28 1 %d\n%s:5.16,5.28 1 0\n", linkedFile, calls, linkedFile)
+	}
 	if err := os.WriteFile(profile, []byte(lines), 0o644); err != nil {
 		return 1
 	}
@@ -152,9 +217,34 @@ func runTestMapStandIn() int {
 	return 0
 }
 
+// testMapLinkOf returns the fixture package that testMapLinksEnv names as linked by the fixture package pkg, or "".
+func testMapLinkOf(pkg string) string {
+	for _, pair := range strings.Split(os.Getenv(testMapLinksEnv), ",") {
+		if from, to, found := strings.Cut(pair, "="); found && from == pkg {
+			return to
+		}
+	}
+	return ""
+}
+
+// runTestMapStandInList acts as `go list -deps -test -f <template> <import path>`.
+// It prints, in the template's form, the package itself and the package testMapLinksEnv names as linked by it.
+func runTestMapStandInList(args []string) int {
+	if os.Getenv(testMapFailListEnv) != "" {
+		fmt.Fprintln(os.Stderr, "stand-in: go list failed")
+		return 1
+	}
+	importPath := args[len(args)-1]
+	fmt.Printf("%s\t%s\t\n", importPath, path.Base(importPath))
+	if linked := testMapLinkOf(path.Base(importPath)); linked != "" {
+		fmt.Printf("%s/%s\t%s\t\n", os.Getenv(testMapModuleEnv), linked, linked)
+	}
+	return 0
+}
+
 // runTestMapStandInBuild acts as `go test -c ... <import path>`.
 // It fails when its working directory holds no go.mod, as the go command does outside a module.
-// It records the import path in the file testMapCoverBuildsEnv names, when one is named.
+// It records the import path and the coverpkg list in the file testMapCoverBuildsEnv names, when one is named.
 // It fails for the import path testMapFailBuildEnv names, and never ends for the one testMapHangBuildEnv names.
 // Otherwise it copies the test binary to the `-o` path, so the copy runs as the package's coverage binary.
 func runTestMapStandInBuild(args []string) int {
@@ -164,7 +254,13 @@ func runTestMapStandInBuild(args []string) int {
 	}
 	importPath := args[len(args)-1]
 	if builds := os.Getenv(testMapCoverBuildsEnv); builds != "" {
-		if appendLine(builds, importPath) != nil {
+		coverpkg := ""
+		for _, arg := range args {
+			if value, ok := strings.CutPrefix(arg, "-coverpkg="); ok {
+				coverpkg = value
+			}
+		}
+		if appendLine(builds, importPath+" "+coverpkg) != nil {
 			return 1
 		}
 	}
@@ -223,6 +319,29 @@ func appendLine(file, line string) error {
 	return f.Close()
 }
 
+// landInLinked commits a change to the linked fixture package pkg, whose directory is dir.
+// When testMapRemoveFileEnv names a file, it removes that file.
+// Otherwise it changes the file testMapLandFileEnv names, or `<pkg>.go` when none is named.
+func landInLinked(dir, pkg string) error {
+	if removed := os.Getenv(testMapRemoveFileEnv); removed != "" {
+		return gitSteps(dir, []string{"rm", "-q", "--", removed}, []string{"commit", "-q", "-m", "remove " + removed, "--", removed})
+	}
+	if named := os.Getenv(testMapLandFileEnv); named != "" {
+		return appendAndCommit(dir, named)
+	}
+	return appendAndCommit(dir, pkg+".go")
+}
+
+// gitSteps runs each git command of steps in dir, stopping at the first failure.
+func gitSteps(dir string, steps ...[]string) error {
+	for _, args := range steps {
+		if err := exec.Command("git", append([]string{"-C", dir}, args...)...).Run(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // appendAndCommit appends a line to the file rel under dir and commits it alone, moving HEAD as a landing does.
 func appendAndCommit(dir, rel string) error {
 	file, err := os.OpenFile(filepath.Join(dir, rel), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -236,12 +355,7 @@ func appendAndCommit(dir, rel string) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	for _, args := range [][]string{{"add", "--", rel}, {"commit", "-q", "-m", "land " + rel, "--", rel}} {
-		if err := exec.Command("git", append([]string{"-C", dir}, args...)...).Run(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return gitSteps(dir, []string{"add", "--", rel}, []string{"commit", "-q", "-m", "land " + rel, "--", rel})
 }
 
 // testMapOutcome is the envelope of a `lym gate testmap` call that walked its packages.
@@ -251,6 +365,43 @@ type testMapOutcome struct {
 	Failed   []testMapFailure `json:"failed"`
 	TimedOut []string         `json:"timed_out"`
 	Unbuilt  int              `json:"unbuilt"`
+}
+
+// runTestMapIn runs `lym gate testmap` over the prime worktree prime and returns its exit code and output.
+// It uses the go command goBinary and the environment env.
+// One build minute lasts minuteUnit.
+func runTestMapIn(prime, goBinary string, env []string, minuteUnit time.Duration, maxPackages int, packages ...string) (int, []byte) {
+	var out bytes.Buffer
+	code := runTestMap(lymcwd.WithCwd(context.Background(), prime), &out, testMapRequest{
+		goBinary: goBinary, maxPackages: maxPackages, packages: packages, environ: env,
+		secondUnit: 150 * time.Millisecond, minuteUnit: minuteUnit, grace: time.Second,
+	})
+	return code, out.Bytes()
+}
+
+// callTestMap runs `lym gate testmap` as runTestMapIn does.
+// It fails the test unless the call walked its packages, and returns the call's envelope.
+func callTestMap(t *testing.T, prime, goBinary string, env []string, minuteUnit time.Duration, maxPackages int, packages ...string) testMapOutcome {
+	t.Helper()
+	code, out := runTestMapIn(prime, goBinary, env, minuteUnit, maxPackages, packages...)
+	if code != 0 {
+		t.Fatalf("runTestMap exit = %d; want 0; output %s", code, out)
+	}
+	var got testMapOutcome
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("unmarshal %q: %v", out, err)
+	}
+	return got
+}
+
+// readTestMap returns the coverage map of pkg under the maps directory mapsDir, failing the test when there is none.
+func readTestMap(t *testing.T, mapsDir, pkg string) testcover.Map {
+	t.Helper()
+	m, found, err := testcover.ReadMap(mapsDir, pkg)
+	if err != nil || !found {
+		t.Fatalf("ReadMap(%s) = found %v, err %v; want a map", pkg, found, err)
+	}
+	return m
 }
 
 // TestGateTestMap runs `lym gate testmap` calls in order over one hub.
@@ -342,19 +493,7 @@ func TestGateTestMap(t *testing.T) {
 	// callWith runs the verb over the prime under the environment env, with one build minute lasting minuteUnit.
 	callWith := func(t *testing.T, env []string, minuteUnit time.Duration, maxPackages int, packages ...string) testMapOutcome {
 		t.Helper()
-		var out bytes.Buffer
-		code := runTestMap(lymcwd.WithCwd(context.Background(), prime), &out, testMapRequest{
-			goBinary: standIn, maxPackages: maxPackages, packages: packages, environ: env,
-			secondUnit: 150 * time.Millisecond, minuteUnit: minuteUnit, grace: time.Second,
-		})
-		if code != 0 {
-			t.Fatalf("runTestMap exit = %d; want 0; output %s", code, out.String())
-		}
-		var got testMapOutcome
-		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-			t.Fatalf("unmarshal %q: %v", out.String(), err)
-		}
-		return got
+		return callTestMap(t, prime, standIn, env, minuteUnit, maxPackages, packages...)
 	}
 	call := func(t *testing.T, maxPackages int, packages ...string) testMapOutcome {
 		t.Helper()
@@ -362,11 +501,7 @@ func TestGateTestMap(t *testing.T) {
 	}
 	readMap := func(t *testing.T, pkg string) testcover.Map {
 		t.Helper()
-		m, found, err := testcover.ReadMap(mapsDir, pkg)
-		if err != nil || !found {
-			t.Fatalf("ReadMap(%s) = found %v, err %v; want a map", pkg, found, err)
-		}
-		return m
+		return readTestMap(t, mapsDir, pkg)
 	}
 	wantExitRecord := func(t *testing.T, unbuilt int) {
 		t.Helper()
@@ -472,8 +607,16 @@ func TestGateTestMap(t *testing.T) {
 		if alpha.Commit != head || len(alpha.Blocks) != 2 || !maps.Equal(alpha.Files, wantFiles) {
 			t.Errorf("alpha map = commit %s, %d blocks, files %v; want commit %s, 2 blocks, files %v", alpha.Commit, len(alpha.Blocks), alpha.Files, head, wantFiles)
 		}
-		if broken := readMap(t, "broken"); broken.Commit != head || len(broken.Tests) != 0 || !strings.Contains(broken.BuildFailure, "the coverage build failed") {
+		broken := readMap(t, "broken")
+		if broken.Commit != head || len(broken.Tests) != 0 || !strings.Contains(broken.BuildFailure, "the coverage build failed") {
 			t.Errorf("broken map = commit %s, tests %v, failure %q; want commit %s, no test, the build failure", broken.Commit, broken.Tests, broken.BuildFailure, head)
+		}
+		if broken.Format == nil {
+			t.Fatal("broken map has no format marker; want one on a failed build's map")
+		}
+		if marker := broken.Format; marker.Version != testcover.MapFormatVersion || marker.Commit != broken.Commit || !marker.BuiltAt.Equal(broken.BuiltAt) || broken.Funcs != nil {
+			t.Errorf("broken map marker = %+v, funcs %v; want version %d, the map's commit %s and build time %v, no funcs",
+				marker, broken.Funcs, testcover.MapFormatVersion, broken.Commit, broken.BuiltAt)
 		}
 		wantExitRecord(t, 3)
 	})
@@ -609,5 +752,327 @@ func TestGateTestMap(t *testing.T) {
 		if distinct := slices.Compact(slices.Sorted(slices.Values(paths))); len(paths) < 2 || len(distinct) != 1 || distinct[0] == "" {
 			t.Errorf("prebuilt lym paths the tests saw = %q; want one non-empty path for every run of both packages", paths)
 		}
+	})
+}
+
+// TestGateTestMapLinkedPackages runs `lym gate testmap` calls in order over one hub.
+// The hub's packages link the package linked.
+// Each call builds on the maps and HEAD the last one left.
+// Its subtests share that state and run in sequence, so none is parallel.
+func TestGateTestMapLinkedPackages(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
+	prime := h.PrimeWorktree()
+	const module = "example.com/linking"
+	// A tier's command holds the {parallel} placeholder, which the tiers digest reads before it is substituted.
+	writeGate := func(t *testing.T, command string, parallel int) {
+		t.Helper()
+		gate := fmt.Sprintf("slots: 1\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n"+
+			"  tier0: {command: %q, timeout_min: 1, counter: go-json, parallel: %d, env: {LYM_TEST_TIER: \"0\"}}\n"+
+			"  tier1: {command: %q, timeout_min: 1, counter: go-json, parallel: %d, env: {LYM_TEST_TIER: \"1\"}}\n",
+			command, parallel, command, parallel)
+		if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gate), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const defaultCommand = "x {parallel}"
+	writeGate(t, defaultCommand, 1)
+
+	// TestCallerSpawns lies in a tier1 file and runs os.Executable, so the spawn scan marks it out of process.
+	// TestCallerUnresolved lies there too and calls a local function value, which the scan cannot resolve.
+	// linked holds a file in a subdirectory, as a go:embed target does, and a nested package its map leaves out.
+	// It holds a nested module, which owns its go.mod.
+	// It also holds files under testdata, a dot directory and an underscore directory.
+	// No package owns those files, so they stay linked's own.
+	files := map[string]string{
+		"go.mod":                "module " + module + "\n\ngo 1.21\n",
+		"go.sum":                "example.com/dependency v1.0.0 h1:placeholder=\n",
+		"caller/caller.go":      testMapSource("caller"),
+		"caller/caller_test.go": testMapTestFile("caller", map[string]int{"TestCallerCalls": 0, "TestCallerElsewhere": 0}),
+		"caller/spawn_tier1_test.go": "//go:build tier1\n\npackage caller\n\nimport (\n\t\"os\"\n\t\"testing\"\n\n\t\"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n)\n\n" +
+			"func TestCallerSpawns(t *testing.T) {\n\ttiergate.Require(t, 1)\n\t_, _ = os.Executable()\n}\n\n" +
+			"func TestCallerUnresolved(t *testing.T) {\n\ttiergate.Require(t, 1)\n\tcall := func() {}\n\tcall()\n}\n",
+		"caller/testdata/fixture.txt": "fixture\n",
+		"dirtier/dirtier.go":          testMapSource("dirtier"),
+		"dirtier/dirtier_test.go":     testMapTestFile("dirtier", map[string]int{"TestDirtierDirties": 0, "TestDirtierLandsLinked": 0}),
+		"follower/follower.go":        testMapSource("follower"),
+		"follower/follower_test.go":   testMapTestFile("follower", map[string]int{"TestFollowerCalls": 0}),
+		"linked/linked.go":            testMapSource("linked"),
+		"linked/assets/data.txt":      "embedded\n",
+		"linked/inner/inner.go":       "package inner\n",
+		"linked/modnest/go.mod":       "module example.com/modnest\n\ngo 1.21\n",
+		"linked/testdata/only.go":     "package only\n",
+		"linked/_hidden/hidden.go":    "package hidden\n",
+		"linked/.dotdir/dot.go":       "package dot\n",
+	}
+	plankit.WriteTree(t, prime, files)
+	gitkit.Git(t, prime, "add", "go.mod", "go.sum", "caller", "dirtier", "follower", "linked")
+	gitkit.Git(t, prime, "commit", "-q", "-m", "seed the linking module")
+
+	mapsDir := testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))
+	standIn, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	builds := filepath.Join(t.TempDir(), "builds")
+	environ := append(os.Environ(), helperEnv+"="+helperRoleTestMapGo, testMapModuleEnv+"="+module,
+		testMapLinksEnv+"=caller=linked,dirtier=linked,follower=linked", testMapCoverBuildsEnv+"="+builds)
+	callMax := func(t *testing.T, env []string, maxPackages int, packages ...string) testMapOutcome {
+		t.Helper()
+		return callTestMap(t, prime, standIn, env, time.Minute, maxPackages, packages...)
+	}
+	call := func(t *testing.T, env []string, packages ...string) testMapOutcome {
+		t.Helper()
+		return callMax(t, env, 10, packages...)
+	}
+	// withEnv returns the call environment with the variable name set to value.
+	withEnv := func(name, value string) []string {
+		return append(slices.Clone(environ), name+"="+value)
+	}
+	wantOutcome := func(t *testing.T, got, want testMapOutcome) {
+		t.Helper()
+		if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
+			t.Errorf("runTestMap() mismatch (-want +got):\n%s", diff)
+		}
+	}
+	wantLeft := func(t *testing.T, pkg string, before testcover.Map) {
+		t.Helper()
+		if after := readTestMap(t, mapsDir, pkg); !after.BuiltAt.Equal(before.BuiltAt) {
+			t.Errorf("%s map built at %v; want it left from %v", pkg, after.BuiltAt, before.BuiltAt)
+		}
+	}
+	hash := func(content string) string { return testcover.ContentHash([]byte(content)) }
+	// rebuiltInnerStamp rebuilds the map of linked/inner, which has no test and so needs no build, and returns its stamp.
+	rebuiltInnerStamp := func(t *testing.T) testcover.EnvironmentStamp {
+		t.Helper()
+		wantOutcome(t, call(t, environ, "linked/inner"), testMapOutcome{Built: []string{"linked/inner"}})
+		marker := readTestMap(t, mapsDir, "linked/inner").Format
+		if marker == nil {
+			t.Fatal("linked/inner map has no format marker")
+		}
+		return marker.Environment
+	}
+
+	t.Run("TheMapRecordsLinkedFunctionsAndFilesTheSpawnVerdictAndAMarker", func(t *testing.T) {
+		head := gitkit.RevParse(t, prime, "HEAD")
+		wantOutcome(t, call(t, environ), testMapOutcome{Built: []string{"caller", "dirtier", "follower", "linked", "linked/inner"}})
+
+		caller := readTestMap(t, mapsDir, "caller")
+		wantFuncs := []testcover.FuncKey{{Package: module + "/linked", File: "linked.go", Func: "One"}}
+		if diff := cmp.Diff(wantFuncs, caller.Funcs); diff != "" {
+			t.Errorf("caller map funcs mismatch (-want +got):\n%s", diff)
+		}
+		wantTests := []testcover.MapTest{
+			{Name: "TestCallerCalls", Blocks: []int{0}, Funcs: []int{0}},
+			{Name: "TestCallerElsewhere", Funcs: []int{0}},
+			{Name: "TestCallerSpawns", Tier: 1, Blocks: []int{0}, Spawn: testcover.SpawnVerdict{OutOfProcess: true}},
+			{Name: "TestCallerUnresolved", Tier: 1, Blocks: []int{0}, Spawn: testcover.SpawnVerdict{Unresolved: true}},
+		}
+		if diff := cmp.Diff(wantTests, caller.Tests, cmpopts.EquateEmpty(), cmpopts.IgnoreFields(testcover.MapTest{}, "FuncHash", "Seconds")); diff != "" {
+			t.Errorf("caller map tests mismatch (-want +got):\n%s", diff)
+		}
+		wantLinked := map[string]map[string]string{module + "/linked": {
+			"linked.go":         hash(files["linked/linked.go"]),
+			"assets/data.txt":   hash("embedded\n"),
+			"testdata/only.go":  hash(files["linked/testdata/only.go"]),
+			"_hidden/hidden.go": hash(files["linked/_hidden/hidden.go"]),
+			".dotdir/dot.go":    hash(files["linked/.dotdir/dot.go"]),
+		}}
+		if diff := cmp.Diff(wantLinked, caller.Linked); diff != "" {
+			t.Errorf("caller map linked files mismatch (-want +got):\n%s", diff)
+		}
+		if diff := cmp.Diff(map[string]string{"testdata/fixture.txt": hash("fixture\n")}, caller.OtherFiles); diff != "" {
+			t.Errorf("caller map other files mismatch (-want +got):\n%s", diff)
+		}
+		if caller.Format == nil {
+			t.Fatal("caller map has no format marker")
+		}
+		wantFormat := &testcover.MapFormat{
+			Version: testcover.MapFormatVersion, Commit: head, BuiltAt: caller.BuiltAt,
+			Environment: testcover.EnvironmentStamp{
+				GoVersion: testMapGoVersion, GOOS: testMapGOOS, GOARCH: testMapGOARCH,
+				GoModHash: hash(files["go.mod"]), GoSumHash: hash(files["go.sum"]),
+			},
+		}
+		if diff := cmp.Diff(wantFormat, caller.Format, cmpopts.IgnoreFields(testcover.EnvironmentStamp{}, "TiersDigest", "HubEnvDigest")); diff != "" || caller.Commit != head {
+			t.Errorf("caller map commit = %s, format mismatch (-want +got):\n%s; want commit %s", caller.Commit, diff, head)
+		}
+		if stamp := caller.Format.Environment; stamp.TiersDigest == "" || stamp.HubEnvDigest == "" {
+			t.Errorf("caller map digests = tiers %q, hub env %q; want both set", stamp.TiersDigest, stamp.HubEnvDigest)
+		}
+		recorded, err := os.ReadFile(builds)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := module + "/caller " + module + "/caller," + module + "/linked"; !slices.Contains(strings.Split(string(recorded), "\n"), want) {
+			t.Errorf("coverage builds = %q; want the line %q", recorded, want)
+		}
+	})
+
+	t.Run("ALinkedOnlyChangeLeavesTheMapFresh", func(t *testing.T) {
+		before := readTestMap(t, mapsDir, "caller")
+		plankit.WriteTree(t, prime, map[string]string{"linked/linked.go": testMapSource("linked") + "// edited\n"})
+		gitkit.Git(t, prime, "commit", "-q", "-am", "edit the linked package")
+		wantOutcome(t, call(t, environ), testMapOutcome{Built: []string{"linked"}})
+		wantLeft(t, "caller", before)
+	})
+
+	t.Run("ADirtyLinkedPackageLeavesTheMapAsItWasAndCountsNothingAgainstTheCap", func(t *testing.T) {
+		callerBefore := readTestMap(t, mapsDir, "caller")
+		followerBefore := readTestMap(t, mapsDir, "follower")
+		notes := filepath.Join(prime, "linked", "notes.txt")
+		if err := os.WriteFile(notes, []byte("notes\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		// With a cap of one, the two skipped packages must leave the slot to linked/inner.
+		// No dirty file keeps linked/inner from building.
+		got := callMax(t, environ, 1, "caller", "follower", "linked/inner")
+		if err := os.Remove(notes); err != nil {
+			t.Fatal(err)
+		}
+		const cause = "modified or untracked file linked/notes.txt"
+		wantOutcome(t, got, testMapOutcome{
+			Built:   []string{"linked/inner"},
+			Skipped: []testMapSkip{{Package: "caller", Cause: cause}, {Package: "follower", Cause: cause}},
+		})
+		wantLeft(t, "caller", callerBefore)
+		wantLeft(t, "follower", followerBefore)
+	})
+
+	t.Run("ALinkedFileDirtiedUnderTheTestsWritesNoMapAndIsSeenAfreshByALaterPackage", func(t *testing.T) {
+		dirtierBefore := readTestMap(t, mapsDir, "dirtier")
+		followerBefore := readTestMap(t, mapsDir, "follower")
+		scratch := filepath.Join(prime, "linked", "scratch.txt")
+		got := call(t, withEnv(testMapDirtyEnv, scratch), "dirtier", "follower")
+		if err := os.Remove(scratch); err != nil {
+			t.Fatal(err)
+		}
+		// The file does not exist when the call starts.
+		// So follower, walked after dirtier, skips only on a status read taken before its build.
+		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{
+			{Package: "dirtier", Cause: "modified or untracked file linked/scratch.txt after its tests"},
+			{Package: "follower", Cause: "modified or untracked file linked/scratch.txt"},
+		}})
+		wantLeft(t, "dirtier", dirtierBefore)
+		wantLeft(t, "follower", followerBefore)
+	})
+
+	t.Run("ASkipAfterTheTestsCountsAgainstTheCap", func(t *testing.T) {
+		dirtierBefore := readTestMap(t, mapsDir, "dirtier")
+		followerBefore := readTestMap(t, mapsDir, "follower")
+		scratch := filepath.Join(prime, "linked", "scratch.txt")
+		got := callMax(t, withEnv(testMapDirtyEnv, scratch), 1, "dirtier", "follower")
+		if err := os.Remove(scratch); err != nil {
+			t.Fatal(err)
+		}
+		// With a cap of one, dirtier's skip after its tests uses the slot, so follower is never tried.
+		wantOutcome(t, got, testMapOutcome{
+			Skipped: []testMapSkip{{Package: "dirtier", Cause: "modified or untracked file linked/scratch.txt after its tests"}},
+			Unbuilt: 1,
+		})
+		wantLeft(t, "dirtier", dirtierBefore)
+		wantLeft(t, "follower", followerBefore)
+	})
+
+	t.Run("ALinkedFileChangedUnderTheTestsWritesNoMap", func(t *testing.T) {
+		before := readTestMap(t, mapsDir, "dirtier")
+		got := call(t, withEnv(testMapLandEnv, "linked"), "dirtier")
+		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{{Package: "dirtier", Cause: "files changed under its tests: linked/linked.go"}}})
+		wantLeft(t, "dirtier", before)
+	})
+
+	t.Run("ALinkedFileAddedOrRemovedUnderTheTestsWritesNoMap", func(t *testing.T) {
+		const added = "landed.txt"
+		// The rows run in order: the second removes the file the first adds.
+		tests := []struct {
+			name string
+			env  []string
+		}{
+			{"Added", append(withEnv(testMapLandEnv, "linked"), testMapLandFileEnv+"="+added)},
+			{"Removed", append(withEnv(testMapLandEnv, "linked"), testMapRemoveFileEnv+"="+added)},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				before := readTestMap(t, mapsDir, "dirtier")
+				got := call(t, tt.env, "dirtier")
+				wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{{Package: "dirtier", Cause: "files changed under its tests: linked/" + added}}})
+				wantLeft(t, "dirtier", before)
+			})
+		}
+	})
+
+	t.Run("TheTiersDigestIgnoresTheParallelCountAndFollowsTheCommand", func(t *testing.T) {
+		t.Cleanup(func() { writeGate(t, defaultCommand, 1) })
+		digestUnder := func(command string, parallel int) string {
+			t.Helper()
+			writeGate(t, command, parallel)
+			return rebuiltInnerStamp(t).TiersDigest
+		}
+		first := digestUnder(defaultCommand, 1)
+		if again := digestUnder(defaultCommand, 2); first == "" || again != first {
+			t.Errorf("tiers digest at parallel 2 = %q; want %q, non-empty and unchanged by the parallel count", again, first)
+		}
+		if changed := digestUnder("y {parallel}", 1); changed == first {
+			t.Errorf("tiers digest after a command change = %q; want it to differ from %q", changed, first)
+		}
+	})
+
+	t.Run("TheHubEnvDigestFollowsTheHubsVariables", func(t *testing.T) {
+		before := rebuiltInnerStamp(t).HubEnvDigest
+		envFile := configengine.ConfigFile(h.BoardDir(), "env")
+		if err := os.WriteFile(envFile, []byte("vars:\n  TESTMAP_GREETING: hello\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Remove(envFile) })
+		if after := rebuiltInnerStamp(t).HubEnvDigest; before == "" || after == before {
+			t.Errorf("hub env digest after setting a variable = %q; want it non-empty and different from %q", after, before)
+		}
+	})
+
+	t.Run("AGoListFailureWritesAFailedMapWithTheMarker", func(t *testing.T) {
+		got := call(t, withEnv(testMapFailListEnv, "1"), "caller")
+		if len(got.Built) != 0 || len(got.Failed) != 1 || got.Failed[0].Package != "caller" || !strings.Contains(got.Failed[0].Failure, "list linked packages") {
+			t.Fatalf("runTestMap() = built %v, failed %+v; want caller alone failed, naming the list failure", got.Built, got.Failed)
+		}
+		failed := readTestMap(t, mapsDir, "caller")
+		if failed.BuildFailure != got.Failed[0].Failure || len(failed.Tests) != 0 || failed.Format == nil || failed.Format.Commit != failed.Commit {
+			t.Errorf("caller map = failure %q, tests %v, format %+v; want the list failure, no test and a marker at the map's commit",
+				failed.BuildFailure, failed.Tests, failed.Format)
+		}
+	})
+
+	t.Run("ASpawnScanFailureWritesAFailedMapWithTheMarker", func(t *testing.T) {
+		plankit.WriteTree(t, prime, map[string]string{
+			"garbled/garbled.go":      "package garbled\n\nfunc (\n",
+			"garbled/garbled_test.go": testMapTestFile("garbled", map[string]int{"TestGarbledOne": 0}),
+		})
+		gitkit.Git(t, prime, "add", "garbled")
+		gitkit.Git(t, prime, "commit", "-q", "-m", "add a package the spawn scan cannot parse")
+		got := call(t, environ, "garbled")
+		if len(got.Built) != 0 || len(got.Failed) != 1 || got.Failed[0].Package != "garbled" || !strings.Contains(got.Failed[0].Failure, "spawn scan") {
+			t.Fatalf("runTestMap() = built %v, failed %+v; want garbled alone failed, naming the spawn scan", got.Built, got.Failed)
+		}
+		if failed := readTestMap(t, mapsDir, "garbled"); failed.BuildFailure != got.Failed[0].Failure || failed.Format == nil {
+			t.Errorf("garbled map = failure %q, format %+v; want the spawn scan failure and a marker", failed.BuildFailure, failed.Format)
+		}
+	})
+
+	t.Run("AGoEnvFailureEndsTheWalk", func(t *testing.T) {
+		linkedBefore := readTestMap(t, mapsDir, "linked")
+		innerBefore := readTestMap(t, mapsDir, "linked/inner")
+		code, out := runTestMapIn(prime, standIn, withEnv(testMapFailGoEnvEnv, "1"), time.Minute, 10, "linked", "linked/inner")
+		var envelope struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(out, &envelope); err != nil {
+			t.Fatalf("unmarshal %q: %v", out, err)
+		}
+		if code != 1 || !strings.Contains(envelope.Error, "read the Go toolchain's environment") {
+			t.Errorf("runTestMap() = exit %d, error %q; want exit 1, naming the toolchain environment read", code, envelope.Error)
+		}
+		wantLeft(t, "linked", linkedBefore)
+		wantLeft(t, "linked/inner", innerBefore)
 	})
 }

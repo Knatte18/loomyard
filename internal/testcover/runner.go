@@ -69,6 +69,52 @@ func (tc Toolchain) BuildBinary(importPath, coverpkg, tags, out string) error {
 	return nil
 }
 
+// linkedPackagesFormat is the `go list -f` template of LinkedPackages.
+// It prints, for each package of the main module, its import path, name and the package it is compiled for.
+// The fields are tab-separated.
+const linkedPackagesFormat = `{{if and .Module .Module.Main}}{{.ImportPath}}{{"\t"}}{{.Name}}{{"\t"}}{{.ForTest}}{{end}}`
+
+// LinkedPackages returns the import paths of the main module's packages that importPath's test binary links.
+// The result is sorted and includes the package itself.
+// They are the packages a coverage build of the package can instrument.
+// The external test package and the generated test main are left out, since no other package imports them.
+func (tc Toolchain) LinkedPackages(importPath string) ([]string, error) {
+	out, err := tc.goOutput([]string{"list", "-deps", "-test", "-f", linkedPackagesFormat, importPath})
+	if err != nil {
+		return nil, fmt.Errorf("list linked packages: %w", err)
+	}
+	var linked []string
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			continue
+		}
+		// A package compiled for a test carries its test binary's name in brackets after its import path.
+		path, _, _ := strings.Cut(fields[0], " ")
+		name, forTest := fields[1], fields[2]
+		if (name == "main" && strings.HasSuffix(path, ".test")) || (forTest != "" && path == forTest+"_test") {
+			continue
+		}
+		linked = append(linked, path)
+	}
+	slices.Sort(linked)
+	return slices.Compact(linked), nil
+}
+
+// GoEnvironment returns the Go version, GOOS and GOARCH the toolchain's go command reports under Env.
+// The error carries the go command's failure, or names output that is not those three lines.
+func (tc Toolchain) GoEnvironment() (version, goos, goarch string, err error) {
+	out, err := tc.goOutput([]string{"env", "GOVERSION", "GOOS", "GOARCH"})
+	if err != nil {
+		return "", "", "", fmt.Errorf("go env: %w", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 3 {
+		return "", "", "", fmt.Errorf("go env printed %q; want three lines: GOVERSION, GOOS and GOARCH", out)
+	}
+	return lines[0], lines[1], lines[2], nil
+}
+
 var testNameLine = regexp.MustCompile(`^(Test|Example|Fuzz)\w*$`)
 
 // ListTests returns the top-level test names of the package at importPath under the build tags tags.

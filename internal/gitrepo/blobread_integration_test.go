@@ -185,6 +185,29 @@ func TestHistoryReads(t *testing.T) {
 				t.Errorf("FilesInDirAtRevision(invalid SHA, pkg) error = %v; want ErrInvalidSHA", err)
 			}
 		}},
+		// FilesUnderDirAtRevision lists every regular file of the directory's subtree by its path below the directory, sorted;
+		// an absent directory is empty and a malformed revision is ErrInvalidSHA.
+		{"FilesUnderDirAtRevision lists the files of a directory's subtree", func(t *testing.T) {
+			got, err := repo.FilesUnderDirAtRevision(shaC, "pkg")
+			if err != nil {
+				t.Fatalf("FilesUnderDirAtRevision(C, pkg) error = %v; want nil", err)
+			}
+			if want := []string{"a_test.go", "b.go", "sub/c.go"}; !reflect.DeepEqual(got, want) {
+				t.Errorf("FilesUnderDirAtRevision(C, pkg) = %v; want %v", got, want)
+			}
+
+			got, err = repo.FilesUnderDirAtRevision(shaB, "pkg")
+			if err != nil {
+				t.Fatalf("FilesUnderDirAtRevision(B, pkg) error = %v; want nil (absent directory)", err)
+			}
+			if len(got) != 0 {
+				t.Errorf("FilesUnderDirAtRevision(B, pkg) = %v; want empty (pkg is absent at B)", got)
+			}
+
+			if _, err := repo.FilesUnderDirAtRevision("not-a-sha!!", "pkg"); !errors.Is(err, gitrepo.ErrInvalidSHA) {
+				t.Errorf("FilesUnderDirAtRevision(invalid SHA, pkg) error = %v; want ErrInvalidSHA", err)
+			}
+		}},
 		// A commit reached by two branches and a tag is found once;
 		// an absent subject finds nothing.
 		{"CommitsWithSubject finds a commit once however many refs reach it", func(t *testing.T) {

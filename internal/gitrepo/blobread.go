@@ -171,6 +171,38 @@ func (r *Repo) FilesInDirAtRevision(rev, dir string) ([]string, error) {
 	})
 }
 
+// FilesUnderDirAtRevision returns the regular files in dir's whole subtree in rev's tree, sorted.
+// Each is a slash path relative to dir.
+// dir is slash-separated and repo-relative;
+// "" or "." names the root.
+// An absent directory gives an empty result, not an error.
+// An invalid rev returns ErrInvalidSHA.
+func (r *Repo) FilesUnderDirAtRevision(rev, dir string) ([]string, error) {
+	if !validSHA(rev) {
+		return nil, ErrInvalidSHA
+	}
+
+	return readGoGit(r, func(repo *git.Repository) ([]string, error) {
+		tree, err := dirTreeAtRevision(repo, rev, dir)
+		if err != nil || tree == nil {
+			return nil, err
+		}
+
+		var names []string
+		err = tree.Files().ForEach(func(file *object.File) error {
+			if file.Mode.IsRegular() {
+				names = append(names, file.Name)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: walk %s at %s: %w", dir, rev, err)
+		}
+		sort.Strings(names)
+		return names, nil
+	})
+}
+
 // SubjectCommit identifies a commit by its full SHA and committer time.
 type SubjectCommit struct {
 	// SHA is the commit's full hex object name.

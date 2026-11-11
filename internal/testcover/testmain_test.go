@@ -51,7 +51,16 @@ func TestMain(m *testing.M) {
 	os.Exit(tmuxkit.Main(m))
 }
 
+// standInListOutput is what the stand-in prints as `go list -deps -test`.
+// It holds a package of another module, which the template prints as an empty line.
+// It then holds m/q twice, m/p compiled for its test, its external test package and the generated test main.
+const standInListOutput = "\nm/q\tq\t\nm/p [m/p.test]\tp\tm/p\nm/p_test [m/p.test]\tp_test\tm/p\nm/p.test\tmain\t\nm/q\tq\t\n"
+
+// standInGoEnv is what the stand-in prints as `go env GOVERSION GOOS GOARCH`.
+const standInGoEnv = "go1.26.8\nlinux\namd64\n"
+
 // runStandIn writes args, one per line, to record and acts on them, returning the process exit code.
+// As `go list`, it prints standInListOutput, and as `go env`, standInGoEnv.
 // As `go test -list`, it prints two test names; as `go test -c`, it creates the empty file `-o` names.
 // As a coverage binary, it reports the outcome of the one test its `-test.run` names.
 // It writes a profile for a passing test, and for a skipped one that standInSkipProfile names.
@@ -63,6 +72,12 @@ func runStandIn(record string, args []string) int {
 		return 1
 	}
 	switch {
+	case len(args) > 0 && args[0] == "list":
+		fmt.Print(standInListOutput)
+		return 0
+	case len(args) > 0 && args[0] == "env":
+		fmt.Print(standInGoEnv)
+		return 0
 	case slices.Contains(args, "-list"):
 		fmt.Println("TestAlpha\nExampleBeta\nok  \tm/p\t0.01s")
 		return 0
