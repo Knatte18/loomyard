@@ -307,7 +307,8 @@ func RunUntilStop(ctx context.Context, spec *Spec, argv []string, attempt, by st
 	return runUntilStop(ctx, spec, argv, out)
 }
 
-// DetachedLoopID returns the loop id that cmd's hidden flags carry in the loop's keeper or in the loop process itself, or "" in any other invocation.
+// DetachedLoopID returns the loop id that cmd's hidden flags carry in the loop's keeper or in the loop process itself.
+// It returns "" in any other invocation.
 // An arming refusal in either process reports with it, so the refusal reaches the waiter as the loop's envelope.
 func DetachedLoopID(cmd *cobra.Command) string {
 	if loopID, _ := cmd.Flags().GetString(LoopKeeperFlag); loopID != "" {

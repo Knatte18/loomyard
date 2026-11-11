@@ -1,4 +1,5 @@
-// loopkeeper.go implements the loop's keeper: the detached process a waiter spawns, which starts the loop process and records in the loop log how it ended.
+// loopkeeper.go implements the loop's keeper: the detached process a waiter spawns.
+// It starts the loop process and records in the loop log how that process ended.
 
 package shedverbs
 
@@ -11,12 +12,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// keepLoop is the keeper of loop loopID: it starts spec.Loop.Executable with loopArgv as the loop process, in a session of its own, and waits for it to end.
+// keepLoop is the keeper of loop loopID.
+// It starts spec.Loop.Executable with loopArgv as the loop process, in a session of its own, and waits for it to end.
 // The loop process writes its output to out, the loop log the keeper itself writes to.
-// Once the loop process ends, the keeper writes a mark of the loop to out naming the process's pid and its exit status, or the signal that ended it;
+// Once the loop process ends, the keeper writes a mark of the loop to out.
+// The mark names the process's pid and its exit status, or the signal that ended it;
 // a loop process that does not start gets a mark naming the start error instead.
 // The keeper outlives the waiter that spawned it, so the mark is written even when no waiter is left to reap the keeper.
-// It catches the terminating signals and keeps waiting, so a signal that ends the run's processes ends the keeper only through the loop's end.
+// It catches the terminating signals and keeps waiting.
+// A signal that ends the run's processes therefore ends the keeper only through the loop's end.
 // LoopSpec.OnStart runs once after the loop process starts.
 // It returns 0 when the loop process exited with status 0, and 1 otherwise.
 func keepLoop(spec *Spec, loopID string, loopArgv []string, out io.Writer) int {

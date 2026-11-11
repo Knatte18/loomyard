@@ -514,7 +514,8 @@
 //
 // The driver registers itself in the owner record under the run's slug with the role `driver`.
 // It registers before it takes the driver lock.
-// The run's step loop and the keeper that starts it register themselves with the role `loop` through the loop's `OnStart` hook:
+// The run's step loop and the keeper that starts it register themselves with the role `loop`.
+// They do so through the loop's `OnStart` hook:
 // the loop once its pid file is written, and the keeper once the loop process has started.
 // A driver the lock refuses exits at once and its record is pruned at the next read.
 //

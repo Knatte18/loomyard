@@ -136,9 +136,11 @@ func runUntilStop(ctx context.Context, spec *Spec, argv []string, out io.Writer)
 	}
 }
 
-// spawnLoop starts the keeper of loop loopID: spec.Loop.Executable with argv, its output appended to the loop log, and configured to outlive the waiter.
+// spawnLoop starts the keeper of loop loopID: spec.Loop.Executable with argv.
+// The keeper's output is appended to the loop log, and it is configured to outlive the waiter.
 // A Windows start refused for breakaway is retried without it, so such a keeper lives only as long as the shell's job.
-// The loop log gets a mark that the loop is starting before the keeper starts, and a mark naming the keeper's pid and exit status once the spawn reaps it.
+// The loop log gets a mark that the loop is starting before the keeper starts.
+// It gets a second mark naming the keeper's pid and exit status once the spawn reaps it.
 // The channel it returns is closed when the keeper exits, after that mark is written.
 func spawnLoop(spec *Spec, loopID string, argv []string) (<-chan struct{}, error) {
 	loop := spec.Loop
@@ -195,9 +197,11 @@ func loopLogMark(loopID, text string) string {
 	return loopLogMarkPrefix + loopID + " " + text + "\n"
 }
 
-// loopExitEvidence returns the clauses a gone loop's stop detail carries about how loop loopID ended, read from the loop log at logPath after that loop's last starting mark.
-// The first clause lists the marks lym wrote about the loop's processes, such as a terminating signal the loop received and the exit statuses of the loop and its keeper, or says none was recorded;
-// a second clause carries an excerpt of the loop's other lines, a Go crash's first lines or the last lines, when there are any.
+// loopExitEvidence returns the clauses a gone loop's stop detail carries about how loop loopID ended.
+// It reads the loop log at logPath after that loop's last starting mark.
+// The first clause lists the marks lym wrote about the loop's processes, or says none was recorded.
+// Such marks include a terminating signal the loop received and the exit statuses of the loop and its keeper.
+// A second clause carries an excerpt of the loop's other lines, a Go crash's first lines or the last lines, when there are any.
 // A log with no starting mark for the loop yields the first clause alone, since its lines cannot be told from other loops' lines.
 func loopExitEvidence(logPath, loopID string) string {
 	data, _ := os.ReadFile(logPath)
@@ -488,10 +492,12 @@ func (r LoopPIDRecord) inFlightAt(status shedengine.Status) bool {
 
 // deadLoopStop reports a loop that is gone without an envelope, or the teardown's mark, as an interrupted stop with cause loop-exited.
 // It first kills what is left of the loop's step tree, then writes the run failed while the status file reads running.
-// The stop's detail names the step the pid file records in flight, with its trace id, and the status file's step when the status file has moved since that child started;
-// then how the loop ended, from the loop log, and an excerpt of the in-flight child's captured stderr;
+// The stop's detail names the step the pid file records in flight, with its trace id.
+// It also names the status file's step when the status file has moved since that child started.
+// Then come how the loop ended, from the loop log, and an excerpt of the in-flight child's captured stderr;
 // and last whether its step tree was still running, which a loop killed from outside leaves behind.
-// A child moves the status file itself when it skips gated rows, so a moved status file still names the child that was in flight.
+// A child moves the status file itself when it skips gated rows.
+// A moved status file therefore still names the child that was in flight.
 // For a dead loop it then writes the stop as the loop's envelope under its recorded id, delivers it and retires the pid file.
 // The teardown's mark writes no envelope and stays, so every invocation until the pair is removed stops the same way and spawns nothing.
 // Another holder of the run lock makes the stop busy: nothing is written and the pid file stays for the next invocation to retry.
@@ -551,8 +557,11 @@ func loopExitedEarlyStop(ctx context.Context, spec *Spec, loopID string, out io.
 
 // loopExitStop writes failed over a run a gone loop left reading running and builds the interrupted envelope of that stop.
 // A status file in any other state is left as it is and the stop is reported all the same.
-// The interrupt hook gets loop-exited and detail as the cause, and the first trace file of the child rec records in flight, or the loop log when rec records no child in flight or that child has no trace file.
-// loop.stderr_path names that child's captured stderr, and loop.trace_copy a copy of its trace files when it has any; with no child in flight both are empty.
+// The interrupt hook gets loop-exited and detail as the cause.
+// It also gets the first trace file of the child rec records in flight.
+// It gets the loop log when rec records no child in flight or that child has no trace file.
+// loop.stderr_path names that child's captured stderr, and loop.trace_copy a copy of its trace files when it has any.
+// With no child in flight both are empty.
 // It reports busy, with the busy stop as its envelope, when another holder has the run lock; nothing is written then.
 func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail string) (envelope []byte, busy bool) {
 	before, _ := readStatusFile(spec)

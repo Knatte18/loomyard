@@ -547,7 +547,8 @@ func LoopPIDFile(l *lymcwd.Location, runID string) string {
 	return filepath.Join(StepsDir(l, runID), "loop.pid")
 }
 
-// LoopLog returns the path to loop.log under StepsDir(l, runID), the stdout and stderr of the detached loop and its keeper.
+// LoopLog returns the path to loop.log under StepsDir(l, runID).
+// The file holds the stdout and stderr of the detached loop and its keeper.
 func LoopLog(l *lymcwd.Location, runID string) string {
 	return filepath.Join(StepsDir(l, runID), "loop.log")
 }

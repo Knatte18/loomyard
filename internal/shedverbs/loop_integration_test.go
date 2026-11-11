@@ -1,4 +1,5 @@
-// loop_integration_test.go holds the helper roles the loop tests start this test binary as: a waiter, a loop keeper, a detached loop and a step child.
+// loop_integration_test.go holds the helper roles the loop tests start this test binary as:
+// a waiter, a loop keeper, a detached loop and a step child.
 
 package shedverbs
 
@@ -64,7 +65,8 @@ func runHelperRole() (int, bool) {
 	return executeHelperStep(dir, []string{"step", "--" + UntilStopFlag}), true
 }
 
-// executeHelperStep runs the step command over the helper spec as the waiter, the keeper or the loop, and returns its exit code.
+// executeHelperStep runs the step command over the helper spec as the waiter, the keeper or the loop.
+// It returns the command's exit code.
 func executeHelperStep(dir string, args []string) int {
 	root := &cobra.Command{Use: "helper"}
 	root.AddCommand(stepCmd(stepTexts(), helperSpec(dir, os.Args[0])))

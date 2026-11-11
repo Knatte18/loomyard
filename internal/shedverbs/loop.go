@@ -37,7 +37,8 @@ const UntilStopFlag = "until-stop"
 const ArbiterAttemptFlag = "arbiter-attempt"
 
 // LoopDetachedFlag is the name of step's hidden flag that marks the loop process itself and carries its loop id.
-// It only selects runLoop in the process the loop's keeper started; the loop refuses to step over a dead loop's record whatever process it runs in.
+// It only selects runLoop in the process the loop's keeper started.
+// The loop refuses to step over a dead loop's record whatever process it runs in.
 const LoopDetachedFlag = "loop-detached"
 
 // LoopKeeperFlag is the name of step's hidden flag that marks the loop's keeper and carries the loop id.
