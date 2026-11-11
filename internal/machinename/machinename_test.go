@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -167,22 +168,63 @@ func TestCheckName(t *testing.T) {
 }
 
 // TestFilePath pins the machine file's and its lock's names in the per-user config directory.
-// It sets both platforms' variables to one directory, so the answer is the same on every platform.
+// The resolved row sets both platforms' variables to one directory, so the answer is the same on every platform.
+// The relative row sets a relative value for every variable, so the error names the platform's own variable.
 // It sets process-global environment, so it is not parallel.
 func TestFilePath(t *testing.T) {
 	tiergate.Require(t, 0)
 	base := t.TempDir()
-	t.Setenv("LOCALAPPDATA", base)
-	t.Setenv("XDG_CONFIG_HOME", base)
-
-	file, lock, ok, err := FilePath()
-
-	if err != nil || !ok {
-		t.Fatalf("FilePath() ok, error = %v, %v; want true, nil", ok, err)
+	relativeVariable := "HOME"
+	if runtime.GOOS == "windows" {
+		relativeVariable = "LOCALAPPDATA"
 	}
 	dir := filepath.Join(base, "lym")
-	if file != filepath.Join(dir, "machine.json") || lock != filepath.Join(dir, "machine.lock") {
-		t.Errorf("FilePath() = %q, %q; want machine.json and machine.lock under %s", file, lock, dir)
+	tests := []struct {
+		name          string
+		localAppData  string
+		xdgConfigHome string
+		home          string
+		wantOK        bool
+		wantFile      string
+		wantLock      string
+		wantErrText   []string
+	}{
+		{
+			name: "Resolved", localAppData: base, xdgConfigHome: base, wantOK: true,
+			wantFile: filepath.Join(dir, "machine.json"), wantLock: filepath.Join(dir, "machine.lock"),
+		},
+		{name: "Unset"},
+		{
+			name: "RelativeVariableIsAnErrorNamingIt", localAppData: "appdata", home: "home/user",
+			wantErrText: []string{relativeVariable, "absolute path"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LOCALAPPDATA", tt.localAppData)
+			t.Setenv("XDG_CONFIG_HOME", tt.xdgConfigHome)
+			t.Setenv("HOME", tt.home)
+
+			file, lock, ok, err := FilePath()
+
+			if tt.wantErrText != nil {
+				if err == nil {
+					t.Fatalf("FilePath() = %q, %q, %v, nil; want an error", file, lock, ok)
+				}
+				for _, text := range tt.wantErrText {
+					if !strings.Contains(err.Error(), text) {
+						t.Errorf("FilePath() error = %v; want it to name %q", err, text)
+					}
+				}
+				return
+			}
+			if err != nil || ok != tt.wantOK {
+				t.Fatalf("FilePath() ok, error = %v, %v; want %v, nil", ok, err, tt.wantOK)
+			}
+			if file != tt.wantFile || lock != tt.wantLock {
+				t.Errorf("FilePath() = %q, %q; want %q, %q", file, lock, tt.wantFile, tt.wantLock)
+			}
+		})
 	}
 }
 
