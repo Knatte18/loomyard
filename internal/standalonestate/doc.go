@@ -11,6 +11,11 @@
 // It reads the same environment as Derive and creates nothing.
 // A record that belongs to the machine and to no target, such as the list of hubs, lives there.
 //
+// UserConfigDir and AbsoluteUserConfigDir resolve the per-user `lym` config directory,
+// where the machine's credential files and its name file live.
+// UserConfigDir takes a relative XDG_CONFIG_HOME as given;
+// AbsoluteUserConfigDir ignores it and refuses a relative HOME or LOCALAPPDATA, so its answer never depends on a working directory.
+//
 // Told-geometry tier: the package is told its geometry.
 // Derive takes an already-absolute target from its caller and uses none of the three resolution tiers.
 // `TestLeafInvariant_AllowlistOnly` in internal/standalonestate/leaf_enforcement_test.go enforces this;

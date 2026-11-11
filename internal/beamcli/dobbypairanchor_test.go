@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -175,7 +176,7 @@ func TestDobbyLandings_CountsOnlyThisMachine(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.Location
 	const landDone = `{"history":[{"producer":"Land","outcome":"done","output":"","at":"2026-10-27T10:00:00Z"%s}]}`
-	for slug, machine := range map[string]string{"here": `,"machine":"m1"`, "elsewhere": `,"machine":"m2"`, "unstamped": ""} {
+	for slug, machine := range map[string]string{"here": `,"machine":"m1"`, "renamed": `,"machine":"m0"`, "elsewhere": `,"machine":"m2"`, "unstamped": ""} {
 		seedBattenRun(t, prime, slug)
 		status := fmt.Sprintf(landDone, machine)
 		if err := os.WriteFile(shedrun.StatusFile(prime, slug), []byte(status), 0o644); err != nil {
@@ -183,10 +184,11 @@ func TestDobbyLandings_CountsOnlyThisMachine(t *testing.T) {
 		}
 	}
 
-	got, err := battencli.DobbyLandings(prime, dobbyengine.Geometry{}, battencli.NewDobbyParents(prime), "m1")
+	got, err := battencli.DobbyLandings(prime, dobbyengine.Geometry{}, battencli.NewDobbyParents(prime), []string{"m1", "m0"})
+	slices.Sort(got)
 
-	if err != nil || !reflect.DeepEqual(got, []string{"here"}) {
-		t.Errorf("DobbyLandings(m1) = %v, %v; want [here], nil", got, err)
+	if err != nil || !reflect.DeepEqual(got, []string{"here", "renamed"}) {
+		t.Errorf("DobbyLandings([m1 m0]) = %v, %v; want [here renamed], nil", got, err)
 	}
 }
 

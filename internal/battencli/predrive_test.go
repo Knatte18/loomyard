@@ -182,7 +182,9 @@ func TestBuildShed_TellsTheMachine(t *testing.T) {
 		wantErrText []string
 	}{
 		{"TellsTheName", func() (string, error) { return "neve", nil }, "neve", nil},
-		{"RefusesAnUnknownName", func() (string, error) { return "", errors.New("hostname unreadable") }, "", []string{"hostname unreadable", "give the machine a hostname"}},
+		{"RefusesAnUnknownName", func() (string, error) {
+			return "", errors.New("name unreadable; way forward: run `lym machine name <name>`")
+		}, "", []string{"name unreadable", "lym machine name", "lym batten run"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

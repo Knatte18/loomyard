@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -234,6 +235,14 @@ func TestCacheDirRedirection_HonoursOverride(t *testing.T) {
 	credDir, credOK := CredentialDir()
 	if credDir != gotDir || credOK != ok {
 		t.Errorf("CredentialDir() = (%q, %v); want the cache directory (%q, %v)", credDir, credOK, gotDir, ok)
+	}
+
+	// A relative XDG_CONFIG_HOME keeps the credential files under it, as the per-user config rule takes it as given.
+	t.Setenv("XDG_CONFIG_HOME", "relative-config")
+	credDir, credOK = CredentialDir()
+	wantDir, wantOK := standalonestate.UserConfigDir()
+	if credDir != wantDir || credOK != wantOK {
+		t.Errorf("CredentialDir() under a relative XDG_CONFIG_HOME = (%q, %v); want UserConfigDir's (%q, %v)", credDir, credOK, wantDir, wantOK)
 	}
 }
 

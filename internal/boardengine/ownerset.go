@@ -79,7 +79,7 @@ type OwnerWrite struct {
 // BOARD_SKIP_GIT writes board.json with no pull, commit or push, and BOARD_SKIP_PUSH commits with no pull or push.
 func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 	if req.Machine == "" {
-		return OwnerWrite{}, errors.New("board: the owner write names no machine: take this machine's name from internal/machinename.Name, which fails when the hostname cannot be read")
+		return OwnerWrite{}, errors.New("board: the owner write names no machine: take this machine's name from internal/machinename.Name, which fails when the name cannot be read")
 	}
 	if req.Claim != "" && len(req.Slugs) != 1 {
 		return OwnerWrite{}, fmt.Errorf("board: a claim status goes with exactly one slug, and the owner write names %d", len(req.Slugs))

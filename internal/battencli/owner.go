@@ -122,14 +122,11 @@ func subjectOrSlug(subject, slug string) string {
 	return subject
 }
 
-// thisMachine returns this machine's name, refusing when it cannot be read or is empty.
+// thisMachine returns this machine's name, refusing with the name read's own way forward when it cannot be read.
 func (c *battenCLI) thisMachine() (string, error) {
 	machine, err := c.owner.Machine()
-	if err == nil && machine == "" {
-		err = errors.New("the hostname is empty")
-	}
 	if err != nil {
-		return "", fmt.Errorf("battencli: this machine's name is unknown, so ownership cannot be judged: %w; fix the hostname, then re-run lym batten run %s", err, c.slug)
+		return "", fmt.Errorf("battencli: this machine's name is unknown, so ownership cannot be judged: %w; once the name reads, re-run lym batten run %s", err, c.slug)
 	}
 	return machine, nil
 }

@@ -38,6 +38,8 @@ The rest of a Finalize already past its parent-side merge is exempt.
   The landing's parent-owner read uses the Bolt its reconcile left.
   A resume with origin unreachable reads the local Bolt.
 - This machine's name comes only from `internal/machinename`.
+  It reads the machine file in the per-user lym config directory before the hostname rule,
+  and a machine file that yields no valid name is an error, never a fallback to the hostname.
 
 ### Origin reconcile first
 

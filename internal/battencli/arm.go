@@ -439,7 +439,7 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 			}
 			name, err := machineName()
 			if err != nil {
-				return nil, fmt.Errorf("battencli: this machine's name is unknown, so the run cannot record which machine it ran on: %w; way forward: give the machine a hostname, then re-run lym batten run %s", err, c.slug)
+				return nil, fmt.Errorf("battencli: this machine's name is unknown, so the run cannot record which machine it ran on: %w; once the name reads, re-run lym batten run %s", err, c.slug)
 			}
 			shed.Machine = name
 			return shed, nil

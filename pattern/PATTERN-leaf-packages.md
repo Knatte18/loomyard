@@ -94,7 +94,9 @@ Imports only the standard library, so every lens review host and `planparser` ca
 
 ## `internal/machinename`
 
-Imports only the standard library.
+Imports only the standard library and `internal/standalonestate`.
+- `internal/standalonestate` is admitted for the per-user config directory the machine file lives in.
+  It imports only the standard library, so the admission reaches no feature package.
 
 ## `internal/runproc`
 

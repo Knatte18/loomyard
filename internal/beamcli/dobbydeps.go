@@ -194,8 +194,8 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			return board.ClearNotifyOnLand(slug)
 		},
 		SettleFronts: func() error { return fronttask.Settle(settleFronts) },
-		Landings: machineLandings(machinename.Name, func(machine string) ([]string, error) {
-			return battencli.DobbyLandings(prime, geom, parents, machine)
+		Landings: machineLandings(machinename.Names, func(machines []string) ([]string, error) {
+			return battencli.DobbyLandings(prime, geom, parents, machines)
 		}),
 		Log: func(path, line string, rotate bool) {
 			if err := dobbyengine.AppendLog(path, line, rotate); err != nil {
@@ -716,14 +716,16 @@ func (s *runnerTidyShuttle) StopStrand(guid string) error {
 	return s.runner.StopStrand(guid)
 }
 
-// machineLandings returns a Landings seam that reads this machine's name on each call and passes it to read.
-// A name that cannot be read fails the call, so no landing is told apart from another machine's by a missing name.
-func machineLandings(machine func() (string, error), read func(machine string) ([]string, error)) func() ([]string, error) {
+// machineLandings returns a Landings seam that reads this machine's current and former names on each call
+// and passes them, the current one first, to read.
+// A name that cannot be read fails the call with the read's own way forward,
+// so no landing is told apart from another machine's by a missing name.
+func machineLandings(names func() (string, []string, error), read func(machines []string) ([]string, error)) func() ([]string, error) {
 	return func() ([]string, error) {
-		name, err := machine()
+		current, former, err := names()
 		if err != nil {
-			return nil, fmt.Errorf("this machine's name is unknown, so its landings cannot be told apart: %w; way forward: give the machine a hostname", err)
+			return nil, fmt.Errorf("this machine's name is unknown, so its landings cannot be told apart: %w", err)
 		}
-		return read(name)
+		return read(append([]string{current}, former...))
 	}
 }
