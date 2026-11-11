@@ -60,6 +60,15 @@ type Deps struct {
 	Machine func() (string, error)
 	// Owner returns the machine that owns this beam, the prime owner for the prime; empty means no other machine owns it.
 	Owner func() (string, error)
+	// UnderAdopt reports whether an adopt in flight on this machine covers this dobby's worktree.
+	// It is asked only on a probe tick that reads the beam owned by another machine; a nil UnderAdopt covers nothing.
+	UnderAdopt func() bool
+	// PullBolt pulls the hub's Bolt from origin, so an idle machine learns a new owner; a nil PullBolt pulls nothing.
+	PullBolt func() error
+	// ArchiveOwner archives every local tip under this dobby's worktree that origin lacks, for the machine that owns it now:
+	// the code and records tips of the worktree's own pair and of each run whose parent it is.
+	// A nil ArchiveOwner archives nothing.
+	ArchiveOwner func() error
 	// CheckBinary re-execs onto a changed lym binary and returns when the binary is unchanged.
 	// It calls beforeExec right before an exec and failed with the error of an exec that failed.
 	CheckBinary func(beforeExec func(), failed func(error))
@@ -184,8 +193,9 @@ func ReadsAsReexec(statePath string, pid int, startTicks string) (bool, error) {
 // Run drives one dobby for geom until ctx ends or another machine owns the beam.
 // A start that reads as a re-exec waits Deps.ReexecLockWait for geom.LockPath; any other start waits lock.ProbeGrace.
 // Run returns ErrDobbyRunning when another dobby still holds the lock.
-// It reads the beam's owner at start and on every probe tick.
-// It returns nil, logging why, when another machine owns the beam.
+// It reads the beam's owner at start and on every probe tick, after the probe's Bolt pull.
+// While an adopt in flight on this machine covers a beam another machine owns, the dobby stays up and schedules nothing.
+// Otherwise it hands such a beam over, and returns nil, logging why, once the hand-over's archive succeeds.
 // A start that does not read as a re-exec owes every run a full pass; a re-exec owes none.
 // A tick that fails is logged once per episode and the loop goes on; a cancelled context ends it after the tick in flight.
 // Every way the dobby ends leaves a line in the log,
@@ -302,6 +312,14 @@ type daemon struct {
 	ownerUnreadable bool
 	// taskLimitHeld reports whether the cgroup task limit held the last start the start step tried.
 	taskLimitHeld bool
+	// adoptHolds reports whether the last probe tick read the beam owned elsewhere under an adopt in flight here.
+	adoptHolds bool
+	// lastBoltPull is when the probe last pulled Bolt, and boltPull is the failure episode of those pulls.
+	lastBoltPull time.Time
+	boltPull     logger.Episode
+	// archiveFailures is the failure episode of the hand-over's archive; archiveFailing reports whether its line was logged.
+	archiveFailures logger.Episode
+	archiveFailing  bool
 
 	sleepWatch pauserecord.SleepWatch
 	owesAll    bool
@@ -500,13 +518,8 @@ func (d *daemon) loop(ctx context.Context, events <-chan struct{}) error {
 		d.probeDue = d.lastProbe.IsZero() || now.Sub(d.lastProbe) >= d.probe
 		if d.probeDue {
 			d.lastProbe = now
-			if elsewhere, owner := d.beamOwnedElsewhere(); elsewhere {
-				logger.Info("dobbyengine: another machine owns this beam; the dobby exits", "worktree", d.geom.WorktreeName, "owner", owner)
-				subject := d.geom.Slug
-				if subject == "" {
-					subject = "root"
-				}
-				d.logOwn(now, fmt.Sprintf("stop: another machine owns this beam (%s); lym adopt %s takes it over here", owner, subject))
+			d.pullBolt(now)
+			if d.probeOwner(ctx, now) {
 				return nil
 			}
 		}
@@ -599,6 +612,7 @@ func (d *daemon) standingMove() string {
 // It still owes what it owed before.
 // That is logged once per episode,
 // and the state record's upkeep and the landing count go on.
+// The adopt hold holds the scheduling the same way, and the beam's landing step too.
 // A test-map step that fails is logged once per episode and does not end the tick, since the refresh is optional.
 func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	d.sleepWatch.Observe(now, d.deps.Awake())
@@ -630,7 +644,8 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	} else {
 		d.moveStands.Recover("dobbyengine: the anchor change ended; the dobby schedules again", "worktree", d.geom.WorktreeName)
 	}
-	if moving == "" {
+	scheduling := moving == "" && !d.adoptHolds
+	if scheduling {
 		if err := d.drivePasses(ctx, now); err != nil {
 			return err
 		}
@@ -645,7 +660,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	if err := d.countLandings(now); err != nil {
 		return err
 	}
-	if moving == "" {
+	if scheduling {
 		if err := d.tidyStep(ctx, now); err != nil {
 			return err
 		}
@@ -655,8 +670,10 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 			d.testMapFailures.Recover("dobbyengine: the test-map refresh step works again", "worktree", d.geom.WorktreeName)
 		}
 	}
-	if err := d.landBeam(ctx); err != nil {
-		return err
+	if !d.adoptHolds {
+		if err := d.landBeam(ctx); err != nil {
+			return err
+		}
 	}
 	d.announceLandings(ctx)
 	d.inFlight = d.busy
@@ -667,7 +684,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
-	if moving == "" {
+	if scheduling {
 		d.owesAll = false
 	}
 	return nil

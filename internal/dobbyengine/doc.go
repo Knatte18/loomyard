@@ -68,8 +68,21 @@
 //     So does an error out of Run after the lock other than ErrDobbyRunning.
 //     The log rotates only while the lock is held, and an error after a re-exec posts a notice.
 //   - It reads its beam's owner at start and on each probe tick.
-//     When another machine owns the beam, it exits with the logged reason `stop: another machine owns this beam`.
-//     The reason names `lym adopt root` or `lym adopt <slug>`.
+//     A probe tick first pulls Bolt through Deps.PullBolt, at most once per five minutes,
+//     so an idle machine learns a new owner; a failed pull logs once per episode.
+//     While an adopt in flight on this machine covers the beam another machine owns (Deps.UnderAdopt),
+//     the dobby stays up and hands nothing over.
+//     It spawns no pass, starts no task, and runs no tidy, test-map or landing step.
+//     The hold's start and end each log one line.
+//     Any other foreign owner gets the hand-over.
+//     The dobby owner-pauses each run it drives that is neither done nor recorded owned elsewhere,
+//     as a pass exiting owned elsewhere does.
+//     It then archives the local tips under the beam that origin lacks through Deps.ArchiveOwner.
+//     Once the archive succeeds it exits with the logged reason `stop: another machine owns this beam`,
+//     which names `lym adopt root` or `lym adopt <slug>`.
+//     A failed archive logs once per episode and keeps the dobby up, retrying at each probe tick.
+//     Meanwhile a run whose owner pause stands gets no pass,
+//     and one whose pause failed gets its full pass each probe tick.
 //     A cancelled context logs `stop: the context ended`.
 //   - A record with the process's own pid and start ticks owes no new full pass;
 //     a record with the pid and no ticks gains the ticks and owes one;

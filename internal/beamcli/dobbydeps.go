@@ -119,6 +119,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 	if geom.Slug == "" {
 		hibernateRequestPath = hibernatecli.RequestPath(prime)
 	}
+	underAdopt := orchcli.UnderAdoptWatch(prime)
 	deps := dobbyengine.Deps{
 		Now:   time.Now,
 		Awake: pauserecord.MonotonicAwake(),
@@ -139,6 +140,9 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			}
 			return read.Effective(geom.Slug, parents.Of)
 		},
+		UnderAdopt:   func() bool { return underAdopt.Covers(geom.Slug) },
+		PullBolt:     func() error { return pullBolt(geom.HubRoot, boardDir) },
+		ArchiveOwner: func() error { return archiveOwnerTips(prime, geom.WorktreeName) },
 		Runs: func() ([]dobbyengine.RunView, error) {
 			return battencli.DobbyRuns(prime, geom, parents, pause.RecordPath)
 		},
@@ -247,6 +251,19 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		deps.TidyShuttle = &runnerTidyShuttle{worktree: worktree}
 	}
 	return deps, nil
+}
+
+// pullBolt brings the Bolt at boardDir, in the hub at hubRoot, up to date from origin.
+// A pull that skips, as a dirty or diverged Bolt does, is an error carrying the skip's way forward.
+func pullBolt(hubRoot, boardDir string) error {
+	skip, detail, err := fabricengine.NewBolt(boardDir).Pull(fabricengine.EnvSyncOptions(), fabricengine.NewMutations(hubRoot))
+	if err != nil {
+		return err
+	}
+	if skip != "" {
+		return errors.New(detail)
+	}
+	return nil
 }
 
 // waitReminderDeps fills the wait reminder seams of the dobby of worktree, whose beam slug is slug, over the hub of prime.

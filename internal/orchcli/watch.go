@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -84,6 +85,30 @@ func beamOwnerElsewhere(location *lymcwd.Location) (owner string, elsewhere bool
 	return owner, boardengine.OwnedElsewhere(owner, here), nil
 }
 
+// UnderAdoptWatch returns the under-adopt accessor of the hub of prime.
+// It judges the hub's adopt record against the local board, resolving parents through `hubgeom.ParentOf`.
+func UnderAdoptWatch(prime *lymcwd.Location) *adoptrecord.Watch {
+	return adoptrecord.NewWatch(prime.HubPath,
+		func() (boardengine.Owners, error) {
+			return boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+		},
+		func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) })
+}
+
+// underAdoptWatch returns the under-adopt accessor of the receiver's hub and the slug it asks about:
+// the beam's slug, empty for the prime.
+func (c *orchCLI) underAdoptWatch() (*adoptrecord.Watch, string, error) {
+	prime, err := resolvePrime(c.location)
+	if err != nil {
+		return nil, "", err
+	}
+	slug := c.location.WorktreeName
+	if slug == prime.WorktreeName {
+		slug = ""
+	}
+	return UnderAdoptWatch(prime), slug, nil
+}
+
 // reapInheritedChildren waits on the children a watcher re-exec'd onto a new binary keeps from its old image.
 // Nothing else waits on them.
 func reapInheritedChildren() {
@@ -142,9 +167,26 @@ A second watcher finding the first alive reports already_running and exits.`,
 				return nil
 			}
 			watcher.SetOrchName(orchName)
+			// The accessor resolves the hub's prime only when a foreign owner first makes the watcher ask.
+			// Once built it is kept, so its read failures log once per episode.
+			var underAdopt *adoptrecord.Watch
+			var adoptSlug string
+			var buildFailures logger.Episode
 			watcher.WatchOwner(orchengine.OwnerWatch{
 				Read: func() (string, bool, error) { return beamOwnerElsewhere(c.location) },
 				Stop: c.strands.RemoveStrand,
+				UnderAdopt: func() bool {
+					if underAdopt == nil {
+						built, slug, err := c.underAdoptWatch()
+						if err != nil {
+							buildFailures.Fail("orch: the under-adopt accessor could not be built; no adopt covers the beam", "error", err)
+							return false
+						}
+						buildFailures.Recover("orch: the under-adopt accessor is built")
+						underAdopt, adoptSlug = built, slug
+					}
+					return underAdopt.Covers(adoptSlug)
+				},
 			})
 			watcher.WatchBinary(selfexec.New().Check)
 			runErr := watcher.Run(ctx, time.Sleep)

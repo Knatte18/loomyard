@@ -207,6 +207,17 @@ func tagAndPushArchiveTip(rec *Mutations, repoDir, slug, tip, side string, sleep
 	if err != nil {
 		return "", err
 	}
+	if err := pushArchiveTag(rec, repoDir, tag, sleep); err != nil {
+		return "", err
+	}
+	return tag, nil
+}
+
+// pushArchiveTag pushes the tag named tag in the repo at repoDir to origin.
+// A push refused with a bare "(failed)", "cannot lock ref" or "missing necessary objects" is retried.
+// The retries follow the archive push's delay schedule and sleep through sleep; a nil sleep sleeps for real.
+// KindTagPushed is recorded on rec only after the push observably succeeded.
+func pushArchiveTag(rec *Mutations, repoDir, tag string, sleep func(time.Duration)) error {
 	tagRef := "refs/tags/" + tag
 
 	pushTag := func() error {
@@ -219,10 +230,10 @@ func tagAndPushArchiveTip(rec *Mutations, repoDir, slug, tip, side string, sleep
 		return err
 	}
 	if err := gitrepo.PushWithRetryReasons(pushTag, tagRef, archiveTagPushDelays(), sleep, []string{"missing necessary objects"}); err != nil {
-		return "", fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
+		return fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
 	}
 	rec.Append(KindTagPushed, repoDir, tag)
-	return tag, nil
+	return nil
 }
 
 // tagWeftTipForArchive tags the local tip of weftBranch before a teardown deletes the branch.
@@ -260,19 +271,29 @@ func tagWeftTipForArchive(l *lymcwd.Location, slug, weftBranch string) (tip, tag
 // so the tip stays reachable while the tag's push is still to come.
 func createArchiveTag(repoDir, slug, tip, side string) (string, error) {
 	tag := ArchiveTagName(slug, tip)
+	if err := createTagAt(repoDir, tag, tip, side); err != nil {
+		return "", err
+	}
+	return tag, nil
+}
+
+// createTagAt tags tip as tag in the repo at repoDir, touching no remote.
+// A tag already at tip is reused.
+// A tag of that name at another commit is refused, and the error names side as the branch's side.
+func createTagAt(repoDir, tag, tip, side string) error {
 	existing, err := gitexec.Run([]string{"for-each-ref", "--format=%(objectname)", "refs/tags/" + tag}, repoDir)
 	if err != nil {
-		return "", fmt.Errorf("look up archive tag %q: %w", tag, err)
+		return fmt.Errorf("look up archive tag %q: %w", tag, err)
 	}
 	switch existing = strings.TrimSpace(existing); {
 	case existing == "":
 		if _, err := gitexec.Run([]string{"tag", tag, tip}, repoDir); err != nil {
-			return "", fmt.Errorf("create archive tag %q at %s: %w", tag, tip, err)
+			return fmt.Errorf("create archive tag %q at %s: %w", tag, tip, err)
 		}
 	case existing != tip:
-		return "", fmt.Errorf("archive tag %q already exists at %s, not the %s tip %s", tag, existing, side, tip)
+		return fmt.Errorf("archive tag %q already exists at %s, not the %s tip %s", tag, existing, side, tip)
 	}
-	return tag, nil
+	return nil
 }
 
 // localBranchTip returns the full SHA of refs/heads/<branch> in the repo at repoDir.

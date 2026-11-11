@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -56,6 +57,10 @@ type BeamUpOptions struct {
 	// every step runs but the orch's start, and the report's orch fields stay empty.
 	// Only `lym adopt` sets it, for a request carrying `--no-orch`; `lym beam start` starts the orch later.
 	SkipOrch bool
+	// ArchiveOwned runs before the refusal of a worktree another machine owns, and its error joins that refusal;
+	// a nil ArchiveOwned runs nothing.
+	// `lym beam start` sets it to archive this machine's unpushed tips of the worktree for the machine that owns it.
+	ArchiveOwned func() error
 }
 
 // BeamUpReport is what one BeamUp did, and what it had done when it refused or failed.
@@ -500,7 +505,7 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 			here = opts.Here
 		}
 		if err := beamUpRefusal(facts.slug, here, facts.owner, facts.moveWayForward, facts.held, facts.ownLanding, facts.status); err != nil {
-			return report, err
+			return report, archiveBeforeOwnerRefusal(err, facts.owner, here, opts.ArchiveOwned)
 		}
 		if facts.held && facts.ownLanding {
 			ownLandingOf = facts.slug
@@ -531,6 +536,18 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 	report.Hint, report.WatcherStopping = orchReport.Hint, orchReport.WatcherStopping
 	report.Warnings = append(report.Warnings, orchReport.Warnings...)
 	return report, err
+}
+
+// archiveBeforeOwnerRefusal runs archive before refusal stands when owner is a machine other than here.
+// A failed archive joins the refusal with its retry; any other refusal, or a nil archive, returns refusal as it is.
+func archiveBeforeOwnerRefusal(refusal error, owner, here string, archive func() error) error {
+	if archive == nil || !boardengine.OwnedElsewhere(owner, here) {
+		return refusal
+	}
+	if err := archive(); err != nil {
+		return fmt.Errorf("%w; archiving this machine's unpushed tips for the new owner also failed: %v; a re-run of `lym beam start` retries it", refusal, err)
+	}
+	return refusal
 }
 
 // startDobbyStep starts this worktree's dobby and records its outcome on report.

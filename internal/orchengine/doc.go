@@ -129,6 +129,8 @@
 // The watcher records `owned by machine <owner>` as the exit and ends as done.
 // A failed stop is the tick's error, and the next tick retries it.
 // A failed read reads as not owned elsewhere and logs once per episode.
+// A foreign owner stops nothing while OwnerWatch.UnderAdopt reports an adopt in flight here covering the beam.
+// The watcher goes on, and the hold's start and end each log once.
 // The verdict is as fresh as this machine's local Bolt.
 // A watcher running an older binary reaches the check only after it restarts;
 // until then `lym beam status` shows the orch up.

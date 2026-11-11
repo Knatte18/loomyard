@@ -190,6 +190,8 @@ type Watcher struct {
 	// ownerReadFailures is the failure episode of the owner reads.
 	// They repeat on every tick while the board is unreadable.
 	ownerReadFailures logger.Episode
+	// ownerAdoptHeld reports whether the last owner reading found the beam owned elsewhere under an adopt in flight here.
+	ownerAdoptHeld bool
 }
 
 // phaseEvents records what the current non-idle phase has observed.

@@ -10,6 +10,34 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+func TestWatcher_AnAdoptThatLiftsLetsTheNextTickStopTheStrand(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	e := newWatchEnv(t)
+	held := true
+	var stops []string
+	e.w.WatchOwner(OwnerWatch{
+		Read: func() (string, bool, error) { return "there", true, nil },
+		Stop: func(guid string) error {
+			stops = append(stops, guid)
+			return nil
+		},
+		UnderAdopt: func() bool { return held },
+	})
+
+	done, err := e.w.Tick()
+	if err != nil || done || len(stops) != 0 {
+		t.Fatalf("Tick() under the adopt = %v, %v with stops %v; want not done, no error, no stop", done, err, stops)
+	}
+	held = false
+	done, err = e.w.Tick()
+
+	if err != nil || !done || !slices.Equal(stops, []string{"s1"}) {
+		t.Errorf("Tick() after the adopt lifts = %v, %v with stops %v; want done, no error, the strand stopped once", done, err, stops)
+	}
+}
+
 func TestWatcher_StopsTheOrchOfABeamOwnedElsewhere(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -18,6 +46,7 @@ func TestWatcher_StopsTheOrchOfABeamOwnedElsewhere(t *testing.T) {
 		name       string
 		owner      string
 		elsewhere  bool
+		underAdopt bool
 		readErr    error
 		stopErr    error
 		wantDone   bool
@@ -27,6 +56,7 @@ func TestWatcher_StopsTheOrchOfABeamOwnedElsewhere(t *testing.T) {
 		wantNoExit bool
 	}{
 		{name: "OwnerNamingAnotherMachineStopsTheStrandOnceAndEndsTheWatcher", owner: "there", elsewhere: true, wantDone: true, wantStops: []string{"s1"}, wantExit: "owned by machine there"},
+		{name: "OwnerNamingAnotherMachineUnderAnAdoptInFlightKeepsTheStrand", owner: "there", elsewhere: true, underAdopt: true, wantNoExit: true},
 		{name: "OwnerNamingThisMachineGoesOn", owner: "here", wantNoExit: true},
 		{name: "NoOwnerRecordedGoesOn", wantNoExit: true},
 		{name: "FailingReadGoesOnWithNoStop", readErr: errors.New("board unreadable"), wantNoExit: true},
@@ -44,6 +74,7 @@ func TestWatcher_StopsTheOrchOfABeamOwnedElsewhere(t *testing.T) {
 					stops = append(stops, guid)
 					return tt.stopErr
 				},
+				UnderAdopt: func() bool { return tt.underAdopt },
 			})
 
 			done, err := e.w.Tick()

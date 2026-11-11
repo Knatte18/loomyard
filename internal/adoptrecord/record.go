@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -183,6 +184,18 @@ func (r Record) ReadState(alive func(pid int, startTicks string) bool) string {
 // Unfinished reports whether the record's state is anything but done.
 func (r Record) Unfinished() bool {
 	return r.State != StateDone
+}
+
+// Covers reports whether the record holds subject, a beam slug or `root`, under adopt:
+// the record is unfinished, lists subject among its subjects, and records no owner write of subject that stood.
+func (r Record) Covers(subject string) bool {
+	if !r.Unfinished() || !slices.Contains(r.Subjects, subject) {
+		return false
+	}
+	if subject == boardengine.RootSubject {
+		return !r.Inputs.PrimeRecorded
+	}
+	return !slices.Contains(r.Inputs.OwnerStood, subject)
 }
 
 // WorkerAlive reports whether the worker with pid and startTicks is running.

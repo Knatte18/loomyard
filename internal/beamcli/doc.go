@@ -309,6 +309,10 @@
 // The verb exits non-zero, naming each.
 // Every `BeamUp` refusal applies to the beam it acts on.
 // Those refusals include an owner of another machine and a hold of a run other than the beam's own landing.
+// Before the owner refusal stands, `BeamUp` runs the archive `ownerArchiveBeforeRefusal` returns.
+// It archives this machine's unpushed tips under the worktree through `archiveOwnerTips`.
+// It archives nothing while an adopt in flight here covers the worktree (`orchcli.UnderAdoptWatch`).
+// A failed archive joins the refusal, and a re-run of the verb retries it.
 // A beam held by its own pawl run's landing, a halted Finalize for one, gets its orch back, and its dobby stays down;
 // `lym beam start` never starts the dobby of a held beam.
 // The verb is idempotent.
@@ -360,6 +364,12 @@
 // `registerDobby` runs only once `Run` holds the lock, through `Deps.Locked`.
 // It writes `runproc.SelfRecord(runproc.RoleDobby)` under the beam's slug, or `runproc.HubOwner` for the prime.
 // That record lets the pair teardown of a landed beam end that beam's dobby.
+// `hubDobbyDeps` fills the hand-over seams.
+// `UnderAdopt` is over `orchcli.UnderAdoptWatch`.
+// `PullBolt` is through `fabricengine.Bolt.Pull`.
+// `ArchiveOwner` is through `archiveOwnerTips`.
+// `archiveOwnerTips` archives the worktree's own pair, named `root` for the prime.
+// It also archives the pair of each run `battencli.DobbyRuns` lists under it, through `fabricengine.ArchiveOwnerTips`.
 // For the prime, `hubDobbyDeps` also fills the test-map refresh seams.
 // `testMapRunning` reads whether a live `runproc.RoleTestMap` record stands under `runproc.HubOwner`.
 // `startTestMap` starts `lym gate testmap --max <n>` with the binary `selfexec.LymBinary` names.

@@ -16,6 +16,8 @@
 // a worktree another machine owns, naming the owner and `lym adopt <slug>` (`lym adopt root` for the prime);
 // a worktree with an anchor change standing on it or on the prime, naming the change's way forward;
 // and a beam whose board entry a run other than the beam's own landing holds, naming `lym batten status <slug>`.
+// Before the owner refusal stands, `BeamUpOptions.ArchiveOwned` runs when set, and its failure joins the refusal;
+// `lym beam start` sets it to archive this machine's unpushed tips of the worktree for the new owner.
 // A beam held by its own pawl run's landing is no refusal:
 // `ownLandingHold` reads it from the beam pair's own run status.
 // The status is found, not done, and standing at the producer the board status names.
@@ -94,6 +96,9 @@
 // The read takes the prime's owner for the prime and a beam's effective owner through `hubgeom.ParentOf`.
 // It reads from the hub's local Bolt and compares the owner with this machine's name from `machinename`.
 // The verdict is as fresh as that Bolt.
+// `watch` also tells it the under-adopt accessor `UnderAdoptWatch` builds.
+// The accessor reads the hub's adopt record, its local board and `hubgeom.ParentOf`.
+// While an adopt in flight on this machine covers the worktree, a foreign owner leaves the orch strand up.
 //
 // # Status restarts a dead watcher
 //

@@ -15,6 +15,9 @@ type OwnerWatch struct {
 	Read func() (owner string, elsewhere bool, err error)
 	// Stop removes the orch strand guid.
 	Stop func(guid string) error
+	// UnderAdopt reports whether an adopt in flight on this machine covers the beam.
+	// It is asked only while the owner reads as another machine, and a nil UnderAdopt covers nothing.
+	UnderAdopt func() bool
 }
 
 // WatchOwner tells the watcher where the beam's owner is read and how the orch strand is removed;
@@ -24,8 +27,11 @@ func (w *Watcher) WatchOwner(o OwnerWatch) {
 }
 
 // ownerTick reads the beam's owner for this tick.
-// When another machine owns it, ownerTick stops the orch strand and records the exit.
-// done is true once the strand is stopped; a failed stop is the tick's error and the next tick retries it.
+// ownerTick stops the orch strand and records the exit when another machine owns the beam.
+// It does not stop it when an adopt in flight here covers the beam.
+// While such an adopt covers it, the strand stays up, and the hold's start and end each log once.
+// done is true once the strand is stopped.
+// A failed stop is the tick's error and the next tick retries it.
 // A failed read reads as not owned elsewhere and logs once per episode.
 func (w *Watcher) ownerTick(st State) (done bool, err error) {
 	if w.owner == nil {
@@ -37,7 +43,16 @@ func (w *Watcher) ownerTick(st State) (done bool, err error) {
 		return false, nil
 	}
 	w.ownerReadFailures.Recover("orch: the beam's owner reads again")
-	if !elsewhere {
+	held := elsewhere && w.owner.UnderAdopt != nil && w.owner.UnderAdopt()
+	if held != w.ownerAdoptHeld {
+		w.ownerAdoptHeld = held
+		if held {
+			logger.Info("orch: an adopt in flight here covers the beam another machine owns; the orch strand stays up", "owner", owner, "strand", st.Strand)
+		} else {
+			logger.Info("orch: no adopt in flight covers the beam any more", "strand", st.Strand)
+		}
+	}
+	if !elsewhere || held {
 		return false, nil
 	}
 	if err := w.owner.Stop(st.Strand); err != nil {

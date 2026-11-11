@@ -1,9 +1,11 @@
-// archivetag_test.go — unit test for ArchiveTagSlug, the reader of the archive tag namespace.
+// archivetag_test.go holds unit tests for the archive tag names.
+// It also tests ArchiveTagSlug, the reader of the archive tag namespace.
 
 package fabricengine
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,5 +47,22 @@ func TestArchiveTagSlug(t *testing.T) {
 				t.Errorf("ArchiveTagSlug(%q) = (%q, %v); want (%q, %v)", tt.tag, slug, ok, tt.wantSlug, tt.wantOK)
 			}
 		})
+	}
+}
+
+// TestOwnerArchiveTagName pins the owner archive tag's name,
+// and that no archive tag reader takes it for an archived run.
+func TestOwnerArchiveTagName(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tag := OwnerArchiveTagName("root", "0123456789abcdef0123")
+	if want := "archive-owner/root/0123456789ab"; tag != want {
+		t.Errorf("OwnerArchiveTagName() = %q; want %q", tag, want)
+	}
+	if slug, ok := ArchiveTagSlug(tag); ok {
+		t.Errorf("ArchiveTagSlug(%q) = (%q, true); want no archived run", tag, slug)
+	}
+	if strings.HasPrefix(tag, ArchiveTagPrefix) {
+		t.Errorf("%q carries the archive tag prefix %q; want it outside every archive tag listing", tag, ArchiveTagPrefix)
 	}
 }

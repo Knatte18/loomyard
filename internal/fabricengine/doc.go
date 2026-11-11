@@ -705,6 +705,13 @@
 // The hub's prime worktree is refused by name before any teardown begins.
 // It is the warp repository rather than a pair.
 // No teardown waits on the network.
+//
+// `ArchiveOwnerTips` archives the local tips a machine keeps of pairs whose subject another machine now owns.
+// Under each pair's teardown lock it tags each code and records tip origin lacks `archive-owner/<slug>/<tip>`.
+// `OwnerArchiveTagName` gives that name.
+// It pushes the tag to that side's origin with no branch push.
+// No reader of `archive/` tags matches that prefix, so such a tag never reads as an archived run.
+//
 // `Remove`, `DiscardTaskBranch` and the `Cleanup` sweep run their local steps,
 // and they hand the remote ones to a detached teardown child (remoteteardown.go).
 // `Remove` tags the pair's local weft tip `archive/<slug>/<tip>` (`tagWeftTipForArchive`) before its first mutation.

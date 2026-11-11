@@ -1006,6 +1006,60 @@ func TestStart_OwnLandingStartsTheOrchAlone(t *testing.T) {
 	}
 }
 
+func TestStart_ArchivesBeforeRefusingAForeignOwner(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		owner        string
+		move         string
+		archiveErr   error
+		wantArchives int
+		wantIn       []string
+		wantNotIn    string
+	}{
+		{name: "AForeignOwnerArchivesThenRefuses", owner: "laptop", wantArchives: 1, wantIn: []string{"lym adopt b"}, wantNotIn: "archiving"},
+		{
+			name: "AFailedArchiveJoinsTheRefusal", owner: "laptop", archiveErr: errors.New("origin unreachable"), wantArchives: 1,
+			wantIn: []string{"lym adopt b", "origin unreachable", "a re-run of `lym beam start` retries it"},
+		},
+		{name: "AnotherRefusalArchivesNothing", move: "finish the anchor change", wantIn: []string{"anchor change"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newStartHarness(t)
+			h.cli.readBeamFacts = func() (beamFacts, error) {
+				return beamFacts{slug: "b", here: "desktop", owner: tt.owner, moveWayForward: tt.move}, nil
+			}
+			archives := 0
+
+			code, env := h.runWith(t, BeamUpOptions{Prepare: true, ArchiveOwned: func() error {
+				archives++
+				return tt.archiveErr
+			}})
+
+			msg, _ := env["error"].(string)
+			if code == 0 {
+				t.Fatalf("exit = 0; env = %v; want a refusal", env)
+			}
+			if archives != tt.wantArchives {
+				t.Errorf("archives = %d; want %d", archives, tt.wantArchives)
+			}
+			for _, want := range tt.wantIn {
+				if !strings.Contains(msg, want) {
+					t.Errorf("refusal %q missing %q", msg, want)
+				}
+			}
+			if tt.wantNotIn != "" && strings.Contains(msg, tt.wantNotIn) {
+				t.Errorf("refusal %q names %q; want an archive that succeeded left out", msg, tt.wantNotIn)
+			}
+		})
+	}
+}
+
 // saveSeedState saves st as the state file start finds.
 func saveSeedState(t *testing.T, h *startHarness, st orchengine.State) {
 	t.Helper()
