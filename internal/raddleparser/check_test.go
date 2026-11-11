@@ -74,6 +74,19 @@ func TestCheck(t *testing.T) {
 		}, []string{CheckBoardUnchecked}},
 		{"DependsOnCycle", func(p *Proposal, _ *BoardContext) { p.Parts[0].DependsOn = []string{"part-b"} }, []string{CheckDependsCycle}},
 		{"DependsOnUnknown", func(p *Proposal, _ *BoardContext) { p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "ghost") }, []string{CheckDependsUnknown}},
+		{"DependsOnNote", func(p *Proposal, b *BoardContext) {
+			b.Entries = append(b.Entries, BoardEntry{Slug: "idea", Kind: KindNote, Open: true})
+			p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "idea")
+		}, []string{CheckDependsNote}},
+		{"DependsOnNoteWhileFiling", func(p *Proposal, b *BoardContext) {
+			b.Entries = append(b.Entries, BoardEntry{Slug: "idea", Kind: KindNote, Open: true})
+			p.BoardChecked = append(p.BoardChecked, BoardCheck{Slug: "idea"})
+			p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "idea")
+			b.Filing = true
+		}, []string{CheckDependsNote}},
+		{"DependsOnPartThatIsAlsoANoteIsNoNoteDependency", func(_ *Proposal, b *BoardContext) {
+			b.Entries = append(b.Entries, BoardEntry{Slug: "part-a", Kind: KindNote, Open: true})
+		}, []string{CheckSlugTaken}},
 		{"DependsOnCheckedEntryGoneFromTheBoardPasses", func(p *Proposal, _ *BoardContext) { dependOnGoneEntry(p) }, nil},
 		{"DependsOnCheckedEntryGoneFromTheBoardPassesWhileFiling", func(p *Proposal, b *BoardContext) {
 			dependOnGoneEntry(p)
@@ -153,6 +166,32 @@ func TestCheck(t *testing.T) {
 				t.Errorf("Check() findings = %v; want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestCheck_DependsOnNoteDetailNamesTheWayForward pins the text that tells the author how to proceed.
+func TestCheck_DependsOnNoteDetailNamesTheWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	proposal, board := validProposal(), validBoard()
+	board.Entries = append(board.Entries, BoardEntry{Slug: "idea", Kind: KindNote, Open: true})
+	proposal.Parts[1].DependsOn = append(proposal.Parts[1].DependsOn, "idea")
+
+	var details []string
+	for _, finding := range Check(proposal, checkRecord, board) {
+		if finding.Check == CheckDependsNote {
+			details = append(details, finding.Detail)
+		}
+	}
+
+	if len(details) != 1 {
+		t.Fatalf("Check() depends-note details = %q; want exactly one", details)
+	}
+	for _, want := range []string{`the note "idea"`, "drop the dependency", `lym board promote '{"slug":"idea"}'`} {
+		if !strings.Contains(details[0], want) {
+			t.Errorf("depends-note detail = %q; want it to contain %q", details[0], want)
+		}
 	}
 }
 

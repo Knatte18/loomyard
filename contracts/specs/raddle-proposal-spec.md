@@ -93,6 +93,7 @@ The gate, `raddle-propose` and `raddle-approve` run the checks of the proposal a
 - `board-unchecked` — an open task or project, other than the run's own entry, that carries a module label the Sketch carries and is absent from `board_checked`.
 - `depends-cycle` — a cycle in `depends_on`.
 - `depends-unknown` — a `depends_on` that names no part, no board entry and no `board_checked` entry; a `board_checked` entry that is gone from the board passes as landed.
+- `depends-note` — a `depends_on` that names a note on the board, which the board refuses at filing; its way forward is to drop the dependency or to have the operator promote the note.
 - `packages-shared` — two parts with no `depends_on` path between them that list a common package.
 - `recipe-invalid` — a recipe that is neither `tapestry` nor `darn`.
 - `profile-unknown` — a profile that `profiles.yaml` does not hold, or holds without a block for the part's recipe.

@@ -382,7 +382,8 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	}
 	for _, dep := range incoming.DependsOn {
 		if snapshotIndex[dep].Kind == KindNote {
-			return fmt.Errorf("%q depends on note %q, and a note cannot be depended on: promote %q with \"lym board promote\", or drop the dependency with \"lym board set-deps\"", incoming.Slug, dep, dep)
+			rest, _ := json.Marshal(slices.DeleteFunc(slices.Clone(incoming.DependsOn), func(other string) bool { return other == dep }))
+			return fmt.Errorf("%q depends on note %q, and a note cannot be depended on: promote the note with lym board promote '{\"slug\":\"%s\"}', or drop the dependency with lym board set-deps '{\"slug\":\"%s\",\"depends_on\":%s}'", incoming.Slug, dep, dep, incoming.Slug, rest)
 		}
 	}
 	if incoming.Kind == KindNote {

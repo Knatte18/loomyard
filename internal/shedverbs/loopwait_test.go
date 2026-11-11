@@ -525,21 +525,21 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				traceID:       "trace-7",
 				traceBodies:   []string{"first\n", "second\n"},
 				wantProducer:  "A",
-				wantCause:     "; step A was in flight under trace trace-7; loop exit: not recorded",
+				wantCause:     "; step A was in flight under trace trace-7; loop exit: not recorded, since the loop log holds no start mark of loop dead-1",
 				wantFile:      func(w *waitWorld) string { return w.traces["trace-7"][0] },
 				wantTraceCopy: true,
 			},
 			{
 				name:         "NoTraceID_LoopLog",
 				wantProducer: "A",
-				wantCause:    "; step A was in flight; loop exit: not recorded",
+				wantCause:    "; step A was in flight; loop exit: not recorded, since the loop log holds no start mark of loop dead-1",
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
 				name:         "NoTraceFile_LoopLog",
 				traceID:      "trace-8",
 				wantProducer: "A",
-				wantCause:    "; step A was in flight under trace trace-8; loop exit: not recorded",
+				wantCause:    "; step A was in flight under trace trace-8; loop exit: not recorded, since the loop log holds no start mark of loop dead-1",
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
@@ -549,7 +549,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				stepStderr:    "in-flight step's stderr\n",
 				statusMoved:   true,
 				wantProducer:  "B",
-				wantCause:     "; step A was in flight under trace trace-9, and the status file now reads B; loop exit: not recorded; step stderr: in-flight step's stderr",
+				wantCause:     "; step A was in flight under trace trace-9, and the status file now reads B; loop exit: not recorded, since the loop log holds no start mark of loop dead-1; step stderr: in-flight step's stderr",
 				wantFile:      func(w *waitWorld) string { return w.traces["trace-9"][0] },
 				wantTraceCopy: true,
 			},
@@ -559,7 +559,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				statusMoved:       true,
 				movedSameProducer: true,
 				wantProducer:      "A",
-				wantCause:         "; step A was in flight under trace trace-12; loop exit: not recorded",
+				wantCause:         "; step A was in flight under trace trace-12; loop exit: not recorded, since the loop log holds no start mark of loop dead-1",
 				wantFile:          func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
@@ -568,7 +568,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				statusMoved:   true,
 				emptyProducer: true,
 				wantProducer:  "A",
-				wantCause:     "; step A was in flight under trace trace-13; loop exit: not recorded",
+				wantCause:     "; step A was in flight under trace trace-13; loop exit: not recorded, since the loop log holds no start mark of loop dead-1",
 				wantFile:      func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
@@ -579,7 +579,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				statusMoved:  true,
 				noChild:      true,
 				wantProducer: "B",
-				wantCause:    "; loop exit: not recorded",
+				wantCause:    "; loop exit: not recorded, since the loop log holds no start mark of loop dead-1",
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
@@ -597,10 +597,31 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				wantFile: func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
+				name:    "ChildOutputLeftOut_TheLoopsOwnLinesExcerpted",
+				traceID: "trace-14",
+				loopLog: "lym shed: loop dead-1 starting\n" +
+					"lym shed: step trace-a output: {\"ok\":false,\"producer\":\"Code-Bouncer\"}\n" +
+					"the loop's own line\n" +
+					"lym shed: step trace-b output: {\"ok\":false,\"producer\":\"Code-Burler-Fix\"}\n" +
+					"lym shed: loop dead-1 process 9 exited: exit status 1\n",
+				wantProducer: "A",
+				wantCause: "; step A was in flight under trace trace-14" +
+					"; loop exit: lym shed: loop dead-1 process 9 exited: exit status 1" +
+					"; loop log: the loop's own line",
+				wantFile: func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+			{
+				name:         "StartingMarkWithNoExitMark_SaysWhyNotRecorded",
+				loopLog:      "lym shed: loop dead-1 starting\n",
+				wantProducer: "A",
+				wantCause:    "; step A was in flight; loop exit: not recorded, since no process marked the loop's exit, as after a kill of the loop and its keeper that no process can catch or a stop of the machine",
+				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+			{
 				name:         "NoStartingMark_OnlyTheLoopExitClause",
 				loopLog:      "lym shed: loop old-1 starting\npanic: old crash\nlym shed: loop old-1 process 7 exited: exit status 2\n",
 				wantProducer: "A",
-				wantCause:    "; step A was in flight; loop exit: not recorded",
+				wantCause:    "; step A was in flight; loop exit: not recorded, since the loop log holds no start mark of loop dead-1",
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 		}
@@ -923,7 +944,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 		if detail := loopOf(t, env)["detail"].(string); !strings.Contains(detail, w.spec.Loop.LogPath) {
 			t.Errorf("detail = %q; want it naming the loop log %s", detail, w.spec.Loop.LogPath)
 		}
-		wantCause := "loop-exited: loop " + spawnedID.Load().(string) + " exited before it recorded itself; its output is in " + w.spec.Loop.LogPath + "; loop exit: not recorded"
+		wantCause := "loop-exited: loop " + spawnedID.Load().(string) + " exited before it recorded itself; its output is in " + w.spec.Loop.LogPath + "; loop exit: not recorded, since the loop log holds no start mark of loop " + spawnedID.Load().(string)
 		if cause != wantCause || file != w.spec.Loop.LogPath {
 			t.Errorf("AfterInterrupt cause/file = %q/%q; want %q/%q", cause, file, wantCause, w.spec.Loop.LogPath)
 		}

@@ -1459,6 +1459,51 @@ func TestLoop_TerminatingSignalIsMarkedInTheLoopLog(t *testing.T) {
 	}
 }
 
+func TestLoop_ChildStdoutIsMarkedInTheLoopLog(t *testing.T) {
+	tiergate.Require(t, 0)
+	const ownOutput = "the loop's own output"
+	tests := []struct {
+		name   string
+		stdout string
+		// want builds the expected log from the child's trace id.
+		want func(traceID string) string
+	}{
+		{"LinesArePrefixedAndOpenALineOfTheirOwn", "first\nsecond", func(id string) string {
+			return ownOutput + "\nlym shed: step " + id + " output: first\nlym shed: step " + id + " output: second\n"
+		}},
+		{"TrailingNewlineAddsNoEmptyLine", "first\n", func(id string) string {
+			return ownOutput + "\nlym shed: step " + id + " output: first\n"
+		}},
+		{"EmptyOutputKeepsNothing", "", func(string) string { return ownOutput }},
+		{"LoneNewlineKeepsNothing", "\n", func(string) string { return ownOutput }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tiergate.Require(t, 0)
+			var traceID string
+			fx := newLoopFixture(t, func(fx *loopFixture, id string, req ChildRequest) error {
+				traceID = id
+				_, _ = req.Stdout.Write([]byte(tt.stdout))
+				return halting(shedengine.StateDone, "", 1)(fx, id, req)
+			})
+			if err := os.MkdirAll(fx.stepsDir, 0o755); err != nil {
+				t.Fatalf("create the steps directory: %v", err)
+			}
+			// The loop's own output ends without a newline, so the child's first line must open a line of its own.
+			if err := os.WriteFile(fx.spec.Loop.LogPath, []byte(ownOutput), 0o644); err != nil {
+				t.Fatalf("write the loop log: %v", err)
+			}
+
+			fx.execute()
+
+			log, err := os.ReadFile(fx.spec.Loop.LogPath)
+			if want := tt.want(traceID); err != nil || string(log) != want {
+				t.Errorf("loop log = %q, %v; want %q", log, err, want)
+			}
+		})
+	}
+}
+
 func TestLoop_WakeHookRunsOnWatchWakes(t *testing.T) {
 	tiergate.Require(t, 0)
 	const wakesBeforeExit = 4

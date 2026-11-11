@@ -136,9 +136,10 @@ func TestKindDependencyRules(t *testing.T) {
 
 	t.Run("depending on an open note refused", func(t *testing.T) {
 		s := seed(t)
-		_, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"idea"}})
-		if err == nil || !stringContains(err.Error(), `"idea"`) || !stringContains(err.Error(), "promote") || !stringContains(err.Error(), "set-deps") {
-			t.Errorf("expected refusal naming idea, promote and set-deps, got %v", err)
+		_, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep", "idea"}})
+		want := `"x" depends on note "idea", and a note cannot be depended on: promote the note with lym board promote '{"slug":"idea"}', or drop the dependency with lym board set-deps '{"slug":"x","depends_on":["dep"]}'`
+		if err == nil || err.Error() != want {
+			t.Errorf("UpsertTask() error = %v; want %q", err, want)
 		}
 	})
 

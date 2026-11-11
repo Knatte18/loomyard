@@ -217,6 +217,8 @@
 // a loop process that does not start gets a mark naming the start error.
 // The keeper's mark is written even when the waiter is gone, as after a driver hands over to its successor.
 // lym's marks open with "lym shed: loop <loop id> ", which tells them from the output of the loop and its children.
+// The loop appends a finished child's standard output to the loop log, and that output is mostly the child's envelope.
+// Each of its lines opens with "lym shed: step <trace id> output: ", which tells a child's output from the loop's own.
 //
 // Optional seams let the arming module hook the loop.
 // Spec.Loop.OnStart runs once in the loop and once in its keeper.
@@ -253,8 +255,10 @@
 // The dead-loop stop therefore first waits a bounded time for it.
 // First come the marks of the loop, its keeper and the waiter's spawn.
 // Such a mark records a signal the loop received or the loop's exit status.
-// With no marks the clause reads "loop exit: not recorded".
-// Then comes an excerpt of the log's other lines, a Go crash's first lines or the last lines.
+// With no marks the clause reads "loop exit: not recorded" and says why:
+// the log holds no starting mark for the loop, or no process marked the exit.
+// Then comes an excerpt of the loop's own output, a Go crash's first lines or the last lines;
+// a finished child's output is left out of it.
 // A log with no starting mark for the loop gives the marks clause alone.
 // With a child in flight, loop.stderr_path names its captured stderr and loop.trace_copy holds a copy of its trace files;
 // with none, both are empty.

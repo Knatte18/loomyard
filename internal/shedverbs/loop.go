@@ -567,7 +567,7 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, id
 	if kill != nil && loop.OnWatchdogKill != nil {
 		killNote = loop.OnWatchdogKill(*kill)
 	}
-	appendLoopLog(loop.LogPath, stdout.Bytes())
+	appendLoopChildOutput(loop.LogPath, traceID, stdout.Bytes())
 
 	if spec.StepsDir != "" {
 		path := filepath.Join(spec.StepsDir, traceID+envelopeSuffix)
@@ -742,6 +742,27 @@ func appendLoopLog(path string, data []byte) {
 	if _, err := file.Write(data); err != nil {
 		logger.Warn("shed: loop could not write the loop log", "path", path, "error", err.Error())
 	}
+}
+
+// loopChildOutputPrefix opens every loop log line that holds a finished child's standard output.
+// That output is mostly the child's envelope.
+// It tells a child's output from the loop's own output, the lines a dead-loop stop excerpts.
+const loopChildOutputPrefix = "lym shed: step "
+
+// appendLoopChildOutput appends the standard output of the child under traceID to the loop log at path.
+// Each line opens with loopChildOutputPrefix and the trace id, and the first opens a line of its own.
+// Empty output keeps nothing.
+func appendLoopChildOutput(path, traceID string, stdout []byte) {
+	text := strings.TrimSuffix(string(stdout), "\n")
+	if text == "" {
+		return
+	}
+	var lines strings.Builder
+	lines.WriteString(newlineIfUnterminated(path))
+	for _, line := range strings.Split(text, "\n") {
+		lines.WriteString(loopChildOutputPrefix + traceID + " output: " + line + "\n")
+	}
+	appendLoopLog(path, []byte(lines.String()))
 }
 
 // appendLoopLogMark appends mark to the loop log at path on a line of its own, even when the log's last line of output has no newline.

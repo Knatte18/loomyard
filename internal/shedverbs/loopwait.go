@@ -199,16 +199,23 @@ func loopLogMark(loopID, text string) string {
 
 // loopExitEvidence returns the clauses a gone loop's stop detail carries about how loop loopID ended.
 // It reads the loop log at logPath after that loop's last starting mark.
-// The first clause lists the marks lym wrote about the loop's processes, or says none was recorded.
+// The first clause lists the marks lym wrote about the loop's processes.
 // Such marks include a terminating signal the loop received and the exit statuses of the loop and its keeper.
-// When the loop has other lines, a second clause carries an excerpt of them.
+// With no mark it says the exit is not recorded and why:
+// the log holds no starting mark of the loop, or no process marked the exit.
+// When the loop has output of its own, a second clause carries an excerpt of it; a finished child's output is left out.
 // The excerpt is a Go crash's first lines, or otherwise the last lines.
 // A log with no starting mark for the loop yields the first clause alone, since its lines cannot be told from other loops' lines.
 func loopExitEvidence(logPath, loopID string) string {
-	marks, output := loopLogLinesOf(logPath, loopID)
-	evidence := "; loop exit: not recorded"
-	if len(marks) > 0 {
+	marks, output, started := loopLogLinesOf(logPath, loopID)
+	var evidence string
+	switch {
+	case len(marks) > 0:
 		evidence = "; loop exit: " + strings.Join(marks, " | ")
+	case !started:
+		evidence = "; loop exit: not recorded, since the loop log holds no start mark of loop " + loopID
+	default:
+		evidence = "; loop exit: not recorded, since no process marked the loop's exit, as after a kill of the loop and its keeper that no process can catch or a stop of the machine"
 	}
 	if excerpt := outputExcerpt(output); excerpt != "" {
 		evidence += "; loop log: " + excerpt
@@ -218,15 +225,16 @@ func loopExitEvidence(logPath, loopID string) string {
 
 // loopProcessExitRecorded reports whether the loop log at logPath holds the mark of the exit of loop loopID's process.
 func loopProcessExitRecorded(logPath, loopID string) bool {
-	marks, _ := loopLogLinesOf(logPath, loopID)
+	marks, _, _ := loopLogLinesOf(logPath, loopID)
 	prefix := loopLogMarkPrefix + loopID + " process "
 	return slices.ContainsFunc(marks, func(mark string) bool { return strings.HasPrefix(mark, prefix) })
 }
 
 // loopLogLinesOf splits the lines of the loop log at logPath after loop loopID's last starting mark.
-// It returns the marks lym wrote about that loop and the loop's other output lines.
-// A log with no starting mark for the loop yields neither.
-func loopLogLinesOf(logPath, loopID string) (marks, output []string) {
+// It returns the marks lym wrote about that loop and the loop's own output lines.
+// The output of finished children is left out.
+// started reports whether the log holds a starting mark for the loop; a log with none yields no lines.
+func loopLogLinesOf(logPath, loopID string) (marks, output []string, started bool) {
 	data, _ := os.ReadFile(logPath)
 	lines := strings.Split(string(data), "\n")
 	startLine := strings.TrimSuffix(loopLogMark(loopID, loopStartingMark), "\n")
@@ -242,12 +250,12 @@ func loopLogLinesOf(logPath, loopID string) (marks, output []string) {
 			switch {
 			case strings.HasPrefix(line, ownPrefix):
 				marks = append(marks, line)
-			case !strings.HasPrefix(line, loopLogMarkPrefix):
+			case !strings.HasPrefix(line, loopLogMarkPrefix) && !strings.HasPrefix(line, loopChildOutputPrefix):
 				output = append(output, line)
 			}
 		}
 	}
-	return marks, output
+	return marks, output, start >= 0
 }
 
 // loopSnapshot is what one look at the loop's files and lock found.

@@ -31,6 +31,7 @@ const (
 	CheckBoardUnchecked         = "board-unchecked"
 	CheckDependsCycle           = "depends-cycle"
 	CheckDependsUnknown         = "depends-unknown"
+	CheckDependsNote            = "depends-note"
 	CheckPackagesShared         = "packages-shared"
 	CheckRecipeInvalid          = "recipe-invalid"
 	CheckProfileUnknown         = "profile-unknown"
@@ -49,6 +50,9 @@ const (
 	KindTask    = "task"
 	KindProject = "project"
 )
+
+// KindNote is the board entry kind no entry can depend on, which the board refuses at filing.
+const KindNote = "note"
 
 // sectionOpenRisks and sectionCriteria are the decision record sections whose bullets a part carries.
 const (
@@ -322,6 +326,7 @@ func uncheckedEntries(p Proposal, board BoardContext) []string {
 
 // dependencies reports a depends_on cycle and a depends_on that names no part, no board entry and no board_checked entry.
 // A board_checked entry gone from the board passes as landed, whether or not the run is filing.
+// It also reports a depends_on that names a note on the board, which the board would refuse at filing.
 func (c *checker) dependencies() []Finding {
 	var findings []Finding
 	parts := c.proposal.Parts
@@ -364,10 +369,14 @@ func (c *checker) dependencies() []Finding {
 
 	for _, part := range parts {
 		for _, dep := range part.DependsOn {
-			known := slices.ContainsFunc(parts, func(other Part) bool { return other.Slug == dep }) ||
-				slices.ContainsFunc(c.board.Entries, func(entry BoardEntry) bool { return entry.Slug == dep }) ||
-				slices.ContainsFunc(c.proposal.BoardChecked, func(checked BoardCheck) bool { return checked.Slug == dep })
-			if !known {
+			isPart := slices.ContainsFunc(parts, func(other Part) bool { return other.Slug == dep })
+			entry := slices.IndexFunc(c.board.Entries, func(entry BoardEntry) bool { return entry.Slug == dep })
+			checked := slices.ContainsFunc(c.proposal.BoardChecked, func(checked BoardCheck) bool { return checked.Slug == dep })
+			switch {
+			case isPart:
+			case entry >= 0 && c.board.Entries[entry].Kind == KindNote:
+				findings = append(findings, Finding{Check: CheckDependsNote, Part: part.Slug, Detail: fmt.Sprintf("depends_on names the note %q, and the board refuses a dependency on a note; way forward: drop the dependency, or have the operator promote the note with lym board promote '{\"slug\":\"%s\"}', then run lym loom raddle-propose again", dep, dep)})
+			case entry < 0 && !checked:
 				findings = append(findings, Finding{Check: CheckDependsUnknown, Part: part.Slug, Detail: fmt.Sprintf("depends_on names %q, which is no part, no board entry and no board_checked entry", dep)})
 			}
 		}
