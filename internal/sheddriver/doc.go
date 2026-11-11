@@ -147,7 +147,8 @@
 // The stop is handed back with the cause when the agent timed out, died, or left no verdict or an unreadable one.
 // It is also handed back when the verdict names a precondition the run does not meet.
 // Shuttle re-sends a turn the provider's API ends on an error `SettlerAPIErrorRetries` times.
-// The error past them, or a model the provider rejects, is a hand-back with cause `api-error`.
+// The error past them is a hand-back with cause `api-error`.
+// So is a model the provider rejects, or a start whose skill-load hold reached its cap of API errors.
 // Its question names the error, so the parent hears of the stop at once rather than at the deadline.
 // A tackler switched off, or a spawn budget spent, hands the stop back without a spawn.
 // `TacklerDeps.Snapshot` is optional.

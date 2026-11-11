@@ -342,6 +342,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	}
 
 	// Step 4: call the looked-up definition's producer.
+	startedAt := nowRFC3339()
 	outcome, output, callErr := def.Producer.Call(ctx)
 
 	// Steps 5 and 6 are computed in memory, then committed with one persist call for this iteration.
@@ -379,6 +380,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			Outcome:      outcome,
 			Output:       output.Path,
 			At:           nowRFC3339(),
+			StartedAt:    startedAt,
 			GateAttempts: output.GateAttempts,
 			GateSpans:    output.GateSpans,
 			// A Stuck that blocks at a row with no OnStuck never reaches a budget, so it is exempt too.
@@ -426,7 +428,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{}, callErr
 
 	case outcome == Stuck && output.Reroute && !output.Halt:
-		return s.rerouteStuck(st, def, output)
+		return s.rerouteStuck(st, def, output, startedAt)
 
 	case outcome == Stuck:
 		switch {
@@ -716,7 +718,7 @@ func segmentEnders(producers []ProducerDef, def ProducerDef) []string {
 // An entry folds into the last element when both are budget-exempt Stucks;
 // they must match on Producer, Output, GateAttempts and RoutedTo.
 // Otherwise entry is appended unchanged.
-// A fold keeps the last element's At and increments its Repeats.
+// A fold keeps the last element's At and StartedAt and increments its Repeats.
 // It sets LastAt to entry.At and appends entry's GateSpans to the last element's own.
 // The last element's Repeats, LastAt and spans never take part in the match.
 // It never writes through history's backing array or its entries' span arrays.

@@ -94,6 +94,7 @@ func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 				"pause_reason": true, "pause_requested": true, "activity": true, "history_length": true,
 				"slug": true, "parent": true, "interrupt_policy": true, "trace_dir": true,
 				"run_id": true, "progress": true, "last_step": true, "hand_back": true, "restep_hold": true,
+				"idle_gaps": true,
 			}
 			if tt.covered {
 				wantKeys["paused_since"] = true

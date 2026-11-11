@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -430,6 +431,73 @@ func TestEnsureStatusLockDir_ErrorReusesToldPrefix(t *testing.T) {
 	}
 }
 
+func TestIdleGapsOf(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name    string
+		history []shedengine.HistoryEntry
+		want    []IdleGap
+	}{
+		{
+			name: "GapAtTheFloorIsReported",
+			history: []shedengine.HistoryEntry{
+				{Producer: "A", Outcome: shedengine.Stuck, At: "2026-11-11T08:00:00Z"},
+				{Producer: "A", Outcome: shedengine.Done, StartedAt: "2026-11-11T08:05:00Z", At: "2026-11-11T08:30:00Z"},
+			},
+			want: []IdleGap{{After: "A", AfterOutcome: "stuck", Before: "A", From: "2026-11-11T08:00:00Z", To: "2026-11-11T08:05:00Z", Idle: "5m0s"}},
+		},
+		{
+			name: "GapUnderTheFloorIsNot",
+			history: []shedengine.HistoryEntry{
+				{Producer: "A", Outcome: shedengine.Done, At: "2026-11-11T08:00:00Z"},
+				{Producer: "B", Outcome: shedengine.Done, StartedAt: "2026-11-11T08:04:59Z", At: "2026-11-11T09:00:00Z"},
+			},
+			want: []IdleGap{},
+		},
+		{
+			name: "FoldedEntryEndsAtItsLastCall",
+			history: []shedengine.HistoryEntry{
+				{Producer: "A", Outcome: shedengine.Stuck, At: "2026-11-11T08:00:00Z", LastAt: "2026-11-11T09:00:00Z"},
+				{Producer: "B", Outcome: shedengine.Done, StartedAt: "2026-11-11T09:30:00Z", At: "2026-11-11T09:40:00Z"},
+			},
+			want: []IdleGap{{After: "A", AfterOutcome: "stuck", Before: "B", From: "2026-11-11T09:00:00Z", To: "2026-11-11T09:30:00Z", Idle: "30m0s"}},
+		},
+		{
+			name: "GotoEndsTheGapAtItsOwnTime",
+			history: []shedengine.HistoryEntry{
+				{Producer: "A", Outcome: shedengine.Stuck, At: "2026-11-11T08:00:00Z"},
+				{Producer: "B", Outcome: shedengine.OutcomeGoto, At: "2026-11-11T10:00:00Z"},
+			},
+			want: []IdleGap{{After: "A", AfterOutcome: "stuck", Before: "B", From: "2026-11-11T08:00:00Z", To: "2026-11-11T10:00:00Z", Idle: "2h0m0s"}},
+		},
+		{
+			name: "CallEntryWithNoStartTimeEndsNoGap",
+			history: []shedengine.HistoryEntry{
+				{Producer: "A", Outcome: shedengine.Stuck, At: "2026-11-11T08:00:00Z"},
+				{Producer: "A", Outcome: shedengine.Done, At: "2026-11-11T12:00:00Z"},
+			},
+			want: []IdleGap{},
+		},
+		{
+			name: "UnparseableTimeEndsNoGap",
+			history: []shedengine.HistoryEntry{
+				{Producer: "A", Outcome: shedengine.Stuck, At: "not a time"},
+				{Producer: "A", Outcome: shedengine.Done, StartedAt: "2026-11-11T12:00:00Z", At: "2026-11-11T12:10:00Z"},
+			},
+			want: []IdleGap{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := idleGapsOf(tt.history); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("idleGapsOf() = %+v; want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
 // seededStatusSpec builds a Spec over a seeded status file whose history holds two entries.
 func seededStatusSpec(t *testing.T, hooks Hooks) *Spec {
 	t.Helper()
@@ -485,6 +553,9 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 			}
 			if env["history_length"] != float64(2) {
 				t.Errorf("history_length = %v; want 2", env["history_length"])
+			}
+			if gaps, ok := env["idle_gaps"].([]any); !ok || len(gaps) != 0 {
+				t.Errorf("idle_gaps = %v; want an empty list for entries with no times", env["idle_gaps"])
 			}
 			if env["interrupt_policy"] != tt.wantPolicy {
 				t.Errorf("interrupt_policy = %v; want %q", env["interrupt_policy"], tt.wantPolicy)
@@ -565,6 +636,37 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 				t.Errorf("status = exit %d, restep_hold %v; want exit 0, restep_hold %v", code, env["restep_hold"], tt.want)
 			}
 		})
+	}
+}
+
+// TestStatusCmd_FoundEnvelope_IdleGaps asserts a history stretch over the floor reaches idle_gaps.
+// It checks the gap under its JSON field names.
+func TestStatusCmd_FoundEnvelope_IdleGaps(t *testing.T) {
+	tiergate.Require(t, 0)
+	spec := seededStatusSpec(t, Hooks{})
+	if err := state.UpdateJSON(spec.StatusPath, spec.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+		cur.History = []shedengine.HistoryEntry{
+			{Producer: "A", Outcome: shedengine.Stuck, At: "2026-11-11T08:00:00Z"},
+			{Producer: "B", Outcome: shedengine.Done, StartedAt: "2026-11-11T08:10:00Z", At: "2026-11-11T08:20:00Z"},
+		}
+		return cur, nil
+	}); err != nil {
+		t.Fatalf("record the history: %v", err)
+	}
+	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+	if code != 0 {
+		t.Fatalf("exit code = %d; want 0", code)
+	}
+	gaps, _ := env["idle_gaps"].([]any)
+	if len(gaps) != 1 {
+		t.Fatalf("idle_gaps = %v; want one gap", env["idle_gaps"])
+	}
+	want := map[string]any{
+		"after": "A", "after_outcome": "stuck", "before": "B",
+		"from": "2026-11-11T08:00:00Z", "to": "2026-11-11T08:10:00Z", "idle": "10m0s",
+	}
+	if !reflect.DeepEqual(gaps[0], want) {
+		t.Errorf("idle_gaps[0] = %v; want %v", gaps[0], want)
 	}
 }
 

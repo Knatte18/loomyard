@@ -5,6 +5,7 @@
 package shedverbs
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"os"
@@ -94,6 +95,52 @@ func PrintStatusLinesOnChange(out io.Writer, poll func() (line, key string), sle
 		}
 		sleep()
 	}
+}
+
+// idleGapFloor is the shortest stretch between two history entries that status reports as idle.
+// A driver starts the next step within seconds of the last, so a longer stretch is a halt, a wait on a person,
+// or a step that ended without recording a verdict.
+const idleGapFloor = 5 * time.Minute
+
+// IdleGap is one stretch of a run's history in which no step ran.
+// It runs from the end of one entry to the start of the producer call that wrote the next.
+// When the next entry is a goto or a skip, which no call writes, it runs to that entry's own time.
+// Calls folded into one stuck entry are one stretch of the history, so the time between them is not a gap.
+type IdleGap struct {
+	// After and AfterOutcome name the entry the gap follows.
+	After        string `json:"after"`
+	AfterOutcome string `json:"after_outcome"`
+	// Before names the row of the entry that ends the gap.
+	Before string `json:"before"`
+	// From and To are the gap's RFC 3339 bounds, and Idle is its length.
+	From string `json:"from"`
+	To   string `json:"to"`
+	Idle string `json:"idle"`
+}
+
+// idleGapsOf returns the gaps of at least idleGapFloor in history, oldest first, and an empty list when there is none.
+// An entry ends at its LastAt when a fold set one, and at its At otherwise.
+// An entry a producer call wrote with no StartedAt, as one an older binary wrote, ends no gap.
+// Neither does an entry whose times do not parse.
+func idleGapsOf(history []shedengine.HistoryEntry) []IdleGap {
+	gaps := []IdleGap{}
+	for i := 1; i < len(history); i++ {
+		prev, next := history[i-1], history[i]
+		from := cmp.Or(prev.LastAt, prev.At)
+		to := next.StartedAt
+		if next.Outcome == shedengine.OutcomeGoto || next.Outcome == shedengine.OutcomeSkipped {
+			to = next.At
+		}
+		end, endErr := time.Parse(time.RFC3339, from)
+		start, startErr := time.Parse(time.RFC3339, to)
+		if endErr != nil || startErr != nil {
+			continue
+		}
+		if idle := start.Sub(end); idle >= idleGapFloor {
+			gaps = append(gaps, IdleGap{After: prev.Producer, AfterOutcome: string(prev.Outcome), Before: next.Producer, From: from, To: to, Idle: idle.String()})
+		}
+	}
+	return gaps
 }
 
 // waitingNote asks spec.Hooks.Waiting what a running run waits on.
@@ -195,6 +242,7 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				"pause_reason":     st.PauseReason,
 				"activity":         st.Activity,
 				"history_length":   len(st.History),
+				"idle_gaps":        idleGapsOf(st.History),
 				"interrupt_policy": interruptPolicy,
 				"trace_dir":        traceDir,
 				"run_id":           spec.RunID,

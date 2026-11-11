@@ -19,6 +19,11 @@
 // The label gates nothing, and the engine records it in the paused run's pause_reason;
 // --by shed is refused before any write, since shed is the label of lym's own automatic steps.
 // status's human view prints pause_reason as a "why" line for a paused run with a non-empty reason.
+// status's idle_gaps, and an "idle" line each in its human view, name every stretch of the history in which no step ran.
+// A stretch counts when it lasts at least idleGapFloor.
+// It runs from one entry's end to the start of the producer call that wrote the next.
+// For a goto or skip entry it ends at the entry's own time.
+// Calls folded into one stuck entry are one stretch, so the time between them is not reported.
 // Spec.GotoGuard is the recipe's check of a goto target, which every goto passes; nil admits every target.
 // Spec.HandBack is the recipe's check of a blocked stop that goes to the orch; it keeps the package recipe-generic.
 // The loop's stop envelope and lym shed status report its answer as hand_back.

@@ -176,6 +176,24 @@ func TestRenderStatusHuman(t *testing.T) {
 				"next Ship\n",
 		},
 		{
+			name: "an idle gap after a stuck step prints an idle line and a short one prints none",
+			st: shedengine.Status{
+				CurrentProducer: "Ship",
+				State:           shedengine.StateRunning,
+				History: []shedengine.HistoryEntry{
+					{Producer: "Intro", Outcome: shedengine.Done, At: "2026-11-11T08:00:00Z"},
+					{Producer: "Plan", Outcome: shedengine.Stuck, StartedAt: "2026-11-11T08:01:00Z", At: "2026-11-11T08:10:00Z"},
+					{Producer: "Plan", Outcome: shedengine.Done, StartedAt: "2026-11-11T11:10:00Z", At: "2026-11-11T11:20:00Z"},
+				},
+				Activity: shedengine.Activity{Now: "Ship", Last: "Plan → done"},
+			},
+			want: "loom self | running\n" +
+				"step 3/3 Ship\n" +
+				"now  Ship\n" +
+				"last Plan → done\n" +
+				"idle 3h0m0s before Plan, after Plan stuck\n",
+		},
+		{
 			name: "waiting note replaces state",
 			st:   shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "working"}},
 			args: &renderArgs{label: "loom", runID: "self", waiting: "the parent's review of round 2"},

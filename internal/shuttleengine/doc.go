@@ -92,7 +92,8 @@
 // Wait holds it, logs it at Info and keeps polling the same agent, whether the turn end is a Stop or a live ask.
 // A run ends only as done, died, timeout, api-error or a mechanism failure.
 // Done means every output file is present at a turn end, or at the deadline or a pane's death.
-// Api-error means a spec with APIErrorRetries, or a turn end the engine marks ModelRejected.
+// Api-error means a spec with APIErrorRetries, a turn end the engine marks ModelRejected,
+// or a start whose skill-load hold reached its API-error cap.
 // A died or api-error run whose strand is own-window keeps its last pane capture in `died-capture.txt`.
 // The capture sits in the run directory; the run loses its strand, and an anchored strand stays.
 // A timed-out run keeps its strand, since its agent may still be live.
@@ -510,8 +511,10 @@
 // So the prompt line is never typed into a session whose load turn the API failed.
 // A turn start read during the back-off takes the place of the typed line.
 // A busy session moves the line to the next back-off, and a pane that dies ends the hold as a died startup.
-// The hold has no bound of its own and moves the run's deadline later by its length;
+// The hold moves the run's deadline later by its length;
 // at the second API error it sends the run's parent one notifier line, skipped for an interactive run.
+// The hold's loadHoldMaxAPIErrors-th API error ends the start as api-error, an API outage.
+// Result.APIError names the error, and the start's error names the cap.
 // A turn end the engine marks ModelRejected ends the start at once as api-error, with Result.APIError naming the error.
 // No further turn changes the model.
 // An attached run is the exception: it delivers a pending prompt without judging the API,

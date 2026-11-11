@@ -1714,6 +1714,12 @@ func TestStartup_LoadTurnAPIError(t *testing.T) {
 		marked = "STOP:API Error"
 	)
 	loaded := func(skills ...string) SkillLoadReport { return SkillLoadReport{Verified: true, Loaded: skills} }
+	cappedTurns := cappedLoadTurnEnds()
+	var cappedHold time.Duration
+	for i, backoff := 0, apiErrorRetryBackoff; i < loadHoldMaxAPIErrors-1; i++ {
+		cappedHold += backoff
+		backoff = min(2*backoff, loadHoldBackoffCeiling)
+	}
 	tests := []struct {
 		name         string
 		spec         Spec
@@ -1741,6 +1747,10 @@ func TestStartup_LoadTurnAPIError(t *testing.T) {
 		// the start fails before wantFailedAfter plus one apiErrorRetryBackoff.
 		wantFailedAfter time.Duration
 		wantHoldOver    bool
+		// wantErrText is a text a failing start's error carries, empty for none checked.
+		wantErrText string
+		// wantNoticeContains is a text the parent's first notice carries, empty for none checked.
+		wantNoticeContains string
 	}{
 		{
 			name:      "a turn the API ended runs again after the back-off and the prompt follows it",
@@ -1868,6 +1878,19 @@ func TestStartup_LoadTurnAPIError(t *testing.T) {
 			wantNotices: 1,
 		},
 		{
+			name:               "the hold's last API error under the cap ends the start as an API outage naming the cap",
+			spec:               Spec{Skills: []string{"a"}},
+			turnEnds:           cappedTurns,
+			wantTyped:          strings.TrimSuffix(strings.Repeat("LOAD:a|", loadHoldMaxAPIErrors-1), "|"),
+			wantNotices:        1,
+			wantFailed:         true,
+			wantOutcome:        "api-error",
+			wantFailedAfter:    cappedHold,
+			wantHoldOver:       true,
+			wantErrText:        fmt.Sprintf("failed %d skill-load turns, the cap on one start's hold of %d", loadHoldMaxAPIErrors, loadHoldMaxAPIErrors),
+			wantNoticeContains: fmt.Sprintf("At %d API errors", loadHoldMaxAPIErrors),
+		},
+		{
 			name:        "an interactive run holds with no notice",
 			spec:        Spec{Skills: []string{"a"}, Interactive: true},
 			reports:     []SkillLoadReport{loaded("a")},
@@ -1925,12 +1948,18 @@ func TestStartup_LoadTurnAPIError(t *testing.T) {
 			if len(notices) != tt.wantNotices {
 				t.Errorf("notices = %q; want %d", notices, tt.wantNotices)
 			}
+			if tt.wantNoticeContains != "" && (len(notices) == 0 || !strings.Contains(notices[0], tt.wantNoticeContains)) {
+				t.Errorf("notices = %q; want the first to carry %q", notices, tt.wantNoticeContains)
+			}
 			if tt.wantFailed {
 				if !errors.Is(err, ErrNotStarted) {
 					t.Fatalf("Start() error = %v; want one wrapping ErrNotStarted", err)
 				}
 				if want := `outcome "` + tt.wantOutcome + `"`; !strings.Contains(err.Error(), want) {
 					t.Errorf("Start() error = %v; want it to name %s", err, want)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrText) {
+					t.Errorf("Start() error = %v; want it to carry %q", err, tt.wantErrText)
 				}
 				if elapsed < tt.wantFailedAfter {
 					t.Errorf("virtual elapsed = %s; want at least %s", elapsed, tt.wantFailedAfter)
@@ -2007,6 +2036,73 @@ func TestRun_LoadTurnModelRejectedEndsTheStart(t *testing.T) {
 	}
 	if len(base.RemoveStrandCalls) != 1 {
 		t.Errorf("RemoveStrand calls = %d; want 1", len(base.RemoveStrandCalls))
+	}
+}
+
+// cappedNewestErrorText is the error text of the last API-error turn end that cappedLoadTurnEnds scripts.
+const cappedNewestErrorText = "overloaded, newest"
+
+// cappedLoadTurnEnds scripts an API error on each of the first loadHoldMaxAPIErrors load turns.
+// The last one carries cappedNewestErrorText.
+func cappedLoadTurnEnds() map[int]string {
+	turns := map[int]string{}
+	for i := 0; i < loadHoldMaxAPIErrors; i++ {
+		turns[i] = "APIERR:overloaded"
+	}
+	turns[loadHoldMaxAPIErrors-1] = "APIERR:" + cappedNewestErrorText
+	return turns
+}
+
+func TestRun_LoadTurnCappedHold(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		// outputWritten makes the agent's output file exist by the time the start reads its API errors.
+		outputWritten bool
+		wantOutcome   Outcome
+		wantAPIError  string
+	}{
+		{"a capped hold ends the run naming the newest error", false, OutcomeAPIError, cappedNewestErrorText},
+		{"a capped hold with every output file present returns the run", true, OutcomeDone, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
+			engine := &skillFakeEngine{
+				fakeEngine: &fakeEngine{
+					PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1", PromptLine: "do the task"},
+					StartupScript: []StartupState{StartupReady},
+				},
+				Timeout: time.Minute,
+			}
+			output := filepath.Join(t.TempDir(), "out.md")
+			engine.PrepareHook = func(runDir string) {
+				if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("SESSIONSTART:startup\n"), 0o644); err != nil {
+					t.Errorf("seed the events file: %v", err)
+				}
+				if tt.outputWritten {
+					if err := os.WriteFile(output, []byte("done"), 0o644); err != nil {
+						t.Errorf("write the output file: %v", err)
+					}
+				}
+			}
+			reed := &skillReed{fakeReed: base, Hangs: map[int]bool{}, Dies: map[int]bool{}, TurnEnds: cappedLoadTurnEnds(), OpenTurns: true}
+			fx := newFixture(t, reed, &hookStateSkillEngine{skillFakeEngine: engine}, withConfig(fastConfig), withClock(newFakeClock(time.Now())))
+			reed.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
+
+			result, err := fx.Runner.Run(Spec{Prompt: "x", OutputFiles: []string{output}, Skills: []string{"a"}, Timeout: time.Hour})
+			if err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			if result.Outcome != tt.wantOutcome || result.APIError != tt.wantAPIError {
+				t.Errorf("Run() outcome, API error = %q, %q; want %q, %q", result.Outcome, result.APIError, tt.wantOutcome, tt.wantAPIError)
+			}
+			if result.NotStarted != (tt.wantOutcome == OutcomeAPIError) {
+				t.Errorf("Run() not started = %v; want %v", result.NotStarted, tt.wantOutcome == OutcomeAPIError)
+			}
+		})
 	}
 }
 

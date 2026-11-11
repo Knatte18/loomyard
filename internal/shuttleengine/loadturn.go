@@ -1,11 +1,13 @@
 // loadturn.go runs one skill-load turn of a starting run and holds it through an API error.
 // An API error says nothing about the skills, so such a turn is no skipped skill.
 // The load runs again once a back-off has passed, and the prompt waits behind it.
+// The wait ends at a cap on the API errors of one hold.
 // The typed load line is the probe, since a session has no other way of asking whether its API answers.
 
 package shuttleengine
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"time"
@@ -18,7 +20,23 @@ const (
 	loadHoldBackoffCeiling = 5 * time.Minute
 	// loadHoldNoticeErrors is the API-error count at which the parent is told of the hold; a passing error sends no notice.
 	loadHoldNoticeErrors = 2
+	// loadHoldMaxAPIErrors is the API-error turn end count that ends a hold, and the start with it, as an API outage.
+	// Its back-offs add up to about half an hour.
+	// Past that, an outage is the parent's to judge rather than the hold's to wait out.
+	loadHoldMaxAPIErrors = 8
 )
+
+// loadAPIErrorCapError ends a start whose load turns the provider's API failed loadHoldMaxAPIErrors times.
+type loadAPIErrorCapError struct {
+	// errors is the API-error turn ends the hold read, and text is the newest one's error text.
+	errors int
+	text   string
+}
+
+func (e *loadAPIErrorCapError) Error() string {
+	return fmt.Sprintf("shuttle: the provider's API failed %d skill-load turns, the cap on one start's hold of %d, so the start ends as an API outage: %s",
+		e.errors, loadHoldMaxAPIErrors, cmp.Or(e.text, apiErrorUnknownText))
+}
 
 // loadModelRejectedError ends a start whose load turn the provider ended on a model it does not know.
 // No further turn changes the model.
@@ -107,8 +125,9 @@ func (w *loadTurnWatch) turnStartRead(signal SessionSignal, now time.Time) {
 //
 // A turn that ends on an API error, by the engine's signal or by the transcript's marker on a turn end, returns nothing.
 // The poll sleeps out a back-off from apiErrorRetryBackoff, doubling to loadHoldBackoffCeiling.
-// The load message goes out again through the verified send path as many times as the API fails.
-// It has no bound of its own: the loop ends when a turn ends, the pane dies or a send fails.
+// The load message goes out again through the verified send path after each API error.
+// That repeats until a turn ends, the pane dies, a send fails or the hold reads its loadHoldMaxAPIErrors-th API error.
+// That last error fails the call with a *loadAPIErrorCapError, with no load typed after it.
 // A turn start read meanwhile takes the place of that line: the operator or a revive may have carried the session on.
 // A busy session only moves the line to the next back-off.
 // A turn end the engine marks ModelRejected fails with a *loadModelRejectedError.
@@ -131,6 +150,9 @@ func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.
 		}
 		if watch.rejected {
 			return Event{}, false, false, &loadModelRejectedError{text: watch.text}
+		}
+		if watch.pending && watch.errors >= loadHoldMaxAPIErrors {
+			return Event{}, false, false, &loadAPIErrorCapError{errors: watch.errors, text: watch.text}
 		}
 		run.noticeLoadHold(&watch)
 
@@ -247,7 +269,7 @@ func (run *Run) noticeLoadHold(watch *loadTurnWatch) {
 	if strandName == "" {
 		strandName = run.state.StrandGUID
 	}
-	line := fmt.Sprintf("agent %s is held at its skill-load turn: the provider's API keeps failing it, so its prompt is not typed yet. The load runs again by itself and the prompt follows once the API answers, so nothing is needed unless the error is one that will not pass.", strandName)
+	line := fmt.Sprintf("agent %s is held at its skill-load turn: the provider's API keeps failing it, so its prompt is not typed yet. The load runs again by itself and the prompt follows once the API answers, so nothing is needed unless the error is one that will not pass. At %d API errors the start ends as an API outage.", strandName, loadHoldMaxAPIErrors)
 	if err := notify(line); err != nil {
 		logger.Warn("shuttle: load hold notice failed", "strandGUID", run.state.StrandGUID, "error", err)
 	}
@@ -265,16 +287,17 @@ func (run *Run) endLoadHold(watch *loadTurnWatch) {
 }
 
 // abandonLoad ends a start whose load turn failed with err.
-// A rejected model ends it OutcomeAPIError with Result.APIError naming the error,
+// A rejected model or a hold past its API-error cap ends it OutcomeAPIError with Result.APIError naming the error,
 // and a turn still open at the run's deadline ends it OutcomeTimeout;
-// either returns the run instead when every output file exists, as a start past its gates.
+// any of them returns the run instead when every output file exists, as a start past its gates.
 // Any other failure ends it OutcomeDied.
 func (run *Run) abandonLoad(err error) (Result, error) {
 	var rejected *loadModelRejectedError
+	var capped *loadAPIErrorCapError
 	var expired *loadDeadlineError
 	var expiredOutcome Outcome
 	switch {
-	case errors.As(err, &rejected):
+	case errors.As(err, &rejected), errors.As(err, &capped):
 		expiredOutcome = OutcomeAPIError
 	case errors.As(err, &expired):
 		expiredOutcome = OutcomeTimeout
@@ -288,6 +311,9 @@ func (run *Run) abandonLoad(err error) (Result, error) {
 	result, startErr := run.abandonStartup(outcome, err)
 	if rejected != nil {
 		result.APIError = rejected.text
+	}
+	if capped != nil {
+		result.APIError = cmp.Or(capped.text, apiErrorUnknownText)
 	}
 	return result, startErr
 }

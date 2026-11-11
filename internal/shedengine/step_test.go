@@ -54,6 +54,7 @@ func TestStep_DoneWithNonEmptyOnDone(t *testing.T) {
 		t.Errorf("History[0] = %+v; want Producer A, Outcome done, Output out.md", res.History[0])
 	}
 	assertRFC3339UTC(t, res.History[0].At)
+	assertCallTimed(t, res.History[0])
 
 	got := readStatus(t, statusPath, statusLockPath)
 	if got.CurrentProducer != "B" || got.State != StateRunning {
@@ -107,6 +108,19 @@ func TestStep_StuckWithinBudget(t *testing.T) {
 	if res.State != StateRunning {
 		t.Errorf("State = %q; want %q", res.State, StateRunning)
 	}
+	if len(res.History) != 1 {
+		t.Fatalf("len(History) = %d; want 1", len(res.History))
+	}
+	assertCallTimed(t, res.History[0])
+}
+
+// assertCallTimed checks that entry carries the RFC 3339 UTC start of its producer call, no later than its verdict time.
+func assertCallTimed(t *testing.T, entry HistoryEntry) {
+	t.Helper()
+	assertRFC3339UTC(t, entry.StartedAt)
+	if entry.StartedAt > entry.At {
+		t.Errorf("entry StartedAt = %q, At = %q; want the call's start no later than its verdict", entry.StartedAt, entry.At)
+	}
 }
 
 func TestStep_StuckWithNoOnStuck(t *testing.T) {
@@ -128,6 +142,10 @@ func TestStep_StuckWithNoOnStuck(t *testing.T) {
 	if res.Reason != wantReason {
 		t.Errorf("Reason = %q; want %q", res.Reason, wantReason)
 	}
+	if len(res.History) != 1 {
+		t.Fatalf("len(History) = %d; want 1", len(res.History))
+	}
+	assertCallTimed(t, res.History[0])
 }
 
 func TestStep_StuckAtBudgetBoundary(t *testing.T) {

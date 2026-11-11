@@ -34,7 +34,8 @@ const (
 	OutcomeTimeout Outcome = "timeout"
 	// OutcomeAPIError: the provider's API ended the agent's turn on an error once the spec's re-send limit was spent.
 	// It also ends the turn at once when the provider rejects the model, a skill-load turn's included.
-	// Both apply only before output files are written.
+	// A start whose skill-load hold read its cap of API errors ends here too.
+	// Each applies only before output files are written.
 	OutcomeAPIError Outcome = "api-error"
 )
 

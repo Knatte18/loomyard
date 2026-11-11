@@ -67,13 +67,14 @@ func TestAppendOrFold_Folds(t *testing.T) {
 			t.Parallel()
 			var h []HistoryEntry
 			for _, e := range tt.entries {
+				e.StartedAt = "s" + e.At
 				h = appendOrFold(h, e)
 			}
 			if len(h) != 1 {
 				t.Fatalf("len = %d; want 1", len(h))
 			}
-			if h[0].At != "t1" || h[0].Repeats != tt.wantRepeats || h[0].LastAt != tt.wantLastAt {
-				t.Errorf("entry = %+v; want At t1, Repeats %d, LastAt %s", h[0], tt.wantRepeats, tt.wantLastAt)
+			if h[0].At != "t1" || h[0].StartedAt != "st1" || h[0].Repeats != tt.wantRepeats || h[0].LastAt != tt.wantLastAt {
+				t.Errorf("entry = %+v; want At t1, StartedAt st1, Repeats %d, LastAt %s", h[0], tt.wantRepeats, tt.wantLastAt)
 			}
 			if !reflect.DeepEqual(h[0].GateSpans, tt.wantSpans) {
 				t.Errorf("GateSpans = %+v; want %+v", h[0].GateSpans, tt.wantSpans)

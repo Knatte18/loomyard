@@ -76,7 +76,12 @@ type HistoryEntry struct {
 	Producer string  `json:"producer"`
 	Outcome  Outcome `json:"outcome"`
 	Output   string  `json:"output"`
-	At       string  `json:"at"`
+	// At is the RFC 3339 UTC time the call's verdict was recorded.
+	At string `json:"at"`
+	// StartedAt is the RFC 3339 UTC time the producer call began, empty on an entry no producer call wrote.
+	// The time between one entry's end and the next entry's StartedAt is time no step ran.
+	// A status file written before the field existed decodes as empty.
+	StartedAt string `json:"started_at,omitempty"`
 	// GateAttempts is the gate's own re-prompt count (shuttleengine.GateOutcome.Attempts).
 	// It is carried through so the status file shows it, as the producer-gate contract requires:
 	// an explicit attempt counter bounds the loop.

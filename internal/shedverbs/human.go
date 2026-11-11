@@ -22,8 +22,9 @@ var writerIsTerminal = clihelp.WriterIsTerminal
 // Lines, in order: the header (label, run-id when non-empty, state); the progress line "step
 // <i>/<n> <name>", followed by " | bounce <count>/<budget>" while the current producer sits inside
 // a segment, and omitted when routing carries no producers; "now", then "last" when non-empty, then
-// "wait" when non-empty and the state is blocked, failed or awaiting; and "next" naming the
-// main-line steps still ahead, omitted when none remain.
+// "wait" when non-empty and the state is blocked, failed or awaiting;
+// one "idle" line per idle gap of the history, oldest first;
+// and "next" naming the main-line steps still ahead, omitted when none remain.
 // A paused run with a recorded reason prints a "why" line after "last".
 // The "now" line names the current row's block when its routing definition carries one, and the "last" line reads a block row's Done as entered and names an inlined row's block.
 // A non-empty waiting note prints "waiting <note>" in the header in place of the state.
@@ -58,6 +59,9 @@ func RenderStatusHuman(label, runID string, st shedengine.Status, routing sheden
 	fmt.Fprintf(&b, "now  %s\n", now)
 	st.Activity.Last = blockAwareLast(st, routing)
 	writeActivityTail(&b, st)
+	for _, gap := range idleGapsOf(st.History) {
+		fmt.Fprintf(&b, "idle %s before %s, after %s %s\n", gap.Idle, gap.Before, gap.After, gap.AfterOutcome)
+	}
 	if len(remaining) > 0 {
 		fmt.Fprintf(&b, "next %s\n", strings.Join(remaining, ", "))
 	}

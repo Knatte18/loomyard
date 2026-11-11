@@ -84,6 +84,7 @@ func TestStep_RerouteMovesToTargetAndEndsTargetSegmentEpisode(t *testing.T) {
 		t.Errorf("last history entry = %+v; want A's reroute entry routed to B, spending no budget, carrying block Blk", last)
 	}
 	assertRFC3339UTC(t, last.At)
+	assertCallTimed(t, last)
 	if !reflect.DeepEqual(last.GateSpans, rerouteSpans) {
 		t.Errorf("reroute entry GateSpans = %+v; want %+v", last.GateSpans, rerouteSpans)
 	}
@@ -126,6 +127,7 @@ func TestRun_RerouteCapHaltsOnFourthRerouteAndResumeGrantsThreeMore(t *testing.T
 				if last.Outcome != Stuck || !last.RerouteCapped || !last.BudgetExempt {
 					t.Fatalf("Run %d last entry = %+v; want a budget-exempt capped Stuck", halt, last)
 				}
+				assertCallTimed(t, last)
 				if !reflect.DeepEqual(last.GateSpans, rerouteSpans) {
 					t.Errorf("Run %d capped Stuck GateSpans = %+v; want %+v", halt, last.GateSpans, rerouteSpans)
 				}
@@ -167,9 +169,11 @@ func TestStep_RerouteWithoutOnRerouteFailsRun(t *testing.T) {
 	if got.State != StateFailed || got.CurrentProducer != "A" {
 		t.Errorf("status = %q at %q; want failed at A", got.State, got.CurrentProducer)
 	}
-	if last := got.History[len(got.History)-1]; !reflect.DeepEqual(last.GateSpans, rerouteSpans) {
+	last := got.History[len(got.History)-1]
+	if !reflect.DeepEqual(last.GateSpans, rerouteSpans) {
 		t.Errorf("persisted Stuck GateSpans = %+v; want %+v", last.GateSpans, rerouteSpans)
 	}
+	assertCallTimed(t, last)
 }
 
 func TestStep_HaltStuckBlocksAtRowDespiteOnStuckAndSpendsNoBudget(t *testing.T) {

@@ -650,7 +650,8 @@ User-facing modules each get one `lym <module>` namespace:
   it lists the session state of each running run (busy, idle-done, idle-stalled, idle-fresh, asking, dead or unknown, with its cause, since and history), read from the run's files, in shadow mode where no stop or notice depends on it.
   `Stop`-hook completion is read off an events file and classified into the outcomes `done`/`died`/`timeout` and `api-error`.
   A spec with `APIErrorRetries` re-sends a turn the provider's API ended on an error that many times, then ends the run `api-error`;
-  a turn end the engine reads as a model the provider does not know, Claude's `model_not_found`, ends the run `api-error` at once.
+  a turn end the engine reads as a model the provider does not know, Claude's `model_not_found`, ends the run `api-error` at once;
+  a start whose skill-load hold read its cap of API errors ends `api-error` too, after the hold's back-offs.
   Any other turn end without every output file never ends a run:
   `Wait` holds it and keeps polling the same agent until the outputs exist, the pane dies or the deadline passes, whatever the agent's reason (a question, a status report, a live `AskUserQuestion` call).
   An autonomous run notifies its parent once per held turn end as creel mail to the orch,
@@ -1132,6 +1133,8 @@ User-facing modules each get one `lym <module>` namespace:
   `last_step` is the record `lym shed step` keeps under `.lym`.
   It also carries the build identity (`vcs_revision`, `vcs_modified`) of the `lym` that ran that step.
   `binary_changed` is true when the running `lym` is a different known build.
+  `idle_gaps`, an `idle` line each in the human view, names every stretch of the history of five minutes or more in which no step ran.
+  Each history entry a producer call writes records the call's start in `started_at` beside its `at`.
   A routed `stuck` reads as `bounced to <row>` in `activity.last`.
   The run directory is named by the worktree slug (`_lym/shed/<slug>/`).
   `self` is an alias that resolves to it, and a `_lym/shed/self/` directory resolves too.

@@ -23,7 +23,8 @@
 // A call ends as a hand-on naming a cause in three cases:
 // a verdict file does not read; a run times out or dies; a resume's precondition fails.
 // The arbiter's spec has shuttle re-send a turn the provider's API ended on an error.
-// A run that ends on an API error, its re-sends spent or its model rejected, ends as a hand-on with cause `api-error`.
+// A run that ends on an API error ends as a hand-on with cause `api-error`:
+// its re-sends spent, its model rejected, or its start's skill-load hold at its cap of API errors.
 // The hand-on's question names the error, so the stop reaches the run's parent at once rather than at the deadline.
 // Every refusal ends with Deps.HandBackWayForward, which names the verb that shows the stop.
 //
