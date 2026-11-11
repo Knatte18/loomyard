@@ -2,6 +2,7 @@
 // After every refusal and before any mutation, Remove tags the pair's weft tip under archive/<slug>/;
 // it pushes the tag to the weft origin, so the run records committed on that branch outlive the branch itself.
 // It covers the tag's landing and its reuse when the origin already holds it.
+// It covers a weft tip an owner archive already tagged, which the teardown archives under its own tag.
 // It covers the commit-then-archive flow for a weft worktree with uncommitted records.
 // It covers the fail-closed shape of an unreachable origin.
 // It also checks that force does not skip the step and that a missing origin skips it.
@@ -15,8 +16,10 @@ package fabricengine_test
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -105,6 +109,48 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	}
 	if tags := archiveTagsAt(t, h.RecordsBare); len(tags) != 1 || tags[0] != wantTag {
 		t.Errorf("origin archive tags = %v; want exactly [%s]", tags, wantTag)
+	}
+}
+
+// TestRemove_LeavesAnOwnerArchiveTagOutOfTheTeardownArchive covers a pair with an owner-archived weft tip.
+// An owner archive has tagged that tip on origin.
+// The teardown archives the tip under its own archive/ tag, not the owner archive tag.
+// It leaves the owner archive tag as it was and removes the worktree.
+func TestRemove_LeavesAnOwnerArchiveTagOutOfTheTeardownArchive(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const slug = "remove-archive-owner"
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	l := h.Location
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lym/record.txt", "run record\n", "record")
+	pair, err := lymcwd.NamedWorktree(h.Path, slug)
+	if err != nil {
+		t.Fatalf("NamedWorktree(%q) = %v; want nil", slug, err)
+	}
+	ownerTag := fabricengine.OwnerArchiveTagName(slug, tip)
+	ownerTags, err := fabricengine.ArchiveOwnerTips(l.HubPath, []fabricengine.OwnerArchivePair{{Slug: slug, Pair: pair}})
+	if err != nil || !slices.Contains(ownerTags, ownerTag) {
+		t.Fatalf("ArchiveOwnerTips() = %v, %v; want the weft tip tagged %s", ownerTags, err, ownerTag)
+	}
+
+	res, err := h.Topology.Remove(l, slug, false, false)
+	if err != nil {
+		t.Fatalf("Remove(%q) error = %v", slug, err)
+	}
+	wantTag := fabricengine.ArchiveTagName(slug, tip)
+	if res.ArchiveTag != wantTag {
+		t.Errorf("ArchiveTag = %q; want %q", res.ArchiveTag, wantTag)
+	}
+	if tags := archiveTagsAt(t, h.RecordsBare); !slices.Equal(tags, []string{wantTag}) {
+		t.Errorf("origin archive tags = %v; want exactly [%s]", tags, wantTag)
+	}
+	if got := tagTargetAt(t, h.RecordsBare, ownerTag); got != tip {
+		t.Errorf("origin owner archive tag %s points at %q; want it left at the tip %s", ownerTag, got, tip)
+	}
+	if _, statErr := os.Stat(fabricengine.WorktreePath(l, slug)); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Errorf("pair worktree after Remove: stat = %v; want it removed", statErr)
 	}
 }
 

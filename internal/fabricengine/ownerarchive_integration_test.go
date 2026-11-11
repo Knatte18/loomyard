@@ -171,10 +171,14 @@ func TestReadOwnerArchives(t *testing.T) {
 		unpublishedBranch bool
 		// teardownTag also pushes a teardown archive tag, archive/root/<tip>, naming the same tip.
 		teardownTag bool
+		// decoyBranch pushes the archived tip to its side's origin under the other side's branch name for the slug.
+		decoyBranch bool
 		wantListed  bool
 	}{
 		{name: "ACodeTagTheBranchOnOriginLacksIsListedAndFetched", wantListed: true},
+		{name: "ACodeTagIsListedThoughTheRecordsBranchNameOnTheCodeOriginHoldsIt", decoyBranch: true, wantListed: true},
 		{name: "ARecordsTagIsJudgedAgainstTheRecordsBranch", archiveRecords: true, wantListed: true},
+		{name: "ARecordsTagIsListedThoughTheCodeBranchNameOnTheRecordsOriginHoldsIt", archiveRecords: true, decoyBranch: true, wantListed: true},
 		{name: "ARecordsTagTheRecordsBranchHoldsIsNotListed", archiveRecords: true, pushTip: true},
 		{name: "ATagTheBranchOnOriginHoldsIsNotListed", pushTip: true},
 		{name: "ATagOfABranchAbsentOnOriginIsListed", unpublishedBranch: true, wantListed: true},
@@ -204,6 +208,14 @@ func TestReadOwnerArchives(t *testing.T) {
 			}
 			if tt.pushTip {
 				gitkit.Git(t, dir, "push", "origin", "HEAD")
+			}
+			if tt.decoyBranch {
+				codeBranch := gitkit.CurrentBranch(t, l.WorktreePath())
+				decoy := fabricengine.RecordsBranchName(codeBranch)
+				if tt.archiveRecords {
+					decoy = codeBranch
+				}
+				gitkit.Git(t, dir, "push", "--force", "origin", "HEAD:refs/heads/"+decoy)
 			}
 			// The new owner holds no local tag, so the read must fetch it.
 			gitkit.Git(t, dir, "tag", "-d", tags[0])

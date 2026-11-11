@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelcli"
@@ -368,6 +369,44 @@ func TestHubDobbyDeps_WaitReminderPostReachesTheSlackRelaySignedAsTheDobby(t *te
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("the posted mails = %q; want %q", got, want)
+	}
+}
+
+// TestHubDobbyDeps_ABeamWithNoOwnerOfItsOwnIsUnderARootAdopt pins the dobby of beam b.
+// b records no owner, so the dobby reads the prime's owner, another machine.
+// Its under-adopt seam must then read b covered by a root adopt, which holds the dobby up and idle.
+func TestHubDobbyDeps_ABeamWithNoOwnerOfItsOwnIsUnderARootAdopt(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const foreign = "other-machine"
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
+	board := `{"version":1,"prime_owner":"` + foreign + `","entries":[` +
+		`{"id":0,"slug":"b","title":"B","kind":"project","labels":["bug"],"beam":true}]}`
+	if err := os.WriteFile(filepath.Join(h.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+	geom, err := hubgeom.DobbyGeometry(h.Location, "b")
+	if err != nil {
+		t.Fatalf("DobbyGeometry(b) = %v; want nil", err)
+	}
+	deps, err := hubDobbyDeps(h.Location, geom)
+	if err != nil {
+		t.Fatalf("hubDobbyDeps(b) = %v; want nil", err)
+	}
+
+	if owner, err := deps.Owner(); err != nil || owner != foreign {
+		t.Fatalf("Owner() = %q, %v; want the prime's owner %q", owner, err, foreign)
+	}
+	if deps.UnderAdopt() {
+		t.Error("UnderAdopt() with no adopt record = true; want false")
+	}
+	if err := adoptrecord.Write(h.Path, adoptrecord.Record{State: adoptrecord.StateRunning, Subjects: []string{"root"}}); err != nil {
+		t.Fatalf("adoptrecord.Write() = %v; want nil", err)
+	}
+	if !deps.UnderAdopt() {
+		t.Error("UnderAdopt() under a running root adopt = false; want true")
 	}
 }
 
