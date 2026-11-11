@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -348,6 +349,56 @@ func TestDerive_SymlinkNormalization(t *testing.T) {
 	}
 	if realHash8 != linkHash8 {
 		t.Errorf("derive() hash8 real = %q, symlink = %q; want equal", realHash8, linkHash8)
+	}
+}
+
+// TestUserConfigDir pins both config-directory rules on both platform rows.
+// The plain rule takes a relative XDG_CONFIG_HOME as given;
+// the absolute rule ignores it and refuses a relative HOME or LOCALAPPDATA with an error naming the variable.
+func TestUserConfigDir(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name          string
+		goos          string
+		localAppData  string
+		xdgConfigHome string
+		home          string
+		wantPlain     string
+		wantAbsolute  string
+		wantErrText   string
+	}{
+		{"WindowsLocalAppData", "windows", "/appdata", "/xdg", "/home/user", filepath.Join("/appdata", "lym"), filepath.Join("/appdata", "lym"), ""},
+		{"WindowsUnset", "windows", "", "/xdg", "/home/user", "", "", ""},
+		{"WindowsRelativeLocalAppData", "windows", "appdata", "", "", filepath.Join("appdata", "lym"), "", "LOCALAPPDATA"},
+		{"AbsoluteXDG", "linux", "/appdata", "/xdg", "/home/user", filepath.Join("/xdg", "lym"), filepath.Join("/xdg", "lym"), ""},
+		{"HomeFallback", "linux", "", "", "/home/user", filepath.Join("/home/user", ".config", "lym"), filepath.Join("/home/user", ".config", "lym"), ""},
+		{"RelativeXDG", "linux", "", ".xdg", "/home/user", filepath.Join(".xdg", "lym"), filepath.Join("/home/user", ".config", "lym"), ""},
+		{"RelativeHome", "linux", "", "", "home/user", filepath.Join("home/user", ".config", "lym"), "", "HOME"},
+		{"RelativeXDGWithEmptyHome", "linux", "", ".xdg", "", filepath.Join(".xdg", "lym"), "", ""},
+		{"Unset", "linux", "", "", "", "", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			plain, plainOK := userConfigDirFor(tt.goos, tt.localAppData, tt.xdgConfigHome, tt.home)
+			if plain != tt.wantPlain || plainOK != (tt.wantPlain != "") {
+				t.Errorf("userConfigDirFor() = (%q, %v); want (%q, %v)", plain, plainOK, tt.wantPlain, tt.wantPlain != "")
+			}
+			absolute, absoluteOK, err := absoluteUserConfigDirFor(tt.goos, tt.localAppData, tt.xdgConfigHome, tt.home)
+			if tt.wantErrText != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrText) {
+					t.Errorf("absoluteUserConfigDirFor() error = %v; want one naming %s", err, tt.wantErrText)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("absoluteUserConfigDirFor() error = %v; want nil", err)
+			}
+			if absolute != tt.wantAbsolute || absoluteOK != (tt.wantAbsolute != "") {
+				t.Errorf("absoluteUserConfigDirFor() = (%q, %v); want (%q, %v)", absolute, absoluteOK, tt.wantAbsolute, tt.wantAbsolute != "")
+			}
+		})
 	}
 }
 

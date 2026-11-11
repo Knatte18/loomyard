@@ -25,7 +25,7 @@ import (
 // TestRefuseStartOwnedElsewhere covers the owner check of a start.
 // An owner elsewhere refuses, and so does an unspawned member of a beam whose beam another machine owns;
 // an owner here, an absent entry and a receiver with no seams pass;
-// a pull that fails refuses with its way forward, an unreadable hostname refuses,
+// a pull that fails refuses with its way forward, an unreadable machine name refuses keeping its own,
 // and a hub with no prime owner has this machine claim it first.
 func TestRefuseStartOwnedElsewhere(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -103,9 +103,9 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 			wantPulls:  1,
 		},
 		{
-			name:       "EmptyMachineNameRefusesNamingTheHostnameCause",
-			fake:       fakeOwners{owners: ownedBy("here", "here", false)},
-			wantErrors: []string{"the hostname is empty", "fix the hostname"},
+			name:       "UnreadableMachineNameRefusesKeepingItsWayForward",
+			fake:       fakeOwners{machineErr: errors.New("the machine file /cfg/machine.json does not read; way forward: run `lym machine name <name>`"), owners: ownedBy("here", "here", false)},
+			wantErrors: []string{"/cfg/machine.json", "lym machine name", "lym batten run " + slug},
 		},
 		{
 			name:      "HubWithNoPrimeOwnerClaimsItForThisMachine",

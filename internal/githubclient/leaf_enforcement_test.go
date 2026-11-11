@@ -1,6 +1,6 @@
 // leaf_enforcement_test.go enforces the GitHub Auth Invariant's leaf half.
 // Production code in internal/githubclient imports only the standard library and these dependencies:
-// go-github, golang.org/x/sys, internal/proc, and internal/pauserecord.
+// go-github, golang.org/x/sys, internal/proc, internal/pauserecord and internal/standalonestate.
 // It never imports internal/output, cobra, internal/gitexec, internal/gitrepo, or golang.org/x/oauth2.
 // The check is an allowlist: any import outside the allowed set fails the test,
 // so a future stray dependency is caught with no list maintenance required.
@@ -20,6 +20,7 @@ var allowedImports = []string{
 	"golang.org/x/sys/windows",
 	"github.com/Knatte18/loomyard/internal/proc",
 	"github.com/Knatte18/loomyard/internal/pauserecord",
+	"github.com/Knatte18/loomyard/internal/standalonestate",
 }
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {

@@ -137,30 +137,32 @@ func TestMachineLandings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("PassesTheNameToTheRead", func(t *testing.T) {
+	t.Run("PassesTheCurrentAndFormerNamesToTheRead", func(t *testing.T) {
 		t.Parallel()
-		var readFor string
+		var readFor []string
 		landings := machineLandings(
-			func() (string, error) { return "m1", nil },
-			func(machine string) ([]string, error) {
-				readFor = machine
+			func() (string, []string, error) { return "m1", []string{"m0"}, nil },
+			func(machines []string) ([]string, error) {
+				readFor = machines
 				return []string{"a", "b"}, nil
 			},
 		)
 
 		got, err := landings()
 
-		if err != nil || !reflect.DeepEqual(got, []string{"a", "b"}) || readFor != "m1" {
-			t.Errorf("landings() = %v, %v with read for %q; want [a b], nil for m1", got, err, readFor)
+		if err != nil || !reflect.DeepEqual(got, []string{"a", "b"}) || !reflect.DeepEqual(readFor, []string{"m1", "m0"}) {
+			t.Errorf("landings() = %v, %v with read for %q; want [a b], nil for [m1 m0]", got, err, readFor)
 		}
 	})
 
-	t.Run("FailingNameReadNamesTheWayForwardAndReadsNothing", func(t *testing.T) {
+	t.Run("FailingNameReadKeepsItsWayForwardAndReadsNothing", func(t *testing.T) {
 		t.Parallel()
 		var read bool
 		landings := machineLandings(
-			func() (string, error) { return "", errors.New("hostname unreadable") },
-			func(string) ([]string, error) {
+			func() (string, []string, error) {
+				return "", nil, errors.New("name unreadable; way forward: run `lym machine name <name>`")
+			},
+			func([]string) ([]string, error) {
 				read = true
 				return nil, nil
 			},
@@ -168,8 +170,8 @@ func TestMachineLandings(t *testing.T) {
 
 		_, err := landings()
 
-		if err == nil || !strings.Contains(err.Error(), "hostname unreadable") || !strings.Contains(err.Error(), "give the machine a hostname") {
-			t.Errorf("landings() error = %v; want one naming the read's error and giving the machine a hostname", err)
+		if err == nil || !strings.Contains(err.Error(), "name unreadable") || !strings.Contains(err.Error(), "lym machine name") || strings.Contains(err.Error(), "hostname") {
+			t.Errorf("landings() error = %v; want one keeping the read's error and way forward and adding no hostname fix", err)
 		}
 		if read {
 			t.Error("landings() called read; want it never called after a failed name read")

@@ -28,9 +28,9 @@ var errRelativeLocalAppData = errors.New("standalonestate: LOCALAPPDATA must be 
 // a relative xdgStateHome has been discarded and home turns out to be empty.
 var errMissingStateHome = errors.New("standalonestate: no usable state home: XDG_STATE_HOME is unset or relative and HOME is unset")
 
-// errRelativeHome is returned on the non-Windows branch when the home directory is relative.
+// errRelativeHome is returned on the non-Windows branch when HOME is relative.
 // A relative home leaves no usable fallback, so it is refused rather than ignored.
-var errRelativeHome = errors.New("standalonestate: home directory must be absolute")
+var errRelativeHome = errors.New("standalonestate: HOME must be absolute")
 
 // errRelativeStateDir is the final assertion's error, fired when the composed state directory is relative.
 // Every input branch has already ruled that out.
@@ -164,4 +164,63 @@ func stateRootFor(goos, localAppData, xdgStateHome, home string) (string, error)
 		return "", fmt.Errorf("%w: %q", errRelativeHome, home)
 	}
 	return filepath.Join(home, ".local", "state", "lym"), nil
+}
+
+// UserConfigDir returns the per-user `lym` config directory.
+// It is `%LOCALAPPDATA%\lym` on Windows, elsewhere `$XDG_CONFIG_HOME/lym` or `$HOME/.config/lym`.
+// A non-empty XDG_CONFIG_HOME is taken as given, relative or not, so files kept there keep their paths.
+// It returns ("", false) when no variable it reads is set, and creates nothing.
+func UserConfigDir() (string, bool) {
+	return userConfigDirFor(runtime.GOOS, os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_CONFIG_HOME"), os.Getenv("HOME"))
+}
+
+// userConfigDirFor resolves UserConfigDir's directory from plain parameters, so a test drives both platform rows.
+func userConfigDirFor(goos, localAppData, xdgConfigHome, home string) (string, bool) {
+	if goos == "windows" {
+		if localAppData == "" {
+			return "", false
+		}
+		return filepath.Join(localAppData, "lym"), true
+	}
+	if xdgConfigHome != "" {
+		return filepath.Join(xdgConfigHome, "lym"), true
+	}
+	if home != "" {
+		return filepath.Join(home, ".config", "lym"), true
+	}
+	return "", false
+}
+
+// AbsoluteUserConfigDir returns the per-user `lym` config directory as an absolute path,
+// so a file kept there never resolves against a process's working directory.
+// A relative XDG_CONFIG_HOME is ignored in favour of `$HOME/.config/lym`.
+// The XDG Base Directory specification requires that.
+// A relative HOME or LOCALAPPDATA is an error naming the variable, since no fallback is left.
+// It returns ("", false, nil) when no variable it reads is set, and creates nothing.
+func AbsoluteUserConfigDir() (string, bool, error) {
+	return absoluteUserConfigDirFor(runtime.GOOS, os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_CONFIG_HOME"), os.Getenv("HOME"))
+}
+
+// absoluteUserConfigDirFor resolves AbsoluteUserConfigDir's directory from plain parameters,
+// so a test drives both platform rows.
+func absoluteUserConfigDirFor(goos, localAppData, xdgConfigHome, home string) (string, bool, error) {
+	if goos == "windows" {
+		if localAppData == "" {
+			return "", false, nil
+		}
+		if !filepath.IsAbs(localAppData) {
+			return "", false, fmt.Errorf("%w: %q", errRelativeLocalAppData, localAppData)
+		}
+		return filepath.Join(localAppData, "lym"), true, nil
+	}
+	if filepath.IsAbs(xdgConfigHome) {
+		return filepath.Join(xdgConfigHome, "lym"), true, nil
+	}
+	if home == "" {
+		return "", false, nil
+	}
+	if !filepath.IsAbs(home) {
+		return "", false, fmt.Errorf("%w: %q", errRelativeHome, home)
+	}
+	return filepath.Join(home, ".config", "lym"), true, nil
 }

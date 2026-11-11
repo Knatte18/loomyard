@@ -426,7 +426,8 @@
 // The seams are:
 //   - the local batten status files of the prime and the board's tasks;
 //     `battencli.DobbyRuns`, `battencli.DobbyLandings` and `battencli.DobbyTasks` read them;
-//     `DobbyLandings` reads the landings of this machine's name only, and a beam's window reads `DobbyTasks` too;
+//     `DobbyLandings` reads the landings of this machine's current and former names only,
+//     read through `machinename.Names` on each call, and a beam's window reads `DobbyTasks` too;
 //     each run's parent comes through `hubgeom.ParentOf`;
 //   - `battencli.DobbyRuns` also marks each run `NoSlot` through the run's board entry;
 //     a pawl run without its landing hold thus takes no slot under `max_runs`;

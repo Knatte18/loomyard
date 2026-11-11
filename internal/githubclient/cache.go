@@ -10,9 +10,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
 
 // cacheFreshness is how long a cached token is trusted before falling back to `gh auth token`.
@@ -34,28 +35,15 @@ type cachedCredentials struct {
 // An atomic rename on write keeps concurrent processes safe.
 var cacheMu sync.Mutex
 
-// cacheDir resolves the cache directory.
+// cacheDir resolves the cache directory, the per-user lym config directory.
 // On Windows it is %LOCALAPPDATA%\lym; elsewhere it is $XDG_CONFIG_HOME/lym or $HOME/.config/lym.
 // It returns ("", false) when no usable environment variable is set.
 func cacheDir() (string, bool) {
-	if runtime.GOOS == "windows" {
-		base := os.Getenv("LOCALAPPDATA")
-		if base == "" {
-			return "", false
-		}
-		return filepath.Join(base, "lym"), true
-	}
-
-	if base := os.Getenv("XDG_CONFIG_HOME"); base != "" {
-		return filepath.Join(base, "lym"), true
-	}
-	if home := os.Getenv("HOME"); home != "" {
-		return filepath.Join(home, ".config", "lym"), true
-	}
-	return "", false
+	return standalonestate.UserConfigDir()
 }
 
-// CredentialDir returns the per-user lym directory the GitHub token cache lives in, where the Slack token file sits beside it.
+// CredentialDir returns the per-user lym config directory the GitHub token cache lives in.
+// The Slack token file sits beside it.
 // It returns ("", false) when no usable environment variable is set.
 func CredentialDir() (string, bool) {
 	return cacheDir()
