@@ -78,8 +78,9 @@
 // They live at `<BoardDir>/_lym/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
 // `slots` and `tier_parallel` take a machine-local override at `<BoardDir>/.lym/config/gate.machine.yaml`.
 // The override is never reconciled and is read at every acquire; every other key stays hub-file only.
-// `cli_wait_sec`, `go_parallel` and `guard_tier` are retired keys:
+// `cli_wait_sec`, `go_parallel`, `guard_tier` and `test_map_max_age_days` are retired keys:
 // every load drops them, in the hub and machine layers alike, and reconcile prunes them.
+// `lym gate testmap` rebuilds no map for its age, so `test_map_max_age_days` bounds nothing.
 // The slot wait of a call that runs in this process has no cap,
 // and a capped call's front is bounded by the caller role's keep-warm cap.
 // `tier_parallel` replaces `go_parallel`.
@@ -167,8 +168,7 @@
 // Only the `card` key may hold one; the template sets `sonnet[medium]` there, and an empty value turns the fixer off.
 // `fixer_timeout_min` bounds how long the callers of a cold gate fixer wait for it.
 // LoadConfig refuses a value below 1, and Config.FixerTimeout returns it as a duration.
-// `lym gate testmap` builds coverage maps under three bounds.
-// `test_map_max_age_days` is the age past which a map is rebuilt whatever changed.
+// `lym gate testmap` builds coverage maps under two bounds.
 // `redundancy_build_timeout_min` bounds each build in minutes.
 // `redundancy_test_timeout_sec` bounds each test in seconds.
 // The redundancy report step of `lym gate test` takes the two redundancy bounds too, and two of its own.

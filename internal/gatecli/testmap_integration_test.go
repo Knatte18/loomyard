@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testcover"
@@ -54,6 +55,8 @@ const helperRoleTestMapGo = "testmap-go"
 // testMapLandEnv names the fixture package whose file a test ending in LandsLinked commits a change to.
 // testMapLandFileEnv, when set, names the file of that package, creating it, instead of its `<package>.go`.
 // testMapRemoveFileEnv, when set, names the file of that package the commit removes instead.
+// testMapHangListEnv names the file the stand-in appends a line to before every `go list` it acts as never ends.
+// testMapHangLymBuildEnv, when set, makes every `lym` build the stand-in acts as never end, after it records itself.
 const (
 	testMapModuleEnv      = "GATECLI_TESTMAP_MODULE"
 	testMapFailBuildEnv   = "GATECLI_TESTMAP_FAIL_BUILD"
@@ -74,6 +77,9 @@ const (
 
 	testMapLandFileEnv   = "GATECLI_TESTMAP_LAND_FILE"
 	testMapRemoveFileEnv = "GATECLI_TESTMAP_REMOVE_FILE"
+
+	testMapHangListEnv     = "GATECLI_TESTMAP_HANG_LIST"
+	testMapHangLymBuildEnv = "GATECLI_TESTMAP_HANG_LYM_BUILD"
 )
 
 // The stand-in's `go env GOVERSION GOOS GOARCH` answer.
@@ -118,6 +124,7 @@ func testMapTestFile(pkg string, tiers map[string]int) string {
 // A test ending in Two covers the second function too, and one ending in Elsewhere neither.
 // The profile of a package testMapLinksEnv links also lists the linked package's two functions,
 // and a test ending in Calls or Elsewhere covers the first of them.
+// A test ending in Fails reports FAIL and one ending in Skips reports SKIP, each writing no profile.
 // A test ending in Hangs never ends, after it records its name in the file testMapHangingEnv names.
 // One ending in Moves first commits a change to the package's file.
 // One ending in Lands first commits a change to a file outside the package.
@@ -168,6 +175,12 @@ func runTestMapStandIn() int {
 	case os.Getenv(tiergate.EnvVar) == "":
 		fmt.Printf("--- FAIL: %s (0.00s)\n", name)
 		return 1
+	case strings.HasSuffix(name, "Fails"):
+		fmt.Printf("--- FAIL: %s (0.00s)\n", name)
+		return 1
+	case strings.HasSuffix(name, "Skips"):
+		fmt.Printf("--- SKIP: %s (0.00s)\n", name)
+		return 0
 	case strings.HasSuffix(name, "Hangs"):
 		if hanging := os.Getenv(testMapHangingEnv); hanging != "" {
 			if appendLine(hanging, name) != nil {
@@ -229,10 +242,17 @@ func testMapLinkOf(pkg string) string {
 
 // runTestMapStandInList acts as `go list -deps -test -f <template> <import path>`.
 // It prints, in the template's form, the package itself and the package testMapLinksEnv names as linked by it.
+// It fails when testMapFailListEnv is set, and never ends after recording itself when testMapHangListEnv names a file.
 func runTestMapStandInList(args []string) int {
 	if os.Getenv(testMapFailListEnv) != "" {
 		fmt.Fprintln(os.Stderr, "stand-in: go list failed")
 		return 1
+	}
+	if hanging := os.Getenv(testMapHangListEnv); hanging != "" {
+		if appendLine(hanging, "list") != nil {
+			return 1
+		}
+		time.Sleep(time.Hour)
 	}
 	importPath := args[len(args)-1]
 	fmt.Printf("%s\t%s\t\n", importPath, path.Base(importPath))
@@ -275,13 +295,16 @@ func runTestMapStandInBuild(args []string) int {
 }
 
 // runTestMapStandInLymBuild acts as `go build ... -o <path> ./cmd/lym`.
-// It records the build in the file testMapLymBuildsEnv names, then fails when testMapFailLymBuildEnv is set.
-// Otherwise it copies the test binary to the `-o` path.
+// It records the build in the file testMapLymBuildsEnv names, then never ends when testMapHangLymBuildEnv is set.
+// It fails when testMapFailLymBuildEnv is set, and otherwise copies the test binary to the `-o` path.
 func runTestMapStandInLymBuild(args []string) int {
 	if builds := os.Getenv(testMapLymBuildsEnv); builds != "" {
 		if appendLine(builds, "built") != nil {
 			return 1
 		}
+	}
+	if os.Getenv(testMapHangLymBuildEnv) != "" {
+		time.Sleep(time.Hour)
 	}
 	if os.Getenv(testMapFailLymBuildEnv) != "" {
 		fmt.Fprintln(os.Stderr, "stand-in: the lym build failed")
@@ -358,24 +381,33 @@ func appendAndCommit(dir, rel string) error {
 	return gitSteps(dir, []string{"add", "--", rel}, []string{"commit", "-q", "-m", "land " + rel, "--", rel})
 }
 
-// testMapOutcome is the envelope of a `lym gate testmap` call that walked its packages.
+// testMapOutcome is the envelope of a `lym gate testmap` call that walked its packages, bar its plan and timings.
 type testMapOutcome struct {
-	Built    []string         `json:"built"`
-	Skipped  []testMapSkip    `json:"skipped"`
-	Failed   []testMapFailure `json:"failed"`
-	TimedOut []string         `json:"timed_out"`
-	Unbuilt  int              `json:"unbuilt"`
+	Built               []string         `json:"built"`
+	Skipped             []testMapSkip    `json:"skipped"`
+	Failed              []testMapFailure `json:"failed"`
+	TimedOut            []string         `json:"timed_out"`
+	Queued              int              `json:"queued"`
+	SelfCheckMismatches int              `json:"self_check_mismatches"`
+	AuditMismatches     int              `json:"audit_mismatches"`
 }
 
-// runTestMapIn runs `lym gate testmap` over the prime worktree prime and returns its exit code and output.
+// runTestMapIn runs `lym gate testmap` over the prime worktree prime with no audit round.
+// It returns the call's exit code and output.
 // It uses the go command goBinary and the environment env.
 // One build minute lasts minuteUnit.
 func runTestMapIn(prime, goBinary string, env []string, minuteUnit time.Duration, maxPackages int, packages ...string) (int, []byte) {
-	var out bytes.Buffer
-	code := runTestMap(lymcwd.WithCwd(context.Background(), prime), &out, testMapRequest{
+	return runTestMapRequest(prime, testMapRequest{
 		goBinary: goBinary, maxPackages: maxPackages, packages: packages, environ: env,
 		secondUnit: 150 * time.Millisecond, minuteUnit: minuteUnit, grace: time.Second,
 	})
+}
+
+// runTestMapRequest runs `lym gate testmap` over the prime worktree prime as request asks.
+// It returns the call's exit code and output.
+func runTestMapRequest(prime string, request testMapRequest) (int, []byte) {
+	var out bytes.Buffer
+	code := runTestMap(lymcwd.WithCwd(context.Background(), prime), &out, request)
 	return code, out.Bytes()
 }
 
@@ -384,6 +416,13 @@ func runTestMapIn(prime, goBinary string, env []string, minuteUnit time.Duration
 func callTestMap(t *testing.T, prime, goBinary string, env []string, minuteUnit time.Duration, maxPackages int, packages ...string) testMapOutcome {
 	t.Helper()
 	code, out := runTestMapIn(prime, goBinary, env, minuteUnit, maxPackages, packages...)
+	return decodeTestMap(t, code, out)
+}
+
+// decodeTestMap fails the test unless a `lym gate testmap` call walked its packages.
+// code is the call's exit code and out its output; it returns the call's envelope.
+func decodeTestMap(t *testing.T, code int, out []byte) testMapOutcome {
+	t.Helper()
 	if code != 0 {
 		t.Fatalf("runTestMap exit = %d; want 0; output %s", code, out)
 	}
@@ -503,11 +542,12 @@ func TestGateTestMap(t *testing.T) {
 		t.Helper()
 		return readTestMap(t, mapsDir, pkg)
 	}
-	wantExitRecord := func(t *testing.T, unbuilt int) {
+	// wantExitRecord checks the exit record's pid, planned HEAD and queued count.
+	wantExitRecord := func(t *testing.T, head string, queued int) {
 		t.Helper()
 		record, found, err := testcover.ReadExitRecord(mapsDir)
-		if want := (testcover.ExitRecord{PID: os.Getpid(), Unbuilt: unbuilt}); err != nil || !found || record != want {
-			t.Errorf("ReadExitRecord() = %+v, found %v, err %v; want %+v", record, found, err, want)
+		if err != nil || !found || record.PID != os.Getpid() || record.PlannedHead != head || record.Queued != queued {
+			t.Errorf("ReadExitRecord() = %+v, found %v, err %v; want pid %d, planned HEAD %s, %d queued", record, found, err, os.Getpid(), head, queued)
 		}
 	}
 	// wantOutcome compares an outcome but its failures, which wantBrokenFailed checks.
@@ -526,7 +566,7 @@ func TestGateTestMap(t *testing.T) {
 	dirtySkip := testMapSkip{Package: "dirty", Cause: "modified or untracked file dirty/extra.go"}
 	lockedSkip := testMapSkip{Package: "locked", Cause: "another call holds its map build lock"}
 	movedSkip := testMapSkip{Package: "moved", Cause: "files changed under its tests: moved.go"}
-	ignoreRunFields := cmpopts.IgnoreFields(testcover.MapTest{}, "FuncHash", "Seconds")
+	ignoreRunFields := cmpopts.IgnoreFields(testcover.MapTest{}, "FuncHash", "Seconds", "Commit", "MeasuredAt")
 	outsideHub := t.TempDir()
 
 	t.Run("Refusals", func(t *testing.T) {
@@ -587,16 +627,21 @@ func TestGateTestMap(t *testing.T) {
 		}
 	})
 
-	t.Run("CapLeavesStalePackagesUnbuilt", func(t *testing.T) {
+	t.Run("CapLeavesTheRestQueued", func(t *testing.T) {
 		head := gitkit.RevParse(t, prime, "HEAD")
 		got := call(t, 2)
+		// moved, notests and steady lie past the cap, and locked's lock was held at the plan.
 		wantOutcome(t, got, testMapOutcome{
-			Built: []string{"alpha"}, Skipped: []testMapSkip{dirtySkip, lockedSkip}, TimedOut: []string{"alpha.TestAlphaHangs"}, Unbuilt: 3,
+			Built: []string{"alpha"}, Skipped: []testMapSkip{dirtySkip, lockedSkip}, TimedOut: []string{"alpha.TestAlphaHangs"}, Queued: 4,
 		})
 		wantBrokenFailed(t, got)
 
 		alpha := readMap(t, "alpha")
-		wantTests := []testcover.MapTest{{Name: "TestAlphaOne", Tier: 0, Blocks: []int{0}}, {Name: "TestAlphaTwo", Tier: 1, Blocks: []int{0, 1}}}
+		wantTests := []testcover.MapTest{
+			{Name: "TestAlphaHangs", Tier: 1, Outcome: testcover.OutcomeTimedOut},
+			{Name: "TestAlphaOne", Tier: 0, Blocks: []int{0}},
+			{Name: "TestAlphaTwo", Tier: 1, Blocks: []int{0, 1}},
+		}
 		if diff := cmp.Diff(wantTests, alpha.Tests, ignoreRunFields); diff != "" {
 			t.Errorf("alpha map tests mismatch (-want +got):\n%s", diff)
 		}
@@ -618,13 +663,14 @@ func TestGateTestMap(t *testing.T) {
 			t.Errorf("broken map marker = %+v, funcs %v; want version %d, the map's commit %s and build time %v, no funcs",
 				marker, broken.Funcs, testcover.MapFormatVersion, broken.Commit, broken.BuiltAt)
 		}
-		wantExitRecord(t, 3)
+		wantExitRecord(t, head, 4)
 	})
 
 	t.Run("SecondCallMapsTheRestAndKeepsAFailureAtOneHead", func(t *testing.T) {
 		alphaBefore := readMap(t, "alpha")
+		head := gitkit.RevParse(t, prime, "HEAD")
 		got := call(t, 10)
-		wantOutcome(t, got, testMapOutcome{Built: []string{"notests", "steady"}, Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}})
+		wantOutcome(t, got, testMapOutcome{Built: []string{"notests", "steady"}, Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, Queued: 1})
 		if len(got.Failed) != 0 {
 			t.Errorf("runTestMap() failed = %+v; want broken not rebuilt at the HEAD of its failure", got.Failed)
 		}
@@ -632,30 +678,43 @@ func TestGateTestMap(t *testing.T) {
 		if diff := cmp.Diff([]testcover.MapTest{{Name: "TestSteadyLands", Blocks: []int{0}}}, steady.Tests, ignoreRunFields); diff != "" {
 			t.Errorf("steady map tests mismatch (-want +got):\n%s", diff)
 		}
-		if before := gitkit.RevParse(t, prime, "HEAD~1"); steady.Commit != before {
-			t.Errorf("steady map commit = %s; want %s, the HEAD read before its tests landed a commit outside it", steady.Commit, before)
+		if steady.Commit != head {
+			t.Errorf("steady map commit = %s; want %s, the HEAD planned before moved's and steady's tests landed commits", steady.Commit, head)
 		}
 		if notests := readMap(t, "notests"); len(notests.Tests) != 0 || notests.BuildFailure != "" {
 			t.Errorf("notests map = tests %v, failure %q; want no test and no failure", notests.Tests, notests.BuildFailure)
 		}
+		// alpha is current at its own commit, and its timed-out test has an outcome entry, so the plan leaves it.
 		if alpha := readMap(t, "alpha"); !alpha.BuiltAt.Equal(alphaBefore.BuiltAt) {
 			t.Errorf("alpha map built at %v; want it left from %v", alpha.BuiltAt, alphaBefore.BuiltAt)
 		}
 		if _, found, err := testcover.ReadMap(mapsDir, "moved"); err != nil || found {
 			t.Errorf("ReadMap(moved) = found %v, err %v; want no map for a package whose files changed under its tests", found, err)
 		}
-		wantExitRecord(t, 0)
+		wantExitRecord(t, head, 1)
 	})
 
-	t.Run("HeadMoveRetriesTheFailedBuildAndAgeRebuilds", func(t *testing.T) {
+	t.Run("HeadMoveRetriesTheFailedBuildAndMovesTheRestWhateverTheirAge", func(t *testing.T) {
 		aged := readMap(t, "notests")
 		aged.BuiltAt = time.Now().Add(-8 * 24 * time.Hour)
+		aged.Format.BuiltAt = aged.BuiltAt
 		if err := testcover.WriteMap(mapsDir, "notests", aged); err != nil {
 			t.Fatal(err)
 		}
+		head := gitkit.RevParse(t, prime, "HEAD")
 		got := call(t, 10)
-		wantOutcome(t, got, testMapOutcome{Built: []string{"notests"}, Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}})
+		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, Queued: 1})
 		wantBrokenFailed(t, got)
+		for _, pkg := range []string{"alpha", "notests", "steady"} {
+			if m := readMap(t, pkg); m.Commit != head || m.Format == nil || m.Format.Commit != head || !m.Format.BuiltAt.Equal(m.BuiltAt) {
+				t.Errorf("%s map = commit %s, marker %+v; want it moved to HEAD %s with its marker", pkg, m.Commit, m.Format, head)
+			}
+		}
+		record, _, err := testcover.ReadExitRecord(mapsDir)
+		wantMisses := map[testcover.MissReason]int{testcover.MissBuildFailure: 1, testcover.MissNoMap: 1}
+		if err != nil || record.Plan.Current != 3 || record.Plan.Affected != 0 || !maps.Equal(record.Plan.Misses, wantMisses) {
+			t.Errorf("exit record plan = %+v, err %v; want 3 current maps and the misses %v", record.Plan, err, wantMisses)
+		}
 	})
 
 	t.Run("NamedPackageIsRebuiltWhenFresh", func(t *testing.T) {
@@ -667,8 +726,8 @@ func TestGateTestMap(t *testing.T) {
 		}
 	})
 
-	t.Run("ChangedFileContentAndFileSetRebuild", func(t *testing.T) {
-		edited := files["alpha/alpha.go"] + "// edited\n"
+	t.Run("AChangedFunctionReMeasuresItsTestsAndAnAddedEmptyFileMovesTheMap", func(t *testing.T) {
+		edited := strings.Replace(files["alpha/alpha.go"], "return 1 }", "return 10 }", 1)
 		if err := os.WriteFile(filepath.Join(prime, "alpha", "alpha.go"), []byte(edited), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -676,31 +735,20 @@ func TestGateTestMap(t *testing.T) {
 			t.Fatal(err)
 		}
 		gitkit.Git(t, prime, "add", "alpha/alpha.go", "steady/extra.go")
-		gitkit.Git(t, prime, "commit", "-q", "-m", "edit alpha and add a file to steady")
+		gitkit.Git(t, prime, "commit", "-q", "-m", "edit alpha's One and add a file to steady")
 
+		// TestAlphaOne and TestAlphaTwo covered One, and an own-file change drops TestAlphaHangs' outcome entry.
 		got := call(t, 10)
 		wantOutcome(t, got, testMapOutcome{
-			Built: []string{"alpha", "steady"}, Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, TimedOut: []string{"alpha.TestAlphaHangs"},
+			Built: []string{"alpha"}, Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, TimedOut: []string{"alpha.TestAlphaHangs"}, Queued: 1,
 		})
 		wantBrokenFailed(t, got)
-		if alpha := readMap(t, "alpha"); alpha.Files["alpha.go"] != testcover.ContentHash([]byte(edited)) {
-			t.Errorf("alpha map files = %v; want alpha.go hashed from the edited content", alpha.Files)
+		if alpha := readMap(t, "alpha"); alpha.Files["alpha.go"] != testcover.ContentHash([]byte(edited)) || len(alpha.Tests) != 3 {
+			t.Errorf("alpha map = files %v, %d tests; want alpha.go hashed from the edited content and its three tests", alpha.Files, len(alpha.Tests))
 		}
-		if steady := readMap(t, "steady"); steady.Files["extra.go"] != testcover.ContentHash([]byte("package steady\n")) {
-			t.Errorf("steady map files = %v; want the added extra.go", steady.Files)
+		if steady := readMap(t, "steady"); steady.Files["extra.go"] != testcover.ContentHash([]byte("package steady\n")) || len(steady.Tests) != 1 {
+			t.Errorf("steady map = files %v, %d tests; want the added extra.go and its test kept", steady.Files, len(steady.Tests))
 		}
-	})
-
-	t.Run("SkippedPackageCountsAgainstMax", func(t *testing.T) {
-		aged := readMap(t, "notests")
-		aged.BuiltAt = time.Now().Add(-8 * 24 * time.Hour)
-		if err := testcover.WriteMap(mapsDir, "notests", aged); err != nil {
-			t.Fatal(err)
-		}
-		got := call(t, 2)
-		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{dirtySkip, lockedSkip, movedSkip}, Unbuilt: 1})
-		wantBrokenFailed(t, got)
-		wantExitRecord(t, 1)
 	})
 
 	t.Run("NamedPackageWithNoTrackedGoFileIsSkipped", func(t *testing.T) {
@@ -708,12 +756,29 @@ func TestGateTestMap(t *testing.T) {
 		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{{Package: "ignored", Cause: "no Go file tracked at HEAD"}}})
 	})
 
-	t.Run("BuildPastItsTimeoutFailsThePackage", func(t *testing.T) {
+	t.Run("BuildPastItsTimeoutKeepsTheMapAndIsNotRetriedAtItsHead", func(t *testing.T) {
+		head := gitkit.RevParse(t, prime, "HEAD")
+		before := readMap(t, "steady")
 		hangEnviron := append(slices.Clone(environ), testMapHangBuildEnv+"="+module+"/steady")
 		got := callWith(t, hangEnviron, 2*time.Second, 1, "steady")
 		wantOutcome(t, got, testMapOutcome{})
 		if len(got.Failed) != 1 || got.Failed[0].Package != "steady" || !strings.Contains(got.Failed[0].Failure, "timed out after 2s") {
-			t.Errorf("runTestMap() failed = %+v; want steady alone, naming the build timeout", got.Failed)
+			t.Fatalf("runTestMap() failed = %+v; want steady alone, naming the build timeout", got.Failed)
+		}
+		after := readMap(t, "steady")
+		wantFailure := &testcover.MapFailure{Commit: head, Error: got.Failed[0].Failure}
+		if diff := cmp.Diff(wantFailure, after.Failure); diff != "" {
+			t.Errorf("steady map failure mismatch (-want +got):\n%s", diff)
+		}
+		if after.Commit != before.Commit || !after.BuiltAt.Equal(before.BuiltAt) || len(after.Tests) != len(before.Tests) || after.BuildFailure != "" {
+			t.Errorf("steady map = commit %s, built %v, %d tests, build failure %q; want its commit %s, build time %v and %d tests kept",
+				after.Commit, after.BuiltAt, len(after.Tests), after.BuildFailure, before.Commit, before.BuiltAt, len(before.Tests))
+		}
+
+		// The next pass plans at the same HEAD, so it queues no build of steady.
+		again := call(t, 10)
+		if slices.Contains(again.Built, "steady") || slices.ContainsFunc(again.Failed, func(failed testMapFailure) bool { return failed.Package == "steady" }) {
+			t.Errorf("next pass = built %v, failed %+v; want steady neither built nor failed at the HEAD of its failure", again.Built, again.Failed)
 		}
 	})
 
@@ -864,13 +929,14 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		if diff := cmp.Diff(wantFuncs, caller.Funcs); diff != "" {
 			t.Errorf("caller map funcs mismatch (-want +got):\n%s", diff)
 		}
+		// The spawn-marked tests are recorded with their verdict and never run.
 		wantTests := []testcover.MapTest{
-			{Name: "TestCallerCalls", Blocks: []int{0}, Funcs: []int{0}},
-			{Name: "TestCallerElsewhere", Funcs: []int{0}},
-			{Name: "TestCallerSpawns", Tier: 1, Blocks: []int{0}, Spawn: testcover.SpawnVerdict{OutOfProcess: true}},
-			{Name: "TestCallerUnresolved", Tier: 1, Blocks: []int{0}, Spawn: testcover.SpawnVerdict{Unresolved: true}},
+			{Name: "TestCallerCalls", Blocks: []int{0}, Funcs: []int{0}, Commit: head},
+			{Name: "TestCallerElsewhere", Funcs: []int{0}, Commit: head},
+			{Name: "TestCallerSpawns", Tier: 1, Spawn: testcover.SpawnVerdict{OutOfProcess: true}, Commit: head},
+			{Name: "TestCallerUnresolved", Tier: 1, Spawn: testcover.SpawnVerdict{Unresolved: true}, Commit: head},
 		}
-		if diff := cmp.Diff(wantTests, caller.Tests, cmpopts.EquateEmpty(), cmpopts.IgnoreFields(testcover.MapTest{}, "FuncHash", "Seconds")); diff != "" {
+		if diff := cmp.Diff(wantTests, caller.Tests, cmpopts.EquateEmpty(), cmpopts.IgnoreFields(testcover.MapTest{}, "FuncHash", "Seconds", "MeasuredAt")); diff != "" {
 			t.Errorf("caller map tests mismatch (-want +got):\n%s", diff)
 		}
 		wantLinked := map[string]map[string]string{module + "/linked": {
@@ -911,12 +977,100 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		}
 	})
 
-	t.Run("ALinkedOnlyChangeLeavesTheMapFresh", func(t *testing.T) {
+	t.Run("ALinkedCommentChangeMovesTheMapToHeadWithEveryEntry", func(t *testing.T) {
 		before := readTestMap(t, mapsDir, "caller")
-		plankit.WriteTree(t, prime, map[string]string{"linked/linked.go": testMapSource("linked") + "// edited\n"})
-		gitkit.Git(t, prime, "commit", "-q", "-am", "edit the linked package")
-		wantOutcome(t, call(t, environ), testMapOutcome{Built: []string{"linked"}})
-		wantLeft(t, "caller", before)
+		commented := testMapSource("linked") + "// edited\n"
+		plankit.WriteTree(t, prime, map[string]string{"linked/linked.go": commented})
+		gitkit.Git(t, prime, "commit", "-q", "-am", "edit the linked package's comments")
+		head := gitkit.RevParse(t, prime, "HEAD")
+		wantOutcome(t, call(t, environ), testMapOutcome{})
+		after := readTestMap(t, mapsDir, "caller")
+		if after.Commit != head || after.Format == nil || after.Format.Commit != head || !after.Format.BuiltAt.Equal(after.BuiltAt) {
+			t.Errorf("caller map = commit %s, marker %+v; want it and its marker at HEAD %s", after.Commit, after.Format, head)
+		}
+		if diff := cmp.Diff(before.Tests, after.Tests); diff != "" {
+			t.Errorf("caller map tests mismatch (-before +after):\n%s; want every entry kept", diff)
+		}
+		if got := after.Linked[module+"/linked"]["linked.go"]; got != hash(commented) {
+			t.Errorf("caller map linked.go hash = %s; want the hash at HEAD, %s", got, hash(commented))
+		}
+		record, _, err := testcover.ReadExitRecord(mapsDir)
+		if err != nil || record.Plan.Current != 5 || record.Plan.Affected != 0 || len(record.Plan.Misses) != 0 {
+			t.Errorf("exit record plan = %+v, err %v; want all 5 maps current", record.Plan, err)
+		}
+	})
+
+	t.Run("ALinkedBodyChangeReMeasuresOnlyTheTestsThatCoveredIt", func(t *testing.T) {
+		before := readTestMap(t, mapsDir, "caller")
+		plankit.WriteTree(t, prime, map[string]string{"linked/linked.go": strings.Replace(testMapSource("linked"), "return 1 }", "return 100 }", 1)})
+		gitkit.Git(t, prime, "commit", "-q", "-am", "change the body of the linked package's One")
+		head := gitkit.RevParse(t, prime, "HEAD")
+		runs := filepath.Join(t.TempDir(), "runs")
+		wantOutcome(t, call(t, withEnv(testMapLymSeenEnv, runs)), testMapOutcome{Built: []string{"caller", "follower"}})
+		// Each coverage run writes one line: caller's two tests that covered One and follower's one.
+		if data, err := os.ReadFile(runs); err != nil || bytes.Count(data, []byte("\n")) != 3 {
+			t.Errorf("coverage runs = %q, %v; want 3", data, err)
+		}
+		caller := readTestMap(t, mapsDir, "caller")
+		if len(caller.Tests) != len(before.Tests) {
+			t.Fatalf("caller map tests = %+v; want the %d entries it held", caller.Tests, len(before.Tests))
+		}
+		for _, test := range caller.Tests {
+			if remeasured, coveredOne := test.Commit == head, test.Name == "TestCallerCalls" || test.Name == "TestCallerElsewhere"; remeasured != coveredOne {
+				t.Errorf("caller entry %s measured at %s; want it re-measured at HEAD %s exactly when it covered One", test.Name, test.Commit, head)
+			}
+		}
+		record, _, err := testcover.ReadExitRecord(mapsDir)
+		if err != nil || record.Plan.Affected != 2 || record.Plan.Current != 3 {
+			t.Errorf("exit record plan = %+v, err %v; want caller and follower affected and the rest current", record.Plan, err)
+		}
+	})
+
+	t.Run("ANewTestIsMeasuredAloneAndAKeptEntryTheBuildCannotPlaceIsReMeasured", func(t *testing.T) {
+		stale := readTestMap(t, mapsDir, "caller")
+		const staleHash = "a block text the package no longer holds"
+		stale.Blocks[0].Hash = staleHash
+		if err := testcover.WriteMap(mapsDir, "caller", stale); err != nil {
+			t.Fatal(err)
+		}
+		plankit.WriteTree(t, prime, map[string]string{
+			"caller/caller_test.go": testMapTestFile("caller", map[string]int{"TestCallerAdded": 0, "TestCallerCalls": 0, "TestCallerElsewhere": 0}),
+		})
+		gitkit.Git(t, prime, "commit", "-q", "-am", "add a test to caller")
+		runs := filepath.Join(t.TempDir(), "runs")
+		// TestCallerCalls covers the block whose key the fresh build lacks, so the self-check re-runs it beside the new test.
+		wantOutcome(t, call(t, withEnv(testMapLymSeenEnv, runs)), testMapOutcome{Built: []string{"caller"}, SelfCheckMismatches: 1})
+		if data, err := os.ReadFile(runs); err != nil || bytes.Count(data, []byte("\n")) != 2 {
+			t.Errorf("coverage runs = %q, %v; want 2: TestCallerAdded and TestCallerCalls", data, err)
+		}
+		caller := readTestMap(t, mapsDir, "caller")
+		if slices.ContainsFunc(caller.Blocks, func(key testcover.BlockKey) bool { return key.Hash == staleHash }) {
+			t.Errorf("caller map blocks = %+v; want the stale key replaced by the fresh build's", caller.Blocks)
+		}
+		added := slices.IndexFunc(caller.Tests, func(test testcover.MapTest) bool { return test.Name == "TestCallerAdded" })
+		if added < 0 || !slices.Equal(caller.Tests[added].Blocks, []int{0}) {
+			t.Errorf("caller map tests = %+v; want TestCallerAdded covering block 0", caller.Tests)
+		}
+	})
+
+	t.Run("TheAuditReMeasuresTheOldestEntryAndCountsADifferentResult", func(t *testing.T) {
+		old := readTestMap(t, mapsDir, "follower")
+		measuredLong := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+		old.Tests[0].MeasuredAt = measuredLong
+		old.Tests[0].Blocks = nil
+		if err := testcover.WriteMap(mapsDir, "follower", old); err != nil {
+			t.Fatal(err)
+		}
+		code, out := runTestMapRequest(prime, testMapRequest{
+			goBinary: standIn, maxPackages: 10, environ: environ, auditTests: 1,
+			secondUnit: 150 * time.Millisecond, minuteUnit: time.Minute, grace: time.Second,
+		})
+		// Every map stands at HEAD with no gap, so the queue is empty and the round re-measures the oldest entry alone.
+		wantOutcome(t, decodeTestMap(t, code, out), testMapOutcome{Built: []string{"follower"}, AuditMismatches: 1})
+		follower := readTestMap(t, mapsDir, "follower")
+		if len(follower.Tests) != 1 || !slices.Equal(follower.Tests[0].Blocks, []int{0}) || !follower.Tests[0].MeasuredAt.After(measuredLong) {
+			t.Errorf("follower map tests = %+v; want TestFollowerCalls re-measured, covering block 0", follower.Tests)
+		}
 	})
 
 	t.Run("ADirtyLinkedPackageLeavesTheMapAsItWasAndCountsNothingAgainstTheCap", func(t *testing.T) {
@@ -963,14 +1117,22 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		dirtierBefore := readTestMap(t, mapsDir, "dirtier")
 		followerBefore := readTestMap(t, mapsDir, "follower")
 		scratch := filepath.Join(prime, "linked", "scratch.txt")
-		got := callMax(t, withEnv(testMapDirtyEnv, scratch), 1, "dirtier", "follower")
+		code, out := runTestMapIn(prime, standIn, withEnv(testMapDirtyEnv, scratch), time.Minute, 1, "dirtier", "follower")
+		got := decodeTestMap(t, code, out)
+		var counts testMapVerbCounts
+		if err := json.Unmarshal(out, &counts); err != nil {
+			t.Fatalf("unmarshal %q: %v", out, err)
+		}
 		if err := os.Remove(scratch); err != nil {
 			t.Fatal(err)
+		}
+		if len(counts.Packages) != 0 {
+			t.Errorf("packages = %+v; want none, since the skipped package reports no build or run seconds", counts.Packages)
 		}
 		// With a cap of one, dirtier's skip after its tests uses the slot, so follower is never tried.
 		wantOutcome(t, got, testMapOutcome{
 			Skipped: []testMapSkip{{Package: "dirtier", Cause: "modified or untracked file linked/scratch.txt after its tests"}},
-			Unbuilt: 1,
+			Queued:  1,
 		})
 		wantLeft(t, "dirtier", dirtierBefore)
 		wantLeft(t, "follower", followerBefore)
@@ -1031,15 +1193,20 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		}
 	})
 
-	t.Run("AGoListFailureWritesAFailedMapWithTheMarker", func(t *testing.T) {
+	t.Run("AGoListFailureKeepsTheMapsEntriesAndRecordsTheFailureWithHead", func(t *testing.T) {
+		before := readTestMap(t, mapsDir, "caller")
+		head := gitkit.RevParse(t, prime, "HEAD")
 		got := call(t, withEnv(testMapFailListEnv, "1"), "caller")
 		if len(got.Built) != 0 || len(got.Failed) != 1 || got.Failed[0].Package != "caller" || !strings.Contains(got.Failed[0].Failure, "list linked packages") {
 			t.Fatalf("runTestMap() = built %v, failed %+v; want caller alone failed, naming the list failure", got.Built, got.Failed)
 		}
 		failed := readTestMap(t, mapsDir, "caller")
-		if failed.BuildFailure != got.Failed[0].Failure || len(failed.Tests) != 0 || failed.Format == nil || failed.Format.Commit != failed.Commit {
-			t.Errorf("caller map = failure %q, tests %v, format %+v; want the list failure, no test and a marker at the map's commit",
-				failed.BuildFailure, failed.Tests, failed.Format)
+		if diff := cmp.Diff(&testcover.MapFailure{Commit: head, Error: got.Failed[0].Failure}, failed.Failure); diff != "" {
+			t.Errorf("caller map failure mismatch (-want +got):\n%s", diff)
+		}
+		if diff := cmp.Diff(before.Tests, failed.Tests); diff != "" || failed.Commit != before.Commit || failed.BuildFailure != "" || !cmp.Equal(failed.Format, before.Format) {
+			t.Errorf("caller map = commit %s, build failure %q, format %+v, tests mismatch (-before +after):\n%s; want the map kept as it was",
+				failed.Commit, failed.BuildFailure, failed.Format, diff)
 		}
 	})
 
@@ -1074,5 +1241,345 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		}
 		wantLeft(t, "linked", linkedBefore)
 		wantLeft(t, "linked/inner", innerBefore)
+	})
+}
+
+// testMapVerbCounts holds the plan and packages keys of a `lym gate testmap` envelope, which testMapOutcome leaves out.
+type testMapVerbCounts struct {
+	Plan     testcover.PlanCounts       `json:"plan"`
+	Packages []testcover.PackageMeasure `json:"packages"`
+}
+
+// TestGateTestMapUpkeep runs `lym gate testmap` calls in order over one hub whose module holds a package per upkeep case.
+// Each call builds on the maps and HEAD the last one left.
+// Its subtests share that state and run in sequence, so none is parallel.
+func TestGateTestMapUpkeep(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
+	prime := h.PrimeWorktree()
+	location, err := lymcwd.ResolveWorktree(prime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const module = "example.com/upkeep"
+	gate := "slots: 1\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n" +
+		"  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n" +
+		"  tier1: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"1\"}}\n"
+	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gate), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	packageTests := map[string]map[string]int{
+		"caller":   {"TestCallerCalls": 0},
+		"headmove": {"TestHeadmoveOne": 0},
+		"linked":   nil,
+		"outcomes": {"TestOutcomesPass": 0, "TestOutcomesFails": 0, "TestOutcomesSkips": 0, "TestOutcomesElsewhere": 0},
+	}
+	files := map[string]string{"go.mod": "module " + module + "\n\ngo 1.21\n"}
+	for pkg, tiers := range packageTests {
+		files[pkg+"/"+pkg+".go"] = testMapSource(pkg)
+		if tiers != nil {
+			files[pkg+"/"+pkg+"_test.go"] = testMapTestFile(pkg, tiers)
+		}
+	}
+	plankit.WriteTree(t, prime, files)
+	gitkit.Git(t, prime, append([]string{"add", "go.mod"}, slices.Sorted(maps.Keys(packageTests))...)...)
+	gitkit.Git(t, prime, "commit", "-q", "-m", "seed the upkeep module")
+
+	mapsDir := testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))
+	standIn, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	environ := append(os.Environ(), helperEnv+"="+helperRoleTestMapGo, testMapModuleEnv+"="+module, testMapLinksEnv+"=caller=linked")
+	withEnv := func(name, value string) []string {
+		return append(slices.Clone(environ), name+"="+value)
+	}
+	request := func(env []string, maxPackages, auditTests int, packages ...string) testMapRequest {
+		return testMapRequest{
+			goBinary: standIn, maxPackages: maxPackages, packages: packages, environ: env, auditTests: auditTests,
+			secondUnit: 150 * time.Millisecond, minuteUnit: time.Minute, grace: time.Second,
+		}
+	}
+	// call runs the verb under a minute's bound, so a call that waits for a slot it must not take fails the test.
+	call := func(t *testing.T, env []string, maxPackages, auditTests int, packages ...string) (testMapOutcome, testMapVerbCounts) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(lymcwd.WithCwd(context.Background(), prime), time.Minute)
+		defer cancel()
+		var out bytes.Buffer
+		code := runTestMap(ctx, &out, request(env, maxPackages, auditTests, packages...))
+		var counts testMapVerbCounts
+		if err := json.Unmarshal(out.Bytes(), &counts); err != nil {
+			t.Fatalf("unmarshal %q: %v", out.Bytes(), err)
+		}
+		return decodeTestMap(t, code, out.Bytes()), counts
+	}
+	readMap := func(t *testing.T, pkg string) testcover.Map {
+		t.Helper()
+		return readTestMap(t, mapsDir, pkg)
+	}
+	writeMap := func(t *testing.T, pkg string, m testcover.Map) {
+		t.Helper()
+		if err := testcover.WriteMap(mapsDir, pkg, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantOutcome := func(t *testing.T, got, want testMapOutcome) {
+		t.Helper()
+		if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
+			t.Errorf("runTestMap() mismatch (-want +got):\n%s", diff)
+		}
+	}
+	entryIndex := func(m testcover.Map, name string) int {
+		return slices.IndexFunc(m.Tests, func(test testcover.MapTest) bool { return test.Name == name })
+	}
+	ignoreRunFields := cmpopts.IgnoreFields(testcover.MapTest{}, "FuncHash", "Seconds", "Commit", "MeasuredAt")
+	const extraVariable = "\nvar Extra = 1\n"
+
+	t.Run("EveryOutcomeGetsItsEntryWithNoCoverageAndTheVerbPrintsItsPlanAndPackages", func(t *testing.T) {
+		got, counts := call(t, environ, 10, 0)
+		wantOutcome(t, got, testMapOutcome{Built: []string{"caller", "headmove", "linked", "outcomes"}})
+		wantTests := []testcover.MapTest{
+			{Name: "TestOutcomesElsewhere", Outcome: testcover.OutcomeNoCoverage},
+			{Name: "TestOutcomesFails", Outcome: testcover.OutcomeFailed},
+			{Name: "TestOutcomesPass", Blocks: []int{0}},
+			{Name: "TestOutcomesSkips", Outcome: testcover.OutcomeSkipped},
+		}
+		if diff := cmp.Diff(wantTests, readMap(t, "outcomes").Tests, cmpopts.EquateEmpty(), ignoreRunFields); diff != "" {
+			t.Errorf("outcomes map tests mismatch (-want +got):\n%s", diff)
+		}
+		var measured []string
+		for _, measure := range counts.Packages {
+			measured = append(measured, measure.Package)
+		}
+		if want := []string{"caller", "headmove", "outcomes"}; !slices.Equal(measured, want) {
+			t.Errorf("packages measured = %v; want %v, the packages with a mapped test", measured, want)
+		}
+		if counts.Plan.Misses[testcover.MissNoMap] != len(got.Built) || counts.Plan.Current != 0 || counts.Plan.Affected != 0 {
+			t.Errorf("plan = %+v; want every package missed for having no map", counts.Plan)
+		}
+	})
+
+	t.Run("AMissOnAMapWithEntriesRebuildsItFromNothing", func(t *testing.T) {
+		before := readMap(t, "headmove")
+		ghost := testcover.MapTest{Name: "TestHeadmoveGhost", Blocks: []int{0}, Commit: before.Commit, MeasuredAt: before.BuiltAt}
+		before.Tests = slices.Insert(before.Tests, 0, ghost)
+		writeMap(t, "headmove", before)
+		plankit.WriteTree(t, prime, map[string]string{"headmove/headmove.go": testMapSource("headmove") + extraVariable})
+		gitkit.Git(t, prime, "commit", "-q", "-am", "add a package variable to headmove")
+		head := gitkit.RevParse(t, prime, "HEAD")
+
+		got, counts := call(t, environ, 10, 0)
+		wantOutcome(t, got, testMapOutcome{Built: []string{"headmove"}})
+		if counts.Plan.Misses[testcover.MissNonBody] != 1 || counts.Plan.Current != len(packageTests)-1 {
+			t.Errorf("plan = %+v; want headmove missed for a non-body change and the other maps current", counts.Plan)
+		}
+		after := readMap(t, "headmove")
+		var names, older []string
+		for _, test := range after.Tests {
+			names = append(names, test.Name)
+			if test.Commit != head {
+				older = append(older, test.Name)
+			}
+		}
+		if after.Commit != head || !slices.Equal(names, []string{"TestHeadmoveOne"}) || len(older) != 0 {
+			t.Errorf("headmove map = commit %s, entries %v, entries not measured at HEAD %v; want HEAD %s and TestHeadmoveOne alone, measured there",
+				after.Commit, names, older, head)
+		}
+	})
+
+	t.Run("AKeptEntryNamingALinkedFunctionTheBuildLacksIsReMeasured", func(t *testing.T) {
+		stale := readMap(t, "caller")
+		stale.Funcs = append(stale.Funcs, testcover.FuncKey{Package: module + "/linked", File: "linked.go", Func: "Zzz"})
+		stale.Tests[0].Funcs = append(stale.Tests[0].Funcs, len(stale.Funcs)-1)
+		writeMap(t, "caller", stale)
+		plankit.WriteTree(t, prime, map[string]string{
+			"caller/caller_test.go": testMapTestFile("caller", map[string]int{"TestCallerAdded": 0, "TestCallerCalls": 0}),
+		})
+		gitkit.Git(t, prime, "commit", "-q", "-am", "add a test to caller")
+		head := gitkit.RevParse(t, prime, "HEAD")
+
+		runs := filepath.Join(t.TempDir(), "runs")
+		got, _ := call(t, withEnv(testMapLymSeenEnv, runs), 10, 0)
+		wantOutcome(t, got, testMapOutcome{Built: []string{"caller"}, SelfCheckMismatches: 1})
+		if data, err := os.ReadFile(runs); err != nil || bytes.Count(data, []byte("\n")) != 2 {
+			t.Errorf("coverage runs = %q, %v; want 2: TestCallerAdded and TestCallerCalls", data, err)
+		}
+		caller := readMap(t, "caller")
+		if slices.ContainsFunc(caller.Funcs, func(key testcover.FuncKey) bool { return key.Func == "Zzz" }) {
+			t.Errorf("caller map funcs = %+v; want the function the build lacks gone", caller.Funcs)
+		}
+		if i := entryIndex(caller, "TestCallerCalls"); i < 0 || caller.Tests[i].Commit != head {
+			t.Errorf("caller map tests = %+v; want TestCallerCalls re-measured at HEAD %s", caller.Tests, head)
+		}
+	})
+
+	t.Run("APassWhoseQueuedTestsLeaveNoProfileStillChecksTheKeptEntries", func(t *testing.T) {
+		stale := readMap(t, "caller")
+		i := entryIndex(stale, "TestCallerCalls")
+		stale.Funcs = append(stale.Funcs, testcover.FuncKey{Package: module + "/linked", File: "linked.go", Func: "Zzz"})
+		stale.Tests[i].Funcs = append(stale.Tests[i].Funcs, len(stale.Funcs)-1)
+		writeMap(t, "caller", stale)
+		plankit.WriteTree(t, prime, map[string]string{
+			"caller/caller_test.go": testMapTestFile("caller", map[string]int{"TestCallerAdded": 0, "TestCallerCalls": 0, "TestCallerFails": 0}),
+		})
+		gitkit.Git(t, prime, "commit", "-q", "-am", "add a failing test to caller")
+
+		// The one queued test fails and writes no profile, so the self-check reads one from a kept entry it re-runs.
+		got, _ := call(t, environ, 10, 0)
+		wantOutcome(t, got, testMapOutcome{Built: []string{"caller"}, SelfCheckMismatches: 1})
+		caller := readMap(t, "caller")
+		if slices.ContainsFunc(caller.Funcs, func(key testcover.FuncKey) bool { return key.Func == "Zzz" }) {
+			t.Errorf("caller map funcs = %+v; want the function the build lacks gone", caller.Funcs)
+		}
+		if i := entryIndex(caller, "TestCallerFails"); i < 0 || caller.Tests[i].Outcome != testcover.OutcomeFailed {
+			t.Errorf("caller map tests = %+v; want TestCallerFails recorded as failed", caller.Tests)
+		}
+	})
+
+	t.Run("TheAuditRunsOnlyWithNothingQueuedAndASlotFreeAndCountsOnlyADifferentResult", func(t *testing.T) {
+		measuredLong := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+		old := readMap(t, "caller")
+		i := entryIndex(old, "TestCallerCalls")
+		old.Tests[i].MeasuredAt = measuredLong
+		old.Tests[i].Blocks = nil
+		writeMap(t, "caller", old)
+		wantUntouched := func(t *testing.T, what string) {
+			t.Helper()
+			caller := readMap(t, "caller")
+			if i := entryIndex(caller, "TestCallerCalls"); i < 0 || !caller.Tests[i].MeasuredAt.Equal(measuredLong) || len(caller.Tests[i].Blocks) != 0 {
+				t.Errorf("caller map tests = %+v; want the entry the audit would count left as it was %s", caller.Tests, what)
+			}
+		}
+
+		// The plan moves every map to the new HEAD and holds no slot, so the call returns while the test holds the only one.
+		plankit.WriteTree(t, prime, map[string]string{"landed.txt": "landed\n"})
+		gitkit.Git(t, prime, "add", "landed.txt")
+		gitkit.Git(t, prime, "commit", "-q", "-m", "land a file outside every package")
+		head := gitkit.RevParse(t, prime, "HEAD")
+		lease, err := hubgeom.GateSlots(location).Acquire(context.Background(), gateslot.Holder{Worktree: location.WorktreePath(), Site: "an enclosing gate run"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, counts := call(t, environ, 10, 1)
+		if err := lease.Release(); err != nil {
+			t.Fatal(err)
+		}
+		wantOutcome(t, got, testMapOutcome{})
+		if counts.Plan.Current != len(packageTests) {
+			t.Errorf("plan = %+v; want every map current", counts.Plan)
+		}
+		for pkg := range packageTests {
+			if m := readMap(t, pkg); m.Commit != head {
+				t.Errorf("%s map commit = %s; want the plan to move it to HEAD %s with no slot", pkg, m.Commit, head)
+			}
+		}
+		wantUntouched(t, "while no slot was free")
+
+		// Two packages need a rebuild and the cap is one, so work stays queued and the audit does not run.
+		plankit.WriteTree(t, prime, map[string]string{
+			"headmove/headmove.go": testMapSource("headmove") + extraVariable + "var Again = 2\n",
+			"outcomes/outcomes.go": testMapSource("outcomes") + extraVariable,
+		})
+		gitkit.Git(t, prime, "commit", "-q", "-am", "add a package variable to headmove and outcomes")
+		got, _ = call(t, environ, 1, 1)
+		wantOutcome(t, got, testMapOutcome{Built: []string{"headmove"}, Queued: 1})
+		wantUntouched(t, "while work stayed queued")
+
+		got, _ = call(t, environ, 10, 1)
+		wantOutcome(t, got, testMapOutcome{Built: []string{"outcomes", "caller"}, AuditMismatches: 1})
+		caller := readMap(t, "caller")
+		if i := entryIndex(caller, "TestCallerCalls"); i < 0 || !slices.Equal(caller.Tests[i].Blocks, []int{0}) || !caller.Tests[i].MeasuredAt.After(measuredLong) {
+			t.Errorf("caller map tests = %+v; want TestCallerCalls re-measured, covering block 0", caller.Tests)
+		}
+
+		// An entry with no measurement time sorts before the dated one, so the audit takes it first.
+		undated := readMap(t, "caller")
+		dated, added := entryIndex(undated, "TestCallerCalls"), entryIndex(undated, "TestCallerAdded")
+		undated.Tests[dated].MeasuredAt = measuredLong
+		undated.Tests[added].MeasuredAt = time.Time{}
+		undated.Tests[added].Blocks = nil
+		writeMap(t, "caller", undated)
+		got, _ = call(t, environ, 10, 1)
+		wantOutcome(t, got, testMapOutcome{Built: []string{"caller"}, AuditMismatches: 1})
+		caller = readMap(t, "caller")
+		if i := entryIndex(caller, "TestCallerAdded"); i < 0 || !slices.Equal(caller.Tests[i].Blocks, []int{0}) || caller.Tests[i].MeasuredAt.IsZero() {
+			t.Errorf("caller map tests = %+v; want TestCallerAdded, which had no measurement time, re-measured first, covering block 0", caller.Tests)
+		}
+
+		// Every entry now agrees with a fresh run, so the audit re-measures the oldest and counts nothing.
+		got, _ = call(t, environ, 10, 1)
+		if len(got.Built) != 1 || got.AuditMismatches != 0 || got.SelfCheckMismatches != 0 || len(got.Failed) != 0 || got.Queued != 0 {
+			t.Errorf("runTestMap() = %+v; want one package audited with no mismatch", got)
+		}
+	})
+
+	t.Run("ACallEndedDuringABuildOrATestRecordsNoEntryAndNoFailure", func(t *testing.T) {
+		plankit.WriteTree(t, prime, map[string]string{
+			"cancelled/cancelled.go":      testMapSource("cancelled"),
+			"cancelled/cancelled_test.go": testMapTestFile("cancelled", map[string]int{"TestCancelledHangs": 0}),
+			"cmd/lym/main.go":             "package main\n\nfunc main() {}\n",
+		})
+		gitkit.Git(t, prime, "add", "cancelled", "cmd")
+		gitkit.Git(t, prime, "commit", "-q", "-m", "add a package whose test never ends and the lym command")
+		// The tier of the test prebuilds `lym`, so a call builds it before it runs the test.
+		gateFile := configengine.ConfigFile(h.BoardDir(), "gate")
+		prebuilt := strings.ReplaceAll(gate, "counter: go-json, env", "counter: go-json, prebuilt_lym: true, env")
+		if err := os.WriteFile(gateFile, []byte(prebuilt), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.WriteFile(gateFile, []byte(gate), 0o644) })
+		// Each row's stand-in appends a line to the started file once it hangs, which is when the call is cancelled.
+		// The rows run in the order the call reaches them, and leave no map, so each starts from the same state.
+		tests := []struct {
+			name string
+			env  func(started string) []string
+		}{
+			{"WhileTheGoListHangs", func(started string) []string { return withEnv(testMapHangListEnv, started) }},
+			{"WhileTheCoverageBuildHangs", func(started string) []string {
+				return append(withEnv(testMapCoverBuildsEnv, started), testMapHangBuildEnv+"="+module+"/cancelled")
+			}},
+			{"WhileTheLymBuildHangs", func(started string) []string {
+				return append(withEnv(testMapLymBuildsEnv, started), testMapHangLymBuildEnv+"=1")
+			}},
+			{"WhileATestHangs", func(started string) []string { return withEnv(testMapHangingEnv, started) }},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				started := filepath.Join(t.TempDir(), "started")
+				// The test would time out after 20 seconds, and the build after a minute, so the cancel comes first.
+				req := request(tt.env(started), 1, 0, "cancelled")
+				req.secondUnit = time.Second
+				ctx, cancel := context.WithCancel(lymcwd.WithCwd(context.Background(), prime))
+				t.Cleanup(cancel)
+				var out bytes.Buffer
+				done := make(chan int, 1)
+				go func() { done <- runTestMap(ctx, &out, req) }()
+				for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+					if _, err := os.Stat(started); err == nil {
+						break
+					}
+					if time.Now().After(deadline) {
+						cancel()
+						<-done
+						t.Fatal("the stand-in did not start hanging")
+					}
+				}
+				cancel()
+				select {
+				case code := <-done:
+					if code != 1 || !strings.Contains(out.String(), "the call was cancelled") {
+						t.Errorf("runTestMap() = exit %d, output %q; want exit 1, naming the cancelled call", code, out.String())
+					}
+				case <-time.After(30 * time.Second):
+					t.Fatal("the call did not end after it was cancelled")
+				}
+				if _, found, err := testcover.ReadMap(mapsDir, "cancelled"); err != nil || found {
+					t.Errorf("ReadMap(cancelled) = found %v, err %v; want no map, so no entry and no failure, for a call that was ended", found, err)
+				}
+			})
+		}
 	})
 }

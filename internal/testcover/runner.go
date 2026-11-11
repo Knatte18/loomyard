@@ -115,6 +115,16 @@ func (tc Toolchain) GoEnvironment() (version, goos, goarch string, err error) {
 	return lines[0], lines[1], lines[2], nil
 }
 
+// GoRoot returns the root directory of the toolchain the go command reports under Env.
+// The error carries the go command's failure.
+func (tc Toolchain) GoRoot() (string, error) {
+	out, err := tc.goOutput([]string{"env", "GOROOT"})
+	if err != nil {
+		return "", fmt.Errorf("go env: %w", err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
 var testNameLine = regexp.MustCompile(`^(Test|Example|Fuzz)\w*$`)
 
 // ListTests returns the top-level test names of the package at importPath under the build tags tags.

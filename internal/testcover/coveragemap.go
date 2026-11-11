@@ -53,7 +53,11 @@ type Map struct {
 	// Tests holds one entry per judged top-level test.
 	Tests []MapTest `json:"tests"`
 	// BuildFailure is the error of a coverage build that failed, empty when the build succeeded.
+	// It is set only in a map that holds no test entry, whose Commit is the commit the build failed at.
 	BuildFailure string `json:"build_failure,omitempty"`
+	// Failure records a coverage build that failed at a later commit than Commit, beside the entries the map keeps;
+	// nil when no build failed since.
+	Failure *MapFailure `json:"failure,omitempty"`
 	// Format marks a map of the MapFormatVersion shape; it is nil in a map no writer of that shape wrote.
 	// Its Commit and BuiltAt equal the map's own unless a writer that does not know it rewrote the map since.
 	Format *MapFormat `json:"format,omitempty"`
@@ -77,6 +81,35 @@ type MapTest struct {
 	Spawn SpawnVerdict `json:"spawn"`
 	// Outcome is why the test's run alone recorded no coverage, empty for a passing measurement.
 	Outcome TestOutcome `json:"outcome,omitempty"`
+	// Commit and MeasuredAt are the commit and time the entry was measured or scanned at.
+	// Both are empty in an entry written before they were recorded.
+	Commit     string    `json:"commit,omitempty"`
+	MeasuredAt time.Time `json:"measured_at,omitzero"`
+}
+
+// Measured reports whether the entry records a passing measurement:
+// no outcome, and no spawn verdict that marks the test out of process or unresolved.
+// Only such an entry counts as the test's coverage.
+func (t MapTest) Measured() bool {
+	return t.Outcome == "" && !t.Spawn.OutOfProcess && !t.Spawn.Unresolved
+}
+
+// MapFailure is a coverage build that failed at a commit later than the map's own.
+type MapFailure struct {
+	// Commit is the commit the build failed at.
+	Commit string `json:"commit"`
+	// Error is the build's error.
+	Error string `json:"error"`
+}
+
+// FailedAt reports whether m records a failed coverage build at commit:
+// its Failure names commit, or it holds no test entry and its BuildFailure is set and its Commit is commit.
+// An upkeep pass queues no build of such a package while commit is the HEAD it plans at.
+func (m Map) FailedAt(commit string) bool {
+	if m.Failure != nil && m.Failure.Commit == commit {
+		return true
+	}
+	return m.BuildFailure != "" && len(m.Tests) == 0 && m.Commit == commit
 }
 
 // TestOutcome is why a coverage map's entry for a test holds no coverage: its run alone did not pass covering something.

@@ -10,7 +10,8 @@ import (
 )
 
 // testMapStep starts a test-map refresh once test_map_every landings were counted since the last one, 0 meaning never.
-// The refresh builds at most test_map_batch stale packages, and the count starts again from zero.
+// The refresh plans every map at the prime's HEAD and measures at most test_map_batch of the packages it queues,
+// and the count starts again from zero.
 // While a refresh is live, one an earlier dobby started included, it starts none and keeps the count,
 // so the refresh starts on the first tick after the live one ended.
 // A start that fails keeps the count too, and the next tick tries again.

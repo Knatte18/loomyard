@@ -34,22 +34,35 @@
 // CoveredKeys turns one run's profile into the rendered keys of the package blocks it covered.
 //
 // FuncIndex names the functions that hold one package's covered blocks, as a FuncKey of import path, file and function.
+// Its ProfiledFuncs names every function a profile holds a block of, covered or not.
 // LinkedPackages lists the main module's packages a package's test binary links, the coverpkg of a cross-package build.
-// GoEnvironment reads the toolchain's Go version and platform.
+// GoEnvironment reads the toolchain's Go version and platform, and GoRoot its root directory.
 //
 // The coverage map is one JSON record per package, read and written through internal/state.
 // It keeps the block key table of the package's own files and, for each judged test, the indexes of the blocks it covers.
 // It also keeps a function table of the other packages the test binary links.
 // For each test it keeps the indexes of the functions it covers there and its spawn verdict.
-// An entry records a passing measurement, or instead a TestOutcome for a run alone that recorded no coverage.
+// An entry records a passing measurement, or instead a TestOutcome for a run alone that recorded no coverage,
+// or a spawn verdict for a test the spawn scan marks; MapTest.Measured tells the first.
+// Each entry carries the commit and time it was measured at.
 // It holds the hashes of the package's Go files, of its other files, and of each linked package's files.
+// A map whose coverage build failed with no entry to keep holds the failure as its BuildFailure;
+// a map that keeps entries holds a later failure and its commit as its Failure instead.
+// Map.FailedAt tells either from the commit.
 // Its MapFormat marker names that shape and holds the writer's commit, build time and EnvironmentStamp.
 // A map without the marker, or whose marker's commit and time differ from the map's own, was written otherwise.
 // The maps live under Dir, one directory per package, shared by every worktree of the hub on the machine.
-// Beside them, the exit record holds the process ID of the last refresh.
-// It also holds the count of stale packages the refresh's cap left unbuilt.
+// Beside them, the exit record holds the process ID of the last upkeep pass.
+// It also holds the HEAD the pass planned at, the queued work it left and its plan's verdict counts.
+// It holds as well its self-check and audit mismatch counts and each measured package's build and run seconds.
 // A package owns every file under its directory except those below a nested package or module.
 // NestedPackageDirs finds those nested directories.
+//
+// PlanUpkeep plans one map at a new commit from the Selector's verdict there, building nothing.
+// A miss leaves the map for a whole rebuild.
+// Otherwise the map moves to the commit and drops the affected tests' entries.
+// It drops its outcome entries too when the package's own files changed.
+// It queues every declared test left with no entry, bar one the spawn scan marks, which gets an entry with its verdict.
 //
 // A Selector selects a package's tests from its map against a Target: the working tree or a commit.
 // It compares the package's files and each linked package's files with the map's record.

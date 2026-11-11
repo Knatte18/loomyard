@@ -2,7 +2,7 @@
 // Its verb `test` is the sanctioned route for running the hub's test tiers.
 // Its verb `status` shows who holds the hub's gate slots, and its verb `report` totals the run records per gate key.
 // Its verb `card-verify` runs a plan card's `**Verify:**` line.
-// Its verb `testmap` rebuilds the per-package coverage maps from the hub's prime worktree.
+// Its verb `testmap` keeps current the per-package coverage maps from the hub's prime worktree.
 //
 // The module is not standalone-capable and does not go through internal/cliwire.
 // It has no target directory, state, plan or stencils to wire, and it resolves hub membership itself.
@@ -602,8 +602,9 @@
 // and a test the spawn scan marks as possibly running module code in another process.
 // A test that opens with no `tiergate.Require` counts as tier0.
 // It keeps the first `redundancy_max_tests` of the rest in file then name order, and lists the others.
-// A package with no coverage map, an unreadable one or one recording a build failure is not judged.
+// A package with no coverage map, an unreadable one or one holding only a build failure is not judged.
 // Nor are its tests.
+// A map that records a later failed build beside its entries is judged by those entries.
 // Before any build the step takes one gate slot, after the call's tiers released theirs.
 // It takes none inside an enclosing gate run's slot.
 // It holds the slot to its end, and its wait has no bound but the call's context.
@@ -615,8 +616,10 @@
 // It builds `lym` once for a tier with `prebuilt_lym`.
 // Each build is bounded by `redundancy_build_timeout_min` and each test by `redundancy_test_timeout_sec`.
 // A skipped, failed, timed-out or block-free test is not judged.
-// The tests of the map that still exist with the same function hash cover each judged test, the judged tests left out;
-// so do the other judged tests.
+// A map entry covers each judged test when it passes and its test still exists with the same function hash.
+// The map entries for the judged tests themselves are left out.
+// The other judged tests cover each one as well.
+// An outcome entry and a spawn-marked one record no coverage, so they cover nothing.
 // `testcover.JudgeAgainst` runs the greedy pass, slowest first, keeping every map test.
 // A test the pass drops is contained, with its covering tests largest overlap first; any other judged test is unique.
 // The report records the function hash of every test the step took and the hashes of each judged package's Go files.
@@ -1011,28 +1014,42 @@
 //
 // # Coverage maps
 //
-// `lym gate testmap [--max <n>] [<package>...]` rebuilds the `internal/testcover` map of each named package.
-// With none named, it rebuilds every stale package.
-// It builds at most `--max` (default 5) per call, in package path order.
+// `lym gate testmap [--max <n>] [<package>...]` keeps the `internal/testcover` maps current at the prime's HEAD.
 // The module root is the dir of the lowest declared of tier0 and tier1, and its go.mod names the import path.
 // A package is a directory relative to that root holding a Go file, found as `go list ./...` finds one:
 // testdata, a directory whose name opens with a dot or an underscore, and a nested module are left out.
-// A map is stale when it is missing or unreadable;
-// when the Go files its directory tracks at HEAD differ from the map's, as a set or in content;
-// when it is older than `test_map_max_age_days`; and when it records a build failure and HEAD differs from its commit.
-// A change to a dependency or to a non-Go file of the directory leaves it fresh; the age limit bounds that drift.
 // The verb runs only in the hub's prime worktree, told by `hubgeom.IsPrime`.
 // Elsewhere it refuses, naming the prime worktree.
-// It reads HEAD through `Fabric.HeadSHA`.
+// It reads HEAD once through `Fabric.HeadSHA`, and plans and measures every package at that HEAD.
 // It reads the tracked files through `Fabric.CodeDirAt`, `Fabric.CodeTreeAt` and `Fabric.CodeFileAt`.
 // It reads the uncommitted and untracked files through `Fabric.Status`.
 // It reads them once before its walk, and twice afresh per package it builds.
-// A package with an uncommitted or untracked Go file is skipped naming the file, since a map records HEAD;
-// so is a package whose build lock, beside its map, another call holds.
+// A package with an uncommitted or untracked Go file is skipped naming the file, since a map records HEAD.
 // So is a package named on the command line that tracks no Go file at HEAD.
-// All are skipped before any build and none counts against `--max`; a package past the cap counts as unbuilt.
 //
-// A package's build reads HEAD and its file hashes first, and the map records that HEAD as its commit.
+// With no package named, the call first plans every package, building nothing, running no test and holding no gate slot.
+// It plans a package under the package's build lock, beside its map;
+// a package whose lock another call holds is skipped and counted as queued.
+// A package whose map records a failed build at HEAD, told by `testcover.Map.FailedAt`, is left alone.
+// Any other map goes to `testcover.Selector` with HEAD as target.
+// The coverage scope's selection compares a map with the working tree the same way.
+// The selector's environment stamp is built as the coverage scope builds it.
+// It uses `go env` and `go env GOROOT` read under the call's environment.
+// `testcover.PlanUpkeep` turns the selection into the plan.
+// A miss leaves the map as it is and queues the package for a whole rebuild, and the plan counts it by its reason.
+// Otherwise the map moves to HEAD with HEAD's file hashes, its own and each linked package's.
+// It keeps every entry but the affected tests' and, when one of the package's own files changed, the outcome entries.
+// A declared tier0 or tier1 test then left with no entry is queued, unless the spawn scan marks it;
+// such a test gets an entry with its verdict and is never run.
+// The plan writes a map it changed at once, and counts it current with no affected test and affected otherwise.
+// So a landing that changes no function a test covered keeps every entry and builds nothing.
+// A named package is queued for a whole rebuild whatever its map holds.
+//
+// The call then measures the queued packages in package path order, at most `--max` (default 5) per call.
+// The rest count as queued, and so does a package whose build lock another call holds by then.
+// A whole rebuild starts from an empty map at HEAD.
+// Any other job measures its queued tests into the map the plan wrote, each replacing its entry.
+// It skips the package, counted as queued, when that map no longer stands at HEAD.
 // A package owns every tracked file under its directory, testdata included.
 // Its files stop at the next package directory or nested module.
 // The map holds the hashes of its Go files in `Files` and of the others it owns in `OtherFiles`.
@@ -1052,13 +1069,29 @@
 // Each build is bounded by `redundancy_build_timeout_min` and each test by `redundancy_test_timeout_sec`.
 // Past its bound the process group is killed.
 // The wait for its exit and output then lasts at most the pipe wait the gate already uses.
-// A failed or timed-out build gives a map of the file hashes with no tests and the failure, listed as failed.
-// Such a map is rebuilt once HEAD moves and never twice at one HEAD.
-// A timed-out test is listed and left out of the map, and so is, unlisted, a test that failed or skipped.
-// A passing test that covers a block of the package's own files or a function of another linked package enters the map.
-// Its entry holds the tier, function hash, duration, blocks, linked functions and its `testcover.ScanSpawns` verdict.
+// A failed or timed-out build is listed as failed.
+// A readable map of the package that holds test entries keeps its commit, entries and marker.
+// It records the failure and HEAD in its `Failure`.
+// With no such map the call writes a map of the file hashes with no tests and the failure as its `BuildFailure`.
+// No pass at that HEAD queues the package again.
+// A test the `testcover.ScanSpawns` scan marks out of process or unresolved is never run;
+// a whole rebuild records it with its verdict.
+// A timed-out test is listed.
+// Each run enters the map.
+// A passing test enters with its coverage when it covers a block of the package's own files.
+// It does too when it covers a function of another linked package.
+// Any other test enters with its `testcover.TestOutcome`: failed, timed out, skipped or covered nothing.
+// A test that could not run counts as failed.
+// An entry holds the tier, function hash, duration, blocks, linked functions, its outcome or spawn verdict,
+// and the commit and time it was measured at.
 // A linked function is named by its package's import path, its file and the name a block key gives it;
 // no block of another package is stored.
+// A run or build a terminating signal ends records nothing.
+// A job that is no whole rebuild self-checks the entries it keeps against the fresh build.
+// Each kept passing entry's block keys must lie among the blocks of the package's own files in the first fresh profile.
+// Its linked functions must lie among the functions that profile holds of each linked package.
+// Those functions are named through `testcover.FuncIndex.ProfiledFuncs`.
+// An entry that fails is re-run in the same job and counted as a self-check mismatch.
 // Once the tests ended the call reads the worktree status afresh.
 // It then reads HEAD and, when HEAD moved, every linked package's hashes.
 // The call discards the map when a file a linked package owns is dirty.
@@ -1067,13 +1100,27 @@
 // Bound: an edit made after the first status read and reverted before the second goes unseen,
 // so the map holds coverage measured on the edited code under the committed hashes.
 // Every map the call writes, a failed build's included, carries a `testcover.MapFormat` marker.
-// The marker holds the map's commit and build time and an environment stamp.
+// Each write sets the map's build time to the time of the write,
+// and the marker to the map's commit and build time and the current environment stamp;
+// recording a failure beside kept entries alone leaves the map's time and marker as they were.
 // The stamp holds the toolchain's Go version and platform and the hashes of go.mod and go.sum at the commit.
 // It also holds digests of the mapped tiers' commands and env as configured and of the hub's env.yaml variables.
 //
-// The call prints `built`, `skipped` with each cause, `failed` with each failure, `timed_out` and `unbuilt`.
-// `unbuilt` is the count the cap left.
-// As it exits, a call that got past the prime check writes `testcover.ExitRecord`: its pid and that count, zero included.
+// Once nothing is left queued, the call runs one audit round.
+// It takes the `testMapAuditTests` oldest-measured passing entries.
+// Only maps that stand at HEAD and record no failure there count.
+// An entry with no recorded measurement time counts as the oldest.
+// It runs only when the call holds a gate slot already or `gateslot.Pool.TryAcquire` gets one at once.
+// It re-measures them as a job of their package, and each fresh entry replaces the kept one;
+// one whose outcome, block keys or linked functions differ counts as an audit mismatch.
+//
+// The call prints `built`, the packages whose map a measurement wrote.
+// It prints `skipped` with each cause, `failed` with each failure and `timed_out`.
+// It also prints `planned_head`, `queued` and `plan`.
+// The `plan` holds its `current` and `affected` counts and its `misses` by reason.
+// It also prints `self_check_mismatches` and `audit_mismatches`.
+// Its `packages` holds each measured package's build seconds, run seconds and test count.
+// As it exits, a call that got past the prime check writes the same counts as `testcover.ExitRecord`, with its pid.
 // It exits 0 once it walked its packages, and 1 for a refusal or a read, slot or write failure that ends the walk.
 //
 // # In-process run

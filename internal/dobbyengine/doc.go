@@ -488,8 +488,8 @@
 //   - Once that count reaches `test_map_every`, 0 meaning never, a tick starts the refresh through Deps.StartTestMap.
 //     The refresh is `lym gate testmap --max <test_map_batch>`, and the count starts again from zero.
 //     While `test_map_every` is 0 the step zeroes the count, so enabling the key later counts only later landings.
-//     It builds the packages stale when it runs, at most `test_map_batch`;
-//     what the cap left unbuilt waits for the next refresh.
+//     It plans every map at the prime's HEAD and measures at most `test_map_batch` of the packages it queues;
+//     what the cap left queued waits for the next refresh.
 //   - No refresh starts while Deps.TestMapRunning reads one live, so a restarted or re-exec'd dobby starts no second.
 //     The count stays, and the refresh starts at the first tick after the live one ended.
 //     A start that fails keeps the count and is tried at the next tick.

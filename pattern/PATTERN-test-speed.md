@@ -288,7 +288,11 @@ this section keeps only what is project-specific or stricter here.
   A map records, for each tier0 and tier1 test, its function hash, the blocks it covers of its own package's files,
   the functions it covers of each other in-module package its test binary links, and its spawn scan verdict.
   It also records the hashes of the package's files and of each linked package's files at the commit it was built from.
-  It is rebuilt when the package's own Go files change, when it outgrows `test_map_max_age_days` and after a failed build once HEAD moves.
+  Each pass plans every map at the prime's HEAD through the coverage selector, building nothing:
+  a current map moves to HEAD with its entries, an affected one drops the affected tests' entries, which are re-measured,
+  and a miss rebuilds the package whole.
+  A failed build keeps the map's entries and is not retried at the same HEAD.
+  A self-check re-measures a kept entry a fresh build cannot place, and an audit round re-measures the oldest entries.
   The prime's dobby starts the verb every `test_map_every` landings.
 - A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
   It takes the diff's new and changed top-level tests against the merge base with the parent branch,

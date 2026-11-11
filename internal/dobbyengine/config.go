@@ -39,7 +39,7 @@ type Config struct {
 	BoardTidyTimeoutMin int `yaml:"board_tidy_timeout_min"`
 	// TestMapEvery is the landings between the prime dobby's test-map refreshes; 0 never refreshes.
 	TestMapEvery int `yaml:"test_map_every"`
-	// TestMapBatch is the most stale packages one test-map refresh builds a map for, its `--max`; at least 1.
+	// TestMapBatch is the most queued packages one test-map refresh measures, its `--max`; at least 1.
 	TestMapBatch int `yaml:"test_map_batch"`
 	// TaskHeadroom is the fewest free tasks under the cgroup task limit for dobby to start a run; 0 never holds a start.
 	TaskHeadroom int `yaml:"task_headroom"`

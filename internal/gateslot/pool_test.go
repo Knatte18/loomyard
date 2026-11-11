@@ -64,6 +64,36 @@ func TestAcquire_TakesFreeSlotsUpToLimitThenRefusesAnother(t *testing.T) {
 	}
 }
 
+func TestTryAcquire_TakesAFreeSlotAndNeverWaits(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	pool := newPool(t, fixedLimits(1))
+	if err := os.MkdirAll(pool.Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	drain, acquired, err := lock.TryAcquireWriteLock(pool.drainLockPath())
+	if err != nil || !acquired {
+		t.Fatalf("take the drain lock = %v, %v; want it taken", acquired, err)
+	}
+	if lease, err := pool.TryAcquire(Holder{Site: "draining"}); err != nil || lease != nil {
+		t.Errorf("TryAcquire() while a multi-slot acquire drains = (%v, %v); want no lease and no error", lease, err)
+	}
+	if err := drain.Release(); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := pool.TryAcquire(Holder{Worktree: "wt", Site: "first"})
+	if err != nil || lease == nil {
+		t.Fatalf("TryAcquire() with a free slot = (%v, %v); want a lease", lease, err)
+	}
+	if second, err := pool.TryAcquire(Holder{Site: "second"}); err != nil || second != nil {
+		t.Errorf("TryAcquire() with every slot held = (%v, %v); want no lease and no error", second, err)
+	}
+	if err := lease.Release(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // The logger's output is process-global, so this test does not run in parallel.
 func TestAcquire_WaitsForReleaseAndLogsWaitStartAndEnd(t *testing.T) {
 	tiergate.Require(t, 0)

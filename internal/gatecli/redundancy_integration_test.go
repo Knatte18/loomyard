@@ -77,7 +77,7 @@ func TestRedundancyStep(t *testing.T) {
 	seeded["alpha/alpha_test.go"] = judgedTestFile("alpha", tieredTest("TestAlphaBase", 0, ""))
 	seeded["beta/beta_test.go"] = judgedTestFile("beta", tieredTest("TestBetaOne", 0, ""))
 	seeded["broken/broken_test.go"] = judgedTestFile("broken", tieredTest("TestBrokenOne", 0, ""))
-	seeded["drops/drops_test.go"] = judgedTestFile("drops", tieredTest("TestDropsOne", 0, ""))
+	seeded["drops/drops_test.go"] = judgedTestFile("drops", tieredTest("TestDropsOne", 0, ""), tieredTest("TestDropsPlain", 0, ""))
 	seeded["gone/gone_test.go"] = judgedTestFile("gone", tieredTest("TestGoneOne", 0, ""))
 	seeded["moved/a_test.go"] = judgedTestFile("moved", tieredTest("TestMovedOne", 0, ""))
 	seeded["nomap/nomap_test.go"] = judgedTestFile("nomap", tieredTest("TestNomapOne", 0, ""))
@@ -95,7 +95,7 @@ func TestRedundancyStep(t *testing.T) {
 		"beta/beta_test.go":     judgedTestFile("beta", tieredTest("TestBetaNewOne", 0, ""), tieredTest("TestBetaOne", 0, "\tt.Log(\"edited\")\n")),
 		"broken/broken_test.go": judgedTestFile("broken", tieredTest("TestBrokenOne", 0, ""), tieredTest("TestBrokenNew", 0, "")),
 		"drops/drops_test.go": judgedTestFile("drops",
-			tieredTest("TestDropsOne", 0, ""), tieredTest("TestDropsHangs", 0, ""),
+			tieredTest("TestDropsOne", 0, ""), tieredTest("TestDropsPlain", 0, ""), tieredTest("TestDropsHangs", 0, ""),
 			"//testtiming:keep pins the slow path on purpose\n"+tieredTest("TestDropsKept", 0, ""),
 			tieredTest("TestDropsLate", 0, ""), tieredTest("TestDropsTier1", 1, ""), tieredTest("TestDropsTier1Again", 1, ""),
 			tieredTest("TestDropsTier2", 2, "")),
@@ -162,12 +162,35 @@ func TestRedundancyStep(t *testing.T) {
 	writeMap(t, "alpha", alphaMap)
 	// beta's map also records a linked package whose file differs at the merge base, and a function of it TestBetaOne covers.
 	// Neither changes beta's verdicts, and its drift names no file of the linked package.
+	// It also records a failed build at a later commit beside its entry, which still judges beta's tests.
 	betaMap := mapOf(t, "beta", mapTest(t, "beta", "TestBetaOne"))
 	betaMap.Linked = map[string]map[string]string{module + "/alpha": {"alpha.go": "stale"}}
 	betaMap.Funcs = []testcover.FuncKey{{Package: module + "/alpha", File: "alpha.go", Func: "One"}}
 	betaMap.Tests[0].Funcs = []int{0}
+	betaMap.Failure = &testcover.MapFailure{Commit: "c0ffee2", Error: "the coverage build failed later"}
 	writeMap(t, "beta", betaMap)
-	writeMap(t, "drops", mapOf(t, "drops"))
+	// drops' map records a failed run of TestDropsOne.
+	// It also records a spawn-marked entry of TestDropsPlain.
+	// Each covers the block TestDropsLate covers, and neither is a cover, so TestDropsLate stays unique.
+	dropsFuncs, err := testcover.ParseTestFuncs("drops/drops_test.go", []byte(seeded["drops/drops_test.go"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dropsEntry := func(name string) testcover.MapTest {
+		t.Helper()
+		for _, fn := range dropsFuncs {
+			if fn.Name == name {
+				return testcover.MapTest{Name: name, FuncHash: fn.Hash, Seconds: 0.01, Blocks: []int{0}}
+			}
+		}
+		t.Fatalf("ParseTestFuncs(drops) = %+v; want %s", dropsFuncs, name)
+		return testcover.MapTest{}
+	}
+	failedRun := dropsEntry("TestDropsOne")
+	failedRun.Outcome = testcover.OutcomeFailed
+	spawned := dropsEntry("TestDropsPlain")
+	spawned.Spawn = testcover.SpawnVerdict{OutOfProcess: true}
+	writeMap(t, "drops", mapOf(t, "drops", failedRun, spawned))
 	broken := mapOf(t, "broken")
 	broken.Blocks, broken.BuildFailure = nil, "the coverage build failed"
 	writeMap(t, "broken", broken)

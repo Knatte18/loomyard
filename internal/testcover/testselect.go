@@ -629,7 +629,7 @@ func (s *Selector) importPath(pkg string) string {
 func selectTests(m Map, importPath string, changed map[FuncKey]bool, changedTests []string) []string {
 	names := slices.Clone(changedTests)
 	for _, test := range m.Tests {
-		if !measured(test) {
+		if !test.Measured() {
 			continue
 		}
 		coversLinked := slices.ContainsFunc(test.Funcs, func(index int) bool { return changed[m.Funcs[index]] })
@@ -649,17 +649,11 @@ func selectTests(m Map, importPath string, changed map[FuncKey]bool, changedTest
 func measuredTests(m Map) []MapTest {
 	var tests []MapTest
 	for _, test := range m.Tests {
-		if measured(test) {
+		if test.Measured() {
 			tests = append(tests, test)
 		}
 	}
 	return tests
-}
-
-// measured reports whether a map's entry records a passing measurement:
-// no outcome, and no spawn verdict that marks the test out of process or unresolved.
-func measured(test MapTest) bool {
-	return test.Outcome == "" && !test.Spawn.OutOfProcess && !test.Spawn.Unresolved
 }
 
 // isGoSourceFile reports whether rel, a slash path relative to a package directory, is a non-test Go file directly in it.

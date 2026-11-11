@@ -1,7 +1,6 @@
 slots: 2  # how many gate builds and test runs the hub executes at once; a lowered count takes effect on the next acquire while a running holder finishes
 busy_quit_sec: 120  # seconds a Go test binary under lym gate test may keep a CPU core at least 90 percent busy before it gets one SIGQUIT and dumps its goroutine stacks; 0 turns the watchdog off; raise it for a package that is CPU-bound but healthy
 fixer_timeout_min: 30  # minutes a cold gate fixer may run before the call that spawned it stops waiting; it bounds the card gate's fixer and the row gate fixers, and webster's fix-verify keeps its own recovery_timeout_min
-test_map_max_age_days: 7  # days after which lym gate testmap rebuilds a package's coverage map even when no Go file of the package changed, so a change to a dependency or a non-Go file of the package lasts at most this long unmapped
 redundancy_build_timeout_min: 10  # minutes each coverage build and lym build of a coverage map run or the redundancy report step may take before its process group is killed and the build counts as failed
 redundancy_test_timeout_sec: 120  # seconds each test a coverage map run or the redundancy report step runs alone may take before its process group is killed and the test is left out
 redundancy_max_tests: 40  # the most new and changed tests the redundancy report step judges in one call, taken in file then name order; the rest are listed as not judged

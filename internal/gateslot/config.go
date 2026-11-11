@@ -34,8 +34,6 @@ type Config struct {
 	BusyQuitSec int `yaml:"busy_quit_sec"`
 	// FixerTimeoutMin is the minutes a cold gate fixer may run before its caller stops waiting for it.
 	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
-	// TestMapMaxAgeDays is the days after which a coverage map is rebuilt whatever changed.
-	TestMapMaxAgeDays int `yaml:"test_map_max_age_days"`
 	// RedundancyBuildTimeoutMin is the minutes each build of a coverage map run or the redundancy report step may take.
 	RedundancyBuildTimeoutMin int `yaml:"redundancy_build_timeout_min"`
 	// RedundancyTestTimeoutSec is the seconds each test a coverage map run or the redundancy report step runs alone may take.
@@ -90,7 +88,6 @@ type configFile struct {
 	Slots                     int                  `yaml:"slots"`
 	BusyQuitSec               int                  `yaml:"busy_quit_sec"`
 	FixerTimeoutMin           int                  `yaml:"fixer_timeout_min"`
-	TestMapMaxAgeDays         int                  `yaml:"test_map_max_age_days"`
 	RedundancyBuildTimeoutMin int                  `yaml:"redundancy_build_timeout_min"`
 	RedundancyTestTimeoutSec  int                  `yaml:"redundancy_test_timeout_sec"`
 	RedundancyMaxTests        int                  `yaml:"redundancy_max_tests"`
@@ -128,7 +125,7 @@ func ConfigPerNameMaps() []string {
 // every worktree of the hub reads the maps they bound.
 // `tiers` and `build` run any shell command in a task worktree, so they are executable.
 // The gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
-// `cli_wait_sec`, `go_parallel` and `guard_tier` are retired;
+// `cli_wait_sec`, `go_parallel`, `guard_tier` and `test_map_max_age_days` are retired;
 // a hub or machine file that still sets one loads, and reconcile prunes it.
 // `tiers` and `build` carry the shape their decode gives them.
 // So `--set` reaches one key inside a tier or the build step, such as `tiers.tier0.env.LYM_TEST_TIER`;
@@ -149,7 +146,6 @@ func ConfigSpec() configengine.Spec {
 			"tier_parallel":                configengine.CategoryMachine,
 			"busy_quit_sec":                configengine.CategoryCrossPair,
 			"fixer_timeout_min":            configengine.CategoryCrossPair,
-			"test_map_max_age_days":        configengine.CategoryCrossPair,
 			"redundancy_build_timeout_min": configengine.CategoryCrossPair,
 			"redundancy_test_timeout_sec":  configengine.CategoryCrossPair,
 			"redundancy_max_tests":         configengine.CategoryCrossPair,
@@ -162,9 +158,10 @@ func ConfigSpec() configengine.Spec {
 			"inert_paths":                  configengine.CategoryGuard,
 		},
 		RetiredKeys: map[string]configengine.Category{
-			"cli_wait_sec": configengine.CategoryCrossPair,
-			"go_parallel":  configengine.CategoryMachine,
-			"guard_tier":   configengine.CategoryGuard,
+			"cli_wait_sec":          configengine.CategoryCrossPair,
+			"go_parallel":           configengine.CategoryMachine,
+			"guard_tier":            configengine.CategoryGuard,
+			"test_map_max_age_days": configengine.CategoryCrossPair,
 		},
 	}
 }
@@ -285,7 +282,6 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		value int
 	}{
 		{"fixer_timeout_min", file.FixerTimeoutMin},
-		{"test_map_max_age_days", file.TestMapMaxAgeDays},
 		{"redundancy_build_timeout_min", file.RedundancyBuildTimeoutMin},
 		{"redundancy_test_timeout_sec", file.RedundancyTestTimeoutSec},
 		{"redundancy_max_tests", file.RedundancyMaxTests},
@@ -326,7 +322,6 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		Slots:                     file.Slots,
 		BusyQuitSec:               file.BusyQuitSec,
 		FixerTimeoutMin:           file.FixerTimeoutMin,
-		TestMapMaxAgeDays:         file.TestMapMaxAgeDays,
 		RedundancyBuildTimeoutMin: file.RedundancyBuildTimeoutMin,
 		RedundancyTestTimeoutSec:  file.RedundancyTestTimeoutSec,
 		RedundancyMaxTests:        file.RedundancyMaxTests,

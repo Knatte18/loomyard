@@ -273,7 +273,8 @@ type judgedPackage struct {
 
 // mappedPackages groups kept by package, in order, and returns the packages whose coverage map can judge them.
 // It adds a line to report per package.
-// A package with no map, an unreadable map or a map recording a build failure is not judged, and nor are its tests.
+// A package with no map, an unreadable map or a map holding only a build failure is not judged, and nor are its tests.
+// A map that records a later failed build beside its entries is judged by those entries.
 // A judged package's line names its map's commit and age,
 // and the files whose text at the merge base base differs from the map's.
 // Its Go files' current hashes go into the report.
@@ -562,8 +563,9 @@ func (r *redundancyRun) runTest(pkg, pkgDir, importPath, bin string, test redund
 }
 
 // judgeRuns gives each of runs, the runs of the tests ran of p, its verdict against the tests of p's map that still hold.
-// A map test holds when the package still declares a test of its name with the same function hash,
-// and no run bears its name.
+// A map test holds when its entry records a passing measurement.
+// The package must still declare a test of its name with the same function hash, and no run may bear its name.
+// An outcome entry and a spawn-marked one record no coverage, so they cover nothing.
 // The greedy pass keeps every map test that holds, and a run it drops is contained.
 func (r *redundancyRun) judgeRuns(p judgedPackage, ran []redundancyCandidate, runs []testcover.Run) {
 	if len(runs) == 0 {
@@ -585,7 +587,7 @@ func (r *redundancyRun) judgeRuns(p judgedPackage, ran []redundancyCandidate, ru
 	}
 	var kept []testcover.Run
 	for _, mapped := range p.m.Tests {
-		if judged[mapped.Name] || hashes[mapped.Name] != mapped.FuncHash {
+		if !mapped.Measured() || judged[mapped.Name] || hashes[mapped.Name] != mapped.FuncHash {
 			continue
 		}
 		blocks := testcover.BlockSet{}

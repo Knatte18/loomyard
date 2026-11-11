@@ -166,6 +166,25 @@ func (p *Pool) Acquire(ctx context.Context, h Holder) (*Lease, error) {
 	}
 }
 
+// TryAcquire holds one slot for h until the lease is released, when one is free at once.
+// It returns a nil lease otherwise.
+// It takes none while a multi-slot acquire holds the drain lock, the state in which Acquire waits.
+// It never waits.
+func (p *Pool) TryAcquire(h Holder) (*Lease, error) {
+	if _, err := p.prepare(&h); err != nil {
+		return nil, err
+	}
+	limits, err := p.readLimits()
+	if err != nil {
+		return nil, err
+	}
+	draining, err := lockIsHeld(p.drainLockPath())
+	if err != nil || draining {
+		return nil, err
+	}
+	return p.tryAcquireAny(limits, h)
+}
+
 // AcquireSlots holds count slots for h until the lease is released.
 // A count of 1 takes one slot and does not take the drain lock.
 // A count of 0, or above the current Limits().Slots, is clamped to every slot.
