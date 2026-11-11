@@ -142,75 +142,144 @@ func TestLoopIntegration_PanicKillsTheInFlightStepTree(t *testing.T) {
 	waitUntil(t, 30*time.Second, "the panicked loop's in-flight step tree to be killed", func() bool { return processEnded(pid) })
 }
 
-func TestLoopIntegration_ProcessExitsAreMarked(t *testing.T) {
+func TestLoopIntegration_SpawnMarksKeeperExit(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
-	// spawnAndReap runs script as a keeper the waiter's spawn starts and reaps.
-	spawnAndReap := func(t *testing.T, spec *Spec, script string) {
-		exited, err := spawnLoop(spec, "loop-x", []string{"-c", script})
-		if err != nil {
-			t.Fatalf("spawnLoop = %v; want the process started", err)
-		}
-		<-exited
+	spec := helperSpec(t.TempDir(), "/bin/sh")
+
+	// The output ends without a newline, so the exit mark must open its own line to stay a mark.
+	exited, err := spawnLoop(spec, "loop-x", []string{"-c", "printf crashed >&2; exit 3"})
+	if err != nil {
+		t.Fatalf("spawnLoop = %v; want the process started", err)
 	}
-	// keep runs script as the loop process a keeper starts, after the starting mark a spawn would write.
-	keep := func(t *testing.T, spec *Spec, script string) {
-		if err := os.MkdirAll(filepath.Dir(spec.Loop.LogPath), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(spec.Loop.LogPath, []byte(loopLogMark("loop-x", loopStartingMark)), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		log, err := os.OpenFile(spec.Loop.LogPath, os.O_APPEND|os.O_WRONLY, 0o644)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = log.Close() })
-		spec.Loop.Signals = func() (<-chan os.Signal, func()) { return nil, func() {} }
-		starts := 0
-		spec.Loop.OnStart = func() { starts++ }
-		keepLoop(spec, "loop-x", []string{"-c", script}, log)
-		if starts != 1 {
-			t.Errorf("OnStart ran %d times; want once, after the loop process started", starts)
-		}
+	<-exited
+
+	want := regexp.MustCompile(`^; loop exit: lym shed: loop loop-x keeper process [0-9]+ exited: exit status 3; loop log: crashed$`)
+	if got := loopExitEvidence(spec.Loop.LogPath, "loop-x"); !want.MatchString(got) {
+		t.Errorf("loopExitEvidence = %q; want it to match %s", got, want)
 	}
+}
+
+// openKeeperLog writes the starting mark a spawn would write and opens the loop log a keeper appends to.
+func openKeeperLog(t *testing.T, spec *Spec) *os.File {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(spec.Loop.LogPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(spec.Loop.LogPath, []byte(loopLogMark("loop-x", loopStartingMark)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	log, err := os.OpenFile(spec.Loop.LogPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = log.Close() })
+	return log
+}
+
+func TestLoopIntegration_KeeperMarksTheLoopProcessExit(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
 	tests := []struct {
-		name string
-		// script is the shell script the marked process runs.
-		script string
-		run    func(t *testing.T, spec *Spec, script string)
-		want   *regexp.Regexp
+		name       string
+		executable string
+		// script is the shell script the loop process runs.
+		script     string
+		wantCode   int
+		wantStarts int
+		want       *regexp.Regexp
 	}{
 		{
 			// The output ends without a newline, so the exit mark must open its own line to stay a mark.
-			name:   "the waiter's spawn marks its keeper's exit status",
-			script: "printf crashed >&2; exit 3",
-			run:    spawnAndReap,
-			want:   regexp.MustCompile(`^; loop exit: lym shed: loop loop-x keeper process [0-9]+ exited: exit status 3; loop log: crashed$`),
+			name:       "ExitStatus",
+			executable: "/bin/sh",
+			script:     "printf crashed >&2; exit 3",
+			wantCode:   1,
+			wantStarts: 1,
+			want:       regexp.MustCompile(`^; loop exit: lym shed: loop loop-x process [0-9]+ exited: exit status 3; loop log: crashed$`),
 		},
 		{
-			name:   "the keeper marks the loop process's exit status",
-			script: "printf crashed >&2; exit 3",
-			run:    keep,
-			want:   regexp.MustCompile(`^; loop exit: lym shed: loop loop-x process [0-9]+ exited: exit status 3; loop log: crashed$`),
+			name:       "CleanExit",
+			executable: "/bin/sh",
+			script:     "exit 0",
+			wantCode:   0,
+			wantStarts: 1,
+			want:       regexp.MustCompile(`^; loop exit: lym shed: loop loop-x process [0-9]+ exited: exit status 0$`),
 		},
 		{
-			name:   "the keeper marks the signal that killed the loop process",
-			script: "kill -9 $$",
-			run:    keep,
-			want:   regexp.MustCompile(`^; loop exit: lym shed: loop loop-x process [0-9]+ exited: signal: killed$`),
+			name:       "KilledBySignal",
+			executable: "/bin/sh",
+			script:     "kill -9 $$",
+			wantCode:   1,
+			wantStarts: 1,
+			want:       regexp.MustCompile(`^; loop exit: lym shed: loop loop-x process [0-9]+ exited: signal: killed$`),
+		},
+		{
+			name:       "StartFailure",
+			executable: "/nonexistent/loop",
+			wantCode:   1,
+			wantStarts: 0,
+			want:       regexp.MustCompile(`^; loop exit: lym shed: loop loop-x could not start: fork/exec /nonexistent/loop: no such file or directory$`),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			spec := helperSpec(t.TempDir(), "/bin/sh")
+			spec := helperSpec(t.TempDir(), tt.executable)
+			log := openKeeperLog(t, spec)
+			spec.Loop.Signals = func() (<-chan os.Signal, func()) { return nil, func() {} }
+			starts := 0
+			spec.Loop.OnStart = func() { starts++ }
 
-			tt.run(t, spec, tt.script)
+			code := keepLoop(spec, "loop-x", []string{"-c", tt.script}, log)
 
+			if code != tt.wantCode || starts != tt.wantStarts {
+				t.Errorf("keepLoop = %d with OnStart run %d times; want %d with %d", code, starts, tt.wantCode, tt.wantStarts)
+			}
 			if got := loopExitEvidence(spec.Loop.LogPath, "loop-x"); !tt.want.MatchString(got) {
 				t.Errorf("loopExitEvidence = %q; want it to match %s", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoopIntegration_KeeperKeepsWaitingThroughTerminatingSignals(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	spec := helperSpec(t.TempDir(), "/bin/sh")
+	log := openKeeperLog(t, spec)
+	signals := make(chan os.Signal)
+	spec.Loop.Signals = func() (<-chan os.Signal, func()) { return signals, func() {} }
+	gate := t.TempDir()
+	started, release := filepath.Join(gate, "started"), filepath.Join(gate, "release")
+	script := fmt.Sprintf("touch %s; while [ ! -e %s ]; do sleep 0.05; done", started, release)
+	returned := make(chan int, 1)
+	go func() { returned <- keepLoop(spec, "loop-x", []string{"-c", script}, log) }()
+	waitUntil(t, 30*time.Second, "the loop process to start", func() bool {
+		_, err := os.Stat(started)
+		return err == nil
+	})
+
+	// The send completes only when the keeper's handler takes the signal.
+	select {
+	case signals <- syscall.SIGTERM:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("the keeper did not take a terminating signal; want its handler running")
+	}
+	select {
+	case code := <-returned:
+		t.Fatalf("keepLoop returned %d after a terminating signal while the loop process still ran; want it to keep waiting", code)
+	default:
+	}
+	if err := os.WriteFile(release, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := <-returned; code != 0 {
+		t.Errorf("keepLoop = %d; want 0 once the loop process ended cleanly", code)
+	}
+	want := regexp.MustCompile(`^; loop exit: lym shed: loop loop-x process [0-9]+ exited: exit status 0$`)
+	if got := loopExitEvidence(spec.Loop.LogPath, "loop-x"); !want.MatchString(got) {
+		t.Errorf("loopExitEvidence = %q; want it to match %s", got, want)
 	}
 }
