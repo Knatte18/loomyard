@@ -111,10 +111,14 @@
 // `""` clears it.
 // Whether the profile holds a block for the task's recipe is checked at Seed-Child, which resolves the recipe.
 // A session whose `LYM_STRAND_NAME` carries a slug cannot change either stored value.
-// The refusal names the operator, the hub orch or the orch of the entry's beam as the way forward.
+// When the session's role is not orch, the refusal names the way forward:
+// the operator, the hub orch or the orch of the entry's beam.
 // A beam's orch, its strand carrying the beam's slug and the orch role, is the exception:
 // it may change either value on an entry that belongs to its beam both as stored and after the write.
 // The entry's beam is read through its project link by `boardengine.Board.BeamUnder`.
+// A beam's orch refused outside its beam is told to send the wish to its parent orch with `lym creel post`.
+// The parent orch decides where the work goes.
+// The beam's parent is read by `boardengine.Board.ParentBeamOf`.
 // The guard reads outside the write lock and stops a mistaken write, not a determined one.
 // A change on an entry held by a run past `Worktree-Create` and `Seed-Child` still succeeds.
 // It adds a `notice` field to the envelope:

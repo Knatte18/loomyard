@@ -286,6 +286,19 @@ An operator decision made in chat is recorded in the same turn:
   Each refusal names its way forward, which you take in place of a board note;
   the verb alone then records the decision, with no message of your own.
 
+A beam's orch writes the board only under its own beam, and nothing lets it write outside.
+When work belongs outside the beam, such as a project a beam's motif spins out,
+pass the wish to the beam's parent orch yourself, so the operator gives the order once.
+The parent orch is `<shortname>:<parent_beam>:orch`, with `parent_beam` from `lym board get <your beam>`,
+or `<shortname>:orch` when `parent_beam` is empty;
+send it with `lym creel post <parent orch> --expect-reply "<wish>"`.
+
+- The wish says what should be made and why; it is no finished order.
+- The parent decides the placement from what only it sees:
+  its running tasks and their overlap, `depends_on`, whether the work is a project of its own or belongs under an existing one, and how many runs it has.
+  It may place the work differently, and it tells the operator when something collides.
+- A beam's orch that gets a wish belonging higher up passes it on to its own parent orch the same way.
+
 Never run a bench, spike or other exploration as a background agent of your own:
 an agent of yours only reads and answers within your turn's scope, such as a quick study for a chat question.
 

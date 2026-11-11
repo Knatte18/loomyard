@@ -88,6 +88,7 @@ func prepareRunSettings(b *boardengine.Board, fields map[string]any, strandName 
 // It may do so only when the entry belongs to that beam both as stored and under the project the payload names;
 // when the payload names none, the stored project counts.
 // The beam's orch may set the profile of the tasks it files under its beam, but it moves no change past the beam's edge.
+// Its refusal names the orch of the beam's parent as the way forward, since that orch decides where the work goes.
 // Every other session whose strand name carries a slug is refused.
 // stored is the zero entry when the board does not yet hold the entry.
 func refuseRunSettingsCaller(b *boardengine.Board, strandName string, fields map[string]any, stored boardengine.Task) error {
@@ -113,10 +114,25 @@ func refuseRunSettingsCaller(b *boardengine.Board, strandName string, fields map
 			return err
 		}
 		if beam != name.Slug {
-			return refusal
+			return refuseBeamOrchOutsideBeam(b, strandName, name)
 		}
 	}
 	return nil
+}
+
+// refuseBeamOrchOutsideBeam returns the refusal of a change a beam's orch makes outside its own beam.
+// A beam's orch writes the board only under its beam,
+// so the way forward is a wish, what to make and why, sent through creel to the orch of the beam's parent.
+// That orch places the work, the prime's orch when the beam's parent is the prime.
+func refuseBeamOrchOutsideBeam(b *boardengine.Board, strandName string, name agentname.Name) error {
+	parentBeam, err := b.ParentBeamOf(name.Slug)
+	if err != nil {
+		return err
+	}
+	parentOrch := agentname.Name{Shortname: name.Shortname, Slug: parentBeam, Role: agentname.RoleOrch}.String()
+	return fmt.Errorf("a run_settings or profile change is refused from the session %s: a beam's orch writes only under its own beam %q; "+
+		"way forward: pass the wish, what to make and why, to the beam's parent orch with `lym creel post %s --expect-reply \"<wish>\"`, and it decides where the work goes",
+		strandName, name.Slug, parentOrch)
 }
 
 // migrateRunSettings returns a payload's run_settings value migrated and validated, as module name to keys.
