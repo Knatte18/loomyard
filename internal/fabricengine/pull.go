@@ -436,12 +436,7 @@ func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr e
 		logWeftReplay(f.weftPath, outcome)
 		return nil, nil
 	case errors.Is(err, ErrReplayConflict):
-		return &WeftStopError{
-			Branch:     branch,
-			Paths:      outcome.Conflicts,
-			WayForward: recordsConflictWayForward(f.weftPath, branch, outcome.Conflicts, ahead, fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.warpPath))),
-			Err:        err,
-		}, nil
+		return f.weftConflictStop(branch, outcome.Conflicts, ahead, err), nil
 	case errors.Is(err, ErrReplayDirty):
 		dirtyPaths, pathsErr := f.weftDirtyPaths()
 		if pathsErr != nil {
@@ -461,6 +456,17 @@ func (f *Fabric) weftDirtyStop(branch string, paths []string, cause error) *Weft
 		WayForward: fmt.Sprintf("commit the uncommitted paths in %s (%s) with `lym fabric commit` in %s, then re-run `lym fabric pull`",
 			f.weftPath, joinOrNone(paths), lymVerbDir(f.warpPath)),
 		Err: cause,
+	}
+}
+
+// weftConflictStop builds the weft stop for a replay that conflicted on paths.
+// ahead holds the weft's local commits; the way forward settles them, then names `lym fabric push`.
+func (f *Fabric) weftConflictStop(branch string, paths, ahead []string, cause error) *WeftStopError {
+	return &WeftStopError{
+		Branch:     branch,
+		Paths:      paths,
+		WayForward: recordsConflictWayForward(f.weftPath, branch, paths, ahead, fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.warpPath))),
+		Err:        cause,
 	}
 }
 

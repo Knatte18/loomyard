@@ -487,4 +487,15 @@ func TestFailedPushRecord(t *testing.T) {
 			t.Errorf("weftDirtyStop way forward = %q; want %q", stop.WayForward, want)
 		}
 	})
+
+	t.Run("WeftConflictStopMergesAtTheRecordsRootAndPushesInTheAnchoredDir", func(t *testing.T) {
+		stop := fabricengine.WeftConflictStopForTest(anchoredTask, anchoredWeft, "task-weft", []string{"notes/a.md"}, []string{"abc123"})
+		want := "origin/task-weft holds commits that change the same paths as this branch's (paths: notes/a.md; local commits: abc123); " +
+			"to keep origin's side, run `git reset --keep origin/task-weft` in " + anchoredWeft + ", which drops the local commits; " +
+			"to keep this machine's, run `git merge origin/task-weft` in " + anchoredWeft + ", settle the named paths and commit, " +
+			"then run `lym fabric push` in " + anchoredDir + ", whose push is then a fast-forward and meets no replay"
+		if stop.WayForward != want {
+			t.Errorf("weftConflictStop way forward =\n%s\nwant\n%s", stop.WayForward, want)
+		}
+	})
 }

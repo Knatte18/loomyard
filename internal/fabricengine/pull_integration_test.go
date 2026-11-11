@@ -580,6 +580,48 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 	})
 }
 
+// TestPull_UpstreamAnchorStopRunsInTheAnchoredDir covers a pull stopped by origin's changed anchor marker.
+// In a hub anchored at a subdirectory, the way forward must name that subdirectory of the code worktree, not its root.
+func TestPull_UpstreamAnchorStopRunsInTheAnchoredDir(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	boardkit.InstallReplay(t)
+
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+	hubforge.AddPair(t, hub, "task")
+	warpPath := hub.PairCodeWorktree("task")
+	weftPath := hub.PairRecordsSibling("task")
+	weftBranch := gitkit.CurrentBranch(t, weftPath)
+	gitkit.MustRun(t, weftPath, "git", "push", "-u", "origin", weftBranch)
+
+	cloneB := filepath.Join(t.TempDir(), "weft-cloneB")
+	gitkit.MustRun(t, filepath.Dir(cloneB), "git", "clone", "-q", "-b", weftBranch, hub.RecordsBare, cloneB)
+	gitkit.Git(t, cloneB, "config", "user.email", "test@test.com")
+	gitkit.Git(t, cloneB, "config", "user.name", "Test")
+	gitkit.CommitFile(t, cloneB, lymcwd.AnchorFileName, "other\n", "origin changes the marker")
+	gitkit.MustRun(t, cloneB, "git", "push", "-q")
+
+	loc, err := lymcwd.ResolveWorktree(warpPath)
+	if err != nil {
+		t.Fatalf("ResolveWorktree(%s): %v", warpPath, err)
+	}
+	f, err := fabricengine.Open(loc)
+	if err != nil {
+		t.Fatalf("Open(%s): %v", warpPath, err)
+	}
+
+	_, err = f.Pull(fabricengine.SyncOptions{})
+
+	var stop *fabricengine.WeftStopError
+	if !errors.As(err, &stop) || !errors.Is(err, fabricengine.ErrAnchorChange) {
+		t.Fatalf("Pull() error = %v (%T); want a *fabricengine.WeftStopError wrapping ErrAnchorChange", err, err)
+	}
+	want := "run `lym fabric anchor task --set other` in " + filepath.Join(warpPath, "backend")
+	if !strings.Contains(stop.WayForward, want) {
+		t.Errorf("WeftStopError way forward = %q; want it to carry %q", stop.WayForward, want)
+	}
+}
+
 // TestPull_WeftUpstreamUnreadableIsAnError covers a weft whose pull fails because origin is unreachable.
 // Its tracking ref names an object the repository lacks, so its commits against head cannot be listed.
 // A failed local read is an infrastructure error: Pull returns it rather than a nil error with WeftPulled false.

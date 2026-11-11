@@ -836,6 +836,11 @@ func WeftDirtyStopForTest(warpPath, weftPath, branch string, paths []string) *We
 	return (&Fabric{warpPath: warpPath, weftPath: weftPath}).weftDirtyStop(branch, paths, errors.New("dirty"))
 }
 
+// WeftConflictStopForTest is weftConflictStop for a Fabric holding only warpPath and weftPath.
+func WeftConflictStopForTest(warpPath, weftPath, branch string, paths, ahead []string) *WeftStopError {
+	return (&Fabric{warpPath: warpPath, weftPath: weftPath}).weftConflictStop(branch, paths, ahead, ErrReplayConflict)
+}
+
 // EntryFactsForTest is entryFacts, the facts an entry is classified from, including OwnedElsewhere.
 type EntryFactsForTest = entryFacts
 

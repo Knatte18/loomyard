@@ -37,8 +37,14 @@ const authRefusingHook = "#!/bin/sh\necho 'Permission to hub denied to tester.' 
 // A push reaches the notifier only through the options the notifier builds.
 func newFailureFixture(t *testing.T) (*recordsFixture, *fakePushNotifier) {
 	t.Helper()
+	return newFailureFixtureAt(t, ".")
+}
+
+// newFailureFixtureAt builds the hub of newFailureFixture with the worktree-relative anchor anchor.
+func newFailureFixtureAt(t *testing.T, anchor string) (*recordsFixture, *fakePushNotifier) {
+	t.Helper()
 	boardkit.InstallReplay(t)
-	f := &recordsFixture{t: t, hub: hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})}
+	f := &recordsFixture{t: t, hub: hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})}
 	return f, &fakePushNotifier{hub: f.hub.Location.HubPath, posted: true}
 }
 
@@ -113,7 +119,13 @@ type pairFixture struct {
 
 func newPairFixture(t *testing.T, slug string) *pairFixture {
 	t.Helper()
-	f, fake := newFailureFixture(t)
+	return newPairFixtureAt(t, ".", slug)
+}
+
+// newPairFixtureAt builds the pair slug of newPairFixture in a hub with the worktree-relative anchor anchor.
+func newPairFixtureAt(t *testing.T, anchor, slug string) *pairFixture {
+	t.Helper()
+	f, fake := newFailureFixtureAt(t, anchor)
 	added := hubforge.AddPair(t, f.hub, slug)
 	location, err := lymcwd.ResolveWorktree(f.hub.PairCodeWorktree(slug))
 	if err != nil {
@@ -462,19 +474,24 @@ func TestPushFailureClasses(t *testing.T) {
 	t.Run("AWeftPushThatMustReplayStopsOnAnAnchorChange", func(t *testing.T) {
 		tests := []struct {
 			name string
+			// hubAnchor is the anchor of the hub the pair is made in.
+			hubAnchor string
 			// arrange makes the pair's weft push need a replay, and returns what the way forward must name.
 			arrange func(t *testing.T, p *pairFixture) string
 		}{
 			{
-				"OntoAnUpstreamCarryingAnotherMarker",
+				"OntoAnUpstreamCarryingAnotherMarkerSetsTheAnchorInTheAnchoredDir",
+				"backend",
 				func(t *testing.T, p *pairFixture) string {
 					p.originCommit(p.weftBranch, lymcwd.AnchorFileName, "sub\n", "other machine re-anchored")
 					gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
-					return "lym fabric anchor"
+					return fmt.Sprintf("run `lym fabric anchor %s --set sub` in %s, which integrates the other marker",
+						p.location.WorktreeName, filepath.Join(p.warpPath, "backend"))
 				},
 			},
 			{
 				"WhileTheOwnMarkerIsEmpty",
+				".",
 				func(t *testing.T, p *pairFixture) string {
 					p.originCommit(p.weftBranch, "other.txt", "other\n", "other machine")
 					gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
@@ -486,6 +503,7 @@ func TestPushFailureClasses(t *testing.T) {
 			},
 			{
 				"WhileAMoveRecordStands",
+				".",
 				func(t *testing.T, p *pairFixture) string {
 					p.originCommit(p.weftBranch, "other.txt", "other\n", "other machine")
 					gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
@@ -496,7 +514,7 @@ func TestPushFailureClasses(t *testing.T) {
 		}
 		for i, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				p := newPairFixture(t, fmt.Sprintf("anchorstop%d", i))
+				p := newPairFixtureAt(t, tt.hubAnchor, fmt.Sprintf("anchorstop%d", i))
 				wantNamed := tt.arrange(t, p)
 				weftHeadWas := gitkit.RevParse(t, p.weftPath, "HEAD")
 				originTipWas := bareBranchTip(t, p.hub.RecordsBare, p.weftBranch)
