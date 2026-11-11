@@ -59,7 +59,7 @@ func terminalWindowTitle(dir string) string {
 	if err != nil {
 		logger.Warn("reed window: could not resolve the prime, titling the window as a task's", "dir", dir, "cause", err)
 	}
-	return boardengine.TerminalWindowTitle(l.HubPath, primeName, l.WorktreeName)
+	return boardengine.ConsoleWindowTitle(l.HubPath, primeName, l.WorktreeName)
 }
 
 // windowCmd builds the `window` subcommand.
@@ -78,10 +78,10 @@ launcher process has started, so the window outlives this command. When
 the machine names a window command in desktop.yaml, it runs it next, after
 the configured wait, and a failure of that command only warns. The
 title defaults to the console title of the worktree holding the
-directory, read from the hub's board: "<hub shortname>: <P#>: <T#>: <slug>"
-for a task, "<hub shortname>: orch" for the prime and
-"<hub shortname>: <P#>: orch" for a beam, whose sessions hold an orch,
-with a part that does not exist left out. A directory in no worktree
+directory, read from the hub's board: "<T#> [<hub shortname>:<P#>] <slug>"
+for a task, and "ORCH [<hub shortname>:<P#>] <slug>" for a beam, whose
+sessions hold an orch. The prime's names the root project, as
+"ORCH [<hub shortname>:P0] root". A part that does not exist is left out. A directory in no worktree
 takes its base name. A directory that does not exist is refused before
 any launcher runs, and a machine with no terminal launcher reports why
 on the envelope.

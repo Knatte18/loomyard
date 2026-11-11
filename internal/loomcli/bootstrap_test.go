@@ -704,7 +704,7 @@ func TestStatusStrandSpec_TitlesTheWindowWithTheRunsHandleAndRecipe(t *testing.T
 
 	got := c.statusStrandSpec("/fixed/lym")
 
-	if want := "T4: darn"; got.Display.Title != want {
+	if want := "T4 [P0] darn"; got.Display.Title != want {
 		t.Errorf("statusStrandSpec().Display.Title = %q; want %q", got.Display.Title, want)
 	}
 	if want := statusStrandCmd(shell.ForGOOS(), "/fixed/lym"); got.Cmd != want {
@@ -725,11 +725,11 @@ func TestStatusWindowTitle(t *testing.T) {
 		entries []string
 		want    string
 	}{
-		{"TheRunsHandleOpensTheRecipe", "", []string{`{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}`}, "T4: tapestry"},
-		{"TheShortnameAndProjectHandleOpenTheRecipe", "ly", []string{
+		{"TheRunsHandleOpensTheTitle", "", []string{`{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}`}, "T4 [P0] tapestry"},
+		{"TheShortnameAndProjectHandleStandInBrackets", "ly", []string{
 			`{"id":1,"slug":"proj","kind":"project","labels":["bug"],"handle":"P3"}`,
 			`{"id":2,"slug":"run","kind":"task","labels":["bug"],"project":"proj","handle":"T4"}`,
-		}, "ly: P3: T4: tapestry"},
+		}, "T4 [ly:P3] tapestry"},
 		{"AnEntryOfAnotherSlugKeepsTheRecipe", "", []string{`{"id":1,"slug":"other","kind":"task","labels":["bug"],"handle":"T4"}`}, "tapestry"},
 		{"NoBoardKeepsTheRecipe", "", nil, "tapestry"},
 	}

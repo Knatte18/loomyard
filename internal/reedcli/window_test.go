@@ -24,7 +24,7 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 	t.Parallel()
 
 	const standInLym = "/stand-in/lym"
-	const formedTitle = "ly: P3: T7: task"
+	const formedTitle = "T7 [ly:P3] task"
 	existing := t.TempDir()
 	tests := []struct {
 		name string

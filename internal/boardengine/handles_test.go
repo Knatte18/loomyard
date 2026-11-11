@@ -250,24 +250,23 @@ func TestWindowTitles(t *testing.T) {
 		board string
 		slug  string
 		// noPrime passes an empty primeName, as a caller that cannot resolve the prime does.
-		noPrime      bool
-		wantIDE      string
-		wantTerminal string
+		noPrime bool
+		want    string
 	}{
-		{name: "ThePrime", shortname: "ly", board: board, slug: prime, wantIDE: "ly: prime", wantTerminal: "ly: orch"},
-		{name: "ABeam", shortname: "ly", board: board, slug: "bm", wantIDE: "ly: P2: beam", wantTerminal: "ly: P2: orch"},
-		{name: "ATaskInAProject", shortname: "ly", board: board, slug: "gate-shard", wantIDE: "ly: P3: T7: gate-shard", wantTerminal: "ly: P3: T7: gate-shard"},
-		{name: "ATaskInNoProject", shortname: "ly", board: board, slug: "adopt", wantIDE: "ly: T12: adopt", wantTerminal: "ly: T12: adopt"},
-		{name: "ATaskUnderABeam", shortname: "ly", board: board, slug: "wellbore", wantIDE: "ly: P2: T4: wellbore", wantTerminal: "ly: P2: T4: wellbore"},
-		{name: "ATaskInAProjectUnderABeamTakesTheBeam", shortname: "ly", board: board, slug: "deep", wantIDE: "ly: P2: T5: deep", wantTerminal: "ly: P2: T5: deep"},
-		{name: "ATaskUnderADoneBeamTakesTheBeamsHandle", shortname: "ly", board: board, slug: "after-closed", wantIDE: "ly: P8: T9: after-closed", wantTerminal: "ly: P8: T9: after-closed"},
-		{name: "ATaskWhoseProjectIsMissingLeavesOutTheProject", shortname: "ly", board: board, slug: "orphan", wantIDE: "ly: T10: orphan", wantTerminal: "ly: T10: orphan"},
-		{name: "AWorktreeOffTheBoard", shortname: "ly", board: board, slug: "stray", wantIDE: "ly: stray", wantTerminal: "ly: stray"},
-		{name: "NoShortname", board: board, slug: "gate-shard", wantIDE: "P3: T7: gate-shard", wantTerminal: "P3: T7: gate-shard"},
-		{name: "NoPrimeNameTitlesThePrimesSlugAsATask", shortname: "ly", board: board, slug: prime, noPrime: true, wantIDE: "ly: main", wantTerminal: "ly: main"},
-		{name: "AnUnreadableBoardLeavesOutTheHandles", shortname: "ly", board: `{"version":1,"entries":[`, slug: "gate-shard", wantIDE: "ly: gate-shard", wantTerminal: "ly: gate-shard"},
-		{name: "AnUnreadableBoardTitlesABeamBySlug", shortname: "ly", board: `{"version":1,"entries":[`, slug: "bm", wantIDE: "ly: bm", wantTerminal: "ly: bm"},
-		{name: "NoBoardStillTitlesThePrime", shortname: "ly", slug: prime, wantIDE: "ly: prime", wantTerminal: "ly: orch"},
+		{name: "ThePrimeIsTheOrchsOfTheRootProject", shortname: "ly", board: board, slug: prime, want: "ORCH [ly:P0] root"},
+		{name: "ABeamIsTheOrchsOfItsProject", shortname: "ly", board: board, slug: "bm", want: "ORCH [ly:P2] bm"},
+		{name: "ATaskInAProject", shortname: "ly", board: board, slug: "gate-shard", want: "T7 [ly:P3] gate-shard"},
+		{name: "ATaskUnderRootNamesTheRootProject", shortname: "ly", board: board, slug: "adopt", want: "T12 [ly:P0] adopt"},
+		{name: "ATaskUnderABeam", shortname: "ly", board: board, slug: "wellbore", want: "T4 [ly:P2] wellbore"},
+		{name: "ATaskInAProjectUnderABeamTakesTheBeam", shortname: "ly", board: board, slug: "deep", want: "T5 [ly:P2] deep"},
+		{name: "ATaskUnderADoneBeamTakesTheBeamsHandle", shortname: "ly", board: board, slug: "after-closed", want: "T9 [ly:P8] after-closed"},
+		{name: "ATaskWhoseProjectIsMissingLeavesOutTheProject", shortname: "ly", board: board, slug: "orphan", want: "T10 [ly] orphan"},
+		{name: "AWorktreeOffTheBoard", shortname: "ly", board: board, slug: "stray", want: "[ly] stray"},
+		{name: "NoShortname", board: board, slug: "gate-shard", want: "T7 [P3] gate-shard"},
+		{name: "NoPrimeNameTitlesThePrimesSlugOffTheBoard", shortname: "ly", board: board, slug: prime, noPrime: true, want: "[ly] main"},
+		{name: "AnUnreadableBoardLeavesOutTheHandles", shortname: "ly", board: `{"version":1,"entries":[`, slug: "gate-shard", want: "[ly] gate-shard"},
+		{name: "AnUnreadableBoardTitlesABeamBySlug", shortname: "ly", board: `{"version":1,"entries":[`, slug: "bm", want: "[ly] bm"},
+		{name: "NoBoardStillTitlesThePrime", shortname: "ly", slug: prime, want: "ORCH [ly:P0] root"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -293,11 +292,8 @@ func TestWindowTitles(t *testing.T) {
 				primeName = ""
 			}
 
-			if got := boardengine.IDEWindowTitle(hub, primeName, tt.slug); got != tt.wantIDE {
-				t.Errorf("IDEWindowTitle(%q) = %q; want %q", tt.slug, got, tt.wantIDE)
-			}
-			if got := boardengine.TerminalWindowTitle(hub, primeName, tt.slug); got != tt.wantTerminal {
-				t.Errorf("TerminalWindowTitle(%q) = %q; want %q", tt.slug, got, tt.wantTerminal)
+			if got := boardengine.ConsoleWindowTitle(hub, primeName, tt.slug); got != tt.want {
+				t.Errorf("ConsoleWindowTitle(%q) = %q; want %q", tt.slug, got, tt.want)
 			}
 		})
 	}
@@ -319,10 +315,10 @@ func TestRecipeWindowTitle(t *testing.T) {
 		slug  string
 		want  string
 	}{
-		{"ATaskInAProject", board, "gate-shard", "ly: P3: T7: pawl"},
-		{"ABeam", board, "bm", "ly: P2: pawl"},
-		{"AWorktreeOffTheBoard", board, "stray", "ly: pawl"},
-		{"AnUnreadableBoardLeavesOutTheHandles", `{"version":1,"entries":[`, "gate-shard", "ly: pawl"},
+		{"ATaskInAProject", board, "gate-shard", "T7 [ly:P3] pawl"},
+		{"ABeamTakesNoLead", board, "bm", "[ly:P2] pawl"},
+		{"AWorktreeOffTheBoard", board, "stray", "[ly] pawl"},
+		{"AnUnreadableBoardLeavesOutTheHandles", `{"version":1,"entries":[`, "gate-shard", "[ly] pawl"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

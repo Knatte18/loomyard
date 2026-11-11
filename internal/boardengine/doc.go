@@ -102,13 +102,13 @@
 // `TitleWithHandle` opens the name of a run's `runs` window with its run's handle, `T4: <name>`.
 // It reads the local board file.
 // It leaves the name alone when the board names no handle for the slug or cannot be read.
-// `IDEWindowTitle` and `TerminalWindowTitle` give a console window's title through `internal/consoletitle`.
-// The title reads `<shortname>: <P#>: <T#>: <slug>`, from the hub shortname and the board at the call.
-// <P#> is the handle of the nearest open beam above the entry, else of its project.
-// The prime's and a beam's own windows carry a label in place of the slug.
-// The label is `prime` or `beam` in VS Code, and `orch` in a terminal.
+// `ConsoleWindowTitle` gives a console window's title, VS Code's or a terminal's, through `internal/consoletitle`.
+// A task's title reads `<T#> [<shortname>:<P#>] <slug>`, from the hub shortname and the board at the call.
+// <P#> is the handle of the nearest open beam above the entry, else of its project, else the root project's `P0`.
+// The prime's and a beam's windows are the orch's and open with `ORCH`.
+// The prime's names the root project, `ORCH [<shortname>:P0] root`, and a beam's names its slug.
 // `RecipeWindowTitle` gives the title of a run's status window.
-// It is the worktree's console title with the recipe in place of the slug.
+// It is the worktree's console title with the recipe in place of the slug, and a beam's has no lead.
 // Every Board and Store method that takes a selector takes a Handle beside a slug string and a numeric id.
 // A handle's letter matches case-insensitively.
 //

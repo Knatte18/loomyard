@@ -251,7 +251,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 		if got := display(statusPane, "#{@lym_overview}"); got != "1" {
 			t.Errorf("status window @lym_overview = %q; want 1; output: %s", got, out)
 		}
-		wantName := consoletitle.Title(hubforge.TestShortname, "", "", shedrun.RecipeTapestry)
+		wantName := consoletitle.Title("", hubforge.TestShortname, "", shedrun.RecipeTapestry)
 		if got := display(statusPane, "#{window_name}"); got != wantName {
 			t.Errorf("status window name = %q; want %q, the hub shortname and the seeded recipe; output: %s", got, wantName, out)
 		}

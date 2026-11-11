@@ -84,12 +84,12 @@ func TestLookFor(t *testing.T) {
 		slug string
 		want vscode.Look
 	}{
-		{"prime", vscode.Look{Title: "tst: prime", ProjectColor: vscode.PrimeColor, WorktreeColor: vscode.PrimeColor}},
-		{"bm", vscode.Look{Title: "tst: P1: beam", ProjectColor: violet, WorktreeColor: violet}},
-		{"bn", vscode.Look{Title: "tst: P2: beam", ProjectColor: purple, WorktreeColor: purple}},
-		{"t1", vscode.Look{Title: "tst: P1: T1: t1", ProjectColor: violet, WorktreeColor: purple}},
-		{"t3", vscode.Look{Title: "tst: t3", ProjectColor: vscode.PrimeColor, WorktreeColor: blue}},
-		{"t5", vscode.Look{Title: "tst: t5", ProjectColor: vscode.PrimeColor, WorktreeColor: brown}},
+		{"prime", vscode.Look{Title: "ORCH [tst:P0] root", ProjectColor: vscode.PrimeColor, WorktreeColor: vscode.PrimeColor}},
+		{"bm", vscode.Look{Title: "ORCH [tst:P1] bm", ProjectColor: violet, WorktreeColor: violet}},
+		{"bn", vscode.Look{Title: "ORCH [tst:P2] bn", ProjectColor: purple, WorktreeColor: purple}},
+		{"t1", vscode.Look{Title: "T1 [tst:P1] t1", ProjectColor: violet, WorktreeColor: purple}},
+		{"t3", vscode.Look{Title: "[tst] t3", ProjectColor: vscode.PrimeColor, WorktreeColor: blue}},
+		{"t5", vscode.Look{Title: "[tst] t5", ProjectColor: vscode.PrimeColor, WorktreeColor: brown}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.slug, func(t *testing.T) {

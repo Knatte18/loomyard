@@ -977,7 +977,7 @@ func dirtyPathsOutsideRunRecords(taskLocation *lymcwd.Location) ([]string, error
 
 // commandDeps returns the Env.Command facts and runner of the Open-Window, Seed-IDE and Open-IDE rows.
 // The commands run in the prime, and {task_dir} is the task worktree's anchor path, located when a command holds it.
-// {title} is the console title of the task's terminal window, `<shortname>: <P#>: <T#>: <slug>`.
+// {title} is the console title of the task's terminal window, `<T#> [<shortname>:<P#>] <slug>`.
 // It is read from the hub and its board when a command holds it.
 // A part they do not give is left out.
 // Each command's output goes to a command-<row>.log under the run's scratch directory.
@@ -993,7 +993,7 @@ func (c *battenCLI) commandDeps(location *lymcwd.Location, slug, executable stri
 			return taskLocation.AnchorPath(), nil
 		},
 		Title: func() string {
-			return boardengine.TerminalWindowTitle(location.HubPath, location.WorktreeName, slug)
+			return boardengine.ConsoleWindowTitle(location.HubPath, location.WorktreeName, slug)
 		},
 		Dir: location.WorktreePath(),
 		LogPath: func(row string) string {

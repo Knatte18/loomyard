@@ -377,9 +377,9 @@ func (c *loomCLI) statusStrandSpec(exe string) reedengine.AddSpec {
 
 // statusWindowTitle returns the name of the status strand's window for a run of recipe in the worktree at location.
 // It reads the hub's shortname and the board at the call.
-// It gives the recipe the worktree's console title parts, such as `ly: P3: T4: tapestry`.
+// It gives the recipe the worktree's console title parts, such as `T4 [ly:P3] tapestry`.
 // A part the hub or board does not give is left out, so the recipe stands alone when none is given.
-// No prime name is passed, so the prime's own label is never used.
+// No prime name is passed, so the prime is never titled as the orch.
 func statusWindowTitle(location *lymcwd.Location, recipe string) string {
 	return boardengine.RecipeWindowTitle(location.HubPath, location.WorktreeName, recipe)
 }

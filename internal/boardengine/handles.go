@@ -162,67 +162,64 @@ func TitleWithHandle(boardDir, slug, name string) string {
 	return name
 }
 
-// IDEWindowTitle returns the title of the VS Code window on the worktree slug.
+// ConsoleWindowTitle returns the title of a console window on the worktree slug.
+// The window is a VS Code window or a desktop terminal window.
 // The worktree is in the hub at hubPath, whose prime is named primeName.
-// The prime's reads `<shortname>: prime` and a beam's `<shortname>: <P#>: beam`.
-// Any other worktree's reads `<shortname>: <P#>: <T#>: <slug>`.
+// A task's reads `<T#> [<shortname>:<P#>] <slug>`.
+// The orch runs in the prime or a beam, so their windows are the orch's and open with `ORCH`.
+// The prime's names the root project, `ORCH [<shortname>:P0] root`.
+// A beam's reads `ORCH [<shortname>:<P#>] <slug>`.
 // The shortname is the hub's recorded one, and the handles are read from the board at the call:
-// <P#> is the handle of the nearest open beam above the entry, else of its project.
+// <P#> is the handle of the nearest open beam above the entry, else of its project, else the root project's `P0`.
 // A part the hub or board does not give is left out.
 // An unreadable board is logged at Warn and titles every worktree but the prime by its slug alone, after the shortname.
-func IDEWindowTitle(hubPath, primeName, slug string) string {
-	return worktreeWindowTitle(hubPath, primeName, slug, slug, consoletitle.PrimeLabel, consoletitle.BeamLabel)
-}
-
-// TerminalWindowTitle returns the title of a desktop terminal window on the reed session of the worktree slug.
-// The worktree is in the hub at hubPath, whose prime is named primeName.
-// The orch runs in the session of the prime or a beam.
-// So the prime's window reads `<shortname>: orch` and a beam's `<shortname>: <P#>: orch`.
-// Any other worktree's reads `<shortname>: <P#>: <T#>: <slug>`.
-// The shortname is the hub's recorded one, and the handles are read from the board at the call:
-// <P#> is the handle of the nearest open beam above the entry, else of its project.
-// A part the hub or board does not give is left out.
-// An unreadable board is logged at Warn and titles every worktree but the prime by its slug alone, after the shortname.
-func TerminalWindowTitle(hubPath, primeName, slug string) string {
-	return worktreeWindowTitle(hubPath, primeName, slug, slug, consoletitle.OrchLabel, consoletitle.OrchLabel)
+func ConsoleWindowTitle(hubPath, primeName, slug string) string {
+	return worktreeWindowTitle(hubPath, primeName, slug, slug, consoletitle.OrchLead)
 }
 
 // RecipeWindowTitle returns the title of the status window a run of recipe opens.
 // The worktree is slug, in the hub at hubPath.
-// The title is its console title with recipe where the slug stands.
-// A task's reads `<shortname>: <P#>: <T#>: <recipe>`, and a beam's reads `<shortname>: <P#>: <recipe>`.
+// The title is its console title with recipe where the slug stands and no lead for a beam.
+// A task's reads `<T#> [<shortname>:<P#>] <recipe>`, and a beam's reads `[<shortname>:<P#>] <recipe>`.
 // The shortname is the hub's recorded one, and the handles are read from the board at the call.
 // A part the hub or board does not give is left out.
 // An unreadable board is logged at Warn and leaves out every handle.
 func RecipeWindowTitle(hubPath, slug, recipe string) string {
-	return worktreeWindowTitle(hubPath, "", slug, recipe, recipe, recipe)
+	return worktreeWindowTitle(hubPath, "", slug, recipe, "")
 }
 
 // worktreeWindowTitle returns the console title of the worktree slug, with name where the slug stands.
-// It names the prime primeLabel and a beam beamLabel after the beam's handle.
-func worktreeWindowTitle(hubPath, primeName, slug, name, primeLabel, beamLabel string) string {
+// It opens the prime's and a beam's title with orchLead, and it names the prime by the root project.
+func worktreeWindowTitle(hubPath, primeName, slug, name, orchLead string) string {
 	shortname, _ := fabricengine.ReadShortname(fabricengine.BoltDir(hubPath))
 	if primeName != "" && slug == primeName {
-		return consoletitle.Title(shortname, "", "", primeLabel)
+		return consoletitle.Title(orchLead, shortname, rootProject.Handle, RootSubject)
 	}
 	tasks, err := ReadTasks(fabricengine.BoardDir(hubPath))
 	if err != nil {
 		logger.Warn("board: could not read the board for a window title's handles; titling without them", "slug", slug, "cause", err)
-		return consoletitle.Title(shortname, "", "", name)
+		return consoletitle.Title("", shortname, "", name)
 	}
 	bySlug := make(map[string]Task, len(tasks))
 	for _, task := range tasks {
 		bySlug[task.Slug] = task
 	}
-	entry := bySlug[slug]
+	entry, onBoard := bySlug[slug]
+	if !onBoard {
+		return consoletitle.Title("", shortname, "", name)
+	}
 	if entry.Kind == KindProject && entry.Beam {
-		return consoletitle.Title(shortname, entry.Handle, "", beamLabel)
+		return consoletitle.Title(orchLead, shortname, entry.Handle, name)
 	}
 	project := ParentBeam(tasks, slug)
 	if project == "" {
 		project = entry.Project
 	}
-	return consoletitle.Title(shortname, bySlug[project].Handle, entry.Handle, name)
+	projectHandle := rootProject.Handle
+	if project != "" {
+		projectHandle = bySlug[project].Handle
+	}
+	return consoletitle.Title(entry.Handle, shortname, projectHandle, name)
 }
 
 // compareHandles orders two handles by letter, then by number.

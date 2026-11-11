@@ -26,7 +26,7 @@ func TestTerminalWindowTitle(t *testing.T) {
 		want string
 	}{
 		{"DirectoryInNoWorktreeTakesItsBaseName", outside, filepath.Base(outside)},
-		{"ThePrimeWorktreeTakesTheOrchTitle", h.PrimeWorktree(), strings.ToLower(hubforge.TestShortname) + ": orch"},
+		{"ThePrimeWorktreeTakesTheOrchTitle", h.PrimeWorktree(), "ORCH [" + strings.ToLower(hubforge.TestShortname) + ":P0] root"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

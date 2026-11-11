@@ -358,7 +358,7 @@ github.com/Knatte18/loomyard/
 ├── internal/lymcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/dotgit/              the one `.git` parser (git dir, common dir, repository test, walk-up to a worktree root), a stdlib-only leaf
 ├── internal/durfmt/              the duration formats the status panes and the timing report share, minute-resolution for growing times and second-resolution for closed spans, a stdlib-only leaf
-├── internal/consoletitle/        the one join of a console window's title, `<hub shortname>: <P#>: <T#>: <name>` with a missing part left out, shared by VS Code and terminal windows, a stdlib-only leaf
+├── internal/consoletitle/        the one join of a console window's title, `<T#> [<hub shortname>:<P#>] <name>` or `ORCH [...]` with a missing part left out, shared by VS Code and terminal windows, a stdlib-only leaf
 ├── internal/machinename/         this machine's name, its hostname cut at the first dot and lowercased, the sole reader of the hostname, a stdlib-only leaf
 ├── internal/sleepjournal/        the machine's suspends and hibernates read from systemd-sleep's journal entries, spawning no process, a stdlib-only leaf
 ├── internal/lymdirs/             the two directory-name tokens (`_lym` durable, `.lym` ephemeral), a zero-import leaf
@@ -582,9 +582,11 @@ User-facing modules each get one `lym <module>` namespace:
   green for the prime and a task under it, and a beam's recorded `beam_color` for the beam and a task under it.
   The activity bar takes the worktree's own colour, which a task picks avoiding its siblings';
   `window.title` is the console title, read from the board when the config is written:
-  `<hub shortname>: <P#>: <T#>: <slug>` for a task, `<hub shortname>: <P#>: beam` for a beam and `<hub shortname>: prime` for the prime.
-  The shortname is lower case, `<P#>` is the handle of the beam above the task or else of its project, and a part that does not exist is left out.
-  A terminal window `lym reed window` opens takes the same title, but the prime's reads `<hub shortname>: orch` and a beam's `<hub shortname>: <P#>: orch`.
+  `<T#> [<hub shortname>:<P#>] <slug>` for a task, and the orch's `ORCH [<hub shortname>:<P#>] <slug>` for a beam.
+  The prime's is the orch's `ORCH [<hub shortname>:P0] root`, naming the root project rather than the worktree.
+  The shortname is lower case, and `<P#>` is the handle of the beam above the task, else of its project, else the root project's `P0`;
+  a part that does not exist is left out.
+  A terminal window `lym reed window` opens takes the same title.
   A beam's own `<RepoName>-<beam>.code-workspace` carries the beam's settings, as the hub's carries the prime's.
   Each has the workspace look:
   `window.title` names the hub shortname, then the repository or beam followed by `workspace`,
@@ -1070,7 +1072,7 @@ User-facing modules each get one `lym <module>` namespace:
   it resolves the recorded parent branch and seeds and commits the status file with the records when it is absent.
   It ensures the worktree's tmux session is up, and it keeps or adds the status strand.
   The status strand runs the hidden `lym loom checklist` verb in an overview window named for the run's recipe.
-  The window is opened with the worktree's console title, the recipe standing where the slug does, as in `ly: P3: T4: tapestry`, on either driver.
+  The window is opened with the worktree's console title, the recipe standing where the slug does, as in `T4 [ly:P3] tapestry`, on either driver.
   In a beam's session the window sits right after the `runs` strand's.
   It then spawns the per-hub watchdog daemon, best-effort.
   It reads this run's seed and, unless a driver is already alive, spawns the driver the recorded choice selects:
@@ -1606,7 +1608,7 @@ User-facing modules each get one `lym <module>` namespace:
   Each runs only when its entry gate's `batten.yaml` setting is on, and a task's `run_settings` may set that setting.
   `Open-Window` (`open_window`, on by default, command `open_window_command`) opens one desktop terminal window.
   The window opens on the task worktree through `lym reed window`.
-  The window is titled with the task's console title, `<hub shortname>: <P#>: <T#>: <slug>`, through the command's `{title}` placeholder.
+  The window is titled with the task's console title, `<T#> [<hub shortname>:<P#>] <slug>`, through the command's `{title}` placeholder.
   A part the hub or board does not give is left out.
   `Seed-IDE` (`seed_ide`, on, command `seed_ide_command`) runs `lym ide seed`.
   `lym ide seed` writes the task worktree's VS Code title, colours and `.vscode/` config and the user's key bindings.

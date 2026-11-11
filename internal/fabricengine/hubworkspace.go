@@ -92,7 +92,7 @@ func beamWorkspaceSettings(l *lymcwd.Location, beam string, primeSettings []byte
 }
 
 // workspaceWindowTitle returns the window title of the workspace file named after name, a repository or a beam:
-// "<shortname>: <name> workspace", or "<name> workspace" when the board at the hub records no shortname.
+// "[<shortname>] <name> workspace", or "<name> workspace" when the board at the hub records no shortname.
 func workspaceWindowTitle(hubPath, name string) string {
 	shortname, _ := ReadShortname(BoltDir(hubPath))
 	return consoletitle.Workspace(shortname, name)

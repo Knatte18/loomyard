@@ -167,7 +167,7 @@
 // It brings up the worktree's tmux session;
 // it ensures the status strand on either driver, and it spawns the per-hub watchdog daemon best-effort.
 // The status strand runs the hidden `lym loom checklist` verb in an overview window named for the run's recipe.
-// The window is opened with the worktree's console title, as in `ly: P3: T4: tapestry`.
+// The window is opened with the worktree's console title, as in `T4 [ly:P3] tapestry`.
 // The recipe stands where the slug does.
 // A part the hub or board does not give is left out.
 // In a beam's session it is placed right after the runs strand's overview window.
