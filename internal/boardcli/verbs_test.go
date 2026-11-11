@@ -84,6 +84,20 @@ func stepPromote(t *testing.T, f *cliFixture) {
 		t.Fatalf("promote --recipe darn: task = %v, want r as a darn task", task)
 	}
 
+	// depends_on sets the promoted task's dependencies in the promoting write.
+	mustUpsert(t, `{"slug":"s","title":"S","labels":["bug"]}`)
+	task = runJSON(t, 0, "promote", `{"slug":"s","depends_on":["q"]}`)["task"].(map[string]any)
+	if deps, _ := task["depends_on"].([]any); task["kind"] != "task" || len(deps) != 1 || deps[0] != "q" {
+		t.Fatalf("promote with depends_on: task = %v, want s as a task depending on q", task)
+	}
+
+	// A null depends_on is an empty list: the promotion is admitted and the task has no dependencies.
+	mustUpsert(t, `{"slug":"u","title":"U","labels":["bug"]}`)
+	task = runJSON(t, 0, "promote", `{"slug":"u","depends_on":null}`)["task"].(map[string]any)
+	if deps, _ := task["depends_on"].([]any); task["kind"] != "task" || len(deps) != 0 {
+		t.Fatalf("promote with null depends_on: task = %v, want u as a task with no dependencies", task)
+	}
+
 	// Demotion goes through upsert.
 	task = runJSON(t, 0, "upsert", `{"slug":"p","kind":"note"}`)["task"].(map[string]any)
 	if task["kind"] != "note" {
@@ -95,12 +109,15 @@ func stepPromote_Refusals(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"p","title":"P","labels":["bug"]}`)
 
 	for name, payload := range map[string]string{
-		"no payload key slug":    `{}`,
-		"tier is an unknown key": `{"slug":"p","tier":1}`,
-		"unknown key":            `{"slug":"p","kind":"task"}`,
-		"slug and id":            `{"slug":"p","id":0}`,
-		"unknown slug":           `{"slug":"missing"}`,
-		"invalid json":           `{`,
+		"no payload key slug":     `{}`,
+		"tier is an unknown key":  `{"slug":"p","tier":1}`,
+		"unknown key":             `{"slug":"p","kind":"task"}`,
+		"slug and id":             `{"slug":"p","id":0}`,
+		"unknown slug":            `{"slug":"missing"}`,
+		"depends_on not an array": `{"slug":"p","depends_on":"q"}`,
+		"unknown dependency":      `{"slug":"p","depends_on":["missing"]}`,
+		"depends_on not strings":  `{"slug":"p","depends_on":[1]}`,
+		"invalid json":            `{`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			result := runJSON(t, 1, "promote", payload)

@@ -205,6 +205,8 @@ func newPromotionBoard(t *testing.T) (*boardengine.Board, string) {
 // TestDiscussedPromotion asserts that a Sketch becomes a task only through a promotion with recipe raddle.
 // So does a discussed note that a note write stripped of its label.
 // A promotion with no recipe gives the entry the raddle recipe and releases it in the same write.
+// The same write carries the depends_on the promotion names.
+// An entry already a task takes no depends_on from a promotion.
 // A note with no sketch label, whose record file is missing or that was never discussed, promotes as any note does.
 func TestDiscussedPromotion(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -236,14 +238,23 @@ func TestDiscussedPromotion(t *testing.T) {
 			t.Fatalf("remove record file: %v", err)
 		}
 	}
+	sketchWithDependency := func(t *testing.T, b *boardengine.Board, boardPath string) {
+		t.Helper()
+		mustUpsertEntry(t, b, map[string]any{"slug": "dep", "title": "Dep", "kind": "task", "labels": bugLabels})
+		sketch(t, b, boardPath)
+	}
 	promote := func(selector any, recipe string) func(b *boardengine.Board) error {
 		return func(b *boardengine.Board) error {
-			_, err := b.PromoteTo(selector, recipe)
+			_, _, err := b.PromoteTo(selector, recipe, nil)
 			return err
 		}
 	}
 	promoteTo := func(recipe string) func(b *boardengine.Board) error {
 		return promote("idea", recipe)
+	}
+	promoteWaitingOnDep := func(b *boardengine.Board) error {
+		_, _, err := b.PromoteTo("idea", "", []string{"dep"})
+		return err
 	}
 	wayForward := `lym board promote '{"slug":"idea"}'`
 
@@ -259,7 +270,48 @@ func TestDiscussedPromotion(t *testing.T) {
 		wantSketch    bool
 		wantDiscussed bool
 		wantRecord    bool
+		wantDependsOn []string
 	}{
+		{
+			name: "PromoteOfASketchReleasesItWithItsDependsOn", setup: sketchWithDependency, act: promoteWaitingOnDep,
+			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
+			wantDependsOn: []string{"dep"},
+		},
+		{
+			name: "DependsOnOfAnEntryAlreadyATaskIsRefused", setup: sketchWithDependency,
+			act: func(b *boardengine.Board) error {
+				if err := promoteTo("")(b); err != nil {
+					return err
+				}
+				return promoteWaitingOnDep(b)
+			},
+			wantErr:  []string{`"idea" is a task already`, "lym board set-deps"},
+			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
+		},
+		{
+			name: "DependsOnEqualToATasksOwnIsANoOp", setup: sketchWithDependency,
+			act: func(b *boardengine.Board) error {
+				if err := promoteWaitingOnDep(b); err != nil {
+					return err
+				}
+				return promoteWaitingOnDep(b)
+			},
+			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
+			wantDependsOn: []string{"dep"},
+		},
+		{
+			name: "EmptyDependsOnOnATaskWithDependenciesIsRefused", setup: sketchWithDependency,
+			act: func(b *boardengine.Board) error {
+				if err := promoteWaitingOnDep(b); err != nil {
+					return err
+				}
+				_, _, err := b.PromoteTo("idea", "", []string{})
+				return err
+			},
+			wantErr:  []string{`"idea" is a task already`, "lym board set-deps"},
+			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
+			wantDependsOn: []string{"dep"},
+		},
 		{
 			name: "RaddlePromoteOfASketch", setup: sketch, act: promoteTo(shedrun.RecipeRaddle),
 			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
@@ -349,6 +401,9 @@ func TestDiscussedPromotion(t *testing.T) {
 			}
 			if sketched := slices.Contains(got.Labels, boardengine.SketchType); sketched != tt.wantSketch {
 				t.Errorf("entry labels = %v; want the sketch label = %t", got.Labels, tt.wantSketch)
+			}
+			if !slices.Equal(got.DependsOn, tt.wantDependsOn) {
+				t.Errorf("entry depends_on = %v; want %v", got.DependsOn, tt.wantDependsOn)
 			}
 			if got.Discussed != tt.wantDiscussed {
 				t.Errorf("entry discussed = %t; want %t", got.Discussed, tt.wantDiscussed)

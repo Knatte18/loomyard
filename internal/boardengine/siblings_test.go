@@ -49,6 +49,13 @@ func TestWriteSiblings(t *testing.T) {
 		}
 	}
 
+	promote := func(selector string, deps ...string) func(b *boardengine.Board) ([]boardengine.Sibling, error) {
+		return func(b *boardengine.Board) ([]boardengine.Sibling, error) {
+			_, siblings, err := b.PromoteTo(selector, "", deps)
+			return siblings, err
+		}
+	}
+
 	rows := []struct {
 		name string
 		seed []map[string]any
@@ -74,6 +81,11 @@ func TestWriteSiblings(t *testing.T) {
 			name: "merge upserting a dependency an open sibling waits on",
 			seed: []map[string]any{siblingEntry("D", nil, nil), siblingEntry("X", board, nil), siblingEntry("Y", board, waitsOnD)},
 			act:  merge(nil, map[string]any{"slug": "X", "depends_on": []string{"D"}}, nil), want: []boardengine.Sibling{pair},
+		},
+		{
+			name: "promote of a note giving a dependency an open sibling waits on",
+			seed: []map[string]any{siblingEntry("D", nil, nil), siblingEntry("X", board, map[string]any{"kind": "note"}), siblingEntry("Y", board, waitsOnD)},
+			act:  promote("X", "D"), want: []boardengine.Sibling{pair}, stored: map[string][]string{"X": {"D"}},
 		},
 		{
 			name: "two siblings come in board order",

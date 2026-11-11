@@ -119,6 +119,11 @@ lym board promote '{"slug":"my-note"}'
 Promoting a Sketch, by slug or by its handle such as `lym board promote S3`, makes it a task with recipe `raddle`.
 That task splits the Sketch's decision record into tasks or a project.
 A Sketch takes no other recipe.
+Give a Sketch's dependencies in the promotion, because it releases the task and the parent's dobby can start it before a later `set-deps` lands:
+
+```
+lym board promote '{"slug":"my-sketch","depends_on":["other-task"]}'
+```
 
 Rename an entry, keeping every other field and rewriting the old slug in every other entry's `depends_on`:
 

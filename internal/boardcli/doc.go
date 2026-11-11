@@ -114,11 +114,14 @@
 // Its success envelope's `notice` then names the released members.
 // A null status on a project with a run status or done is refused, naming each draft member's release.
 //
-// `set-deps`, `upsert`, `upsert-batch` and `merge` add the sibling warning to the success envelope's `notice`.
+// `set-deps`, `upsert`, `upsert-batch`, `merge` and `promote` add the sibling warning to the success envelope's `notice`.
 // It is joined after a run-settings notice, one line per pair, a batch pair once;
-// `set-deps` prints `notice` only then.
-// `promote` and `intake import` write no `depends_on` and stay unchanged.
+// `set-deps` and `promote` print `notice` only then.
+// `intake import` writes no `depends_on` and stays unchanged.
 // `promote` takes `--recipe <name>`, which sets the promoted task's recipe in the same write.
+// Its optional `depends_on` sets the promoted task's dependencies in that write too,
+// so a released Sketch never reaches its parent's dobby without them;
+// on an entry already a task, a `depends_on` other than its own is refused, naming `set-deps`.
 // A Sketch, or any discussed note whose decision record is stored, becomes a task only with recipe raddle.
 // That recipe keeps the record and releases the task:
 // `promote` with no `--recipe` gives it raddle, and `--recipe raddle` is accepted;

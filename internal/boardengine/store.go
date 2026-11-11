@@ -780,17 +780,20 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 // A project is refused, since only a task is claimable bar a beam's landing.
 // The promoted entry must pass the store's validation, so an entry without a type label is refused.
 func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
-	return s.promoteTo(idOrSlug, "", nil)
+	return s.promoteTo(idOrSlug, "", nil, nil)
 }
 
 // promoteTo makes the entry identified by idOrSlug a task and clears its priority.
 // When recipe is not empty, it is set in the same write.
+// A non-nil dependsOn replaces the task's depends_on in the same write,
+// so a write that also releases the task never lets a run start ahead of them.
+// An entry that is already a task takes no write, so a non-nil dependsOn that differs from its depends_on is refused.
 // A discussed note takes recipe raddle when recipe is empty and its record is stored, or it carries the sketch label.
 // Raddle is the one recipe such a note may take.
 // With recipe raddle, a note whose record is stored keeps its record and flag,
 // and it gets the sketch label back when a note write dropped it.
 // A nil recordStored reports no record stored, so only the label then gives recipe raddle.
-func (s *Store) promoteTo(idOrSlug any, recipe string, recordStored func(slug string) bool) (task Task, changed bool, err error) {
+func (s *Store) promoteTo(idOrSlug any, recipe string, dependsOn []string, recordStored func(slug string) bool) (task Task, changed bool, err error) {
 	current, ok := s.GetTask(idOrSlug)
 	if !ok {
 		return Task{}, false, fmt.Errorf("task not found: %v", idOrSlug)
@@ -799,12 +802,18 @@ func (s *Store) promoteTo(idOrSlug any, recipe string, recordStored func(slug st
 		return Task{}, false, fmt.Errorf("entry %q is a project, and a project is never made a task: make it a beam with `lym beam create %s`", current.Slug, current.Slug)
 	}
 	if current.Kind == KindTask {
+		if dependsOn != nil && !slices.Equal(current.DependsOn, dependsOn) {
+			return Task{}, false, fmt.Errorf("entry %q is a task already, so promote writes nothing and sets no depends_on: change it with `lym board set-deps`", current.Slug)
+		}
 		return current, false, nil
 	}
 
 	incoming := current
 	incoming.Kind = KindTask
 	incoming.Priority = ""
+	if dependsOn != nil {
+		incoming.DependsOn = dependsOn
+	}
 	recordHeld := current.Discussed && recordStored != nil && recordStored(current.Slug)
 	if recipe == "" && current.Discussed && (recordHeld || slices.Contains(current.Labels, SketchType)) {
 		recipe = shedrun.RecipeRaddle

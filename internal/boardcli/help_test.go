@@ -106,7 +106,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 		{
 			name:           "promote",
 			args:           []string{"promote"},
-			mustContain:    []string{"slug", "id", "note", "task", "kind", "Example"},
+			mustContain:    []string{"slug", "id", "note", "task", "kind", "depends_on", "notice", "Example"},
 			mustNotContain: []string{"tier"},
 		},
 		{

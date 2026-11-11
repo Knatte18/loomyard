@@ -204,6 +204,14 @@ func stepSiblingWarning(t *testing.T, f *cliFixture) {
 		seed(t)
 		wantSibling(t, runJSON(t, 0, "merge", `{"upsert":{"slug":"X","depends_on":["D"]}}`))
 	})
+	t.Run("promote names the sibling", func(t *testing.T) {
+		seed(t, `{"slug":"N","title":"N","kind":"note","labels":["bug","board"]}`)
+		notice, _ := runJSON(t, 0, "promote", `{"slug":"N","depends_on":["D"]}`)["notice"].(string)
+		want := `"N" now waits on D, which "Y" also waits on, and the two share module labels board: chain one after the other with "lym board set-deps", or leave both if they do not overlap`
+		if notice != want {
+			t.Errorf("notice = %q; want %q", notice, want)
+		}
+	})
 	t.Run("two siblings are two lines", func(t *testing.T) {
 		seed(t, `{"slug":"Y2","title":"Y2","kind":"task","labels":["bug","board"],"depends_on":["D"]}`)
 		notice, _ := runJSON(t, 0, "set-deps", `{"slug":"X","depends_on":["D"]}`)["notice"].(string)

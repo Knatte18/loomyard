@@ -164,40 +164,53 @@ available subcommands without requiring a git repo.
 
 	var promoteRecipe string
 	promoteCmd := &cobra.Command{
-		Use:         "promote {slug|id|handle}",
+		Use:         "promote {slug|id|handle, depends_on?}",
 		Short:       "turn a note into a task once it is ready to be claimed",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Turn a note into a task. A task is returned unchanged, and nothing is written.
 The promoted entry loses its priority, which only a note carries, and its note handle: it takes
 the lowest free T handle.
---recipe <name> sets the task's recipe in the same write.
+--recipe <name> sets the task's recipe in the same write, and "depends_on" sets its dependencies.
 A Sketch, or any discussed note whose decision record is stored, becomes a task only with recipe
 raddle, which keeps its record and releases the task so its raddle run starts: a promote with no
 --recipe gives it raddle, --recipe raddle is accepted, and any other recipe is refused.
+Give such a task's dependencies in "depends_on" here: the parent's dobby can start the released
+task before a later "lym board set-deps" lands.
+On an entry that is already a task, a "depends_on" other than its own is refused; change it with
+"lym board set-deps".
+The "notice" names siblings sharing a new depends_on and a label.
 Demotion goes through "lym board upsert" with "kind":"note".
 
-Fields (one of):
-  "slug"   string  — entry slug
-  "id"     integer — entry id
-  "handle" string  — entry handle, such as B4
+Fields:
+  "slug"       string  — entry slug (one of slug, id or handle)
+  "id"         integer — entry id (one of slug, id or handle)
+  "handle"     string  — entry handle, such as B4 (one of slug, id or handle)
+  "depends_on" array   — dependency slugs the promoted task waits on (optional)
 
 Examples:
   lym board promote '{"slug":"my-note"}'
   lym board promote B4
-  lym board promote S3` + slugLimitNote(),
+  lym board promote S3
+  lym board promote '{"handle":"S3","depends_on":["other-task"]}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			lookup, _, err := resolveLookup([]byte(args[0]), lookupPayload)
+			lookup, m, err := resolveLookup([]byte(args[0]), promotePayload)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
-			task, err := b.PromoteTo(lookup, promoteRecipe)
+			var dependsOn []string
+			if value, given := m["depends_on"]; given {
+				if dependsOn, err = dependsOnList(value); err != nil {
+					return outputError(out, err.Error())
+				}
+			}
+			task, siblings, err := b.PromoteTo(lookup, promoteRecipe, dependsOn)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
-			return outputSuccessWithTask(out, task, "")
+			return outputSuccessWithTask(out, task, siblingNotice(siblings))
 		}),
 	}
 	promoteCmd.Flags().StringVar(&promoteRecipe, "recipe", "", "set the promoted task's recipe in the same write; a Sketch takes raddle when none is given, and no other")
@@ -498,6 +511,29 @@ var setStatusPayload = payloadKeys{required: []string{"status"}, exclusive: [][]
 
 // setDepsPayload is the payload of set-deps.
 var setDepsPayload = payloadKeys{required: []string{"depends_on"}, exclusive: [][]string{entrySelector}}
+
+// promotePayload is the payload of promote.
+var promotePayload = payloadKeys{optional: []string{"depends_on"}, exclusive: [][]string{entrySelector}}
+
+// dependsOnList reads a payload's depends_on value as a list of slugs; a null value reads as an empty list.
+func dependsOnList(value any) ([]string, error) {
+	if value == nil {
+		return []string{}, nil
+	}
+	arr, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("depends_on must be an array")
+	}
+	dependsOn := make([]string, 0, len(arr))
+	for _, v := range arr {
+		s, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("depends_on elements must be strings")
+		}
+		dependsOn = append(dependsOn, s)
+	}
+	return dependsOn, nil
+}
 
 // upsertPayload is the payload of upsert, and of the task objects that upsert-batch and merge nest.
 // The store enforces it on every upsert path.
@@ -1047,23 +1083,9 @@ Example:
 				return outputError(out, err.Error())
 			}
 
-			var dependsOn []string
-			if depsVal := m["depends_on"]; depsVal != nil {
-				arr, ok := depsVal.([]any)
-				if !ok {
-					return outputError(out, "depends_on must be an array")
-				}
-				dependsOn = make([]string, 0, len(arr))
-				for _, v := range arr {
-					s, ok := v.(string)
-					if !ok {
-						return outputError(out, "depends_on elements must be strings")
-					}
-					dependsOn = append(dependsOn, s)
-				}
-			} else {
-				// Explicit null — treat as empty (clear the list).
-				dependsOn = []string{}
+			dependsOn, err := dependsOnList(m["depends_on"])
+			if err != nil {
+				return outputError(out, err.Error())
 			}
 
 			siblings, err := board().SetDeps(selector, dependsOn)

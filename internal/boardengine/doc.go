@@ -485,6 +485,8 @@
 // An empty string written to a task whose loaded status differs is `draft`, not a release.
 // A write may release the tasks it makes: the draft rule skips the slugs it is told.
 // That is the promoted task of a promotion with recipe `raddle`.
+// Such a promotion takes the task's depends_on in the same write.
+// A dependency set by a later write can land after the parent's dobby has started the run.
 // The owner write and the replay of a local commit run no draft rule:
 // the first never makes a task, and the second copies entries a critical-section write already normalised.
 //
@@ -568,7 +570,8 @@
 // Board.PromoteTo with recipe `raddle`, or with no recipe, which gives a Sketch `raddle`, makes the task in one write.
 // The write keeps the decision record, the discussed flag and the sketch label.
 // It restores the label when a note write dropped it, and it releases the task, so its parent's dobby starts the run.
-// Board.Promote is PromoteTo with no recipe.
+// PromoteTo's depends_on is set in that write, so the dobby never sees the task released without it.
+// Board.Promote is PromoteTo with no recipe and no depends_on.
 // Two write rules close every other way.
 // The first rule covers a discussed note whose record file exists.
 // A write that makes it a task must carry recipe `raddle`, the discussed flag and the sketch label,

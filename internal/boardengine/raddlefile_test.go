@@ -53,7 +53,7 @@ func startRaddleRun(t *testing.T, b *Board, slug, project string) Task {
 	if err := b.StoreDecisionRecord(slug, []byte("sketch record\n")); err != nil {
 		t.Fatalf("StoreDecisionRecord() error = %v; want nil", err)
 	}
-	if _, err := b.PromoteTo(slug, shedrun.RecipeRaddle); err != nil {
+	if _, _, err := b.PromoteTo(slug, shedrun.RecipeRaddle, nil); err != nil {
 		t.Fatalf("PromoteTo() error = %v; want nil", err)
 	}
 	return entryForRaddle(t, b, slug)

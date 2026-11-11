@@ -424,20 +424,25 @@ func (b *Board) ListTasksFull() ([]Task, error) {
 // Promote makes the entry identified by idOrSlug a task under the write lock.
 // An entry that is already a task is returned unchanged without a write.
 func (b *Board) Promote(idOrSlug any) (Task, error) {
-	return b.PromoteTo(idOrSlug, "")
+	task, _, err := b.PromoteTo(idOrSlug, "", nil)
+	return task, err
 }
 
 // PromoteTo makes the entry identified by idOrSlug a task under the write lock.
+// It returns the siblings the write created.
 // When recipe is not empty, the same write sets the task's recipe to recipe.
-// An entry that is already a task is returned unchanged without a write.
+// A non-nil dependsOn replaces the task's depends_on in the same write,
+// so a task the write releases is never started ahead of its dependencies.
+// An entry that is already a task is returned unchanged without a write;
+// a non-nil dependsOn that differs from its depends_on is refused.
 // When recipe is empty, a discussed note takes the raddle recipe if its decision record is stored.
 // The same holds for a note that carries the sketch label.
 // Promoting a note whose record is stored with the raddle recipe keeps the record and the flag.
 // It restores the sketch label that a note write dropped, and it releases the task in the same write.
 // A Sketch becomes a task only through that promotion; a promotion of it with any other recipe is refused.
-func (b *Board) PromoteTo(idOrSlug any, recipe string) (Task, error) {
-	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		task, changed, err := store.promoteTo(idOrSlug, recipe, b.recordStored)
+func (b *Board) PromoteTo(idOrSlug any, recipe string, dependsOn []string) (Task, []Sibling, error) {
+	result, siblings, err := b.writeReportingSiblings(func(store *Store) (any, error) {
+		task, changed, err := store.promoteTo(idOrSlug, recipe, dependsOn, b.recordStored)
 		if err != nil {
 			return nil, err
 		}
@@ -445,11 +450,11 @@ func (b *Board) PromoteTo(idOrSlug any, recipe string) (Task, error) {
 			return noWrite{result: task}, nil
 		}
 		return promoted{task: task}, nil
-	}, nil)
+	})
 	if err != nil {
-		return Task{}, err
+		return Task{}, nil, err
 	}
-	return result.(Task), nil
+	return result.(Task), siblings, nil
 }
 
 // Prune removes every done entry under the write lock, except one still carrying notify_on_land.
