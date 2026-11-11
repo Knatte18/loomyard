@@ -462,8 +462,8 @@ func TestRedundancyStep(t *testing.T) {
 		})
 
 		builds := filepath.Join(t.TempDir(), "lym-builds")
+		// The default 150 millisecond second unit gives each test 3 seconds, so a loaded machine does not time out TestBetaNewOne.
 		step, _ := stepAt(t, pairLocation, append(slices.Clone(environ), testMapLymBuildsEnv+"="+builds, testMapFailLymBuildEnv+"=1"), time.Minute)
-		step.secondUnit = 50 * time.Millisecond
 		step.run(false, true)
 		report := readReport(t, pairLocation)
 

@@ -193,7 +193,7 @@ func capDetail(lines []string) string {
 
 // ArmStop carries what ReportLoopArmError needs to stop a run whose --until-stop invocation failed to arm:
 // the run's id, the paths of its status file and of the three locks that say who owns it, and the loop's pid and envelope files.
-// LoopID is the id the detached loop process was started with, and is empty for the waiter's own invocation.
+// LoopID is the id the loop's keeper or the loop process was started with, and is empty for the waiter's own invocation.
 type ArmStop struct {
 	RunID          string
 	StatusPath     string

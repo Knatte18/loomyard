@@ -111,7 +111,7 @@ func runUntilStop(ctx context.Context, spec *Spec, argv []string, out io.Writer)
 			if spawn == nil {
 				spawn = func(spawnArgv []string) (<-chan struct{}, error) { return spawnLoop(spec, loopID, spawnArgv) }
 			}
-			spawned, err := spawn(append(slices.Clone(argv), "--"+UntilStopFlag, "--"+LoopDetachedFlag+"="+loopID))
+			spawned, err := spawn(append(slices.Clone(argv), "--"+UntilStopFlag, "--"+LoopKeeperFlag+"="+loopID))
 			if err != nil {
 				return output.Err(out, fmt.Sprintf("%v; way forward: re-run %s", err, rerun))
 			}
@@ -136,10 +136,12 @@ func runUntilStop(ctx context.Context, spec *Spec, argv []string, out io.Writer)
 	}
 }
 
-// spawnLoop starts the detached loop loopID: spec.Loop.Executable with argv, its output appended to the loop log, and configured to outlive the waiter.
-// A Windows start refused for breakaway is retried without it, so such a loop lives only as long as the shell's job.
-// The loop log gets a mark that the loop is starting before its process starts, and a mark naming its pid and exit status once the spawn reaps it.
-// The channel it returns is closed when the loop process exits, after the exit mark is written.
+// spawnLoop starts the keeper of loop loopID: spec.Loop.Executable with argv.
+// The keeper's output is appended to the loop log, and it is configured to outlive the waiter.
+// A Windows start refused for breakaway is retried without it, so such a keeper lives only as long as the shell's job.
+// The loop log gets a mark that the loop is starting before the keeper starts.
+// It gets a second mark naming the keeper's pid and exit status once the spawn reaps it.
+// The channel it returns is closed when the keeper exits, after that mark is written.
 func spawnLoop(spec *Spec, loopID string, argv []string) (<-chan struct{}, error) {
 	loop := spec.Loop
 	if err := os.MkdirAll(filepath.Dir(loop.LogPath), 0o755); err != nil {
@@ -169,16 +171,16 @@ func spawnLoop(spec *Spec, loopID string, argv []string) (<-chan struct{}, error
 		return nil, fmt.Errorf("shedverbs: start the loop %q: %w", loop.Executable, err)
 	}
 	pid := cmd.Process.Pid
-	logger.Info("shed: loop spawned", "pid", pid, "executable", loop.Executable, "log", loop.LogPath)
+	logger.Info("shed: loop keeper spawned", "pid", pid, "executable", loop.Executable, "log", loop.LogPath)
 	exited := make(chan struct{})
 	go func() {
 		waitErr := cmd.Wait()
-		logger.Info("shed: spawned loop exited", "pid", pid, "error", errorText(waitErr))
+		logger.Info("shed: spawned loop keeper exited", "pid", pid, "error", errorText(waitErr))
 		status := "exit status 0"
 		if waitErr != nil {
 			status = waitErr.Error()
 		}
-		appendLoopLogMark(loop.LogPath, loopLogMark(loopID, fmt.Sprintf("process %d exited: %s", pid, status)))
+		appendLoopLogMark(loop.LogPath, loopLogMark(loopID, fmt.Sprintf("keeper process %d exited: %s", pid, status)))
 		close(exited)
 	}()
 	return exited, nil
@@ -195,11 +197,36 @@ func loopLogMark(loopID, text string) string {
 	return loopLogMarkPrefix + loopID + " " + text + "\n"
 }
 
-// loopExitEvidence returns the clauses a gone loop's stop detail carries about how loop loopID ended, read from the loop log at logPath after that loop's last starting mark.
-// The first clause lists the marks lym wrote about the loop's process, its exit status and a terminating signal it received, or says none was recorded;
-// a second clause carries an excerpt of the loop's other lines, a Go crash's first lines or the last lines, when there are any.
+// loopExitEvidence returns the clauses a gone loop's stop detail carries about how loop loopID ended.
+// It reads the loop log at logPath after that loop's last starting mark.
+// The first clause lists the marks lym wrote about the loop's processes, or says none was recorded.
+// Such marks include a terminating signal the loop received and the exit statuses of the loop and its keeper.
+// When the loop has other lines, a second clause carries an excerpt of them.
+// The excerpt is a Go crash's first lines, or otherwise the last lines.
 // A log with no starting mark for the loop yields the first clause alone, since its lines cannot be told from other loops' lines.
 func loopExitEvidence(logPath, loopID string) string {
+	marks, output := loopLogLinesOf(logPath, loopID)
+	evidence := "; loop exit: not recorded"
+	if len(marks) > 0 {
+		evidence = "; loop exit: " + strings.Join(marks, " | ")
+	}
+	if excerpt := outputExcerpt(output); excerpt != "" {
+		evidence += "; loop log: " + excerpt
+	}
+	return evidence
+}
+
+// loopProcessExitRecorded reports whether the loop log at logPath holds the mark of the exit of loop loopID's process.
+func loopProcessExitRecorded(logPath, loopID string) bool {
+	marks, _ := loopLogLinesOf(logPath, loopID)
+	prefix := loopLogMarkPrefix + loopID + " process "
+	return slices.ContainsFunc(marks, func(mark string) bool { return strings.HasPrefix(mark, prefix) })
+}
+
+// loopLogLinesOf splits the lines of the loop log at logPath after loop loopID's last starting mark.
+// It returns the marks lym wrote about that loop and the loop's other output lines.
+// A log with no starting mark for the loop yields neither.
+func loopLogLinesOf(logPath, loopID string) (marks, output []string) {
 	data, _ := os.ReadFile(logPath)
 	lines := strings.Split(string(data), "\n")
 	startLine := strings.TrimSuffix(loopLogMark(loopID, loopStartingMark), "\n")
@@ -210,7 +237,6 @@ func loopExitEvidence(logPath, loopID string) string {
 		}
 	}
 	ownPrefix := loopLogMarkPrefix + loopID + " "
-	var marks, output []string
 	if start >= 0 {
 		for _, line := range lines[start+1:] {
 			switch {
@@ -221,14 +247,7 @@ func loopExitEvidence(logPath, loopID string) string {
 			}
 		}
 	}
-	evidence := "; loop exit: not recorded"
-	if len(marks) > 0 {
-		evidence = "; loop exit: " + strings.Join(marks, " | ")
-	}
-	if excerpt := outputExcerpt(output); excerpt != "" {
-		evidence += "; loop log: " + excerpt
-	}
-	return evidence
+	return marks, output
 }
 
 // loopSnapshot is what one look at the loop's files and lock found.
@@ -486,11 +505,39 @@ func (r LoopPIDRecord) inFlightAt(status shedengine.Status) bool {
 	return r.hasChild() && r.CurrentProducer == status.CurrentProducer && r.HistoryLength == len(status.History)
 }
 
+const (
+	// keeperMarkPoll is how long a dead-loop stop waits between two looks for the keeper's exit mark.
+	keeperMarkPoll = 100 * time.Millisecond //lym:one-shot bounded re-read of at most keeperMarkLooks
+	// keeperMarkLooks is how many times a dead-loop stop looks for the keeper's exit mark.
+	// After the last look it reports the loop's exit as not recorded.
+	keeperMarkLooks = 10
+)
+
+// awaitLoopProcessExitMark waits a bounded time for the loop log to hold the mark of loop loopID's process exit.
+// The keeper writes that mark.
+// The keeper writes it after the loop has released its lock.
+// A waiter that sees the free lock can therefore look before the mark lands.
+// It returns at once when the mark is there, and when ctx ends.
+func awaitLoopProcessExitMark(ctx context.Context, loop LoopSpec, loopID string) {
+	for range keeperMarkLooks {
+		if loopProcessExitRecorded(loop.LogPath, loopID) {
+			return
+		}
+		if err := pauseWait(ctx, loop, keeperMarkPoll, nil, nil); err != nil {
+			return
+		}
+	}
+}
+
 // deadLoopStop reports a loop that is gone without an envelope, or the teardown's mark, as an interrupted stop with cause loop-exited.
 // It first kills what is left of the loop's step tree, then writes the run failed while the status file reads running.
-// The stop's detail names the step the pid file records in flight, with its trace id, only while the status file still reads that step;
-// then how the loop ended, from the loop log, and, only while the status file still reads that step, an excerpt of the recorded child's captured stderr;
+// The stop's detail names the step the pid file records in flight, with its trace id.
+// It also names the status file's step when the status file has moved to another producer since that child started.
+// Then come how the loop ended, from the loop log after a bounded wait for the keeper's exit mark,
+// and an excerpt of the in-flight child's captured stderr;
 // and last whether its step tree was still running, which a loop killed from outside leaves behind.
+// A child moves the status file itself when it skips gated rows.
+// A moved status file therefore still names the child that was in flight.
 // For a dead loop it then writes the stop as the loop's envelope under its recorded id, delivers it and retires the pid file.
 // The teardown's mark writes no envelope and stays, so every invocation until the pair is removed stops the same way and spawns nothing.
 // Another holder of the run lock makes the stop busy: nothing is written and the pid file stays for the next invocation to retry.
@@ -501,13 +548,17 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 		detail = "the pair's session end stopped the loop; no loop runs again until the pair is removed"
 	} else {
 		status, _ := readStatusFile(spec)
-		inFlight := rec.inFlightAt(status)
+		inFlight := rec.hasChild()
 		if inFlight {
 			detail += fmt.Sprintf("; step %s was in flight", rec.CurrentProducer)
 			if rec.TraceID != "" {
 				detail += " under trace " + rec.TraceID
 			}
+			if status.CurrentProducer != "" && status.CurrentProducer != rec.CurrentProducer {
+				detail += ", and the status file now reads " + status.CurrentProducer
+			}
 		}
+		awaitLoopProcessExitMark(ctx, spec.Loop, rec.LoopID)
 		detail += loopExitEvidence(spec.Loop.LogPath, rec.LoopID)
 		if inFlight {
 			if _, stderrPath := recordedStopFiles(spec.Loop, rec); stderrPath != "" {
@@ -537,6 +588,7 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 
 // loopExitedEarlyStop reports a loop the waiter spawned that exited before it recorded itself, as an interrupted stop with cause loop-exited.
 // Its detail names the loop log and how the loop ended, from the loop log.
+// The waiter saw its own keeper exit, so the keeper's exit mark is already written and no wait for it is needed.
 // It writes the run failed while the status file reads running, writes no loop envelope and leaves no pid file to retire.
 func loopExitedEarlyStop(ctx context.Context, spec *Spec, loopID string, out io.Writer) int {
 	detail := fmt.Sprintf("loop %s exited before it recorded itself; its output is in %s", loopID, spec.Loop.LogPath) + loopExitEvidence(spec.Loop.LogPath, loopID)
@@ -547,8 +599,11 @@ func loopExitedEarlyStop(ctx context.Context, spec *Spec, loopID string, out io.
 
 // loopExitStop writes failed over a run a gone loop left reading running and builds the interrupted envelope of that stop.
 // A status file in any other state is left as it is and the stop is reported all the same.
-// The interrupt hook gets loop-exited and detail as the cause, and the first trace file of the step rec records in flight, or the loop log when there is none or the status file has moved past that step.
-// loop.stderr_path names the recorded child's captured stderr, and loop.trace_copy a copy of that child's trace files when it has any, both only while the status file still reads that child's step.
+// The interrupt hook gets loop-exited and detail as the cause.
+// It also gets the first trace file of the child rec records in flight.
+// It gets the loop log when rec records no child in flight or that child has no trace file.
+// loop.stderr_path names that child's captured stderr, and loop.trace_copy a copy of its trace files when it has any.
+// With no child in flight both are empty.
 // It reports busy, with the busy stop as its envelope, when another holder has the run lock; nothing is written then.
 func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail string) (envelope []byte, busy bool) {
 	before, _ := readStatusFile(spec)
@@ -578,7 +633,7 @@ func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail str
 	if spec.Hooks.InterruptPolicyFor != nil {
 		obj.InterruptPolicy = spec.Hooks.InterruptPolicyFor(after.CurrentProducer)
 	}
-	if rec.inFlightAt(after) {
+	if rec.hasChild() {
 		traceCopy, stderrPath := recordedStopFiles(spec.Loop, rec)
 		obj.StderrPath = stderrPath
 		if traceCopy != "" && copyTraceFiles(traceFilesOf(spec.Loop, rec.TraceID), traceCopy) {
@@ -598,7 +653,7 @@ func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail str
 	friction := ""
 	if rec.LoopID != TeardownLoopID && spec.Hooks.AfterInterrupt != nil {
 		traceFile := spec.Loop.LogPath
-		if rec.TraceID != "" && rec.inFlightAt(before) {
+		if rec.TraceID != "" && rec.hasChild() {
 			if files := traceFilesOf(spec.Loop, rec.TraceID); len(files) > 0 {
 				traceFile = files[0]
 			}

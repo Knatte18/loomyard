@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
@@ -306,6 +307,17 @@ func RunUntilStop(ctx context.Context, spec *Spec, argv []string, attempt, by st
 	return runUntilStop(ctx, spec, argv, out)
 }
 
+// DetachedLoopID returns the loop id that cmd's hidden flags carry in the loop's keeper or in the loop process itself.
+// It returns "" in any other invocation.
+// An arming refusal in either process reports with it, so the refusal reaches the waiter as the loop's envelope.
+func DetachedLoopID(cmd *cobra.Command) string {
+	if loopID, _ := cmd.Flags().GetString(LoopKeeperFlag); loopID != "" {
+		return loopID
+	}
+	loopID, _ := cmd.Flags().GetString(LoopDetachedFlag)
+	return loopID
+}
+
 // stepCmd builds the generic `step` subcommand: the single-producer primitive an external
 // supervisor drives. This body owns nothing above shed.Step -- any run-lock probe, bootstrap, or
 // status-strand work a module needs belongs entirely to its own PreStep hook.
@@ -336,9 +348,14 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					return nil
 				}
 				argv := childArgv(cmd, args)
-				if loopID, _ := cmd.Flags().GetString(LoopDetachedFlag); loopID != "" {
+				if loopID := DetachedLoopID(cmd); loopID != "" {
 					if !validLoopID(loopID) {
-						clihelp.SetExit(ctx, output.Err(cmd.OutOrStdout(), "shedverbs: --"+LoopDetachedFlag+" takes the loop id its waiter minted; way forward: run the step with --"+UntilStopFlag+" alone"))
+						clihelp.SetExit(ctx, output.Err(cmd.OutOrStdout(), "shedverbs: --"+LoopKeeperFlag+" and --"+LoopDetachedFlag+" take the loop id its waiter minted; way forward: run the step with --"+UntilStopFlag+" alone"))
+						return nil
+					}
+					if keeper, _ := cmd.Flags().GetString(LoopKeeperFlag); keeper != "" {
+						loopArgv := append(slices.Clone(argv), "--"+UntilStopFlag, "--"+LoopDetachedFlag+"="+loopID)
+						clihelp.SetExit(ctx, keepLoop(spec, loopID, loopArgv, cmd.OutOrStdout()))
 						return nil
 					}
 					clihelp.SetExit(ctx, runLoop(ctx, spec, loopID, argv, cmd.OutOrStdout()))
@@ -426,8 +443,10 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 	}
 	cmd.Flags().Bool("full", false, "print the full envelope on stdout instead of the short one; the record, exit code and run state are unchanged")
 	cmd.Flags().Bool(UntilStopFlag, false, "run steps one after another in a detached loop until the run halts, errors or reaches a stop condition, and print the one envelope of that stop")
-	cmd.Flags().String(LoopDetachedFlag, "", "marks the detached loop process itself; set only by the waiter that spawns it")
+	cmd.Flags().String(LoopDetachedFlag, "", "marks the loop process itself; set only by the keeper that starts it")
 	_ = cmd.Flags().MarkHidden(LoopDetachedFlag)
+	cmd.Flags().String(LoopKeeperFlag, "", "marks the loop's keeper, which starts the loop and records how it ended; set only by the waiter that spawns it")
+	_ = cmd.Flags().MarkHidden(LoopKeeperFlag)
 	cmd.Flags().String(ArbiterAttemptFlag, "", "with --"+UntilStopFlag+", consume the named arbiter attempt before the loop starts; the arbiter verb's relaunch line carries it")
 	return cmd
 }

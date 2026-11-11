@@ -36,9 +36,14 @@ const UntilStopFlag = "until-stop"
 // ArbiterAttemptFlag is the name of step's flag that names the arbiter attempt the waiter consumes before it starts the loop.
 const ArbiterAttemptFlag = "arbiter-attempt"
 
-// LoopDetachedFlag is the name of step's hidden flag that marks the detached loop process itself and carries its loop id.
-// It only selects runLoop in the process the waiter spawned; the loop refuses to step over a dead loop's record whatever process it runs in.
+// LoopDetachedFlag is the name of step's hidden flag that marks the loop process itself and carries its loop id.
+// It only selects runLoop in the process the loop's keeper started.
+// The loop refuses to step over a dead loop's record whatever process it runs in.
 const LoopDetachedFlag = "loop-detached"
+
+// LoopKeeperFlag is the name of step's hidden flag that marks the loop's keeper and carries the loop id.
+// The keeper is the detached process the waiter spawns: it starts the loop process and records how that process ended.
+const LoopKeeperFlag = "loop-keeper"
 
 // LoopSpec is the told arming of step's --until-stop mode.
 // Every path is told by the arming module; the loop reads and copies only the paths it is handed.
@@ -65,7 +70,7 @@ type LoopSpec struct {
 	// ReadStatus is the read of the status file at the top of each iteration; nil selects readStatusAt.
 	// It reports found false with a nil error for an absent file.
 	ReadStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)
-	// Executable is the program a child runs, and the program the detached loop itself is.
+	// Executable is the program a child runs, and the program the loop's keeper and the loop process itself are.
 	Executable string
 	// Now is the loop's clock; nil selects time.Now.
 	Now func() time.Time
@@ -82,6 +87,8 @@ type LoopSpec struct {
 	OnWatchdogKill func(kill WatchdogKill) string
 	// OnStart runs once in runLoop after the pid file is written and the start is logged, and before the first step; nil is skipped.
 	// A loop that refuses before its first step never runs it.
+	// The loop's keeper also runs it once after it has started the loop process, whether or not that loop then refuses;
+	// only the loop's own run is skipped on a refusal.
 	OnStart func()
 	// OnExit runs once in runLoop after the stop is final, with the stop and the status file as it then reads, and before the envelope is written; nil is skipped.
 	// A loop that refuses before its first step, or that a terminating signal ends while it steps, never runs it.
@@ -91,7 +98,8 @@ type LoopSpec struct {
 	OnWake func()
 	// Delivered is the path of the delivered record of a loop id, where a retired envelope of that loop lands.
 	Delivered func(loopID string) string
-	// Spawn starts the detached loop with the given command line after the executable and returns a channel closed when it exits; nil selects spawnLoop.
+	// Spawn starts the loop's keeper with the given command line after the executable.
+	// It returns a channel closed when the keeper exits; nil selects spawnLoop.
 	Spawn func(argv []string) (<-chan struct{}, error)
 	// Watch reports file events in dir for the named entries through the channel it returns, with the function that stops watching; nil selects fswatch.
 	// An error makes the waiter poll on its timer alone.
@@ -175,7 +183,7 @@ func (r childResult) ok() bool {
 // A transient error gets one immediate re-step; an error or interrupted stop on a run still reading running writes it failed.
 // The exception is a stop on the status read at an iteration's top, absent or unreadable: nothing can be written without destroying the evidence, so the file is left as found.
 // A read error that is not a decode failure gets the same one re-step, as a re-read.
-// LoopSpec.OnStart runs once after the start is logged and before the first step.
+// LoopSpec.OnStart runs once in the loop after the start is logged and before the first step.
 // LoopSpec.OnExit runs once at every stop kind but a terminating signal's while the loop steps, after the stop is final and before the envelope is written.
 // A loop that cannot take the lock within the grace period, or that finds the teardown's mark, an undelivered envelope or a dead loop's pid file, returns 1 at once, before any step and without an envelope.
 // A terminating signal is recorded in the loop log and then ends the process without an envelope, for the waiter's dead-loop stop to report;

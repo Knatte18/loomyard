@@ -134,6 +134,44 @@ func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
 	tiergate.Require(t, 1)
 	f := newLoomRunFixture(t)
 	var childLoopEnv map[string]any
+	// runKeeperRefusal runs the built binary as the loop's keeper of loopID over the verb in verbArgs.
+	// The keeper's arming refuses, and it prints nothing.
+	// The refusal is written as the loop envelope under the loop id, for the waiter that spawned the keeper to print.
+	// It returns that envelope and the keeper's exit code.
+	// It removes the envelope file so the next row meets no undelivered envelope.
+	runKeeperRefusal := func(loopID string, verbArgs ...string) (map[string]any, int) {
+		args := append(verbArgs, "--"+shedverbs.UntilStopFlag, "--"+shedverbs.LoopKeeperFlag+"="+loopID)
+		cmd := exec.Command(f.lym, args...)
+		cmd.Dir = f.worktree
+		out, err := cmd.Output()
+		code := 0
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			code = exitErr.ExitCode()
+		} else if err != nil {
+			t.Fatalf("run the keeper over lym %v: %v", args, err)
+		}
+		if len(bytes.TrimSpace(out)) != 0 {
+			t.Errorf("the keeper over lym %v printed %q; want nothing, the refusal going to the loop envelope file", args, out)
+		}
+		path := shedrun.LoopEnvelope(f.loc, shedrun.SelfRunID)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read the loop envelope file: %v; want the keeper's refusal in it", err)
+		}
+		_ = os.Remove(path)
+		var file struct {
+			LoopID   string         `json:"loop_id"`
+			Envelope map[string]any `json:"envelope"`
+		}
+		if err := json.Unmarshal(data, &file); err != nil {
+			t.Fatalf("decode the loop envelope file %q: %v", data, err)
+		}
+		if file.LoopID != loopID {
+			t.Errorf("loop envelope file loop id = %q; want the keeper's, %q", file.LoopID, loopID)
+		}
+		return file.Envelope, code
+	}
 	tests := []struct {
 		name string
 		run  func() (map[string]any, int)
@@ -155,6 +193,14 @@ func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
 				childLoopEnv = env
 				return env, code
 			},
+		},
+		{
+			name: "the loop's keeper refuses while arming",
+			run:  func() (map[string]any, int) { return runKeeperRefusal("loop-int-2", "shed", "step", shedrun.SelfRunID) },
+		},
+		{
+			name: "the loom surface's keeper refuses while arming",
+			run:  func() (map[string]any, int) { return runKeeperRefusal("loop-int-3", "loom", "step") },
 		},
 		{
 			name: "the driver's own invocation of shed step",

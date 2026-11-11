@@ -61,7 +61,7 @@ That body steps through `shedverbs`' `--until-stop` and goto bodies and restates
 - Every run-state path (`StatusPath`, `ScratchDir`, `FrictionDir`, …) stays told through `Spec`,
   and the `lymcwd` import stays denied.
 - The detached loop and its waiter behind `step --until-stop` live in `internal/shedverbs`:
-  `loop.go`, `loopwait.go`, `looppid.go` and `loopenvelope.go`.
+  `loop.go`, `loopwait.go`, `loopkeeper.go`, `looppid.go` and `loopenvelope.go`.
   Its loop paths reach it told through `Spec.Loop`.
   A child's trace files reach it through the told `TraceFiles` and `StopFiles` closures.
   The loop reads and copies only the paths they tell it.

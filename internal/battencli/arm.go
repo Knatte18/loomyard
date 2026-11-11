@@ -466,8 +466,9 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 // battenLoopSpec builds the loop arming of the batten run slug under location.
 // It leaves IdleTimeout zero and Activity nil: Run-Shed waits idle by design, so the watchdog stays disarmed.
 // A wedged step is ended only by the operator's pause or by ending the detached loop job.
-// OnStart registers the loop process in the hub's owner record under slug with the role loop;
-// a failed registration is logged and the loop runs on.
+// OnStart registers the loop process and the keeper that starts it in the hub's owner record.
+// They register under slug with the role loop.
+// A failed registration is logged and the loop runs on.
 func battenLoopSpec(location *lymcwd.Location, slug string) shedverbs.LoopSpec {
 	executable, err := selfexec.LymBinary()
 	if err != nil {
