@@ -44,10 +44,10 @@ Only a standalone CLI's own wiring calls it.
 ## Hub containment
 
 No hub-level container is ever junctioned into a worktree.
-The Bolt checkout and `_launchers` are reachable from the hub only.
+The Bolt checkout is reachable from the hub only.
 
-- `_launchers` links point hub-inward only; a per-worktree link to it is banned.
 - `_portals` is retired and stays reserved; `lym fabric reconcile` sweeps what a hub still holds.
+- `_launchers` is retired and stays reserved; `lym cleanup` sweeps what a hub still holds.
 - Workspace files are the hub's `<RepoName>.code-workspace` and each beam's `<RepoName>-<beam>.code-workspace`.
   They sit directly in the hub dir and reference hub-inward folders only.
   They are never written into a worktree.

@@ -7,7 +7,6 @@
 package fabricengine_test
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -228,21 +227,13 @@ func assertSurvivesIfUnpermitted(t *testing.T, h *hubforge.Hub, abs string, perm
 }
 
 // assertArrangePreconditions fails t when verb's Arrange left a fixture that would make the verb's column vacuous.
-// Add, Checkout and Pull each need one fixture field set, and an empty one fails as surely as a wrong one:
-// A launcher blocker that is not a directory lets Add proceed.
+// Checkout and Pull each need one fixture field set, and an empty one fails as surely as a wrong one:
 // A checkout branch equal to the original makes Checkout a no-op.
 // An unadvanced warp bare makes Pull return before its dirty check.
 func assertArrangePreconditions(t *testing.T, verb string, fixture VerbFixture) {
 	t.Helper()
 
 	switch verb {
-	case "Add":
-		if fixture.LauncherBlocker == "" {
-			t.Fatalf("Arrange: Add left LauncherBlocker empty")
-		}
-		if info, err := os.Lstat(fixture.LauncherBlocker); err != nil || !info.IsDir() {
-			t.Errorf("Arrange: launcher blocker %s is not a directory (err %v)", fixture.LauncherBlocker, err)
-		}
 	case "Checkout":
 		if fixture.CheckoutBranch == "" {
 			t.Fatalf("Arrange: Checkout left CheckoutBranch empty")

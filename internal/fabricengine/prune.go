@@ -75,7 +75,7 @@ type PruneResult struct {
 }
 
 // Prune identifies stale or orphaned warp↔weft pairs.
-// When apply is true, it removes their stale weft worktrees and associated launcher directories.
+// When apply is true, it removes their stale weft worktrees.
 // A weft worktree with uncommitted tracked changes is protected unless force is true.
 // The forced removal would otherwise discard those changes without a trace.
 // Per-entry removal errors and protection reasons are recorded in PruneEntry.Error.
@@ -205,7 +205,7 @@ func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult
 // So does a separate git clone at `<hub>/proj-weft/`.
 //
 // An absent path is not unowned: there is nothing to delete.
-// removeStalePair still clears launcher and worktree-registration debris for a pair whose weft worktree is gone.
+// removeStalePair still clears worktree-registration debris for a pair whose weft worktree is gone.
 func applyStalePairOwnership(l *lymcwd.Location, weftPath string, pe *PruneEntry) {
 	if _, statErr := os.Stat(weftPath); os.IsNotExist(statErr) {
 		return
@@ -257,7 +257,7 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 }
 
 // removeStalePair removes the stale weft worktree at weftPath when it exists.
-// It tears down the slug's launcher directory and prunes administrative state in both repos.
+// It prunes administrative state in both repos.
 // Errors are recorded in pe.Error.
 // It returns true only when a weft worktree existed and was removed without error.
 //
@@ -267,22 +267,11 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 // It runs only after git declines to remove a path that git still registers as a worktree.
 // That is recoverable bookkeeping, not data loss.
 // The same rule and justification apply to removeWarpWorktreeDir's fallback.
-//
-// Launcher teardown runs after the ownership gate, since its slug comes from a directory name.
-// Tearing it down first would let a stray `<hub>/my-task-weft/` directory remove a live pair's launcher directory.
-// Nothing has yet shown the entry is fabric's at that point.
 // rec is the calling verb's own recorder, threaded through every gate call this helper makes.
 func removeStalePair(rec *Mutations, l *lymcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
 	weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(l)
 	if weftRepoRootErr != nil {
 		pe.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
-		return false
-	}
-
-	// The launcher teardown is keyed on a slug the orphan pass derived from a directory name.
-	// A refusal here is most likely about that input, so it is recorded rather than swallowed as an ordinary failure.
-	if err := surfaceRefusal(removeLaunchers(rec, l, slug)); err != nil {
-		pe.Error = err.Error()
 		return false
 	}
 

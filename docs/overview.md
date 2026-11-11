@@ -84,7 +84,7 @@ the module that constructs each of those owns it.
 
 `Location` carries `RepoName`, `HubPath`, `WorktreeName` and `AnchorRel`, plus the derived accessors `WorktreePath()` and `AnchorPath()`.
 Every other geometry token is a per-module constructor, joined onto `Location`'s coordinates by the module that owns it.
-The tokens are records paths, junctions, `_lym/<module>`, launchers and the hub-reserved name set.
+The tokens are records paths, junctions, `_lym/<module>` and the hub-reserved name set.
 See [PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) for the full per-token ownership map.
 
 `lymcwd.Resolve` proves that cwd is the root of a git worktree and nothing more.
@@ -142,12 +142,11 @@ The two-sided design is documented in `internal/fabricengine`'s package doc.
   ├── <slug>-<records>/             (records worktree for <slug>; git repo root)
   ├── _bolt/                       (the Bolt checkout, records main-branch worktree; holds board.json)
   │     └── .lym/                   (hub-wide machine-local scratch; a real dir, never a junction)
-  ├── <RepoName>.code-workspace     (the hub's VS Code workspace; lym-owned)
-  └── _launchers/<anchor>/          (anchor-mirrored)
-        └── <slug>                  (per-worktree launcher scripts)
+  └── <RepoName>.code-workspace     (the hub's VS Code workspace; lym-owned)
 ```
 
-`_bolt`, `_launchers` and `_portals` are hub geometry, so none of them can be claimed as a worktree slug.
+`_bolt` is hub geometry, and `_portals` and `_launchers` are retired hub containers, so none of them can be claimed as a worktree slug.
+`lym cleanup` removes what a hub still holds under `_launchers`.
 The check is `fabricengine.IsReservedHubName`.
 `.lym` is slug-reserved too, but via `structuralNeverCommittedDirs` rather than as hub geometry.
 It has no hub-level presence of its own.
@@ -781,7 +780,8 @@ User-facing modules each get one `lym <module>` namespace:
 - **cleanup** — the routine cleanups of the hub prime's leftover state, as one verb (`internal/cleanupcli`; `lym cleanup [--apply]`, from the prime and from any beam).
   Without `--apply` it is a dry run that lists, per segment, what `--apply` would remove.
   The segments run in order and each calls its owner's own cleanup in-process:
-  `lym batten cleanup`, `lym board prune`, the orch's handoff cleanup, the `.scratch/` children at the prime's anchor older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
+  `lym batten cleanup`, `lym board prune`, the orch's handoff cleanup, the `.scratch/` children at the prime's anchor older than 14 days that no open board entry cites, logger's trace retention sweep, the temp root's sweep of dead owners' run directories,
+  and fabric's sweep of the hub's retired `_launchers` directory.
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
 - **adopt** — the takeover of beam projects, or of root, and of the runs under them from another machine of the operator, as one verb (`internal/adoptcli`; `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`, with `--keep-local` and `--drop-local`, from the prime and from any beam).
@@ -1709,7 +1709,7 @@ User-facing modules each get one `lym <module>` namespace:
   That happens when a process is killed before the transition persists.
   The post-condition is the pair's, not the task worktree's alone:
   fabric removes the task worktree before its sibling,
-  so a removal interrupted between the two halves leaves the sibling, its launcher entries and both branches behind.
+  so a removal interrupted between the two halves leaves the sibling and both branches behind.
   Re-entered there, the row halts `blocked`, naming the leftover and `lym fabric prune --apply` as the remedy.
   It never reports done over the debris.
   Teardown first tags the tip of the pair's other-side branch `archive/<slug>/<tip>` and deletes that branch locally.

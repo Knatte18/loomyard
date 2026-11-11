@@ -673,7 +673,7 @@ func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading 
 	}
 
 	otherLeft := recordsHere || boardengine.IsRunStatus(boardStatus) || sessionLive || len(records) > 0 || reading.Present ||
-		parts.TaskWorktree || parts.RecordsWorktree || parts.RecordsBranch || parts.Launchers
+		parts.TaskWorktree || parts.RecordsWorktree || parts.RecordsBranch
 	if otherLeft {
 		return nil
 	}

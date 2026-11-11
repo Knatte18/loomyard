@@ -229,7 +229,7 @@ func HubPath(parent, name string) string {
 
 // HubReservedNames returns the hub-structural names that must never wire a per-worktree junction:
 // the Bolt checkout, `_portals` and `_launchers`.
-// `_portals` is retired but stays reserved.
+// `_portals` and `_launchers` are retired but stay reserved.
 // `.lym` is not a member: listing it would keep it from being wired into each worktree.
 // It would also keep it from ever being torn down.
 // It is reserved through a separate structural set.

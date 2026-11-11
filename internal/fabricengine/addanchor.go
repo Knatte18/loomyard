@@ -116,8 +116,7 @@ func stageNewMarker(weftPath, anchor string) error {
 // An uncommitted move is undone and made again, and a committed one goes on to the wiring.
 // A failed recovery says to run `lym beam create <slug>` again.
 // A held move lock is refused with the message that names the change in progress.
-// An anchor equal to the pair's, or an empty one, rewires the pair's junctions and scratch link.
-// The pair's launchers are then rewritten, and both steps are idempotent.
+// An anchor equal to the pair's, or an empty one, rewires the pair's junctions and scratch link, which is idempotent.
 // Any other anchor is refused with the two commands that move the pair and then finish the create.
 // The record is removed here and no push is spawned, since the create spawns the pair's push next.
 func (t *Topology) EnsureAnchor(rec *Mutations, pair *lymcwd.Location, anchor string) error {
@@ -159,8 +158,5 @@ func (t *Topology) EnsureAnchor(rec *Mutations, pair *lymcwd.Location, anchor st
 	if err != nil {
 		return fmt.Errorf("load the wired names to wire %s: %w", slug, err)
 	}
-	if err := WireJunctionsWith(rec, current, slug, names); err != nil {
-		return err
-	}
-	return writeLaunchers(rec, current, slug)
+	return WireJunctionsWith(rec, current, slug, names)
 }

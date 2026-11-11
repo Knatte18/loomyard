@@ -199,7 +199,7 @@
 // A worktree's creation or destruction can touch it without a record entry naming that exact admin path.
 // An ancestor directory of a recorded Target is covered too, when the diff change is itself a directory.
 // Such ancestors are implicit chains around the roots fabric records.
-// fslink.CreateDirLink and writeLaunchers' MkdirAll create them, and pruneEmptyAncestors reaps them on the way out.
+// fslink.CreateDirLink creates them.
 //
 // DiffManifest is called twice per cell, on the same before and after manifest pair.
 // The two calls answer two questions that neither can answer for the other.

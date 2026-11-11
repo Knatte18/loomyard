@@ -570,7 +570,7 @@ func anchorCommand() *cobra.Command {
 is the directory of the warp checkout lym works in for it. <slug> names the prime by
 its worktree name, or a pair present on this machine.
 
-With --set <dir> it moves the worktree's anchor there: its junctions and launchers,
+With --set <dir> it moves the worktree's anchor there: its junctions,
 and the content of its records branch, which a single commit on that branch re-roots
 and whose marker names the new directory. <dir> must be a directory the warp checkout
 tracks, so commit it there first when it is new.

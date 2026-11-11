@@ -20,7 +20,7 @@ func Command() *cobra.Command {
 	var apply bool
 	cmd := &cobra.Command{
 		Use:         "cleanup",
-		Short:       "remove the hub prime's routine leftovers: finished batten runs, done board entries, old handoffs, scratch, logs and temp",
+		Short:       "remove the hub prime's routine leftovers: finished batten runs, done board entries, old handoffs, scratch, logs, temp and launchers",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Without --apply, cleanup is a dry run: it lists, per segment, what --apply would
 remove, prints "applied": false and changes nothing. With --apply it removes it.
@@ -43,6 +43,8 @@ Segments, in order, each calling its owner's own cleanup in-process:
   scratch  old children of the prime's .scratch/ that no open board entry cites
   logs     trace files past the retention bounds, in the prime and the board
   temp     temp directories left by dead lym processes
+  launchers the retired _launchers directory: scripts and workspace files
+           fabric wrote there; anything else is kept and listed
 
 Every segment runs even when an earlier one fails; the failing ones are named in
 the error. Nothing is removed that the segment's own verb would refuse to remove.

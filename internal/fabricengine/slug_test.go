@@ -35,8 +35,7 @@ func TestValidateWorktreeSlug(t *testing.T) {
 		{"transient structural dir", ".lym", nil, "reserved for lym hub geometry"},
 		{"configured junction name", "_extra", []string{"_extra"}, "reserved for lym hub geometry"},
 		// "." and ".." carry no separator and name no reserved directory, so every other rule here waves them through.
-		// Then filepath.Join resolves ".." out of the launcher directory onto the hub itself.
-		// Remove's os.RemoveAll deletes the whole hub.
+		// Then filepath.Join resolves ".." above the pair's directory, and Remove's os.RemoveAll deletes what it reaches.
 		{"self reference", ".", nil, "not a relative path element"},
 		{"parent reference", "..", nil, "not a relative path element"},
 		{"trailing dot segment", "task/.", nil, "single path component"},

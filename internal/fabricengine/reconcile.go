@@ -47,11 +47,6 @@ const (
 	// ReconcileActionAlreadyHealthy means the pair required no corrective action.
 	ReconcileActionAlreadyHealthy ReconcileAction = "already_healthy"
 
-	// ReconcileActionLaunchersRestored means the pair's junctions were healthy but its launcher directory was missing.
-	// The launcher directory has been recreated.
-	// It is reported rather than as healthy: a consumer keying off Action must see that convergence altered the pair.
-	ReconcileActionLaunchersRestored ReconcileAction = "launchers_restored"
-
 	// ReconcileActionStaleRemoved means the pair needed no junction added or re-pointed.
 	// Declarative stale removal still deleted at least one on-disk junction absent from the repo-wide pathspec.
 	//
@@ -457,39 +452,7 @@ func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lymcwd.Location,
 		appendPrDetail(pr, detail)
 	}
 
-	if restoreLaunchers(rec, warpLayout, slug, warpBranch, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
-		pr.Action = ReconcileActionLaunchersRestored
-	}
-
 	applyStaleRemoval(rec, warpLayout, slug, pr)
-}
-
-// restoreLaunchers recreates the pair's launcher directory when it is missing, and reports whether it restored it.
-//
-// The launcher directory is part of the managed topology.
-// Adding a pair creates it, and removing or pruning a pair tears it down.
-// A pair whose directory was deleted would otherwise read already_healthy until it was removed and re-added.
-// The hub's prime worktree is skipped, since the hub never gives it a worktree.
-// A restore failure is a Detail note, never an Error or a changed Action.
-// The launchers are convenience plumbing.
-// A failed rebuild must not downgrade a verdict about the pair's git topology.
-// rec is Reconcile's own recorder, threaded through to writeLaunchers.
-func restoreLaunchers(rec *Mutations, warpLayout *lymcwd.Location, slug, warpBranch string, pr *ReconcilePairResult) bool {
-	primeName, primeErr := PrimeName(warpLayout)
-	if primeErr != nil || slug == primeName {
-		return false
-	}
-
-	if _, err := os.Stat(LauncherDir(warpLayout, slug)); !os.IsNotExist(err) {
-		return false
-	}
-
-	if launcherErr := writeLaunchers(rec, warpLayout, slug); launcherErr != nil {
-		appendPrDetail(pr, fmt.Sprintf("launcher restore failed: %v", launcherErr))
-		return false
-	}
-	appendPrDetail(pr, "launcher scripts restored")
-	return true
 }
 
 // reconcileMissingWeft determines and applies the corrective action for a warp worktree that has no weft worktree.

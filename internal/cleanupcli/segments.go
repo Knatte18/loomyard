@@ -158,5 +158,9 @@ func segmentsOver(location *lymcwd.Location, hubOrchs func(*lymcwd.Location) ([]
 			}
 			return listed, nil
 		}},
+		{name: "launchers", run: func(apply bool) (any, error) {
+			sweep, err := fabricengine.SweepRetiredLaunchers(fabricengine.NewMutations(location.HubPath), location.HubPath, apply)
+			return map[string]any{"removed": sweep.Removed, "kept": sweep.Kept}, err
+		}},
 	}
 }

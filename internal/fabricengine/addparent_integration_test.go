@@ -232,9 +232,6 @@ func TestAdd_FromParentPair(t *testing.T) {
 				if _, err := os.Stat(filepath.Join(weftPath, anchor, fabricengine.OriginRecordRel())); err != nil {
 					t.Errorf("origin record at %s/%s in the records worktree: %v", anchor, fabricengine.OriginRecordRel(), err)
 				}
-				if _, err := os.Stat(filepath.Join(h.Path, "_launchers", anchor, slug)); err != nil {
-					t.Errorf("launcher directory under _launchers/%s/%s: %v", anchor, slug, err)
-				}
 			})
 		}
 	})

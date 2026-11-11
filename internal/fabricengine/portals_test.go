@@ -28,7 +28,7 @@ func TestSweepRetiredHubArtifacts_UnresolvablePrime(t *testing.T) {
 	if err := fslink.CreateDirLink(link, retiredPortalTarget(l, "slug")); err != nil {
 		t.Fatalf("plant the portal link: %v", err)
 	}
-	workspaceFile := filepath.Join(launchersDir(l), l.AnchorRel, "prime"+hubWorkspaceExt)
+	workspaceFile := filepath.Join(launchersDir(hub), l.AnchorRel, "prime"+hubWorkspaceExt)
 	if err := os.MkdirAll(filepath.Dir(workspaceFile), 0o755); err != nil {
 		t.Fatalf("create the _launchers anchor dir: %v", err)
 	}

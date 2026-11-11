@@ -72,11 +72,8 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 		tests := []struct {
 			name string
 			slug string
-			// launcherDirLeft leaves the pair's launcher directory behind as its only local remnant.
-			launcherDirLeft bool
 		}{
-			{"NothingLeftLocally", "pn-remove", false},
-			{"OnlyTheLauncherDirectoryLeft", "pn-launchers", true},
+			{"NothingLeftLocally", "pn-remove"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -84,11 +81,6 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 
 				h, top := pairOnOriginOnly(t, tt.slug)
 				recordsBranch := fabricengine.RecordsBranchName(tt.slug)
-				if tt.launcherDirLeft {
-					if err := os.MkdirAll(h.PairLauncherDir(tt.slug), 0o755); err != nil {
-						t.Fatalf("create the launcher directory of %q: %v", tt.slug, err)
-					}
-				}
 
 				res, err := top.Remove(h.Location, tt.slug, false, true)
 				if err != nil {

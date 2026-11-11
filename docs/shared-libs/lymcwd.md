@@ -20,7 +20,7 @@ an out-of-allowlist import that creates no cycle compiles fine.
 The cwd-≠-worktree-root bug recurs because path math is scattered.
 Each module re-derives the relationship between the worktree root and the cwd ad hoc.
 A single, minimal resolver makes correctness structural, not a matter of discipline — but it stops there.
-Every per-module path (records siblings, junctions, `_lym/plan`, launchers) is built by the module that owns it.
+Every per-module path (records siblings, junctions, `_lym/plan`) is built by the module that owns it.
 The module joins it onto the coordinates `lymcwd` hands back.
 
 ## Exported API
@@ -114,7 +114,7 @@ see "What moved out" below.
 
 Every per-module durable-storage subdirectory (`_lym/plan`, `_lym/webster`, and the rest) is that module's own private relative-path constant.
 The owning module joins it onto `AnchorPath()` directly, never through a `lymcwd` function call.
-Records-sibling paths, junction construction and launcher paths belong to `internal/fabricengine`,
+Records-sibling paths and junction construction belong to `internal/fabricengine`,
 as do the prime and sibling-worktree lookups they are built from (for example `RecordsWorktree` and `CodeLymLink`).
 Fabric config (`fabric.yaml`'s `pathspec`) supplies the records-backed junction name-set;
 that too is `fabricengine`'s concern, never `lymcwd`'s.

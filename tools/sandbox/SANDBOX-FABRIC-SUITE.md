@@ -473,10 +473,9 @@ Confirm nothing outside the named pair is touched."
 `..`, `.`, `../evil`, `a/b`, and `""`.
 Every one must be refused BEFORE any teardown runs.
 After all of them the hub must still list exactly what it listed before:
-`_bolt _launchers <RepoName>.code-workspace <prime> <prime>-weft <slug> <slug>-weft`.
-`_launchers` must still hold `ide-menu.sh` and the pair's directory.
+`_bolt <RepoName>.code-workspace <prime> <prime>-weft <slug> <slug>-weft`.
 Then confirm an ordinary `lym fabric remove <slug>` still works.
-A slug of `.` or `..` would resolve `<hub>/_launchers/<anchor>/<slug>` to `<hub>` itself.
+A slug of `.` or `..` would resolve `<hub>/<slug>` to `<hub>` itself or above it.
 The refusal must therefore come before any removal.
 Repeat on a `--subpath backend` hub, where the anchor segment absorbs one `..` and the damage lands one level lower.
 
@@ -537,22 +536,14 @@ Confirm the hook lands in THAT directory, and that `git checkout` onto a diverge
 
 ---
 
-### F17 -- The launcher surface is repairable (`add`, `reconcile`, `remove`)
+### F17 -- The retired hub containers are swept (`add`, `reconcile`, `cleanup`)
 
 **Covers:** fabric
 
-**Goal:** "Break the hub-level `_launchers` artefacts and confirm the repair verb repairs them.
-Confirm the teardown verb owns only what it created."
+**Goal:** "Plant what an older lym left in the hub's retired `_portals` and `_launchers` containers.
+Confirm the sweeps remove only what fabric wrote there."
 
-**Watch:** After `lym fabric add <slug>`, confirm `<hub>/_launchers/<slug>/` holds `ide` and `fabric-checkout` scripts.
-Delete the launcher directory, then run `lym fabric reconcile`:
-it must report `launchers_restored` for that pair, not `already_healthy`, and the directory must be back.
-A second `reconcile` must report `already_healthy`.
-`pairs` must not report `junction_healthy: true` while the launchers are gone.
-Then ownership: put a file of your own inside `<hub>/_launchers/<slug>/` and run `lym fabric remove <slug>`.
-Fabric's two scripts must go, your file must survive, and the pair must still be torn down.
-Finally confirm the hub's prime worktree is left alone throughout:
-it never had a launcher directory, and `reconcile` must not start creating one.
+**Watch:** After `lym fabric add <slug>`, confirm the hub holds no `_launchers` directory.
 Then the retired-artifact sweep:
 plant a link `<hub>/_portals/<anchor>/<slug>` pointing at `<hub>/<slug>/<anchor>/_lym`;
 plant a file at `<hub>/_launchers/<anchor>/<prime>.code-workspace`;
@@ -562,6 +553,14 @@ Confirm its log warns about the retired artifacts and names `lym fabric reconcil
 Then run `lym fabric reconcile`:
 the planted link and the old workspace file must be gone;
 your foreign file and `_portals` must survive, and `hub_details` must name the foreign file.
+Then the launchers sweep:
+plant `<hub>/_launchers/<anchor>/<slug>/run.sh` and `<hub>/_launchers/<anchor>/ide-menu.sh`,
+and a foreign file of your own under `<hub>/_launchers/<anchor>/keep/`.
+From the prime, `lym cleanup` must list both scripts and the emptied `<slug>` directory under the `launchers` segment,
+name your foreign file under `kept`, and change nothing.
+`lym cleanup --apply` must remove both scripts and the `<slug>` directory;
+your foreign file and the directories above it must survive.
+Delete your foreign file and run `lym cleanup --apply` again: `_launchers` must be gone.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

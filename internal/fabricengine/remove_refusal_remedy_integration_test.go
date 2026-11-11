@@ -1,7 +1,7 @@
 // remove_refusal_remedy_integration_test.go pins that a no-force Remove refusal changes nothing:
 // the pair and the weft origin stay untouched.
 // A refusal here is a dirty worktree or a failed status probe.
-// No portal or launcher is torn down, no mutation is recorded, and no archive tag is pushed.
+// No portal is torn down, no mutation is recorded, and no archive tag is pushed.
 //
 // Remove runs every refusal before its archive and the archive before every removal;
 // remove.go's header states the order.
@@ -97,7 +97,6 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	}
 	assertNoArchiveTag(t, h.RecordsBare, weftRoot)
 	for _, p := range []string{
-		fabricengine.LauncherDir(l, slug),
 		fabricengine.RecordsWorktreePath(l, slug),
 	} {
 		if _, statErr := os.Lstat(p); statErr != nil {
@@ -106,12 +105,11 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	}
 }
 
-// assertPairIntact fails unless the pair's launchers, both worktrees and both branches exist.
+// assertPairIntact fails unless the pair's both worktrees and both branches exist.
 func assertPairIntact(t *testing.T, l *lymcwd.Location, slug string) {
 	t.Helper()
 
 	for _, p := range []string{
-		fabricengine.LauncherDir(l, slug),
 		fabricengine.WorktreePath(l, slug),
 		fabricengine.RecordsWorktreePath(l, slug),
 	} {

@@ -125,7 +125,6 @@ func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
 	for _, path := range []string{
 		filepath.Join(weft, weftLockDirName),
 		filepath.Join(h.PairCodeWorktree(slug), h.Location.AnchorRel, lymdirs.LymDirName),
-		h.PairLauncherDir(slug),
 	} {
 		if _, err := os.Lstat(path); err != nil {
 			t.Errorf("%s missing after reconcile: %v", path, err)
@@ -252,7 +251,6 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			for _, path := range []string{
 				filepath.Join(weftSibling, weftLockDirName),
 				filepath.Join(h.PairCodeWorktree(slug), h.Location.AnchorRel, lymdirs.LymDirName),
-				h.PairLauncherDir(slug),
 			} {
 				if _, err := os.Lstat(path); err != nil {
 					t.Errorf("%s missing after reconcile: %v", path, err)

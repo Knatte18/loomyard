@@ -158,7 +158,8 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	}
 }
 
-// TestRemove_UnreachableOriginFailsClosed covers an unreachable origin: Remove errors and leaves both worktrees, the launchers and both branches in place.
+// TestRemove_UnreachableOriginFailsClosed covers an unreachable origin.
+// Remove errors and leaves both worktrees and both branches in place.
 func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -180,7 +181,6 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	for _, p := range []string{
 		fabricengine.WorktreePath(l, slug),
 		fabricengine.RecordsWorktreePath(l, slug),
-		fabricengine.LauncherDir(l, slug),
 	} {
 		if _, err := os.Lstat(p); !os.IsNotExist(err) {
 			t.Errorf("%s after a failed remote archive: Lstat error = %v; want the local teardown done", p, err)
@@ -407,12 +407,11 @@ func TestAddRollback_LeavesNoArchiveTag(t *testing.T) {
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
-	// A blocker directory at the ide launcher script path fails Add after its weft branch exists, triggering rollbackAdd.
-	plantLauncherBlocker(t, l, slug)
-
+	// A blocker directory at the _lym junction path fails Add after its weft branch exists, triggering rollbackAdd.
 	topology := h.Topology
+	failAddBeforeWiring(t, topology, l, slug)
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
-		t.Fatalf("Add should have failed (launcher blocker)")
+		t.Fatalf("Add should have failed (junction blocker)")
 	}
 
 	if tags := archiveTagsAt(t, weftRoot); len(tags) != 0 {

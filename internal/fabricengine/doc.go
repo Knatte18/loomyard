@@ -167,7 +167,7 @@
 // Every scope reads the ended set from origin's fetched Bolt tip and its history before any replay.
 // It drops each run this machine's own landing has reached.
 // `reconcileEnded` then applies the removal to each of those runs that has a batten run record here.
-// An entry with a local part of its pair, its worktree paths, launchers or branches, goes to `OriginSeams.Teardown`.
+// An entry with a local part of its pair, its worktree paths or branches, goes to `OriginSeams.Teardown`.
 // The `EndedTeardown` names the slug and whether `SnapshotTagged` finds the snapshot tag a force-case run left.
 // An ended entry with no local part is reported with no teardown and no network call.
 // The report's `Summary` leaves it out.
@@ -721,7 +721,7 @@
 // `Remove` tags the pair's local weft tip `archive/<slug>/<tip>` (`tagWeftTipForArchive`) before its first mutation.
 // The tag comes after its refusals, the no-force dirtiness checks and their status probes among them.
 // It keeps the run records on the weft branch reachable once the branch is deleted.
-// A failed tag returns its error with the worktrees, launchers and both branches still in place.
+// A failed tag returns its error with the worktrees and both branches still in place.
 // A plain re-run retries it;
 // `force` and `remote` never skip it,
 // and a weft repo with no origin proceeds untagged with `ArchiveSkippedReason` set.
@@ -752,7 +752,7 @@
 // only changes outside that pathspec refuse without `force`.
 // `Topology.RemoveRefusal` is the read-only probe of every refusal `Remove` raises before its first mutation.
 // `Topology.PairParts` is the read-only, network-free reading of which parts of a pair are left locally.
-// The parts are the task worktree, records worktree, records branch, task branch and launchers.
+// The parts are the task worktree, records worktree, records branch and task branch.
 // A stray path at the task worktree's location counts as a part too.
 // It is made from the same `inspectPair` `Remove` uses.
 // `Topology.PairTaskBranch` reads the warp branch a pair stands on from the pair itself, in this order:
@@ -1534,8 +1534,8 @@
 // **Why containment resolves symlinks, and why it stops short of the final component**.
 // A lexical check, `filepath.Rel` over the nominal strings, compares spellings.
 // Every destructive primitive acts on the inode those spellings resolve to.
-// Under a lexical check, a symlink planted at `<Hub>/_launchers/<slug>` passes the gate.
-// `removeLaunchers`' `removePath` then deletes files outside the hub and reports `ok:true`.
+// Under a lexical check, a symlink planted at an intermediate segment of a gate target passes the gate.
+// `removePath` then deletes files outside the hub and reports `ok:true`.
 // The mutation record names hub-relative paths that were never the inodes removed.
 // Both sides therefore go through `filepath.EvalSymlinks` (`ancestors.go`'s `resolveAncestorSymlinks`).
 // An ancestor-walk fallback covers the ordinary case of a target that does not exist yet.
@@ -1561,7 +1561,7 @@
 // That is a larger claim about every future call path than the residual risk warrants.
 //
 // **The gate's containment check, by contrast, is bound to its act**.
-// The check resolves symlinks at one instant (`refuseUncontainedPath`, `containmentPath`).
+// The check resolves symlinks at one instant (`containmentFailure`, `containmentPath`).
 // A symlink planted at an intermediate segment of a gate target can be dangling when the check runs.
 // It can then flip to live and escaping before the executor's `os.Lstat`+unlink.
 // A gated `remove --force` would then delete outside the hub and report it as (partial) success.
@@ -1601,17 +1601,13 @@
 // The operation is still never reported as success and never leaves the target a dangling out-of-hub symlink.
 // This is the create-side twin of the delete-side guarantee.
 //
-// **The hub-level container writer binds its writes to a rooted act the same way**.
-// `writeLaunchers` (launchers.go) writes into `<hub>/_launchers/<AnchorRel>/<slug>`.
-// That is a hub-level structural container, not a freshly created worktree.
-// A raw `os.MkdirAll`+`os.WriteFile` would resolve and follow the container path itself.
-// A static symlink planted at the `<slug>` leaf or the `_launchers` container needs no race and no observation.
-// It would carry executable launcher content outside the hub.
-// `add` would report `ok:true` with a mutation record naming a hub-relative path the bytes never reached.
-// `writeLaunchers` therefore writes through an `os.Root` rooted at `l.HubPath`.
-// That is the true containment boundary, since `_launchers` is never legitimately a symlink.
-// Any component escaping the hub is refused at write time.
-// `writeHubWorkspace` (hubworkspace_write.go) writes the hub workspace file the same way.
+// **The hub-level writer binds its writes to a rooted act the same way**.
+// `writeHubWorkspace` (hubworkspace_write.go) writes the hub workspace file directly under the hub.
+// A raw `os.WriteFile` would resolve and follow the file's path itself.
+// A static symlink planted there needs no race and no observation, and it would carry the write outside the hub.
+// The verb would report `ok:true` with a mutation record naming a hub-relative path the bytes never reached.
+// `writeHubWorkspace` therefore writes through an `os.Root` rooted at the hub,
+// and any component escaping the hub is refused at write time.
 // The remaining raw writes in the package are not this class.
 // Some target a git-owned `.git/…` path.
 // The others target a worktree or board directory that a contained minter created in the same call.
@@ -1619,32 +1615,6 @@
 // That is the same accepted residual class as the gate's dirtiness window.
 // Each is an allowlisted entry with a stated reason in the write-side guard, which PATTERN-fabric-boundary describes.
 // `TestNoUncontainedWrite_FabricengineProductionSource` in `cmd/lym/uncontainedwrite_test.go` enforces the guard.
-//
-// **The launcher teardown path is rooted end to end**.
-// `removeLaunchers`' launcher-directory removal runs the gate's `checkPathRequest`.
-// It then calls `removeContainedPath` directly with `recursive` false.
-// It cannot use `removePath`, whose directory branch is `RemoveAll`.
-// That would destroy operator content beside the launchers.
-// The non-recursive branch is `os.Root.Remove`, which the OS refuses on a non-empty directory.
-// The neighbours are preserved, and the unlink is one rooted `openat` chain.
-// `pruneEmptyAncestors` runs immediately after on both teardown paths.
-// It removes through a root at the sweep's stop directory.
-// Otherwise a symlink at an intermediate segment of a multi-segment `AnchorRel` redirects the removal out of the hub.
-// Its lexical `filepath.Rel` is only the loop's termination condition; it can stop the walk early but never widen it.
-// Neither `launchers.go` nor `ancestors.go` is on the destructive guard's allowlist,
-// so a raw removal introduced in either fails the guard.
-//
-// `refuseUncontainedPath` is the pre-gate guard the teardown helper opens with.
-// It returns the gate's own `*destructiveRefusal` type.
-// Every best-effort call site (`Remove`, `Prune`) wraps the call in `surfaceRefusal`.
-// `surfaceRefusal` discards anything that is not a `*destructiveRefusal`.
-// A bare error would be dropped.
-// A static symlink at the `_launchers` container would make the teardown refuse correctly.
-// `lym fabric remove` would still report `ok:true`, `partial:false` and exit 0.
-// The launcher scripts would remain on disk, with no reason for the operator to reach for `reconcile`.
-// With the gate's type, every site propagates the refusal and `RefusalOf` answers for it.
-// A refusal's type is part of its contract.
-// A check that refuses correctly in a type the best-effort wrapper drops is, to the operator, no check at all.
 //
 // **Why the token-carrying ownership kinds exist, and the limit of what backs them**.
 // `ownedFreshlyCreatedPath` and `ownedFreshlyCreatedWorktree` let a rollback site prove something specific:
@@ -1690,6 +1660,19 @@
 // A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory.
 // It lists the folders only after taking the lock, so a pair created while the regeneration waits is listed.
 // The write goes through an `os.Root` at the hub, so a symlink planted at the file's path that escapes the hub is refused.
+//
+// # The retired launchers container
+//
+// Fabric once wrote launcher scripts under `<hub>/_launchers/<anchor>/`.
+// A pair had an `ide`, a `run` and a `fabric-checkout` script, and an anchor had an `ide-menu` script.
+// Each script was a `.sh` or a `.cmd`.
+// The hub workspace file was also written there before it moved to the hub dir.
+// No verb writes there now, and no pair verb removes it.
+// `SweepRetiredLaunchers` removes what a hub still holds, and `lym cleanup` runs it as its `launchers` segment.
+// It removes those script names and `.code-workspace` files, then each directory that empties, the container last.
+// Anything else under the container, a link included, is kept and named, with the directories above it.
+// Every removal goes through the gate under the container, non-recursively and without following a link.
+// The name stays in `HubReservedNames`, so no pair can take the container's path while a hub may still hold it.
 //
 // # The correspondence index's write path
 //
@@ -1873,9 +1856,7 @@
 // It runs `integrateWeft`, which replays the weft's local commits onto U and re-roots the result to B.
 // It then renames `A/.lym` to `B/.lym`.
 // `Apply` then wires the junctions and scratch link at B.
-// It writes the launchers under `_launchers/<B>/<slug>` and removes `_launchers/<A>/<slug>`.
 // It also regenerates the hub and beam workspace files.
-// The prime has no launcher directory, so it loses the menu launcher of A instead.
 // `Finish` removes the record and spawns the pair's detached push, which carries the commit.
 //
 // **Failure and recovery.** A failure before the commit, or before the integration moves the branch, is undone:

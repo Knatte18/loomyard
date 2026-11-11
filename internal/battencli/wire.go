@@ -326,7 +326,7 @@ func taskWorktreeComplete(prime *lymcwd.Location, slug string) (present, complet
 
 // incompletePairRemedy returns the manual cleanup for a task pair that is not fully created.
 // Running "lym fabric remove --force" from prime removes whatever part of the pair was created, in one command.
-// That covers the task worktree, its sibling, their junctions, the launcher entries, and the sibling's branch.
+// That covers the task worktree, its sibling, their junctions and the sibling's branch.
 // No plain git commands can do that from here, since the sibling is a worktree of another repository.
 // The remove deletes the task branch when its work is already on another ref.
 // That is always so for a create interrupted before any work; otherwise the remove keeps the branch.
@@ -1167,7 +1167,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		// so a process killed right after Remove succeeds re-enters the row with no pair on disk.
 		// EndSession's refusal probe then reports ErrPairNotFound, which Shutdown takes as nothing left to shut down.
 		// RemovePair reports it again as done.
-		// The composite finishes a half-removed pair itself (sibling worktree, launcher entries, both branches),
+		// The composite finishes a half-removed pair itself (sibling worktree, both branches),
 		// so no such state is refused by name here.
 		// EndSession ends the session by name when the task worktree is gone, and runs the refusal probe,
 		// so a refusal reaches the row before Remove and leaves the pair in place.

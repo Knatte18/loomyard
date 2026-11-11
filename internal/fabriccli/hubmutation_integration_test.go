@@ -412,62 +412,6 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Fatalf("remove the planted _portals directory: %v", err)
 			}
 		}},
-		{"Remove_RefusesDriftedLauncherDirLinkWithRefusalObject", func(t *testing.T) {
-			// A real gate refusal through "fabric remove --force", reached via fabricengine.RefusalOf's contract, not a stub.
-			// The pair's launcher directory is moved outside the hub and a link is left in its place,
-			// so the containment check refuses removeLaunchers' first script removal.
-			// The "refusal" object carries all four keys (check, what, target, reason),
-			// and the flattened "error" string is still present alongside it.
-			hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: \"\"\n")
-
-			const slug = "remove-refusal-launcher"
-			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
-				t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
-			}
-
-			// "fabric add" above wrote the launcher directory; move it, scripts included, outside the hub and leave a link to it where it stood.
-			launcherDir := h.PairLauncherDir(slug)
-			movedDir := filepath.Join(t.TempDir(), "moved-launchers")
-			if err := os.Rename(launcherDir, movedDir); err != nil {
-				t.Fatalf("move launcher dir outside the hub: %v", err)
-			}
-			if err := fslink.CreateDirLink(launcherDir, movedDir); err != nil {
-				t.Fatalf("create drifted launcher dir link: %v", err)
-			}
-
-			code, output := runFabric(t, h.PrimeWorktree(), "remove", "--force", slug)
-			if code != 1 {
-				t.Fatalf("RunCLI(remove) = %d; want 1 (a launcher directory linked outside the hub must be refused)\noutput: %s", code, output)
-			}
-
-			result := envelope.Decode(t, output)
-			if result.OK {
-				t.Errorf("RunCLI(remove) ok = true; want false")
-			}
-			if result.Error == "" {
-				t.Errorf("RunCLI(remove) output missing non-empty 'error'; want the flattened error string alongside the refusal object")
-			}
-			refusal, ok := result.Raw["refusal"].(map[string]any)
-			if !ok {
-				t.Fatalf("RunCLI(remove) output missing 'refusal' object; got %v", result)
-			}
-			for _, key := range []string{"check", "what", "target", "reason"} {
-				val, present := refusal[key]
-				if !present {
-					t.Errorf("refusal object missing key %q: %v", key, refusal)
-					continue
-				}
-				if s, _ := val.(string); s == "" {
-					t.Errorf("refusal[%q] = %q; want a non-empty string", key, s)
-				}
-			}
-			if check, _ := refusal["check"].(string); check != string(fabricengine.CheckContainment) {
-				t.Errorf("refusal[\"check\"] = %q; want %q", check, fabricengine.CheckContainment)
-			}
-			if _, present := result.Raw["mutations"]; !present {
-				t.Errorf("RunCLI(remove) output missing 'mutations' key on the failure path")
-			}
-		}},
 		{"PrimePushReportsItsUnpushedCodeBranchAndPushesRecords", func(t *testing.T) {
 			// With an unpushed commit on the prime's code branch, "lym fabric push" from the prime exits 0, pushes the records side, leaves the code branch on its bare unchanged, and names the skipped branch in code_push_skipped.
 			warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())

@@ -431,6 +431,17 @@ func hubWorkspaceFolder(hubPath, name, dir string) (vscode.WorkspaceFolder, erro
 	return vscode.WorkspaceFolder{Name: name, Path: filepath.ToSlash(rel)}, nil
 }
 
+// hubRel returns path expressed relative to hubPath, the form every os.Root call under the hub takes.
+// It returns an error rather than degrading.
+// A path that cannot be related to hubPath is a bug in the geometry derivation, not a case to write blindly.
+func hubRel(hubPath, path string) (string, error) {
+	rel, err := filepath.Rel(hubPath, path)
+	if err != nil {
+		return "", fmt.Errorf("relate %s to hub %s: %w", path, hubPath, err)
+	}
+	return rel, nil
+}
+
 // dirPresent reports whether dir exists; a stat error other than not-exist is returned.
 func dirPresent(dir string) (bool, error) {
 	if _, err := os.Stat(dir); err != nil {

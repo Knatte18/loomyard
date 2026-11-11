@@ -370,7 +370,7 @@ func writeMoveRecordFile(weftPath string, record MoveRecord) error {
 
 // Apply carries the change out.
 // It unwires the pair at the old anchor, moves or integrates the weft, then wires it at the new anchor.
-// The wiring writes the launchers and regenerates the workspace files at the new anchor.
+// The wiring regenerates the workspace files at the new anchor.
 // landed reports whether the weft's commit or branch move happened, which decides what a re-run does.
 //
 // A failure before the weft is committed or its branch moved returns landed false.
@@ -530,52 +530,14 @@ func (c *AnchorChange) rollback(rec *Mutations, cause error) error {
 }
 
 // wireAtTarget wires the pair at the new anchor:
-// its junctions and scratch link, its launchers, and the hub and beam workspace files.
-// A pair with a launcher directory at the old anchor has it written at the new one and removed from the old.
-// The prime has none, and loses the menu launcher of the old anchor instead.
+// its junctions and scratch link, and the hub and beam workspace files.
 func (c *AnchorChange) wireAtTarget(rec *Mutations) error {
-	slug := c.pair.WorktreeName
-	source, target := c.locationAt(c.from), c.locationAt(c.to)
-	if err := WireJunctionsWith(rec, target, slug, c.names); err != nil {
+	target := c.locationAt(c.to)
+	if err := WireJunctionsWith(rec, target, c.pair.WorktreeName, c.names); err != nil {
 		return err
 	}
-	prime, err := IsPrimeWorktree(source)
-	if err != nil {
-		return err
-	}
-	if prime {
-		if err := removeMenuLauncher(rec, source); err != nil {
-			return err
-		}
-	} else if _, err := os.Stat(LauncherDir(source, slug)); err == nil {
-		if err := writeLaunchers(rec, target, slug); err != nil {
-			return err
-		}
-		if err := removeLaunchers(rec, source, slug); err != nil {
-			return err
-		}
-	}
-	_, err = RegenerateHubWorkspace(rec, target)
+	_, err := RegenerateHubWorkspace(rec, target)
 	return err
-}
-
-// removeMenuLauncher removes the menu launcher of l's anchor, which opens the prime at that anchor.
-// An absent launcher is no error, and the emptied launcher directories above it go too.
-func removeMenuLauncher(rec *Mutations, l *lymcwd.Location) error {
-	menu := menuLauncherPath(l)
-	req := pathRequest{
-		what:      "remove the menu launcher of the old anchor",
-		container: launchersDir(l),
-		target:    menu,
-		ownership: ownedUnderGeometryRoot(launchersDir(l)),
-		dirtiness: dirtinessNA("launcher scripts are generated artifacts, never edited content"),
-		force:     false,
-	}
-	if err := removePath(rec, req); err != nil {
-		return fmt.Errorf("remove the menu launcher %s: %w", menu, err)
-	}
-	pruneEmptyAncestors(filepath.Dir(menu), launchersDir(l))
-	return nil
 }
 
 // Finish ends the change: it removes the record and spawns the detached push of the pair's commit.

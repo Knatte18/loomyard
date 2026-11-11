@@ -53,6 +53,9 @@
 //   - logs: `logger.SweepDir` over the prime's anchor and the Bolt checkout, with the bounds the exit sweep picks.
 //   - temp: `lymtemp`'s sweep of the dead owners' run directories, failing when the root fails its checks
 //     or the sweep reports a failure.
+//   - launchers: `fabricengine.SweepRetiredLaunchers` over the hub's retired `_launchers` directory.
+//     It lists what it removes under `removed` and what it leaves in place under `kept`.
+//     A hub without the directory lists nothing.
 //
 // # The scratch segment
 //

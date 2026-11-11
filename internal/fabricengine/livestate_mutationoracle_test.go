@@ -57,8 +57,6 @@ var manifestObservableKind = map[fabricengine.Kind]bool{
 // A rollback may tear a freshly minted worktree down through the os.RemoveAll fallback, not only through git.
 // A link_created is undone only by a link_removed, including a dangling link repointed during reconcile.
 // A file_written is undone by a path_removed at the same Target.
-// Launcher scripts are removed one by one before their directory.
-// A rollback therefore writes and then removes each script at the identical target.
 var invertedBy = map[fabricengine.Kind][]fabricengine.Kind{
 	fabricengine.KindDirCreated:      {fabricengine.KindPathRemoved, fabricengine.KindWorktreeRemoved},
 	fabricengine.KindWorktreeCreated: {fabricengine.KindPathRemoved, fabricengine.KindWorktreeRemoved},
@@ -303,8 +301,7 @@ var worktreeRootedKind = map[fabricengine.Kind]bool{
 // Coverage is segment-wise subtree containment on e.Target.
 // A worktree-rooted kind also covers its derived <prime>/.git/worktrees/<name> admin entry.
 // It also covers every KindDir ancestor directory of e.Target.
-// These directories are created implicitly around the recorded roots by fslink.CreateDirLink and writeLaunchers.
-// pruneEmptyAncestors reaps them on the way out.
+// These directories are created implicitly around the recorded roots by fslink.CreateDirLink.
 // A "." Target is exempt except for path_removed.
 // A whole-hub teardown is the one "."-targeted entry that covers everything.
 // Nothing survives it for a finer entry to name.

@@ -8,8 +8,6 @@ package loomcli
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -19,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -29,14 +26,13 @@ import (
 )
 
 // TestLoomPreBootstrapPair walks one never-bootstrapped pair through the pre-bootstrap states, in order.
-// Each step builds on the one before:
-// no seed, a seed commit, then a second pair added to and removed from the same hub.
+// Each step builds on the one before: no seed, then a seed commit.
 func TestLoomPreBootstrapPair(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	exe := lymbin.Build(t)
-	hub, loc, worktree, slug := newWiredPairFixture(t)
+	_, loc, worktree, slug := newWiredPairFixture(t)
 	recordsDir := fabricengine.RecordsWorktree(loc)
 
 	// The run verb on a never-seeded pair refuses on the envelope with a message naming the bootstrap verb.
@@ -113,29 +109,6 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 		}
 		if report.Has(preflight.CheckWorktreeClean) {
 			t.Errorf("Check report still carries CheckWorktreeClean after the seed commit; the bootstrap must reach past the first precondition row rather than block on it")
-		}
-	})
-
-	// A second pair of the same hub covers the run launcher.
-	// The launcher exists in the per-slug launcher directory after the add and is gone after the matching remove.
-	t.Run("run launcher exists after a pair is added and is gone after the remove", func(t *testing.T) {
-		const launcherSlug = "loom-smoke-launcher"
-		hubforge.AddPair(t, hub, launcherSlug)
-
-		ext := ".sh"
-		if runtime.GOOS == "windows" {
-			ext = ".cmd"
-		}
-		runLauncherPath := filepath.Join(hub.PairLauncherDir(launcherSlug), "run"+ext)
-		if _, err := os.Stat(runLauncherPath); err != nil {
-			t.Fatalf("run launcher missing after add: %v", err)
-		}
-
-		if _, err := hub.Topology.Remove(hub.Location, launcherSlug, false, false); err != nil {
-			t.Fatalf("Remove(%s): %v", launcherSlug, err)
-		}
-		if _, err := os.Stat(runLauncherPath); !os.IsNotExist(err) {
-			t.Fatalf("run launcher still present after remove (stat err=%v); want it gone", err)
 		}
 	})
 }

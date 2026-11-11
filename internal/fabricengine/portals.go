@@ -31,7 +31,7 @@ func retiredPortalTarget(l *lymcwd.Location, name string) string {
 // retiredHubWorkspacePath returns the path of the retired hub workspace file.
 // The path is <hub>/_launchers/<AnchorRel>/<primeName>.code-workspace.
 func retiredHubWorkspacePath(l *lymcwd.Location, primeName string) string {
-	return filepath.Join(launchersDir(l), l.AnchorRel, primeName+hubWorkspaceExt)
+	return filepath.Join(launchersDir(l.HubPath), l.AnchorRel, primeName+hubWorkspaceExt)
 }
 
 // retiredPortalChain returns the hub-relative directories from the portals container down to its anchor directory, in that order.
@@ -46,9 +46,9 @@ func retiredPortalChain(l *lymcwd.Location) []string {
 	return chain
 }
 
-// readRetiredPortalDir lists the entry names of dirRel, a hub-relative directory, in byte order, through root.
+// readRetiredDir lists the entry names of dirRel, a hub-relative directory, in byte order, through root.
 // A component that is a symlink escaping the hub fails the read.
-func readRetiredPortalDir(root *os.Root, dirRel string) ([]string, error) {
+func readRetiredDir(root *os.Root, dirRel string) ([]string, error) {
 	dir, err := root.Open(dirRel)
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func retiredHubArtifactsPresent(l *lymcwd.Location) bool {
 
 	chain := retiredPortalChain(l)
 	anchorRel := chain[len(chain)-1]
-	if names, err := readRetiredPortalDir(root, anchorRel); err == nil {
+	if names, err := readRetiredDir(root, anchorRel); err == nil {
 		for _, name := range names {
 			if isRetiredPortalLink(l, anchorRel, name) {
 				return true
@@ -150,7 +150,7 @@ func sweepRetiredPortals(rec *Mutations, l *lymcwd.Location) []string {
 	listed := 0
 	lastKept := -1
 	for level, dirRel := range chain {
-		names, err := readRetiredPortalDir(root, dirRel)
+		names, err := readRetiredDir(root, dirRel)
 		if errors.Is(err, fs.ErrNotExist) {
 			break
 		}
@@ -240,7 +240,7 @@ func isDirectoryAt(root *os.Root, rel string) bool {
 
 // directoryHoldsEntries reports whether the hub-relative directory rel lists at least one entry.
 func directoryHoldsEntries(root *os.Root, rel string) bool {
-	names, err := readRetiredPortalDir(root, rel)
+	names, err := readRetiredDir(root, rel)
 	return err == nil && len(names) > 0
 }
 
@@ -265,17 +265,17 @@ func sweepRetiredHubWorkspace(rec *Mutations, l *lymcwd.Location) []string {
 	}
 	err = checkPathRequest(pathRequest{
 		what:      "remove retired hub workspace file",
-		container: launchersDir(l),
+		container: launchersDir(l.HubPath),
 		target:    path,
 		slug:      nil,
-		ownership: ownedUnderGeometryRoot(launchersDir(l)),
+		ownership: ownedUnderGeometryRoot(launchersDir(l.HubPath)),
 		dirtiness: dirtinessNA("the retired workspace file is a generated artifact, never edited content"),
 		force:     false,
 	})
 	if err != nil {
 		return []string{keptDetail(l, path, err.Error())}
 	}
-	removed, _, err := removeContainedPath(launchersDir(l), path, false)
+	removed, _, err := removeContainedPath(launchersDir(l.HubPath), path, false)
 	if err != nil {
 		return []string{keptDetail(l, path, err.Error())}
 	}

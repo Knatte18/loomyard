@@ -50,9 +50,6 @@ func goneLocally(t *testing.T, slug string) *hubforge.Hub {
 	dropTaskWorktree(h, slug)
 	dropRecordsWorktree(h, slug)
 	mustGit(h.PrimeWorktree(), "branch", "-D", slug)
-	if err := os.RemoveAll(fabricengine.LauncherDir(h.Location, slug)); err != nil {
-		t.Fatalf("remove the launchers of %s: %v", slug, err)
-	}
 	return h
 }
 

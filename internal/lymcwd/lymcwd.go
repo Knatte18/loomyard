@@ -15,7 +15,7 @@
 // the hub is the worktree root's parent, and looksLikeHub checks its structure.
 // A hub that still carries the older suffix therefore resolves, and only the display-only RepoName degrades.
 // Such a hub is never renamed in place.
-// Launcher scripts and the tmux socket key are bound to the hub's absolute path.
+// The tmux socket key is bound to the hub's absolute path.
 // An operator removes the old container by hand and re-clones; `clone --reset` resolves the new suffix only.
 package lymcwd
 

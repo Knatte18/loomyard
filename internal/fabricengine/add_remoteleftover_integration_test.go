@@ -54,7 +54,7 @@ func requireRemoteLeftover(t *testing.T, err error, branch string) *fabricengine
 	return leftover
 }
 
-// requireNothingCreated asserts a refused Add left no worktree or launcher and no local branch.
+// requireNothingCreated asserts a refused Add left no worktree and no local branch.
 func requireNothingCreated(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
@@ -62,7 +62,6 @@ func requireNothingCreated(t *testing.T, h *hubforge.Hub, slug string) {
 	for _, p := range []string{
 		fabricengine.WorktreePath(l, slug),
 		fabricengine.RecordsWorktreePath(l, slug),
-		fabricengine.LauncherDir(l, slug),
 	} {
 		if _, err := os.Lstat(p); !os.IsNotExist(err) {
 			t.Errorf("%s exists after a refused Add (stat err = %v)", p, err)

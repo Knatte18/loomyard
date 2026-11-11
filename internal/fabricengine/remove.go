@@ -2,8 +2,8 @@
 // Every refusal runs first, through the read-only probe RemoveRefusal, and leaves the hub and the weft origin untouched.
 // Then the sibling's pending records are committed (commitPendingRecords);
 // the weft tip is then tagged locally for its archive.
-// Only then are the launchers and worktrees removed.
-// A refused call therefore never loses a launcher or tags a tip that misses uncommitted records.
+// Only then are the worktrees removed.
+// A refused call therefore never loses a worktree or tags a tip that misses uncommitted records.
 // The pushes of the weft tip and the tag, and every delete on origin, run last in the detached teardown child.
 // The weft branch it removes is RecordsBranchName(warpBranch).
 // After both worktrees are gone, the local warp branch is deleted only when the destructive gate proves no work is lost.
@@ -45,7 +45,7 @@ func (e siblingDirtyRefusal) Error() string { return e.msg }
 func (e siblingDirtyRefusal) Unwrap() error { return ErrPairSiblingDirty }
 
 // ErrPairNotFound is the sentinel an error wraps when no trace of the pair remains.
-// No worktree stands on either side, no branch exists locally or on origin, and no launcher entry is left.
+// No worktree stands on either side, and no branch exists locally or on origin.
 // The message names neither side of the pair, so callers outside this package can match it with errors.Is.
 var ErrPairNotFound = errors.New("pair not found")
 
@@ -62,8 +62,6 @@ const (
 	// RemoveStepArchive is the archive tag made on the local weft tip before the teardown;
 	// its push to origin is the teardown child's.
 	RemoveStepArchive = "archive"
-	// RemoveStepLaunchers is the removal of the pair's launcher directory.
-	RemoveStepLaunchers = "launchers"
 	// RemoveStepTaskWorktree is the removal of the task worktree.
 	RemoveStepTaskWorktree = "task_worktree"
 	// RemoveStepSiblingWorktree is the removal of the sibling worktree.
@@ -168,7 +166,6 @@ type RemoveResult struct {
 // A failed tag returns an error wrapping ErrArchiveFailed, with everything still in place, so a plain re-run retries it.
 // The tag is taken whatever remote says, and force does not skip it: force answers dirtiness only.
 // A weft repo with no origin proceeds untagged, with ArchiveSkippedReason set on the result.
-// Launcher cleanup runs after the tag and before the git removal.
 // The pair's branches are read from the pair before any teardown, through PairTaskBranch.
 // A pair made under an earlier branch prefix is torn down by the branches it stands on.
 // With no worktree or local branch of the pair left, origin names them.
@@ -321,7 +318,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		}
 	} else {
 		// Tag the weft tip after every refusal and before the first teardown mutation:
-		// a failed tag leaves the worktrees, launchers and both branches untouched, so a plain re-run retries it.
+		// a failed tag leaves the worktrees and both branches untouched, so a plain re-run retries it.
 		// force answers dirtiness only, so it never skips this step; the tag's push is the teardown child's.
 		weftTip, archiveTag, archiveSkippedReason, err = tagWeftTipForArchive(l, slug, weftBranch)
 		if err != nil {
@@ -330,15 +327,6 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		if archiveTag != "" {
 			steps = append(steps, RemoveStepArchive)
 		}
-	}
-
-	// removeLaunchers is best-effort: an operational failure is discarded,
-	// but a gate refusal must surface rather than vanish.
-	if err := surfaceRefusal(removeLaunchers(rec, pairLoc, slug)); err != nil {
-		return RemoveResult{}, err
-	}
-	if pair.launchers && !pathPresent(LauncherDir(pairLoc, slug)) {
-		steps = append(steps, RemoveStepLaunchers)
 	}
 
 	// Sweep the anchored directory, and only the links fabric itself created there.
@@ -567,8 +555,6 @@ type pairState struct {
 	siblingWorktree bool
 	// taskBranch and siblingBranch report the pair's local branches.
 	taskBranch, siblingBranch bool
-	// launchers reports the hub-level launcher directory, which the removal tears down.
-	launchers bool
 	// warpBranch is the pair's warp branch, read locally from the pair itself.
 	warpBranch string
 }
@@ -585,11 +571,6 @@ func (t *Topology) inspectPair(l *lymcwd.Location, slug string) (pairState, erro
 		}
 	}
 	s.siblingWorktree = pathPresent(RecordsWorktreePath(l, slug))
-	pairLoc, err := lymcwd.NamedWorktree(l.HubPath, slug)
-	if err != nil {
-		return pairState{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
-	}
-	s.launchers = pathPresent(LauncherDir(pairLoc, slug))
 
 	warpBranch, err := t.PairTaskBranch(l, slug)
 	if err != nil {
@@ -615,12 +596,10 @@ func (s pairState) branchPartRemains() bool {
 // Origin is asked only once no worktree and no local branch of the pair remains.
 // It is asked only for a repository with an origin.
 // A pair with a worktree or branch left never costs a network call.
-// A pair whose only local remnant is its launcher directory is asked too, because the directory names no branch.
-// In localMode such a pair is not asked; otherwise it is no error when origin holds nothing.
 // When origin holds the pair, it returns the name origin holds it under, and otherwise "".
 // A stray path at the pair's location is named in the error and left alone.
-func (t *Topology) refuseWhenNothingRemains(l *lymcwd.Location, slug string, s pairState, localMode bool) (onOrigin string, err error) {
-	if s.branchPartRemains() || (s.launchers && localMode) {
+func (t *Topology) refuseWhenNothingRemains(l *lymcwd.Location, slug string, s pairState) (onOrigin string, err error) {
+	if s.branchPartRemains() {
 		return "", nil
 	}
 
@@ -630,9 +609,6 @@ func (t *Topology) refuseWhenNothingRemains(l *lymcwd.Location, slug string, s p
 	}
 	if onOrigin != "" {
 		return onOrigin, nil
-	}
-	if s.launchers {
-		return "", nil
 	}
 
 	if s.strayPath {
@@ -758,7 +734,7 @@ func (t *Topology) refuseRemoval(l *lymcwd.Location, slug string, force, localMo
 	if err != nil {
 		return "", err
 	}
-	onOrigin, err = t.refuseWhenNothingRemains(l, slug, pair, localMode)
+	onOrigin, err = t.refuseWhenNothingRemains(l, slug, pair)
 	if err != nil {
 		return "", err
 	}

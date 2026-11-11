@@ -113,7 +113,7 @@ The entry binds lym's own code only.
 
 ### Write containment
 
-`fabricengine` writes `_launchers` and the hub workspace file only through an `os.Root` opened on the hub.
+`fabricengine` writes the hub workspace file only through an `os.Root` opened on the hub.
 
 ### Store housekeeping
 

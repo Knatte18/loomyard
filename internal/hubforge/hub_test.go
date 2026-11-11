@@ -260,21 +260,12 @@ func TestNewHub(t *testing.T) {
 						t.Errorf("%s content = %q; want the seeded override %q", configPath, got, override)
 					}
 				}},
-				{"AddPairWiresLauncherAndNoPortals", func(t *testing.T) {
-					const slug = "px"
-					AddPair(t, h, slug)
+				{"AddPairWiresNoPortals", func(t *testing.T) {
+					AddPair(t, h, "px")
 
 					portalsDir := filepath.Join(h.Location.HubPath, "_portals")
 					if _, err := os.Lstat(portalsDir); !os.IsNotExist(err) {
 						t.Errorf("%s exists after AddPair (err = %v); want no _portals directory", portalsDir, err)
-					}
-
-					launcherDir := fabricengine.LauncherDir(h.Location, slug)
-					if _, err := os.Stat(launcherDir); err != nil {
-						t.Errorf("pair launcher dir missing at %s: %v", launcherDir, err)
-					}
-					if got := h.PairLauncherDir(slug); got != launcherDir {
-						t.Errorf("h.PairLauncherDir(%s) = %s; want %s", slug, got, launcherDir)
 					}
 				}},
 				{"AddPairWith_SkipPushKeepsWeftBranchOffTheBare", func(t *testing.T) {
@@ -586,7 +577,7 @@ func TestNewHub_TeardownSurvivesCorruptHub(t *testing.T) {
 }
 
 // TestCopyHub copies the "." shape with its one pair and asserts the copy is a working hub of its own:
-// fabric status is clean on its prime, every worktree git lists resolves, and the pair's launcher directory resolves.
+// fabric status is clean on its prime, and every worktree git lists resolves.
 // The board has the relocated binding folded into its HEAD and pushed.
 // No `_portals` directory exists, and no file or link names the template root.
 func TestCopyHub(t *testing.T) {
@@ -630,11 +621,6 @@ func TestCopyHub(t *testing.T) {
 		t.Errorf("git lists %d worktrees on the copy; want %d", worktrees, want)
 	}
 
-	for _, slug := range shape.Pairs {
-		if _, err := os.Stat(h.PairLauncherDir(slug)); err != nil {
-			t.Errorf("launcher dir of pair %s does not resolve: %v", slug, err)
-		}
-	}
 	portalsDir := filepath.Join(h.Location.HubPath, "_portals")
 	if _, err := os.Lstat(portalsDir); !os.IsNotExist(err) {
 		t.Errorf("%s exists on the copy (err = %v); want no _portals directory", portalsDir, err)

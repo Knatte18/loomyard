@@ -75,7 +75,7 @@ func TestAdd_AtAnchor(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	t.Run("A beam added at y has its marker, content, wiring and launcher there and no record", func(t *testing.T) {
+	t.Run("A beam added at y has its marker, content and wiring there and no record", func(t *testing.T) {
 		t.Parallel()
 		h := newAtAnchorHub(t)
 		weftRoot := mustRecordsRepoRoot(t, h.Location)
@@ -89,9 +89,6 @@ func TestAdd_AtAnchor(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(h.PairRecordsSibling("beam"), "y", fabricengine.OriginRecordRel())); err != nil {
 			t.Errorf("origin record at y: %v; want it", err)
-		}
-		if _, err := os.Stat(filepath.Join(h.Path, "_launchers", "y", "beam")); err != nil {
-			t.Errorf("launcher directory at y: %v; want it", err)
 		}
 	})
 

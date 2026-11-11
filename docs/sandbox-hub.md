@@ -41,8 +41,7 @@ Discovery is structural, so it resolves normally;
 the only degradation is the display name derived from its basename.
 
 It is never renamed in place.
-The launcher scripts inside it were materialised against its absolute path,
-and the tmux socket key is derived from that same absolute path,
+The tmux socket key is derived from its absolute path,
 so moving the directory breaks a working container rather than migrating it.
 
 The `-reset` flag does not reach it.

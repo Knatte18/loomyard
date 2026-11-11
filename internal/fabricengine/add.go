@@ -1,4 +1,4 @@
-// add.go implements Add, which creates a paired warp and weft worktree, wires its junctions and writes its launchers.
+// add.go implements Add, which creates a paired warp and weft worktree and wires its junctions.
 // A failure after the first worktree is made rolls the whole pair back, best-effort, and never touches origin.
 // The pre-flight decides, before the first mutation, whether the pair is live and what origin lends it.
 
@@ -197,7 +197,7 @@ func SourceDirtyPaths(l *lymcwd.Location) ([]string, error) {
 // and a parent that cannot be forked from is refused before any mutation.
 // A forked pair takes the anchor of its fork point through the marker its weft branch inherits.
 // The fork point is the named parent, or else the acting worktree.
-// The pair's launchers, junctions, scratch link and origin record sit at that anchor.
+// The pair's junctions, scratch link and origin record sit at that anchor.
 // A fork point whose own marker is present but empty is refused before any mutation.
 // With opts.Anchor naming another directory, the pair takes that anchor instead.
 // Add validates the anchor against the fork point's warp checkout before any mutation.
@@ -327,7 +327,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	if err != nil {
 		return AddResult{}, err
 	}
-	// pairAt is the Location the new pair's launchers, junctions, scratch link and origin record are built at.
+	// pairAt is the Location the new pair's junctions, scratch link and origin record are built at.
 	// An adopted weft branch carries its own anchor,
 	// and the adopt step below replaces pairAt with the adopted pair's Location.
 	// A pair moved to a requested anchor takes it once the move has committed.
@@ -644,7 +644,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		t.beforeWire()
 	}
 
-	// (10b) Wire the new worktree's warp junctions as soon as the weft worktree exists, ahead of the launchers,
+	// (10b) Wire the new worktree's warp junctions as soon as the weft worktree exists,
 	// so a hub reader polling the half-built pair meets a warp worktree without its junction for as little time as possible.
 	// The wired name-set comes from the repo-wide BoardDir base (not any per-pair weft base or acting-worktree config):
 	// every worktree must converge to the same repo-wide pathspec, as a later checkout's re-point does.
@@ -658,11 +658,6 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	if err := WireJunctionsWith(rec, pairAt, slug, names); err != nil {
 		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
 		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
-	}
-
-	if err := writeLaunchers(rec, pairAt, slug); err != nil {
-		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
-		return AddResult{}, err
 	}
 
 	// (10c) Record and commit the pair's provenance now that the pair is fully wired;
@@ -810,12 +805,6 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lymcwd.Location, slug, warpBra
 		names = nil
 	}
 	if err := removeWarpJunction(rec, l, slug, names); err != nil {
-		if firstErr == nil {
-			firstErr = err
-		}
-	}
-
-	if err := removeLaunchers(rec, l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}

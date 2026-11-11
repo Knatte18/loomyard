@@ -110,7 +110,7 @@ func TestNoUncontainedWrite_FabricengineProductionSource(t *testing.T) {
 			for _, tok := range uncontainedWriteBannedTokens {
 				if strings.Contains(content, tok) {
 					failures = append(failures, fmt.Sprintf(
-						"%s: contains raw filesystem-write primitive %q — a write to a hub-relative or caller-derived path must route through an os.Root rooted at the hub (see internal/fabricengine/launchers.go's writeLaunchers and hubworkspace_write.go's writeHubWorkspace), or add a uncontainedWriteAllowlist entry in cmd/lym/uncontainedwrite_test.go with a reason if this is a new audited safe site",
+						"%s: contains raw filesystem-write primitive %q — a write to a hub-relative or caller-derived path must route through an os.Root rooted at the hub (see internal/fabricengine/hubworkspace_write.go's writeHubWorkspace), or add a uncontainedWriteAllowlist entry in cmd/lym/uncontainedwrite_test.go with a reason if this is a new audited safe site",
 						f.Rel, tok,
 					))
 				}

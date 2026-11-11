@@ -1,7 +1,8 @@
 // add_rollback_adopt_test.go proves that Add's rollback never deletes a pre-existing (adopted) weft branch.
 // When Add adopts an existing <slug>-weft branch and then fails at a later step:
 // the rollback tears down only the worktree Add created; the branch, and any unpushed history it carries, survives.
-// This test injects a deterministic post-adopt failure, a launcher blocker directory, instead of a network failure.
+// This test injects a deterministic post-adopt failure instead of a network failure.
+// The failure is a real directory where a junction goes.
 //
 // Package fabricengine_test, reusing the external-test-package fixture idiom of lifecycle_differential_test.go;
 // it shares the single TestMain in testmain_test.go.
@@ -11,7 +12,6 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -35,22 +35,17 @@ func mustRecordsRepoRoot(t *testing.T, l *lymcwd.Location) string {
 	return root
 }
 
-// plantLauncherBlocker plants a directory at the pair's ide launcher script path;
-// so Add fails writing the launcher scripts after the pair's worktrees and weft branch exist.
-// The rollback's launcher teardown removes the planted directory and the launcher directory.
-// It returns the planted path.
-func plantLauncherBlocker(tb testing.TB, l *lymcwd.Location, slug string) string {
+// failAddBeforeWiring makes Add on topology fail once the pair's worktrees and weft branch exist.
+// Before the junctions are wired it plants a real directory where the pair's `_lym` junction goes, which wiring refuses.
+// The failure sends Add through its rollback.
+func failAddBeforeWiring(tb testing.TB, topology *fabricengine.Topology, l *lymcwd.Location, slug string) {
 	tb.Helper()
 
-	scriptName := "ide.sh"
-	if runtime.GOOS == "windows" {
-		scriptName = "ide.cmd"
-	}
-	blocker := filepath.Join(fabricengine.LauncherDir(l, slug), scriptName)
-	if err := os.MkdirAll(blocker, 0o755); err != nil {
-		tb.Fatalf("plant launcher blocker %s: %v", blocker, err)
-	}
-	return blocker
+	fabricengine.SetBeforeWireForTest(topology, func() {
+		if err := os.MkdirAll(fabricengine.CodeLymLink(l, slug), 0o755); err != nil {
+			tb.Errorf("plant the real directory at the _lym junction of %s: %v", slug, err)
+		}
+	})
 }
 
 // TestAddRollback_AdoptedWeftBranchSurvives pre-creates a weft branch carrying a unique commit,
@@ -80,14 +75,13 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Inject a deterministic failure after the adopt:
-	// a directory at the ide launcher script path makes writeLaunchers fail, triggering rollback.
-	plantLauncherBlocker(t, l, slug)
-
+	// a real directory at the _lym junction path makes junction wiring fail, triggering rollback.
 	const branchPrefix = "task/"
 	warpBranch := branchPrefix + slug
 	topology := fabricengine.NewTopology(fabricengine.Config{BranchPrefix: branchPrefix})
+	failAddBeforeWiring(t, topology, l, slug)
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
-		t.Fatalf("Add should have failed (launcher blocker)")
+		t.Fatalf("Add should have failed (junction blocker)")
 	}
 
 	// The adopted branch survives the rollback, still at its unique commit.
@@ -155,11 +149,11 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			}
 			originTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 
-			// A blocker at the ide launcher script path fails Add at writeLaunchers, after the weft branch is taken from origin.
-			plantLauncherBlocker(t, l, slug)
+			// A blocker at the _lym junction path fails Add at junction wiring, after the weft branch is taken from origin.
+			failAddBeforeWiring(t, h.Topology, l, slug)
 
 			if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
-				t.Fatalf("Add should have failed (launcher blocker)")
+				t.Fatalf("Add should have failed (junction blocker)")
 			}
 
 			if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != originTip {
@@ -197,10 +191,10 @@ func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 	pushCommitToOrigin(t, h.RecordsBare, fabricengine.RecordsBranchName(slug))
 	originTip := gitkit.RevParse(t, h.CodeBare, slug)
 
-	plantLauncherBlocker(t, l, slug)
+	failAddBeforeWiring(t, h.Topology, l, slug)
 
 	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
-		t.Fatalf("Add should have failed (launcher blocker)")
+		t.Fatalf("Add should have failed (junction blocker)")
 	}
 
 	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
@@ -212,7 +206,7 @@ func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 }
 
 // TestAdd_WiresJunctionsEagerly proves a successful Add leaves the new worktree's warp junctions wired immediately.
-// Add wires them in step 10b, after writeLaunchers and before the warp push.
+// Add wires them in step 10b, before the warp push.
 // The pair is usable at once: no dormant state and no separate `lym init` step.
 // Asserts both the repo-wide default junctions (_lym and _extra) resolve to their paired weft
 // directories.

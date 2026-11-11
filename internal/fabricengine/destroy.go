@@ -574,7 +574,6 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 
 	case pathOwnershipUnderGeometryRoot:
 		// A fabric geometry root is a directory whose base name is launchersDirName or portalsDirName.
-		// The value launchersDir returns is one such root.
 		// A root outside that set is refused, so a call site cannot satisfy this check by naming a convenient parent.
 		//
 		// The base-name test runs against the resolved root, not the nominal one, as pathAtOrBelow does.

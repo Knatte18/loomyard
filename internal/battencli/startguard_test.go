@@ -206,7 +206,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 		{
 			name:  "LeftTaskBranchAlonePasses",
 			verbs: []string{"run", "step"},
-			parts: fabricengine.PairParts{TaskBranch: true, Launchers: true},
+			parts: fabricengine.PairParts{TaskBranch: true},
 		},
 		{
 			name:     "LeftPartsDoNotRefuseAResume",

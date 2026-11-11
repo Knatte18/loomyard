@@ -24,7 +24,7 @@ func TestPairParts(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	all := fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true, Launchers: true}
+	all := fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true}
 
 	t.Run("AfterAddEveryPartIsPresent", func(t *testing.T) {
 		t.Parallel()

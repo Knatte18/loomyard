@@ -167,8 +167,7 @@ use "lym fabric pairs".`,
 		Short:       "destroy a dual warp+weft worktree pair",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `remove tears down a warp+weft worktree pair: both worktrees, the warp
-junctions (_lym, .lym), the pair's launchers, its reed
-session and its weft branch. The local task branch is deleted too once its
+junctions (_lym, .lym), its reed session and its weft branch. The local task branch is deleted too once its
 work is pushed or landed on the parent branch recorded at "lym fabric add";
 otherwise it is kept, with the reason in code_branch_kept_reason, and the
 command still exits 0.
@@ -221,8 +220,7 @@ suffix-paired weft branch, re-pointing junctions in the same operation.
 
 When no branch is given, the current warp branch is re-resolved and used as
 the target — this performs an in-place re-checkout that re-points junctions
-and re-syncs the weft side, which is how the fabric-checkout launcher
-shortcut invokes this command.
+and re-syncs the weft side.
 
 The command refuses before switching anything if the WEFT worktree has
 uncommitted tracked changes: a half-switched pair is the one state this verb
@@ -270,11 +268,6 @@ missing, not a link, or points elsewhere, this re-wires every junction for
 that pair in one call — a pair with only one junction broken is repaired,
 not reported already-healthy.
 
-It also restores a pair's launcher directory (_launchers/<slug>) when it has
-gone missing, reporting launchers_restored rather than already_healthy. The
-hub's prime worktree is skipped: it has no launcher directory, so there is
-nothing there to repair.
-
 It also removes fabric's retired portal links (under _portals) and the old
 workspace file under _launchers, and keeps anything else found there, naming it
 under hub_details. Every regeneration of the hub workspace file warns until this
@@ -304,9 +297,8 @@ warp worktree directory is gone (stale), and a weft worktree with no warp
 sibling at all (orphaned).
 
 By default this is a dry run: every stale or orphaned pair is reported and
-nothing is removed. With --apply, each entry's weft worktree is removed, the
-dead slug's launcher directory is torn down, and stale
-worktree registrations are pruned on both repos. Branches are never deleted
+nothing is removed. With --apply, each entry's weft worktree is removed and
+stale worktree registrations are pruned on both repos. Branches are never deleted
 here — orphaned weft branches are "lym fabric cleanup"'s job.
 
 The weft worktree is removed forcefully, so an entry whose weft worktree

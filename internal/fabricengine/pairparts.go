@@ -22,15 +22,13 @@ type PairParts struct {
 	RecordsBranch bool
 	// TaskBranch reports the local task branch.
 	TaskBranch bool
-	// Launchers reports the pair's launcher directory.
-	Launchers bool
 	// StrayPath reports an unregistered path at the pair's task worktree location, such as one a late writer refilled.
 	StrayPath bool
 }
 
 // Any reports whether any part of the pair is present.
 func (p PairParts) Any() bool {
-	return p.TaskWorktree || p.RecordsWorktree || p.RecordsBranch || p.TaskBranch || p.Launchers || p.StrayPath
+	return p.TaskWorktree || p.RecordsWorktree || p.RecordsBranch || p.TaskBranch || p.StrayPath
 }
 
 // PairParts reports which parts of slug's pair are present, read locally.
@@ -44,7 +42,6 @@ func (t *Topology) PairParts(l *lymcwd.Location, slug string) (PairParts, error)
 		RecordsWorktree: state.siblingWorktree,
 		RecordsBranch:   state.siblingBranch,
 		TaskBranch:      state.taskBranch,
-		Launchers:       state.launchers,
 		StrayPath:       state.strayPath,
 	}, nil
 }

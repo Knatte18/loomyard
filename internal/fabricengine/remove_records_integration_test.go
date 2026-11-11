@@ -191,7 +191,6 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 			t.Errorf("local archive tags after RemoveRefusal = %v; want none", tags)
 		}
 		for _, p := range []string{
-			fabricengine.LauncherDir(l, slug),
 			warpPath,
 			weftWorktree,
 		} {

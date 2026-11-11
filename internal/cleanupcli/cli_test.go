@@ -68,7 +68,7 @@ func TestPrimeSegments(t *testing.T) {
 	for _, s := range segments {
 		names = append(names, s.name)
 	}
-	if want := []string{"batten", "board", "orch", "scratch", "logs", "temp"}; !slices.Equal(names, want) {
+	if want := []string{"batten", "board", "orch", "scratch", "logs", "temp", "launchers"}; !slices.Equal(names, want) {
 		t.Fatalf("segment names = %v, want %v", names, want)
 	}
 

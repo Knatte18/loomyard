@@ -84,14 +84,6 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPairWith(t, h, reanchored, fabricengine.AddOptions{SkipPush: true})
 		hubforge.ReanchorPair(t, h, reanchored, "sub")
-		pairLauncherDir := h.PairLauncherDir(reanchored)
-		if err := os.MkdirAll(pairLauncherDir, 0o755); err != nil {
-			t.Fatalf("plant the pair's launcher directory %s: %v", pairLauncherDir, err)
-		}
-		primeAnchorLauncherDir := fabricengine.LauncherDir(h.Location, reanchored)
-		if _, err := os.Stat(primeAnchorLauncherDir); err != nil {
-			t.Fatalf("setup: the launcher directory Add wrote at the prime's anchor %s: %v", primeAnchorLauncherDir, err)
-		}
 
 		result, err := h.Topology.Remove(h.Location, reanchored, true, false)
 		if err != nil {
@@ -102,8 +94,6 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		if result.LinksRemoved != 2 {
 			t.Errorf("LinksRemoved = %d; want 2 (_lym, .lym at <slug>/sub)", result.LinksRemoved)
 		}
-		assertAbsent(t, pairLauncherDir)
-		assertPresent(t, primeAnchorLauncherDir)
 		assertAbsent(t, h.PairCodeWorktree(reanchored))
 	})
 

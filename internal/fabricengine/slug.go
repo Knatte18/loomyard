@@ -55,7 +55,7 @@ func validateWorktreeSlug(slug string, junctionNames []string) error {
 	}
 
 	// "." and ".." carry no separator and name no reserved directory, so the checks around this one let them through.
-	// filepath.Join resolves them, though: a slug of ".." turns <hub>/_launchers/<anchor>/<slug> into the hub itself,
+	// filepath.Join resolves them, though: a slug of "." turns <hub>/<slug> into the hub itself,
 	// so a teardown's os.RemoveAll would delete the whole hub, warp clone and weft clone included.
 	// A slug must denote a directory below its parent, never the parent or the parent's parent.
 	// So joining it must not move anywhere: filepath.Clean must leave it untouched.

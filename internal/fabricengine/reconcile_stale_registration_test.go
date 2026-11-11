@@ -22,7 +22,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -504,85 +503,4 @@ func reconcilePairFor(t *testing.T, result fabricengine.ReconcileResult, slug st
 	}
 	t.Fatalf("Reconcile() reported no pair for slug %q", slug)
 	return fabricengine.ReconcilePairResult{}
-}
-
-// TestReconcile_RestoresDeletedLaunchers proves Reconcile restores a pair's missing launcher directory and reports it.
-// It also proves a failed restore stays a Detail note.
-// The report matters: a pair whose directory was deleted must not read already_healthy.
-func TestReconcile_RestoresDeletedLaunchers(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-
-	reconcile := func(t *testing.T) fabricengine.ReconcileResult {
-		t.Helper()
-		result, err := h.Topology.Reconcile(l)
-		if err != nil {
-			t.Fatalf("Reconcile() error = %v", err)
-		}
-		return result
-	}
-
-	t.Run("RestoresAndThenReadsHealthy", func(t *testing.T) {
-		const slug = "launchers-repair"
-		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-		launcherDir := fabricengine.LauncherDir(l, slug)
-		if err := os.RemoveAll(launcherDir); err != nil {
-			t.Fatalf("delete launcher dir: %v", err)
-		}
-
-		if got := reconcilePairFor(t, reconcile(t), slug).Action; got != fabricengine.ReconcileActionLaunchersRestored {
-			t.Errorf("Reconcile() action = %q; want %q", got, fabricengine.ReconcileActionLaunchersRestored)
-		}
-		if _, err := os.Stat(launcherDir); err != nil {
-			t.Errorf("Reconcile() left the launcher dir missing at %s: %v", launcherDir, err)
-		}
-		if got := reconcilePairFor(t, reconcile(t), slug).Action; got != fabricengine.ReconcileActionAlreadyHealthy {
-			t.Errorf("second Reconcile() action = %q; want %q", got, fabricengine.ReconcileActionAlreadyHealthy)
-		}
-	})
-
-	t.Run("KeepsJunctionRepointedAndNotesTheRestore", func(t *testing.T) {
-		const slug = "launchers-junction"
-		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-		if err := os.RemoveAll(fabricengine.LauncherDir(l, slug)); err != nil {
-			t.Fatalf("delete launcher dir: %v", err)
-		}
-		if err := fslink.Remove(filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_lym")); err != nil {
-			t.Fatalf("delete warp junction: %v", err)
-		}
-
-		pair := reconcilePairFor(t, reconcile(t), slug)
-
-		if pair.Action != fabricengine.ReconcileActionJunctionRepointed {
-			t.Errorf("Reconcile() action = %q; want %q", pair.Action, fabricengine.ReconcileActionJunctionRepointed)
-		}
-		if !strings.Contains(pair.Detail, "launcher scripts restored") {
-			t.Errorf("Reconcile() detail = %q; want it to note the launcher restore", pair.Detail)
-		}
-	})
-
-	t.Run("FailedRestoreIsADetailNote", func(t *testing.T) {
-		const slug = "launchers-blocked"
-		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-		launcherRoot := filepath.Join(l.HubPath, "_launchers", l.AnchorRel)
-		if err := os.RemoveAll(launcherRoot); err != nil {
-			t.Fatalf("delete launcher root: %v", err)
-		}
-		outside := t.TempDir()
-		if err := fslink.CreateDirLink(launcherRoot, outside); err != nil {
-			t.Fatalf("link the launcher root outside the hub: %v", err)
-		}
-
-		pair := reconcilePairFor(t, reconcile(t), slug)
-
-		if pair.Action != fabricengine.ReconcileActionAlreadyHealthy || pair.Error != "" {
-			t.Errorf("Reconcile() action = %q, error = %q; want %q and no error", pair.Action, pair.Error, fabricengine.ReconcileActionAlreadyHealthy)
-		}
-		if !strings.Contains(pair.Detail, "launcher restore failed") {
-			t.Errorf("Reconcile() detail = %q; want it to note the failed launcher restore", pair.Detail)
-		}
-	})
 }

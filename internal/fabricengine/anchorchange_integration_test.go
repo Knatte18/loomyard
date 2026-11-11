@@ -207,7 +207,7 @@ func TestAnchorChange(t *testing.T) {
 	t.Parallel()
 	const mover = "mover"
 
-	t.Run("A pair moves to sub with its content, wiring, launcher and workspace entry", func(t *testing.T) {
+	t.Run("A pair moves to sub with its content, wiring and workspace entry", func(t *testing.T) {
 		t.Parallel()
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
@@ -232,12 +232,6 @@ func TestAnchorChange(t *testing.T) {
 		}
 		if got, err := os.ReadFile(filepath.Join(weft, "sub", lymdirs.DotLymDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
 			t.Errorf("sub/.lym/kept.txt = (%q, %v); want the file moved with .lym", got, err)
-		}
-		if _, err := os.Stat(filepath.Join(h.Path, "_launchers", "sub", mover)); err != nil {
-			t.Errorf("launcher directory at sub: %v; want it", err)
-		}
-		if _, err := os.Stat(filepath.Join(h.Path, "_launchers", mover)); !os.IsNotExist(err) {
-			t.Errorf("launcher directory at the old anchor: %v; want it gone", err)
 		}
 		workspace, err := os.ReadFile(fabricengine.HubWorkspacePath(h.Location))
 		if err != nil || !strings.Contains(string(workspace), mover+"/sub") {

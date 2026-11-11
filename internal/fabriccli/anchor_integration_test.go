@@ -89,9 +89,6 @@ func TestRunCLI_Anchor(t *testing.T) {
 				t.Errorf("%s at the old anchor: %v; want it gone", name, err)
 			}
 		}
-		if _, err := os.Stat(filepath.Join(h.Path, "_launchers", "sub", "mover")); err != nil {
-			t.Errorf("launcher directory at sub: %v; want it", err)
-		}
 		if again := requireAnchorOK(t, h.PrimeWorktree(), "mover"); again.Raw["anchor"] != "sub" {
 			t.Errorf("anchor mover printed after the move = %v; want sub", again.Raw)
 		}

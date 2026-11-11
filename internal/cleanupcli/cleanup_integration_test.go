@@ -135,9 +135,14 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	traceFile := filepath.Join(logger.LogsDirAt(anchor), "trace-20260101T000000Z-0123456789abcdef-2147483.log")
 	writeAged(t, traceFile, "trace", 3*24*time.Hour)
 
+	// launchers: a pair's run script and the menu script under the hub's retired launchers directory.
+	launchersDir := filepath.Join(h.Path, "_launchers")
+	writeAged(t, filepath.Join(launchersDir, "gone-pair", "run.sh"), "#!/usr/bin/env bash\n", 0)
+	writeAged(t, filepath.Join(launchersDir, "ide-menu.sh"), "#!/usr/bin/env bash\n", 0)
+
 	assertLeftoversRemain := func(t *testing.T, step string) {
 		t.Helper()
-		for _, path := range []string{runDir, oldHandoff, keptHandoff, scratchChild, traceFile} {
+		for _, path := range []string{runDir, oldHandoff, keptHandoff, scratchChild, traceFile, launchersDir} {
 			if !exists(path) {
 				t.Errorf("%s: %s was removed", step, path)
 			}
@@ -192,11 +197,14 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 		names = append(names, segment["name"].(string))
 		listed[segment["name"].(string)] = segment["listed"].(map[string]any)
 	}
-	if want := []string{"batten", "board", "orch", "scratch", "logs", "temp"}; !slices.Equal(names, want) {
+	if want := []string{"batten", "board", "orch", "scratch", "logs", "temp", "launchers"}; !slices.Equal(names, want) {
 		t.Errorf("dry run segments = %v, want %v", names, want)
 	}
 	if removed := listed["logs"]["removed"].([]any); len(removed) != 1 || removed[0] != traceFile {
 		t.Errorf("dry run logs segment lists %v, want the seeded trace group %s", removed, traceFile)
+	}
+	if removed := listed["launchers"]["removed"].([]any); len(removed) != 4 || removed[len(removed)-1] != launchersDir {
+		t.Errorf("dry run launchers segment lists %v, want the two scripts, the pair's directory and %s last", removed, launchersDir)
 	}
 	assertLeftoversRemain(t, "dry run")
 	requireEmptyRecord(t, "dry run", dry, false)
@@ -291,7 +299,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	}
 	restoreOrigin()
 	requireList(t, applied, "failed_pushes")
-	for _, path := range []string{runDir, oldHandoff, scratchChild, traceFile} {
+	for _, path := range []string{runDir, oldHandoff, scratchChild, traceFile, launchersDir} {
 		if exists(path) {
 			t.Errorf("--apply left %s", path)
 		}

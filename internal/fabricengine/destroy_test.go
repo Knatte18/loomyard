@@ -145,7 +145,7 @@ func TestGate_Containment(t *testing.T) {
 		assertRefusalCheck(t, err, CheckOwnership)
 	})
 
-	// refuseUncontainedPath resolves through filepath.Rel, which is separator-native.
+	// containmentFailure resolves through filepath.Rel, which is separator-native.
 	// A backslash therefore escapes the container only on Windows, where it is a path separator.
 	// Each subtest asserts the result that is correct for the separator it names, on the OS the test runs.
 	t.Run("EscapeWithForwardSlash", func(t *testing.T) {
@@ -369,7 +369,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 
 	t.Run("WellFormedRequestOnAnAbsentTargetIsStillANoOpSuccess", func(t *testing.T) {
 		// A well-formed request on an absent target must still succeed as a no-op.
-		// The idempotent teardown sites rely on this: removeLaunchers and Remove's already-absent weft worktree.
+		// The idempotent teardown sites rely on this: Remove's already-absent weft worktree.
 		container := t.TempDir()
 		req := pathRequest{
 			what:      "test",
