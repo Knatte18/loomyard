@@ -1,7 +1,8 @@
 // originreconcilemoves.go holds the origin reconcile's moving half.
 // It fast-forwards or replays the local branches a judging pass found behind origin.
-// Each move waits on no lock: the prime lock and a records branch's write and push locks are try-acquired,
-// and the live-pair seam is asked once per pair.
+// The prime lock and a records branch's write lock are try-acquired, and a held one reads busy at once.
+// A records branch's push lock is try-acquired too, and retried for the bound the reconcile's options set.
+// The live-pair seam is asked once per pair.
 // It also reads the ended set, the runs origin has ended, that every replay is told.
 
 package fabricengine
@@ -32,6 +33,9 @@ const (
 	busyBoardWriteLock  = "board write"
 	busyBoardPushLock   = "board push"
 )
+
+// pushLockPoll is the delay between two tries of a records branch's locks while only its push lock is held.
+const pushLockPoll = time.Second
 
 // tryPrimeLock takes the hub's prime lock by one try-acquire, never waiting.
 // held reports whether this call holds it; a lock another holder has returns held false with no error.
@@ -109,6 +113,23 @@ func tryRecordsLocks(worktree string, bolt bool) (release func(), busy string, p
 	}, "", false, nil
 }
 
+// waitRecordsLocks takes a records branch's locks as tryRecordsLocks does.
+// While the write lock is free and the push lock is held, it tries both again every pushLockPoll.
+// It stops once opts' PushLockWait has passed in sleeps.
+// So a push that ends within that bound leaves the branch movable.
+// It holds no lock between two tries, so the push holding the lock can take the write lock meanwhile.
+func waitRecordsLocks(worktree string, bolt bool, opts ReconcileOptions) (release func(), busy string, pushHeld bool, err error) {
+	var waited time.Duration
+	for {
+		release, busy, pushHeld, err = tryRecordsLocks(worktree, bolt)
+		if err != nil || !pushHeld || waited >= opts.PushLockWait {
+			return release, busy, pushHeld, err
+		}
+		opts.sleepFor(pushLockPoll)
+		waited += pushLockPoll
+	}
+}
+
 // relativeSlashPaths returns paths, absolute under dir, as slash paths relative to dir, sorted.
 func relativeSlashPaths(dir string, paths []string) ([]string, error) {
 	relative := make([]string, 0, len(paths))
@@ -176,18 +197,18 @@ func ffWorktree(rec *Mutations, worktree, originHead string) (state BranchState,
 }
 
 // reconcileRecordsBranch brings the records branch checked out at worktree up to originHead.
-// It takes its write lock and then its push lock, each by one try-acquire.
+// It takes its write lock and then its push lock through waitRecordsLocks, which waits on the push lock for opts' bound.
 // bolt names the board checkout, replayed by entry; any other records branch is a weft, replayed by commit.
-// A held lock returns BranchBusy naming it, and nothing moves.
+// A lock still held returns BranchBusy naming it, and nothing moves.
 // A branch behind origin is fast-forwarded.
 // A branch both sides moved has its local commits replayed onto origin's, with ended told to the replay.
 // A replay that stops on a conflict returns BranchDiverged naming the conflicting paths and the local commits.
 // A replay that an uncommitted change blocks returns BranchDirty.
 // A branch the locks found already level or ahead is returned as that, unmoved.
 // A moved branch returns BranchLevel, or BranchAhead when replayed commits sit on origin's head, with Moved set.
-func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, originHead string, ended EndedSet, bolt bool) (BranchOutcome, error) {
+func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, originHead string, ended EndedSet, bolt bool, opts ReconcileOptions) (BranchOutcome, error) {
 	var outcome BranchOutcome
-	release, busy, pushHeld, err := tryRecordsLocks(worktree, bolt)
+	release, busy, pushHeld, err := waitRecordsLocks(worktree, bolt, opts)
 	if err != nil {
 		return outcome, err
 	}
@@ -270,6 +291,7 @@ type originMover struct {
 	l        *lymcwd.Location
 	scope    ReconcileScope
 	seams    OriginSeams
+	opts     ReconcileOptions
 	ended    EndedSet
 	targets  []originTarget
 	outcomes []BranchOutcome
@@ -460,7 +482,7 @@ func (m *originMover) move(i int, busy string) error {
 			return err
 		}
 	}
-	moved, err := reconcileRecordsBranch(m.rec, location, target.worktree, outcome.OriginHead, m.ended, target.side == failedPushSideBolt)
+	moved, err := reconcileRecordsBranch(m.rec, location, target.worktree, outcome.OriginHead, m.ended, target.side == failedPushSideBolt, m.opts)
 	if err != nil {
 		return err
 	}

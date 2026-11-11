@@ -792,6 +792,9 @@ User-facing modules each get one `lym <module>` namespace:
   `lym adopt --archives <subject>...` lists the `archive-owner/` tags the old owner pushed whose commit the slug's branch on origin lacks, and the adopt's end envelope names that call.
   The steps run in order: the worker reconciles the hub against origin, stops a beam or a run under it whose pair holds local commits origin lacks or is live, and adds the missing pairs.
   It pauses each moved run, and each unstarted released task of an adopted subject bar a front task, with an adopt pause entry.
+  An adopt passes every pause, so a pause the operator holds does not stop its own network calls.
+  Its reconcile waits up to a bound on a records branch's held push lock, so a deferred records push that is ending does not leave the branch busy.
+  A record stopped at `done` restarts at `reconcile`, so the stops it held back are judged afresh.
   It then records this machine as the owner of the beams and of the prime in one pushed owner write, before anything else runs.
   When the call records the prime's owner, the landing config deploys into the prime's branch and the prime's head is ahead of the running lym's build, the hub's landing deploy runs next,
   and a failed deploy stops the record with the owner written and the runs still paused.

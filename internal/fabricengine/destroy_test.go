@@ -631,6 +631,7 @@ func TestGate_AbsentTargetIsNoOp(t *testing.T) {
 		ownedFreshlyCreatedWorktree(createdToken{path: absent, worktree: true}),
 		ownedWiredJunction([]string{absent}, "/somewhere"),
 		ownedDriftedWiredJunction([]string{absent}),
+		ownedUntrackedTrackedAt(container, "HEAD"),
 	}
 
 	for i, own := range kinds {

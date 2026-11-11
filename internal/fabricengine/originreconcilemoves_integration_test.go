@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -526,6 +527,71 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 				t.Errorf("%s: the pair weft moved", row.name)
 			}
 			requireEntry(t, report, "task", fabricengine.EntryStopped)
+		}
+	})
+
+	t.Run("A held pair weft push lock is waited on up to the bound, the weft moving once it is released and busy while it stays held", func(t *testing.T) {
+		for _, row := range []struct {
+			name string
+			// releaseAt is the poll sleep at which the holder lets go of the lock; 0 holds it throughout.
+			releaseAt  int
+			wantState  fabricengine.BranchState
+			wantSleeps int
+		}{
+			{"released during the wait", 2, fabricengine.BranchLevel, 2},
+			{"held past the bound", 0, fabricengine.BranchBusy, 3},
+		} {
+			pair := newMovesPair(t)
+			originHead := originCommitFile(t, pair.RecordsBare, pair.recordsName, "notes/up.md", "up\n")
+			path := filepath.Join(fabricengine.RecordsLockDirPath(pair.records), weftPushLockName)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatalf("mkdir for %s: %v", path, err)
+			}
+			held, err := lock.AcquireWriteLock(path)
+			if err != nil {
+				t.Fatalf("acquire %s: %v", path, err)
+			}
+			released := false
+			release := func() {
+				if !released {
+					released = true
+					_ = held.Release()
+				}
+			}
+			t.Cleanup(release)
+			sleeps := 0
+			opts := fabricengine.ReconcileOptions{PushLockWait: 3 * time.Second, Sleep: func(time.Duration) {
+				sleeps++
+				if sleeps == row.releaseAt {
+					release()
+				}
+			}}
+
+			report := moveReconcileWith(t, pair.originHub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, opts)
+
+			outcome := requireState(t, report, "records", pair.recordsName, row.wantState)
+			if sleeps != row.wantSleeps {
+				t.Errorf("%s: poll sleeps = %d; want %d", row.name, sleeps, row.wantSleeps)
+			}
+			moved := gitkit.RevParse(t, pair.records, "HEAD") == originHead
+			if wantMoved := row.wantState == fabricengine.BranchLevel; outcome.Moved != wantMoved || moved != wantMoved {
+				t.Errorf("%s: outcome = %+v, at origin's head %v; want moved %v", row.name, outcome, moved, wantMoved)
+			}
+		}
+	})
+
+	t.Run("A held pair weft write lock is busy at once, whatever the push-lock bound", func(t *testing.T) {
+		pair := newMovesPair(t)
+		originHead := originCommitFile(t, pair.RecordsBare, pair.recordsName, "notes/up.md", "up\n")
+		holdLock(t, filepath.Join(fabricengine.RecordsLockDirPath(pair.records), weftWriteLockName))
+		sleeps := 0
+		opts := fabricengine.ReconcileOptions{PushLockWait: 3 * time.Second, Sleep: func(time.Duration) { sleeps++ }}
+
+		report := moveReconcileWith(t, pair.originHub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}, opts)
+
+		outcome := requireState(t, report, "records", pair.recordsName, fabricengine.BranchBusy)
+		if sleeps != 0 || outcome.BusyLock != "weft write" || outcome.Moved || gitkit.RevParse(t, pair.records, "HEAD") == originHead {
+			t.Errorf("outcome = %+v after %d poll sleeps; want busy on the weft write lock, unmoved and no wait", outcome, sleeps)
 		}
 	})
 

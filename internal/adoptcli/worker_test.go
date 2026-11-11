@@ -101,6 +101,85 @@ func TestRunWorker(t *testing.T) {
 				t.Errorf("first save = %+v after %d steps, want the running record at reconcile with the request and subjects before any step", first, stepsAtFirstSave)
 			}
 		}},
+		{"WorkerPassesEveryPauseFromBeforeItsFirstStepUntilItReturns", func(t *testing.T, w *world) {
+			deps := w.workerDeps()
+			restored := false
+			deps.ExemptPause = func() func() {
+				w.order = append(w.order, "exempt")
+				return func() { restored = true }
+			}
+			if _, _, err := runWorker(deps, alphaRequest); err != nil {
+				t.Fatalf("runWorker error = %v, want none", err)
+			}
+			if len(w.order) < 2 || w.order[0] != "exempt" || w.order[1] != "reconcile" || !restored {
+				t.Errorf("steps = %v, restored %v; want the exemption before the reconcile and restored at the end", w.order, restored)
+			}
+		}},
+		{"HeldBackRecordWhoseStopNoLongerHoldsIsJudgedAgainAndEndsDone", func(t *testing.T, w *world) {
+			w.live["alpha"] = true
+			if _, _, err := runWorker(w.workerDeps(), alphaRequest); err == nil {
+				t.Fatalf("first runWorker error = nil, want the held-back stop")
+			}
+			w.live["alpha"] = false
+
+			_, record, err := runWorker(w.workerDeps(), alphaRequest)
+			if err != nil {
+				t.Fatalf("second runWorker error = %v, want none", err)
+			}
+			reconciles := 0
+			for _, step := range w.order {
+				if step == "reconcile" {
+					reconciles++
+				}
+			}
+			if record.State != adoptrecord.StateDone || len(record.Inputs.HeldBack) != 0 || !slices.Equal(record.Inputs.OwnerStood, []string{"alpha"}) || reconciles != 2 {
+				t.Errorf("record = state %q, held back %v, owner stood %v after %d reconciles; want done with alpha's owner written after a second reconcile",
+					record.State, record.Inputs.HeldBack, record.Inputs.OwnerStood, reconciles)
+			}
+		}},
+		{"HeldBackRecordWhoseStopStillHoldsStopsAgainWithTheSameWayForward", func(t *testing.T, w *world) {
+			w.live["alpha"] = true
+			_, _, firstErr := runWorker(w.workerDeps(), alphaRequest)
+			if firstErr == nil {
+				t.Fatalf("first runWorker error = nil, want the held-back stop")
+			}
+			first := recordOf(t, w)
+
+			_, record, err := runWorker(w.workerDeps(), alphaRequest)
+			if err == nil || err.Error() != firstErr.Error() {
+				t.Fatalf("second runWorker error = %v, want the same stop as %v", err, firstErr)
+			}
+			reconciles := 0
+			for _, step := range w.order {
+				if step == "reconcile" {
+					reconciles++
+				}
+			}
+			if record.State != adoptrecord.StateStopped || !slices.Equal(record.Inputs.HeldBack, first.Inputs.HeldBack) || record.WayForward != first.WayForward || reconciles != 2 {
+				t.Errorf("record = state %q, held back %v, way forward %q after %d reconciles; want it stopped again as before after a second reconcile",
+					record.State, record.Inputs.HeldBack, record.WayForward, reconciles)
+			}
+		}},
+		{"HeldBackRecordRejudgedKeepsItsPausedSlugs", func(t *testing.T, w *world) {
+			w.live["alpha"] = true
+			if _, _, err := runWorker(w.workerDeps(), alphaRequest); err == nil {
+				t.Fatalf("first runWorker error = nil, want the held-back stop")
+			}
+			stopped := recordOf(t, w)
+			stopped.Inputs.Paused = []string{"alpha"}
+			if err := adoptrecord.Write(w.dir, stopped); err != nil {
+				t.Fatalf("Write(adopt record) = %v", err)
+			}
+			w.live["alpha"] = false
+
+			_, record, err := runWorker(w.workerDeps(), alphaRequest)
+			if err != nil {
+				t.Fatalf("second runWorker error = %v, want none", err)
+			}
+			if !slices.Equal(record.Inputs.Paused, []string{"alpha"}) || len(w.record.Live) != 0 {
+				t.Errorf("paused slugs = %v, live pause entries = %+v; want alpha kept as paused and not paused again", record.Inputs.Paused, w.record.Live)
+			}
+		}},
 		{"RecordThroughOwnerResumesAtDeployAndEndsDone", func(t *testing.T, w *world) {
 			seed(t, w, adoptrecord.StepOwner, nil)
 			_, record, err := runWorker(w.workerDeps(), alphaRequest)

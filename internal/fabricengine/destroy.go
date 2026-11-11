@@ -244,6 +244,7 @@ const (
 	pathOwnershipPairWarpCheckout
 	pathOwnershipBoardWorktree
 	pathOwnershipMovePathspecs
+	pathOwnershipUntrackedTrackedAt
 )
 
 // pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must satisfy.
@@ -261,6 +262,8 @@ type pathOwnership struct {
 	parentBranch string
 	// pathspecs are used only by the move predicate, relative to root as the weft worktree.
 	pathspecs []string
+	// sha is used only by the untracked predicate: the commit that must track the target.
+	sha string
 }
 
 // ownedRegisteredLinkedWorktree declares target as owned when repoDir's worktree list registers it as a linked worktree.
@@ -298,6 +301,13 @@ func ownedBoardWorktree() pathOwnership {
 // The pathspecs are the paths an anchor move rewrites: A/<names>, B/<names> and the root marker, never `.lym`.
 func ownedMovePathspecs(weftPath string, pathspecs []string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipMovePathspecs, root: weftPath, pathspecs: pathspecs}
+}
+
+// ownedUntrackedTrackedAt declares target as owned when it lies in the worktree at worktree.
+// Its index must not track the target, and the commit sha must.
+// It serves a move to sha that git refuses while such an untracked file stands where sha puts its own.
+func ownedUntrackedTrackedAt(worktree, sha string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipUntrackedTrackedAt, root: worktree, sha: sha}
 }
 
 // ownedFabricHub declares target as owned when it structurally looks like a fabric hub:
@@ -565,6 +575,24 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 			}
 		}
 		return false, fmt.Sprintf("%s lies under none of the paths the anchor move rewrites", target)
+
+	case pathOwnershipUntrackedTrackedAt:
+		rel, err := filepath.Rel(filepath.Clean(own.root), filepath.Clean(target))
+		if err != nil {
+			return false, fmt.Sprintf("relate %s to the worktree %s: %v", target, own.root, err)
+		}
+		rel = filepath.ToSlash(rel)
+		tracked, err := PathTracked(own.root, rel)
+		if err != nil {
+			return false, err.Error()
+		}
+		if tracked {
+			return false, fmt.Sprintf("%s is tracked in %s", target, own.root)
+		}
+		if _, err := gitrepo.New(own.root).FileAtRevision(own.sha, rel); err != nil {
+			return false, fmt.Sprintf("%s is not tracked at %s: %v", rel, own.sha, err)
+		}
+		return true, ""
 
 	case pathOwnershipFabricHub:
 		if !looksLikeHub(target) {
@@ -1949,12 +1977,14 @@ type DropLocalResult struct {
 // dropLocalPlan describes one branch to move.
 // It holds the gate request, the checkout, and the tip the branch leaves.
 // It also holds the origin tip the branch moves to and the commits of that tip that origin lacks.
+// untracked lists the untracked files of a records checkout that the origin tip tracks, slash paths relative to it.
 type dropLocalPlan struct {
 	req       pathRequest
 	repo      *gitrepo.Repo
 	tip       string
 	onto      string
 	localOnly []string
+	untracked []string
 }
 
 // DropLocal moves the code and records branches of the pair slug to the tips origin last held for them.
@@ -1967,7 +1997,11 @@ type dropLocalPlan struct {
 // It refuses one whose anchor differs from the anchor of the origin tip it would move to, ancestry ignored.
 // The refusal wraps ErrAnchorChange and names the commands that settle it.
 // Each move is a `reset --keep` in the branch's own worktree; nothing is fetched or pushed, and the tags stay local.
-// It appends a tag_created entry per tag and a commits_dropped entry per moved branch.
+// Before a records branch moves, each untracked, unignored file of its worktree that the origin tip tracks is removed.
+// Such a file is one lym wrote in the weft, and `reset --keep` would refuse to overwrite it.
+// A code branch's untracked files are never removed.
+// It appends a tag_created entry per tag, a path_removed entry per removed file,
+// and a commits_dropped entry per moved branch.
 // Each entry follows its effect, and the commits_dropped detail holds the dropped commits' SHAs.
 // Entries go to rec and to the result.
 func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalResult, err error) {
@@ -2018,7 +2052,13 @@ func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalRe
 		if err := checkPathRequest(req); err != nil {
 			return res, err
 		}
-		plans = append(plans, dropLocalPlan{req: req, repo: repo, tip: tip, onto: target.tracking, localOnly: localOnly})
+		plan := dropLocalPlan{req: req, repo: repo, tip: tip, onto: target.tracking, localOnly: localOnly}
+		if target.side == failedPushSideRecords {
+			if plan.untracked, err = untrackedOnPaths(target.worktree, touched); err != nil {
+				return res, err
+			}
+		}
+		plans = append(plans, plan)
 	}
 
 	for _, plan := range plans {
@@ -2027,12 +2067,42 @@ func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalRe
 			return res, err
 		}
 		res.Tags = append(res.Tags, tag)
+		for _, rel := range plan.untracked {
+			removal := pathRequest{
+				what:      "remove an untracked weft file origin's tip tracks",
+				container: plan.req.target,
+				target:    filepath.Join(plan.req.target, filepath.FromSlash(rel)),
+				ownership: ownedUntrackedTrackedAt(plan.req.target, plan.onto),
+				dirtiness: dirtinessNA("the file is untracked, so git holds no change of it, and the origin tip the branch moves to carries its own copy"),
+				force:     false,
+			}
+			if err := removePath(own, removal); err != nil {
+				return res, fmt.Errorf("clear the way for %s to move to origin's tip %s: %w; the local tip is kept under the tag %s", plan.req.target, plan.onto, err, tag)
+			}
+		}
 		if err := plan.repo.ResetKeep(plan.onto); err != nil {
 			return res, fmt.Errorf("move %s to origin's tip %s: %w; the local tip is kept under the tag %s", plan.req.target, plan.onto, err, tag)
 		}
 		own.Append(KindCommitsDropped, plan.req.target, strings.Join(plan.localOnly, " "))
 	}
 	return res, nil
+}
+
+// untrackedOnPaths returns the untracked, unignored files of the checkout at worktree that paths names.
+// paths and the result are slash paths relative to worktree.
+// An ignored file is left out, since git overwrites one without refusing.
+func untrackedOnPaths(worktree string, paths []string) ([]string, error) {
+	out, err := gitexec.Run([]string{"ls-files", "--others", "--exclude-standard", "-z"}, worktree)
+	if err != nil {
+		return nil, fmt.Errorf("list the untracked files of %s: %w", worktree, err)
+	}
+	var found []string
+	for _, path := range strings.Split(out, "\x00") {
+		if path != "" && slices.Contains(paths, path) {
+			found = append(found, path)
+		}
+	}
+	return found, nil
 }
 
 // keepArchiveTag puts the local tag `archive/<slug>/<first 12 hex of sha>` on sha in repo and returns its name.

@@ -253,6 +253,7 @@ var workerTime = time.Unix(2000, 0)
 // workerDeps returns the worker's seams over the world: the fake step deps, with the record and lock in w.dir.
 func (w *world) workerDeps() workerDeps {
 	return workerDeps{
+		ExemptPause: func() func() { return func() {} },
 		Steps:       w.deps(),
 		PID:         workerPID,
 		StartTicks:  workerTicks,

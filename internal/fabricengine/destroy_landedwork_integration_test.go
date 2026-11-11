@@ -1,4 +1,5 @@
-// destroy_landedwork_integration_test.go drives the pair-warp ownership kind and the unlanded-work dirtiness kind.
+// destroy_landedwork_integration_test.go drives the pair-warp ownership kind.
+// It also drives the untracked-tracked-at ownership kind and the unlanded-work dirtiness kind.
 // It runs them against real throwaway git repositories, with hermetic git from testmain_test.go.
 // It uses an empty branch_prefix, so the warp branch is the bare slug.
 // No hub is involved: the gate reads only the repository named by repoDir.
@@ -6,6 +7,8 @@
 package fabricengine
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -25,6 +28,42 @@ func landedWorkRepo(t *testing.T) (repo, remote string) {
 	gitkit.Git(t, repo, "remote", "add", "origin", remote)
 	gitkit.Git(t, repo, "commit", "--allow-empty", "-m", "base")
 	return repo, remote
+}
+
+func TestOwnedUntrackedTrackedAt_RefusesATargetTheIndexTracksOrTheCommitDoesNot(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	repo, _ := landedWorkRepo(t)
+	gitkit.CommitFile(t, repo, "indexed.txt", "indexed", "indexed")
+	gitkit.Git(t, repo, "switch", "-c", "other")
+	otherTip := gitkit.CommitFile(t, repo, "theirs.txt", "theirs", "theirs")
+	gitkit.Git(t, repo, "switch", "main")
+	for _, name := range []string{"theirs.txt", "stray.txt"} {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte("local\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	tests := []struct {
+		name       string
+		target     string
+		wantOwned  bool
+		wantReason string
+	}{
+		{"UntrackedFileTheCommitTracksIsOwned", "theirs.txt", true, ""},
+		{"FileTheIndexTracksIsRefused", "indexed.txt", false, "is tracked in"},
+		{"UntrackedFileTheCommitDoesNotTrackIsRefused", "stray.txt", false, "is not tracked at"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			owned, reason := resolvePathOwnership(ownedUntrackedTrackedAt(repo, otherTip), filepath.Join(repo, tt.target))
+			if owned != tt.wantOwned || !strings.Contains(reason, tt.wantReason) {
+				t.Errorf("resolvePathOwnership(%s) = %v, %q; want %v with a reason containing %q", tt.target, owned, reason, tt.wantOwned, tt.wantReason)
+			}
+		})
+	}
 }
 
 func landedWorkCheck(repo, branch string) error {

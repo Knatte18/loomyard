@@ -20,10 +20,13 @@ import (
 )
 
 // callerFakes holds what the fake caller seams were asked.
+// exempted and restored count the pause-gate exemptions and their restores.
 type callerFakes struct {
-	spawned [][]string
-	caps    []string
-	pulls   int
+	spawned  [][]string
+	caps     []string
+	pulls    int
+	exempted int
+	restored int
 }
 
 // stepsThrough returns the step records of every adopt step up to and including last.
@@ -289,10 +292,17 @@ func TestRunAdopt(t *testing.T) {
 			now := time.Unix(5000, 0)
 			wakes := 0
 			deps := callerDeps{
+				ExemptPause: func() func() {
+					fakes.exempted++
+					return func() { fakes.restored++ }
+				},
 				HubPath:  w.dir,
 				Strand:   tt.strand,
 				Worktree: tt.worktree,
 				PullBolt: func() (string, error) {
+					if fakes.exempted == 0 {
+						t.Errorf("Bolt pulled before the call passed every pause")
+					}
 					fakes.pulls++
 					return tt.pullSkip, tt.pullErr
 				},
@@ -333,6 +343,9 @@ func TestRunAdopt(t *testing.T) {
 			}
 			if fakes.pulls != tt.wantPulls {
 				t.Errorf("runAdopt pulled Bolt %d times, want %d", fakes.pulls, tt.wantPulls)
+			}
+			if fakes.exempted != 1 || fakes.restored != 1 {
+				t.Errorf("runAdopt exempted the pause gate %d times and restored it %d times, want once each", fakes.exempted, fakes.restored)
 			}
 			if _, found, err := adoptrecord.Read(w.dir); tt.wantNoRecord && (found || err != nil) {
 				t.Errorf("adopt record after the call: found %v, error %v; want none", found, err)

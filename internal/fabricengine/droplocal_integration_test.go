@@ -8,6 +8,7 @@ package fabricengine_test
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,6 +22,9 @@ import (
 
 // TestDropLocal checks the branches ahead of origin:
 // a records branch and a code branch are tagged and moved to origin's tips, with the mutations recorded.
+// An untracked weft file origin's tip tracks is removed before the move.
+// An ignored file git overwrites and a file origin's tip does not track are not removed.
+// A code branch file origin tracks is not removed either.
 // A dirty tracked path refuses the drop with nothing tagged or moved.
 func TestDropLocal(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -66,6 +70,112 @@ func TestDropLocal(t *testing.T) {
 			if !slices.Equal(kinds, wantKinds) {
 				t.Errorf("recorded kinds = %v; want %v", kinds, wantKinds)
 			}
+		}
+	})
+
+	t.Run("An untracked weft file origin's tip tracks is removed and the weft moves to origin's tip", func(t *testing.T) {
+		t.Parallel()
+
+		pair := newMovesPair(t)
+		recordsOrigin := originCommitFile(t, pair.RecordsBare, pair.recordsName, "reviews/record.json", "origin\n")
+		gitkit.Git(t, pair.records, "fetch", "origin")
+		gitkit.CommitFile(t, pair.records, "notes/local.md", "records", "local records")
+		recordPath := filepath.Join(pair.records, "reviews", "record.json")
+		writeFile(t, recordPath, "local\n")
+
+		res, err := fabricengine.DropLocal(fabricengine.NewMutations(pair.Location.HubPath), pair.Location, "task")
+		if err != nil {
+			t.Fatalf("DropLocal() error = %v; want nil", err)
+		}
+
+		if got := gitkit.RevParse(t, pair.records, "HEAD"); got != recordsOrigin {
+			t.Errorf("records HEAD = %q; want origin's tip %q", got, recordsOrigin)
+		}
+		if got, err := os.ReadFile(recordPath); err != nil || string(got) != "origin\n" {
+			t.Errorf("reviews/record.json = %q, %v; want origin's content", got, err)
+		}
+		var kinds []fabricengine.Kind
+		for _, entry := range res.Mutated().Entries() {
+			kinds = append(kinds, entry.Kind)
+		}
+		if want := []fabricengine.Kind{fabricengine.KindTagCreated, fabricengine.KindPathRemoved, fabricengine.KindCommitsDropped}; !slices.Equal(kinds, want) {
+			t.Errorf("recorded kinds = %v; want %v", kinds, want)
+		}
+	})
+
+	t.Run("The drop removes neither an ignored weft file nor one origin's tip does not track", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			// arrange writes the file and returns its path and the content it must hold after the drop.
+			arrange func(t *testing.T, pair *movesPair) (path, want string)
+		}{
+			// Git overwrites an ignored file with origin's copy, so the drop has nothing to remove.
+			{"IgnoredFileOnAPathOriginTracksIsOverwrittenByGit", func(t *testing.T, pair *movesPair) (string, string) {
+				exclude := strings.TrimSpace(gitkit.Git(t, pair.records, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
+				writeFile(t, exclude, "reviews/record.json\n")
+				path := filepath.Join(pair.records, "reviews", "record.json")
+				writeFile(t, path, "local\n")
+				return path, "origin\n"
+			}},
+			{"WeftFileOriginDoesNotTrack", func(t *testing.T, pair *movesPair) (string, string) {
+				path := filepath.Join(pair.records, "notes", "scratch.md")
+				writeFile(t, path, "scratch\n")
+				return path, "scratch\n"
+			}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				pair := newMovesPair(t)
+				recordsOrigin := originCommitFile(t, pair.RecordsBare, pair.recordsName, "reviews/record.json", "origin\n")
+				gitkit.Git(t, pair.records, "fetch", "origin")
+				gitkit.CommitFile(t, pair.records, "notes/local.md", "records", "local records")
+				gitkit.CommitFile(t, pair.code, "local-code.txt", "code", "local code")
+				path, want := tt.arrange(t, pair)
+
+				res, err := fabricengine.DropLocal(fabricengine.NewMutations(pair.Location.HubPath), pair.Location, "task")
+				if err != nil {
+					t.Fatalf("DropLocal() error = %v; want nil", err)
+				}
+
+				if got := gitkit.RevParse(t, pair.records, "HEAD"); got != recordsOrigin {
+					t.Errorf("records HEAD = %q; want origin's tip %q", got, recordsOrigin)
+				}
+				if got, err := os.ReadFile(path); err != nil || string(got) != want {
+					t.Errorf("%s = %q, %v; want %q", path, got, err, want)
+				}
+				for _, entry := range res.Mutated().Entries() {
+					if entry.Kind == fabricengine.KindPathRemoved {
+						t.Errorf("recorded %+v; want no path removal", entry)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("An untracked code branch file origin's tip tracks is never removed, git refusing the move", func(t *testing.T) {
+		t.Parallel()
+
+		pair := newMovesPair(t)
+		originCommitFile(t, pair.CodeBare, pair.codeBranch, "scratch.txt", "origin\n")
+		gitkit.Git(t, pair.code, "fetch", "origin")
+		codeTip := gitkit.CommitFile(t, pair.code, "local-code.txt", "code", "local code")
+		path := filepath.Join(pair.code, "scratch.txt")
+		writeFile(t, path, "local\n")
+
+		_, err := fabricengine.DropLocal(fabricengine.NewMutations(pair.Location.HubPath), pair.Location, "task")
+
+		if err == nil {
+			t.Errorf("DropLocal() error = nil; want git's refusal to move over the untracked file")
+		}
+		if got, readErr := os.ReadFile(path); readErr != nil || string(got) != "local\n" {
+			t.Errorf("scratch.txt = %q, %v; want the local content kept", got, readErr)
+		}
+		if got := gitkit.RevParse(t, pair.code, "HEAD"); got != codeTip {
+			t.Errorf("code HEAD = %q; want %q, nothing moved", got, codeTip)
 		}
 	})
 

@@ -48,7 +48,10 @@ type ReconcileScope struct {
 // The zero value makes one attempt under the default attempt deadline.
 // RetryBound and RetryInterval together bound how often the ls-remote pair is retried after a transport failure.
 // There is one retry per whole interval in the bound.
-// AttemptDeadline bounds each remote call, and Sleep waits out one interval; nil sleeps for real.
+// AttemptDeadline bounds each remote call.
+// PushLockWait bounds how long a records branch move waits while only its push lock is held, polling once a second;
+// zero reads a held push lock as busy at once.
+// Sleep waits out one retry interval or one push-lock poll; nil sleeps for real.
 // CallHook sees the arguments of every remote call just before it runs.
 // VerdictHook runs just before each branch verdict.
 // Both are nil in production.
@@ -56,6 +59,7 @@ type ReconcileOptions struct {
 	RetryBound      time.Duration
 	RetryInterval   time.Duration
 	AttemptDeadline time.Duration
+	PushLockWait    time.Duration
 	Sleep           func(time.Duration)
 	CallHook        func(args []string)
 	VerdictHook     func()
@@ -93,11 +97,16 @@ func (o ReconcileOptions) deadline() time.Duration {
 
 // sleep waits out one retry interval.
 func (o ReconcileOptions) sleep() {
+	o.sleepFor(o.RetryInterval)
+}
+
+// sleepFor waits out d through Sleep, or for real when Sleep is nil.
+func (o ReconcileOptions) sleepFor(d time.Duration) {
 	if o.Sleep != nil {
-		o.Sleep(o.RetryInterval)
+		o.Sleep(d)
 		return
 	}
-	time.Sleep(o.RetryInterval)
+	time.Sleep(d)
 }
 
 // EndedTeardown asks the teardown seam to remove the local pair of an entry origin has ended.
@@ -765,7 +774,8 @@ func samePath(porcelain, built string) bool {
 // Any other scope then moves each branch behind origin.
 // A branch moves by a fast-forward of its checkout, or by a replay of a records branch's local commits.
 // An entry owned elsewhere has its fast-forwards moved and its records branch left unreplayed.
-// A branch a live pair, a held lock or a dirty path keeps from moving is reported as such and left where it was.
+// A branch a live pair, a held lock or a dirty path keeps from moving is reported as such and left where it was;
+// a held records push lock is first waited on for up to opts' PushLockWait.
 // No branch is ever reset, rebased or pushed.
 // A moving scope also clears the failed-push record of each branch that is absent locally.
 // A transport failure that outlasts the retry bound sets the report's Unreachable.
@@ -811,7 +821,7 @@ func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams
 	res.Entries = nil
 
 	if !scope.JudgeOnly {
-		mover := &originMover{rec: rec, l: l, scope: scope, seams: seams, ended: ended, targets: targets, outcomes: res.Branches, live: map[string]bool{}, ownedByEnded: endedLocalSlugs(endedEntries, scope.Run), owners: owners}
+		mover := &originMover{rec: rec, l: l, scope: scope, seams: seams, opts: opts, ended: ended, targets: targets, outcomes: res.Branches, live: map[string]bool{}, ownedByEnded: endedLocalSlugs(endedEntries, scope.Run), owners: owners}
 		if err := mover.moveAll(pairs); err != nil {
 			return res, err
 		}

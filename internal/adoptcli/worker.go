@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -27,7 +28,9 @@ import (
 // TryLock takes adopt.lock without blocking, and reports false when another process holds it;
 // release gives it up.
 // Alive reports whether the worker named by a pid and start ticks is running.
+// ExemptPause lets every pause entry pass the process's network gate and returns the function that restores the gate.
 type workerDeps struct {
+	ExemptPause func() (restore func())
 	Steps       adoptDeps
 	PID         int
 	StartTicks  string
@@ -49,6 +52,7 @@ func hubWorkerDeps(prime *lymcwd.Location, machine func() (string, error)) (work
 	pid := os.Getpid()
 	ticks, _ := proc.StartTime(pid)
 	return workerDeps{
+		ExemptPause: pauserecord.SetGateExemptAll,
 		Steps:       steps,
 		PID:         pid,
 		StartTicks:  ticks,
@@ -164,12 +168,22 @@ func mergeRequest(recorded, call adoptrecord.Request) (merged adoptrecord.Reques
 	return merged, restart
 }
 
+// rejudges reports whether a resumed record starts again at the reconcile with its steps cleared.
+// A record stopped at the done step repeats only the stops its reconcile judged, which may no longer hold,
+// so its re-run judges the hub afresh.
+func rejudges(record adoptrecord.Record) bool {
+	return record.State == adoptrecord.StateStopped && record.InFlight == adoptrecord.StepDone
+}
+
 // runWorker runs the steps of an adopt for req under adopt.lock and records each in the adopt record.
+// No pause holds its network calls, since an adopt is the operator's own takeover.
 // A refused request, a held lock and a record of other subjects, or one whose worker still runs, return before any step.
 // An unfinished record of the same subjects is resumed from its first step not done, over the subjects it recorded.
-// The resume keeps the steps already listed, unless the call changed how local commits are answered, which clears them.
+// The resume keeps the steps already listed, unless the call changed how local commits are answered,
+// or the record stopped at the done step; either clears them and starts again at the reconcile.
 // It returns the end envelope, the final record, and the error of the step that stopped the adopt, if one did.
 func runWorker(deps workerDeps, req request) (outcome, adoptrecord.Record, error) {
+	defer deps.ExemptPause()()
 	req = normalizedRequest(req)
 	if _, _, err := validateRequest(deps.Steps, req); err != nil {
 		return outcome{}, adoptrecord.Record{}, err
@@ -200,6 +214,7 @@ func runWorker(deps workerDeps, req request) (outcome, adoptrecord.Record, error
 	if verdict == verdictResume {
 		var merged adoptrecord.Request
 		merged, restart = mergeRequest(record.Request, req.recorded())
+		restart = restart || rejudges(record)
 		req = requestOf(merged)
 		if next := record.ResumeStep(); !restart && next != "" {
 			from = next

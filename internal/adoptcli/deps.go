@@ -30,6 +30,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
+// reconcilePushLockWait bounds how long the adopt's reconcile waits on a records branch's held push lock.
+// A push that ends within it, such as the deferred records push a lifted pause spawns, leaves the branch movable.
+const reconcilePushLockWait = 30 * time.Second
+
+// reconcileFunc is the origin reconcile the adopt runs: the engine's own, or a stand-in under test.
+type reconcileFunc func(*lymcwd.Location, fabricengine.ReconcileScope, fabricengine.OriginSeams, fabricengine.ReconcileOptions) (fabricengine.OriginReport, error)
+
+// reconcileSeam returns the adopt's hub-wide origin reconcile over prime, run through reconcile with seams.
+// It waits up to reconcilePushLockWait on a records branch's held push lock.
+func reconcileSeam(reconcile reconcileFunc, prime *lymcwd.Location, seams fabricengine.OriginSeams) func() (fabricengine.OriginReport, error) {
+	return func() (fabricengine.OriginReport, error) {
+		return reconcile(prime, fabricengine.ReconcileScope{}, seams, fabricengine.ReconcileOptions{PushLockWait: reconcilePushLockWait})
+	}
+}
+
 // hubDepsAs fills adoptDeps over the hub the prime belongs to, with the machine's name read through machine,
 // so a test can stand two clones of one host for two machines.
 // The reconcile's live-pair reading treats a slug as paused only under a live hub-scope pause,
@@ -61,9 +76,7 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 		ParentOf: func(slug string) (string, error) {
 			return hubgeom.ParentOf(prime, slug)
 		},
-		Reconcile: func() (fabricengine.OriginReport, error) {
-			return fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, seams, fabricengine.ReconcileOptions{})
-		},
+		Reconcile: reconcileSeam(fabricengine.ReconcileOrigin, prime, seams),
 		LocalPair: func(slug string) bool {
 			info, err := os.Stat(fabricengine.WorktreePath(prime, slug))
 			return err == nil && info.IsDir()

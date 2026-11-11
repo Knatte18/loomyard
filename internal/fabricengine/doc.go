@@ -78,6 +78,8 @@
 // `DropLocal` refuses an empty own marker of the records branch.
 // It compares the branch's anchor with the origin tip it would reset to, using `weftAnchorStop` with `reset` set.
 // A local re-anchor not yet pushed therefore differs from origin's tip as well.
+// Before it moves a records branch, `DropLocal` removes each untracked, unignored weft file that origin's tip tracks.
+// It declares `ownedUntrackedTrackedAt` for each, since `reset --keep` refuses to overwrite one.
 // `Pull` never returns success with `WeftPulled` false for a moved origin.
 // The call's result is `PullResult`, which reports what each side did and, after a reconcile, the re-anchor baseline.
 // pull.go's doc comment holds the full flow and the `*PartialPullError` warp-side-failure contract.
@@ -193,6 +195,8 @@
 // It stops as dirty, naming the paths, when a tracked change sits on a path it touches.
 // A records branch moves through `reconcileRecordsBranch`, under its write lock and then its push lock.
 // Each lock is one try-acquire, and a held lock reads as busy.
+// While only the push lock is held, both are tried again once a second until `ReconcileOptions.PushLockWait` has passed,
+// so a push that ends within that bound leaves the branch movable; a zero bound reads the held push lock busy at once.
 // The move fast-forwards or replays.
 // A code branch is never rebased, so one both sides moved stays diverged.
 // The prime's branches move only under the prime lock, which `tryPrimeLock` takes with no wait.
@@ -1548,6 +1552,8 @@
 // The two worktree-shaped kinds compare against git's own worktree registration.
 // The two link-shaped kinds compare against `fslink.RawTarget`.
 // Both authorities already carry resolved paths.
+// `ownedUntrackedTrackedAt` compares against git.
+// The worktree's index must not track the target, and the named commit must.
 //
 // **The gate's dirtiness check is not atomic with its act; that is a stated limit**.
 // `checkPathDirtiness` runs `git status --porcelain` and returns; the executor then performs the primitive.

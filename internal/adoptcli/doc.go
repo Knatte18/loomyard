@@ -68,6 +68,11 @@
 // The worker outlives the call: `proc.Detach` gives it a session of its own.
 // A test binary starts nothing.
 //
+// An adopt is the operator's own takeover, so no pause holds it.
+// `runAdopt` and `runWorker` each set `pauserecord.SetGateExemptAll` on their own process's network gate first.
+// They do it through the `ExemptPause` seam and restore the gate when they return.
+// A process the worker starts, a dobby or an adopt check among them, installs its own gate, which a pause still holds.
+//
 // `follow` reads the record on each wake and prints `adopt: <step> done` on stderr for each step that ended.
 // It returns the record of the followed worker once that reads `done` or `stopped`.
 // An `interrupted` record, whose worker is gone, is an error naming the re-run and `lym adopt --discard`.
@@ -164,9 +169,12 @@
 //   - An unfinished record of the same subjects whose worker is gone or that stopped is resumed.
 //     `mergeRequest` keeps the record's flags and adds the call's.
 //     A call's `--keep-local` or `--drop-local` replaces the record's other one and restarts the adopt at `reconcile`.
+//     A record stopped at `done`, on a project a stop held back, restarts at `reconcile` too:
+//     its stop repeats only the branch states its reconcile judged, which may no longer hold.
+//     So `rejudges` judges the hub afresh.
 //     The worker rewrites only its pid, start ticks, start and state, and runs from `Record.ResumeStep`.
 //     It takes the subjects from the record, so a beam made since does not join an `--all` adopt.
-//     It keeps the steps listed, each replaced as it runs again, unless the call restarted the adopt.
+//     It keeps the steps listed, each replaced as it runs again, unless the adopt restarted.
 //   - An unfinished record of other subjects is refused, writing nothing.
 //
 // Steps up to `owner` run in one process.
@@ -194,6 +202,8 @@
 // # Step reconcile
 //
 // A moving hub-scope reconcile runs first.
+// It waits on a records branch's held push lock for up to `reconcilePushLockWait` before it reads the branch busy.
+// So a short push, such as the deferred records push a lifted pause spawns, does not stop the adopt.
 // Its `pairteardown` seams take a `HubPaused` from `hubOnlyPaused`, which covers a slug only by a live hub entry.
 // So a pair whose strands are alive under any slug-scope pause, an owner pause included, reads live.
 // An unreachable origin stops the record naming a re-run once origin answers.
@@ -233,6 +243,8 @@
 // `--drop-local` refuses a live pair naming `--keep-local`.
 // Otherwise it calls `fabricengine.DropLocal`, which records into adopt's mutation record.
 // `DropLocal` keeps each local tip origin lacks under an `archive/<slug>/<tip>` tag before it moves the branch.
+// Before it moves a records branch, it removes each untracked file of its worktree that origin's tip tracks.
+// Such a file is one lym wrote, a review record for one, and `reset --keep` refuses to overwrite it.
 //
 // The step decides which beams are adoptable and whether the prime goes, and stores them as inputs.
 //
@@ -388,7 +400,7 @@
 // The stop names the re-run that records the owner over the local state, `--keep-local`,
 // and the one that keeps each local tip under an archive tag and moves the branches to origin's, `--drop-local`.
 // Both are rendered by `adoptrecord.Request.Command` over the adopt's own request.
-// Only the local-commit flag differs, so the standing record is resumed under either.
+// Either re-run restarts the standing record at `reconcile` with its steps cleared, so the stop is judged afresh.
 // An adopt that held nothing back ends `done`.
 //
 // # The check verb

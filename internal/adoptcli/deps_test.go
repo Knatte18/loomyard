@@ -1,5 +1,6 @@
 // deps_test.go covers the hub-only pause reading and the adopt check start's guard under go test.
-// It also covers the start's alive skip, its liveness reading, and the adopt gate tiers it carries.
+// It also covers the start's alive skip, its liveness reading, and the adopt gate tiers it carries,
+// and the push-lock bound the adopt's reconcile runs with.
 
 package adoptcli
 
@@ -65,6 +66,25 @@ func TestHubOnlyPaused(t *testing.T) {
 			t.Errorf("hubOnlyPaused over an undecodable record returned no error")
 		}
 	})
+}
+
+func TestReconcileSeamWaitsOnAPushLock(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	var got fabricengine.ReconcileOptions
+	stand := func(_ *lymcwd.Location, _ fabricengine.ReconcileScope, _ fabricengine.OriginSeams, options fabricengine.ReconcileOptions) (fabricengine.OriginReport, error) {
+		got = options
+		return fabricengine.OriginReport{}, nil
+	}
+
+	if _, err := reconcileSeam(stand, &lymcwd.Location{}, fabricengine.OriginSeams{})(); err != nil {
+		t.Fatalf("reconcileSeam()() error = %v; want nil", err)
+	}
+
+	if got.PushLockWait != reconcilePushLockWait || got.PushLockWait <= 0 {
+		t.Errorf("the reconcile ran with PushLockWait %v; want the positive bound %v", got.PushLockWait, reconcilePushLockWait)
+	}
 }
 
 func TestSpawnersStartNothingUnderTest(t *testing.T) {

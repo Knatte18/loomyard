@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
@@ -41,20 +42,22 @@ const workerOutName = "adopt.out"
 // Worktree is the name of the worktree the call runs in.
 // PullBolt brings Bolt up to date with origin;
 // a pull that cannot, an unreachable origin among them, leaves the local Bolt and returns the skip's detail.
+// ExemptPause lets every pause entry pass the process's network gate and returns the function that restores the gate.
 type callerDeps struct {
-	HubPath    string
-	Strand     string
-	Worktree   string
-	PullBolt   func() (skipped string, err error)
-	Steps      adoptDeps
-	ReadRecord func() (adoptrecord.Record, bool, error)
-	Alive      func(pid int, startTicks string) bool
-	Now        func() time.Time
-	Sleep      func(time.Duration)
-	KeepWarm   func(strand string) time.Duration
-	Discard    func() (removed bool, err error)
-	Spawn      func(args []string) (pid int, exited <-chan struct{}, err error)
-	Stderr     io.Writer
+	ExemptPause func() (restore func())
+	HubPath     string
+	Strand      string
+	Worktree    string
+	PullBolt    func() (skipped string, err error)
+	Steps       adoptDeps
+	ReadRecord  func() (adoptrecord.Record, bool, error)
+	Alive       func(pid int, startTicks string) bool
+	Now         func() time.Time
+	Sleep       func(time.Duration)
+	KeepWarm    func(strand string) time.Duration
+	Discard     func() (removed bool, err error)
+	Spawn       func(args []string) (pid int, exited <-chan struct{}, err error)
+	Stderr      io.Writer
 }
 
 // hubCallerDeps fills callerDeps over the hub the prime belongs to.
@@ -66,17 +69,18 @@ func hubCallerDeps(prime *lymcwd.Location) (callerDeps, error) {
 	hubPath := prime.HubPath
 	dirs := fabricengine.ConfigDirs(prime)
 	return callerDeps{
-		HubPath:    hubPath,
-		Strand:     os.Getenv(agentname.StrandNameEnv),
-		Steps:      steps,
-		ReadRecord: func() (adoptrecord.Record, bool, error) { return adoptrecord.Read(hubPath) },
-		Alive:      adoptrecord.WorkerAlive,
-		Now:        time.Now,
-		Sleep:      time.Sleep,
-		KeepWarm:   func(strand string) time.Duration { return shuttleengines.KeepWarm(dirs, strand).Cap },
-		Discard:    func() (bool, error) { return discard(hubPath) },
-		Spawn:      func(args []string) (int, <-chan struct{}, error) { return spawnWorker(prime, args) },
-		Stderr:     os.Stderr,
+		ExemptPause: pauserecord.SetGateExemptAll,
+		HubPath:     hubPath,
+		Strand:      os.Getenv(agentname.StrandNameEnv),
+		Steps:       steps,
+		ReadRecord:  func() (adoptrecord.Record, bool, error) { return adoptrecord.Read(hubPath) },
+		Alive:       adoptrecord.WorkerAlive,
+		Now:         time.Now,
+		Sleep:       time.Sleep,
+		KeepWarm:    func(strand string) time.Duration { return shuttleengines.KeepWarm(dirs, strand).Cap },
+		Discard:     func() (bool, error) { return discard(hubPath) },
+		Spawn:       func(args []string) (int, <-chan struct{}, error) { return spawnWorker(prime, args) },
+		Stderr:      os.Stderr,
 		PullBolt: func() (string, error) {
 			_, detail, err := fabricengine.NewBolt(fabricengine.BoardDir(hubPath)).Pull(fabricengine.EnvSyncOptions(), fabricengine.NewMutations(hubPath))
 			return detail, err
@@ -99,12 +103,14 @@ func runsInOrch(strand string) bool {
 }
 
 // runAdopt runs a `lym adopt` call.
+// No pause holds its network calls, since an adopt is the operator's own takeover.
 // It validates req and starts a worker unless one already runs the same adopt.
 // It then follows the record to its end and prints the end envelope on out.
 // With --discard it removes an unfinished record instead.
 // With --here it first resolves the subject of the call's worktree, and may end without an adopt.
 // It returns the exit code.
 func runAdopt(deps callerDeps, req request, flags callFlags, out io.Writer) int {
+	defer deps.ExemptPause()()
 	if flags.Discard {
 		if len(req.Slugs) > 0 || req.Root || req.All || req.KeepLocal || req.DropLocal || req.NoOrch || flags.Here {
 			return output.Err(out, "lym adopt: --discard takes no subject and no other flag: run `lym adopt --discard` alone")
