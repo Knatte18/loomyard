@@ -813,7 +813,7 @@ User-facing modules each get one `lym <module>` namespace:
   any other done run is still refused, naming `lym batten cleanup --apply`.
   The project record binds every member:
   a member's Discussion-Write lead and darn writer read each enclosing beam's record from that beam's worktree, the board refuses an edit of the project's body once the record exists,
-  and `lym loom decision add <beam-slug>`, run by the beam's orch, is the one way its scope changes, its notice reaching every live member run under the beam.
+  and `lym loom decision add <beam-slug>` or `lym loom decision replace <beam-slug>`, run by the beam's orch, are the only ways its scope changes, its notice reaching every live member run under the beam.
   The pawl recipe is a loom recipe whose rows are Preflight, Record-Write, Beam-Up, Beam-Await, Finalize and Beam-Down, with Beam-Await as its build row and no review round of its own.
   At Beam-Await the beam's orch works the landing with the operator through `lym beam describe`, which records the change description the orch writes, the end result and every member pull request, never the record's added entries, and updates a recorded pull request, `lym beam pr open`, `update`, `status` and `close`, and `lym beam ready`, which is final;
   Finalize then merges the beam into its parent, through the pull request the beam's landing record names when one is recorded, and keeps that pull request's text.
@@ -1009,7 +1009,7 @@ User-facing modules each get one `lym <module>` namespace:
   The list is `contracts/recipes/tapestry-recipe.yaml`, assembled by `internal/loomrecipe`.
   The packages are `internal/loomcli` + `internal/loomengine` + `internal/loomshed`.
   Two more packages serve it: `internal/loomrecipe` and `internal/shedverbs`.
-  The verbs are `lym loom start|resume|run|step|status|pause|commit-records|validate-discussion|validate-plan|validate-parts|join-parts|insert-card|remove-card|restore-renumber|validate-description|lint-comments|lint-pattern|fmt|circling accept|continue|decision add|peers|peers show|raddle-propose|raddle-approve`.
+  The verbs are `lym loom start|resume|run|step|status|pause|commit-records|validate-discussion|validate-plan|validate-parts|join-parts|insert-card|remove-card|restore-renumber|validate-description|lint-comments|lint-pattern|fmt|circling accept|continue|decision add|decision replace|decision store|peers|peers show|raddle-propose|raddle-approve`.
   `lym loom raddle-propose` checks the raddle agent's proposal against the format checks.
   `lym loom raddle-approve` records the operator's approval of a proposal that passed.
   `internal/shedverbs` owns the generic `run`/`step`/`status`/`pause` verb bodies that `loomcli` arms;
@@ -1172,6 +1172,15 @@ User-facing modules each get one `lym <module>` namespace:
   the record equals its committed copy;
   it holds every `Added after Discussion` entry its history held;
   and the committed record holds the appended entry afterwards.
+  `decision replace` takes `[<slug>] --by parent|operator|arbiter --from <file> --title <t> --base-sha256 <hex>`.
+  It writes the file as the record, changing or withdrawing earlier calls and folding added entries, and commits it with a `Lym-Record-Replaced` trailer.
+  The dropped-entry check reads the record's history back to the newest replace only.
+  It is refused unless the record at HEAD hashes to the base, and refuses a file that changes a carry-over block or inserts or rewrites an added entry.
+  Before the Discussion approval, and between the plan's approval and the last Webster row, it is refused and `add` records the call.
+  `add`, `replace`, `store` and the review carry-over writer hold one per-run decision lock.
+  `add` and `replace` refresh the board copy of every stored record, a raddle run's included, and `store` makes that copy by hand;
+  all three are refused on a raddle run whose filing is done.
+  A Sketch's stored record is folded with `lym board upsert --record-file`.
   Each refusal names its way forward by the run's current row.
   `--amends-plan` marks a decision that amends the approved plan.
   The call also appends the title of each entry to the plan amendment record, committed with the entries.

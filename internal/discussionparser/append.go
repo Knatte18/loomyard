@@ -215,9 +215,15 @@ func AddedDecisionTexts(recordPath string) ([]string, error) {
 	_, spans := addedDecisionSpans(lines, fencedLines(lines))
 	var texts []string
 	for _, span := range spans {
-		texts = append(texts, strings.TrimRight(strings.Join(lines[span.first:span.last+1], "\n"), " \t\r"))
+		texts = append(texts, addedDecisionSpanText(lines, span))
 	}
 	return texts, nil
+}
+
+// addedDecisionSpanText renders the added-decision entry at span as its lines joined by newlines.
+// Trailing whitespace is trimmed.
+func addedDecisionSpanText(lines []string, span lineSpan) string {
+	return strings.TrimRight(strings.Join(lines[span.first:span.last+1], "\n"), " \t\r")
 }
 
 // checkAddedDecisionDropped names the Finding for a record that lacks an added-decision entry an earlier version holds.

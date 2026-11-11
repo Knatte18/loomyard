@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
@@ -184,6 +185,50 @@ func (f *Fabric) commitEmptySnapshot(commitMessage, warpSHA string) (sha string,
 	if err := f.RecordCorrespondence(warpSHA, sha); err != nil {
 		return sha, true, err
 	}
+	return sha, true, nil
+}
+
+// CommitEmptyWithTrailers commits the anchor-relative relPath alone on the weft, with msg and a trailer block.
+// It always lands a commit, an empty one when relPath is unchanged, so the trailers have a commit to sit on.
+// The block holds `Warp-SHA: <the warp checkout's HEAD>`, left out while the warp has no commit.
+// One `Key: Value` line per trailer follows, in order.
+// Any other path staged in the weft index stays staged and stays out of the commit.
+// It takes the weft write lock and never pushes.
+//
+// A trailer with a key outside [A-Za-z][A-Za-z0-9-]*, or a value that is empty or holds a line break, is refused first.
+// git refuses a relPath that matches no tracked or present file, and the error is returned.
+// opts.SkipGit returns ("", false, nil).
+func CommitEmptyWithTrailers(rec *Mutations, l *lymcwd.Location, relPath, msg string, trailers []Trailer, opts SyncOptions) (sha string, committed bool, err error) {
+	for _, trailer := range trailers {
+		if err := validateTrailer(trailer); err != nil {
+			return "", false, err
+		}
+	}
+	if opts.SkipGit {
+		return "", false, nil
+	}
+
+	message, err := messageWithTrailers(l, msg, trailers)
+	if err != nil {
+		return "", false, err
+	}
+
+	weftPath := RecordsWorktree(l)
+	lockDir, err := ensureWeftLockDirAt(weftPath)
+	if err != nil {
+		return "", false, err
+	}
+	writeLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	if err != nil {
+		return "", false, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+	}
+	defer func() { _ = writeLock.Release() }()
+
+	sha, err = gitrepo.New(weftPath).CommitPathAllowEmpty(message, weftCommitPathspec(l.AnchorRel, []string{relPath})[0])
+	if err != nil {
+		return "", false, err
+	}
+	rec.Append(KindCommitCreated, weftPath, sha)
 	return sha, true, nil
 }
 

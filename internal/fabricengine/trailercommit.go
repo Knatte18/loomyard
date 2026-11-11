@@ -85,9 +85,21 @@ func CommitAnchoredPathsWithTrailers(rec *Mutations, l *lymcwd.Location, relPath
 		return "", false, nil
 	}
 
-	f, err := Open(l)
+	message, err := messageWithTrailers(l, msg, trailers)
 	if err != nil {
 		return "", false, err
+	}
+	return CommitAnchoredPaths(rec, l, relPaths, message, opts)
+}
+
+// messageWithTrailers returns msg followed by the trailer block of a trailer commit.
+// The block holds the warp checkout's HEAD as a Warp-SHA trailer, left out while the warp has no commit.
+// One line per trailer follows, in order.
+// The trailers must already be validated.
+func messageWithTrailers(l *lymcwd.Location, msg string, trailers []Trailer) (string, error) {
+	f, err := Open(l)
+	if err != nil {
+		return "", err
 	}
 	message := msg
 	warpSHA, err := f.HeadSHA()
@@ -95,12 +107,12 @@ func CommitAnchoredPathsWithTrailers(rec *Mutations, l *lymcwd.Location, relPath
 	case err == nil:
 		message = appendWarpSHATrailer(message, warpSHA)
 	case !errors.Is(err, gitrepo.ErrNoCommits):
-		return "", false, fmt.Errorf("fabricengine: read the warp HEAD for the trailer block: %w", err)
+		return "", fmt.Errorf("fabricengine: read the warp HEAD for the trailer block: %w", err)
 	}
 	for _, trailer := range trailers {
 		message = appendTrailerLine(message, trailer.Key, trailer.Value)
 	}
-	return CommitAnchoredPaths(rec, l, relPaths, message, opts)
+	return message, nil
 }
 
 // TrailerCommit is a weft commit that carries a trailer key.
@@ -111,6 +123,53 @@ type TrailerCommit struct {
 	Value string
 	// CodeHead is the commit's Warp-SHA value, the code checkout's HEAD the commit was made at, empty when it carries none.
 	CodeHead string
+	// Position is the commit's first-parent position on the records branch:
+	// the number of first-parent steps from the branch's root commit, so the root is 0 and each later commit is one more.
+	// Positions from different reads of the same branch compare as long as no history is rewritten.
+	Position int
+}
+
+// recordsFirstParentCommits returns every first-parent commit of the records branch from HEAD, newest first.
+// A commit's first-parent position is len(commits)-1-index.
+// A records branch with no commit yields nil and no error.
+func recordsFirstParentCommits(l *lymcwd.Location) ([]gitrepo.LogCommit, error) {
+	repo := gitrepo.New(RecordsWorktree(l))
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		if errors.Is(err, gitrepo.ErrNoCommits) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("fabricengine: resolve the weft HEAD: %w", err)
+	}
+	commits, err := repo.Log(head, gitrepo.LogQuery{FirstParent: true})
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: walk the weft history: %w", err)
+	}
+	return commits, nil
+}
+
+// TrailerCommits returns every first-parent commit of the records branch whose message carries key.
+// The key's value must be non-empty.
+// The commits come newest first.
+// Each holds its SHA, the key's last value, its Warp-SHA value and its first-parent position.
+// A records branch with no commit yet returns nil and no error.
+// The walk follows first parents, so a merge's side branches are not read.
+func TrailerCommits(l *lymcwd.Location, key string) ([]TrailerCommit, error) {
+	commits, err := recordsFirstParentCommits(l)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: list commits for trailer %q: %w", key, err)
+	}
+
+	var found []TrailerCommit
+	for i, commit := range commits {
+		value, ok := parseTrailerValue(commit.Message, key)
+		if !ok {
+			continue
+		}
+		warpSHA, _ := parseTrailerValue(commit.Message, WarpSHATrailerKey)
+		found = append(found, TrailerCommit{SHA: commit.SHA, Value: value, CodeHead: warpSHA, Position: len(commits) - 1 - i})
+	}
+	return found, nil
 }
 
 // FindTrailerCommit walks the weft branch's history from HEAD.
@@ -118,32 +177,17 @@ type TrailerCommit struct {
 // found is false when no commit carries the key, and for a weft with no commit yet.
 // The walk follows first parents, so a merge's side branches are not read.
 func FindTrailerCommit(l *lymcwd.Location, key string, newest bool) (TrailerCommit, bool, error) {
-	repo := gitrepo.New(RecordsWorktree(l))
-	head, err := repo.CurrentSHA()
+	found, err := TrailerCommits(l, key)
 	if err != nil {
-		if errors.Is(err, gitrepo.ErrNoCommits) {
-			return TrailerCommit{}, false, nil
-		}
-		return TrailerCommit{}, false, fmt.Errorf("fabricengine: resolve the weft HEAD for trailer %q: %w", key, err)
+		return TrailerCommit{}, false, err
 	}
-	commits, err := repo.Log(head, gitrepo.LogQuery{FirstParent: true})
-	if err != nil {
-		return TrailerCommit{}, false, fmt.Errorf("fabricengine: walk the weft history for trailer %q: %w", key, err)
+	if len(found) == 0 {
+		return TrailerCommit{}, false, nil
 	}
-
-	for i := range commits {
-		commit := commits[i]
-		if !newest {
-			commit = commits[len(commits)-1-i]
-		}
-		value, ok := parseTrailerValue(commit.Message, key)
-		if !ok {
-			continue
-		}
-		warpSHA, _ := parseTrailerValue(commit.Message, WarpSHATrailerKey)
-		return TrailerCommit{SHA: commit.SHA, Value: value, CodeHead: warpSHA}, true, nil
+	if newest {
+		return found[0], true, nil
 	}
-	return TrailerCommit{}, false, nil
+	return found[len(found)-1], true, nil
 }
 
 // AnchoredFileAt returns the anchor-relative relPath as stored in the weft commit rev, unaffected by any later change.

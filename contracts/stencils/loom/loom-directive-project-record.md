@@ -17,4 +17,4 @@ Each project record below binds the whole project, the nearest beam first:
 A project record's `## Goal` holds the project's board entry, and its `Added after Discussion` entries amend it and win where they differ.
 Read every record before you settle this task's scope, and treat the project's goal, bounds and constraints as limits this task stays within: a choice that breaks one is wrong even where this task's own entry allows it.
 When this task's entry contradicts a project record, follow the record and name the conflict to your parent.
-You never edit a project record: a change of the project's scope is the beam's orch's to record with `lym loom decision add <beam-slug>`, and its notice reaches you when it lands.
+You never edit a project record: a change of the project's scope is the beam's orch's to record with `lym loom decision add <beam-slug>` or `lym loom decision replace <beam-slug>`, and its notice reaches you when it lands.

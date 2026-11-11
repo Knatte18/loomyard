@@ -40,7 +40,7 @@
 // It does not create, clone, or otherwise manage repo topology; fabric does that, directly on gitexec.
 // From there:
 //
-//   - CurrentSHA, StageAndCommit, CommitEmpty, ChangedFilesSince and SHAExists are the core primitives.
+//   - CurrentSHA, StageAndCommit, CommitEmpty, CommitPathAllowEmpty, ChangedFilesSince and SHAExists are the core primitives.
 //   - Push and PushCoalesced are the push surface (see below).
 //   - Pull is the fast-forward-only pull surface (see below).
 //     Fetch refreshes remote-tracking refs without merging, so it never moves the local branch.
@@ -111,6 +111,14 @@
 // On an unborn HEAD there is no HEAD tree to compare against, so the pre-check runs `git ls-files --cached`.
 // It treats any listed path as something staged.
 // This avoids an empty-tree object constant, which depends on the hash algorithm.
+//
+// CommitPathAllowEmpty(msg, relPath) serves a caller that wants a commit to land regardless.
+// The caller also has a path to scope it to.
+// It runs `git commit --allow-empty -- <relPath>`, so the commit holds the working tree's copy of relPath alone.
+// A relPath with no change against HEAD lands an empty commit.
+// Another path already staged stays staged and out of the commit.
+// It needs no pre-check and never returns ErrIndexNotEmpty.
+// git refuses a relPath that matches no tracked or present file, and the error comes back wrapped.
 //
 // The package's never-sweep norm is that an automated commit must never absorb content nobody asked it to commit.
 // StageAndCommit enforces it structurally through pathspec scoping:

@@ -2,6 +2,7 @@ package loomcli
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -15,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -72,7 +74,7 @@ type decisionFake struct {
 	committedCopy  []byte
 	committedFound bool
 	committedErr   error
-	// committedAfterErr is the committed read's error once the commit has run.
+	// committedAfterErr is the committed read's error once a commit or a replace commit has run.
 	committedAfterErr error
 	// historyVersions and historyErr are the record's committed versions.
 	historyVersions [][]byte
@@ -135,6 +137,50 @@ type decisionFake struct {
 	raddleFileRowErr error
 	raddlePerchErr   error
 	raddleFiledErr   error
+	// entryNotTask makes the run's board entry no longer a task, as a family filing leaves it.
+	entryNotTask bool
+	// boardFilingParts and boardFilingHeld are the proposal's part slugs and whether the board holds them as filed.
+	boardFilingParts []string
+	boardFilingHeld  bool
+
+	// lockCalls counts the decision lock's successful takes and lockReleases its releases; lockErr makes a take fail.
+	lockCalls, lockReleases int
+	lockErr                 error
+	// lockOverride, when set, replaces the fake's lock seam.
+	lockOverride func() (func() error, error)
+	// implementerRows reports, per row, whether the run stands in its Webster span; implementerErr makes the read fail.
+	implementerRows map[string]bool
+	implementerErr  error
+	// boardStored is whether the run's board entry carries a stored record; boardStoredErr makes the read fail.
+	boardStored    bool
+	boardStoredErr error
+	// replaceUnstaged makes the replace commit stage nothing, as when HEAD already holds the bytes.
+	replaceUnstaged bool
+	// replaceCommitErr makes the replace commit fail.
+	// HEAD then holds the written bytes when replaceErrLands is set.
+	// It holds the call's trailer too when replaceErrTrailer is set.
+	replaceCommitErr  error
+	replaceErrLands   bool
+	replaceErrTrailer bool
+	// replaceCommits counts the replace commits.
+	// commitEntered, when set, is closed as a replace commit starts, which then waits on commitGate.
+	replaceCommits int
+	commitEntered  chan struct{}
+	commitGate     chan struct{}
+	// onReplaceCommit, when set, runs as a replace commit returns.
+	onReplaceCommit func()
+	// emptyErr makes the empty trailer commit fail, and emptyCommits counts its calls.
+	emptyErr     error
+	emptyCommits int
+	// headTrailer is the replace trailer value the commit at HEAD carries, empty when it carries none.
+	headTrailer string
+	// headCarriesErr makes the read of HEAD's replace trailer fail.
+	headCarriesErr error
+	// restoreErr makes every record write after the first fail, and recordWrites counts the writes.
+	restoreErr   error
+	recordWrites int
+	// writeFirstErr makes only the first record write fail; writeAllErr makes every record write fail.
+	writeFirstErr, writeAllErr error
 }
 
 // decisionPost is one notice the verb posted.
@@ -241,7 +287,7 @@ func (f *decisionFake) deps() decisionDeps {
 		},
 		committed: func() ([]byte, bool, error) {
 			f.darnCalls++
-			if f.commits > 0 && f.committedAfterErr != nil {
+			if (f.commits > 0 || f.replaceCommits > 0) && f.committedAfterErr != nil {
 				return nil, false, f.committedAfterErr
 			}
 			return f.committedCopy, f.committedFound, f.committedErr
@@ -303,8 +349,77 @@ func (f *decisionFake) deps() decisionDeps {
 		raddleFileRow: func() (string, bool, error) {
 			return f.raddleFileRow, f.raddleFileRow != "", f.raddleFileRowErr
 		},
-		raddlePerch: func() (bool, error) { return f.raddlePerch, f.raddlePerchErr },
-		raddleFiled: func() ([]string, bool, error) { return f.raddleFiled, f.raddleFiled != nil, f.raddleFiledErr },
+		raddlePerch:     func() (bool, error) { return f.raddlePerch, f.raddlePerchErr },
+		raddleFiled:     func() ([]string, bool, error) { return f.raddleFiled, f.raddleFiled != nil, f.raddleFiledErr },
+		raddleEntryTask: func() (bool, error) { return !f.entryNotTask, nil },
+		raddleBoardFiling: func() ([]string, bool, error) {
+			return f.boardFilingParts, f.boardFilingHeld, nil
+		},
+		recordRel: "_lym/discussion/decision-record.md",
+		lockRecord: func() (func() error, error) {
+			if f.lockOverride != nil {
+				return f.lockOverride()
+			}
+			if f.lockErr != nil {
+				return nil, f.lockErr
+			}
+			f.lockCalls++
+			return func() error { f.lockReleases++; return nil }, nil
+		},
+		writeRecord: func(data []byte) error {
+			f.recordWrites++
+			if f.writeAllErr != nil || (f.writeFirstErr != nil && f.recordWrites == 1) {
+				return cmp.Or(f.writeAllErr, f.writeFirstErr)
+			}
+			if f.restoreErr != nil && f.recordWrites > 1 {
+				return f.restoreErr
+			}
+			return os.WriteFile(f.path, data, 0o644)
+		},
+		commitReplace: func(_ string, trailers []fabricengine.Trailer) (bool, error) {
+			f.replaceCommits++
+			if f.commitEntered != nil {
+				close(f.commitEntered)
+				<-f.commitGate
+			}
+			if f.onReplaceCommit != nil {
+				defer f.onReplaceCommit()
+			}
+			data, err := os.ReadFile(f.path)
+			if err != nil {
+				return false, err
+			}
+			if f.replaceCommitErr != nil {
+				if f.replaceErrLands {
+					f.committedCopy, f.committedFound = data, true
+				}
+				if f.replaceErrTrailer {
+					f.headTrailer = trailers[0].Value
+				}
+				return false, f.replaceCommitErr
+			}
+			if f.replaceUnstaged {
+				return false, nil
+			}
+			f.committedCopy, f.committedFound, f.headTrailer = data, true, trailers[0].Value
+			return true, nil
+		},
+		commitEmpty: func(_ string, trailers []fabricengine.Trailer) error {
+			f.emptyCommits++
+			if f.emptyErr != nil {
+				return f.emptyErr
+			}
+			f.headTrailer = trailers[0].Value
+			return nil
+		},
+		headCarries: func(value string) (bool, error) {
+			if f.headCarriesErr != nil {
+				return false, f.headCarriesErr
+			}
+			return f.headTrailer == value, nil
+		},
+		implementerSpan:   func(row string) (bool, error) { return f.implementerRows[row], f.implementerErr },
+		boardRecordStored: func() (bool, error) { return f.boardStored, f.boardStoredErr },
 	}
 }
 
@@ -957,6 +1072,12 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			want:         []string{"would pass the line creel delivers in one hook field", decisionWayNoticeTooLong},
 		},
 		{
+			name:         "decision lock cannot be taken",
+			setup:        func(f *decisionFake, _ *decisionInput) { f.lockErr = errors.New("take the run's decision lock, boom") },
+			inputRefusal: true,
+			want:         []string{"decision lock", "way forward", "re-run the verb; nothing was written"},
+		},
+		{
 			name: "Record-Write batch entry missing from the committed record after the commit",
 			from: decisionBatchJSON,
 			setup: func(f *decisionFake, _ *decisionInput) {
@@ -1309,8 +1430,10 @@ func TestDecisionNoticeOpening_NamedByParentDirective(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Directive = _, %v; want nil error", err)
 	}
-	if !strings.Contains(directive, "`"+decisionNoticeOpening+"`") {
-		t.Errorf("Directive = %q; want it to quote the decision notice's opening %q", directive, decisionNoticeOpening)
+	for _, opening := range []string{decisionNoticeOpening, decisionReplaceNoticeOpening} {
+		if !strings.Contains(directive, "`"+opening+"`") {
+			t.Errorf("Directive = %q; want it to quote the decision notice's opening %q", directive, opening)
+		}
 	}
 }
 

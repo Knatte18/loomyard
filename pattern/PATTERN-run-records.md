@@ -1,12 +1,12 @@
 # PATTERN-run-records
 
 This cluster guards a run's friction note, usage record and project record:
-each has one writer, `internal/friction`, shed's usage writer or `lym loom decision add`.
+each has one writer, `internal/friction`, shed's usage writer or `lym loom decision add` or `replace`.
 
 ## Project record
 
 Rule: Changing a beam project's scope once its pawl run passed Preflight:
-only `lym loom decision add <beam-slug>` on its project record, never a board body edit;
+only `lym loom decision add` or `replace` `<beam-slug>` on its project record, never a board body edit;
 a member reads the record from the beam's worktree, never writes it.
 
 Held by review alone; no test enforces it.

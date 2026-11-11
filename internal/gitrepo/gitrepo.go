@@ -207,6 +207,19 @@ func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 	return sha, nil
 }
 
+// CommitPathAllowEmpty commits the working tree's copy of relPath alone with msg, via `git commit --allow-empty`.
+// It lands a commit even when relPath has no change against HEAD, so such a commit has its parent's tree.
+// Any other path already staged in the index stays staged and stays out of the commit.
+// git refuses a relPath that matches no tracked or present file, and that error is returned wrapped.
+// It returns the new HEAD SHA.
+func (r *Repo) CommitPathAllowEmpty(msg, relPath string) (sha string, err error) {
+	if _, err := r.runChecked("commit", "--allow-empty", "-m", msg, "--", relPath); err != nil {
+		return "", fmt.Errorf("gitrepo: git commit --allow-empty: %w", err)
+	}
+
+	return r.CurrentSHA()
+}
+
 // StageAllAndCommit stages every change via `git add -A` and commits with msg.
 // It returns ("", false, nil) when nothing is staged after that, otherwise the new HEAD SHA with committed=true.
 func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err error) {

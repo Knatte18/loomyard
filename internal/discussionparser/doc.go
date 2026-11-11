@@ -45,6 +45,11 @@
 // CheckAddedDecisionsKept reports the added-decision entries and appended PATTERN change bullets a record dropped.
 // It compares against any earlier version of the record, read from told bytes.
 //
+// CheckCarryOversKept reports the carry-over blocks a replacement record drops, changes or adds.
+// CheckAddedEntriesSubset reports the added entries it inserts or rewrites.
+// Together they let a whole-record replacement drop added entries and appended PATTERN bullets.
+// The replacement must keep every carry-over block and insert or rewrite no added entry.
+//
 // The record may carry an optional `## PATTERN changes` section.
 // It lists the PATTERN entries the task adds, changes or removes.
 // Validate checks its bullets through ParsePatternChanges.

@@ -512,11 +512,25 @@ func recordWriteDeps(l *lymcwd.Location, record runRecord) loomshed.RecordWriteD
 // writeCarryOver writes entry into the decision record of location's worktree and commits the record alone.
 // An unchanged record commits nothing, and a write or commit error is returned to the caller.
 func writeCarryOver(location *lymcwd.Location, entry discussionparser.CarryOver) error {
-	if err := discussionparser.WriteCarryOver(loomengine.DiscussionDecisionRecord(location), entry); err != nil {
+	return writeCarryOverLocked(loomengine.DiscussionDecisionRecord(location), entry, func() error {
+		_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.DiscussionDecisionRecordRel()}, fmt.Sprintf("loom: review carry-over for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+		return err
+	})
+}
+
+// writeCarryOverLocked writes entry into the decision record at recordPath and then runs commit.
+// It holds the record's decision lock across both.
+// A decision call in flight finishes its write and commit first, so neither write is lost.
+func writeCarryOverLocked(recordPath string, entry discussionparser.CarryOver, commit func() error) error {
+	release, err := holdDecisionLock(recordPath)
+	if err != nil {
 		return err
 	}
-	_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.DiscussionDecisionRecordRel()}, fmt.Sprintf("loom: review carry-over for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
-	return err
+	defer func() { _ = release() }()
+	if err := discussionparser.WriteCarryOver(recordPath, entry); err != nil {
+		return err
+	}
+	return commit()
 }
 
 // loomProgram is the program name loom signs its notices to the orch with.

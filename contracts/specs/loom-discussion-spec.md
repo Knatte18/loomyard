@@ -129,6 +129,12 @@ The Discussion-Write and Discussion-Burler-Fix gates halt on a quarry outage as 
   That check runs on every loom record, after the section check is clean:
   in the discussion gates, in Darn-Write's post-session guard and in `lym loom validate-discussion`, which commits nothing.
   An ID a `Withdraws:` line of an `### Added after Discussion` entry names is permanently exempt from it.
+- `lym loom decision replace` may remove an `### Added after Discussion` entry, never edit or insert one, and may drop an appended bullet.
+  The dropped-entry check reads the record's versions back to the newest replace only, so an entry or bullet a replace dropped is no finding.
+  The parent replaces a record to change or withdraw an earlier decision, folding the added entries into the main decisions,
+  and records a new call with `lym loom decision add`.
+  The record stored on a discussed board entry holds added entries once a motif run has made it;
+  that record is folded with `lym board upsert --record-file`.
 - `<!-- lym:carry-over … -->` blocks under `## Open risks` are written only by Go.
   A writer never authors, edits or removes one.
 

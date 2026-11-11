@@ -64,7 +64,7 @@ func RunHolds(task Task) bool {
 // Its body then changes only through the record.
 // It is true for a beam project whose run status has a producer half past the record-free rows, a halt included.
 // The pawl run writes the record from the body at Record-Write,
-// and `lym loom decision add <slug>` alone changes the record after that.
+// and only `lym loom decision add` or `lym loom decision replace` on the beam's slug changes the record after that.
 // The hold is judged from the status alone, since this package reads no record file.
 // A run sent back to Preflight with a goto lifts it.
 // Record-Write keeps the record it finds, so a body edit made in that window never reaches the record.

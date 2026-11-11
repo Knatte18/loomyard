@@ -469,7 +469,8 @@
 // the run has written, or is writing, the project record from the body.
 // The body then takes no edit.
 // The refusal is a *ProjectRecordLockedError that matches ErrRunLocked.
-// It names `lym loom decision add <slug>`, the one way the project's scope changes after that.
+// It names `lym loom decision add <slug>`;
+// only that verb or `lym loom decision replace` changes the project's scope after that.
 // The pawl recipe's own test pins the record-free rows, the claim row and Preflight, against its row names.
 // From Finalize on the full run lock applies.
 //

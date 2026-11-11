@@ -12,7 +12,7 @@
 #
 # The project record holds only what binds the whole project: its goal, its bounds and the constraints every member follows.
 # Record-Write writes it under the beam's slug, apart from any member's own record, since every pair forked from the beam
-# inherits the beam's records. After that only `lym loom decision add <beam-slug>` changes it.
+# inherits the beam's records. After that only `lym loom decision add <beam-slug>` or `lym loom decision replace <beam-slug>` changes it.
 #
 # The hold boundary: a beam project's run holds its beam from Finalize on, so Preflight, Record-Write, Beam-Up and
 # Beam-Await leave the beam open to members, and boardengine.RunHolds names those rows and batten's claim row as the

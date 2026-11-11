@@ -1038,12 +1038,21 @@
 // The block holds `Warp-SHA: <the warp checkout's HEAD>`, then one `Key: Value` line per `Trailer`, in order.
 // A key outside `[A-Za-z][A-Za-z0-9-]*` or a value that is empty or holds a line break is refused.
 // The error names the trailer, and nothing is staged.
+// `CommitEmptyWithTrailers` commits one anchor-relative path alone with the same kind of trailer block.
+// It always lands a commit, empty when the path is unchanged.
+// Any other staged weft path stays staged and uncommitted.
 // `FindTrailerCommit` walks the records branch's first-parent history from HEAD.
 // It returns the newest or the oldest commit carrying a key as a `TrailerCommit`.
-// The `TrailerCommit` holds the SHA, the key's last value and the `Warp-SHA` value;
+// The `TrailerCommit` holds the SHA, the key's last value, the `Warp-SHA` value and the commit's first-parent position;
 // a records branch with no commit reads as not found.
+// `TrailerCommits` returns every first-parent commit carrying a key as a `TrailerCommit`, newest first.
+// A first-parent position counts the steps from the branch's root commit, which is 0.
+// Positions from different reads of one branch compare while no history is rewritten.
 // `AnchoredFileAt` reads an anchor-relative file as stored in a records commit.
 // A path absent there reads as not found.
+// `AnchoredFileFirstParentHistory` returns an `AnchoredFileVersion` for each first-parent commit that changed a file.
+// Each holds the commit's SHA, its first-parent position and the file's contents there, newest first.
+// The order is first-parent order, never committer time.
 //
 // Read-only reads of the checkouts (checkoutstate.go) also name no caller's concept.
 // `CheckoutStates` returns a `CheckoutState` for the warp checkout and for the weft worktree.

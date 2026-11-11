@@ -56,9 +56,13 @@
 // It writes the entry's stored record as the run's decision record.
 // It writes a support log saying so when none exists, and it commits the discussion directory.
 // The gate then passes over Discussion.
-// `decision add` copies the committed record onto the board entry after its commit once the run is past that approval.
-// It reports a failed copy as `record_store_error` and never fails the verb.
-// `decision store` makes the same copy by hand, admitting the unnamed shell, the run's arbiter and its parent orch.
+// `decision add` and `decision replace` copy the committed record onto the board entry after their commit.
+// They copy it once the run is past that approval.
+// On a recipe with no approval row they copy it when the entry carries a stored record.
+// A beam's project record is never copied.
+// They report a failed copy as `record_store_error` and never fail the verb.
+// `decision store` makes the same copy by hand on the same runs.
+// It admits the unnamed shell, the run's arbiter and its parent orch.
 // Each status transition writes `<state> · <producer>` on the run's board entry, the run's start write included.
 // The entry thus names the first row while it runs.
 // A finished run of a recipe with a Finalize row writes nothing, its landing having marked the entry done.
@@ -140,7 +144,8 @@
 // It takes the beam's own orch as the caller its rule admits.
 // It posts its notice to the live runs of the beam and of every member pair `memberPairs` reads under it.
 //
-// The caller rule of `decision add` admits a named session that is the run's parent orch;
+// `decisionCallerRefusal` is the caller rule of `decision add` and `decision replace`.
+// It admits a named session that is the run's parent orch;
 // it admits the run's own arbiter strand with `--by arbiter`;
 // it admits the strand a sampler run's Sampler-Session row has recorded as its session.
 // `samplerStrandReader` admits that strand by the recipe's rows.
@@ -148,10 +153,20 @@
 // It admits it only with `--by operator`; any other label from it is refused naming `--by operator`.
 // A strand it does not admit meets the parent rule.
 //
-// `decision add` refuses a raddle run in perch mode, whose recipe rows hold the split perch, from its Raddle-File row on.
-// `perchFilingRefusal` words the refusal.
-// Before the filing it names the goto to Raddle-Write.
-// After the filing it names the filed parts, each to record on once released.
+// `decision add`, `replace` and `store` refuse a raddle run through `raddleFilingRefusal`.
+// A run in perch mode, whose recipe rows hold the split perch, is refused at its Raddle-File row before the filing.
+// That refusal names the goto to Raddle-Write.
+// Once the filing is done, in any mode and at any row, the refusal names the filed parts.
+// Each part is recorded on once released.
+// It also names `lym board upsert --record-file` for a call on the family's project.
+// A filing the raddle store has not marked done is seen from the entry's kind or from the board.
+// Its refusal names `lym loom resume` first.
+//
+// `decision replace` writes a whole record from a file and commits it with a `Lym-Record-Replaced` trailer.
+// It holds the run's decision lock, `holdDecisionLock`, which `add`, `store` and `writeCarryOver` take too,
+// so its base check and its write are one step against every other Go writer of the record.
+// `recordHistory` reads the record's versions from the newest such trailer's cut onward,
+// so the dropped-entry check no longer holds the record to an entry a replace dropped.
 //
 // # Start
 //

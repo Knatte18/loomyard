@@ -26,6 +26,7 @@ import (
 var gitrepoPinnedRunBoundMethods = []string{
 	"StageAndCommit",
 	"CommitEmpty",
+	"CommitPathAllowEmpty",
 	"StageAllAndCommit",
 	"Pull",
 	"Fetch",
