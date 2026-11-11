@@ -83,10 +83,11 @@ func ValidateAnchorRel(raw string) (string, error) {
 	return cleaned, nil
 }
 
-// ErrCwdOutsideAnchor is returned when cwd is not exactly the anchored directory.
+// ErrCwdOutsideAnchor is returned when cwd is not where the recorded anchor admits a lym invocation:
+// exactly the anchored directory for the strict gate, that directory or below it for the subtree check.
 // A lym invocation from elsewhere in the worktree fails here at once.
 // Without this check it would resolve the wrong anchor and fail later, downstream, with a confusing error.
-var ErrCwdOutsideAnchor = errors.New("cwd is outside the recorded fabric anchor subtree")
+var ErrCwdOutsideAnchor = errors.New("cwd is not at the recorded fabric anchor")
 
 // samePath reports whether a and b name the same filesystem location.
 // Each side is normalized through filepath.EvalSymlinks and then filepath.Clean.
@@ -124,6 +125,34 @@ func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 	}
 	return fmt.Errorf("%w: cwd %s does not equal the anchored directory %s (recorded by %s)",
 		ErrCwdOutsideAnchor, cwd, anchorAbs, AnchorFileName)
+}
+
+// checkCwdWithinAnchor returns nil when cwd lies at or below the anchored directory.
+// The anchored directory is worktreePath joined with anchorRel.
+// Otherwise it wraps ErrCwdOutsideAnchor in an error that names both paths and the marker file.
+func checkCwdWithinAnchor(cwd, anchorRel, worktreePath string) error {
+	anchorAbs := filepath.Join(worktreePath, anchorRel)
+	if pathWithin(cwd, anchorAbs) {
+		return nil
+	}
+	return fmt.Errorf("%w: cwd %s lies outside the anchored directory %s (recorded by %s); run it from that directory or below it",
+		ErrCwdOutsideAnchor, cwd, anchorAbs, AnchorFileName)
+}
+
+// pathWithin reports whether child names parent or a location below it.
+// Both sides are normalized and compared as samePath compares them.
+func pathWithin(child, parent string) bool {
+	normalizedChild := normalizePath(child)
+	normalizedParent := normalizePath(parent)
+	if runtime.GOOS == "windows" {
+		normalizedChild = strings.ToLower(normalizedChild)
+		normalizedParent = strings.ToLower(normalizedParent)
+	}
+	rel, err := filepath.Rel(normalizedParent, normalizedChild)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // readRecordedAnchor reads the recorded lym-anchor subpath marker of the worktree named worktreeName in hub.

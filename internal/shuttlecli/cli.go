@@ -7,6 +7,8 @@
 // The verbs are run, open and the read-only state, which lists the session state of each running run.
 // The read-only await, the capped wait on one or more files, is implemented in await.go.
 // The read-only await-forks, the capped wait until the calling session's forks have finished, is implemented in awaitforks.go.
+// await-forks resolves its geometry from anywhere under the anchored directory or in the records sibling.
+// A session's harness can move its cwd there; every other verb takes the strict cwd gate.
 // await is the verb that skips the resolution and needs no hub; it reads only the keep-warm config, and only inside a git worktree.
 // The hidden hook-batching, which a session's after-tool-call hook runs, is implemented in hookbatching.go; it skips the resolution too and reads only its hook input and the state file it is told.
 
@@ -82,7 +84,11 @@ provider specifics.`,
 				return nil
 			}
 
-			layout, err := lymcwd.Resolve(cwd)
+			resolve := lymcwd.Resolve
+			if cmd.Name() == awaitForksVerb {
+				resolve = lymcwd.ResolveWithin
+			}
+			layout, err := resolve(cwd)
 			if err != nil {
 				// lymcwd.Resolve's error is already self-describing (it
 				// IS the "not a git repository" sentinel); pass it through

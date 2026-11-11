@@ -84,6 +84,14 @@ It exists for callers holding a worktree root rather than an acting cwd, where t
 The gate applies only to the entry-point cwd of `Resolve(cwd)`.
 It never applies to internal sibling-layout construction above a subpath anchor.
 
+### `ResolveWithin(cwd string) (*Location, error)`
+
+Builds the `Location` of the worktree whose anchored directory or records sibling holds `cwd`.
+It accepts the anchored directory, any directory below it, and any directory in the worktree's records sibling;
+a cwd in a records sibling resolves to the `Location` of the worktree the sibling belongs to.
+It serves a read-only verb a session runs from wherever its harness moved the cwd, such as a directory in the records sibling.
+A cwd elsewhere in the worktree is `ErrCwdOutsideAnchor`, naming the anchored directory.
+
 ### `Location` struct
 
 ```go

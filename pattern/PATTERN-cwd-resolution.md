@@ -4,6 +4,8 @@
 
 - `root` is the worktree or repo root and `cwd` is the current working directory; the two are never conflated.
 - `Resolve` requires cwd to be a git worktree root and to equal `Join(worktreeRoot, AnchorRel)`.
+- `ResolveWithin` accepts cwd at or below `Join(worktreeRoot, AnchorRel)` or anywhere in the records sibling.
+  Only a read-only verb a session runs from wherever its harness moved the cwd calls it.
 - It exposes only `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel`, `WorktreePath()` and `AnchorPath()`.
 - Every cwd or worktree-root query goes through `lymcwd.Getwd()` or `Resolve()`;
   raw `os.Getwd` and `git rev-parse --show-toplevel` are banned elsewhere.

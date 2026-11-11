@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/dotgit"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // Location and geometry constants name directories and files for lym configuration and fabric, board and hub geometry.
@@ -98,13 +99,9 @@ func ResolveWorktree(worktreeRoot string) (*Location, error) {
 // It applies no cwd gate, spawns no git, and needs neither the worktree nor its records sibling to exist.
 // It is how code outside this package gets the Location of a worktree other than the acting one.
 func NamedWorktree(hubPath, name string) (*Location, error) {
-	anchorRel := "."
-	anchor, found, err := readRecordedAnchor(hubPath, name)
+	anchorRel, err := anchorRelOrRoot(hubPath, name)
 	if err != nil {
 		return nil, err
-	}
-	if found {
-		anchorRel = anchor
 	}
 	return &Location{
 		RepoName:     strings.TrimSuffix(filepath.Base(hubPath), hubSuffix),
@@ -127,20 +124,73 @@ func resolveCore(cwd string, applyGate bool) (*Location, error) {
 	}
 
 	hubPath := filepath.Dir(workTreeRoot)
-
-	// AnchorRel falls back to "." rather than a path derived from cwd.
-	// A cwd-dependent value would make Location lie.
-	// _lym would resolve to a different place depending on where the user stood.
-	anchorRel := "."
-	anchor, found, err := readRecordedAnchor(hubPath, filepath.Base(workTreeRoot))
+	anchorRel, err := anchorRelOrRoot(hubPath, filepath.Base(workTreeRoot))
 	if err != nil {
 		return nil, err
 	}
-	if found {
-		anchorRel = anchor
-	}
 
 	return buildLocation(cwd, workTreeRoot, hubPath, anchorRel, applyGate)
+}
+
+// ResolveWithin builds the Location of the worktree whose anchored directory or records sibling holds cwd.
+// It serves a read-only verb that a session runs from wherever its harness has moved the working directory.
+// An example is a directory in the records sibling, where the strict cwd gate of Resolve refuses.
+// A cwd anywhere in a records sibling resolves to the Location of the worktree that sibling belongs to.
+//
+// It returns ErrNotAGitRepo when cwd is outside a git repo.
+// It returns ErrCwdOutsideAnchor when cwd lies in a worktree but outside its anchored directory.
+// That error names the anchored directory.
+func ResolveWithin(cwd string) (*Location, error) {
+	workTreeRoot, err := gitWorktreeRoot(cwd)
+	if err != nil {
+		return nil, err
+	}
+
+	hubPath := filepath.Dir(workTreeRoot)
+	ownerName, inRecordsSibling := ownerOfRecordsSibling(hubPath, filepath.Base(workTreeRoot))
+	anchorRel, err := anchorRelOrRoot(hubPath, ownerName)
+	if err != nil {
+		return nil, err
+	}
+
+	ownerRoot := filepath.Join(hubPath, ownerName)
+	if !inRecordsSibling {
+		if err := checkCwdWithinAnchor(filepath.Clean(cwd), anchorRel, ownerRoot); err != nil {
+			return nil, err
+		}
+	}
+	return buildLocation(cwd, ownerRoot, hubPath, anchorRel, false)
+}
+
+// ownerOfRecordsSibling returns the name of the worktree whose records sibling is the worktree called name in hubPath.
+// It also reports whether name is such a records sibling.
+// A name that ends in the records-sibling suffix with no worktree of the trimmed name beside it is not a records sibling.
+// Such a name comes back unchanged.
+func ownerOfRecordsSibling(hubPath, name string) (string, bool) {
+	owner, hasSuffix := strings.CutSuffix(name, weftname.Suffix)
+	if !hasSuffix || owner == "" {
+		return name, false
+	}
+	info, err := os.Stat(filepath.Join(hubPath, owner))
+	if err != nil || !info.IsDir() {
+		return name, false
+	}
+	return owner, true
+}
+
+// anchorRelOrRoot returns the recorded anchor of the worktree called name in hubPath, or "." when none is recorded.
+// The fallback is never a path derived from cwd:
+// a cwd-dependent value would make Location lie.
+// _lym would resolve to a different place depending on where the user stood.
+func anchorRelOrRoot(hubPath, name string) (string, error) {
+	anchor, found, err := readRecordedAnchor(hubPath, name)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return ".", nil
+	}
+	return anchor, nil
 }
 
 // gitWorktreeRoot finds the worktree root at or above cwd in-process, as `git rev-parse --show-toplevel` does.

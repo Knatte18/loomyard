@@ -80,6 +80,8 @@ the module that constructs each of those owns it.
 - `Resolve(cwd)` → `*Location` — resolves the current cwd into a legal worktree's coordinates, applying the strict cwd gate.
 - `ResolveWorktree(root)` — the ungated variant.
   It serves callers that hold a worktree root rather than an acting cwd; see `docs/shared-libs/lymcwd.md`.
+- `ResolveWithin(cwd)` — accepts a cwd anywhere under the anchored directory or in the records sibling.
+  It serves a read-only verb a session runs from wherever its harness moved the cwd.
 - `NamedWorktree(hubPath, name)` → `*Location` — the coordinates of another worktree of the hub, at that worktree's own anchor.
 
 `Location` carries `RepoName`, `HubPath`, `WorktreeName` and `AnchorRel`, plus the derived accessors `WorktreePath()` and `AnchorPath()`.

@@ -1,4 +1,10 @@
-// lymcwd_test.go covers Location resolution against a real git checkout: Resolve's record-wins + strict cwd-equals-anchor gate, the marker-absent "." fallback, ResolveWorktree's gate-free counterpart used by internal callers that resolve geometry from a worktree root rather than an acting cwd, the stale-marker refusal, and the ErrNotAGitRepo path for directories outside a git repo.
+// lymcwd_test.go covers Location resolution against a real git checkout.
+// It covers Resolve's record-wins + strict cwd-equals-anchor gate and the marker-absent "." fallback.
+// It covers ResolveWorktree, the gate-free counterpart for callers holding a worktree root rather than an acting cwd.
+// It covers ResolveWithin's anchor-subtree and records-sibling acceptance and the stale-marker refusal.
+// It covers ResolveWithin's fallbacks for a suffixed name with no owner beside it.
+// It covers the same fallback for a checkout with no recorded marker.
+// It covers the ErrNotAGitRepo path for directories outside a git repo.
 
 package lymcwd_test
 
@@ -327,6 +333,124 @@ func TestResolve_AnchorScenario(t *testing.T) {
 		requireOutsideAnchor(t, root)
 		requireOutsideAnchor(t, secondDir)
 	})
+}
+
+// TestResolveWithin pins the subtree-tolerant resolver over a checkout with a records sibling recording a subpath anchor.
+// A cwd at or below the anchored directory resolves to the checkout's own Location.
+// So does a cwd anywhere in the records sibling or under the anchor's link into the records sibling.
+// A cwd elsewhere in the checkout is refused with an error naming the anchored directory.
+func TestResolveWithin(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	fix := gitkit.CopyRepo(t)
+	root := fix.Repo
+	siblingRoot := weftname.SiblingPath(filepath.Dir(root), filepath.Base(root))
+	gitkit.Git(t, root, "worktree", "add", "-b", "records", siblingRoot)
+	if err := os.WriteFile(filepath.Join(siblingRoot, lymcwd.AnchorFileName), []byte("backend\n"), 0o644); err != nil {
+		t.Fatalf("write own marker: %v", err)
+	}
+
+	backendDir := filepath.Join(root, "backend")
+	deeperDir := filepath.Join(backendDir, "deeper")
+	frontendDir := filepath.Join(root, "frontend")
+	siblingRecordsDir := filepath.Join(siblingRoot, "_lym")
+	siblingPlanDir := filepath.Join(siblingRecordsDir, "plan")
+	for _, dir := range []string{deeperDir, frontendDir, siblingPlanDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	recordsLink := filepath.Join(backendDir, "_lym")
+	if err := fslink.CreateDirLink(recordsLink, siblingRecordsDir); err != nil {
+		t.Fatalf("link %s -> %s: %v", recordsLink, siblingRecordsDir, err)
+	}
+
+	want, err := lymcwd.ResolveWorktree(root)
+	if err != nil {
+		t.Fatalf("ResolveWorktree(%q) error = %v; want nil", root, err)
+	}
+	if want.AnchorRel != "backend" {
+		t.Fatalf("ResolveWorktree(%q).AnchorRel = %q; want %q", root, want.AnchorRel, "backend")
+	}
+
+	tests := []struct {
+		name    string
+		cwd     string
+		wantErr bool
+	}{
+		{"AnchoredDirectory", backendDir, false},
+		{"BelowTheAnchoredDirectory", deeperDir, false},
+		{"SiblingRecordsDirectory", siblingPlanDir, false},
+		{"SiblingRoot", siblingRoot, false},
+		{"BelowTheAnchorsRecordsLink", filepath.Join(recordsLink, "plan"), false},
+		{"SiblingOfTheAnchor", frontendDir, true},
+		{"WorktreeRootAboveTheAnchor", root, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := lymcwd.ResolveWithin(tt.cwd)
+			if tt.wantErr {
+				if got != nil {
+					t.Errorf("ResolveWithin(%q) returned non-nil layout; want nil", tt.cwd)
+				}
+				if !errors.Is(err, lymcwd.ErrCwdOutsideAnchor) || !strings.Contains(err.Error(), want.AnchorPath()) {
+					t.Errorf("ResolveWithin(%q) error = %v; want wrapped ErrCwdOutsideAnchor naming %s", tt.cwd, err, want.AnchorPath())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveWithin(%q) error = %v; want nil", tt.cwd, err)
+			}
+			if *got != *want {
+				t.Errorf("ResolveWithin(%q) = %+v; want %+v", tt.cwd, *got, *want)
+			}
+		})
+	}
+}
+
+// TestResolveWithin_NoOwnerOrNoMarker pins the two fallbacks of ResolveWithin from a subdirectory.
+// A checkout whose own name ends in the records-sibling suffix resolves as itself.
+// That holds when no worktree of the trimmed name sits beside it.
+// A checkout with no recorded marker resolves with AnchorRel ".".
+func TestResolveWithin_NoOwnerOrNoMarker(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	fix := gitkit.CopyRepo(t)
+	root := fix.Repo
+	lonePath := filepath.Join(filepath.Dir(root), "lone"+weftname.Suffix)
+	gitkit.Git(t, root, "worktree", "add", "-b", "lone", lonePath)
+
+	tests := []struct {
+		name          string
+		checkout      string
+		wantName      string
+		wantAnchorRel string
+	}{
+		{"SuffixedNameWithNoOwnerBesideIt", lonePath, filepath.Base(lonePath), "."},
+		{"CheckoutWithNoRecordedMarker", root, filepath.Base(root), "."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			subDir := filepath.Join(tt.checkout, "sub", "nested")
+			if err := os.MkdirAll(subDir, 0o755); err != nil {
+				t.Fatalf("mkdir %s: %v", subDir, err)
+			}
+
+			got, err := lymcwd.ResolveWithin(subDir)
+			if err != nil {
+				t.Fatalf("ResolveWithin(%q) error = %v; want nil", subDir, err)
+			}
+			if got.WorktreeName != tt.wantName || got.AnchorRel != tt.wantAnchorRel {
+				t.Errorf("ResolveWithin(%q) = %+v; want WorktreeName %q and AnchorRel %q", subDir, *got, tt.wantName, tt.wantAnchorRel)
+			}
+		})
+	}
 }
 
 // TestResolve_NotAGitRepo verifies that Resolve in a non-git temp directory returns ErrNotAGitRepo.

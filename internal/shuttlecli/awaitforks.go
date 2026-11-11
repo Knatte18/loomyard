@@ -16,6 +16,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// awaitForksVerb is the cobra name of the await-forks verb.
+const awaitForksVerb = "await-forks"
+
 // awaitForksCmd builds `lym shuttle await-forks [--cap <duration>]`.
 // It resolves the calling session's run from the strand name reed gave its pane.
 // It prints ok with ready true once none of the session's forks is still running.
@@ -24,7 +27,7 @@ import (
 func (c *shuttleCLI) awaitForksCmd() *cobra.Command {
 	var awaitCap time.Duration
 	cmd := &cobra.Command{
-		Use:         "await-forks",
+		Use:         awaitForksVerb,
 		Short:       "wait, capped, until every fork the calling session spawned has finished",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `await-forks waits until every fork the calling agent session spawned has
@@ -38,7 +41,8 @@ a fork that never reports keeps it answering ready false, so the caller bounds i
 Run it from the session that spawned the forks, in a message after the one
 that spawned them, with a Bash tool timeout above --cap (300000 ms), and
 re-run it in a turn that does nothing else, so the prompt cache stays warm
-between calls. It is read-only.
+between calls. It runs from the anchored directory, any directory below it,
+or anywhere in the worktree's records sibling. It is read-only.
 
 Example:
   lym shuttle await-forks`,
