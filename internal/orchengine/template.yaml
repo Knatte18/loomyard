@@ -1,5 +1,5 @@
-model: ""  # model alias for the orchestrator session; empty uses the provider default
-effort: ""  # effort level, in shuttle's engine vocabulary; empty uses the provider default
+model: opus  # model alias for the orchestrator session, so every machine starts the orch on the same model; an explicit empty value uses the provider default
+effort: medium  # effort level, in shuttle's engine vocabulary; an explicit empty value uses the provider default
 cycle_mode: compact  # how the watcher cycles the session: compact keeps the session id and Remote Control link and writes no handoff file; clear runs the handoff, /clear and resume cycle
 permission_mode: bypass  # permission mode of the orch session; bypass is the only accepted value, because the orch never prompts per action
 soft_threshold_tokens: 150000  # context-token count at which the watcher may cycle at a natural break, below threshold_tokens; a value at or above threshold_tokens never fires; non-positive is floored back to 150000

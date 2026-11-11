@@ -36,8 +36,8 @@ func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Model != "" || cfg.Effort != "" {
-		t.Errorf("Model/Effort = %q/%q, want empty", cfg.Model, cfg.Effort)
+	if cfg.Model != "opus" || cfg.Effort != "medium" {
+		t.Errorf("Model/Effort = %q/%q, want opus/medium", cfg.Model, cfg.Effort)
 	}
 	if cfg.PermissionMode != "bypass" {
 		t.Errorf("PermissionMode = %q, want bypass", cfg.PermissionMode)

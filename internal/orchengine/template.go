@@ -10,7 +10,8 @@ import _ "embed"
 var configTemplate string
 
 // ConfigTemplate returns the default YAML template for orch configuration.
-// Every key is a plain literal; model and effort are empty, meaning the provider default.
+// Every key is a plain literal.
+// Model and effort are set, so the orch session never falls back to the provider default of the machine it starts on.
 func ConfigTemplate() string {
 	return configTemplate
 }
