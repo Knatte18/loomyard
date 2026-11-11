@@ -359,12 +359,12 @@ github.com/Knatte18/loomyard/
 ├── internal/dotgit/              the one `.git` parser (git dir, common dir, repository test, walk-up to a worktree root), a stdlib-only leaf
 ├── internal/durfmt/              the duration formats the status panes and the timing report share, minute-resolution for growing times and second-resolution for closed spans, a stdlib-only leaf
 ├── internal/consoletitle/        the one join of a console window's title, `<T#> [<hub shortname>:<P#>] <name>` or `ORCH [...]` with a missing part left out, shared by VS Code and terminal windows, a stdlib-only leaf
-├── internal/machinename/         this machine's name, its hostname cut at the first dot and lowercased, the sole reader of the hostname, a stdlib-only leaf
+├── internal/machinename/         this machine's name, read from the machine file in the per-user config directory before the hostname rule (the hostname cut at the first dot and lowercased), the sole reader of the hostname and of that file, a leaf over the standard library and `internal/standalonestate`
 ├── internal/sleepjournal/        the machine's suspends and hibernates read from systemd-sleep's journal entries, spawning no process, a stdlib-only leaf
 ├── internal/lymdirs/             the two directory-name tokens (`_lym` durable, `.lym` ephemeral), a zero-import leaf
 ├── internal/buildinfo/           the ldflags-stamped build channel, a zero-import leaf
 ├── internal/buildvcs/            the running binary's VCS identity, a stdlib-only leaf
-├── internal/standalonestate/     target-path-to-hash8-and-state-directory derivation, a stdlib-only leaf
+├── internal/standalonestate/     target-path-to-hash8-and-state-directory derivation, which also resolves the per-user config directory, a stdlib-only leaf
 ├── internal/segmentcolor/        the loom segments, lym's color palette and its tmux colors, a stdlib-only leaf
 ├── internal/selfexec/            the self-re-exec helper a long-lived pane process calls on a changed binary, and `LymBinary`, the one lookup of the running lym binary for a pinned or spawned command, which refuses a test binary; a leaf over the standard library and `internal/logger`
 ├── internal/runproc/             the owner record of a run's detached and long-lived processes, one file per process under the run's slug or the hub scope, and the one sequence that ends them, a leaf over the standard library, `internal/proc`, `internal/state` and `internal/logger`
