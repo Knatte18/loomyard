@@ -41,7 +41,7 @@ func readRecord(t *testing.T, home string) trustRecord {
 // The writable roots are the told records checkout (none when the engine is told none).
 // After it come the git dirs of a linked worktree or a plain clone, then the configured roots that exist.
 // The hooks of the run are carried, with a guard per row that the python switch and the publish guard install.
-// The line runs codex.yaml's sandbox mode, workspace-write unless a layer sets danger-full-access.
+// The line runs the workspace-write sandbox, which the fixture's probe reports as starting.
 // The line also carries the prompt pointer.
 // It also pins the resume line, which exits and records the session start.
 // An engine told no board gets no creel hooks, and the resume line has no session id.
@@ -62,8 +62,6 @@ func TestPrepare_Launch(t *testing.T) {
 		configuredRoots bool
 		// gitDirsThroughLink reports whether the linked worktree reaches its git dir and common dir through a symlink.
 		gitDirsThroughLink bool
-		// fullAccess reports whether codex.yaml's worktree layer sets the danger-full-access sandbox mode.
-		fullAccess bool
 	}{
 		{name: "RecordsTold", toldRecords: true},
 		{name: "RecordsToldThroughLink", toldRecords: true, toldThroughLink: true},
@@ -71,7 +69,6 @@ func TestPrepare_Launch(t *testing.T) {
 		{name: "PlainClone", plainClone: true},
 		{name: "ConfiguredRoots", toldRecords: true, configuredRoots: true},
 		{name: "GitDirsThroughLink", gitDirsThroughLink: true},
-		{name: "DangerFullAccess", toldRecords: true, fullAccess: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -106,11 +103,6 @@ func TestPrepare_Launch(t *testing.T) {
 				writeWritableRoots(t, anchor, cache+", "+filepath.Join(repo.base, "missing"))
 				wantRoots = append(wantRoots, cache)
 			}
-			wantMode := sandboxWorkspaceWrite
-			if tt.fullAccess {
-				writeFile(t, configengine.ConfigFile(anchor, "codex"), "writable_roots: []\nsandbox_mode: "+sandboxFullAccess+"\n")
-				wantMode = sandboxFullAccess
-			}
 			runDir := t.TempDir()
 
 			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "review the plan", DenyPublish: true, ModelChoice: shuttleengine.ModelChoice{Engine: "codex", Model: "gpt-6-astra", Effort: "medium"}}, shuttleengine.Config{DenyPython: true})
@@ -125,7 +117,7 @@ func TestPrepare_Launch(t *testing.T) {
 				Cmd: buildLaunchCmd(sh, launchLine{
 					bin:           "codex",
 					home:          repo.lymHome,
-					sandboxMode:   wantMode,
+					sandboxMode:   sandboxWorkspaceWrite,
 					writableRoots: wantRoots,
 					model:         "gpt-6-astra",
 					effort:        "medium",
@@ -144,6 +136,110 @@ func TestPrepare_Launch(t *testing.T) {
 			}
 			if warnings.String() != "" {
 				t.Errorf("warnings = %q; want none", warnings)
+			}
+		})
+	}
+}
+
+// TestPrepare_SandboxMode pins the sandbox a launch runs in for each sandbox_mode and probe result.
+// auto and workspace-write probe the sandbox once, with the Codex executable, under the lym home, in the anchor;
+// a sandbox that starts runs workspace-write.
+// One that cannot start runs danger-full-access under auto, with a warning naming the cause.
+// Under workspace-write it refuses the launch before the prompt file is written, naming the cause and the way forward.
+// A probe that did not run to a verdict refuses the launch under both modes.
+// danger-full-access runs no probe.
+func TestPrepare_SandboxMode(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const cause = "bwrap: setting up uid map: Permission denied"
+	tests := []struct {
+		name string
+		mode string
+		// probeErr is the probe's answer; nil means the sandbox starts.
+		probeErr error
+		// wantProbe reports whether the launch probes the sandbox.
+		wantProbe bool
+		// wantMode is the sandbox the launch line carries.
+		wantMode string
+		// wantWarn is a text the warnings must hold; empty means none.
+		wantWarn string
+		// wantErr holds the texts a refusal must carry; empty means the launch goes ahead.
+		wantErr []string
+	}{
+		{name: "AutoSandboxStarts", mode: sandboxAuto, wantProbe: true, wantMode: sandboxWorkspaceWrite},
+		{name: "AutoSandboxCannotStart", mode: sandboxAuto, probeErr: errors.New(cause), wantProbe: true, wantMode: sandboxFullAccess, wantWarn: cause},
+		{name: "WorkspaceWriteSandboxStarts", mode: sandboxWorkspaceWrite, wantProbe: true, wantMode: sandboxWorkspaceWrite},
+		{
+			name: "WorkspaceWriteSandboxCannotStart", mode: sandboxWorkspaceWrite, probeErr: errors.New(cause), wantProbe: true,
+			wantErr: []string{"codexengine:", cause, "way forward", "lym config codex --layer machine --set sandbox_mode=" + sandboxAuto},
+		},
+		{
+			name: "AutoProbeDidNotRun", mode: sandboxAuto, probeErr: fmt.Errorf("%w: %s", errSandboxProbeNotRun, cause), wantProbe: true,
+			wantErr: []string{"codexengine:", cause, "way forward"},
+		},
+		{
+			name: "WorkspaceWriteProbeDidNotRun", mode: sandboxWorkspaceWrite, probeErr: fmt.Errorf("%w: %s", errSandboxProbeNotRun, cause), wantProbe: true,
+			wantErr: []string{"codexengine:", cause, "way forward"},
+		},
+		{name: "FullAccess", mode: sandboxFullAccess, probeErr: errors.New(cause), wantMode: sandboxFullAccess},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := newRepoFixture(t)
+			anchor, _ := repo.addWorktree(t, "wt")
+			writeFile(t, configengine.ConfigFile(anchor, "codex"), "writable_roots: []\nsandbox_mode: "+tt.mode+"\n")
+			engine, warnings := newEngine(anchor)
+			var probed []string
+			engine.sandboxProbe = func(bin, home, dir string) error {
+				probed = append(probed, bin, home, dir)
+				return tt.probeErr
+			}
+			runDir := t.TempDir()
+			promptPath := filepath.Join(runDir, "prompt.md")
+
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{})
+
+			var wantProbed []string
+			if tt.wantProbe {
+				wantProbed = []string{"codex", repo.lymHome, anchor}
+			}
+			if !reflect.DeepEqual(probed, wantProbed) {
+				t.Errorf("sandbox probe called with %q; want %q", probed, wantProbed)
+			}
+			if len(tt.wantErr) > 0 {
+				if err == nil {
+					t.Fatal("Prepare() error = nil; want a refusal")
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("Prepare() error %q does not contain %q", err, want)
+					}
+				}
+				if _, statErr := os.Stat(promptPath); !errors.Is(statErr, os.ErrNotExist) {
+					t.Errorf("prompt.md stat error = %v; want no prompt file", statErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Prepare() error: %v", err)
+			}
+			eventsPath := filepath.Join(runDir, "events.jsonl")
+			want := buildLaunchCmd(shell.ForGOOS(), launchLine{
+				bin:           "codex",
+				home:          repo.lymHome,
+				sandboxMode:   tt.wantMode,
+				writableRoots: repo.wantGitDirs(anchor),
+				hooks:         hookSettings(eventsPath, installedGuards(nil, guardInputs{}), creelDelivery{}),
+				firstTurn:     launchPointer(promptPath),
+				eventsPath:    eventsPath,
+			})
+			if launch.Cmd != want {
+				t.Errorf("Prepare() launch line = %q; want %q", launch.Cmd, want)
+			}
+			if got := warnings.String(); tt.wantWarn == "" && got != "" || !strings.Contains(got, tt.wantWarn) {
+				t.Errorf("warnings = %q; want %q", got, tt.wantWarn)
 			}
 		})
 	}
@@ -637,7 +733,7 @@ func TestCheckAfterStartup(t *testing.T) {
 
 // TestLoadConfig_Template pins codex.yaml's template:
 // the codex binary on PATH, the homes under ~/, the efforts low to high;
-// the Claude plugin cache as the skill root, the workspace-write sandbox and the Go build cache as the writable root.
+// the Claude plugin cache as the skill root, the auto sandbox mode and the Go build cache as the writable root.
 func TestLoadConfig_Template(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -646,7 +742,7 @@ func TestLoadConfig_Template(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error: %v", err)
 	}
-	want := Config{Home: "~/.lym/codex", OperatorHome: "~/.codex", Efforts: []string{"low", "medium", "high"}, SkillRoots: []string{"~/.claude/plugins/cache"}, SandboxMode: sandboxWorkspaceWrite, WritableRoots: []string{"~/.cache/go-build"}}
+	want := Config{Home: "~/.lym/codex", OperatorHome: "~/.codex", Efforts: []string{"low", "medium", "high"}, SkillRoots: []string{"~/.claude/plugins/cache"}, SandboxMode: sandboxAuto, WritableRoots: []string{"~/.cache/go-build"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("LoadConfig() = %+v; want %+v", got, want)
 	}

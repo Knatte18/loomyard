@@ -38,15 +38,21 @@ type Config struct {
 	Efforts []string `yaml:"efforts"`
 	// SkillRoots are the directories a skill is looked up under when a session loads skills.
 	SkillRoots []string `yaml:"skill_roots"`
-	// SandboxMode is the Codex sandbox every launch runs in, sandboxWorkspaceWrite or sandboxFullAccess.
+	// SandboxMode is how a launch picks its Codex sandbox: sandboxAuto, sandboxWorkspaceWrite or sandboxFullAccess.
 	SandboxMode string `yaml:"sandbox_mode"`
 	// WritableRoots are folders outside the workspace that a launch's sandbox lets the session write, such as a build cache;
 	// a leading "~/" names the user's home directory.
 	WritableRoots []string `yaml:"writable_roots"`
 }
 
-// The Codex sandbox modes codex.yaml's sandbox_mode may name.
+// The modes codex.yaml's sandbox_mode may name.
+// A launch runs one of the two Codex sandbox modes, workspace-write or danger-full-access;
+// auto is lym's own and resolves to one of them at each launch.
 const (
+	// sandboxAuto runs workspace-write when Codex's sandbox starts on the machine.
+	// It runs danger-full-access when the sandbox refuses to start.
+	// A probe that cannot run to a verdict refuses the launch.
+	sandboxAuto = "auto"
 	// sandboxWorkspaceWrite bounds the session's writes to the workspace, the writable roots and the temporary folders.
 	sandboxWorkspaceWrite = "workspace-write"
 	// sandboxFullAccess runs the session with no sandbox.
@@ -57,8 +63,8 @@ const (
 
 // ConfigSpec returns the layered-load spec of codex.yaml, a per-worktree module.
 // The local layer may not set the binary or the writable roots, since a writable root widens the sandbox.
-// The sandbox mode is a fact of the machine, whether its bubblewrap can start Codex's sandbox:
-// the machine layer may set it, so one machine runs unsandboxed while the tracked files keep the sandbox for the rest,
+// The sandbox mode follows a fact of the machine, whether its bubblewrap can start Codex's sandbox:
+// the machine layer may set it, so one machine pins its mode while the tracked files keep auto for the rest,
 // and the local layer may not.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
@@ -78,7 +84,7 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig resolves codex.yaml from the layer stack under dirs.
 // An absent file in every layer resolves the template; a layer file that exists but is invalid is an error.
-// A sandbox_mode other than workspace-write or danger-full-access is invalid.
+// A sandbox_mode other than auto, workspace-write or danger-full-access is invalid.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {
@@ -88,8 +94,8 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal codex config: %w", err))
 	}
-	if cfg.SandboxMode != sandboxWorkspaceWrite && cfg.SandboxMode != sandboxFullAccess {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("codex.yaml's sandbox_mode %q is neither %s nor %s", cfg.SandboxMode, sandboxWorkspaceWrite, sandboxFullAccess))
+	if cfg.SandboxMode != sandboxAuto && cfg.SandboxMode != sandboxWorkspaceWrite && cfg.SandboxMode != sandboxFullAccess {
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("codex.yaml's sandbox_mode %q is none of %s, %s and %s", cfg.SandboxMode, sandboxAuto, sandboxWorkspaceWrite, sandboxFullAccess))
 	}
 	return cfg, nil
 }

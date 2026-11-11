@@ -38,6 +38,9 @@ type Codex struct {
 	submitRedrawSettleMS int
 	// warn logs what a launch goes on despite; tests replace it to read the warnings of one engine.
 	warn func(msg string, args ...any)
+	// sandboxProbe runs executable bin under the Codex home in dir and reports why Codex's sandbox cannot start.
+	// It returns nil when the sandbox starts; tests replace it so that no test runs Codex.
+	sandboxProbe func(bin, home, dir string) error
 }
 
 var (
@@ -48,13 +51,13 @@ var (
 
 // New returns a Codex engine with the default redraw settle and no dirs, so it serves reading uses only.
 func New() *Codex {
-	return &Codex{submitRedrawSettleMS: defaultSubmitRedrawSettleMS, warn: logger.Warn}
+	return &Codex{submitRedrawSettleMS: defaultSubmitRedrawSettleMS, warn: logger.Warn, sandboxProbe: runSandboxProbe}
 }
 
 // NewFromConfig returns a Codex engine whose redraw settle is cfg.SubmitRedrawSettleMS.
 // It reads codex.yaml and its anchor from dirs.
 func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs) *Codex {
-	return &Codex{dirs: dirs, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS, warn: logger.Warn}
+	return &Codex{dirs: dirs, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS, warn: logger.Warn, sandboxProbe: runSandboxProbe}
 }
 
 // permissionModeBypass is the permission mode every Codex launch runs in.
@@ -85,10 +88,11 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // Prepare readies a Codex launch for the run in runDir and returns it.
 // Before anything is written, it validates the spec and loads the hub's gate config.
 // A gate config that fails to load refuses the launch, and so does a checkout that Codex rules refuse.
-// It readies the lym home and writes prompt.md into runDir.
+// It readies the lym home, settles the sandbox and writes prompt.md into runDir.
+// Under codex.yaml's workspace-write, a sandbox that cannot start on the machine refuses the launch, naming the cause.
 // The prompt holds the deny notice, the creel trust sentence, the standing passages and the spec's prompt.
 // The launch line carries a PreToolUse hook per installed shell guard.
-// It runs codex.yaml's sandbox mode, and under workspace-write it turns on the sandbox's network access,
+// It runs the settled sandbox mode, and under workspace-write it turns on the sandbox's network access,
 // so the session reaches the creel daemon's socket.
 // Once Codex exits, the launch appends the exit record to the run's events file.
 // A board directory adds creel's hook delivery and marks the launch CreelHooks.
@@ -110,6 +114,10 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	}
 	guards := installedGuards(gate.RefuseRaw, guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish})
 	home, writableRoots, err := c.readyHome(codex)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	sandboxMode, err := c.launchSandboxMode(codex, home)
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
@@ -140,7 +148,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		Cmd: buildLaunchCmd(sh, launchLine{
 			bin:           codexBinary(codex),
 			home:          home,
-			sandboxMode:   codex.SandboxMode,
+			sandboxMode:   sandboxMode,
 			writableRoots: writableRoots,
 			model:         spec.Model,
 			effort:        spec.Effort,
@@ -156,11 +164,11 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 }
 
 // OpenLaunch returns the launch of a named interactive Codex session with no prompt.
-// It validates the model choice and the permission mode and readies the lym home.
+// It validates the model choice and the permission mode, readies the lym home and settles the sandbox as Prepare does.
 // It refuses under Codex rules before anything is written.
 // Its line runs Codex with no hooks and no first turn, so the session carries no shell guard and waits at its composer.
 // When Codex exits, the pane's shell writes the exit marker, asks reed to remove the strand and exits.
-// The line runs codex.yaml's sandbox mode, and under workspace-write it turns on the sandbox's network access,
+// The line runs the settled sandbox mode, and under workspace-write it turns on the sandbox's network access,
 // so an opened session reaches the creel daemon's socket too.
 // It writes nothing into the directory it is given and names no session id.
 // It carries no creel hooks, since the session has no prompt file to hold the creel trust sentence.
@@ -179,11 +187,15 @@ func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengin
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
+	sandboxMode, err := c.launchSandboxMode(codex, home)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
 	return shuttleengine.Launch{
 		Cmd: codexCommand(shell.ForGOOS(), launchLine{
 			bin:           codexBinary(codex),
 			home:          home,
-			sandboxMode:   codex.SandboxMode,
+			sandboxMode:   sandboxMode,
 			writableRoots: writableRoots,
 			model:         spec.Model,
 			effort:        spec.Effort,

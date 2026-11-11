@@ -14,12 +14,20 @@
 // After startup the engine reads config.toml back and warns about a root Codex's own write dropped;
 // the trust prompt's accept is the backstop.
 //
-// The launch line runs `-a never`, so no approval prompt shows, and `-s` with codex.yaml's sandbox_mode.
-// The mode is workspace-write unless a layer sets danger-full-access, which runs the session with no sandbox.
-// That serves a machine whose bubblewrap may not create a user namespace.
-// There every shell command under workspace-write fails and the session writes no output.
+// The launch line runs `-a never`, so no approval prompt shows, and `-s` with the sandbox mode settled from sandbox_mode.
+// danger-full-access runs the session with no sandbox, as a Claude seat runs.
+// Under auto, the template's value, and under workspace-write, each launch first probes Codex's sandbox:
+// it runs `codex sandbox` with the workspace-write policy over a command that does nothing.
+// Codex's Linux sandbox is bubblewrap, and on a machine whose bubblewrap may not create a user namespace it cannot start.
+// Ubuntu's AppArmor restriction of unprivileged user namespaces does that to a bubblewrap no profile of its own covers.
+// There every shell command of a sandboxed session fails, and the session writes no output.
+// A sandbox that starts runs workspace-write.
+// One that cannot start runs danger-full-access with a warning naming the cause under auto;
+// under workspace-write it refuses the launch, naming the cause, so a seat reads as not started rather than stopped.
+// A probe may fail to run to a verdict: the executable is missing, or a timeout or a signal ends it.
+// That shows nothing about the sandbox, so it refuses the launch under both modes.
 // The key is a machine key: the hub's machine override sets it for one machine, and a local override may not.
-// A value other than the two refuses the load.
+// A value other than the three refuses the load.
 // The rest of this paragraph describes the workspace-write line; a danger-full-access line carries none of it.
 // The line adds writable roots, each symlink-resolved as the trusted roots are.
 // The records checkout it is told through its Dirs lets the session write under the anchor's `.lym`.
