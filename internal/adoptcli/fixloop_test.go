@@ -138,9 +138,6 @@ func TestFailedEnd(t *testing.T) {
 	t.Run("below the limit with no fix task it files one released task and counts the try", func(t *testing.T) {
 		t.Parallel()
 		f := newFixFixture(t)
-		if err := appendHolds(f.dir, []string{"t1"}); err != nil {
-			t.Fatal(err)
-		}
 
 		lines := failedEnd(f.deps, failedRecord())
 		if len(f.created) != 1 {

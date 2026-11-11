@@ -71,7 +71,7 @@
 // A flagged beam left by a first pass that died takes the same `--anchor` again;
 // its anchor reached no run record.
 // Dobby never starts a beam project.
-// Only this verb, a hand pass, or the green end of the adopt check that `lym adopt` starts, starts or resumes its run.
+// Only this verb or a hand pass starts or resumes its run.
 //
 // Writing the beam flag first makes a member started mid-create stop at Worktree-Create.
 // It resumes into the beam rather than forking from the prime for good.
@@ -339,6 +339,12 @@
 // A view carries the subject, its adopt check's state, the tier in flight and the tiers done.
 // It also carries the paths of its log and output.
 // The field is absent when the hub holds no record of a check.
+// The envelope also carries `adopt`, an `adoptSection` built from the hub's adopt record.
+// The record is read with `adoptrecord.Read` and no lock.
+// Its state is read with `Record.ReadState` over `adoptrecord.WorkerAlive`.
+// The section holds the subjects, the state, the step in flight or stopped at, the steps done and the way forward.
+// It also holds a `lines` text that opens with `adopt of <subjects>:`.
+// The field is absent when no record stands or the record is done.
 // A read error joins the returned error like a dobby's.
 // A view that does not read carries its error in its entry, and the others still read.
 // The verb fails, naming each.

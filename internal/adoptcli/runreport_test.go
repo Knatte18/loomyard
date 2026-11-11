@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fronttask"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -22,7 +23,8 @@ func TestRunReports(t *testing.T) {
 
 	run := boardengine.RunStatus("running", "Code-Write")
 	draft := boardengine.StatusDraft
-	hold := pauserecord.Entry{Scope: "t1", Caller: pauserecord.HoldCaller}
+	adoptEntry := pauserecord.Entry{Scope: "t1", Caller: pauserecord.AdoptCaller}
+	ownerHalt := shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: landingshed.OwnerHaltPrefix + "parent elsewhere"}
 
 	// each row builds the world and the input for `t1`, lets its setup shape both, and names the report it wants.
 	tests := []struct {
@@ -61,51 +63,41 @@ func TestRunReports(t *testing.T) {
 			setup: func(w *world, in *reportInput) {
 				in.Owners.Entries["t1"] = boardengine.OwnerEntry{IsTask: true, Done: true}
 				in.Before = []string{"t1"}
-				w.record.Live = []pauserecord.Entry{hold}
-				in.Held = map[string][]string{"alpha": {"t1"}}
+				w.record.Live = []pauserecord.Entry{adoptEntry}
+				in.Paused = []string{"t1"}
 			},
 			want: runReport{Slug: "t1", State: runStateLanded},
 		},
 		{
-			name: "HeldFailedCheckForAFailedRecordWhenNoCheckStartedNow",
-			setup: func(w *world, in *reportInput) {
-				heldUnderAlpha(w, in)
-				w.checkStates["alpha"] = checkFailed
-			},
-			want:       runReport{Slug: "t1", State: runStateHeldFailedCheck},
-			wantInLine: []string{"failed", "`lym adopt alpha`"},
-		},
-		{
-			name: "HeldFailedCheckForARunningRecordWhoseProcessIsGone",
-			setup: func(w *world, in *reportInput) {
-				heldUnderAlpha(w, in)
-				w.checkStates["alpha"] = checkStateEnded
-			},
-			want:       runReport{Slug: "t1", State: runStateHeldFailedCheck},
-			wantInLine: []string{"ended without a verdict"},
-		},
-		{
-			name: "WaitingForCheckWhenThisCallStartedTheSubjectsCheckOverAFailedRecord",
-			setup: func(w *world, in *reportInput) {
-				heldUnderAlpha(w, in)
-				w.checkStates["alpha"] = checkFailed
-				in.Started = map[string]bool{"alpha": true}
-			},
-			want: runReport{Slug: "t1", State: runStateWaitingForCheck},
-		},
-		{
-			name: "WaitingForCheckNamesTheRowOfAHeldRun",
+			name: "PausedByAdoptNamesTheRowAndTheResumeOfAnAdoptEntry",
 			setup: func(w *world, in *reportInput) {
 				heldUnderAlpha(w, in)
 				w.runs["t1"] = shedengine.Status{State: shedengine.StatePaused, CurrentProducer: "Code-Bouncer"}
 			},
-			want:       runReport{Slug: "t1", State: runStateWaitingForCheck, Row: "Code-Bouncer"},
-			wantInLine: []string{"t1: waiting for the adopt check at Code-Bouncer"},
+			want:       runReport{Slug: "t1", State: runStatePausedByAdopt, Row: "Code-Bouncer"},
+			wantInLine: []string{"t1: paused by adopt at Code-Bouncer: `lym tender resume t1` lifts it"},
 		},
 		{
-			name:  "WaitingForCheckHasNoRowForAHeldReleasedTask",
+			name: "PausedByAdoptForALegacyHoldEntry",
+			setup: func(w *world, in *reportInput) {
+				heldUnderAlpha(w, in)
+				w.record.Live = []pauserecord.Entry{{Scope: "t1", Caller: pauserecord.HoldCaller}}
+			},
+			want: runReport{Slug: "t1", State: runStatePausedByAdopt},
+		},
+		{
+			name:  "PausedByAdoptHasNoRowForAReleasedTask",
 			setup: heldUnderAlpha,
-			want:  runReport{Slug: "t1", State: runStateWaitingForCheck, Line: "t1: waiting for the adopt check"},
+			want:  runReport{Slug: "t1", State: runStatePausedByAdopt, Line: "t1: paused by adopt: `lym tender resume t1` lifts it"},
+		},
+		{
+			name: "PausedByAdoptNamesLoomResumeForAnOwnerHaltedRun",
+			setup: func(w *world, in *reportInput) {
+				heldUnderAlpha(w, in)
+				w.runs["t1"] = ownerHalt
+			},
+			want:       runReport{Slug: "t1", State: runStatePausedByAdopt, Row: "Finalize"},
+			wantInLine: []string{"`lym tender resume t1`", "`lym loom resume`"},
 		},
 		{
 			name: "PausedNamesTheCaller",
@@ -120,10 +112,18 @@ func TestRunReports(t *testing.T) {
 			name: "HaltedForBlockedWithItsReason",
 			setup: func(w *world, in *reportInput) {
 				ownedUnderAlpha(w, in)
-				w.runs["t1"] = shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: "owner check: parent elsewhere"}
+				w.runs["t1"] = shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: "tests failed"}
+			},
+			want: runReport{Slug: "t1", State: runStateHalted, Row: "Finalize", Line: "t1: halted at Finalize: tests failed"},
+		},
+		{
+			name: "HaltedOwnerHaltNamesLoomResume",
+			setup: func(w *world, in *reportInput) {
+				ownedUnderAlpha(w, in)
+				w.runs["t1"] = ownerHalt
 			},
 			want:       runReport{Slug: "t1", State: runStateHalted, Row: "Finalize"},
-			wantInLine: []string{"halted at Finalize", "owner check: parent elsewhere"},
+			wantInLine: []string{"halted at Finalize", "`lym loom resume`"},
 		},
 		{
 			name: "HaltedForFailed",
@@ -256,9 +256,9 @@ func ownedUnderAlpha(w *world, in *reportInput) {
 	in.Moved = []string{"t1"}
 }
 
-// heldUnderAlpha makes `t1` a task of alpha held for alpha's adopt check by a standing hold entry.
+// heldUnderAlpha makes `t1` a task of alpha paused by an adopt, with a standing adopt entry.
 func heldUnderAlpha(w *world, in *reportInput) {
 	ownedUnderAlpha(w, in)
-	w.record.Live = []pauserecord.Entry{{Scope: "t1", Caller: pauserecord.HoldCaller}}
-	in.Held = map[string][]string{"alpha": {"t1"}}
+	w.record.Live = []pauserecord.Entry{{Scope: "t1", Caller: pauserecord.AdoptCaller}}
+	in.Paused = []string{"t1"}
 }

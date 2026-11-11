@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -66,15 +67,37 @@ func TestHubOnlyPaused(t *testing.T) {
 	})
 }
 
-func TestStartSuiteStartsNothingUnderTest(t *testing.T) {
+func TestSpawnersStartNothingUnderTest(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	outPath := filepath.Join(t.TempDir(), "adopt", checkOutName)
-	if pid, err := startSuite(t.TempDir(), outPath, "alpha"); err == nil {
-		t.Errorf("startSuite under go test = %d, nil; want an error", pid)
+
+	tests := []struct {
+		name string
+		// spawn runs the spawner and returns the directory it must leave uncreated.
+		spawn func(t *testing.T) (leftover string, err error)
+	}{
+		{"StartSuite", func(t *testing.T) (string, error) {
+			outPath := filepath.Join(t.TempDir(), "adopt", checkOutName)
+			_, err := startSuite(t.TempDir(), outPath, "alpha")
+			return filepath.Dir(outPath), err
+		}},
+		{"SpawnWorker", func(t *testing.T) (string, error) {
+			prime := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+			_, _, err := spawnWorker(prime, []string{"adopt", "worker", "alpha"})
+			return fabricengine.AdoptScratchDir(prime.HubPath), err
+		}},
 	}
-	if _, err := os.Stat(filepath.Dir(outPath)); !os.IsNotExist(err) {
-		t.Errorf("startSuite under go test left the output directory behind: stat error %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			leftover, err := tt.spawn(t)
+			if err == nil {
+				t.Errorf("%s under go test = nil error; want an error", tt.name)
+			}
+			if _, statErr := os.Stat(leftover); !os.IsNotExist(statErr) {
+				t.Errorf("%s under go test left %s behind: stat error %v", tt.name, leftover, statErr)
+			}
+		})
 	}
 }
 

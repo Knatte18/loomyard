@@ -155,8 +155,9 @@
 //     A start and each recorded sleep owe every run a full pass.
 //     The state record keeps it until a full pass exits 0 with no origin-owed marker standing.
 //   - While a pause covers the run, only continue passes run, and the full pass at the lift.
-//     A run a hold-caller entry covers gets no pass of any kind and no owner-pause recheck.
-//     The lift of the hold gives it the full pass.
+//     A run an adopt pause covers, the legacy `adopt-hold` entry included,
+//     gets no pass of any kind and no owner-pause recheck.
+//     Only a hand lifts that pause, and the lift gives the run the full pass.
 //   - A refused continue pass owes a full pass, and a covered pass counts as no failure.
 //     Any other non-zero exit counts a failure by its error text and is retried on the next probe tick.
 //     The third failure in a row with one text posts one notice to the nearest live orch.

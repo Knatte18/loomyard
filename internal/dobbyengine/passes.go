@@ -44,7 +44,9 @@ type RunView struct {
 	OriginOwed bool
 	// Covered reports whether a pause entry covers the hub or the slug.
 	Covered bool
-	// Held reports whether a live pause entry of the run's own scope carries pauserecord.HoldCaller.
+	// Held reports whether a live pause entry of the run's own scope is an adopt pause:
+	// it carries pauserecord.AdoptCaller, or the legacy pauserecord.HoldCaller.
+	// Only a hand lifts such an entry.
 	Held bool
 	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
 	NoSlot bool
@@ -105,8 +107,8 @@ type passTrigger struct {
 // Such a paused run gets only full passes, and none while a pause covers it, except at the lift.
 // A write of batten's own status file triggers only when it is later than the run's last pass exit,
 // so a pass's own writes never trigger the next.
-// A run a hold-caller entry covers gets none either, an owned-elsewhere run included;
-// the lift of that entry gives it the full pass.
+// A run an adopt pause covers, the legacy `adopt-hold` entry included, gets none either, an owned-elsewhere run included;
+// the lift of that pause, by hand only, gives it the full pass.
 // While a pause covers the run, only a continue pass runs, and the full pass at the lift.
 // An owed full pass waits for the lift.
 // A continue pass needs the run at Run-Shed, with no full pass owed and no lift to answer.

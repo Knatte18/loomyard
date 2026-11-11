@@ -83,6 +83,10 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   `post --wait-reply`, `inject --wait`, `read --wait` and `hook-wait` wait on their connection;
   they reconnect from one second;
   the client's connect wait after a spawn also ends when the daemon it started exits, except a lost start race,
+- the `lym adopt` follow in `internal/adoptcli/follow.go`:
+  it reads the adopt record from one second, doubling to eight seconds while the record is unchanged,
+  and it returns to one second on a change;
+  an agent session's keep-warm cap bounds it, and a plain shell follows until the worker ends,
 - the Slack relay's loops:
   the outbound read in `internal/slackengine/relay.go`, with the binary check and the retried work after it, from five seconds doubling to sixty;
   the holder in `internal/slackengine/holder.go`, its lock wait blocking without waking, its 30-second ping spawning nothing and its reconnect from one second doubling to sixty;

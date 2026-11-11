@@ -22,8 +22,13 @@ const ScopeHub = "hub"
 // OwnerCaller is the Caller of every pause entry that holds a run owned by another machine.
 const OwnerCaller = "owner"
 
-// HoldCaller is the Caller of every pause entry that holds a run, or a released task, that `lym adopt` took over.
-// Only the green adopt check of the entry's subject lifts it by itself.
+// AdoptCaller is the Caller of the pause entry that holds a run, or a released task, that `lym adopt` took over.
+// Only `lym tender resume` or `lym batten cancel` lifts it.
+const AdoptCaller = "adopt"
+
+// HoldCaller is the legacy Caller of the pause entry an older `lym adopt` left on a run it took over.
+// A released task it took over carries it too.
+// Only `lym tender resume` or `lym batten cancel` lifts it now.
 const HoldCaller = "adopt-hold"
 
 // Retention is how long a resumed entry stays in the record.
@@ -89,7 +94,7 @@ type Coverage struct {
 	// OwnerHeld reports whether a live entry of the slug's own scope carries OwnerCaller.
 	// It is set even when another entry is the covering one.
 	OwnerHeld bool
-	// Held reports whether a live entry of the slug's own scope carries HoldCaller.
+	// Held reports whether a live entry of the slug's own scope carries AdoptCaller or HoldCaller.
 	// It is set even when another entry is the covering one.
 	Held bool
 }
@@ -226,7 +231,8 @@ func ClaimSession(path, slug string, session Session, now time.Time) (Entry, boo
 
 // CoverageOf returns the covering live entry for slug and the interval of every entry covering it.
 // A live entry's interval runs from its pause to now, a resumed one's to its resume.
-// OwnerHeld is set when a live entry of slug's own scope carries OwnerCaller, and Held when one carries HoldCaller.
+// OwnerHeld is set when a live entry of slug's own scope carries OwnerCaller.
+// Held is set when one carries AdoptCaller or HoldCaller.
 func (r Record) CoverageOf(slug string, now time.Time) Coverage {
 	var coverage Coverage
 	coverage.Entry, coverage.Covered = r.Covering(slug)
@@ -235,7 +241,7 @@ func (r Record) CoverageOf(slug string, now time.Time) Coverage {
 			switch entry.Caller {
 			case OwnerCaller:
 				coverage.OwnerHeld = true
-			case HoldCaller:
+			case AdoptCaller, HoldCaller:
 				coverage.Held = true
 			}
 		}

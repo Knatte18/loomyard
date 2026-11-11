@@ -37,6 +37,9 @@
 // `BeamUpWorktree` is the bring-up for any other verb that needs a worktree's dobby live:
 // it names the worktree from the prime and runs `BeamUp` without `Prepare`.
 // It returns a dobby that was refused or failed as an error, so no verb starts a dobby without its orch.
+// `BeamUpOptions.SkipOrch` ends `BeamUp` after the runs strand.
+// The beam then has its dobby and no orch until `lym beam start` starts one.
+// Only `lym adopt` sets it, for a request carrying `--no-orch`.
 // `BeamDown` removes the orch strand, after which the watcher exits on its own.
 // It ends the worktree's dobby through `runproc.EndRole`, so no other process of the beam is signalled;
 // each part stops only when live.

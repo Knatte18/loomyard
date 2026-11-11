@@ -36,6 +36,9 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 		// relay, when true, wires the relay seam, which answers relayErr; when false the start has no relay seam.
 		relay    bool
 		relayErr error
+		// skipOrch sets BeamUpOptions.SkipOrch, and wantNoOrch expects no orch start and no watcher.
+		skipOrch   bool
+		wantNoOrch bool
 	}{
 		{name: "a successful dobby start runs before the strand is launched", seam: true, entry: dobbyengine.StartEntry{Worktree: "main", Outcome: dobbyengine.OutcomeStarted}, wantFirst: "dobby"},
 		{
@@ -60,6 +63,11 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 			entry: dobbyengine.StartEntry{Outcome: dobbyengine.OutcomeLive}, relayErr: errors.New("no per-user directory for the token file"), wantFirst: "dobby",
 			wantWarning: []string{"no per-user directory for the token file", "lym slack start"},
 		},
+		{
+			name: "SkipOrch starts the dobby first and neither launches the strand nor spawns its watcher", seam: true,
+			entry: dobbyengine.StartEntry{Worktree: "main", Outcome: dobbyengine.OutcomeStarted}, wantFirst: "dobby",
+			skipOrch: true, wantNoOrch: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -82,13 +90,13 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 				}
 			}
 
-			code, env := h.run(t)
+			code, env := h.runWith(t, BeamUpOptions{Prepare: !h.prepareOff, SkipOrch: tt.skipOrch})
 
 			if code != 0 || env["ok"] != true {
 				t.Fatalf("start = exit %d, %v; want a success", code, env)
 			}
-			if !slices.Contains(h.calls, "start") {
-				t.Errorf("calls = %v; want the strand launched", h.calls)
+			if launched := slices.Contains(h.calls, "start"); launched == tt.wantNoOrch || (tt.wantNoOrch && h.spawns != 0) {
+				t.Errorf("calls = %v, spawns = %d; want the strand launched unless SkipOrch is set, and then no watcher", h.calls, h.spawns)
 			}
 			if tt.wantFirst == "" && slices.Contains(h.calls, "dobby") || tt.wantFirst != "" && (len(h.calls) == 0 || h.calls[0] != tt.wantFirst) {
 				t.Errorf("calls = %v; want %q first", h.calls, tt.wantFirst)
@@ -103,7 +111,9 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 			if tt.relay {
 				wantOrder = append(wantOrder, "relay")
 			}
-			wantOrder = append(wantOrder, "start")
+			if !tt.wantNoOrch {
+				wantOrder = append(wantOrder, "start")
+			}
 			stepsOfStart := slices.DeleteFunc(slices.Clone(h.calls), func(call string) bool { return !slices.Contains([]string{"dobby", "relay", "start"}, call) })
 			if !slices.Equal(stepsOfStart, wantOrder) {
 				t.Errorf("start steps = %v; want %v, so the relay runs once, after the dobby and before the strand, and a nil seam calls nothing", stepsOfStart, wantOrder)

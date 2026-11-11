@@ -51,6 +51,7 @@
 //
 // An empty slug resumes every live entry; a slug resumes that pair's own entry.
 // A slug that only a live hub entry covers is refused, naming `lym tender resume`.
+// An adopt pause is an operator pause: a resume of its slug lifts it, and a pause of its slug answers already paused.
 // Under the record lock each resumed entry moves to the resumed list,
 // and each session it owns that another live entry still covers moves to that entry with no line.
 // After the lock, each remaining non-orch session gets `pauserecord.ResumeLine` once through the guarded send.

@@ -210,6 +210,31 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 	}
 }
 
+func TestPause_AnAdoptPausedSlugAnswersAlreadyPausedAndKeepsItsEntry(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv(agentname.StrandNameEnv, "")
+	h := newHub(t)
+	geometry, err := hubgeom.PauseGeometry(h.Location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seeded := pauserecord.Entry{Scope: pairSlug, Caller: pauserecord.AdoptCaller, PausedAt: time.Unix(1000, 0)}
+	if _, err := pauserecord.Update(geometry.RecordPath, time.Now(), func(record *pauserecord.Record) error {
+		record.Live = []pauserecord.Entry{seeded}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	paused, code := verb(t, Command(), h.PrimeWorktree(), "pause", pairSlug)
+	if !paused.OK || code != 0 || report(t, paused, "pause")["already_paused"] != true {
+		t.Errorf("pause of an adopt-paused slug: ok=%v code=%d raw=%v; want already_paused", paused.OK, code, paused.Raw)
+	}
+	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Caller != pauserecord.AdoptCaller || !live[0].PausedAt.Equal(seeded.PausedAt) {
+		t.Errorf("live entries = %+v; want the adopt entry unchanged", live)
+	}
+}
+
 func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")

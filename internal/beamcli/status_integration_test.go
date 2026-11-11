@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/beamcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -129,6 +130,9 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 	if _, held := env.Raw["result"].(map[string]any)["adopt_checks"]; held {
 		t.Errorf("lym beam status = %s; want no adopt_checks with no record", out.String())
 	}
+	if _, held := env.Raw["result"].(map[string]any)["adopt"]; held {
+		t.Errorf("lym beam status = %s; want no adopt section with no record", out.String())
+	}
 	if _, err := os.Stat(scratch); !os.IsNotExist(err) {
 		t.Errorf("Stat(%s) = %v; want the adopt scratch directory still absent", scratch, err)
 	}
@@ -151,5 +155,42 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 	check, _ := checks[0].(map[string]any)
 	if check["subject"] != "b" || check["state"] != "green" || check["suite_log"] != filepath.Join(subjectDir, "suite.log") {
 		t.Errorf("lym beam status = %s; want adopt_checks item b green naming %s", out.String(), filepath.Join(subjectDir, "suite.log"))
+	}
+
+	// A record that stopped at deploy shows as the one adopt section, beside the unchanged check item.
+	stopped := adoptrecord.Record{
+		Request:    adoptrecord.Request{Slugs: []string{"b"}},
+		Subjects:   []string{"b"},
+		State:      adoptrecord.StateStopped,
+		InFlight:   adoptrecord.StepDeploy,
+		WayForward: "fix the deploy",
+	}
+	if err := adoptrecord.Write(h.Path, stopped); err != nil {
+		t.Fatalf("Write(adopt record) = %v; want nil", err)
+	}
+	out.Reset()
+	beamcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"status"})
+	body, _ := envelope.Decode(t, out.String()).Raw["result"].(map[string]any)
+	section, _ := body["adopt"].(map[string]any)
+	if section["state"] != adoptrecord.StateStopped || section["step"] != adoptrecord.StepDeploy {
+		t.Errorf("lym beam status = %s; want one adopt section stopped at deploy", out.String())
+	}
+	if checks, _ := body["adopt_checks"].([]any); len(checks) != 1 {
+		t.Errorf("lym beam status = %s; want the check item beside the adopt section", out.String())
+	}
+
+	// A record that does not decode fails the verb naming the discard, and the other sections still read.
+	if err := os.WriteFile(adoptrecord.Path(h.Path), []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("WriteFile(adopt.json) = %v; want nil", err)
+	}
+	out.Reset()
+	beamcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"status"})
+	failed := envelope.Decode(t, out.String())
+	body, _ = failed.Raw["result"].(map[string]any)
+	if dobbies, _ := body["dobbies"].([]any); failed.OK || !strings.Contains(out.String(), "lym adopt --discard") || len(dobbies) != 2 {
+		t.Errorf("lym beam status = %s; want a failure naming lym adopt --discard with both dobbies still read", out.String())
+	}
+	if checks, _ := body["adopt_checks"].([]any); len(checks) != 1 {
+		t.Errorf("lym beam status = %s; want the check item still read", out.String())
 	}
 }

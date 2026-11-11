@@ -18,11 +18,17 @@
 // so its lifter and a running loop tell those entries apart from any other.
 // `Coverage.OwnerHeld` is set when a live entry of the slug's own scope carries it.
 // It is set whichever entry is the oldest covering one.
-// `HoldCaller` is the fixed `Caller` of every pause entry that holds a run or a released task `lym adopt` took over.
-// Such an entry holds until its subject's adopt check is green.
-// `Coverage.Held` is set when a live entry of the slug's own scope carries it.
+// `AdoptCaller` is the fixed `Caller` of every pause entry that holds a run or a released task `lym adopt` took over.
+// `HoldCaller` is the legacy `Caller` an older `lym adopt` left on such an entry.
+// Both are lifted only by hand, with `lym tender resume` or `lym batten cancel`.
+// `Coverage.Held` is set when a live entry of the slug's own scope carries either.
 // A dobby's owner-pause lift and the hibernate wake judge only `OwnerCaller`.
-// Neither treats a hold-caller entry as theirs.
+// Neither treats an adopt or hold-caller entry as theirs.
+// The parent-lock exemption (`OwnerEntryExempt`) judges only `OwnerCaller` too.
+// So does the release of a parent lock under a pause.
+// An owner entry that `lym adopt` converts to an adopt entry therefore gets neither, deliberately:
+// the pause then waits for an operator and no longer for the other machine's ownership to end,
+// and a push child under a parent lock keeps the lock until the slug is resumed.
 // LatestResumed finds the resumed entry covering a slug that resumed last,
 // so a reader that was away can tell a pause it never saw restarted what it measures.
 // ClaimSession records one session in the oldest live entry covering a slug.

@@ -1,4 +1,4 @@
-// deploy.go is adopt's deploy step, run before the owner write that gives this machine the prime.
+// deploy.go is adopt's deploy step, run after the owner write that gives this machine the prime and the adopt pause.
 // It runs the hub's landing deploy when the running lym was built from a commit the prime's head is ahead of,
 // so no run goes on under a lym older than the code it lands.
 
@@ -47,7 +47,7 @@ type deployOutcome struct {
 // deployStale runs the landing deploy when the state has a command and the prime's head is ahead of the running build.
 // It returns what it ran.
 // A state that does not read is a warning naming the hand deploy, and nothing runs.
-// A deploy that fails is the verb's refusal, naming its log and the re-run.
+// A deploy that fails stops the step, naming its log and the re-run.
 // The re-run matters, since a run let go under the old lym fails on code that lym does not know.
 func deployStale(deps adoptDeps) (ran *deployOutcome, warning string, err error) {
 	if deps.DeployState == nil {
@@ -63,7 +63,7 @@ func deployStale(deps adoptDeps) (ran *deployOutcome, warning string, err error)
 	logPath, err := deps.RunDeploy(state.Command)
 	ran = &deployOutcome{Installed: state.Installed, Head: state.Head, Log: logPath}
 	if err != nil {
-		return ran, "", fmt.Errorf("lym adopt: the installed lym was built from %s, which the prime's head %s is ahead of, and the landing deploy failed: %w; log: %s; no owner was recorded and the holds stay, so no run goes on under the old lym: fix the cause, %s", state.Installed, state.Head, err, logPath, reentry)
+		return ran, "", stopWith("fix the cause, "+reentry, "lym adopt: the installed lym was built from %s, which the prime's head %s is ahead of, and the landing deploy failed: %w; log: %s; the owner stands and the adopted runs stay paused, so none goes on under the old lym", state.Installed, state.Head, err, logPath)
 	}
 	return ran, "", nil
 }

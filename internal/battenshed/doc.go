@@ -95,7 +95,7 @@
 // "lym batten run <slug>" runs one pass and exits.
 // The run's parent worktree's dobby starts it, or an operator by hand in a terminal;
 // a hand pass makes sure that dobby is live once it is over.
-// The green end of the adopt check and `lym beam land` start a run's first pass detached,
+// `lym beam land` starts a run's first pass detached,
 // and a second batten for the slug is refused by the run's own driver lock inside the pass, in batten's own log.
 // "lym batten run" steps the lifecycle through the Go driver,
 // so an unexpected stop meets the driver's rule table and a cold tackler before the orch.

@@ -49,6 +49,8 @@ const (
 	RoleSlackRelay = "slack-relay"
 	// RoleTestMap is the `lym gate testmap` refresh the prime's dobby starts, registered under HubOwner.
 	RoleTestMap = "test-map"
+	// RoleAdopt is the detached worker of `lym adopt`, registered under HubOwner.
+	RoleAdopt = "adopt"
 )
 
 // Record is one registered process of a run.

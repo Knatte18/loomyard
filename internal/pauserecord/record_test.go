@@ -357,6 +357,9 @@ func TestCoverageOf(t *testing.T) {
 		{"a hold entry of another slug's scope", Record{Live: []Entry{{Scope: "b", PausedAt: epoch, Caller: HoldCaller}}}, "a", false, false},
 		{"a resumed hold entry", Record{Resumed: []Entry{{Scope: "a", PausedAt: epoch, ResumedAt: epoch.Add(time.Minute), Caller: HoldCaller}}}, "a", false, false},
 		{"an empty slug", Record{Live: []Entry{{Scope: "", PausedAt: epoch, Caller: HoldCaller}}}, "", false, false},
+		{"a live adopt entry of the slug's scope", Record{Live: []Entry{{Scope: "a", PausedAt: epoch, Caller: AdoptCaller}}}, "a", true, true},
+		{"a hub entry carrying the adopt caller", Record{Live: []Entry{{Scope: ScopeHub, PausedAt: epoch, Caller: AdoptCaller}}}, "a", false, true},
+		{"a resumed adopt entry", Record{Resumed: []Entry{{Scope: "a", PausedAt: epoch, ResumedAt: epoch.Add(time.Minute), Caller: AdoptCaller}}}, "a", false, false},
 	} {
 		got := row.record.CoverageOf(row.slug, now)
 		if got.Held != row.wantHeld || got.Covered != row.wantCovered || got.OwnerHeld {

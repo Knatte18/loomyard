@@ -1,6 +1,6 @@
 // deps.go fills adoptDeps over a real hub.
-// It covers the origin reconcile, the pair add, the owner write, and the pause lift and hold.
-// It also covers the holds and tries files, the deploy, the beam steps, and the landing-hold read.
+// It covers the origin reconcile, the pair add, the owner write, and the adopt pause.
+// It also covers the tries file, the deploy, the beam steps, and the landing-hold read.
 // The adopt check start and the reads behind the run reports make up the rest.
 
 package adoptcli
@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -29,19 +28,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/tendercli"
-	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
-
-// hubDeps fills adoptDeps over the hub the prime belongs to.
-// The reconcile's live-pair reading treats a slug as paused only under a live hub-scope pause,
-// so a pair whose strands are alive under a slug-scope pause, an owner pause included, reads live.
-func hubDeps(prime *lymcwd.Location) (adoptDeps, error) {
-	return hubDepsAs(prime, machinename.Name)
-}
 
 // hubDepsAs fills adoptDeps over the hub the prime belongs to, with the machine's name read through machine,
 // so a test can stand two clones of one host for two machines.
+// The reconcile's live-pair reading treats a slug as paused only under a live hub-scope pause,
+// so a pair whose strands are alive under a slug-scope pause, an owner pause included, reads live.
 func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDeps, error) {
 	teardown, err := pairteardown.New(prime)
 	if err != nil {
@@ -87,14 +79,6 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 			return boardengine.SetOwners(boardDir, req)
 		},
 		PauseRecord: func() (pauserecord.Record, error) { return pauserecord.Read(geometry.RecordPath) },
-		Lift: func(ref tenderengine.EntryRef) error {
-			deps, _, err := tendercli.HubDeps(prime, callerLabel)
-			if err != nil {
-				return err
-			}
-			_, err = tenderengine.Lift(deps, ref)
-			return err
-		},
 		RunRecord: func(slug string) (shedengine.Status, bool, error) {
 			return readStatus(shedrun.StatusFile(prime, slug))
 		},
@@ -103,15 +87,6 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 			now := time.Now()
 			_, err := pauserecord.Update(geometry.RecordPath, now, func(record *pauserecord.Record) error { return mutate(record, now) })
 			return err
-		},
-		Holds: holdStore{
-			Read: func(subject string) ([]string, error) { return readHolds(subjectDir(prime.HubPath, subject)) },
-			Append: func(subject string, slugs []string) error {
-				return appendHolds(subjectDir(prime.HubPath, subject), slugs)
-			},
-			Remove: func(subject string, slugs []string) error {
-				return removeHolds(subjectDir(prime.HubPath, subject), slugs)
-			},
 		},
 		ResetTries: func(subject string) error { return writeTries(subjectDir(prime.HubPath, subject), 0) },
 		MoveInProgress: func(worktree string) (string, bool, error) {
@@ -124,7 +99,7 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 			}
 			return fabricengine.MoveInProgress(worktree, fabricengine.RecordsWorktreePath(pair, worktree))
 		},
-		BeamUp: func(worktree string) (orchcli.BeamUpReport, error) {
+		BeamUp: func(worktree string, noOrch bool) (orchcli.BeamUpReport, error) {
 			if testing.Testing() {
 				return orchcli.BeamUpReport{}, errors.New("the beam steps start a tmux session and detached processes, which a test binary must not")
 			}
@@ -136,7 +111,7 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 			if err != nil {
 				return orchcli.BeamUpReport{}, err
 			}
-			return orchcli.BeamUp(location, orchcli.BeamUpOptions{Here: here})
+			return orchcli.BeamUp(location, orchcli.BeamUpOptions{Here: here, SkipOrch: noOrch})
 		},
 		LandingHeld: func(slug string) (bool, error) {
 			// ReadOwners carries no run status, so the entry is read whole and judged by RunHolds.
@@ -151,19 +126,7 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 			}
 			return false, nil
 		},
-		PrimeName: prime.WorktreeName,
-		CheckState: func(subject string) (string, error) {
-			record, found, err := ReadCheck(filepath.Join(subjectDir(prime.HubPath, subject), checkRecordName))
-			switch {
-			case err != nil:
-				return "", err
-			case !found:
-				return checkStateNone, nil
-			case record.State == checkRunning && !checkAlive(record):
-				return checkStateEnded, nil
-			}
-			return record.State, nil
-		},
+		PrimeName:          prime.WorktreeName,
 		EscalationEligible: hubEscalationEligible(prime),
 		DeployState:        func() (deployState, error) { return readDeployState(prime, runningLymBuild) },
 		RunDeploy:          func(command string) (string, error) { return runAdoptDeploy(prime, command) },
@@ -337,25 +300,4 @@ func ensureCheck(dir string, alive func(CheckRecord) bool, spawn func() (int, er
 	}
 	start.PID = pid
 	return start, nil
-}
-
-// resumeChild runs "lym loom resume" in the task worktree at pairPath and waits for it.
-func resumeChild(pairPath string) error {
-	if testing.Testing() {
-		return errors.New("resuming a child spawns the lym binary, which a test binary must not re-exec")
-	}
-	executable, err := selfexec.LymBinary()
-	if err != nil {
-		return err
-	}
-	args := []string{"loom", "resume"}
-	command := exec.Command(executable, args...)
-	command.Dir = pairPath
-	logger.Info("adoptcli: spawning a child resume", "exe", executable, "args", args, "dir", pairPath)
-	output, err := command.CombinedOutput()
-	logger.Info("adoptcli: child resume ended", "dir", pairPath, "error", err)
-	if err != nil {
-		return fmt.Errorf("lym loom resume in %s: %w: %s", pairPath, err, output)
-	}
-	return nil
 }

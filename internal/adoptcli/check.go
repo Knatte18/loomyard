@@ -499,7 +499,7 @@ func hubCheckDeps(prime *lymcwd.Location, subject string) (checkDeps, error) {
 		Failed: func(record CheckRecord) []string {
 			fix, err := hubFixDeps(prime, subject)
 			if err != nil {
-				return []string{fmt.Sprintf("the fix loop of the adopt check of %s did not run (%v); way forward: fix the cause it names, then re-run lym adopt %s, the holds standing meanwhile", subject, err, subject)}
+				return []string{fmt.Sprintf("the fix loop of the adopt check of %s did not run (%v); way forward: fix the cause it names, then re-run lym adopt %s, the adopt pauses standing meanwhile", subject, err, subject)}
 			}
 			return failedEnd(fix, record)
 		},

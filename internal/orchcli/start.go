@@ -52,6 +52,10 @@ type BeamUpOptions struct {
 	Prepare bool
 	// Here names this machine for the owner refusal; empty reads machinename.Name.
 	Here string
+	// SkipOrch brings the beam up without its orch:
+	// every step runs but the orch's start, and the report's orch fields stay empty.
+	// Only `lym adopt` sets it, for a request carrying `--no-orch`; `lym beam start` starts the orch later.
+	SkipOrch bool
 }
 
 // BeamUpReport is what one BeamUp did, and what it had done when it refused or failed.
@@ -515,6 +519,10 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 	}
 	if warning := c.ensureRunsStrand(); warning != "" {
 		report.Warnings = append(report.Warnings, warning)
+	}
+
+	if opts.SkipOrch {
+		return report, nil
 	}
 
 	orchReport, err := c.startOrch(note)

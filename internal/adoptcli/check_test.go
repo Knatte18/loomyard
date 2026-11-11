@@ -477,7 +477,7 @@ func TestRunCheck(t *testing.T) {
 		}
 	})
 
-	t.Run("a failed end and an end before any tier never call Green, and a check leaves the holds and tries files as they were", func(t *testing.T) {
+	t.Run("a failed end and an end before any tier never call Green, and a check leaves the tries file as it was", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name  string
@@ -492,13 +492,9 @@ func TestRunCheck(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				f := newCheckFixture(t, tt.tiers, tt.exit)
-				if err := appendHolds(f.dir, []string{"t1", "t2"}); err != nil {
-					t.Fatal(err)
-				}
 				if err := writeTries(f.dir, 2); err != nil {
 					t.Fatal(err)
 				}
-				holdsBefore, _ := os.ReadFile(filepath.Join(f.dir, holdsFileName))
 				triesBefore, _ := os.ReadFile(filepath.Join(f.dir, triesFileName))
 				calls := 0
 				f.deps.Green = func() []string { calls++; return nil }
@@ -509,10 +505,9 @@ func TestRunCheck(t *testing.T) {
 				if wantCalls := map[bool]int{true: 1, false: 0}[tt.exit == 0]; calls != wantCalls {
 					t.Errorf("Green calls = %d; want %d", calls, wantCalls)
 				}
-				holdsAfter, _ := os.ReadFile(filepath.Join(f.dir, holdsFileName))
 				triesAfter, _ := os.ReadFile(filepath.Join(f.dir, triesFileName))
-				if string(holdsAfter) != string(holdsBefore) || string(triesAfter) != string(triesBefore) {
-					t.Errorf("holds %q -> %q, tries %q -> %q; want both files byte for byte as they were", holdsBefore, holdsAfter, triesBefore, triesAfter)
+				if string(triesAfter) != string(triesBefore) {
+					t.Errorf("tries %q -> %q; want the file byte for byte as it was", triesBefore, triesAfter)
 				}
 			})
 		}

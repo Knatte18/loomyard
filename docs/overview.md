@@ -781,13 +781,19 @@ User-facing modules each get one `lym <module>` namespace:
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
 - **adopt** — the takeover of beam projects, or of root, and of the runs under them from another machine of the operator, as one verb (`internal/adoptcli`; `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`, with `--keep-local` and `--drop-local`, from the prime and from any beam).
-  It reconciles the hub against origin, stops a beam or a run under it whose pair holds local commits origin lacks or is live, adds the missing pairs, holds each moved run, and each unstarted released task of an adopted subject bar a front task, with a pause-record hold entry.
+  The call runs no step itself: it validates the request, starts a hidden detached worker, `lym adopt worker`, and follows the adopt record, printing each step as it ends.
+  The worker takes `adopt.lock` and writes the adopt record, `adopt.json`, as each step ends, so a killed worker resumes from the first step not done, a re-run of the same subjects follows or resumes it, and `lym adopt --discard` removes a record no worker will finish.
+  `lym beam status` shows an unfinished adopt.
+  The steps run in order: the worker reconciles the hub against origin, stops a beam or a run under it whose pair holds local commits origin lacks or is live, and adds the missing pairs.
+  It pauses each moved run, and each unstarted released task of an adopted subject bar a front task, with an adopt pause entry.
+  It then records this machine as the owner of the beams and of the prime in one pushed owner write, before anything else runs.
   When the call records the prime's owner, the landing config deploys into the prime's branch and the prime's head is ahead of the running lym's build, the hub's landing deploy runs next,
-  and a failed deploy refuses the verb with the holds standing.
-  It then records this machine as the owner of the beams and of the prime in one pushed owner write;
-  the subject's green adopt check lifts the holds.
-  A call then starts one adopt check per adopted subject and per named subject that still holds a run, detached, in that subject's worktree, which runs the hub's `adopt` gate there, reports each tier to the subject's orch, shows its tier in flight, time, tiers done and result on the prime's reed status bar, and shows in `lym beam status`,
+  and a failed deploy stops the record with the owner written and the runs still paused.
+  The beam steps start each dobby and its orch, and `--no-orch` leaves the orch down; a call from an orch session passes it by default.
+  The worker then starts one adopt check per adopted subject, detached, in that subject's worktree, which runs the hub's `adopt` gate there, reports each tier to the subject's orch, shows its tier in flight, time, tiers done and result on the prime's reed status bar, and shows in `lym beam status`,
   so a break this machine brings to the landed code shows at adopt time.
+  A green check only reports.
+  The adopt pause stays until an operator lifts it with `lym tender resume`.
   It calls each owning module's function in-process and has no engine package of its own.
   ✅ Implemented. See the `internal/adoptcli` package documentation.
 - **beam** — the making, landing, starting and stopping of a beam, a long-lived pair that groups board work, and dobby, the daemon every beam and the prime run (`internal/beamcli` + `internal/dobbyengine`; `lym beam create <slug>`, `lym beam ready <slug>`, which flags the beam ready to merge so its dobby writes the land request once nothing works under it, and is final: no verb takes the flag back, `lym beam land <slug>`, which writes the land request the beam's pawl run consumes at Beam-Await and refuses a beam not flagged ready, `lym beam merge-parent <slug>`, which files a darn task in the beam, its Code-Review perch on, whose run merges the beam's parent branch into the beam, `lym beam start [slug] [--all]`, `lym beam stop [slug]` and `lym beam status`, from the prime and from any beam, and the hidden `lym beam dobby`).
@@ -1571,7 +1577,6 @@ User-facing modules each get one `lym <module>` namespace:
   A run is one pass after another.
   `lym batten run <slug>` runs one pass and exits, started by the run's parent worktree's dobby or by hand.
   A hand pass makes sure that dobby is live once it is over.
-  The adopt check's green end starts a run's first pass detached with the prime as its working directory.
   `lym beam land <slug>` starts no pass:
   it writes a land request into the beam worktree's `.lym/beam/` directory from anywhere in the hub.
   The beam's pawl run consumes the request at Beam-Await.

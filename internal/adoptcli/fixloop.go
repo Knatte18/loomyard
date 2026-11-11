@@ -332,12 +332,12 @@ func takenFixSlugs(deps fixDeps, tasks []boardengine.Task) ([]string, error) {
 
 // fixReadError words a failed read of the fix loop, which files nothing.
 func fixReadError(deps fixDeps, what string, err error) string {
-	return fmt.Sprintf("%s was not read (%v), so no fix task of %s was filed; way forward: fix the cause it names, then re-run lym adopt %s, which resets the count and checks again, the holds standing meanwhile", what, err, deps.Subject, deps.Subject)
+	return fmt.Sprintf("%s was not read (%v), so no fix task of %s was filed; way forward: fix the cause it names, then re-run lym adopt %s, which resets the count and checks again, the adopt pauses standing meanwhile", what, err, deps.Subject, deps.Subject)
 }
 
 // fixFilingError words a filing that failed, which files nothing more.
 func fixFilingError(deps fixDeps, err error) string {
-	return fmt.Sprintf("the fix task of %s was not filed (%v); way forward: fix the cause it names, then re-run lym adopt %s, which resets the count and checks again, the holds standing meanwhile", deps.Subject, err, deps.Subject)
+	return fmt.Sprintf("the fix task of %s was not filed (%v); way forward: fix the cause it names, then re-run lym adopt %s, which resets the count and checks again, the adopt pauses standing meanwhile", deps.Subject, err, deps.Subject)
 }
 
 // fixRemovalError words a failed removal of the halted or draft fix task slug.

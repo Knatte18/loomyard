@@ -6,31 +6,24 @@ package adoptcli
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fronttask"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
 // The states a runReport can be in.
 const (
-	runStateOwnedElsewhere  = "owned_elsewhere"
-	runStateLanded          = "landed"
-	runStateHeldFailedCheck = "held_failed_check"
-	runStateWaitingForCheck = "waiting_for_check"
-	runStatePaused          = "paused"
-	runStateHalted          = "halted"
-	runStateEnded           = "ended"
-	runStateRunningHere     = "running_here"
-)
-
-// Two adopt check states that a check record does not hold by itself.
-const (
-	// checkStateEnded is a check whose record reads running with its process gone.
-	checkStateEnded = "ended"
-	// checkStateNone is a subject with no check record.
-	checkStateNone = "none"
+	runStateOwnedElsewhere = "owned_elsewhere"
+	runStateLanded         = "landed"
+	runStatePausedByAdopt  = "paused_by_adopt"
+	runStatePaused         = "paused"
+	runStateHalted         = "halted"
+	runStateEnded          = "ended"
+	runStateRunningHere    = "running_here"
 )
 
 // runReport is the line of one run under the named subjects.
@@ -49,24 +42,25 @@ type runReport struct {
 // reportInput holds the inputs of an adopt's per-run report, apart from its dependencies.
 // Machine is this machine's name.
 // Before and Moved are the runs before and after the reconcile, and Subjects are the named subjects.
-// Held lists the slugs held for each subject, and Started marks the subjects whose check this call started.
+// Paused lists the slugs an adopt paused.
 // Owners and Tasks are read after the owner write.
 type reportInput struct {
 	Machine  string
 	Before   []string
 	Moved    []string
 	Subjects []string
-	Held     map[string][]string
-	Started  map[string]bool
+	Paused   []string
 	Owners   boardengine.Owners
 	Tasks    []boardengine.Task
 }
 
 // runReports returns, sorted by slug, one report for each run under the named subjects.
-// The candidate runs are the moved runs before and after the reconcile and the slugs held for each subject.
+// The candidate runs are the moved runs before and after the reconcile and the slugs an adopt paused.
 // Each subject's open front task is a candidate too.
 // Each run gets the first state that applies, tried in this order:
-// owned_elsewhere, landed, waiting_for_check (or held_failed_check), paused, halted, ended and running_here.
+// owned_elsewhere, landed, paused_by_adopt, paused, halted, ended and running_here.
+// A run reads paused_by_adopt when a live pause entry of its own scope covers it.
+// That entry must carry the adopt caller or the legacy hold caller.
 // A read that fails returns its error and no report.
 func runReports(deps adoptDeps, in reportInput) ([]runReport, error) {
 	pause, err := deps.PauseRecord()
@@ -74,33 +68,12 @@ func runReports(deps adoptDeps, in reportInput) ([]runReport, error) {
 		return nil, fmt.Errorf("read the pause record: %w", err)
 	}
 
-	heldSubject := map[string]string{}
-	for subject, slugs := range in.Held {
-		for _, slug := range slugs {
-			heldSubject[slug] = subject
-		}
-	}
 	tasks := map[string]boardengine.Task{}
 	for _, task := range in.Tasks {
 		tasks[task.Slug] = task
 	}
-	checkStates := map[string]string{}
-	checkStateOf := func(subject string) (string, error) {
-		if state, read := checkStates[subject]; read {
-			return state, nil
-		}
-		state, err := deps.CheckState(subject)
-		if err != nil {
-			return "", fmt.Errorf("read the adopt check of %s: %w", subject, err)
-		}
-		checkStates[subject] = state
-		return state, nil
-	}
 
-	slugs := slices.Concat(in.Before, in.Moved)
-	for _, held := range in.Held {
-		slugs = append(slugs, held...)
-	}
+	slugs := slices.Concat(in.Before, in.Moved, in.Paused)
 	for _, subject := range in.Subjects {
 		project := subject
 		if subject == boardengine.RootSubject {
@@ -131,13 +104,13 @@ func runReports(deps adoptDeps, in reportInput) ([]runReport, error) {
 		entry, onBoard := in.Owners.Entries[slug]
 		wasMoved := slices.Contains(in.Before, slug)
 
-		var holdFound bool
+		var adoptFound bool
 		var otherCaller string
 		for _, live := range pause.Live {
 			switch {
 			case live.Scope != slug:
-			case live.Caller == pauserecord.HoldCaller:
-				holdFound = true
+			case live.Caller == pauserecord.AdoptCaller || live.Caller == pauserecord.HoldCaller:
+				adoptFound = true
 			default:
 				otherCaller = live.Caller
 			}
@@ -156,21 +129,13 @@ func runReports(deps adoptDeps, in reportInput) ([]runReport, error) {
 			report.State = runStateLanded
 			report.Line = fmt.Sprintf("%s: its entry is done or gone, so nothing runs here", slug)
 
-		case holdFound:
-			report.State = runStateWaitingForCheck
-			report.Line = waitingLine(slug, report.Row)
-			subject, known := heldSubject[slug]
-			if !known {
-				break
+		case adoptFound:
+			report.State = runStatePausedByAdopt
+			report.Line = slug + ": paused by adopt"
+			if report.Row != "" {
+				report.Line += " at " + report.Row
 			}
-			checkState, err := checkStateOf(subject)
-			if err != nil {
-				return nil, err
-			}
-			if (checkState == checkFailed || checkState == checkStateEnded) && !in.Started[subject] {
-				report.State = runStateHeldFailedCheck
-				report.Line = fmt.Sprintf("%s: held, but the last adopt check of %s %s and none was started now: `lym adopt %s` checks again", slug, subject, checkStateWords(checkState), subject)
-			}
+			report.Line += fmt.Sprintf(": `lym tender resume %s` lifts it", slug) + ownerHaltResume(status)
 
 		case otherCaller != "":
 			report.State, report.Caller = runStatePaused, otherCaller
@@ -178,7 +143,7 @@ func runReports(deps adoptDeps, in reportInput) ([]runReport, error) {
 
 		case hasRecord && fixRunHalted(status, status.State == shedengine.StateAwaiting && deps.EscalationEligible(slug)):
 			report.State = runStateHalted
-			report.Line = fmt.Sprintf("%s: halted at %s: %s", slug, status.CurrentProducer, haltReason(status))
+			report.Line = fmt.Sprintf("%s: halted at %s: %s", slug, status.CurrentProducer, haltReason(status)) + ownerHaltResume(status)
 			if task := tasks[slug]; task.Front && task.OnLand == fronttask.ActionAdoptCheck {
 				subject := task.Project
 				if subject == "" {
@@ -203,20 +168,13 @@ func runReports(deps adoptDeps, in reportInput) ([]runReport, error) {
 	return reports, nil
 }
 
-// waitingLine words a run held for its subject's adopt check, with the row its run record stands at when it has one.
-func waitingLine(slug, row string) string {
-	if row == "" {
-		return slug + ": waiting for the adopt check"
+// ownerHaltResume returns the clause that tells the operator to resume a run blocked at Finalize's owner check.
+// It is empty for a run in any other state, since only an owner-halted run needs `lym loom resume` after its pause lifts.
+func ownerHaltResume(status shedengine.Status) string {
+	if status.State == shedengine.StateBlocked && strings.HasPrefix(status.Error, landingshed.OwnerHaltPrefix) {
+		return "; then run `lym loom resume` in its pair"
 	}
-	return fmt.Sprintf("%s: waiting for the adopt check at %s", slug, row)
-}
-
-// checkStateWords words a failed check state for a line.
-func checkStateWords(state string) string {
-	if state == checkStateEnded {
-		return "ended without a verdict"
-	}
-	return state
+	return ""
 }
 
 // haltReason returns why a halted run stopped: its error, else its pause reason, else "no reason recorded".
@@ -237,10 +195,9 @@ func closedStatus(task boardengine.Task) bool {
 
 // reportRuns reads the owners and the board entries after the owner write and builds the per-run reports of this call.
 // before and moved are the runs moved before and after the reconcile.
+// paused are the slugs an adopt paused.
 // subjects are the named subjects.
-// held maps each subject to the slugs it holds.
-// checks are the checks this call started.
-func reportRuns(deps adoptDeps, here string, before, moved, subjects []string, held map[string][]string, checks []suiteStart) ([]runReport, error) {
+func reportRuns(deps adoptDeps, here string, before, moved, paused, subjects []string) ([]runReport, error) {
 	owners, err := deps.ReadOwners()
 	if err != nil {
 		return nil, fmt.Errorf("read the board's owners: %w", err)
@@ -249,9 +206,5 @@ func reportRuns(deps adoptDeps, here string, before, moved, subjects []string, h
 	if err != nil {
 		return nil, fmt.Errorf("read the board's entries: %w", err)
 	}
-	started := map[string]bool{}
-	for _, check := range checks {
-		started[check.Subject] = true
-	}
-	return runReports(deps, reportInput{Machine: here, Before: before, Moved: moved, Subjects: subjects, Held: held, Started: started, Owners: owners, Tasks: tasks})
+	return runReports(deps, reportInput{Machine: here, Before: before, Moved: moved, Subjects: subjects, Paused: paused, Owners: owners, Tasks: tasks})
 }

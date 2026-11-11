@@ -37,7 +37,9 @@ const FailedPushDirName = "failed-push"
 // RunProcDirName is the directory under the hub's board-level `.lym` that holds the owner record of a run's processes.
 const RunProcDirName = "runproc"
 
-// AdoptDirName is the directory under the hub's board-level `.lym` that holds the adopt check's record, output and lock.
+// AdoptDirName is the directory under the hub's board-level `.lym` for the adopt worker.
+// It holds the adopt record, its lock and the worker's output.
+// It sits beside the adopt check's record, output and lock.
 // It also holds the log of the test suite that an adopt starts.
 const AdoptDirName = "adopt"
 

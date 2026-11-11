@@ -21,13 +21,14 @@ func ReadDeployState(prime *lymcwd.Location, readInstalled func() (buildvcs.Iden
 	return readDeployState(prime, readInstalled)
 }
 
-// AdoptAs runs the takeover over the hub prime belongs to.
+// AdoptAs runs the takeover over the hub prime belongs to, as the worker does, in this process.
 // It covers the beam projects slugs name, and root when the word `root` is among them.
 // It reads machine as this machine's name, so two clones of one host stand for two machines.
 func AdoptAs(prime *lymcwd.Location, machine string, slugs []string, keepLocal, dropLocal bool) (Outcome, error) {
-	deps, err := hubDepsAs(prime, func() (string, error) { return machine, nil })
+	deps, err := hubWorkerDeps(prime, func() (string, error) { return machine, nil })
 	if err != nil {
 		return Outcome{}, err
 	}
-	return adopt(deps, request{Slugs: slugs, KeepLocal: keepLocal, DropLocal: dropLocal})
+	result, _, err := runWorker(deps, request{Slugs: slugs, KeepLocal: keepLocal, DropLocal: dropLocal})
+	return result, err
 }

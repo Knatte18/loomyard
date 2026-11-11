@@ -1040,6 +1040,29 @@ func TestSequence(t *testing.T) {
 			}
 			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lym adopt beam` from this machine's prime takes it over here")
 		}},
+		{"a live adopt pause of a pair stands after the wake, unchanged, beside the wake's own entries", func(t *testing.T) {
+			w := newFakeWorld(t)
+			now := w.now()
+			adopt := pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: pauserecord.AdoptCaller, Sessions: []pauserecord.Session{}}
+			if _, err := pauserecord.Update(w.recordPath, now, func(record *pauserecord.Record) error {
+				record.Live = append(record.Live, adopt)
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p2", WayForward: "fix p2"}}}
+
+			got, err := watchNow(t, w)
+
+			byScope := map[string]pauserecord.Entry{}
+			for _, entry := range w.liveEntries() {
+				byScope[entry.Scope] = entry
+			}
+			standing := byScope["p1"]
+			if err != nil || got.Phase != PhaseDone || len(byScope) != 2 || standing.Caller != pauserecord.AdoptCaller || !standing.PausedAt.Equal(adopt.PausedAt) || byScope["p2"].Caller != PauseCaller {
+				t.Errorf("got %+v, %v, live %+v; want done with the adopt entry of p1 unchanged beside the wake's entry of p2", got, err, byScope)
+			}
+		}},
 		{"an EndOwned error leaves the notice as it was", func(t *testing.T) {
 			w := newFakeWorld(t)
 			w.endOwnedErr = errors.New("a process survived")

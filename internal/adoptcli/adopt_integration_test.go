@@ -8,11 +8,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/adoptcli"
+	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -112,20 +114,30 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 		t.Fatalf("the second clone's adopt: %v", err)
 	}
 	adopted := slugOutcomeOf(t, got, taskSlug)
-	if !adopted.PairAdded || adopted.OwnerRecorded || !adopted.Held || adopted.PauseLifted || adopted.Error != "" || !got.PrimeRecorded {
-		t.Errorf("second clone's outcome = %+v, prime recorded = %v, want the pair added, the run held with its pause not lifted, no owner of the task's own and the prime recorded", adopted, got.PrimeRecorded)
+	if !adopted.PairAdded || adopted.OwnerRecorded || !adopted.AdoptPaused || adopted.Error != "" || !got.PrimeRecorded {
+		t.Errorf("second clone's outcome = %+v, prime recorded = %v, want the pair added, the run paused by adopt, no owner of the task's own and the prime recorded", adopted, got.PrimeRecorded)
+	}
+	secondRecord, found, err := adoptrecord.Read(second.Path)
+	if err != nil || !found || secondRecord.State != adoptrecord.StateDone {
+		t.Fatalf("second clone's adopt record = %+v, found %v, %v; want a done record", secondRecord, found, err)
+	}
+	var listed []string
+	for _, step := range secondRecord.Steps {
+		listed = append(listed, step.Name)
+	}
+	if !slices.Equal(listed, adoptrecord.Steps) {
+		t.Errorf("second clone's adopt record lists steps %v, want every step of %v", listed, adoptrecord.Steps)
 	}
 	geometry, err := hubgeom.PauseGeometry(second.Location)
 	if err != nil {
 		t.Fatalf("PauseGeometry: %v", err)
 	}
 	record, err := pauserecord.Read(geometry.RecordPath)
-	if err != nil || len(record.Live) != 1 || record.Live[0].Scope != taskSlug || record.Live[0].Caller != pauserecord.HoldCaller {
-		t.Errorf("second clone's pause record = %+v, %v; want the owner entry turned into the one hold entry", record.Live, err)
+	if err != nil || len(record.Live) != 1 || record.Live[0].Scope != taskSlug || record.Live[0].Caller != pauserecord.AdoptCaller {
+		t.Errorf("second clone's pause record = %+v, %v; want the owner entry turned into the one adopt entry", record.Live, err)
 	}
-	holds, err := os.ReadFile(filepath.Join(fabricengine.AdoptScratchDir(second.Path), boardengine.RootSubject, "holds.json"))
-	if err != nil || !strings.Contains(string(holds), taskSlug) {
-		t.Errorf("root's holds file = %s, %v; want it to list %s", holds, err, taskSlug)
+	if _, err := os.Stat(filepath.Join(fabricengine.AdoptScratchDir(second.Path), boardengine.RootSubject, "holds.json")); !os.IsNotExist(err) {
+		t.Errorf("Stat(holds.json) error = %v; want no holds file written", err)
 	}
 	// The adopt runs no fabric pull, so the reconcile alone brought both branches to the tip the first clone pushed.
 	for name, dirs := range map[string][2]string{
@@ -168,16 +180,19 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 
 	// The second machine took root over with the task, so taking them back names root.
 	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{boardengine.RootSubject}, false, false)
-	if err != nil {
-		t.Fatalf("the first clone's adopt back: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "--keep-local") || !strings.Contains(err.Error(), "--drop-local") {
+		t.Fatalf("the first clone's adopt back error = %v, want the held-back stop naming --keep-local and --drop-local", err)
 	}
 	if stopped := slugOutcomeOf(t, got, taskSlug); !stopped.Stopped || !stopped.Live || !strings.Contains(stopped.WayForward, "`lym adopt root --keep-local`") || got.PrimeRecorded {
 		t.Errorf("adopt back = %+v, prime recorded = %v, want a stop on the live pair naming both ways forward under root and the prime left", stopped, got.PrimeRecorded)
 	}
+	if firstRecord, found, err := adoptrecord.Read(first.Path); err != nil || !found || firstRecord.State != adoptrecord.StateStopped || firstRecord.InFlight != adoptrecord.StepDone {
+		t.Errorf("first clone's adopt record = %+v, found %v, %v; want it stopped at done", firstRecord, found, err)
+	}
 
 	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{boardengine.RootSubject}, false, true)
-	if err != nil {
-		t.Fatalf("the first clone's --drop-local: %v", err)
+	if err == nil {
+		t.Fatalf("the first clone's --drop-local over a live pair ended ok, want the held-back stop")
 	}
 	if refused := slugOutcomeOf(t, got, taskSlug); !strings.Contains(refused.Error, "--keep-local") || got.PrimeRecorded {
 		t.Errorf("--drop-local over a live pair = %+v, prime recorded = %v, want a refusal naming --keep-local and the prime left", refused, got.PrimeRecorded)
@@ -193,6 +208,9 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	owners, err = boardengine.ReadOwners(first.BoardDir())
 	if err != nil || owners.Prime != firstMachine {
 		t.Errorf("first clone's owners = %+v, %v; want the prime owned by %s again", owners, err, firstMachine)
+	}
+	if firstRecord, found, err := adoptrecord.Read(first.Path); err != nil || !found || firstRecord.State != adoptrecord.StateDone || !firstRecord.Request.KeepLocal || firstRecord.Request.DropLocal {
+		t.Errorf("first clone's adopt record = %+v, found %v, %v; want it done with --keep-local alone", firstRecord, found, err)
 	}
 }
 

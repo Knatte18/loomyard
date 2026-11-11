@@ -10,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+//testtiming:keep pins which envelope keys appear only when set and that runs is always present, which TestAdopt never reads from the map
 func TestAdoptFields(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -42,8 +43,8 @@ func TestAdoptFields(t *testing.T) {
 		},
 		{
 			name:     "RunsAreAlwaysPresentAndCarryTheReports",
-			result:   outcome{Runs: []runReport{{Slug: "t1", State: runStateWaitingForCheck, Line: "t1: waiting for the adopt check"}}},
-			wantRuns: []runReport{{Slug: "t1", State: runStateWaitingForCheck, Line: "t1: waiting for the adopt check"}},
+			result:   outcome{Runs: []runReport{{Slug: "t1", State: runStatePausedByAdopt, Line: "t1: paused by adopt: `lym tender resume t1` lifts it"}}},
+			wantRuns: []runReport{{Slug: "t1", State: runStatePausedByAdopt, Line: "t1: paused by adopt: `lym tender resume t1` lifts it"}},
 		},
 		{
 			name:   "ARunDeployIsTheDeployField",

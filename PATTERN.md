@@ -29,7 +29,7 @@
 
 - `PATTERN-shed-recipe-registry` — Adding a producer, recipe row, block gate or loom recipe: one `shedrecipe` map, row values by key; a loom recipe declares `contract: loom`. — [background](pattern/PATTERN-shed-recipe-registry.md)
 - `PATTERN-shed-driver` — Driving or stopping a shed run: verbs in `shedverbs`, the loop in `sheddriver`, paths in `shedrun`, shared machinery in shed; one stop chain; transient marks only via `shedengine`. (test) — [background](pattern/PATTERN-shed-driver.md)
-- `PATTERN-dobby-runs` — Starting or holding a board task's run: only its parent's dobby, started with its orch; front tasks only via `fronttask`; an adopt hold lifts only on a green adopt check. — [background](pattern/PATTERN-dobby-runs.md)
+- `PATTERN-dobby-runs` — Starting or holding a board task's run: only its parent's dobby, started with its orch bar `lym adopt --no-orch`; front tasks only via `fronttask`; an adopt pause lifts only by hand. — [background](pattern/PATTERN-dobby-runs.md)
 - `PATTERN-run-records` — Writing a run's friction note, usage record or project record: only its one writer, `internal/friction`, shed's usage writer or `lym loom decision add`. (test) — [background](pattern/PATTERN-run-records.md)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-gate-slot` — Running or clearing a gate: in held `internal/gateslot` slots, verify via `verifytree.Verify`; a cold fixer only via `gatefixer`, judged by Go's re-run. (test) — [background](pattern/PATTERN-gate-slot.md)

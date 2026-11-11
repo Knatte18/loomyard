@@ -1119,7 +1119,7 @@
 // The next holder overwrites it.
 //
 // The hub-wide scratch tree also holds two sibling directories.
-// `AdoptScratchDir(hub)` holds the adopt check's files.
+// `AdoptScratchDir(hub)` holds the adopt check's files, and also the adopt record, its lock and the worker's output.
 // `FrontTaskScratchDir(hub)` holds the front-task record and its action output.
 //
 // A pair's teardown lock is `TeardownLockPath(hub, slug)`, `<HubScratchDir>/teardown/<slug>.lock`.
