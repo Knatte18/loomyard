@@ -716,8 +716,8 @@ func (s *runnerTidyShuttle) StopStrand(guid string) error {
 	return s.runner.StopStrand(guid)
 }
 
-// machineLandings returns a Landings seam that reads this machine's current and former names on each call
-// and passes them, the current one first, to read.
+// machineLandings returns a Landings seam that reads this machine's names on each call.
+// It passes the current name and then the former names to read.
 // A name that cannot be read fails the call with the read's own way forward,
 // so no landing is told apart from another machine's by a missing name.
 func machineLandings(names func() (string, []string, error), read func(machines []string) ([]string, error)) func() ([]string, error) {

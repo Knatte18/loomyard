@@ -117,7 +117,8 @@ func TestResolveNames(t *testing.T) {
 	}
 }
 
-// TestResolveNames_UnreadableFileIsAnError pins that a machine file that exists but does not read is an error naming its path.
+// TestResolveNames_UnreadableFileIsAnError pins that a machine file that exists but does not read
+// is an error naming its path.
 // A directory at the file's path stands in for an unreadable file on every platform.
 func TestResolveNames_UnreadableFileIsAnError(t *testing.T) {
 	tiergate.Require(t, 0)

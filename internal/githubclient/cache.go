@@ -42,8 +42,8 @@ func cacheDir() (string, bool) {
 	return standalonestate.UserConfigDir()
 }
 
-// CredentialDir returns the per-user lym config directory the GitHub token cache lives in,
-// where the Slack token file sits beside it.
+// CredentialDir returns the per-user lym config directory the GitHub token cache lives in.
+// The Slack token file sits beside it.
 // It returns ("", false) when no usable environment variable is set.
 func CredentialDir() (string, bool) {
 	return cacheDir()

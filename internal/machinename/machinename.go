@@ -1,5 +1,5 @@
-// machinename.go resolves this machine's name from the machine file, falling back to the hostname rule,
-// and holds the name rule a name set in that file must meet.
+// machinename.go resolves this machine's name from the machine file or the hostname rule.
+// It also holds the name rule a name set in that file must meet.
 
 package machinename
 
@@ -37,8 +37,8 @@ type File struct {
 }
 
 // FilePath returns the machine file's path and its writer's lock's path in the per-user lym config directory.
-// It returns ok false when no variable the directory resolves from is set,
-// and an error naming the variable, with its way forward, when that variable is relative.
+// It returns ok false when no variable the directory resolves from is set.
+// A relative variable is an error naming it, with its way forward.
 func FilePath() (file, lock string, ok bool, err error) {
 	dir, ok, err := standalonestate.AbsoluteUserConfigDir()
 	if err != nil {
@@ -68,8 +68,8 @@ func ReadFile(path string) (File, bool, error) {
 }
 
 // Name returns this machine's name: the machine file's name when the file exists, else the hostname rule's.
-// A file that does not read, does not decode or holds an invalid name is an error naming its path,
-// never a fallback to the hostname, since a wrong name changes which entries read as owned here.
+// A file that does not read, does not decode or holds an invalid name is an error naming its path.
+// It never falls back to the hostname, since a wrong name changes which entries read as owned here.
 // The file is read on every call.
 func Name() (string, error) {
 	name, _, err := resolveNames(machineFile, os.Hostname)
@@ -77,8 +77,8 @@ func Name() (string, error) {
 }
 
 // Names returns this machine's current name, resolved as Name resolves it, and its former names.
-// A former name is a non-empty entry of the machine file's names other than the current one,
-// kept even when it fails the name rule, since only this machine could have written an owner under it.
+// A former name is a non-empty entry of the machine file's names other than the current one.
+// It is kept even when it fails the name rule, since only this machine could have written an owner under it.
 // The hostname rule has no former names.
 func Names() (current string, former []string, err error) {
 	return resolveNames(machineFile, os.Hostname)

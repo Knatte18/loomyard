@@ -166,8 +166,8 @@ func stateRootFor(goos, localAppData, xdgStateHome, home string) (string, error)
 	return filepath.Join(home, ".local", "state", "lym"), nil
 }
 
-// UserConfigDir returns the per-user `lym` config directory: `%LOCALAPPDATA%\lym` on Windows,
-// elsewhere `$XDG_CONFIG_HOME/lym` or `$HOME/.config/lym`.
+// UserConfigDir returns the per-user `lym` config directory.
+// It is `%LOCALAPPDATA%\lym` on Windows, elsewhere `$XDG_CONFIG_HOME/lym` or `$HOME/.config/lym`.
 // A non-empty XDG_CONFIG_HOME is taken as given, relative or not, so files kept there keep their paths.
 // It returns ("", false) when no variable it reads is set, and creates nothing.
 func UserConfigDir() (string, bool) {
@@ -193,7 +193,8 @@ func userConfigDirFor(goos, localAppData, xdgConfigHome, home string) (string, b
 
 // AbsoluteUserConfigDir returns the per-user `lym` config directory as an absolute path,
 // so a file kept there never resolves against a process's working directory.
-// A relative XDG_CONFIG_HOME is ignored in favour of `$HOME/.config/lym`, as the XDG Base Directory specification requires.
+// A relative XDG_CONFIG_HOME is ignored in favour of `$HOME/.config/lym`,
+// as the XDG Base Directory specification requires.
 // A relative HOME or LOCALAPPDATA is an error naming the variable, since no fallback is left.
 // It returns ("", false, nil) when no variable it reads is set, and creates nothing.
 func AbsoluteUserConfigDir() (string, bool, error) {
