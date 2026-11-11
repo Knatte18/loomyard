@@ -274,8 +274,9 @@ beam's dobby starts it as any member, at any time. The orch runs it before
 "lym beam ready", which refuses while the parent holds commits the beam lacks;
 Finalize merges the parent in again at landing.
 
-The task's slug is the beam's slug and "-merge-in", numbered from -2 when that slug
-is taken, and it carries the beam's labels.
+The task's slug is the beam's slug and "-merge-in", numbered from -2 when a board
+entry, a batten run directory or a task branch holds that slug, and it carries the
+beam's labels.
 
 It runs anywhere in the hub and refuses, each naming its way forward, an entry
 that is not an open beam project with a pair here, a beam whose origin record

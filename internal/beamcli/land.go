@@ -32,7 +32,8 @@ import (
 // Tasks reads the board's entries.
 // FileTask creates the task its fields describe and releases it.
 // CodeReviewCaps reads the hub's Code-Review budget.
-// Only the `merge-parent` verb calls these three.
+// HeldSlugs lists the slugs a batten run directory or a task branch holds, local or origin remote-tracking.
+// Only the `merge-parent` verb calls these four.
 // DraftDescription writes a starting point for the beam's change description and returns its path.
 // It refuses when a description already stands.
 // RecordDescription validates the change description the orch wrote and stamps the landing record's DescribedAt with at.
@@ -74,6 +75,7 @@ type landDeps struct {
 	Tasks          func() ([]boardengine.Task, error)
 	FileTask       func(fields map[string]any) error
 	CodeReviewCaps func() (reviewbudget.Caps, error)
+	HeldSlugs      func() ([]string, error)
 
 	DraftDescription  func(slug string) (path string, err error)
 	RecordDescription func(slug string, at time.Time) (path string, err error)

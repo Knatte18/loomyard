@@ -10,6 +10,7 @@ package shedrun
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -142,6 +143,27 @@ const StartMergeInProgressKind = "merge_in_progress"
 // The legacy "self" directory serves when only that one exists.
 func RunDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.LymDirName, shedDirName, runSegment(l, runID))
+}
+
+// RunIDs lists the names of the durable run directories under l's anchor, in name order.
+// A completed run keeps its directory until cleanup removes it, and a start of its slug is refused meanwhile,
+// so a caller picking a new slug skips every name listed.
+// An anchor with no run directories lists none.
+func RunIDs(l *lymcwd.Location) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(l.AnchorPath(), lymdirs.LymDirName, shedDirName))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			ids = append(ids, entry.Name())
+		}
+	}
+	return ids, nil
 }
 
 // StopMarkerFileName is the filename of a run's writer stop marker, whose path StopMarker returns.

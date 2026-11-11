@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -107,6 +109,34 @@ func TestHubLandDeps_ReadyReads(t *testing.T) {
 	}
 	if findings, err := deps.DescriptionFindings("b"); len(findings) != 0 || err != nil {
 		t.Errorf("DescriptionFindings(b) = %v, %v for a valid description; want none", findings, err)
+	}
+}
+
+// TestHubLandDeps_HeldSlugs drives the HeldSlugs seam over a real hub pair.
+// A slug a run directory holds and a slug a task branch holds are both listed.
+func TestHubLandDeps_HeldSlugs(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	boardkit.InstallReplay(t)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	prime, err := lymcwd.ResolveWorktree(h.PrimeWorktree())
+	if err != nil {
+		t.Fatalf("resolve the prime: %v", err)
+	}
+	if err := os.MkdirAll(shedrun.RunDir(prime, "held-run"), 0o755); err != nil {
+		t.Fatalf("create the run directory: %v", err)
+	}
+	gitkit.Git(t, h.PrimeWorktree(), "branch", "held-branch")
+
+	held, err := hubLandDeps(prime).HeldSlugs()
+	if err != nil {
+		t.Fatalf("HeldSlugs() error = %v; want nil", err)
+	}
+	for _, slug := range []string{"held-run", "held-branch"} {
+		if !slices.Contains(held, slug) {
+			t.Errorf("HeldSlugs() = %v; want it to hold %q", held, slug)
+		}
 	}
 }
 

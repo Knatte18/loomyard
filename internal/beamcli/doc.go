@@ -262,7 +262,10 @@
 // It refuses a beam that holds an open merge task.
 // The refusal names `lym batten status` and `lym batten cancel --remove` of that task.
 // A merge task is found by its project and its slug's `-merge-in` suffix, with an optional number.
-// The new one takes the first free slug of that shape, the beam's slug cut to fit the board's slug length.
+// The new one takes the first slug of that shape that no board entry, batten run directory or task branch holds.
+// The beam's slug is cut to fit the board's slug length.
+// A completed merge task's run and its torn-down pair's branch outlive its board entry and refuse a start under its slug,
+// so a second merge of the parent skips them.
 // It carries the beam's labels, so the board's type-label rule holds.
 // Its body is the goal that the decision record carries for both the darn writer and the Code-Review perch.
 // The writer runs `lym fabric merge-in`, settles the conflicts, makes the gate pass and changes nothing else.

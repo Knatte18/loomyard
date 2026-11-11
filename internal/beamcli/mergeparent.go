@@ -63,7 +63,11 @@ func mergeParent(deps landDeps, slug string) (map[string]any, error) {
 	rounds := max(caps.Soft, mergeParentMinRounds)
 	perch := string(loomengine.PerchCode)
 
-	taskSlug := freeMergeTaskSlug(tasks, slug)
+	held, err := deps.HeldSlugs()
+	if err != nil {
+		return nil, fmt.Errorf("%s: list the slugs the run directories and task branches hold: %w; way forward: fix the cause it names, then run `%s %s` again", verb, err, verb, slug)
+	}
+	taskSlug := freeMergeTaskSlug(tasks, held, slug)
 	fields := map[string]any{
 		"slug":         taskSlug,
 		"title":        fmt.Sprintf("Merge %s into the beam %s", origin.ParentBranch, slug),
@@ -101,13 +105,18 @@ func openMergeTask(tasks []boardengine.Task, beam string) (string, bool) {
 	return "", false
 }
 
-// freeMergeTaskSlug returns the first merge task slug of beam that no board entry holds.
+// freeMergeTaskSlug returns the first merge task slug of beam that no board entry and no slug in held holds.
+// held names the slugs of run directories and task branches.
+// A completed run or a leftover task branch refuses a start under its slug after its board entry is gone.
 // The candidates are the beam's slug with the merge task suffix, then the same with -2, -3 and so on.
 // The beam's slug is cut so the whole fits the board's slug length.
-func freeMergeTaskSlug(tasks []boardengine.Task, beam string) string {
-	taken := make(map[string]bool, len(tasks))
+func freeMergeTaskSlug(tasks []boardengine.Task, held []string, beam string) string {
+	taken := make(map[string]bool, len(tasks)+len(held))
 	for _, task := range tasks {
 		taken[task.Slug] = true
+	}
+	for _, slug := range held {
+		taken[slug] = true
 	}
 	for number := 1; ; number++ {
 		tail := darnengine.MergeTaskSuffix

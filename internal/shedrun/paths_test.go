@@ -3,6 +3,7 @@ package shedrun
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -337,6 +338,46 @@ func TestHoldsFile(t *testing.T) {
 			dir := tt.build(t, t.TempDir())
 			if got := HoldsFile(dir); got != tt.want {
 				t.Errorf("HoldsFile(%s) = %v; want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRunIDs pins that RunIDs lists the run directories under the anchor in name order, skipping plain files.
+// It also pins that RunIDs lists none when the shed directory is absent.
+func TestRunIDs(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		build func(t *testing.T, l *lymcwd.Location)
+		want  []string
+	}{
+		{"AbsentShedDirectory", func(*testing.T, *lymcwd.Location) {}, nil},
+		{"DirectoriesListedFilesSkipped", func(t *testing.T, l *lymcwd.Location) {
+			for _, id := range []string{"zeta", "alpha"} {
+				if err := os.MkdirAll(RunDir(l, id), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(filepath.Dir(RunDir(l, "alpha")), "stray"), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, []string{"alpha", "zeta"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			l := syntheticLocation(t)
+			tt.build(t, l)
+
+			got, err := RunIDs(l)
+			if err != nil {
+				t.Fatalf("RunIDs() = %v; want nil", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("RunIDs() = %v; want %v", got, tt.want)
 			}
 		})
 	}

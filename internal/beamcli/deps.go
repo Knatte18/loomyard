@@ -239,6 +239,17 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			return nil
 		},
+		HeldSlugs: func() ([]string, error) {
+			runs, err := shedrun.RunIDs(prime)
+			if err != nil {
+				return nil, err
+			}
+			branches, err := fabricengine.TaskBranchSlugs(prime, "")
+			if err != nil {
+				return nil, err
+			}
+			return append(runs, branches...), nil
+		},
 		// The budget is the prime's loom config, the hub's own, which no run profile reaches.
 		CodeReviewCaps: func() (reviewbudget.Caps, error) {
 			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(prime), "loom")

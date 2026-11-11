@@ -48,6 +48,9 @@ type landWorld struct {
 	tasks []boardengine.Task
 	filed []map[string]any
 	caps  reviewbudget.Caps
+	// held and heldErr are what HeldSlugs answers: the slugs run directories and task branches hold.
+	held    []string
+	heldErr error
 	// drafted and recorded hold the slug of each DraftDescription and RecordDescription call;
 	// draftErr and recordErr are what those seams fail with.
 	drafted   []string
@@ -165,6 +168,7 @@ func (w *landWorld) deps() landDeps {
 			return nil
 		},
 		CodeReviewCaps: func() (reviewbudget.Caps, error) { return w.caps, nil },
+		HeldSlugs:      func() ([]string, error) { return w.held, w.heldErr },
 		DraftDescription: func(slug string) (string, error) {
 			w.drafted = append(w.drafted, slug)
 			if w.draftErr != nil {

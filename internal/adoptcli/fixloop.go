@@ -392,25 +392,10 @@ func hubFixDeps(prime *lymcwd.Location, subject string) (fixDeps, error) {
 			return readStatus(shedrun.StatusFile(prime, slug))
 		},
 		EscalationEligible: hubEscalationEligible(prime),
-		RunRecordSlugs: func() ([]string, error) {
-			entries, err := os.ReadDir(filepath.Dir(shedrun.RunDir(prime, "-")))
-			if errors.Is(err, os.ErrNotExist) {
-				return nil, nil
-			}
-			if err != nil {
-				return nil, err
-			}
-			var slugs []string
-			for _, entry := range entries {
-				if entry.IsDir() {
-					slugs = append(slugs, entry.Name())
-				}
-			}
-			return slugs, nil
-		},
-		TaskBranchSlugs: func(prefix string) ([]string, error) { return fabricengine.TaskBranchSlugs(prime, prefix) },
-		Known:           board.Vocabulary().Known,
-		FrontDeps:       frontDeps,
+		RunRecordSlugs:     func() ([]string, error) { return shedrun.RunIDs(prime) },
+		TaskBranchSlugs:    func(prefix string) ([]string, error) { return fabricengine.TaskBranchSlugs(prime, prefix) },
+		Known:              board.Vocabulary().Known,
+		FrontDeps:          frontDeps,
 	}, nil
 }
 

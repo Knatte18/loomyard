@@ -1,10 +1,11 @@
 // mergeparent_test.go drives the merge-parent sequence over the fake hub of landWorld.
 // It covers the entries that are not a beam and a beam with no parent branch or an open merge task.
-// It also covers the darn task, filed with its perch on under the first free slug.
+// It also covers the darn task, filed with its perch on under the first slug no board entry, run or branch holds.
 
 package beamcli
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -60,6 +61,16 @@ func TestMergeParent(t *testing.T) {
 				w.tasks = append(w.tasks, boardengine.Task{Slug: "b-merge-in", Kind: boardengine.KindTask, Project: "b", Status: &done})
 			},
 			wantTask: "b-merge-in-2", wantRounds: 1, wantHard: 2,
+		},
+		{
+			name: "CompletedRunAndLeftoverBranchSkipped", slug: "b",
+			setup:    func(w *landWorld) { w.held = []string{"b-merge-in", "b-merge-in-2"} },
+			wantTask: "b-merge-in-3", wantRounds: 1, wantHard: 2,
+		},
+		{
+			name: "UnreadableHeldSlugsRefused", slug: "b",
+			setup:   func(w *landWorld) { w.heldErr = errors.New("git refs unreadable") },
+			wantErr: []string{"list the slugs the run directories and task branches hold", "git refs unreadable", "lym beam merge-parent b"},
 		},
 		{
 			name: "LongBeamSlugCutToTheBoardsLength", slug: longBeam,
