@@ -41,8 +41,10 @@ const (
 // raddleModeRules returns the {{.mode_rules}} block of the raddle agent.
 // In auto mode the agent ends on the complete proposal file with no operator present.
 // In perch mode it does the same, and the text names the two outcomes the checks allow, with slug as the project's slug.
-// In interactive mode it checks the proposal and puts it to the operator:
-// a table of the parts with their dependencies, the order departures with their costs, and that the tasks land as drafts.
+// In interactive mode it checks the proposal and puts it to the operator.
+// It shows a table of the parts with their recipes, profiles and dependencies.
+// It names the order departures with their costs, and says that the tasks land as drafts.
+// The prose around the table keeps only the reasons for each recipe and profile and the alternatives set aside.
 // It then records the operator's approval.
 func raddleModeRules(mode RaddleMode, proposalPath, slug string) string {
 	switch mode {
@@ -50,7 +52,9 @@ func raddleModeRules(mode RaddleMode, proposalPath, slug string) string {
 		return "This session is running interactively: an operator is present at the pane. " +
 			"Once the proposal is complete, run `lym loom raddle-propose`, which checks the file and tells your parent that a proposal waits. " +
 			"Then put the proposal to the operator in the pane as plain text. " +
-			"Show the parts as a table with a column of each part's dependencies, by part slug, so the order reads from the table alone. " +
+			"Show the parts as a table with a column of each part's recipe, such as `darn`, a column of its profile, such as `solid`, " +
+			"and a column of its dependencies, by part slug, so what each part runs as and the order read from the table alone. " +
+			"In the text around the table, give only the reasons for each recipe and profile and the alternatives you set aside, never the recipe or profile again. " +
 			"Name each order departure the proposal lists, with its cost. " +
 			"Say that every task lands on the board as a draft, which the operator releases with `lym board set-status`, so a project can be made a beam before any of its tasks starts. " +
 			"Revise the file while the operator questions or corrects the split, the order, the recipes or the profiles; run `lym loom raddle-propose` again after each revision. " +
