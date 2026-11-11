@@ -230,21 +230,35 @@ func TestRender(t *testing.T) {
 		entryFor("first", "one", 1, "claude-file"),
 	}}
 
-	t.Run("ClaudeFileJoinsEntriesInOrder", func(t *testing.T) {
+	t.Run("ClaudeFileJoinsEntriesInOrderIntoItsFileAlone", func(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, claudeStore)
 		report := mustRender(t, f)
 		if want := claudeFileWant("", "one", "two"); f.readAnchor(t, "CLAUDE.local.md") != want {
 			t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 		}
-		if want := Marker + "\n\none\n\ntwo\n"; f.readAnchor(t, "AGENTS.override.md") != want {
-			t.Errorf("AGENTS.override.md = %q; want %q", f.readAnchor(t, "AGENTS.override.md"), want)
-		}
-		if want := []string{"CLAUDE.local.md", "AGENTS.override.md", ClaudeSettingsFile}; !slices.Equal(report.Written, want) || len(report.Warnings) != 0 {
+		if want := []string{"CLAUDE.local.md", ClaudeSettingsFile}; !slices.Equal(report.Written, want) || len(report.Warnings) != 0 {
 			t.Errorf("report = %+v; want %v written", report, want)
 		}
-		if f.anchorHas(".heddle") {
-			t.Error(".heddle left behind")
+		if f.anchorHas("AGENTS.override.md") || f.anchorHas(".heddle") {
+			t.Error("AGENTS.override.md written, or .heddle left behind")
+		}
+	})
+
+	t.Run("AgentsFileRendersIntoBothFiles", func(t *testing.T) {
+		t.Parallel()
+		f := newRenderFixture(t, Store{Entries: []Entry{
+			entryFor("shared", "shared text", 1, "agents-file"),
+			entryFor("claude", "claude text", 2, "claude-file"),
+			entryFor("codex", "codex text", 3, "codex-file"),
+		}})
+		f.writeAnchor(t, "AGENTS.md", "repository rules\n")
+		mustRender(t, f)
+		if want := claudeFileWant("@AGENTS.md", "shared text", "claude text"); f.readAnchor(t, "CLAUDE.local.md") != want {
+			t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
+		}
+		if want := Marker + "\n\nrepository rules\n\nshared text\n\ncodex text\n"; f.readAnchor(t, "AGENTS.override.md") != want {
+			t.Errorf("AGENTS.override.md = %q; want %q", f.readAnchor(t, "AGENTS.override.md"), want)
 		}
 	})
 
@@ -519,21 +533,22 @@ func TestRender(t *testing.T) {
 	t.Run("OnlyLimitsTheTargets", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
-			name       string
-			only       []string
-			wantClaude bool
+			name          string
+			only          []string
+			wantClaude    bool
+			wantOverrides bool
 		}{
-			{"CodexFileAlone", []string{"codex-file"}, false},
-			{"ClaudeFileRendersCodexFileToo", []string{"claude-file"}, true},
+			{"CodexFileAlone", []string{"codex-file"}, false, true},
+			{"ClaudeFileAlone", []string{"claude-file"}, true, false},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				f := newRenderFixture(t, Store{Entries: []Entry{entryFor("mine", "t", 1, "claude-file")}})
+				f := newRenderFixture(t, Store{Entries: []Entry{entryFor("mine", "t", 1, "agents-file")}})
 				mustRender(t, f, tt.only...)
-				if f.anchorHas("CLAUDE.local.md") != tt.wantClaude || !f.anchorHas("AGENTS.override.md") {
-					t.Errorf("Only %v: CLAUDE.local.md present = %v, AGENTS.override.md present = %v; want %v and true",
-						tt.only, f.anchorHas("CLAUDE.local.md"), f.anchorHas("AGENTS.override.md"), tt.wantClaude)
+				if f.anchorHas("CLAUDE.local.md") != tt.wantClaude || f.anchorHas("AGENTS.override.md") != tt.wantOverrides {
+					t.Errorf("Only %v: CLAUDE.local.md present = %v, AGENTS.override.md present = %v; want %v and %v",
+						tt.only, f.anchorHas("CLAUDE.local.md"), f.anchorHas("AGENTS.override.md"), tt.wantClaude, tt.wantOverrides)
 				}
 			})
 		}
@@ -632,6 +647,9 @@ func TestRender(t *testing.T) {
 		}
 		if _, err := r.Show(f.bolt, "nope", f.anchor); err == nil || !strings.Contains(err.Error(), "claude-file") {
 			t.Errorf("Show(nope) = %v; want an error naming the valid targets", err)
+		}
+		if _, err := r.Show(f.bolt, "agents-file", f.anchor); err == nil || !strings.Contains(err.Error(), "claude-file, codex-file") || !strings.Contains(err.Error(), "lym heddle show <target>") {
+			t.Errorf("Show(agents-file) = %v; want a refusal naming the targets it renders into and lym heddle show", err)
 		}
 		claude, err := r.Passages(f.bolt, "claude", "")
 		if err != nil || !slices.Equal(claude, []string{"prompt one", "prompt two"}) {

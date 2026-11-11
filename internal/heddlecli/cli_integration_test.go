@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -262,6 +263,21 @@ func TestHeddleCLI(t *testing.T) {
 		}
 		if layer := listedEntry(t, listed, "rules")["layer"]; layer != heddleengine.LayerRepository {
 			t.Errorf("list layer of rules = %v; want %s", layer, heddleengine.LayerRepository)
+		}
+		wantFileTargets := []any{
+			map[string]any{"target": "claude-file", "files": []any{"CLAUDE.local.md"}},
+			map[string]any{"target": "codex-file", "files": []any{"AGENTS.override.md"}},
+			map[string]any{"target": "agents-file", "files": []any{"CLAUDE.local.md", "AGENTS.override.md"}},
+			map[string]any{"target": "claude-settings", "files": []any{heddleengine.ClaudeSettingsFile}},
+		}
+		if got := listed.Raw["file_targets"]; !reflect.DeepEqual(got, wantFileTargets) {
+			t.Errorf("list file_targets = %v; want %v", got, wantFileTargets)
+		}
+		help := runVerb(c, cwd, "", "set", "--help")
+		for _, want := range []string{"  claude-file        CLAUDE.local.md\n", "  agents-file        CLAUDE.local.md, AGENTS.override.md\n"} {
+			if !strings.Contains(help.out, want) {
+				t.Errorf("set --help = %q; want it to contain %q", help.out, want)
+			}
 		}
 
 		got := requireOK(t, runVerb(c, cwd, "", "get", "rules"))

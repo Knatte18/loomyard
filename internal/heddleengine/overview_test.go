@@ -43,6 +43,7 @@ func TestRenderOverview(t *testing.T) {
 	bolt := t.TempDir()
 	saveStore(t, bolt, Store{Entries: []Entry{
 		entryFor("house-rules", "Be kind.", 10, "claude-file"),
+		entryFor("shared-rules", "Be brief.", 15, "agents-file"),
 		entryFor("my-settings", `{"model": "opus"}`, 20, "claude-settings"),
 		entryFor("fenced-rules", "Use ```go fences.", 30, "claude-file"),
 		entryFor("loose-settings", "not json", 40, "claude-settings"),
@@ -59,12 +60,22 @@ func TestRenderOverview(t *testing.T) {
 	}
 	claudeFile := overviewSection(t, text, "claude-file")
 	for _, want := range []string{
+		"\nRendered into `CLAUDE.local.md` at every worktree's anchor. It also carries every entry aimed at `agents-file`.\n",
 		"- From: shipped with lym\n",
 		"````markdown\nUse ```go fences.\n````\n",
 		"### `house-rules`\n\n- From: the hub's heddle.json\n- Order: 10\n- Targets: `claude-file`\n\n```markdown\nBe kind.\n```\n",
 	} {
 		if !strings.Contains(claudeFile, want) {
 			t.Errorf("claude-file section lacks %q: %q", want, claudeFile)
+		}
+	}
+	agentsFile := overviewSection(t, text, "agents-file")
+	for _, want := range []string{
+		"\nRendered into `CLAUDE.local.md`, `AGENTS.override.md` at every worktree's anchor.\n",
+		"### `shared-rules`\n\n- From: the hub's heddle.json\n- Order: 15\n- Targets: `agents-file`\n\n```markdown\nBe brief.\n```\n",
+	} {
+		if !strings.Contains(agentsFile, want) {
+			t.Errorf("agents-file section lacks %q: %q", want, agentsFile)
 		}
 	}
 	settings := overviewSection(t, text, "claude-settings")

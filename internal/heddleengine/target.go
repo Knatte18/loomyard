@@ -32,6 +32,9 @@ const (
 	claudeFileTarget = "claude-file"
 	// codexFileTarget is the file target rendered into AGENTS.override.md, the instructions a Codex session reads.
 	codexFileTarget = "codex-file"
+	// agentsFileTarget is the shared file target for an instruction every agent family reads.
+	// It renders into the files of claudeFileTarget and codexFileTarget.
+	agentsFileTarget = "agents-file"
 	// claudeSettingsTarget is the JSON-object file target merged into ClaudeSettingsFile.
 	claudeSettingsTarget = "claude-settings"
 )
@@ -40,23 +43,27 @@ const (
 // File is the anchor-relative path of a file target and empty for a prompt target.
 // ReRender lists the anchor-relative paths whose change re-renders a file target.
 // JSONObject marks a file target whose entries each hold one JSON object, merged into the file in place of joined text.
+// RendersInto names the file targets whose files carry the entries of a shared file target.
+// A shared file target has no File or ReRender of its own.
 // Engine and Role narrow the sessions a prompt target reaches.
 // Engine must equal the session's engine, and Role must match the session's role or a numbered sibling of it;
 // an empty field narrows nothing.
 type Target struct {
-	Name       string
-	Delivery   string
-	File       string
-	ReRender   []string
-	JSONObject bool
-	Engine     string
-	Role       string
+	Name        string
+	Delivery    string
+	File        string
+	ReRender    []string
+	JSONObject  bool
+	RendersInto []string
+	Engine      string
+	Role        string
 }
 
 // targetTable holds one row per target; a further target is one new row.
 var targetTable = []Target{
 	{Name: claudeFileTarget, Delivery: DeliveryFile, File: "CLAUDE.local.md", ReRender: []string{"CLAUDE.local.md", "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}},
 	{Name: codexFileTarget, Delivery: DeliveryFile, File: "AGENTS.override.md", ReRender: []string{"AGENTS.md", "CLAUDE.md", "AGENTS.override.md"}},
+	{Name: agentsFileTarget, Delivery: DeliveryFile, RendersInto: []string{claudeFileTarget, codexFileTarget}},
 	{Name: claudeSettingsTarget, Delivery: DeliveryFile, File: ClaudeSettingsFile, JSONObject: true},
 	{Name: "claude-prompt", Delivery: DeliveryPrompt, Engine: "claude"},
 	{Name: "codex-prompt", Delivery: DeliveryPrompt, Engine: "codex"},
@@ -68,10 +75,43 @@ func LookupTarget(name string) (Target, bool) {
 	for _, target := range targetTable {
 		if target.Name == name {
 			target.ReRender = slices.Clone(target.ReRender)
+			target.RendersInto = slices.Clone(target.RendersInto)
 			return target, true
 		}
 	}
 	return Target{}, false
+}
+
+// TargetFiles returns the anchor-relative files the file target named name renders into.
+// A shared target's files are those of the targets it renders into.
+// It returns nil for a prompt target and for a name the table does not hold.
+func TargetFiles(name string) []string {
+	target, ok := LookupTarget(name)
+	if !ok || target.Delivery != DeliveryFile {
+		return nil
+	}
+	if target.File != "" {
+		return []string{target.File}
+	}
+	var files []string
+	for _, into := range target.RendersInto {
+		files = append(files, TargetFiles(into)...)
+	}
+	return files
+}
+
+// reachesFileTarget reports whether an entry aimed at targets renders into the file target named name:
+// the entry names it, or names a shared target that renders into it.
+func reachesFileTarget(name string, targets []string) bool {
+	for _, aimed := range targets {
+		if aimed == name {
+			return true
+		}
+		if target, ok := LookupTarget(aimed); ok && slices.Contains(target.RendersInto, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // TargetNames returns the names of the table's targets in table order.

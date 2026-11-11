@@ -73,8 +73,7 @@ type Renderer struct {
 // A target with no entry loses its marked file.
 // A target the exclude list does not cover, or whose file lacks the marker, is left alone with a warning.
 // A JSON-object target's entries merge into the keys its file already holds, so that file needs no marker.
-// A render whose Only names claude-file renders codex-file too,
-// so a worktree that already exists takes a changed repository entry at its next render.
+// A shared target has no file of its own: its entries render into the files of the targets it renders into.
 // The lock wait running out fails the render before it writes anything.
 func (r Renderer) Render(req RenderRequest) (Report, error) {
 	var report Report
@@ -109,9 +108,8 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 		report.warn(fmt.Sprintf("%s holds something heddle did not write, so no file is written; way forward: move or remove it, then run `%s`", tempDir, renderVerb))
 	}
 
-	only := withCodexFile(req.Only)
 	for _, target := range targetTable {
-		if target.Delivery != DeliveryFile || (len(only) > 0 && !slices.Contains(only, target.Name)) {
+		if target.Delivery != DeliveryFile || len(target.RendersInto) > 0 || (len(req.Only) > 0 && !slices.Contains(req.Only, target.Name)) {
 			continue
 		}
 		if target.JSONObject {
@@ -164,15 +162,6 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 		}
 	}
 	return report, nil
-}
-
-// withCodexFile returns only with codexFileTarget appended when it names claudeFileTarget and not codexFileTarget.
-// Otherwise it returns only itself.
-func withCodexFile(only []string) []string {
-	if slices.Contains(only, claudeFileTarget) && !slices.Contains(only, codexFileTarget) {
-		return append(slices.Clone(only), codexFileTarget)
-	}
-	return only
 }
 
 // warn adds a warning once.
@@ -276,14 +265,11 @@ func removeTempDir(dir string) error {
 // The claude-file target imports the AGENTS.md files the anchor holds when the anchor holds no CLAUDE.md.
 // The codex-file target opens with the anchor's AGENTS.md, or with its CLAUDE.md when the anchor holds no AGENTS.md.
 // It opens with neither file when the anchor holds neither.
-// An entry reaches the codex-file target when it names it, or when it is a repository entry that names claude-file,
-// so a Codex session gets the repository instructions a Claude session gets.
-// A shipped entry reaches the codex-file target only by naming it.
+// An entry reaches the target when it names it, or names a shared target that renders into it.
 func fileText(target Target, anchor string, entries []LayeredEntry) (string, bool, error) {
 	var shipped, repository []string
 	for _, entry := range entries {
-		if !slices.Contains(entry.Targets, target.Name) &&
-			!(target.Name == codexFileTarget && entry.Layer == LayerRepository && slices.Contains(entry.Targets, claudeFileTarget)) {
+		if !reachesFileTarget(target.Name, entry.Targets) {
 			continue
 		}
 		text := strings.Trim(entry.Text, "\n")
@@ -345,10 +331,14 @@ func fileExists(path string) bool {
 // A prompt target gives its passages joined by blank lines, and a target with no entry gives no text.
 // A JSON-object target gives the object its entries fold to, before any merge into the file.
 // The entries derived from the agents.yaml the anchor and boltDir resolve are among them.
+// A shared target is refused, since it renders into the files of other targets and has no text of its own.
 func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 	named, ok := LookupTarget(target)
 	if !ok {
 		return "", fmt.Errorf("unknown target %q; way forward: use one of %s", target, strings.Join(TargetNames(), ", "))
+	}
+	if len(named.RendersInto) > 0 {
+		return "", fmt.Errorf("target %q renders into the files of %s and has no text of its own; way forward: run `lym heddle show <target>` with one of them", target, strings.Join(named.RendersInto, ", "))
 	}
 	layers, err := r.read(boltDir)
 	if err != nil {

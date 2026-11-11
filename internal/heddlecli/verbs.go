@@ -43,6 +43,33 @@ func viewOf(entry heddleengine.LayeredEntry) entryView {
 	return entryView{Slug: entry.Slug, Layer: entry.Layer, Overridden: entry.Overridden, Order: entry.Order, Targets: entry.Targets}
 }
 
+// fileTargetView is the JSON form list prints of a file target and the anchor-relative files it renders into.
+type fileTargetView struct {
+	Target string   `json:"target"`
+	Files  []string `json:"files"`
+}
+
+// fileTargets returns every file target in table order with the files it renders into.
+func fileTargets() []fileTargetView {
+	var views []fileTargetView
+	for _, name := range heddleengine.TargetNames() {
+		if files := heddleengine.TargetFiles(name); len(files) > 0 {
+			views = append(views, fileTargetView{Target: name, Files: files})
+		}
+	}
+	return views
+}
+
+// fileTargetHelp returns the help lines naming each file target and the files it renders into at a worktree's anchor.
+func fileTargetHelp() string {
+	var out strings.Builder
+	out.WriteString("The file targets and the files each renders into at a worktree's anchor:\n")
+	for _, view := range fileTargets() {
+		fmt.Fprintf(&out, "  %-18s %s\n", view.Target, strings.Join(view.Files, ", "))
+	}
+	return out.String()
+}
+
 // layerFlagUsage is the help text of the --layer flag set and remove share.
 const layerFlagUsage = "the layer to change: empty for the repository's entries, " + heddleengine.OverrideLayer + " for the hub's override of a shipped entry"
 
@@ -99,7 +126,8 @@ func (c *heddleCLI) listCmd() *cobra.Command {
 without its text: the entries lym ships first, layer shipped, then the
 repository's, layer repository. A shipped entry whose text the hub's override
 replaces is marked overridden. An override file that does not load is reported
-in warnings and ignored.
+in warnings and ignored. file_targets names each file target and the files it
+renders into at a worktree's anchor.
 
 Example:
   lym heddle list`,
@@ -116,7 +144,7 @@ Example:
 			for _, entry := range layers.Ordered() {
 				entries = append(entries, viewOf(entry))
 			}
-			fields := map[string]any{"entries": entries}
+			fields := map[string]any{"entries": entries, "file_targets": fileTargets()}
 			if layers.OverrideWarning != "" {
 				fields["warnings"] = []string{layers.OverrideWarning}
 			}
@@ -193,19 +221,21 @@ slug lym ships is refused: shipped entries change only with a lym release.
                        whose heddle.yaml sets lym_override takes it
   --no-render          skip the render into the hub's worktrees
 
-An entry aimed at claude-settings holds one JSON object and no other target;
-every render merges it into the worktree's .claude/settings.local.json.
+` + fileTargetHelp() + `
+claude-file reaches Claude sessions alone, codex-file Codex sessions alone, and
+agents-file both. An entry aimed at claude-settings holds one JSON object and
+no other target; every render merges it into that file.
 
 The change is saved under the Bolt write lock with HEDDLE.md, the overview of
 every entry, rendered beside it. Every file target is then rendered into every
 live worktree of the hub, the prime, beams and task pairs, and the worktrees
 rendered and failed are printed, with render_warnings beside them for the
-warnings of the rendered ones or a failure to list the worktrees; a Claude
-session there takes the change at its next compaction. The board's detached Bolt sync then commits and pushes
+warnings of the rendered ones or a failure to list the worktrees; a session
+there takes the change at its next compaction. The board's detached Bolt sync then commits and pushes
 HEDDLE.md and the store. A refused change saves and renders nothing.
 
 Examples:
-  lym heddle set house-rules --text-file rules.md --order 10 --targets claude-file,claude-prompt
+  lym heddle set house-rules --text-file rules.md --order 10 --targets agents-file,claude-prompt
   lym heddle set house-deny --text-file deny.json --order 20 --targets claude-settings
   lym heddle set lym-batching --layer lym --text-file tuned.md`,
 		Args: cobra.ExactArgs(1),
@@ -319,7 +349,8 @@ func (c *heddleCLI) showCmd() *cobra.Command {
 		Short:       "print what a target renders to now for the current worktree",
 		Annotations: operatorAnnotation,
 		Long: `Prints the text the named target renders to now for the current worktree and
-writes nothing.
+writes nothing. agents-file is refused, since its entries render into the files
+of claude-file and codex-file; show one of those instead.
 
 Example:
   lym heddle show claude-file`,

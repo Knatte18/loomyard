@@ -10,6 +10,8 @@
 // The entries lym ships come first, then the repository's.
 // A shipped entry an override replaces is marked overridden.
 // An override file that does not load is reported in warnings and ignored.
+// It prints in `file_targets` each file target and the files it renders into at a worktree's anchor.
+// Those come from heddle's target table, which `set`'s help also lists.
 // `get <slug>` prints one entry in full, a shipped entry with the text renders use.
 // It lists in shadowed any repository entry that shares its slug.
 //

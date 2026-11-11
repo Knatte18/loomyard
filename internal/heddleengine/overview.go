@@ -94,9 +94,11 @@ func targetReach(target Target) string {
 	if target.JSONObject {
 		return fmt.Sprintf("Merged into `%s` at every worktree's anchor; a key the file holds that heddle never set stays.", target.File)
 	}
-	reach := fmt.Sprintf("Rendered into `%s` at every worktree's anchor.", target.File)
-	if target.Name == codexFileTarget {
-		reach += fmt.Sprintf(" It also carries every hub entry aimed at `%s`.", claudeFileTarget)
+	reach := fmt.Sprintf("Rendered into %s at every worktree's anchor.", codeList(TargetFiles(target.Name)))
+	for _, shared := range targetTable {
+		if slices.Contains(shared.RendersInto, target.Name) {
+			reach += fmt.Sprintf(" It also carries every entry aimed at `%s`.", shared.Name)
+		}
 	}
 	return reach
 }

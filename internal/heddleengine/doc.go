@@ -7,9 +7,14 @@
 // The file sits beside the repository's own CLAUDE and AGENTS files.
 // The shipped entries come first under a level-one heading of their own, and the repository's after under theirs.
 // Each shipped entry of a text target opens with a level-two heading, so the file skips no heading level.
+// The claude-file target renders into CLAUDE.local.md, which a Claude session reads.
+// The codex-file target renders into AGENTS.override.md, which a Codex session reads.
+// The agents-file target is shared: it has no file of its own, and its entries render into both files.
 // The codex-file target opens with the anchor's AGENTS.md, else its CLAUDE.md.
-// It carries every repository entry aimed at claude-file, so a Codex session gets what a Claude session gets.
-// Shipped entries stay on claude-file alone, and a render that names claude-file renders codex-file too.
+// heddle.json carries a format version.
+// A store without one was written while claude-file rendered into both files,
+// so a read takes its claude-file targets as agents-file, and the next save writes the version.
+// The Bolt replayer decodes each side of a replayed commit the same way.
 //
 // The claude-settings target is a JSON-object target, rendered into the anchor's `.claude/settings.local.json`:
 // the settings every Claude session started in the worktree loads, one started by hand included.

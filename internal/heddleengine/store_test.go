@@ -5,6 +5,7 @@ package heddleengine
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -253,6 +254,54 @@ func TestStore(t *testing.T) {
 		got, _ := store.Get("a")
 		if got.Order != 9 || got.Text != "t" || len(got.Targets) != 1 || got.Targets[0] != "claude-file" {
 			t.Errorf("entry after partial Set = %+v", got)
+		}
+	})
+
+	t.Run("StoreVersionDecidesHowClaudeFileIsRead", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name    string
+			version string
+			targets string
+			want    []string
+		}{
+			{"ClaudeFile", "", `["claude-file"]`, []string{"agents-file"}},
+			{"ClaudeAndCodexFile", "", `["codex-file", "claude-file"]`, []string{"agents-file"}},
+			{"ClaudeFileBesideAPrompt", "", `["claude-prompt", "claude-file"]`, []string{"claude-prompt", "agents-file"}},
+			{"CodexFileAlone", "", `["codex-file"]`, []string{"codex-file"}},
+			{"AgentsFileBesideClaudeFile", "", `["agents-file", "claude-file"]`, []string{"agents-file"}},
+			{"VersionedClaudeFile", `"version": 1, `, `["claude-file"]`, []string{"claude-file"}},
+			{"NewerVersionedClaudeFile", `"version": 2, `, `["claude-file"]`, []string{"claude-file"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				data := `{` + tt.version + `"entries": [{"slug": "a", "text": "t", "order": 1, "targets": ` + tt.targets + `}]}`
+				dir := t.TempDir()
+				writeStoreFile(t, dir, data)
+				decoded, err := Decode([]byte(data))
+				if err != nil {
+					t.Fatalf("Decode() = %v", err)
+				}
+				for source, store := range map[string]Store{"Load": loadStore(t, dir), "Decode": decoded} {
+					if got := store.Entries[0].Targets; !slices.Equal(got, tt.want) {
+						t.Errorf("%s targets = %v; want %v", source, got, tt.want)
+					}
+				}
+			})
+		}
+
+		dir := t.TempDir()
+		saveStore(t, dir, Store{Entries: []Entry{entryFor("a", "t", 1, "claude-file")}})
+		if got := loadStore(t, dir).Entries[0].Targets; !slices.Equal(got, []string{"claude-file"}) {
+			t.Errorf("targets after Save and Load = %v; want claude-file kept", got)
+		}
+
+		newer := t.TempDir()
+		writeStoreFile(t, newer, `{"version": 2, "entries": [{"slug": "a", "text": "t", "order": 1, "targets": ["claude-file"]}]}`)
+		saveStore(t, newer, loadStore(t, newer))
+		if got := loadStore(t, newer).Version; got != 2 {
+			t.Errorf("version after Save and Load of a version 2 store = %d; want 2 kept", got)
 		}
 	})
 
