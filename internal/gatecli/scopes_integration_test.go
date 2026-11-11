@@ -629,10 +629,29 @@ func TestGateTest_Scopes(t *testing.T) {
 
 	t.Run("--gate with scope diff runs the computed scope", func(t *testing.T) {
 		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 5 }\n")
-		g := gate(t, pair, nil, "--gate", "webster-fix")
+		g := gate(t, pair, nil, "--gate", "pr-review")
 		wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)
-		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "computed" || run.GateKey != "webster-fix" {
-			t.Errorf("tier0 run record = %+v; want the computed scope form and gate key webster-fix", run)
+		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "computed" || run.GateKey != "pr-review" {
+			t.Errorf("tier0 run record = %+v; want the computed scope form and gate key pr-review", run)
+		}
+	})
+
+	t.Run("--gate with scope coverage runs whole on a whole fallback, and takes all_targets under the none scoper", func(t *testing.T) {
+		edit(t, "nested/n.go", "package nested\n\nvar Changed = 2\n")
+		g := gate(t, pair, nil, "--gate", "darn-write")
+		wantArgs(t, g, []string{"./..."})
+		if !strings.Contains(g.stdout.String(), "falls back to whole: nested/n.go is neither a Markdown file nor under a Go package directory") ||
+			strings.Contains(g.stdout.String(), " coverage: ") {
+			t.Errorf("stdout = %q; want the whole fallback and no coverage line", g.stdout.String())
+		}
+
+		writeScoper(t, "none")
+		defer writeScoper(t, "go")
+		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 11 }\n")
+		g = gate(t, pair, nil, "--gate", "darn-write")
+		wantArgs(t, g, []string{"./..."})
+		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "computed" || run.GateKey != "darn-write" {
+			t.Errorf("tier run record = %+v; want the computed scope form and gate key darn-write", run)
 		}
 	})
 

@@ -97,8 +97,12 @@
 // A tier is written whole with one `lym config gate --set 'tiers.tierN={...}'` flow mapping.
 // It may also be written one key at a time, as `--set tiers.tier0.env.LYM_TEST_TIER=0` or `--set build.timeout_min=10`.
 // A key no tier or build step holds is refused.
-// `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`,
+// `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|coverage|all}`,
 // so a hub file that sets one key keeps the template's value for every other.
+// ScopeCoverage is the `diff` scope with each importing package narrowed to the tests its coverage map selects.
+// The template gives it to `webster-fix`, `darn-write` and `code-burler-fix`, and keeps `pr-review` on `diff`.
+// It is a new value, so a hub file holding `diff` keeps its meaning,
+// and a binary that predates the value refuses a hub file holding it until it updates.
 // `tier_parallel` is an open map from a tier name to this machine's parallel for it.
 // A GateKey may also hold `lints`, the lint steps its call runs after its tiers, each LintComments or LintPattern.
 // The template's `card` key lists both.
@@ -156,7 +160,7 @@
 // a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`;
 // a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces;
 // a `tier_parallel` entry that is no integer of at least 1;
-// a gate key whose scope is not `card`, `diff` or `all`;
+// a gate key whose scope is not `card`, `diff`, `coverage` or `all`;
 // a `card` scope on any key but `card` and `batch`; a lint other than `comments` or `pattern`;
 // a report other than ReportRedundancy, `redundancy`.
 // A GateKey may also hold `fixer`, a model-spec naming the cold fixer an agent's red call hands its failures to.
@@ -218,14 +222,14 @@
 //	Recipe                         Row                                         Key              Scope
 //	loom                           Webster, per card                           card             card
 //	loom                           Webster, per batch                          batch            card
-//	loom                           Webster, verify fixers                      webster-fix      diff
+//	loom                           Webster, verify fixers                      webster-fix      coverage
 //	loom                           Webster, end gate                           webster          all
 //	loom                           Parent-Align                                parent-align     all
-//	tapestry, darn, sampler        Code-Burler-Fix                             code-burler-fix  diff
+//	tapestry, darn, sampler        Code-Burler-Fix                             code-burler-fix  coverage
 //	tapestry, darn, pawl, sampler  PR-Review                                   pr-review        diff
 //	tapestry, darn, sampler        Finalize                                    finalize         all
 //	adopt                          lym adopt check <subject>, in its worktree  adopt            all
-//	darn                           Darn-Write                                  darn-write       diff
+//	darn                           Darn-Write                                  darn-write       coverage
 //	darn                           Darn-Write, Code-Burler-Fix, Finalize       the row's key    the touched trees' targets
 //
 // The last line holds for a diff wholly under darn's `tree_scope`:

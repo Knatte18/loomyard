@@ -91,6 +91,9 @@ type Selection struct {
 	Tests []string
 	// Miss is set when the package runs whole instead, and Tests is then empty.
 	Miss *Miss
+	// Recorded are the tests the map records, in its order; empty with a Miss.
+	// A caller tells from them which of the package's tests the map has no coverage for.
+	Recorded []MapTest
 }
 
 // Selector selects importing packages' tests from their coverage maps against one working tree.
@@ -161,7 +164,7 @@ func (s *Selector) Select(pkg string) (Selection, error) {
 			changed[key] = true
 		}
 	}
-	return Selection{Tests: selectTests(m, changed)}, nil
+	return Selection{Tests: selectTests(m, changed), Recorded: m.Tests}, nil
 }
 
 // mapMiss returns the miss of a map a selection cannot use, or nil for a usable map.

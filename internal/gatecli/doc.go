@@ -65,6 +65,7 @@
 // A key of scope `card` takes the `--card` ids as the card form.
 // It is refused when none is given, naming the key and the way forward of passing `--card <id>` per card.
 // A key of scope `all` is the `--all` form, and a key of scope `diff` is the computed form.
+// A key of scope `coverage` is the computed form too, narrowed as the Coverage scope section says.
 // `--card` ids beside a key of another scope are ignored.
 // Explicit `<targets>` beside `--gate` replace the key's scope.
 // Each run record carries the key as `gate_key`, empty for a call with manual flags.
@@ -363,6 +364,41 @@
 // and a whole pass with empty args covers a skipping run in the green record.
 // A misplaced or malformed watch marker refuses the call, as a guard scan error does.
 // Bound: `-skip` matches by name in every package of the run, so a test of the same name elsewhere is skipped too.
+//
+// # Coverage scope
+//
+// A key of scope `gateslot.ScopeCoverage` derives its scope as `diff` does.
+// That covers the base per tier, the whole-tree fallbacks, the guard and watched tests and `inert_paths`.
+// Under the `go` scoper it then narrows each tier of a narrowed share; under any other scoper it is `diff`.
+// The narrowing only removes tests of packages the diff does not touch, so it never runs a package `diff` would not.
+// It narrows no call with explicit targets, `tree_scope`'s and the failed-test rerun's included,
+// and no call whose words after `--` carry a filter flag.
+// Nor does it narrow a tier whose command lacks `{args}` or a target placeholder, or one with `carry: false`.
+// `impactset.ModuleTargets` keeps apart the changed packages, the binary builders and the importers.
+// A changed package and a binary builder run every test of the tier, as under `diff`.
+// An importing package runs, per tier, the union of four sets of tests.
+// The first is the tests its coverage map selects through `testcover.Selector`.
+// The next two are the tests the map does not record and those it marks out of process or unresolved.
+// The last is its `//lym:guard` tests.
+// The union holds only Test functions the tier runs, read from each one's `tiergate.Require`.
+// They are declared in a test file `go/build` admits on the host under the tier's tag, and the watch skip drops some.
+// A selector miss runs the package whole, and a package with an empty union runs nothing for the tier.
+// The maps are read from the hub's `testcover.Dir` and never built.
+// Outside a hub every importing package misses, and so does each one when the working tree cannot be read.
+// A tier runs its whole packages as one run, as under `diff`, and its selected packages as a second run.
+// That run's scope form is `selected`.
+// Its `{args}` are the call's own words and `-run '^(<names>)$'`, the names of every selected package together.
+// A name selected in one package also runs in another that declares it.
+// A pattern past `greenCommandBudget` runs the selected packages whole in the first run instead.
+// The selected run's green entry carries the filter, so it is never a diff base and never stands in for another run.
+// The filter is in the run's args, not the call's, so the empty-tier check still reads the run.
+// `--stop-on-fail`, the failed-test rerun and the closing line name the selected run by its tier, as any tier run.
+// Before the runs, stderr names each package of a narrowed tier as `gate test: tierN coverage: <package> <label>`.
+// The label is one of `changed`, `whole: lym binary`, `miss: <reason>: <detail>` and `whole: over budget`.
+// Otherwise it is `selected <n> of <m>`, with m the package's tests of the tier, or `none selected`.
+//
+// Bound: a test that runs changed code in a child process the spawn scan does not see is not selected.
+// The landing gate, of scope `all`, still runs it.
 //
 // # Hub resolution
 //
@@ -741,9 +777,9 @@
 //	  parent-align: {tiers: [0, 1], scope: all}
 //	  finalize: {tiers: [0, 1], scope: all}
 //	  adopt: {tiers: [0, 1], scope: all}
-//	  webster-fix: {tiers: [0, 1], scope: diff}
-//	  darn-write: {tiers: [0, 1], scope: diff}
-//	  code-burler-fix: {tiers: [0, 1], scope: diff}
+//	  webster-fix: {tiers: [0, 1], scope: coverage}
+//	  darn-write: {tiers: [0, 1], scope: coverage}
+//	  code-burler-fix: {tiers: [0, 1], scope: coverage}
 //	  pr-review: {tiers: [0], scope: diff}
 //
 // A tier is written whole with one flow mapping, for example:

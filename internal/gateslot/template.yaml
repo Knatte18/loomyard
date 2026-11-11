@@ -16,8 +16,9 @@ redundancy_budget_min: 10  # minutes the redundancy report step may spend on its
 # One key of a declared tier is set alone with its dotted path: lym config gate --set tiers.tier0.env.LYM_TEST_TIER=0
 tiers: {}
 
-# Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.
-# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree), and webster-fix, darn-write, code-burler-fix and pr-review (scope diff, the diff from the merge base).
+# Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|coverage|all}.
+# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree), webster-fix, darn-write and code-burler-fix (scope coverage), and pr-review (scope diff, the diff from the merge base).
+# The scope coverage is the diff scope with each importing package narrowed to the tests its coverage map selects, while a changed package runs whole; under a scoper other than go it is the diff scope.
 # The scope card is only for the card and batch keys.
 # A key may also hold lints, the lint steps its call runs after the tiers against HEAD: comments (fixed-column-wrapped breaks and over-long lines in // comments) and pattern (PATTERN.md grown past its headroom line).
 # A key may also hold reports, the advisory steps its call runs after the lints, which never change its result: redundancy (judges the diff's new and changed Go tests against the coverage maps and writes the verdicts into the worktree's gate directory); reports: [] turns them off.
@@ -30,9 +31,9 @@ gates:
   parent-align: {tiers: [0], scope: all, reports: [redundancy]}
   finalize: {tiers: [0], scope: all}
   adopt: {tiers: [0], scope: all}
-  webster-fix: {tiers: [0], scope: diff}
-  darn-write: {tiers: [0], scope: diff, reports: [redundancy]}
-  code-burler-fix: {tiers: [0], scope: diff, reports: [redundancy]}
+  webster-fix: {tiers: [0], scope: coverage}
+  darn-write: {tiers: [0], scope: coverage, reports: [redundancy]}
+  code-burler-fix: {tiers: [0], scope: coverage, reports: [redundancy]}
   pr-review: {tiers: [0], scope: diff}
 
 # How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, dotnet derives the impacted C# test projects and classes from the type-name closure over test classes, none runs every tier whole.

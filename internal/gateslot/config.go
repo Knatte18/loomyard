@@ -487,9 +487,9 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 			if name != cardGateKey && name != "batch" {
 				return nil, guidedError{fmt.Errorf("gate config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
 			}
-		case scopeDiff, scopeAll:
+		case scopeDiff, ScopeCoverage, scopeAll:
 		default:
-			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
+			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff, coverage or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
 		}
 		for _, lint := range key.Lints {
 			if lint != LintComments && lint != LintPattern {

@@ -6,7 +6,7 @@
 // Git runs through `gitexec.Run`, and `go list` is a logged spawn.
 // It diffs the base to the working tree, not to HEAD:
 // tracked changes, staged or not, a rename counted at both paths, and the untracked files git does not ignore.
-// It returns Targets{Whole, Fallback, Base, Modules, Guards, BinaryTests}.
+// It returns Targets{Whole, Fallback, Base, Modules, Guards, BinaryTests, Unwatched}.
 // Each ModuleTargets names a module directory, `.` for the root,
 // and its module-relative package arguments in the order the graph lists them, test-less packages included.
 // Targets also names the base it diffed from whenever that base was usable.
@@ -32,6 +32,10 @@
 // So the set also gets every package whose tests import `internal/testkit/lymbin`, which builds the binary;
 // any other change reaches those packages through the import graph only.
 // Targets.BinaryTests lists those packages, inside the set or not.
+// Each ModuleTargets keeps apart the packages the diff does not touch.
+// Importers names those the set holds only because they reach a changed package.
+// BinaryBuilders names those it holds because `cmd/lym` changed and their tests build the binary.
+// The rest of Packages are the changed packages, so a caller can run them whole and narrow the importers.
 // A diff touching only Markdown files yields no module and no package.
 // The context is checked before each git read, and cancelling it kills a stalled `go list`;
 // a local git read already in flight runs to its end.

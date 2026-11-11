@@ -375,6 +375,18 @@ func TestSelectorSelect(t *testing.T) {
 			case !reflect.DeepEqual(got.Tests, tt.want):
 				t.Errorf("Select(b).Tests = %v; want %v", got.Tests, tt.want)
 			}
+			var gotRecorded, wantRecorded []string
+			for _, recorded := range got.Recorded {
+				gotRecorded = append(gotRecorded, recorded.Name)
+			}
+			if got.Miss == nil {
+				for _, recorded := range selectFixtureMap(committed).Tests {
+					wantRecorded = append(wantRecorded, recorded.Name)
+				}
+			}
+			if !slices.Equal(gotRecorded, wantRecorded) {
+				t.Errorf("Select(b).Recorded = %v; want %v, the map's tests, and none with a miss", gotRecorded, wantRecorded)
+			}
 		})
 	}
 }

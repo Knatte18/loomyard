@@ -202,6 +202,10 @@ type testRequest struct {
 
 	// The fields below are filled by runTest once the hub is resolved and the config loaded, and read by the tier runs.
 
+	// coverage is set when the --gate key's scope is coverage, so the computed scope narrows its importing packages.
+	coverage bool
+	// coverageMaps is the hub's coverage map directory; empty outside a hub.
+	coverageMaps string
 	// root is the worktree root the tiers' dirs and a prebuild are relative to.
 	root string
 	// prebuiltStore is the hub's store of prebuilt `lym` binaries; empty outside a hub.

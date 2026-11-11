@@ -206,6 +206,14 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	if !slices.Contains(warpPaths, "uncommitted.txt") {
 		t.Errorf("Status() warp-side paths = %v; want it to contain uncommitted.txt", warpPaths)
 	}
+
+	codeChanges, err := f.CodeWorktreeChanges()
+	if err != nil {
+		t.Fatalf("CodeWorktreeChanges() error = %v", err)
+	}
+	if !slices.Equal(slices.Sorted(slices.Values(codeChanges)), slices.Sorted(slices.Values(warpPaths))) {
+		t.Errorf("CodeWorktreeChanges() = %v; want exactly the code side's paths of Status(), %v", codeChanges, warpPaths)
+	}
 	if !slices.Contains(weftPaths, filepath.Join("_lym", "config.yaml")) {
 		t.Errorf("Status() weft-side paths = %v; want it to contain _lym/config.yaml", weftPaths)
 	}

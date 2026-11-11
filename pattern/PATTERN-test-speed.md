@@ -49,11 +49,11 @@ No site spells a tier list, a scope or a test command.
 |---|---|---|
 | `card` | each Webster card, through `--card`, then the comment lint and the headroom lint | `card` |
 | `batch` | each Webster batch, each tier run failing on a tmux server socket its end-of-package check finds | `card` |
-| `webster-fix` | Webster-Burler-Fix's verify fixers, after the headroom and comment lints | `diff` |
+| `webster-fix` | Webster-Burler-Fix's verify fixers, after the headroom and comment lints | `coverage` |
 | `webster` | Webster's end gate | `all` |
 | `parent-align`, `finalize` | Parent-Align and Finalize | `all` |
 | `adopt` | `lym adopt check <subject>`, in-process through `gatecli.RunGate` in the subject's worktree | `all` |
-| `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
+| `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `coverage` |
 | `pr-review` | PR-Review's gate over the agent's commits | `diff` |
 | By hand | the `tier3` tier | |
 

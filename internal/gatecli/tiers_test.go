@@ -435,6 +435,24 @@ func TestPlanTierRuns(t *testing.T) {
 			request: testRequest{tiers: []int{0}, targets: []string{"./a"}},
 			want:    []string{"tier0 targets dir=. ./a"},
 		},
+		{
+			name:    "a coverage share runs its whole packages, then its selected packages under an anchored -run after the call's words",
+			request: testRequest{args: []string{"-v"}},
+			scope: scope{form: scopeComputed, tiers: map[int]tierScope{0: {
+				modules:       []moduleTargets{{dir: ".", targets: []string{"./a"}}},
+				selected:      []moduleTargets{{dir: ".", targets: []string{"./b", "./c"}}},
+				selectedTests: []string{"TestX", "TestY"},
+			}}},
+			want: []string{"tier0 computed dir=. ./a args=-v", "tier0 selected dir=. ./b ./c args=-v -run ^(TestX|TestY)$"},
+		},
+		{
+			name: "a coverage share with only selected packages runs the selected run alone",
+			scope: scope{form: scopeComputed, tiers: map[int]tierScope{0: {
+				selected:      []moduleTargets{{dir: ".", targets: []string{"./b"}}},
+				selectedTests: []string{"TestX"},
+			}}},
+			want: []string{"tier0 selected dir=. ./b args=-run ^(TestX)$"},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -572,6 +590,22 @@ func TestPlanTierRuns(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTierNumbers(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	plan := []tierRun{
+		{number: 1},
+		{number: 1, scopeForm: "selected"},
+		{number: 0},
+		{number: 0, vetStep: true},
+		{number: 2, guardStep: true},
+	}
+	if got, want := tierNumbers(plan), []int{1, 0}; !slices.Equal(got, want) {
+		t.Errorf("tierNumbers() = %v; want %v, each listed tier once and no vet or guard step", got, want)
 	}
 }
 

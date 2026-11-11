@@ -18,6 +18,15 @@ func TestTargetsFor(t *testing.T) {
 	root := func(packages ...string) []ModuleTargets {
 		return []ModuleTargets{{Dir: ".", Packages: packages}}
 	}
+	// withImporters returns modules with its one module's Importers set to importers.
+	withImporters := func(modules []ModuleTargets, importers ...string) []ModuleTargets {
+		modules[0].Importers = importers
+		return modules
+	}
+	fromA := func() []ModuleTargets {
+		return withImporters(root("./cmd/lym", "./internal/a", "./internal/b", "./internal/c", "./internal/tmuxonly"),
+			"./cmd/lym", "./internal/b", "./internal/c", "./internal/tmuxonly")
+	}
 
 	binaryTests := []string{"internal/e"}
 	graphWithoutLymbin := moduleGraph{byImportPath: map[string]pkg{}, byDir: map[string]pkg{}}
@@ -28,6 +37,17 @@ func TestTargetsFor(t *testing.T) {
 		}
 	}
 
+	// The importing-builder graph is the test graph plus internal/f.
+	// internal/f imports internal/a, and its tests build the binary.
+	var withBuilderPackages []pkg
+	for _, p := range testGraph().byImportPath {
+		withBuilderPackages = append(withBuilderPackages, p)
+	}
+	withBuilderPackages = append(withBuilderPackages,
+		pkg{ImportPath: "m/internal/f", Dir: "internal/f", Imports: []string{"m/internal/a"}, TestImports: []string{"m/internal/testkit/lymbin"}})
+	graphWithImportingBuilder := newModuleGraph(withBuilderPackages)
+	builtByEAndF := []string{"internal/e", "internal/f"}
+
 	tests := []struct {
 		name    string
 		graph   *moduleGraph
@@ -37,11 +57,11 @@ func TestTargetsFor(t *testing.T) {
 		want    Targets
 	}{
 		{
-			name:    "one changed package yields it and its reverse dependencies, tmux and llm test imports included",
+			name:    "one changed package yields it and its reverse dependencies as importers, tmux and llm test imports included",
 			changed: []string{"internal/a/a.go"},
 			guards:  guards,
 			want: Targets{
-				Modules:     root("./cmd/lym", "./internal/a", "./internal/b", "./internal/c", "./internal/tmuxonly"),
+				Modules:     fromA(),
 				Guards:      map[string][]GuardTest{"internal/d": guardsD},
 				BinaryTests: binaryTests,
 			},
@@ -49,12 +69,50 @@ func TestTargetsFor(t *testing.T) {
 		{
 			name:    "a change to a dependency of cmd/lym leaves out a package that reaches it only through the binary",
 			changed: []string{"internal/b/b.go"},
-			want:    Targets{Modules: root("./cmd/lym", "./internal/b", "./internal/c"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
+			want:    Targets{Modules: withImporters(root("./cmd/lym", "./internal/b", "./internal/c"), "./cmd/lym", "./internal/c"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
 		},
 		{
-			name:    "a change to the cmd/lym main package pulls in every package that builds the binary",
+			name:    "a change to the cmd/lym main package pulls in every package that builds the binary as a binary builder",
 			changed: []string{"cmd/lym/main.go"},
+			want: Targets{
+				Modules:     []ModuleTargets{{Dir: ".", Packages: []string{"./cmd/lym", "./internal/e"}, BinaryBuilders: []string{"./internal/e"}}},
+				Guards:      map[string][]GuardTest{},
+				BinaryTests: binaryTests,
+			},
+		},
+		{
+			name:    "a changed package whose tests build the binary stays changed beside a cmd/lym change",
+			changed: []string{"cmd/lym/main.go", "internal/e/e.go"},
 			want:    Targets{Modules: root("./cmd/lym", "./internal/e"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
+		},
+		{
+			name:    "a package reached by imports that also builds the binary is a binary builder when cmd/lym changed too",
+			graph:   &graphWithImportingBuilder,
+			changed: []string{"internal/a/a.go", "cmd/lym/main.go"},
+			want: Targets{
+				Modules: []ModuleTargets{{
+					Dir:            ".",
+					Packages:       []string{"./cmd/lym", "./internal/a", "./internal/b", "./internal/c", "./internal/e", "./internal/f", "./internal/tmuxonly"},
+					Importers:      []string{"./internal/b", "./internal/c", "./internal/tmuxonly"},
+					BinaryBuilders: []string{"./internal/e", "./internal/f"},
+				}},
+				Guards:      map[string][]GuardTest{},
+				BinaryTests: builtByEAndF,
+			},
+		},
+		{
+			name:    "a package reached by imports that also builds the binary stays an importer while cmd/lym is unchanged",
+			graph:   &graphWithImportingBuilder,
+			changed: []string{"internal/a/a.go"},
+			want: Targets{
+				Modules: []ModuleTargets{{
+					Dir:       ".",
+					Packages:  []string{"./cmd/lym", "./internal/a", "./internal/b", "./internal/c", "./internal/f", "./internal/tmuxonly"},
+					Importers: []string{"./cmd/lym", "./internal/b", "./internal/c", "./internal/f", "./internal/tmuxonly"},
+				}},
+				Guards:      map[string][]GuardTest{},
+				BinaryTests: builtByEAndF,
+			},
 		},
 		{
 			name:    "a change to the cmd/lym main package over a module without the binary builder adds nothing",
@@ -144,7 +202,7 @@ func TestTargetsFor(t *testing.T) {
 			guards:  guards,
 			watched: map[string][]WatchedTest{"internal/d": {{Name: "TestGuardD2", File: "internal/d/d_test.go", Patterns: []string{"*.sql"}}}},
 			want: Targets{
-				Modules:     root("./cmd/lym", "./internal/a", "./internal/b", "./internal/c", "./internal/tmuxonly"),
+				Modules:     fromA(),
 				Guards:      map[string][]GuardTest{"internal/d": {{Name: "TestGuardD", Tier: 0}}},
 				BinaryTests: binaryTests,
 			},
@@ -154,7 +212,7 @@ func TestTargetsFor(t *testing.T) {
 			changed: []string{"internal/a/a.go"},
 			watched: map[string][]WatchedTest{"internal/d": {{Name: "TestW", File: "internal/d/d_test.go", Patterns: []string{"*.sql"}}}},
 			want: Targets{
-				Modules:     root("./cmd/lym", "./internal/a", "./internal/b", "./internal/c", "./internal/tmuxonly"),
+				Modules:     fromA(),
 				Guards:      map[string][]GuardTest{},
 				BinaryTests: binaryTests,
 			},

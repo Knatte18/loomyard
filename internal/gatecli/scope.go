@@ -57,6 +57,10 @@ type tierScope struct {
 	noTests bool
 	// skip names the `//lym:watch` tests of modules that the tier's diff leaves alone, sorted.
 	skip []string
+	// selected are a coverage share's importing packages that run only the tests selectedTests names, per module.
+	// Both are empty under every other scope.
+	selected      []moduleTargets
+	selectedTests []string
 }
 
 // scope is what a call's tiers run over.
@@ -86,23 +90,28 @@ type scope struct {
 	// skip names the `//lym:watch` tests of modules that the scope's changed files leave alone, sorted.
 	// Each listed tier's run skips them.
 	skip []string
+	// selected and selectedTests are the tier's coverage narrowing, set from the tier's share.
+	selected      []moduleTargets
+	selectedTests []string
 	// changed holds the worktree-relative paths a --card scope's changes are read as, when changesRead is set.
 	// The guard scan drops the watched guard tests they leave alone.
 	changed     []string
 	changesRead bool
 }
 
-// forTier returns s with the narrowing of tier number in place of its own whole, modules, noTests and skip.
+// forTier returns s with the narrowing of tier number in place of its own whole, modules, noTests, skip and selection.
 func (s scope) forTier(number int) scope {
 	if share, ok := s.tiers[number]; ok {
 		s.whole, s.modules, s.noTests, s.skip = share.whole, share.modules, share.noTests, share.skip
+		s.selected, s.selectedTests = share.selected, share.selectedTests
 	}
 	return s
 }
 
 // withGateScope returns request with the scope form its --gate key names in place of the scope flags.
-// A key of scope all is the --all form, and a key of scope diff is the computed form.
-// A key of scope card keeps the --card ids; the other two scopes drop them.
+// A key of scope all is the --all form, and a key of scope diff or coverage is the computed form.
+// A key of scope coverage also marks the request to narrow its importing packages.
+// A key of scope card keeps the --card ids; the other scopes drop them.
 // Explicit targets replace the key's scope and a call with no key is returned unchanged.
 func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 	if request.gate == "" || len(request.targets) > 0 {
@@ -114,6 +123,9 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 		request.cards = nil
 	case "diff":
 		request.cards = nil
+	case gateslot.ScopeCoverage:
+		request.cards = nil
+		request.coverage = true
 	}
 	return request
 }
@@ -141,6 +153,8 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 // A --card scope is the cards' packages per module.
 // With request.mainPackages it also holds every package main of tier0's module, listed once.
 // It adds the declared tiers whose build tag brings a file into one of those packages.
+// Under a key of scope coverage, narrowCoverage narrows each tier of a narrowed share.
+// It names each package of such a tier on request.stderr; the selections are read once per call.
 // A narrowed share, and a --card scope, skip the `//lym:watch` tests of their packages that no changed file concerns.
 // A --card scope reads its changed files as the diff from the merge base with the parent branch.
 // With no parent branch or an unreadable diff it skips none.
@@ -229,6 +243,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 	groups, wholeTiers := diffBaseGroups(cfg, location, root, request, form, green)
 	shares := map[int]tierScope{}
 	var guards map[string][]impactset.GuardTest
+	selections := coverageSelections(ctx, cfg, location, root, request)
 	narrowed := false
 	anyWhole := len(wholeTiers) > 0
 	for _, group := range groups {
@@ -263,6 +278,13 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 		}
 		for _, number := range group.tiers {
 			shares[number] = share
+			if tier, narrows := coverageTier(cfg, request, number); narrows && !targets.Whole {
+				var lines []string
+				shares[number], lines = narrowCoverage(share, targets, root, number, tier, selections)
+				for _, line := range lines {
+					printLine(request.stderr, line)
+				}
+			}
 		}
 	}
 	for _, number := range wholeTiers {

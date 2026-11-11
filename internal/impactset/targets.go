@@ -42,6 +42,12 @@ type ModuleTargets struct {
 	Dir string
 	// Packages are the module-relative package arguments, in the order the module graph lists them.
 	Packages []string
+	// Importers are the Packages the set holds only because their build or tests reach a changed package, sorted.
+	// The diff touches none of their files.
+	Importers []string
+	// BinaryBuilders are the Packages the set holds because the `cmd/lym` package changed and their tests build its binary.
+	// The diff touches none of their files; they are sorted, and no package is both an importer and a binary builder.
+	BinaryBuilders []string
 }
 
 // DeriveTargets derives the impacted set of the diff between base and the working tree in worktree.
@@ -131,14 +137,20 @@ func ChangedPaths(ctx context.Context, worktree, base string) ([]string, error) 
 // the changed paths' impacted set over the graph, as root-module targets, or a Whole fallback.
 // guards and watched map a package directory to its guard tests and its watched tests.
 func targetsFor(graph moduleGraph, changedPaths []string, guards map[string][]GuardTest, watched map[string][]WatchedTest) Targets {
-	set, fallback := impactedFor(graph, changedPaths)
+	set, changed, fallback := impactedFor(graph, changedPaths)
 	if fallback != "" {
 		return wholeTargets("", fallback)
 	}
 
 	targets := Targets{Guards: map[string][]GuardTest{}, BinaryTests: graph.addBinaryBuildingTests(map[string]bool{})}
 	if len(set) > 0 {
-		targets.Modules = []ModuleTargets{{Dir: ".", Packages: packageArgs(graph.packageDirs(set))}}
+		importers, builders := graph.splitUnchanged(set, changed, targets.BinaryTests)
+		targets.Modules = []ModuleTargets{{
+			Dir:            ".",
+			Packages:       packageArgs(graph.packageDirs(set)),
+			Importers:      graph.packageArgsOf(importers),
+			BinaryBuilders: graph.packageArgsOf(builders),
+		}}
 	}
 	unwatched := UnwatchedTests(watched, changedPaths)
 	for dir, tests := range guards {

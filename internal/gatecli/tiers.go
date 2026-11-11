@@ -23,6 +23,8 @@ const (
 	scopeAll     = "all"
 	scopeGuard   = "guard"
 	scopeVet     = "vet"
+	// scopeSelected labels the run of a coverage share's selected tests in its importing packages.
+	scopeSelected = "selected"
 )
 
 // roleClause closes every refusal that sends the caller to `lym config gate`: the steps need the prime,
@@ -75,6 +77,8 @@ func tierName(number int) string {
 // A narrowed tier whose share names watched tests to skip gets `-skip '^(<names>)$'` after the call's own words.
 // It gets none when those words carry a filter flag or the command holds no {args}.
 // A line on request.stderr names the tests.
+// A tier whose coverage share selects tests gets a second run over the selected packages, which selectedTestsRun builds;
+// the tier's own run is left out when it has no invocation, and is no build-only run.
 // A guard run is a placeholder whose packages and names the run fills from sc.guards.
 // A covered tier is named on request.stderr when it has one.
 // A tier a no-test-class scope runs whole is named on request.stderr when it has one.
@@ -138,7 +142,13 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 			run.skip = share.skip
 			printLine(request.stderr, fmt.Sprintf("gate test: %s skips %s, since no changed file matches their //lym:watch patterns", tierName(number), strings.Join(share.skip, ", ")))
 		}
-		runs = append(runs, run)
+		selects := !share.whole && !tier.NoCarry && len(share.selected) > 0
+		if !selects || len(invocations) > 0 || run.buildOnly {
+			runs = append(runs, run)
+		}
+		if selects {
+			runs = append(runs, selectedTestsRun(number, tier, share, request))
+		}
 	}
 	if sc.form == scopeTargets && len(wholeTiers) == len(kept) {
 		names := tierNames(kept)
@@ -211,6 +221,24 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 func printRunWholeNotices(request testRequest, wholeTiers []int) {
 	for _, number := range wholeTiers {
 		printLine(request.stderr, fmt.Sprintf("gate test: the command of %s holds neither {targets} nor {test_targets}, so it runs whole", tierName(number)))
+	}
+}
+
+// selectedTestsRun returns the run of the tier numbered number over the selected packages of share, a coverage share.
+// Its {args} are the call's own words followed by `-run '^(<names>)$'` over every selected package's tests.
+// The filter sits in the run's args, not the call's, so the empty-tier check still reads the run.
+// Its green entry carries the filter, so it never serves as a diff base or stands in for an unfiltered run.
+func selectedTestsRun(number int, tier gateslot.Tier, share scope, request testRequest) tierRun {
+	invocations := make([]invocation, len(share.selected))
+	for i, module := range share.selected {
+		invocations[i] = invocation{dir: module.dir, targets: module.targets}
+	}
+	return tierRun{
+		number:      number,
+		tier:        tier,
+		scopeForm:   scopeSelected,
+		invocations: invocations,
+		args:        append(slices.Clone(request.args), "-run", anchoredPattern(share.selectedTests)),
 	}
 }
 

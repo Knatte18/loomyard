@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testcover"
 )
 
 // siteLabelPrefix starts every holder and wait record this verb writes.
@@ -77,6 +78,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	cfg = cfg.WithDefaultDir(location.AnchorRel)
 	request.root = buildRoot(location, dir)
 	request.busyQuit = cfg.Limits().BusyQuit
+	if inHub {
+		request.coverageMaps = testcover.Dir(fabricengine.BoltDir(location.HubPath))
+	}
 
 	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
 	sc, err := computeScope(preCtx, cfg, location, request.root, request, green)
@@ -431,11 +435,12 @@ func preTierExpiry(preCtx, runCtx context.Context, request testRequest, step str
 	return fmt.Sprintf("gate test: the work before the first tier outlived its %s ceiling while %s; way forward: run the same command again, which a transient hang such as a stalled \"go list\" passes", request.preTierCeiling, step)
 }
 
-// tierNumbers returns the tier numbers of the listed runs of plan, leaving out the vet and guard steps.
+// tierNumbers returns the tier numbers of the listed runs of plan, each once, leaving out the vet and guard steps.
+// A tier's selected-tests run counts as that tier.
 func tierNumbers(plan []tierRun) []int {
 	var numbers []int
 	for _, run := range plan {
-		if !run.guardStep && !run.vetStep {
+		if !run.guardStep && !run.vetStep && !slices.Contains(numbers, run.number) {
 			numbers = append(numbers, run.number)
 		}
 	}

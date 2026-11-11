@@ -56,6 +56,7 @@
 // ignoring comments and formatting.
 // A function whose declaration differs, or that only the commit holds, is changed.
 // The tests that covered a changed function are selected, and with them every test the spawn scan marks.
+// A Selection also carries the map's recorded tests, so a caller can run the tests the map holds no coverage for.
 // A change the map cannot speak for is a Miss, under which the caller runs the package whole.
 // Such changes include:
 //   - the map missing, unreadable, failed or unmarked, or its commit unreadable;

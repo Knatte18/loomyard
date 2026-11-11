@@ -115,6 +115,16 @@ func (f *Fabric) CodeDirtyPaths() (checkout string, paths []string, err error) {
 	return f.warpPath, paths, nil
 }
 
+// CodeWorktreeChanges returns every uncommitted path of the code checkout's live worktree, untracked files included.
+// The paths are relative to that checkout and slash-separated; it never lists the records checkout.
+func (f *Fabric) CodeWorktreeChanges() ([]string, error) {
+	paths, err := f.code.WorktreeChangedFiles()
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: code checkout worktree changes: %w", err)
+	}
+	return paths, nil
+}
+
 // Status reports every uncommitted path on both sides of the warp<->weft pair, merged into one side-labelled slice.
 // It reads each checkout's live worktree, so no correspondence is involved.
 func (f *Fabric) Status() ([]ChangeEntry, error) {
