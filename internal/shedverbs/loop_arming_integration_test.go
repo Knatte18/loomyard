@@ -187,6 +187,39 @@ func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
 		})
 	}
 
+	t.Run("the loop's keeper leaves its arming refusal as the loop envelope", func(t *testing.T) {
+		f.resetRunning()
+		cmd := exec.Command(f.lym, "shed", "step", shedrun.SelfRunID, "--"+shedverbs.UntilStopFlag, "--"+shedverbs.LoopKeeperFlag+"=loop-int-2")
+		cmd.Dir = f.worktree
+		out, err := cmd.Output()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+			t.Fatalf("lym shed step with the keeper flag = %v; want exit 1", err)
+		}
+		if len(bytes.TrimSpace(out)) != 0 {
+			t.Errorf("keeper stdout = %q; want nothing printed, the refusal left for the waiter", out)
+		}
+
+		data, err := os.ReadFile(shedrun.LoopEnvelope(f.loc, shedrun.SelfRunID))
+		if err != nil {
+			t.Fatalf("read the loop envelope file: %v", err)
+		}
+		var file struct {
+			LoopID   string         `json:"loop_id"`
+			Envelope map[string]any `json:"envelope"`
+		}
+		if err := json.Unmarshal(data, &file); err != nil {
+			t.Fatalf("decode the loop envelope file %q: %v", data, err)
+		}
+		loop := shedverbs.LoopOfForTest(t, file.Envelope)
+		if file.LoopID != "loop-int-2" || file.Envelope["kind"] != shedverbs.KindBootstrap || loop["stop"] != string(shedverbs.LoopStopError) {
+			t.Errorf("envelope file loop id/kind/stop = %s/%v/%v; want loop-int-2/%s/%s", file.LoopID, file.Envelope["kind"], loop["stop"], shedverbs.KindBootstrap, shedverbs.LoopStopError)
+		}
+		if st := f.status(); st.State != shedengine.StateFailed {
+			t.Errorf("status state = %s; want failed", st.State)
+		}
+	})
+
 	t.Run("the child's captured stderr and trace carry its own id", func(t *testing.T) {
 		loop := shedverbs.LoopOfForTest(t, childLoopEnv)
 		stderrPath, _ := loop["stderr_path"].(string)
