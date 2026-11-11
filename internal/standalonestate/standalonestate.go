@@ -193,8 +193,8 @@ func userConfigDirFor(goos, localAppData, xdgConfigHome, home string) (string, b
 
 // AbsoluteUserConfigDir returns the per-user `lym` config directory as an absolute path,
 // so a file kept there never resolves against a process's working directory.
-// A relative XDG_CONFIG_HOME is ignored in favour of `$HOME/.config/lym`,
-// as the XDG Base Directory specification requires.
+// A relative XDG_CONFIG_HOME is ignored in favour of `$HOME/.config/lym`.
+// The XDG Base Directory specification requires that.
 // A relative HOME or LOCALAPPDATA is an error naming the variable, since no fallback is left.
 // It returns ("", false, nil) when no variable it reads is set, and creates nothing.
 func AbsoluteUserConfigDir() (string, bool, error) {
