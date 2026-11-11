@@ -146,7 +146,7 @@ func refuseDropLocalAnchorChange(l *lymcwd.Location, slug, weftPath, tracking st
 
 // upstreamAnchorStop compares the weft worktree at weftPath, as checked out, with the upstream tip upstream.
 // The fallback anchor and the wired names come from the weft's pair.
-// codeWorktree is where the way forward runs.
+// codeWorktree is the pair's code worktree root, whose anchored directory the way forward runs in.
 // It returns nil when the weft may take upstream in.
 func upstreamAnchorStop(weftPath, codeWorktree, upstream string) (*AnchorStopError, error) {
 	slug, ok := WeftWarpSlug(filepath.Base(weftPath))
@@ -168,6 +168,6 @@ func upstreamAnchorStop(weftPath, codeWorktree, upstream string) (*AnchorStopErr
 	return &AnchorStopError{
 		Reason: "origin's weft branch carries another anchor marker than this checkout, so its commits cannot be taken in without crossing an anchor change",
 		WayForward: fmt.Sprintf("run `lym fabric anchor %s --set %s` in %s, which integrates the other marker, then re-run this command",
-			slug, want, codeWorktree),
+			slug, want, lymVerbDir(codeWorktree)),
 	}, nil
 }

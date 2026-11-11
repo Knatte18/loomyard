@@ -826,6 +826,16 @@ var RewoundWayForwardForTest = rewoundWayForward
 // That function produces the way-forward line a diverged code branch names, so a test can assert its exact text.
 var CodeDivergedWayForwardForTest = codeDivergedWayForward
 
+// StopWayForwardForTest is BranchOutcome.stopWayForward, the repair step a stopped branch names.
+func StopWayForwardForTest(b BranchOutcome) string {
+	return b.stopWayForward()
+}
+
+// WeftDirtyStopForTest is weftDirtyStop for a Fabric holding only warpPath and weftPath.
+func WeftDirtyStopForTest(warpPath, weftPath, branch string, paths []string) *WeftStopError {
+	return (&Fabric{warpPath: warpPath, weftPath: weftPath}).weftDirtyStop(branch, paths, errors.New("dirty"))
+}
+
 // EntryFactsForTest is entryFacts, the facts an entry is classified from, including OwnedElsewhere.
 type EntryFactsForTest = entryFacts
 

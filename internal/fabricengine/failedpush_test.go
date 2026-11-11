@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 func composedPushLine(f fabricengine.FailedPush) string {
@@ -197,6 +199,30 @@ func TestFailedPushRecord(t *testing.T) {
 		}
 	})
 
+	// The anchored hub's task worktree records the anchor src/app.
+	// Its lym verbs run in anchoredDir, never at anchoredTask.
+	anchoredHub := t.TempDir()
+	anchoredTask := filepath.Join(anchoredHub, "task")
+	anchoredDir := filepath.Join(anchoredTask, "src", "app")
+	anchoredWeft := weftname.SiblingPath(anchoredHub, "task")
+	if err := os.MkdirAll(anchoredWeft, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(anchoredWeft, lymcwd.AnchorFileName), []byte("src/app\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The invalid-marker hub's task worktree records a marker that escapes the worktree, so its verbs run at the root.
+	invalidHub := t.TempDir()
+	invalidTask := filepath.Join(invalidHub, "task")
+	invalidWeft := weftname.SiblingPath(invalidHub, "task")
+	if err := os.MkdirAll(invalidWeft, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(invalidWeft, lymcwd.AnchorFileName), []byte("../escape\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	wayForwardRows := []struct {
 		name    string
 		failure fabricengine.FailedPush
@@ -326,6 +352,38 @@ func TestFailedPushRecord(t *testing.T) {
 			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/main", Branch: "main", Prime: true, Class: fabricengine.PushFailureNotFastForward},
 			"origin/main holds commits this branch lacks; run `git merge origin/main` in /hub/main, settle any conflict and commit, then run `git push` in /hub/main",
 		},
+		{
+			"AnchoredCodeTransportPushesInTheAnchoredDir",
+			fabricengine.FailedPush{Repo: "code", RepoPath: anchoredTask, Branch: "task", Class: fabricengine.PushFailureTransport},
+			"run `lym fabric push` in " + anchoredDir + " to retry the push",
+		},
+		{
+			"AnchoredRecordsAuthPushesInTheCodeWorktreesAnchoredDir",
+			fabricengine.FailedPush{Repo: "records", RepoPath: anchoredWeft, CodeWorktree: anchoredTask, Branch: "task-weft", Class: fabricengine.PushFailureAuth},
+			"fix this machine's permission to push task-weft on origin, then run `lym fabric push` in " + anchoredDir,
+		},
+		{
+			"AnchoredCodeNotFastForwardMergesAtTheRootAndPushesInTheAnchoredDir",
+			fabricengine.FailedPush{Repo: "code", RepoPath: anchoredTask, Branch: "task", Class: fabricengine.PushFailureNotFastForward},
+			"origin/task holds commits this branch lacks; run `git merge origin/task` in " + anchoredTask + ", settle any conflict and commit, then run `lym fabric push` in " + anchoredDir,
+		},
+		{
+			"RecordsWithNoCodeWorktreeNamesNoDirectory",
+			fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/task-weft", Branch: "task-weft", Class: fabricengine.PushFailureDeferred},
+			"run `lym fabric push` in  to retry the push",
+		},
+		{
+			"InvalidAnchorMarkerFallsBackToTheRoot",
+			fabricengine.FailedPush{Repo: "code", RepoPath: invalidTask, Branch: "task", Class: fabricengine.PushFailureTransport},
+			"run `lym fabric push` in " + invalidTask + " to retry the push",
+		},
+		{
+			"AnchoredCodeRewoundResetsAtTheRootAndPushesInTheAnchoredDir",
+			fabricengine.FailedPush{Repo: "code", RepoPath: anchoredTask, Branch: "task", Class: fabricengine.PushFailureRewound, OriginHead: "abc123", Commits: []string{"def456"}},
+			"origin rewound task to abc123, dropping def456; " +
+				"to accept the rewind, run `git reset --keep abc123` in " + anchoredTask + ", which drops the local commits past origin's head, then `lym fabric push` in " + anchoredDir + "; " +
+				"to restore the dropped commits, run `git push origin task` in " + anchoredTask + ", a plain fast-forward",
+		},
 	}
 	for _, tt := range wayForwardRows {
 		t.Run("WayForward_"+tt.name, func(t *testing.T) {
@@ -338,4 +396,47 @@ func TestFailedPushRecord(t *testing.T) {
 			}
 		})
 	}
+
+	stopRows := []struct {
+		name    string
+		outcome fabricengine.BranchOutcome
+		want    string
+	}{
+		{
+			"RewrittenCodeBranchPullsInTheAnchoredDir",
+			fabricengine.BranchOutcome{Repo: "code", Worktree: anchoredTask, CodeWorktree: anchoredTask, State: fabricengine.BranchRewritten},
+			"`lym fabric pull` in " + anchoredDir,
+		},
+		{
+			"AnchorStoppedPairWeftSetsTheAnchorInTheAnchoredDir",
+			fabricengine.BranchOutcome{Repo: "records", Slug: "task", Worktree: anchoredWeft, CodeWorktree: anchoredTask, State: fabricengine.BranchAnchorStopped, Anchor: "sub"},
+			"run `lym fabric anchor task --set sub` in " + anchoredDir,
+		},
+		{
+			"AnchorStoppedPrimeWeftSetsTheAnchorInTheAnchoredDir",
+			fabricengine.BranchOutcome{Repo: "records", Worktree: anchoredWeft, CodeWorktree: anchoredTask, State: fabricengine.BranchAnchorStopped, Anchor: "sub"},
+			"end every reed session of the hub, the orch's included, with `lym reed down` in each, and wait until no batten run of the hub is live; " +
+				"then run `lym fabric anchor --set sub` in " + anchoredDir + "; then run `lym beam start` again",
+		},
+		{
+			"DirtyRecordsBranchCommitsInTheAnchoredDirAndRestoresAtTheRecordsRoot",
+			fabricengine.BranchOutcome{Repo: "records", Worktree: anchoredWeft, CodeWorktree: anchoredTask, State: fabricengine.BranchDirty, Paths: []string{"notes/a.md"}},
+			"commit the uncommitted paths (notes/a.md) with `lym fabric commit` in " + anchoredDir + ", or any of them with `git commit` or `git checkout -- <path>` in " + anchoredWeft,
+		},
+	}
+	for _, tt := range stopRows {
+		t.Run("StopWayForward_"+tt.name, func(t *testing.T) {
+			if got := fabricengine.StopWayForwardForTest(tt.outcome); got != tt.want {
+				t.Errorf("stopWayForward(%s) =\n%s\nwant\n%s", tt.name, got, tt.want)
+			}
+		})
+	}
+
+	t.Run("WeftDirtyStopCommitsInTheAnchoredDir", func(t *testing.T) {
+		stop := fabricengine.WeftDirtyStopForTest(anchoredTask, anchoredWeft, "task-weft", []string{"notes/a.md"})
+		want := "commit the uncommitted paths in " + anchoredWeft + " (notes/a.md) with `lym fabric commit` in " + anchoredDir + ", then re-run `lym fabric pull`"
+		if stop.WayForward != want {
+			t.Errorf("weftDirtyStop way forward = %q; want %q", stop.WayForward, want)
+		}
+	})
 }

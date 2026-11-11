@@ -439,7 +439,7 @@ func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr e
 		return &WeftStopError{
 			Branch:     branch,
 			Paths:      outcome.Conflicts,
-			WayForward: recordsConflictWayForward(f.weftPath, branch, outcome.Conflicts, ahead, fmt.Sprintf("`lym fabric push` in %s", f.warpPath)),
+			WayForward: recordsConflictWayForward(f.weftPath, branch, outcome.Conflicts, ahead, fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.warpPath))),
 			Err:        err,
 		}, nil
 	case errors.Is(err, ErrReplayDirty):
@@ -459,7 +459,7 @@ func (f *Fabric) weftDirtyStop(branch string, paths []string, cause error) *Weft
 		Branch: branch,
 		Paths:  paths,
 		WayForward: fmt.Sprintf("commit the uncommitted paths in %s (%s) with `lym fabric commit` in %s, then re-run `lym fabric pull`",
-			f.weftPath, joinOrNone(paths), f.warpPath),
+			f.weftPath, joinOrNone(paths), lymVerbDir(f.warpPath)),
 		Err: cause,
 	}
 }

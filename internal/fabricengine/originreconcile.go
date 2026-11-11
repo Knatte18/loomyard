@@ -380,7 +380,7 @@ func (b BranchOutcome) stopWayForward() string {
 	case BranchRewound:
 		return rewoundWayForward(b.Worktree, b.Branch, b.OriginHead, b.Commits)
 	case BranchRewritten:
-		return fmt.Sprintf("`lym fabric pull` in %s", b.Worktree)
+		return fmt.Sprintf("`lym fabric pull` in %s", lymVerbDir(b.CodeWorktree))
 	case BranchDiverged:
 		if b.Repo == failedPushSideCode {
 			return codeDivergedWayForward(b.Worktree, b.Branch, b.Prime)
@@ -421,9 +421,9 @@ func (b BranchOutcome) anchorStopWayForward() string {
 		return fmt.Sprintf("restore the anchor marker of %s", b.Worktree)
 	}
 	if b.Slug != "" {
-		return fmt.Sprintf("run `lym fabric anchor %s --set %s` in %s", b.Slug, b.Anchor, b.CodeWorktree)
+		return fmt.Sprintf("run `lym fabric anchor %s --set %s` in %s", b.Slug, b.Anchor, lymVerbDir(b.CodeWorktree))
 	}
-	return fmt.Sprintf("end every reed session of the hub, the orch's included, with `lym reed down` in each, and wait until no batten run of the hub is live; then run `lym fabric anchor --set %s` in %s; then run `lym beam start` again", b.Anchor, b.CodeWorktree)
+	return fmt.Sprintf("end every reed session of the hub, the orch's included, with `lym reed down` in each, and wait until no batten run of the hub is live; then run `lym fabric anchor --set %s` in %s; then run `lym beam start` again", b.Anchor, lymVerbDir(b.CodeWorktree))
 }
 
 // dirtyWayForward names where each uncommitted path of a dirty branch is committed or restored.
@@ -434,7 +434,7 @@ func (b BranchOutcome) dirtyWayForward() string {
 	paths := joinOrNone(b.Paths)
 	git := fmt.Sprintf("`git commit` or `git checkout -- <path>` in %s", b.Worktree)
 	if b.Repo == failedPushSideRecords {
-		return fmt.Sprintf("commit the uncommitted paths (%s) with `lym fabric commit` in %s, or any of them with %s", paths, b.CodeWorktree, git)
+		return fmt.Sprintf("commit the uncommitted paths (%s) with `lym fabric commit` in %s, or any of them with %s", paths, lymVerbDir(b.CodeWorktree), git)
 	}
 	return fmt.Sprintf("commit or restore the uncommitted paths (%s) with %s", paths, git)
 }

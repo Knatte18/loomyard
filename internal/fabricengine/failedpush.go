@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -231,6 +232,25 @@ func FailedPushFields(hubPath string) ([]map[string]any, error) {
 	return rows, nil
 }
 
+// lymVerbDir returns the directory a lym verb of the code worktree at worktreeRoot runs in: its anchored directory.
+// Every lym verb refuses a cwd other than that directory.
+// A way forward naming the root would fail as written in an anchored hub.
+// The anchor is read from the worktree's recorded marker when the line is built.
+// A record written before an anchor change therefore names the current anchor.
+// A worktree with no marker runs its verbs at the root, and so does one whose marker cannot be read, logged at Warn.
+// An empty worktreeRoot, a records worktree with no paired code worktree, stays empty.
+func lymVerbDir(worktreeRoot string) string {
+	if worktreeRoot == "" {
+		return ""
+	}
+	l, err := lymcwd.NamedWorktree(filepath.Dir(worktreeRoot), filepath.Base(worktreeRoot))
+	if err != nil {
+		logger.Warn("fabricengine: anchor of a way forward's worktree not read, the way forward names its root", "worktree", worktreeRoot, "error", err)
+		return worktreeRoot
+	}
+	return l.AnchorPath()
+}
+
 // pushStep names the push that retries f, with the directory it runs in.
 // A bolt record is pushed by the board sync, since the pair push never reaches Bolt.
 // A prime's code branch is pushed by a plain git push, since the prime's pair push is records-only.
@@ -241,9 +261,9 @@ func pushStep(f FailedPush) string {
 	case f.Repo == failedPushSideCode && f.Prime:
 		return fmt.Sprintf("`git push` in %s", f.RepoPath)
 	case f.Repo == failedPushSideRecords:
-		return fmt.Sprintf("`lym fabric push` in %s", f.CodeWorktree)
+		return fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.CodeWorktree))
 	default:
-		return fmt.Sprintf("`lym fabric push` in %s", f.RepoPath)
+		return fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.RepoPath))
 	}
 }
 
@@ -293,9 +313,10 @@ func recordsConflictWayForward(worktree, branch string, paths, commits []string,
 }
 
 // codeDivergedWayForward names the merge that settles a code branch origin moved past.
+// The merge runs at the worktree root and the push in its anchored directory.
 // A prime's branch is pushed by a plain git push, since the pair push leaves the prime's code branch unpushed.
 func codeDivergedWayForward(worktree, branch string, prime bool) string {
-	push := fmt.Sprintf("`lym fabric push` in %s", worktree)
+	push := fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(worktree))
 	if prime {
 		push = fmt.Sprintf("`git push` in %s", worktree)
 	}
@@ -305,11 +326,12 @@ func codeDivergedWayForward(worktree, branch string, prime bool) string {
 
 // rewoundWayForward names the two ways to settle a task branch origin rewound to originHead.
 // dropped holds the commits the rewind removed from origin.
+// The git steps run at the worktree root and the push in its anchored directory.
 func rewoundWayForward(worktree, branch, originHead string, dropped []string) string {
 	return fmt.Sprintf("origin rewound %s to %s, dropping %s; "+
-		"to accept the rewind, run `git reset --keep %s` in %s, which drops the local commits past origin's head, then `lym fabric push` there; "+
+		"to accept the rewind, run `git reset --keep %s` in %s, which drops the local commits past origin's head, then `lym fabric push` in %s; "+
 		"to restore the dropped commits, run `git push origin %s` in %s, a plain fast-forward",
-		branch, originHead, joinOrNone(dropped), originHead, worktree, branch, worktree)
+		branch, originHead, joinOrNone(dropped), originHead, worktree, lymVerbDir(worktree), branch, worktree)
 }
 
 func joinOrNone(items []string) string {

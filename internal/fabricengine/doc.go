@@ -1459,6 +1459,10 @@
 // so `errors.Is` against `gitrepo.ErrPushRejected` or `gitrepo.ErrPushAuthRefused` still holds.
 // Its text is the push's error followed by `; way forward: ` and `FailedPushWayForward` of the record.
 // A caller appending a way forward of its own does so only when `HasUnclassifiedFailure` reports a failure without one.
+// A way forward of a failed-push notice or a reconcile stop names a `lym` verb in the code worktree's anchored directory.
+// The cwd gate refuses the verb at the root of an anchored worktree.
+// A `git` step names the worktree root.
+// The anchor is read from the worktree's recorded marker when the line is built.
 // The detached push returns nil for a recorded failure;
 // the synchronous pushes return the error.
 // A push that lands removes the record of its side and branch.
