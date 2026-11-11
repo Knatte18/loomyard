@@ -38,12 +38,13 @@ const (
 
 // The actions a hook run reports, under `action`.
 const (
-	hookActionNone     = "none"
-	hookActionLymLine  = "lym-line"
-	hookActionInject   = "inject"
-	hookActionBack     = "presence-terminal"
-	hookActionForward  = "forwarded"
-	hookActionSubagent = "subagent"
+	hookActionNone      = "none"
+	hookActionLymLine   = "lym-line"
+	hookActionInject    = "inject"
+	hookActionBack      = "presence-terminal"
+	hookActionForward   = "forwarded"
+	hookActionButtonOff = "button-off"
+	hookActionSubagent  = "subagent"
 )
 
 // strandClient is the creel client of the orch strand a hook runs in.
@@ -72,10 +73,10 @@ the pane switches nothing: a slash command, a prompt the provider submits by
 itself, a line that opens [creel] or [lym], and a line creel typed into this
 pane as an inject in the two minutes before.
 
-On the end of a turn of the session's main thread while the presence is slack,
-it posts the turn's final reply to the relay as the orch, so it reaches the
-orch's own Slack channel. A turn that ended with no text sends nothing, and a
-reply over 7000 bytes is cut.
+On the end of a turn of the session's main thread while the presence is slack
+and the orch's slack button is on, it posts the turn's final reply to the relay
+as the orch, so it reaches the orch's own Slack channel. A turn that ended with
+no text sends nothing, and a reply over 7000 bytes is cut.
 
 It runs only in an orch's pane, and its output is the hook's to discard.`,
 		Args: cobra.ExactArgs(1),
@@ -157,7 +158,7 @@ func (c *slackCLI) promptHook(prompt string) (map[string]any, error) {
 
 // replyHook posts reply, a turn's final text, to the relay as the orch while the presence is slack.
 // The relay posts it to that orch's own channel.
-// An empty reply, and any presence but slack, send nothing.
+// An empty reply, any presence but slack, and an orch whose slack button is off send nothing.
 func (c *slackCLI) replyHook(reply string) (map[string]any, error) {
 	if reply == "" {
 		return hookAction(hookActionNone), nil
@@ -172,6 +173,17 @@ func (c *slackCLI) replyHook(reply string) (map[string]any, error) {
 	client, strand, err := c.orchClient()
 	if err != nil {
 		return nil, warnHookFailure("finding the orch's creel client failed", "", err)
+	}
+	orch, err := agentname.Format(client.Shortname(), agentname.TaskSlug(strand), agentname.RoleOrch)
+	if err != nil {
+		return nil, err
+	}
+	on, err := slackengine.ForwardingOn(c.geom.ForwardingPath, orch)
+	if err != nil {
+		return nil, warnHookFailure("reading the orch's slack button failed", strand, err)
+	}
+	if !on {
+		return hookAction(hookActionButtonOff), nil
 	}
 	receiver, err := agentname.FormatProgram(client.Shortname(), slackengine.SlackProgram)
 	if err != nil {

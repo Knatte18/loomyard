@@ -29,9 +29,6 @@ func (in *inbound) Start() { in.start() }
 // Drain makes the reads the inbox's hints ask for.
 func (in *inbound) Drain(ctx context.Context) (bool, error) { return in.drain(ctx) }
 
-// TakeAwayFrom returns the orchs forwarded an operator's message that turned the presence, and forgets them.
-func (in *inbound) TakeAwayFrom() map[string]bool { return in.takeAwayFrom() }
-
 // RetryOwed makes each owed read whose time has come.
 func (in *inbound) RetryOwed(ctx context.Context) bool { return in.retryOwed(ctx) }
 
@@ -109,9 +106,12 @@ type ChannelKeeper = channelKeeper
 // ErrChannelRefused is the error a refused channel wraps.
 var ErrChannelRefused = errChannelRefused
 
+// ErrForwardingOff is the error an ensure wraps for an orch whose slack button is off and that holds no open channel.
+var ErrForwardingOff = errForwardingOff
+
 // NewChannelKeeper builds a keeper over the seams.
-func NewChannelKeeper(geom Geometry, slack SlackClient, liveHubs LiveHubs, mailbox Mailbox, clock Clock) *ChannelKeeper {
-	return newChannelKeeper(geom, slack, liveHubs, mailbox, clock)
+func NewChannelKeeper(geom Geometry, slack SlackClient, hub Hub, liveHubs LiveHubs, mailbox Mailbox, clock Clock) *ChannelKeeper {
+	return newChannelKeeper(geom, slack, hub, liveHubs, mailbox, clock)
 }
 
 // Ensure ensures the orch's channel.

@@ -59,8 +59,8 @@ func ReadPresence(path string) (Presence, error) {
 // WritePresence stores presence at path with now as its change time.
 // It reports whether the stored value changed.
 // A missing file counts as PresenceTerminal; a stored value that is neither presence is an error naming the file.
-// A stored value equal to presence is left unwritten, so a repeat wakes no relay that watches the file.
-// The writer sends no notice: every running relay of the machine sees the change and mails its own hub's orchs.
+// A stored value equal to presence is left unwritten, so a repeat touches nothing that watches the file.
+// No orch is told of the change: the turn-end hook reads the presence itself.
 func WritePresence(path string, presence Presence, now time.Time) (bool, error) {
 	if record, found, err := state.ReadJSON[presenceRecord](path, recordLockPath(path)); err == nil && found && record.Presence == presence {
 		return false, nil

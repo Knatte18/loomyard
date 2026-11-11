@@ -7,12 +7,17 @@
 // The machine's own files sit in the per-user lym directory `githubclient.CredentialDir` names.
 // Every hub of the machine shares them.
 // They are the credentials, `slack.json`, with the bot token, the app-level token and the app id;
-// the presence (`Presence`); the connection switch; and the socket lock.
+// the presence (`Presence`), which is the operator's being away for every orch at once; and the socket lock.
 // `WriteCredentials` writes the credentials and `ReadCredentials` reads them.
 // No config template, layer or env file holds them.
 // The hub's own files sit in its `.lym/slack/` directory.
-// They are the setup file with the operator alone (`Setup`) and the channel map.
-// The channel map (`ChannelMap`) holds one channel per orch, named by hub, machine and orch, with its read cursors.
+// They are the setup file with the operator alone (`Setup`), the forwarding record and the channel map.
+// The forwarding record holds whether each orch's slack button is on (`ReadForwarding`, `WriteForwarding`).
+// An orch gets a channel, and its mail and the operator's reach each other, only while its button is on.
+// The channel map (`ChannelMap`) holds the channel of each orch whose button was ever on, with its read cursors.
+// A channel is named `<machine>-<shortname>-<project handle>-<project slug>` (`ChannelName`).
+// The project is the root project for the hub's own orch and the beam's project for a beam's.
+// The map an older relay kept under another file name is never read, so its channels are left alone.
 // They also include the inbox of wake hints, the outbound record and the relay state (`RelayState`).
 // The relay lock and the relay log sit there too.
 // Every record is written through `internal/state`, so a key an older binary does not know survives its rewrite.
@@ -40,7 +45,7 @@
 // The app-level token is used only by `OpenConnection`, which opens the Socket Mode connection.
 //
 // The relay is told its seams: a `Clock`, a `SlackClient`, a Socket Mode `Dialer` and a `Hub`.
-// The `Hub` reads the hub's beams and pauses.
+// The `Hub` reads the hub's beams, its pauses and the board project each orch runs.
 // It is also told a creel `Mailbox` signing as `<shortname>:SLACK`.
 // The machine's one Socket Mode connection is held by the relay that takes the machine's socket lock.
 // It turns each Slack event into a wake hint in the inbox of the hub whose channel map holds the event's channel.
@@ -49,16 +54,14 @@
 // It hands each, once, to the orch of the channel it was written in as mail whose body is the operator's text alone.
 // `away`, `back` and `status` are presence commands answered in Slack and sent to no orch.
 // Any other message of the operator first sets the presence to slack: writing in Slack shows the operator is away.
-// No writer of the presence mails a notice.
-// Each running relay mails its own hub's orchs a `[slack presence]` notice when it sees the presence change.
-// It does so whoever changed it.
-// A notice of slack leaves out the orch that was forwarded the operator's message which turned the presence.
-// That message already woke the orch.
+// A message in the channel of an orch whose button is off is answered in Slack and forwarded to no orch.
+// No orch is mailed a change of the presence.
 // A message that cannot be handled holds the later ones until it succeeds or is five minutes old.
 // The relay then answers in Slack and moves past it.
 //
 // The outbound read waits on the relay's own mailbox.
 // It posts each message to the channel of its sender's orch, under the sender's icon.
+// It drops the mail of an orch whose button is off.
 // The name it posts under is the sender's in the cross-machine address form `<machine>::<sender>`,
 // so the operator sees which machine wrote; the relay's own lines carry its program name in the same form.
 // Posting is at least once, and a message Slack accepted is not posted again.
@@ -72,23 +75,25 @@
 // A message Slack refuses with an error code five times is dropped with a line that names it.
 //
 // `RunRelay` is the relay process: it holds the relay lock and makes its first creel read before any Slack call.
-// It then checks the tokens and the setup and ensures the hub's channels.
+// It then checks the tokens and the setup and ensures the channel of each orch whose button is on.
 // It runs the socket holder, the outbound read and a wake loop.
 // The outbound read is a long poll of the relay's mailbox, bounded at sixty seconds.
 // A poll that found no mail once it had waited out the five-second floor is followed at once by the next.
 // So mail posted while the relay is idle reaches Slack when it is posted.
 // After mail the read waits the floor, and after a failure, or a poll that found nothing sooner, it doubles to sixty.
-// The wake loop wakes on a file event in the inbox or on the presence file.
+// The wake loop wakes on a file event in the inbox or on the forwarding record.
+// So a press of an orch's button makes its channel at the next wake.
 // It never wakes within a second of its previous wake.
 // It also wakes at the end of each outbound read.
 // That wake retries the work that failed and checks for a replaced binary.
-// A channel is archived only when its orch retires, never by `lym slack stop`.
+// A channel is archived only when its orch retires, never by `lym slack stop` or a button switched off.
 // The relay starts through a double fork, so no pane's tree holds it:
 // `EnsureRelay` and `EnsureRelayWhileAway` spawn an intermediate process that runs `SpawnRelayFromIntermediate`.
 // That process exits at once, and the relay reparents itself away from it.
 // A start made while the operator is away is capped by how long each spawned relay lived,
 // so a relay that dies young is not restarted without end.
-// While the operator has switched the machine's connection off, no start spawns a relay.
+// While no orch of the hub has its button on, no start spawns a relay,
+// so the machine's connection runs only while some orch of the machine has its button on.
 // `Connected` reports whether a relay holds the machine's Socket Mode connection.
 // `StopRelay` ends the relay through the run-process records.
 // `AwaitFirstRead` is how a start learns the relay's first creel read was accepted.

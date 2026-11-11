@@ -33,7 +33,7 @@ type keeperHarness struct {
 func newKeeperHarness(t *testing.T) *keeperHarness {
 	t.Helper()
 	k := &keeperHarness{harness: newBareHarness(t), other: newGeometry(t)}
-	k.keeper = slackengine.NewChannelKeeper(k.geom, k.slack, k.liveHubs, k.mailbox, k.clock)
+	k.keeper = slackengine.NewChannelKeeper(k.geom, k.slack, k.hub.hub(), k.liveHubs, k.mailbox, k.clock)
 	return k
 }
 
@@ -129,7 +129,7 @@ func TestChannelKeeper(t *testing.T) {
 			}
 		}
 		got, err := k.keeper.Ensure(ctx, primeOrch)
-		want := slackengine.ChannelEntry{ID: "C1", Name: "ly-neve-prime", Operator: testOperator}
+		want := slackengine.ChannelEntry{ID: "C1", Name: primeChannelName, Operator: testOperator}
 		if err != nil || !cmp.Equal(got, want) {
 			t.Fatalf("Ensure(%s) = %+v, %v; want %+v", primeOrch, got, err, want)
 		}
@@ -141,11 +141,92 @@ func TestChannelKeeper(t *testing.T) {
 		}
 	})
 
+	t.Run("OnlyAnOrchWhoseButtonIsOnGetsAChannelMadeAndAnOpenEntryIsReturnedWhateverItsButton", func(t *testing.T) {
+		t.Parallel()
+		rows := []struct {
+			name string
+			// seed is the orch's entry in the map, nil for none.
+			seed        *slackengine.ChannelEntry
+			wantRefused bool
+		}{
+			{"NoEntry", nil, true},
+			{"ArchivedEntry", &slackengine.ChannelEntry{ID: "C9", Name: primeChannelName + "-2026-11-01", Archived: true}, true},
+			{"OpenEntry", &slackengine.ChannelEntry{ID: "C7", Name: primeChannelName, Operator: testOperator}, false},
+		}
+		for _, row := range rows {
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				k := newKeeperHarness(t)
+				k.setButton(primeOrch, false)
+				if row.seed != nil {
+					k.seedEntry(k.geom, primeOrch, *row.seed)
+				}
+				got, err := k.keeper.Ensure(ctx, primeOrch)
+				if created := len(k.slack.logged("CreateChannel")); created != 0 {
+					t.Errorf("CreateChannel calls = %d; want 0 while the button is off", created)
+				}
+				if !row.wantRefused {
+					if err != nil || got.ID != row.seed.ID {
+						t.Errorf("Ensure over an open entry = %+v, %v; want %s returned", got, err, row.seed.ID)
+					}
+					return
+				}
+				if !errors.Is(err, slackengine.ErrForwardingOff) {
+					t.Errorf("Ensure = %v; want an error wrapping the forwarding-off refusal", err)
+				}
+				stored, held := k.entry(primeOrch)
+				if held != (row.seed != nil) || (held && stored.ID != row.seed.ID) {
+					t.Errorf("stored entry = %+v, held %v; want the map left as it was", stored, held)
+				}
+			})
+		}
+	})
+
+	t.Run("ANewChannelIsNamedForTheProjectTheHubNamesForTheOrch", func(t *testing.T) {
+		t.Parallel()
+		boardDown := errors.New("board unreadable")
+		rows := []struct {
+			name       string
+			orch       string
+			project    *projectName
+			projectErr error
+			wantName   string
+		}{
+			{"HubOrchRunsTheRootProject", primeOrch, nil, nil, "neve-ly-p0-root"},
+			{"BeamRunsTheProjectTheBoardNamesForIt", paymentsOrch, &projectName{"P7", "adopt-takeover"}, nil, "neve-ly-p7-adopt-takeover"},
+			{"BeamWithNoBoardEntryHasNoHandle", paymentsOrch, &projectName{"", "payments"}, nil, "neve-ly-payments"},
+			{"FailedProjectReadMakesNoChannel", primeOrch, nil, boardDown, ""},
+		}
+		for _, row := range rows {
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				k := newKeeperHarness(t)
+				k.hub.set(func(hub *fakeHub) {
+					if row.project != nil {
+						hub.projects = map[string]projectName{"payments": *row.project}
+					}
+					hub.projectErr = row.projectErr
+				})
+				got, err := k.keeper.Ensure(ctx, row.orch)
+				if row.projectErr != nil {
+					if !errors.Is(err, row.projectErr) || len(k.slack.logged("CreateChannel")) != 0 {
+						t.Errorf("Ensure = %v after %d creates; want the project error and no channel", err, len(k.slack.logged("CreateChannel")))
+					}
+					return
+				}
+				created := k.slack.logged("CreateChannel")
+				if err != nil || got.Name != row.wantName || len(created) != 1 || created[0].Arg != row.wantName {
+					t.Errorf("Ensure = %+v, %v with creates %+v; want one channel named %s", got, err, created, row.wantName)
+				}
+			})
+		}
+	})
+
 	t.Run("AnOpenEntryRecordingAnotherOperatorOrNoneIsInvitedAndNothingIsCreated", func(t *testing.T) {
 		t.Parallel()
 		for _, recorded := range []string{"U0", ""} {
 			k := newKeeperHarness(t)
-			k.seedEntry(k.geom, primeOrch, slackengine.ChannelEntry{ID: "C7", Name: "ly-neve-prime", Operator: recorded})
+			k.seedEntry(k.geom, primeOrch, slackengine.ChannelEntry{ID: "C7", Name: primeChannelName, Operator: recorded})
 			got, err := k.keeper.Ensure(ctx, primeOrch)
 			if err != nil || got.ID != "C7" || got.Operator != testOperator {
 				t.Errorf("Ensure over an entry recording %q = %+v, %v; want C7 recording %s", recorded, got, err, testOperator)
@@ -167,12 +248,12 @@ func TestChannelKeeper(t *testing.T) {
 			wantErr string
 		}{
 			{"AuthTestFails", func(k *keeperHarness) {
-				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: "ly-neve-prime", Creator: "UBOT"})
+				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: primeChannelName, Creator: "UBOT"})
 				k.slack.failNext("AuthTest", errors.New("auth is down"))
 			}, "auth is down"},
 			{"TheTakenNameIsNoLongerListed", func(k *keeperHarness) {
 				k.slack.failNext("CreateChannel", nameTaken("conversations.create"))
-			}, "ly-neve-prime"},
+			}, primeChannelName},
 		}
 		for _, row := range rows {
 			t.Run(row.name, func(t *testing.T) {
@@ -233,12 +314,12 @@ func TestChannelKeeper(t *testing.T) {
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()
 				k := newKeeperHarness(t)
-				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: "ly-neve-prime", Creator: "UBOT"})
+				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: primeChannelName, Creator: "UBOT"})
 				for _, ts := range row.messages {
 					k.slack.add("CX", slackengine.Message{TS: ts, User: "U9"})
 				}
 				got, err := k.keeper.Ensure(ctx, primeOrch)
-				want := slackengine.ChannelEntry{ID: "CX", Name: "ly-neve-prime", Cursor: row.wantCursor, ThreadFloor: row.wantCursor, Operator: testOperator}
+				want := slackengine.ChannelEntry{ID: "CX", Name: primeChannelName, Cursor: row.wantCursor, ThreadFloor: row.wantCursor, Operator: testOperator}
 				if err != nil || !cmp.Equal(got, want) {
 					t.Fatalf("Ensure = %+v, %v; want %+v", got, err, want)
 				}
@@ -259,18 +340,18 @@ func TestChannelKeeper(t *testing.T) {
 			wantNotice []string
 		}{
 			{"ArchivedChannel", func(k *keeperHarness) {
-				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: "ly-neve-prime", Creator: "UBOT", IsArchived: true})
-			}, []string{"ly-neve-prime", "rename that channel in Slack"}},
+				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: primeChannelName, Creator: "UBOT", IsArchived: true})
+			}, []string{primeChannelName, "rename that channel in Slack"}},
 			{"AnotherUsersChannel", func(k *keeperHarness) {
-				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: "ly-neve-prime", Creator: "UOTHER", IsMember: true})
-			}, []string{"ly-neve-prime", "rename that channel in Slack"}},
+				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: primeChannelName, Creator: "UOTHER", IsMember: true})
+			}, []string{primeChannelName, "rename that channel in Slack"}},
 			{"ChannelOfTheSecondHubsMap", func(k *keeperHarness) {
-				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: "ly-neve-prime", Creator: "UBOT", IsMember: true})
-				k.seedEntry(k.other, primeOrch, slackengine.ChannelEntry{ID: "CX", Name: "ly-neve-prime"})
+				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: primeChannelName, Creator: "UBOT", IsMember: true})
+				k.seedEntry(k.other, primeOrch, slackengine.ChannelEntry{ID: "CX", Name: primeChannelName})
 			}, []string{"", "remove the extra clone of the hub"}},
 			{"ChannelOfAnotherOrchOfThisHub", func(k *keeperHarness) {
-				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: "ly-neve-prime", Creator: "UBOT", IsMember: true})
-				k.seedEntry(k.geom, paymentsOrch, slackengine.ChannelEntry{ID: "CX", Name: "ly-neve-prime"})
+				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: primeChannelName, Creator: "UBOT", IsMember: true})
+				k.seedEntry(k.geom, paymentsOrch, slackengine.ChannelEntry{ID: "CX", Name: primeChannelName})
 			}, []string{paymentsOrch, "rename that channel in Slack"}},
 		}
 		for _, row := range rows {
@@ -321,8 +402,8 @@ func TestChannelKeeper(t *testing.T) {
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()
 				k := newKeeperHarness(t)
-				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: "ly-neve-prime", Creator: "UBOT"})
-				k.seedEntry(k.geom, paymentsOrch, slackengine.ChannelEntry{ID: "CP", Name: "ly-neve-payments"})
+				k.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: primeChannelName, Creator: "UBOT"})
+				k.seedEntry(k.geom, paymentsOrch, slackengine.ChannelEntry{ID: "CP", Name: paymentsChannelName})
 				row.prepare(k)
 
 				if _, err := k.keeper.Ensure(ctx, primeOrch); err == nil {
@@ -345,9 +426,9 @@ func TestChannelKeeper(t *testing.T) {
 	t.Run("AnArchivedEntryGetsANewChannelUnderItsNameAndNothingCanUnarchive", func(t *testing.T) {
 		t.Parallel()
 		k := newKeeperHarness(t)
-		k.seedEntry(k.geom, primeOrch, slackengine.ChannelEntry{ID: "C9", Name: "ly-neve-prime-2026-11-01", Archived: true, Operator: testOperator})
+		k.seedEntry(k.geom, primeOrch, slackengine.ChannelEntry{ID: "C9", Name: primeChannelName + "-2026-11-01", Archived: true, Operator: testOperator})
 		got, err := k.keeper.Ensure(ctx, primeOrch)
-		want := slackengine.ChannelEntry{ID: "C1", Name: "ly-neve-prime", Operator: testOperator}
+		want := slackengine.ChannelEntry{ID: "C1", Name: primeChannelName, Operator: testOperator}
 		if err != nil || !cmp.Equal(got, want) {
 			t.Errorf("Ensure over an archived entry = %+v, %v; want %+v", got, err, want)
 		}
@@ -365,7 +446,7 @@ func TestChannelKeeper(t *testing.T) {
 	t.Run("InviteOperatorsRetriesARefusedInviteAndNoticesOncePerEpisode", func(t *testing.T) {
 		t.Parallel()
 		k := newKeeperHarness(t)
-		k.seedEntry(k.geom, primeOrch, slackengine.ChannelEntry{ID: "C5", Name: "ly-neve-prime", Operator: "U0"})
+		k.seedEntry(k.geom, primeOrch, slackengine.ChannelEntry{ID: "C5", Name: primeChannelName, Operator: "U0"})
 		refused := &slackengine.APIError{Method: "conversations.invite", Code: "user_not_found"}
 		k.slack.failNext("Invite", refused, refused)
 
@@ -392,12 +473,13 @@ func TestChannelKeeper(t *testing.T) {
 
 	t.Run("Retire", func(t *testing.T) {
 		t.Parallel()
-		const datedName, baseName = "ly-neve-payments-2026-11-05", "ly-neve-payments"
+		const baseName = paymentsChannelName
+		const datedName = baseName + "-2026-11-05"
 		newRetireHarness := func(t *testing.T) *keeperHarness {
 			k := newKeeperHarness(t)
-			k.slack.seedChannel(slackengine.ChannelInfo{ID: "C1", Name: "ly-neve-prime", Creator: "UBOT", IsMember: true})
+			k.slack.seedChannel(slackengine.ChannelInfo{ID: "C1", Name: primeChannelName, Creator: "UBOT", IsMember: true})
 			k.slack.seedChannel(slackengine.ChannelInfo{ID: "C2", Name: baseName, Creator: "UBOT", IsMember: true})
-			k.seedEntry(k.geom, primeOrch, slackengine.ChannelEntry{ID: "C1", Name: "ly-neve-prime"})
+			k.seedEntry(k.geom, primeOrch, slackengine.ChannelEntry{ID: "C1", Name: primeChannelName})
 			k.seedEntry(k.geom, paymentsOrch, slackengine.ChannelEntry{ID: "C2", Name: baseName})
 			return k
 		}
@@ -407,28 +489,53 @@ func TestChannelKeeper(t *testing.T) {
 			if err != nil || !found || !info.IsArchived || info.ID != "C2" {
 				t.Errorf("FindChannel(%s) = %+v, %v, %v; want the archived channel C2", name, info, found, err)
 			}
-			if stored, _ := k.entry(paymentsOrch); stored.Name != name || !stored.Archived {
-				t.Errorf("stored entry = %+v; want it archived under %s", stored, name)
+			if stored, _ := k.entry(paymentsOrch); stored.Name != name || !stored.Archived || !stored.Renamed {
+				t.Errorf("stored entry = %+v; want it archived and marked renamed under %s", stored, name)
 			}
 		}
 
-		t.Run("ABeamNoLongerListedIsRenamedWithTheDateAndArchivedAndThePrimeNever", func(t *testing.T) {
+		t.Run("ABeamNoLongerListedIsRenamedWithTheDateAndArchivedAndItsButtonDroppedAndThePrimeNever", func(t *testing.T) {
 			t.Parallel()
 			k := newRetireHarness(t)
 			if err := k.keeper.Retire(ctx, []string{"payments"}, false); err != nil || k.slack.callCount() != 0 {
 				t.Fatalf("Retire with the beam listed = %v after %d Slack calls; want none", err, k.slack.callCount())
 			}
+			if diff := cmp.Diff([]string{primeOrch, paymentsOrch}, k.buttonsOn()); diff != "" {
+				t.Errorf("buttons on while the beam is listed mismatch (-want +got):\n%s", diff)
+			}
 			if err := k.keeper.Retire(ctx, nil, false); err != nil {
 				t.Fatalf("Retire = %v", err)
 			}
 			requireArchivedUnder(t, k, datedName)
-			if stored, _ := k.entry(primeOrch); stored.Name != "ly-neve-prime" || stored.Archived {
+			if diff := cmp.Diff([]string{primeOrch}, k.buttonsOn()); diff != "" {
+				t.Errorf("buttons on after the retire mismatch (-want +got):\n%s", diff)
+			}
+			if stored, _ := k.entry(primeOrch); stored.Name != primeChannelName || stored.Archived {
 				t.Errorf("the prime's entry = %+v; want it untouched", stored)
 			}
 			for _, call := range k.slack.logged("Rename") {
 				if call.Channel == "C1" {
 					t.Errorf("Rename of the prime's channel was called")
 				}
+			}
+		})
+
+		t.Run("AnEntryMarkedRenamedIsArchivedWithNoSecondRename", func(t *testing.T) {
+			t.Parallel()
+			k := newRetireHarness(t)
+			k.slack.seedChannel(slackengine.ChannelInfo{ID: "C3", Name: datedName, Creator: "UBOT", IsMember: true})
+			k.seedEntry(k.geom, paymentsOrch, slackengine.ChannelEntry{ID: "C3", Name: datedName, Renamed: true})
+			if err := k.keeper.Retire(ctx, nil, false); err != nil {
+				t.Fatalf("Retire = %v", err)
+			}
+			if renames := len(k.slack.logged("Rename")); renames != 0 {
+				t.Errorf("Rename calls = %d; want 0 for an entry already under its dated name", renames)
+			}
+			if archives := k.slack.logged("Archive"); len(archives) != 1 || archives[0].Channel != "C3" {
+				t.Errorf("Archive calls = %+v; want one for C3", archives)
+			}
+			if stored, _ := k.entry(paymentsOrch); stored.Name != datedName || !stored.Archived {
+				t.Errorf("stored entry = %+v; want it archived under %s", stored, datedName)
 			}
 		})
 
@@ -451,6 +558,9 @@ func TestChannelKeeper(t *testing.T) {
 			}
 			if stored, _ := k.entry(paymentsOrch); stored.Name != datedName || stored.Archived {
 				t.Errorf("stored entry = %+v; want it open under %s", stored, datedName)
+			}
+			if diff := cmp.Diff([]string{primeOrch, paymentsOrch}, k.buttonsOn()); diff != "" {
+				t.Errorf("buttons on after the refused archive mismatch (-want +got):\n%s", diff)
 			}
 			callsBefore := k.slack.callCount()
 			if err := k.keeper.Retire(ctx, nil, false); err != nil || k.slack.callCount() != callsBefore {
@@ -481,6 +591,70 @@ func TestChannelKeeper(t *testing.T) {
 			}
 			if err := k.keeper.Retire(ctx, nil, true); err != nil {
 				t.Fatalf("Retire with retryRefused = %v", err)
+			}
+			requireArchivedUnder(t, k, datedName)
+		})
+
+		t.Run("AButtonOfAnUnlistedBeamIsDroppedWhetherItsChannelWasNeverMadeOrAlreadyArchived", func(t *testing.T) {
+			t.Parallel()
+			k := newRetireHarness(t)
+			const pressedOrch = "ly:pressed:orch"
+			k.setButton(pressedOrch, true)
+			k.seedEntry(k.geom, "ly:archived:orch", slackengine.ChannelEntry{ID: "C8", Name: "archived", Renamed: true, Archived: true})
+			k.setButton("ly:archived:orch", true)
+			if err := k.keeper.Retire(ctx, []string{"payments"}, false); err != nil {
+				t.Fatalf("Retire = %v", err)
+			}
+			if diff := cmp.Diff([]string{primeOrch, paymentsOrch}, k.buttonsOn()); diff != "" {
+				t.Errorf("buttons on after the retire mismatch (-want +got):\n%s", diff)
+			}
+			if calls := k.slack.callCount(); calls != 0 {
+				t.Errorf("Slack calls = %d; want none for a button with no open channel", calls)
+			}
+		})
+
+		t.Run("AButtonWhoseDropFailedAfterTheArchiveStoodIsDroppedByTheRetryWithNoSecondArchive", func(t *testing.T) {
+			t.Parallel()
+			k := newRetireHarness(t)
+			intact, err := os.ReadFile(k.geom.ForwardingPath)
+			if err != nil {
+				t.Fatalf("ReadFile = %v", err)
+			}
+			k.slack.onMethod = func(method string) {
+				if method == "Archive" {
+					if err := os.WriteFile(k.geom.ForwardingPath, []byte("{"), 0o600); err != nil {
+						t.Errorf("WriteFile = %v", err)
+					}
+				}
+			}
+			if err := k.keeper.Retire(ctx, nil, false); err == nil {
+				t.Fatalf("Retire = nil; want the failed drop's error")
+			}
+			if stored, _ := k.entry(paymentsOrch); !stored.Archived {
+				t.Errorf("stored entry = %+v; want it archived although the drop failed", stored)
+			}
+			if err := os.WriteFile(k.geom.ForwardingPath, intact, 0o600); err != nil {
+				t.Fatalf("WriteFile = %v", err)
+			}
+			if err := k.keeper.Retire(ctx, nil, true); err != nil {
+				t.Fatalf("Retire with retryRefused = %v", err)
+			}
+			if diff := cmp.Diff([]string{primeOrch}, k.buttonsOn()); diff != "" {
+				t.Errorf("buttons on after the retry mismatch (-want +got):\n%s", diff)
+			}
+			if archives := len(k.slack.logged("Archive")); archives != 1 {
+				t.Errorf("Archive calls = %d; want the one before the failed drop", archives)
+			}
+		})
+
+		t.Run("AForwardingFileThatCannotBeReadReturnsItsErrorAndStillRetiresTheChannels", func(t *testing.T) {
+			t.Parallel()
+			k := newRetireHarness(t)
+			if err := os.WriteFile(k.geom.ForwardingPath, []byte("{"), 0o600); err != nil {
+				t.Fatalf("WriteFile = %v", err)
+			}
+			if err := k.keeper.Retire(ctx, nil, false); err == nil {
+				t.Fatalf("Retire = nil; want the forwarding file's error")
 			}
 			requireArchivedUnder(t, k, datedName)
 		})

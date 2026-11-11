@@ -29,11 +29,15 @@ const (
 // errChannelRefused marks a channel the keeper will not make or adopt, so a caller tells it from a transient failure.
 var errChannelRefused = errors.New("slack: the channel was refused")
 
+// errForwardingOff marks an orch whose slack button is off and that holds no open channel, so the keeper makes none.
+var errForwardingOff = errors.New("slack: the orch's slack button is off, so it gets no channel")
+
 // channelKeeper keeps the Slack channel of each orch of one hub.
 // It is safe for concurrent use; one orch's channel is ensured by one goroutine at a time.
 type channelKeeper struct {
 	geom     Geometry
 	slack    SlackClient
+	hub      Hub
 	liveHubs LiveHubs
 	mailbox  Mailbox
 	clock    Clock
@@ -50,13 +54,14 @@ type channelKeeper struct {
 }
 
 // newChannelKeeper returns a keeper over the seams; it panics on a nil LiveHubs, which the relay's wiring always sets.
-func newChannelKeeper(geom Geometry, slack SlackClient, liveHubs LiveHubs, mailbox Mailbox, clock Clock) *channelKeeper {
+func newChannelKeeper(geom Geometry, slack SlackClient, hub Hub, liveHubs LiveHubs, mailbox Mailbox, clock Clock) *channelKeeper {
 	if liveHubs == nil {
 		panic("slackengine: the channel keeper needs the live-hub seam")
 	}
 	return &channelKeeper{
 		geom:      geom,
 		slack:     slack,
+		hub:       hub,
 		liveHubs:  liveHubs,
 		mailbox:   mailbox,
 		clock:     clock,
@@ -79,6 +84,8 @@ func (k *channelKeeper) orchLock(orch string) *sync.Mutex {
 }
 
 // ensure returns the open channel entry of the orch, making the channel when the map holds none or an archived one.
+// It makes a channel only for an orch whose slack button is on;
+// for any other it returns an error wrapping errForwardingOff.
 // An open entry that records another operator than the setup's, or none, is invited for the setup's operator.
 // The setup is read at each ensure, so a changed operator applies at the next trigger.
 func (k *channelKeeper) ensure(ctx context.Context, orch string) (ChannelEntry, error) {
@@ -91,6 +98,13 @@ func (k *channelKeeper) ensure(ctx context.Context, orch string) (ChannelEntry, 
 		return ChannelEntry{}, err
 	}
 	if entry, held := channelMap.Channels[orch]; !held || entry.Archived {
+		on, err := ForwardingOn(k.geom.ForwardingPath, orch)
+		if err != nil {
+			return ChannelEntry{}, err
+		}
+		if !on {
+			return ChannelEntry{}, fmt.Errorf("%w: %s", errForwardingOff, orch)
+		}
 		return k.create(ctx, orch)
 	}
 	if err := k.inviteOperator(ctx, orch); err != nil {
@@ -122,6 +136,7 @@ func slugOf(orch string) (string, error) {
 }
 
 // create makes the orch's channel under its name and records it with an empty cursor, replacing an archived entry.
+// The name carries the project the orch runs, which the hub names.
 // The entry stands before the operator's invite, so the operator's first message is routable.
 // A name Slack reports taken goes on to adopt.
 func (k *channelKeeper) create(ctx context.Context, orch string) (ChannelEntry, error) {
@@ -129,7 +144,11 @@ func (k *channelKeeper) create(ctx context.Context, orch string) (ChannelEntry, 
 	if err != nil {
 		return ChannelEntry{}, err
 	}
-	name := ChannelName(k.geom.Shortname, k.geom.Machine, slug)
+	handle, project, err := k.hub.Project(slug)
+	if err != nil {
+		return ChannelEntry{}, fmt.Errorf("slack: name the project of %s for its channel: %w", orch, err)
+	}
+	name := ChannelName(k.geom.Machine, k.geom.Shortname, handle, project)
 	info, err := k.slack.CreateChannel(ctx, name)
 	if err != nil {
 		if refusal, refused := isAPIError(err); refused && refusal.Code == nameTakenCode {
@@ -366,10 +385,14 @@ func (k *channelKeeper) inviteOperators(ctx context.Context) error {
 }
 
 // retire renames and archives the channel of each open beam entry whose slug beams does not list.
+// It also drops the button of each such beam's orch that is still on with no open channel:
+// a button pressed before its channel was made, and one whose drop failed after the archive stood.
+// A forwarding file that cannot be read adds its error and leaves the buttons alone; the channels still retire.
 // The prime's entry is never retired.
 // The rename gives the channel its name with the UTC date, trying the next suffix while Slack answers `name_taken`,
 // and the entry records the new name as soon as the rename stands; the archive then marks the entry archived.
 // An entry already under a dated name is not renamed again.
+// Once the archive stands, the orch's button state is dropped, so a later beam of the same slug starts with it off.
 // A rename or an archive Slack refuses leaves the entry open, returns the error and marks the orch refused;
 // a later call skips a refused orch unless retryRefused is set.
 // The caller calls it only after a read of the hub's beams that stood.
@@ -378,19 +401,29 @@ func (k *channelKeeper) retire(ctx context.Context, beams []string, retryRefused
 	if err != nil {
 		return err
 	}
+	var failures []error
+	forwarded, err := ReadForwarding(k.geom.ForwardingPath)
+	if err != nil {
+		failures = append(failures, err)
+	}
 	prime, err := orchName(k.geom.Shortname, "")
 	if err != nil {
 		return err
 	}
-	orchs := make([]string, 0, len(channelMap.Channels))
+	orchs := make([]string, 0, len(channelMap.Channels)+len(forwarded))
 	for orch := range channelMap.Channels {
 		orchs = append(orchs, orch)
 	}
+	for _, orch := range forwarded {
+		if _, held := channelMap.Channels[orch]; !held {
+			orchs = append(orchs, orch)
+		}
+	}
 	sort.Strings(orchs)
-	var failures []error
 	for _, orch := range orchs {
-		entry := channelMap.Channels[orch]
-		if orch == prime || entry.Archived {
+		entry, held := channelMap.Channels[orch]
+		open := held && !entry.Archived
+		if orch == prime || (!open && !slices.Contains(forwarded, orch)) {
 			continue
 		}
 		slug, err := slugOf(orch)
@@ -403,7 +436,12 @@ func (k *channelKeeper) retire(ctx context.Context, beams []string, retryRefused
 		if skip {
 			continue
 		}
-		err = k.retireEntry(ctx, orch, slug, entry)
+		if open {
+			err = k.retireEntry(ctx, orch, entry)
+		}
+		if err == nil {
+			err = dropForwarding(k.geom.ForwardingPath, orch)
+		}
 		k.mu.Lock()
 		if err != nil {
 			k.refused[orch] = true
@@ -419,15 +457,15 @@ func (k *channelKeeper) retire(ctx context.Context, beams []string, retryRefused
 }
 
 // retireEntry renames the entry's channel to its dated name unless it already has one, then archives it.
-func (k *channelKeeper) retireEntry(ctx context.Context, orch, slug string, entry ChannelEntry) error {
-	baseName := ChannelName(k.geom.Shortname, k.geom.Machine, slug)
-	if entry.Name == baseName {
-		renamed, err := k.renameDated(ctx, entry.ID, baseName)
+func (k *channelKeeper) retireEntry(ctx context.Context, orch string, entry ChannelEntry) error {
+	if !entry.Renamed {
+		renamed, err := k.renameDated(ctx, entry.ID, entry.Name)
 		if err != nil {
 			return err
 		}
 		entry.Name = renamed
-		if err := k.updateEntry(orch, entry.ID, func(current *ChannelEntry) { current.Name = renamed }); err != nil {
+		err = k.updateEntry(orch, entry.ID, func(current *ChannelEntry) { current.Name, current.Renamed = renamed, true })
+		if err != nil {
 			return err
 		}
 	}

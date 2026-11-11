@@ -52,7 +52,7 @@ func TestChannelMap(t *testing.T) {
 			t.Fatalf("WriteFile = %v", err)
 		}
 		err := slackengine.UpdateChannelMap(path, func(channelMap *slackengine.ChannelMap) error {
-			channelMap.Channels["ly:payments:orch"] = slackengine.ChannelEntry{ID: "C2", Name: "ly-neve-payments", Operator: "U1"}
+			channelMap.Channels["ly:payments:orch"] = slackengine.ChannelEntry{ID: "C2", Name: "ly-neve-payments", Operator: "U1", Renamed: true}
 			return nil
 		})
 		if err != nil {
@@ -64,7 +64,7 @@ func TestChannelMap(t *testing.T) {
 		}
 		want := slackengine.ChannelMap{Channels: map[string]slackengine.ChannelEntry{
 			"ly:orch":          {ID: "C1", Name: "ly-neve-prime"},
-			"ly:payments:orch": {ID: "C2", Name: "ly-neve-payments", Operator: "U1"},
+			"ly:payments:orch": {ID: "C2", Name: "ly-neve-payments", Operator: "U1", Renamed: true},
 		}}
 		if diff := cmp.Diff(want, channelMap); diff != "" {
 			t.Errorf("ReadChannelMap() mismatch (-want +got):\n%s", diff)

@@ -12,7 +12,8 @@
 // Line 2 ends with the current session's check mark, before the clock.
 // The check mark is read from the session user options @lym_check, @lym_check_state and @lym_check_start.
 // Line 3 is the follow button, then the slack and away toggles, then the action row.
-// The toggles read the machine's Slack state from a `#()` job.
+// The slack toggle is the button of the orch whose session it is, drawn only in a prime's or a beam's session.
+// The toggles read the Slack state from a `#()` job, which the session's run directory names the orch to.
 // The server-global @lym_slack_state_command holds the job's line.
 // The action row is read from the session user options @lym_buttons_plain and @lym_buttons_agent.
 // No Go decision reads @strand_color, @lym_unseen or @lym_prime_session.
@@ -23,11 +24,15 @@
 
 package reedengine
 
-// The words of the Slack state line that light the toggles: SlackToggleLit lights slack, AwayToggleLit lights away.
+// The words of the Slack state line the toggles read.
+// SlackToggleLit draws the slack toggle lit and SlackToggleUnlit draws it unlit.
+// A line with neither draws no slack toggle.
+// AwayToggleLit lights away.
 // The state line is what the command in @lym_slack_state_command prints.
 const (
-	SlackToggleLit = "slack-on"
-	AwayToggleLit  = "away-on"
+	SlackToggleLit   = "slack-on"
+	SlackToggleUnlit = "slack-off"
+	AwayToggleLit    = "away-on"
 )
 
 const (
@@ -135,13 +140,22 @@ const (
 	awayToggleRange  = "away"
 
 	// slackStateJob is the `#()` job the Slack toggles read: the line slackStateCommandOption holds.
-	// tmux expands the option into the job's command and runs the job again at a redraw a second or more after its last run.
-	// Its output is only matched, never drawn, so an unset option or a job not yet run leaves both toggles unlit.
-	slackStateJob = "#(#{" + slackStateCommandOption + "})"
+	// tmux expands the option's value as a format, so the session's options in the line resolve per session.
+	// It runs the job again at a redraw a second or more after its last run.
+	// Its output is only matched, never drawn, so an unset option or a job not yet run draws no slack toggle and away unlit.
+	slackStateJob = "#(#{E:" + slackStateCommandOption + "})"
 
-	// slackToggleFormat is the slack toggle: a user range labelled slack.
+	// slackToggleShownCondition is true while the state line holds SlackToggleLit or SlackToggleUnlit:
+	// the session runs an orch that has a slack button.
+	slackToggleShownCondition = "#{||:#{m:*" + SlackToggleLit + "*," + slackStateJob + "},#{m:*" + SlackToggleUnlit + "*," + slackStateJob + "}}"
+
+	// slackButtonFormat is the drawn slack toggle: a user range labelled slack.
 	// It is lit green while the state line holds SlackToggleLit.
-	slackToggleFormat = "#[range=user|" + slackToggleRange + " #{?#{m:*" + SlackToggleLit + "*," + slackStateJob + "},bg=green fg=black bold," + unlitButtonStyle + "}] " + slackToggleRange + " #[norange list=on default] "
+	slackButtonFormat = "#[range=user|" + slackToggleRange + " #{?#{m:*" + SlackToggleLit + "*," + slackStateJob + "},bg=green fg=black bold," + unlitButtonStyle + "}] " + slackToggleRange + " #[norange list=on default] "
+
+	// slackToggleFormat is the slack toggle, the button of the session's orch.
+	// It is drawn only while slackToggleShownCondition holds.
+	slackToggleFormat = "#{?" + slackToggleShownCondition + "," + slackButtonFormat + ",}"
 
 	// awayToggleFormat is the away toggle: a user range labelled away, lit green while the state line holds AwayToggleLit.
 	awayToggleFormat = "#[range=user|" + awayToggleRange + " #{?#{m:*" + AwayToggleLit + "*," + slackStateJob + "},bg=green fg=black bold," + unlitButtonStyle + "}] " + awayToggleRange + " #[norange list=on default] "

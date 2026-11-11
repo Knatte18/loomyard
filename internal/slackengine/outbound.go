@@ -159,7 +159,10 @@ func (out *outbound) reportStale(ctx context.Context, record *outboxRecord) erro
 		return err
 	}
 	line := fmt.Sprintf("%d messages older than 24 hours were not posted; read them with `lym creel log --to %s`", record.Stale, out.relayName())
-	if err := out.postRecovered(ctx, prime, line, out.relaySender()); err != nil {
+	err = out.postRecovered(ctx, prime, line, out.relaySender())
+	if errors.Is(err, errForwardingOff) {
+		logger.Info("slackengine: the line about stale mail is dropped, since the slack button of the hub's orch is off", "stale", record.Stale)
+	} else if err != nil {
 		return fmt.Errorf("slack: post the line about stale mail: %w", err)
 	}
 	record.Stale = 0
@@ -169,10 +172,15 @@ func (out *outbound) reportStale(ctx context.Context, record *outboxRecord) erro
 
 // postMessages posts each message not yet in record, oldest first, and saves the record after each one it handles.
 // Mail older than staleMailAge is counted in the record instead of posted.
+// Mail of an orch whose slack button is off is handled unposted.
 // A message of a beam with no open channel is left unhandled and the rest of the batch goes on;
 // the batch then ends with errNoOpenChannel, so only that beam's own mail waits.
 // It returns errReadBudget once the posting budget ends, and the error of a failed post.
 func (out *outbound) postMessages(ctx context.Context, record *outboxRecord, messages []creelengine.Message) error {
+	forwarding, err := ReadForwarding(out.geom.ForwardingPath)
+	if err != nil {
+		return err
+	}
 	messages = slices.Clone(messages)
 	slices.SortFunc(messages, func(a, b creelengine.Message) int { return cmp.Compare(a.ID, b.ID) })
 	started := out.clock.Now()
@@ -188,6 +196,8 @@ func (out *outbound) postMessages(ctx context.Context, record *outboxRecord, mes
 			record.Stale++
 		} else if orch, sender, ok := outboundRoute(out.geom.Machine, out.geom.Shortname, message); !ok {
 			logger.Warn("slackengine: dropped mail from a sender the relay does not post", "id", message.ID, "from", message.From)
+		} else if !sortedContains(forwarding, orch) {
+			logger.Info("slackengine: dropped mail of an orch whose slack button is off", "id", message.ID, "from", message.From, "orch", orch)
 		} else if err := out.postTo(ctx, record, message, orch, slackEscape.Replace(message.Body), sender); errors.Is(err, errNoOpenChannel) {
 			waiting = true
 			continue
@@ -223,7 +233,8 @@ func outboundRoute(machine, shortname string, message creelengine.Message) (stri
 }
 
 // channelFor returns the channel entry a post for orch goes to and the orch whose channel it is.
-// The hub's orch is ensured through the keeper, and so is a listed beam's, the first routed mail making its channel.
+// The hub's orch is ensured through the keeper, and so is a listed beam's.
+// The first routed mail makes its channel while its slack button is on.
 // A beam the hub's beam listing does not name posts to the prime's channel, reopening nothing.
 // While the listing cannot be read, a beam whose channel the map holds open posts there.
 // A beam with none answers errNoOpenChannel.
@@ -263,6 +274,7 @@ func (out *outbound) channelFor(ctx context.Context, orch string) (ChannelEntry,
 // A post Slack refuses with an error code counts once toward refusalCap through refused.
 // So does a channel the keeper refuses.
 // It returns nil for a message posted and for one refused for the cap's last time.
+// It also returns nil for one whose channel is not made since the slack button of its channel's orch is off.
 // Any other failure, errNoOpenChannel included, is returned as it is.
 func (out *outbound) postTo(ctx context.Context, record *outboxRecord, message creelengine.Message, orch, text string, sender Sender) error {
 	entry, channelOrch, err := out.channelFor(ctx, orch)
@@ -270,6 +282,10 @@ func (out *outbound) postTo(ctx context.Context, record *outboxRecord, message c
 		err = out.postRecovered(ctx, channelOrch, text, sender)
 	}
 	if err == nil {
+		return nil
+	}
+	if errors.Is(err, errForwardingOff) {
+		logger.Info("slackengine: dropped mail whose channel's orch has its slack button off", "id", message.ID, "from", message.From, "error", err)
 		return nil
 	}
 	if errors.Is(err, errNoOpenChannel) {

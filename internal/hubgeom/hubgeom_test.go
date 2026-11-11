@@ -533,7 +533,7 @@ func TestSlackGeometry(t *testing.T) {
 		SocketLockPath: filepath.Join(credentialRoot, "lym", slackengine.SocketLockFileName),
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   filepath.Join(credentialRoot, "lym", slackengine.PresenceFileName),
-		SwitchPath:     filepath.Join(credentialRoot, "lym", slackengine.SwitchFileName),
+		ForwardingPath: filepath.Join(dir, slackengine.ForwardingFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
 		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),
@@ -565,7 +565,7 @@ func TestSlackGeometry(t *testing.T) {
 	}
 }
 
-// TestSlackMachine pins the four machine-wide Slack file paths and the refusal on a machine with no per-user directory.
+// TestSlackMachine pins the machine-wide Slack file paths and the refusal on a machine with no per-user directory.
 // It sets the environment with t.Setenv, which is process-global state, so it does not run in parallel.
 func TestSlackMachine(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -583,7 +583,6 @@ func TestSlackMachine(t *testing.T) {
 		TokenPath:      filepath.Join(credentialDir, slackengine.TokenFileName),
 		SocketLockPath: filepath.Join(credentialDir, slackengine.SocketLockFileName),
 		PresencePath:   filepath.Join(credentialDir, "slack-presence.json"),
-		SwitchPath:     filepath.Join(credentialDir, slackengine.SwitchFileName),
 	}
 	if got != want {
 		t.Errorf("SlackMachine() = %+v; want %+v", got, want)

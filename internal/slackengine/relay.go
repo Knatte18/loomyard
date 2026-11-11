@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -154,14 +155,15 @@ func waitFor(ctx context.Context, clock Clock, d time.Duration) bool {
 	}
 }
 
-// RunRelay runs the hub's relay until ctx ends, and returns nil when it ends or another relay holds the lock.
+// RunRelay runs the hub's relay until ctx ends, and returns nil when it ends, another relay holds the lock,
+// or no orch's button is left on.
 // It takes the relay lock, registers itself, records its pid, and makes the first creel read before any Slack call.
-// It reads the machine's presence before that read.
-// So a presence a start sets once the read is accepted is a change it notices.
 // Only then does it refuse a machine missing either token and a hub with no setup file, through missingTokenExit.
-// It ensures the hub's channels and owes the start read of each, then runs three loops:
+// It ensures the channel of each orch whose slack button is on.
+// It owes the start read of each open channel, then runs three loops:
 // the machine's socket holder, which turns Slack events into hints in the hub's inbox;
-// the outbound read of the relay's mailbox; and the wake loop, which reads the channels on a hint or a presence change.
+// the outbound read of the relay's mailbox;
+// and the wake loop, which reads the channels on a hint and follows a press of an orch's button.
 // At the end of each outbound read it stamps the relay's last-healthy time in its state,
 // and the wake loop then does the retried work and checks whether the lym binary was replaced.
 // A creel refusal of the program claim from a strand's pane returns ErrRelayInStrandPane with the lock released.
@@ -195,10 +197,6 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 
 	log := &relayLog{geom: geom, clock: deps.Clock}
 	floor := newSharedFloor()
-	startPresence, err := ReadPresence(geom.PresencePath)
-	if err != nil {
-		log.fail("presence", err)
-	}
 	if err := firstRead(ctx, geom, deps, heldLock, log, floor); err != nil {
 		return err
 	}
@@ -208,9 +206,9 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 
 	loopCtx, stopLoops := context.WithCancel(ctx)
 	defer stopLoops()
-	keeper := newChannelKeeper(geom, deps.Slack, deps.LiveHubs, deps.Mailbox, deps.Clock)
+	keeper := newChannelKeeper(geom, deps.Slack, deps.Hub, deps.LiveHubs, deps.Mailbox, deps.Clock)
 	reader := newInbound(geom, deps.Mailbox, deps.Slack, deps.Hub, deps.Clock, keeper)
-	primePending := relayStart(loopCtx, geom, keeper, reader, deps.Hub)
+	relayStart(loopCtx, geom, keeper, reader, deps.Hub)
 
 	holder := &holderRun{geom: geom, deps: deps}
 	holder.start(loopCtx)
@@ -223,9 +221,7 @@ func RunRelay(ctx context.Context, geom Geometry, deps RelayDeps) error {
 	wake := &wakeLoop{
 		geom: geom, hub: deps.Hub, mailbox: deps.Mailbox, clock: deps.Clock, keeper: keeper, in: reader, log: log, floor: floor,
 		watchOpen: watchOpen, checkBinary: deps.CheckBinary, relayLock: heldLock, holder: holder,
-		outbound:     make(chan chan struct{}),
-		primePending: primePending,
-		noticed:      startPresence,
+		outbound: make(chan chan struct{}),
 	}
 	stampLastHealthy := func() {
 		now := deps.Clock.Now()
@@ -355,39 +351,44 @@ func missingTokenChannel(geom Geometry) (string, bool) {
 	return setup.ChannelID, true
 }
 
-// relayStart ensures the hub's prime channel.
-// When presence is slack it also ensures every listed beam's channel.
+// relayStart ensures the channel of each orch of the hub whose slack button is on.
 // It then owes every open channel its start read and makes the reads.
-// It reports whether the prime's channel is still to be ensured, which the outbound wakes retry.
-func relayStart(ctx context.Context, geom Geometry, keeper *channelKeeper, in *inbound, hub Hub) bool {
-	prime, err := orchName(geom.Shortname, "")
+// A channel it could not ensure is ensured again at the next wake.
+func relayStart(ctx context.Context, geom Geometry, keeper *channelKeeper, in *inbound, hub Hub) {
+	beams, err := hub.Beams()
 	if err != nil {
-		logger.Warn("slackengine: could not name the hub's orch at the relay's start", "error", err)
-		return false
+		logger.Warn("slackengine: could not read the hub's beams at the relay's start; their channels wait for a wake", "error", err)
+		beams = nil
 	}
-	_, primeErr := keeper.ensure(ctx, prime)
-	if primeErr != nil {
-		logger.Warn("slackengine: could not ensure the hub's prime channel at the start; the outbound wakes retry", "error", primeErr)
+	forwarding, err := ReadForwarding(geom.ForwardingPath)
+	if err == nil {
+		err = ensureForwardedChannels(ctx, geom, keeper, forwarding, beams)
 	}
-	if presence, err := ReadPresence(geom.PresencePath); err == nil && presence == PresenceSlack {
-		beams, err := hub.Beams()
-		if err == nil {
-			err = ensureBeamChannels(ctx, geom, keeper, beams)
-		}
-		if err != nil {
-			logger.Warn("slackengine: could not ensure the beams' channels at the start", "error", err)
-		}
+	if err != nil {
+		logger.Warn("slackengine: could not ensure the channels of the orchs whose button is on at the start; the wakes retry", "error", err)
 	}
 	in.start()
 	in.retryOwed(ctx)
-	return primeErr != nil
 }
 
-// ensureBeamChannels ensures the channel of each listed beam and returns the joined errors of the ones that failed.
-func ensureBeamChannels(ctx context.Context, geom Geometry, keeper *channelKeeper, beams []string) error {
+// ensureForwardedChannels ensures the channel of each orch in forwarding, the orchs whose slack button is on.
+// It ensures only those orchs that the map holds no open channel for.
+// A beam's orch is ensured only while beams lists the beam, so a retired beam's orch gets no new channel.
+// It returns the joined errors of the ensures that failed.
+func ensureForwardedChannels(ctx context.Context, geom Geometry, keeper *channelKeeper, forwarding, beams []string) error {
+	channelMap, err := ReadChannelMap(geom.ChannelMapPath)
+	if err != nil {
+		return err
+	}
 	var failures []error
-	for _, slug := range beams {
-		orch, err := orchName(geom.Shortname, slug)
+	for _, orch := range forwarding {
+		if entry, held := channelMap.Channels[orch]; held && !entry.Archived {
+			continue
+		}
+		slug, err := slugOf(orch)
+		if err == nil && slug != "" && !slices.Contains(beams, slug) {
+			continue
+		}
 		if err == nil {
 			_, err = keeper.ensure(ctx, orch)
 		}
@@ -447,7 +448,7 @@ func runOutbound(ctx context.Context, out *outbound, clock Clock, log *relayLog,
 	}
 }
 
-// wakeLoop does the relay's channel work when a hint or a presence change arrives, and once per outbound read.
+// wakeLoop does the relay's channel work when a hint or a press of an orch's button arrives, and once per outbound read.
 // One goroutine runs it, so one goroutine reads the channels and holds the inbound's owed reads and episodes.
 type wakeLoop struct {
 	geom      Geometry
@@ -467,17 +468,13 @@ type wakeLoop struct {
 	outbound chan chan struct{}
 
 	// The fields below belong to the loop's own goroutine.
-	// presence is the presence the previous wake read, empty before the first.
-	presence Presence
-	// noticed is the presence the hub's orchs were last told of, or the one the relay read at its start;
-	// empty while neither is known.
-	noticed Presence
-	// primePending is set while the prime's channel is still to be ensured.
-	primePending bool
+	// forwarding is the orchs whose button was on at the previous wake that read it, valid once forwardingKnown is set.
+	forwarding      []string
+	forwardingKnown bool
 	// lastWake is the start of the previous wake, valid once woke is set.
 	lastWake time.Time
 	woke     bool
-	// exiting is set when a failed re-exec found the relay lock kept by another relay.
+	// exiting is set when a failed re-exec found the relay lock kept by another relay, or when no orch's button is on.
 	exiting bool
 }
 
@@ -495,12 +492,13 @@ func (w *wakeLoop) askOutboundWake(ctx context.Context) {
 	}
 }
 
-// run waits for wakes until ctx ends or a failed re-exec leaves the relay lock with another relay.
-// A file event in the inbox, or on the presence file alone, wakes it.
+// run waits for wakes until ctx ends or no orch's button is on.
+// A failed re-exec that leaves the relay lock with another relay ends it too.
+// A file event in the inbox, or on the forwarding file alone, wakes it.
 // A wake never starts within wakeFloor of the previous wake's start:
 // an event inside that second waits the rest of it on the clock.
 // The inbox is created first, and watched whole.
-// When the watch cannot be opened, the loop looks at the inbox and the presence file on disk instead.
+// When the watch cannot be opened, the loop looks at the inbox and the forwarding file on disk instead.
 // It waits from wakeFloor, doubling to waitCeiling while it finds nothing, and returns to wakeFloor after a wake.
 func (w *wakeLoop) run(ctx context.Context) error {
 	if err := os.MkdirAll(w.geom.InboxDir, privateDirMode); err != nil {
@@ -556,7 +554,7 @@ func (w *wakeLoop) awaitFloor(ctx context.Context) bool {
 	return waitFor(ctx, w.clock, rest)
 }
 
-// watch watches the inbox whole and the machine presence file's directory for that file alone,
+// watch watches the inbox whole and the forwarding file's directory for that file alone,
 // so the relay's records, outbox, map, log and lock wake nothing.
 // It returns one channel that holds a signal after any event but a removal, and the function that closes both watches.
 func (w *wakeLoop) watch() (<-chan struct{}, func(), error) {
@@ -564,18 +562,18 @@ func (w *wakeLoop) watch() (<-chan struct{}, func(), error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("slack: watch the inbox %s: %w", w.geom.InboxDir, err)
 	}
-	if err := os.MkdirAll(filepath.Dir(w.geom.PresencePath), privateDirMode); err != nil {
+	if err := os.MkdirAll(filepath.Dir(w.geom.ForwardingPath), privateDirMode); err != nil {
 		_ = inbox.Close()
-		return nil, nil, fmt.Errorf("slack: create the directory of the presence file %s: %w", w.geom.PresencePath, err)
+		return nil, nil, fmt.Errorf("slack: create the directory of the forwarding file %s: %w", w.geom.ForwardingPath, err)
 	}
-	presence, err := w.watchOpen(filepath.Dir(w.geom.PresencePath), filepath.Base(w.geom.PresencePath))
+	forwarding, err := w.watchOpen(filepath.Dir(w.geom.ForwardingPath), filepath.Base(w.geom.ForwardingPath))
 	if err != nil {
 		_ = inbox.Close()
-		return nil, nil, fmt.Errorf("slack: watch the presence file %s: %w", w.geom.PresencePath, err)
+		return nil, nil, fmt.Errorf("slack: watch the forwarding file %s: %w", w.geom.ForwardingPath, err)
 	}
 	signal := make(chan struct{}, 1)
 	var forwarders sync.WaitGroup
-	for _, watcher := range []*fswatch.Watcher{inbox, presence} {
+	for _, watcher := range []*fswatch.Watcher{inbox, forwarding} {
 		forwarders.Add(1)
 		go func() {
 			defer forwarders.Done()
@@ -592,15 +590,15 @@ func (w *wakeLoop) watch() (<-chan struct{}, func(), error) {
 	}
 	closeAll := func() {
 		_ = inbox.Close()
-		_ = presence.Close()
+		_ = forwarding.Close()
 		forwarders.Wait()
 	}
 	return signal, closeAll, nil
 }
 
-// diskCheck reports whether the inbox holds a hint or the presence differs from the previous wake's or the noticed one.
+// diskCheck reports whether the inbox holds a hint or the orchs whose button is on differ from the previous wake's.
 // It is the watch's stand-in when the watch cannot be opened.
-// Before the first wake, and with no presence noticed, there is nothing to differ from.
+// Before a wake has read the forwarding file there is nothing to differ from.
 func (w *wakeLoop) diskCheck() bool {
 	if entries, err := os.ReadDir(w.geom.InboxDir); err == nil {
 		for _, entry := range entries {
@@ -609,22 +607,23 @@ func (w *wakeLoop) diskCheck() bool {
 			}
 		}
 	}
-	presence, err := ReadPresence(w.geom.PresencePath)
+	forwarding, err := ReadForwarding(w.geom.ForwardingPath)
 	if err != nil {
 		return false
 	}
-	return (w.presence != "" && presence != w.presence) || (w.noticed != "" && presence != w.noticed)
+	return w.forwardingKnown && !slices.Equal(forwarding, w.forwarding)
 }
 
 // wake does the channel work of one wake.
-// It drains the inbox and reads the presence and the hub's beams.
-// It mails the hub's orchs the presence notice when the presence changed.
-// It ensures every listed beam's channel when presence turned to slack.
+// It drains the inbox and reads the hub's beams and the orchs whose slack button is on.
+// It ensures the channel of each such orch that has none, a beam's only while the beams read lists it,
+// so a press of a button makes its orch's channel.
 // It retires the channels of beams that a successful beams read no longer lists.
 // A failed beams read retires nothing.
+// When no orch's button is left on after the retire, the relay has no orch to serve and ends.
 // An outbound wake also makes the owed reads again.
 // It invites the setup's operator where an entry records another or none.
-// It retries a refused retire and a prime ensure that did not stand.
+// It retries a refused retire.
 // It then checks whether the lym binary was replaced.
 func (w *wakeLoop) wake(ctx context.Context, fromOutbound bool) {
 	w.lastWake, w.woke = w.clock.Now(), true
@@ -645,13 +644,17 @@ func (w *wakeLoop) wake(ctx context.Context, fromOutbound bool) {
 	} else {
 		w.log.recovered("beams")
 	}
-	presence, presenceErr := ReadPresence(w.geom.PresencePath)
-	if presenceErr != nil {
-		w.log.fail("presence", presenceErr)
+	forwarding, err := ReadForwarding(w.geom.ForwardingPath)
+	if err != nil {
+		w.log.fail("forwarding", err)
 	} else {
-		w.log.recovered("presence")
-		w.noticePresenceChange(presence, beams)
-		w.followPresence(ctx, presence, beams, beamsErr)
+		w.log.recovered("forwarding")
+		w.forwarding, w.forwardingKnown = forwarding, true
+		if err := ensureForwardedChannels(ctx, w.geom, w.keeper, forwarding, beams); err != nil {
+			w.log.fail("channels", err)
+		} else {
+			w.log.recovered("channels")
+		}
 	}
 	if beamsErr == nil {
 		if err := w.keeper.retire(ctx, beams, fromOutbound); err != nil {
@@ -659,6 +662,10 @@ func (w *wakeLoop) wake(ctx context.Context, fromOutbound bool) {
 		} else {
 			w.log.recovered("retire")
 		}
+	}
+	if remaining, err := ReadForwarding(w.geom.ForwardingPath); err == nil && len(remaining) == 0 {
+		w.exiting = true
+		return
 	}
 
 	if !fromOutbound {
@@ -670,69 +677,7 @@ func (w *wakeLoop) wake(ctx context.Context, fromOutbound bool) {
 	} else {
 		w.log.recovered("invite")
 	}
-	w.retryPrime(ctx)
 	w.runBinaryCheck(ctx)
-}
-
-// noticePresenceChange mails the hub's orchs a `[slack presence]` notice when presence differs from the noticed one.
-// With no presence noticed yet it takes presence as noticed and mails nothing.
-// The notice goes to the hub's orch and to the orch of each beam in beams, which is empty when the beams read failed.
-// A notice of slack leaves out each orch forwarded an operator's message that turned the presence:
-// that message already woke the orch, and a notice behind it would wake it again for nothing.
-// A failed notice is logged and not sent again.
-func (w *wakeLoop) noticePresenceChange(presence Presence, beams []string) {
-	awayFrom := w.in.takeAwayFrom()
-	if presence == w.noticed {
-		return
-	}
-	known := w.noticed != ""
-	w.noticed = presence
-	if !known {
-		return
-	}
-	if presence != PresenceSlack {
-		awayFrom = nil
-	}
-	if err := noticePresence(w.geom, w.mailbox, beams, presence, awayFrom); err != nil {
-		w.log.fail("presence-notice", err)
-		return
-	}
-	w.log.recovered("presence-notice")
-}
-
-// followPresence records presence and, when it turned to slack, ensures every listed beam's channel.
-// A turn it could not act on, for a beams read that failed or an ensure that failed, is acted on again at the next wake.
-func (w *wakeLoop) followPresence(ctx context.Context, presence Presence, beams []string, beamsErr error) {
-	if presence != PresenceSlack || w.presence == PresenceSlack {
-		w.presence = presence
-		return
-	}
-	if beamsErr != nil {
-		return
-	}
-	if err := ensureBeamChannels(ctx, w.geom, w.keeper, beams); err != nil {
-		w.log.fail("beam-channels", err)
-		return
-	}
-	w.log.recovered("beam-channels")
-	w.presence = presence
-}
-
-// retryPrime ensures the prime's channel again when the start's ensure did not stand.
-func (w *wakeLoop) retryPrime(ctx context.Context) {
-	if !w.primePending {
-		return
-	}
-	prime, err := orchName(w.geom.Shortname, "")
-	if err == nil {
-		_, err = w.keeper.ensure(ctx, prime)
-	}
-	if err != nil {
-		w.log.fail("prime-channel", err)
-		return
-	}
-	w.log.recovered("prime-channel")
-	w.primePending = false
 }
 
 // runBinaryCheck re-execs onto a replaced lym binary.

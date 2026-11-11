@@ -146,6 +146,10 @@ func TestHubDobbyDeps_PrimeTickEnsuresRelay(t *testing.T) {
 	if err := slackengine.WriteSetup(geom.SetupPath, slackengine.Setup{ChannelID: "C1", OperatorID: "U1"}); err != nil {
 		t.Fatalf("WriteSetup = %v", err)
 	}
+	// The relay runs only while an orch's slack button is on, so one orch's button is pressed.
+	if _, err := slackengine.WriteForwarding(geom.ForwardingPath, "ly:orch", true, time.Now()); err != nil {
+		t.Fatalf("WriteForwarding = %v", err)
+	}
 	setPresence := func(presence slackengine.Presence) {
 		t.Helper()
 		if _, err := slackengine.WritePresence(geom.PresencePath, presence, time.Now()); err != nil {

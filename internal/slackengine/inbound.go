@@ -24,8 +24,6 @@ import (
 const SlackProgram = "SLACK"
 
 const (
-	// presenceNoticePrefix opens the body of a presence notice, which asks for no reply.
-	presenceNoticePrefix = "[slack presence]"
 	// relayNoticePrefix opens the body of a notice about the relay itself, which carries no operator authority.
 	relayNoticePrefix = "[slack relay]"
 	// creelBodyLimit is the largest body creel posts, in bytes.
@@ -103,6 +101,10 @@ type Hub struct {
 	Beams func() ([]string, error)
 	// Paused reports whether a pause covers the orch named receiver.
 	Paused func(receiver string) (bool, error)
+	// Project names the board project the orch of the beam slug runs: its handle and its slug.
+	// An empty slug is the hub's own orch, which runs the root project.
+	// An empty handle means the board holds no entry for the beam.
+	Project func(slug string) (handle, project string, err error)
 }
 
 // owedRead is a read of one orch's channel, or of one thread in it, that is still to be made.
@@ -136,12 +138,6 @@ type inbound struct {
 	presenceKnown bool
 	// refusedOrchs holds the orchs whose current episode of a Slack refusal posted its notice.
 	refusedOrchs map[string]bool
-	// awayFrom holds the orchs forwarded an operator's message that turned the presence to slack.
-	// It covers the time since takeAwayFrom last ran.
-	awayFrom map[string]bool
-	// awayPending holds the orchs whose operator's message turned the presence and is not posted yet.
-	// A retry of that message finds the presence already slack, so the turn is remembered here until a post stands.
-	awayPending map[string]bool
 	// failingKey and failingSince name the message that cannot be handled yet and when it first failed.
 	failingKey   string
 	failingSince time.Time
@@ -153,19 +149,7 @@ func newInbound(geom Geometry, mailbox Mailbox, slack SlackClient, hub Hub, cloc
 	return &inbound{
 		geom: geom, mailbox: mailbox, slack: slack, hub: hub, clock: clock, keeper: keeper,
 		refusedOrchs: map[string]bool{},
-		awayFrom:     map[string]bool{},
-		awayPending:  map[string]bool{},
 	}
-}
-
-// takeAwayFrom returns the orchs forwarded an operator's message that turned the presence to slack.
-// It covers the time since the previous call, and it forgets them.
-func (in *inbound) takeAwayFrom() map[string]bool {
-	in.mu.Lock()
-	defer in.mu.Unlock()
-	taken := in.awayFrom
-	in.awayFrom = map[string]bool{}
-	return taken
 }
 
 var (
@@ -198,29 +182,6 @@ func fileLines(files []File) string {
 // orchName forms the name of the orch of the beam slug, the hub's own orch for an empty slug.
 func orchName(shortname, slug string) (string, error) {
 	return agentname.Format(shortname, slug, agentname.RoleOrch)
-}
-
-// noticePresence mails a `[slack presence]` notice of presence to the hub's orch and to the orch of each beam in beams.
-// An orch in skip is left out.
-// The notice asks for no reply.
-// The error joins every failed notice.
-func noticePresence(geom Geometry, mailbox Mailbox, beams []string, presence Presence, skip map[string]bool) error {
-	var failures []error
-	notice := fmt.Sprintf("%s presence is now %s", presenceNoticePrefix, presence)
-	for _, slug := range append([]string{""}, beams...) {
-		receiver, err := orchName(geom.Shortname, slug)
-		if err != nil {
-			failures = append(failures, err)
-			continue
-		}
-		if skip[receiver] {
-			continue
-		}
-		if _, err := mailbox.Post(receiver, notice); err != nil {
-			failures = append(failures, fmt.Errorf("slack: post the presence notice to %s: %w", receiver, err))
-		}
-	}
-	return errors.Join(failures...)
 }
 
 // slackTimestamp renders t as a Slack message timestamp, `<seconds>.<micros>`.
@@ -632,9 +593,8 @@ func (in *inbound) readFailed(orch string, err error) error {
 // handle handles one message of the orch's channel and reports whether it forwarded or answered anything.
 // It forwards the setup's operator's message of no subtype, `file_share` or `thread_broadcast`;
 // any other subtype, a bot's message and anyone else's are skipped.
+// While the orch's slack button is off, such a message is answered in the channel and not forwarded.
 // A message it forwards first sets the presence to slack.
-// When that turned the presence and the message was posted to the orch, the orch is kept for takeAwayFrom;
-// a turn whose post failed is kept for the retry of the message, and one whose message posted nothing is dropped.
 // An error means the message is not handled yet and the cursor stays before it.
 func (in *inbound) handle(ctx context.Context, setup Setup, orch, channel string, message Message) (bool, error) {
 	forwardedSubtype := message.Subtype == "" || message.Subtype == fileShareSubtype || message.Subtype == threadBroadcastSubtype
@@ -651,35 +611,30 @@ func (in *inbound) handle(ctx context.Context, setup Setup, orch, channel string
 	case "status":
 		return in.status(ctx, channel, message)
 	}
-	if in.awayOnOperatorMessage() {
-		in.awayPending[orch] = true
+	on, err := ForwardingOn(in.geom.ForwardingPath, orch)
+	if err != nil {
+		return in.retryOrGiveUp(ctx, channel, message, "the orch's slack button could not be read", err)
 	}
-	handled, posted, err := in.forward(ctx, orch, channel, message, text)
-	switch {
-	case posted:
-		if in.awayPending[orch] {
-			in.awayFrom[orch] = true
-		}
-		delete(in.awayPending, orch)
-	case err == nil:
-		delete(in.awayPending, orch)
+	if !on {
+		in.settle()
+		in.answer(ctx, channel, fmt.Sprintf("the slack button of %s is off, so this message was not forwarded; press it on that orch's status bar", orch))
+		return true, nil
 	}
-	return handled, err
+	in.awayOnOperatorMessage()
+	return in.forward(ctx, orch, channel, message, text)
 }
 
 // awayOnOperatorMessage sets the presence to slack before an operator's message is forwarded:
 // the operator writing in Slack shows they are away.
-// It reports whether the write turned the presence; a presence already slack is left as it is.
+// A presence already slack is left as it is.
 // A failed write is logged once per episode and holds no message.
-func (in *inbound) awayOnOperatorMessage() bool {
-	turned, err := WritePresence(in.geom.PresencePath, PresenceSlack, in.clock.Now())
-	if err != nil {
+func (in *inbound) awayOnOperatorMessage() {
+	if _, err := WritePresence(in.geom.PresencePath, PresenceSlack, in.clock.Now()); err != nil {
 		in.episodes.Fail("presence", "slackengine: an operator's message could not set the presence to slack", "error", err)
-		return false
+		return
 	}
 	in.episodes.Recover("presence", "slackengine: the presence is written again")
 	in.lastPresence, in.presenceKnown = PresenceSlack, true
-	return turned
 }
 
 // setPresence sets the presence for an `away` or `back` command and answers in the channel with the resulting state.
@@ -709,23 +664,22 @@ func (in *inbound) status(ctx context.Context, channel string, message Message) 
 // forward posts a message of the operator to orch, the orch of the channel it was written in.
 // The text goes as it stands, an `@<slug>` prefix included, followed by a line per attached file.
 // The body carries no marker of its own: the sender `<shortname>:SLACK` already names Slack as its source.
-// handled reports whether the message is done with, and posted whether the orch was mailed it.
-// A message with no text and no files is handled and not posted.
+// It reports whether the message is done with.
+// A message with no text and no files is done with and not posted.
 // So is a message over the body limit.
 // So is a message given up on after retryWindow.
-func (in *inbound) forward(ctx context.Context, orch, channel string, message Message, text string) (handled, posted bool, err error) {
+func (in *inbound) forward(ctx context.Context, orch, channel string, message Message, text string) (bool, error) {
 	body := strings.TrimPrefix(text+fileLines(message.Files), "\n")
 	if strings.TrimSpace(body) == "" {
 		logger.Debug("slackengine: skipped a message with no text and no files", "ts", message.TS)
-		return true, false, nil
+		return true, nil
 	}
 	if len(body) > creelBodyLimit {
 		in.answer(ctx, channel, fmt.Sprintf("that message is %d bytes, over the %d the hub's mail takes; send a shorter one", len(body), creelBodyLimit))
-		return true, false, nil
+		return true, nil
 	}
 	if _, err := in.mailbox.Post(orch, body); err != nil {
-		handled, err := in.retryOrGiveUp(ctx, channel, message, "your message was not delivered; send it again", err)
-		return handled, false, err
+		return in.retryOrGiveUp(ctx, channel, message, "your message was not delivered; send it again", err)
 	}
 	in.settle()
 	paused, err := in.hub.Paused(orch)
@@ -738,7 +692,7 @@ func (in *inbound) forward(ctx context.Context, orch, channel string, message Me
 	default:
 		in.episodes.Recover("paused", "slackengine: the pause read succeeds again")
 	}
-	return true, true, nil
+	return true, nil
 }
 
 // retryOrGiveUp handles a message that could not be handled:

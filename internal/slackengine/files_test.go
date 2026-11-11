@@ -18,30 +18,76 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestConnectionSwitch covers a machine with no switch file, which reads on, and a switch written off and on again.
-func TestConnectionSwitch(t *testing.T) {
+// TestForwarding covers a hub with no forwarding file and slack buttons written on and off.
+// It also covers a repeat of the stored state.
+func TestForwarding(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	forwardingPath := func(t *testing.T) string {
+		t.Helper()
+		return filepath.Join(t.TempDir(), "slack", slackengine.ForwardingFileName)
+	}
 
-	t.Run("MissingFileReadsOn", func(t *testing.T) {
+	t.Run("MissingFileHoldsNoOrchAndNoButtonIsOn", func(t *testing.T) {
 		t.Parallel()
-		off, err := slackengine.ReadSwitchedOff(filepath.Join(t.TempDir(), slackengine.SwitchFileName))
-		if err != nil || off {
-			t.Errorf("ReadSwitchedOff(missing) = %v, %v; want on", off, err)
+		path := forwardingPath(t)
+		if orchs, err := slackengine.ReadForwarding(path); err != nil || len(orchs) != 0 {
+			t.Errorf("ReadForwarding(missing) = %v, %v; want none", orchs, err)
+		}
+		if on, err := slackengine.ForwardingOn(path, "ly:orch"); err != nil || on {
+			t.Errorf("ForwardingOn(missing) = %v, %v; want off", on, err)
 		}
 	})
 
-	t.Run("WriteReadsBackAndCreatesItsDirectory", func(t *testing.T) {
+	t.Run("WritesReadBackSortedWithAnOffOrchLeftOutAndARepeatIsUnchanged", func(t *testing.T) {
 		t.Parallel()
-		path := filepath.Join(t.TempDir(), "credentials", slackengine.SwitchFileName)
-		for _, wantOff := range []bool{true, false, true} {
-			if err := slackengine.WriteSwitchedOff(path, wantOff, now); err != nil {
-				t.Fatalf("WriteSwitchedOff(%v) = %v", wantOff, err)
+		path := forwardingPath(t)
+		steps := []struct {
+			orch        string
+			on          bool
+			wantChanged bool
+			wantOn      []string
+		}{
+			{"ly:payments:orch", true, true, []string{"ly:payments:orch"}},
+			{"ly:orch", true, true, []string{"ly:orch", "ly:payments:orch"}},
+			{"ly:orch", true, false, []string{"ly:orch", "ly:payments:orch"}},
+			{"ly:payments:orch", false, true, []string{"ly:orch"}},
+			{"ly:payments:orch", false, false, []string{"ly:orch"}},
+			{"ly:other:orch", false, false, []string{"ly:orch"}},
+		}
+		for i, step := range steps {
+			changed, err := slackengine.WriteForwarding(path, step.orch, step.on, now)
+			if err != nil || changed != step.wantChanged {
+				t.Fatalf("WriteForwarding #%d (%s, %v) = %v, %v; want changed %v", i+1, step.orch, step.on, changed, err, step.wantChanged)
 			}
-			if off, err := slackengine.ReadSwitchedOff(path); err != nil || off != wantOff {
-				t.Errorf("ReadSwitchedOff after writing %v = %v, %v; want %v", wantOff, off, err, wantOff)
+			orchs, err := slackengine.ReadForwarding(path)
+			if err != nil {
+				t.Fatalf("ReadForwarding after write #%d = %v", i+1, err)
 			}
+			if diff := cmp.Diff(step.wantOn, orchs); diff != "" {
+				t.Errorf("ReadForwarding after write #%d mismatch (-want +got):\n%s", i+1, diff)
+			}
+			if on, err := slackengine.ForwardingOn(path, step.orch); err != nil || on != step.on {
+				t.Errorf("ForwardingOn(%s) after write #%d = %v, %v; want %v", step.orch, i+1, on, err, step.on)
+			}
+		}
+	})
+
+	t.Run("UndecodableFileIsAnErrorNamingIt", func(t *testing.T) {
+		t.Parallel()
+		path := forwardingPath(t)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("MkdirAll = %v", err)
+		}
+		if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+			t.Fatalf("WriteFile = %v", err)
+		}
+		if _, err := slackengine.ReadForwarding(path); err == nil || !strings.Contains(err.Error(), path) {
+			t.Errorf("ReadForwarding({) = %v; want an error naming %s", err, path)
+		}
+		if on, err := slackengine.ForwardingOn(path, "ly:orch"); err == nil || on {
+			t.Errorf("ForwardingOn({) = %v, %v; want an error and off", on, err)
 		}
 	})
 }

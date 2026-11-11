@@ -30,6 +30,9 @@ const (
 	fakePID = 7
 	// gonePID is a process id no process holds.
 	gonePID = 2147483000
+	// spareOrch is the orch of a beam the relay's hub never lists.
+	// Its button makes no channel, and the first retire drops it.
+	spareOrch = "ly:spare:orch"
 )
 
 // readAllCount returns how many times the mailbox's ReadAll was called.
@@ -118,7 +121,8 @@ func newRelayRun(t *testing.T) *relayRun {
 				r.beamReads.Add(1)
 				return hub.Beams()
 			},
-			Paused: hub.Paused,
+			Paused:  hub.Paused,
+			Project: hub.Project,
 		},
 		LiveHubs:      func() ([]slackengine.Geometry, error) { return []slackengine.Geometry{h.geom}, nil },
 		Clock:         r.clock,
@@ -281,17 +285,6 @@ func (r *relayRun) forwarded(text string) bool {
 		}
 	}
 	return false
-}
-
-// presenceNotices returns the mail the relay sent as `[slack presence]` notices, in the order it was accepted.
-func (r *relayRun) presenceNotices() []mail {
-	var notices []mail
-	for _, posted := range r.mailbox.accepted() {
-		if strings.HasPrefix(posted.Body, "[slack presence]") {
-			notices = append(notices, posted)
-		}
-	}
-	return notices
 }
 
 // awaitForwarded blocks until the relay mailed the operator's text to the hub's orch.
@@ -747,7 +740,7 @@ func TestRunRelay(t *testing.T) {
 		}
 	})
 
-	t.Run("PrimeEnsureThatDidNotStandAtStartIsMadeAtTheNextOutboundWakes", func(t *testing.T) {
+	t.Run("ChannelOfAPressedOrchThatDidNotStandAtStartIsMadeAtTheNextOutboundWakes", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name    string
@@ -825,7 +818,7 @@ func TestRunRelay(t *testing.T) {
 		r.awaitForwarded("wait for it")
 	})
 
-	t.Run("WritesToTheRelaysOwnRecordsWakeNothingAndAPresenceChangeWakes", func(t *testing.T) {
+	t.Run("WritesToTheRelaysOwnRecordsAndToThePresenceWakeNothingAndAPressOfAButtonWakes", func(t *testing.T) {
 		t.Parallel()
 		r := newRelayRun(t)
 		r.settle()
@@ -847,7 +840,7 @@ func TestRunRelay(t *testing.T) {
 		if err := os.WriteFile(r.geom.LogPath, []byte("a note\n"), 0o600); err != nil {
 			t.Fatalf("write the relay log = %v", err)
 		}
-		// The machine's token file shares the presence file's directory and wakes nothing either.
+		// The machine's token file wakes nothing either.
 		bothTokens := slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}
 		if err := slackengine.WriteCredentials(r.geom.TokenPath, bothTokens); err != nil {
 			t.Fatalf("WriteCredentials = %v", err)
@@ -868,12 +861,16 @@ func TestRunRelay(t *testing.T) {
 
 		r.hub.set(func(hub *fakeHub) { hub.beams = []string{"payments", "extra"} })
 		r.setPresence(slackengine.PresenceSlack)
-		eventually(t, "the channel of the new beam to be created", func() bool { return len(r.createdChannels()) == 1 })
+		r.setButton("ly:extra:orch", true)
+		eventually(t, "the channel of the pressed beam to be created", func() bool { return len(r.createdChannels()) == 1 })
+		if diff := cmp.Diff([]string{"neve-ly-p1-extra"}, r.createdChannels()); diff != "" {
+			t.Errorf("channels created mismatch (-want +got):\n%s", diff)
+		}
 		if got := r.beamReads.Load(); got != beamReadsBefore+1 {
-			t.Errorf("beam reads = %d after the writes and a presence change; want %d, one wake for the presence change alone", got, beamReadsBefore+1)
+			t.Errorf("beam reads = %d after the writes, a presence change and a press; want %d, one wake for the press alone", got, beamReadsBefore+1)
 		}
 		if r.clock.hasWait(slackengine.WakeFloor) {
-			t.Errorf("the presence change waited on the clock; a write to the relay's own records woke the relay")
+			t.Errorf("the press waited on the clock; a write to the relay's own records woke the relay")
 		}
 	})
 
@@ -906,156 +903,22 @@ func TestRunRelay(t *testing.T) {
 		awaitClosed(t, dialedB)
 	})
 
-	t.Run("PrimeChannelIsEnsuredAtStartAndBeamChannelsOnceThePresenceTurnsToSlack", func(t *testing.T) {
+	t.Run("RelayStartMakesTheChannelOfEachListedOrchWhoseButtonIsOnAndAPressMakesAnotherAtAWake", func(t *testing.T) {
 		t.Parallel()
 		r := newRelayRun(t)
 		r.removeEntry(primeOrch)
 		r.removeEntry(paymentsOrch)
-		prime := slackengine.ChannelName(r.geom.Shortname, r.geom.Machine, "")
-		payments := slackengine.ChannelName(r.geom.Shortname, r.geom.Machine, "payments")
+		r.setButton(paymentsOrch, false)
+		// The hub lists no spare beam, so its button on makes no channel.
+		r.setButton(spareOrch, true)
 		r.settle()
-		if diff := cmp.Diff([]string{prime}, r.createdChannels()); diff != "" {
+		if diff := cmp.Diff([]string{primeChannelName}, r.createdChannels()); diff != "" {
 			t.Errorf("channels created at the start mismatch (-want +got):\n%s", diff)
 		}
-		r.clock.Advance(slackengine.WakeFloor)
-		r.setPresence(slackengine.PresenceSlack)
-		eventually(t, "the beam's channel to be created", func() bool { return len(r.createdChannels()) == 2 })
-		if diff := cmp.Diff([]string{prime, payments}, r.createdChannels()); diff != "" {
-			t.Errorf("channels created after the presence turned to slack mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("PresenceSlackAtStartEnsuresEveryListedBeamsChannelAtTheStart", func(t *testing.T) {
-		t.Parallel()
-		r := newRelayRun(t)
-		r.removeEntry(primeOrch)
-		r.removeEntry(paymentsOrch)
-		r.setPresence(slackengine.PresenceSlack)
-		prime := slackengine.ChannelName(r.geom.Shortname, r.geom.Machine, "")
-		payments := slackengine.ChannelName(r.geom.Shortname, r.geom.Machine, "payments")
-		r.settle()
-		if diff := cmp.Diff([]string{prime, payments}, r.createdChannels()); diff != "" {
-			t.Errorf("channels created at the start mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("PresenceChangeAfterTheStartIsMailedToTheHubOrchAndItsBeamOrchsAndTheStartsPresenceIsNot", func(t *testing.T) {
-		t.Parallel()
-		const slackNotice, terminalNotice = "[slack presence] presence is now slack", "[slack presence] presence is now terminal"
-		tests := []struct {
-			name string
-			// atStart is the presence written before the relay starts, empty for none.
-			atStart slackengine.Presence
-			// beamsErr is what the hub's beams read answers.
-			beamsErr error
-			// changes are written one after the other once the relay's first wake is done.
-			changes []slackengine.Presence
-			want    []mail
-		}{
-			{"ChangeToSlackMailsTheHubOrchAndTheBeamOrch", "", nil,
-				[]slackengine.Presence{slackengine.PresenceSlack},
-				[]mail{{primeOrch, slackNotice}, {paymentsOrch, slackNotice}}},
-			{"FailedBeamsReadMailsTheHubOrchAlone", "", errors.New("board unreadable"),
-				[]slackengine.Presence{slackengine.PresenceSlack},
-				[]mail{{primeOrch, slackNotice}}},
-			{"PresenceFoundAtStartIsNotMailedButTheChangeFromItIs", slackengine.PresenceSlack, nil,
-				[]slackengine.Presence{slackengine.PresenceTerminal},
-				[]mail{{primeOrch, terminalNotice}, {paymentsOrch, terminalNotice}}},
-			{"RewriteOfTheStoredPresenceMailsNothingButALaterChangeDoes", "", nil,
-				[]slackengine.Presence{slackengine.PresenceTerminal, slackengine.PresenceSlack},
-				[]mail{{primeOrch, slackNotice}, {paymentsOrch, slackNotice}}},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				r := newRelayRun(t)
-				r.hub.set(func(hub *fakeHub) { hub.beamsErr = tt.beamsErr })
-				if tt.atStart != "" {
-					r.setPresence(tt.atStart)
-				}
-				r.settle()
-				if notices := r.presenceNotices(); len(notices) != 0 {
-					t.Fatalf("notices after the start = %+v; want none for the presence found at the start", notices)
-				}
-				for _, change := range tt.changes {
-					r.setPresence(change)
-				}
-				r.driveUntil("the presence notices to be mailed", func() bool { return len(r.presenceNotices()) >= len(tt.want) })
-				if diff := cmp.Diff(tt.want, r.presenceNotices()); diff != "" {
-					t.Errorf("presence notices mismatch (-want +got):\n%s", diff)
-				}
-			})
-		}
-	})
-
-	t.Run("OperatorsMessageThatTurnsThePresenceToSlackIsNoticedToEveryOrchButTheOneItWasForwardedTo", func(t *testing.T) {
-		t.Parallel()
-		r := newRelayRun(t)
-		r.startAt("100.000000")
-		r.settle()
-		r.clock.Advance(slackengine.WakeFloor)
-		r.say("200.000001", "hello from slack")
-		r.hint(testChannel)
-		r.awaitForwarded("hello from slack")
-		r.driveUntil("the presence notice to be mailed", func() bool { return len(r.presenceNotices()) >= 1 })
-		want := []mail{{paymentsOrch, "[slack presence] presence is now slack"}}
-		if diff := cmp.Diff(want, r.presenceNotices()); diff != "" {
-			t.Errorf("presence notices mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("PresenceThatTurnedBackBeforeTheNoticeIsNoticedToEveryOrchAndTheKeptOrchesAreForgottenAtEveryWake", func(t *testing.T) {
-		t.Parallel()
-		// The mailbox hook below writes the presence terminal once, as the operator's message reaches the hub's orch,
-		// so the wake that forwards the message also finds the presence changed again.
-		const slackNotice, terminalNotice = "[slack presence] presence is now slack", "[slack presence] presence is now terminal"
-		tests := []struct {
-			name string
-			// run drives the relay from a settled start and returns when the notices of want are mailed.
-			run  func(r *relayRun, turnBack *atomic.Bool)
-			want []mail
-		}{
-			{"NoticeOfTerminalReachesTheOrchTheMessageWasForwardedTo", func(r *relayRun, turnBack *atomic.Bool) {
-				r.setPresence(slackengine.PresenceSlack)
-				r.driveUntil("the slack notices to be mailed", func() bool { return len(r.presenceNotices()) >= 2 })
-				r.setPresence(slackengine.PresenceTerminal)
-				r.say("200.000001", "hello from slack")
-				turnBack.Store(true)
-				r.hint(testChannel)
-				r.driveUntil("the terminal notices to be mailed", func() bool { return len(r.presenceNotices()) >= 4 })
-			}, []mail{
-				{primeOrch, slackNotice}, {paymentsOrch, slackNotice},
-				{primeOrch, terminalNotice}, {paymentsOrch, terminalNotice},
-			}},
-			{"OrchKeptByAWakeThatSentNoNoticeDoesNotSuppressALaterNotice", func(r *relayRun, turnBack *atomic.Bool) {
-				reads := r.beamReads.Load()
-				r.say("200.000001", "hello from slack")
-				turnBack.Store(true)
-				r.hint(testChannel)
-				r.driveUntil("a wake after the forwarding wake", func() bool { return r.beamReads.Load() >= reads+2 })
-				r.setPresence(slackengine.PresenceSlack)
-				r.driveUntil("the slack notices to be mailed", func() bool { return len(r.presenceNotices()) >= 2 })
-			}, []mail{{primeOrch, slackNotice}, {paymentsOrch, slackNotice}}},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				r := newRelayRun(t)
-				r.startAt("100.000000")
-				var turnBack atomic.Bool
-				r.mailbox.onPost = func(receiver string) {
-					if receiver == primeOrch && turnBack.CompareAndSwap(true, false) {
-						if _, err := slackengine.WritePresence(r.geom.PresencePath, slackengine.PresenceTerminal, r.clock.Now()); err != nil {
-							t.Errorf("WritePresence = %v", err)
-						}
-					}
-				}
-				r.settle()
-				tt.run(r, &turnBack)
-				if diff := cmp.Diff(tt.want, r.presenceNotices()); diff != "" {
-					t.Errorf("presence notices mismatch (-want +got):\n%s", diff)
-				}
-			})
+		r.setButton(paymentsOrch, true)
+		r.driveUntil("the pressed beam's channel to be created", func() bool { return len(r.createdChannels()) == 2 })
+		if diff := cmp.Diff([]string{primeChannelName, paymentsChannelName}, r.createdChannels()); diff != "" {
+			t.Errorf("channels created after the press mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -1066,11 +929,12 @@ func TestRunRelay(t *testing.T) {
 			r.updateEntry(orch, func(entry *slackengine.ChannelEntry) { entry.Operator = "" })
 		}
 		r.slack.failNext("Invite", &slackengine.APIError{Method: "conversations.invite", Code: "user_not_found"})
-		r.settle()
+		wait := r.settle()
+		r.clock.Advance(wait)
 		for _, channel := range []string{testChannel, paymentsChannel} {
-			if diff := cmp.Diff([]string{testOperator}, invitedTo(r.slack, channel)); diff != "" {
-				t.Errorf("users invited to %s mismatch (-want +got):\n%s", channel, diff)
-			}
+			eventually(t, "the operator to be invited to "+channel, func() bool {
+				return cmp.Equal(invitedTo(r.slack, channel), []string{testOperator})
+			})
 		}
 		if notices := r.relayNotices(); len(notices) != 1 || !strings.Contains(notices[0], "lym slack setup --operator") {
 			t.Errorf("notices = %q; want one for the refused invite naming lym slack setup --operator", notices)
@@ -1098,7 +962,7 @@ func TestRunRelay(t *testing.T) {
 		retireRig := func(t *testing.T) *relayRun {
 			t.Helper()
 			r := newRelayRun(t)
-			r.slack.seedChannel(slackengine.ChannelInfo{ID: paymentsChannel, Name: "ly-neve-payments", Creator: "UBOT", IsMember: true})
+			r.slack.seedChannel(slackengine.ChannelInfo{ID: paymentsChannel, Name: paymentsChannelName, Creator: "UBOT", IsMember: true})
 			r.settle()
 			r.hub.set(func(hub *fakeHub) { hub.beams = nil })
 			r.clock.Advance(slackengine.WakeFloor)
@@ -1108,9 +972,9 @@ func TestRunRelay(t *testing.T) {
 		t.Run("UnlistedBeamsChannelIsRenamedAndArchivedAtAWake", func(t *testing.T) {
 			t.Parallel()
 			r := retireRig(t)
-			r.setPresence(slackengine.PresenceSlack)
+			r.hint(testChannel)
 			eventually(t, "the unlisted beam's entry to be archived", func() bool { return r.entryOf(paymentsOrch).Archived })
-			dated := slackengine.ArchivedName("ly-neve-payments", r.clock.Now(), 1)
+			dated := slackengine.ArchivedName(paymentsChannelName, r.clock.Now(), 1)
 			wantRenames := []slackCall{{Method: "Rename", Channel: paymentsChannel, Arg: dated}}
 			if diff := cmp.Diff(wantRenames, r.slack.logged("Rename")); diff != "" {
 				t.Errorf("rename calls mismatch (-want +got):\n%s", diff)
@@ -1128,7 +992,7 @@ func TestRunRelay(t *testing.T) {
 			r := retireRig(t)
 			r.hub.set(func(hub *fakeHub) { hub.beamsErr = errors.New("beams unreadable") })
 			before := r.beamReads.Load()
-			r.setPresence(slackengine.PresenceSlack)
+			r.hint(testChannel)
 			eventually(t, "the wake to read the beams", func() bool { return r.beamReads.Load() > before })
 			wait := r.awaitOutboundWait()
 			r.clock.Advance(wait)
@@ -1142,7 +1006,7 @@ func TestRunRelay(t *testing.T) {
 			t.Parallel()
 			r := retireRig(t)
 			r.slack.failNext("Archive", &slackengine.APIError{Method: "conversations.archive", Code: "restricted_action"})
-			r.setPresence(slackengine.PresenceSlack)
+			r.hint(testChannel)
 			eventually(t, "the first archive call", func() bool { return len(r.slack.logged("Archive")) == 1 })
 
 			// An event inside the second of the first wake's start waits on the clock only once that wake has ended.
@@ -1162,6 +1026,31 @@ func TestRunRelay(t *testing.T) {
 			eventually(t, "the refused archive to be retried", func() bool { return r.entryOf(paymentsOrch).Archived })
 			if got := len(r.slack.logged("Archive")); got != 2 {
 				t.Errorf("archive calls = %d after the outbound wake; want the one retry", got)
+			}
+		})
+
+		t.Run("RelayEndsWhenTheRetireDropsTheLastButton", func(t *testing.T) {
+			t.Parallel()
+			r := newRelayRun(t)
+			r.setButton(primeOrch, false)
+			r.slack.seedChannel(slackengine.ChannelInfo{ID: paymentsChannel, Name: paymentsChannelName, Creator: "UBOT", IsMember: true})
+			r.settle()
+			r.hub.set(func(hub *fakeHub) { hub.beams = nil })
+			r.clock.Advance(slackengine.WakeFloor)
+			r.hint(testChannel)
+			r.mu.Lock()
+			done := r.done
+			r.mu.Unlock()
+			select {
+			case <-done:
+			case <-time.After(awaitTimeout):
+				t.Fatalf("RunRelay did not return after the retire dropped the last button")
+			}
+			if err := r.result(); err != nil {
+				t.Errorf("RunRelay = %v; want nil", err)
+			}
+			if buttons := r.buttonsOn(); len(buttons) != 0 {
+				t.Errorf("buttons on = %v; want none", buttons)
 			}
 		})
 	})
@@ -1200,6 +1089,21 @@ func TestRunRelay(t *testing.T) {
 		r.clock.Advance(4 * time.Second)
 		r.awaitForwarded("found on disk")
 		r.clock.awaitWait(t, time.Second)
+	})
+
+	t.Run("PressOfAButtonIsSeenOnDiskWhenTheWatchCannotBeOpened", func(t *testing.T) {
+		t.Parallel()
+		r := newRelayRun(t)
+		r.hub.set(func(hub *fakeHub) { hub.beams = []string{"payments", "extra"} })
+		r.deps.Watch = func(string, ...string) (*fswatch.Watcher, error) { return nil, errors.New("inotify is unavailable") }
+		r.settle()
+		r.clock.awaitWait(t, time.Second)
+		r.setButton("ly:extra:orch", true)
+		r.clock.Advance(time.Second)
+		eventually(t, "the channel of the pressed beam to be created", func() bool { return len(r.createdChannels()) == 1 })
+		if diff := cmp.Diff([]string{"neve-ly-p1-extra"}, r.createdChannels()); diff != "" {
+			t.Errorf("channels created mismatch (-want +got):\n%s", diff)
+		}
 	})
 }
 
@@ -1333,7 +1237,7 @@ func TestEnsureRelay(t *testing.T) {
 		e.wantSpawns(0)
 	})
 
-	t.Run("SwitchedOffMachineAnswersSwitchedOffInBothModesSpawnsNothingAndStartsOnceSwitchedOn", func(t *testing.T) {
+	t.Run("HubWithNoButtonOnAnswersForwardingOffInBothModesSpawnsNothingAndStartsOnceOneIsPressed", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name        string
@@ -1341,9 +1245,9 @@ func TestEnsureRelay(t *testing.T) {
 			removeToken bool
 			want        slackengine.StartOutcome
 		}{
-			{"OperatorStart", false, false, slackengine.OutcomeSwitchedOff},
-			{"WhileAway", true, false, slackengine.OutcomeSwitchedOff},
-			{"NotConfiguredIsAnsweredBeforeTheSwitchIsRead", false, true, slackengine.OutcomeNotConfigured},
+			{"OperatorStart", false, false, slackengine.OutcomeForwardingOff},
+			{"WhileAway", true, false, slackengine.OutcomeForwardingOff},
+			{"NotConfiguredIsAnsweredBeforeTheButtonsAreRead", false, true, slackengine.OutcomeNotConfigured},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -1355,21 +1259,18 @@ func TestEnsureRelay(t *testing.T) {
 						t.Fatalf("Remove = %v", err)
 					}
 				}
-				if err := slackengine.WriteSwitchedOff(e.geom.SwitchPath, true, e.clock.Now()); err != nil {
-					t.Fatalf("WriteSwitchedOff = %v", err)
-				}
+				e.setButton(primeOrch, false)
+				e.setButton(paymentsOrch, false)
 				if got, err := e.starter.Ensure(e.geom, "main", tt.whileAway); err != nil || got != tt.want {
-					t.Fatalf("Ensure(switched off) = %q, %v; want %q", got, err, tt.want)
+					t.Fatalf("Ensure(no button on) = %q, %v; want %q", got, err, tt.want)
 				}
 				e.wantSpawns(0)
 				if tt.removeToken {
 					return
 				}
-				if err := slackengine.WriteSwitchedOff(e.geom.SwitchPath, false, e.clock.Now()); err != nil {
-					t.Fatalf("WriteSwitchedOff = %v", err)
-				}
+				e.setButton(paymentsOrch, true)
 				if got, err := e.starter.Ensure(e.geom, "main", tt.whileAway); err != nil || got != slackengine.OutcomeStarted {
-					t.Fatalf("Ensure(switched on) = %q, %v; want started", got, err)
+					t.Fatalf("Ensure(a button on) = %q, %v; want started", got, err)
 				}
 				e.wantSpawns(1)
 			})

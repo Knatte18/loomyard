@@ -33,6 +33,8 @@ type ChannelEntry struct {
 	ThreadFloor string `json:"thread_floor"`
 	// Operator is the Slack user id of the operator invited to the channel, empty for none.
 	Operator string `json:"operator"`
+	// Renamed reports whether the channel carries the dated name a retiring channel takes before its archive.
+	Renamed bool `json:"renamed,omitempty"`
 	// Archived reports whether the channel is archived.
 	Archived bool `json:"archived"`
 }

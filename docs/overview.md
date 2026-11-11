@@ -390,7 +390,7 @@ github.com/Knatte18/loomyard/
 ├── internal/creelcli/            the `lym creel` commands (`post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release`, `hubs` and the hidden `daemon`, `hook-read` and `hook-wait`), their hub wiring and the delivery adapter over reed and shuttle
 ├── internal/creelengine/         the per-hub message daemon: the journal-folded pool of mail and queued injects, sender identity, reminders for a strand without hook delivery, the per-strand mail flags, the tool-boundary and Stop claim, the idle waiter and bell, injects, holds, the removed-holder sweep and the socket protocol, over a delivery seam
 ├── internal/slackcli/            the `lym slack` commands (`login`, `setup`, `start`, `stop`, `away`, `back`, `status` and the hidden `relay`, `hook`, `bar` and `toggle`), their pane check and hub wiring
-├── internal/slackengine/         the per-hub Slack relay: the Web API client, the Socket Mode connection, the machine's credential, presence and switch files and the hub's setup, channel-map and relay-state files, the push-woken inbound read of each orch's channel with its presence commands, the outbound read of mail for SLACK, and the relay's run loop and double-fork start
+├── internal/slackengine/         the per-hub Slack relay: the Web API client, the Socket Mode connection, the machine's credential and presence files and the hub's setup, forwarding, channel-map and relay-state files, the push-woken inbound read of each orch's channel with its presence commands, the outbound read of mail for SLACK, and the relay's run loop and double-fork start
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
 ├── internal/runprofile/          the hub's named run profiles in profiles.yaml: template, layered-load spec, loader and lookup
@@ -892,17 +892,20 @@ User-facing modules each get one `lym <module>` namespace:
   only the operator's terminal may run them,
   and an orch's pane may run `start`, `stop`, `away` and `back`.
   The app's scopes and events are the manifest in `docs/slack-app.md`.
-  Each orch has a channel of its own, named by hub, machine and orch, and the relay makes it, adopts a live one the bot made, and joins it.
+  Each orch with a status bar, the prime's and each beam's, has its own `slack` button there, kept in the hub's forwarding file;
+  the first press gives the orch a channel of its own, `<machine>-<shortname>-<project handle>-<project slug>` such as `neve-ly-p0-root`,
+  which the relay makes, adopts when the bot made it, and joins,
+  and a second press switches the orch's forwarding off and leaves the channel in place.
+  The relay runs only while some orch of the hub has its button on, so the machine's connection follows the buttons.
   One relay of the machine holds the Socket Mode connection, and each event it receives wakes the relay of the hub whose channel it belongs to.
   The relay forwards the operator's messages in an orch's channel to that orch as creel mail from `<shortname>:SLACK` that carries their text alone, answers `away`, `back` and `status` in the channel, and posts the mail the orchs and programs leave for `SLACK` to their own channel, at least once, and a message Slack accepted is not posted again within one relay process.
   Each post goes under its sender's name in the cross-machine address form `<machine>::<sender>`.
   A channel is archived only when its orch retires, under a dated name, and `lym slack stop` archives nothing.
   It starts through a double fork, so no pane's tree holds it, and its files sit in the hub's `.lym/slack/` directory.
-  The presence and the connection switch are the machine's, beside its credential file, so away holds for every hub and orch on the machine.
+  The presence is the machine's, beside its credential file, so away holds for every hub and orch on the machine.
   The operator's message in Slack sets the presence to `slack`, and a line the operator types in an orch's pane sets it back to `terminal`, through the orch's prompt hook (`lym slack hook`), which tells those lines from the ones lym types.
-  While the presence is `slack`, the orch's turn-end hook posts each turn's final reply to its channel,
-  and each running relay mails its hub's orchs a `[slack presence]` notice when it sees the presence change.
-  reed's status bar shows the connection and the presence as the `slack` and `away` toggles; a click on `slack` switches the machine's connection off or on, and on `away` switches the presence.
+  While the presence is `slack`, the turn-end hook of an orch whose button is on posts each turn's final reply to its channel.
+  reed's status bar shows the session orch's button and the presence as the `slack` and `away` toggles; a click on `slack` flips that orch's button, and on `away` switches the presence.
   While the presence is `slack`, each worktree's dobby leaves `SLACK` one line for a run waiting at PR-Review or Sampler-Session, every `remind_after_min` minutes of the wait.
   ✅ Implemented. See the `internal/slackengine` and `internal/slackcli` package documentation.
 - **gate** — the tier runner:

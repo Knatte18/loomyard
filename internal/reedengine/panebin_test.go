@@ -502,13 +502,13 @@ func TestComposeSwitchCommand(t *testing.T) {
 			"slack state/posix",
 			shell.Posix(),
 			composeSlackStateCommand,
-			`'/opt/it'\''s#here/lym' slack bar`,
+			`'/opt/it'\''s##here/lym' slack bar --dir #{@lym_button_dir}`,
 		},
 		{
 			"slack state/pwsh",
 			shell.Pwsh(),
 			composeSlackStateCommand,
-			`& '/opt/it''s#here/lym' slack bar`,
+			`& '/opt/it''s##here/lym' slack bar --dir #{@lym_button_dir}`,
 		},
 	}
 	for _, tt := range slackTests {

@@ -168,14 +168,65 @@ func TestOutboundRead(t *testing.T) {
 		h.wantAcks([]int64{1, 2})
 	})
 
+	t.Run("MailRoutedToAnOrchWhoseButtonIsOffIsDroppedAndAcknowledgedUnposted", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name    string
+			prepare func(h *outboundHarness)
+			mail    func(h *outboundHarness) []creelengine.Message
+			// wantTexts are the texts Slack accepts.
+			wantTexts []string
+			wantAcks  []int64
+		}{
+			{"OrchWithAnOpenChannel", func(h *outboundHarness) { h.setButton(paymentsOrch, false) },
+				func(h *outboundHarness) []creelengine.Message {
+					return []creelengine.Message{h.mailFrom(1, primeOrch, "kept"), h.mailFrom(2, paymentsOrch, "dropped")}
+				}, []string{"kept"}, []int64{1, 2}},
+			{"GoneBeamRedirectedToAPrimeThatHasNoChannelAndNoButton", func(h *outboundHarness) {
+				h.setButton("ly:gone:orch", true)
+				h.setButton(primeOrch, false)
+				h.dropEntry(primeOrch)
+			}, func(h *outboundHarness) []creelengine.Message {
+				return []creelengine.Message{h.mailFrom(1, "ly:gone:orch", "bye")}
+			}, nil, []int64{1}},
+			{"StaleLineOfAPrimeThatHasNoChannelAndNoButton", func(h *outboundHarness) {
+				h.setButton(primeOrch, false)
+				h.dropEntry(primeOrch)
+			}, func(h *outboundHarness) []creelengine.Message {
+				old := h.mailFrom(1, paymentsOrch, "old")
+				old.Posted = h.clock.Now().Add(-25 * time.Hour)
+				return []creelengine.Message{old, h.mailFrom(2, paymentsOrch, "fresh")}
+			}, []string{"fresh"}, []int64{1, 2}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newOutboundHarness(t)
+				tt.prepare(h)
+				h.mailbox.scriptReadWait(readStep{messages: tt.mail(h)})
+				h.mustRead()
+				if diff := cmp.Diff(tt.wantTexts, h.slack.texts()); diff != "" {
+					t.Errorf("Slack texts mismatch (-want +got):\n%s", diff)
+				}
+				h.wantAcks(tt.wantAcks)
+				if created := len(h.slack.logged("CreateChannel")); created != 0 {
+					t.Errorf("CreateChannel calls = %d; want 0 for a button that is off", created)
+				}
+				if record, err := os.ReadFile(h.geom.OutboxPath); err == nil && strings.Contains(string(record), "stale") {
+					t.Errorf("outbox record = %q; want the stale count cleared", record)
+				}
+			})
+		}
+	})
+
 	t.Run("MailFromAListedBeamWithNoEntryCreatesItsChannelAtThatMail", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
 		h.dropEntry(paymentsOrch)
 		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, paymentsOrch, "first")}})
 		h.mustRead()
-		if created := h.slack.logged("CreateChannel"); len(created) != 1 || created[0].Arg != "ly-neve-payments" {
-			t.Errorf("CreateChannel calls = %+v; want one for ly-neve-payments", created)
+		if created := h.slack.logged("CreateChannel"); len(created) != 1 || created[0].Arg != paymentsChannelName {
+			t.Errorf("CreateChannel calls = %+v; want one for %s", created, paymentsChannelName)
 		}
 		entry := h.entryOf(paymentsOrch)
 		if entry.ID == "" || entry.ID == testChannel || entry.ID == paymentsChannel {
@@ -187,6 +238,7 @@ func TestOutboundRead(t *testing.T) {
 	t.Run("MailFromABeamTheHubDoesNotListIsPostedToThePrimesChannelUnderItsName", func(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
+		h.setButton("ly:gone:orch", true)
 		h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(1, "ly:gone:orch", "bye")}})
 		h.mustRead()
 		h.wantPosted(postedText{testChannel, "bye", orchSender("ly:gone:orch")})
@@ -200,6 +252,7 @@ func TestOutboundRead(t *testing.T) {
 		t.Parallel()
 		h := newOutboundHarness(t)
 		h.hub.set(func(h *fakeHub) { h.beamsErr = errors.New("board unreadable") })
+		h.setButton("ly:other:orch", true)
 		batch := []creelengine.Message{
 			h.mailFrom(1, "ly:other:orch", "first"), h.mailFrom(2, primeOrch, "second"), h.mailFrom(3, paymentsOrch, "third"),
 		}
@@ -347,10 +400,10 @@ func TestOutboundRead(t *testing.T) {
 				t.Parallel()
 				h := newOutboundHarness(t)
 				h.dropEntry(paymentsOrch)
-				h.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: "ly-neve-payments", Creator: "UOTHER", IsMember: true})
+				h.slack.seedChannel(slackengine.ChannelInfo{ID: "CX", Name: paymentsChannelName, Creator: "UOTHER", IsMember: true})
 				if tt.primeRefused {
 					h.dropEntry(primeOrch)
-					h.slack.seedChannel(slackengine.ChannelInfo{ID: "CY", Name: "ly-neve-prime", Creator: "UOTHER", IsMember: true})
+					h.slack.seedChannel(slackengine.ChannelInfo{ID: "CY", Name: primeChannelName, Creator: "UOTHER", IsMember: true})
 				}
 				for range 5 {
 					h.mailbox.scriptReadWait(readStep{messages: []creelengine.Message{h.mailFrom(7, paymentsOrch, "x")}})

@@ -9,7 +9,7 @@ import (
 )
 
 // The names of the files the engine holds.
-// The token, the socket lock, the presence and the connection switch live in the per-user credential directory.
+// The token, the socket lock and the presence live in the per-user credential directory.
 // Every hub of the machine shares them.
 // The rest live in the hub's Slack directory.
 const (
@@ -19,10 +19,11 @@ const (
 	SocketLockFileName = "slack-socket.lock"
 	// PresenceFileName is the machine's presence record.
 	PresenceFileName = "slack-presence.json"
-	// SwitchFileName is the machine's record of whether the operator switched the Slack connection off.
-	SwitchFileName = "slack-switch.json"
+	// ForwardingFileName is the hub's record of whether each orch's slack button is on.
+	ForwardingFileName = "forwarding.json"
 	// ChannelMapFileName is the hub's record of the Slack channel of each orch.
-	ChannelMapFileName = "channels.json"
+	// The channels an older map named `channels.json` recorded are never read, so the relay leaves them alone.
+	ChannelMapFileName = "orch-channels.json"
 	// InboxDirName is the directory where the socket holder drops a wake hint for the hub's relay.
 	InboxDirName = "inbox"
 	// SetupFileName is the hub's operator record.
@@ -48,8 +49,6 @@ type MachinePaths struct {
 	SocketLockPath string
 	// PresencePath is the machine's presence record.
 	PresencePath string
-	// SwitchPath is the machine's record of whether the operator switched the Slack connection off.
-	SwitchPath string
 }
 
 // Geometry is every path and fact the engine is told about one hub.
@@ -74,8 +73,8 @@ type Geometry struct {
 	SetupPath string
 	// PresencePath is the machine's presence record, which every hub of the machine shares.
 	PresencePath string
-	// SwitchPath is the machine's record of whether the operator switched the Slack connection off.
-	SwitchPath string
+	// ForwardingPath is the hub's record of whether each orch's slack button is on.
+	ForwardingPath string
 	// OutboxPath is the record of the mail the relay has read and not yet finished posting.
 	OutboxPath string
 	// RelayStatePath is the relay's state record.
@@ -92,7 +91,7 @@ type Geometry struct {
 
 // MachinePaths returns the paths of the machine's own Slack files that the geometry carries.
 func (geom Geometry) MachinePaths() MachinePaths {
-	return MachinePaths{TokenPath: geom.TokenPath, SocketLockPath: geom.SocketLockPath, PresencePath: geom.PresencePath, SwitchPath: geom.SwitchPath}
+	return MachinePaths{TokenPath: geom.TokenPath, SocketLockPath: geom.SocketLockPath, PresencePath: geom.PresencePath}
 }
 
 // LiveHubs lists the Slack geometries of the machine's live hubs.

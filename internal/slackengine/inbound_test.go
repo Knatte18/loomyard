@@ -32,6 +32,10 @@ const (
 	primeOrch = "ly:orch"
 	// testMachine is the machine name of the harness's geometry, which prefixes every sender name Slack shows.
 	testMachine = "neve"
+	// primeChannelName and paymentsChannelName are the names the keeper gives the channels of primeOrch and paymentsOrch.
+	// The fake hub names the root project P0 and the payments beam's project P1.
+	primeChannelName    = "neve-ly-p0-root"
+	paymentsChannelName = "neve-ly-p1-payments"
 )
 
 // fakeClock is a Clock whose time moves only when a test advances it or a wait is taken, and whose waits return at once.
@@ -618,6 +622,14 @@ type fakeHub struct {
 	beamsErr  error
 	paused    map[string]bool
 	pausedErr error
+	// projects maps a beam slug to the project the board names for it; a slug it lacks runs project P1 of its own slug.
+	projects   map[string]projectName
+	projectErr error
+}
+
+// projectName is the handle and the slug of a board project.
+type projectName struct {
+	handle, slug string
 }
 
 func (h *fakeHub) hub() slackengine.Hub {
@@ -631,6 +643,20 @@ func (h *fakeHub) hub() slackengine.Hub {
 			h.mu.Lock()
 			defer h.mu.Unlock()
 			return h.paused[receiver], h.pausedErr
+		},
+		Project: func(slug string) (string, string, error) {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			if h.projectErr != nil {
+				return "", "", h.projectErr
+			}
+			if named, ok := h.projects[slug]; ok {
+				return named.handle, named.slug, nil
+			}
+			if slug == "" {
+				return "P0", "root", nil
+			}
+			return "P1", slug, nil
 		},
 	}
 }
@@ -659,7 +685,7 @@ func newGeometry(t *testing.T) slackengine.Geometry {
 		SocketLockPath: filepath.Join(credentials, slackengine.SocketLockFileName),
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   filepath.Join(credentials, slackengine.PresenceFileName),
-		SwitchPath:     filepath.Join(credentials, slackengine.SwitchFileName),
+		ForwardingPath: filepath.Join(dir, slackengine.ForwardingFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
 		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),
@@ -682,6 +708,8 @@ type harness struct {
 }
 
 // newBareHarness returns a harness whose hub has the tokens and the setup for testOperator and an empty channel map.
+// The slack buttons of primeOrch and paymentsOrch are on.
+// So the keeper makes their channels, and their mail reaches Slack.
 func newBareHarness(t *testing.T) *harness {
 	t.Helper()
 	h := &harness{t: t, geom: newGeometry(t), clock: newFakeClock(), mailbox: &fakeMailbox{}, slack: newFakeSlack(), hub: &fakeHub{paused: map[string]bool{}}}
@@ -692,9 +720,29 @@ func newBareHarness(t *testing.T) *harness {
 		t.Fatalf("WriteSetup = %v", err)
 	}
 	liveHubs := func() ([]slackengine.Geometry, error) { return []slackengine.Geometry{h.geom}, nil }
-	h.keeper = slackengine.NewChannelKeeper(h.geom, h.slack, liveHubs, h.mailbox, h.clock)
+	h.keeper = slackengine.NewChannelKeeper(h.geom, h.slack, h.hub.hub(), liveHubs, h.mailbox, h.clock)
 	h.in = slackengine.NewInbound(h.geom, h.mailbox, h.slack, h.hub.hub(), h.clock, h.keeper)
+	h.setButton(primeOrch, true)
+	h.setButton(paymentsOrch, true)
 	return h
+}
+
+// setButton records in the hub's forwarding file whether the slack button of orch is on.
+func (h *harness) setButton(orch string, on bool) {
+	h.t.Helper()
+	if _, err := slackengine.WriteForwarding(h.geom.ForwardingPath, orch, on, h.clock.Now()); err != nil {
+		h.t.Fatalf("WriteForwarding(%s, %v) = %v", orch, on, err)
+	}
+}
+
+// buttonsOn returns the creel names of the orchs whose slack button is on.
+func (h *harness) buttonsOn() []string {
+	h.t.Helper()
+	orchs, err := slackengine.ReadForwarding(h.geom.ForwardingPath)
+	if err != nil {
+		h.t.Fatalf("ReadForwarding = %v", err)
+	}
+	return orchs
 }
 
 // newHarness returns a bare harness whose channel map holds the prime orch on testChannel.
@@ -704,8 +752,8 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	h := newBareHarness(t)
 	err := slackengine.UpdateChannelMap(h.geom.ChannelMapPath, func(channelMap *slackengine.ChannelMap) error {
-		channelMap.Channels[primeOrch] = slackengine.ChannelEntry{ID: testChannel, Name: "ly-neve-prime", Operator: testOperator}
-		channelMap.Channels[paymentsOrch] = slackengine.ChannelEntry{ID: paymentsChannel, Name: "ly-neve-payments", Operator: testOperator}
+		channelMap.Channels[primeOrch] = slackengine.ChannelEntry{ID: testChannel, Name: primeChannelName, Operator: testOperator}
+		channelMap.Channels[paymentsOrch] = slackengine.ChannelEntry{ID: paymentsChannel, Name: paymentsChannelName, Operator: testOperator}
 		return nil
 	})
 	if err != nil {
@@ -1305,72 +1353,52 @@ func TestInboundRead(t *testing.T) {
 		h.wantCursorTS("101.000001")
 	})
 
-	t.Run("OrchIsKeptForTheNoticeOnlyWhenAnOperatorMessageThatTurnedThePresenceWasPostedToIt", func(t *testing.T) {
+	t.Run("OperatorMessageInTheChannelOfAnOrchWhoseButtonIsOffIsAnsweredNotForwardedAndPresenceCommandsStillWork", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name string
-			run  func(t *testing.T, h *harness)
-			want map[string]bool
+			text string
+			// wantAnswer is the start of the one answer posted to the channel.
+			wantAnswer   string
+			wantPresence slackengine.Presence
 		}{
-			{"PostedMessage", func(t *testing.T, h *harness) {
-				h.say("101.000001", "hello")
-				h.mustReadC1()
-			}, map[string]bool{primeOrch: true}},
-			{"PresenceAlreadySlack", func(t *testing.T, h *harness) {
-				if _, err := slackengine.WritePresence(h.geom.PresencePath, slackengine.PresenceSlack, h.clock.Now()); err != nil {
-					t.Fatalf("WritePresence = %v", err)
-				}
-				h.say("101.000001", "hello")
-				h.mustReadC1()
-			}, map[string]bool{}},
-			{"MessageOverTheBodyLimit", func(t *testing.T, h *harness) {
-				h.say("101.000001", strings.Repeat("x", 4097))
-				h.mustReadC1()
-			}, map[string]bool{}},
-			{"MessageWithNoTextAndNoFiles", func(t *testing.T, h *harness) {
-				h.say("101.000001", " ")
-				h.mustReadC1()
-			}, map[string]bool{}},
-			{"FirstPostFailsAndTheRetryStands", func(t *testing.T, h *harness) {
-				h.say("101.000001", "hello")
-				h.mailbox.setPostErr(errors.New("creel down"))
-				if _, err := h.readC1(); err == nil {
-					t.Fatalf("Drain = nil; want the post error")
-				}
-				if got := h.in.TakeAwayFrom(); len(got) != 0 {
-					t.Errorf("TakeAwayFrom after the failed post = %v; want none", got)
-				}
-				h.mailbox.setPostErr(nil)
-				h.clock.Advance(time.Minute)
-				h.retry()
-			}, map[string]bool{primeOrch: true}},
-			{"MessageGivenUpOnDoesNotMarkALaterOne", func(t *testing.T, h *harness) {
-				h.say("101.000001", "hello")
-				h.mailbox.setPostErr(errors.New("creel down"))
-				if _, err := h.readC1(); err == nil {
-					t.Fatalf("Drain = nil; want the post error")
-				}
-				h.clock.Advance(5 * time.Minute)
-				h.retry()
-				h.mailbox.setPostErr(nil)
-				h.say("102.000001", "later")
-				h.mustReadC1()
-			}, map[string]bool{}},
+			{"PlainText", "deploy prod", "the slack button of " + primeOrch + " is off, so this message was not forwarded", slackengine.PresenceTerminal},
+			{"AwayCommand", "away", "presence is now slack", slackengine.PresenceSlack},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				h := newHarness(t)
 				h.startAt("100.000000")
-				tt.run(t, h)
-				if diff := cmp.Diff(tt.want, h.in.TakeAwayFrom()); diff != "" {
-					t.Errorf("TakeAwayFrom mismatch (-want +got):\n%s", diff)
+				h.setButton(primeOrch, false)
+				h.say("101.000001", tt.text)
+				h.mustReadC1()
+				h.wantPosts()
+				if answers := h.slack.texts(); len(answers) != 1 || !strings.HasPrefix(answers[0], tt.wantAnswer) {
+					t.Errorf("answers = %q; want one starting %q", answers, tt.wantAnswer)
 				}
-				if again := h.in.TakeAwayFrom(); len(again) != 0 {
-					t.Errorf("second TakeAwayFrom = %v; want none, the first call forgets", again)
+				h.wantCursorTS("101.000001")
+				if got, err := slackengine.ReadPresence(h.geom.PresencePath); err != nil || got != tt.wantPresence {
+					t.Errorf("ReadPresence = %q, %v; want %q", got, err, tt.wantPresence)
 				}
 			})
 		}
+	})
+
+	t.Run("OperatorMessageWhileTheOrchsButtonCannotBeReadIsHeldAndNotForwarded", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.startAt("100.000000")
+		if err := os.WriteFile(h.geom.ForwardingPath, []byte("{"), 0o600); err != nil {
+			t.Fatalf("WriteFile = %v", err)
+		}
+		h.say("101.000001", "deploy prod")
+		if _, err := h.readC1(); err == nil {
+			t.Fatalf("Drain = nil; want the forwarding read error")
+		}
+		h.wantPosts()
+		h.wantAnswers()
+		h.wantCursorTS("100.000000")
 	})
 
 	t.Run("AnswerRefusedWithNotInChannelJoinsTheChannelAndPostsAgain", func(t *testing.T) {

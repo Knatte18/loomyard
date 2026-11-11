@@ -191,6 +191,14 @@ type harness struct {
 	endedPerStop int
 	// machineErr is what the machine seam fails with.
 	machineErr error
+	// orch and orchErr are what the worktree-orch seam answers; the empty orch is a worktree that runs no orch with a button.
+	orch    string
+	orchErr error
+	// ensureOutcome is what the ensure seam reports; the zero value reports a started relay.
+	ensureOutcome slackengine.StartOutcome
+	// locationOK makes the location resolver succeed, and wireErr is what the wire seam fails with.
+	locationOK bool
+	wireErr    error
 	// strand is what the strand-name seam answers; client is what the strand-client seam builds, or clientErr is its failure.
 	// builtFor lists the strands the strand-client seam was asked for.
 	strand    string
@@ -231,6 +239,7 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 		slack:  newFakeSlack(t, answers),
 		appID:  "A1",
 		strand: "hub:orch",
+		orch:   "hub:orch",
 		client: &fakeStrandClient{shortname: "hub"},
 		geom: slackengine.Geometry{
 			HubPath:        hub,
@@ -238,7 +247,7 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 			Dir:            slackDir,
 			TokenPath:      filepath.Join(dir, "credentials", slackengine.TokenFileName),
 			SocketLockPath: filepath.Join(dir, "credentials", slackengine.SocketLockFileName),
-			SwitchPath:     filepath.Join(dir, "credentials", slackengine.SwitchFileName),
+			ForwardingPath: filepath.Join(slackDir, slackengine.ForwardingFileName),
 			ChannelMapPath: filepath.Join(slackDir, slackengine.ChannelMapFileName),
 			SetupPath:      filepath.Join(slackDir, slackengine.SetupFileName),
 			PresencePath:   filepath.Join(slackDir, slackengine.PresenceFileName),
@@ -265,13 +274,17 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 		clock:        fixedClock{},
 		resolveLocation: func(string) (*lymcwd.Location, error) {
 			h.resolveCalls++
+			if h.locationOK {
+				return &lymcwd.Location{}, nil
+			}
 			return nil, errors.New("slack-test: this directory is no worktree")
 		},
 		wire: func(_ *slackCLI, location *lymcwd.Location) error {
 			h.wired = append(h.wired, location == nil)
-			return nil
+			return h.wireErr
 		},
-		pane: func() paneCaller { return h.caller },
+		worktreeOrch: func() (string, error) { return h.orch, h.orchErr },
+		pane:         func() paneCaller { return h.caller },
 		readHiddenLine: func(_ io.Reader, prompt string) (string, bool, error) {
 			if !h.onTerminal {
 				return "", false, nil
@@ -313,6 +326,9 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 		},
 		ensure: func(slackengine.Geometry) (slackengine.StartOutcome, error) {
 			h.calls = append(h.calls, "ensure")
+			if h.ensureOutcome != "" {
+				return h.ensureOutcome, h.ensureErr
+			}
 			return slackengine.OutcomeStarted, h.ensureErr
 		},
 		stop: func(geom slackengine.Geometry, callerPID int) ([]runproc.Ended, error) {
@@ -375,22 +391,24 @@ func (h *harness) storePresence(presence slackengine.Presence) {
 	}
 }
 
-// storeSwitch writes the machine's connection switch.
-func (h *harness) storeSwitch(off bool) {
+// storeForwarding switches the slack button of each named orch on in the hub's forwarding file.
+func (h *harness) storeForwarding(orchs ...string) {
 	h.t.Helper()
-	if err := slackengine.WriteSwitchedOff(h.geom.SwitchPath, off, fixedClock{}.Now()); err != nil {
-		h.t.Fatalf("WriteSwitchedOff = %v", err)
+	for _, orch := range orchs {
+		if _, err := slackengine.WriteForwarding(h.geom.ForwardingPath, orch, true, fixedClock{}.Now()); err != nil {
+			h.t.Fatalf("WriteForwarding = %v", err)
+		}
 	}
 }
 
-// switchedOff reads the machine's connection switch.
-func (h *harness) switchedOff() bool {
+// forwarding lists the orchs whose slack button is on in the hub's forwarding file.
+func (h *harness) forwarding() []string {
 	h.t.Helper()
-	off, err := slackengine.ReadSwitchedOff(h.geom.SwitchPath)
+	orchs, err := slackengine.ReadForwarding(h.geom.ForwardingPath)
 	if err != nil {
-		h.t.Fatalf("ReadSwitchedOff = %v", err)
+		h.t.Fatalf("ReadForwarding = %v", err)
 	}
-	return off
+	return orchs
 }
 
 // holdSocketLock holds the machine's socket lock until the test ends, as the relay that holds the connection does.
@@ -906,16 +924,16 @@ func TestSlackCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("StartAndAwayLeaveTheConnectionSwitchedOn", func(t *testing.T) {
+	t.Run("StartAndAwayLeaveEveryOrchsButtonAsItWas", func(t *testing.T) {
 		t.Parallel()
 		for _, verb := range []string{"start", "away"} {
 			h := newHarness(t, nil)
 			h.configure()
-			h.storeSwitch(true)
+			h.storeForwarding("hub:b:orch")
 			code, env := h.run("", verb)
 			wantOK(t, code, env)
-			if h.switchedOff() {
-				t.Errorf("%s left the connection switched off; want it on", verb)
+			if diff := cmp.Diff([]string{"hub:b:orch"}, h.forwarding()); diff != "" {
+				t.Errorf("%s: buttons on mismatch (-want +got):\n%s", verb, diff)
 			}
 		}
 	})
@@ -933,6 +951,33 @@ func TestSlackCLI(t *testing.T) {
 				t.Errorf("presence during the await = %q and after = %q; want terminal then slack", h.presenceAtAwait, h.presence())
 			}
 		})
+
+		outcomes := []struct {
+			name      string
+			outcome   slackengine.StartOutcome
+			wantCalls []string
+		}{
+			{"AStartedRelayIsAwaited", slackengine.OutcomeStarted, []string{"ensure", "await"}},
+			{"ALiveRelayIsAwaited", slackengine.OutcomeLive, []string{"ensure", "await"}},
+			{"NoButtonOnSetsThePresenceWithoutAwaitingARelay", slackengine.OutcomeForwardingOff, []string{"ensure"}},
+		}
+		for _, tt := range outcomes {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t, nil)
+				h.configure()
+				h.ensureOutcome = tt.outcome
+				code, env := h.run("", "away")
+				wantOK(t, code, env)
+				h.wantCalls(tt.wantCalls...)
+				if got := h.presence(); got != slackengine.PresenceSlack {
+					t.Errorf("presence = %q; want slack", got)
+				}
+				if env.Raw["relay"] != string(tt.outcome) {
+					t.Errorf("relay field = %v; want %q", env.Raw["relay"], tt.outcome)
+				}
+			})
+		}
 
 		t.Run("RefusesWithTheAwaitsMessageAndStaysTerminal", func(t *testing.T) {
 			t.Parallel()
@@ -992,7 +1037,7 @@ func TestSlackCLI(t *testing.T) {
 			h.caller = paneIn("hub:impl")
 			code, env := h.run("", "status")
 			wantOK(t, code, env)
-			want := map[string]any{"presence": "terminal", "relay_live": false, "connected": false, "connection_off": false, "paused": false}
+			want := map[string]any{"presence": "terminal", "relay_live": false, "connected": false, "forwarding": []any{}, "paused": false}
 			if diff := cmp.Diff(want, env.Raw); diff != "" {
 				t.Errorf("status fields mismatch (-want +got):\n%s", diff)
 			}
@@ -1013,7 +1058,7 @@ func TestSlackCLI(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = held.Release() })
 			h.holdSocketLock()
-			h.storeSwitch(true)
+			h.storeForwarding("hub:orch", "hub:impl:orch")
 			err = slackengine.UpdateChannelMap(h.geom.ChannelMapPath, func(channelMap *slackengine.ChannelMap) error {
 				channelMap.Channels["hub:orch"] = slackengine.ChannelEntry{ID: "C1", Name: "ly-neve"}
 				channelMap.Channels["hub:impl:orch"] = slackengine.ChannelEntry{ID: "C2", Name: "ly-neve-impl-2026-11-05", Archived: true}
@@ -1028,7 +1073,7 @@ func TestSlackCLI(t *testing.T) {
 			code, env := h.run("", "status")
 			wantOK(t, code, env)
 			want := map[string]any{
-				"presence": "slack", "relay_live": true, "connected": true, "connection_off": true, "paused": true,
+				"presence": "slack", "relay_live": true, "connected": true, "forwarding": []any{"hub:impl:orch", "hub:orch"}, "paused": true,
 				"operator": "U1", "last_healthy": "2026-11-05T11:00:00Z",
 				"channels": []any{
 					map[string]any{"orch": "hub:impl:orch", "name": "ly-neve-impl-2026-11-05", "id": "C2", "archived": true},

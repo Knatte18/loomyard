@@ -26,7 +26,6 @@ func SlackMachine() (slackengine.MachinePaths, error) {
 		TokenPath:      filepath.Join(credentialDir, slackengine.TokenFileName),
 		SocketLockPath: filepath.Join(credentialDir, slackengine.SocketLockFileName),
 		PresencePath:   filepath.Join(credentialDir, slackengine.PresenceFileName),
-		SwitchPath:     filepath.Join(credentialDir, slackengine.SwitchFileName),
 	}, nil
 }
 
@@ -63,7 +62,7 @@ func SlackGeometry(hubPath string) (slackengine.Geometry, error) {
 		SocketLockPath: machinePaths.SocketLockPath,
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   machinePaths.PresencePath,
-		SwitchPath:     machinePaths.SwitchPath,
+		ForwardingPath: filepath.Join(dir, slackengine.ForwardingFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
 		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),

@@ -41,11 +41,14 @@ func sessionLoopTwoFormats(format string, loopStart int) int {
 // TestStatusFormatActions_SlackAndAwayTogglesFollowTheFollowButton pins line 3's two toggles.
 // They come after the follow button and before the action row.
 // Each is a user range with its own label, and each lights green only on its own word of the state job's output.
+// The slack toggle is drawn only while the state line holds slack-on or slack-off.
+// A line with neither word, such as a bare away-on, draws no slack toggle.
+// The away toggle is always drawn.
 func TestStatusFormatActions_SlackAndAwayTogglesFollowTheFollowButton(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	const stateJob = "#(#{@lym_slack_state_command})"
+	const stateJob = "#(#{E:@lym_slack_state_command})"
 	markers := []string{"#[range=user|follow ", "#[range=user|slack ", "#[range=user|away ", "#{?#{@strand},"}
 	at := make([]int, len(markers))
 	for i, marker := range markers {
@@ -64,13 +67,21 @@ func TestStatusFormatActions_SlackAndAwayTogglesFollowTheFollowButton(t *testing
 		label     string
 		litWord   string
 		unlitWord string
+		shownWhen string
+		tail      string
 	}{
-		{"Slack", statusFormatActions[at[1]:at[2]], "slack", "slack-on", "away-on"},
-		{"Away", statusFormatActions[at[2]:at[3]], "away", "away-on", "slack-on"},
+		{
+			"Slack", statusFormatActions[at[1]:at[2]], "slack", "slack-on", "away-on",
+			"#{?#{||:#{m:*slack-on*," + stateJob + "},#{m:*slack-off*," + stateJob + "}},", ",}",
+		},
+		{"Away", statusFormatActions[at[2]:at[3]], "away", "away-on", "slack-on", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			if !strings.Contains(statusFormatActions, tt.shownWhen+tt.segment) {
+				t.Errorf("%s toggle = %q, want it directly after the condition %q", tt.name, tt.segment, tt.shownWhen)
+			}
 			wantLit := "#{?#{m:*" + tt.litWord + "*," + stateJob + "},bg=green fg=black bold,"
 			if !strings.Contains(tt.segment, wantLit) {
 				t.Errorf("%s toggle = %q, want it lit by %q", tt.name, tt.segment, wantLit)
@@ -78,7 +89,7 @@ func TestStatusFormatActions_SlackAndAwayTogglesFollowTheFollowButton(t *testing
 			if strings.Contains(tt.segment, tt.unlitWord) {
 				t.Errorf("%s toggle = %q, want it free of the other toggle's word %q", tt.name, tt.segment, tt.unlitWord)
 			}
-			if wantLabel := "] " + tt.label + " #[norange list=on default] "; !strings.HasSuffix(tt.segment, wantLabel) {
+			if wantLabel := "] " + tt.label + " #[norange list=on default] " + tt.tail; !strings.HasSuffix(tt.segment, wantLabel) {
 				t.Errorf("%s toggle = %q, want it to end with the label %q", tt.name, tt.segment, wantLabel)
 			}
 		})

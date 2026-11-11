@@ -15,32 +15,38 @@ const (
 	maxChannelNameLength = 80
 	// channelNameHashLength is how many hex digits of the name's SHA-256 a cut name ends in.
 	channelNameHashLength = 6
-	// primeOrchName is the orch part of the name of the hub's own channel.
-	primeOrchName = "prime"
+	// channelNameSeparator joins the parts of a channel name; Slack allows no colon in one.
+	channelNameSeparator = "-"
 	// archivedDateLayout is the layout of the date a retired channel's name carries.
 	archivedDateLayout = "2006-01-02"
 )
 
-// ChannelName returns the name of an orch's channel: `<shortname>-<machine>-<orch>`.
-// The orch is `prime` for an empty slug, which is the hub's own orch, the slug for a beam,
-// and `prime_beam` for a beam whose slug is `prime`.
-// A machine name character outside lowercase letters, digits, `-` and `_` becomes `-`.
+// ChannelName returns the name of an orch's channel, lower-cased.
+// The name reads `<machine>-<shortname>-<project handle>-<project slug>`.
+// The project is the one the orch runs: the root project for the hub's own orch, and the beam's project for a beam's.
+// Putting the machine first keeps an orch's channel on one machine.
+// It also lets Slack's order group a machine's channels, then a hub's.
+// A character Slack does not allow, anything but lowercase letters, digits, `-` and `_`, becomes `-`.
+// An empty part is left out.
 // A name over Slack's length limit is cut and ends in a hash of the whole name.
-func ChannelName(shortname, machine, slug string) string {
-	orch := slug
-	switch slug {
-	case "":
-		orch = primeOrchName
-	case primeOrchName:
-		orch = primeOrchName + "_beam"
+func ChannelName(machine, shortname, projectHandle, projectSlug string) string {
+	var parts []string
+	for _, part := range []string{machine, shortname, projectHandle, projectSlug} {
+		if part != "" {
+			parts = append(parts, slackNamePart(part))
+		}
 	}
-	machine = strings.Map(func(r rune) rune {
+	return fitName(strings.Join(parts, channelNameSeparator))
+}
+
+// slackNamePart lower-cases part and turns each character a Slack channel name does not allow into `-`.
+func slackNamePart(part string) string {
+	return strings.Map(func(r rune) rune {
 		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
 			return r
 		}
 		return '-'
-	}, strings.ToLower(machine))
-	return fitName(shortname + "-" + machine + "-" + orch)
+	}, strings.ToLower(part))
 }
 
 // ArchivedName returns the name a retired channel takes before it is archived.

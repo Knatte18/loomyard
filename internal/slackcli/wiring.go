@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -38,6 +40,9 @@ import (
 
 // relayReexecLockWait is how long a relay that re-executed onto a replaced binary waits for the lock its old image released.
 const relayReexecLockWait = 10 * time.Second
+
+// rootProjectHandle is the handle of the board's root project, which no board project takes.
+const rootProjectHandle = "P0"
 
 // productionCLI returns the slackCLI whose seams PersistentPreRunE fills over a real hub.
 func productionCLI() *slackCLI {
@@ -113,6 +118,7 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 		return err
 	}
 	c.geom = geom
+	c.worktreeOrch = func() (string, error) { return worktreeOrch(location, primeName, prime, geom.Shortname) }
 	c.pane = func() paneCaller { return hubPaneCaller(location.HubPath) }
 	c.newSlack = func(baseURL, token string) slackChecks { return slackengine.NewAPI(baseURL, token, &http.Client{}) }
 	c.newDialer = func(baseURL, appToken string) slackengine.Dialer {
@@ -170,6 +176,43 @@ func hubPaneCaller(hubPath string) paneCaller {
 		GOOS:       runtime.GOOS,
 		StrandName: os.Getenv(agentname.StrandNameEnv),
 	}
+}
+
+// worktreeOrch returns the creel name of the orch that runs in the worktree at location and has a slack button.
+// That is the hub's own orch in the prime, named primeName, and a beam's orch in a beam's worktree, named by its slug.
+// Any other worktree, a pair's or a task's, gives the empty string.
+func worktreeOrch(location *lymcwd.Location, primeName string, prime *lymcwd.Location, shortname string) (string, error) {
+	if location.WorktreeName == primeName {
+		return agentname.Format(shortname, "", agentname.RoleOrch)
+	}
+	beams, err := beamSlugs(prime)
+	if err != nil {
+		return "", err
+	}
+	if !slices.Contains(beams, location.WorktreeName) {
+		return "", nil
+	}
+	return agentname.Format(shortname, location.WorktreeName, agentname.RoleOrch)
+}
+
+// orchProject names the board project the orch of the beam slug runs: its handle and its slug.
+// They are read from the board of the hub at hubPath.
+// An empty slug is the hub's own orch, which runs the root project.
+// A beam the board holds no project entry for gives an empty handle and the slug itself.
+func orchProject(hubPath, slug string) (string, string, error) {
+	if slug == "" {
+		return rootProjectHandle, boardengine.RootSubject, nil
+	}
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(hubPath))
+	if err != nil {
+		return "", "", fmt.Errorf("slack: read the board for the project of the beam %s: %w", slug, err)
+	}
+	for _, task := range tasks {
+		if task.Slug == slug && task.Kind == boardengine.KindProject {
+			return task.Handle, task.Slug, nil
+		}
+	}
+	return "", slug, nil
 }
 
 // beamSlugs lists the slugs of the local beams of the hub whose prime is prime.
@@ -285,8 +328,9 @@ func runRelay(ctx context.Context, hubPath, primeName string) error {
 		Slack:   slackengine.NewAPI(slackengine.DefaultBaseURL, credentials.BotToken, client),
 		Dial:    slackengine.NewDialer(slackengine.DefaultBaseURL, credentials.AppToken, client, slackengine.HelloTimeout),
 		Hub: slackengine.Hub{
-			Beams:  func() ([]string, error) { return beamSlugs(prime) },
-			Paused: func(receiver string) (bool, error) { return receiverPaused(hubPath, prime, receiver) },
+			Beams:   func() ([]string, error) { return beamSlugs(prime) },
+			Paused:  func(receiver string) (bool, error) { return receiverPaused(hubPath, prime, receiver) },
+			Project: func(slug string) (string, string, error) { return orchProject(hubPath, slug) },
 		},
 		LiveHubs:       liveHubGeometries,
 		Clock:          slackengine.SystemClock{},

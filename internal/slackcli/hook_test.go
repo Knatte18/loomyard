@@ -55,6 +55,7 @@ func TestHook(t *testing.T) {
 		logErr       error
 		postErr      error
 		clientErr    error
+		buttons      []string
 		wantAction   string
 		wantRefusal  []string
 		wantPresence slackengine.Presence
@@ -92,6 +93,12 @@ func TestHook(t *testing.T) {
 			wantPresence: slackengine.PresenceSlack, wantLogged: true},
 		{name: "StopForwardsTheTrimmedReplyToTheSlackProgram", stdin: stopInput(" done "), presence: slackengine.PresenceSlack,
 			wantAction: "forwarded", wantPresence: slackengine.PresenceSlack, wantPosts: []sentPost{{"hub:SLACK", "done"}}},
+		{name: "StopWhileTheOrchsButtonIsOffSendsNothingEvenWithAnotherOrchsButtonOn", stdin: stopInput("done"),
+			presence: slackengine.PresenceSlack, buttons: []string{"hub:b:orch"},
+			wantAction: "button-off", wantPresence: slackengine.PresenceSlack},
+		{name: "StopOfABeamOrchWhoseOwnButtonIsOnForwardsToTheSlackProgram", stdin: stopInput("done"), strand: "hub:b:orch",
+			presence: slackengine.PresenceSlack, buttons: []string{"hub:b:orch"},
+			wantAction: "forwarded", wantPresence: slackengine.PresenceSlack, wantPosts: []sentPost{{"hub:SLACK", "done"}}},
 		{name: "StopWithNoReplyDoesNothing", stdin: stopInput("  "), presence: slackengine.PresenceSlack,
 			wantAction: "none", wantPresence: slackengine.PresenceSlack},
 		{name: "StopWhilePresenceIsTerminalDoesNothing", stdin: stopInput("done"), presence: slackengine.PresenceTerminal,
@@ -119,6 +126,11 @@ func TestHook(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, nil)
 			h.storePresence(tt.presence)
+			buttons := tt.buttons
+			if buttons == nil {
+				buttons = []string{"hub:orch"}
+			}
+			h.storeForwarding(buttons...)
 			if tt.strand != "" {
 				h.strand = tt.strand
 			}

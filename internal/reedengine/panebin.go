@@ -248,17 +248,19 @@ func composeSlackToggleCommand(sh shell.Shell, executablePath func() (string, er
 }
 
 // composeSlackStateCommand returns the shell line the Slack toggles' state job runs, on sh's dialect:
-// the absolute path of this binary with `slack bar`, which prints the machine's Slack state.
-// The line rides the option the job's format reads, and an option's value is not expanded again, so no # is doubled.
+// the absolute path of this binary with `slack bar --dir` and the session's run directory.
+// It prints the state of the slack button of the orch that runs there and the machine's presence.
+// The job's format expands the line once more, so the run directory's session option is left for that expansion,
+// and the pinned path has each # doubled.
 // An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
-// It then returns false, so both toggles stay unlit.
+// It then returns false, so no slack toggle is drawn and away stays unlit.
 func composeSlackStateCommand(sh shell.Shell, executablePath func() (string, error)) (string, bool) {
 	exe, err := selfexec.ResolveLymBinary(executablePath)
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, pinning no Slack state line", "err", err)
 		return "", false
 	}
-	return sh.Invoke(exe) + " slack bar", true
+	return strings.ReplaceAll(sh.Invoke(exe), "#", "##") + " slack bar --dir #{" + buttonDirOption + "}", true
 }
 
 // The flags a button's prompt re-enters the click verb with.

@@ -24,9 +24,9 @@ func TestChannelName(t *testing.T) {
 	t.Parallel()
 
 	day := time.Date(2026, 11, 8, 23, 0, 0, 0, time.UTC)
-	// Each shortname below joins "-neve-prime", which is 11 characters, to a whole name of 80 and of 81 characters.
-	shortname80 := strings.Repeat("a", 69)
-	shortname81 := strings.Repeat("a", 70)
+	// Each machine below joins "-neve-p1-x", which is 10 characters, to a whole name of 80 and of 81 characters.
+	machine70 := strings.Repeat("a", 70)
+	machine71 := strings.Repeat("a", 71)
 	base79 := strings.Repeat("b", 79)
 
 	tests := []struct {
@@ -34,20 +34,21 @@ func TestChannelName(t *testing.T) {
 		got  string
 		want string
 	}{
-		{"PrimeForAnEmptySlug", slackengine.ChannelName("ly", "neve", ""), "ly-neve-prime"},
-		{"BeamSlug", slackengine.ChannelName("ly", "neve", "payments"), "ly-neve-payments"},
-		{"BeamSlugPrimeIsDistinct", slackengine.ChannelName("ly", "neve", "prime"), "ly-neve-prime_beam"},
-		{"MachineOutsideTheGrammarBecomesDashes", slackengine.ChannelName("ly", "neve+box 1", "payments"), "ly-neve-box-1-payments"},
-		{"MachineIsLowercased", slackengine.ChannelName("ly", "NEVE", ""), "ly-neve-prime"},
-		{"EightyCharactersPassUnchanged", slackengine.ChannelName(shortname80, "neve", ""), shortname80 + "-neve-prime"},
+		{"HubOrchRunsTheRootProject", slackengine.ChannelName("OSL46", "mo", "P0", "root"), "osl46-mo-p0-root"},
+		{"BeamRunsItsProject", slackengine.ChannelName("OSL46", "mo", "P1", "adopt-takeover"), "osl46-mo-p1-adopt-takeover"},
+		{"PartsAreLowercasedAndUnderscoreIsKept", slackengine.ChannelName("LY", "NEVE", "P1", "Pay_Ments"), "ly-neve-p1-pay_ments"},
+		{"CharactersOutsideTheGrammarBecomeDashes", slackengine.ChannelName("ly", "neve+box 1", "P1", "pay.ments"), "ly-neve-box-1-p1-pay-ments"},
+		{"EmptyHandleIsLeftOut", slackengine.ChannelName("ly", "neve", "", "payments"), "ly-neve-payments"},
+		{"EmptyMachineIsLeftOut", slackengine.ChannelName("", "neve", "P1", "payments"), "neve-p1-payments"},
+		{"EightyCharactersPassUnchanged", slackengine.ChannelName(machine70, "neve", "P1", "x"), machine70 + "-neve-p1-x"},
 		{
 			"EightyOneCharactersEndInTheHashOfTheWholeName",
-			slackengine.ChannelName(shortname81, "neve", ""),
-			cutName(shortname81 + "-neve-prime"),
+			slackengine.ChannelName(machine71, "neve", "P1", "x"),
+			cutName(machine71 + "-neve-p1-x"),
 		},
-		{"ArchivedFirstTryCarriesTheDate", slackengine.ArchivedName("ly-neve-payments", day, 1), "ly-neve-payments-2026-11-08"},
-		{"ArchivedSecondTryAddsTwo", slackengine.ArchivedName("ly-neve-payments", day, 2), "ly-neve-payments-2026-11-08-2"},
-		{"ArchivedThirdTryAddsThree", slackengine.ArchivedName("ly-neve-payments", day, 3), "ly-neve-payments-2026-11-08-3"},
+		{"ArchivedFirstTryCarriesTheDate", slackengine.ArchivedName("ly-neve-p1-payments", day, 1), "ly-neve-p1-payments-2026-11-08"},
+		{"ArchivedSecondTryAddsTwo", slackengine.ArchivedName("ly-neve-p1-payments", day, 2), "ly-neve-p1-payments-2026-11-08-2"},
+		{"ArchivedThirdTryAddsThree", slackengine.ArchivedName("ly-neve-p1-payments", day, 3), "ly-neve-p1-payments-2026-11-08-3"},
 		{"ArchivedLongBaseIsCutToEighty", slackengine.ArchivedName(base79, day, 1), cutName(base79 + "-2026-11-08")},
 	}
 	for _, tt := range tests {
