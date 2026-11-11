@@ -47,4 +47,24 @@
 // The maps live under Dir, one directory per package, shared by every worktree of the hub on the machine.
 // Beside them, the exit record holds the process ID of the last refresh.
 // It also holds the count of stale packages the refresh's cap left unbuilt.
+// A package owns every file under its directory except those below a nested package or module.
+// NestedPackageDirs finds those nested directories.
+//
+// A Selector selects an importing package's tests from its map against the working tree.
+// It compares each linked package's files with the map's record.
+// For a changed Go file it compares the top-level declarations at the map's commit with the working tree's,
+// ignoring comments and formatting.
+// A function whose declaration differs, or that only the commit holds, is changed.
+// The tests that covered a changed function are selected, and with them every test the spawn scan marks.
+// A change the map cannot speak for is a Miss, under which the caller runs the package whole.
+// Such changes include:
+//   - the map missing, unreadable, failed or unmarked, or its commit unreadable;
+//   - the package's own Go files;
+//   - a non-Go file, unless inert_paths matches it and no go:embed pattern names it,
+//     the package's own test files counting as embed sources;
+//   - a declaration outside functions, bar a few additions no unchanged code can reach;
+//   - an import, bar an added one of a linked or standard-library package,
+//     and bar a standard-library one that a deleted file imported;
+//   - a `//go:` line, the method set, an added init function or a declared predeclared name;
+//   - a file that does not parse.
 package testcover
