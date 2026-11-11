@@ -6,6 +6,7 @@ package reedcli
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -158,6 +159,16 @@ rather than booting substrate it cannot reach.`,
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
+			}
+
+			// attach and up boot a session, so they refuse fabric's own checkouts, the Bolt checkout and a records sibling.
+			// A session booted there sits on the hub's server under a name no reed listing of the hub's worktrees shows.
+			if cmd.Name() == "attach" || cmd.Name() == "up" {
+				if err := fabricengine.RequireDrivableWorktree(location); err != nil {
+					output.Err(out, fmt.Sprintf("reed: lym reed %s boots a session only in a worktree of the hub: %v; way forward: run it from the hub's prime or a task worktree under %s", cmd.Name(), err, location.HubPath))
+					clihelp.Abort(ctx, 1)
+					return nil
+				}
 			}
 
 			// The _lym/config/ root is anchored at location.AnchorPath(), not at the worktree root or a fabric sibling.

@@ -32,6 +32,10 @@ Before booting, up verifies the configured multiplexer binary meets the
 pinned minimum version and exposes the required command surface, failing
 loud with a JSON error ({"ok":false,"error":...}) if it does not.
 
+up refuses a directory that is no worktree of the hub, such as the hub's
+Bolt checkout or a pair's records sibling, and names the hub to run it from
+instead.
+
 up is substrate-only: it never launches or relaunches a strand command.
 Bringing strand content back after a server restart is "lym reed resume"'s
 job, not up's.

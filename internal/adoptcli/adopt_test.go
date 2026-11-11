@@ -888,9 +888,9 @@ func TestAdopt(t *testing.T) {
 			if !reflect.DeepEqual(got.Checks, wantChecks) || got.CheckWarnings != nil {
 				t.Errorf("checks = %+v, warnings = %q; want %+v and no warning", got.Checks, got.CheckWarnings, wantChecks)
 			}
-			want := "adopt check of root started in its worktree, tiers 0, 1, 2; the prime's reed status bar shows its progress and result\n" +
-				"adopt check of alpha started in its worktree, tiers 0, 1, 2; the prime's reed status bar shows its progress and result\n" +
-				"adopt check of beta started in its worktree, tiers 0, 1, 2; the prime's reed status bar shows its progress and result"
+			want := "adopt check of root started in its worktree, tiers 0, 1, 2; the prime's reed status bar shows it while it runs and when it fails\n" +
+				"adopt check of alpha started in its worktree, tiers 0, 1, 2; the prime's reed status bar shows it while it runs and when it fails\n" +
+				"adopt check of beta started in its worktree, tiers 0, 1, 2; the prime's reed status bar shows it while it runs and when it fails"
 			if got.SuiteMessage != want {
 				t.Errorf("message = %q; want %q", got.SuiteMessage, want)
 			}
@@ -969,7 +969,7 @@ func TestAdopt(t *testing.T) {
 			}
 		}},
 		{name: "CheckFoundRunningWithNoTiersReadIsNamedAlreadyRunning", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.suite = suiteStart{PID: 7, AlreadyRunning: true} }, check: func(t *testing.T, _ *world, got outcome) {
-			if want := "adopt check of alpha already running in its worktree; the prime's reed status bar shows its progress and result"; got.SuiteMessage != want {
+			if want := "adopt check of alpha already running in its worktree; the prime's reed status bar shows it while it runs and when it fails"; got.SuiteMessage != want {
 				t.Errorf("message = %q; want %q", got.SuiteMessage, want)
 			}
 		}},

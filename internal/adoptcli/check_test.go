@@ -550,7 +550,7 @@ func TestRunCheckMarks(t *testing.T) {
 		want      []checkMark
 	}{
 		{
-			name:  "GreenShowsEachTierInFlightThenEveryTierWithItsTime",
+			name:  "GreenShowsEachTierInFlightThenClearsTheMark",
 			tiers: []scriptedTier{timed(0, "passed", 40), timed(1, "passed", 104)},
 			want: []checkMark{
 				starting,
@@ -558,11 +558,11 @@ func TestRunCheckMarks(t *testing.T) {
 				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s"},
 				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s · tier1", Start: checkFixtureAfter(2)},
 				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s · tier1 green 104s"},
-				{State: checkGreen, Text: "adopt check of alpha green: tier0 40s · tier1 104s"},
+				{},
 			},
 		},
 		{
-			name:  "FailedEndsWithEveryTierAndItsOutcome",
+			name:  "FailedEndsWithItsFirstFailedTierAlone",
 			tiers: []scriptedTier{timed(0, "passed", 40), timed(1, "failed", 104)},
 			exit:  1,
 			want: []checkMark{
@@ -571,7 +571,18 @@ func TestRunCheckMarks(t *testing.T) {
 				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s"},
 				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s · tier1", Start: checkFixtureAfter(2)},
 				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s · tier1 failed 104s"},
-				{State: checkFailed, Text: "adopt check of alpha failed: tier0 green 40s · tier1 failed 104s"},
+				{State: checkFailed, Text: "adopt check of alpha failed at tier1; lym beam status shows why"},
+			},
+		},
+		{
+			name:  "FailedAfterAGreenTierWithNoFailedTierNamesBeamStatusAlone",
+			tiers: []scriptedTier{timed(0, "passed", 40)},
+			exit:  1,
+			want: []checkMark{
+				starting,
+				{State: checkRunning, Text: "adopt check of alpha: tier0", Start: checkFixtureAfter(1)},
+				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s"},
+				{State: checkFailed, Text: "adopt check of alpha failed; lym beam status shows why"},
 			},
 		},
 		{
@@ -603,11 +614,12 @@ func TestRunCheckMarks(t *testing.T) {
 
 // TestPrimeMark pins the prime's mark over a temp adopt directory:
 // the check's own mark, joined with the running checks of the other subjects.
+// A green check's own mark is the zero mark, which the join leaves out.
 func TestPrimeMark(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	own := checkMark{State: checkRunning, Text: "adopt check of alpha: tier0", Start: checkFixtureNow}
-	ownGreen := checkMark{State: checkGreen, Text: "adopt check of alpha green: tier0 40s"}
+	ownCleared := checkMark{}
 
 	tests := []struct {
 		name string
@@ -623,15 +635,21 @@ func TestPrimeMark(t *testing.T) {
 		},
 		{
 			name:   "RunningOtherSubjectsAreJoinedAfterItSortedWithStateRunning",
-			own:    ownGreen,
+			own:    own,
 			others: map[string]CheckRecord{"zeta": {Subject: "zeta", State: checkRunning}, "root": {Subject: "root", State: checkRunning}, "beta": {Subject: "beta", State: checkGreen}},
-			want:   checkMark{State: checkRunning, Text: "adopt check of alpha green: tier0 40s | adopt check of root: starting | adopt check of zeta: starting"},
+			want:   checkMark{State: checkRunning, Text: "adopt check of alpha: tier0 | adopt check of root: starting | adopt check of zeta: starting", Start: checkFixtureNow},
 		},
 		{
-			name:   "FailedOtherSubjectIsNotJoined",
-			own:    ownGreen,
+			name:   "ClearedOwnMarkShowsTheRunningOtherSubjectsAlone",
+			own:    ownCleared,
+			others: map[string]CheckRecord{"root": {Subject: "root", State: checkRunning}},
+			want:   checkMark{State: checkRunning, Text: "adopt check of root: starting"},
+		},
+		{
+			name:   "ClearedOwnMarkWithNoOtherRunningSubjectClears",
+			own:    ownCleared,
 			others: map[string]CheckRecord{"beta": {Subject: "beta", State: checkFailed}},
-			want:   ownGreen,
+			want:   ownCleared,
 		},
 	}
 	for _, tt := range tests {

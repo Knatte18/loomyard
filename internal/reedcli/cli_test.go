@@ -1,17 +1,22 @@
-// cli_test.go covers the reedcli cobra seam through RunCLI:
-// watchdog's and switch's flag refusals and the not-a-git-repo error surface.
+// cli_test.go covers the reedcli cobra seam through RunCLI.
+// It covers watchdog's and switch's flag refusals and the not-a-git-repo error surface.
+// It also covers the refusal of attach and up in fabric's own checkouts, and that down is not refused there.
 // No test in this file needs a live tmux session;
 // the real up/add/status/down round-trip lives in smoke_test.go behind //go:build tmux || llm.
 // Config resolution against a real fixture hub is tested in cli_integration_test.go.
-// Every test here calls t.Chdir, which is process-global state, so none calls t.Parallel.
+// Every test that calls t.Chdir, which is process-global state, skips t.Parallel.
 
 package reedcli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -72,6 +77,93 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 
 	if errMsg := envelope.Decode(t, out.String()).Error; errMsg != "not a git repository" {
 		t.Errorf("RunCLI(status) error = %q; want exactly \"not a git repository\"", errMsg)
+	}
+}
+
+// TestRunCLI_AttachAndUp_RefuseFabricCheckouts pins the refusal of attach and up in fabric's own checkouts.
+// Those are the hub's Bolt checkout and a records sibling.
+// Each refusal exits 1 and names the verb, fabric's reason and the hub to run it from.
+// The checkouts hold no config, so a refusal proves it comes before the config read and any tmux call.
+func TestRunCLI_AttachAndUp_RefuseFabricCheckouts(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	hub := filepath.Join(t.TempDir(), "repo-LYMHUB")
+	recordsSibling := filepath.Base(fabricengine.RecordsWorktree(&lymcwd.Location{HubPath: hub, WorktreeName: "prime"}))
+	for _, checkout := range []string{lymcwd.BoltDirName, recordsSibling} {
+		writeBareGitDir(t, filepath.Join(hub, checkout))
+	}
+	resolvedHub, err := filepath.EvalSymlinks(hub)
+	if err != nil {
+		t.Fatalf("resolve the hub path: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		verb     string
+		checkout string
+	}{
+		{name: "AttachInBolt", verb: "attach", checkout: lymcwd.BoltDirName},
+		{name: "UpInBolt", verb: "up", checkout: lymcwd.BoltDirName},
+		{name: "AttachInRecordsSibling", verb: "attach", checkout: recordsSibling},
+		{name: "UpInRecordsSibling", verb: "up", checkout: recordsSibling},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var out bytes.Buffer
+			exitCode := RunCLIIn(filepath.Join(hub, tt.checkout), &out, []string{tt.verb})
+
+			if exitCode != 1 {
+				t.Errorf("RunCLIIn(%s) in %s = %d; want 1", tt.verb, tt.checkout, exitCode)
+			}
+			errMsg := envelope.Decode(t, out.String()).Error
+			fabricRefusal := fabricengine.RequireDrivableWorktree(&lymcwd.Location{HubPath: resolvedHub, WorktreeName: tt.checkout})
+			if fabricRefusal == nil {
+				t.Fatalf("fabric accepts %s as a drivable worktree; want a refusal", tt.checkout)
+			}
+			for _, want := range []string{
+				"reed: lym reed " + tt.verb + " " + fabricRefusalText,
+				fabricRefusal.Error(),
+				"way forward: run it from the hub's prime or a task worktree under " + resolvedHub,
+			} {
+				if !strings.Contains(errMsg, want) {
+					t.Errorf("RunCLIIn(%s) in %s error = %q; want it to contain %q", tt.verb, tt.checkout, errMsg, want)
+				}
+			}
+		})
+	}
+}
+
+// TestRunCLI_Down_IsNotRefusedInBolt pins that down still runs in the Bolt checkout, where attach and up are refused.
+// It goes on to fail for want of config or print nothing, so the assertion is only that the refusal text is absent.
+func TestRunCLI_Down_IsNotRefusedInBolt(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	hub := filepath.Join(t.TempDir(), "repo-LYMHUB")
+	writeBareGitDir(t, filepath.Join(hub, lymcwd.BoltDirName))
+
+	var out bytes.Buffer
+	RunCLIIn(filepath.Join(hub, lymcwd.BoltDirName), &out, []string{"down"})
+
+	if strings.Contains(out.String(), fabricRefusalText) {
+		t.Errorf("RunCLIIn(down) in Bolt output = %q; want no refusal %q", out.String(), fabricRefusalText)
+	}
+}
+
+// fabricRefusalText is the part of reed's refusal of attach and up that every refused checkout shares.
+const fabricRefusalText = "boots a session only in a worktree of the hub"
+
+// writeBareGitDir makes dir a git worktree root with the least .git directory a repository read accepts, running no git.
+func writeBareGitDir(t *testing.T, dir string) {
+	t.Helper()
+	gitDir := filepath.Join(dir, ".git")
+	for _, sub := range []string{"objects", "refs"} {
+		if err := os.MkdirAll(filepath.Join(gitDir, sub), 0o755); err != nil {
+			t.Fatalf("create %s: %v", sub, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatalf("write HEAD: %v", err)
 	}
 }
 

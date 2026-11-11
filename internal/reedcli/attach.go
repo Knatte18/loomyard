@@ -28,7 +28,9 @@ func (c *reedCLI) attachCmd() *cobra.Command {
 place — no new window is spawned (never wt.exe). On Unix attach replaces
 itself with tmux, so no lym process outlives the handover; on Windows it runs
 tmux as a child with the terminal inherited. attach boots
-this worktree's session when none is up, rather than refusing. Every
+this worktree's session when none is up, rather than refusing. It refuses
+a directory that is no worktree of the hub, such as the hub's Bolt checkout
+or a pair's records sibling, and names the hub to run it from instead. Every
 fallible step (checking that tmux is at or above lym's minimum version, then
 booting the session if it is cold, then checking that the server/session is
 up) runs pre-flight and reports through the normal JSON

@@ -39,6 +39,11 @@
 // `add` places the strand in a window of its own, or its group's.
 // Its `--anchor` takes `own-window` (the default) or `hidden`; any other value is refused.
 //
+// `attach` and `up` boot a session, so the pre-run refuses them in fabric's own checkouts:
+// the hub's Bolt checkout and a pair's records sibling, through `fabricengine.RequireDrivableWorktree`.
+// The refusal comes before any config read or tmux call, and its way forward names the hub to run them from.
+// Every other verb still runs there, so `down` removes a session an older binary booted in such a checkout.
+//
 // `attach` execs tmux over the lym process on Unix, so no lym process outlives the handover;
 // on Windows it keeps a child process.
 // Nothing runs after it in the process, so a shortcut that runs `reed attach` runs it as its last argv.

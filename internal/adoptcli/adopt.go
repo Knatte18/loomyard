@@ -239,7 +239,7 @@ func reconcileWarnings(report fabricengine.OriginReport, adopted []string, outco
 
 // suiteMessage is the plain text that names the adopt checks, one line per check.
 // Each line gives the check's subject, whether it started or was already running, and the tiers it runs when known.
-// The prime's reed status bar shows each check's progress and result.
+// The prime's reed status bar shows each check while it runs, and a failed check after it ends.
 func suiteMessage(checks []suiteStart) string {
 	lines := make([]string, len(checks))
 	for i, check := range checks {
@@ -255,7 +255,7 @@ func suiteMessage(checks []suiteStart) string {
 			}
 			tiers = ", tiers " + strings.Join(numbers, ", ")
 		}
-		lines[i] = fmt.Sprintf("adopt check of %s %s in its worktree%s; the prime's reed status bar shows its progress and result", check.Subject, verb, tiers)
+		lines[i] = fmt.Sprintf("adopt check of %s %s in its worktree%s; the prime's reed status bar shows it while it runs and when it fails", check.Subject, verb, tiers)
 	}
 	return strings.Join(lines, "\n")
 }

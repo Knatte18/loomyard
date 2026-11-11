@@ -306,16 +306,14 @@ type checkMark struct {
 // checkMarkOf renders record as its status bar mark, where tierStart is when the tier in flight started.
 // Every text names the record's subject, so two subjects' marks tell apart.
 // A running check shows its done tiers with their outcomes and wall times;
-// then the tier in flight timed from tierStart, or `starting` timed from the check's start before any tier;
-// an ended one shows its result and every tier it ran.
+// then the tier in flight timed from tierStart, or `starting` timed from the check's start before any tier.
+// A green check renders the zero mark, which clears it:
+// the check record, the orch's notice and `lym beam status` keep the result.
+// A failed check stays shown as one short item, its first failed tier, naming `lym beam status` for the rest.
 func checkMarkOf(record CheckRecord, tierStart time.Time) checkMark {
 	name := "adopt check of " + record.Subject
 	parts := make([]string, 0, len(record.Tiers)+1)
 	for _, tier := range record.Tiers {
-		if record.State == checkGreen {
-			parts = append(parts, fmt.Sprintf("tier%d %.0fs", tier.Tier, tier.WallSeconds))
-			continue
-		}
 		parts = append(parts, fmt.Sprintf("tier%d %s %.0fs", tier.Tier, tier.Outcome, tier.WallSeconds))
 	}
 	listed := func(head string) string {
@@ -327,11 +325,13 @@ func checkMarkOf(record CheckRecord, tierStart time.Time) checkMark {
 
 	switch {
 	case record.State == checkGreen:
-		return checkMark{State: checkGreen, Text: listed(name + " green")}
+		return checkMark{}
 	case record.State == checkFailed && len(parts) == 0:
 		return checkMark{State: checkFailed, Text: name + " failed before any tier ended; lym beam status shows why"}
+	case record.State == checkFailed && record.FailedTier != nil:
+		return checkMark{State: checkFailed, Text: fmt.Sprintf("%s failed at tier%d; lym beam status shows why", name, *record.FailedTier)}
 	case record.State == checkFailed:
-		return checkMark{State: checkFailed, Text: listed(name + " failed")}
+		return checkMark{State: checkFailed, Text: name + " failed; lym beam status shows why"}
 	case record.Running != nil:
 		parts = append(parts, "tier"+strconv.Itoa(*record.Running))
 		return checkMark{State: checkRunning, Text: listed(name), Start: tierStart}
@@ -346,6 +346,7 @@ func checkMarkOf(record CheckRecord, tierStart time.Time) checkMark {
 // own is that subject's mark, and adoptDir holds the scratch directories of every subject's check.
 // Its text is own's, then the marks of the other running checks, joined by ` | ` in subject order;
 // its state is running while any joined record runs, else own's state.
+// A zero own mark, a green check's, is left out of the join, so with no other check running the mark clears.
 // A record that does not read is skipped with one Warn.
 func primeMark(adoptDir, subject string, own checkMark) checkMark {
 	entries, err := os.ReadDir(adoptDir)
@@ -353,7 +354,10 @@ func primeMark(adoptDir, subject string, own checkMark) checkMark {
 		logger.Warn("adoptcli: the adopt scratch directory was not listed for the prime's mark", "path", adoptDir, "error", err)
 		return own
 	}
-	texts := []string{own.Text}
+	var texts []string
+	if own.Text != "" {
+		texts = append(texts, own.Text)
+	}
 	state := own.State
 	for _, entry := range entries {
 		if !entry.IsDir() || entry.Name() == subject {

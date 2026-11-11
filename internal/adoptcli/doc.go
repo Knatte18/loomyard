@@ -373,7 +373,7 @@
 // `already_running` marks a check found running.
 // The envelope's `message` is one line per check.
 // Each line names the subject, whether the check started or was already running, and those tiers.
-// It also says that the prime's reed status bar shows the check's progress and result.
+// It also says that the prime's reed status bar shows the check while it runs and when it fails.
 // A spawn that fails is one of the envelope's `check_warnings`.
 // The warning names its subject, the error and the re-run of `lym adopt <subject>`.
 // It changes no slug's outcome and stops no other subject's check.
@@ -453,14 +453,15 @@
 // `checkMarkOf` builds the mark from the record, so the mark names its subject.
 // At the start it reads `adopt check of <subject>: starting`.
 // Later it shows the done tiers with their outcomes and wall seconds, then the tier in flight timed from its start.
-// At the end it reads `adopt check of <subject> green` or `adopt check of <subject> failed` with every tier it ran.
+// A green end clears the mark, since the record, the orch's notice and `lym beam status` hold the result.
+// A failed end reads `adopt check of <subject> failed at tier<N>`, naming `lym beam status` for the rest.
 // A failure before any tier ended reads as a failure naming `lym beam status`.
 // `primeMark` shows the mark joined, by ` | `, with the mark of each other running subject.
-// The other marks follow the subject's own, sorted by subject.
+// The other marks follow the subject's own, sorted by subject, and a cleared own mark is left out.
 // The state is running while any joined record runs.
 // A post or mark that fails is logged and changes nothing.
+// A failed mark stays until the next check sets one or the prime's session ends.
 // Bound: a check killed before its end leaves its last running mark, with its seconds still growing.
-// The mark stays until the next check sets one or the prime's session ends.
 //
 // Bound: the gate slots do not serialize two checks; the lock does.
 // So one check of a subject at a time writes its record, its log and its posts.
