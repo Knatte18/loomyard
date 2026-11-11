@@ -201,7 +201,8 @@ func loopLogMark(loopID, text string) string {
 // It reads the loop log at logPath after that loop's last starting mark.
 // The first clause lists the marks lym wrote about the loop's processes, or says none was recorded.
 // Such marks include a terminating signal the loop received and the exit statuses of the loop and its keeper.
-// A second clause carries an excerpt of the loop's other lines, a Go crash's first lines or the last lines, when there are any.
+// When the loop has other lines, a second clause carries an excerpt of them.
+// The excerpt is a Go crash's first lines, or otherwise the last lines.
 // A log with no starting mark for the loop yields the first clause alone, since its lines cannot be told from other loops' lines.
 func loopExitEvidence(logPath, loopID string) string {
 	data, _ := os.ReadFile(logPath)

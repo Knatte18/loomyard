@@ -210,8 +210,7 @@
 // It also marks the keeper's pid and exit status once it reaps the keeper.
 // The keeper marks the loop process's pid and its exit status, or the signal that ended it, once that process ends;
 // a loop process that does not start gets a mark naming the start error.
-// The keeper's mark is written even when the waiter is gone,
-// as after a driver handed over to a successor while its loop ran.
+// The keeper's mark is written even when the waiter is gone, as after a driver hands over to its successor.
 // lym's marks open with "lym shed: loop <loop id> ", which tells them from the output of the loop and its children.
 //
 // Optional seams let the arming module hook the loop.
