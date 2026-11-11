@@ -1,5 +1,5 @@
 // cli_test.go pins the adopt envelope's fields that depend on the outcome of the adopt checks' start;
-// it also pins the fields that depend on the reconcile's warnings and on the deploy.
+// it also pins the fields that depend on the reconcile's warnings, on the deploy and on the owner writes that stood.
 
 package adoptcli
 
@@ -24,7 +24,15 @@ func TestAdoptFields(t *testing.T) {
 		wantReconcile []string
 		wantChecks    []suiteStart
 		wantRuns      []runReport
+		wantArchives  string
 	}{
+		{
+			name: "OwnerWritesThatStoodNameTheArchivesCall",
+			result: outcome{PrimeRecorded: true, Slugs: []slugOutcome{
+				{Slug: "beta", OwnerRecorded: true}, {Slug: "gamma"}, {Slug: "alpha", OwnerRecorded: true},
+			}},
+			wantArchives: "lym adopt --archives alpha beta root",
+		},
 		{
 			name:        "StartedChecksCarryTheirMessageAndTheChecks",
 			result:      outcome{Checks: started, SuiteMessage: "the adopt checks run"},
@@ -82,6 +90,9 @@ func TestAdoptFields(t *testing.T) {
 			}
 			if deploy, hasDeploy := fields["deploy"]; hasDeploy != (tt.result.Deploy != nil) || (hasDeploy && deploy != tt.result.Deploy) {
 				t.Errorf("adoptFields()[deploy] = %v, present %v; want %v", deploy, hasDeploy, tt.result.Deploy)
+			}
+			if archives, hasArchives := fields["archives"]; hasArchives != (tt.wantArchives != "") || (hasArchives && archives != tt.wantArchives) {
+				t.Errorf("adoptFields()[archives] = %v, present %v; want %q", archives, hasArchives, tt.wantArchives)
 			}
 			for _, retired := range []string{"suite", "suite_warning"} {
 				if _, present := fields[retired]; present {

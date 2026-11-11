@@ -3,9 +3,11 @@
 package gitrepo_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -46,6 +48,9 @@ func TestRemoteURL(t *testing.T) {
 			}
 			if tt.wantErr && !strings.Contains(err.Error(), tt.remote) {
 				t.Errorf("RemoteURL(%s) error = %q; want it to name the requested remote %q", tt.remote, err.Error(), tt.remote)
+			}
+			if tt.wantErr && !errors.Is(err, gitrepo.ErrRemoteNotConfigured) {
+				t.Errorf("RemoteURL(%s) error = %v; want one wrapping ErrRemoteNotConfigured", tt.remote, err)
 			}
 		})
 	}

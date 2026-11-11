@@ -711,6 +711,10 @@
 // `OwnerArchiveTagName` gives that name.
 // It pushes the tag to that side's origin with no branch push.
 // No reader of `archive/` tags matches that prefix, so such a tag never reads as an archived run.
+// `Topology.ReadOwnerArchives` is the new owner's read of those tags.
+// Per repository it lists the tags on origin whose commit the slug's branch on that origin does not contain:
+// the code branch for a code tag, and the records branch paired with it for a records tag.
+// It fetches each tag it lists as a local tag, so `git log <tag>` shows it.
 //
 // `Remove`, `DiscardTaskBranch` and the `Cleanup` sweep run their local steps,
 // and they hand the remote ones to a detached teardown child (remoteteardown.go).

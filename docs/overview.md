@@ -772,7 +772,7 @@ User-facing modules each get one `lym <module>` namespace:
   and `lym help index [--audience <audience>]` prints a generated one-line-per-command index of the running binary, filtered by the `audience` annotation every invocable command carries (`internal/helpcli`; the renderer is `clihelp.RenderIndex`).
   ✅ Implemented.
   See the `internal/helpcli` package documentation.
-- **shortcuts** — `lym a` (`lym reed attach`), `lym s` (`lym beam start`, then `lym reed attach`), `lym p` (`lym tender pause`) and `lym r` (`lym tender resume`) are top-level operator shortcuts declared in `internal/shortcutcli/shortcuts.yaml`, embedded in the binary and added only by a commit to that file;
+- **shortcuts** — `lym a` (`lym reed attach`), `lym s` (`lym adopt --here --no-orch`, then `lym beam start`, then `lym reed attach`), `lym p` (`lym tender pause`) and `lym r` (`lym tender resume`) are top-level operator shortcuts declared in `internal/shortcutcli/shortcuts.yaml`, embedded in the binary and added only by a commit to that file;
   global verbosity flags reach every expanded command and other words the last;
   they are not modules.
   See the `internal/shortcutcli` package documentation.
@@ -786,6 +786,8 @@ User-facing modules each get one `lym <module>` namespace:
   The call runs no step itself: it validates the request, starts a hidden detached worker, `lym adopt worker`, and follows the adopt record, printing each step as it ends.
   The worker takes `adopt.lock` and writes the adopt record, `adopt.json`, as each step ends, so a killed worker resumes from the first step not done, a re-run of the same subjects follows or resumes it, and `lym adopt --discard` removes a record no worker will finish.
   `lym beam status` shows an unfinished adopt.
+  `lym adopt --here` adopts the subject of the worktree it runs in, `root` in the prime and the beam in a beam: it follows or resumes an unfinished adopt that takes the worktree up, and otherwise pulls Bolt and ends `owned_here` when no other machine owns the subject; `lym s` runs it with `--no-orch` before `lym beam start`.
+  `lym adopt --archives <subject>...` lists the `archive-owner/` tags the old owner pushed whose commit the slug's branch on origin lacks, and the adopt's end envelope names that call.
   The steps run in order: the worker reconciles the hub against origin, stops a beam or a run under it whose pair holds local commits origin lacks or is live, and adds the missing pairs.
   It pauses each moved run, and each unstarted released task of an adopted subject bar a front task, with an adopt pause entry.
   It then records this machine as the owner of the beams and of the prime in one pushed owner write, before anything else runs.

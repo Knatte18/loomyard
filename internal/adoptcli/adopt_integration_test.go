@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -247,6 +248,49 @@ func TestCommand_RunsFromABeam(t *testing.T) {
 
 	envelope.RequireErr(t, run(h.PairCodeWorktree("b")), "is not on the board")
 	envelope.RequireErr(t, run(h.PairCodeWorktree("p")), `"`+primeName+`"`)
+}
+
+func TestCommand_HereAdoptsTheSubjectOfItsWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	boardkit.InstallReplay(t)
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{Beam: true})
+	machine, err := machinename.Name()
+	if err != nil {
+		t.Fatalf("machine name: %v", err)
+	}
+	board, err := boardengine.OpenHub(h.Path)
+	if err != nil {
+		t.Fatalf("open the hub's board: %v", err)
+	}
+	if _, err := board.UpsertTask(map[string]any{"slug": "b", "title": "b", "kind": "project", "labels": []string{"bug"}}); err != nil {
+		t.Fatalf("seed the beam project: %v", err)
+	}
+	if _, err := boardengine.SetOwners(h.BoardDir(), boardengine.OwnerRequest{Machine: machine, Slugs: []string{"b"}, Beam: true}); err != nil {
+		t.Fatalf("record this machine as the beam's owner: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		cwd         string
+		wantSubject string
+	}{
+		{"FromThePrimeTheSubjectIsRoot", h.PrimeWorktree(), boardengine.RootSubject},
+		{"FromABeamTheSubjectIsTheBeam", h.PairCodeWorktree("b"), "b"},
+	}
+	for _, tt := range tests {
+		var out bytes.Buffer
+		exit := adoptcli.RunCLIIn(tt.cwd, &out, []string{"--here"})
+		got := envelope.RequireOK(t, out.String())
+		if exit != 0 || got.Raw["outcome"] != "owned_here" || got.Raw["subject"] != tt.wantSubject {
+			t.Errorf("%s: lym adopt --here = exit %d, envelope %+v; want exit 0, outcome owned_here and subject %q", tt.name, exit, got, tt.wantSubject)
+		}
+		if _, found, err := adoptrecord.Read(h.Path); found || err != nil {
+			t.Errorf("%s: adopt record found %v, error %v; want none written", tt.name, found, err)
+		}
+	}
 }
 
 func TestCheckCmd_FromABeamExitsZeroWhileOneRuns(t *testing.T) {

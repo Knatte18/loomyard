@@ -38,9 +38,14 @@ const workerOutName = "adopt.out"
 // Discard removes an unfinished record, reporting whether it removed one.
 // Spawn starts a detached worker running args and returns its pid and a channel that closes when it ends.
 // Stderr receives the line of each step that ends.
+// Worktree is the name of the worktree the call runs in.
+// PullBolt brings Bolt up to date with origin;
+// a pull that cannot, an unreachable origin among them, leaves the local Bolt and returns the skip's detail.
 type callerDeps struct {
 	HubPath    string
 	Strand     string
+	Worktree   string
+	PullBolt   func() (skipped string, err error)
 	Steps      adoptDeps
 	ReadRecord func() (adoptrecord.Record, bool, error)
 	Alive      func(pid int, startTicks string) bool
@@ -72,7 +77,18 @@ func hubCallerDeps(prime *lymcwd.Location) (callerDeps, error) {
 		Discard:    func() (bool, error) { return discard(hubPath) },
 		Spawn:      func(args []string) (int, <-chan struct{}, error) { return spawnWorker(prime, args) },
 		Stderr:     os.Stderr,
+		PullBolt: func() (string, error) {
+			_, detail, err := fabricengine.NewBolt(fabricengine.BoardDir(hubPath)).Pull(fabricengine.EnvSyncOptions(), fabricengine.NewMutations(hubPath))
+			return detail, err
+		},
 	}, nil
+}
+
+// callFlags holds the flags that pick what a `lym adopt` call does, rather than what an adopt carries.
+type callFlags struct {
+	Discard  bool
+	Here     bool
+	Archives bool
 }
 
 // runsInOrch reports whether strand, a full agent name, is an orch session, a numbered orch included.
@@ -85,11 +101,12 @@ func runsInOrch(strand string) bool {
 // runAdopt runs a `lym adopt` call.
 // It validates req and starts a worker unless one already runs the same adopt.
 // It then follows the record to its end and prints the end envelope on out.
-// With discardFlag it removes an unfinished record instead.
+// With --discard it removes an unfinished record instead.
+// With --here it first resolves the subject of the call's worktree, and may end without an adopt.
 // It returns the exit code.
-func runAdopt(deps callerDeps, req request, discardFlag bool, out io.Writer) int {
-	if discardFlag {
-		if len(req.Slugs) > 0 || req.Root || req.All || req.KeepLocal || req.DropLocal || req.NoOrch {
+func runAdopt(deps callerDeps, req request, flags callFlags, out io.Writer) int {
+	if flags.Discard {
+		if len(req.Slugs) > 0 || req.Root || req.All || req.KeepLocal || req.DropLocal || req.NoOrch || flags.Here {
 			return output.Err(out, "lym adopt: --discard takes no subject and no other flag: run `lym adopt --discard` alone")
 		}
 		removed, err := deps.Discard()
@@ -97,6 +114,17 @@ func runAdopt(deps callerDeps, req request, discardFlag bool, out io.Writer) int
 			return output.Err(out, err.Error())
 		}
 		return output.Ok(out, map[string]any{"removed": removed})
+	}
+
+	if flags.Here {
+		resolved, end, err := hereRequest(deps, req)
+		if err != nil {
+			return output.Err(out, err.Error())
+		}
+		if end != nil {
+			return output.Ok(out, end)
+		}
+		req = resolved
 	}
 
 	req = normalizedRequest(req)

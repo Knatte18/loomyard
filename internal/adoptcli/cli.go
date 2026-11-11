@@ -17,7 +17,7 @@ import (
 // Command returns the cobra command for the adopt module.
 func Command() *cobra.Command {
 	var req request
-	var discardFlag bool
+	var flags callFlags
 	cmd := &cobra.Command{
 		Use:   "adopt [<subject>...]",
 		Short: "take over beam projects, or root, and the runs under them from another machine",
@@ -40,21 +40,39 @@ origin's (refused for a live pair); a project one of whose runs stops is held ba
 --no-orch starts each dobby and leaves its orch down; an orch session passes it by default.
 --discard removes a record no worker will finish, and takes no subject.
 
+--here adopts the subject of the worktree it runs in, root in the prime and the beam in a
+beam: it follows or resumes an unfinished adopt that takes the worktree up, otherwise pulls
+Bolt and ends owned_here when no other machine owns the subject; in any other worktree it does
+nothing. --archives <subject>... lists the archive-owner/ tags the old owner pushed whose
+commit the slug's branch on origin lacks, and runs no step.
+
 The package doc holds the record, the resume and every field of the envelope.
 
 Example:
   lym adopt payments
   lym adopt root
-  lym adopt --all --keep-local`,
+  lym adopt --all --keep-local
+  lym adopt --here
+  lym adopt --archives root`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
-			prime, err := resolvePrime(ctx)
+			location, prime, err := resolveCall(ctx)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+			req.Slugs = args
+			if flags.Archives {
+				deps, err := hubArchiveDeps(prime)
+				if err != nil {
+					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					return nil
+				}
+				clihelp.SetExit(ctx, runArchives(deps, req, flags, out))
 				return nil
 			}
 			deps, err := hubCallerDeps(prime)
@@ -62,8 +80,8 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			req.Slugs = args
-			clihelp.SetExit(ctx, runAdopt(deps, req, discardFlag, out))
+			deps.Worktree = location.WorktreeName
+			clihelp.SetExit(ctx, runAdopt(deps, req, flags, out))
 			return nil
 		},
 	}
@@ -71,7 +89,9 @@ Example:
 	cmd.Flags().BoolVar(&req.KeepLocal, "keep-local", false, "record the owner over local commits origin lacks and over a live pair")
 	cmd.Flags().BoolVar(&req.DropLocal, "drop-local", false, "keep each local tip origin lacks under an archive tag and move the branches to origin's")
 	cmd.Flags().BoolVar(&req.NoOrch, "no-orch", false, "start each dobby and leave its orch down")
-	cmd.Flags().BoolVar(&discardFlag, "discard", false, "remove an unfinished adopt record that no worker will finish")
+	cmd.Flags().BoolVar(&flags.Discard, "discard", false, "remove an unfinished adopt record that no worker will finish")
+	cmd.Flags().BoolVar(&flags.Here, "here", false, "adopt the subject of the worktree this runs in when another machine owns it")
+	cmd.Flags().BoolVar(&flags.Archives, "archives", false, "list the owner archive tags of the named subjects whose commits origin's branches lack")
 	cmd.AddCommand(workerCmd(), checkCmd())
 	return cmd
 }
@@ -97,17 +117,18 @@ func workerCmd() *cobra.Command {
 	return cmd
 }
 
-// resolvePrime returns the prime of the hub the command's working directory belongs to.
-func resolvePrime(ctx context.Context) (*lymcwd.Location, error) {
+// resolveCall returns the location of the command's working directory and the prime of the hub it belongs to.
+func resolveCall(ctx context.Context) (location, prime *lymcwd.Location, err error) {
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	location, err := lymcwd.Resolve(cwd)
+	location, err = lymcwd.Resolve(cwd)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return battencli.ResolveBattenPrime(location)
+	prime, err = battencli.ResolveBattenPrime(location)
+	return location, prime, err
 }
 
 // driveWorker resolves the prime from the command's working directory and runs the worker for req naming args.
@@ -119,7 +140,7 @@ func driveWorker(cmd *cobra.Command, req request, args []string) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
-	prime, err := resolvePrime(ctx)
+	_, prime, err := resolveCall(ctx)
 	if err != nil {
 		clihelp.SetExit(ctx, output.Err(out, err.Error()))
 		return nil
@@ -181,6 +202,9 @@ func adoptFields(result outcome) map[string]any {
 	}
 	if len(result.CheckWarnings) > 0 {
 		fields["check_warnings"] = result.CheckWarnings
+	}
+	if command := archivesCommand(result); command != "" {
+		fields["archives"] = command
 	}
 	return fields
 }

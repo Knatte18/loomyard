@@ -1,5 +1,7 @@
-// Package adoptcli is the adopt module for the verbs `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`.
-// They take the flags `--keep-local`, `--drop-local`, `--no-orch` and `--discard`.
+// Package adoptcli is the adopt module.
+// Its verbs are `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`.
+// It also has `lym adopt --here` and `lym adopt --archives <subject>...`.
+// They take the flags `--keep-local`, `--drop-local`, `--no-orch`, `--discard`, `--here` and `--archives`.
 // It takes over beam projects, or root, and the runs under them from the other machine of the operator.
 // It calls each owning module's takeover function in-process, so no module learns another's state,
 // and it has no engine package of its own.
@@ -46,13 +48,15 @@
 // `runAdopt` takes these branches in order:
 //
 //  1. `--discard` stands alone and runs `discard`, which prints whether it removed a record.
-//  2. It sets `NoOrch` when the caller's strand name, `agentname.StrandNameEnv`, parses as an orch role.
+//  2. `--here` resolves the call's request through `hereRequest`, described under the here call below,
+//     or ends the call there.
+//  3. It sets `NoOrch` when the caller's strand name, `agentname.StrandNameEnv`, parses as an orch role.
 //     A numbered orch counts, and an empty or unparsable name sets nothing.
-//  3. It validates the request, reads the record and judges it with `judgeStanding`:
+//  4. It validates the request, reads the record and judges it with `judgeStanding`:
 //     a running worker of the same subjects is followed and nothing is spawned;
 //     an unfinished record of other subjects is refused, naming the recorded subjects, the step, the re-run and `--discard`;
 //     any other case spawns a worker.
-//  4. It follows the record through `follow` and prints the end:
+//  5. It follows the record through `follow` and prints the end:
 //     the record's envelope for a `done` adopt, and an error envelope with the stop's way forward for a `stopped` one.
 //
 // `spawnWorker` resolves the binary through `selfexec.LymBinary`.
@@ -87,6 +91,53 @@
 // The same validation, the subject match and the lock bound it.
 // `runWorker` is the whole worker.
 // It prints the end envelope: ok for `done`, an error envelope for a stop or a refusal.
+//
+// # The here call
+//
+// `lym adopt --here` adopts the subject of the worktree it runs in:
+// `root` in the prime, the beam in an open beam project.
+// In any other worktree it ends ok with `outcome` `no_subject` and does nothing else.
+// A subject, `root` or `--all` beside it is refused.
+//
+// It first reads the adopt record.
+// An unfinished record takes the worktree up when its `check` step is not done.
+// Its subjects must also list the subject the worktree reads its owner from, through `adoptrecord.Record.TakesUp`.
+// That is the worktree's beam when the record lists it or it records an owner of its own.
+// Otherwise it is the subject above it through `hubgeom.ParentOf`, `root` at the top.
+// The call then runs the record's request with its own flags merged in by `mergeRequest`,
+// so it follows a live worker or resumes the record, whoever the owner reads as.
+// A record past `check`, such as one that stopped on a held-back project, takes up no worktree.
+//
+// With no record taking the worktree up, it pulls Bolt through `fabricengine.Bolt.Pull` and reads the subject's owner.
+// A pull that cannot bring Bolt up to date, an unreachable origin among them, reads the local Bolt,
+// and its detail is a line of `warnings`.
+// When no other machine owns the subject, the call ends ok with `outcome` `owned_here` and `subject`.
+// It spawns no worker and writes no record.
+// Otherwise it runs as `lym adopt <subject>`.
+// The `lym s` shortcut runs `lym adopt --here --no-orch` before `lym beam start`, which starts the orch.
+// So adopt starts from a plain shell on the machine taking over, and an adopt that stops starts nothing.
+//
+// Bound: every `--here` with no record taking its worktree up pays one Bolt pull.
+// A stale local Bolt that reads this machine as the owner skips the adopt;
+// the next Bolt pull that reaches origin hands the subject to the old owner's path.
+//
+// # The archives list
+//
+// `lym adopt --archives <subject>...` lists the `archive-owner/` tags the old owner of each subject pushed.
+// It lists only those whose commit the slug's branch on origin does not contain.
+// It reads them through `fabricengine.Topology.ReadOwnerArchives`.
+// It reads each repository's tags against that repository's branch of the slug:
+// the code branch for a code tag, the records branch for a records tag.
+// A tag's slug belongs to the subject `boardengine.Owners.AdoptSubject` names for it;
+// a slug the board no longer holds belongs to the subject of its parent.
+// The envelope's `archives` lists the tags per slug with its subject.
+// Each tag carries its side, commit and branch, and a `git -C <dir> log <tag>` that shows it.
+// Teardown and `--drop-local` archives carry the `archive/` prefix, so it lists none of them.
+// It runs no step, reads and writes no adopt record and brings nothing in;
+// it fetches each listed tag as a local tag, so its log shows.
+// A subject that is neither `root` nor a beam project is refused,
+// and the refusal of a task or grouping project names the subject that moves it.
+// Any other flag beside it is refused.
 //
 // # The record
 //
@@ -528,6 +579,8 @@
 // `warnings` covers branches the reconcile left unmoved and a deploy state that did not read.
 // `prime_beam_steps` and `prime_beam_warning` report the prime's beam steps.
 // `checks` and `message`, or `check_warnings`, report the adopt checks.
+// `archives` names `lym adopt --archives` over the subjects whose owner write stood.
+// The old owner archives its unpushed tips only once it reads that write.
 // Per slug it carries what happened: a stop with its branches, a pair added and an owner recorded.
 // It carries the pause as `adopt_paused` and `pause_standing`.
 // It carries the run as paused by adopt, none, running here or owned elsewhere by `owned_by`.

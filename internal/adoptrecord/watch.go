@@ -65,6 +65,24 @@ func (w *Watch) covers(slug string) (bool, error) {
 	return record.Covers(subject), nil
 }
 
+// TakesUp reports whether the record takes up the worktree named slug, empty for the prime, for `lym adopt --here`.
+// The record must be unfinished with its check step not done.
+// Its subjects must list the subject whose owner the worktree reads:
+// the slug itself when the record lists it or it is a beam project with its own owner recorded.
+// Otherwise it is the subject of its parent, `root` above the top.
+// owners is the hub's board, and parentOf names the slug an entry was forked from, empty for the prime.
+func (r Record) TakesUp(owners boardengine.Owners, slug string, parentOf func(slug string) (string, error)) (bool, error) {
+	if !r.Unfinished() || r.Done(StepCheck) {
+		return false, nil
+	}
+	listed := func(subject string) bool { return slices.Contains(r.Subjects, subject) }
+	subject, err := ownerSubject(owners, slug, listed, parentOf)
+	if err != nil {
+		return false, err
+	}
+	return listed(subject), nil
+}
+
 // ownerSubject returns the subject whose owner the worktree slug reads, `root` for the prime's empty slug.
 // It is the slug itself for an entry the board does not hold.
 // It is also the slug itself for one the adopt record lists and for a beam project with its own owner recorded.

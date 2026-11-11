@@ -1,4 +1,4 @@
-// ownerarchive_integration_test.go covers ArchiveOwnerTips over the prime pair of a hubforge hub.
+// ownerarchive_integration_test.go covers ArchiveOwnerTips and ReadOwnerArchives over the prime pair of a hubforge hub.
 // The hub's CodeBare and RecordsBare are the code and records origins.
 // Each row builds its own hub, since a row commits to the prime or breaks its origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -7,6 +7,7 @@ package fabricengine_test
 
 import (
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -151,5 +152,131 @@ func TestArchiveOwnerTips_ATornPairDoesNotStopTheOthers(t *testing.T) {
 	}
 	if want := []string{"archive-owner/root/" + tip[:12]}; !slices.Equal(tags, want) {
 		t.Errorf("ArchiveOwnerTips() = %v; want %v, the other pair still tagged", tags, want)
+	}
+}
+
+func TestReadOwnerArchives(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// archiveRecords archives a records tip instead of a code tip.
+		archiveRecords bool
+		// pushTip pushes the archived tip to its branch on origin after the archive.
+		pushTip bool
+		// keepNone admits no slug to the read.
+		keepNone bool
+		// unpublishedBranch commits on a new branch origin lacks.
+		unpublishedBranch bool
+		// teardownTag also pushes a teardown archive tag, archive/root/<tip>, naming the same tip.
+		teardownTag bool
+		wantListed  bool
+	}{
+		{name: "ACodeTagTheBranchOnOriginLacksIsListedAndFetched", wantListed: true},
+		{name: "ARecordsTagIsJudgedAgainstTheRecordsBranch", archiveRecords: true, wantListed: true},
+		{name: "ARecordsTagTheRecordsBranchHoldsIsNotListed", archiveRecords: true, pushTip: true},
+		{name: "ATagTheBranchOnOriginHoldsIsNotListed", pushTip: true},
+		{name: "ATagOfABranchAbsentOnOriginIsListed", unpublishedBranch: true, wantListed: true},
+		{name: "ATeardownArchiveTagIsNeitherListedNorFetched", teardownTag: true, wantListed: true},
+		{name: "ATagOfASlugKeepRefusesIsNotListed", keepNone: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			l := h.Location
+			recordsDir := fabricengine.RecordsWorktree(l)
+			// The fixture leaves the records prime's tip unpushed, so push it to archive one side alone.
+			gitkit.MustRun(t, recordsDir, "git", "push", "origin", "HEAD")
+			dir, side := l.WorktreePath(), fabricengine.OwnerArchiveSideCode
+			if tt.archiveRecords {
+				dir, side = recordsDir, fabricengine.OwnerArchiveSideRecords
+			}
+			if tt.unpublishedBranch {
+				gitkit.Git(t, dir, "checkout", "-b", "unpublished")
+			}
+			tip := gitkit.CommitFile(t, dir, "owner-archive.txt", "local", "local commit")
+			tags, err := fabricengine.ArchiveOwnerTips(l.HubPath, []fabricengine.OwnerArchivePair{{Slug: "root", Pair: l}})
+			if err != nil || len(tags) != 1 {
+				t.Fatalf("ArchiveOwnerTips() = %v, %v; want one tag", tags, err)
+			}
+			if tt.pushTip {
+				gitkit.Git(t, dir, "push", "origin", "HEAD")
+			}
+			// The new owner holds no local tag, so the read must fetch it.
+			gitkit.Git(t, dir, "tag", "-d", tags[0])
+			if tt.teardownTag {
+				teardown := fabricengine.ArchiveTagPrefix + "root/" + tip[:fabricengine.ArchiveTagSHALen]
+				gitkit.Git(t, dir, "tag", teardown, tip)
+				gitkit.Git(t, dir, "push", "origin", "refs/tags/"+teardown)
+				gitkit.Git(t, dir, "tag", "-d", teardown)
+			}
+			keep := func(slug string) bool { return !tt.keepNone && slug == "root" }
+
+			got, err := fabricengine.NewTopology(fabricengine.Config{}).ReadOwnerArchives(l, "root", keep)
+
+			if err != nil {
+				t.Fatalf("ReadOwnerArchives() error = %v", err)
+			}
+			var want []fabricengine.OwnerArchive
+			if tt.wantListed {
+				branch := gitkit.Git(t, dir, "rev-parse", "--abbrev-ref", "HEAD")
+				want = []fabricengine.OwnerArchive{{Slug: "root", Side: side, Tag: tags[0], Commit: tip, Branch: branch, Dir: dir}}
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("ReadOwnerArchives() = %+v; want %+v", got, want)
+			}
+			if local := gitkit.Git(t, dir, "tag", "--list", tags[0]); (local != "") != tt.wantListed {
+				t.Errorf("local tag %s after the read = %q; want it present only when listed", tags[0], local)
+			}
+			if local := gitkit.Git(t, dir, "tag", "--list", fabricengine.ArchiveTagPrefix+"*"); local != "" {
+				t.Errorf("local teardown archive tags after the read = %q; want none fetched", local)
+			}
+		})
+	}
+}
+
+func TestReadOwnerArchives_ListsEveryPairSortedBySlugSideAndTag(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{Beam: true})
+	l := h.Location
+	codeDir, recordsDir, pairDir := l.WorktreePath(), fabricengine.RecordsWorktree(l), h.PairCodeWorktree("b")
+	// The fixture leaves the records prime's tip unpushed, so push it to archive only the commits made here.
+	gitkit.MustRun(t, recordsDir, "git", "push", "origin", "HEAD")
+	pairTip := gitkit.CommitFile(t, pairDir, "owner-archive.txt", "local", "local pair commit")
+	codeTip := gitkit.CommitFile(t, codeDir, "owner-archive.txt", "local", "local code commit")
+	recordsTip := gitkit.CommitFile(t, recordsDir, "owner-archive.txt", "local", "local records commit")
+	pair, err := lymcwd.NamedWorktree(h.Path, "b")
+	if err != nil {
+		t.Fatalf("NamedWorktree() = %v; want nil", err)
+	}
+	pairs := []fabricengine.OwnerArchivePair{{Slug: "root", Pair: l}, {Slug: "b", Pair: pair}}
+	if tags, err := fabricengine.ArchiveOwnerTips(l.HubPath, pairs); err != nil || len(tags) != 3 {
+		t.Fatalf("ArchiveOwnerTips() = %v, %v; want three tags", tags, err)
+	}
+	pairTag := fabricengine.OwnerArchiveTagName("b", pairTip)
+	codeTag := fabricengine.OwnerArchiveTagName("root", codeTip)
+	recordsTag := fabricengine.OwnerArchiveTagName("root", recordsTip)
+	// The new owner holds no local tag, so the read must fetch each.
+	gitkit.Git(t, codeDir, "tag", "-d", pairTag, codeTag)
+	gitkit.Git(t, recordsDir, "tag", "-d", recordsTag)
+
+	got, err := fabricengine.NewTopology(fabricengine.Config{}).ReadOwnerArchives(l, "root", func(string) bool { return true })
+
+	if err != nil {
+		t.Fatalf("ReadOwnerArchives() error = %v", err)
+	}
+	want := []fabricengine.OwnerArchive{
+		{Slug: "b", Side: fabricengine.OwnerArchiveSideCode, Tag: pairTag, Commit: pairTip, Branch: gitkit.CurrentBranch(t, pairDir), Dir: codeDir},
+		{Slug: "root", Side: fabricengine.OwnerArchiveSideCode, Tag: codeTag, Commit: codeTip, Branch: gitkit.CurrentBranch(t, codeDir), Dir: codeDir},
+		{Slug: "root", Side: fabricengine.OwnerArchiveSideRecords, Tag: recordsTag, Commit: recordsTip, Branch: gitkit.CurrentBranch(t, recordsDir), Dir: recordsDir},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ReadOwnerArchives() = %+v; want %+v", got, want)
 	}
 }

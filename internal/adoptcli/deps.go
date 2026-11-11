@@ -146,6 +146,24 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 	}, nil
 }
 
+// hubArchiveDeps fills archiveDeps over the hub the prime belongs to.
+// The archives are read through fabric, with `root` naming the prime's pair.
+func hubArchiveDeps(prime *lymcwd.Location) (archiveDeps, error) {
+	config, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(prime))
+	if err != nil {
+		return archiveDeps{}, err
+	}
+	topology := fabricengine.NewTopology(config)
+	boardDir := fabricengine.BoardDir(prime.HubPath)
+	return archiveDeps{
+		ReadOwners: func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
+		ParentOf:   func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) },
+		ReadArchives: func(keep func(slug string) bool) ([]fabricengine.OwnerArchive, error) {
+			return topology.ReadOwnerArchives(prime, boardengine.RootSubject, keep)
+		},
+	}, nil
+}
+
 // hubOnlyPaused returns a pause reading that covers a slug only by a live hub-scope entry of the record at recordPath.
 // A slug-scope entry, an owner pause among them, does not cover its slug,
 // so a pair running under one reads live.

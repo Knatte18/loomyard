@@ -27,7 +27,7 @@ lym fabric clone --shortname <short> <records-url> <project-url>
 
 ```bash
 cd <hub>/<project>
-lym s                                # bring up dobby and orch for the prime, then attach
+lym s                                # adopt the prime if another machine owns it, bring up dobby and orch, then attach
 ```
 
 Tell the orch what you want, or file a task yourself and release it:

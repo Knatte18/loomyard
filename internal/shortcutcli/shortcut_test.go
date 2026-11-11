@@ -216,7 +216,7 @@ func TestMount_File(t *testing.T) {
 			name: "the shipped file mounts exactly a, s, p and r", data: shortcutFile,
 			wantMounted: map[string]string{
 				"a": "shortcut: lym reed attach",
-				"s": "shortcut: lym beam start, then lym reed attach",
+				"s": "shortcut: lym adopt --here --no-orch, then lym beam start, then lym reed attach",
 				"p": "shortcut: lym tender pause",
 				"r": "shortcut: lym tender resume",
 			},

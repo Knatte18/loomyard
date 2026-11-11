@@ -221,10 +221,20 @@ func remoteHeadTip(dir, branch string) (string, error) {
 
 // remoteArchiveTags maps each archive/<slug>/* tag name on origin to its commit target, preferring a peeled ^{} line.
 func remoteArchiveTags(weftRoot, slug string) (map[string]string, error) {
-	prefix := "refs/tags/" + ArchiveTagPrefix + slug + "/"
-	out, err := gitexec.Run([]string{"ls-remote", "--tags", originRemoteName, prefix + "*"}, weftRoot)
+	tags, err := remoteTagsUnder(weftRoot, ArchiveTagPrefix+slug+"/")
 	if err != nil {
 		return nil, fmt.Errorf("list archive tags of %q on %q: %w", slug, originRemoteName, err)
+	}
+	return tags, nil
+}
+
+// remoteTagsUnder maps each tag on dir's origin whose name starts with namePrefix to its commit.
+// It prefers a peeled ^{} line, so an annotated tag maps to the commit it names.
+func remoteTagsUnder(dir, namePrefix string) (map[string]string, error) {
+	prefix := "refs/tags/" + namePrefix
+	out, err := gitexec.Run([]string{"ls-remote", "--tags", originRemoteName, prefix + "*"}, dir)
+	if err != nil {
+		return nil, err
 	}
 	plain := map[string]string{}
 	peeled := map[string]string{}

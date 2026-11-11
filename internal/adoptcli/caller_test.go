@@ -1,10 +1,11 @@
 // caller_test.go drives the `lym adopt` call over fake seams.
-// It covers the verb's branches, the discard and the worker's arguments.
+// It covers the verb's branches, the here call, the discard and the worker's arguments.
 
 package adoptcli
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/adoptrecord"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -21,6 +23,19 @@ import (
 type callerFakes struct {
 	spawned [][]string
 	caps    []string
+	pulls   int
+}
+
+// stepsThrough returns the step records of every adopt step up to and including last.
+func stepsThrough(last string) []adoptrecord.StepRecord {
+	var steps []adoptrecord.StepRecord
+	for _, step := range adoptrecord.Steps {
+		steps = append(steps, adoptrecord.StepRecord{Name: step})
+		if step == last {
+			break
+		}
+	}
+	return steps
 }
 
 func TestRunAdopt(t *testing.T) {
@@ -52,12 +67,37 @@ func TestRunAdopt(t *testing.T) {
 		}
 	}
 
+	// rootRecord is an adopt of root at pid 55 that ended the steps through last and stands in state.
+	rootRecord := func(state, last string) adoptrecord.Record {
+		return adoptrecord.Record{
+			Request: adoptrecord.Request{Root: true}, Subjects: []string{"root"}, PID: 55, Start: time.Unix(6000, 0),
+			State: state, Steps: stepsThrough(last), InFlight: adoptrecord.StepDeploy,
+		}
+	}
+	// wantSpawn checks that the one spawn ran the worker with args.
+	wantSpawn := func(args ...string) func(t *testing.T, fakes *callerFakes) {
+		return func(t *testing.T, fakes *callerFakes) {
+			want := append([]string{"adopt", "worker"}, args...)
+			if len(fakes.spawned) != 1 || !slices.Equal(fakes.spawned[0], want) {
+				t.Errorf("spawned %v, want one spawn of %v", fakes.spawned, want)
+			}
+		}
+	}
+
 	tests := []struct {
 		name    string
 		strand  string
 		req     request
 		discard bool
-		setup   func(t *testing.T, w *world)
+		// here passes --here from the worktree named worktree; pullSkip is the detail of a Bolt pull that could not run.
+		here      bool
+		worktree  string
+		pullSkip  string
+		pullErr   error
+		wantPulls int
+		// wantNoRecord expects the call to leave no adopt record.
+		wantNoRecord bool
+		setup        func(t *testing.T, w *world)
 		// afterSpawn stands for the worker the fake spawn starts; afterSleep acts at each wake of the follow, counting from one.
 		afterSpawn func(t *testing.T, w *world)
 		afterSleep func(t *testing.T, w *world, wake int)
@@ -69,6 +109,90 @@ func TestRunAdopt(t *testing.T) {
 		{
 			name: "DiscardWithASubjectIsRefusedNamingDiscardAlone", req: alphaRequest, discard: true,
 			wantExit: 1, wantOut: []string{"lym adopt --discard"},
+		},
+		{
+			name: "HereInAPrimeThisMachineOwnsEndsOwnedHereWithNoWorkerOrRecord", here: true, worktree: "prime",
+			wantPulls: 1, wantNoRecord: true, wantOut: []string{`"outcome":"owned_here"`, `"subject":"root"`, `"ok":true`},
+		},
+		{
+			name: "HereOwnedHereBesideAnotherSubjectsUnfinishedRecordEndsOwnedHere", here: true, worktree: "prime",
+			setup:     func(t *testing.T, w *world) { write(t, w, 55, adoptrecord.StateStopped) },
+			wantPulls: 1, wantOut: []string{`"outcome":"owned_here"`},
+		},
+		{
+			name: "HereReadsTheLocalBoltWhenThePullCannotReachOrigin", here: true, worktree: "prime", pullSkip: "fetching origin failed",
+			wantPulls: 1, wantOut: []string{`"outcome":"owned_here"`, "fetching origin failed"},
+		},
+		{
+			name: "HereInAForeignOwnedPrimeAdoptsRoot", here: true, worktree: "prime",
+			setup:      func(t *testing.T, w *world) { w.owners.Prime = there },
+			afterSpawn: func(t *testing.T, w *world) { write(t, w, spawnPID, adoptrecord.StateDone) },
+			wantPulls:  1, wantSpawns: 1, wantOut: []string{`"ok":true`}, check: wantSpawn("root"),
+		},
+		{
+			name: "HereInAForeignOwnedBeamAdoptsTheBeam", here: true, worktree: "alpha",
+			afterSpawn: func(t *testing.T, w *world) { write(t, w, spawnPID, adoptrecord.StateDone) },
+			wantPulls:  1, wantSpawns: 1, wantOut: []string{`"ok":true`}, check: wantSpawn("alpha"),
+		},
+		{
+			name: "HereAfterAWorkerKilledAtDeployResumesTheRecordWithoutAPull", here: true, worktree: "prime",
+			setup: func(t *testing.T, w *world) {
+				writeAdoptRecord(t, w.dir, rootRecord(adoptrecord.StateRunning, adoptrecord.StepOwner))
+			},
+			afterSpawn: func(t *testing.T, w *world) { write(t, w, spawnPID, adoptrecord.StateDone) },
+			wantSpawns: 1, wantOut: []string{`"ok":true`}, check: wantSpawn("root"),
+		},
+		{
+			name: "HereInABeamWithNoOwnerOfItsOwnFollowsTheRunningRootAdopt", here: true, worktree: "gamma",
+			setup: func(t *testing.T, w *world) {
+				w.owners.Entries["gamma"] = boardengine.OwnerEntry{IsProject: true, Beam: true}
+				w.workerAlive = true
+				writeAdoptRecord(t, w.dir, rootRecord(adoptrecord.StateRunning, adoptrecord.StepPause))
+			},
+			afterSleep: func(t *testing.T, w *world, _ int) { write(t, w, 55, adoptrecord.StateDone) },
+			wantOut:    []string{`"ok":true`},
+		},
+		{
+			name: "HereOnASubjectPastCheckBesideAHeldBackProjectEndsOwnedHere", here: true, worktree: "prime",
+			setup: func(t *testing.T, w *world) {
+				record := rootRecord(adoptrecord.StateStopped, adoptrecord.StepCheck)
+				record.Request.Slugs, record.Subjects = []string{"alpha"}, []string{"alpha", "root"}
+				record.InFlight, record.Inputs = adoptrecord.StepDone, adoptrecord.Inputs{PrimeRecorded: true, HeldBack: []string{"alpha"}}
+				writeAdoptRecord(t, w.dir, record)
+			},
+			wantPulls: 1, wantOut: []string{`"outcome":"owned_here"`},
+		},
+		{
+			name: "HereInATaskWorktreeDoesNothing", here: true, worktree: "idle",
+			wantNoRecord: true, wantOut: []string{`"outcome":"no_subject"`, `"ok":true`},
+		},
+		{
+			name: "HereWithASubjectIsRefused", here: true, worktree: "prime", req: alphaRequest,
+			wantExit: 1, wantOut: []string{"--here"},
+		},
+		{
+			name: "HereWithRootIsRefused", here: true, worktree: "prime", req: request{Root: true},
+			wantExit: 1, wantOut: []string{"--here"},
+		},
+		{
+			name: "HereWithAllIsRefused", here: true, worktree: "prime", req: request{All: true},
+			wantExit: 1, wantOut: []string{"--here"},
+		},
+		{
+			name: "HereWithDiscardIsRefusedNamingDiscardAlone", here: true, discard: true, worktree: "prime",
+			wantExit: 1, wantOut: []string{"lym adopt --discard"},
+		},
+		{
+			name: "HereWhenThePullFailsIsRefusedWithNoWorkerOrRecord", here: true, worktree: "prime", pullErr: errors.New("the board clone is broken"),
+			wantPulls: 1, wantNoRecord: true, wantExit: 1, wantOut: []string{"pull Bolt", "the board clone is broken"},
+		},
+		{
+			name: "HereResumingARecordCarriesTheCallsNoOrchToTheWorker", here: true, worktree: "prime", req: request{NoOrch: true},
+			setup: func(t *testing.T, w *world) {
+				writeAdoptRecord(t, w.dir, rootRecord(adoptrecord.StateRunning, adoptrecord.StepOwner))
+			},
+			afterSpawn: func(t *testing.T, w *world) { write(t, w, spawnPID, adoptrecord.StateDone) },
+			wantSpawns: 1, wantOut: []string{`"ok":true`}, check: wantSpawn("root", "--no-orch"),
 		},
 		{
 			name: "LiveRecordOfTheSameSubjectsIsFollowedWithoutSpawning", req: alphaRequest,
@@ -165,8 +289,13 @@ func TestRunAdopt(t *testing.T) {
 			now := time.Unix(5000, 0)
 			wakes := 0
 			deps := callerDeps{
-				HubPath:    w.dir,
-				Strand:     tt.strand,
+				HubPath:  w.dir,
+				Strand:   tt.strand,
+				Worktree: tt.worktree,
+				PullBolt: func() (string, error) {
+					fakes.pulls++
+					return tt.pullSkip, tt.pullErr
+				},
 				Steps:      w.deps(),
 				ReadRecord: func() (adoptrecord.Record, bool, error) { return adoptrecord.Read(w.dir) },
 				Alive:      func(int, string) bool { return w.workerAlive },
@@ -197,10 +326,16 @@ func TestRunAdopt(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			exit := runAdopt(deps, tt.req, tt.discard, &out)
+			exit := runAdopt(deps, tt.req, callFlags{Discard: tt.discard, Here: tt.here}, &out)
 
 			if (exit != 0) != (tt.wantExit != 0) || len(fakes.spawned) != tt.wantSpawns {
 				t.Errorf("runAdopt = exit %d after %d spawns, want exit %d after %d; output %s", exit, len(fakes.spawned), tt.wantExit, tt.wantSpawns, out.String())
+			}
+			if fakes.pulls != tt.wantPulls {
+				t.Errorf("runAdopt pulled Bolt %d times, want %d", fakes.pulls, tt.wantPulls)
+			}
+			if _, found, err := adoptrecord.Read(w.dir); tt.wantNoRecord && (found || err != nil) {
+				t.Errorf("adopt record after the call: found %v, error %v; want none", found, err)
 			}
 			for _, text := range tt.wantOut {
 				if !strings.Contains(out.String(), text) {

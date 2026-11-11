@@ -60,6 +60,7 @@ func shortcutProblems(root *cobra.Command, shortcuts []shortcutcli.Shortcut) []s
 	return problems
 }
 
+//testtiming:keep pins the shortcut rows of the help index and the shortcut file against the root
 func TestShortcuts_FileAndRootListing(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -125,7 +126,7 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 		t.Fatalf("run(help index) = %d, output:\n%s", code, index.String())
 	}
 	for _, line := range []string{
-		"- `s [<args>...]`: shortcut: lym beam start, then lym reed attach",
+		"- `s [<args>...]`: shortcut: lym adopt --here --no-orch, then lym beam start, then lym reed attach",
 		"- `a [<args>...]`: shortcut: lym reed attach",
 		"- `p [<args>...]`: shortcut: lym tender pause",
 		"- `r [<args>...]`: shortcut: lym tender resume",

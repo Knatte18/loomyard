@@ -13,6 +13,9 @@
 // and `ResumeStep` names the step a resume restarts at.
 // `Covers` reports whether the record holds a subject under adopt:
 // the record is unfinished, lists the subject, and records no owner write of it that stood.
+// `TakesUp` reports whether an unfinished record whose check step is not done takes up a worktree.
+// It does when the record lists the subject the worktree reads its owner from;
+// `lym adopt --here` then runs the record's request.
 // Unknown keys of the file are tolerated on read and kept on write.
 //
 // `Watch` is the read-only under-adopt accessor the orch watcher and the dobby are handed.
