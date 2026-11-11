@@ -558,7 +558,7 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 // keeperMarkPolls and keeperMarkPoll bound how long a dead-loop stop waits for the keeper's exit mark.
 const (
 	keeperMarkPolls = 5
-	keeperMarkPoll  = 100 * time.Millisecond
+	keeperMarkPoll  = 100 * time.Millisecond //lym:one-shot bounded re-read of at most keeperMarkPolls
 )
 
 // awaitLoopProcessMark waits, for a bounded time, until the loop log holds the exit mark of loop loopID's process.
