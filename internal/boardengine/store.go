@@ -495,6 +495,7 @@ type MergeStatusUpdate struct {
 // "discussed" is accepted only as the entry's stored value too.
 // "beam_color" is output only: a beam carries it in what is read back, the owner setter records it,
 // and an upsert naming it is refused as an unknown field.
+// "record_body_sha256" is output only in the same way: a write that stores the entry's decision record stamps it.
 func UpsertPayloadKeys() (required, optional []string) {
 	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "pull_request", "notify_on_land", "owner_machine", "project", "order", "beam", "front", "on_land", "discussed"}
 }
@@ -1177,7 +1178,7 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 		return Task{}, err
 	}
 
-	// A removed entry the merge upserts again keeps its discussed flag, as it keeps its record file.
+	// A removed entry the merge upserts again keeps its discussed flag and record stamp, as it keeps its record file.
 	removedEntry, upsertedAgain := s.GetTask(slugStr)
 	keepDiscussed := upsertedAgain && removedEntry.Discussed && slices.Contains(removeSlugs, slugStr)
 
@@ -1192,7 +1193,9 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	if keepDiscussed {
 		i, _ := s.index(upserted.Slug)
 		s.tasks[i].Discussed = true
+		s.tasks[i].RecordBodySHA256 = removedEntry.RecordBodySHA256
 		upserted.Discussed = true
+		upserted.RecordBodySHA256 = removedEntry.RecordBodySHA256
 	}
 	s.mergeOrders(removeSlugs, upserted.Slug)
 

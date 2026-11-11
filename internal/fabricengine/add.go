@@ -70,6 +70,11 @@ type AddOptions struct {
 	Hold func() (release func(), err error)
 }
 
+// probesOrigins reports whether an add under these options consults origin: neither SkipGit nor SkipPush is set.
+func (o AddOptions) probesOrigins() bool {
+	return !o.SkipGit && !o.SkipPush
+}
+
 // syncOptions returns the options the records helpers take.
 func (o AddOptions) syncOptions() SyncOptions {
 	return SyncOptions{SkipGit: o.SkipGit, SkipPush: o.SkipPush, BackoffSleep: o.BackoffSleep}
@@ -238,7 +243,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	// so the add waits on one round of network, and the hold covers only what is left of it when the probes are waited for.
 	// The answers are read only once the pre-flight refusals have passed,
 	// so a refusal keeps its precedence over a probe's error.
-	probeOrigins := !opts.SkipPush && !opts.SkipGit
+	probeOrigins := opts.probesOrigins()
 	// A local warp branch being adopted is the pair's own, so origin's copy of it is not consulted.
 	// AdoptOnly is the exception: its probe only learns whether origin holds the branch,
 	// and the adopted branch is never fetched or replaced from origin.
@@ -257,13 +262,11 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 			warpTip, warpTipErr = remoteHeadTip(l.WorktreePath(), warpBranch)
 		}()
 	}
-	if probeOrigins {
-		probes.Add(1)
-		go func() {
-			defer probes.Done()
-			weftProbe, weftProbeErr = probeWeftLeftover(l, slug, weftBranch, weftBranchAlreadyExists)
-		}()
-	}
+	probes.Add(1)
+	go func() {
+		defer probes.Done()
+		weftProbe, weftProbeErr = weftLiveness(l, slug, weftBranch, weftBranchAlreadyExists, opts)
+	}()
 	// No git call a probe started outlives Add.
 	defer probes.Wait()
 
@@ -429,13 +432,10 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	// and an archived leftover is replaced at step 11, so the caller's push of the weft branch is not rejected.
 	// The warp branch's origin tip is judged once the weft answer says whether the pair is live.
 	probes.Wait()
-	weftOld := weftLeftover{live: weftBranchAlreadyExists}
-	if probeOrigins {
-		if weftProbeErr != nil {
-			return AddResult{}, weftProbeErr
-		}
-		weftOld = weftProbe
+	if weftProbeErr != nil {
+		return AddResult{}, weftProbeErr
 	}
+	weftOld := weftProbe
 	var warpAdoptTip string
 	var warpPush addWarpBranch
 	// warpAbsentOnOrigin is whether the warp probe ran and read the branch absent on origin.

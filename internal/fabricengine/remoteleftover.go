@@ -1,4 +1,5 @@
 // remoteleftover.go holds the read-only probes that Add runs against both origins before its first mutation.
+// It also holds RecordsBranchLive, which answers Add's weft liveness test alone for a caller that creates no pair.
 // A branch on the weft or warp origin either makes the pair live or is the leftover of a removed pair.
 // A live pair's branch is adopted;
 // a leftover is proven replaceable or refused before the first mutation,
@@ -70,6 +71,32 @@ type weftLeftover struct {
 	tip           string
 	tag           string
 	originAbsent  bool
+}
+
+// RecordsBranchLive reports whether slug's weft branch is live by the test Add adopts a pair's weft branch by.
+// The branch is live when it exists locally.
+// It is also live when it exists on origin with no archive/<slug>/* tag whose target equals or descends from its tip.
+// A local branch decides alone, with no origin read.
+// Without one, origin is probed read-only only when Add would probe it:
+// under opts.SkipGit or opts.SkipPush nothing is probed and the branch reads not live.
+// A failed origin read is returned as the error.
+func (t *Topology) RecordsBranchLive(l *lymcwd.Location, slug string, opts AddOptions) (bool, error) {
+	weftBranch := RecordsBranchName(t.cfg.BranchPrefix + slug)
+	if weftBranchExists(l, weftBranch) {
+		return true, nil
+	}
+	answer, err := weftLiveness(l, slug, weftBranch, false, opts)
+	return answer.live, err
+}
+
+// weftLiveness answers whether weftBranch is live as Add judges it, with localExists the local branch check's answer.
+// When opts consult no origin, the local branch alone decides and nothing is probed.
+// Otherwise it returns probeWeftLeftover's answer, its fast-forward target and replaceable leftover included.
+func weftLiveness(l *lymcwd.Location, slug, weftBranch string, localExists bool, opts AddOptions) (weftLeftover, error) {
+	if !opts.probesOrigins() {
+		return weftLeftover{live: localExists}, nil
+	}
+	return probeWeftLeftover(l, slug, weftBranch, localExists)
 }
 
 // probeWeftLeftover inspects the weft origin for weftBranch, run in the weft repo against originRemoteName.

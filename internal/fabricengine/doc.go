@@ -872,6 +872,12 @@
 // The coalesced push logs a Warn and leaves the commits unpushed once the attempts run out.
 // `SkipPush`/`SkipGit` skip every probe and the replacement: the pair is then live only by a local weft branch,
 // and the warp branch forks from `HEAD`.
+// `Topology.RecordsBranchLive` answers that liveness test alone.
+// It serves a caller that must not act while a start would adopt the weft.
+// `Add` reaches the same answer through the same probe, so the two cannot disagree.
+// A local weft branch decides with no origin read.
+// Without one, origin is probed only when `Add` would probe it.
+// Under `SkipGit` or `SkipPush` the branch then reads not live.
 //
 // **Weft-branch resolution.**
 // `resolveWeftBranch` (weftbranch.go) is the one place a verb decides where a pair's weft branch comes from.

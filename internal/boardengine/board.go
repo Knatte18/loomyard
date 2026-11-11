@@ -438,12 +438,25 @@ func (b *Board) ListTasksFull() ([]Task, error) {
 // Promote makes the entry identified by idOrSlug a task under the write lock.
 // An entry that is already a task is returned unchanged without a write.
 func (b *Board) Promote(idOrSlug any) (Task, error) {
-	task, _, err := b.PromoteTo(idOrSlug, "", nil)
-	return task, err
+	result, err := b.PromoteTo(idOrSlug, "", nil)
+	return result.Task, err
+}
+
+// PromoteResult is what a promote wrote.
+// It holds the task, the siblings the write created, and a warning about its decision record.
+type PromoteResult struct {
+	Task     Task
+	Siblings []Sibling
+	// RecordWarning is set when the promoted entry was a Sketch whose body changed after its decision record was stored;
+	// it names the upsert that brings the record up to the body.
+	// It is empty otherwise, and for an entry with no record_body_sha256 stamp.
+	RecordWarning string
 }
 
 // PromoteTo makes the entry identified by idOrSlug a task under the write lock.
-// It returns the siblings the write created.
+// It returns the task with the siblings the write created.
+// It also returns a warning for a Sketch whose decision record was stored against a different body.
+// The body compared is the one loaded before the write; the warning never refuses the promote.
 // When recipe is not empty, the same write sets the task's recipe to recipe.
 // A non-nil dependsOn replaces the task's depends_on in the same write,
 // so a task the write releases is never started ahead of its dependencies.
@@ -454,8 +467,14 @@ func (b *Board) Promote(idOrSlug any) (Task, error) {
 // Promoting a note whose record is stored with the raddle recipe keeps the record and the flag.
 // It restores the sketch label that a note write dropped, and it releases the task in the same write.
 // A Sketch becomes a task only through that promotion; a promotion of it with any other recipe is refused.
-func (b *Board) PromoteTo(idOrSlug any, recipe string, dependsOn []string) (Task, []Sibling, error) {
+func (b *Board) PromoteTo(idOrSlug any, recipe string, dependsOn []string) (PromoteResult, error) {
+	var warning string
 	result, siblings, err := b.writeReportingSiblings(func(store *Store) (any, error) {
+		if current, found := store.GetTask(idOrSlug); found && IsSketch(current.Kind, current.Labels) && recordBodyChanged(current) {
+			warning = fmt.Sprintf("the body of Sketch %q changed after its decision record was stored, so the record may not cover it; "+
+				"to bring the record up to the body before its raddle run starts, run `lym board upsert '{\"slug\":\"%s\"}' --record-file <record.md>`",
+				current.Slug, current.Slug)
+		}
 		task, changed, err := store.promoteTo(idOrSlug, recipe, dependsOn, b.recordStored)
 		if err != nil {
 			return nil, err
@@ -466,9 +485,9 @@ func (b *Board) PromoteTo(idOrSlug any, recipe string, dependsOn []string) (Task
 		return promoted{task: task}, nil
 	})
 	if err != nil {
-		return Task{}, nil, err
+		return PromoteResult{}, err
 	}
-	return result.(Task), siblings, nil
+	return PromoteResult{Task: result.(Task), Siblings: siblings, RecordWarning: warning}, nil
 }
 
 // Prune removes every done entry under the write lock, except one still carrying notify_on_land.

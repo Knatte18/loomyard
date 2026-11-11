@@ -292,6 +292,17 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 		}
 	})
 
+	t.Run("upsert_record_body_sha256_key_errors", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		_, err := s.UpsertTask(map[string]any{
+			"slug":               "task1",
+			"record_body_sha256": "abc",
+		})
+		if err == nil || !stringContains(err.Error(), `unknown field: "record_body_sha256"`) {
+			t.Errorf("expected unknown-field refusal naming record_body_sha256, got %v", err)
+		}
+	})
+
 	t.Run("upsert_status_field_allowed_and_persisted", func(t *testing.T) {
 		s := boardengine.NewStore("")
 		task, err := s.UpsertTask(map[string]any{

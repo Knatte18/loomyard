@@ -213,6 +213,7 @@ var replayFields = entrymerge.Table[Task]{
 		{Name: "front", Get: func(t Task) any { return t.Front }, Set: func(dst *Task, src Task) { dst.Front = src.Front }},
 		{Name: "on_land", Get: func(t Task) any { return t.OnLand }, Set: func(dst *Task, src Task) { dst.OnLand = src.OnLand }},
 		{Name: "discussed", Get: func(t Task) any { return t.Discussed }, Set: func(dst *Task, src Task) { dst.Discussed = src.Discussed }},
+		{Name: "record_body_sha256", Get: func(t Task) any { return t.RecordBodySHA256 }, Set: func(dst *Task, src Task) { dst.RecordBodySHA256 = src.RecordBodySHA256 }},
 		{Name: "beam_color", Get: func(t Task) any { return t.BeamColor }, Set: func(dst *Task, src Task) { dst.BeamColor = src.BeamColor }},
 	},
 }

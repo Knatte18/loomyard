@@ -2,6 +2,10 @@
 // the decision record's required H2 sections, the support log's existence and the relevant list's format.
 // It also holds the two write paths into the record.
 //
+// CheckRecordSections runs Validate's record checks on a record's bytes alone, with no support log:
+// the required H2 sections and the `## PATTERN changes` bullets.
+// The board's `upsert --record-file` runs it, with CheckDecisionIDs, on a record it stores apart from any discussion.
+//
 // CheckRelevant checks a present relevant list, the Discussion-Write lead's list of the code it read.
 // It runs apart from the decision record's check.
 //

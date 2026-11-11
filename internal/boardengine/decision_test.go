@@ -3,6 +3,8 @@
 package boardengine_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -17,6 +19,12 @@ import (
 
 // readmeFile is the rendered overview file that a test board's config names.
 const readmeFile = "Home.md"
+
+// bodyDigest returns the hex sha256 of body, the stamp a store of a decision record leaves on its entry.
+func bodyDigest(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:])
+}
 
 // TestStoreDecisionRecord pins what StoreDecisionRecord writes and when it writes nothing.
 // It also pins what StoreDecisionRecord refuses, and whether DecisionRecord finds the record.
@@ -69,8 +77,9 @@ func TestStoreDecisionRecord(t *testing.T) {
 			after, _, _ := b.GetTask("waiter")
 			want := before
 			want.Discussed = true
+			want.RecordBodySHA256 = bodyDigest(want.Body)
 			if !reflect.DeepEqual(after, want) {
-				t.Errorf("run-held entry after the store = %+v; want only Discussed changed: %+v", after, want)
+				t.Errorf("run-held entry after the store = %+v; want only Discussed and RecordBodySHA256 changed: %+v", after, want)
 			}
 		}},
 		{"RepeatWithSameBytesWritesNothing", func(t *testing.T, b *boardengine.Board, boardPath string, now *time.Time) {
@@ -85,6 +94,30 @@ func TestStoreDecisionRecord(t *testing.T) {
 			}
 			if _, err := os.Stat(filepath.Join(boardPath, readmeFile)); !os.IsNotExist(err) {
 				t.Errorf("a repeat store with the same bytes rendered %s; stat err = %v", readmeFile, err)
+			}
+		}},
+		{"StampsTheDigestOfTheBody", func(t *testing.T, b *boardengine.Board, boardPath string, now *time.Time) {
+			if err := b.StoreDecisionRecord("old", record); err != nil {
+				t.Fatalf("StoreDecisionRecord: %v", err)
+			}
+			task, _, _ := b.GetTask("old")
+			if want := bodyDigest("The body names old here."); task.RecordBodySHA256 != want {
+				t.Errorf("GetTask(old).RecordBodySHA256 = %q; want %q", task.RecordBodySHA256, want)
+			}
+		}},
+		{"RepeatWithSameBytesAfterABodyEditRewritesTheStamp", func(t *testing.T, b *boardengine.Board, boardPath string, now *time.Time) {
+			if err := b.StoreDecisionRecord("old", record); err != nil {
+				t.Fatalf("StoreDecisionRecord: %v", err)
+			}
+			if _, err := b.UpsertTask(map[string]any{"slug": "old", "body": "An edited body."}); err != nil {
+				t.Fatalf("UpsertTask: %v", err)
+			}
+			if err := b.StoreDecisionRecord("old", record); err != nil {
+				t.Fatalf("repeat StoreDecisionRecord: %v", err)
+			}
+			task, _, _ := b.GetTask("old")
+			if want := bodyDigest("An edited body."); task.RecordBodySHA256 != want {
+				t.Errorf("GetTask(old).RecordBodySHA256 = %q; want %q, the digest of the edited body", task.RecordBodySHA256, want)
 			}
 		}},
 		{"HandWrittenSameBytesStillFlags", func(t *testing.T, b *boardengine.Board, boardPath string, now *time.Time) {
@@ -384,12 +417,17 @@ func TestDecisionRecordFollowsEntry(t *testing.T) {
 		}},
 		{"MergeUpsertingTheRemovedSlugAgainKeepsFileAndFlag", func(t *testing.T, b *boardengine.Board, boardPath string) {
 			store(t, b, "near")
+			stored, _, _ := b.GetTask("near")
 			if _, _, err := b.MergeTasks([]string{"near"}, map[string]any{"slug": "near", "title": "Near again", "labels": bugLabels}, nil); err != nil {
 				t.Fatalf("MergeTasks: %v", err)
 			}
 			wantFile(t, boardPath, "decision-near.md", true)
-			if task, _, _ := b.GetTask("near"); !task.Discussed {
+			task, _, _ := b.GetTask("near")
+			if !task.Discussed {
 				t.Errorf("GetTask(near).Discussed = false; want the flag kept")
+			}
+			if stored.RecordBodySHA256 == "" || task.RecordBodySHA256 != stored.RecordBodySHA256 {
+				t.Errorf("GetTask(near).RecordBodySHA256 = %q; want the stamp %q kept", task.RecordBodySHA256, stored.RecordBodySHA256)
 			}
 		}},
 		{"ClearingTheStatusKeepsFileAndFlag", func(t *testing.T, b *boardengine.Board, boardPath string) {

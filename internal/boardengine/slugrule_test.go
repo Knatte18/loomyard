@@ -223,7 +223,7 @@ func TestSlugRule_RaddleStore(t *testing.T) {
 			if err := discussedNote(b, "part-b", []string{boardengine.SketchType}); err != nil {
 				return err
 			}
-			_, _, err := b.PromoteTo("part-b", "raddle", nil)
+			_, err := b.PromoteTo("part-b", "raddle", nil)
 			return err
 		}, []string{`"part-b"`, `Sketch "plan-me"`, "lym board rename"}},
 		{"NilSeamAndAStoreHit", nil, newTask("part-a"), []string{`"part-a"`, `Sketch "plan-me"`}},
@@ -252,7 +252,7 @@ func TestSlugRule_RaddleStore(t *testing.T) {
 			t.Fatal(err)
 		}
 		writeRaddleStore(t, boardPath, "plan-me", own)
-		if _, _, err := b.PromoteTo("plan-me", "raddle", nil); err != nil {
+		if _, err := b.PromoteTo("plan-me", "raddle", nil); err != nil {
 			t.Errorf("PromoteTo() error = %v; want nil for the Sketch whose created stamp the store records", err)
 		}
 	})

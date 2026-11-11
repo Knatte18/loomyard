@@ -488,3 +488,98 @@ func TestAdd_DropsStaleTrackingRef(t *testing.T) {
 		requireNothingCreated(t, h, slug)
 	})
 }
+
+// TestRecordsBranchLive covers the weft liveness test Add adopts a pair's weft branch by, asked alone.
+// A local branch is live with no origin read.
+// An origin-only branch is live unless an archive tag covers its tip.
+// A skipped origin read reads as not live, and a failed one as an error.
+func TestRecordsBranchLive(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const slug = "weft-live"
+	weftBranch := fabricengine.RecordsBranchName(slug)
+
+	for _, tc := range []struct {
+		name    string
+		build   func(t *testing.T) *hubforge.Hub
+		opts    fabricengine.AddOptions
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "local weft branch is live",
+			build: func(t *testing.T) *hubforge.Hub {
+				h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+				hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+				return h
+			},
+			want: true,
+		},
+		{
+			name: "local weft branch is live with an unreadable origin",
+			build: func(t *testing.T) *hubforge.Hub {
+				h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+				hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+				mustGit(h.PrimeRecords(), "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
+				return h
+			},
+			want: true,
+		},
+		{
+			name: "origin-only weft branch with no archive tag is live",
+			build: func(t *testing.T) *hubforge.Hub {
+				h := removedPair(t, slug)
+				pushCommitToOrigin(t, h.RecordsBare, weftBranch)
+				return h
+			},
+			want: true,
+		},
+		{
+			name: "origin-only weft branch covered by an archive tag is not live",
+			build: func(t *testing.T) *hubforge.Hub {
+				h := removedPair(t, slug)
+				requireArchiveCovers(t, h.RecordsBare, slug, gitkit.RevParse(t, h.RecordsBare, weftBranch))
+				return h
+			},
+		},
+		{
+			name: "no weft branch locally or on origin is not live",
+			build: func(t *testing.T) *hubforge.Hub {
+				return hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			},
+		},
+		{
+			name: "origin-only weft branch under SkipPush is not live",
+			build: func(t *testing.T) *hubforge.Hub {
+				h := removedPair(t, slug)
+				pushCommitToOrigin(t, h.RecordsBare, weftBranch)
+				return h
+			},
+			opts: fabricengine.AddOptions{SkipPush: true},
+		},
+		{
+			name: "no local branch and an unreadable origin is an error",
+			build: func(t *testing.T) *hubforge.Hub {
+				h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+				mustGit(h.PrimeRecords(), "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
+				return h
+			},
+			wantErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := tc.build(t)
+
+			got, err := h.Topology.RecordsBranchLive(h.Location, slug, tc.opts)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("RecordsBranchLive(%q) error = %v; want error: %v", slug, err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Errorf("RecordsBranchLive(%q) = %v; want %v", slug, got, tc.want)
+			}
+		})
+	}
+}

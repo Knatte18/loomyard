@@ -5,6 +5,7 @@
 package boardengine_test
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -202,6 +203,93 @@ func newPromotionBoard(t *testing.T) (*boardengine.Board, string) {
 	return boardengine.New(boardengine.Config{Path: path, Readme: "Home.md", DesignPrefix: "proposal-", Types: types, Labels: []boardengine.Label{{Name: "board"}}, SkipGit: true}), path
 }
 
+// TestPromoteToRecordWarning asserts that PromoteTo succeeds with a warning.
+// The Sketch's body changed after its record was stored.
+// The warning names the slug and `--record-file`; it is empty when the body is unchanged or the entry carries no stamp.
+func TestPromoteToRecordWarning(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// clearStamp removes record_body_sha256 from board.json before the body edit.
+		clearStamp bool
+		editBody   bool
+		wantWarned bool
+		// notSketch files the entry as a note with a type label other than sketch.
+		notSketch bool
+	}{
+		{"BodyEditedAfterTheStoreWarns", false, true, true, false},
+		{"BodyUnchangedSinceTheStoreIsSilent", false, false, false, false},
+		{"EditedBodyOfAnUnstampedEntryIsSilent", true, true, false, false},
+		{"EditedBodyOfAStampedNonSketchIsSilent", false, true, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			b, boardPath := newPromotionBoard(t)
+			labels := []string{boardengine.SketchType}
+			if tt.notSketch {
+				labels = bugLabels
+			}
+			mustUpsertEntry(t, b, map[string]any{"slug": "idea", "title": "Idea", "kind": "note", "labels": labels, "body": "first body"})
+			if err := b.StoreDecisionRecord("idea", []byte("record\n")); err != nil {
+				t.Fatalf("StoreDecisionRecord() error = %v; want nil", err)
+			}
+			if tt.clearStamp {
+				clearRecordStamps(t, filepath.Join(boardPath, "board.json"))
+			}
+			if tt.editBody {
+				mustUpsertEntry(t, b, map[string]any{"slug": "idea", "body": "second body"})
+			}
+
+			result, err := b.PromoteTo("idea", "", nil)
+
+			if err != nil {
+				t.Fatalf("PromoteTo() error = %v; want nil", err)
+			}
+			if result.Task.Kind != boardengine.KindTask {
+				t.Errorf("PromoteTo() task kind = %q; want task", result.Task.Kind)
+			}
+			if !tt.wantWarned {
+				if result.RecordWarning != "" {
+					t.Errorf("PromoteTo() RecordWarning = %q; want empty", result.RecordWarning)
+				}
+				return
+			}
+			for _, want := range []string{"--record-file", "idea"} {
+				if !strings.Contains(result.RecordWarning, want) {
+					t.Errorf("PromoteTo() RecordWarning = %q; want it to contain %q", result.RecordWarning, want)
+				}
+			}
+		})
+	}
+}
+
+// clearRecordStamps removes the record_body_sha256 key from every entry of the board.json file at path.
+func clearRecordStamps(t *testing.T, path string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(board.json) = %v; want nil", err)
+	}
+	var board map[string]any
+	if err := json.Unmarshal(raw, &board); err != nil {
+		t.Fatalf("Unmarshal(board.json) = %v; want nil", err)
+	}
+	entries, _ := board["entries"].([]any)
+	for _, entry := range entries {
+		delete(entry.(map[string]any), "record_body_sha256")
+	}
+	cleared, err := json.MarshalIndent(board, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(board) = %v; want nil", err)
+	}
+	if err := os.WriteFile(path, cleared, 0o644); err != nil {
+		t.Fatalf("WriteFile(board.json) = %v; want nil", err)
+	}
+}
+
 // TestDiscussedPromotion asserts that a Sketch becomes a task only through a promotion with recipe raddle.
 // So does a discussed note that a note write stripped of its label.
 // A promotion with no recipe gives the entry the raddle recipe and releases it in the same write.
@@ -245,7 +333,7 @@ func TestDiscussedPromotion(t *testing.T) {
 	}
 	promote := func(selector any, recipe string) func(b *boardengine.Board) error {
 		return func(b *boardengine.Board) error {
-			_, _, err := b.PromoteTo(selector, recipe, nil)
+			_, err := b.PromoteTo(selector, recipe, nil)
 			return err
 		}
 	}
@@ -253,7 +341,7 @@ func TestDiscussedPromotion(t *testing.T) {
 		return promote("idea", recipe)
 	}
 	promoteWaitingOnDep := func(b *boardengine.Board) error {
-		_, _, err := b.PromoteTo("idea", "", []string{"dep"})
+		_, err := b.PromoteTo("idea", "", []string{"dep"})
 		return err
 	}
 	wayForward := `lym board promote '{"slug":"idea"}'`
@@ -305,7 +393,7 @@ func TestDiscussedPromotion(t *testing.T) {
 				if err := promoteWaitingOnDep(b); err != nil {
 					return err
 				}
-				_, _, err := b.PromoteTo("idea", "", []string{})
+				_, err := b.PromoteTo("idea", "", []string{})
 				return err
 			},
 			wantErr:  []string{`"idea" is a task already`, "lym board set-deps"},

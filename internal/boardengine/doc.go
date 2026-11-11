@@ -544,13 +544,17 @@
 // A flagged entry's Slug cell in every board table links it as `Sketch`.
 // So does a `Decision record:` line under the metadata line of the entry's design doc.
 // RenderToDisk renders a flagged entry whose file is missing as unflagged, so no board file links a missing record.
-// Only lym writes the flag and the file: Board.StoreDecisionRecord is the one writer.
+// Only lym writes the flag and the file.
+// Board.StoreDecisionRecord sets both; Board.UpsertTaskWithRecord and Board.FileRaddle also write a record file.
 // A payload may carry discussed only as the entry's stored value, false for a new entry, which is dropped as a no-op;
 // any other value is refused.
+// Every write of an entry's record file stamps its `record_body_sha256` with the sha256 of the body the write leaves.
+// The key is part of the entry in board.json, so a board sync's replay carries it, and a payload naming it is refused.
+// An entry stored before the key existed carries none.
 // StoreDecisionRecord writes the file before it saves board.json.
 // A crash therefore leaves a file with no flag and never a flag with no file.
-// It writes nothing when the entry is flagged and the file already holds the bytes.
-// It bypasses the run lock for the flag and the file alone, so every other field of a held entry stays locked.
+// It writes nothing when the entry is flagged, its stamp matches its body and the file already holds the bytes.
+// It bypasses the run lock for the flag, the stamp and the file alone, so every other field of a held entry stays locked.
 // It refuses an absent entry and a done entry, since a landed entry keeps the record it last stored.
 // The done refusal matches ErrRecordEntryDone.
 // Board.DecisionRecord reads without the lock.
@@ -559,6 +563,17 @@
 // A merge that removes a flagged slug and upserts it again keeps the flag.
 // LoadConfig refuses a design_prefix that would render a design file onto a record file's name:
 // a prefix of `decision-` or one starting with it, the empty prefix included.
+//
+// Board.UpsertTaskWithRecord, behind `lym board upsert --record-file`, replaces an existing entry's stored record.
+// It lands the record in the write that carries the payload.
+// The record file is written before board.json is saved, and a failed write puts the former record file back.
+// It refuses a run agent's session, a new entry, an entry with no stored record, a done entry and an entry a run holds.
+// It also refuses an entry whose task worktree stands in the hub.
+// It refuses too an entry whose weft branch its caller's probe reports live.
+// A family project whose filing the raddle store records is exempt from those two refusals.
+// Its run reads no record again.
+// The probe runs before the board lock, and the entry refusals are judged again under it.
+// The guard reads no batten liveness, so a run started after its check, or on another machine, is not seen.
 //
 // # Sketch
 //
@@ -581,6 +596,10 @@
 // It restores the label when a note write dropped it, and it releases the task, so its parent's dobby starts the run.
 // PromoteTo's depends_on is set in that write, so the dobby never sees the task released without it.
 // Board.Promote is PromoteTo with no recipe and no depends_on.
+// PromoteTo warns, and still promotes, a Sketch whose body no longer matches its `record_body_sha256`.
+// The body compared is the one loaded before the write.
+// The warning names `lym board upsert --record-file` as the way to bring the record up to the body.
+// An entry with no stamp gets none; any body edit after the store warns, one that leaves the design alone included.
 // Two write rules close every other way.
 // The first rule covers a discussed note whose record file exists.
 // A write that makes it a task must carry recipe `raddle`, the discussed flag and the sketch label,
@@ -638,7 +657,7 @@
 // Otherwise it runs the filing's re-check over the entries and the store as they stand.
 // A refusal is wrapped in ErrRaddleRecheck.
 // It then adds the project the shape files and the parts as discussed entries.
-// It writes each entry's decision record file before the save.
+// It writes each entry's decision record file before the save, stamping each entry's `record_body_sha256`.
 // After the save it writes the store directory with store.json last, so the write leaves its own done marker.
 // The filing's Project is the Sketch's own project field, so every filed entry's parent beam equals the Sketch's;
 // the parts are members of the new project when the shape files one.

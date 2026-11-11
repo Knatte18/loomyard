@@ -110,6 +110,18 @@ lym board get '{"slug":"my-task"}' --body > body.md
 lym board upsert '{"slug":"my-task"}' --body-file body.md
 ```
 
+Replace an existing entry's stored decision record in the same write as its payload with `--record-file`:
+
+```
+lym board upsert '{"slug":"my-sketch","body":"New body."}' --record-file record.md
+```
+
+The file must pass the decision record's format checks, and it is read from a path only, never from stdin.
+The upsert is refused, with nothing written and a way forward named, for a slug the board does not hold,
+an entry with no stored record, a done entry, an entry a run holds,
+an entry whose task worktree stands in the hub, and an entry whose records branch is live or cannot be probed.
+A run's task session cannot use it: a run changes its own record with `lym loom decision replace`.
+
 Promote a note to a task:
 
 ```
@@ -119,6 +131,8 @@ lym board promote '{"slug":"my-note"}'
 Promoting a Sketch, by slug or by its handle such as `lym board promote S3`, makes it a task with recipe `raddle`.
 That task splits the Sketch's decision record into tasks or a project.
 A Sketch takes no other recipe.
+When the Sketch's body changed after its record was stored, the promote still lands and adds a `warning` key to its output.
+The warning names `upsert --record-file`, which brings the record up to the body before the run starts.
 Give a Sketch's dependencies in the promotion, because it releases the task and the parent's dobby can start it before a later `set-deps` lands:
 
 ```

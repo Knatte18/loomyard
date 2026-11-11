@@ -69,6 +69,10 @@ type Task struct {
 	// lym stored its decision record as decision-<slug>.md.
 	// Only StoreDecisionRecord sets it.
 	Discussed bool `json:"discussed,omitempty"`
+	// RecordBodySHA256 is the hex sha256 of the body the entry had when a write last stored its decision record;
+	// empty when no write has stamped it.
+	// Only a write that stores the record sets it, and a payload naming it is refused as an unknown field.
+	RecordBodySHA256 string `json:"record_body_sha256,omitempty"`
 
 	// Unknown holds the decoded entry's keys this binary does not know, each with its raw JSON value, nil when there are none.
 	// Encoding writes them back after the known fields in key order, and no step decodes a value into a Go type.

@@ -417,6 +417,49 @@ func TestValidate_MissingHeadings(t *testing.T) {
 	}
 }
 
+// TestCheckRecordSections asserts the bytes-only check reports each defect of a decision record with an empty Path.
+// Missing required sections come first, in required order, then the `## PATTERN changes` findings.
+func TestCheckRecordSections(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	skipped := []string{requiredDiscussionSections[1], requiredDiscussionSections[4]}
+	// The bullet sits after the heading and a blank line, below every required section of four lines each.
+	bulletLine := 4*len(requiredDiscussionSections) + 3
+
+	tests := []struct {
+		name   string
+		record string
+		want   []Finding
+	}{
+		{name: "EverySectionPresent", record: allSectionsContent()},
+		{
+			name:   "TwoSectionsMissing",
+			record: sectionsWithout(skipped...),
+			want: []Finding{
+				{Check: checkSectionMissing, Detail: "decision record is missing required section " + skipped[0]},
+				{Check: checkSectionMissing, Detail: "decision record is missing required section " + skipped[1]},
+			},
+		},
+		{
+			name:   "MalformedPatternChangeBullet",
+			record: allSectionsContent() + patternChangesSection("- `PATTERN-a` — renames: x"),
+			want: []Finding{{
+				Check:  checkPatternChangeMalformed,
+				Detail: fmt.Sprintf("line %d: `PATTERN-a` has unknown action \"renames\"; want adds, changes or removes", bulletLine),
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := CheckRecordSections([]byte(tt.record)); !slices.Equal(got, tt.want) {
+				t.Errorf("CheckRecordSections() = %+v; want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestValidate_DecisionRecordAbsent(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

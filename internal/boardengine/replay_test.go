@@ -87,6 +87,10 @@ func asNotifyOnLand(task *Task) { task.NotifyOnLand = true }
 
 func asDiscussed(task *Task) { task.Discussed = true }
 
+func withRecordStamp(stamp string) func(*Task) {
+	return func(task *Task) { task.RecordBodySHA256 = stamp }
+}
+
 // wantOriginFile returns a row check asserting that origin's board directory holds want under name.
 // An empty want asserts that the file is absent.
 func wantOriginFile(name, want string) func(t *testing.T, dir string, got map[string]Task) {
@@ -626,6 +630,19 @@ func TestFabricReplay(t *testing.T) {
 			check: func(t *testing.T, _ string, got map[string]Task) {
 				if !got["a"].Discussed {
 					t.Errorf("a.discussed = false; want true")
+				}
+			},
+		},
+		{
+			name:        "RecordStampChangedWithTheBodyLandsOnOriginsEntry",
+			base:        []Task{replayEntry("a", asDiscussed, withBody("first"), withRecordStamp("stamp-1"))},
+			origin:      []Task{replayEntry("a", asDiscussed, withBody("first"), withRecordStamp("stamp-1"))},
+			parent:      []Task{replayEntry("a", asDiscussed, withBody("first"), withRecordStamp("stamp-1"))},
+			commit:      []Task{replayEntry("a", asDiscussed, withBody("second"), withRecordStamp("stamp-2"))},
+			wantEntries: map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if got["a"].Body != "second" || got["a"].RecordBodySHA256 != "stamp-2" {
+					t.Errorf("a body, record_body_sha256 = %q, %q; want second, stamp-2", got["a"].Body, got["a"].RecordBodySHA256)
 				}
 			},
 		},

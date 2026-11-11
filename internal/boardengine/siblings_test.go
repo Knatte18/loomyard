@@ -51,8 +51,8 @@ func TestWriteSiblings(t *testing.T) {
 
 	promote := func(selector string, deps ...string) func(b *boardengine.Board) ([]boardengine.Sibling, error) {
 		return func(b *boardengine.Board) ([]boardengine.Sibling, error) {
-			_, siblings, err := b.PromoteTo(selector, "", deps)
-			return siblings, err
+			result, err := b.PromoteTo(selector, "", deps)
+			return result.Siblings, err
 		}
 	}
 

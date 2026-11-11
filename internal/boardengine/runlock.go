@@ -208,8 +208,8 @@ func removedDoneSlugs(loaded, after []Task) map[string]bool {
 // PullRequest is compared too, so a held entry takes no change to its pull-request override.
 // Front and OnLand are compared as Kind is: they never change after the filing,
 // and a run-held entry takes no change to them.
-// RunSettings, Profile, NotifyOnLand, OwnerMachine and Discussed are never compared:
-// a run settings, profile, landing-notice, owner or discussed-flag change is not a scope change,
+// RunSettings, Profile, NotifyOnLand, OwnerMachine, Discussed and RecordBodySHA256 are never compared:
+// a run settings, profile, landing-notice, owner, discussed-flag or record-stamp change is not a scope change,
 // so a run-held entry takes it.
 // Unknown is never compared either, since this binary cannot change a kept key.
 func scopeChanged(before, now Task, removedDone map[string]bool) bool {

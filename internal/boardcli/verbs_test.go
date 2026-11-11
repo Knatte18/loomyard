@@ -830,6 +830,190 @@ func stepGetRecord(t *testing.T, f *cliFixture) {
 	}
 }
 
+// decisionRecordText returns a decision record that passes the section, decision-id and acceptance checks:
+// every required H2, decision D1 under Decisions and an acceptance bullet naming D1.
+func decisionRecordText(goal string) string {
+	return "# Decision record\n\n" +
+		"## Goal\n\n" + goal + "\n\n" +
+		"## Scope\n\nScoped.\n\n" +
+		"## Decisions\n\n### D1 — First\n\nBody.\n\n" +
+		"## Constraints\n\nNone.\n\n" +
+		"## Auto-mode assumptions\n\nNone.\n\n" +
+		"## Open risks\n\nNone.\n\n" +
+		"## Acceptance criteria\n\n- D1 holds.\n"
+}
+
+// writeTempFile writes content to a new file under t.TempDir() and returns its path.
+func writeTempFile(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "record.md")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+	return path
+}
+
+// seedDiscussedSketch files the Sketch slug titled "Old" with body.
+// It then stores record as the Sketch's decision record, which flags it discussed.
+// The record is stored through the board engine on the fixture's hub board.
+// That board honours the BOARD_SKIP_GIT that TestCLI sets.
+func seedDiscussedSketch(t *testing.T, f *cliFixture, slug, body, record string) {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{"slug": slug, "title": "Old", "kind": "note", "labels": []string{"sketch"}, "body": body})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	mustUpsert(t, string(payload))
+	board, err := boardengine.OpenHub(filepath.Dir(f.cwd))
+	if err != nil {
+		t.Fatalf("OpenHub: %v", err)
+	}
+	if err := board.StoreDecisionRecord(slug, []byte(record)); err != nil {
+		t.Fatalf("StoreDecisionRecord: %v", err)
+	}
+}
+
+// stepUpsertRecordFile pins upsert --record-file at the CLI:
+// a valid file replaces the stored record in the write that lands the payload,
+// and each refusal writes nothing and names its way forward.
+// The file checks, the probe wiring, the session guard and the absent entry stand for the engine's refusals;
+// the engine's other refusals are covered in boardengine.
+func stepUpsertRecordFile(t *testing.T, f *cliFixture) {
+	const slugPayload = `{"slug":"sketched","title":"New"}`
+	stored := decisionRecordText("Stored goal")
+	seedDiscussedSketch(t, f, "sketched", "body", stored)
+
+	requireUntouched := func(t *testing.T) {
+		t.Helper()
+		if exitCode, stdout := runCLI(t, "get", `{"slug":"sketched"}`, "--record"); exitCode != 0 || stdout != stored {
+			t.Errorf("get --record: exit %d, stdout %q; want 0 and the stored record %q", exitCode, stdout, stored)
+		}
+		if task := runJSON(t, 0, "get", `{"slug":"sketched"}`)["task"].(map[string]any); task["title"] != "Old" {
+			t.Errorf("title = %v; want Old, nothing written", task["title"])
+		}
+	}
+
+	valid := decisionRecordText("New goal")
+	refusals := []struct {
+		name    string
+		payload string
+		// record is the file's content; a nil record names a path where no file exists.
+		record *string
+		env    map[string]string
+		// boardPath runs the verb under --board-path, which resolves no worktree.
+		boardPath bool
+		wantErr   []string
+	}{
+		{
+			name:    "a record missing Scope",
+			payload: slugPayload,
+			record:  ptr(strings.Replace(valid, "## Scope\n\nScoped.\n\n", "", 1)),
+			wantErr: []string{"## Scope", "way forward"},
+		},
+		{
+			name:    "a decision no acceptance bullet names",
+			payload: slugPayload,
+			record:  ptr(strings.Replace(valid, "## Constraints", "### D2 — Second\n\nBody.\n\n## Constraints", 1)),
+			wantErr: []string{"decision D2 is named in no acceptance criteria bullet", "way forward"},
+		},
+		{
+			name:    "a file that does not exist",
+			payload: slugPayload,
+			wantErr: []string{"missing-record.md", "way forward"},
+		},
+		{
+			name:    "an origin that cannot be probed",
+			payload: slugPayload,
+			record:  &valid,
+			env:     map[string]string{"FABRIC_SKIP_GIT": "", "FABRIC_SKIP_PUSH": ""},
+			wantErr: []string{"resolve the cause above, then re-run the upsert"},
+		},
+		{
+			name:      "a records branch that --board-path cannot resolve",
+			payload:   slugPayload,
+			record:    &valid,
+			boardPath: true,
+			wantErr:   []string{"only from a hub worktree", "resolve the cause above, then re-run the upsert"},
+		},
+		{
+			name:    "a run task session",
+			payload: slugPayload,
+			record:  &valid,
+			env:     map[string]string{agentname.StrandNameEnv: "ly:task-a:loom"},
+			wantErr: []string{"ly:task-a:loom", "way forward"},
+		},
+		{
+			name:    "a slug not on the board",
+			payload: `{"slug":"absent","title":"New"}`,
+			record:  &valid,
+			wantErr: []string{"no board entry"},
+		},
+	}
+	for _, tt := range refusals {
+		t.Run("refuses "+tt.name, func(t *testing.T) {
+			for key, value := range tt.env {
+				t.Setenv(key, value)
+			}
+			path := filepath.Join(t.TempDir(), "missing-record.md")
+			if tt.record != nil {
+				path = writeTempFile(t, *tt.record)
+			}
+			args := []string{"upsert", tt.payload, "--record-file", path}
+			if tt.boardPath {
+				args = append([]string{"--board-path", fabricengine.BoardDir(filepath.Dir(f.cwd))}, args...)
+			}
+			result := runJSON(t, 1, args...)
+			message, _ := result["error"].(string)
+			for _, want := range tt.wantErr {
+				if !strings.Contains(message, want) {
+					t.Errorf("error %q lacks %q", message, want)
+				}
+			}
+			requireUntouched(t)
+		})
+	}
+
+	t.Run("a valid record replaces the stored one with the payload", func(t *testing.T) {
+		t.Setenv("FABRIC_SKIP_PUSH", "1")
+		result := runJSON(t, 0, "upsert", slugPayload, "--record-file", writeTempFile(t, valid))
+		if ok, _ := result["ok"].(bool); !ok {
+			t.Fatalf("envelope = %v; want ok", result)
+		}
+		if exitCode, stdout := runCLI(t, "get", `{"slug":"sketched"}`, "--record"); exitCode != 0 || stdout != valid {
+			t.Errorf("get --record: exit %d, stdout %q; want 0 and the file's bytes %q", exitCode, stdout, valid)
+		}
+		if task := runJSON(t, 0, "get", `{"slug":"sketched"}`)["task"].(map[string]any); task["title"] != "New" {
+			t.Errorf("title = %v; want New", task["title"])
+		}
+	})
+}
+
+// ptr returns a pointer to value.
+func ptr[T any](value T) *T { return &value }
+
+// stepPromoteWarnsOnChangedSketchBody pins the promote envelope's warning:
+// a Sketch whose body changed after its record was stored is still promoted and the warning names --record-file,
+// and a Sketch whose body is unchanged carries no warning key.
+func stepPromoteWarnsOnChangedSketchBody(t *testing.T, f *cliFixture) {
+	record := decisionRecordText("Goal")
+	seedDiscussedSketch(t, f, "changed", "v1", record)
+	seedDiscussedSketch(t, f, "steady", "v1", record)
+	runJSON(t, 0, "upsert", `{"slug":"changed","body":"v2"}`)
+
+	result := runJSON(t, 0, "promote", `{"slug":"changed"}`)
+	if warning, _ := result["warning"].(string); !strings.Contains(warning, "--record-file") {
+		t.Errorf("promote of a Sketch with an edited body: warning = %q; want one naming --record-file", warning)
+	}
+	if task := result["task"].(map[string]any); task["kind"] != "task" {
+		t.Errorf("promote of a Sketch with an edited body: task = %v; want it promoted anyway", task)
+	}
+
+	result = runJSON(t, 0, "promote", `{"slug":"steady"}`)
+	if warning, has := result["warning"]; has {
+		t.Errorf("promote of a Sketch with an unchanged body: warning = %v; want no warning key", warning)
+	}
+}
+
 // pipeStdin replaces os.Stdin with a file holding content until the test ends.
 func pipeStdin(t *testing.T, content string) {
 	t.Helper()

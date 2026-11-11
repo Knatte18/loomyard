@@ -53,7 +53,7 @@ func startRaddleRun(t *testing.T, b *Board, slug, project string) Task {
 	if err := b.StoreDecisionRecord(slug, []byte("sketch record\n")); err != nil {
 		t.Fatalf("StoreDecisionRecord() error = %v; want nil", err)
 	}
-	if _, _, err := b.PromoteTo(slug, shedrun.RecipeRaddle, nil); err != nil {
+	if _, err := b.PromoteTo(slug, shedrun.RecipeRaddle, nil); err != nil {
 		t.Fatalf("PromoteTo() error = %v; want nil", err)
 	}
 	return entryForRaddle(t, b, slug)
@@ -203,6 +203,9 @@ func TestFileRaddle(t *testing.T) {
 				}
 				if record, held, err := b.DecisionRecord(slug); err != nil || !held || string(record) != "record of "+slug+"\n" {
 					t.Errorf("DecisionRecord(%q) = %q, %t, %v; want the filed record", slug, record, held, err)
+				}
+				if entry.RecordBodySHA256 != sha256Hex(entry.Body) {
+					t.Errorf("entry %q record_body_sha256 = %q; want %q, the digest of its body", slug, entry.RecordBodySHA256, sha256Hex(entry.Body))
 				}
 				if slices.Contains(entry.Labels, SketchType) {
 					t.Errorf("entry %q labels = %v; want no sketch label", slug, entry.Labels)
@@ -395,9 +398,16 @@ func TestFileRaddle(t *testing.T) {
 		if record, held, err := b.DecisionRecord("plan"); err != nil || !held || string(record) != "record of plan\n" {
 			t.Errorf("DecisionRecord(plan) = %q, %t, %v; want the whole record the filing stored", record, held, err)
 		}
+		if project.RecordBodySHA256 != sha256Hex(project.Body) {
+			t.Errorf("project record_body_sha256 = %q; want %q, the digest of the body the filing left", project.RecordBodySHA256, sha256Hex(project.Body))
+		}
 		for _, slug := range parts {
-			if part := entryForRaddle(t, b, slug); part.Project != "plan" || part.Status == nil || *part.Status != StatusDraft {
+			part := entryForRaddle(t, b, slug)
+			if part.Project != "plan" || part.Status == nil || *part.Status != StatusDraft {
 				t.Errorf("part %q project, status = %q, %v; want plan, draft", slug, part.Project, part.Status)
+			}
+			if part.RecordBodySHA256 != sha256Hex(part.Body) {
+				t.Errorf("part %q record_body_sha256 = %q; want %q, the digest of its body", slug, part.RecordBodySHA256, sha256Hex(part.Body))
 			}
 		}
 		if got := entryForRaddle(t, b, "plan-b").DependsOn; !slices.Equal(got, []string{"plan-a"}) {

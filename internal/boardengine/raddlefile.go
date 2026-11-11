@@ -161,7 +161,8 @@ func (b *Board) FileRaddle(f RaddleFiling) error {
 }
 
 // fileRaddleEntry adds one filed entry to store as a discussed entry, under project when project is not empty.
-// It writes the entry's decision record file and appends the file's path to recordFiles.
+// It writes the entry's decision record file and appends the file's path to recordFiles,
+// and it stamps the entry's record_body_sha256 with the sha256 of the filed body.
 // A dependency on the run's entry or on a slug the store does not hold is dropped.
 func (b *Board) fileRaddleEntry(store *Store, f RaddleFiling, entry RaddleEntry, project string, recordFiles *[]string) error {
 	fields := map[string]any{"slug": entry.Slug, "title": entry.Title, "kind": entry.Kind, "labels": entry.Labels, "body": entry.Body}
@@ -194,11 +195,13 @@ func (b *Board) fileRaddleEntry(store *Store, f RaddleFiling, entry RaddleEntry,
 	*recordFiles = append(*recordFiles, filepath.Join(b.boardPath, name))
 	i, _ := store.index(entry.Slug)
 	store.tasks[i].Discussed = true
+	store.tasks[i].RecordBodySHA256 = bodySHA256(store.tasks[i].Body)
 	return nil
 }
 
 // convertRunEntry turns the run's entry in store into the project of f's family filing, in place.
-// It writes the project's decision record, appending the file's path to recordFiles.
+// It writes the project's decision record and appends the file's path to recordFiles.
+// It stamps the project's record_body_sha256 with the sha256 of the project's body.
 // The project's order and part list name f's parts in filed order.
 // The record file the entry held before is kept in formerRecords under its path, so a failed write restores it.
 func (b *Board) convertRunEntry(store *Store, f RaddleFiling, formerRecords map[string][]byte, recordFiles *[]string) error {
@@ -225,6 +228,7 @@ func (b *Board) convertRunEntry(store *Store, f RaddleFiling, formerRecords map[
 	}
 	*recordFiles = append(*recordFiles, path)
 	store.tasks[i] = arrasProjectOf(store.tasks[i], parts)
+	store.tasks[i].RecordBodySHA256 = bodySHA256(store.tasks[i].Body)
 	return nil
 }
 

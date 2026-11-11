@@ -6,6 +6,8 @@ package boardengine
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -37,9 +39,10 @@ func DecisionFileName(slug string) string {
 }
 
 // StoreDecisionRecord writes record as the entry slug's decision record and flags the entry discussed, under the write lock.
+// The same write stamps the entry's record_body_sha256 with the sha256 of its body.
 // The file is written before board.json is saved, so a crash leaves a file with no flag and never a flag with no file.
-// It writes nothing when the entry is already flagged and the file already holds exactly record.
-// It bypasses the run lock for the flag and the file only; every other field of a held entry stays locked.
+// It writes nothing when the entry is flagged, its stamp matches its body and the file already holds record.
+// It bypasses the run lock for the flag, the stamp and the file only; every other field of a held entry stays locked.
 // It refuses an absent entry, and a done entry with an error that matches ErrRecordEntryDone.
 func (b *Board) StoreDecisionRecord(slug string, record []byte) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
@@ -51,16 +54,31 @@ func (b *Board) StoreDecisionRecord(slug string, record []byte) error {
 			return nil, fmt.Errorf("entry %q: %w: the run ledger sets aside a board commit whose entries have all ended, so a record stored now would not reach origin", slug, ErrRecordEntryDone)
 		}
 		name := DecisionFileName(slug)
-		if current, err := os.ReadFile(filepath.Join(b.boardPath, name)); err == nil && store.tasks[i].Discussed && bytes.Equal(current, record) {
+		stamp := bodySHA256(store.tasks[i].Body)
+		if current, err := os.ReadFile(filepath.Join(b.boardPath, name)); err == nil && store.tasks[i].Discussed &&
+			store.tasks[i].RecordBodySHA256 == stamp && bytes.Equal(current, record) {
 			return noWrite{}, nil
 		}
 		if err := fsx.AtomicWrite(b.boardPath, name, string(record)); err != nil {
 			return nil, fmt.Errorf("write decision record %s: %w", name, err)
 		}
 		store.tasks[i].Discussed = true
+		store.tasks[i].RecordBodySHA256 = stamp
 		return nil, nil
 	}, nil)
 	return err
+}
+
+// bodySHA256 returns the hex sha256 of body: the stamp a write of an entry's decision record leaves on the entry.
+func bodySHA256(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:])
+}
+
+// recordBodyChanged reports whether task's body differs from the body its decision record was last stored against.
+// An entry with no stamp, such as one whose record an older binary stored, reports false.
+func recordBodyChanged(task Task) bool {
+	return task.RecordBodySHA256 != "" && task.RecordBodySHA256 != bodySHA256(task.Body)
 }
 
 // recordStored reports whether the decision record file of the entry slug exists in the board directory.

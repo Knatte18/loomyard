@@ -66,6 +66,21 @@ func Command() *cobra.Command {
 		}
 		return hubissues.Open(url)
 	}
+	// recordsBranchLive reports whether a slug's records branch is live.
+	// It applies the test a raddle start's pair creation adopts the branch by.
+	// Origin is skipped under the fabric skip environment, as every fabric verb skips it.
+	// That environment is a test and CI bypass, so the refusal and a raddle start agree on origin only outside it.
+	recordsBranchLive := func(slug string) (bool, error) {
+		if location == nil {
+			return false, fmt.Errorf("the records branch is resolved only from a hub worktree, not under --board-path: run the verb from a worktree of the hub")
+		}
+		fabricConfig, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
+		if err != nil {
+			return false, err
+		}
+		skip := fabricengine.EnvSyncOptions()
+		return fabricengine.NewTopology(fabricConfig).RecordsBranchLive(location, slug, fabricengine.AddOptions{SkipGit: skip.SkipGit, SkipPush: skip.SkipPush})
+	}
 
 	cmd := &cobra.Command{
 		Use:   "board",
@@ -179,6 +194,8 @@ task before a later "lym board set-deps" lands.
 On an entry that is already a task, a "depends_on" other than its own is refused; change it with
 "lym board set-deps".
 The "notice" names siblings sharing a new depends_on and a label.
+A Sketch whose body changed after its decision record was stored is still promoted, and a "warning"
+names "lym board upsert --record-file" to bring the record up to the body before its run starts.
 Demotion goes through "lym board upsert" with "kind":"note".
 
 Fields:
@@ -206,11 +223,18 @@ Examples:
 					return outputError(out, err.Error())
 				}
 			}
-			task, siblings, err := b.PromoteTo(lookup, promoteRecipe, dependsOn)
+			result, err := b.PromoteTo(lookup, promoteRecipe, dependsOn)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
-			return outputSuccessWithTask(out, task, siblingNotice(siblings))
+			envelope := map[string]any{"task": result.Task}
+			if notice := siblingNotice(result.Siblings); notice != "" {
+				envelope["notice"] = notice
+			}
+			if result.RecordWarning != "" {
+				envelope["warning"] = result.RecordWarning
+			}
+			return output.Ok(out, envelope)
 		}),
 	}
 	promoteCmd.Flags().StringVar(&promoteRecipe, "recipe", "", "set the promoted task's recipe in the same write; a Sketch takes raddle when none is given, and no other")
@@ -464,7 +488,7 @@ Example:
 		}),
 	}
 
-	cmd.AddCommand(storeVerbs(board, profiles)...)
+	cmd.AddCommand(storeVerbs(board, profiles, recordsBranchLive)...)
 	cmd.AddCommand(
 		labelsCmd,
 		profilesCmd,
@@ -554,9 +578,10 @@ var mergePayload = payloadKeys{
 
 // storeVerbs builds the store verbs over the one store board returns.
 // The upsert paths check a task's profile against the run profiles that profiles returns.
-func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Profiles, error)) []*cobra.Command {
+// upsert --record-file asks recordsBranchLive whether the entry's records branch is live before it writes.
+func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Profiles, error), recordsBranchLive func(slug string) (bool, error)) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
-	var bodyFile string
+	var bodyFile, recordFile string
 	upsertCmd := &cobra.Command{
 		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, pull_request?, notify_on_land?, owner_machine?, project?, order?, beam?, front?, on_land?, discussed?}",
 		Short:       "create or update a single task",
@@ -618,6 +643,13 @@ Example:
 				if decodeErr != nil {
 					return outputError(out, fmt.Sprintf("invalid json: %v", decodeErr))
 				}
+				var record []byte
+				if recordFile != "" {
+					var err error
+					if record, err = readRecordFile(recordFile); err != nil {
+						return outputError(out, err.Error())
+					}
+				}
 				if err := refuseNoticeOnAbsentEntry(board(), fields); err != nil {
 					return outputError(out, err.Error())
 				}
@@ -625,7 +657,13 @@ Example:
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				task, siblings, err := board().UpsertTaskSiblings(fields)
+				var task boardengine.Task
+				var siblings []boardengine.Sibling
+				if recordFile != "" {
+					task, siblings, err = board().UpsertTaskWithRecord(fields, record, recordsBranchLive)
+				} else {
+					task, siblings, err = board().UpsertTaskSiblings(fields)
+				}
 				if err != nil {
 					return outputError(out, err.Error())
 				}
@@ -634,6 +672,7 @@ Example:
 		},
 	}
 	upsertCmd.Flags().StringVar(&bodyFile, "body-file", "", `read the task's "body" from this file, or from stdin when "-"`)
+	upsertCmd.Flags().StringVar(&recordFile, "record-file", "", "replace the entry's stored decision record with this file in the same write; a path only, stdin is not read")
 
 	// upsert-batch subcommand: create or update multiple tasks atomically.
 	// A typo'd wrapper (e.g. "taks") errors;

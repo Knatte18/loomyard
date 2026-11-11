@@ -1,5 +1,6 @@
 // validate.go implements Validate, which checks that a discussion's support log and decision record exist.
 // It also checks that the decision record carries every required H2 section.
+// CheckRecordSections runs that check on a record's bytes alone.
 
 package discussionparser
 
@@ -73,22 +74,32 @@ func Validate(decisionRecordPath, supportLogPath string) ([]Finding, error) {
 	}
 
 	var findings []Finding
-	for _, missing := range missingSections(string(data), requiredDiscussionSections) {
-		findings = append(findings, Finding{
-			Check:  checkSectionMissing,
-			Path:   decisionRecordPath,
-			Detail: "decision record is missing required section " + missing,
-		})
-	}
-
-	changes, patternFindings := ParsePatternChanges(data)
-	patternFindings = append(patternFindings, patternOverCapFindings(changes)...)
-	for _, f := range patternFindings {
+	for _, f := range CheckRecordSections(data) {
 		f.Path = decisionRecordPath
 		findings = append(findings, f)
 	}
-
 	return findings, nil
+}
+
+// CheckRecordSections checks the sections of a decision record held as bytes, with no support log beside it.
+// A caller that keeps a record apart from its discussion directory, such as the board's stored record, uses it.
+// Each missing required H2 heading is one Finding.
+// The optional `## PATTERN changes` section, when present, yields one Finding per malformed bullet.
+// It yields another per `adds` or `changes` bullet whose rule text is longer than a PATTERN.md entry's rule text may be.
+// A record without that section passes it.
+// Section order is not checked, and neither is an extra H2.
+// The findings carry an empty Path, which the caller stamps.
+func CheckRecordSections(record []byte) []Finding {
+	var findings []Finding
+	for _, missing := range missingSections(string(record), requiredDiscussionSections) {
+		findings = append(findings, Finding{
+			Check:  checkSectionMissing,
+			Detail: "decision record is missing required section " + missing,
+		})
+	}
+	changes, patternFindings := ParsePatternChanges(record)
+	findings = append(findings, patternFindings...)
+	return append(findings, patternOverCapFindings(changes)...)
 }
 
 // missingSections returns every heading in required that no line of content matches outside a fenced block.

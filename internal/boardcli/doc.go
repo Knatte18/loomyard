@@ -69,6 +69,18 @@
 // It is refused when the payload also carries `body`, and when the payload argument is itself `-`.
 // `merge` takes the same flag and sets the `upsert` object's `body` under the same refusals.
 //
+// `upsert` takes `--record-file <path>` to replace an existing entry's stored decision record.
+// The value is a file path only; unlike `--body-file`, `-` is not read as stdin.
+// The record lands in the write that carries the payload, through `boardengine.Board.UpsertTaskWithRecord`.
+// The file must first pass `discussionparser`'s record-only section check and its decision-id and acceptance check;
+// a failing file is refused with every finding listed and nothing written.
+// The engine refuses a run's task session, by the board's classification of a run's agent, and the entries it guards.
+// The live-branch refusal runs on a probe the verb hands the engine.
+// The probe is `fabricengine.Topology.RecordsBranchLive` at the resolved location.
+// It reads origin unless the fabric skip environment is set; the verb itself runs no git.
+// That environment is a test and CI bypass, and only outside it does the probe read origin as a raddle start does.
+// Every refusal names its way forward.
+//
 // Every verb that takes a slug states the slug length limit in its `--help`, formatted from `boardengine.MaxSlugLength`.
 //
 // An entry whose status has the run-status form is held by a run.
@@ -126,6 +138,8 @@
 // That recipe keeps the record and releases the task:
 // `promote` with no `--recipe` gives it raddle, and `--recipe raddle` is accepted;
 // any other recipe is refused, naming the plain promote.
+// `promote` of a Sketch whose body changed after its record was stored adds a `warning` to its envelope.
+// The warning names `upsert --record-file`; `promote` never refuses on it.
 //
 // `profiles` prints `{"ok":true,"defaults":{…},"profiles":[{"name":…,"settings":{recipe:{module:{…}}}}]}`:
 // every run profile in the hub's `profiles.yaml` in name order, with its settings per recipe.
