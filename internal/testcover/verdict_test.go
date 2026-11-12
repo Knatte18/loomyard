@@ -93,6 +93,35 @@ func TestJudge(t *testing.T) {
 	}
 }
 
+func TestJudgeMap_KeptAndUnmeasuredEntriesNeitherJudgedNorCovering(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	key := func(ordinal int) testcover.BlockKey {
+		return testcover.BlockKey{File: "f.go", Func: "F", Hash: "h", Ordinal: ordinal}
+	}
+	m := testcover.Map{
+		Blocks: []testcover.BlockKey{key(0), key(1)},
+		Tests: []testcover.MapTest{
+			{Name: "Sub", Seconds: 2, Blocks: []int{0}},
+			{Name: "Super", Seconds: 1, Blocks: []int{0, 1}},
+			{Name: "Keep", Seconds: 3, Blocks: []int{1}},
+			{Name: "Timed", Outcome: testcover.OutcomeTimedOut},
+			{Name: "Spawned", Spawn: testcover.SpawnVerdict{OutOfProcess: true}},
+		},
+	}
+	want := []testcover.Verdict{
+		{Name: "Sub", Contained: true, Removable: true, Covering: []string{"Super"}},
+		{Name: "Super"},
+		{Name: "Keep", Reason: testcover.ReasonKept},
+		{Name: "Timed", Reason: string(testcover.OutcomeTimedOut)},
+		{Name: "Spawned", Reason: testcover.ReasonOutOfProcess},
+	}
+	if got := testcover.JudgeMap(m, map[string]string{"Keep": "pins the error text"}); !reflect.DeepEqual(got, want) {
+		t.Errorf("JudgeMap = %+v\nwant       %+v", got, want)
+	}
+}
+
 func TestJudgeAgainst_KeptRunsCoverButAreNeverJudged(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

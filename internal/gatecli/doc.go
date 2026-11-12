@@ -2,7 +2,8 @@
 // Its verb `test` is the sanctioned route for running the hub's test tiers.
 // Its verb `status` shows who holds the hub's gate slots, and its verb `report` totals the run records per gate key.
 // Its verb `card-verify` runs a plan card's `**Verify:**` line.
-// Its verb `testmap` keeps current the per-package coverage maps from the hub's prime worktree.
+// Its verb `testmap` keeps current the per-package coverage maps from the hub's prime worktree,
+// and its verb `redundant` lists one package's redundancy candidates from its map.
 //
 // The module is not standalone-capable and does not go through internal/cliwire.
 // It has no target directory, state, plan or stencils to wire, and it resolves hub membership itself.
@@ -1153,6 +1154,20 @@
 // As it exits, a `--upkeep` call that read HEAD writes the same counts as `testcover.ExitRecord`, with its pid.
 // Any other call, and a `--upkeep` call that refused before reading HEAD, leaves the exit record as it was.
 // It exits 0 once it walked its packages, and 1 for a refusal or a read, slot or write failure that ends the walk.
+//
+// `lym gate redundant <package>` judges the map of one package and prints its redundancy candidates.
+// It runs from any worktree of the hub and resolves the module as the redundancy report step does.
+// It reads the map as it stands, runs no test and takes no slot.
+// It judges through `testcover.JudgeMap`.
+// It leaves out the tests the keep scan of the package's directory in this worktree names.
+// It prints the map's commit, build time and test count.
+// It prints `map_build_failure` with the commit and error of a later failed coverage build the map records.
+// It omits the key when the map records none.
+// It prints `candidates`, each contained test with its tier, seconds, covering tests and whether it is removable;
+// `kept`, each keep-marked test with its reason; and `not_judged`, each other unjudged test with why.
+// It refuses outside a hub.
+// It refuses for a package whose map is missing, unreadable or holds only a failed build.
+// It refuses for a failed keep scan.
 //
 // # In-process run
 //

@@ -23,6 +23,7 @@
 // It picks the removable set greedily among the contained tests, slowest first.
 // JudgeAgainst does the same with a set of kept tests that cover blocks but are never judged or removed,
 // so a caller judges new tests against tests a coverage map already holds.
+// JudgeMap judges the entries of one stored map the same way, leaving out the tests a keep marker names.
 // A test that is skipped, failed or covers nothing is not judged.
 // Nor is a test judged that the static spawn scan marks as possibly running module code in another process.
 // Its in-process coverage cannot see that code.

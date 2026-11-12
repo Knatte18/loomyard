@@ -15,6 +15,7 @@ const (
 	ReasonUnresolved   = "unclassifiable call"
 	ReasonNoBlocks     = "no blocks"
 	ReasonFailed       = "failed"
+	ReasonKept         = "kept"
 )
 
 // Run is one top-level test as Judge sees it.
@@ -114,6 +115,40 @@ func JudgeAgainst(runs, kept []Run) []Verdict {
 		out[i].Covering = coveringTests(i, all, inPool)
 	}
 	return out[:len(runs)]
+}
+
+// JudgeMap returns the verdict of every test of the coverage map m, in the map's order.
+// It judges by the blocks of the package's own files, each entry's seconds ordering the greedy pass.
+// A test that keeps names, one marked `//testtiming:keep`, is neither judged nor counted as a cover;
+// its reason is ReasonKept.
+// An entry that records a TestOutcome is not judged either, and the outcome is its reason.
+// Nor is an entry whose spawn verdict marks the test.
+// Every block index of m must lie inside its block table.
+func JudgeMap(m Map, keeps map[string]string) []Verdict {
+	out := make([]Verdict, len(m.Tests))
+	var runs []Run
+	var at []int
+	for i, test := range m.Tests {
+		out[i].Name = test.Name
+		if _, kept := keeps[test.Name]; kept {
+			out[i].Reason = ReasonKept
+			continue
+		}
+		if test.Outcome != "" {
+			out[i].Reason = string(test.Outcome)
+			continue
+		}
+		blocks := BlockSet{}
+		for _, index := range test.Blocks {
+			blocks[m.Blocks[index].String()] = struct{}{}
+		}
+		runs = append(runs, Run{Name: test.Name, Elapsed: test.Seconds, Action: ActionPass, Blocks: blocks, Spawn: test.Spawn})
+		at = append(at, i)
+	}
+	for j, verdict := range Judge(runs) {
+		out[at[j]] = verdict
+	}
+	return out
 }
 
 // notJudgedReason returns why a run is not judged, or "" for a run that is.

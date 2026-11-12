@@ -300,7 +300,7 @@ github.com/Knatte18/loomyard/
 ├── internal/cleanupcli/          the cleanup CLI command (`lym cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
-├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate testmap`, the per-package coverage maps rebuilt from the hub's prime worktree)
+├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate testmap`, the per-package coverage maps rebuilt from the hub's prime worktree; `lym gate redundant`, one package's redundancy candidates read from its coverage map)
 ├── internal/helpcli/             the help CLI command (`lym help [<command>...]`, `lym help index`)
 ├── internal/shortcutcli/         the top-level operator shortcuts (`lym a`, `lym s`, `lym p`, `lym r`) from one embedded file
 ├── internal/idecli/              the ide CLI command
@@ -933,6 +933,8 @@ User-facing modules each get one `lym <module>` namespace:
   `--gate <key>` runs the tiers and scope `gate.yaml`'s gate key names,
   and with `--guards` the verb also runs every `//lym:guard` test of the module under the command of the tier its file belongs to).
   `lym gate card-verify <card id>` runs a plan card's `**Verify:**` line through the shared `internal/cardverify` runner and exits with the line's code.
+  `lym gate redundant <package>` judges one package's coverage map by the redundancy verdict and lists its candidates,
+  each with its seconds, its covering tests and whether it is in the removable set; it runs no test and takes no slot.
   `lym gate testmap [--max <n>] [<package>...]` rebuilds the stale per-package coverage maps of `internal/testcover` from the hub's prime worktree:
   each tier0 and tier1 test runs alone inside one gate slot, bounded by `redundancy_build_timeout_min` and `redundancy_test_timeout_sec`,
   under a coverage binary over every in-module package its test binary links.

@@ -295,6 +295,9 @@ this section keeps only what is project-specific or stricter here.
   A self-check re-measures a kept entry a fresh build cannot place, and an audit round re-measures the oldest entries.
   While `test_map_upkeep` is on, the prime's dobby starts a `--upkeep` pass whenever work is left:
   no exit record, a HEAD past the last pass's plan, or queued work on a hub of two or more slots.
+- `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict.
+  It lists the candidates with their seconds and covering tests, the keep-marked tests and the tests not judged.
+  It runs no test, so its candidates are evidence exactly as the report's are.
 - A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
   It takes the diff's new and changed top-level tests against the merge base with the parent branch,
   leaving out tier2 and tier3 tests, tests marked `//testtiming:keep` and tests that may run module code in another process.
