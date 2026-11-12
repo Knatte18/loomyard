@@ -6,6 +6,7 @@
 package burlerengine
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -475,6 +476,25 @@ findings:
 			},
 		},
 		{
+			name: "parent ids decode onto the finding",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: F1
+    severity: BLOCKING
+    class: design
+    location: file.go:7
+    summary: unchecked error
+    origin: parent
+    parent_ids: [P1, P2]
+---
+`,
+			wantVerdict: VerdictBlocking,
+			wantFindings: []Finding{
+				{ID: "F1", Severity: SeverityBlocking, Class: ClassDesign, Location: "file.go:7", Summary: "unchecked error", Origin: "parent", ParentIDs: []string{"P1", "P2"}},
+			},
+		},
+		{
 			name:        "crlf content",
 			content:     "---\r\nverdict: APPROVED\r\n---\r\n\r\nAll clear.\r\n",
 			wantVerdict: VerdictApproved,
@@ -508,7 +528,7 @@ findings:
 				t.Fatalf("ParseReview() findings = %+v; want %+v", findings, tt.wantFindings)
 			}
 			for i := range findings {
-				if findings[i] != tt.wantFindings[i] {
+				if !reflect.DeepEqual(findings[i], tt.wantFindings[i]) {
 					t.Errorf("ParseReview() findings[%d] = %+v; want %+v", i, findings[i], tt.wantFindings[i])
 				}
 			}

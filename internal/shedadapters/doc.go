@@ -577,6 +577,24 @@
 // That includes a gate or strict-parse failure.
 // A reviewer that could not be stopped returns bare, with nothing archived.
 // A review with no record beside it is an orphan and is reviewed again.
+// A row told BurlerHalfDeps.Parent asks the run's parent orch to review the round before the probe and before any spawn.
+// The ask lives in burlerengine's never-tracked ask record.
+// The row finds the round's ask by the generation's seed, the write time of its round-1 focus file, and by the round.
+// A round already holding an ask is posted again only while that ask is pending-post, whatever the key now reads.
+// A round holding none sends a new ask only with `discussion_review_ask_parent` on, and only when the round asks.
+// A round asks when the run has no ask of this seed.
+// It also asks when the history records a Discussion-Write call after the latest ask.
+// It also asks when the round before ended done with findings, or an earlier round's ask was not-sent.
+// The ask's one line opens `[discussion-review request]`.
+// It goes to the strand resolved once, signed as the loom program.
+// A wait the chair's timeout leaves no room for records the ask not-sent;
+// an unresolved parent, a parent with no orch strand and a failed post record it no-parent;
+// in every case the round goes on.
+// The round's table is told the ask's number.
+// Its chair then consolidates the parent's report, and its gate covers each report id.
+// An accepted review, and the hand-on of a review accepted before a restart, settle the ask:
+// an ask still open is set timeout, and a done report is copied beside the review once.
+// The copy joins the files archived before a retry or a new round.
 // A fix row told BurlerHalfDeps.NotifyParent sends the accepted review's decision-class findings to the run's parent.
 // The findings go in one line.
 // Each finding carries its id, summary and fix.

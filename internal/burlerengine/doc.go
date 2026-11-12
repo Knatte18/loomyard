@@ -116,6 +116,24 @@
 // It numbers the report's findings P1 up and refuses with a ParentAnswerRefusal that names its kind.
 // An ask at or past its deadline is set timeout instead.
 // ExpireParentAsk sets the latest active ask timeout once its deadline has passed.
+// Each ask records its round and its seed, the identity of its review generation.
+// RoundAsk finds a round's ask by both.
+// EndParentAsk moves an active ask to an end state with a reason.
+// SettleParentAsk runs once the round's review is accepted.
+// It sets an active ask timeout.
+// It copies a done report beside the review, at ParentCopyPath, unless it is there already.
+//
+// # The parent seat
+//
+// RunOpts.ParentAsk names the round's ask.
+// A round with one renders burler-parent-consolidation after the cluster rules and any assistant part.
+// The chair waits with `lym loom parent-review await`, then keeps every finding of a done report.
+// Each is tagged `origin: parent` (ParentOrigin) and lists the report ids it covers in `parent_ids` (Finding.ParentIDs).
+// On any other ending it writes one line saying the parent review did not arrive and why.
+// The review table's gate gains ParentCoverageGateEntry after the review-parse entry, in a probed table too.
+// It first sets an ask still pending-post or open timeout, so a late answer is refused once the chair is done.
+// For a done ask with findings it fails naming each report id no parent finding covers, and it never passes on its cap.
+// A done chair whose gate failed with no reason fails the review with the failing entry's findings.
 //
 // # The fix half
 //

@@ -48,6 +48,8 @@ Frontmatter rules, all strict:
 - Omit `findings` entirely when you found nothing.
   Never invent a finding to pad the list.
 - In a cluster round, each finding also carries an `origin:` key — `lens:<name>` for a finding kept from a named fork, or `handler` for one you found yourself.
+- A finding kept from the parent orch's report carries `origin: parent` and an optional `parent_ids` list naming the report ids it covers, such as `parent_ids: [P1, P3]`.
+  No other finding carries `parent_ids`.
 
 Below the closing `---`, write prose: exactly one `### [SEVERITY] <title>` block per finding, each carrying `**Location:**` and `**Issue:**` lines.
 The change lives in the finding's `fix` key; no prose `**Fix:**` line restates it.

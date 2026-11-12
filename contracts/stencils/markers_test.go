@@ -52,6 +52,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"seat-directive-assistant-fanned", SeatDirectiveAssistantFanned, []string{"output_files", "seat_name"}},
 		{"seat-directive-assistant-chair", SeatDirectiveAssistantChair, []string{"assistants"}},
 		{"burler-assist-consolidation", BurlerAssistConsolidation, []string{"assist_origin"}},
+		{"burler-parent-consolidation", BurlerParentConsolidation, []string{"parent_origin"}},
 		{"burler-assist-cluster-fan", BurlerAssistClusterFan, []string{"lens_list", "lens_report_path", "lens_report_spec_path"}},
 		{"twill-directive", TwillDirective, []string{"checked_clause", "closing_step", "judge_steps", "lens_list", "lens_report_path", "lens_report_spec_path", "relaunch_rules", "reviewed_files", "rubric_path", "severity_rule", "spawn_point", "writer_fork"}},
 		{"twill-writer-fork-gated", TwillWriterForkGated, []string{"disposition_place", "explore_step", "files_dir", "format_step", "input_record", "last_file", "reviewed_files"}},

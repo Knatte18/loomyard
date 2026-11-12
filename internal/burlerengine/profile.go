@@ -136,6 +136,9 @@ type RunOpts struct {
 	// AssistSkip, when set, keeps a named assistant from starting, its end marker naming this reason.
 	AssistTimeout time.Duration
 	AssistSkip    string
+	// ParentAsk is the number of the parent-review ask the round holds, 0 for a round with none.
+	// A round with one renders the chair's parent consolidation part and gates its review by the parent coverage entry.
+	ParentAsk int
 }
 
 // validateReview normalizes p in place and reports a fail-loud error if the review half is not runnable.

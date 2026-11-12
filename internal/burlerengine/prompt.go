@@ -118,10 +118,11 @@ func renderReviewFormat(stencilsDir, engine string) (string, error) {
 // the explore step, the review step and the review-file format.
 // patternDirective is the caller-resolved PATTERN directive for the explore step.
 // assistRules is the chair's consolidation part of an assisted round, rendered after the cluster rules.
-// It is empty for any other round, which leaves the rendered prompt unchanged.
+// parentRules is the chair's parent consolidation part of a round holding a parent-review ask, rendered after that.
+// Each is empty for any other round, which leaves the rendered prompt unchanged.
 // specsDir holds the deployed lens report spec a fanned round's reviewer saves its fork reports in the format of.
 // The reviewer's files hold no fixer-side text; p is assumed already validated by validateReview.
-func composeReviewPrompt(stencilsDir, specsDir, engine string, p *Profile, patternDirective, assistRules string, paths reviewFilePaths) (halfPrompt, error) {
+func composeReviewPrompt(stencilsDir, specsDir, engine string, p *Profile, patternDirective, assistRules, parentRules string, paths reviewFilePaths) (halfPrompt, error) {
 	exploreTemplate, exploreBlocks, err := stencilstore.ReadSet(stencilsDir, engine, "burler-step-1-explore")
 	if err != nil {
 		return halfPrompt{}, err
@@ -155,10 +156,11 @@ func composeReviewPrompt(stencilsDir, specsDir, engine string, p *Profile, patte
 	review, err := fillInstruction(stencilsDir, engine, "burler-step-review", map[string]string{
 		"cluster_rules":      clusterRules,
 		assistRulesMarker:    assistRules,
+		parentRulesMarker:    parentRules,
 		"review_path":        p.ReviewPath,
 		"review_format_path": paths.Format,
 		"prior_rounds":       priorRoundsBlock(p),
-	}, []string{assistRulesMarker})
+	}, []string{assistRulesMarker, parentRulesMarker})
 	if err != nil {
 		return halfPrompt{}, err
 	}

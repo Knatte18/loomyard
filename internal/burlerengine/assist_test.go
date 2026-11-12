@@ -561,11 +561,11 @@ func TestComposeReviewPrompt_AssistRules(t *testing.T) {
 		t.Fatalf("assistRulesBlock(assistant) = %q; want a block led by a blank line carrying `origin: assist:assist`", block)
 	}
 
-	plain, err := composeReviewPrompt(stencilsDir, testSpecsDir, "claude", &p, "", noAssist, testReviewFiles)
+	plain, err := composeReviewPrompt(stencilsDir, testSpecsDir, "claude", &p, "", noAssist, "", testReviewFiles)
 	if err != nil {
 		t.Fatalf("composeReviewPrompt(no assistant) = %v; want nil error", err)
 	}
-	assisted, err := composeReviewPrompt(stencilsDir, testSpecsDir, "claude", &p, "", block, testReviewFiles)
+	assisted, err := composeReviewPrompt(stencilsDir, testSpecsDir, "claude", &p, "", block, "", testReviewFiles)
 	if err != nil {
 		t.Fatalf("composeReviewPrompt(assistant) = %v; want nil error", err)
 	}

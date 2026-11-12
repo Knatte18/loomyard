@@ -7,7 +7,9 @@ package burlerengine
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
@@ -48,7 +50,10 @@ type ParentAsk struct {
 	// Number is the ask's number within the run, from 1 up in the order the asks were recorded.
 	Number int `json:"number"`
 	// Round is the review round the ask belongs to.
-	Round int            `json:"round"`
+	Round int `json:"round"`
+	// Seed names the review generation the ask belongs to, since round numbers restart at 1 in each generation.
+	// It is the write time of the generation's round-1 focus file, in RFC 3339 with nanoseconds.
+	Seed  string         `json:"seed,omitempty"`
 	State ParentAskState `json:"state"`
 	// Strand is the orch strand the ask went to, which may answer it whichever orch the run's parent resolves to later.
 	Strand  string    `json:"strand,omitempty"`
@@ -85,6 +90,16 @@ func (r ParentAskRecord) Ask(number int) (ParentAsk, bool) {
 	return ParentAsk{}, false
 }
 
+// RoundAsk returns the latest ask made for round of the review generation seed, and false when the run holds none.
+func (r ParentAskRecord) RoundAsk(seed string, round int) (ParentAsk, bool) {
+	for i := len(r.Asks) - 1; i >= 0; i-- {
+		if r.Asks[i].Seed == seed && r.Asks[i].Round == round {
+			return r.Asks[i], true
+		}
+	}
+	return ParentAsk{}, false
+}
+
 // ParentReviewFiles locates a run's parent-review files: the ask record, its lock and the directory holding the reports.
 // None is tracked.
 type ParentReviewFiles struct {
@@ -111,6 +126,13 @@ func (f ParentReviewFiles) ReportPath(number int) string {
 	return filepath.Join(f.Dir, fmt.Sprintf("ask-%d.report.yaml", number))
 }
 
+// ParentCopyPath returns the path a round's done parent report is copied to once its review is accepted:
+// `<review stem>.parent.yaml` beside the review file, so it is committed with the round.
+func ParentCopyPath(reviewPath string) string {
+	stem := strings.TrimSuffix(filepath.Base(reviewPath), filepath.Ext(reviewPath))
+	return filepath.Join(filepath.Dir(reviewPath), stem+".parent.yaml")
+}
+
 // ParentFinding is one finding of the parent's report.
 // Change names what to change and where; Severity and Class are optional and, when set, in the review format's words.
 type ParentFinding struct {
@@ -126,6 +148,19 @@ type ParentReport struct {
 	Ask       int             `yaml:"ask"`
 	Satisfied bool            `yaml:"satisfied"`
 	Findings  []ParentFinding `yaml:"findings"`
+}
+
+// ReadParentReport reads the parent's report at path.
+func ReadParentReport(path string) (ParentReport, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ParentReport{}, fmt.Errorf("burler: read the parent report: %w", err)
+	}
+	var report ParentReport
+	if err := yaml.Unmarshal(data, &report); err != nil {
+		return ParentReport{}, fmt.Errorf("burler: parse the parent report %s: %w", path, err)
+	}
+	return report, nil
 }
 
 // ReadParentAsks reads the run's ask record; found is false when the run never recorded an ask.
@@ -170,6 +205,74 @@ func MarkParentAskPosted(files ParentReviewFiles, number int) error {
 		return fmt.Errorf("burler: mark parent-review ask %d posted: %w", number, err)
 	}
 	return nil
+}
+
+// EndParentAsk moves the ask numbered number to the end state end, with reason, while it is still pending-post or open.
+// An ask already ended is left as it stands.
+// It returns the ask as it then stands; found is false when the run holds no such ask, and nothing is written then.
+func EndParentAsk(files ParentReviewFiles, number int, end ParentAskState, reason string) (ask ParentAsk, found bool, err error) {
+	err = state.UpdateJSON(files.Record, files.Lock, func(record ParentAskRecord, _ bool) (ParentAskRecord, error) {
+		for i := range record.Asks {
+			if record.Asks[i].Number != number {
+				continue
+			}
+			found = true
+			if record.Asks[i].State.Ended() {
+				ask = record.Asks[i]
+				return record, errParentAskUnchanged
+			}
+			record.Asks[i].State, record.Asks[i].Reason = end, reason
+			ask = record.Asks[i]
+			return record, nil
+		}
+		return record, errParentAskUnchanged
+	})
+	if err != nil && !errors.Is(err, errParentAskUnchanged) {
+		return ParentAsk{}, false, fmt.Errorf("burler: end parent-review ask %d: %w", number, err)
+	}
+	return ask, found, nil
+}
+
+// SettleParentAsk closes the ask numbered number once its round's review at reviewPath is accepted.
+// It runs as one step under the record's lock.
+// An ask still pending-post or open is set timeout, so a later answer is refused.
+// A done ask's report is copied to ParentCopyPath beside the review, unless an earlier call copied it.
+// It returns the copy's path, empty when this call copied nothing.
+func SettleParentAsk(files ParentReviewFiles, number int, reviewPath string) (string, error) {
+	var copied string
+	err := state.UpdateJSON(files.Record, files.Lock, func(record ParentAskRecord, _ bool) (ParentAskRecord, error) {
+		for i := range record.Asks {
+			ask := &record.Asks[i]
+			if ask.Number != number {
+				continue
+			}
+			if !ask.State.Ended() {
+				ask.State = ParentAskTimeout
+				return record, nil
+			}
+			if ask.State != ParentAskDone {
+				return record, errParentAskUnchanged
+			}
+			to := ParentCopyPath(reviewPath)
+			if _, err := os.Stat(to); err == nil {
+				return record, errParentAskUnchanged
+			}
+			content, err := os.ReadFile(ask.Report)
+			if err != nil {
+				return record, fmt.Errorf("read the parent report: %w", err)
+			}
+			if err := fsx.AtomicWriteBytes(to, content); err != nil {
+				return record, fmt.Errorf("copy the parent report beside the review: %w", err)
+			}
+			copied = to
+			return record, errParentAskUnchanged
+		}
+		return record, errParentAskUnchanged
+	})
+	if err != nil && !errors.Is(err, errParentAskUnchanged) {
+		return "", fmt.Errorf("burler: settle parent-review ask %d: %w", number, err)
+	}
+	return copied, nil
 }
 
 // ParentAnswerRefusalKind names why an answer was refused.

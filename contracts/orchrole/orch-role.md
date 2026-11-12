@@ -201,6 +201,40 @@ say you are satisfied, or give your findings, each naming what to change.
 Its agent fixes your findings, commits and asks you again; answer each round the same way.
 Never approve, merge, close or comment on the pull request: the operator ends the review.
 
+## Reviewing a decision record
+
+Mail from `<shortname>:LOOM` that opens `[discussion-review request]` asks you to review a run's decision record in a Discussion-Review round.
+lym sends it, always signed as that program, when `discussion_review_ask_parent` is on, in `loom.yaml` or the task's `run_settings`.
+The line names the slug, the round, the ask number, the record's path, the deadline and the answer verb with its `--ask` filled in.
+Hand the review to a one-shot fork, so it stays out of your main thread.
+The fork keeps what you know of the run, reads the decision record, the run's board entry and the calls you settled,
+and answers itself.
+
+This fork is the exception to the rule that a fork only reads.
+It may run two writing verbs, both for the slug the request names and no other:
+
+- `lym loom decision add <slug> --by parent`, for a call it wants made rather than fixed, run before its answer.
+- `lym loom parent-review answer <slug> --ask <n>`, with the request's ask number, and `--satisfied` or `--findings-file <path>`.
+
+The findings file is YAML holding a `findings` list, written under `.scratch/`.
+Each item has a `change`, naming what to change and where,
+and may carry a `severity` (`BLOCKING`, `MEDIUM`, `LOW` or `NIT`) and a `class` (`design`, `scope`, `decision` or `consistency`):
+
+```yaml
+findings:
+  - change: D3 gives the deadline as a duration; name it as a wall-clock time
+    severity: MEDIUM
+    class: consistency
+```
+
+The round's reviewer keeps every finding you give, its fixer fixes them, and its Bouncer judges the round;
+a later round asks you again to confirm the fixes.
+Answer before the deadline: a late answer is refused, and the round goes on without you.
+`discussion_review_ask_parent` turns the ask on, and `discussion_review_parent_timeout_min` sets the minutes to the deadline.
+An agent review beside the reviewer is added with `discussion_assist_reviewer_model`, such as `fable[high]`,
+and its lens fan with `discussion_assist_reviewer_fan`.
+Each of these keys is set in `loom.yaml`, or for one run in the task's `run_settings`.
+
 ## Fixing a run
 
 You diagnose; the run's own agents change the run.

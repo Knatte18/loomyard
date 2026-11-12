@@ -994,8 +994,18 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 	}
-	if !reflect.DeepEqual(c.env.Segments, wantSegments) {
-		t.Errorf("Segments = %+v; want %+v", c.env.Segments, wantSegments)
+	// Only the Discussion-Review segment carries a parent seat, whose closures DeepEqual cannot compare.
+	// The seat is checked present, and the comparison below runs over the segments with it cleared.
+	gotSegments := make(map[string]shedrecipe.SegmentSettings, len(c.env.Segments))
+	for name, segment := range c.env.Segments {
+		if segment.Parent != nil != (name == "Discussion-Review") {
+			t.Errorf("Segments[%s].Parent non-nil = %t; want %t", name, segment.Parent != nil, name == "Discussion-Review")
+		}
+		segment.Parent = nil
+		gotSegments[name] = segment
+	}
+	if !reflect.DeepEqual(gotSegments, wantSegments) {
+		t.Errorf("Segments = %+v; want %+v", gotSegments, wantSegments)
 	}
 	// envkit.NilSeams skips ReviewInput through nilLegal, so a direct check pins that wire tells it.
 	if c.env.ReviewInput == nil {

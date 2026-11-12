@@ -1395,6 +1395,8 @@ User-facing modules each get one `lym <module>` namespace:
   `discussion_review_parent_timeout_min` sets the minutes from that ask to its deadline,
   capped so the reviewer keeps room to consolidate before `review_timeout_min`; both are open to `run_settings`.
   The parent answers with `lym loom parent-review answer`, and the reviewer waits with `lym loom parent-review await`.
+  A round asks when the record is new to the parent or rewritten since its last ask, or to confirm the fixes of its findings.
+  The reviewer keeps every parent finding as `origin: parent`, and a gate entry holds the review to each report id.
   `discussion_lenses` names the `lenses.yaml` fan whose lenses the Discussion-Write lead forks itself for.
   Empty turns the forks off, and the key is closed to the local layer.
   `subagent_model` names the model of the fresh subagents that Plan, Discussion-Write and darn writers hand lookups to.

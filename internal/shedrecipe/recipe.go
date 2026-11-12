@@ -64,6 +64,8 @@ type SegmentSettings struct {
 	AmendMaxBounces int
 	// Assist is the segment's assistant reviewer settings; the zero value runs no assistant.
 	Assist shedadapters.AssistSettings
+	// Parent is the segment's parent seat, which asks the run's parent orch to review a round; nil asks nothing.
+	Parent *shedadapters.ParentReviewSeat
 }
 
 // Env carries the roots and run-wide values that every row shares, and the per-segment settings in Segments.

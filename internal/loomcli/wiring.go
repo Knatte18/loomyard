@@ -1055,8 +1055,18 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			return loomrecipe.Routing(c.recipe, loomSegmentBudgets(loomCfg))
 		}),
 
-		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings, assistBounds),
-		Setting:  settingLookup,
+		// The Discussion-Review segment's parent seat reads its key, history and routing on a call, never at wire time.
+		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings, assistBounds, discussionParentSeat(parentSeatInputs{
+			location:       location,
+			cfg:            loomCfg,
+			runTimeout:     time.Duration(shuttleCfg.RunTimeoutMin) * time.Minute,
+			startAllowance: shuttleCfg.StartAllowance(),
+			awaitCap:       chairAwaitCap(location, burlerGeom, loomengine.PerchDiscussion),
+			setting:        settingLookup,
+			statusPath:     statusPath,
+			statusLockPath: statusLockPath,
+		})),
+		Setting: settingLookup,
 		// SettingKnown and Resume serve a recipe row's entry gate: its operands are checked at build and its evaluation errors name the resume command.
 		SettingKnown: configreg.CheckSettingKey,
 		Resume:       "lym loom resume",
@@ -1275,21 +1285,26 @@ type assistBound struct {
 
 // segmentAssistBounds returns each review segment's assistant bound.
 // The bound is capped so the assistant ends before that segment's chair does.
-// A segment's recipe rows set role_prefix to the name of its perch,
-// so its chair runs as the role burlerengine.ReviewChairRole forms from that name.
-// The await cap is the one the keep-warm resolver gives that role, since the chair's `lym shuttle await` runs under it.
-// A chair name that cannot be formed leaves the default await cap.
+// The await cap is the chair's keep-warm cap, since the chair's `lym shuttle await` runs under it.
 func segmentAssistBounds(location *lymcwd.Location, geom burlerengine.Geometry, cfg loomengine.Config, runTimeout, startAllowance time.Duration) map[loomengine.Perch]assistBound {
 	bounds := make(map[loomengine.Perch]assistBound, len(loomSegmentPerches))
 	for _, perch := range loomSegmentPerches {
-		awaitCap := shuttleengine.DefaultAwaitCap
-		if chair, err := agentname.Format(geom.Shortname, geom.Slug, burlerengine.ReviewChairRole(string(perch))); err == nil {
-			awaitCap = shuttleengines.KeepWarm(fabricengine.ConfigDirs(location), chair).Cap
-		}
-		timeout, skipReason := loomengine.CapAssistTimeout(cfg, runTimeout, startAllowance, awaitCap)
+		timeout, skipReason := loomengine.CapAssistTimeout(cfg, runTimeout, startAllowance, chairAwaitCap(location, geom, perch))
 		bounds[perch] = assistBound{timeout: timeout, skipReason: skipReason}
 	}
 	return bounds
+}
+
+// chairAwaitCap returns the keep-warm await cap of perch's review chair.
+// A segment's recipe rows set role_prefix to the name of its perch,
+// so its chair runs as the role burlerengine.ReviewChairRole forms from that name.
+// A chair name that cannot be formed leaves the default await cap.
+func chairAwaitCap(location *lymcwd.Location, geom burlerengine.Geometry, perch loomengine.Perch) time.Duration {
+	chair, err := agentname.Format(geom.Shortname, geom.Slug, burlerengine.ReviewChairRole(string(perch)))
+	if err != nil {
+		return shuttleengine.DefaultAwaitCap
+	}
+	return shuttleengines.KeepWarm(fabricengine.ConfigDirs(location), chair).Cap
 }
 
 // loomSegmentSettings builds one shedrecipe.SegmentSettings per loom review segment.
@@ -1297,7 +1312,8 @@ func segmentAssistBounds(location *lymcwd.Location, geom burlerengine.Geometry, 
 // The budget and hard cap, with their keys, come from cfg.Caps, which resolves them through reviewbudget.
 // The assistant's lists come from review too, and each segment's assistant takes its perch's entry of assistBounds.
 // The split perch has no assistant, so its segment's assistant lists are empty.
-func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings, assistBounds map[loomengine.Perch]assistBound) map[string]shedrecipe.SegmentSettings {
+// The discussion perch alone takes parentSeat; every other segment asks the parent nothing.
+func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings, assistBounds map[loomengine.Perch]assistBound, parentSeat *shedadapters.ParentReviewSeat) map[string]shedrecipe.SegmentSettings {
 	assists := map[loomengine.Perch]loomengine.AssistModels{
 		loomengine.PerchDiscussion: review.DiscussionAssist,
 		loomengine.PerchPlan:       review.PlanAssist,
@@ -1343,6 +1359,11 @@ func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings
 				Timeout:    assistBounds[perch].timeout,
 				SkipReason: assistBounds[perch].skipReason,
 			},
+		}
+		if perch == loomengine.PerchDiscussion {
+			discussion := settings[segment]
+			discussion.Parent = parentSeat
+			settings[segment] = discussion
 		}
 	}
 	return settings

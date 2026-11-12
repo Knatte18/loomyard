@@ -175,6 +175,11 @@
 // `parent-review await` is the chair's capped wait on the same ask.
 // It reads the record once a second up to the caller's keep-warm cap.
 // It sets an ask past its deadline timeout and writes nothing else.
+// The wiring gives the Discussion-Review segment its parent seat, `discussionParentSeat`.
+// On each call the seat reads `discussion_review_ask_parent` through the wiring's setting lookup.
+// An unreadable value reads as false.
+// It also uses the capped wait, the latest Discussion-Write call in the status history, and `NotifyParent`'s routing.
+// It posts as `<shortname>:LOOM`, tagged with the pair's run.
 //
 // # Start
 //

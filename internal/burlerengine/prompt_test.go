@@ -81,7 +81,7 @@ func newComposableProfile(t *testing.T) Profile {
 // composeReview composes p's review half prompt over the placeholder paths, failing the test on error.
 func composeReview(t *testing.T, stencilsDir string, p *Profile, patternDirective string) halfPrompt {
 	t.Helper()
-	prompt, err := composeReviewPrompt(stencilsDir, testSpecsDir, "claude", p, patternDirective, "", testReviewFiles)
+	prompt, err := composeReviewPrompt(stencilsDir, testSpecsDir, "claude", p, patternDirective, "", "", testReviewFiles)
 	if err != nil {
 		t.Fatalf("composeReviewPrompt() = %v; want nil error", err)
 	}
@@ -444,7 +444,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			"review_path":        p.ReviewPath,
 			"review_format_path": testReviewFiles.Format,
 			"prior_rounds":       priorRoundsBlock(&p),
-		}, []string{assistRulesMarker})
+		}, []string{assistRulesMarker, parentRulesMarker})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional(review) = %v; want nil", err)
 		}
@@ -462,7 +462,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			t.Fatalf("Remove(burler-cluster-fan) = %v; want nil", err)
 		}
 
-		if _, err := composeReviewPrompt(stencilsDir, testSpecsDir, "claude", &p, "", "", testReviewFiles); err == nil || !strings.Contains(err.Error(), "burler-cluster-fan") {
+		if _, err := composeReviewPrompt(stencilsDir, testSpecsDir, "claude", &p, "", "", "", testReviewFiles); err == nil || !strings.Contains(err.Error(), "burler-cluster-fan") {
 			t.Errorf("composeReviewPrompt() error = %v; want the read error naming burler-cluster-fan", err)
 		}
 	})

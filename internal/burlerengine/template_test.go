@@ -116,7 +116,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			name:            "review step",
 			template:        stencils.BurlerStepReview,
 			values:          reviewStepMarkerValues(),
-			optional:        []string{assistRulesMarker},
+			optional:        []string{assistRulesMarker, parentRulesMarker},
 			requiredMarkers: []string{"cluster_rules", "review_path", "review_format_path", "prior_rounds"},
 		},
 		{
@@ -299,7 +299,7 @@ func TestComposePrompt_RendersEngineBlocksForTheHalfsEngine(t *testing.T) {
 		t.Run(tt.engine, func(t *testing.T) {
 			t.Parallel()
 			p := newComposableProfile(t)
-			review, err := composeReviewPrompt(stencilsDir, testSpecsDir, tt.engine, &p, "", "", testReviewFiles)
+			review, err := composeReviewPrompt(stencilsDir, testSpecsDir, tt.engine, &p, "", "", "", testReviewFiles)
 			if err != nil {
 				t.Fatalf("composeReviewPrompt(%s) = %v; want nil error", tt.engine, err)
 			}

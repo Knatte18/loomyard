@@ -183,7 +183,7 @@ func (e *Engine) composeAssist(p *Profile, opts RunOpts, directive string) (revi
 		return e.unstartedAssist(err)
 	}
 	files := reviewFilesIn(dir)
-	prompt, err := composeReviewPrompt(e.stencilsDir, e.geom.SpecsDir, e.seatEngine(opts.Assist), &assist, directive, "", files)
+	prompt, err := composeReviewPrompt(e.stencilsDir, e.geom.SpecsDir, e.seatEngine(opts.Assist), &assist, directive, "", "", files)
 	if err != nil {
 		return e.unstartedAssist(err)
 	}

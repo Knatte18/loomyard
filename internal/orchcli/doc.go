@@ -271,7 +271,9 @@
 // A notice of a run goes to the nearest live orch up its pair's beam chain, the prime's when none is live:
 // `NotifyParent` resolves it from the pair's recorded parent worktree at each call.
 // `NotifyFrom` starts the walk at the given worktree itself, for a run whose pair is absent.
-// `ParentOrchRecorded` answers whether that destination records a strand.
+// `ParentOrchRecorded` answers whether that destination records a strand, and `ParentStrand` answers the strand itself.
+// `PostAsProgram` posts to a strand its caller resolved, signed as the program alone whatever strand the process carries,
+// so a caller that records the destination before posting reaches the strand it recorded.
 // A driver reads it as the watched-or-silent decision.
 // `NotifyAsker` is the hold notice's route:
 // it resolves the orch with `orchroute.Asker`, the rule `lym creel post --parent` uses,

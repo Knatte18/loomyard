@@ -67,10 +67,12 @@ func TestEngine_Review_TableShape(t *testing.T) {
 		rolePrefix     string
 		languageSkills []string
 		codeRound      bool
-		wantSegment    segmentcolor.Segment
-		wantRole       string
-		wantForkFlag   bool
-		wantSkills     []string
+		// parentAsk is the number of the parent-review ask the round holds; 0 is none.
+		parentAsk    int
+		wantSegment  segmentcolor.Segment
+		wantRole     string
+		wantForkFlag bool
+		wantSkills   []string
 		// declaredBullet, when set, is written to the decision record and must appear in the reviewer's instruction files.
 		declaredBullet string
 	}{
@@ -82,6 +84,7 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			declaredBullet: "- `PATTERN-example-entry` — adds: the new rule text",
 		},
 		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole, wantForkFlag: true},
+		{name: "parent-review round", parentAsk: 3, wantSegment: segmentcolor.Review, wantRole: reviewHalfRole},
 		{name: "merge-segment reviewer", segment: segmentcolor.Merge, rolePrefix: "merge", wantSegment: segmentcolor.Merge, wantRole: "merge-" + reviewHalfRole},
 		{
 			name:           "code round",
@@ -116,7 +119,9 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			e := New(shuttle, geom, clusterTestConfig, newTestStencilsDir(t), "", tt.languageSkills)
 
 			// A cluster reviewer with no fork audit is refused after the spawn; the spec is what this test reads.
-			_, _ = e.Review(p, opts)
+			roundOpts := opts
+			roundOpts.ParentAsk = tt.parentAsk
+			_, _ = e.Review(p, roundOpts)
 
 			if tt.declaredBullet != "" || tt.clusterFan != "" {
 				instructions, err := filepath.Glob(filepath.Join(root, ".lym", "burler", "review-*", "*"))
@@ -172,8 +177,15 @@ func TestEngine_Review_TableShape(t *testing.T) {
 				t.Errorf("reviewer seat ModelKey = %+v; want opts.ReviewKey %+v", seat.ModelKey, opts.ReviewKey)
 			}
 			gate := shuttle.gates[tt.wantRole]
-			if len(gate) != 1 || gate[0].Name != "review" || !gate[0].PassOnCap || gate[0].Attempts != reviewGateAttempts {
-				t.Errorf("gate = %+v; want the one review-parse entry that passes on its cap", gate)
+			wantEntries := 1
+			if tt.parentAsk > 0 {
+				wantEntries = 2
+			}
+			if len(gate) != wantEntries || gate[0].Name != "review" || !gate[0].PassOnCap || gate[0].Attempts != reviewGateAttempts {
+				t.Fatalf("gate = %+v; want %d entries, the review-parse entry first, passing on its cap", gate, wantEntries)
+			}
+			if tt.parentAsk > 0 && (gate[1].Name != ParentCoverageEntryName || gate[1].PassOnCap || gate[1].Attempts <= 0 || gate[1].Gate == nil) {
+				t.Errorf("gate[1] = %+v; want the parent coverage entry, which never passes on its cap, with attempts above zero and a gate", gate[1])
 			}
 		})
 	}
@@ -228,6 +240,7 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 		{name: "a review missing a finding's fix is refused by the strict parse", script: halfScript{result: done, writes: noFixReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "missing a non-empty fix"},
 		{name: "an unparseable review is refused", script: halfScript{result: done, writes: malformedReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "round reached done but its review file is invalid"},
 		{name: "a failed review gate is an error", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Reason: "spent"}}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "review gate failed", wantGateReason: "spent"},
+		{name: "a failed review gate with no reason is an error holding its findings", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Findings: "report ids are uncovered"}}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "report ids are uncovered"},
 		{name: "a violating cluster audit is refused with the audit kept", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: violatingAudit}, writes: approvedReview}, clusterFan: "standard", wantOutcome: shuttleengine.OutcomeDone, wantErrText: "write/edit tool call", wantAudit: violatingAudit},
 		{name: "a cluster audit with too few forks wraps the sentinel and keeps the chair's strand and states", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, StrandGUID: "strand-chair", ForkAudit: tooFewAudit, SessionStates: chairStates}, writes: approvedReview}, clusterFan: "standard", wantOutcome: shuttleengine.OutcomeDone, wantErrIs: ErrClusterForksMissing, wantAudit: tooFewAudit, wantStrand: "strand-chair", wantStates: chairStates},
 		{name: "a clean cluster audit passes its warnings through", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: cleanAudit}, writes: approvedReview}, clusterFan: "standard", wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictApproved, wantAudit: cleanAudit, wantWarnings: 1},

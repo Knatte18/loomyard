@@ -45,7 +45,7 @@ func burlerRowTimeout(timeoutS int, env Env) time.Duration {
 
 // burlerReviewEntry is the Constructor for the "BurlerReview" registry row.
 // It takes no "gates" key: its only gate is the engine's review-parse entry.
-// Its models and review key come from its segment's settings.
+// Its models, review key, assistant and parent seat come from its segment's settings.
 // The fan lists come from the settings named by reviewer_fan_setting and fixer_fan_setting.
 // Without such a setting, they come from the recipe profile's cluster-fan and fix-fan.
 // A setting's list that names a fan beside the profile's own fan is a construction error.
@@ -127,7 +127,7 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	}
 
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: segment.ReviewKey}
-	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, GateFindingsPath: env.gateFindingsPath(row.Name)}, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name)}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}

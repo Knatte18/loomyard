@@ -28,6 +28,69 @@ func (f fakePoster) PostTagged(receiver, body string, tags creelengine.PostTags)
 	return 1, f.err
 }
 
+// TestPostAsProgram_PostsOnceThroughTheProgramClient proves postAsProgram posts once through the program client.
+// The receiver, line and tags arrive unchanged.
+// A failed client build or post returns the line with the cause.
+func TestPostAsProgram_PostsOnceThroughTheProgramClient(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const line = "[loom ask] a-slug: review the record"
+	tags := creelengine.PostTags{Run: "a-slug"}
+	buildErr := errors.New("creel: the program client cannot be built")
+	postErr := errors.New("creel: the receiver is not a listed strand")
+	tests := []struct {
+		name         string
+		buildErr     error
+		postErr      error
+		wantPosts    []string
+		wantErrParts []string
+	}{
+		{name: "PostsOnceWithReceiverLineAndTags", wantPosts: []string{"program tst:orch " + line}},
+		{name: "ClientBuildErrorReturnsTheLineWithTheCause", buildErr: buildErr, wantErrParts: []string{line, buildErr.Error()}},
+		{
+			name: "PostErrorReturnsTheLineWithTheCause", postErr: postErr,
+			wantPosts: []string{"program tst:orch " + line}, wantErrParts: []string{line, postErr.Error()},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var posts []string
+			var postedTags []creelengine.PostTags
+			program := func() (notifyPoster, error) {
+				if tt.buildErr != nil {
+					return nil, tt.buildErr
+				}
+				return fakePoster{identity: "program", posts: &posts, tags: &postedTags, err: tt.postErr}, nil
+			}
+
+			err := postAsProgram("tst:orch", line, tags, program)
+
+			if !slices.Equal(posts, tt.wantPosts) {
+				t.Errorf("posts = %q; want %q", posts, tt.wantPosts)
+			}
+			for i, got := range postedTags {
+				if got != tags {
+					t.Errorf("post %d tags = %+v; want %+v", i, got, tags)
+				}
+			}
+			if len(tt.wantErrParts) == 0 {
+				if err != nil {
+					t.Errorf("postAsProgram() error = %v; want nil", err)
+				}
+				return
+			}
+			for _, part := range tt.wantErrParts {
+				if err == nil || !strings.Contains(err.Error(), part) {
+					t.Errorf("postAsProgram() error = %v; want it to hold %q", err, part)
+				}
+			}
+		})
+	}
+}
+
 func TestNotifyPrime_SignsAndPosts(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

@@ -126,7 +126,11 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 	if err != nil {
 		return ReviewResult{}, err
 	}
-	prompt, err := composeReviewPrompt(e.stencilsDir, e.geom.SpecsDir, chairEngine, &p, directive, assistRules, reviewFilesIn(dir))
+	parentRules, err := parentRulesBlock(e.stencilsDir, chairEngine, opts)
+	if err != nil {
+		return ReviewResult{}, err
+	}
+	prompt, err := composeReviewPrompt(e.stencilsDir, e.geom.SpecsDir, chairEngine, &p, directive, assistRules, parentRules, reviewFilesIn(dir))
 	if err != nil {
 		return ReviewResult{}, err
 	}
@@ -139,16 +143,18 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 		files, skipReason := e.composeAssist(&p, opts, directive)
 		assist = e.assistSeat(&p, opts, files, e.seatSkills(&p), skipReason)
 	}
-	seats, err := e.seats.Run(withAssistant(p.reviewTable(opts, prompt.Values, e.seatSkills(&p)), assist))
+	table := e.withParentCoverage(withAssistant(p.reviewTable(opts, prompt.Values, e.seatSkills(&p)), assist), &p, opts)
+	seats, err := e.seats.Run(table)
 	return e.concludeReview(&p, opts, seats, err)
 }
 
 // probeTable returns the review table a probe or resume of p's review builds under opts.
-// The assistant seat is included when opts names one, and no prompt is composed.
+// The assistant seat is included when opts names one, and the parent coverage entry when opts names a parent-review ask.
+// No prompt is composed.
 func (e *Engine) probeTable(p *Profile, opts RunOpts) seatengine.Table {
 	files := reviewFilesIn(e.probeDirOf())
 	assist := e.assistSeat(p, opts, files, e.seatSkills(p), "")
-	return withAssistant(p.reviewTable(opts, reviewSeatValues(p, files), e.seatSkills(p)), assist)
+	return e.withParentCoverage(withAssistant(p.reviewTable(opts, reviewSeatValues(p, files), e.seatSkills(p)), assist), p, opts)
 }
 
 // instructionDir creates a fresh instruction directory named from prefix under the anchor's ephemeral burler directory.
@@ -242,7 +248,8 @@ func reviewResultOf(p *Profile, reviewer shuttleengine.Result) ReviewResult {
 // A reviewer that never started is a not-started result with a nil error.
 // Any other run error is wrapped as a shuttle run error.
 // A reviewer that ends without reaching done is its outcome with a nil error.
-// A done reviewer whose gate failed returns an error naming the gate.
+// A done reviewer whose gate failed returns an error naming the gate and its reason,
+// or the failing entry's findings when the failure carries no reason.
 // One whose gate passed is accepted through acceptReview, and its error is returned with the result.
 // Once the chair and every seat have stopped, the reports of assistants that end done are copied beside the review file.
 // Assists says what became of each one.
@@ -269,7 +276,11 @@ func (e *Engine) concludeReview(p *Profile, opts RunOpts, seats seatengine.Resul
 		return result, nil
 	}
 	if gate := reviewer.Gate; gate != nil && !gate.Passed {
-		return result, fmt.Errorf("burler: the reviewer reached done but its review gate failed, so the round has no verdict: %s", gate.Reason)
+		reason := gate.Reason
+		if reason == "" {
+			reason = gate.Findings
+		}
+		return result, fmt.Errorf("burler: the reviewer reached done but its review gate failed, so the round has no verdict: %s", reason)
 	}
 
 	result.ForkAudit = reviewer.ForkAudit

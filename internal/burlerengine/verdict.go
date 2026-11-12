@@ -80,6 +80,9 @@ type Finding struct {
 	// The parser does not require it, so a review file without it still parses;
 	// the strict parse of the current round rejects a finding whose fix is empty.
 	Fix string `yaml:"fix"`
+	// ParentIDs names the ids of the parent's report that a finding kept from that report covers, such as P1.
+	// It is optional and never validated; the parent coverage gate entry reads it.
+	ParentIDs []string `yaml:"parent_ids"`
 }
 
 // reviewHeader mirrors the review file's YAML frontmatter shape.

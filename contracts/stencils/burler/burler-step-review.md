@@ -9,13 +9,16 @@
      The fill requires cluster_rules, review_path, review_format_path and prior_rounds non-empty.
      assist_rules is optional:
      an assisted round fills it with the burler-assist-consolidation part, led by its blank line, and any other round renders it as nothing.
+     parent_rules is optional:
+     a round holding a parent-review ask fills it with the burler-parent-consolidation part, led by its blank line,
+     and any other round renders it as nothing.
      There are no {{if}}/{{range}} conditionals in this file:
      a required marker inside a conditional branch would render silently blank when present-but-empty
      (see internal/stencil/stencil.go). -->
 
 ## Cluster rules
 
-{{.cluster_rules}}{{.assist_rules}}
+{{.cluster_rules}}{{.assist_rules}}{{.parent_rules}}
 
 ## The review file
 

@@ -648,6 +648,12 @@ var BurlerTemplateAssistReviewerFanned []byte
 //go:embed burler/burler-assist-consolidation.md
 var BurlerAssistConsolidation []byte
 
+// BurlerParentConsolidation is the review step's part of a round that asked the parent orch:
+// the chair waits for the parent's answer and keeps every finding of its report.
+//
+//go:embed burler/burler-parent-consolidation.md
+var BurlerParentConsolidation []byte
+
 // BurlerAssistClusterFan is an assistant reviewer's fanned cluster-rules part:
 // its spawn and in-turn wait come from its engine's assist-fan engine block.
 //
@@ -768,6 +774,7 @@ var entries = []registryEntry{
 	{"burler-template-assist-reviewer", &BurlerTemplateAssistReviewer},
 	{"burler-template-assist-reviewer-fanned", &BurlerTemplateAssistReviewerFanned},
 	{"burler-assist-consolidation", &BurlerAssistConsolidation},
+	{"burler-parent-consolidation", &BurlerParentConsolidation},
 	{"burler-assist-cluster-fan", &BurlerAssistClusterFan},
 	{"burler-template-fixer", &BurlerTemplateFixer},
 	{"burler-step-review", &BurlerStepReview},

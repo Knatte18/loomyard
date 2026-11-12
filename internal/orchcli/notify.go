@@ -91,6 +91,34 @@ func NotifyOrchAt(worktree *lymcwd.Location, program, line string) (posted bool,
 	return postNotice(worktree, "", program, line, creelengine.PostTags{}, func() (string, bool, error) { return OrchStrandOf(worktree) })
 }
 
+// ParentStrand answers the orch strand a notice of pair goes to, by NotifyParent's routing.
+// It also reports whether that orch's state records one.
+// The answer is the nearest worktree up from the pair's parent whose orch is live, else the prime's.
+func ParentStrand(pair *lymcwd.Location) (name string, recorded bool, err error) {
+	return parentOrchStrand(pair, OrchLive)
+}
+
+// PostAsProgram sends line as creel mail carrying tags to the strand receiver, signed as program alone.
+// It never claims the strand name the calling process carries, so the mail always comes from `<shortname>:<program>`.
+// A refusal or failure comes back as an error carrying the full line, and the post is not retried.
+func PostAsProgram(location *lymcwd.Location, receiver, program, line string, tags creelengine.PostTags) error {
+	return postAsProgram(receiver, line, tags, func() (notifyPoster, error) {
+		return creelcli.NewScopedProgramClient(location, "", program)
+	})
+}
+
+// postAsProgram posts line carrying tags to receiver once through the client program builds.
+func postAsProgram(receiver, line string, tags creelengine.PostTags, program func() (notifyPoster, error)) error {
+	poster, err := program()
+	if err != nil {
+		return noticeError(line, err)
+	}
+	if _, err := poster.PostTagged(receiver, line, tags); err != nil {
+		return noticeError(line, err)
+	}
+	return nil
+}
+
 // ParentOrchRecorded reports whether the orch a notice of pair goes to records an orch strand.
 // The answer decides whether a run's driver is watched or silent.
 func ParentOrchRecorded(pair *lymcwd.Location) (bool, error) {
