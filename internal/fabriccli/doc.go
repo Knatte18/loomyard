@@ -162,7 +162,8 @@
 //
 // The engine then adds its own refusals, and an equal anchor is reported as a no-op with nothing ended.
 // A move waits, printing what it waits on to stderr, until no dobby it will end has a pass in flight.
-// The prime's test-map refresh, a child of its dobby, counts as such a pass, so the move waits out a refresh in flight.
+// The prime's coverage-map upkeep pass, registered as `runproc.RoleTestMap`, is no such pass and is not waited for;
+// the end of the prime's hub-owner processes below ends it.
 // It takes the parent lock of the worktree's branch.
 // It ends the worktree's dobby when it is a beam.
 // For the prime it ends every dobby of the machine, sparing the push and sync roles.

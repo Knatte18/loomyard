@@ -86,6 +86,10 @@
 // [StackLayers] is the one place layers are merged:
 // the present files merge unexpanded in stack order under the spec's open maps;
 // a list, scalar or open map from a higher layer replaces the lower one whole.
+// A [Spec] may set a `MigrateLayer` hook, which rewrites each present file's bytes in memory before the merge.
+// The hook runs ahead of the retired-key drop.
+// So a load reads the value a retired key carried in a layer no reconcile has rewritten yet.
+// The hook's lines are discarded, and no file is written.
 // A [Stack] also names, in `Origins`, the highest layer holding each top-level key.
 // The merged document is expanded once, against `Board` for a hub-wide module and `Anchor` otherwise.
 //

@@ -16,12 +16,15 @@ func TestState_RoundTripKeepsUnknownKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("a foreign top-level key and a foreign run key survive an update", func(t *testing.T) {
+	t.Run("a foreign top-level key, the retired landings_since_test_map and a foreign run key survive an update", func(t *testing.T) {
 		t.Parallel()
 		path := filepath.Join(t.TempDir(), "state.json")
-		written := `{"pid": 1, "foreign_top": "kept", "runs": {"a": {"full_pass_owed": true, "foreign_run": 7}}}`
+		written := `{"pid": 1, "foreign_top": "kept", "landings_since_test_map": 4, "runs": {"a": {"full_pass_owed": true, "foreign_run": 7}}}`
 		if err := os.WriteFile(path, []byte(written), 0o644); err != nil {
 			t.Fatalf("WriteFile() = %v; want nil", err)
+		}
+		if got, found, err := ReadState(path); err != nil || !found || got.PID != 1 || !got.Runs["a"].FullPassOwed {
+			t.Fatalf("ReadState() = %+v, %v, %v; want pid 1 and run a owing a full pass", got, found, err)
 		}
 
 		if err := UpdateState(path, func(s *State) error {
@@ -35,7 +38,7 @@ func TestState_RoundTripKeepsUnknownKeys(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadFile() = %v; want nil", err)
 		}
-		for _, key := range []string{"foreign_top", "foreign_run"} {
+		for _, key := range []string{"foreign_top", "landings_since_test_map", "foreign_run"} {
 			if !strings.Contains(string(raw), key) {
 				t.Errorf("the rewritten record lost %q:\n%s", key, raw)
 			}

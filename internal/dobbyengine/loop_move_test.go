@@ -15,8 +15,8 @@ import (
 )
 
 // TestRun_NoPassWhileAMoveStands drives ticks with a move record present and then removed.
-// While the record stands, no pass, task, tidy agent or test-map refresh starts, though a landing is still counted.
-// The next tick starts the due pass, the ready task, the tidy agent and the refresh.
+// While the record stands, no pass, task, tidy agent or upkeep pass starts, though a landing is still counted.
+// The next tick starts the due pass, the ready task, the tidy agent and the upkeep pass.
 func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -50,12 +50,13 @@ func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 		return []TaskView{{Slug: "fresh", Kind: boardengine.KindTask, Parent: h.geom.WorktreeName}}, nil
 	}
 	h.deps.LoadConfig = func() (Config, error) {
-		return Config{MaxRuns: 5, BoardTidyEvery: 1, BoardTidyTimeoutMin: 30, TestMapEvery: 1, TestMapBatch: testMapBatch}, nil
+		return Config{MaxRuns: 5, BoardTidyEvery: 1, BoardTidyTimeoutMin: 30, TestMapUpkeep: true}, nil
 	}
 	h.deps.TestMapRunning = func() (bool, error) { return false, nil }
-	h.deps.StartTestMap = func(int) error {
+	h.deps.TestMapExitRecord = func() (TestMapExit, bool, error) { return TestMapExit{}, false, nil }
+	h.deps.StartTestMap = func() (<-chan PassExit, error) {
 		refreshes++
-		return nil
+		return make(chan PassExit), nil
 	}
 	// The first read baselines the landings, so the one landing shows from the second tick on.
 	h.deps.Landings = func() ([]string, error) {

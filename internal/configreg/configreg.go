@@ -183,7 +183,7 @@ func Modules() []Module {
 		{Name: agentconfig.ModuleName, Template: agentconfig.ConfigTemplate, OpenMaps: agentconfig.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(agentconfig.Load), Spec: agentconfig.ConfigSpec},
 		{Name: "batcher", Template: batcher.ConfigTemplate, PerNameMaps: batcher.ConfigPerNameMaps(), Migrate: batcher.MigrateConfig, CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
-		{Name: "beam", Template: dobbyengine.ConfigTemplate, CheckLoad: checkLoad(dobbyengine.LoadConfig), Spec: dobbyengine.ConfigSpec},
+		{Name: "beam", Template: dobbyengine.ConfigTemplate, Migrate: dobbyengine.MigrateConfig, CheckLoad: checkLoad(dobbyengine.LoadConfig), Spec: dobbyengine.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
 		{Name: "creel", Template: creelconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(creelconfig.LoadConfig), Reinterpretations: []Reinterpretation{{ID: creelconfig.TrustedHubsRepositoryReinterpretation, Rewrite: creelconfig.RewriteShortnamesToRepositories(repositoryOfShortname)}}, Spec: creelconfig.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, Migrate: darnengine.MigrateConfig, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},

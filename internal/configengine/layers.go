@@ -90,6 +90,9 @@ const (
 // so its base stays full in a hub too.
 // Overlay is the module's optional template overlay, picked by a selector key in the base layer;
 // its zero value means none.
+// MigrateLayer, when set, rewrites each present layer file's bytes in memory before the layers merge,
+// so a load reads the value a retired key carried before any reconcile rewrote the file.
+// It returns the rewritten bytes and one line per rewrite; the merge discards the lines and writes no file.
 type Spec struct {
 	Name              string
 	Template          []byte
@@ -105,6 +108,7 @@ type Spec struct {
 	HubOnlyWayForward map[string]string
 	SeedOnly          bool
 	Overlay           Overlay
+	MigrateLayer      func(layer []byte) ([]byte, []string, error)
 }
 
 // LocalFile returns the path of a module's local override file under anchor:
@@ -595,16 +599,24 @@ type Stack struct {
 
 // StackLayers returns the module's stack under dirs, and an error when a present layer is unreadable or invalid.
 // No present layer yields an empty Doc.
-// It merges the layers in stack order.
+// It merges the layers in stack order, each rewritten first by the spec's MigrateLayer when one is set.
 func StackLayers(dirs Dirs, spec Spec) (Stack, error) {
 	return stackLayers(dirs, spec, true)
 }
 
 // stackLayers merges a module's layers in stack order, reading them through readLayers with the given anchorLayers.
+// The spec's MigrateLayer rewrites each layer's bytes before the merge; a failed rewrite is marked [ErrInvalid].
 func stackLayers(dirs Dirs, spec Spec, anchorLayers bool) (Stack, error) {
 	layers, err := readLayers(dirs, spec, anchorLayers)
 	if err != nil {
 		return Stack{}, err
+	}
+	if spec.MigrateLayer != nil {
+		for i := range layers {
+			if layers[i].Bytes, _, err = spec.MigrateLayer(layers[i].Bytes); err != nil {
+				return Stack{}, MarkInvalid(fmt.Errorf("config file %s: %w", layers[i].Path, err))
+			}
+		}
 	}
 	stack := Stack{Doc: []byte{}, Layers: layers, Origins: map[string]LayerDoc{}}
 	for _, layer := range layers {

@@ -293,7 +293,8 @@ this section keeps only what is project-specific or stricter here.
   and a miss rebuilds the package whole.
   A failed build keeps the map's entries and is not retried at the same HEAD.
   A self-check re-measures a kept entry a fresh build cannot place, and an audit round re-measures the oldest entries.
-  The prime's dobby starts the verb every `test_map_every` landings.
+  While `test_map_upkeep` is on, the prime's dobby starts a `--upkeep` pass whenever work is left:
+  no exit record, a HEAD past the last pass's plan, or queued work on a hub of two or more slots.
 - A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
   It takes the diff's new and changed top-level tests against the merge base with the parent branch,
   leaving out tier2 and tier3 tests, tests marked `//testtiming:keep` and tests that may run module code in another process.

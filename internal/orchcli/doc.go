@@ -45,9 +45,9 @@
 // `BeamDown` removes the orch strand, after which the watcher exits on its own.
 // It ends the worktree's dobby through `runproc.EndRole`, so no other process of the beam is signalled;
 // each part stops only when live.
-// For the prime it then ends the test-map refresh the dobby started, whether or not the dobby is live.
-// The refresh is the `runproc.RoleTestMap` record under `runproc.HubOwner`.
-// That refresh has its own record and process group and so outlives the dobby's end.
+// For the prime it then ends the coverage-map upkeep pass, whether or not the dobby is live.
+// The pass is the `runproc.RoleTestMap` record under `runproc.HubOwner`, which the pass registers itself.
+// It has its own record and process group and so outlives the dobby's end.
 // `OrchLive` is the liveness predicate other modules call:
 // the worktree's orch state records a strand that reed tracks and reports live.
 //

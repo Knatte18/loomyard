@@ -1,6 +1,6 @@
 // beamdown_test.go pins the order of `lym beam stop`.
 // It removes the orch strand first and ends the dobby only when it is live.
-// It ends the prime's test-map refresh whether or not the dobby is live, so a second call stops nothing.
+// It ends the prime's coverage-map upkeep pass whether or not the dobby is live, so a second call stops nothing.
 
 package orchcli
 
@@ -25,7 +25,7 @@ func TestBeamDown_StopsOrchThenTheDobbyByRole(t *testing.T) {
 		dobbyLive bool
 		// noStrand leaves reed tracking no orch strand.
 		noStrand bool
-		// testMap wires the refresh end, as for the prime; testMapFails makes it fail.
+		// testMap wires the upkeep pass end, as for the prime; testMapFails makes it fail.
 		testMap        bool
 		testMapFails   bool
 		wantCalls      []string
@@ -37,9 +37,9 @@ func TestBeamDown_StopsOrchThenTheDobbyByRole(t *testing.T) {
 		{name: "the tracked orch is removed and then the live dobby ended", dobbyLive: true, wantCalls: []string{"remove", "end-dobby"}, wantOrchGone: true, wantDobbyEnded: true},
 		{name: "a dead dobby is not ended", wantCalls: []string{"remove"}, wantOrchGone: true},
 		{name: "a second call stops nothing", noStrand: true, wantCalls: nil},
-		{name: "the prime's refresh is ended after its live dobby", dobbyLive: true, testMap: true, wantCalls: []string{"remove", "end-dobby", "end-test-map"}, wantOrchGone: true, wantDobbyEnded: true},
-		{name: "the prime's refresh is ended though its dobby is dead", testMap: true, wantCalls: []string{"remove", "end-test-map"}, wantOrchGone: true},
-		{name: "a refresh end that fails is returned after the dobby ended", dobbyLive: true, testMap: true, testMapFails: true, wantCalls: []string{"remove", "end-dobby", "end-test-map"}, wantOrchGone: true, wantDobbyEnded: true, wantErr: "end the test-map refresh"},
+		{name: "the prime's upkeep pass is ended after its live dobby", dobbyLive: true, testMap: true, wantCalls: []string{"remove", "end-dobby", "end-test-map"}, wantOrchGone: true, wantDobbyEnded: true},
+		{name: "the prime's upkeep pass is ended though its dobby is dead", testMap: true, wantCalls: []string{"remove", "end-test-map"}, wantOrchGone: true},
+		{name: "an upkeep pass end that fails is returned after the dobby ended", dobbyLive: true, testMap: true, testMapFails: true, wantCalls: []string{"remove", "end-dobby", "end-test-map"}, wantOrchGone: true, wantDobbyEnded: true, wantErr: "end the coverage-map upkeep pass"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

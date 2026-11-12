@@ -187,12 +187,13 @@ func runAnAdoptHold(t *testing.T, ownerAfterLift string, stopAt int) adoptHoldRu
 		return []TaskView{{Slug: "fresh", Kind: boardengine.KindTask, Parent: h.geom.WorktreeName}}, nil
 	}
 	h.deps.LoadConfig = func() (Config, error) {
-		return Config{MaxRuns: 5, BoardTidyEvery: 1, BoardTidyTimeoutMin: 30, TestMapEvery: 1, TestMapBatch: testMapBatch}, nil
+		return Config{MaxRuns: 5, BoardTidyEvery: 1, BoardTidyTimeoutMin: 30, TestMapUpkeep: true}, nil
 	}
 	h.deps.TestMapRunning = func() (bool, error) { return false, nil }
-	h.deps.StartTestMap = func(int) error {
+	h.deps.TestMapExitRecord = func() (TestMapExit, bool, error) { return TestMapExit{}, false, nil }
+	h.deps.StartTestMap = func() (<-chan PassExit, error) {
 		refreshes++
-		return nil
+		return make(chan PassExit), nil
 	}
 	h.deps.Landings = func() ([]string, error) {
 		landingReads++

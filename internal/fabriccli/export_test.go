@@ -13,6 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
+// LiveUnsparedChildForTest exposes the anchor verb's scan of a dobby's children for a pass in flight.
+func LiveUnsparedChildForTest(runProcDir string, parents []int) (int, bool, error) {
+	return liveUnsparedChild(runProcDir, parents)
+}
+
 // SetOpenPRHeadsForTest replaces the open-PR lookup with lookup for the test's lifetime.
 func SetOpenPRHeadsForTest(t *testing.T, lookup func(ctx context.Context, remoteURL string) (map[string]bool, error)) {
 	t.Helper()

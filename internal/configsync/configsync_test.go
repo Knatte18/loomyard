@@ -328,6 +328,17 @@ func TestReconcileAll(t *testing.T) {
 				loadUnchanged:   true,
 			}},
 		},
+		{
+			name:  "apply migrates a retired beam test_map_every of 0 before the retired-key prune removes it",
+			seed:  map[string]string{"beam": "test_map_every: 0\n"},
+			apply: true,
+			want: map[string]moduleWant{"beam": {
+				applied:         true,
+				migratedAll:     []string{"test_map_every: 0 became test_map_upkeep: false"},
+				fileContains:    []string{"test_map_upkeep: false"},
+				fileNotContains: []string{"test_map_every"},
+			}},
+		},
 	}
 
 	// A below-floor key in each floored module: a dry run reports the raise and writes nothing;

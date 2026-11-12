@@ -8,26 +8,29 @@ package beamcli
 import (
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
+	"strconv"
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // standInGateScript is the stand-in for the lym binary.
-// The test runs it as `sh gate testmap --max N`, so $0 is `gate` and the arguments after it are the verb's.
-// It records its command line and working directory, waits for the release file, and then records that it finished.
-// A child that was ended early never writes the finish record.
-const standInGateScript = `printf '%s\n%s\n' "$0 $*" "$(pwd -P)" > ran.tmp && mv ran.tmp ran.txt
+// The test runs it as `sh gate testmap --upkeep`, so $0 is `gate` and the arguments after it are the verb's.
+// It records whether its standard output is a pipe, its command line and its working directory.
+// It then waits for the release file.
+// It then exits with the code the code file holds, printing a failure line for a code other than 0.
+const standInGateScript = `if [ -p /dev/stdout ]; then echo pipe > stdout-kind; else echo not-pipe > stdout-kind; fi
+printf '%s\n%s\n' "$0 $*" "$(pwd -P)" > ran.tmp && mv ran.tmp ran.txt
 i=0
 while [ ! -e release ] && [ "$i" -lt 600 ]; do sleep 0.05; i=$((i+1)); done
-: > done.tmp && mv done.tmp done.txt
+code=$(cat code)
+[ "$code" = 0 ] || echo "gate testmap: cannot register the upkeep pass"
+exit "$code"
 `
 
-// standInPollTick and standInDeadline bound how long a test waits for the stand-in's record files.
+// standInPollTick and standInDeadline bound how long a test waits for the stand-in's record files and exit.
 const (
 	standInPollTick = 10 * time.Millisecond
 	standInDeadline = 10 * time.Second
@@ -53,34 +56,34 @@ func TestStartTestMap(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		// unwritableRegistry puts the run-proc directory below a regular file, so registering the child fails.
-		unwritableRegistry bool
+		name     string
+		code     int
+		wantExit dobbyengine.PassExit
 	}{
-		{name: "the child runs gate testmap in the anchor and is registered as the test-map refresh"},
-		{name: "a registration that fails leaves the child running and returns no error", unwritableRegistry: true},
+		{name: "a clean exit is delivered with code 0 and no error text", code: 0, wantExit: dobbyengine.PassExit{}},
+		{
+			name:     "a failed exit is delivered with its code and the error text its output carries",
+			code:     1,
+			wantExit: dobbyengine.PassExit{Code: 1, Error: "gate testmap: cannot register the upkeep pass"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			anchor := t.TempDir()
-			runProcDir := filepath.Join(t.TempDir(), "runproc")
-			if tt.unwritableRegistry {
-				blocker := filepath.Join(t.TempDir(), "blocker")
-				if err := os.WriteFile(blocker, nil, 0o644); err != nil {
-					t.Fatal(err)
-				}
-				runProcDir = filepath.Join(blocker, "runproc")
-			}
 			if err := os.WriteFile(filepath.Join(anchor, "gate"), []byte(standInGateScript), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(anchor, "code"), []byte(strconv.Itoa(tt.code)), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			// The release runs before the anchor's removal, so the stand-in is not left waiting.
 			t.Cleanup(func() { _ = os.WriteFile(filepath.Join(anchor, "release"), nil, 0o644) })
 			lookup := func() (string, error) { return "/bin/sh", nil }
 
-			if err := startTestMap(lookup, anchor, runProcDir, 3); err != nil {
-				t.Fatalf("startTestMap() = %v; want nil", err)
+			exit, err := startTestMap(lookup, anchor)
+			if err != nil {
+				t.Fatalf("startTestMap() = _, %v; want nil", err)
 			}
 
 			awaitFile(t, filepath.Join(anchor, "ran.txt"))
@@ -92,31 +95,33 @@ func TestStartTestMap(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if want := "gate testmap --max 3\n" + wantDir + "\n"; string(ran) != want {
+			if want := "gate testmap --upkeep\n" + wantDir + "\n"; string(ran) != want {
 				t.Errorf("the child recorded %q; want its command line and working directory %q", ran, want)
 			}
-			if tt.unwritableRegistry {
-				if records, err := runproc.List(runProcDir, runproc.HubOwner); err == nil && len(records) != 0 {
-					t.Fatalf("List() = %+v; want no record, since the registration failed", records)
-				}
-			} else {
-				records, err := runproc.List(runProcDir, runproc.HubOwner)
-				if err != nil {
-					t.Fatalf("List() = _, %v; want nil", err)
-				}
-				if len(records) != 1 || records[0].Role != runproc.RoleTestMap {
-					t.Fatalf("List() = %+v; want one record with role %q", records, runproc.RoleTestMap)
-				}
-				if want := []string{"/bin/sh", "gate", "testmap", "--max", "3"}; !slices.Equal(records[0].Argv, want) {
-					t.Errorf("registered argv = %q; want %q", strings.Join(records[0].Argv, " "), strings.Join(want, " "))
-				}
+			kind, err := os.ReadFile(filepath.Join(anchor, "stdout-kind"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(kind) != "not-pipe\n" {
+				t.Errorf("the child's standard output is %q; want a file, so a dead dobby cannot break the pass's writes", kind)
+			}
+			select {
+			case got := <-exit:
+				t.Fatalf("exit delivered %+v while the child still waits; want nothing yet", got)
+			default:
 			}
 
-			// A child that is still running after the start returned finishes once released.
 			if err := os.WriteFile(filepath.Join(anchor, "release"), nil, 0o644); err != nil {
 				t.Fatal(err)
 			}
-			awaitFile(t, filepath.Join(anchor, "done.txt"))
+			select {
+			case got := <-exit:
+				if got != tt.wantExit {
+					t.Errorf("exit = %+v; want %+v", got, tt.wantExit)
+				}
+			case <-time.After(standInDeadline):
+				t.Fatalf("no exit delivered within %s of the release", standInDeadline)
+			}
 		})
 	}
 }

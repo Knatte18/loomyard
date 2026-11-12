@@ -4,6 +4,7 @@
 package configengine_test
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"maps"
@@ -597,6 +598,96 @@ func TestLoad_LayerStack(t *testing.T) {
 			}
 		})
 	}
+}
+
+// migrateSpec is a per-worktree spec whose template holds on, with old retired and a MigrateLayer hook.
+// The hook rewrites a layer's old: 0 line to on: false and fails on a layer holding bad.
+func migrateSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:        layerModule,
+		Template:    []byte("on: true\n"),
+		Categories:  map[string]configengine.Category{"on": configengine.CategoryNone},
+		RetiredKeys: map[string]configengine.Category{"old": configengine.CategoryNone},
+		MigrateLayer: func(layer []byte) ([]byte, []string, error) {
+			if bytes.Contains(layer, []byte("bad")) {
+				return nil, nil, errors.New("hook refused the layer")
+			}
+			return bytes.ReplaceAll(layer, []byte("old: 0"), []byte("on: false")), []string{"old -> on"}, nil
+		},
+	}
+}
+
+// TestLoad_MigrateLayer pins that Load runs the spec's MigrateLayer over each present layer in memory.
+// A value a retired key carried resolves into the template key the hook moves it to, in any layer, and no file changes.
+// A failing hook fails Load marked ErrInvalid and naming the layer file it failed on.
+func TestLoad_MigrateLayer(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const base = "on: true\n"
+	tests := []struct {
+		name  string
+		files map[configengine.Layer]string
+		// holder is the layer whose file holds the retired key, and so the one that must stay as written.
+		holder configengine.Layer
+		want   string
+	}{
+		{
+			name:   "a base layer's retired key resolves into the template key",
+			files:  map[configengine.Layer]string{configengine.LayerDefault: "old: 0\n"},
+			holder: configengine.LayerDefault,
+			want:   "false",
+		},
+		{
+			name:   "a worktree layer's retired key resolves into the template key",
+			files:  map[configengine.Layer]string{configengine.LayerDefault: base, configengine.LayerWorktree: "old: 0\n"},
+			holder: configengine.LayerWorktree,
+			want:   "false",
+		},
+		{
+			name:   "a local layer's retired key resolves into the template key",
+			files:  map[configengine.Layer]string{configengine.LayerDefault: base, configengine.LayerLocal: "old: 0\n"},
+			holder: configengine.LayerLocal,
+			want:   "false",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newLayerFixture(t, geometryHub, tc.files)
+			holderPath, _ := configengine.LayerFile(fx.dirs, migrateSpec(), tc.holder)
+
+			resolved, err := configengine.Load(fx.dirs, migrateSpec())
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got := decodeTopLevel(t, resolved); !mapsEqual(got, map[string]string{"on": tc.want}) {
+				t.Errorf("Load = %v; want on = %s alone\nresolved:\n%s", got, tc.want, resolved)
+			}
+			onDisk, err := os.ReadFile(holderPath)
+			if err != nil {
+				t.Fatalf("read %s: %v", holderPath, err)
+			}
+			if string(onDisk) != tc.files[tc.holder] {
+				t.Errorf("%s = %q after Load; want %q unchanged", holderPath, onDisk, tc.files[tc.holder])
+			}
+		})
+	}
+
+	t.Run("a failing hook fails Load marked ErrInvalid and naming the layer file", func(t *testing.T) {
+		t.Parallel()
+		fx := newLayerFixture(t, geometryHub, map[configengine.Layer]string{
+			configengine.LayerDefault:  base,
+			configengine.LayerWorktree: "bad: 1\n",
+		})
+		worktreePath := configengine.ConfigFile(fx.anchor, layerModule)
+		_, err := configengine.Load(fx.dirs, migrateSpec())
+		if err == nil || !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("Load error = %v; want one marked ErrInvalid", err)
+		}
+		if want := "config file " + worktreePath + ": hook refused the layer"; err.Error() != want {
+			t.Errorf("Load error = %q; want %q", err, want)
+		}
+	})
 }
 
 // TestValidateLocal pins the machine-layer rule: the local layer refuses a machine key.

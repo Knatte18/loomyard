@@ -122,7 +122,7 @@ type orchCLI struct {
 	dobbyLive func() (bool, error)
 	// endDobby ends this worktree's dobby and the processes below it, and no other process of the beam.
 	endDobby func() error
-	// endTestMap ends the test-map refresh the prime's dobby started, and no other process; nil, as for a beam, ends none.
+	// endTestMap ends the prime's coverage-map upkeep pass, and no other process; nil, as for a beam, ends none.
 	endTestMap func() error
 	// reapInherited waits on the children a re-exec'd watcher inherited, which `watch` calls before it starts anything.
 	reapInherited func()

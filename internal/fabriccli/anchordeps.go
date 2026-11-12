@@ -452,10 +452,39 @@ func runStatusUnfinished(path string) (bool, error) {
 	return status.State != shedengine.StateDone, nil
 }
 
+// liveUnsparedChild returns the pid of a live child of one of parents, and reports whether there is one.
+// A child registered in the run-process registry at runProcDir as a push, board sync or upkeep pass does not count.
+// A zombie child does not count either.
+func liveUnsparedChild(runProcDir string, parents []int) (int, bool, error) {
+	owners, err := runproc.Owners(runProcDir)
+	if err != nil {
+		return 0, false, err
+	}
+	spared := map[int]bool{}
+	for _, registered := range owners {
+		for _, record := range registered {
+			if record.Role == runproc.RolePush || record.Role == runproc.RoleSync || record.Role == runproc.RoleTestMap {
+				spared[record.PID] = true
+			}
+		}
+	}
+	stats, err := proc.ListStats()
+	if err != nil {
+		return 0, false, err
+	}
+	for _, stat := range stats {
+		if !stat.Zombie && !spared[stat.PID] && slices.Contains(parents, stat.PPID) {
+			return stat.PID, true, nil
+		}
+	}
+	return 0, false, nil
+}
+
 // dobbyPassInFlight describes the pass of the dobby of worktree that is in flight, or returns empty when none is.
 // A pass is in flight while a run the dobby drives holds its driver lock.
-// It is also in flight while the dobby has a live child process other than a registered push or board sync.
+// It is also in flight while the dobby has a live child process other than a registered push, board sync or upkeep pass.
 // A pass that is spawned but does not yet hold its lock is such a process.
+// A registered coverage-map upkeep pass is not waited for: the move's end of the dobby's processes ends it.
 func dobbyPassInFlight(acting *lymcwd.Location, primeName, runProcDir, owner, worktree string) (string, error) {
 	records, err := runproc.List(runProcDir, owner)
 	if err != nil {
@@ -471,26 +500,12 @@ func dobbyPassInFlight(acting *lymcwd.Location, primeName, runProcDir, owner, wo
 		return "", nil
 	}
 
-	owners, err := runproc.Owners(runProcDir)
+	childPID, found, err := liveUnsparedChild(runProcDir, dobbyPIDs)
 	if err != nil {
 		return "", err
 	}
-	spared := map[int]bool{}
-	for _, registered := range owners {
-		for _, record := range registered {
-			if record.Role == runproc.RolePush || record.Role == runproc.RoleSync {
-				spared[record.PID] = true
-			}
-		}
-	}
-	stats, err := proc.ListStats()
-	if err != nil {
-		return "", err
-	}
-	for _, stat := range stats {
-		if !stat.Zombie && !spared[stat.PID] && slices.Contains(dobbyPIDs, stat.PPID) {
-			return fmt.Sprintf("a pass of the dobby of %s (process %d)", worktree, stat.PID), nil
-		}
+	if found {
+		return fmt.Sprintf("a pass of the dobby of %s (process %d)", worktree, childPID), nil
 	}
 
 	prime, err := lymcwd.NamedWorktree(acting.HubPath, primeName)
