@@ -65,10 +65,13 @@ func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs) *Codex {
 const permissionModeBypass = "bypass"
 
 // validateSpec refuses what a Codex run cannot realize, before anything is written:
-// a resumed session, and a model choice or permission mode a Codex launch cannot realize.
+// a resumed session, an advisor, and a model choice or permission mode a Codex launch cannot realize.
 func validateSpec(spec shuttleengine.Spec, codex Config) error {
 	if spec.ResumeSessionID != "" {
 		return fmt.Errorf("codexengine: Codex sessions cannot be resumed by a new run; way forward: start a fresh session")
+	}
+	if spec.Advisor != "" {
+		return fmt.Errorf("codexengine: advisor %q given, but Codex has no advisor tool; way forward: drop the advisor, or run on an engine that has one, such as claude", spec.Advisor)
 	}
 	return validateChoice(spec.ModelChoice, spec.PermissionMode, codex)
 }

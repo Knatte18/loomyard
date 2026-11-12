@@ -51,6 +51,7 @@
 // A `.codex/rules` folder in the worktree refuses the launch, since an allow rule there lifts the sandbox;
 // a `.codex/config.toml` there is named in a Warn, since its hooks run unreviewed.
 // Both are read on disk, tracked by git or not, since Codex reads them either way.
+// A spec naming an advisor refuses the launch, since Codex has no advisor tool.
 // The first turn is the positional prompt pointer.
 // After Codex exits the line appends an exit record to the run's events file and exits the pane's shell;
 // so a Codex exit reads as a dead pane;

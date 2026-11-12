@@ -48,6 +48,10 @@ type Spec struct {
 	// DenyPublish, when true, makes the engine install a shell guard for this one run and announce it.
 	// The guard refuses git push and gh calls beyond reads, comments, and title and body edits.
 	DenyPublish bool
+	// Advisor, when non-empty, names the model the session consults through its provider's advisor tool, for this run alone.
+	// The value is provider vocabulary and is passed through as given; Spec validation does not check it.
+	// An engine whose provider has no advisor refuses a non-empty value before it writes anything.
+	Advisor string
 	// PermissionMode, when non-empty, selects the run's permission mode.
 	// Empty defers to the engine's default, its bypass mode.
 	// The values are provider vocabulary; only the engine knows which ones its provider realizes.

@@ -221,7 +221,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 
 	scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role)
 	scope.Env = subagentEffortEnv(cfg.Agents, spec.ConfigRole)
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, spec.TurnHookCommand, creelFlagDirForHook, scope)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, spec.TurnHookCommand, creelFlagDirForHook, spec.Advisor, scope)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}

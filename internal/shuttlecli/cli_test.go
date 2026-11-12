@@ -575,6 +575,7 @@ func TestRunCmd_FocusFlag(t *testing.T) {
 // TestRunCmd_ModelSpec pins that run's --model takes a model spec.
 // An alias or an escape-form spec picks the engine whose Prepare sees the run's spec, with the resolved model and effort.
 // No --model leaves the set's default engine.
+// --advisor reaches that spec unchanged, and its absence leaves the spec's advisor empty.
 // A spec the registry cannot resolve is refused before any engine prepares.
 func TestRunCmd_ModelSpec(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -583,6 +584,8 @@ func TestRunCmd_ModelSpec(t *testing.T) {
 		name string
 		// model is the --model value; empty passes no flag.
 		model string
+		// advisor is the --advisor value; empty passes no flag.
+		advisor string
 		// wantEngine is the engine whose Prepare must see the spec; empty means none may.
 		wantEngine string
 		wantChoice shuttleengine.ModelChoice
@@ -591,6 +594,7 @@ func TestRunCmd_ModelSpec(t *testing.T) {
 	}{
 		{name: "CodexAliasWithEffort", model: "luna[high]", wantEngine: "codex", wantChoice: shuttleengine.ModelChoice{Engine: "codex", Model: "gpt-6-luna", Effort: "high"}},
 		{name: "ClaudeAlias", model: "sonnet", wantEngine: "claude", wantChoice: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet"}},
+		{name: "ClaudeAliasWithAdvisor", model: "sonnet", advisor: "opus", wantEngine: "claude", wantChoice: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet"}},
 		{name: "EscapeForm", model: "claude:claude-opus-5-5[max]", wantEngine: "claude", wantChoice: shuttleengine.ModelChoice{Engine: "claude", Model: "claude-opus-5-5", Effort: "max"}},
 		{name: "NoModel", wantEngine: shuttlefake.EngineName},
 		{name: "UnknownAlias", model: "bogus[high]", wantErr: `unknown alias "bogus"`},
@@ -615,6 +619,9 @@ func TestRunCmd_ModelSpec(t *testing.T) {
 			if tt.model != "" {
 				args = append(args, "--model", tt.model)
 			}
+			if tt.advisor != "" {
+				args = append(args, "--advisor", tt.advisor)
+			}
 			cmd.SetArgs(args)
 			if err := cmd.Execute(); err != nil {
 				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
@@ -628,6 +635,9 @@ func TestRunCmd_ModelSpec(t *testing.T) {
 			if tt.wantEngine != "" {
 				if got := engines[tt.wantEngine].LastSpec.ModelChoice; got != tt.wantChoice {
 					t.Errorf("Spec.ModelChoice = %+v; want %+v", got, tt.wantChoice)
+				}
+				if got := engines[tt.wantEngine].LastSpec.Advisor; got != tt.advisor {
+					t.Errorf("Spec.Advisor = %q; want %q", got, tt.advisor)
 				}
 				return
 			}

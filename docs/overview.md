@@ -644,6 +644,8 @@ User-facing modules each get one `lym <module>` namespace:
   `--list-models` prints the model registry's aliases with their engine, model and default effort,
   and the output names the engine, model and effort the session got.
   Every session shuttle launches, run or opened, starts in its engine's bypass mode unless the caller passes `prompt`, which an interactive session accepts.
+  `lym shuttle run --advisor <model>` gives that one run Claude Code's advisor tool with the named model, an alias such as `opus` or a full model id;
+  no lym config key sets an advisor, and the codex engine refuses one.
   `lym shuttle await <path>... [--cap]` is the read-only capped wait on one or more files, the keep-cache-warm wait any agent can run, needing no hub or git repository;
   its cap defaults to the caller role's keep-warm cap from `claude.yaml`.
   `lym shuttle await-forks [--cap]` is the same capped wait over the forks the calling agent session spawned, read from its transcript through the engine:

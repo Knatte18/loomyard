@@ -249,9 +249,11 @@ func buildOpenSettings(creelFlagDirPosix string, scope sessionScope) ([]byte, er
 }
 
 // settingsDoc is the Claude Code settings.json document written for a session:
-// its hooks, with the session's scope following as the last keys.
+// its hooks, the run's advisor model when it names one, and the session's scope as the last keys.
 type settingsDoc struct {
 	Hooks settingsHooks `json:"hooks"`
+	// AdvisorModel is Claude Code's advisorModel setting, which turns on the server-side advisor tool with that model.
+	AdvisorModel string `json:"advisorModel,omitempty"`
 	sessionScope
 }
 
@@ -430,8 +432,9 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // It runs after their recording on the same input, through turnHookStep;
 // the prompt command still exits 0, and the Stop command exits with its recording's status.
 // In a merged creel Stop command it runs first, before creel's delivery, whether or not mail is then handed out.
+// A non-empty advisorModel, an alias or a full model id, is written as `advisorModel`; an empty one leaves the key out.
 // scope is the session's scope, carried as the document's last keys; the zero scope adds none.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, turnHookCommand, creelFlagDirPosix string, scope sessionScope) ([]byte, error) {
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, turnHookCommand, creelFlagDirPosix, advisorModel string, scope sessionScope) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -462,6 +465,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 			PreCompact:        activityStampHook(eventsPathPosix),
 			PostCompact:       activityStampHook(eventsPathPosix),
 		},
+		AdvisorModel: advisorModel,
 		sessionScope: scope,
 	}
 

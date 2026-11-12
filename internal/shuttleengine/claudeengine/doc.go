@@ -230,6 +230,12 @@
 // That covers the empty `attribution`, which keeps a landing's credit block the one credit.
 // It also covers `promptSuggestionEnabled` false, which IdleSession needs.
 // heddle renders that file at the session's anchor, and a session started where none is rendered goes without them.
+// A run whose Spec.Advisor names a model sets `advisorModel` to it.
+// That setting turns on Claude Code's server-side advisor tool.
+// The value is an alias such as `opus` or a full model id, and a run naming none leaves the key out.
+// The resume line names the same settings file, so a revived session keeps its advisor.
+// Bound: Claude Code 2.1.322 took `opus` from the settings in a tmux run;
+// it resolved the alias to `claude-opus-5-5` and called the advisor.
 // An engine told a hub board directory also installs a second PostToolUse entry with no matcher, creel's mail hook;
 // an engine told none, a standalone run, installs the stamp alone.
 // Its command is plain POSIX `sh`.
