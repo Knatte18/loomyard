@@ -96,10 +96,13 @@ func TestLoad(t *testing.T) {
 
 // TestTemplateLadder pins the template's ladder: each profile's review rounds and hard caps per perch for loom;
 // the Code perch's for darn, every hard cap its rounds plus one.
-// It also pins that each profile's sampler block carries its darn block's loom values;
+// It also pins that each profile's sampler block carries its darn block's rounds;
 // sampler.code_review is on from light up, and sampler has no default profile.
+// Only the darn block sets the Code-Review reviewer, to opus[high].
 // Each profile's motif block holds its tapestry block's Discussion perch and nothing else.
 // Each profile's arras block holds that Discussion perch's rounds and the split perch's alike, with a hard cap one above.
+//
+//testtiming:keep pins the template's per-block code_reviewer_model values, which the lookup tests over a fixture file cannot see
 func TestTemplateLadder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -156,6 +159,13 @@ func TestTemplateLadder(t *testing.T) {
 			pawlKeys := pawl["loom"].(map[string]any)
 			got["pawl code"] = map[string]int{"max": pawlKeys["code_max_bounces"].(int), "hard": pawlKeys["code_hard_max_bounces"].(int)}
 			want["pawl code"] = perch(tt.darnCode)
+			sampler, err := profiles.Settings(tt.profile, "sampler")
+			if err != nil {
+				t.Fatal(err)
+			}
+			samplerLoom := sampler["loom"].(map[string]any)
+			got["sampler code"] = map[string]int{"max": samplerLoom["code_max_bounces"].(int), "hard": samplerLoom["code_hard_max_bounces"].(int)}
+			want["sampler code"] = perch(tt.darnCode)
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("Settings(%s) rounds = %v; want %v", tt.profile, got, want)
 			}
@@ -178,13 +188,6 @@ func TestTemplateLadder(t *testing.T) {
 			if !reflect.DeepEqual(arras, wantArras) {
 				t.Errorf("Settings(%s, arras) = %v; want %v", tt.profile, arras, wantArras)
 			}
-			sampler, err := profiles.Settings(tt.profile, "sampler")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(sampler["loom"], darn["loom"]) {
-				t.Errorf("Settings(%s, sampler) loom = %v; want darn's %v", tt.profile, sampler["loom"], darn["loom"])
-			}
 			wantReview := tt.profile != "speed"
 			samplerKeys, _ := sampler["sampler"].(map[string]any)
 			if wantReview && samplerKeys["code_review"] != true {
@@ -193,11 +196,15 @@ func TestTemplateLadder(t *testing.T) {
 			if !wantReview && sampler["sampler"] != nil {
 				t.Errorf("Settings(%s, sampler) sampler = %v; want no sampler key, leaving code_review false", tt.profile, sampler["sampler"])
 			}
-			blockKeys := map[string]map[string]any{"tapestry": tapestry["loom"].(map[string]any), "darn": darnKeys, "pawl": pawlKeys}
+			blockKeys := map[string]map[string]any{"tapestry": tapestry["loom"].(map[string]any), "darn": darnKeys, "pawl": pawlKeys, "sampler": samplerLoom}
 			for block, keys := range blockKeys {
 				fan, present := keys["code_reviewer_fan"]
 				if wantSolo := slices.Contains(tt.solo, block); present != wantSolo || (present && fan != "") {
 					t.Errorf("Settings(%s, %s) code_reviewer_fan = %v, present %v; want %q present %v", tt.profile, block, fan, present, "", wantSolo)
+				}
+				model, present := keys["code_reviewer_model"]
+				if wantOpus := block == "darn"; present != wantOpus || (present && model != "opus[high]") {
+					t.Errorf("Settings(%s, %s) code_reviewer_model = %v, present %v; want %q present %v", tt.profile, block, model, present, "opus[high]", wantOpus)
 				}
 			}
 		})
@@ -205,8 +212,10 @@ func TestTemplateLadder(t *testing.T) {
 }
 
 // TestTemplateDocsProfile pins the template's darn-only docs profile:
-// a Sonnet medium writer, one Code round with its hard cap, and drift scope off.
+// a Sonnet medium writer, one solo Code round with its hard cap and an Opus high reviewer, and drift scope off.
 // Drift scope is off since a docs task changes no captured value.
+//
+//testtiming:keep pins the docs darn block's full settings map, including its code_reviewer_model, which the lookup tests over a fixture file cannot see
 func TestTemplateDocsProfile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -221,7 +230,7 @@ func TestTemplateDocsProfile(t *testing.T) {
 	want := map[string]any{
 		"darn":  map[string]any{"writer": "sonnet[medium]"},
 		"drift": map[string]any{"scope": "off"},
-		"loom":  map[string]any{"code_max_bounces": 1, "code_hard_max_bounces": 2, "code_reviewer_fan": ""},
+		"loom":  map[string]any{"code_max_bounces": 1, "code_hard_max_bounces": 2, "code_reviewer_fan": "", "code_reviewer_model": "opus[high]"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Settings(docs, darn) = %v; want %v", got, want)

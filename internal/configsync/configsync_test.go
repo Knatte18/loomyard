@@ -937,15 +937,18 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	const (
-		lightDarn            = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
-		lightDarnSolo        = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\"}\n"
-		lightDarnOperator    = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: standard}\n"
+		lightDarn            = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[high]\"}\n"
+		lightDarnSolo        = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[high]\"}\n"
+		lightDarnOperator    = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: standard, code_reviewer_model: \"opus[high]\"}\n"
+		lightDarnNoModel     = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
+		lightDarnOwnModel    = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"sonnet[high]\"}\n"
 		lightSamplerReview   = "    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n    sampler: {code_review: true}\n"
 		lightSamplerNoReview = "    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
 	)
 	template := runprofile.ConfigTemplate()
 	older := strings.Replace(template, lightDarn, lightDarnSolo, 1)
 	withoutSamplerReview := strings.Replace(template, lightSamplerReview, lightSamplerNoReview, 1)
+	withoutReviewerModel := strings.Replace(template, lightDarn, lightDarnNoModel, 1)
 	m, ok := configreg.Lookup(runprofile.ModuleName)
 	if !ok {
 		t.Fatalf("module %q is not registered", runprofile.ModuleName)
@@ -991,6 +994,22 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 			wantContains: []string{lightDarnOperator},
 		},
 		{
+			name:          "an unedited file without the reviewer model gains the template's",
+			hubFile:       withoutReviewerModel,
+			baseFile:      withoutReviewerModel,
+			wantAddedHas:  []string{"light.darn.loom.code_reviewer_model"},
+			wantContains:  []string{lightDarn},
+			wantRewritten: true,
+		},
+		{
+			name:         "an operator's own reviewer model is kept and listed",
+			hubFile:      strings.Replace(template, lightDarn, lightDarnOwnModel, 1),
+			baseFile:     withoutReviewerModel,
+			wantAdded:    []string{},
+			wantDiffers:  []string{"light.darn.loom.code_reviewer_model: file \"sonnet[high]\", template \"opus[high]\""},
+			wantContains: []string{lightDarnOwnModel},
+		},
+		{
 			name:          "a key the template added since the base is added",
 			hubFile:       withoutSamplerReview,
 			baseFile:      withoutSamplerReview,
@@ -1009,7 +1028,7 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 			hubFile:       "light:\n  darn:\n    loom: {code_max_bounces: 4}\n",
 			wantAddedHas:  []string{"light.darn.loom.code_hard_max_bounces", "solid"},
 			wantDiffers:   []string{"light.darn.loom.code_max_bounces: file 4, template 1"},
-			wantContains:  []string{"    loom: {code_max_bounces: 4, code_hard_max_bounces: 2}\n", "solid:"},
+			wantContains:  []string{"    loom: {code_max_bounces: 4, code_hard_max_bounces: 2, code_reviewer_model: ", "solid:"},
 			wantRewritten: true,
 		},
 		{

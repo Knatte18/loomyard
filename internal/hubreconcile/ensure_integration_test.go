@@ -1474,12 +1474,12 @@ func TestEnsure_CarriesATemplateChangeIntoASeedOnlyConfigFile(t *testing.T) {
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := geometryOf(h)
-	const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
-	const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\"}\n"
-	const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3}\n"
-	const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 3, code_hard_max_bounces: 4}\n"
-	const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4}\n"
-	const solidDarnFollowed = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 3}\n"
+	const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[high]\"}\n"
+	const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[high]\"}\n"
+	const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3, code_reviewer_model: \"opus[high]\"}\n"
+	const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 3, code_hard_max_bounces: 4, code_reviewer_model: \"opus[high]\"}\n"
+	const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4, code_reviewer_model: \"opus[high]\"}\n"
+	const solidDarnFollowed = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 3, code_reviewer_model: \"opus[high]\"}\n"
 	olderTemplate := strings.Replace(strings.Replace(runprofile.ConfigTemplate(), lightDarn, lightDarnSolo, 1), solidDarn, solidDarnBase, 1)
 	hubProfiles := strings.Replace(olderTemplate, solidDarnBase, solidDarnTuned, 1)
 	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("profiles"), hubProfiles, "fixture: profiles seeded from an older template, with solid's darn rounds tuned")
