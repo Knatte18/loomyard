@@ -23,7 +23,8 @@ type Record struct {
 	Head string `json:"head,omitempty"`
 	// GatedHead is the head the PR-Review row last gated and pushed.
 	GatedHead string `json:"gated_head,omitempty"`
-	// MailedHead is the head whose gate failure was mailed, so one failure is mailed once.
+	// MailedHead is the head whose gate failure was mailed, so one failure is mailed once and the head is not gated again.
+	// `lym loom pr-continue` clears it, so the PR-Review row gates that head again.
 	MailedHead string `json:"mailed_head,omitempty"`
 	// StrandGUID, StrandName, SessionID and Engine name the interactive PR-Review session, so a later pass resumes it.
 	StrandGUID string `json:"strand_guid,omitempty"`

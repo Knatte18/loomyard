@@ -33,6 +33,8 @@
 // A pass pushes the head and records it as gated.
 // A failure pushes nothing.
 // It mails the reason, naming the failing tier and log, to the PR-Review session once per head.
+// The mail names `lym loom pr-continue`, which clears the mailed head, so the next wake gates the same head again;
+// a failure from outside the change is thus retried without a new commit.
 // A failure whose every failed run crashed its test runner mails nothing.
 // It halts the row with LandingStopPrefix, naming the crashed runs.
 // A head moved or a tree dirtied during the gate discards its verdict.
@@ -71,8 +73,10 @@
 // A start that fails transiently is an error the driver re-steps,
 // and any other start failure is Stuck with Halt naming `lym loom resume`.
 // The row stops the session before each read that may end the review.
-// Such a read finds a merged pull request, an approval of the gated head or the continue flag.
+// Such a read finds a merged pull request, a recorded ending, an approval of the gated head,
+// or the continue flag on a clean tree at the gated head.
 // The row resumes the session when that read keeps waiting.
+// The continue flag on a dirty tree or an ungated head leaves the session running while the row waits.
 // The row stops the session at the first wake a pause covers and resumes it at the first uncovered wake.
 // It also stops the session on every verdict, Stuck and error, and leaves it running when the context is cancelled.
 // The wait's wakes start no session.

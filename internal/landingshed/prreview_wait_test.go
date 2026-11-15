@@ -165,6 +165,7 @@ func TestPRReview_Wait(t *testing.T) {
 	withContinue := func(r *pullrequest.Record) { r.Continue = true }
 	withReviewEnded := func(r *pullrequest.Record) { r.ReviewEnded = true }
 	withStrand := func(r *pullrequest.Record) { r.StrandName = "pr-strand" }
+	withLiveStrand := func(r *pullrequest.Record) { r.StrandGUID = "guid-1" }
 	writeContinue := func(w *waitWorld) {
 		err := pullrequest.UpdateRecord(w.deps.PullRequest.RecordPath, w.deps.PullRequest.RecordLockPath, func(r *pullrequest.Record) error {
 			r.Continue = true
@@ -227,6 +228,24 @@ func TestPRReview_Wait(t *testing.T) {
 	failingGate := func(w *waitWorld) {
 		w.withGateCommand()
 		w.tree.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, Log: "/logs/gate.log"}
+	}
+
+	// recordLiveAtRead makes the world record whether the session of strand guid-1 was live at each tree read.
+	// The end of a call stops a live session whatever the wake did.
+	// Only this sequence therefore shows a stop before the re-read.
+	recordLiveAtRead := func(w *waitWorld) {
+		sessions := sessionsOf(w.deps)
+		w.deps.PullRequest.DirtyPaths = func() ([]string, error) {
+			live, _ := sessions.isLive("guid-1")
+			w.liveAtRead = append(w.liveAtRead, live)
+			return w.dirty, nil
+		}
+	}
+	assertStoppedBeforeTheReRead := func(t *testing.T, w *waitWorld) {
+		t.Helper()
+		if diff := cmp.Diff([]bool{true, false}, w.liveAtRead); diff != "" {
+			t.Errorf("session liveness at each tree read mismatch (-want +got):\n%s", diff)
+		}
 	}
 
 	tests := []struct {
@@ -308,21 +327,26 @@ func TestPRReview_Wait(t *testing.T) {
 		},
 		{
 			name: "ContinueOnAClosedPullRequestAtTheGatedHeadIsDoneAndRecordsIt", record: seed("h1", withContinue), scripts: statusScript(closed),
+			setup:       recordLiveAtRead,
 			wantOutcome: shedengine.Done, wantRecord: seed("h1", withContinue, withReviewEnded),
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				assertStoppedBeforeTheReRead(t, w)
+				assertSessionCounts(t, w.deps, 1, 1)
+			},
 		},
 		{
 			name: "ContinueOnAClosedPullRequestWithAnUngatedCleanHeadGatesItFirst", record: seed("h1", withContinue), scripts: statusScript(closed), head: "h2",
 			wantOutcome: shedengine.Done, wantRecord: &pullrequest.Record{Number: 7, URL: "u7", GatedHead: "h2", Continue: true, ReviewEnded: true}, gatePushes: 1,
 		},
 		{
-			name: "ContinueOnAClosedPullRequestOnADirtyTreeKeepsWaiting", record: seed("h1", withContinue), scripts: statusScript(closed), dirty: []string{"wip.go"},
+			name: "ContinueOnAClosedPullRequestOnADirtyTreeKeepsWaitingAndLeavesTheSessionAtWork", record: seed("h1", withContinue), scripts: statusScript(closed), dirty: []string{"wip.go"},
 			setup:   func(w *waitWorld) { w.cancelAfter(3) },
 			wantErr: context.Canceled, wantCalls: []string{"Status 7"}, wantRecord: seed("h1", withContinue),
 			check: func(t *testing.T, w *waitWorld, _ string) {
 				if len(w.sleeps) != 3 {
 					t.Errorf("wait slept %d times; want 3 wakes before the cancel", len(w.sleeps))
 				}
-				assertSessionCounts(t, w.deps, 2, 1)
+				assertSessionCounts(t, w.deps, 1, 0)
 			},
 		},
 		{
@@ -339,14 +363,52 @@ func TestPRReview_Wait(t *testing.T) {
 			wantOutcome: shedengine.Done, wantCalls: []string{"Status 7"}, wantRecord: seed("h1", withContinue, withReviewEnded),
 		},
 		{
-			name: "ReviewEndedOnAnOpenPullRequestOnADirtyTreeHaltsNamingTheFiles", record: seed("h1", withContinue, withReviewEnded), scripts: statusScript(open), dirty: []string{"wip.go"},
+			name: "ReviewEndedOnAnOpenPullRequestOnADirtyTreeHaltsNamingTheFiles", record: seed("h1", withContinue, withReviewEnded, withLiveStrand), scripts: statusScript(open), dirty: []string{"wip.go"},
+			setup: func(w *waitWorld) {
+				sessionsOf(w.deps).live["guid-1"] = true
+				recordLiveAtRead(w)
+			},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"uncommitted changes: wip.go", "discard them", "lym loom resume"},
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				assertStoppedBeforeTheReRead(t, w)
+				assertSessionCounts(t, w.deps, 0, 1)
+			},
 		},
 		{
-			name:   "ContinueOnAnOpenPullRequestAtAnUngatedCleanHeadKeepsWaitingWithoutEndingTheReview",
+			name:   "ContinueOnAnOpenPullRequestAtAnUngatedCleanHeadKeepsWaitingWithoutEndingTheReviewOrStoppingTheSession",
 			record: seed("h1", withContinue, func(r *pullrequest.Record) { r.MailedHead = "h2" }), scripts: statusScript(open), head: "h2",
 			setup:   func(w *waitWorld) { w.cancelAfter(2) },
 			wantErr: context.Canceled, wantCalls: []string{"Status 7", editSeven},
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				assertSessionCounts(t, w.deps, 1, 0)
+			},
+		},
+		{
+			name:   "ContinueAtAMailedHeadWhoseMailedHeadIsClearedGatesThatHeadAgainAndEndsTheReview",
+			record: seed("h1", withContinue, withStrand, func(r *pullrequest.Record) { r.MailedHead = "h2" }), scripts: statusScript(open), head: "h2",
+			setup: func(w *waitWorld) {
+				w.withGateCommand()
+				w.onSleep = func(w *waitWorld, n int) {
+					if n != 1 {
+						return
+					}
+					err := pullrequest.UpdateRecord(w.deps.PullRequest.RecordPath, w.deps.PullRequest.RecordLockPath, func(r *pullrequest.Record) error {
+						r.MailedHead = ""
+						return nil
+					})
+					if err != nil {
+						t.Errorf("clear the mailed head: %v", err)
+					}
+				}
+			},
+			wantOutcome: shedengine.Done, gatePushes: 1,
+			wantCalls:  []string{"Status 7", editSeven, "Status 7"},
+			wantRecord: recorded("h2", withContinue, withStrand, withReviewEnded),
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				if w.tree.verifyCalls != 1 {
+					t.Errorf("the gate ran %d times; want once, after the mailed head was cleared", w.tree.verifyCalls)
+				}
+			},
 		},
 		{
 			name: "ContinueOnADirtyTreeKeepsWaitingWithOneStatusCallInTheFirstMinute", record: seed("h1", withContinue), scripts: statusScript(open), dirty: []string{"wip.go"},
@@ -357,7 +419,7 @@ func TestPRReview_Wait(t *testing.T) {
 				if diff := cmp.Diff(want, w.sleeps); diff != "" {
 					t.Errorf("wake intervals mismatch (-want +got):\n%s", diff)
 				}
-				assertSessionCounts(t, w.deps, 2, 1)
+				assertSessionCounts(t, w.deps, 1, 0)
 			},
 		},
 		{
@@ -427,7 +489,7 @@ func TestPRReview_Wait(t *testing.T) {
 				if len(w.mails) != 1 {
 					t.Fatalf("mails = %q; want exactly one over two wakes of the failing head", w.mails)
 				}
-				for _, want := range []string{"pr-strand|", "tier 1", "/logs/gate.log", "new commit"} {
+				for _, want := range []string{"pr-strand|", "tier 1", "/logs/gate.log", "new commit", "lym loom pr-continue"} {
 					if !strings.Contains(w.mails[0], want) {
 						t.Errorf("mail %q lacks %q", w.mails[0], want)
 					}

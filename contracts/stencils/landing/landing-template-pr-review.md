@@ -62,3 +62,6 @@ When the operator says they are satisfied and asks you to continue:
 1. Commit or discard your work so the worktree is clean.
 2. Run `lym loom pr-continue`.
    It ends the review, and the ordinary landing then merges the pull request on GitHub, after its gate.
+3. When lym then mails a gate failure from outside the change, such as a file another process held open,
+   run `lym loom pr-continue` again: it gates the same head again.
+   Fix a failure in the change itself in a new commit instead.

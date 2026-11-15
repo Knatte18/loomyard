@@ -575,8 +575,9 @@
 // While a pause covers the slug the driver holds in the pause wait before any re-step, goto, agent spawn or hand-over.
 //
 // `lym loom pr-continue` is the PR-Review agent's verb for the operator's ending of a review:
-// it sets the continue flag in the run's pull-request record and nothing else,
-// and it is refused until the PR-Review row has opened the pull request.
+// it sets the continue flag in the run's pull-request record and clears the head whose gate failure the row mailed,
+// so the row gates that head again.
+// It writes nothing else, and it is refused until the PR-Review row has opened the pull request.
 //
 // `lym loom sampler-done` ends a sampler run's build:
 // it sets the done flag in the Sampler-Session record to the row's current entry stamp and nothing else.

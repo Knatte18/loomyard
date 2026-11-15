@@ -226,6 +226,23 @@ func TestPRContinueVerb(t *testing.T) {
 		}
 	})
 
+	t.Run("ARerunAfterAMailedGateFailureClearsTheMailedHead", func(t *testing.T) {
+		t.Parallel()
+		record, lock := newPaths(t)
+		if err := pullrequest.WriteRecord(record, lock, pullrequest.Record{Number: 7, URL: url, GatedHead: "h1", MailedHead: "h2", Continue: true}); err != nil {
+			t.Fatalf("WriteRecord() error: %v", err)
+		}
+		var out bytes.Buffer
+		if code := prContinueVerb(&out, record, lock); code != 0 {
+			t.Fatalf("prContinueVerb() = %d, %s; want 0", code, out.String())
+		}
+		got, _, err := pullrequest.ReadRecord(record, lock)
+		want := pullrequest.Record{Number: 7, URL: url, GatedHead: "h1", Continue: true}
+		if err != nil || got != want {
+			t.Errorf("record after prContinueVerb = %+v, %v; want %+v, the mailed head cleared", got, err, want)
+		}
+	})
+
 	t.Run("AbsentRecordIsRefused", func(t *testing.T) {
 		t.Parallel()
 		record, lock := newPaths(t)

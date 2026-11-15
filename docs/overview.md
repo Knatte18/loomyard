@@ -1301,7 +1301,7 @@ User-facing modules each get one `lym <module>` namespace:
   When the resolver does not say so, the row passes.
   The wait takes no parent lock.
   It gates and pushes the agent's commits through the `pr-review` gate key, never onto a merged pull request.
-  It mails a failure to the agent.
+  It mails a failure to the agent once per head, and the agent's `lym loom pr-continue` makes it gate that head again.
   It reads the pull request at most once a minute and before each gate.
   It ends Done when the pull request is merged or approved at the gated head.
   It also ends Done when the operator's `lym loom pr-continue` ends the review.

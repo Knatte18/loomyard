@@ -1,7 +1,8 @@
 // prcontinue.go implements the `pr-continue` loom verb.
 // The PR-Review agent runs it to tell the run the operator is satisfied with the review.
-// The verb only sets Continue in the run's pull-request record.
+// The verb sets Continue in the run's pull-request record and clears the head whose gate failure was mailed.
 // The PR-Review row reads that flag, records the ending and ends the row, leaving the pull request open.
+// A cleared mailed head makes the row gate that head again, so a failure from outside the change is retried.
 // Finalize then merges the pull request on GitHub under its own gate and credit block.
 
 package loomcli
@@ -21,8 +22,9 @@ import (
 const prContinueNoRecord = "loom: pr-continue: this run has no pull request record, so there is no review to end; way forward: wait until the PR-Review row has opened the pull request, then run lym loom pr-continue again"
 
 // prContinueVerb sets Continue in the pull-request record at recordPath, under the lock at lockPath.
+// It also clears the record's mailed head, so the PR-Review row gates again a head whose gate failure it mailed.
 // It reports a JSON envelope naming the pull request and returns the exit code.
-// A record already carrying Continue or ReviewEnded succeeds the same way and is not written again.
+// A record carrying ReviewEnded, or Continue with no mailed head, succeeds the same way and is not written again.
 // A run with no record is refused, and an unreadable or unwritable record is an error envelope carrying the error.
 func prContinueVerb(out io.Writer, recordPath, lockPath string) int {
 	rec, found, err := pullrequest.ReadRecord(recordPath, lockPath)
@@ -32,9 +34,10 @@ func prContinueVerb(out io.Writer, recordPath, lockPath string) int {
 	if !found {
 		return output.Err(out, prContinueNoRecord)
 	}
-	if !rec.Continue && !rec.ReviewEnded {
+	if !rec.ReviewEnded && (!rec.Continue || rec.MailedHead != "") {
 		err := pullrequest.UpdateRecord(recordPath, lockPath, func(rec *pullrequest.Record) error {
 			rec.Continue = true
+			rec.MailedHead = ""
 			return nil
 		})
 		if errors.Is(err, pullrequest.ErrNoRecord) {
@@ -61,8 +64,9 @@ func (c *loomCLI) prContinueCmd() *cobra.Command {
 PR-Review agent runs it in its task worktree when the operator asks it to
 continue. The PR-Review row then ends the review and leaves the pull request
 open, and the run goes on through Finalize, which merges it on GitHub under its
-own gate. It takes no arguments, and is refused until the PR-Review row has
-opened the pull request.
+own gate. Run again after the row mailed a gate failure that lies outside the
+change, it makes the row gate the same head again. It takes no arguments, and
+is refused until the PR-Review row has opened the pull request.
 
 Example:
   lym loom pr-continue`,

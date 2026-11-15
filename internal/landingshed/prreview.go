@@ -646,17 +646,18 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 		}
 	}
 
-	// The session is stopped before the read that may end the review;
+	// The session is stopped before the read that may end the review,
 	// so the agent cannot change the tree between the read and the verdict.
+	// A wake whose read cannot end the review leaves the session at work and judges the tree it read.
 	stopped := false
-	if sessionStopWanted(status, rec) {
+	if sessionStopWanted(status, rec, head, dirty) {
 		if stopped, err = p.stopLiveSession(rec); err != nil {
 			return end("", shedengine.OutputPointer{}, err)
 		}
-	}
-	head, dirty, err = p.readTree()
-	if err != nil {
-		return end("", shedengine.OutputPointer{}, err)
+		head, dirty, err = p.readTree()
+		if err != nil {
+			return end("", shedengine.OutputPointer{}, err)
+		}
 	}
 	outcome, pointer, ended, err = p.judge(ctx, status, rec, head, dirty)
 	if err == nil && !ended && stopped {
@@ -668,12 +669,18 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 }
 
 // sessionStopWanted reports whether the read of status against rec may end the review or act on the operator's ending,
-// so the session must be stopped before the tree is read.
-// The cases are a merged pull request, the continue flag on any state, and an approval of the head the row gated.
-func sessionStopWanted(status pullrequest.Status, rec pullrequest.Record) bool {
+// so the session must be stopped before the tree is read again.
+// head and dirty are the task head and uncommitted paths the wake read.
+// The cases are a merged pull request, a recorded ending, the continue flag on a clean tree at the gated head,
+// and an approval of the head the row gated.
+// The continue flag on a dirty tree or an ungated head only keeps the review waiting,
+// so the session is left at work instead of being stopped and resumed at every poll.
+func sessionStopWanted(status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) bool {
 	switch {
-	case status.State == pullrequest.StateMerged, rec.Continue:
+	case status.State == pullrequest.StateMerged, rec.ReviewEnded:
 		return true
+	case rec.Continue:
+		return len(dirty) == 0 && head == rec.GatedHead
 	case status.State == pullrequest.StateOpen:
 		return status.Approved && !status.ChangesRequested && status.HeadSHA == rec.GatedHead
 	}
@@ -693,9 +700,13 @@ func (p *PRReview) readTree() (string, []string, error) {
 	return head, dirty, nil
 }
 
+// gateRetryHint closes the mail of a gate failure, naming the agent's way to gate the same head again.
+const gateRetryHint = "; when the failure lies outside the change, such as a file another process held open, and the operator has asked you to continue, run lym loom pr-continue, which gates this head again"
+
 // gateHead runs the pr-review gate over head, a clean tree whose head the record has not gated.
 // A pass pushes head and records it as gated,
 // and a failure pushes nothing and mails its reason to the PR-Review session once per head.
+// The record keeps the mailed head, which `lym loom pr-continue` clears so that the next wake gates it again.
 // A runner crash judges no code, so it halts the row naming the crash and mails nothing;
 // the resume gates the head again.
 // A head moved or a tree dirtied during the gate discards the verdict.
@@ -736,7 +747,7 @@ func (p *PRReview) gateHead(ctx context.Context, head string, rec pullrequest.Re
 	if rec.MailedHead == head {
 		return "", shedengine.OutputPointer{}, false, nil
 	}
-	p.mailFailure(rec.StrandName, reason)
+	p.mailFailure(rec.StrandName, reason+gateRetryHint)
 	if err := p.updateRecord(func(r *pullrequest.Record) { r.MailedHead = head }); err != nil {
 		return "", shedengine.OutputPointer{}, true, err
 	}
