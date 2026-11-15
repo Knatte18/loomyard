@@ -783,7 +783,8 @@ finishes a stopped create:
 
 Before step 3 it removes a done batten run under the same slug whose pair is gone and
 whose child ran motif, and the envelope reports it as "motif_run_cleared". Any other done
-run is still refused, naming "lym batten cleanup --apply".
+run is refused, naming "lym batten cleanup --apply", until the parent's dobby removes it
+once its landing is counted and its notice decided.
 
 A pawl run in flight is reported live and starts nothing. A first pass a covering
 pause refused leaves no run, and the same "lym beam create <slug> [--anchor <dir>]"

@@ -51,6 +51,15 @@ type cleanupStubs struct {
 	spawns     int
 	spawnErr   error
 	commitHook func()
+	// discards lists the slugs the discardTaskBranch stub was asked to remove, and discardErr is what it fails with.
+	discards   []string
+	discardErr error
+}
+
+// discardTaskBranch stands in for the task branch removal of a done run.
+func (s *cleanupStubs) discardTaskBranch(slug string) error {
+	s.discards = append(s.discards, slug)
+	return s.discardErr
 }
 
 func newCleanupStubs() *cleanupStubs {
@@ -545,12 +554,14 @@ func TestCleanup_HoldsTheStatusLockUntilTheCommitAndLeavesTheSlugRunnable(t *tes
 	}
 }
 
-func TestClearMotifRun_RemovesOnlyADoneMotifOrArrasRun(t *testing.T) {
+func TestClearDoneRun_RemovesADoneRunTheRecipeFilterAdmits(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
 		name string
+		// anyRecipe clears through the filter that admits every recipe; otherwise the motif and arras filter applies.
+		anyRecipe bool
 		// runState is the state of the slug's status; empty means no status file.
 		runState string
 		// childRecipe is the child-recipe record; empty means none.
@@ -560,6 +571,10 @@ func TestClearMotifRun_RemovesOnlyADoneMotifOrArrasRun(t *testing.T) {
 		holdRunLock bool
 		// commitErr is what the records commit fails with; the run then stays and the error is returned.
 		commitErr error
+		// discardErr is what the task branch removal fails with; the run then stays with its records and the error is returned.
+		discardErr error
+		// wantMessage, when set, is the records commit message.
+		wantMessage string
 		// spawnErr is what the push spawn fails with; the run is still removed.
 		spawnErr error
 		// blockScratch makes a directory under the run's scratch unreadable, so emptying the scratch fails after the commit.
@@ -579,6 +594,12 @@ func TestClearMotifRun_RemovesOnlyADoneMotifOrArrasRun(t *testing.T) {
 		{name: "RunningMotifRunStays", runState: "running", childRecipe: shedrun.RecipeMotif},
 		{name: "SlugWithNoStatusStays"},
 		{name: "DoneMotifRunWhoseRunLockIsHeldStays", runState: "done", childRecipe: shedrun.RecipeMotif, holdRunLock: true},
+		{name: "AnyRecipe_DoneDarnRunIsRemovedCommittedAndPushed", anyRecipe: true, runState: "done", childRecipe: shedrun.RecipeDarn, wantCleared: true, wantMessage: "batten: remove the done darn run of codex-engine"},
+		{name: "AnyRecipe_DoneRunWithNoChildRecipeRecordIsRemoved", anyRecipe: true, runState: "done", wantCleared: true, wantMessage: "batten: remove the done run of codex-engine"},
+		{name: "AnyRecipe_TaskBranchRemovalFailureReturnsTheErrorAndKeepsTheRun", anyRecipe: true, runState: "done", childRecipe: shedrun.RecipeDarn, discardErr: errors.New("task branch delete refused")},
+		{name: "AnyRecipe_RecordsCommitFailureReturnsTheErrorAndKeepsTheRun", anyRecipe: true, runState: "done", commitErr: errors.New("records commit refused")},
+		{name: "AnyRecipe_RunningDarnRunStays", anyRecipe: true, runState: "running", childRecipe: shedrun.RecipeDarn},
+		{name: "AnyRecipe_DoneDarnRunWhoseRunLockIsHeldStays", anyRecipe: true, runState: "done", childRecipe: shedrun.RecipeDarn, holdRunLock: true},
 	}
 	for _, tt := range tests {
 		// Windows does not enforce directory permissions, so it generates no subtest for a blocking row.
@@ -593,6 +614,7 @@ func TestClearMotifRun_RemovesOnlyADoneMotifOrArrasRun(t *testing.T) {
 			location := newCleanupLocation(t)
 			stubs := newCleanupStubs()
 			stubs.commitErr = tt.commitErr
+			stubs.discardErr = tt.discardErr
 			stubs.spawnErr = tt.spawnErr
 			const slug = "codex-engine"
 			if tt.runState != "" {
@@ -628,12 +650,30 @@ func TestClearMotifRun_RemovesOnlyADoneMotifOrArrasRun(t *testing.T) {
 				t.Cleanup(func() { _ = held.Release() })
 			}
 
-			cleared, err := clearMotifRun(location, slug, stubs.deps())
-			if !errors.Is(err, tt.commitErr) {
-				t.Fatalf("clearMotifRun() error = %v; want it to wrap %v", err, tt.commitErr)
+			admits, discardBranch := admitsMotifRun, (func(string) error)(nil)
+			if tt.anyRecipe {
+				admits, discardBranch = admitsAnyRun, stubs.discardTaskBranch
+			}
+			cleared, err := clearDoneRun(location, slug, stubs.deps(), admits, discardBranch)
+			wantErr := tt.commitErr
+			if wantErr == nil {
+				wantErr = tt.discardErr
+			}
+			if !errors.Is(err, wantErr) {
+				t.Fatalf("clearDoneRun() error = %v; want it to wrap %v", err, wantErr)
+			}
+			var wantDiscards []string
+			if tt.anyRecipe && tt.runState == "done" && !tt.holdRunLock {
+				wantDiscards = []string{slug}
+			}
+			if !slices.Equal(stubs.discards, wantDiscards) {
+				t.Errorf("task branch removals = %v; want %v", stubs.discards, wantDiscards)
+			}
+			if tt.wantMessage != "" && !slices.Equal(stubs.messages, []string{tt.wantMessage}) {
+				t.Errorf("commit messages = %q; want %q", stubs.messages, []string{tt.wantMessage})
 			}
 			if cleared != tt.wantCleared {
-				t.Errorf("clearMotifRun() cleared = %v; want %v", cleared, tt.wantCleared)
+				t.Errorf("clearDoneRun() cleared = %v; want %v", cleared, tt.wantCleared)
 			}
 			wantCommits, wantSpawns := 0, 0
 			if tt.wantCleared && !tt.untracked {
@@ -653,11 +693,16 @@ func TestClearMotifRun_RemovesOnlyADoneMotifOrArrasRun(t *testing.T) {
 					t.Errorf("run directory removed = %v; want %v", gone, tt.wantCleared)
 				}
 			}
+			if tt.commitErr != nil {
+				if recipe, err := shedrun.ReadChildRecipe(location, slug); err != nil || recipe != tt.childRecipe {
+					t.Errorf("ReadChildRecipe() after the failed removal = %q, %v; want %q written back as it stood", recipe, err, tt.childRecipe)
+				}
+			}
 		})
 	}
 }
 
-func TestClearMotifRun_FinishesTheRemovalOfARunWhoseRecordsCommitFailed(t *testing.T) {
+func TestClearDoneRun_FinishesTheRemovalOfARunWhoseRecordsCommitFailed(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -674,18 +719,18 @@ func TestClearMotifRun_FinishesTheRemovalOfARunWhoseRecordsCommitFailed(t *testi
 	}
 
 	stubs.commitErr = errors.New("records commit refused")
-	cleared, err := clearMotifRun(location, slug, stubs.deps())
+	cleared, err := clearDoneRun(location, slug, stubs.deps(), admitsMotifRun, nil)
 	if !errors.Is(err, stubs.commitErr) || cleared {
-		t.Fatalf("clearMotifRun() with a failing commit = (%v, %v); want false and an error wrapping %v", cleared, err, stubs.commitErr)
+		t.Fatalf("clearDoneRun() with a failing commit = (%v, %v); want false and an error wrapping %v", cleared, err, stubs.commitErr)
 	}
 	if marked, err := shedrun.FilingMarked(location, slug); err != nil || !marked {
 		t.Errorf("FilingMarked() after the failed removal = %t, %v; want the mark written back", marked, err)
 	}
 
 	stubs.commitErr = nil
-	cleared, err = clearMotifRun(location, slug, stubs.deps())
+	cleared, err = clearDoneRun(location, slug, stubs.deps(), admitsMotifRun, nil)
 	if err != nil || !cleared {
-		t.Fatalf("clearMotifRun() on the re-run = (%v, %v); want true and nil", cleared, err)
+		t.Fatalf("clearDoneRun() on the re-run = (%v, %v); want true and nil", cleared, err)
 	}
 	if len(stubs.commits) != 1 {
 		t.Errorf("commits = %v; want the re-run's one removal commit", stubs.commits)

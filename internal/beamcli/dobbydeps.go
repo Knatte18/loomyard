@@ -174,6 +174,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		Runs: func() ([]dobbyengine.RunView, error) {
 			return battencli.DobbyRuns(prime, geom, parents, pause.RecordPath)
 		},
+		ClearDoneRun: func(slug string) (bool, error) { return battencli.ClearDoneRun(prime, slug) },
 		SpawnPass: func(slug string, continuePass, noReopen bool) (<-chan dobbyengine.PassExit, error) {
 			return spawnPass(geom, slug, continuePass, noReopen)
 		},

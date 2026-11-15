@@ -813,7 +813,7 @@ User-facing modules each get one `lym <module>` namespace:
 - **beam** — the making, landing, starting and stopping of a beam, a long-lived pair that groups board work, and dobby, the daemon every beam and the prime run (`internal/beamcli` + `internal/dobbyengine`; `lym beam create <slug>`, `lym beam ready <slug>`, which flags the beam ready to merge so its dobby writes the land request once nothing works under it, and is final: no verb takes the flag back, `lym beam land <slug>`, which writes the land request the beam's pawl run consumes at Beam-Await and refuses a beam not flagged ready, `lym beam merge-parent <slug>`, which files a darn task in the beam, its Code-Review perch on, whose run merges the beam's parent branch into the beam, `lym beam start [slug] [--all]`, `lym beam stop [slug]` and `lym beam status`, from the prime and from any beam, and the hidden `lym beam dobby`).
   Create runs from the beam's parent worktree, claims the root when none is recorded, records this machine as a board project's owner with the beam flag and the pawl recipe, and starts the beam's pawl run as a detached first pass, whose Worktree-Create makes the pair, forked from the parent beam of a nested beam, whose Record-Write writes the project record from the project entry's body under `_lym/project/<slug>/`, and whose Beam-Up marks it.
   Before it starts that run, create removes a done batten run under the same slug whose pair is gone and whose child ran motif, reporting `motif_run_cleared`;
-  any other done run is still refused, naming `lym batten cleanup --apply`.
+  any other done run is refused, naming `lym batten cleanup --apply`, until the parent's dobby removes it once its landing is counted and its notice decided.
   The project record binds every member:
   a member's Discussion-Write lead and darn writer read each enclosing beam's record from that beam's worktree, the board refuses an edit of the project's body once the record exists,
   and `lym loom decision add <beam-slug>` or `lym loom decision replace <beam-slug>`, run by the beam's orch, are the only ways its scope changes, its notice reaching every live member run under the beam.
@@ -1617,6 +1617,7 @@ User-facing modules each get one `lym <module>` namespace:
   It removes each done run's records run directory with a records commit and a spawned push.
   It also empties that run's scratch beside its lock files, and any orphan scratch older than a day.
   A done motif run is also cleared by `lym beam create` and by the start of a raddle run under its slug.
+  The parent worktree's dobby removes any done run itself, with its task branch, once its landing is counted and its notice decided.
   A run is one pass after another.
   `lym batten run <slug>` runs one pass and exits, started by the run's parent worktree's dobby or by hand.
   A hand pass makes sure that dobby is live once it is over.

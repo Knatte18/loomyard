@@ -162,7 +162,7 @@
 //   - A done batten run is driven no further:
 //     once no pass of it is in flight, it takes no slot under `max_runs` and gets no pass.
 //     Its entry leaves the state record.
-//     The board tidy still reads its history.
+//     The board tidy still reads its history until the done-run clear removes it.
 //   - A pass is triggered by a write of the child's status file;
 //     by a write of batten's own status file later than the run's last pass exit;
 //     by a probe tick once per probe interval;
@@ -483,6 +483,25 @@
 //   - Bound: a fresh record loses a tidy in flight and the slugs landed since the last tidy,
 //     and the next tidy may spawn while the old agent runs until its timeout.
 //     A landing whose run records `lym batten cleanup --apply` removed before dobby read them is not counted.
+//
+// The done-run clear:
+//
+//   - Each tick with no anchor change standing runs this step after the landing count and the landing notices.
+//     It removes the records, scratch and task branch of each listed run whose batten status reads done,
+//     through Deps.ClearDoneRun.
+//     So a finished run's record or leftover branch never refuses a later start under its slug.
+//     A failed branch removal leaves the records, so the next tick tries again.
+//   - A run is cleared only when no pass of it is in flight and its driver lock is free,
+//     the landing-notice memory holds nothing of it,
+//     and a landing it holds is counted.
+//     So neither its landing notice nor its board-tidy count is lost.
+//   - A cleared run logs `run <slug>: done run cleared` and leaves the counted landings,
+//     so a later run under the slug counts its own landing.
+//     Each tick also drops the counted landings of a slug that is neither landed nor listed.
+//   - A clear the seam leaves alone, its lock held or its run no longer done, is tried again at the next tick.
+//     A failed clear is logged once per episode and never fails the tick.
+//   - Bound: while a board-tidy agent is in flight nothing is counted,
+//     so a run that landed meanwhile stays until the agent is settled.
 //
 // The coverage-map upkeep:
 //

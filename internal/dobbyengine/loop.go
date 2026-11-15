@@ -89,6 +89,11 @@ type Deps struct {
 	// Runs lists the batten runs whose parent is this dobby's worktree, read from the prime's status files, not the board.
 	// A run's parent is named by its pair's origin record, the prime for none; a run whose task Land pruned stays listed.
 	Runs func() ([]RunView, error)
+	// ClearDoneRun removes the records, scratch and task branch of slug's run from the prime.
+	// It does so when the run's batten status reads done.
+	// It reports false with no error when the run's lock is held or the run no longer reads done.
+	// A nil ClearDoneRun clears nothing.
+	ClearDoneRun func(slug string) (cleared bool, err error)
 	// SpawnPass starts `<lym> batten run <slug>` with the hidden continue and no-reopen flags as asked.
 	// It runs in its own process group with the prime's anchor as its working directory, and the spawn is logged at Info.
 	// The pass registers itself in `internal/runproc`, so dobby registers nothing; the channel delivers the exit once.
@@ -365,6 +370,10 @@ type daemon struct {
 	testMapExitLogged bool
 	// listedRuns is the run listing of the tick's pass step, done runs included.
 	listedRuns []RunView
+	// landed is the slugs whose landing the tick's landing count read, nil while Deps.Landings is nil.
+	landed []string
+	// doneRunClears guards each failing clear of a done run by its slug.
+	doneRunClears logger.EpisodeSet
 
 	// tickCtx is the context of the tick in flight, for the seams a pass exit reaches.
 	tickCtx context.Context
@@ -686,6 +695,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 		return err
 	}
 	if scheduling {
+		d.clearDoneRuns(now)
 		if err := d.tidyStep(ctx, now); err != nil {
 			return err
 		}

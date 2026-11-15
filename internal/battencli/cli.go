@@ -310,7 +310,9 @@ slug with no persisted status, it starts a fresh run. Invoked against one
 already in progress, it resumes
 silently from the persisted current producer -- there is no re-seed flag,
 because every operator-fixable refusal this task raises lands as blocked,
-which is the everyday resume path. A slug already done refuses on the
+which is the everyday resume path. The dobby of the run's parent worktree
+removes a done run's record once it has counted its landing and decided its
+landing notice. A slug whose done record still stands refuses on the
 envelope, naming "lym batten cleanup --apply" and the leftover branches to
 delete to run it again, unless it is the done motif run of a task whose recipe the board resolves to
 raddle, which the start removes.

@@ -114,6 +114,7 @@ func (d *daemon) countLandings(now time.Time) error {
 	if err != nil {
 		return fmt.Errorf("read the landings: %w", err)
 	}
+	d.landed = landed
 	return UpdateState(d.geom.StatePath, func(s *State) error {
 		if s.CountedLandings == nil {
 			s.CountedLandings = map[string]bool{}

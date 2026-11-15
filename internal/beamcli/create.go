@@ -155,7 +155,7 @@ func judgeParentOwner(deps createDeps, owners boardengine.Owners, here, slug str
 // The run is the last step, so a beam's pair is made by the run's own Worktree-Create and marked by its Beam-Up.
 // A done run whose pair is gone is first offered to the motif-run clearing step:
 // a motif run that wrote the project's decision record leaves a done record under the same slug.
-// Any other done run stays, and the start refuses it.
+// Any other done run stays until the parent's dobby removes it, and the start refuses it meanwhile.
 func createSteps(deps createDeps, owners boardengine.Owners, here, slug, anchor string, result *createResult) error {
 	rerun := "run `lym beam create " + slug + "` again"
 

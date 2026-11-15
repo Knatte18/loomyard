@@ -56,7 +56,8 @@
 //     It removes the run when its child ran the motif or arras recipe.
 //     A project split after its motif run, or filed by its arras run, thus starts its pawl run under the same slug.
 //     The envelope says so with `motif_run_cleared`.
-//     Any other done run stays, and the first pass refuses it naming `lym batten cleanup --apply`.
+//     Any other done run stays until the parent's dobby removes it, once its landing is counted and its notice decided.
+//     Until then the first pass refuses it naming `lym batten cleanup --apply`.
 //     A first pass whose envelope is not ok, such as one a covering pause refused, leaves no run.
 //     The verb's error carries the envelope's error.
 //

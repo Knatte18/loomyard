@@ -1,7 +1,8 @@
 // cleanup.go implements `lym batten cleanup`, which removes finished runs' records and scratch from the prime worktree.
 // Cleanup decides every slug's removal, so no caller removes more than Cleanup decides.
-// The file also holds ClearMotifRun, which removes one slug's done motif or arras run.
-// That lets the next run under the slug start.
+// The file also holds ClearDoneRun and ClearMotifRun, which remove one slug's done run,
+// so the next run under the slug can start.
+// ClearDoneRun removes the run's task branch too.
 
 package battencli
 
@@ -120,13 +121,79 @@ func ClearMotifRun(location *lymcwd.Location, slug string) (cleared bool, err er
 	if err != nil {
 		return false, err
 	}
-	return clearMotifRun(prime, slug, fabricCleanupDeps(prime))
+	return clearDoneRun(prime, slug, fabricCleanupDeps(prime), admitsMotifRun, nil)
 }
 
-// clearMotifRun removes slug's done motif or arras run and reports whether it removed it.
+// ClearDoneRun removes the run directory, scratch contents and task branch of slug's run when it is done.
+// It does so whatever the run's recipe.
+// It reports whether it removed them.
+// A batten run is done once its Worktree-Teardown row finished, so nothing of it is left to drive,
+// and its record or its leftover task branch would refuse every later start under the slug.
+// The task branch is archived under a tag and deleted locally and on origin, when either holds it.
+// A failed branch removal leaves the run's records in place and returns the error, so a re-run finds the run again.
+// It runs from the prime worktree and from a beam, acting on the prime's location, and refuses elsewhere.
+// A run is left alone with cleared false when its run lock is held or it is not done.
+// A records removal that fails before its records commit writes the status, child-recipe and filing-mark records back.
+// It then returns the error, so a re-run finds the run again.
+// A failed push spawn or scratch emptying only warns, since the done record is gone either way.
+func ClearDoneRun(location *lymcwd.Location, slug string) (cleared bool, err error) {
+	prime, err := ResolveBattenPrime(location)
+	if err != nil {
+		return false, err
+	}
+	topology, err := hubTopology(prime)
+	if err != nil {
+		return false, fmt.Errorf("battencli: load the fabric config to clear %s: %w", slug, err)
+	}
+	discardBranch := func(slug string) error { return discardTaskBranchIfPresent(prime, topology, slug) }
+	return clearDoneRun(prime, slug, fabricCleanupDeps(prime), admitsAnyRun, discardBranch)
+}
+
+// discardTaskBranchIfPresent archives and deletes slug's task branch, locally and on origin, when either holds it.
+// It does nothing when neither does.
+// The origin half of the discard can be handed to another process and fail there unreported,
+// so it reads origin again afterwards and returns an error while the branch is still there.
+func discardTaskBranchIfPresent(location *lymcwd.Location, topology *fabricengine.Topology, slug string) error {
+	parts, err := topology.PairParts(location, slug)
+	if err != nil {
+		return fmt.Errorf("read the pair's parts: %w", err)
+	}
+	onOrigin, err := topology.TaskBranchOnOrigin(location, slug)
+	if err != nil {
+		return fmt.Errorf("read whether the task branch is on origin: %w", err)
+	}
+	if !parts.TaskBranch && !onOrigin {
+		return nil
+	}
+	if _, err := topology.DiscardTaskBranch(location, slug); err != nil {
+		return err
+	}
+	stillOnOrigin, err := topology.TaskBranchOnOrigin(location, slug)
+	if err != nil {
+		return fmt.Errorf("read whether the task branch is still on origin: %w", err)
+	}
+	if stillOnOrigin {
+		return fmt.Errorf("the task branch of %s is still on origin after its discard", slug)
+	}
+	return nil
+}
+
+// admitsMotifRun reports whether a done run whose child-recipe record reads recipe is a motif or arras run.
+func admitsMotifRun(recipe string) bool {
+	return recipe == shedrun.RecipeMotif || recipe == shedrun.RecipeArras
+}
+
+// admitsAnyRun admits a done run whatever its child-recipe record reads, none included.
+func admitsAnyRun(string) bool {
+	return true
+}
+
+// clearDoneRun removes slug's done run when admits accepts its child-recipe record, and reports whether it removed it.
 // Its records calls and push spawn come from deps, so tests can stub them.
+// A non-nil discardBranch runs after the run is judged and before any record is removed;
+// its error is returned with the records untouched.
 // It judges and removes while holding the slug's run lock and status lock, so a run started meanwhile is never removed.
-func clearMotifRun(location *lymcwd.Location, slug string, deps cleanupDeps) (cleared bool, err error) {
+func clearDoneRun(location *lymcwd.Location, slug string, deps cleanupDeps, admits func(recipe string) bool, discardBranch func(slug string) error) (cleared bool, err error) {
 	scratchDir := shedrun.ScratchDir(location, slug)
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		return false, fmt.Errorf("battencli: create the scratch directory of %s: %w", slug, err)
@@ -159,7 +226,7 @@ func clearMotifRun(location *lymcwd.Location, slug string, deps cleanupDeps) (cl
 	if err != nil {
 		return false, fmt.Errorf("battencli: read the child recipe of %s: %w", slug, err)
 	}
-	if recipe != shedrun.RecipeMotif && recipe != shedrun.RecipeArras {
+	if !admits(recipe) {
 		return false, nil
 	}
 	filingMarked, err := shedrun.FilingMarked(location, slug)
@@ -167,13 +234,23 @@ func clearMotifRun(location *lymcwd.Location, slug string, deps cleanupDeps) (cl
 		return false, fmt.Errorf("battencli: read the filing mark of %s: %w", slug, err)
 	}
 
-	committed, err := removeRunRecords(location, slug, "batten: remove the done "+recipe+" run of "+slug, deps)
+	if discardBranch != nil {
+		if err := discardBranch(slug); err != nil {
+			return false, fmt.Errorf("battencli: discard the task branch of %s: %w", slug, err)
+		}
+	}
+
+	run := "run"
+	if recipe != "" {
+		run = recipe + " run"
+	}
+	committed, err := removeRunRecords(location, slug, "batten: remove the done "+run+" of "+slug, deps)
 	var emptyErr scratchEmptyError
 	switch {
 	case errors.As(err, &emptyErr):
 		logger.Warn("battencli: the done run's records are removed but its scratch is not emptied", "slug", slug, "recipe", recipe, "error", err.Error())
 	case err != nil:
-		return false, errors.Join(err, restoreMotifRunRecords(location, slug, data, recipe, filingMarked))
+		return false, errors.Join(err, restoreDoneRunRecords(location, slug, data, recipe, filingMarked))
 	}
 	if committed {
 		if err := deps.Spawn(); err != nil {
@@ -183,12 +260,12 @@ func clearMotifRun(location *lymcwd.Location, slug string, deps cleanupDeps) (cl
 	return true, nil
 }
 
-// restoreMotifRunRecords writes back the status and child-recipe records of slug's run,
-// and its filing mark when filingMarked reports that one stood.
-// It runs when a removal fails before its records commit,
-// so the run reads as the same done run again and a re-run of the removal finishes it.
+// restoreDoneRunRecords writes back the status record of slug's run.
+// It also writes back the child-recipe record when recipe is not empty, and the filing mark when filingMarked is true.
+// It runs when a removal fails before its records commit, so the run reads as the same done run again.
+// A re-run of the removal then finishes it.
 // The caller holds the slug's status lock.
-func restoreMotifRunRecords(location *lymcwd.Location, slug string, status []byte, recipe string, filingMarked bool) error {
+func restoreDoneRunRecords(location *lymcwd.Location, slug string, status []byte, recipe string, filingMarked bool) error {
 	statusFile := shedrun.StatusFile(location, slug)
 	if err := os.MkdirAll(filepath.Dir(statusFile), 0o755); err != nil {
 		return fmt.Errorf("battencli: restore the status of %s: %w", slug, err)
@@ -196,8 +273,10 @@ func restoreMotifRunRecords(location *lymcwd.Location, slug string, status []byt
 	if err := os.WriteFile(statusFile, status, 0o644); err != nil {
 		return fmt.Errorf("battencli: restore the status of %s: %w", slug, err)
 	}
-	if err := shedrun.WriteChildRecipe(location, slug, recipe); err != nil {
-		return fmt.Errorf("battencli: restore the child recipe of %s: %w", slug, err)
+	if recipe != "" {
+		if err := shedrun.WriteChildRecipe(location, slug, recipe); err != nil {
+			return fmt.Errorf("battencli: restore the child recipe of %s: %w", slug, err)
+		}
 	}
 	if filingMarked {
 		if err := shedrun.WriteFilingMark(location, slug); err != nil {
@@ -552,8 +631,10 @@ on the records side, empties that run's scratch beside its lock files, empties t
 any orphan (a scratch directory with no records run directory, untouched for a day), and then
 spawns the push of the records. A run that is running, paused, blocked, awaiting or failed, or whose run
 lock is held, is skipped and reported with its reason. It never touches a pair, a branch, a
-lock file or another run. A done motif run is also cleared by "lym beam create"
-and by the start of a raddle run under its slug.
+lock file or another run. The dobby of a run's parent worktree removes a done run
+itself once it has counted its landing and decided its landing notice; a done
+motif run is also cleared by "lym beam create" and by the start of a raddle run
+under its slug.
 
 Output: {"applied", "removed", "emptied", "skipped", "push_spawned", "push_error"}.
 push_spawned says the push was started, not that origin took it; "lym fabric status" lists a push origin refused under failed_pushes.
