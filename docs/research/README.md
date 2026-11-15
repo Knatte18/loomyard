@@ -103,6 +103,8 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 
 - [reparent-running-task-2026-11-12.md](loom/reparent-running-task-2026-11-12.md) — every place a task records its parent or membership, and what a re-parent verb would write.
 
+- [lym-state-map-2026-11-15.md](loom/lym-state-map-2026-11-15.md) — every piece of state lym keeps, where it lives and whether git holds it, the steps of `lym adopt`, the adopt failures on record and a first-draft state machine of a run.
+
 ### plan-split — splitting a plan into parts
 
 - [plan-split-bench-2026-11-01](loom/plan-split/plan-split-bench-2026-11-01/report.md) — Parts-Write and Parts-Plan-Write against Plan-Write.
