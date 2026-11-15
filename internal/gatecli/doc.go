@@ -411,6 +411,9 @@
 //
 // The directory is resolved with lymcwd.ResolveWorktree.
 // It finds the containing worktree from any directory inside it, a nested module directory included.
+// Every verb acts on code, so a directory in a records worktree resolves to the code worktree it pairs with.
+// A worktree's `.scratch` link reaches such a directory.
+// The pairing goes through `fabricengine.CodeLocation`.
 // preflight.BoardLymPresent then reports whether the hub carries a board.
 // It does not use the standalone-capable CLIs' mode resolution.
 // Its anchor gate would refuse a nested module directory.
@@ -567,6 +570,16 @@
 // the guard step's own `-run` filter exempts nothing.
 // A test the run's watch skip names does not count as a test the package holds.
 // Otherwise a tier that discovers no tests passes with zero counted, as a package with only a `TestMain` does.
+// A passing `vstest` invocation whose output reported no test still passes, and prints a line to stderr and the log.
+// A test project that sets IsTestProject false unless an MSBuild property is passed builds and exits 0 this way.
+// The line names the tier, the invocation's targets, or its directory when it has none, and its class filter terms.
+// Its way forward is running the tests by hand with `dotnet test` and the property the project file names.
+// That is offered only while the hub's `refuse_raw` does not list `dotnet test`.
+// Otherwise the agent reports the skipped tests to its parent.
+// The line covers an invocation whose whole output reported no test.
+// It cannot see a disabled project beside a project that ran.
+// It cannot see a gated class in a project that ran other tests.
+// It cannot name the property behind a skip: the counter reads only each invocation's total.
 //
 // # Lint steps
 //
@@ -1026,7 +1039,7 @@
 // A package is a directory relative to that root holding a Go file, found as `go list ./...` finds one:
 // testdata, a directory whose name opens with a dot or an underscore, and a nested module are left out.
 // The verb runs only in the hub's prime worktree, told by `hubgeom.IsPrime`.
-// Elsewhere it refuses, naming the prime worktree.
+// Elsewhere it refuses, naming the prime's code worktree.
 // It reads HEAD through `Fabric.HeadSHA` before its walk, and plans and measures every package at that HEAD.
 // It reads HEAD again before each package job, after each round of runs and on each wake of a pass's slot wait.
 // Once HEAD moved it ends, counting the jobs it left as queued, so the next pass plans at the new HEAD.

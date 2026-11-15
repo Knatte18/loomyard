@@ -729,6 +729,14 @@ func TestGateTestMap(t *testing.T) {
 				want: "gate testmap: " + pair + " is not the hub's prime worktree, and a coverage map records the prime branch; way forward: run lym gate testmap from " + prime,
 			},
 			{
+				name: "FromAPairsRecordsSibling", dir: h.PairRecordsSibling(hubforge.TemplatePairSlug), args: []string{"testmap"},
+				want: "gate testmap: " + pair + " is not the hub's prime worktree, and a coverage map records the prime branch; way forward: run lym gate testmap from " + prime,
+			},
+			{
+				name: "FromThePrimesRecordsSiblingActsInThePrime", dir: h.PrimeRecords(), args: []string{"testmap", "nosuch"},
+				want: "gate testmap: \"nosuch\" names no package directory of the module at " + prime + "; way forward: name a package by its directory relative to the module root, such as internal/foo",
+			},
+			{
 				name: "OutsideEveryHub", dir: outsideHub, args: []string{"testmap"},
 				want: "gate testmap: " + outsideHub + " is in no hub, and the coverage maps live in a hub; way forward: run lym gate testmap from a hub's prime worktree",
 			},

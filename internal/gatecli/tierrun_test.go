@@ -226,6 +226,80 @@ func TestRunTierProcessCap(t *testing.T) {
 	}
 }
 
+// TestRunTierNoTestNotice pins the line a passing `vstest` invocation prints when its output reported no test.
+// The command reports one test for a target holding "ran" and prints only a restore line for any other.
+func TestRunTierNoTestNotice(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the tier command is a POSIX shell case")
+	}
+
+	const summary = "Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 1 s - ran.dll (net8.0)"
+	command := "case \"{targets}\" in *ran*) echo '" + summary + "';; *bad*) exit 3;; *) echo 'Restored the project';; esac"
+	// notice builds the expected line; project "{dir}" stands for the invocation's run directory.
+	notice := func(project, classes string) string {
+		return "gate test: tier0 ran no test of " + project + classes + ": dotnet test exited 0 and reported no test, as a test project does that sets IsTestProject false unless an MSBuild property is passed, so the gate's pass covers none of its tests; the gate reads only the invocation's total, so it names no property and sees no skip inside an invocation that ran some test; way forward: when those tests must run and the hub's refuse_raw does not list dotnet test, run them by hand with dotnet test <project> -p:<property>=true, the property its project file's IsTestProject condition names, and check that the run's summary line reports them; otherwise report the skipped tests to your parent"
+	}
+	tests := []struct {
+		name        string
+		counter     string
+		invocations []invocation
+		// wantExit is the tier's exit code.
+		wantExit int
+		want     []string
+	}{
+		{name: "AProjectThatReportsATestPrintsNoLine", counter: counterVSTest, invocations: []invocation{{targets: []string{"ran.csproj"}}}},
+		{
+			name:    "ANarrowedProjectThatReportsNoTestIsNamedWithItsClassFilter",
+			counter: counterVSTest,
+			invocations: []invocation{
+				{targets: []string{"ran.csproj"}},
+				{targets: []string{"slow.csproj"}, terms: []string{"FullyQualifiedName~Ns.SlowA", "FullyQualifiedName~Ns.SlowB"}, partial: true},
+			},
+			want: []string{notice("slow.csproj", " under the class filter FullyQualifiedName~Ns.SlowA|FullyQualifiedName~Ns.SlowB")},
+		},
+		{name: "AWholeRunThatReportsNoTestIsNamed", counter: counterVSTest, invocations: []invocation{{targets: []string{"all.sln"}}}, want: []string{notice("all.sln", "")}},
+		{name: "AnInvocationWithNoTargetsNamesItsRunDirectory", counter: counterVSTest, invocations: []invocation{{}}, want: []string{notice("{dir}", "")}},
+		{name: "AFailingInvocationPrintsNoLine", counter: counterVSTest, invocations: []invocation{{targets: []string{"bad.csproj"}}}, wantExit: 3},
+		{name: "AGoJSONRunPrintsNoLine", counter: counterGoJSON, invocations: []invocation{{targets: []string{"slow"}}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			for i := range tt.invocations {
+				tt.invocations[i].dir = dir
+			}
+			var stderr bytes.Buffer
+			request := testRequest{root: dir, stderr: &stderr, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay}
+			run := tierRun{number: 0, tier: gateslot.Tier{Command: command, Counter: tt.counter, TimeoutMin: 1}, invocations: tt.invocations}
+
+			result := runTier(context.Background(), io.Discard, run, []string{"PATH=" + os.Getenv("PATH")}, request)
+
+			if result.refusal != "" || result.record.ExitCode != tt.wantExit {
+				t.Fatalf("runTier() = refusal %q, exit %d; want exit %d and no refusal", result.refusal, result.record.ExitCode, tt.wantExit)
+			}
+			var want []string
+			for _, line := range tt.want {
+				want = append(want, strings.ReplaceAll(line, "{dir}", dir))
+			}
+			got := strings.Split(strings.TrimSuffix(stderr.String(), "\n"), "\n")
+			if stderr.Len() == 0 {
+				got = nil
+			}
+			if !slices.Equal(got, want) {
+				t.Errorf("runTier() stderr lines = %q; want %q", got, want)
+			}
+			for _, line := range want {
+				if !strings.Contains(string(result.log), line+"\n") {
+					t.Errorf("runTier() log = %q; want it to hold %q", result.log, line)
+				}
+			}
+		})
+	}
+}
+
 func TestFailedRunLabel(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

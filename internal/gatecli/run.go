@@ -660,6 +660,7 @@ func (e *execution) writeRecord(record gateslot.RunRecord, log []byte, run strin
 }
 
 // resolveHub returns the location of the hub worktree that contains dir, and whether dir is inside a hub at all.
+// A dir in a records worktree resolves to the code worktree it pairs with, since every gate verb acts on code.
 // A dir outside every git worktree, or in a worktree whose hub carries no board, is outside every hub.
 func resolveHub(dir string) (*lymcwd.Location, bool, error) {
 	location, err := lymcwd.ResolveWorktree(dir)
@@ -668,6 +669,9 @@ func resolveHub(dir string) (*lymcwd.Location, bool, error) {
 	}
 	if err != nil {
 		return nil, false, fmt.Errorf("resolve the worktree of %s: %w", dir, err)
+	}
+	if location, err = fabricengine.CodeLocation(location); err != nil {
+		return nil, false, fmt.Errorf("resolve the code worktree of %s: %w", dir, err)
 	}
 	if !preflight.BoardLymPresent(location) {
 		return nil, false, nil

@@ -114,6 +114,9 @@ A `lym gate test` or `lym gate card-verify` call that exits with code `75`, answ
 It costs no self-fix attempt, never makes the report `FAILED`, and you run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls; the next call prints the run's result once it ended.
 
 The one route to a test run is `lym gate test` with a gate's tier list and a scope form, such as `--tier <n>` with `--card <card id>` or explicit packages, never a raw test command.
+A gate line saying a tier ran no test of a project means the project skipped its own tests, and the gate's pass covers none of them.
+When your card needs those tests and the hub's `refuse_raw` does not list `dotnet test`, run them by hand as that line's way forward names, and check that the run's summary line reports them: this is the one raw test command you run.
+When `refuse_raw` lists it, report the skipped tests to your parent.
 The hub's tiers and gate lists follow:
 
 {{.gate_tiers}}

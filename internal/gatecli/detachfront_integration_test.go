@@ -998,11 +998,17 @@ func TestGateTest_DetachedRun(t *testing.T) {
 				t.Fatal(err)
 			}
 			rig.writePlan(verifyCard(4, "alpha", "lym gate test --wait ./pkg"))
-			env := append([]string{helperGraceEnv + "=1s", "PATH=" + stubDir + string(os.PathListSeparator) + os.Getenv("PATH")}, holdEnv...)
+			// The grace outlasts any start of the line's child, and the test passes the lease once the tier runs:
+			// a lease that passed first would end the line before its child ever ran the tier.
+			env := append([]string{helperGraceEnv + "=1m", "PATH=" + stubDir + string(os.PathListSeparator) + os.Getenv("PATH")}, holdEnv...)
 
 			requireGoing(t, rig.cardCall("1s", env, "4"), "")
 			held := rig.waitInvocations(1)
-			if exit := waitExitOf(t, rig.cardRun("4-alpha")); exit != (detachExit{Code: 1, Abandoned: true}) {
+			run := rig.cardRun("4-alpha")
+			if err := run.expireLease(time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			if exit := waitExitOf(t, run); exit != (detachExit{Code: 1, Abandoned: true}) {
 				t.Errorf("exit file = %+v; want code 1, abandoned", exit)
 			}
 			requireEnded(t, held)

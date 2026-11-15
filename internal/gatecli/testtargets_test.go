@@ -121,7 +121,7 @@ func TestRunInvocationsTestTargets(t *testing.T) {
 			}
 			request := testRequest{goBinary: defaultGoBinary, root: moduleDir, stderr: &stderr, pipeWaitDelay: defaultPipeWaitDelay}
 
-			exit, _, _, refusal := runInvocations(context.Background(), run, counter, nil, request)
+			exit, _, _, refusal := runInvocations(context.Background(), run, counter, nil, request, func(string) {})
 			if err := counter.Flush(); err != nil {
 				t.Fatal(err)
 			}

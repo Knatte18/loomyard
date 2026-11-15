@@ -55,6 +55,21 @@ func WeftWarpSlug(name string) (slug string, ok bool) {
 	return s, true
 }
 
+// CodeLocation returns the Location of the code worktree that l, a weft sibling, pairs with.
+// A cwd reached through a worktree's .scratch link resolves to its weft sibling,
+// so a verb that acts on code takes the code worktree from here.
+// An l that is no weft sibling, or whose code worktree directory is absent, comes back unchanged.
+func CodeLocation(l *lymcwd.Location) (*lymcwd.Location, error) {
+	slug, ok := WeftWarpSlug(l.WorktreeName)
+	if !ok {
+		return l, nil
+	}
+	if info, err := os.Stat(filepath.Join(l.HubPath, slug)); err != nil || !info.IsDir() {
+		return l, nil
+	}
+	return lymcwd.NamedWorktree(l.HubPath, slug)
+}
+
 // weftRepoExists reports whether a weft repo exists and is a valid git repository.
 // An unresolvable weft repo root reports false, the same as an absent directory.
 func weftRepoExists(l *lymcwd.Location) bool {

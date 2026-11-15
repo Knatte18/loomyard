@@ -90,15 +90,17 @@ func TestRedundancyStep(t *testing.T) {
 
 	// The pair adds tests to most packages, edits TestBetaOne, moves moved's test file and deletes gone's.
 	staleTestFile := judgedTestFile("stale", tieredTest("TestStaleOld", 0, ""), tieredTest("TestStaleNew", 0, ""))
+	dropsHangs := tieredTest("TestDropsHangs", 0, "")
+	dropsTestFile := judgedTestFile("drops",
+		tieredTest("TestDropsOne", 0, ""), tieredTest("TestDropsPlain", 0, ""), dropsHangs,
+		"//testtiming:keep pins the slow path on purpose\n"+tieredTest("TestDropsKept", 0, ""),
+		tieredTest("TestDropsLate", 0, ""), tieredTest("TestDropsTier1", 1, ""), tieredTest("TestDropsTier1Again", 1, ""),
+		tieredTest("TestDropsTier2", 2, ""))
 	plankit.WriteTree(t, pair, map[string]string{
 		"alpha/alpha_test.go":   judgedTestFile("alpha", tieredTest("TestAlphaBase", 0, ""), tieredTest("TestAlphaNewOne", 0, ""), tieredTest("TestAlphaNewTwo", 0, "")),
 		"beta/beta_test.go":     judgedTestFile("beta", tieredTest("TestBetaNewOne", 0, ""), tieredTest("TestBetaOne", 0, "\tt.Log(\"edited\")\n")),
 		"broken/broken_test.go": judgedTestFile("broken", tieredTest("TestBrokenOne", 0, ""), tieredTest("TestBrokenNew", 0, "")),
-		"drops/drops_test.go": judgedTestFile("drops",
-			tieredTest("TestDropsOne", 0, ""), tieredTest("TestDropsPlain", 0, ""), tieredTest("TestDropsHangs", 0, ""),
-			"//testtiming:keep pins the slow path on purpose\n"+tieredTest("TestDropsKept", 0, ""),
-			tieredTest("TestDropsLate", 0, ""), tieredTest("TestDropsTier1", 1, ""), tieredTest("TestDropsTier1Again", 1, ""),
-			tieredTest("TestDropsTier2", 2, "")),
+		"drops/drops_test.go":   dropsTestFile,
 		// A test in a file built under a tier tag that runs the go command is marked out of process.
 		"drops/spawn_tier1_test.go": "//go:build tier1\n\npackage drops\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestDropsSpawns(t *testing.T) {\n\t_, _ = os.Executable()\n}\n",
 		"moved/b_test.go":           seeded["moved/a_test.go"],
@@ -484,15 +486,21 @@ func TestRedundancyStep(t *testing.T) {
 		writeMap(t, "alpha", mapOf(t, "alpha", testcover.MapTest{Name: "TestAlphaBase", FuncHash: "x", Seconds: 0.01, Blocks: []int{9}}))
 		t.Cleanup(func() { writeMap(t, "alpha", alphaMap) })
 		// The prebuild builds `lym` only for a worktree holding cmd/lym.
-		plankit.WriteTree(t, pair, map[string]string{"cmd/lym/main.go": "package main\n"})
+		// TestDropsHangs is kept for the subtest, so no test runs to its timeout and the timeout can be long.
+		plankit.WriteTree(t, pair, map[string]string{
+			"cmd/lym/main.go":     "package main\n",
+			"drops/drops_test.go": strings.Replace(dropsTestFile, dropsHangs, "//testtiming:keep hangs until its timeout\n"+dropsHangs, 1),
+		})
 		t.Cleanup(func() {
 			_ = os.RemoveAll(filepath.Join(pair, "cmd", "lym"))
 			_ = os.Remove(filepath.Join(pair, "cmd"))
+			plankit.WriteTree(t, pair, map[string]string{"drops/drops_test.go": dropsTestFile})
 		})
 
 		builds := filepath.Join(t.TempDir(), "lym-builds")
-		// The default 150 millisecond second unit gives each test 3 seconds, so a loaded machine does not time out TestBetaNewOne.
 		step, _ := stepAt(t, pairLocation, append(slices.Clone(environ), testMapLymBuildsEnv+"="+builds, testMapFailLymBuildEnv+"=1"), time.Minute)
+		// A test past 20 seconds times out, so no load on the machine times out TestBetaNewOne.
+		step.secondUnit = time.Second
 		step.run(false, true)
 		report := readReport(t, pairLocation)
 

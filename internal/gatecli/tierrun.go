@@ -66,6 +66,7 @@ type tierResult struct {
 // When the resulting GOFLAGS carries `-trimpath`, it logs a line saying so before the first command,
 // and it returns that line for the caller to print.
 // Every command's GOFLAGS then opens with gateslot.TestCacheOffFlag, so `go test` keeps no test result cache.
+// A passing `vstest` invocation that reported no test prints the line naming it to stderr and the log.
 // A run with no invocation passes at once with nothing discovered.
 func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
 	started := time.Now()
@@ -89,7 +90,11 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	if trimpathNote != "" {
 		logBuffer.WriteString(trimpathNote + "\n")
 	}
-	exit, commands, capLine, refusal := runInvocations(tierCtx, run, counter, gateslot.WithTestCacheOff(tierEnv), request)
+	notice := func(line string) {
+		logBuffer.WriteString(line + "\n")
+		printLine(request.stderr, line)
+	}
+	exit, commands, capLine, refusal := runInvocations(tierCtx, run, counter, gateslot.WithTestCacheOff(tierEnv), request, notice)
 	if refusal != "" {
 		return tierResult{refusal: refusal}
 	}
@@ -266,9 +271,10 @@ func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Du
 // It keeps the packages holding a test of the tier.
 // An invocation left with no package runs no command, and a line on request.stderr says so.
 // While a command runs, the process cap watches every process carrying env's run marker, when env sets one.
+// After each passing invocation it hands notice the line of noTestNotice, when that line is not empty.
 // It returns that exit code, the commands it rendered, the process cap's line when the cap killed the run,
 // and a refusal when a command could not be run at all.
-func runInvocations(ctx context.Context, run tierRun, counter counter, env []string, request testRequest) (exit int, commands []string, capLine, refusal string) {
+func runInvocations(ctx context.Context, run tierRun, counter counter, env []string, request testRequest, notice func(string)) (exit int, commands []string, capLine, refusal string) {
 	if len(run.invocations) == 0 {
 		return 0, nil, "", ""
 	}
@@ -307,6 +313,7 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 			return 0, commands, "", err.Error()
 		}
 		commands = append(commands, command)
+		discoveredBefore := counter.Counts().discovered
 
 		cmd := exec.CommandContext(ctx, shellName, shellFlag, command)
 		cmd.Dir = dir
@@ -343,8 +350,33 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		if exit != 0 || ctx.Err() != nil || capLine != "" {
 			return exit, commands, capLine, ""
 		}
+		if line := noTestNotice(run, invocation, dir, counter.Counts().discovered-discoveredBefore); line != "" {
+			notice(line)
+		}
 	}
 	return 0, commands, "", ""
+}
+
+// noTestNotice returns the line of a passing `vstest` invocation whose output reported no test, or "" for any other.
+// discovered is the number of tests the invocation's output reported, and dir is its run directory.
+// A test project that sets IsTestProject false unless an MSBuild property is passed builds and exits 0 this way,
+// so the line names the project, the class filter the scope gave it, and how to run its tests by hand.
+// The line reads only the invocation's total, so it names no MSBuild property.
+// It sees no skip inside an invocation that ran some test.
+// The hand run is offered only while the hub's `refuse_raw` does not list `dotnet test`.
+func noTestNotice(run tierRun, inv invocation, dir string, discovered int) string {
+	if run.tier.Counter != counterVSTest || discovered > 0 {
+		return ""
+	}
+	project := dir
+	if len(inv.targets) > 0 {
+		project = strings.Join(inv.targets, " ")
+	}
+	classes := ""
+	if len(inv.terms) > 0 {
+		classes = " under the class filter " + strings.Join(inv.terms, "|")
+	}
+	return fmt.Sprintf("gate test: %s ran no test of %s%s: dotnet test exited 0 and reported no test, as a test project does that sets IsTestProject false unless an MSBuild property is passed, so the gate's pass covers none of its tests; the gate reads only the invocation's total, so it names no property and sees no skip inside an invocation that ran some test; way forward: when those tests must run and the hub's refuse_raw does not list dotnet test, run them by hand with dotnet test <project> -p:<property>=true, the property its project file's IsTestProject condition names, and check that the run's summary line reports them; otherwise report the skipped tests to your parent", tierName(run.number), project, classes)
 }
 
 // tierTestTargets returns the packages of targets in the module at moduleDir that hold a test run's tier executes.
