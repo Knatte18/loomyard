@@ -565,7 +565,7 @@ User-facing modules each get one `lym <module>` namespace:
   The hub-wide `ide.yaml` lists them under `open_files` for the worktree's place: the prime, a beam or a task.
   Paths are relative to the worktree's anchored directory, and `{beam}` stands for the beam's slug.
   An entry naming no file is skipped.
-  The template opens `README.md` for a beam and nothing for the prime or a task.
+  The template opens nothing for any place.
   `ide.yaml`'s `render_markdown` is on by default.
   With it on, a seed points the `*.md` entry of `workbench.editorAssociations` at the markdown preview,
   so a markdown file opens rendered.
