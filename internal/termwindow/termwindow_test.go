@@ -50,12 +50,12 @@ func TestResolve_ChoosesLauncherPerPlatform(t *testing.T) {
 			})
 			if tt.want == "" {
 				if !errors.Is(err, ErrNoLauncher) {
-					t.Errorf("resolve() = %q, %v; want ErrNoLauncher", launcher.Name(), err)
+					t.Errorf("resolve() = %q, %v; want ErrNoLauncher", launcher.name, err)
 				}
 				return
 			}
-			if err != nil || launcher.Name() != tt.want {
-				t.Errorf("resolve() = %q, %v; want %q", launcher.Name(), err, tt.want)
+			if err != nil || launcher.name != tt.want {
+				t.Errorf("resolve() = %q, %v; want %q", launcher.name, err, tt.want)
 			}
 		})
 	}

@@ -1,4 +1,4 @@
-// verbs_test.go covers webstercli's git-backed and spawn-backed verbs through the RunCLI seam.
+// verbs_test.go covers webstercli's git-backed and spawn-backed verbs through clihelp.Execute.
 // The verbs are begin-batch, record-batch, recover-batch, and run.
 // A real scratch git repo backs WorktreeRoot.
 // A real *shuttleengine.Runner wraps local fake shuttleengine.ReedOps and shuttleengine.Engine doubles:
@@ -7,7 +7,7 @@
 // Most tests build a *websterCLI literal directly, bypassing Command()'s PersistentPreRunE.
 // They drive one verb's cobra.Command through clihelp.Execute, the package's injection point for these tests.
 // seedPersistentPreRunFixture and its tests are the exception.
-// They drive Command()'s real PersistentPreRunE through RunCLIIn.
+// They drive Command()'s real PersistentPreRunE through clihelp.ExecuteIn.
 // FABRIC_SKIP_GIT=1 is set on every test that reaches a fabricSync call, so no real records sibling worktree is needed.
 // The one test proving fabricSync was never reached (ErrRunBusy) leaves FABRIC_SKIP_GIT unset.
 // It asserts the envelope carries no fabric-sync or fabricengine error text:
@@ -1486,7 +1486,7 @@ func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 // The batcher.yaml content is caller-supplied, so a test can override its active: key.
 // Tests that use it drive Command()'s real PersistentPreRunE, never a hand-built *websterCLI literal.
 // Load-time batcher selection is wired in PersistentPreRunE.
-// Callers pass h.PrimeWorktree() (unanchored) or h.Location.AnchorPath() (anchored) to RunCLIIn.
+// Callers pass h.PrimeWorktree() (unanchored) or h.Location.AnchorPath() (anchored) to clihelp.ExecuteIn.
 // The process cwd is never relied on.
 func seedPersistentPreRunFixture(t *testing.T, anchor, batcherConfig string) *hubforge.Hub {
 	t.Helper()
@@ -1533,7 +1533,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 		seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), `active: "wide"`, `active: "bogus"`, 1))
 
 		var out strings.Builder
-		exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
+		exitCode := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"status"})
 
 		if exitCode != 1 {
 			t.Fatalf("status with an unknown batcher = %d; want 1, output: %s", exitCode, out.String())
@@ -1557,7 +1557,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 		seedPersistentPreRunConfig(t, h, batcher.ConfigTemplate())
 
 		var out strings.Builder
-		exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
+		exitCode := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"status"})
 
 		if exitCode != 0 {
 			t.Fatalf("status with the default batcher = %d; want 0, output: %s", exitCode, out.String())
@@ -1581,7 +1581,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 		}
 
 		var out strings.Builder
-		exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"rebaseline"})
+		exitCode := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"rebaseline"})
 
 		if exitCode != 1 {
 			t.Fatalf("rebaseline with a negative coefficient = %d; want 1, output: %s", exitCode, out.String())
@@ -1675,7 +1675,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 			}
 
 			var out strings.Builder
-			exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
+			exitCode := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"status"})
 
 			got := out.String()
 			if exitCode != 1 {
@@ -1737,7 +1737,7 @@ func unmakeConfigUnreadable(t *testing.T, h *hubforge.Hub, module string) {
 // TestPersistentPreRunE_PlanDirAnchoredAtSubpath covers the production plan-dir resolution at a nested anchor.
 // The resolution is wireHub's geom.PlanDir, which feeds c.geom.PlanDir.
 // Expectations built from layout.AnchorPath() cannot catch a call site that regressed to layout.WorktreePath().
-// This test drives the real PersistentPreRunE through RunCLIIn.
+// This test drives the real PersistentPreRunE through clihelp.ExecuteIn.
 // It asserts on planparser's own error text, which only a wrong-root c.planDir can produce.
 // The plan's `root:` names the anchor's own directory and its Edit target is a file there,
 // so a card path checked against the anchor instead of the worktree root doubles the prefix and reads as missing.
@@ -1764,9 +1764,9 @@ func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 	})
 
 	// lymcwd.Resolve gates cwd against the anchored directory exactly.
-	// So at a "backend" hub, RunCLIIn must get the anchor directory, not h.PrimeWorktree(), the unanchored root.
+	// So at a "backend" hub, clihelp.ExecuteIn must get the anchor directory, not h.PrimeWorktree(), the unanchored root.
 	var out strings.Builder
-	exitCode := RunCLIIn(h.Location.AnchorPath(), &out, []string{"validate"})
+	exitCode := clihelp.ExecuteIn(Command(), h.Location.AnchorPath(), &out, []string{"validate"})
 
 	if exitCode != 0 {
 		t.Fatalf("validate at a subpath-anchored hub = %d; want 0, output: %s", exitCode, out.String())

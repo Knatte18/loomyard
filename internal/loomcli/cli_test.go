@@ -82,18 +82,18 @@ func TestCommand_StartVerbCarriesParentAndHiddenNoAttach(t *testing.T) {
 	}
 }
 
-// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lym loom" invocation succeeds outside a git repository.
+// TestCommand_GroupGuard_NoGitRepoNeeded asserts that a bare "lym loom" invocation succeeds outside a git repository.
 // It proves the PersistentPreRunE guard for cmd.Name() == "loom" fires before any cwd resolution.
-func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
+func TestCommand_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()
 	var out bytes.Buffer
-	exitCode := RunCLIIn(dir, &out, nil)
+	exitCode := clihelp.ExecuteIn(Command(), dir, &out, nil)
 
 	if exitCode != 0 {
-		t.Errorf("RunCLIIn(%q, nil) = %d; want 0", dir, exitCode)
+		t.Errorf("ExecuteIn(%q, nil) = %d; want 0", dir, exitCode)
 	}
 }
 

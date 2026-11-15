@@ -1,5 +1,4 @@
 // cli.go builds the cobra command tree for the webster module.
-// It also holds the RunCLI seam, which adapts that tree to the standard io.Writer call contract.
 // The parent "webster" command carries a PersistentPreRunE.
 // It resolves cwd, runs one preflight.ResolveMode probe, and delegates to c.wire (wiring.go).
 // c.wire selects hub or standalone mode and builds the whole engine stack for the mode that wins.
@@ -379,22 +378,4 @@ func persistPlanFingerprintRebaseline(geom websterengine.Geometry, st *websteren
 	fresh.PlanFileHashes = st.PlanFileHashes
 	fresh.PlanOverviewFrameHash = st.PlanOverviewFrameHash
 	return websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, fresh)
-}
-
-// RunCLI is the public seam for the webster module CLI.
-//
-// It delegates to clihelp.Execute with the cobra command tree.
-// Out receives all output, including cobra's error text.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the webster module CLI with cwd seeded into the execution context.
-// An empty cwd reads the process working directory instead, through clihelp.Execute.
-// The branch exists because lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

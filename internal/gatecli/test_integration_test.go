@@ -1175,7 +1175,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		t.Cleanup(func() { _ = lease.Release() })
 
 		var out bytes.Buffer
-		code := RunCLIIn(prime, &out, []string{"status"})
+		code := clihelp.ExecuteIn(Command(), prime, &out, []string{"status"})
 		var envelope struct {
 			OK       bool `json:"ok"`
 			InHub    bool `json:"in_hub"`
@@ -1216,7 +1216,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		t.Cleanup(func() { _ = drain.Release() })
 
 		var out bytes.Buffer
-		code := RunCLIIn(prime, &out, []string{"status"})
+		code := clihelp.ExecuteIn(Command(), prime, &out, []string{"status"})
 		var envelope struct {
 			OK       bool `json:"ok"`
 			Draining bool `json:"draining"`
@@ -1231,7 +1231,7 @@ func TestGateTest_Scenario(t *testing.T) {
 
 	t.Run("status outside every hub answers in_hub false", func(t *testing.T) {
 		var out bytes.Buffer
-		code := RunCLIIn(t.TempDir(), &out, []string{"status"})
+		code := clihelp.ExecuteIn(Command(), t.TempDir(), &out, []string{"status"})
 		var envelope struct {
 			OK    bool  `json:"ok"`
 			InHub *bool `json:"in_hub"`

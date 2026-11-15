@@ -3,7 +3,7 @@
 // inherit the operator's global gitconfig (see PATTERN-test-isolation).
 // The binary also runs under tmux isolation through tmuxkit.Main.
 //
-// This file is required because RunCLIIn reaches preflight.ResolveMode.
+// This file is required because running the burler command reaches preflight.ResolveMode.
 // Through it, lymcwd.Resolve runs a real `git rev-parse` spawn, and no other test in this package spawns git.
 // The Hermetic Git Test Environment guard is token-keyed.
 // It does not catch a spawn reached indirectly through a CLI seam, so nothing else would flag the gap.

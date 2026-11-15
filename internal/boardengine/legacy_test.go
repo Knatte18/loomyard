@@ -254,17 +254,3 @@ func TestFoldLegacyDone(t *testing.T) {
 		})
 	}
 }
-
-func TestDecodeLegacyLenient(t *testing.T) {
-	tiergate.Require(t, 0)
-	records, err := decodeLegacy([]byte(`[{"id":1,"slug":"a","unknown":true,"type":"loom"}]`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(records) != 1 || records[0].Slug != "a" || records[0].Type != "loom" {
-		t.Errorf("records = %+v", records)
-	}
-	if records, err := decodeLegacy(nil); err != nil || records != nil {
-		t.Errorf("empty input: %v %v", records, err)
-	}
-}

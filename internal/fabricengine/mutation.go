@@ -94,8 +94,8 @@ const (
 	// KindTagPushed records archiveWeftTip's push of an archive tag to the weft origin once it observably succeeded.
 	// Its Target is the weft repo root and its Detail is the tag name.
 	KindTagPushed Kind = "tag_pushed"
-	// KindCommitsDropped records dropSeedCommits' reset past the seed commits, once HEAD observably moved.
-	// Its Target is the board checkout and its Detail is the dropped commits' SHAs, space-separated.
+	// KindCommitsDropped records commits dropped from a checkout, once HEAD observably moved.
+	// Its Target is the checkout and its Detail is the dropped commits' SHAs, space-separated.
 	KindCommitsDropped Kind = "commits_dropped"
 	// KindTagCreated records setAsideTag's write of a local set-aside tag, recorded only after the tag exists.
 	// Its Target is the repository root and its Detail is the tag name.

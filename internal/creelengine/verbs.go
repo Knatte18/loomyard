@@ -144,29 +144,6 @@ func (s *Store) PostWith(sender Sender, receiver, body string, opts PostOptions)
 	return s.post(sender, receiver, body, opts)
 }
 
-// Post stores a message for receiver and returns its id.
-func (s *Store) Post(sender Sender, receiver, body string) (int64, error) {
-	posted, err := s.post(sender, receiver, body, PostOptions{})
-	return posted.ID, err
-}
-
-// PostWait stores a message for receiver and registers a wait for its reply, before any reply can arrive.
-func (s *Store) PostWait(sender Sender, receiver, body string) (int64, *Waiter, error) {
-	posted, err := s.post(sender, receiver, body, PostOptions{Wait: true})
-	return posted.ID, posted.Waiter, err
-}
-
-// PostInterrupt stores a message for receiver after stopping the receiver's running turn.
-// The post lands as the input of the next turn, and with wait set it also registers a wait for the reply.
-// It reports whether a running turn was stopped; a receiver with no running turn still gets the post.
-// The post is validated.
-// The receiver must run creel's hook delivery and be one the sender may interrupt, both checked before any key is sent.
-// A refusal, and a post whose store fails, say what was and was not done and the way forward.
-func (s *Store) PostInterrupt(sender Sender, receiver, body string, wait bool) (int64, bool, *Waiter, error) {
-	posted, err := s.post(sender, receiver, body, PostOptions{Wait: wait, Interrupt: true})
-	return posted.ID, posted.Interrupted, posted.Waiter, err
-}
-
 // interruptBeforePost stops the running turn of receiver for a post from sender and reports whether one was stopped.
 // Every refusal leaves nothing interrupted, and its wording tells the sender what to do next.
 func (s *Store) interruptBeforePost(sender Sender, receiver string) (bool, error) {

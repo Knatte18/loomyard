@@ -7,7 +7,6 @@ package fabricengine
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -28,9 +27,8 @@ func wiredNamesFromConfig(cfg Config) []string {
 // `.lym` is refused as a worktree slug even when the caller-supplied junctionNames argument is empty.
 // The refusal comes from the structuralNeverCommittedDirs union in IsReservedHubName.
 // It does not depend on what a config wires.
-// slugReservedNames contains lymdirs.DotLymDirName exactly once, sourced from structuralNeverCommittedDirs.
 //
-//testtiming:keep _lym always wired and routed, .lym wired but never routed, .lym refused as a slug and counted once in the reserved set; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep _lym always wired and routed, .lym wired but never routed, .lym refused as a slug; coverage of its blocks by other tests does not show an assertion of this
 func TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory(t *testing.T) {
 	tiergate.Require(t, 0)
 	cfg := Config{Pathspec: "_extra"}
@@ -54,22 +52,17 @@ func TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory(t *testin
 	if !IsReservedHubName(".lym", nil) {
 		t.Errorf("IsReservedHubName(%q, nil) = false; want true", ".lym")
 	}
-
-	slugReserved := slugReservedNames(cfg)
-	if count := countName(slugReserved, lymdirs.DotLymDirName); count != 1 {
-		t.Errorf("slugReservedNames(%+v) = %v; want exactly one %q, got %d", cfg, slugReserved, lymdirs.DotLymDirName, count)
-	}
 }
 
 // TestDeployedLymPathspec_YieldsNoDuplicateLym asserts a deployed `pathspec: "_lym _pattern"` Config.
 // `_lym` arrives from both the structural set and cfg.Dirs() in the same call.
-// The wired set, the routing set, and the slug-reservation set must each hold exactly one `_lym`.
+// The wired set and the routing set must each hold exactly one `_lym`.
 // Without dedup, duplicate names would reach WarpJunctions, ScopedPathspec, and status output.
 // The value keeps `_pattern` on purpose, unlike the package's other exemplar Configs.
 // Reconcile keeps a `pathspec:` key already present in a worktree's fabric.yaml and never widens it;
 // so an already-deployed repo keeps its value, and only a fresh clone gets the empty template default.
 //
-//testtiming:keep a deployed "_lym _pattern" pathspec yielding exactly one _lym in the wired, routing and slug-reserved sets; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep a deployed "_lym _pattern" pathspec yielding exactly one _lym in the wired and routing sets; coverage of its blocks by other tests does not show an assertion of this
 func TestDeployedLymPathspec_YieldsNoDuplicateLym(t *testing.T) {
 	tiergate.Require(t, 0)
 	cfg := Config{Pathspec: "_lym _pattern"}
@@ -82,11 +75,6 @@ func TestDeployedLymPathspec_YieldsNoDuplicateLym(t *testing.T) {
 	routing := pathspecNames(cfg)
 	if got := countName(routing, "_lym"); got != 1 {
 		t.Errorf("pathspecNames(%+v) = %v; want exactly one %q, got %d", cfg, routing, "_lym", got)
-	}
-
-	slugReserved := slugReservedNames(cfg)
-	if got := countName(slugReserved, "_lym"); got != 1 {
-		t.Errorf("slugReservedNames(%+v) = %v; want exactly one %q, got %d", cfg, slugReserved, "_lym", got)
 	}
 }
 

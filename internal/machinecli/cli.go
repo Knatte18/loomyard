@@ -1,11 +1,9 @@
-// cli.go builds the `lym machine` cobra group with its `name` verb and holds the seams the verb runs through.
-// The RunCLI and RunCLIIn seams run that group with its output written to an io.Writer.
+// cli.go builds the `lym machine` cobra group with its `name` verb.
 
 package machinecli
 
 import (
 	"fmt"
-	"io"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -121,18 +119,4 @@ Example:
 		},
 	})
 	return machine
-}
-
-// RunCLI runs the `lym machine` command with args, writes its output to out, and returns its exit code.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the `lym machine` command with cwd as its working directory.
-// An empty cwd reads the process directory instead, since seeding an empty directory into the context panics.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

@@ -1,4 +1,4 @@
-// cli_test.go covers the reedcli cobra seam through RunCLI.
+// cli_test.go covers the reedcli cobra seam through clihelp.Execute.
 // It covers watchdog's and switch's flag refusals and the not-a-git-repo error surface.
 // It also covers the refusal of attach and up in fabric's own checkouts, and that down is not refused there.
 // No test in this file needs a live tmux session;
@@ -15,18 +15,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_Watchdog_RefusesBadHubPath verifies that watchdog refuses an absent or relative --hub-path.
+// TestCommand_Watchdog_RefusesBadHubPath verifies that watchdog refuses an absent or relative --hub-path.
 // It refuses on the envelope, before the verb blocks.
 // The non-git row also checks that the verb runs with no git repository present.
 // PersistentPreRunE returns early for watchdog.
 // The verb's own RunE then reports the missing --hub-path flag, not lymcwd.Resolve's not-a-git-repository error.
-func TestRunCLI_Watchdog_RefusesBadHubPath(t *testing.T) {
+func TestCommand_Watchdog_RefusesBadHubPath(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
@@ -46,45 +47,45 @@ func TestRunCLI_Watchdog_RefusesBadHubPath(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			exitCode := RunCLI(&out, tt.args)
+			exitCode := clihelp.Execute(Command(), &out, tt.args)
 
 			if exitCode == 0 {
-				t.Fatalf("RunCLI(%v) = 0; want non-zero", tt.args)
+				t.Fatalf("Execute(%v) = 0; want non-zero", tt.args)
 			}
 			errMsg := envelope.Decode(t, out.String()).Error
 			if errMsg == "not a git repository" {
-				t.Errorf("RunCLI(%v) error = %q; want the --hub-path validation error, not lymcwd.Resolve's not-a-git-repository error", tt.args, errMsg)
+				t.Errorf("Execute(%v) error = %q; want the --hub-path validation error, not lymcwd.Resolve's not-a-git-repository error", tt.args, errMsg)
 			}
 			if !strings.Contains(errMsg, "--hub-path") {
-				t.Errorf("RunCLI(%v) error = %q; want it to name --hub-path", tt.args, errMsg)
+				t.Errorf("Execute(%v) error = %q; want it to name --hub-path", tt.args, errMsg)
 			}
 		})
 	}
 }
 
-// TestRunCLI_NotAGitRepo verifies that a real verb run from a non-git directory exits 1.
+// TestCommand_NotAGitRepo verifies that a real verb run from a non-git directory exits 1.
 // Its JSON error reads "not a git repository".
-func TestRunCLI_NotAGitRepo(t *testing.T) {
+func TestCommand_NotAGitRepo(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Chdir(t.TempDir())
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"status"})
+	exitCode := clihelp.Execute(Command(), &out, []string{"status"})
 
 	if exitCode != 1 {
-		t.Errorf("RunCLI(status) in non-git dir = %d; want 1", exitCode)
+		t.Errorf("Execute(status) in non-git dir = %d; want 1", exitCode)
 	}
 
 	if errMsg := envelope.Decode(t, out.String()).Error; errMsg != "not a git repository" {
-		t.Errorf("RunCLI(status) error = %q; want exactly \"not a git repository\"", errMsg)
+		t.Errorf("Execute(status) error = %q; want exactly \"not a git repository\"", errMsg)
 	}
 }
 
-// TestRunCLI_AttachAndUp_RefuseFabricCheckouts pins the refusal of attach and up in fabric's own checkouts.
+// TestCommand_AttachAndUp_RefuseFabricCheckouts pins the refusal of attach and up in fabric's own checkouts.
 // Those are the hub's Bolt checkout and a records sibling.
 // Each refusal exits 1 and names the verb, fabric's reason and the hub to run it from.
 // The checkouts hold no config, so a refusal proves it comes before the config read and any tmux call.
-func TestRunCLI_AttachAndUp_RefuseFabricCheckouts(t *testing.T) {
+func TestCommand_AttachAndUp_RefuseFabricCheckouts(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	hub := filepath.Join(t.TempDir(), "repo-LYMHUB")
@@ -111,10 +112,10 @@ func TestRunCLI_AttachAndUp_RefuseFabricCheckouts(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			exitCode := RunCLIIn(filepath.Join(hub, tt.checkout), &out, []string{tt.verb})
+			exitCode := clihelp.ExecuteIn(Command(), filepath.Join(hub, tt.checkout), &out, []string{tt.verb})
 
 			if exitCode != 1 {
-				t.Errorf("RunCLIIn(%s) in %s = %d; want 1", tt.verb, tt.checkout, exitCode)
+				t.Errorf("ExecuteIn(%s) in %s = %d; want 1", tt.verb, tt.checkout, exitCode)
 			}
 			errMsg := envelope.Decode(t, out.String()).Error
 			fabricRefusal := fabricengine.RequireDrivableWorktree(&lymcwd.Location{HubPath: resolvedHub, WorktreeName: tt.checkout})
@@ -127,26 +128,26 @@ func TestRunCLI_AttachAndUp_RefuseFabricCheckouts(t *testing.T) {
 				"way forward: run it from the hub's prime or a task worktree under " + resolvedHub,
 			} {
 				if !strings.Contains(errMsg, want) {
-					t.Errorf("RunCLIIn(%s) in %s error = %q; want it to contain %q", tt.verb, tt.checkout, errMsg, want)
+					t.Errorf("ExecuteIn(%s) in %s error = %q; want it to contain %q", tt.verb, tt.checkout, errMsg, want)
 				}
 			}
 		})
 	}
 }
 
-// TestRunCLI_Down_IsNotRefusedInBolt pins that down still runs in the Bolt checkout, where attach and up are refused.
+// TestCommand_Down_IsNotRefusedInBolt pins that down still runs in the Bolt checkout, where attach and up are refused.
 // It goes on to fail for want of config or print nothing, so the assertion is only that the refusal text is absent.
-func TestRunCLI_Down_IsNotRefusedInBolt(t *testing.T) {
+func TestCommand_Down_IsNotRefusedInBolt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	hub := filepath.Join(t.TempDir(), "repo-LYMHUB")
 	writeBareGitDir(t, filepath.Join(hub, lymcwd.BoltDirName))
 
 	var out bytes.Buffer
-	RunCLIIn(filepath.Join(hub, lymcwd.BoltDirName), &out, []string{"down"})
+	clihelp.ExecuteIn(Command(), filepath.Join(hub, lymcwd.BoltDirName), &out, []string{"down"})
 
 	if strings.Contains(out.String(), fabricRefusalText) {
-		t.Errorf("RunCLIIn(down) in Bolt output = %q; want no refusal %q", out.String(), fabricRefusalText)
+		t.Errorf("ExecuteIn(down) in Bolt output = %q; want no refusal %q", out.String(), fabricRefusalText)
 	}
 }
 
@@ -167,7 +168,7 @@ func writeBareGitDir(t *testing.T, dir string) {
 	}
 }
 
-// TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies the flag checks of switch, follow and button.
+// TestCommand_Switch_RefusesBadFlagsAndNeedsNoRepository verifies the flag checks of switch, follow and button.
 // Switch refuses a missing or doubled direction and a missing --client.
 // Follow refuses a missing --socket, --session or --tmux.
 // Button refuses a missing --socket, --tmux, --session, --range or --client.
@@ -175,7 +176,7 @@ func writeBareGitDir(t *testing.T, dir string) {
 // Each refusal is a JSON error with a non-zero exit.
 // Button with every flag and a socket that does not exist exits 0 with no output.
 // It runs outside a git repository, so a refusal naming its flag proves the verb skips the root pre-run's resolution.
-func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
+func TestCommand_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
@@ -204,19 +205,19 @@ func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
 			t.Chdir(t.TempDir())
 
 			var out bytes.Buffer
-			exitCode := RunCLI(&out, tt.args)
+			exitCode := clihelp.Execute(Command(), &out, tt.args)
 
 			if tt.wantOK {
 				if exitCode != 0 || out.Len() != 0 {
-					t.Errorf("RunCLI(%v) = %d with output %q; want exit 0 and no output", tt.args, exitCode, out.String())
+					t.Errorf("Execute(%v) = %d with output %q; want exit 0 and no output", tt.args, exitCode, out.String())
 				}
 				return
 			}
 			if exitCode == 0 {
-				t.Fatalf("RunCLI(%v) = 0; want non-zero", tt.args)
+				t.Fatalf("Execute(%v) = 0; want non-zero", tt.args)
 			}
 			if errMsg := envelope.Decode(t, out.String()).Error; !strings.Contains(errMsg, tt.wantErr) {
-				t.Errorf("RunCLI(%v) error = %q; want it to contain %q", tt.args, errMsg, tt.wantErr)
+				t.Errorf("Execute(%v) error = %q; want it to contain %q", tt.args, errMsg, tt.wantErr)
 			}
 		})
 	}

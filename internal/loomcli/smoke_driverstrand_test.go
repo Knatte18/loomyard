@@ -9,7 +9,7 @@
 // The same session also pins that an llm-seeded start leaves exactly one status strand beside its driver strand.
 // A start re-arms the session's follow state and selects the live driver strand's window; a resume does not.
 //
-// The file drives the real built cmd/lym binary as a subprocess, never RunCLI in-process.
+// The file drives the real built cmd/lym binary as a subprocess, never clihelp.Execute in-process.
 // "lym loom start" spawns its llm driver through a real shuttle run against a real tmux pane.
 // Only a genuine subprocess boundary keeps this test's own binary out of that pane's launch line.
 //

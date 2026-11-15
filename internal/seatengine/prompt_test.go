@@ -72,7 +72,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		t.Fatalf("seatValues(advisor) = %v", err)
 	}
 	for label, values := range map[string]map[string]string{"chair": chairValues, "advisor": advisorValues} {
-		for _, marker := range ReservedMarkers() {
+		for _, marker := range reservedMarkers {
 			if values[marker] == "" {
 				t.Errorf("%s values: reserved marker %q is empty", label, marker)
 			}

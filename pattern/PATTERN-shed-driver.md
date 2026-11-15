@@ -103,7 +103,7 @@ Every reader that validates history outcomes accepts it.
 #### Layering
 
 - `internal/shedverbs` is not itself a CLI module and is not counted in the cli-cobra entry's tally.
-  It exposes no `Command()` or `RunCLI` seam, only the `Verbs(texts, spec)` constructor the subtrees build from.
+  It exposes no `Command()`, only the `Verbs(texts, spec)` constructor the subtrees build from.
 - Neither `shedverbs` nor `shedcli` is added to the told-geometry bound-packages list in `PATTERN-cwd-resolution`.
   That list binds engines, and both packages sit above that layer.
 - `shedverbs` keeps this section's no-resolver clause verbatim as its no-derived-paths obligation.

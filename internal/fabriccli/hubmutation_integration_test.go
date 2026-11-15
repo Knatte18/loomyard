@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
@@ -28,23 +29,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_BypassPushPointsTheTraceSinkAtItsHub runs a bypass push from a hub's board worktree.
+// TestCommand_BypassPushPointsTheTraceSinkAtItsHub runs a bypass push from a hub's board worktree.
 // It checks that the process-wide trace sink points at that hub's logs directory afterwards.
 // It stays serial, without t.Parallel.
 // The trace sink is process-global state, and a parallel test's verb would repoint it between the push and the read.
-func TestRunCLI_BypassPushPointsTheTraceSinkAtItsHub(t *testing.T) {
+func TestCommand_BypassPushPointsTheTraceSinkAtItsHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLIIn(h.BoardDir(), &out, []string{
+	exitCode := clihelp.ExecuteIn(fabriccli.Command(), h.BoardDir(), &out, []string{
 		"--warp-path", h.PrimeWorktree(),
 		"--weft-path", h.PrimeRecords(),
 		"push",
 	})
 	if exitCode != 0 {
-		t.Fatalf("RunCLI bypass push = %d; want 0\noutput: %s", exitCode, out.String())
+		t.Fatalf("Execute bypass push = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
 	envelope.RequireOK(t, out.String())
@@ -53,12 +54,12 @@ func TestRunCLI_BypassPushPointsTheTraceSinkAtItsHub(t *testing.T) {
 	}
 }
 
-// TestRunCLI_HubMutationScenario runs the mutating-verb checks over one hub.
+// TestCommand_HubMutationScenario runs the mutating-verb checks over one hub.
 // Steps run serially in this order, each one leaving state the next tolerates.
 // The steps that break the board remote or plant an unrepairable pair come last.
 // Every later reconcile would otherwise see that damage.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
-func TestRunCLI_HubMutationScenario(t *testing.T) {
+func TestCommand_HubMutationScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -95,13 +96,13 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			t.Cleanup(traceSinkMu.RUnlock)
 			t.Cleanup(func() { logger.SetDurableSinkDir("") })
 			var out bytes.Buffer
-			exitCode := fabriccli.RunCLIIn(h.BoardDir(), &out, []string{
+			exitCode := clihelp.ExecuteIn(fabriccli.Command(), h.BoardDir(), &out, []string{
 				"--warp-path", h.PrimeWorktree(),
 				"--weft-path", h.PrimeRecords(),
 				"push",
 			})
 			if exitCode != 0 {
-				t.Fatalf("RunCLI bypass push = %d; want 0\noutput: %s", exitCode, out.String())
+				t.Fatalf("Execute bypass push = %d; want 0\noutput: %s", exitCode, out.String())
 			}
 
 			envelope.RequireOK(t, out.String())
@@ -119,7 +120,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			// The pair is removed again so the later steps see the hub they expect.
 			const slug = "push-both-sides-pair"
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
-				t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(add) = %d; want 0\noutput: %s", code, output)
 			}
 			pairWarp, pairWeft := h.PairCodeWorktree(slug), h.PairRecordsSibling(slug)
 			gitkit.CommitFile(t, pairWarp, "warp-push.txt", "warp\n", "warp push")
@@ -131,7 +132,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 			code, output := runFabric(t, pairWarp, "push")
 			if code != 0 {
-				t.Fatalf("RunCLI(push) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(push) = %d; want 0\noutput: %s", code, output)
 			}
 			env := envelope.RequireOK(t, output)
 			if _, skipped := env.Raw["code_push_skipped"]; skipped {
@@ -146,7 +147,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 
 			if code, output := runFabric(t, h.PrimeWorktree(), "remove", slug); code != 0 {
-				t.Fatalf("RunCLI(remove) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(remove) = %d; want 0\noutput: %s", code, output)
 			}
 		}},
 		{"UnwireIsADryRunUntilApplied", func(t *testing.T) {
@@ -154,13 +155,13 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			// The pair is removed again so the later steps see the hub they expect.
 			const slug = "unwire-dry-run-pair"
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
-				t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(add) = %d; want 0\noutput: %s", code, output)
 			}
 			pairWarp := h.PairCodeWorktree(slug)
 
 			code, output := runFabric(t, pairWarp, "unwire")
 			if code != 0 {
-				t.Fatalf("RunCLI(unwire) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(unwire) = %d; want 0\noutput: %s", code, output)
 			}
 			env := envelope.RequireOK(t, output)
 			if applied, present := env.Raw["applied"]; !present || applied != false {
@@ -172,7 +173,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 			code, output = runFabric(t, pairWarp, "unwire", "--apply")
 			if code != 0 {
-				t.Fatalf("RunCLI(unwire --apply) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(unwire --apply) = %d; want 0\noutput: %s", code, output)
 			}
 			env = envelope.RequireOK(t, output)
 			if applied, _ := env.Raw["applied"].(bool); !applied {
@@ -180,7 +181,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 
 			if code, output := runFabric(t, h.PrimeWorktree(), "remove", slug); code != 0 {
-				t.Fatalf("RunCLI(remove) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(remove) = %d; want 0\noutput: %s", code, output)
 			}
 		}},
 		{"AddLeftoverWarpIsBarePreflightError", func(t *testing.T) {
@@ -247,7 +248,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 					code, output := runFabric(t, h.PrimeWorktree(), "reconcile")
 					if code != 0 {
-						t.Fatalf("RunCLI(reconcile) = %d; want 0 (reconcile must heal the missing config, not report it)\noutput: %s", code, output)
+						t.Fatalf("Execute(reconcile) = %d; want 0 (reconcile must heal the missing config, not report it)\noutput: %s", code, output)
 					}
 
 					if _, err := os.Stat(fabricPath); err != nil {
@@ -308,7 +309,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Fatalf("remove the base-sparse marker: %v", err)
 			}
 			if code, output := runFabric(t, h.PrimeWorktree(), "reconcile"); code != 0 {
-				t.Fatalf("RunCLI(reconcile) over a full board.yaml = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(reconcile) over a full board.yaml = %d; want 0\noutput: %s", code, output)
 			}
 			if kept, err := os.ReadFile(boardPath); err != nil || string(kept) != boardTemplate() {
 				t.Errorf("board.yaml = %q, %v after reconcile; want the template whole, unstripped", kept, err)
@@ -335,7 +336,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			gitkit.CommitFile(t, h.BoardDir(), boardRel, string(sparseBoard)+newerKey, "fixture: a key the template lacks")
 			defer gitkit.CommitFile(t, h.BoardDir(), boardRel, string(sparseBoard), "fixture: restore the sparse board.yaml")
 			if code, output := runFabric(t, h.PrimeWorktree(), "reconcile"); code != 0 {
-				t.Fatalf("RunCLI(reconcile) over a board.yaml holding a newer key = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(reconcile) over a board.yaml holding a newer key = %d; want 0\noutput: %s", code, output)
 			}
 			if kept, err := os.ReadFile(boardPath); err != nil || !strings.Contains(string(kept), newerKey) {
 				t.Errorf("board.yaml = %q, %v after reconcile; want the key the template lacks kept", kept, err)
@@ -357,7 +358,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.Location.WorktreePath(), "reconcile")
 			if code != 0 {
-				t.Fatalf("RunCLI(reconcile) with a pair that vanished mid-walk = %d; want 0 — a concurrent teardown is not a reconcile failure\noutput: %s", code, output)
+				t.Fatalf("Execute(reconcile) with a pair that vanished mid-walk = %d; want 0 — a concurrent teardown is not a reconcile failure\noutput: %s", code, output)
 			}
 
 			env := envelope.RequireOK(t, output)
@@ -397,7 +398,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "reconcile")
 			if code != 0 {
-				t.Fatalf("RunCLI(reconcile) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(reconcile) = %d; want 0\noutput: %s", code, output)
 			}
 			env := envelope.RequireOK(t, output)
 			details, _ := env.Raw["hub_details"].([]any)
@@ -423,7 +424,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "push")
 			if code != 0 {
-				t.Fatalf("RunCLI(push) from the prime = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(push) from the prime = %d; want 0\noutput: %s", code, output)
 			}
 			env := envelope.RequireOK(t, output)
 			skipped, _ := env.Raw["code_push_skipped"].(string)
@@ -456,7 +457,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "reconcile")
 			if code == 0 {
-				t.Fatalf("RunCLI(reconcile) = 0; want non-zero (the config loader fails on the unhealed files)\noutput: %s", output)
+				t.Fatalf("Execute(reconcile) = 0; want non-zero (the config loader fails on the unhealed files)\noutput: %s", output)
 			}
 
 			result := envelope.RequireErr(t, output, "")
@@ -472,7 +473,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 			gitkit.Git(t, boardDir, "remote", "set-url", "origin", reachable)
 			if code, output := runFabric(t, h.PrimeWorktree(), "reconcile"); code != 0 {
-				t.Fatalf("RunCLI(reconcile) after the remote is reachable = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(reconcile) after the remote is reachable = %d; want 0\noutput: %s", code, output)
 			}
 			for _, module := range []string{"fabric", "board"} {
 				if _, err := os.Stat(configengine.ConfigFile(boardDir, module)); err != nil {
@@ -509,7 +510,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 			code, output := runFabric(t, warpWorktree, "reconcile")
 			if code != 1 {
-				t.Fatalf("RunCLI(reconcile) with an unrepairable pair = %d; want 1\noutput: %s", code, output)
+				t.Fatalf("Execute(reconcile) with an unrepairable pair = %d; want 1\noutput: %s", code, output)
 			}
 
 			env := envelope.RequireErr(t, output, "")

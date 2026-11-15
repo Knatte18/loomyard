@@ -1,5 +1,4 @@
 // cli.go builds the cobra command tree of `lym beam`, one constructor per verb.
-// It also holds RunCLI and RunCLIIn, which run that tree with output written to an io.Writer.
 
 package beamcli
 
@@ -957,19 +956,4 @@ func runVerb(cmd *cobra.Command, run func(ctx context.Context, acting string, pr
 	}
 	clihelp.SetExit(ctx, output.Ok(out, fields))
 	return nil
-}
-
-// RunCLI runs the beam CLI on args, writes its output to out, and returns the exit code.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the beam CLI on args from cwd, writes its output to out, and returns the exit code.
-// An empty cwd reads the process working directory; any other value seeds cwd into the execution context.
-// The seed is needed because lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

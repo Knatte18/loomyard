@@ -1,5 +1,5 @@
 // spawn_test.go holds Tier-1 tests: untagged, with no git spawn and no process fork.
-// They cover SpawnDetachedPush's skip-env and empty-path gating, and PushWarpAt's SkipGit and SkipPush gating.
+// They cover SpawnDetachedPush's skip-env and empty-path gating.
 // The real fork path is not exercised here: forking from the test binary would re-exec the test binary itself.
 
 package fabricengine
@@ -37,26 +37,6 @@ func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 			}
 			if err := SpawnDetachedPush(tt.req); !errors.Is(err, tt.wantErr) {
 				t.Errorf("SpawnDetachedPush(%+v) = %v; want %v", tt.req, err, tt.wantErr)
-			}
-		})
-	}
-}
-
-// TestPushWarpAt_Gating covers PushWarpAt's SkipGit and SkipPush early-out, which returns nil.
-// It never constructs a real gitrepo.Repo push, so it spawns no git process and never reaches PushCoalesced.
-func TestPushWarpAt_Gating(t *testing.T) {
-	tiergate.Require(t, 0)
-	tests := []struct {
-		name string
-		opts SyncOptions
-	}{
-		{name: "SkipGit", opts: SyncOptions{SkipGit: true}},
-		{name: "SkipPush", opts: SyncOptions{SkipPush: true}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if _, err := PushWarpAt("/nonexistent-warp-path", tt.opts); err != nil {
-				t.Errorf("PushWarpAt(%+v) = %v; want nil", tt.opts, err)
 			}
 		})
 	}

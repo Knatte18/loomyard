@@ -143,7 +143,6 @@ var destructiveGuardRecordingExecutors = []struct {
 	{"createExclusiveDir", "func createExclusiveDir(rec *Mutations, "},
 	{"createGitWorktree", "func createGitWorktree(rec *Mutations, "},
 	{"resetHardTo", "func resetHardTo(rec *Mutations, "},
-	{"dropSeedCommits", "func dropSeedCommits(rec *Mutations, "},
 	{"DropLocal", "func DropLocal(rec *Mutations, "},
 }
 

@@ -1,5 +1,4 @@
 // cli.go builds the heddle cobra command and its pre-run, which resolves the hub.
-// It also holds the RunCLI and RunCLIIn seams that run the command against an io.Writer.
 // The verbs live in verbs.go.
 
 package heddlecli
@@ -132,21 +131,6 @@ func (c *heddleCLI) namedWorktree(name string) (*lymcwd.Location, error) {
 		return nil, fmt.Errorf("heddle: worktree %q is listed but its directory is gone; way forward: run `git worktree prune` in the hub's prime to clear the stale entry, and see `lym fabric list`", name)
 	}
 	return nil, fmt.Errorf("heddle: no worktree named %q in this hub; way forward: pick the last element of a path `lym fabric list` prints", name)
-}
-
-// RunCLI runs the heddle command with args, writes its output to out, and returns the exit status.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the heddle command with args and writes its output to out, returning the exit status.
-// An empty cwd makes the command read the process working directory.
-// Any other cwd is seeded into the execution context, because lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
 
 // ChangeStore applies change to the store of the hub cwd lies in, under the Bolt write lock.

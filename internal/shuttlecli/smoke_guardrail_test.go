@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -39,11 +40,11 @@ func TestSmokeGuardrailDeniesHeadlessClaude(t *testing.T) {
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		reedcli.RunCLI(&buf, []string{"down"})
+		clihelp.Execute(reedcli.Command(), &buf, []string{"down"})
 	})
 
 	var reedOut bytes.Buffer
-	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+	if code := clihelp.Execute(reedcli.Command(), &reedOut, []string{"up"}); code != 0 {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
@@ -55,7 +56,7 @@ func TestSmokeGuardrailDeniesHeadlessClaude(t *testing.T) {
 	)
 
 	var out bytes.Buffer
-	code := RunCLI(&out, []string{
+	code := clihelp.Execute(Command(), &out, []string{
 		"run",
 		"--prompt", prompt,
 		"--output-file", outputPath,
@@ -99,11 +100,11 @@ func TestSmokeGuardrailQuestionHoldsRunUntilAnswered(t *testing.T) {
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		reedcli.RunCLI(&buf, []string{"down"})
+		clihelp.Execute(reedcli.Command(), &buf, []string{"down"})
 	})
 
 	var reedOut bytes.Buffer
-	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+	if code := clihelp.Execute(reedcli.Command(), &reedOut, []string{"up"}); code != 0 {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
@@ -168,7 +169,7 @@ func TestSmokeGuardrailQuestionHoldsRunUntilAnswered(t *testing.T) {
 	default:
 	}
 
-	answer := shuttleengine.WithMessageTail(fmt.Sprintf("Pick the first option and write exactly DONE to %s.", outputPath))
+	answer := fmt.Sprintf("Pick the first option and write exactly DONE to %s. %s", outputPath, shuttleengine.MessageTail)
 	if err := run.Send(answer); err != nil {
 		t.Fatalf("run.Send: %v", err)
 	}

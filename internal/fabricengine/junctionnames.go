@@ -60,14 +60,6 @@ func pathspecNames(cfg Config) []string {
 	return dedupUnion(structuralCommittedDirs, filterHubReserved(cfg.Dirs()))
 }
 
-// slugReservedNames returns the full slug-reservation set for cfg:
-// both structural directory sets, cfg.Dirs() taken raw, and HubReservedNames().
-// cfg.Dirs() is not routing-filtered:
-// a worktree slug must be refused for every one of these names, whether or not the name would wire a junction.
-func slugReservedNames(cfg Config) []string {
-	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, cfg.Dirs(), HubReservedNames())
-}
-
 // PathspecNames loads the fabric config under dirs and returns its pathspec/commit-routing name set.
 // Callers outside this package use it for weft sync.
 // That sync must never fall back to the raw, unfiltered directory list, because the config may omit `_lym`.

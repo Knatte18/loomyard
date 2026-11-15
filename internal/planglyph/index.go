@@ -39,12 +39,14 @@ type index struct {
 	loader  typesLoader
 }
 
-// Validate is the package's Validate, its type load run through the index's loader.
+// Validate runs the plan gate with the plan-unapproved approval check, its type load run through the index's loader.
 func (i index) Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	return validate(plan, worktreeRoot, i.loader)
 }
 
-// ValidateFormat is the package's ValidateFormatAfter plus the card-fabric-reference, fabric-vocabulary-name and edit-test-file findings, which sit outside planparser's entry points.
+// ValidateFormat is the format gate for a plan some of whose cards are done.
+// It adds the card-fabric-reference, fabric-vocabulary-name and edit-test-file findings.
+// Those sit outside planparser's entry points.
 // edit-test-file skips the done cards, and admits a test file quarry lists with no symbol.
 func (i index) ValidateFormat(plan *planparser.Plan, worktreeRoot string, done []planparser.Card) ([]Finding, error) {
 	findings, err := validateFormatAfter(plan, worktreeRoot, done, i.loader)
@@ -53,7 +55,7 @@ func (i index) ValidateFormat(plan *planparser.Plan, worktreeRoot string, done [
 	return append(findings, convertAll(planparser.CheckEditTestFile(plan, done, glyphlessFile(worktreeRoot)))...), err
 }
 
-// ValidateRework is the package's ValidateRework plus the card-fabric-reference, fabric-vocabulary-name and edit-test-file findings.
+// ValidateRework is the rework gate plus the card-fabric-reference, fabric-vocabulary-name and edit-test-file findings.
 // A rework generation is a fresh plan whose prior cards are archived, so edit-test-file skips no card; it admits a test file quarry lists with no symbol.
 func (i index) ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
 	findings, err := validateRework(plan, worktreeRoot, told, i.loader)

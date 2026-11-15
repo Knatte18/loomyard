@@ -587,6 +587,11 @@ func twoFileWayForward(hub, machine string) string {
 		`"lym config gate --resolved" names the layer holding each value` + roleClause
 }
 
+// TemplateConfig decodes the embedded template alone, the config the tests compare loaded configs against.
+func TemplateConfig() (Config, error) {
+	return decodeConfig([]byte(ConfigTemplate()), false)
+}
+
 func TestTemplateConfigAndLimits(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

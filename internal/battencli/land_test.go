@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -76,7 +76,7 @@ func TestPullStopOutcome(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	stop := fabricengine.NewRecordsStopError("main", errors.New("replay conflict"), "settle it")
+	stop := hubforge.NewRecordsStopError("main", errors.New("replay conflict"), "settle it")
 	codeSideErr := errors.New("code side fetch failed")
 	joined := errors.Join(stop, codeSideErr)
 	unrelated := errors.New("open fabric failed")

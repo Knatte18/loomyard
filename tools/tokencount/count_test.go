@@ -18,6 +18,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// RoleTime is how much of the run's span the role's sessions spent in a turn, 0 for a role the run lacks.
+func (run RunTally) RoleTime(role string) time.Duration {
+	t := run.Roles[role]
+	if t == nil {
+		return 0
+	}
+	return covered(t.Working, run.Span)
+}
+
 func TestRunTimeByRole(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

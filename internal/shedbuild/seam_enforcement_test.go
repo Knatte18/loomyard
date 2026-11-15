@@ -25,7 +25,6 @@ var shedbuildAllowedImports = []string{
 	"gopkg.in/yaml.v3",
 	"github.com/Knatte18/loomyard/internal/shedrecipe",
 	"github.com/Knatte18/loomyard/internal/shedengine",
-	"github.com/Knatte18/loomyard/internal/shedcheck",
 	// shedtransient supplies the Shed.Transient classifier NewShed tells (Transient Stop Invariant).
 	"github.com/Knatte18/loomyard/internal/shedtransient",
 }

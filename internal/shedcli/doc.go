@@ -1,6 +1,6 @@
 // Package shedcli builds the "lym shed" subtree.
 // It holds a named-recipe arming table.
-// The CLI seams (Command, RunCLI, RunCLIIn) register it under the lym root.
+// The CLI seam (Command) registers it under the lym root.
 //
 // The verb bodies live in internal/shedverbs, a leaf package, and the table lives here, in the composition layer.
 // The split follows the import direction:

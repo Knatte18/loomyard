@@ -1,4 +1,4 @@
-// anchor_integration_test.go drives `lym fabric anchor` through RunCLIIn over hubforge hubs.
+// anchor_integration_test.go drives `lym fabric anchor` through clihelp.ExecuteIn over hubforge hubs.
 // It covers the print and the move of a pair, and a child forked before its parent's move.
 // It also covers the integration of a prime's move on a second clone.
 // A hub's prime warp tracks sub/ and is pushed before any second clone is made.
@@ -49,12 +49,12 @@ func requireAnchorOK(t *testing.T, cwd string, args ...string) envelope.Envelope
 
 	code, output := runFabric(t, cwd, append([]string{"anchor"}, args...)...)
 	if code != 0 {
-		t.Fatalf("RunCLI(anchor %s) = %d; want 0\noutput: %s", strings.Join(args, " "), code, output)
+		t.Fatalf("Execute(anchor %s) = %d; want 0\noutput: %s", strings.Join(args, " "), code, output)
 	}
 	return envelope.RequireOK(t, output)
 }
 
-func TestRunCLI_Anchor(t *testing.T) {
+func TestCommand_Anchor(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -116,7 +116,7 @@ func TestRunCLI_Anchor(t *testing.T) {
 			t.Fatalf("write the child's record: %v", err)
 		}
 		if code, output := runFabric(t, h.PairCodeWorktree("child"), "commit"); code != 0 {
-			t.Fatalf("RunCLI(commit) in the child = %d; want 0\noutput: %s", code, output)
+			t.Fatalf("Execute(commit) in the child = %d; want 0\noutput: %s", code, output)
 		}
 		if got := gitkit.Git(t, h.PairRecordsSibling("child"), "show", "HEAD:"+lymdirs.LymDirName+"/child-note.txt"); got != "note" {
 			t.Errorf("child-note.txt in the child's weft at its anchor = %q; want the record committed there", got)
@@ -126,7 +126,7 @@ func TestRunCLI_Anchor(t *testing.T) {
 		childBranch := gitkit.CurrentBranch(t, h.PairCodeWorktree("child"))
 		parentAnchor := filepath.Join(h.PairCodeWorktree("parent"), "sub")
 		if code, output := runFabric(t, parentAnchor, "merge", childBranch); code != 0 {
-			t.Fatalf("RunCLI(merge %s) in the parent = %d; want 0\noutput: %s", childBranch, code, output)
+			t.Fatalf("Execute(merge %s) in the parent = %d; want 0\noutput: %s", childBranch, code, output)
 		}
 
 		if marker := gitkit.Git(t, h.PairRecordsSibling("parent"), "show", "HEAD:"+lymcwd.AnchorFileName); marker != "sub" {
@@ -160,10 +160,10 @@ func TestRunCLI_Anchor(t *testing.T) {
 		for _, verb := range []string{"pull", "push"} {
 			code, output := runFabric(t, second.PrimeWorktree(), verb)
 			if code == 0 {
-				t.Errorf("RunCLI(%s) in the second clone = 0; want the stop at the marker change\noutput: %s", verb, output)
+				t.Errorf("Execute(%s) in the second clone = 0; want the stop at the marker change\noutput: %s", verb, output)
 			}
 			if !strings.Contains(output, "lym fabric anchor") {
-				t.Errorf("RunCLI(%s) output = %s; want the stop to name `lym fabric anchor`", verb, output)
+				t.Errorf("Execute(%s) output = %s; want the stop to name `lym fabric anchor`", verb, output)
 			}
 		}
 		if got := gitkit.RevParse(t, secondRecords, "HEAD"); got != recordsHead {

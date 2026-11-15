@@ -1,5 +1,5 @@
 // add_anchor_integration_test.go covers Add forking a pair at a requested anchor.
-// It also covers EnsureAnchor settling the anchor of a present pair, over hubforge hubs whose prime warp tracks y/.
+// It runs over hubforge hubs whose prime warp tracks y/.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -47,28 +46,6 @@ func requireWeftAtY(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 	requireWiredOnlyAt(t, h, slug, "y", ".")
 	requireNoMoveRecord(t, weft)
-}
-
-// writeMoveRecordByHand writes the move record of slug's weft for a move from a to b.
-// It mimics what a process killed in the middle of the move leaves behind.
-func writeMoveRecordByHand(t *testing.T, h *hubforge.Hub, slug, a, b string) {
-	t.Helper()
-
-	record := `{"a":"` + a + `","b":"` + b + `","kind":"move","pid":0}`
-	if err := os.WriteFile(fabricengine.MoveRecordPath(h.PairRecordsSibling(slug)), []byte(record), 0o644); err != nil {
-		t.Fatalf("write the move record of %s: %v", slug, err)
-	}
-}
-
-// ensureAnchorOf settles slug's anchor with anchor and returns the error.
-func ensureAnchorOf(t *testing.T, h *hubforge.Hub, slug, anchor string) error {
-	t.Helper()
-
-	pair, err := lymcwd.NamedWorktree(h.Path, slug)
-	if err != nil {
-		t.Fatalf("NamedWorktree(%s): %v", slug, err)
-	}
-	return h.Topology.EnsureAnchor(fabricengine.NewMutations(""), pair, anchor)
 }
 
 func TestAdd_AtAnchor(t *testing.T) {
@@ -148,74 +125,5 @@ func TestAdd_AtAnchor(t *testing.T) {
 				}
 			})
 		}
-	})
-}
-
-func TestEnsureAnchor(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	t.Run("The pair's own anchor, named or empty, skips the move and restores a removed junction", func(t *testing.T) {
-		t.Parallel()
-		for _, anchor := range []string{"y", ""} {
-			h := newAtAnchorHub(t)
-			hubforge.AddPairWith(t, h, "beam", fabricengine.AddOptions{Anchor: "y"})
-			tip := gitkit.RevParse(t, h.PairRecordsSibling("beam"), "HEAD")
-			if err := os.Remove(filepath.Join(h.PairCodeWorktree("beam"), "y", lymdirs.LymDirName)); err != nil {
-				t.Fatalf("remove the junction: %v", err)
-			}
-
-			if err := ensureAnchorOf(t, h, "beam", anchor); err != nil {
-				t.Fatalf("EnsureAnchor(%q) error = %v; want nil", anchor, err)
-			}
-
-			requireWeftAtY(t, h, "beam")
-			if got := gitkit.RevParse(t, h.PairRecordsSibling("beam"), "HEAD"); got != tip {
-				t.Errorf("EnsureAnchor(%q) moved the weft tip %s -> %s; want it unmoved", anchor, tip, got)
-			}
-		}
-	})
-
-	t.Run("Another anchor is refused naming the move and the create", func(t *testing.T) {
-		t.Parallel()
-		h := newAtAnchorHub(t)
-		hubforge.AddPairWith(t, h, "beam", fabricengine.AddOptions{Anchor: "y"})
-
-		err := ensureAnchorOf(t, h, "beam", "z")
-
-		if err == nil || !strings.Contains(err.Error(), "lym fabric anchor beam --set z") || !strings.Contains(err.Error(), "lym beam create beam --anchor z") {
-			t.Errorf("EnsureAnchor(z) error = %v; want it to name `lym fabric anchor` and `lym beam create`", err)
-		}
-	})
-
-	t.Run("A kill before the move commit is undone and finished at y", func(t *testing.T) {
-		t.Parallel()
-		h := newAtAnchorHub(t)
-		hubforge.AddPair(t, h, "beam")
-		weft := h.PairRecordsSibling("beam")
-		writeMoveRecordByHand(t, h, "beam", ".", "y")
-		if err := os.MkdirAll(filepath.Join(weft, "y"), 0o755); err != nil {
-			t.Fatalf("create y in the weft: %v", err)
-		}
-		gitkit.MustRun(t, weft, "git", "mv", lymdirs.LymDirName, "y/"+lymdirs.LymDirName)
-
-		if err := ensureAnchorOf(t, h, "beam", "y"); err != nil {
-			t.Fatalf("EnsureAnchor(y) error = %v; want nil", err)
-		}
-
-		requireWeftAtY(t, h, "beam")
-	})
-
-	t.Run("A kill after the move commit goes on to the wiring at y", func(t *testing.T) {
-		t.Parallel()
-		h := newAtAnchorHub(t)
-		hubforge.AddPairWith(t, h, "beam", fabricengine.AddOptions{Anchor: "y"})
-		writeMoveRecordByHand(t, h, "beam", ".", "y")
-
-		if err := ensureAnchorOf(t, h, "beam", "y"); err != nil {
-			t.Fatalf("EnsureAnchor(y) error = %v; want nil", err)
-		}
-
-		requireWeftAtY(t, h, "beam")
 	})
 }

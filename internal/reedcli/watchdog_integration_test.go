@@ -30,6 +30,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fswatch"
@@ -281,7 +282,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		// The last down runs as the verb, so the stop and the bounded wait are proven together:
 		// the lock is free as soon as the verb returns.
 		var downOut bytes.Buffer
-		if code := RunCLIIn(prime, &downOut, []string{"down"}); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), prime, &downOut, []string{"down"}); code != 0 {
 			t.Fatalf("lym reed down exited %d: %s", code, downOut.String())
 		}
 		envelope.RequireOK(t, downOut.String())

@@ -243,15 +243,6 @@ type RunTally struct {
 	LeftOut int
 }
 
-// RoleTime is how much of the run's span the role's sessions spent in a turn, 0 for a role the run lacks.
-func (run RunTally) RoleTime(role string) time.Duration {
-	t := run.Roles[role]
-	if t == nil {
-		return 0
-	}
-	return covered(t.Working, run.Span)
-}
-
 // Idle is the run's awake span minus the time any session of the run was in a turn.
 func (run RunTally) Idle() time.Duration {
 	return run.AwakeSpan() - covered(run.Working, run.Span)

@@ -1,4 +1,5 @@
-// plangate.go holds planGatePass, the resolve-backed checks that run at the plan gates only: ValidateFormat and Validate call it, ValidateDispatch never does.
+// plangate.go holds planGatePass, the resolve-backed checks that run at the plan gates only.
+// The plan gates call it, and ValidateDispatch never does.
 // A check whose verdict depends on state the run itself changes belongs here, because dispatch re-validates a plan against a tree the run has already changed.
 // Its caller-uncovered and delete-before-reference checks share one reference computation, so one pass runs one type load.
 

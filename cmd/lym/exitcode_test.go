@@ -41,6 +41,8 @@ func setupBoardConfig(t *testing.T) {
 // TestExitCode_HelpPaths asserts help paths exit 0 and never emit JSON error envelopes,
 // and that each help listing names the modules or text it must carry.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
+//
+//testtiming:keep exit 0 with no JSON error envelope on every help path; coverage of its blocks by other tests does not show an assertion of this
 func TestExitCode_HelpPaths(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -61,7 +63,7 @@ func TestExitCode_HelpPaths(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			code := run(tt.args, &out)
+			code := run(tt.args, &out, &out)
 			if code != 0 {
 				t.Errorf("run(%v) = %d; want 0. output:\n%s", tt.args, code, out.String())
 			}
@@ -83,6 +85,8 @@ func TestExitCode_HelpPaths(t *testing.T) {
 // TestExitCode_UnknownModule asserts that unknown modules, including "update", exit 1.
 // The JSON error field carries "unknown command".
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
+//
+//testtiming:keep the unknown-command error text in the JSON envelope, which stays on stdout alone; coverage of its blocks by other tests does not show an assertion of this
 func TestExitCode_UnknownModule(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -97,7 +101,7 @@ func TestExitCode_UnknownModule(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			code := run(tt.args, &out)
+			code := run(tt.args, &out, &out)
 			if code != 1 {
 				t.Fatalf("run(%v) = %d; want 1. output:\n%s", tt.args, code, out.String())
 			}
@@ -105,16 +109,31 @@ func TestExitCode_UnknownModule(t *testing.T) {
 			envelope.RequireErr(t, out.String(), "unknown command")
 		})
 	}
+
+	t.Run("envelope goes to stdout alone", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"bogus"}, &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("run([bogus]) = %d; want 1. stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+		}
+
+		envelope.RequireErr(t, stdout.String(), "unknown command")
+		if strings.Contains(stderr.String(), `"ok":false`) {
+			t.Errorf("run([bogus]) wrote the JSON error envelope to stderr; want it on stdout alone. stderr:\n%s", stderr.String())
+		}
+	})
 }
 
 // TestExitCode_HandlerFailure asserts handler failures exit 1 with JSON {"ok":false} envelope.
+//
+//testtiming:keep a handler failure's JSON envelope decoding whole; coverage of its blocks by other tests does not show an assertion of this
 func TestExitCode_HandlerFailure(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	setupBoardConfig(t)
 
 	var out bytes.Buffer
-	code := run([]string{"board", "upsert"}, &out)
+	code := run([]string{"board", "upsert"}, &out, &out)
 	if code != 1 {
 		t.Fatalf("run([board upsert]) = %d; want 1. output:\n%s", code, out.String())
 	}

@@ -418,17 +418,12 @@ func TestTable_NamesAccessorsAndReservedMarkers(t *testing.T) {
 		t.Errorf("Outputs() = %v, want %v in table order", got, want)
 	}
 
-	reserved := ReservedMarkers()
-	if !slices.IsSorted(reserved) {
-		t.Errorf("ReservedMarkers() = %v, want a sorted list", reserved)
+	if !slices.IsSorted(reservedMarkers) {
+		t.Errorf("reservedMarkers = %v, want a sorted list", reservedMarkers)
 	}
 	for _, name := range []string{"parent_directive", "edit_directive", "seat_name", "chair_name", "advisor_names", "assistants", "inputs", "outputs", "output_files", "worktree_root", "anchor_path", "stencils_dir"} {
-		if !slices.Contains(reserved, name) {
-			t.Errorf("ReservedMarkers() = %v, want it to hold %q", reserved, name)
+		if !slices.Contains(reservedMarkers, name) {
+			t.Errorf("reservedMarkers = %v, want it to hold %q", reservedMarkers, name)
 		}
-	}
-	reserved[0] = "mutated"
-	if ReservedMarkers()[0] == "mutated" {
-		t.Error("ReservedMarkers() shares its backing list with the caller")
 	}
 }

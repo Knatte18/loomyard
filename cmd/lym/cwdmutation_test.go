@@ -1,5 +1,6 @@
-// cwdmutation_test.go guards the integration test files migrated onto the cwd-context seam (RunCLIIn / lymcwd.WithCwd).
-// Each file on cwdMutationSubjectFiles must drive the RunCLIIn seam at an explicit cwd.
+// cwdmutation_test.go guards the integration test files migrated onto the cwd-context seam.
+// The seam is clihelp.ExecuteIn with lymcwd.WithCwd.
+// Each file on cwdMutationSubjectFiles must drive its module through clihelp.ExecuteIn at an explicit cwd.
 // It must never call t.Chdir or os.Chdir, in either spelling; this is the `PATTERN-cwd-resolution` invariant.
 //
 // The guard reports every violation rather than stopping at the first.
@@ -24,11 +25,11 @@ import (
 // cwdMutationSubjectFiles is the explicitly named per-file subject set of this guard.
 // Each entry is a module-relative, slash-separated path with the reason it belongs to the set.
 var cwdMutationSubjectFiles = []scankit.Entry{
-	{Key: "internal/fabriccli/cli_test.go", Why: "migrated onto the RunCLIIn seam"},
-	{Key: "internal/configcli/configcli_integration_test.go", Why: "migrated onto the RunCLIIn seam"},
-	{Key: "internal/webstercli/verbs_test.go", Why: "migrated onto the RunCLIIn seam"},
-	{Key: "internal/idecli/cli_test.go", Why: "migrated onto the RunCLIIn seam"},
-	{Key: "internal/reedcli/cli_integration_test.go", Why: "migrated onto the RunCLIIn seam"},
+	{Key: "internal/fabriccli/cli_test.go", Why: "migrated onto the clihelp.ExecuteIn seam"},
+	{Key: "internal/configcli/configcli_integration_test.go", Why: "migrated onto the clihelp.ExecuteIn seam"},
+	{Key: "internal/webstercli/verbs_test.go", Why: "migrated onto the clihelp.ExecuteIn seam"},
+	{Key: "internal/idecli/cli_test.go", Why: "migrated onto the clihelp.ExecuteIn seam"},
+	{Key: "internal/reedcli/cli_integration_test.go", Why: "migrated onto the clihelp.ExecuteIn seam"},
 	{Key: "internal/fabricengine/coalesce_integration_test.go", Why: "drives fabric through absolute paths, never a moved cwd"},
 }
 
@@ -68,7 +69,7 @@ func TestCwdMutation_MigratedFilesStayChdirFree(t *testing.T) {
 
 		if tok, found := firstCwdMutationToken(string(f.Data)); found {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned cwd-mutation token %q -- a subject-set file must drive the module's RunCLIIn seam at an explicit cwd instead of moving the process (see `PATTERN-cwd-resolution`), or add a cwdMutationAllowlist entry in cmd/lym/cwdmutation_test.go with a reason",
+				"%s: contains banned cwd-mutation token %q -- a subject-set file must drive the module through clihelp.ExecuteIn at an explicit cwd instead of moving the process (see `PATTERN-cwd-resolution`), or add a cwdMutationAllowlist entry in cmd/lym/cwdmutation_test.go with a reason",
 				f.Rel, tok,
 			))
 		}

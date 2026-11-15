@@ -1553,10 +1553,10 @@ func stepNonPrimeRefusal(t *testing.T, h *hubforge.Hub) {
 	for _, verb := range []string{"run", "step", "status", "pause"} {
 		t.Run(verb, func(t *testing.T) {
 			var out bytes.Buffer
-			exitCode := RunCLIIn(taskCwd, &out, []string{verb, "some-slug"})
+			exitCode := clihelp.ExecuteIn(Command(), taskCwd, &out, []string{verb, "some-slug"})
 
 			if exitCode != 1 {
-				t.Fatalf("RunCLIIn(%s) exit code = %d; want 1; output: %s", verb, exitCode, out.String())
+				t.Fatalf("ExecuteIn(%s) exit code = %d; want 1; output: %s", verb, exitCode, out.String())
 			}
 			if !strings.Contains(out.String(), taskSlug) {
 				t.Errorf("%s refusal = %q; want it to name the task worktree %q", verb, out.String(), taskSlug)
@@ -1577,10 +1577,10 @@ func stepRecordsPrimeRefusal(t *testing.T, h *hubforge.Hub) {
 	for _, verb := range []string{"run", "step", "status", "pause"} {
 		t.Run(verb, func(t *testing.T) {
 			var out bytes.Buffer
-			exitCode := RunCLIIn(recordsPrimeCwd, &out, []string{verb, "some-slug"})
+			exitCode := clihelp.ExecuteIn(Command(), recordsPrimeCwd, &out, []string{verb, "some-slug"})
 
 			if exitCode != 1 {
-				t.Fatalf("RunCLIIn(%s) from the records prime exit code = %d; want 1; output: %s", verb, exitCode, out.String())
+				t.Fatalf("ExecuteIn(%s) from the records prime exit code = %d; want 1; output: %s", verb, exitCode, out.String())
 			}
 			if !strings.Contains(out.String(), "records sibling") {
 				t.Errorf("%s refusal = %q; want it to name the records sibling", verb, out.String())

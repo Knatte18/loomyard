@@ -18,6 +18,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -325,7 +326,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 
 				var out bytes.Buffer
 				args := []string{"clone", "--shortname", hubforge.TestShortname, filepath.ToSlash(hub.RecordsBare), filepath.ToSlash(hub.CodeBare)}
-				if code := fabriccli.RunCLIIn(container, &out, args); code != 0 {
+				if code := clihelp.ExecuteIn(fabriccli.Command(), container, &out, args); code != 0 {
 					t.Fatalf("fabric clone exit code = %d; output: %s", code, out.String())
 				}
 				var envelope struct {
@@ -426,7 +427,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 
 		originCommitFile(t, origin.CodeBare, origin.primeBranch, "moved.txt", "two")
 		var out bytes.Buffer
-		if code := fabriccli.RunCLIIn(origin.PrimeWorktree(), &out, []string{"pull"}); code != 0 {
+		if code := clihelp.ExecuteIn(fabriccli.Command(), origin.PrimeWorktree(), &out, []string{"pull"}); code != 0 {
 			t.Fatalf("fabric pull exit code = %d; output: %s", code, out.String())
 		}
 		if !strings.Contains(out.String(), `"seam_warning"`) || !strings.Contains(out.String(), seamHeal) {

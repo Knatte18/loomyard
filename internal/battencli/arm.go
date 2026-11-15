@@ -1,5 +1,5 @@
 // arm.go holds the entry points that resolve a batten run's location and wire its engine stack.
-// Arm resolves the cwd itself, and ArmAt takes a location and run-id that the caller has already resolved.
+// ArmAt takes a location and run-id that the caller has already resolved.
 
 package battencli
 
@@ -504,13 +504,6 @@ func battenInterruptPolicy(row string) string {
 		return shedverbs.InterruptPolicyReinvoke
 	}
 	return shedverbs.InterruptPolicyHandback
-}
-
-// Arm resolves cwd, then returns the Spec for verb and args.
-// It builds a fresh receiver for the call, and the Spec's hooks close over that receiver.
-func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
-	c := &battenCLI{}
-	return c.arm(cwd, verb, args)
 }
 
 // ArmAt returns the Spec for verb, for a location the caller has already resolved and a runID.

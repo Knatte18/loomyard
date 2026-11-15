@@ -118,9 +118,9 @@ func TestRecordWrite_Call(t *testing.T) {
 			}
 
 			added := discussionparser.AddedDecision{By: "orch", Title: "Keep the cache", Decision: "Leave it.", Rationale: "Cheap.", Date: time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)}
-			findings, err = discussionparser.AppendDecision(f.deps.RecordPath, f.deps.SupportLogPath, added)
+			findings, err = discussionparser.AppendDecisions(f.deps.RecordPath, f.deps.SupportLogPath, []discussionparser.AddedDecision{added})
 			if err != nil || len(findings) != 0 {
-				t.Fatalf("AppendDecision() = %v, %v; want no findings", findings, err)
+				t.Fatalf("AppendDecisions() = %v, %v; want no findings", findings, err)
 			}
 			record := mustRead(t, f.deps.RecordPath)
 			scope := strings.Index(record, "\n## Scope\n")

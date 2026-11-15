@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -65,12 +66,12 @@ func newSmokeHub(t *testing.T) *smokeHub {
 	smoke := &smokeHub{hub: hub, cwd: hub.PrimeWorktree(), reed: reedengine.New(reedConfig, reedGeometry, shuttleengines.EnvScrub())}
 
 	var up bytes.Buffer
-	if code := reedcli.RunCLIIn(smoke.cwd, &up, []string{"up"}); code != 0 {
+	if code := clihelp.ExecuteIn(reedcli.Command(), smoke.cwd, &up, []string{"up"}); code != 0 {
 		t.Fatalf("lym reed up = %d; output: %s", code, up.String())
 	}
 	t.Cleanup(func() {
 		var down bytes.Buffer
-		reedcli.RunCLIIn(smoke.cwd, &down, []string{"down"})
+		clihelp.ExecuteIn(reedcli.Command(), smoke.cwd, &down, []string{"down"})
 	})
 
 	root, err := lymtemp.ProcessRoot()
@@ -88,7 +89,7 @@ func newSmokeHub(t *testing.T) *smokeHub {
 func (s *smokeHub) addStrand(t *testing.T, role, command string) (name, guid string) {
 	t.Helper()
 	var out bytes.Buffer
-	if code := reedcli.RunCLIIn(s.cwd, &out, []string{"add", "--cmd", command, "--role", role}); code != 0 {
+	if code := clihelp.ExecuteIn(reedcli.Command(), s.cwd, &out, []string{"add", "--cmd", command, "--role", role}); code != 0 {
 		t.Fatalf("lym reed add --cmd %q = %d; output: %s", command, code, out.String())
 	}
 	var added struct {
@@ -146,7 +147,7 @@ func (s *smokeHub) startDaemon(t *testing.T, enginesFor func(shuttleengine.Confi
 // creel runs one creel verb in the hub and returns its exit code and printed envelope.
 func (s *smokeHub) creel(args ...string) (int, string) {
 	var out bytes.Buffer
-	code := RunCLIIn(s.cwd, &out, args)
+	code := clihelp.ExecuteIn(Command(), s.cwd, &out, args)
 	return code, out.String()
 }
 

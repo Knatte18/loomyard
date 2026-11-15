@@ -257,11 +257,6 @@ func withConfigWayForward(err error, files []string, local string) error {
 		err, hub, machine, machine, removeLocal, roleClause)
 }
 
-// TemplateConfig decodes the embedded template alone, the config of a run outside every hub.
-func TemplateConfig() (Config, error) {
-	return decodeConfig([]byte(ConfigTemplate()), false)
-}
-
 // decodeConfig decodes and validates a stacked gate document.
 // machineLayerApplies tells whether the load stacked a machine layer;
 // it decides the steps the dropped-tier_parallel warning names.

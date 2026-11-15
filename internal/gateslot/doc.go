@@ -99,7 +99,6 @@
 // An absent hub file is ErrConfigAbsent with the way forward `lym fabric reconcile`.
 // Outside every hub, where the dirs tell no board, the file is the worktree's own.
 // The way forward is then `lym config gate`, after creating the worktree's `_lym` directory.
-// TemplateConfig decodes the template alone, for a run outside every hub.
 //
 // The tier keys are `tiers`, `gates`, `scoper`, `refuse_raw`, `tier_parallel`, `build` and `inert_paths`.
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier.

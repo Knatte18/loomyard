@@ -164,12 +164,6 @@ func RecordsStopMessage(err error) (message string, ok bool) {
 	return stop.Error(), true
 }
 
-// NewRecordsStopError returns a *WeftStopError for branch, stopped by cause and settled by wayForward.
-// It lets a test outside this package build the stop Fabric.Pull returns, without spelling out the stop type.
-func NewRecordsStopError(branch string, cause error, wayForward string) error {
-	return &WeftStopError{Branch: branch, Err: cause, WayForward: wayForward}
-}
-
 // weftHasUpstream reports whether the weft worktree's current branch has a configured upstream tracking ref.
 // No upstream, or a detached HEAD, is for Pull's weft step the nothing-to-pull-from case, never an error.
 func (f *Fabric) weftHasUpstream() (bool, error) {

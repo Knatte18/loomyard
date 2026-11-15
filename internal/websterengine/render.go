@@ -36,12 +36,6 @@ func MasterTemplate(stencilsDir string) ([]byte, error) {
 	return stencilstore.Read(stencilsDir, "webster-template-master")
 }
 
-// ImplementerBodyTemplate returns the shared implementer job body read from stencilsDir.
-// Each fork and recovery prompt puts its own prefix ahead of it.
-func ImplementerBodyTemplate(stencilsDir string) ([]byte, error) {
-	return stencilstore.Read(stencilsDir, "webster-body-implementer")
-}
-
 // joinTemplateAssets strips each asset's leading banner comment via stencil.StripLeadingComment.
 // It then concatenates the two bodies with a blank line between them.
 // Stripping both matters: stencil.Fill strips only one leading banner from the joined text.
@@ -78,16 +72,6 @@ func composeRecoveryTemplate(stencilsDir string) ([]byte, error) {
 		return nil, err
 	}
 	return joinTemplateAssets(prefix, body), nil
-}
-
-// ForkTemplate returns the composed thin in-session fork prompt template, read from stencilsDir.
-func ForkTemplate(stencilsDir string) ([]byte, error) {
-	return composeForkTemplate(stencilsDir)
-}
-
-// RecoveryTemplate returns the composed full cold-start recovery prompt template, read from stencilsDir.
-func RecoveryTemplate(stencilsDir string) ([]byte, error) {
-	return composeRecoveryTemplate(stencilsDir)
 }
 
 // cardGateFixerMarker is the implementer body's optional marker the card-gate fixer paragraph fills, right after the card gates.
@@ -131,7 +115,7 @@ func cardPointerPath(c planparser.Card, planDirDisplay string) string {
 	return planDirDisplay + "/" + filepath.Base(c.SourcePath)
 }
 
-// RenderForkPrompt fills ForkTemplate for one execution batch's in-session fork, read from stencilsDir.
+// RenderForkPrompt fills the composed fork template for one execution batch's in-session fork, read from stencilsDir.
 // Cards' pointers are rendered in planDir's display form:
 // relative to promptWorktreeRoot, the pane's own cwd, when planDir sits inside it.
 // {{.worktree_root}} is filled from the same caller-supplied promptWorktreeRoot.
@@ -197,7 +181,8 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 	return prompt, nil
 }
 
-// RenderRecoveryPrompt fills RecoveryTemplate for one batch's cold-start recovery strand, read from stencilsDir.
+// RenderRecoveryPrompt fills the composed recovery template for one batch's cold-start recovery strand.
+// The template is read from stencilsDir.
 // The recovery strand inherits nothing;
 // its prompt orients from plan/00-overview.md and from any PATTERN entries before the shared implementer-job body runs.
 // {{.worktree_root}} is filled from the caller-supplied promptWorktreeRoot, the pane's own cwd;

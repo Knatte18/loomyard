@@ -1,7 +1,7 @@
 # Shed recipe — the declarative producer-list format
 
 > **Status: Contract — pinned.** This doc pins the **recipe format**: the data file that names a `Shed` run's producers and their routing, which `internal/shedbuild` is the sole parser and `internal/shedrecipe`'s registry resolves engine names against.
-> A recipe is assembled into the `[]shedengine.ProducerDef` `shedengine.Shed` consumes; `internal/shedcheck` checks the assembled list.
+> A recipe is assembled into the `[]shedengine.ProducerDef` `shedengine.Shed` consumes; `internal/testkit/shedcheckkit` checks the assembled list in tests.
 > Kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing, per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle).
 > It is not a deployed spec: nothing outside this repository reads a recipe, and no agent ever writes one, so it carries no registry entry in `specs.go` and is never seeded into a target repo.
 > The shipped recipes live under `contracts/recipes/`, each read through its own recipe package.
@@ -59,7 +59,7 @@ A recipe row carries an optional `Segment`, mapped straight onto `shedengine.Pro
 A producer list mixing rows at the empty default with rows at a real segment name would therefore fail validation.
 That failure would come at run time rather than at authoring time.
 The recipe states each row's segment itself.
-`internal/shedcheck` catches illegitimate cross-segment `OnStuck` wiring.
+`internal/testkit/shedcheckkit` catches illegitimate cross-segment `OnStuck` wiring.
 It is needed regardless, since `OnDone` has no segment-style enforcement.
 
 ## What's never in a recipe
@@ -151,14 +151,14 @@ Any other row refuses `fixer` as an unknown key.
 
 `internal/shedbuild` is the recipe file format's loader and builder, shipped as a single package.
 Its production import set is one-way:
-it imports `internal/shedrecipe`, `internal/shedengine`, and `internal/shedcheck`,
+it imports `internal/shedrecipe`, `internal/shedengine`, and `internal/shedtransient`,
 and none of those three, nor `internal/loomshed` or `internal/loomcli`, imports it back.
 
 **Document shape.** A recipe document decodes straight into the package's `Recipe` type, with no intermediate struct.
 It requires a `version`, of which only `1` is accepted.
 It also requires a told `entry` producer name, a told `terminals` list, and a `producers` list.
 It may also set an optional top-level `amendment_target`, the name of the row a plan amendment routes to;
-`Parse` decodes it without checking that it names a row, since routing is `shedengine`'s and `shedcheck`'s.
+`Parse` decodes it without checking that it names a row, since routing is `shedengine`'s.
 It may also set a top-level `contract`, empty or `loom`.
 It may also set a top-level `verify_source`, empty, `plan` or `tree_scope`;
 `Parse` refuses any other value of either, naming the key, the legal values and the way forward.
@@ -173,8 +173,6 @@ It also refuses a hand-written `engine: Block`, which is reserved for the row a 
 
 **Exported functions.**
 `Parse` decodes a byte slice into a `Recipe` and runs every shape check the value must pass before `Build` consumes it.
-`Load` reads the recipe file at a told absolute path and delegates to `Parse`.
-It is the only function in the package whose own code touches the filesystem.
 `Expand` inlines each block row's sub-recipe into its parent, as the expansion paragraph below describes.
 `Build` resolves each row's `Engine` name against the `internal/shedrecipe` registry.
 It calls the returned constructor with a caller-supplied `shedrecipe.Env`.
@@ -183,8 +181,6 @@ It assembles the `[]shedengine.ProducerDef` list `shedengine.Shed` consumes.
 It builds no engine.
 `Build` and `RoutingFrom` take the expanded recipe:
 `Build` refuses a block row that was never expanded, and a block row's gate is the check its `block_gate` names.
-`Check` forwards an assembled producer list, with a `Recipe`'s own `Entry` and `Terminals`, to `shedcheck.Check`.
-It is non-production, for a caller's own authoring-time test suite.
 
 **Expansion.** `Expand` takes a parsed `Recipe` and a told resolver from a recipe name to its bytes.
 It parses each block's recipe through `Parse`.
@@ -224,7 +220,7 @@ A recipe without `contract: loom` is not checked and is no loom.
 
 **Validation split.** This package owns file shape and engine-name resolution alone.
 It runs no reachability, cycle, blind-gate, dangling-target, or segment analysis of its own.
-`shedengine`'s own validation and `internal/shedcheck` already own routing, cycles, and reachability.
+`shedengine`'s own validation owns routing and cycles, and `internal/testkit/shedcheckkit` checks reachability at authoring time.
 A third copy would drift.
 The one exception is `Expand`'s block refusals, which only the expansion can see:
 a block recipe including itself, an inlined edge naming no row of its recipe, and a segment shared across a block edge.
@@ -240,7 +236,7 @@ The tapestry recipe's location is settled under "Decisions this piece settled" b
 ## Decisions this piece settled
 
 - **On-disk location.** The tapestry recipe ships as an embedded default at `contracts/recipes/tapestry-recipe.yaml`.
-  It is read through `shedbuild.Parse` on the embedded bytes, never `shedbuild.Load`.
+  It is read through `shedbuild.Parse` on the embedded bytes.
   The bytes are `contracts/recipes/recipes.go`'s `TapestryRecipe`.
   There is no seeding, no operator override, and no runtime on-disk path.
 - **The consumer.** `internal/loomrecipe` is the tapestry recipe's sole consumer.
@@ -250,10 +246,6 @@ The tapestry recipe's location is settled under "Decisions this piece settled" b
 - **Test ownership.** The assembled-graph tests live in `internal/loomrecipe`, not `internal/loomshed`.
   They include the coverage guard driving tapestry's real row list against the registry.
   They also include the sequencing, cancellation and resume tests.
-
-**Unused entry.** Loom reaches its recipe through the embedded bytes, never a told path,
-so `shedbuild.Load` has no production caller.
-It stays exported and covered as the entry a non-embedded consumer, such as a second recipe-backed product, would use.
 
 ## Escalation and the future watchdog
 
@@ -266,7 +258,7 @@ a watchdog process outside the `lym` loop would read the halted or blocked outpu
 
 - `internal/shedengine`'s and `internal/shedadapters`' package documentation:
   `Shed`'s generic mechanism, which this layer sits on top of: the loop, the producer contract and the engine adapters.
-- `internal/shedbuild`'s and `internal/shedcheck`'s package documentation: the parser and the assembled-list checker.
+- `internal/shedbuild`'s and `internal/testkit/shedcheckkit`'s package documentation: the parser and the assembled-list checker.
 - `PATTERN-sole-parsers`, `PATTERN-shed-recipe-registry` and `PATTERN-cwd-resolution`:
   the rules that directly shape this format.
   The import seam `internal/shedengine`'s package doc states shapes it too.

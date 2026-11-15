@@ -9,15 +9,17 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 )
 
-// runCLI invokes boardcli.RunCLI in-process and returns the exit code plus the JSON the command wrote.
+// runCLI runs the board command through clihelp.Execute in-process.
+// It returns the exit code plus the JSON the command wrote.
 // The caller must have called seedCwd, or otherwise set up the cwd and the git repo, before calling runCLI.
 // BOARD_SKIP_GIT must be set by the caller.
 func runCLI(t *testing.T, args ...string) (exitCode int, stdout string) {
 	t.Helper()
 
 	var buf bytes.Buffer
-	code := boardcli.RunCLI(&buf, args)
+	code := clihelp.Execute(boardcli.Command(), &buf, args)
 	return code, buf.String()
 }

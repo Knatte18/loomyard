@@ -1,5 +1,5 @@
 // help_test.go pins the documented payload schema visible via --help for every board leaf command.
-// Each test drives RunCLI with --help and asserts that the Long output contains the documented field names.
+// Each test drives clihelp.Execute with --help and asserts that the Long output contains the documented field names.
 // It also asserts that no removed token (id_or_slug, phase, group) appears, since one would signal a stale description.
 
 package boardcli_test
@@ -12,16 +12,17 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// runHelp invokes RunCLI for a leaf command with --help and returns the combined stdout.
+// runHelp runs clihelp.Execute for a leaf command with --help and returns the combined stdout.
 // The leaf command is named by one or more path segments, e.g. "upsert" or "set-status".
 // Help output needs no seeded cwd, because cobra intercepts --help before PersistentPreRunE executes.
 func runHelp(t *testing.T, args ...string) string {
 	t.Helper()
 	var buf bytes.Buffer
-	boardcli.RunCLI(&buf, append(args, "--help"))
+	clihelp.Execute(boardcli.Command(), &buf, append(args, "--help"))
 	return buf.String()
 }
 
@@ -153,19 +154,19 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 			helpText := runHelp(t, tt.args...)
 
 			if statesSlugLimit[tt.name] && !strings.Contains(helpText, slugLimit) {
-				t.Errorf("RunCLI(%v --help) help text does not contain %q\noutput:\n%s", tt.args, slugLimit, helpText)
+				t.Errorf("Execute(%v --help) help text does not contain %q\noutput:\n%s", tt.args, slugLimit, helpText)
 			}
 
 			for _, token := range tt.mustContain {
 				if !strings.Contains(helpText, token) {
-					t.Errorf("RunCLI(%v --help) help text does not contain %q\noutput:\n%s",
+					t.Errorf("Execute(%v --help) help text does not contain %q\noutput:\n%s",
 						tt.args, token, helpText)
 				}
 			}
 
 			for _, bad := range append(removedTokens, tt.mustNotContain...) {
 				if strings.Contains(helpText, bad) {
-					t.Errorf("RunCLI(%v --help) help text must not contain removed token %q\noutput:\n%s",
+					t.Errorf("Execute(%v --help) help text must not contain removed token %q\noutput:\n%s",
 						tt.args, bad, helpText)
 				}
 			}

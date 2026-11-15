@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
@@ -94,15 +95,15 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLI(&buf, []string{"down"})
+		clihelp.Execute(Command(), &buf, []string{"down"})
 	})
 
 	var out bytes.Buffer
-	if code := RunCLI(&out, []string{"up"}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"up"}); code != 0 {
 		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
 	}
 	out.Reset()
-	if code := RunCLI(&out, []string{"add", "--cmd", "pwsh -NoExit -Command Write-Host ready"}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"add", "--cmd", "pwsh -NoExit -Command Write-Host ready"}); code != 0 {
 		t.Fatalf("add = %d; want 0, output: %s", code, out.String())
 	}
 	var addResult map[string]any
@@ -115,7 +116,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	}
 
 	out.Reset()
-	if code := RunCLI(&out, []string{"status"}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"status"}); code != 0 {
 		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
 	}
 	var statusResult map[string]any
@@ -133,7 +134,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	// plus the raw JSON, so a failing assertion can print what status saw.
 	readStrand := func() (map[string]any, []byte, bool) {
 		var buf bytes.Buffer
-		if code := RunCLI(&buf, []string{"status"}); code != 0 {
+		if code := clihelp.Execute(Command(), &buf, []string{"status"}); code != 0 {
 			t.Fatalf("status = %d; want 0, output: %s", code, buf.String())
 		}
 		raw := append([]byte(nil), buf.Bytes()...)
@@ -156,7 +157,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	// The reborn session's initial pane reuses the old pane id.
 	// Without the booted-session binding-clear, the strand would look falsely live.
 	out.Reset()
-	if code := RunCLI(&out, []string{"up"}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"up"}); code != 0 {
 		t.Fatalf("post-crash up = %d; want 0, output: %s", code, out.String())
 	}
 	strand, statusRaw, found := readStrand()
@@ -169,7 +170,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 
 	// resume: rebuilds the strand into a fresh live pane.
 	out.Reset()
-	if code := RunCLI(&out, []string{"resume"}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"resume"}); code != 0 {
 		t.Fatalf("resume = %d; want 0, output: %s", code, out.String())
 	}
 	var resumeResult map[string]any
@@ -208,11 +209,11 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLI(&buf, []string{"down"})
+		clihelp.Execute(Command(), &buf, []string{"down"})
 	})
 
 	var out bytes.Buffer
-	if code := RunCLI(&out, []string{"up"}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"up"}); code != 0 {
 		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
 	}
 
@@ -240,7 +241,7 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	readPane := func() string {
 		t.Helper()
 		var buf bytes.Buffer
-		if code := RunCLI(&buf, []string{"status"}); code != 0 {
+		if code := clihelp.Execute(Command(), &buf, []string{"status"}); code != 0 {
 			t.Fatalf("status = %d; want 0, output: %s", code, buf.String())
 		}
 		strand, ok := statusStrand(t, buf.Bytes(), guid)
@@ -287,7 +288,7 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	waitServerGone(t, tmuxPath, socket, session)
 
 	out.Reset()
-	if code := RunCLI(&out, []string{"resume"}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"resume"}); code != 0 {
 		t.Fatalf("resume = %d; want 0, output: %s", code, out.String())
 	}
 	var resumeResult map[string]any

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -91,13 +92,13 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		reedcli.RunCLI(&buf, []string{"down"})
+		clihelp.Execute(reedcli.Command(), &buf, []string{"down"})
 	})
 
 	// up boots the substrate.
 	// A strand must exist in an up'd session before shuttle's AddStrand can bind it to a pane.
 	var reedOut bytes.Buffer
-	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+	if code := clihelp.Execute(reedcli.Command(), &reedOut, []string{"up"}); code != 0 {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 

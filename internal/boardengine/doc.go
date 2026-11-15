@@ -605,7 +605,6 @@
 // The write keeps the decision record, the discussed flag and the sketch label.
 // It restores the label when a note write dropped it, and it releases the task, so its parent's dobby starts the run.
 // PromoteTo's depends_on is set in that write, so the dobby never sees the task released without it.
-// Board.Promote is PromoteTo with no recipe and no depends_on.
 // PromoteTo warns, and still promotes, a Sketch whose body no longer matches its `record_body_sha256`.
 // The body compared is the one loaded before the write.
 // The warning names `lym board upsert --record-file` as the way to bring the record up to the body.

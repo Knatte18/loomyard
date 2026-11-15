@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -153,16 +152,6 @@ func (b *Bolt) Sync(step func() (progressed bool, err error)) error {
 		return err
 	}
 	return coalescePush(lockPath, step)
-}
-
-// HasUpstream reports whether the Bolt's current branch has an upstream configured.
-// It reads local config and does not contact the remote.
-func (b *Bolt) HasUpstream() (bool, error) {
-	_, err := gitrepo.New(b.path).UpstreamSHA()
-	if errors.Is(err, gitrepo.ErrNoUpstream) {
-		return false, nil
-	}
-	return err == nil, err
 }
 
 // HasUnpushed reports whether the Bolt's current branch is ahead of its upstream as last fetched.
@@ -426,24 +415,4 @@ func (b *Bolt) divergedDetail(repo *gitrepo.Repo, conflicts, localCommits []stri
 	}
 	return fmt.Sprintf("the board at %s holds commits its upstream lacks and could not replay them onto the moved upstream: %s; re-run the command afterwards",
 		b.path, recordsConflictWayForward(b.path, branch, conflicts, localCommits, pushStep(FailedPush{Repo: failedPushSideBolt})))
-}
-
-// seedCommitsAhead splits ahead, a list of commits, into seed commits and the rest, each in ahead's order.
-// Each commit is judged by its message and changed paths.
-// It returns the sorted union of the paths every commit in ahead changes.
-func seedCommitsAhead(repo *gitrepo.Repo, ahead []string) (seed, other, touched []string, err error) {
-	for _, sha := range ahead {
-		detail, err := repo.CommitDetail(sha)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		if IsSeedCommit(detail.Message, detail.Paths) {
-			seed = append(seed, sha)
-		} else {
-			other = append(other, sha)
-		}
-		touched = append(touched, detail.Paths...)
-	}
-	slices.Sort(touched)
-	return seed, other, slices.Compact(touched), nil
 }

@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -31,7 +32,7 @@ import (
 func statusStrandLive(t *testing.T, cwd, guid string) (live bool, paneID string) {
 	t.Helper()
 	var out bytes.Buffer
-	if code := RunCLIIn(cwd, &out, []string{"status"}); code != 0 {
+	if code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"status"}); code != 0 {
 		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
 	}
 	strand, ok := statusStrand(t, out.Bytes(), guid)
@@ -90,7 +91,7 @@ func assertDiagnosticVerbsRefuseAndDepositNothing(t *testing.T, tmuxPath, cwd, s
 	var out bytes.Buffer
 	for _, verb := range [][]string{{"status"}, {"attach"}, {"add", "--cmd", smokeReapLaunchCmd(), "--name", "post-rename"}} {
 		out.Reset()
-		if code := RunCLIIn(cwd, &out, verb); code == 0 {
+		if code := clihelp.ExecuteIn(Command(), cwd, &out, verb); code == 0 {
 			t.Fatalf("%v in %s = 0; want a failure naming the orphan session, output: %s", verb, cwd, out.String())
 		}
 		reported := out.String()
@@ -134,7 +135,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		t.Helper()
 		t.Cleanup(func() {
 			var buf bytes.Buffer
-			RunCLIIn(prime, &buf, []string{"down"})
+			clihelp.ExecuteIn(Command(), prime, &buf, []string{"down"})
 		})
 	}
 
@@ -167,7 +168,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		if code := RunCLIIn(prime, &out, []string{"status"}); code == 0 {
+		if code := clihelp.ExecuteIn(Command(), prime, &out, []string{"status"}); code == 0 {
 			t.Fatalf("status with an unreadable reed.json = 0; want a failure, output: %s", out.String())
 		}
 		unreadable := envelopeError(t, out.Bytes())
@@ -183,7 +184,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		}
 
 		out.Reset()
-		if code := RunCLIIn(prime, &out, []string{"status"}); code == 0 {
+		if code := clihelp.ExecuteIn(Command(), prime, &out, []string{"status"}); code == 0 {
 			t.Fatalf("status with no reed.json = 0; want a failure, output: %s", out.String())
 		}
 		absent := envelopeError(t, out.Bytes())
@@ -332,7 +333,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		deferHubRelease(t, renamed)
 		t.Cleanup(func() {
 			var buf bytes.Buffer
-			RunCLIIn(renamed, &buf, []string{"down"})
+			clihelp.ExecuteIn(Command(), renamed, &buf, []string{"down"})
 		})
 
 		mustRunReed(t, original, "up")
@@ -344,7 +345,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		if code := RunCLIIn(renamed, &out, []string{"resume"}); code == 0 {
+		if code := clihelp.ExecuteIn(Command(), renamed, &out, []string{"resume"}); code == 0 {
 			t.Fatalf("resume in the renamed worktree = 0; want a refusal — continuing double-launches every strand and orphans %q, output: %s", originalSession, out.String())
 		}
 		refusal := out.String()
@@ -366,7 +367,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 			t.Fatalf("kill-session -t =%s: %v", originalSession, err)
 		}
 		out.Reset()
-		if code := RunCLIIn(renamed, &out, []string{"resume"}); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), renamed, &out, []string{"resume"}); code != 0 {
 			t.Fatalf("resume after the orphan was killed = %d; want 0 — the refusal must be escapable by the remedy it names, output: %s", code, out.String())
 		}
 	}) {
@@ -404,7 +405,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 			t.Cleanup(func() {
 				exec.Command(tmuxPath, "-L", socket, "kill-session", "-t", "="+originalSession).Run()
 				var buf bytes.Buffer
-				RunCLIIn(renamed, &buf, []string{"down"})
+				clihelp.ExecuteIn(Command(), renamed, &buf, []string{"down"})
 			})
 			addStrandIn(t, original, smokeReapLaunchCmd(), "--name", "pre-rename")
 
@@ -426,9 +427,9 @@ func TestSmokeStateRecovery(t *testing.T) {
 			socket, originalSession := socketAndSessionIn(t, original)
 			t.Cleanup(func() {
 				var buf bytes.Buffer
-				RunCLIIn(copied, &buf, []string{"down"})
+				clihelp.ExecuteIn(Command(), copied, &buf, []string{"down"})
 				buf.Reset()
-				RunCLIIn(original, &buf, []string{"down"})
+				clihelp.ExecuteIn(Command(), original, &buf, []string{"down"})
 			})
 			addStrandIn(t, original, smokeReapLaunchCmd(), "--name", "copy-source-strand")
 
@@ -473,7 +474,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		t.Cleanup(func() {
 			exec.Command(tmuxPath, "-L", socket, "kill-session", "-t", "="+originalSession).Run()
 			var buf bytes.Buffer
-			RunCLIIn(renamed, &buf, []string{"down"})
+			clihelp.ExecuteIn(Command(), renamed, &buf, []string{"down"})
 		})
 		addStrandIn(t, original, smokeReapLaunchCmd(), "--name", "pre-rename")
 
@@ -482,7 +483,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		if code := RunCLIIn(renamed, &out, []string{"down"}); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), renamed, &out, []string{"down"}); code != 0 {
 			t.Fatalf("down in the renamed worktree = %d; want 0 — down is the only lym-only escape from the refusal, output: %s", code, out.String())
 		}
 		var downResult map[string]any
@@ -514,9 +515,9 @@ func TestSmokeStateRecovery(t *testing.T) {
 		deferHubRelease(t, victim)
 		t.Cleanup(func() {
 			var buf bytes.Buffer
-			RunCLIIn(victim, &buf, []string{"down"})
+			clihelp.ExecuteIn(Command(), victim, &buf, []string{"down"})
 			buf.Reset()
-			RunCLIIn(prime, &buf, []string{"down"})
+			clihelp.ExecuteIn(Command(), prime, &buf, []string{"down"})
 		})
 
 		mustRunReed(t, victim, "up")
@@ -538,7 +539,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		// Remove may succeed or be refused; both outcomes are acceptable for a copied state file.
 		// Destroying the victim's pane is the one unacceptable outcome.
 		var out bytes.Buffer
-		RunCLIIn(prime, &out, []string{"remove", victimGUID})
+		clihelp.ExecuteIn(Command(), prime, &out, []string{"remove", victimGUID})
 
 		if !sessionAlive(tmuxPath, socket, victimSession) {
 			t.Fatalf("victim session %s died after a remove in another worktree", victimSession)

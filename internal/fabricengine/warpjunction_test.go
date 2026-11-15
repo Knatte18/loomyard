@@ -14,18 +14,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestCodeLymLinkMethods covers CodeLymLink(l, slug) and WarpLymLinkHere(l) with AnchorRel "." and subpath cases.
+// TestWarpLymLinkHere covers WarpLymLinkHere(l) with AnchorRel "." and subpath cases.
 // It verifies AnchorRel mirroring and junction pairing against the weft-sibling worktree.
 //
-//testtiming:keep CodeLymLink and WarpLymLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
-func TestCodeLymLinkMethods(t *testing.T) {
+//testtiming:keep WarpLymLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
+func TestWarpLymLinkHere(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name                string
 		hub                 string
 		slug                string
 		relPath             string
-		wantCodeLymLink     string
 		wantWarpLymLinkHere string
 	}{
 		{
@@ -33,7 +32,6 @@ func TestCodeLymLinkMethods(t *testing.T) {
 			hub:                 "/h",
 			slug:                "x",
 			relPath:             ".",
-			wantCodeLymLink:     filepath.Join("/h", "x", "_lym"),
 			wantWarpLymLinkHere: filepath.Join("/h", "feat", "_lym"),
 		},
 		{
@@ -41,7 +39,6 @@ func TestCodeLymLinkMethods(t *testing.T) {
 			hub:                 "/h",
 			slug:                "x",
 			relPath:             "sub",
-			wantCodeLymLink:     filepath.Join("/h", "x", "sub", "_lym"),
 			wantWarpLymLinkHere: filepath.Join("/h", "feat", "sub", "_lym"),
 		},
 		{
@@ -49,7 +46,6 @@ func TestCodeLymLinkMethods(t *testing.T) {
 			hub:                 "/h",
 			slug:                "y",
 			relPath:             "sub/dir",
-			wantCodeLymLink:     filepath.Join("/h", "y", "sub/dir", "_lym"),
 			wantWarpLymLinkHere: filepath.Join("/h", "feat", "sub/dir", "_lym"),
 		},
 	}
@@ -62,16 +58,11 @@ func TestCodeLymLinkMethods(t *testing.T) {
 				AnchorRel:    tt.relPath,
 			}
 
-			if got := CodeLymLink(loc, tt.slug); got != tt.wantCodeLymLink {
-				t.Errorf("CodeLymLink(l, %q) = %q; want %q", tt.slug, got, tt.wantCodeLymLink)
-			}
-
 			if got := WarpLymLinkHere(loc); got != tt.wantWarpLymLinkHere {
 				t.Errorf("WarpLymLinkHere(l) = %q; want %q", got, tt.wantWarpLymLinkHere)
 			}
 
-			// CodeLymLink(l, slug) and the weft sibling's _lym directory are siblings.
-			// They differ only by the -weft suffix on the worktree dir.
+			// A slug's warp worktree and its weft sibling differ only by the -weft suffix on the worktree dir.
 			warpWtName := filepath.Base(filepath.Join(loc.HubPath, tt.slug))
 			weftWtName := filepath.Base(weftname.SiblingPath(loc.HubPath, tt.slug))
 

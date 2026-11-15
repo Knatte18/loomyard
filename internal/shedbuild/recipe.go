@@ -11,7 +11,7 @@ import (
 // Recipe is a decoded recipe document: the whole graph of producer rows plus its graph metadata.
 //
 // Entry and Terminals are graph metadata that building never reads.
-// They are kept because the `shedcheck` package takes both as stated arguments and never infers either.
+// They are kept as the graph's stated entry and terminals, which a structural check takes as arguments and never infers.
 // AmendmentTarget names the row a plan amendment routes to; it is empty when the recipe sets none.
 // Contract is empty or `loom`; `loom` declares the recipe a loom, and the build checks it against the loom contract.
 // VerifySource is empty, `plan` or `tree_scope`, and a loom recipe must set it.

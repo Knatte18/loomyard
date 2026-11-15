@@ -49,10 +49,6 @@ const landingDirName = "landing"
 // loomengine is this segment's sole declarer.
 const projectDirName = "project"
 
-// loomReworkCoverageFileName is the filename of the rework agent's finding-to-card coverage map within LoomScratchDir.
-// loomengine is this segment's sole declarer.
-const loomReworkCoverageFileName = "rework-coverage.md"
-
 // reworkDirName is the relative-path segment loomengine joins onto LoomDurableDir.
 // The joined path is the directory holding one round-<N> directory per rejection round.
 // loomengine is this segment's sole declarer.
@@ -259,15 +255,6 @@ func LoomHandoffVoucherLock(l *lymcwd.Location) string {
 // The directory is the run directory that shedrun owns.
 func LoomScratchDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName)
-}
-
-// LoomReworkCoveragePath returns the path to the rework agent's completion file.
-// The file maps each finding to the new cards that cover it.
-// It lies in the ephemeral loom scratch directory.
-// The file is never tracked, per the Durable-vs-Ephemeral State Invariant.
-// Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomReworkCoveragePath(l *lymcwd.Location) string {
-	return filepath.Join(LoomScratchDir(l), loomReworkCoverageFileName)
 }
 
 // LoomReworkDirRel returns the worktree-anchor-relative path of the rework directory.

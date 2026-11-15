@@ -667,27 +667,3 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 		}
 	})
 }
-
-func TestBoardDropRequest_RefusesForeignBoard(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	f := newBoltFixture(t)
-	foreign := filepath.Join(t.TempDir(), "elsewhere", fabricengine.BoardDirName)
-	if err := os.MkdirAll(filepath.Dir(foreign), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	gitkit.MustRun(t, f.hub.PrimeRecords(), "git", "worktree", "add", "-b", "foreign-board", foreign)
-	rec := fabricengine.NewMutations("")
-	tip := gitkit.RevParse(t, foreign, "HEAD")
-
-	err := fabricengine.DropSeedCommitsForTest(rec, fabricengine.BoardDropRequestForTest(foreign, nil), gitrepo.New(foreign), tip, nil)
-
-	refusal, ok := fabricengine.RefusalOf(err)
-	if !ok || refusal.Check != fabricengine.CheckOwnership {
-		t.Fatalf("err = %v, want an ownership refusal", err)
-	}
-	if rec.Snapshot().Len() != 0 {
-		t.Errorf("a refusal recorded %v", kindsOf(rec))
-	}
-}

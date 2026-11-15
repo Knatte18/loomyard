@@ -1,4 +1,5 @@
-// smoke_lifecycle_test.go runs the up, add, remove, status and down verbs through RunCLIIn against a real tmux server.
+// smoke_lifecycle_test.go runs the up, add, remove, status and down verbs through clihelp.ExecuteIn.
+// It runs them against a real tmux server.
 
 package reedcli
 
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
@@ -26,7 +28,7 @@ import (
 func mustRunReed(t *testing.T, worktree string, args ...string) []byte {
 	t.Helper()
 	var out bytes.Buffer
-	if code := RunCLIIn(worktree, &out, args); code != 0 {
+	if code := clihelp.ExecuteIn(Command(), worktree, &out, args); code != 0 {
 		t.Fatalf("%v = %d; want 0, output: %s", args, code, out.String())
 	}
 	return out.Bytes()
@@ -37,7 +39,7 @@ func mustRunReed(t *testing.T, worktree string, args ...string) []byte {
 func restartSession(t *testing.T, worktree string) {
 	t.Helper()
 	var buf bytes.Buffer
-	RunCLIIn(worktree, &buf, []string{"down"})
+	clihelp.ExecuteIn(Command(), worktree, &buf, []string{"down"})
 	mustRunReed(t, worktree, "up")
 }
 
@@ -45,7 +47,7 @@ func restartSession(t *testing.T, worktree string) {
 // Each step restarts the session first, so the steps share one hub build and one tmux server.
 // The steps run serially in a fixed order and do not rely on each other's results.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux server.
-// Every step drives reed through RunCLIIn.
+// Every step drives reed through clihelp.ExecuteIn.
 // That seeds the worktree into the execution context without moving the process.
 // So the anchor reed is told to use and the test process's own working directory are two different directories.
 func TestSmokeLifecycle(t *testing.T) {
@@ -60,7 +62,7 @@ func TestSmokeLifecycle(t *testing.T) {
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLIIn(prime, &buf, []string{"down"})
+		clihelp.ExecuteIn(Command(), prime, &buf, []string{"down"})
 	})
 	stateDir := filepath.Join(prime, ".lym")
 
@@ -295,7 +297,7 @@ func TestSmokeLifecycle(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		if code := RunCLIIn(prime, &out, []string{"up"}); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), prime, &out, []string{"up"}); code != 0 {
 			t.Fatalf("up after the state file was scrubbed = %d; want 0 — a lost reed.json must not wedge the worktree, output: %s", code, out.String())
 		}
 
@@ -398,7 +400,7 @@ func TestSmokeLifecycle(t *testing.T) {
 	// launchStrandLocked must pass -c with the anchor when it creates the pane.
 	// Without -c, tmux takes the new pane's cwd from the calling process, not from the anchor.
 	// A process that stands in the anchor hides this defect.
-	// The RunCLIIn seam seeds the cwd into the execution context without moving the process,
+	// Running through clihelp.ExecuteIn seeds the cwd into the execution context without moving the process,
 	// so there the strand's pane comes up in the wrong tree while reed reports success.
 	//
 	// Both strands here open a window of their own:
@@ -587,7 +589,7 @@ func TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite(t *testing.T) {
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLIIn(prime, &buf, []string{"down"})
+		clihelp.ExecuteIn(Command(), prime, &buf, []string{"down"})
 	})
 
 	// Brings up the hub's shared tmux server, which the bad worktree boots against.
@@ -615,7 +617,7 @@ func TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite(t *testing.T) {
 			deferHubRelease(t, rewritable)
 
 			var out bytes.Buffer
-			code := RunCLIIn(rewritable, &out, []string{"up"})
+			code := clihelp.ExecuteIn(Command(), rewritable, &out, []string{"up"})
 			if code == 0 {
 				t.Fatalf("up in worktree %q = 0; want a non-zero refusal, output: %s", tt.worktreeName, out.String())
 			}

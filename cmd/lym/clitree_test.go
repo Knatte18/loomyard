@@ -52,7 +52,7 @@ func argsFor(cmd *cobra.Command) []string {
 // bareProblems runs a bare group invocation and returns how it breaks the invariant, with its output.
 func bareProblems(args []string, children []*cobra.Command) ([]string, string) {
 	var out bytes.Buffer
-	code := run(args, &out)
+	code := run(args, &out, &out)
 	got := out.String()
 	var problems []string
 	if code != 0 {
@@ -72,7 +72,7 @@ func bareProblems(args []string, children []*cobra.Command) ([]string, string) {
 // bogusProblems runs an unknown-subcommand invocation and returns how it breaks the invariant, with its output.
 func bogusProblems(args []string) ([]string, string) {
 	var out bytes.Buffer
-	code := run(args, &out)
+	code := run(args, &out, &out)
 	got := out.String()
 	var problems []string
 	if code != 1 {

@@ -522,8 +522,6 @@
 //     The handler declines until the watcher has set its events cursor for the recorded strand,
 //     so every message stays unread for the first tick.
 //     A failed read is logged and is not a tick error.
-//   - The retired notice queue is only cleaned up.
-//     `CleanupRetiredNotices` lists and removes `Paths.NoticesDir` and `Paths.RetiredNoticeLogPath`.
 //
 // # Delivery through creel
 //

@@ -1,4 +1,4 @@
-// cli_integration_test.go drives RunCLIIn against a temporary directory outside any git repository,
+// cli_integration_test.go drives clihelp.ExecuteIn against a temporary directory outside any git repository,
 // proving the standalone pre-run reaches a verb's own RunE rather than failing with a
 // cwd-resolution error.
 // Only this test observes that property.
@@ -13,10 +13,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched drives "run".
+// TestCommand_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched drives "run".
 // It runs from a temporary directory that is not a git repository.
 // lymcwd.Resolve fails there, so preflight.ResolveMode folds the invocation into standalone mode instead of refusing it.
 // The test redirects the standalone state directory to a temporary one via XDG_STATE_HOME/LOCALAPPDATA.
@@ -30,24 +31,24 @@ import (
 // The target directory, the operator's git repository, gains no state tree, lock file or rendered prompt.
 // Every durable and scratch artifact lives under the derived state directory instead;
 // the test needs a real Derive call and a real filesystem to assert that absence.
-func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched(t *testing.T) {
+func TestCommand_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched(t *testing.T) {
 	tiergate.Require(t, 1)
 	target := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 
 	var out strings.Builder
-	exitCode := RunCLIIn(target, &out, []string{"run"})
+	exitCode := clihelp.ExecuteIn(Command(), target, &out, []string{"run"})
 
 	if exitCode != 1 {
-		t.Fatalf(`RunCLIIn(%q, [run]) = %d; want 1, output: %s`, target, exitCode, out.String())
+		t.Fatalf(`ExecuteIn(%q, [run]) = %d; want 1, output: %s`, target, exitCode, out.String())
 	}
 	got := out.String()
 	if !strings.Contains(got, "burler: --profile is required") {
-		t.Errorf(`RunCLIIn(%q, [run]) output missing the run verb's own flag-validation error; got: %q`, target, got)
+		t.Errorf(`ExecuteIn(%q, [run]) output missing the run verb's own flag-validation error; got: %q`, target, got)
 	}
 	if strings.Contains(got, "not a git repository") {
-		t.Errorf(`RunCLIIn(%q, [run]) output looks like a cwd-resolution failure, not the run verb's own validation gate; got: %q`, target, got)
+		t.Errorf(`ExecuteIn(%q, [run]) output looks like a cwd-resolution failure, not the run verb's own validation gate; got: %q`, target, got)
 	}
 
 	after, err := os.ReadDir(target)

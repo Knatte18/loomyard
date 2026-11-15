@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/shedcheckkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -95,7 +96,8 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 
 // TestRecipe_StructuralCheckHasNoFindings parses each embedded recipe through shedbuild.Parse.
 // It builds the parsed recipe through shedbuild.Build against testEnv(t)'s Env.
-// It then asserts that shedbuild.Check(recipe, built) returns no findings.
+// It then asserts that shedcheckkit.Check over the built list returns no findings.
+// The check is told the recipe's Entry and Terminals.
 //
 // This goes through Parse/Build rather than through New: it needs the parsed Recipe value, which New does not return,
 // so it must not be "simplified" back onto New.
@@ -120,8 +122,8 @@ func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
 				t.Fatalf("shedbuild.Build() error = %v; want nil", err)
 			}
 
-			if findings := shedbuild.Check(recipe, built); len(findings) != 0 {
-				t.Errorf("shedbuild.Check() = %v; want no findings", findings)
+			if findings := shedcheckkit.Check(built, recipe.Entry, recipe.Terminals); len(findings) != 0 {
+				t.Errorf("shedcheckkit.Check() = %v; want no findings", findings)
 			}
 		})
 	}

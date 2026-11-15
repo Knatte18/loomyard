@@ -8,6 +8,7 @@ package fabricengine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -16,7 +17,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
@@ -410,17 +413,49 @@ func CorrIndexPathForTest(f *Fabric) (string, error) {
 	return f.corrIndexPath()
 }
 
-// CommitWeftForTest exposes commitWeft, the weft-only commit path, to tests outside the package.
-// Tests call it to reach that path directly;
+// CommitWeftForTest stages the pathspec in f's weft and commits it while holding the weft write lock.
+// Tests call it to reach the weft-only commit path directly;
 // the classify-and-dispatch step in front of it never reaches it in isolation.
+// Returns ("", false, nil) when opts.SkipGit is true.
+// Snapshot tags force an empty commit when nothing is staged, so the tags are still recorded.
 func CommitWeftForTest(f *Fabric, pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
-	return f.commitWeft(pathspec, message, opts, snapshotTags...)
+	if opts.SkipGit {
+		return "", false, nil
+	}
+
+	lockDir, err := f.ensureWeftLockDir()
+	if err != nil {
+		return "", false, err
+	}
+	l, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	if err != nil {
+		return "", false, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+	}
+	defer func() { _ = l.Release() }()
+
+	return f.commitWeftLocked(pathspec, message, opts, snapshotTags...)
 }
 
-// SnapshotWarpSHAForTest exposes f.snapshotWarpSHA to tests outside the package.
+// SnapshotWarpSHAForTest returns the warp SHA recorded under tag by the newest weft commit on f's current branch.
+// Such a commit carries a "Snapshot: <tag>" trailer, and the newest is the newest in topological order.
+// A tag never recorded returns "" and a nil error, since an absent tag is normal on a first run.
+// Tag matching is byte-exact.
+// A dangling Warp-SHA is returned as recorded with a nil error, and the caller validates it at use.
 // Tests use it to check that the newest tagged commit wins, along with tag isolation and staleness.
 func SnapshotWarpSHAForTest(f *Fabric, tag string) (string, error) {
-	return f.snapshotWarpSHA(tag)
+	commits, err := f.scanWarpSHATrailers()
+	if err != nil {
+		return "", err
+	}
+
+	for _, c := range commits {
+		for _, t := range c.snapshotTags {
+			if t == tag {
+				return c.warpSHA, nil
+			}
+		}
+	}
+	return "", nil
 }
 
 // WarpPathForTest returns the path of the warp worktree itself, not a repository handle.
@@ -727,13 +762,18 @@ func SetRemoveBeforeWeftDeleteHookForTest(t testing.TB, hook func()) {
 	t.Cleanup(func() { removeBeforeWeftDeleteHook = nil })
 }
 
-// DropSeedCommitsForTest exposes the board seed-commit drop's gate to package fabricengine_test integration tests.
-// They drive it directly.
-var DropSeedCommitsForTest = dropSeedCommits
+// CodeLymLink returns the path to the _lym junction link in a named slug's warp worktree.
+// It is the warp-side end of the junction that points into the paired weft worktree.
+// Package fabricengine_test tests use it as a setup helper.
+func CodeLymLink(l *lymcwd.Location, slug string) string {
+	return filepath.Join(l.HubPath, slug, l.AnchorRel, lymdirs.LymDirName)
+}
 
-// BoardDropRequestForTest exposes the board drop's gate request builder to package fabricengine_test files.
-// They build the request without naming the unexported request type.
-var BoardDropRequestForTest = boardDropRequest
+// WireJunctions wires the warp junctions for names in the worktree of slug and records no changes.
+// It serves package fabricengine_test tests, which have no recorder to pass.
+func WireJunctions(l *lymcwd.Location, slug string, names []string) error {
+	return WireJunctionsWith(nil, l, slug, names)
+}
 
 // lockWaitWaiters maps a weft write lock path to the channel its test waits on.
 var lockWaitWaiters sync.Map

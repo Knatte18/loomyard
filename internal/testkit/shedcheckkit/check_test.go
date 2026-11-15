@@ -2,7 +2,7 @@
 // It also covers the tolerated-malformed-input behaviours.
 // Every case builds bare []shedengine.ProducerDef literals with Producer left nil, and uses no fakes.
 
-package shedcheck
+package shedcheckkit
 
 import (
 	"testing"

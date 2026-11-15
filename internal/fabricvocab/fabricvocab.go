@@ -108,16 +108,6 @@ func SkipsBareCheck(dir string) bool {
 	return owners[dir] && dir != ConfigsyncOwnerDir
 }
 
-// FailsBareCheck reports whether a file in dir fails the bare-token check, given its hits.
-// ConfigsyncOwnerDir passes on a literal-or-comment-only hit and fails on an identifier hit.
-// Any other directory reaching it is not an owner, so it fails on either kind of hit.
-func FailsBareCheck(dir string, bareIdent, bareLiteralOrComment bool) bool {
-	if dir == ConfigsyncOwnerDir {
-		return bareIdent
-	}
-	return bareIdent || bareLiteralOrComment
-}
-
 // IsDocRoot reports whether first, a path's first segment, is a doc root.
 func IsDocRoot(first string) bool {
 	return docRoots[first]

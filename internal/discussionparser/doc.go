@@ -9,18 +9,17 @@
 // CheckRelevant checks a present relevant list, the Discussion-Write lead's list of the code it read.
 // It runs apart from the decision record's check.
 //
-// AppendDecision adds a post-Discussion design call to the record's `## Decisions` section.
+// AppendDecisions adds post-Discussion design calls to the record's `## Decisions` section in one write and one check.
 // When the call carries a PATTERN change, it also writes that change to the `## PATTERN changes` section:
 // the change replaces the bullet for the same entry ID when there is one, and is appended otherwise.
 // A call can instead withdraw a declared change:
 // it strikes the entry's bullet and closes its added entry with a `Withdraws:` line.
 // CheckAddedDecisionsKept reads that line as a strike rather than a drop.
-// AppendDecisions adds several such calls in one write and one discussion check.
 //
 // CheckDecisionIDs checks the record's decision headings and their acceptance coverage.
 // Each H3 under `## Decisions` reads `### D<n> — <title>` with a unique id,
 // and each id appears as a whole word in an `## Acceptance criteria` bullet.
-// It runs beside Validate in the discussion gates and `validate-discussion`, never inside Validate or AppendDecision,
+// It runs beside Validate in the discussion gates and `validate-discussion`, never inside Validate or AppendDecisions,
 // so a record with older decision headings can still be appended to.
 // DecisionIDs reads the record's decision ids for other packages.
 //

@@ -1,5 +1,4 @@
-// cli.go builds the cobra command tree for the shuttle module and the RunCLI seam that wires it
-// into the standard io.Writer-based call contract.
+// cli.go builds the cobra command tree for the shuttle module.
 // The parent "shuttle" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle
 // config -> reed config -> reed engine -> claude engine -> shuttleengine.Runner exactly once per
 // invocation, into a receiver every verb (run.go, open.go, state.go) closes over, so no
@@ -15,8 +14,6 @@
 package shuttlecli
 
 import (
-	"io"
-
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -145,22 +142,4 @@ provider specifics.`,
 	parent.AddCommand(c.runCmd(), c.openCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd())
 
 	return parent
-}
-
-// RunCLI is the public seam for the shuttle module CLI, delegating to clihelp.Execute for output
-// capture.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
-// the execution context via clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
-// ExecuteIn would panic on every existing RunCLI call.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -29,7 +30,7 @@ func TestOrchIntegration_RulesStoreInHeddle(t *testing.T) {
 			t.Fatalf("write draft: %v", err)
 		}
 		var out bytes.Buffer
-		if code := RunCLIIn(anchor, &out, []string{"rules", "--from", draft}); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), anchor, &out, []string{"rules", "--from", draft}); code != 0 {
 			t.Fatalf("rules exit = %d; want 0; output: %s", code, out.String())
 		}
 		var envelope map[string]any

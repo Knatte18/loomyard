@@ -1,4 +1,4 @@
-// cli.go builds the cobra command tree for the burler module and the RunCLI seam that runs it over an io.Writer.
+// cli.go builds the cobra command tree for the burler module.
 // The parent command's PersistentPreRunE resolves cwd and runs one preflight.ResolveMode probe.
 // It then calls c.wire (wiring.go).
 // wire selects hub or standalone mode and builds the whole engine stack for the winning mode.
@@ -10,8 +10,6 @@
 package burlercli
 
 import (
-	"io"
-
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -148,20 +146,4 @@ Example (standalone, outside any lym hub):
 	parent.AddCommand(c.validateReviewCmd())
 
 	return parent
-}
-
-// RunCLI runs the burler CLI with args, writes its output to out, and returns the exit code.
-// It reads the working directory from the process.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the burler CLI with args, writes its output to out, and returns the exit code.
-// An empty cwd reads the process working directory; any other value is seeded as the working directory.
-// The empty case is kept separate because lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

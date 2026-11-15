@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testcover"
@@ -67,7 +68,7 @@ func TestGateRedundant(t *testing.T) {
 	t.Run("ListsTheContainedTestsAndSetsApartTheKeptAndUnjudgedOnes", func(t *testing.T) {
 		t.Parallel()
 		var out bytes.Buffer
-		code := RunCLIIn(prime, &out, []string{"redundant", "./cov"})
+		code := clihelp.ExecuteIn(Command(), prime, &out, []string{"redundant", "./cov"})
 		type answer struct {
 			OK         bool                  `json:"ok"`
 			Package    string                `json:"package"`
@@ -111,7 +112,7 @@ func TestGateRedundant(t *testing.T) {
 		t.Run("Refuses"+tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			code := RunCLIIn(tt.cwd, &out, []string{"redundant", tt.pkg})
+			code := clihelp.ExecuteIn(Command(), tt.cwd, &out, []string{"redundant", tt.pkg})
 			var envelope struct {
 				OK    bool   `json:"ok"`
 				Error string `json:"error"`

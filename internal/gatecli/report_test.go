@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -90,8 +91,8 @@ func TestGateReport(t *testing.T) {
 	t.Run("a malformed --since is refused naming the expected form", func(t *testing.T) {
 		t.Parallel()
 		var out bytes.Buffer
-		if code := RunCLI(&out, []string{"report", "--since", "24-10-2026"}); code != 1 || !strings.Contains(out.String(), "YYYY-MM-DD") || !strings.Contains(out.String(), "way forward") {
-			t.Errorf("RunCLI(report --since 24-10-2026) = %d, stdout %q; want exit 1 naming YYYY-MM-DD and a way forward", code, out.String())
+		if code := clihelp.Execute(Command(), &out, []string{"report", "--since", "24-10-2026"}); code != 1 || !strings.Contains(out.String(), "YYYY-MM-DD") || !strings.Contains(out.String(), "way forward") {
+			t.Errorf("Execute(report --since 24-10-2026) = %d, stdout %q; want exit 1 naming YYYY-MM-DD and a way forward", code, out.String())
 		}
 	})
 

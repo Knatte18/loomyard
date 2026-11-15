@@ -20,10 +20,6 @@
 //   - PointsTo(link string) (string, error): Returns the resolved absolute target of a link.
 //     It resolves the chain with filepath.EvalSymlinks; the result has no \??\ prefix.
 //     It errors if link is not a link or if the target does not exist.
-//   - RemoveLinksIn(dir string) (int, error): Scans the immediate children of dir and removes each link found.
-//     It returns the count of links removed.
-//     Regular files and real directories are left untouched.
-//     It returns (0, err) if dir does not exist.
 //
 // The tests run on Linux, so only the symlink path is executed.
 // The Windows junction path is reasoned about rather than run.
@@ -46,32 +42,6 @@ func Remove(link string) error {
 		return nil
 	}
 	return fmt.Errorf("remove link %s: %w", link, err)
-}
-
-// RemoveLinksIn scans dir's immediate children, removes links found, and returns the count.
-// Regular files and directories are left untouched.
-func RemoveLinksIn(dir string) (int, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return 0, err
-	}
-
-	count := 0
-	for _, entry := range entries {
-		fullPath := filepath.Join(dir, entry.Name())
-		isLink, err := IsLink(fullPath)
-		if err != nil {
-			return count, err
-		}
-		if isLink {
-			if err := Remove(fullPath); err != nil {
-				return count, err
-			}
-			count++
-		}
-	}
-
-	return count, nil
 }
 
 // prepareLink enforces refuse-to-clobber and parent-mkdir guards.

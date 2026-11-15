@@ -1,4 +1,4 @@
-// cli_test.go covers the burlercli cobra seam through RunCLI.
+// cli_test.go covers the burlercli cobra seam through clihelp.Execute and clihelp.ExecuteIn.
 // It checks the PersistentPreRunE group-command guard and run's required --profile flag.
 // It checks decodeProfile's strict YAML decode.
 // It checks resultEnvelope's success-envelope shape, including its forkCount nil guard.
@@ -17,22 +17,25 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_GroupGuard_OutsideGitRepo asserts that bare "lym burler" exits 0 outside a git repository.
+// TestCommand_GroupGuard_OutsideGitRepo asserts that bare "lym burler" exits 0 outside a git repository.
 // Neither the bare listing nor the unknown-subcommand path may require layout or config resolution.
-func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
+//
+//testtiming:keep a bare group exiting 0 outside a git repository; coverage of its blocks by other tests does not show an assertion of this
+func TestCommand_GroupGuard_OutsideGitRepo(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Chdir(t.TempDir())
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{})
+	exitCode := clihelp.Execute(Command(), &out, []string{})
 
 	if exitCode != 0 {
-		t.Errorf("RunCLI() outside a git repo = %d; want 0", exitCode)
+		t.Errorf("Execute() outside a git repo = %d; want 0", exitCode)
 	}
 }
 
@@ -366,15 +369,15 @@ func TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo(t *testing.T) {
 	var out bytes.Buffer
 	// --target-dir names a path that does not exist, so wireStandalone refuses in the pre-run;
 	// --profile is omitted, so the flag check would also fire if it ran.
-	code := RunCLIIn(t.TempDir(), &out, []string{"run", "--target-dir", filepath.Join(t.TempDir(), "absent")})
+	code := clihelp.ExecuteIn(Command(), t.TempDir(), &out, []string{"run", "--target-dir", filepath.Join(t.TempDir(), "absent")})
 	if code == 0 {
-		t.Fatalf("RunCLIIn() = 0; want a non-zero exit for a refused pre-run. output: %s", out.String())
+		t.Fatalf("ExecuteIn() = 0; want a non-zero exit for a refused pre-run. output: %s", out.String())
 	}
 	if got := strings.Count(out.String(), `"ok":false`); got != 1 {
-		t.Errorf("RunCLIIn() emitted %d error envelopes; want exactly 1. output: %s", got, out.String())
+		t.Errorf("ExecuteIn() emitted %d error envelopes; want exactly 1. output: %s", got, out.String())
 	}
 	if strings.Contains(out.String(), "--profile is required") {
-		t.Errorf("RunCLIIn() reported the missing --profile over the pre-run refusal; the refusal is what the operator needs. output: %s", out.String())
+		t.Errorf("ExecuteIn() reported the missing --profile over the pre-run refusal; the refusal is what the operator needs. output: %s", out.String())
 	}
 }
 
@@ -422,17 +425,17 @@ func TestRunVerb_RelativeProfileResolvesAgainstSeamCwd(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := RunCLIIn(cwd, &out, []string{"run", "--profile", profileName})
+	code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"run", "--profile", profileName})
 
 	if code == 0 {
-		t.Fatalf("RunCLIIn() = 0; want a non-zero exit for a profile that fails decodeProfile. output: %s", out.String())
+		t.Fatalf("ExecuteIn() = 0; want a non-zero exit for a profile that fails decodeProfile. output: %s", out.String())
 	}
 	got := out.String()
 	if !strings.Contains(got, "profile YAML") {
-		t.Errorf("RunCLIIn() output missing decodeProfile's own \"profile YAML\" error prefix -- want proof that os.ReadFile succeeded against the relative --profile resolved through c.cwd. output: %q", got)
+		t.Errorf("ExecuteIn() output missing decodeProfile's own \"profile YAML\" error prefix -- want proof that os.ReadFile succeeded against the relative --profile resolved through c.cwd. output: %q", got)
 	}
 	if strings.Contains(got, "read --profile") {
-		t.Errorf("RunCLIIn() output contains \"read --profile\"; want decodeProfile's own error, not an os.ReadFile failure -- the relative --profile must have resolved successfully. output: %q", got)
+		t.Errorf("ExecuteIn() output contains \"read --profile\"; want decodeProfile's own error, not an os.ReadFile failure -- the relative --profile must have resolved successfully. output: %q", got)
 	}
 }
 
@@ -496,7 +499,7 @@ func TestValidateReviewVerb_AgreesWithTheReviewGate(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			code := RunCLIIn(cwd, &out, []string{"validate-review", reviewName})
+			code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"validate-review", reviewName})
 
 			var envelope map[string]any
 			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {

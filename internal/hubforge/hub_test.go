@@ -18,6 +18,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
@@ -590,7 +591,7 @@ func TestCopyHub(t *testing.T) {
 	assertRealHub(t, h)
 
 	var out bytes.Buffer
-	if code := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"status"}); code != 0 {
+	if code := clihelp.ExecuteIn(fabriccli.Command(), h.PrimeWorktree(), &out, []string{"status"}); code != 0 {
 		t.Fatalf("fabric status on the copy = %d; want 0\noutput: %s", code, out.String())
 	}
 	status := envelope.Decode(t, out.String())

@@ -1,6 +1,6 @@
 // poll_test.go covers PollUntilTerminal's long-poll loop against a fake clock.
 // A terminal result mid-wait short-circuits, a deadline returns the last running digest, and a gather error propagates.
-// It lives in package websterengine, not websterengine_test, because the clock/ realClock seam is unexported.
+// It lives in package websterengine, not websterengine_test, because the clock seam is unexported.
 // Tier 1: no git, fake clock only.
 
 package websterengine

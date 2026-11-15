@@ -91,7 +91,6 @@ var pathRules = []pathRule{
 	{name: "shedrun.RunLock", class: classTransient, path: func(l *lymcwd.Location) string { return shedrun.RunLock(l, shedrun.SelfRunID) }},
 	{name: "loomengine.LoomDriverLog", class: classTransient, path: loomengine.LoomDriverLog},
 	{name: "loomengine.LoomBootstrapLock", class: classTransient, path: loomengine.LoomBootstrapLock},
-	{name: "loomengine.LoomReworkCoveragePath", class: classTransient, path: loomengine.LoomReworkCoveragePath},
 	{name: "loomengine.LoomFrictionLock", class: classTransient, path: loomengine.LoomFrictionLock},
 	{name: "logger.LogsDir", class: classTransient, path: logger.LogsDir},
 	{name: "treadleengine.PauseFlagPath", class: classTransient, path: func(l *lymcwd.Location) string {

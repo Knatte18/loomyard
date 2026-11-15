@@ -142,21 +142,6 @@ func matchSocketCmdlines(procs []ProcCmdline, binary, socket string) []int {
 	return out
 }
 
-// tmuxProcessName returns the Windows process-table Name for binary: its base name, with ".exe" added if absent.
-func tmuxProcessName(binary string) string {
-	// binary names a Windows path, and this function derives a Windows process-table Name from it.
-	// The base-name split must recognize '\' even on a non-Windows test host:
-	// path/filepath.Base follows GOOS and would leave a "C:\...\tmux.exe" input unchanged on Linux.
-	name := binary
-	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
-		name = name[i+1:]
-	}
-	if !strings.HasSuffix(strings.ToLower(name), ".exe") {
-		name += ".exe"
-	}
-	return name
-}
-
 // argvNamesBinaryAndSocket reports whether argv contains binary (by base name) and an adjacent "-L" socket pair.
 func argvNamesBinaryAndSocket(argv []string, binary, socket string) bool {
 	wantBase := filepath.Base(binary)

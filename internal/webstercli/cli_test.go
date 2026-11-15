@@ -1,4 +1,4 @@
-// cli_test.go covers the webstercli cobra seam through RunCLI.
+// cli_test.go covers the webstercli cobra seam through clihelp.Execute.
 // It covers the PersistentPreRunE group-command guard and the help-tree stale-language check.
 // It also covers the spawn-free verbs:
 // validate, status, await-batch, rebaseline, restore-plan, and the no-run refusals of accept-audit and restore-plan.
@@ -37,16 +37,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
+func TestCommand_GroupGuard_OutsideGitRepo(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Chdir(t.TempDir())
 
 	var out bytes.Buffer
 	// An empty, non-nil slice keeps cobra from reading the test binary's own flags as arguments.
-	exitCode := RunCLI(&out, []string{})
+	exitCode := clihelp.Execute(Command(), &out, []string{})
 
 	if exitCode != 0 {
-		t.Errorf("RunCLI(no arguments) outside a git repo = %d; want 0", exitCode)
+		t.Errorf("Execute(no arguments) outside a git repo = %d; want 0", exitCode)
 	}
 }
 

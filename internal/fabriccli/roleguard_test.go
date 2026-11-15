@@ -198,12 +198,12 @@ func TestSandboxedRoleGuard(t *testing.T) {
 		}
 	})
 
-	t.Run("RunCLIIn with no parent passes the guard", func(t *testing.T) {
+	t.Run("ExecuteIn with no parent passes the guard", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, webster)
 		var buf bytes.Buffer
-		fabriccli.RunCLIIn(t.TempDir(), &buf, []string{"sync"})
+		clihelp.ExecuteIn(fabriccli.Command(), t.TempDir(), &buf, []string{"sync"})
 		if strings.Contains(buf.String(), refusalMarker) {
-			t.Errorf("sync through RunCLIIn was refused: %s", buf.String())
+			t.Errorf("sync through ExecuteIn was refused: %s", buf.String())
 		}
 	})
 }

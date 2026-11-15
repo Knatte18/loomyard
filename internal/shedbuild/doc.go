@@ -4,7 +4,7 @@
 //
 // A recipe may set an optional top-level amendment_target naming the row a plan amendment routes to.
 // Parse decodes it into Recipe.AmendmentTarget without checking that it names a row.
-// Routing belongs to shedengine and shedcheck.
+// Routing belongs to shedengine.
 //
 // A recipe may set a top-level contract, empty or `loom`, and a top-level verify_source, empty, `plan` or `tree_scope`.
 // Parse refuses any other value of either.
@@ -93,7 +93,7 @@
 // RowEntryGate builds one row's gate the same way for a caller that reads a row's gate without building the recipe.
 //
 // This package holds PATTERN-cwd-resolution:
-// Load reads exactly the absolute path it is told, and the package derives no path of its own.
+// the package derives no path of its own.
 //
 // Parse is filesystem-free, but Build is not: some registry constructors reach disk at construction time.
 // The bouncer constructor creates its resolved run directory and eagerly probes its rubric stencil.

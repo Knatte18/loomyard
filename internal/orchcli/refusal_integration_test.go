@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
@@ -71,7 +72,7 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 		for _, verb := range []string{"status", "watch"} {
 			t.Run(verb, func(t *testing.T) {
 				var out bytes.Buffer
-				code := RunCLIIn(anchor, &out, []string{verb})
+				code := clihelp.ExecuteIn(Command(), anchor, &out, []string{verb})
 
 				if code != 1 {
 					t.Fatalf("exit code = %d; want 1; output: %s", code, out.String())
@@ -94,7 +95,7 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		RunCLIIn(anchor, &out, []string{"status"})
+		clihelp.ExecuteIn(Command(), anchor, &out, []string{"status"})
 
 		if _, err := os.Stat(stampPath); err == nil {
 			t.Errorf("status wrote the build stamp; no orch verb reconciles")
@@ -107,7 +108,7 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 func refusalCase(t *testing.T, cwd, verb string) {
 	t.Helper()
 	var out bytes.Buffer
-	code := RunCLIIn(cwd, &out, []string{verb})
+	code := clihelp.ExecuteIn(Command(), cwd, &out, []string{verb})
 
 	if code != 1 {
 		t.Fatalf("exit code = %d; want 1; output: %s", code, out.String())

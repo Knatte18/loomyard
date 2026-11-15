@@ -54,11 +54,6 @@ var roles = []Role{
 	RolePRReviewer, RoleRaddle, RoleSampler, RoleTackler, RoleTreadleJudge, RoleTreadleTargeting, RoleWebster,
 }
 
-// Roles returns every role lym starts, in sort order.
-func Roles() []Role {
-	return slices.Clone(roles)
-}
-
 // ModuleName is the agents module's configreg name, the Name of the spec ConfigSpec returns.
 const ModuleName = "agents"
 
@@ -133,10 +128,10 @@ func ConfigSpec() configengine.Spec {
 
 // Load resolves the hub's agents.yaml through the layer stack under dirs.
 // An absent file in every layer resolves the template.
-// It refuses a role key outside Roles.
+// It refuses a role key outside the roles lym starts.
 // It refuses a role whose value is not a list of non-empty strings without surrounding whitespace.
 // It refuses an efforts map without a default entry, an empty effort and an effort outside Efforts.
-// It refuses a `<role>/<model>` key whose role is outside Roles.
+// It refuses a `<role>/<model>` key whose role is outside the roles lym starts.
 // A content failure returns an error marked configengine.ErrInvalid that wraps ErrUnusable and names the key.
 // Any other failure, such as an unreadable file, is returned unwrapped.
 func Load(dirs configengine.Dirs) (Config, error) {
@@ -161,7 +156,8 @@ func Load(dirs configengine.Dirs) (Config, error) {
 	return Config{skills: skills, efforts: doc.Efforts}, nil
 }
 
-// skillLists returns the skill list of every role, refusing a role key outside Roles and a role without a usable list.
+// skillLists returns the skill list of every role.
+// It refuses a role key outside the roles lym starts, and a role without a usable list.
 func skillLists(nodes map[string]yaml.Node) (map[Role][]string, error) {
 	for key := range nodes {
 		if !slices.Contains(roles, Role(key)) {
@@ -236,7 +232,7 @@ func unusable(key, detail string) error {
 
 // Skills returns role's skill list followed by each entry of extra not already present, in order, as a fresh slice.
 // extra carries skills the spawning code adds, such as the hub's language skills.
-// It refuses a role the config holds no list for, which only a zero Config or a value outside Roles meets.
+// It refuses a role the config holds no list for, which only a zero Config or a value outside the roles lym starts meets.
 func (c Config) Skills(role Role, extra []string) ([]string, error) {
 	own, ok := c.skills[role]
 	if !ok {

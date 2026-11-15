@@ -84,14 +84,14 @@ func warpEntryOf(t *testing.T, env envelope.Envelope, raw, branch string) map[st
 	return nil
 }
 
-// TestRunCLI_CleanupRemoveScenario runs the cleanup, prune and remove checks over one hub.
+// TestCommand_CleanupRemoveScenario runs the cleanup, prune and remove checks over one hub.
 // It stays serial (no t.Parallel) because the steps that stub the open-PR lookup swap a package-level variable.
 // That variable is process-global state.
 // Steps run serially in this order, each tolerating the branches earlier steps leave behind.
 // The all-protected step runs first, because it needs a hub with no deletable branch.
 // The steps that break or remove the weft origin run last, because every later push would fail.
 // The pair the no-origin remove needs is added before the origin is broken, since `add` pushes.
-func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
+func TestCommand_CleanupRemoveScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	weftRoot, err := fabricengine.RecordsRepoRoot(h.Location)
@@ -115,7 +115,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "cleanup", "--apply")
 			if code != 0 {
-				t.Fatalf("RunCLI(cleanup --apply) with only protected/unmanaged entries = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(cleanup --apply) with only protected/unmanaged entries = %d; want 0\noutput: %s", code, output)
 			}
 
 			env := envelope.Decode(t, output)
@@ -154,7 +154,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "prune")
 			if code != 0 {
-				t.Fatalf("RunCLI(prune) with an unowned entry = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(prune) with an unowned entry = %d; want 0\noutput: %s", code, output)
 			}
 
 			env := envelope.RequireOK(t, output)
@@ -184,12 +184,12 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			const slug = "cli-remove-remote"
 
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
-				t.Fatalf("RunCLI(add %s) = %d; want 0\noutput: %s", slug, code, output)
+				t.Fatalf("Execute(add %s) = %d; want 0\noutput: %s", slug, code, output)
 			}
 
 			code, output := runFabric(t, h.PrimeWorktree(), "remove", "--remote", slug)
 			if code != 0 {
-				t.Fatalf("RunCLI(remove --remote %s) = %d; want 0\noutput: %s", slug, code, output)
+				t.Fatalf("Execute(remove --remote %s) = %d; want 0\noutput: %s", slug, code, output)
 			}
 
 			env := envelope.Decode(t, output)
@@ -251,7 +251,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "cleanup", "--remote")
 			if code != 0 {
-				t.Fatalf("RunCLI(cleanup --remote) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(cleanup --remote) = %d; want 0\noutput: %s", code, output)
 			}
 
 			if !gitkit.BranchExists(t, weftRoot, branch) {
@@ -275,7 +275,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "cleanup", "--apply", "--remote")
 			if code != 0 {
-				t.Fatalf("RunCLI(cleanup --apply --remote) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(cleanup --apply --remote) = %d; want 0\noutput: %s", code, output)
 			}
 
 			env := envelope.Decode(t, output)
@@ -304,7 +304,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 
 			dryCode, dry := runFabric(t, h.PrimeWorktree(), "cleanup", "--remote")
 			if dryCode != 0 {
-				t.Fatalf("RunCLI(cleanup --remote) = %d; want 0\noutput: %s", dryCode, dry)
+				t.Fatalf("Execute(cleanup --remote) = %d; want 0\noutput: %s", dryCode, dry)
 			}
 			dryEnv := envelope.Decode(t, dry)
 			if e := warpEntryOf(t, dryEnv, dry, "has-pr"); e["candidate"] != false || !strings.Contains(e["reason"].(string), "open pull request") {
@@ -319,7 +319,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 
 			appliedCode, applied := runFabric(t, h.PrimeWorktree(), "cleanup", "--apply", "--remote")
 			if appliedCode != 0 {
-				t.Fatalf("RunCLI(cleanup --apply --remote) = %d; want 0\noutput: %s", appliedCode, applied)
+				t.Fatalf("Execute(cleanup --apply --remote) = %d; want 0\noutput: %s", appliedCode, applied)
 			}
 			appliedEnv := envelope.Decode(t, applied)
 			if e := warpEntryOf(t, appliedEnv, applied, "gone-landed"); e["deleted"] != true {
@@ -347,7 +347,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "cleanup", "--apply")
 			if code != 1 {
-				t.Fatalf("RunCLI(cleanup --apply) with a locked ref = %d; want 1\noutput: %s", code, output)
+				t.Fatalf("Execute(cleanup --apply) with a locked ref = %d; want 1\noutput: %s", code, output)
 			}
 
 			env := envelope.Decode(t, output)
@@ -378,7 +378,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 		{"AddPairForTheNoOriginRemove", func(t *testing.T) {
 			// Prepares RemoveNoOriginUnderRemoteExitsZero: `add` pushes, so it must run while the weft origin still works.
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", noOriginSlug); code != 0 {
-				t.Fatalf("RunCLI(add %s) = %d; want 0\noutput: %s", noOriginSlug, code, output)
+				t.Fatalf("Execute(add %s) = %d; want 0\noutput: %s", noOriginSlug, code, output)
 			}
 		}},
 		{"CleanupRemoteFailureExitsNonZero", func(t *testing.T) {
@@ -395,7 +395,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "cleanup", "--apply", "--remote")
 			if code != 1 {
-				t.Fatalf("RunCLI(cleanup --apply --remote) = %d; want 1\noutput: %s", code, output)
+				t.Fatalf("Execute(cleanup --apply --remote) = %d; want 1\noutput: %s", code, output)
 			}
 
 			env := envelope.Decode(t, output)
@@ -441,7 +441,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "cleanup", "--apply", "--remote")
 			if code != 0 {
-				t.Fatalf("RunCLI(cleanup --apply --remote) with no origin = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(cleanup --apply --remote) with no origin = %d; want 0\noutput: %s", code, output)
 			}
 
 			env := envelope.Decode(t, output)
@@ -468,7 +468,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			// The remove half of the no-origin contract, relying on the previous step to remove the weft origin.
 			code, output := runFabric(t, h.PrimeWorktree(), "remove", "--remote", noOriginSlug)
 			if code != 0 {
-				t.Fatalf("RunCLI(remove --remote %s) with no origin = %d; want 0\noutput: %s", noOriginSlug, code, output)
+				t.Fatalf("Execute(remove --remote %s) with no origin = %d; want 0\noutput: %s", noOriginSlug, code, output)
 			}
 
 			env := envelope.Decode(t, output)

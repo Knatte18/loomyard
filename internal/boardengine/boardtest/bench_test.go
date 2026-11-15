@@ -54,7 +54,7 @@ func BenchmarkRender(b *testing.B) {
 }
 
 // The CLI-driven command benchmarks (Upsert/Get/List) live in the integration-tagged bench_cli_test.go.
-// They drive boardcli.RunCLI, whose config resolution requires a real git repo.
+// They drive the board command through clihelp.Execute, whose config resolution requires a real git repo.
 // So they spawn git and belong in Tier 2.
 
 // BenchmarkUpsertFacade measures Board.UpsertTask directly, bypassing the CLI's flag parsing and JSON (un)marshalling.

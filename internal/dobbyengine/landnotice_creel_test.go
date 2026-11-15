@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+//testtiming:keep delivery through a real creel store to an orch strand listed after the landing; coverage of its blocks by other tests does not show an assertion of this
 func TestLandNotice_ReachesAnOrchStrandListedAfterTheLanding(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -43,7 +44,7 @@ func TestLandNotice_ReachesAnOrchStrandListedAfterTheLanding(t *testing.T) {
 	scheduler.Start()
 	t.Cleanup(scheduler.Stop)
 	// Mail held by a listed strand keeps the sweep running while the orch is down.
-	if _, err := store.Post(creelengine.StrandSender(driver), peer, "keeps the sweep running"); err != nil {
+	if _, err := store.PostWith(creelengine.StrandSender(driver), peer, "keeps the sweep running", creelengine.PostOptions{}); err != nil {
 		t.Fatalf("Post(%s -> %s) error = %v; want nil", driver, peer, err)
 	}
 
@@ -53,7 +54,7 @@ func TestLandNotice_ReachesAnOrchStrandListedAfterTheLanding(t *testing.T) {
 	h.d.deps.LoadConfig = func() (Config, error) { return Config{MaxRuns: 3, LandNotice: LandNoticePerTask}, nil }
 	h.d.deps.Notice = func(_ context.Context, line string) error {
 		posts++
-		_, err := store.Post(creelengine.ProgramSender("ly:DOBBY"), orchName, line)
+		_, err := store.PostWith(creelengine.ProgramSender("ly:DOBBY"), orchName, line, creelengine.PostOptions{})
 		return err
 	}
 	h.d.deps.ClearNotifyOnLand = func(slug string) error {

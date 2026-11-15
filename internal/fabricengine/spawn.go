@@ -1,6 +1,6 @@
 // spawn.go — the detached push spawn, which starts a child to push a PushSpawn request.
 // SpawnStatusPush builds that request from a location alone.
-// PushWarpAt and PushWarpRebaseFreeAt are the synchronous warp-side pushes, with no Fabric instance.
+// PushWarpRebaseFreeAt is the synchronous warp-side push, with no Fabric instance.
 
 package fabricengine
 
@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -188,30 +187,6 @@ func parentLockHeldBy(l *lymcwd.Location) bool {
 func SpawnPairPush(l *lymcwd.Location) error {
 	_, err := SpawnStatusPush(l, "")
 	return err
-}
-
-// PushWarpAt pushes unpushed commits at warpPath directly through gitrepo.PushCoalesced.
-// It needs no Fabric instance and no weft path, and it honors SkipGit and SkipPush.
-//
-// PushCoalesced writes its single-pusher lock file at the repo root.
-// The weft repo excludes that file through seedWeftArtifactExcludes, and the warp repo has no such entry,
-// so a caller must first seed the warp-side exclude, or the call leaves untracked residue in the user's repo.
-func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
-	rec := NewMutations(filepath.Dir(warpPath))
-	defer func() { res.Mutations = rec.Snapshot() }()
-
-	if opts.SkipGit || opts.SkipPush {
-		return PushResult{}, nil
-	}
-
-	repo := gitrepo.New(warpPath)
-	hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
-	if err := repo.PushCoalesced(); err != nil {
-		return PushResult{}, err
-	}
-	recordPushIfAdvanced(rec, repo, "code", warpPath, hadUnpushed, hadUnpushedErr)
-
-	return PushResult{}, nil
 }
 
 // PushWarpRebaseFreeAt pushes unpushed commits at warpPath directly, rebase-free.

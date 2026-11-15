@@ -23,7 +23,7 @@ import (
 
 // wantDarnProducerTable is the darn recipe's rows in order.
 var wantDarnProducerTable = []wantProducerRow{
-	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
+	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflightWithChecks("", "", preflightshed.Checks{}))},
 	{loomshed.NameRecordWrite, "RecordWrite", reflect.TypeOf(loomshed.NewRecordWrite("", loomshed.RecordWriteDeps{}))},
 	{loomshed.NameDriftBaseline, "DriftBaseline", driftBaselineType},
 	{loomshed.NameDriftAwait, "DriftAwait", driftAwaitType},

@@ -80,7 +80,7 @@ func TestGateCardVerify(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			if got := RunCLIIn(worktree(t, tt.cards...), &out, []string{"card-verify", tt.id}); got != tt.wantExit {
+			if got := clihelp.ExecuteIn(Command(), worktree(t, tt.cards...), &out, []string{"card-verify", tt.id}); got != tt.wantExit {
 				t.Errorf("card-verify %s exit = %d, output %q; want %d", tt.id, got, out.String(), tt.wantExit)
 			}
 			for _, part := range tt.wantParts {

@@ -1,4 +1,4 @@
-// preflight_integration_test.go tests preflightshed.NewPreflight's outcome mapping against a hubforge fixture hub.
+// preflight_integration_test.go tests the Preflight producer's outcome mapping against a hubforge fixture hub.
 // It is in-package because nothing in hubforge's dependency set reaches this package:
 // go list -deps ./internal/hubforge lists internal/preflight but not internal/preflightshed.
 //
@@ -42,12 +42,12 @@ func setupPreflightWrapperFixture(t *testing.T) *hubforge.Hub {
 	// the repo-wide fabric.yaml override below is the change this fixture makes.
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
 
-	if err := fabricengine.WireJunctions(h.Location, slug, []string{"_lym", lymdirs.DotLymDirName, "_extra"}); err != nil {
-		t.Fatalf("WireJunctions: %v", err)
+	if err := fabricengine.WireJunctionsWith(nil, h.Location, slug, []string{"_lym", lymdirs.DotLymDirName, "_extra"}); err != nil {
+		t.Fatalf("WireJunctionsWith: %v", err)
 	}
 
 	// The wired junctions materialize through the _lym junction into the paired-sibling worktree's own git repo.
-	// fabricengine.WireJunctions leaves them untracked, and the cleanliness check would otherwise report them.
+	// fabricengine.WireJunctionsWith leaves them untracked, and the cleanliness check would otherwise report them.
 	// The fixture commits them, so a freshly-built fixture is clean on both sides.
 	// The commit is --allow-empty: the records prime arrives clean.
 	// .lym is excluded through the records repo's .git/info/exclude.

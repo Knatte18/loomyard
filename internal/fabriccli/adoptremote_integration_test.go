@@ -132,12 +132,12 @@ func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 }
 
-// TestRunCLI_AdoptRemoteWeftScenario runs the checkout and reconcile checks over one hub.
+// TestCommand_AdoptRemoteWeftScenario runs the checkout and reconcile checks over one hub.
 // Steps run serially, each on its own pair;
 // the steps that remove the weft repo's origin come last.
 // The scenario calls t.Parallel as a whole;
 // no step does, because they share the one hub.
-func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
+func TestCommand_AdoptRemoteWeftScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 

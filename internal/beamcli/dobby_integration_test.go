@@ -1,4 +1,5 @@
-// dobby_integration_test.go runs "lym beam dobby" through RunCLIIn over a hubforge hub, on paths dobby cannot place.
+// dobby_integration_test.go runs "lym beam dobby" through clihelp.ExecuteIn over a hubforge hub.
+// The paths it runs on are ones dobby cannot place.
 
 package beamcli_test
 
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/beamcli"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -39,7 +41,7 @@ func TestDobbyCmd_RefusesAPathItCannotPlace(t *testing.T) {
 		// The rows share one hub and read its run-process directory, so they run in sequence.
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			beamcli.RunCLIIn(h.Path, &out, []string{"dobby", tt.root})
+			clihelp.ExecuteIn(beamcli.Command(), h.Path, &out, []string{"dobby", tt.root})
 
 			envelope.RequireErr(t, out.String(), "lym beam start")
 			owners, err := runproc.Owners(fabricengine.RunProcDir(h.Path))

@@ -2,7 +2,7 @@
 //
 // The unit tests run at tier 0 over temp base dirs, with a fake editor and sync.
 // They cover dispatch, editOne, printModule and printAll.
-// The integration test, under the integration build tag, runs RunCLI end to end over a hub.
+// The integration test, under the integration build tag, runs clihelp.Execute end to end over a hub.
 // The hub is built by the hubforge package.
 // The git-backed reconcile scenario lives in reconcile_integration_test.go, per the Test Tier Purity Invariant.
 
@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/darnengine"
@@ -182,12 +183,12 @@ func TestEditOne(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_FromNonGitDirectory pins the verbs that answer before any layout resolves.
+// TestCommand_FromNonGitDirectory pins the verbs that answer before any layout resolves.
 // A bare `lym config` prints help naming reconcile, menu and every module.
 // A bad argument exits 1 with a JSON error envelope, and so does a verb that needs a repository;
 // the envelope names the way forward.
 // The bare row passes an empty argument list, since a nil one would make cobra read the test binary's own flags.
-func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
+func TestCommand_FromNonGitDirectory(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
@@ -199,7 +200,7 @@ func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 		// wantErr are substrings of the envelope's error field; wantErrExact is its whole text.
 		wantErr      []string
 		wantErrExact string
-		// viaProcessCwd runs the row through RunCLI, which reads the process cwd, instead of RunCLIIn.
+		// viaProcessCwd runs the row through clihelp.Execute, which reads the process cwd, instead of clihelp.ExecuteIn.
 		viaProcessCwd bool
 	}{
 		{name: "bare config prints help", args: []string{}, wantCode: 0, wantHelp: true},
@@ -230,9 +231,9 @@ func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 			var out bytes.Buffer
 			var code int
 			if tt.viaProcessCwd {
-				code = RunCLI(&out, tt.args)
+				code = clihelp.Execute(Command(), &out, tt.args)
 			} else {
-				code = RunCLIIn(t.TempDir(), &out, tt.args)
+				code = clihelp.ExecuteIn(Command(), t.TempDir(), &out, tt.args)
 			}
 
 			if code != tt.wantCode {
@@ -1960,8 +1961,8 @@ func TestPrintResolved(t *testing.T) {
 		t.Run("refused "+tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			if code := RunCLI(&out, tt.args); code != 1 {
-				t.Fatalf("RunCLI(%v) = %d; want 1; output: %s", tt.args, code, out.String())
+			if code := clihelp.Execute(Command(), &out, tt.args); code != 1 {
+				t.Fatalf("Execute(%v) = %d; want 1; output: %s", tt.args, code, out.String())
 			}
 			assertJSONErrContains(t, out.String(), tt.wantErr)
 		})

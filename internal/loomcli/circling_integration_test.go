@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -24,7 +25,7 @@ func TestCirclingCLI_PreRunResolvesTarget(t *testing.T) {
 	run := func(cwd string, args ...string) (int, string) {
 		t.Helper()
 		var out bytes.Buffer
-		code := RunCLIIn(cwd, &out, args)
+		code := clihelp.ExecuteIn(Command(), cwd, &out, args)
 		return code, out.String()
 	}
 

@@ -206,20 +206,6 @@ Examples:
 	return cmd
 }
 
-// RunCLI is the public seam for the stencil module CLI.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the stencil CLI in cwd, or in the process working directory when cwd is empty.
-// The empty case goes through clihelp.Execute, because lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
-}
-
 // Kind labels distinguish list's two row classes.
 // kindStencil marks a row read from fabricengine.StencilsDir and stencils.Registry.
 // kindSpec marks a row read from fabricengine.SpecsDir and specs.Registry.

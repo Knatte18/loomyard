@@ -1,5 +1,4 @@
 // cli.go builds the cobra command tree for the shed subtree.
-// It also holds the RunCLI and RunCLIIn seams that run that tree against an io.Writer and an argument list.
 
 package shedcli
 
@@ -282,24 +281,4 @@ func verbSupported(supported []string, verb string) bool {
 // excludes, naming the verb, the recipe, and the verbs that recipe does support.
 func unsupportedVerbMessage(verb, recipe string, supported []string) string {
 	return "shedcli: recipe " + recipe + " does not support verb " + verb + "; supported verbs: " + strings.Join(supported, ", ")
-}
-
-// RunCLI is the public seam for the shed subtree.
-//
-// It delegates to RunCLIIn with an empty cwd, which makes RunCLIIn read the process working directory.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the shed subtree with cwd as the working directory.
-// An empty cwd reads the process working directory and runs through clihelp.Execute;
-// any other value is seeded into the execution context by clihelp.ExecuteIn.
-// lymcwd.WithCwd panics on an empty directory, so an empty cwd must not reach clihelp.ExecuteIn.
-//
-// The seam exists because this package's parity tests need an injectable cwd.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

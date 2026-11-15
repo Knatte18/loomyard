@@ -8,7 +8,7 @@
 // `start_watchdog_test.go` cannot reach that position through the real RunE, because reed Up needs a live tmux server.
 //
 // The smoke tests in this package reuse its existing fixtures rather than building a second rig.
-// They drive the real built cmd/lym binary as a subprocess and never call RunCLI in-process.
+// They drive the real built cmd/lym binary as a subprocess and never call clihelp.Execute in-process.
 // `lym loom start` spawns its detached driver via os.Executable().
 // An in-process call would resolve that to the test binary.
 

@@ -7,6 +7,7 @@ package reedengine
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -60,6 +61,15 @@ func paneProcessAge(pid int) (time.Duration, bool) {
 // so a pane's processes are reaped through the descendant snapshot alone.
 func sessionMemberPIDs(sessions []int) []int {
 	return nil
+}
+
+// tmuxProcessName returns the Windows process-table Name for binary: its base name, with ".exe" added if absent.
+func tmuxProcessName(binary string) string {
+	name := filepath.Base(binary)
+	if !strings.HasSuffix(strings.ToLower(name), ".exe") {
+		name += ".exe"
+	}
+	return name
 }
 
 // serverProcessesOnSocket returns OS pids on this engine's socket, read through Get-CimInstance Win32_Process.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -248,8 +249,8 @@ func TestCancelCmd_RefusesBeforeAnything(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
 
-			if code := RunCLIIn(outside, &out, tt.args); code != 1 {
-				t.Errorf("RunCLIIn(%v) = %d; want 1; output: %s", tt.args, code, out.String())
+			if code := clihelp.ExecuteIn(Command(), outside, &out, tt.args); code != 1 {
+				t.Errorf("ExecuteIn(%v) = %d; want 1; output: %s", tt.args, code, out.String())
 			}
 
 			envelope.RequireErr(t, out.String(), tt.wantErr)

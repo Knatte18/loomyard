@@ -113,7 +113,7 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 	}
 
 	var help strings.Builder
-	if code := run([]string{"--help"}, &help); code != 0 {
+	if code := run([]string{"--help"}, &help, &help); code != 0 {
 		t.Fatalf("run(--help) = %d, output:\n%s", code, help.String())
 	}
 	heading, attach, start, additional := strings.Index(help.String(), "Shortcuts:"), strings.Index(help.String(), "\n  a "), strings.Index(help.String(), "\n  s "), strings.Index(help.String(), "Additional Commands:")
@@ -122,7 +122,7 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 	}
 
 	var index strings.Builder
-	if code := run([]string{"help", "index"}, &index); code != 0 {
+	if code := run([]string{"help", "index"}, &index, &index); code != 0 {
 		t.Fatalf("run(help index) = %d, output:\n%s", code, index.String())
 	}
 	for _, line := range []string{

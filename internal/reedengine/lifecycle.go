@@ -176,11 +176,6 @@ func pruneServerLogsLocked(logsDir, prefix string, keep int) error {
 	return nil
 }
 
-// planUpLaunches always returns nil: Up never launches strands.
-func planUpLaunches(strands []Strand) []Strand {
-	return nil
-}
-
 // planResumeLaunches splits the non-live strands into those to relaunch and those to drop.
 // A non-live strand is dropped, hidden or not, when its DoneWhen list is non-empty and every path in it exists:
 // its work finished, and a relaunch would redo it.

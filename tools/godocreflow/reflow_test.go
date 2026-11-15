@@ -19,6 +19,19 @@ package pkg
 
 `
 
+// reflowSource returns src with its reflow edits applied, or src unchanged when nothing qualifies.
+// err is non-nil only on a parse failure.
+func reflowSource(fset *token.FileSet, filename, src string, maxWidth int) (string, error) {
+	edits, err := collectEdits(fset, filename, src, maxWidth)
+	if err != nil {
+		return src, err
+	}
+	if len(edits) == 0 {
+		return src, nil
+	}
+	return applyEdits(src, edits), nil
+}
+
 func mustReflow(t *testing.T, src string) string {
 	t.Helper()
 	return mustReflowWidth(t, src, wideEnough)

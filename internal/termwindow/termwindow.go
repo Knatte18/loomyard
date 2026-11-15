@@ -91,11 +91,6 @@ func windowsTerminalArguments(dir, title, line string) []string {
 	return []string{"-w", "new", "--title", title, "wsl.exe", "--cd", dir, "--", "bash", "-lc", strings.ReplaceAll(line, ";", `\;`)}
 }
 
-// Name returns the launcher's program name, for the operator's report.
-func (l Launcher) Name() string {
-	return l.name
-}
-
 // OpenAttach opens one window titled title whose login shell runs "<lymPath> reed attach" in dir.
 // The window closes when the attach exits 0, which includes an operator detach and an ended pair session.
 // After any other attach exit, it closes as soon as dir is removed within pairGoneWaitSeconds seconds;

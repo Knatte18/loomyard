@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -30,7 +31,7 @@ import (
 func runVerb(t *testing.T, worktree string, args ...string) map[string]any {
 	t.Helper()
 	var out bytes.Buffer
-	if code := RunCLIIn(worktree, &out, args); code != 0 {
+	if code := clihelp.ExecuteIn(Command(), worktree, &out, args); code != 0 {
 		t.Fatalf("lym reed %v = %d, output: %s", args, code, out.String())
 	}
 	var env map[string]any
@@ -109,7 +110,7 @@ func TestStrandNamingAndList(t *testing.T) {
 	for _, wt := range []string{prime, listTask, namingTask} {
 		t.Cleanup(func() {
 			var buf bytes.Buffer
-			RunCLIIn(wt, &buf, []string{"down"})
+			clihelp.ExecuteIn(Command(), wt, &buf, []string{"down"})
 		})
 	}
 
@@ -236,7 +237,7 @@ func TestStrandNamingAndList(t *testing.T) {
 			t.Errorf("names after adding the own-window strand = %v, want %q", names, fullExplorer)
 		}
 		var rejected bytes.Buffer
-		if code := RunCLIIn(worktree, &rejected, []string{"add", "--anchor", "below-parent", "--cmd", "sleep 300"}); code == 0 || !strings.Contains(rejected.String(), "own-window") {
+		if code := clihelp.ExecuteIn(Command(), worktree, &rejected, []string{"add", "--anchor", "below-parent", "--cmd", "sleep 300"}); code == 0 || !strings.Contains(rejected.String(), "own-window") {
 			t.Errorf("add --anchor below-parent = %d, output %q; want a non-zero exit whose error lists own-window", code, rejected.String())
 		}
 

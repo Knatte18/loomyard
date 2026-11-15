@@ -1,4 +1,4 @@
-// main.go holds the lym process entry point, the run seam tests drive, and the cobra root builder.
+// main.go holds the lym process entry point, the run function it and the tests share, and the cobra root builder.
 
 // Package main is the cobra root for the lym CLI.
 // It assembles each module's Command() into a single root and mounts the shortcuts of internal/shortcutcli on it.
@@ -53,12 +53,8 @@ import (
 
 func main() {
 	gitexec.SetKillReporter(logGitKill)
-	root := newRoot()
 	// Callers of the production binary expect stdout and stderr split.
-	root.SetOut(os.Stdout)
-	root.SetErr(os.Stderr)
-	code := clihelp.RunRoot(root, os.Stdout)
-	notifyExitAndSweep(code)
+	code := run(os.Args[1:], os.Stdout, os.Stderr)
 	// The process run directory exists only if this process created one;
 	// a removal error is left to the next start's sweep.
 	_ = lymtemp.Remove()
@@ -76,14 +72,15 @@ func logGitKill(args []string, pid int, groupErr error) {
 	logger.Info("gitexec: killed git's process group after its deadline", "args", args, "pid", pid)
 }
 
-// run executes args against a fresh root and returns the exit code.
-// It sends stdout and stderr to out, so tests capture all output from one buffer.
-func run(args []string, out io.Writer) int {
+// run executes args against a fresh root, writing to stdout and stderr, and returns the exit code.
+// A JSON error envelope goes to stdout.
+// A test passes one buffer as both writers to capture all output.
+func run(args []string, stdout, stderr io.Writer) int {
 	root := newRoot()
-	root.SetOut(out)
-	root.SetErr(out)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
 	root.SetArgs(args)
-	code := clihelp.RunRoot(root, out)
+	code := clihelp.RunRoot(root, stdout)
 	notifyExitAndSweep(code)
 	return code
 }

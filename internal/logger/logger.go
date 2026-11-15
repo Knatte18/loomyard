@@ -3,7 +3,7 @@
 // Callers never see slog directly; they set the stderr threshold with SetVerbosity.
 
 // Package logger is a minimal log/slog wrapper shared across lym's internal packages.
-// It adds a process-wide trace identity, explicitly threaded diagnostic spans, and a durable trace-file sink.
+// It adds a process-wide trace identity and a durable trace-file sink.
 // Stdout stays free of log noise, because commands write their JSON envelope to stdout through internal/output.
 // All log output goes to a dedicated stderr sink instead.
 // The stderr sink defaults to DefaultOutput at the Warn threshold, which SetVerbosity changes.
@@ -12,7 +12,7 @@
 // Every Debug, Info and Warn call also goes to the durable sink (sink.go).
 // That sink admits Info and above, and Debug at Debug verbosity, whatever the stderr threshold.
 //
-// # Trace identity and spans
+// # Trace identity
 //
 // Every process has exactly one trace identity: a 16-character lowercase hex ID.
 // It is minted or adopted once, and every log line carries it as trace=<id>, at every level.
@@ -23,13 +23,6 @@
 // It resolves the same value and exports it into the process environment as LYM_TRACE_ID,
 // so every spawned child inherits it at any spawn site that does not override cmd.Env.
 // A whole process tree therefore shares one trace ID.
-//
-// A Span (span.go) is a plain value holding a dotted path that StartSpan starts and Child extends.
-// Its Debug, Info and Warn methods also stamp span=<path> next to trace=.
-// No global holds a current span; a caller holds its own *Span and passes it explicitly.
-// A span's open (StartSpan, Child) and successful close, End(nil), log at Debug.
-// End with a non-nil error logs at Warn and carries the error as a field.
-// So a failing span's close is the one open or close record that reaches the durable sink on an otherwise quiet run.
 //
 // # The durable sink and its retention
 //
@@ -91,7 +84,7 @@
 //     Under `go test`, the durable sink stays closed for the whole process unless LYM_TRACE is "1".
 //     It stays closed however many records it admits and however the process exits.
 //     This keeps ordinary test runs from filling the worktree's .lym/logs with test-process trace files.
-//     It does not change trace-ID resolution: TraceID() and the trace= and span= fields are the same with or without it.
+//     It does not change trace-ID resolution: TraceID() and the trace= field are the same with or without it.
 //
 // A record may reach both LYM_LOG_FILE, when set, and the durable trace file.
 // That is correct: the two differ in lifetime and audience.

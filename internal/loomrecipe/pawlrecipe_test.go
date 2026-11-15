@@ -29,7 +29,7 @@ type wantPawlRow struct {
 
 func wantPawlRows() []wantPawlRow {
 	return []wantPawlRow{
-		{loomshed.NamePreflight, reflect.TypeOf(preflightshed.NewPreflight("", "")), loomshed.NameRecordWrite},
+		{loomshed.NamePreflight, reflect.TypeOf(preflightshed.NewPreflightWithChecks("", "", preflightshed.Checks{})), loomshed.NameRecordWrite},
 		{loomshed.NameRecordWrite, reflect.TypeOf(loomshed.NewRecordWrite("", loomshed.RecordWriteDeps{})), pawlengine.NameBeamUp},
 		{pawlengine.NameBeamUp, reflect.TypeOf(&pawlengine.BeamUp{}), pawlengine.NameBeamAwait},
 		{pawlengine.NameBeamAwait, reflect.TypeOf(&pawlengine.BeamAwait{}), loomshed.NameFinalize},

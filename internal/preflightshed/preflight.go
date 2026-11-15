@@ -1,6 +1,6 @@
 // preflight.go holds the general Preflight producer.
 // It is a content-free shedengine.ShedProducer that wraps internal/preflight.Check.
-// NewPreflight constructs it from a told name and cwd, and NewPreflightWithChecks also takes optional checks.
+// NewPreflightWithChecks constructs it from a told name and cwd, with optional checks.
 
 package preflightshed
 
@@ -108,27 +108,17 @@ const stencilsReasonPrefix = "seat stencils check failed: "
 // the error text, which carries its own way forward, follows.
 const driftReasonPrefix = "drift config check failed: "
 
-// NewPreflight returns a shedengine.ShedProducer that validates cwd via preflight.Check.
+// NewPreflightWithChecks returns a shedengine.ShedProducer that validates cwd via preflight.Check.
+// It also runs the optional checks.
+// The checks run after the hub reconcile and before preflight.Check,
+// so a failure stops the run before any agent spends tokens.
+// They catch a broken batcher.yaml and a stencil the running binary cannot fill.
+// They also catch a drift command that a Drift row would refuse.
 //
 // name is told rather than hardcoded, because other products name this row independently.
 // The name is used only as a log field and in error text, never compared, parsed, or used for control flow.
-func NewPreflight(name, cwd string) shedengine.ShedProducer {
-	return NewPreflightWithChecks(name, cwd, Checks{})
-}
-
-// NewPreflightWithChecks returns the Preflight producer with the optional checks.
-// They run after the hub reconcile and before preflight.Check,
-// so a failure stops the run before any agent spends tokens.
-// The checks catch a broken batcher.yaml and a stencil the running binary cannot fill.
-// They also catch a drift command that a Drift row would refuse.
 func NewPreflightWithChecks(name, cwd string, checks Checks) shedengine.ShedProducer {
 	return &preflightProducer{name: name, cwd: cwd, checks: checks}
-}
-
-// newPreflightWith returns the producer for name and cwd, with opts for the hub config reconcile.
-// That reconcile runs ahead of the check.
-func newPreflightWith(name, cwd string, opts hubreconcile.Options) shedengine.ShedProducer {
-	return &preflightProducer{name: name, cwd: cwd, opts: opts}
 }
 
 // batcherFailure runs the told batcher check and returns the stuck reason for its failure.

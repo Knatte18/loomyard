@@ -8,31 +8,43 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestNewPreflight_CarriesToldName asserts NewPreflight hardcodes nothing.
+// NewPreflight returns the Preflight producer for name and cwd with no optional checks.
+func NewPreflight(name, cwd string) shedengine.ShedProducer {
+	return NewPreflightWithChecks(name, cwd, Checks{})
+}
+
+// newPreflightWith returns the producer for name and cwd.
+// The opts configure the hub config reconcile that runs ahead of the check.
+func newPreflightWith(name, cwd string, opts hubreconcile.Options) shedengine.ShedProducer {
+	return &preflightProducer{name: name, cwd: cwd, opts: opts}
+}
+
+// TestNewPreflightWithChecks_CarriesToldName asserts NewPreflightWithChecks hardcodes nothing.
 // The returned producer is a *preflightProducer whose name and cwd fields hold the arguments verbatim.
 //
-//testtiming:keep pins the told name and cwd landing on the producer's fields, which the cancelled-call test covering its blocks never reads
-func TestNewPreflight_CarriesToldName(t *testing.T) {
+//testtiming:keep pins the told name and cwd landing on the producer's fields by NewPreflightWithChecks, which the cancelled-call test covering its blocks never reads
+func TestNewPreflightWithChecks_CarriesToldName(t *testing.T) {
 	tiergate.Require(t, 0)
-	got := NewPreflight("Some-Row", "/some/cwd")
+	got := NewPreflightWithChecks("Some-Row", "/some/cwd", Checks{})
 	if got == nil {
-		t.Fatalf("NewPreflight() = nil; want non-nil")
+		t.Fatalf("NewPreflightWithChecks() = nil; want non-nil")
 	}
 
 	p, ok := got.(*preflightProducer)
 	if !ok {
-		t.Fatalf("NewPreflight() concrete type = %T; want *preflightProducer", got)
+		t.Fatalf("NewPreflightWithChecks() concrete type = %T; want *preflightProducer", got)
 	}
 	if p.name != "Some-Row" {
-		t.Errorf("NewPreflight() name = %q; want %q", p.name, "Some-Row")
+		t.Errorf("NewPreflightWithChecks() name = %q; want %q", p.name, "Some-Row")
 	}
 	if p.cwd != "/some/cwd" {
-		t.Errorf("NewPreflight() cwd = %q; want %q", p.cwd, "/some/cwd")
+		t.Errorf("NewPreflightWithChecks() cwd = %q; want %q", p.cwd, "/some/cwd")
 	}
 }
 

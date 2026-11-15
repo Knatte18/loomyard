@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -159,24 +158,6 @@ func NewPlanDirRotator(anchorPath, stencilsDir string, archiveWebster func(dest 
 		}
 		return "\n" + block, nil
 	}
-}
-
-// ArchivedPlanWebsterDirs returns the webster subdirectory of every archive-* directory under planDir.
-// Each one is where the plan rotation archives webster's run record.
-// A subdirectory is listed whether or not it exists, since a rotation with no record to move creates none.
-func ArchivedPlanWebsterDirs(planDir string) []string {
-	entries, err := os.ReadDir(planDir)
-	if err != nil {
-		return nil
-	}
-	archivePrefix := planparser.ArchiveDirName("", "")
-	var dirs []string
-	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), archivePrefix) {
-			dirs = append(dirs, filepath.Join(planDir, e.Name(), reworkPriorWebster))
-		}
-	}
-	return dirs
 }
 
 // stalePlanRotation plans a rotation without performing it.

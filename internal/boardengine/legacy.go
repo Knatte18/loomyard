@@ -7,7 +7,6 @@
 package boardengine
 
 import (
-	"encoding/json"
 	"fmt"
 	"slices"
 )
@@ -40,18 +39,6 @@ type legacyRecord struct {
 	Status    string   `json:"status"`
 	Type      string   `json:"type"`
 	ShortName string   `json:"short_name"`
-}
-
-// decodeLegacy decodes a legacy file's bytes leniently: unknown fields are ignored and empty input is no records.
-func decodeLegacy(data []byte) ([]legacyRecord, error) {
-	if len(data) == 0 {
-		return nil, nil
-	}
-	var records []legacyRecord
-	if err := json.Unmarshal(data, &records); err != nil {
-		return nil, fmt.Errorf("decode legacy records: %w", err)
-	}
-	return records, nil
 }
 
 // migrateLegacy converts decoded legacy tasks and notes into store entries and seeds the legacy_done slug list.

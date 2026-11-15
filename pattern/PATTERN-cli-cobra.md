@@ -8,8 +8,10 @@ Rule: Adding CLI module: a cobra subtree under one root in `cmd/lym/main.go`. (t
 
 Every lym CLI module is a cobra subtree assembled under one root in `cmd/lym/main.go`.
 
-- Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`.
-  Every module but `internal/selfreportcli` also carries `RunCLIIn(cwd, out, args) int`.
+- Each module exposes `Command() *cobra.Command`.
+  A test runs it in process through `clihelp.Execute(<module>.Command(), out, args)`,
+  or `clihelp.ExecuteIn(<module>.Command(), cwd, out, args)` at an explicit working directory;
+  a module carries no wrapper of its own around either.
 - An alias command may delegate into another module's subtree with no seam function of its own.
 - Every command has a non-empty `Short`.
 - Every invocable command carries an `audience` annotation from the closed set in `internal/clihelp`;
@@ -53,7 +55,7 @@ Deviations:
 - `battencli` uses `internal/battenshed` and `internal/battenrecipe`, with no engine package of its own.
 - `shedcli` uses `internal/shedverbs`, `internal/loomcli` and `internal/battencli`, with no engine package of its own.
 - `tendercli` uses `tenderengine`, and mounts one root command, `tender`.
-- `shortcutcli` mounts one root command per shortcut from its embedded file, with no `Command()` or `RunCLI`;
+- `shortcutcli` mounts one root command per shortcut from its embedded file, with no `Command()`;
   a shortcut is an alias stretched to a sequence of argvs, so the module guards skip its group.
 - `cleanupcli` has no engine package of its own.
   It calls the cleanup functions of `battencli`, `boardengine`, `orchengine`, `logger` and `lymtemp`.

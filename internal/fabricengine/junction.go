@@ -21,12 +21,6 @@ func WorktreePath(l *lymcwd.Location, slug string) string {
 	return filepath.Join(l.HubPath, slug)
 }
 
-// CodeLymLink returns the path to the _lym junction link in a named slug's warp worktree.
-// It is the warp-side end of the junction that points into the paired weft worktree.
-func CodeLymLink(l *lymcwd.Location, slug string) string {
-	return filepath.Join(l.HubPath, slug, l.AnchorRel, lymdirs.LymDirName)
-}
-
 // WarpLymLinkHere returns the path to the _lym junction link in the current warp worktree.
 // It is the warp-side end of the junction that points into the paired weft worktree.
 func WarpLymLinkHere(l *lymcwd.Location) string {
@@ -124,12 +118,6 @@ func wireJunctionSet(rec *Mutations, l *lymcwd.Location, slug string, names []st
 	}
 
 	return seedWarpExcludeLines(rec, WorktreePath(l, slug), l.AnchorRel, cfg.WarpExcludePaths())
-}
-
-// WireJunctions wires the warp junctions for names in the worktree of slug and records no changes.
-// It exists for callers, such as tests, that have no recorder to pass.
-func WireJunctions(l *lymcwd.Location, slug string, names []string) error {
-	return WireJunctionsWith(nil, l, slug, names)
 }
 
 // seedLymJunction creates, verifies, or re-points the warp junctions pointing to weft directories.

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -35,7 +36,7 @@ func TestSmokeDebugLog(t *testing.T) {
 	deferHubRelease(t, prime)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLIIn(prime, &buf, []string{"down"})
+		clihelp.ExecuteIn(Command(), prime, &buf, []string{"down"})
 	})
 	logsDir := fabricengine.HubLogsDir(h.Location.HubPath)
 

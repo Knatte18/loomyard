@@ -163,7 +163,6 @@
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam,
 // so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.
 // A run holding webster's run lock refuses the archive before any plan file moves.
-// ArchivedPlanWebsterDirs lists the subdirectories a rotation writes the record into.
 // The Plan-Review and Code-Review run directories stay out of that rotation.
 //
 // `_lym/plan/`'s top-level files hold exactly one plan generation.

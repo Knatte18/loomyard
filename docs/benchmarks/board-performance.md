@@ -90,7 +90,7 @@ Hot path — `Render` (pure, tasks → markdown, no I/O), `go test -bench . -ben
 Windows measured 0.03 / 0.28 / 3.5 ms for the same rows — Linux is ~2–3× faster even on this pure-CPU path (no I/O involved;
 the delta is CPU/allocator, not AV).
 
-CLI-driven commands and the Board facade — CLI rows via `go test -tags integration -run '^$' -bench 'Upsert|Get|List' -benchmem` (they drive `boardcli.RunCLI`, whose config resolution spawns `git rev-parse`, so they now live behind `//go:build integration`; see `bench_cli_test.go`), facade rows via the untagged `-bench UpsertFacade`:
+CLI-driven commands and the Board facade — CLI rows via `go test -tags integration -run '^$' -bench 'Upsert|Get|List' -benchmem` (they drive `clihelp.Execute(boardcli.Command(), ...)`, whose config resolution spawns `git rev-parse`, so they now live behind `//go:build integration`; see `bench_cli_test.go`), facade rows via the untagged `-bench UpsertFacade`:
 
 | Benchmark      | n=10    | n=100   | n=1000  |
 |----------------|---------|---------|---------|

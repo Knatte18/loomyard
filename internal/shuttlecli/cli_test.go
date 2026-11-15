@@ -1,4 +1,5 @@
-// cli_test.go covers the shuttlecli cobra seam through RunCLI: run's flag-shape validation and the positional-argument validation of the remaining verbs.
+// cli_test.go covers the shuttlecli cobra tree through clihelp.Execute.
+// It covers run's flag-shape validation and the positional-argument validation of the remaining verbs.
 // No live tmux/claude session is required by any test in this file;
 // the full run round-trip against a live agent lives in smoke tests (batch 6) and
 // the sandbox suite.
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -58,13 +60,13 @@ func newFakeClockRunner(reed shuttleengine.ReedOps, engine shuttleengine.Engine,
 	return runner
 }
 
-// TestRunCLI_Run_FlagValidation drives runCmd, and openCmd for its OpenMissingRole and OpenInvalidModelSpec rows, directly rather than through RunCLI, so no parent
-// PersistentPreRunE runs and no abort is in play — this is the flag-shape check on its own terms,
-// which is what these cases are actually about. Its companion below covers what happens when a
-// pre-run abort and a flag error coincide.
+// TestCommand_Run_FlagValidation drives runCmd, and openCmd for its OpenMissingRole and OpenInvalidModelSpec rows.
+// It drives them directly rather than through clihelp.Execute, so no parent PersistentPreRunE runs.
+// No abort is in play, so this is the flag-shape check on its own terms, which is what these cases are about.
+// Its companion below covers what happens when a pre-run abort and a flag error coincide.
 // Each case asserts the whole buffer parses as EXACTLY ONE JSON object: the module's contract is one
 // envelope per invocation, and a substring check cannot see a second one.
-func TestRunCLI_Run_FlagValidation(t *testing.T) {
+func TestCommand_Run_FlagValidation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
@@ -162,7 +164,7 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Run_PreRunAbort_EmitsExactlyOneEnvelope is R2-F1's regression guard.
+// TestCommand_Run_PreRunAbort_EmitsExactlyOneEnvelope is R2-F1's regression guard.
 //
 // runCmd's flag-shape validation used to sit AHEAD of its clihelp.ShouldAbort check, on the
 // reasoning that a bad flag combination should be reported as its own error rather than swallowed by
@@ -173,9 +175,9 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 // problem after the primary one with nothing saying which to fix first.
 //
 // Running from a non-git temp dir makes lymcwd.Resolve fail, which is the abort this pins. The
-// original intent is untouched and still covered: TestRunCLI_Run_FlagValidation above proves a flag
+// original intent is untouched and still covered: TestCommand_Run_FlagValidation above proves a flag
 // error is reported on its own whenever the pre-run did NOT abort.
-func TestRunCLI_Run_PreRunAbort_EmitsExactlyOneEnvelope(t *testing.T) {
+func TestCommand_Run_PreRunAbort_EmitsExactlyOneEnvelope(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
@@ -191,10 +193,10 @@ func TestRunCLI_Run_PreRunAbort_EmitsExactlyOneEnvelope(t *testing.T) {
 			t.Chdir(t.TempDir())
 
 			var out bytes.Buffer
-			exitCode := RunCLI(&out, tt.args)
+			exitCode := clihelp.Execute(Command(), &out, tt.args)
 
 			if exitCode != 1 {
-				t.Errorf("RunCLI(%v) = %d; want 1", tt.args, exitCode)
+				t.Errorf("Execute(%v) = %d; want 1", tt.args, exitCode)
 			}
 			envelope := parseSingleEnvelope(t, out.Bytes())
 			if ok, _ := envelope["ok"].(bool); ok {
@@ -229,10 +231,13 @@ func parseSingleEnvelope(t *testing.T, out []byte) map[string]any {
 	return envelope
 }
 
-// TestRunCLI_PositionalArgValidation verifies that "lym shuttle state" accepts no argument and "lym shuttle await" needs one, via cobra's Args validation, which runs before PersistentPreRunE — so this fires even against a non-git directory with no config to resolve.
+// TestCommand_PositionalArgValidation verifies that "lym shuttle state" accepts no argument.
+// It also verifies that "lym shuttle await" needs one.
+// Cobra's Args validation runs before PersistentPreRunE.
+// So this fires even against a non-git directory with no config to resolve.
 // It also asserts the command tree registers no `send` or `interrupt` child, so a verb registered again fails.
 // Each subtest that runs the CLI changes the process working directory, so none runs in parallel.
-func TestRunCLI_PositionalArgValidation(t *testing.T) {
+func TestCommand_PositionalArgValidation(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, removed := range []string{"send", "interrupt"} {
 		t.Run("NoChild_"+removed, func(t *testing.T) {
@@ -268,13 +273,13 @@ func TestRunCLI_PositionalArgValidation(t *testing.T) {
 			t.Chdir(t.TempDir())
 
 			var out bytes.Buffer
-			exitCode := RunCLI(&out, tt.args)
+			exitCode := clihelp.Execute(Command(), &out, tt.args)
 
 			if exitCode != 1 {
-				t.Errorf("RunCLI(%v) = %d; want 1", tt.args, exitCode)
+				t.Errorf("Execute(%v) = %d; want 1", tt.args, exitCode)
 			}
 			if !strings.Contains(out.String(), `"ok":false`) {
-				t.Errorf("RunCLI(%v) output missing ok:false envelope; got: %q", tt.args, out.String())
+				t.Errorf("Execute(%v) output missing ok:false envelope; got: %q", tt.args, out.String())
 			}
 		})
 	}
@@ -345,7 +350,7 @@ func TestAwaitVerb(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			code := RunCLIIn(dir, &out, append([]string{"await"}, tt.args...))
+			code := clihelp.ExecuteIn(Command(), dir, &out, append([]string{"await"}, tt.args...))
 
 			var envelope map[string]any
 			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {

@@ -9,12 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-func TestRunCLI_RefusesBeforeAnyHubWork(t *testing.T) {
+func TestCommand_RefusesBeforeAnyHubWork(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -86,14 +87,14 @@ func TestRunCLI_RefusesBeforeAnyHubWork(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			exitCode := fabriccli.RunCLIIn(dir, &out, args)
+			exitCode := clihelp.ExecuteIn(fabriccli.Command(), dir, &out, args)
 			if exitCode != tt.wantExit {
-				t.Fatalf("RunCLI(%v) = %d; want %d\noutput: %s", tt.args, exitCode, tt.wantExit, out.String())
+				t.Fatalf("Execute(%v) = %d; want %d\noutput: %s", tt.args, exitCode, tt.wantExit, out.String())
 			}
 
 			for _, want := range tt.wantOutputContains {
 				if !strings.Contains(out.String(), want) {
-					t.Errorf("RunCLI(%v) output missing %q; got:\n%s", tt.args, want, out.String())
+					t.Errorf("Execute(%v) output missing %q; got:\n%s", tt.args, want, out.String())
 				}
 			}
 			if tt.wantExit == 0 {

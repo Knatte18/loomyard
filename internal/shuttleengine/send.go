@@ -598,16 +598,6 @@ var ErrForeignBoxText = fmt.Errorf("%w: the input box holds text that is not thi
 // the caller may send the command again once the session is idle.
 var ErrCommandTakenAsPrompt = errors.New("shuttle: the command reached the agent as a prompt and did not run")
 
-// IsDraftHold reports whether err is a send held by text in the input box:
-// a *SessionBusyError whose hold is a draft, or an error wrapping ErrSentTextInDraft or ErrForeignBoxText.
-func IsDraftHold(err error) bool {
-	var busy *SessionBusyError
-	if errors.As(err, &busy) && busy.Draft {
-		return true
-	}
-	return errors.Is(err, ErrSentTextInDraft) || errors.Is(err, ErrForeignBoxText)
-}
-
 // pasteVerified writes text into the pane as one paste through reed and confirms it was submitted.
 // The paste carries its trailing Enter when the provider's Enter submits a paste;
 // otherwise the box is settled first, so the guarded Enter lands on a redrawn box.

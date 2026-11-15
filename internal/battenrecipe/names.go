@@ -1,12 +1,10 @@
 // names.go declares the batten recipe's row-name constants, the names the recipe file's rows must match.
-// It also declares RowsBeforeRunShed and RecipeEngines:
-// the derived engine set that the cross-consumer coverage guard in internal/shedrecipe trusts.
+// It also declares RowsBeforeRunShed, the names of the rows a task's run passes through before its inner run starts.
 
 package battenrecipe
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -63,29 +61,4 @@ func RowsBeforeRunShed() []string {
 		rows = append(rows, row.Name)
 	}
 	panic("battenrecipe: RowsBeforeRunShed: the batten recipe holds no " + NameRunShed + " row")
-}
-
-// RecipeEngines returns the distinct engine names of the batten recipe's rows, sorted.
-// The cross-consumer coverage guard in internal/shedrecipe trusts this result.
-//
-// It derives the engines from the recipe rather than a hand-maintained list.
-// A parse failure panics, naming this package: the embedded recipe is a build-time defect, not a runtime condition.
-func RecipeEngines() []string {
-	recipe, err := shedbuild.Parse(recipes.BattenRecipe)
-	if err != nil {
-		panic(fmt.Sprintf("battenrecipe: RecipeEngines: %v", err))
-	}
-
-	seen := make(map[string]bool, len(recipe.Producers))
-	engines := make([]string, 0, len(recipe.Producers))
-	for _, row := range recipe.Producers {
-		if seen[row.Engine] {
-			continue
-		}
-		seen[row.Engine] = true
-		engines = append(engines, row.Engine)
-	}
-
-	sort.Strings(engines)
-	return engines
 }

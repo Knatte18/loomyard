@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -46,7 +47,7 @@ func skipWithoutMultiplexer(t *testing.T, h *hubforge.Hub) {
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, reedengine.ServerName(h.Path))
 }
 
-// TestRunCLI_ColdHub drives the verbs against one fixture hub whose prime worktree starts cold.
+// TestCommand_ColdHub drives the verbs against one fixture hub whose prime worktree starts cold.
 // reed's registered ConfigTemplate() is already materialized via fabriccli.CloneAndWire,
 // so no explicit seeding is needed.
 // The steps run serially in a fixed order.
@@ -54,7 +55,7 @@ func skipWithoutMultiplexer(t *testing.T, h *hubforge.Hub) {
 // The state-file step persists a state file and removes it again; the boot step runs last and boots a session.
 // A later step relies on the earlier steps leaving the hub cold.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub.
-func TestRunCLI_ColdHub(t *testing.T) {
+func TestCommand_ColdHub(t *testing.T) {
 	tiergate.Require(t, 2)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -63,20 +64,20 @@ func TestRunCLI_ColdHub(t *testing.T) {
 	// ResolvesLayoutAndConfig verifies reed config resolution succeeds against the fixture hub.
 	if !t.Run("ResolvesLayoutAndConfig", func(t *testing.T) {
 		var out bytes.Buffer
-		exitCode := RunCLIIn(worktree, &out, []string{"status"})
+		exitCode := clihelp.ExecuteIn(Command(), worktree, &out, []string{"status"})
 
 		if exitCode != 1 {
-			t.Errorf("RunCLI(status) = %d; want 1 (no live tmux session)", exitCode)
+			t.Errorf("Execute(status) = %d; want 1 (no live tmux session)", exitCode)
 		}
 
 		env := envelope.Decode(t, out.String())
 		if env.OK {
-			t.Errorf("RunCLI(status) ok = true; want false (no tmux session up)")
+			t.Errorf("Execute(status) ok = true; want false (no tmux session up)")
 		}
 
 		errMsg := env.Error
 		if strings.Contains(errMsg, "not initialized") || strings.Contains(errMsg, "not a git repository") {
-			t.Errorf("RunCLI(status) error = %q; want a tmux/session error, not a config-resolution error", errMsg)
+			t.Errorf("Execute(status) error = %q; want a tmux/session error, not a config-resolution error", errMsg)
 		}
 	}) {
 		return
@@ -89,25 +90,25 @@ func TestRunCLI_ColdHub(t *testing.T) {
 	// A rejected call must boot no session.
 	if !t.Run("AddIfAbsentNoName_RejectsBeforeSessionCheck", func(t *testing.T) {
 		var out bytes.Buffer
-		exitCode := RunCLIIn(worktree, &out, []string{"add", "--if-absent", "--cmd", "pwsh -NoExit -Command Write-Host ready"})
+		exitCode := clihelp.ExecuteIn(Command(), worktree, &out, []string{"add", "--if-absent", "--cmd", "pwsh -NoExit -Command Write-Host ready"})
 
 		if exitCode != 1 {
-			t.Errorf("RunCLI(add --if-absent, no --name) = %d; want 1", exitCode)
+			t.Errorf("Execute(add --if-absent, no --name) = %d; want 1", exitCode)
 		}
 
 		errMsg := envelope.Decode(t, out.String()).Error
 		if !strings.Contains(errMsg, "--name") {
-			t.Errorf("RunCLI(add --if-absent, no --name) error = %q; want it to name the --name requirement", errMsg)
+			t.Errorf("Execute(add --if-absent, no --name) error = %q; want it to name the --name requirement", errMsg)
 		}
 		noSessionMsg := `no reed session; run "lym reed up"`
 		if errMsg == noSessionMsg {
-			t.Errorf("RunCLI(add --if-absent, no --name) error = %q; want the --name rejection to precede the session check, not the no-session message", errMsg)
+			t.Errorf("Execute(add --if-absent, no --name) error = %q; want the --name rejection to precede the session check, not the no-session message", errMsg)
 		}
 
 		// Status still refuses, so the rejection fired before the self-heal pre-flight and booted no session.
 		out.Reset()
-		if code := RunCLIIn(worktree, &out, []string{"status"}); code != 1 {
-			t.Errorf("RunCLI(status) after the rejected add = %d; want 1 (the --name rejection must precede the session pre-flight, booting nothing), output: %s", code, out.String())
+		if code := clihelp.ExecuteIn(Command(), worktree, &out, []string{"status"}); code != 1 {
+			t.Errorf("Execute(status) after the rejected add = %d; want 1 (the --name rejection must precede the session pre-flight, booting nothing), output: %s", code, out.String())
 		}
 	}) {
 		return
@@ -117,15 +118,15 @@ func TestRunCLI_ColdHub(t *testing.T) {
 	// `add --if-absent --name claude` without --cmd fails with cobra's missing-required-flag error.
 	if !t.Run("AddIfAbsentNoCmd_StillRequiresCmd", func(t *testing.T) {
 		var out bytes.Buffer
-		exitCode := RunCLIIn(worktree, &out, []string{"add", "--if-absent", "--name", "claude"})
+		exitCode := clihelp.ExecuteIn(Command(), worktree, &out, []string{"add", "--if-absent", "--name", "claude"})
 
 		if exitCode != 1 {
-			t.Errorf("RunCLI(add --if-absent, no --cmd) = %d; want 1", exitCode)
+			t.Errorf("Execute(add --if-absent, no --cmd) = %d; want 1", exitCode)
 		}
 
 		errMsg := envelope.Decode(t, out.String()).Error
 		if !strings.Contains(errMsg, `"cmd"`) {
-			t.Errorf("RunCLI(add --if-absent, no --cmd) error = %q; want it to name the missing required --cmd flag", errMsg)
+			t.Errorf("Execute(add --if-absent, no --cmd) error = %q; want it to name the missing required --cmd flag", errMsg)
 		}
 	}) {
 		return
@@ -134,15 +135,15 @@ func TestRunCLI_ColdHub(t *testing.T) {
 	// RemoveNotUp_FriendlyError verifies that running `remove` before `up` surfaces the friendly "no reed session" error.
 	if !t.Run("RemoveNotUp_FriendlyError", func(t *testing.T) {
 		var out bytes.Buffer
-		exitCode := RunCLIIn(worktree, &out, []string{"remove", "does-not-exist"})
+		exitCode := clihelp.ExecuteIn(Command(), worktree, &out, []string{"remove", "does-not-exist"})
 
 		if exitCode != 1 {
-			t.Errorf("RunCLI(remove) before up = %d; want 1 (no live tmux session)", exitCode)
+			t.Errorf("Execute(remove) before up = %d; want 1 (no live tmux session)", exitCode)
 		}
 
 		wantErr := `no reed session; run "lym reed up"`
 		if errMsg := envelope.Decode(t, out.String()).Error; errMsg != wantErr {
-			t.Errorf("RunCLI(remove) before up error = %q; want %q", errMsg, wantErr)
+			t.Errorf("Execute(remove) before up error = %q; want %q", errMsg, wantErr)
 		}
 	}) {
 		return
@@ -170,15 +171,15 @@ func TestRunCLI_ColdHub(t *testing.T) {
 		})
 
 		var out bytes.Buffer
-		exitCode := RunCLIIn(worktree, &out, []string{"status"})
+		exitCode := clihelp.ExecuteIn(Command(), worktree, &out, []string{"status"})
 
 		if exitCode != 1 {
-			t.Errorf("RunCLI(status) before up = %d; want 1 (no live tmux session)", exitCode)
+			t.Errorf("Execute(status) before up = %d; want 1 (no live tmux session)", exitCode)
 		}
 
 		wantErr := `no reed session (2 strands persisted); run "lym reed resume" to rebuild, or "lym reed up" for a bare substrate`
 		if errMsg := envelope.Decode(t, out.String()).Error; errMsg != wantErr {
-			t.Errorf("RunCLI(status) before up error = %q; want %q", errMsg, wantErr)
+			t.Errorf("Execute(status) before up error = %q; want %q", errMsg, wantErr)
 		}
 	}) {
 		return
@@ -188,42 +189,42 @@ func TestRunCLI_ColdHub(t *testing.T) {
 	// The add exits zero with the ordinary guid-and-name envelope.
 	// The `status` verb still refuses on a cold worktree, then succeeds against the session add deposited.
 	// That status names this worktree's own socket and session and lists the new strand as live.
-	// The test runs in-process through RunCLIIn and skips when no multiplexer is available.
+	// The test runs in-process through clihelp.ExecuteIn and skips when no multiplexer is available.
 	t.Run("AddNotUp_SelfHealsAndSucceeds", func(t *testing.T) {
 		skipWithoutMultiplexer(t, h)
 		t.Cleanup(func() {
 			// Best-effort: a session that add booted must not outlive the test.
 			// When add failed before booting anything, down has nothing to tear down.
 			var buf bytes.Buffer
-			RunCLIIn(worktree, &buf, []string{"down"})
+			clihelp.ExecuteIn(Command(), worktree, &buf, []string{"down"})
 		})
 
 		const strandName = "cold-add"
 		var out bytes.Buffer
-		exitCode := RunCLIIn(worktree, &out, []string{"add", "--name", strandName, "--cmd", coldAddLaunchCmd()})
+		exitCode := clihelp.ExecuteIn(Command(), worktree, &out, []string{"add", "--name", strandName, "--cmd", coldAddLaunchCmd()})
 
 		if exitCode != 0 {
-			t.Fatalf("RunCLI(add) before up = %d; want 0 (add self-heals a cold worktree), output: %s", exitCode, out.String())
+			t.Fatalf("Execute(add) before up = %d; want 0 (add self-heals a cold worktree), output: %s", exitCode, out.String())
 		}
 		env := envelope.RequireOK(t, out.String())
 		guid, _ := env.Raw["guid"].(string)
 		if guid == "" {
-			t.Errorf("RunCLI(add) before up envelope = %s; want a non-empty guid", out.String())
+			t.Errorf("Execute(add) before up envelope = %s; want a non-empty guid", out.String())
 		}
 		if name, _ := env.Raw["name"].(string); name != "tst:"+strandName {
-			t.Errorf("RunCLI(add) before up name = %q; want %q", name, "tst:"+strandName)
+			t.Errorf("Execute(add) before up name = %q; want %q", name, "tst:"+strandName)
 		}
 
 		out.Reset()
-		if code := RunCLIIn(worktree, &out, []string{"status"}); code != 0 {
-			t.Fatalf("RunCLI(status) after a cold add = %d; want 0 (the session add booted must now exist), output: %s", code, out.String())
+		if code := clihelp.ExecuteIn(Command(), worktree, &out, []string{"status"}); code != 0 {
+			t.Fatalf("Execute(status) after a cold add = %d; want 0 (the session add booted must now exist), output: %s", code, out.String())
 		}
 		status := envelope.Decode(t, out.String())
 		if session, _ := status.Raw["session"].(string); session != reedengine.SessionName(worktree) {
-			t.Errorf("RunCLI(status) after a cold add session = %q; want %q (this worktree's own session)", session, reedengine.SessionName(worktree))
+			t.Errorf("Execute(status) after a cold add session = %q; want %q (this worktree's own session)", session, reedengine.SessionName(worktree))
 		}
 		if socket, _ := status.Raw["socket"].(string); socket != reedengine.ServerName(h.Path) {
-			t.Errorf("RunCLI(status) after a cold add socket = %q; want %q (this hub's own socket)", socket, reedengine.ServerName(h.Path))
+			t.Errorf("Execute(status) after a cold add socket = %q; want %q (this hub's own socket)", socket, reedengine.ServerName(h.Path))
 		}
 
 		strands, _ := status.Raw["strands"].([]any)
@@ -235,11 +236,11 @@ func TestRunCLI_ColdHub(t *testing.T) {
 			}
 			found = true
 			if live, _ := strand["live"].(bool); !live {
-				t.Errorf("RunCLI(status) strand %s live = false; want true (the cold add launched it into the session it booted)", guid)
+				t.Errorf("Execute(status) strand %s live = false; want true (the cold add launched it into the session it booted)", guid)
 			}
 		}
 		if !found {
-			t.Errorf("RunCLI(status) strands = %v; want the cold add's strand %s listed", strands, guid)
+			t.Errorf("Execute(status) strands = %v; want the cold add's strand %s listed", strands, guid)
 		}
 
 		// The session is up, so the follow verb reaches it when told the socket path, the session and the tmux binary.
@@ -260,17 +261,17 @@ func TestRunCLI_ColdHub(t *testing.T) {
 			socketPath := strings.TrimSpace(string(socketOut))
 
 			var followOut bytes.Buffer
-			if code := RunCLIIn(worktree, &followOut, []string{"follow", "--socket", socketPath, "--session", session, "--tmux", tmuxPath}); code != 0 || followOut.Len() != 0 {
-				t.Errorf("RunCLI(follow) = %d with output %q; want 0 and no output", code, followOut.String())
+			if code := clihelp.ExecuteIn(Command(), worktree, &followOut, []string{"follow", "--socket", socketPath, "--session", session, "--tmux", tmuxPath}); code != 0 || followOut.Len() != 0 {
+				t.Errorf("Execute(follow) = %d with output %q; want 0 and no output", code, followOut.String())
 			}
 
 			followOut.Reset()
-			code := RunCLIIn(worktree, &followOut, []string{"follow", "--socket", socketPath, "--session", "no-such-session", "--tmux", tmuxPath})
+			code := clihelp.ExecuteIn(Command(), worktree, &followOut, []string{"follow", "--socket", socketPath, "--session", "no-such-session", "--tmux", tmuxPath})
 			if code != 1 {
-				t.Errorf("RunCLI(follow, unknown session) = %d; want 1", code)
+				t.Errorf("Execute(follow, unknown session) = %d; want 1", code)
 			}
 			if errMsg := envelope.Decode(t, followOut.String()).Error; !strings.Contains(errMsg, "no-such-session") {
-				t.Errorf("RunCLI(follow, unknown session) error = %q; want it to name the session", errMsg)
+				t.Errorf("Execute(follow, unknown session) error = %q; want it to name the session", errMsg)
 			}
 		})
 	})

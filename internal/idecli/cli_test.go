@@ -12,20 +12,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_SpawnScenario drives "lym ide spawn" against one hub in two steps.
+// TestCommand_SpawnScenario drives "lym ide spawn" against one hub in two steps.
 // The dispatch step uses a stubbed launcher and a temporary keybindings file;
 // the second step checks the missing-slug error. Neither step depends on the other's state.
 // The test does not call t.Parallel.
 // Its dispatch step swaps ideengine.CodeLauncher and ideengine.KeybindingsPath and restores both in a defer.
 // Under t.Parallel, that swap is a data race on a production package-level variable,
 // and the restore fires while sibling tests still run.
-func TestRunCLI_SpawnScenario(t *testing.T) {
+func TestCommand_SpawnScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Create a real hub so `lymcwd.Resolve` succeeds inside the `PersistentPreRunE`.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -46,7 +47,7 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 		ideengine.KeybindingsPath = func() (string, error) { return keybindingsPath, nil }
 
 		var out bytes.Buffer
-		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"spawn", "child"})
+		code := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"spawn", "child"})
 
 		// spawn should succeed or fail for a handler reason, not layout resolution.
 		if code != 0 && !strings.Contains(out.String(), "spawn failed") {
@@ -77,23 +78,23 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 
 	t.Run("missing slug", func(t *testing.T) {
 		var out bytes.Buffer
-		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"spawn"})
+		code := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"spawn"})
 
 		if code != 1 {
-			t.Errorf("RunCLI(spawn) with no slug = %d; want 1", code)
+			t.Errorf("Execute(spawn) with no slug = %d; want 1", code)
 		}
 		if !strings.Contains(out.String(), "spawn") {
-			t.Errorf("RunCLI(spawn) output missing \"spawn\"; got: %q", out.String())
+			t.Errorf("Execute(spawn) output missing \"spawn\"; got: %q", out.String())
 		}
 	})
 
 	t.Run("seed writes the config and launches nothing", func(t *testing.T) {
 		launches = nil
 		var out bytes.Buffer
-		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"seed", "child"})
+		code := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"seed", "child"})
 
 		if code != 0 {
-			t.Fatalf("RunCLI(seed child) = %d; output: %s", code, out.String())
+			t.Fatalf("Execute(seed child) = %d; output: %s", code, out.String())
 		}
 		for _, name := range []string{"settings.json", "tasks.json"} {
 			if _, err := os.Stat(filepath.Join(h.PairCodeWorktree("child"), ".vscode", name)); err != nil {
@@ -110,10 +111,10 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 		keybindingsPath := filepath.Join(t.TempDir(), "keybindings.json")
 		ideengine.KeybindingsPath = func() (string, error) { return keybindingsPath, nil }
 		var out bytes.Buffer
-		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"seed"})
+		code := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"seed"})
 
 		if code != 0 {
-			t.Fatalf("RunCLI(seed) in the prime = %d; output: %s", code, out.String())
+			t.Fatalf("Execute(seed) in the prime = %d; output: %s", code, out.String())
 		}
 		var envelope struct {
 			Slug        string `json:"slug"`
@@ -141,10 +142,10 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 	t.Run("open launches once on the pair folder", func(t *testing.T) {
 		launches = nil
 		var out bytes.Buffer
-		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"open", "child"})
+		code := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"open", "child"})
 
 		if code != 0 {
-			t.Fatalf("RunCLI(open child) = %d; output: %s", code, out.String())
+			t.Fatalf("Execute(open child) = %d; output: %s", code, out.String())
 		}
 		if len(launches) != 1 || launches[0] != h.PairCodeWorktree("child") {
 			t.Errorf("launches = %v; want exactly [%s]", launches, h.PairCodeWorktree("child"))
@@ -169,46 +170,46 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 			launches, launchErr = nil, tt.launchErr
 			defer func() { launchErr = nil }()
 			var out bytes.Buffer
-			code := RunCLIIn(h.PrimeWorktree(), &out, tt.args)
+			code := clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, tt.args)
 
 			if code == 0 {
-				t.Fatalf("RunCLI(%v) = 0; want non-zero; output: %s", tt.args, out.String())
+				t.Fatalf("Execute(%v) = 0; want non-zero; output: %s", tt.args, out.String())
 			}
 			if !strings.Contains(out.String(), tt.wantVerb) {
-				t.Errorf("RunCLI(%v) output = %q; want it to name %q", tt.args, out.String(), tt.wantVerb)
+				t.Errorf("Execute(%v) output = %q; want it to name %q", tt.args, out.String(), tt.wantVerb)
 			}
 			wantLaunches := 0
 			if tt.launchErr != nil {
 				wantLaunches = 1
 			}
 			if len(launches) != wantLaunches {
-				t.Errorf("RunCLI(%v) recorded launches %v; want %d", tt.args, launches, wantLaunches)
+				t.Errorf("Execute(%v) recorded launches %v; want %d", tt.args, launches, wantLaunches)
 			}
 		})
 	}
 }
 
-// TestRunCLI_NotAGitRepo runs `lym ide menu` from a directory outside any git repository.
+// TestCommand_NotAGitRepo runs `lym ide menu` from a directory outside any git repository.
 // It expects the bare `ErrNotAGitRepo` sentinel.
 // The error has no "failed to resolve layout:" prefix and no raw "fatal:" git stderr.
 // The `PersistentPreRunE` hook aborts before the menu body runs, so the interactive picker is never reached.
-func TestRunCLI_NotAGitRepo(t *testing.T) {
+func TestCommand_NotAGitRepo(t *testing.T) {
 	tiergate.Require(t, 1)
 	tmpDir := t.TempDir()
 
 	var out bytes.Buffer
-	code := RunCLIIn(tmpDir, &out, []string{"menu"})
+	code := clihelp.ExecuteIn(Command(), tmpDir, &out, []string{"menu"})
 
 	if code != 1 {
-		t.Errorf("RunCLI(menu) in non-git dir = %d; want 1", code)
+		t.Errorf("Execute(menu) in non-git dir = %d; want 1", code)
 	}
 
 	var env map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("RunCLI(menu) output is not valid JSON: %v; got: %q", err, out.String())
+		t.Fatalf("Execute(menu) output is not valid JSON: %v; got: %q", err, out.String())
 	}
 	errMsg, _ := env["error"].(string)
 	if errMsg != "not a git repository" {
-		t.Errorf("RunCLI(menu) error = %q; want exactly \"not a git repository\"", errMsg)
+		t.Errorf("Execute(menu) error = %q; want exactly \"not a git repository\"", errMsg)
 	}
 }

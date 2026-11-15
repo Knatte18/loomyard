@@ -1,6 +1,6 @@
-// parse.go implements Parse, the byte-slice recipe decoder, and Load, its told-path wrapper.
-// Both perform every shape check a Recipe must pass before Build may consume it.
-// Neither validates routing, which shedengine and internal/shedcheck already own.
+// parse.go implements Parse, the byte-slice recipe decoder.
+// It performs every shape check a Recipe must pass before Build may consume it.
+// It does not validate routing, which shedengine already owns.
 
 package shedbuild
 
@@ -10,8 +10,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -36,7 +34,7 @@ var legalVerifySources = []string{"plan", "tree_scope"}
 // a second one is refused, never a silent truncation of the producer graph.
 //
 // Parse validates nothing about routing: it never checks edges, segments, acyclicity or reachability.
-// Those checks are owned by shedengine's own validation and internal/shedcheck, because a third copy is what drifts.
+// Those checks are owned by shedengine's own validation, because a second copy is what drifts.
 func Parse(data []byte) (Recipe, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -180,20 +178,4 @@ func checkBlockRowShape(i int, row Row) error {
 		}
 	}
 	return nil
-}
-
-// Load reads the recipe file at path and delegates to Parse.
-// path must be absolute, and Load rejects a relative path before any read.
-// Load is the only function in this package whose own code touches the filesystem.
-func Load(path string) (Recipe, error) {
-	if !filepath.IsAbs(path) {
-		return Recipe{}, fmt.Errorf("shedbuild: recipe path %q must be absolute", path)
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Recipe{}, fmt.Errorf("shedbuild: read recipe %q: %w", path, err)
-	}
-
-	return Parse(data)
 }

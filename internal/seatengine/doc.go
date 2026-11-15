@@ -52,7 +52,7 @@
 // the engine its model choice names, else the geometry's DefaultEngine.
 // Validation, the marker check and composition all read a seat's blocks that way,
 // so an engine block its seat's engine has no copy of refuses the table, naming the block, the engine and the file.
-// A table or seat value neither collides with a name in ReservedMarkers nor is empty or whitespace-only.
+// A table or seat value neither collides with a reserved marker name nor is empty or whitespace-only.
 // A table value named in Table.Optional may be empty.
 // It then renders as nothing in the stencil and in every block it includes.
 // An Optional name may not be a reserved marker, and a seat value is never exempt.
@@ -62,7 +62,7 @@
 // so a caller stops a stencil newer than the running binary, or a blank value, before any seat starts.
 // Validate leaves that check out, since a resumed seat keeps the prompt it started with.
 // A resumed seat never fills its stencil again.
-// The list ReservedMarkers returns is declared once in this package;
+// The list of reserved marker names is declared once in this package;
 // the table's collision check and the seats' value maps read that declaration,
 // and a caller that builds a table reaches it through Table.Validate.
 //

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -36,14 +37,14 @@ func TestSmokeTeardown(t *testing.T) {
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLIIn(prime, &buf, []string{"down"})
+		clihelp.ExecuteIn(Command(), prime, &buf, []string{"down"})
 	})
 
 	// run runs one reed verb in worktree and fails the calling test unless it exits zero.
 	run := func(t *testing.T, worktree string, args ...string) []byte {
 		t.Helper()
 		var out bytes.Buffer
-		if code := RunCLIIn(worktree, &out, args); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), worktree, &out, args); code != 0 {
 			t.Fatalf("%v = %d; want 0, output: %s", args, code, out.String())
 		}
 		return out.Bytes()
@@ -254,7 +255,7 @@ func TestSmokeTeardown(t *testing.T) {
 		// so no server or session leaks.
 		t.Cleanup(func() {
 			var buf bytes.Buffer
-			RunCLIIn(sibling, &buf, []string{"down"})
+			clihelp.ExecuteIn(Command(), sibling, &buf, []string{"down"})
 		})
 
 		launch := smokeReapLaunchCmd()

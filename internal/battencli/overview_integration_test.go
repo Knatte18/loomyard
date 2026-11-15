@@ -1,4 +1,4 @@
-// overview_integration_test.go drives "lym batten overview" through RunCLIIn over a hubforge hub.
+// overview_integration_test.go drives "lym batten overview" through clihelp.ExecuteIn over a hubforge hub.
 // It pins the refusals, which both end before any pane starts.
 // It stays a white-box "package battencli" test, like the other integration files here.
 
@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -37,7 +38,7 @@ func TestOverviewCmd_RefusesOutsideThePrime(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			if code := RunCLIIn(tt.cwd, &out, []string{"overview"}); code != 1 {
+			if code := clihelp.ExecuteIn(Command(), tt.cwd, &out, []string{"overview"}); code != 1 {
 				t.Errorf("overview from %s exited %d; want 1", tt.name, code)
 			}
 			envelope.RequireErr(t, out.String(), tt.wantErr)

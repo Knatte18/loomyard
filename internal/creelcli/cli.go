@@ -1,5 +1,4 @@
 // cli.go builds the creel cobra command with its operator verbs and the hidden daemon verb.
-// The RunCLI and RunCLIIn seams wire it into the standard io.Writer-based call contract.
 
 package creelcli
 
@@ -1039,20 +1038,4 @@ func serveDaemon(ctx context.Context, hubPath string) error {
 		GOOS:      runtime.GOOS,
 		Replaced:  selfexec.New().Replaced,
 	})
-}
-
-// RunCLI runs the creel module CLI on args, writes its output to out, and returns the exit code.
-// It takes the working directory from the process.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the creel module CLI on args with cwd as its working directory, and returns the exit code.
-// A non-empty cwd is seeded into the execution context, which panics on an empty directory,
-// so an empty cwd makes the CLI read the process working directory instead.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

@@ -416,7 +416,8 @@
 // The verb resolves the prime from the working directory as the adopt does, so it runs from anywhere in the hub.
 // It prints an ok envelope with the record's `state`.
 // The envelope has `already_running: true` when another check of the subject holds the lock.
-// `adopt` itself takes arbitrary arguments, so a standalone `RunCLI` still reaches `adopt <subject>`;
+// `adopt` itself takes arbitrary arguments.
+// A standalone `clihelp.Execute` of the command therefore still reaches `adopt <subject>`;
 // a beam named `check` cannot be named to `lym adopt` and is adopted through `--all`.
 //
 // Before it takes the lock, `runCheck` reads the subject's owner through `checkDeps.OwnedElsewhere`.

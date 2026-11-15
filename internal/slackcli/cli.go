@@ -813,17 +813,3 @@ func (c *slackCLI) relay(cmd *cobra.Command, hubPath, prime string, fork bool, a
 	}
 	return map[string]any{"relay": "stopped"}, nil
 }
-
-// RunCLI is the public seam for the slack module CLI, delegating to clihelp.Execute for output capture.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the slack module CLI with cwd seeded into its execution context.
-// An empty cwd reads the process cwd instead, since lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
-}

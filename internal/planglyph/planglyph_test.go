@@ -15,6 +15,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// ValidateFormat is the whole-plan plan gate over plan with the default types loader.
+// It returns planparser.ValidateFormat's findings converted, then the resolve-backed and plan-gate findings.
+// Its second return is a non-nil ErrQuarryUnavailable-wrapped error exactly when quarry could not answer,
+// and the findings already collected come back alongside it.
+func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
+	return validateFormat(plan, worktreeRoot, defaultTypesLoader)
+}
+
+// ValidateRework is the rework gate over plan with the default types loader:
+// ValidateFormat's findings, then planparser.CheckFirstCard's finding when plan's first_card differs from told.
+func ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
+	return validateRework(plan, worktreeRoot, told, defaultTypesLoader)
+}
+
+// Validate is ValidateFormat plus the plan-unapproved approval gate, with the default types loader.
+func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
+	return validate(plan, worktreeRoot, defaultTypesLoader)
+}
+
 // minimalPlan returns a *planparser.Plan for tests of ValidateFormat and Validate that skips ParsePlan.
 // It sets Format 5 and language none, so resolvePass opens no repository.
 // It has no cards, so every card-scoped check reports clean.

@@ -19,7 +19,7 @@ import (
 // Errors NewShedFrom raises after decode name the offending row by index and name,
 // and the decoder keeps YAML line numbers, so New adds no position detail.
 //
-// New never calls shedbuild.Check, which is authoring-time only:
+// New runs no reachability check, which is authoring-time only:
 // a resumed run legitimately starts mid-graph, so reachability from the entry is the wrong question at run time.
 //
 // New performs no nil or absolute-path check of its own on any Env field:

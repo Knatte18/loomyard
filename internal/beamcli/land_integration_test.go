@@ -1,4 +1,4 @@
-// land_integration_test.go runs "lym beam land" through RunCLIIn over a hubforge hub, from inside a task pair.
+// land_integration_test.go runs "lym beam land" through clihelp.ExecuteIn over a hubforge hub, from inside a task pair.
 
 package beamcli_test
 
@@ -9,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/beamcli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -52,7 +53,7 @@ func TestLand_RunsFromATaskPair(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	beamcli.RunCLIIn(h.PairCodeWorktree("t"), &out, []string{"land", "b"})
+	clihelp.ExecuteIn(beamcli.Command(), h.PairCodeWorktree("t"), &out, []string{"land", "b"})
 
 	envelope.RequireErr(t, out.String(), "has no pawl run")
 	if strings.Contains(out.String(), "neither the prime nor a beam") {

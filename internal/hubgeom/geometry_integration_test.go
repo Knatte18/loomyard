@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -310,7 +311,7 @@ func reconcilePairFor(t *testing.T, h *hubforge.Hub, slug string) fabricengine.R
 	t.Helper()
 
 	var out bytes.Buffer
-	if code := fabriccli.RunCLIIn(h.Location.WorktreePath(), &out, []string{"reconcile"}); code != 0 {
+	if code := clihelp.ExecuteIn(fabriccli.Command(), h.Location.WorktreePath(), &out, []string{"reconcile"}); code != 0 {
 		t.Fatalf("reconcile = %d; want 0\noutput: %s", code, out.String())
 	}
 	var envelope struct {

@@ -1,4 +1,4 @@
-// cli_test.go drives the `lym creel` verbs through RunCLIIn over a hubforge hub.
+// cli_test.go drives the `lym creel` verbs through clihelp.ExecuteIn over a hubforge hub.
 // The daemon runs in process on a fake delivery and fake clocks.
 // The rows set the strand name in the environment and replace the package's client seam.
 // That seam is process-global state, so the test does not run in parallel.
@@ -73,7 +73,7 @@ func (r cliRun) errorText() string {
 
 func runCreel(cwd string, args ...string) cliRun {
 	var out bytes.Buffer
-	code := RunCLIIn(cwd, &out, args)
+	code := clihelp.ExecuteIn(Command(), cwd, &out, args)
 	run := cliRun{code: code, raw: out.String()}
 	_ = json.Unmarshal([]byte(strings.TrimSpace(run.raw)), &run.fields)
 	return run

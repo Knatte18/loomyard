@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -22,7 +23,7 @@ import (
 func unlessRun(t *testing.T, worktree string, args ...string) (int, map[string]any) {
 	t.Helper()
 	var out bytes.Buffer
-	code := RunCLIIn(worktree, &out, args)
+	code := clihelp.ExecuteIn(Command(), worktree, &out, args)
 	var env map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
 		t.Fatalf("lym reed %v output is not valid JSON: %v; got: %q", args, err, out.String())
@@ -76,7 +77,7 @@ func TestUnlessName(t *testing.T) {
 	worktree := h.PrimeWorktree()
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLIIn(worktree, &buf, []string{"down"})
+		clihelp.ExecuteIn(Command(), worktree, &buf, []string{"down"})
 	})
 	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
 	if err != nil {

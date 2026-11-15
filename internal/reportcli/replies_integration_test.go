@@ -1,4 +1,4 @@
-// replies_integration_test.go drives `lym report replies` through RunCLIIn over a hubforge hub:
+// replies_integration_test.go drives `lym report replies` through clihelp.ExecuteIn over a hubforge hub:
 // the prime-only refusal and the counts of a fake creel journal.
 
 package reportcli
@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -28,7 +29,7 @@ func TestRepliesVerb(t *testing.T) {
 	}
 	run := func(cwd string) (string, int) {
 		var out bytes.Buffer
-		code := RunCLIIn(cwd, &out, []string{"replies"})
+		code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"replies"})
 		return out.String(), code
 	}
 

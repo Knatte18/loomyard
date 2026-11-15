@@ -1,5 +1,4 @@
 // cli.go builds the cobra command tree for the batten module.
-// It also holds the `RunCLI` and `RunCLIIn` seams that wire the tree into the standard io.Writer call contract.
 //
 // The battencli package drives one task worktree's whole lifecycle as a single Shed run from the hub's prime worktree.
 // It imports `internal/battenshed` and `internal/battenrecipe`, neither of which imports cobra.
@@ -164,7 +163,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os/exec"
 	"testing"
 
@@ -780,24 +778,4 @@ func StartFirstPass(location *lymcwd.Location, slug string, opts FirstPassOption
 		return nil, fmt.Errorf("battencli: the first pass of %q printed no envelope: %q: %w", slug, out.String(), err)
 	}
 	return envelope, nil
-}
-
-// RunCLI is the public seam for the batten module CLI.
-//
-// It sends all output, including cobra's error text, to out.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the batten module CLI as if run from cwd.
-// An empty cwd means the process's own working directory.
-//
-// Tests of path derivation and of the non-prime refusal need an injectable cwd, which RunCLI does not offer.
-// The empty-cwd branch exists because `lymcwd.WithCwd` panics on an empty directory.
-// A uniform delegation to `clihelp.ExecuteIn` would panic on every RunCLI call.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

@@ -605,29 +605,6 @@ func TestPushRidingOutBusyLock(t *testing.T) {
 	}
 }
 
-func TestMergeableTips(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		name        string
-		tips        fabricengine.ParentTips
-		pushSkipped bool
-		want        []string
-	}{
-		{"SkippedPushDropsTheUpstreamTip", fabricengine.ParentTips{Local: "local", Upstream: "upstream"}, true, []string{"local"}},
-		{"UnskippedPushKeepsBothTips", fabricengine.ParentTips{Local: "local", Upstream: "upstream"}, false, []string{"local", "upstream"}},
-		{"EmptyUpstreamIsDropped", fabricengine.ParentTips{Local: "local"}, false, []string{"local"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := mergeableTips(tt.tips, tt.pushSkipped); !slices.Equal(got, tt.want) {
-				t.Errorf("mergeableTips(%+v, %v) = %v; want %v", tt.tips, tt.pushSkipped, got, tt.want)
-			}
-		})
-	}
-}
-
 // TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml pins that the budget-zero seam reads the Code-Review perch at call time:
 // a budget of 0 reports the perch off and a budget above 0 reports it on.
 // A loom.yaml that fails to load is returned as the seam's error.

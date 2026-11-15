@@ -15,11 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_ReconcileFromAPairAtAnotherAnchor asserts a reconcile from another anchor reseeds a missing hub-wide file.
+// TestCommand_ReconcileFromAPairAtAnotherAnchor asserts a reconcile from another anchor reseeds a missing hub-wide file.
 // It reads the file from the prime's own base directory.
 // The prime sits at "." and holds a non-template unit of the board module;
 // a read at <prime>/sub finds nothing and would seed the template only.
-func TestRunCLI_ReconcileFromAPairAtAnotherAnchor(t *testing.T) {
+func TestCommand_ReconcileFromAPairAtAnotherAnchor(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -36,7 +36,7 @@ func TestRunCLI_ReconcileFromAPairAtAnotherAnchor(t *testing.T) {
 
 	code, output := runFabric(t, filepath.Join(h.PairCodeWorktree(slug), "sub"), "reconcile")
 	if code != 0 {
-		t.Fatalf("RunCLI(reconcile) from the pair = %d; want 0\noutput: %s", code, output)
+		t.Fatalf("Execute(reconcile) from the pair = %d; want 0\noutput: %s", code, output)
 	}
 
 	boardYAML, err := os.ReadFile(boardPath)

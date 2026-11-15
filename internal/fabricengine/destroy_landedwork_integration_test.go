@@ -30,6 +30,23 @@ func landedWorkRepo(t *testing.T) (repo, remote string) {
 	return repo, remote
 }
 
+// TestReplayRequest_RefusesABoardWorktreeOfNoHub pins the ownership predicate that guards a Bolt replay's reset.
+// A worktree named BoardDirName under a directory that no weft repo of a hub registers is not the hub's board,
+// so the gate refuses it with an ownership refusal.
+func TestReplayRequest_RefusesABoardWorktreeOfNoHub(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	repo, _ := landedWorkRepo(t)
+	foreign := filepath.Join(t.TempDir(), "elsewhere", BoardDirName)
+	if err := os.MkdirAll(filepath.Dir(foreign), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	gitkit.Git(t, repo, "worktree", "add", "-b", "foreign-board", foreign)
+
+	assertRefusalCheck(t, checkPathRequest(replayRequest(foreign, ownedBoardWorktree(), nil)), CheckOwnership)
+}
+
 func TestOwnedUntrackedTrackedAt_RefusesATargetTheIndexTracksOrTheCommitDoesNot(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

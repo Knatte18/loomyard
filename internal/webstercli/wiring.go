@@ -63,7 +63,7 @@ var wireModule = cliwire.Module{
 // A ResolveMode refusal never reaches wire: it is a resolution verdict, not a wiring choice.
 // So mode has only two reachable values here, and no Mode value exists for the refusal.
 //
-// preflight.Wired is never consulted: it asks whether fabric is wired for this worktree.
+// Whether fabric is wired for this worktree is never consulted:
 // That is a per-worktree question, not a mode-selection one.
 // It is false in three healthy hub locations that run webster verbs.
 // They are an ordinary worktree, an unpaired sibling, and a worktree whose paired sibling was removed.

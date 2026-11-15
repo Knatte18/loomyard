@@ -1,6 +1,5 @@
 // arm.go holds loomcli's run arming, which returns the shedverbs.Spec a verb runs with.
-// Arm resolves the working directory itself, and it is the only entry point in loom's subtree that does so.
-// ArmAt takes an already-resolved Location and run-id instead, and the lym shed path enters through it.
+// ArmAt takes an already-resolved Location and run-id, and the lym shed path enters through it.
 // The shed path leaves the --parent value empty, so it writes no provenance record.
 
 package loomcli
@@ -475,14 +474,6 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 	}
 
 	return spec
-}
-
-// Arm resolves the shed spec for a loom verb from cwd, for loom's own subtree.
-// It arms a fresh receiver and returns the spec, not the receiver,
-// so a caller that needs the receiver's other fields must wire its own receiver.
-func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
-	c := newLoomCLI()
-	return c.arm(cwd, verb, args)
 }
 
 // ArmAt resolves the shed spec for a verb at a Location the caller has already resolved.

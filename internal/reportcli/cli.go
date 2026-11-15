@@ -1,4 +1,4 @@
-// cli.go builds the cobra command tree for the report module and the RunCLI and RunCLIIn seams that run it.
+// cli.go builds the cobra command tree for the report module.
 // The convergence verb validates its flags, resolves the prime's geometry once, and hands it to the report engine.
 // The prime resolution every verb shares lives here too.
 
@@ -7,7 +7,6 @@ package reportcli
 import (
 	"context"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -206,18 +205,4 @@ func primeGeometry(location *lymcwd.Location) (reportengine.Geometry, error) {
 		RecordsBranch: fabricengine.RecordsBranchName(parentBranch),
 		BoardBranch:   boardBranch,
 	}, nil
-}
-
-// RunCLI is the public seam for the report module CLI, delegating to clihelp.Execute for output capture.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the report module CLI with cwd carried in the execution context.
-// An empty cwd reads the process cwd instead, because lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

@@ -29,6 +29,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+// archivedPlanWebsterDirs returns the webster subdirectory of every archive-* directory under planDir.
+// A subdirectory is listed whether or not it exists, since a rotation with no record to move creates none.
+func archivedPlanWebsterDirs(planDir string) []string {
+	entries, err := os.ReadDir(planDir)
+	if err != nil {
+		return nil
+	}
+	archivePrefix := planparser.ArchiveDirName("", "")
+	var dirs []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), archivePrefix) {
+			dirs = append(dirs, filepath.Join(planDir, e.Name(), reworkPriorWebster))
+		}
+	}
+	return dirs
+}
+
 // planInnerProducer is a caller-settable shedengine.ShedProducer stand-in recording its call count.
 type planInnerProducer struct {
 	outcome shedengine.Outcome
@@ -288,8 +305,8 @@ func TestNewPlanDirRotator(t *testing.T) {
 		if len(webster.dests) != 1 || webster.dests[0] != wantDest || webster.planFilesAtCall[0] != 2 {
 			t.Errorf("webster archive calls = %v with %v plan files at call; want one call to %q with both plan files still in place", webster.dests, webster.planFilesAtCall, wantDest)
 		}
-		if got := ArchivedPlanWebsterDirs(planDir); len(got) != 1 || got[0] != wantDest {
-			t.Errorf("ArchivedPlanWebsterDirs() = %v; want [%s]", got, wantDest)
+		if got := archivedPlanWebsterDirs(planDir); len(got) != 1 || got[0] != wantDest {
+			t.Errorf("archivedPlanWebsterDirs() = %v; want [%s]", got, wantDest)
 		}
 	})
 

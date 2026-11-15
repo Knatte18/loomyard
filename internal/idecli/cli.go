@@ -13,7 +13,6 @@ package idecli
 
 import (
 	"fmt"
-	"io"
 	"maps"
 	"os"
 
@@ -169,18 +168,4 @@ func slugVerbCommand(l **lymcwd.Location, name, short string, slugOptional bool,
 			return nil
 		},
 	}
-}
-
-// RunCLI is the public seam for the ide module CLI.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the ide module CLI in cwd, or in the process working directory when cwd is empty.
-// An empty cwd takes its own branch, since lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

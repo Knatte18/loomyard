@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
@@ -21,12 +22,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate drives "run" from a temporary directory that is not a git repository at all -- lymcwd.Resolve fails there, so preflight.HubPresent folds it into standalone mode rather than refusing outright.
-// It redirects the standalone state directory to a temporary one via XDG_STATE_HOME (the per-OS variable standalonestate.Derive reads on Linux, the platform this test runs on) before calling RunCLIIn, since without that redirect the real Derive would resolve into the operator's actual home directory.
+// TestCommand_StandalonePreRun_ReachesRunsOwnValidationGate drives "run" from a temporary directory.
+// That directory is not a git repository at all.
+// lymcwd.Resolve fails there, so preflight.HubPresent folds it into standalone mode rather than refusing outright.
+// It redirects the standalone state directory to a temporary one via XDG_STATE_HOME before calling clihelp.ExecuteIn.
+// XDG_STATE_HOME is the per-OS variable standalonestate.Derive reads on Linux, the platform this test runs on.
+// Without that redirect the real Derive would resolve into the operator's actual home directory.
 // The redirect is why this test is not marked t.Parallel(): t.Setenv panics under a parallel test.
 //
 // The seeded plan carries a card missing a required field, so once the pre-run itself succeeds "run" reaches its own automatic plan-validation gate (run.go's own Long documents this as "the automatic plan-validation gate") and refuses there -- proving the pre-run got all the way through wiring rather than dying earlier with a cwd-resolution error, which would produce a completely different message.
-func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
+func TestCommand_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
 	tiergate.Require(t, 2)
 	target := t.TempDir()
 	stateHome := t.TempDir()
@@ -47,17 +52,17 @@ func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
 	tearDownStandaloneReed(t, target, stateDir, hash8)
 
 	var out strings.Builder
-	exitCode := RunCLIIn(target, &out, []string{"run"})
+	exitCode := clihelp.ExecuteIn(Command(), target, &out, []string{"run"})
 
 	if exitCode != 1 {
-		t.Fatalf(`RunCLIIn(%q, [run]) = %d; want 1, output: %s`, target, exitCode, out.String())
+		t.Fatalf(`ExecuteIn(%q, [run]) = %d; want 1, output: %s`, target, exitCode, out.String())
 	}
 	got := out.String()
 	if !strings.Contains(got, "plan validation refused this run") {
-		t.Errorf(`RunCLIIn(%q, [run]) output missing the plan-validation refusal; got: %q`, target, got)
+		t.Errorf(`ExecuteIn(%q, [run]) output missing the plan-validation refusal; got: %q`, target, got)
 	}
 	if strings.Contains(got, "not a git repository") || strings.Contains(got, "ErrNotAGitRepo") || strings.Contains(got, "ErrCwdOutsideAnchor") {
-		t.Errorf(`RunCLIIn(%q, [run]) output looks like a cwd-resolution failure, not the run verb's own validation gate; got: %q`, target, got)
+		t.Errorf(`ExecuteIn(%q, [run]) output looks like a cwd-resolution failure, not the run verb's own validation gate; got: %q`, target, got)
 	}
 }
 

@@ -1,4 +1,4 @@
-// addanchor.go places a new pair at a requested anchor, and settles a pair's anchor on a re-run of create.
+// addanchor.go places a new pair at a requested anchor.
 // A new pair's weft is forked at the fork point's anchor and moved to the requested anchor under a move record.
 // `Add` removes that record once the pair is wired there.
 
@@ -109,54 +109,4 @@ func stageNewMarker(weftPath, anchor string) error {
 		return fmt.Errorf("stage %s in %s: %w", lymcwd.AnchorFileName, weftPath, err)
 	}
 	return nil
-}
-
-// EnsureAnchor settles the anchor of the existing pair at pair for a re-run of a create.
-// A standing move record is recovered first.
-// An uncommitted move is undone and made again, and a committed one goes on to the wiring.
-// A failed recovery says to run `lym beam create <slug>` again.
-// A held move lock is refused with the message that names the change in progress.
-// An anchor equal to the pair's, or an empty one, rewires the pair's junctions and scratch link, which is idempotent.
-// Any other anchor is refused with the two commands that move the pair and then finish the create.
-// The record is removed here and no push is spawned, since the create spawns the pair's push next.
-func (t *Topology) EnsureAnchor(rec *Mutations, pair *lymcwd.Location, anchor string) error {
-	slug := pair.WorktreeName
-	weftPath := RecordsWorktreePath(pair, slug)
-	record, standing, err := ReadMoveRecord(weftPath)
-	if err != nil {
-		return err
-	}
-	if standing {
-		change, err := t.BeginAnchorChange(pair, record.B)
-		if err != nil {
-			return err
-		}
-		defer change.Close()
-		if _, err := change.Apply(rec); err != nil {
-			return fmt.Errorf("%w; run `lym beam create %s` again to finish the anchor change", err, slug)
-		}
-		if err := RemoveMoveRecord(weftPath); err != nil {
-			return err
-		}
-	}
-
-	current, err := lymcwd.NamedWorktree(pair.HubPath, slug)
-	if err != nil {
-		return err
-	}
-	if anchor != "" {
-		want, err := lymcwd.ValidateAnchorRel(anchor)
-		if err != nil {
-			return err
-		}
-		if filepath.Clean(want) != filepath.Clean(current.AnchorRel) {
-			return fmt.Errorf("the pair %s sits at the anchor %s, not %s; run `lym fabric anchor %s --set %s` to move it, then `lym beam create %s --anchor %s` again to finish the create",
-				slug, current.AnchorRel, want, slug, want, slug, want)
-		}
-	}
-	names, err := RepoWiredNames(current)
-	if err != nil {
-		return fmt.Errorf("load the wired names to wire %s: %w", slug, err)
-	}
-	return WireJunctionsWith(rec, current, slug, names)
 }

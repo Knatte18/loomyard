@@ -1,7 +1,8 @@
 // stencilseed_integration_test.go pins the root pre-run's stencil-seed path against real hubs.
 // stencilSeedTarget's hub-presence gate is pinned against two regressions:
 // a plain repository with no hub-level sibling must not be a seed target,
-// and the gate must not narrow to preflight.Wired, which would stop seeding real-hub cases that must seed.
+// and the gate must not narrow to whether fabric is wired for the worktree;
+// that would stop seeding real-hub cases that must seed.
 // seedStencilsAt is driven directly, since seedStencils is a no-op under testing.Testing().
 // Its first call seeds and commits both subtrees, and a second call writes nothing.
 // A command driven through the root leaves the hub unseeded under go test.
@@ -321,7 +322,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 		return
 	}
 
-	// These target rows pin preflight.HubPresent: a gate on preflight.Wired would fail every one of them.
+	// These target rows pin preflight.HubPresent: a gate on whether fabric is wired would fail every one of them.
 	targets := []struct {
 		name string
 		// cwd returns the directory to inject as the resolved cwd.
@@ -386,7 +387,7 @@ func TestSeedStencils_NoOpAndEnvelopeUnderRoot(t *testing.T) {
 	t.Chdir(hub.PrimeWorktree())
 
 	var out bytes.Buffer
-	code := run([]string{"board", "--board-path", hub.BoardDir(), "list"}, &out)
+	code := run([]string{"board", "--board-path", hub.BoardDir(), "list"}, &out, &out)
 	if code != 0 {
 		t.Fatalf("run([board --board-path ... list]) exit = %d; want 0; output: %s", code, out.String())
 	}

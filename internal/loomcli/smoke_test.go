@@ -4,7 +4,7 @@
 // It follows the smoke suite conventions of internal/reedcli.
 // It wires a real hub with hubforge.NewHub and resolves a real tmux binary from PATH or an override env var.
 // It skips the suite when the multiplexer is absent.
-// Every verb here runs the built cmd/lym binary as a genuine subprocess, never RunCLI in-process.
+// Every verb here runs the built cmd/lym binary as a genuine subprocess, never clihelp.Execute in-process.
 // "lym loom start" spawns its detached driver via os.Executable(), which resolves to the running binary,
 // so an in-process call would resolve it to the test binary, not a binary "loom drive" knows how to dispatch.
 //

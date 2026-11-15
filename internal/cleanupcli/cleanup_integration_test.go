@@ -1,4 +1,4 @@
-// cleanup_integration_test.go drives "lym cleanup" through RunCLIIn over a hubforge hub.
+// cleanup_integration_test.go drives "lym cleanup" through clihelp.ExecuteIn over a hubforge hub.
 // The hub is seeded with one leftover for every segment.
 
 package cleanupcli
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -76,7 +77,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	if _, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), h.Location, rels, "test: finished run", fabricengine.EnvSyncOptions()); err != nil || !committed {
 		t.Fatalf("commit the finished run: committed=%v err=%v", committed, err)
 	}
-	if _, err := fabricengine.PushAnchored(h.Location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
+	if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
 		t.Fatalf("push the finished run: %v", err)
 	}
 	runDir := shedrun.RunDir(h.Location, runSlug)
@@ -154,7 +155,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 
 	run := func(cwd string, args ...string) (envelope.Envelope, int) {
 		var out bytes.Buffer
-		code := RunCLIIn(cwd, &out, args)
+		code := clihelp.ExecuteIn(Command(), cwd, &out, args)
 		return envelope.Decode(t, out.String()), code
 	}
 
@@ -427,7 +428,7 @@ func TestCleanupVerb_ScratchSegmentSweepsTheAnchorOfASubpathHub(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := RunCLIIn(h.Location.AnchorPath(), &out, []string{"--apply"})
+	code := clihelp.ExecuteIn(Command(), h.Location.AnchorPath(), &out, []string{"--apply"})
 	applied := envelope.Decode(t, out.String())
 
 	if !applied.OK || code != 0 {

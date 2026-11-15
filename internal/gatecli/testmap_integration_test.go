@@ -810,7 +810,7 @@ func TestGateTestMap(t *testing.T) {
 					want = fmt.Sprintf(tt.want, startLivePass(t))
 				}
 				var out bytes.Buffer
-				code := RunCLIIn(tt.dir, &out, tt.args)
+				code := clihelp.ExecuteIn(Command(), tt.dir, &out, tt.args)
 				var envelope struct {
 					Error string `json:"error"`
 				}

@@ -1,4 +1,4 @@
-// cli.go builds the cobra command tree for the loom module and the RunCLI seam, which takes an io.Writer.
+// cli.go builds the cobra command tree for the loom module.
 // The parent "loom" command's pre-run resolves cwd into a *lymcwd.Location; wire builds the engine stack from it.
 // loom is hub-only: it has no standalone mode, because it commits its seed into a wired fabric.
 
@@ -509,24 +509,4 @@ Example:
 	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validatePartsCmd(), c.joinPartsCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.prContinueCmd(), c.samplerDoneCmd(), c.raddleProposeCmd(), c.raddleApproveCmd(), c.circlingCmd(), c.decisionCmd(), c.parentReviewCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
 
 	return parent
-}
-
-// RunCLI is the public seam for the loom module CLI.
-//
-// It delegates to clihelp.Execute with the cobra command tree.
-// All output, including cobra's error text, goes to out.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the loom module CLI in cwd, or in the process working directory when cwd is empty.
-// An empty cwd goes through clihelp.Execute.
-// Any other cwd is seeded into the execution context through clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory,
-// so an empty cwd must not reach clihelp.ExecuteIn.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

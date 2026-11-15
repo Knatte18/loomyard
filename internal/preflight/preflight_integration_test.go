@@ -7,7 +7,7 @@
 // It is a package preflight_test file, not an in-package test.
 // An in-package fixture test importing internal/hubforge would close a compile cycle:
 // internal/hubforge imports internal/fabriccli, and internal/preflight sits inside that dependency set.
-// Check, CheckResolved, Wired and HubPresent are exported, so the test needs no export_test.go shim.
+// Check, CheckResolved and HubPresent are exported, and export_test.go exposes Wired.
 
 package preflight_test
 
@@ -32,14 +32,14 @@ import (
 )
 
 // setupFixture builds a fully-configured real hub with fabric and junction setup.
-// It returns the hub and the slug for WireJunctions.
+// It returns the hub and the slug for WireJunctionsWith.
 func setupFixture(t *testing.T) (*hubforge.Hub, string) {
 	t.Helper()
 	return setupAnchoredFixture(t, ".")
 }
 
 // setupAnchoredFixture builds a fully-configured real hub anchored at anchor.
-// It returns the hub and the slug for WireJunctions.
+// It returns the hub and the slug for WireJunctionsWith.
 func setupAnchoredFixture(t *testing.T, anchor string) (*hubforge.Hub, string) {
 	t.Helper()
 
@@ -48,8 +48,8 @@ func setupAnchoredFixture(t *testing.T, anchor string) (*hubforge.Hub, string) {
 
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
 
-	if err := fabricengine.WireJunctions(h.Location, slug, []string{"_lym", lymdirs.DotLymDirName, "_extra"}); err != nil {
-		t.Fatalf("WireJunctions: %v", err)
+	if err := fabricengine.WireJunctionsWith(nil, h.Location, slug, []string{"_lym", lymdirs.DotLymDirName, "_extra"}); err != nil {
+		t.Fatalf("WireJunctionsWith: %v", err)
 	}
 
 	// The wired junctions materialize into the paired-sibling worktree's own git repo, where they start out untracked.
@@ -388,8 +388,10 @@ func TestCheckResolved_Failures(t *testing.T) {
 		linkFor func(h *hubforge.Hub, slug string) string
 	}{
 		{
-			name:    "Lym",
-			linkFor: func(h *hubforge.Hub, slug string) string { return fabricengine.CodeLymLink(h.Location, slug) },
+			name: "Lym",
+			linkFor: func(h *hubforge.Hub, slug string) string {
+				return filepath.Join(h.Location.HubPath, slug, h.Location.AnchorRel, lymdirs.LymDirName)
+			},
 		},
 		{
 			name: "Extra",

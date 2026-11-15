@@ -7,7 +7,7 @@
 // The gate closure's Passed/error trio and the verb's ok/findings-key trio each map onto one shared parityVerdict.
 // That lets a Stuck-vs-error mismatch be caught rather than collapsed onto a single "fail" side.
 // Both halves take told paths and construct no repository, spawn no process, use no real hub, or copy a fixture tree.
-// No test here calls RunCLIIn, so both stay tier 1.
+// No test here calls clihelp.ExecuteIn, so both stay tier 1.
 package loomcli
 
 import (

@@ -223,7 +223,7 @@
 // The index is never authoritative on its own.
 // The one exception is a commit made while warp's HEAD is unborn, as in a fresh `git init`.
 // That commit carries no trailer and no correspondence entry, since there is no warp SHA to name.
-// See `commitWeft`'s `warpHeadSHA`.
+// See `commitWeftLocked`'s `warpHeadSHA`.
 // Normal trailer and record behavior resumes on the first weft commit after warp's first commit.
 //
 // fabric never calls gitrepo's `StageAllAndCommit`, board's opt-in wildcard-stage exception;
@@ -248,11 +248,11 @@
 // This is accepted: the sole deployed repo, SANDBOX, is throwaway and re-cloned, so no upgrade path exists.
 //
 // A junction self-heals on the next `lym fabric clone`, `add` or reconcile, and it reports loudly until it does.
-// `WireJunctions` owns junction state outright.
+// `WireJunctionsWith` owns junction state outright.
 // `pathspec` is an operator-editable config value that `configsync` never silently overwrites.
 //
 // The wired junction set is not sourced from `pathspec` alone.
-// `WireJunctions` and `UnwireJunctions` operate over the name-set their caller passes.
+// `WireJunctionsWith` and `UnwireJunctions` operate over the name-set their caller passes.
 // See junctionnames.go's `junctionNames` and `WiredNames`.
 // Every caller builds that set from `structuralCommittedDirs`, `structuralNeverCommittedDirs` and the pair's `pathspec`.
 // The union is filtered against `HubReservedNames()`.
@@ -262,7 +262,7 @@
 // only the third piece, the pair's `pathspec`, comes from config.
 // A weft-backed optional module is wired with no `fabric` code change:
 // append its directory name to `template.yaml`'s `pathspec:` default,
-// and any worktree whose `fabric.yaml` picks up that default wires the junction on the next `WireJunctions` run.
+// and any worktree whose `fabric.yaml` picks up that default wires the junction on the next `WireJunctionsWith` run.
 // The pathspec asymmetry above applies:
 // an initialised worktree's existing `pathspec:` key is never widened automatically.
 // A structural directory has no such asymmetry.
@@ -383,7 +383,9 @@
 // The single-pusher lock file of `gitrepo.PushCoalesced` sits in a checkout's own git dir,
 // so `Fabric.Status` never reports it on either side.
 //
-// The read half of the `Snapshot:` trailer mechanism is `Fabric.snapshotWarpSHA(tag string) (string, error)`.
+// Production code reads no snapshot.
+// The `Snapshot:` trailer's one reader is `SnapshotWarpSHAForTest(f, tag)` in `export_test.go`.
+// Tests use it to check the write path over `scanWarpSHATrailers`.
 // It resolves a snapshot tag to the warp SHA recorded under it.
 // The SHA comes from the newest weft commit in topological order that carries a `Snapshot: <tag>` git trailer.
 // `SnapshotTrailerKey` and `snapshotTagPattern` in trailer.go define the trailer key and the tag grammar.
@@ -392,12 +394,10 @@
 // they would let a buggy or hostile tag inject a fake trailer line into the commit message.
 // The restriction is enforced on the write path only (`validateSnapshotTag`, called from `appendSnapshotTrailers`).
 //
-// `snapshotWarpSHA` scans the trailer history that `scanWarpSHATrailers` (index.go) builds for `RebuildIndex`:
+// `SnapshotWarpSHAForTest` scans the trailer history that `scanWarpSHATrailers` (index.go) builds for `RebuildIndex`:
 // one `git log --topo-order` pass, run fresh on every call, with no index of its own.
 // "Newest" means newest in topological order, where no commit is listed before one of its descendants.
 // `RebuildIndex`'s dedup applies the same rule, which keeps the two answers in agreement over the same history.
-// No snapshot index exists because a snapshot read is rare, a staleness check at a phase boundary,
-// so an index would only add a second cache-invalidation surface.
 // The `Snapshot` trailer is the sole source of truth.
 // Anything built on it is a rebuildable cache, as the correspondence index is.
 //
@@ -413,19 +413,13 @@
 // This is the validate-at-use posture `RebuildIndex` takes for its trailer values.
 // Skipping back to an older tagged commit would answer with an older baseline and under-report staleness.
 // Collapsing the answer to absent would conflate "never recorded" with "recorded, then rewritten".
-// Both drive the same consumer action.
-// A consumer reads the SHA via `snapshotWarpSHA`.
-// It checks `f.code.SHAExists(sha)`.
-// It calls `f.code.ChangedFilesSince(sha)` only if the SHA exists, treating a missing SHA as total staleness.
-// `ChangedFilesSince` already asks every caller to check `SHAExists` first.
 //
 // The reader is per-branch because it scans only the current weft branch's history:
-// a snapshot recorded on another branch reads as absent once a coordinated `Checkout` moves the pair onto that branch,
-// and the consumer regenerates from scratch, the safe failure direction.
+// a snapshot recorded on another branch reads as absent once a coordinated `Checkout` moves the pair onto that branch.
 // The correspondence index, by contrast, is a per-worktree file that survives a branch switch.
 // It could keep answering cross-branch.
 // `Checkout` therefore discards and rebuilds it through `refreshCorrIndexAfterSwitch`;
-// `snapshotWarpSHA` holds no state and stops seeing the other branch's commits.
+// `SnapshotWarpSHAForTest` holds no state and stops seeing the other branch's commits.
 //
 // The write half covers the case where no weft commit would otherwise land.
 // When `snapshotTags` is non-empty, `commitWeftLocked` (recordsgit.go) lands an **empty** weft commit.
@@ -476,7 +470,7 @@
 // The empty-commit rule has two exceptions.
 // An **unborn warp HEAD** drops the tags regardless of `snapshotTags`:
 // a snapshot's content is a warp SHA to record.
-// A bare `Snapshot:` trailer with no `Warp-SHA` sibling would force `snapshotWarpSHA` to handle a third state.
+// A bare `Snapshot:` trailer with no `Warp-SHA` sibling would force `SnapshotWarpSHAForTest` to handle a third state.
 // That state is "found the tag, but it has no baseline".
 // Normal trailer, tag and record behaviour resumes on the first `commitWeftLocked` call after warp's first commit.
 // An **unborn weft HEAD** is not an exception:
@@ -486,12 +480,10 @@
 // It skips the weft side entirely, tags or not, as `Fabric.Commit`'s doc comment describes.
 //
 // Every no-op tagged run appends a weft commit with no content.
-// A consumer checking staleness in a tight loop would therefore grow weft history without bound,
-// and the cache-free readers (`snapshotWarpSHA`, `RebuildIndex`) scan that whole history on every call.
+// Tagged runs in a tight loop would therefore grow weft history without bound,
+// and `RebuildIndex`, the cache-free reader, scans that whole history on every call.
 // This cost is accepted: the intended pattern is one tagged commit per regeneration at a phase boundary, not a poll.
 // The scan is a single `git log` over a history that stays small under that pattern.
-// A polling consumer should check `ChangedFilesSince` first and tag only when it regenerates;
-// the trailer history cannot distinguish a regeneration from a poll.
 //
 // Cross-clone sharing follows from where the trailers live:
 // `Snapshot:` and `Warp-SHA` trailers are part of weft's versioned history.
@@ -1106,7 +1098,7 @@
 // Every other rule is in `IsReadOnlyCommand`'s comment.
 // `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to substring-match.
 // A caller like `preflight.CheckResolved` thus switches on `HealthReason.Cause` instead of parsing prose.
-// `PushAnchored(l, opts, lockWait)` and `PushPairAnchored(l, opts, lockWait)` are vocabulary-neutral entry points.
+// `PushPairAnchored(l, opts, lockWait)` is a vocabulary-neutral entry point.
 // `MergeStateActive(l)`, `MidMerge(l)` and `RequireDrivableWorktree(l)` are too.
 // Each takes `l` and is reachable the same way `CommitAnchoredPaths` is.
 // `MidMerge(l)` answers whether the pair carries an unfinished merge and which paths are still conflicted.
@@ -1118,12 +1110,11 @@
 // `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all.
 // The invariant's scan matches the bare token inside an identifier, so the published name is itself the leak,
 // and a caller that must refuse fabric's own checkouts before driving topology has no other way in.
-// `PushAnchored` and `PushPairAnchored` are synchronous and rebase-free:
-// the first pushes the records side only;
-// the second pushes the code side and then the records side;
+// `PushPairAnchored` is synchronous and rebase-free:
+// it pushes the code side and then the records side;
 // in the hub's prime it pushes the records side only,
 // and it reports a code branch with unpushed commits in `PushResult.CodePushSkipped`;
-// and both run under the weft-side absorbing push lock that `CoalescePushBothAt` also holds.
+// and it runs under the weft-side absorbing push lock that `CoalescePushBothAt` also holds.
 // `lockWait` bounds only the wait for that lock:
 // `StatusPushLockWait` is the bound `commit-records` passes;
 // it is also the default of the wait `Remove` gives a push of the pair for the pair's teardown lock;
@@ -1385,23 +1376,6 @@
 // It does so only when every commit it drops is reachable from HEAD.
 // The rewrite runs under a lease on the tip the ancestry read saw.
 //
-// **The board seed-commit drop.** `dropSeedCommits(rec, req, repo, upstream, ahead)` brings Bolt up to date.
-// It applies when seed commits sit ahead of a moved upstream.
-// It resets the hub's own Bolt checkout to its upstream with `reset --keep`.
-// It then replays the commits of `ahead` that are not seed commits, oldest first, through a plain `cherry-pick`.
-// The cherry-pick skips a change upstream already carries and refuses a commit empty from the start.
-// Its request, built by `boardDropRequest`, declares the board dir's parent as container and the board dir as target.
-// Force is always false.
-// Ownership is `ownedBoardWorktree`, which holds when the target is named by `BoltDirName`.
-// It also requires a weft repo of the same hub to register the target as a linked worktree.
-// That weft repo is a sibling whose name `WeftWarpSlug` admits, so no other directory with that name can be reset.
-// Dirtiness is `dirtyTrackedOn(touched)`, which refuses only on a tracked change on a path the ahead commits changed.
-// A pending board write elsewhere is carried across.
-// A replay that fails aborts the cherry-pick and restores the tip the drop started from.
-// Only commits `IsSeedCommit` admits are dropped, and only in a hub's own Bolt checkout;
-// a non-seed commit is replayed or, when its replay fails, kept at its original tip.
-// It appends `commits_dropped` once HEAD observably moved.
-//
 // **Pull-first.** `Bolt.PullThenCommitWritten(writes, rec)` brings Bolt up to date with its upstream.
 // It then runs an ordered list of writes and commits each write's paths as its own commit.
 // `CommitWritten` commits the same way without pulling first,
@@ -1412,7 +1386,8 @@
 // an example is an output a stale local render manifest still names after a pull removed it.
 // A Bolt with no upstream writes without pulling.
 // One only behind is fast-forwarded (`repo_advanced`).
-// One with seed commits ahead of a moved upstream has them dropped by the executor above.
+// One with seed commits ahead of a moved upstream has them dropped by the Bolt replay.
+// The replay appends `commits_dropped` once HEAD observably moved.
 // When Bolt cannot be brought up to date, no write runs and the result's `Skipped` names why.
 // The reasons are `fetch_failed`, `diverged` and `dirty`.
 // `diverged` means a non-seed commit ahead of a moved upstream.
@@ -1429,7 +1404,7 @@
 // That covers the detached coalesced push (`coalescePushSides`) and `PushWarpRebaseFreeAt`.
 // It also covers the anchored pushes and Bolt's pushes.
 // The side is `code`, `records` (a weft) or `bolt`, and the push is always the rebase-free `gitrepo.PushRebaseFree`.
-// `Fabric.PushWeft` and `PushWarpAt` stay on `gitrepo.PushCoalesced` and have no production caller.
+// `Fabric.PushWeft` stays on `gitrepo.PushCoalesced` and has no production caller.
 //
 // Before a weft or a task branch with an upstream is pushed, one `git ls-remote` asks origin for the branch.
 // A branch origin no longer has is not pushed, so a parked push never recreates a branch landed or deleted elsewhere.
@@ -2292,7 +2267,7 @@
 // or the abort would destroy it from a stale answer.
 // The rest of the mutating surface is unguarded and safe for stated reasons rather than by omission:
 // the push family pushes a committed branch tip an uncommitted merge has not moved;
-// its members are `PushWeft`, `PushWarpAt`, `CoalescePushBothAt` and `SpawnDetachedPush`;
+// its members are `PushWeft`, `CoalescePushBothAt` and `SpawnDetachedPush`;
 // `Cleanup` cannot touch a checked-out weft branch and a mid-merge pair is materialized by definition;
 // `Prune` only acts on a pair whose warp worktree is already gone;
 // `Reconcile`, the junction verbs and the hook installer touch filesystem links, never an index or a ref;

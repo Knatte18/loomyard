@@ -3,20 +3,19 @@
 // It runs the resolve-backed validation pass layered on top of internal/planparser's pure checks.
 //
 // planglyph derives no path of its own and never imports internal/lymcwd.
-// Its two entry points, ValidateFormat and Validate, take worktreeRoot as planparser.Validate(plan, worktreeRoot) does:
+// Its validation entry points take worktreeRoot as planparser.Validate(plan, worktreeRoot) does:
 // quarry.Open needs an absolute root, so the root is told rather than derived.
 //
 // planglyph composes internal/planparser's pure checks rather than reimplementing any of them.
 // No check exists in both packages.
-// ValidateFormat calls planparser.ValidateFormat and Validate calls planparser.Validate;
+// The format gate calls planparser.ValidateFormat and the approval gate calls planparser.Validate;
 // each converts every finding,
 // and each appends the same resolve-backed findings via one shared resolvePass and then planGatePass.
 // ValidateDispatch shares resolvePass but never runs planGatePass, whose checks run at the plan gates only.
-// ValidateFormatAfter is the plan gates' form for a plan some of whose cards webster already ran.
-// Those are the cards the index's ValidateFormat is told are done.
+// The gate for a plan some of whose cards webster already ran is the index's ValidateFormat, told those cards as done.
 // It returns ValidateDispatch's answer with those cards completed, plus planGatePass over the cards not done,
 // so a done card's landed work is never reported as a defect of the plan.
-// With no done card it is ValidateFormat.
+// With no done card it is the whole-plan format gate.
 //
 // A caller's answer is a three-way split.
 // Pure findings come from planparser and are stamped SeverityBlocking.
@@ -124,8 +123,7 @@
 //   - redundant-file-target (blocking) — planGatePass:
 //     a card lists a file self glyph beside a member glyph that resolves into that file.
 //     A partitioned member's candidates are its declarations, so a file holding one of them counts.
-//     It runs at the plan gates only: ValidateFormat, ValidateFormatAfter, Validate and so ValidateRework.
-//     ValidateFormatAfter runs it over its cards not done, and ValidateDispatch never runs it.
+//     It runs at the plan gates only, over the cards not done, and ValidateDispatch never runs it.
 //     A check whose verdict depends on state the run itself changes runs at the plan gates only;
 //     dispatch re-validates a plan against a tree the run has already changed.
 //   - resign-interface-method (blocking) — planGatePass:
@@ -169,7 +167,7 @@
 //     and its reference inside a later card's Edit code stays delete-before-reference's.
 //   - delete-target-gone (informational) — downgradeGoneDeleteTargets:
 //     a Delete target of a pending card that is already absent.
-//     Only ValidateDispatch reports it, and so ValidateFormatAfter once a batch is begun or done.
+//     Only ValidateDispatch reports it, and so the plan gate once a batch is begun or done.
 //     It replaces the blocking path-missing or glyph-not-found finding for that target.
 //   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles:
 //     a declaration that fails to parse, or two draft handles that canonicalize to the same glyph.

@@ -1,5 +1,5 @@
 // coverage_guard_test.go is the cross-consumer registry coverage guard: it unions every recipe
-// consumer's own RecipeEngines() and asserts every name in shedrecipe.Names() is reached by that
+// consumer's own engine set and asserts every name in shedrecipe.Names() is reached by that
 // union or is explicitly allowlisted. This guard, not any one consumer, is where a new registry
 // key's coverage is now checked -- a consumer holding a full copy of this assertion would fail on
 // the other consumer's engines, the same bug, doubled.
@@ -15,14 +15,15 @@ package shedrecipe_test
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/testkit/shedcheckkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // coverageGuardAllowedUnreachableEngines names the registry engines this guard tolerates as
-// unreferenced by any consumer's RecipeEngines() union. Stub joins this allowlist now that the
+// unreferenced by any consumer's engine set. Stub joins this allowlist now that the
 // last stubbed row -- Webster-Review -- is real: no loom row reaches Stub any more, and the engine
 // stays registered because internal/shedrecipe's registry is generic Shed machinery shared by
 // reference with a future product's producer list rather than loom's private property.
@@ -32,19 +33,24 @@ var coverageGuardAllowedUnreachableEngines = map[string]bool{
 	"Stub":     true,
 }
 
-// reachedEngines returns the union of every recipe consumer's RecipeEngines().
+// reachedEngines returns the union of every recipe consumer's engine set.
 func reachedEngines() map[string]bool {
 	reached := make(map[string]bool)
 	for _, engine := range loomrecipe.RecipeEngines() {
 		reached[engine] = true
 	}
-	for _, engine := range battenrecipe.RecipeEngines() {
+	for _, engine := range shedcheckkit.RecipeEngines(recipes.BattenRecipe) {
 		reached[engine] = true
 	}
 	return reached
 }
 
-// TestCoverageGuard asserts every name in shedrecipe.Names() is in the union of loomrecipe.RecipeEngines() and battenrecipe.RecipeEngines(), or is on coverageGuardAllowedUnreachableEngines, and carries the guard's own drift direction: an allowlist entry naming an engine that is no longer registered, or that some consumer now does reach, fails rather than lingering.
+// TestCoverageGuard asserts every name in shedrecipe.Names() is reached or allowlisted.
+// Reached means in the union of loomrecipe.RecipeEngines() and the batten recipe's engines.
+// Allowlisted means on coverageGuardAllowedUnreachableEngines.
+// It also guards the allowlist's drift.
+// An entry naming an engine that is no longer registered fails rather than lingering.
+// So does an entry naming an engine that some consumer now does reach.
 //
 //testtiming:keep pins that every registered engine is reached or allowlisted, and that the allowlist does not drift, a guard that fires on a new registry key
 func TestCoverageGuard(t *testing.T) {
@@ -62,7 +68,7 @@ func TestCoverageGuard(t *testing.T) {
 			if reached[name] || coverageGuardAllowedUnreachableEngines[name] {
 				continue
 			}
-			t.Errorf("shedrecipe.Names() has %q, which no consumer's RecipeEngines() reaches and which is not in coverageGuardAllowedUnreachableEngines", name)
+			t.Errorf("shedrecipe.Names() has %q, which no consumer's engine set reaches and which is not in coverageGuardAllowedUnreachableEngines", name)
 		}
 	})
 
@@ -73,7 +79,7 @@ func TestCoverageGuard(t *testing.T) {
 				t.Errorf("coverageGuardAllowedUnreachableEngines names %q, which shedrecipe.Names() no longer registers", name)
 			}
 			if reached[name] {
-				t.Errorf("coverageGuardAllowedUnreachableEngines names %q, which a consumer's RecipeEngines() now reaches -- remove it from the allowlist", name)
+				t.Errorf("coverageGuardAllowedUnreachableEngines names %q, which a consumer's engine set now reaches -- remove it from the allowlist", name)
 			}
 		}
 	})

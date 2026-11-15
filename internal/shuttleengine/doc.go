@@ -611,8 +611,7 @@
 // and the post-paste confirm keeps its exact-text reading, so it fails with ErrSentTextInDraft.
 // A session that stays held fails the send with a SessionBusyError wrapping ErrSessionBusy.
 // The error names the reading and ends with the pane's last lines;
-// its Draft field is true when the hold is text in the input box;
-// IsDraftHold also reports it for the two paste refusals below.
+// its Draft field is true when the hold is text in the input box.
 // Run.Send and the gated wait loop's own send each hold the run's send lock for the whole send.
 // The whole send is the idle wait, typing and delivery check.
 // So an in-process send and a gate re-prompt on one run type one after the other, never at once;

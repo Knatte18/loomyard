@@ -72,7 +72,7 @@ func TestHubOrchs_ListsWiredBeamsAndSkipsUnwiredPairs(t *testing.T) {
 			t.Fatalf("MarkBeam(%q) = (%v, %v); want (true, nil)", slug, marked, err)
 		}
 	}
-	unwiredLym := fabricengine.CodeLymLink(h.Location, "unwired")
+	unwiredLym := filepath.Join(h.Location.HubPath, "unwired", h.Location.AnchorRel, lymdirs.LymDirName)
 	if err := fslink.Remove(unwiredLym); err != nil {
 		t.Fatalf("Remove(%q): %v", unwiredLym, err)
 	}

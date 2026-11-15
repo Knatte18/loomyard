@@ -16,12 +16,6 @@ type clock interface {
 	Sleep(d time.Duration)
 }
 
-// realClock is the production clock: real wall-clock time, real sleeping.
-type realClock struct{}
-
-func (realClock) Now() time.Time        { return time.Now() }
-func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
-
 // pollTick is the fixed interval the poll loop waits between gather calls.
 const pollTick = 1 * time.Second
 

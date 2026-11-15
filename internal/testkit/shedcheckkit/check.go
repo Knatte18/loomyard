@@ -2,7 +2,7 @@
 // It walks OnDone and OnStuck routing the way `shedengine.Run` does,
 // and it reports every structural defect rather than stopping at the first.
 
-package shedcheck
+package shedcheckkit
 
 import (
 	"fmt"

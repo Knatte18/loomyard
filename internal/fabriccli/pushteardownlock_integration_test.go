@@ -17,11 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_PushSkippedWhileTeardownLockHeld holds a pair's teardown lock exclusive, as a removal would.
+// TestCommand_PushSkippedWhileTeardownLockHeld holds a pair's teardown lock exclusive, as a removal would.
 // It runs `lym fabric push` from the pair with a new records commit.
 // The add verb's own pair push runs in the foreground here (see testmain_test.go).
 // Origin therefore holds the pair's weft branch before the commit.
-func TestRunCLI_PushSkippedWhileTeardownLockHeld(t *testing.T) {
+func TestCommand_PushSkippedWhileTeardownLockHeld(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 	traceSinkMu.RLock()
@@ -30,7 +30,7 @@ func TestRunCLI_PushSkippedWhileTeardownLockHeld(t *testing.T) {
 	const slug = "push-skipped-pair"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
-		t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
+		t.Fatalf("Execute(add) = %d; want 0\noutput: %s", code, output)
 	}
 	weftBranch := fabricengine.RecordsBranchName(slug)
 	tipBefore := gitkit.RevParse(t, h.RecordsBare, weftBranch)
@@ -48,7 +48,7 @@ func TestRunCLI_PushSkippedWhileTeardownLockHeld(t *testing.T) {
 
 	code, output := runFabric(t, h.PairCodeWorktree(slug), "push")
 	if code != 0 {
-		t.Fatalf("RunCLI(push) = %d; want 0\noutput: %s", code, output)
+		t.Fatalf("Execute(push) = %d; want 0\noutput: %s", code, output)
 	}
 	result := envelope.RequireOK(t, output)
 	if skipped, _ := result.Raw["push_skipped"].(string); skipped == "" {

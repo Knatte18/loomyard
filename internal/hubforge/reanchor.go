@@ -76,7 +76,7 @@ func ReanchorPair(tb testing.TB, h *Hub, slug, anchor string) {
 	if err != nil {
 		tb.Fatalf("ReanchorPair(%s): read the new anchor: %v", slug, err)
 	}
-	if err := fabricengine.WireJunctions(newLoc, slug, names); err != nil {
+	if err := fabricengine.WireJunctionsWith(nil, newLoc, slug, names); err != nil {
 		tb.Fatalf("ReanchorPair(%s): wire the junctions at %q: %v", slug, anchor, err)
 	}
 

@@ -1,6 +1,7 @@
 // bench_cli_test.go holds the benchmarks for the board CLI commands.
 //
-// They drive boardcli.RunCLI, whose cwd-authoritative config resolution calls lymcwd.Resolve (a `git rev-parse`).
+// They drive the board command through clihelp.Execute.
+// Its cwd-authoritative config resolution calls lymcwd.Resolve (a `git rev-parse`).
 // The seeded temp dir must therefore be a real git repo, so these benchmarks spawn git.
 // The git-init helper below uses exec.Command, a token the tier-purity guard bans from untagged test files.
 //
@@ -18,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -62,8 +64,8 @@ func BenchmarkUpsert(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if code := boardcli.RunCLI(io.Discard, args); code != 0 {
-					b.Fatalf("RunCLI upsert exit %d", code)
+				if code := clihelp.Execute(boardcli.Command(), io.Discard, args); code != 0 {
+					b.Fatalf("Executeupsert exit %d", code)
 				}
 			}
 		})
@@ -84,8 +86,8 @@ func BenchmarkGet(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if code := boardcli.RunCLI(io.Discard, args); code != 0 {
-					b.Fatalf("RunCLI get exit %d", code)
+				if code := clihelp.Execute(boardcli.Command(), io.Discard, args); code != 0 {
+					b.Fatalf("Executeget exit %d", code)
 				}
 			}
 		})
@@ -106,8 +108,8 @@ func BenchmarkList(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if code := boardcli.RunCLI(io.Discard, args); code != 0 {
-					b.Fatalf("RunCLI list exit %d", code)
+				if code := clihelp.Execute(boardcli.Command(), io.Discard, args); code != 0 {
+					b.Fatalf("Executelist exit %d", code)
 				}
 			}
 		})

@@ -1,8 +1,9 @@
-// exec.go holds the clihelp package's exit state, its RunCLI seam, and its RunE wrappers and root-execution helpers.
+// exec.go holds the clihelp package's exit state and its in-process Execute seam.
+// It also holds the RunE wrappers and root-execution helpers.
 
-// Package clihelp provides the shared cobra infrastructure used by cmd/lym and every module's RunCLI seam.
+// Package clihelp provides the shared cobra infrastructure used by cmd/lym and every CLI module.
 // It holds the per-invocation exit state.
-// Its seam adapter wires a cobra command tree into an io.Writer-based call contract.
+// Its Execute and ExecuteIn seams run a module's command tree in process over an io.Writer.
 // It also holds the RunE wrapper for legacy handlers and the helpers that wrap Cobra errors in the JSON envelope.
 //
 // It owns the global --json flag (InstallJSONHelp).
@@ -196,7 +197,7 @@ func RunRoot(cmd *cobra.Command, out io.Writer) int {
 	return RunRootCtx(context.Background(), cmd, out)
 }
 
-// Execute is the RunCLI seam the modules use to run a command tree in process.
+// Execute runs a module's command tree in process, as tests drive a module without the lym root.
 // It writes stdout and stderr both into out, so in-process tests capture all output from one buffer.
 // It sets args and delegates to RunRoot for the context, the silence flags, and the JSON error wrapping.
 func Execute(cmd *cobra.Command, out io.Writer, args []string) int {

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -35,18 +36,18 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLI(&buf, []string{"down"})
+		clihelp.Execute(Command(), &buf, []string{"down"})
 	})
 
 	var out bytes.Buffer
-	if code := RunCLI(&out, []string{"up"}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"up"}); code != 0 {
 		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
 	}
 
 	launch := "pwsh -NoExit -Command Write-Host ready"
 	first := addStrand(t, launch, "--name", "first")
 	out.Reset()
-	if code := RunCLI(&out, []string{"remove", first}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"remove", first}); code != 0 {
 		t.Fatalf("remove = %d; want 0, output: %s", code, out.String())
 	}
 
@@ -55,11 +56,11 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 	// A fresh split should survive a reconcile; a corpse-bound strand would not.
 	// up reconciles, and the strand must still be live.
 	out.Reset()
-	if code := RunCLI(&out, []string{"up"}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"up"}); code != 0 {
 		t.Fatalf("post-add up = %d; want 0, output: %s", code, out.String())
 	}
 	out.Reset()
-	if code := RunCLI(&out, []string{"status"}); code != 0 {
+	if code := clihelp.Execute(Command(), &out, []string{"status"}); code != 0 {
 		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
 	}
 	strand, found := statusStrand(t, out.Bytes(), second)

@@ -11,17 +11,18 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_AwaitForksResolvesFromTheRecordsSibling runs two verbs from a subdirectory of a pair's records sibling.
+// TestCommand_AwaitForksResolvesFromTheRecordsSibling runs two verbs from a subdirectory of a pair's records sibling.
 // The hub is anchored at a subpath.
 // await-forks passes the resolution gate and reaches its own check of the calling strand.
 // state takes the strict cwd gate and is refused with the outside-anchor error.
 // It is not parallel: it sets the strand-name environment variable.
-func TestRunCLI_AwaitForksResolvesFromTheRecordsSibling(t *testing.T) {
+func TestCommand_AwaitForksResolvesFromTheRecordsSibling(t *testing.T) {
 	tiergate.Require(t, 1)
 
 	hub := hubforge.NewHub(t, "backend")
@@ -43,8 +44,8 @@ func TestRunCLI_AwaitForksResolvesFromTheRecordsSibling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			if code := RunCLIIn(siblingDir, &out, tt.args); code != 1 {
-				t.Errorf("RunCLIIn(%v) = %d; want 1; output: %s", tt.args, code, out.String())
+			if code := clihelp.ExecuteIn(Command(), siblingDir, &out, tt.args); code != 1 {
+				t.Errorf("ExecuteIn(%v) = %d; want 1; output: %s", tt.args, code, out.String())
 			}
 			envelope := parseSingleEnvelope(t, out.Bytes())
 			if got, _ := envelope["error"].(string); envelope["ok"] != false || !strings.Contains(got, tt.wantErr) {

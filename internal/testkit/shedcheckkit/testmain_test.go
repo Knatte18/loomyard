@@ -1,7 +1,7 @@
 // testmain_test.go runs the package's tests under tmuxkit.Main.
 // Their temp files live in the process run directory and go with it.
 
-package shedcheck
+package shedcheckkit
 
 import (
 	"os"

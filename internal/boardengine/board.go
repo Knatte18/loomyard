@@ -435,13 +435,6 @@ func (b *Board) ListTasksFull() ([]Task, error) {
 	return store.ListTasksFull(), nil
 }
 
-// Promote makes the entry identified by idOrSlug a task under the write lock.
-// An entry that is already a task is returned unchanged without a write.
-func (b *Board) Promote(idOrSlug any) (Task, error) {
-	result, err := b.PromoteTo(idOrSlug, "", nil)
-	return result.Task, err
-}
-
 // PromoteResult is what a promote wrote.
 // It holds the task, the siblings the write created, and a warning about its decision record.
 type PromoteResult struct {

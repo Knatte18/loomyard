@@ -1,4 +1,4 @@
-// status_integration_test.go runs "lym beam status" through RunCLIIn over a hubforge hub with one local beam.
+// status_integration_test.go runs "lym beam status" through clihelp.ExecuteIn over a hubforge hub with one local beam.
 
 package beamcli_test
 
@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/beamcli"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -66,7 +67,7 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 	t.Cleanup(func() { _ = watch.Release() })
 
 	var out bytes.Buffer
-	beamcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"status"})
+	clihelp.ExecuteIn(beamcli.Command(), h.PairCodeWorktree("b"), &out, []string{"status"})
 
 	env := envelope.Decode(t, out.String())
 	if !env.OK {
@@ -147,7 +148,7 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 		t.Fatalf("WriteFile(check.json) = %v; want nil", err)
 	}
 	out.Reset()
-	beamcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"status"})
+	clihelp.ExecuteIn(beamcli.Command(), h.PairCodeWorktree("b"), &out, []string{"status"})
 	checks, _ := envelope.Decode(t, out.String()).Raw["result"].(map[string]any)["adopt_checks"].([]any)
 	if len(checks) != 1 {
 		t.Fatalf("lym beam status = %s; want one adopt_checks item", out.String())
@@ -169,7 +170,7 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 		t.Fatalf("Write(adopt record) = %v; want nil", err)
 	}
 	out.Reset()
-	beamcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"status"})
+	clihelp.ExecuteIn(beamcli.Command(), h.PairCodeWorktree("b"), &out, []string{"status"})
 	body, _ := envelope.Decode(t, out.String()).Raw["result"].(map[string]any)
 	section, _ := body["adopt"].(map[string]any)
 	if section["state"] != adoptrecord.StateStopped || section["step"] != adoptrecord.StepDeploy {
@@ -184,7 +185,7 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 		t.Fatalf("WriteFile(adopt.json) = %v; want nil", err)
 	}
 	out.Reset()
-	beamcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"status"})
+	clihelp.ExecuteIn(beamcli.Command(), h.PairCodeWorktree("b"), &out, []string{"status"})
 	failed := envelope.Decode(t, out.String())
 	body, _ = failed.Raw["result"].(map[string]any)
 	if dobbies, _ := body["dobbies"].([]any); failed.OK || !strings.Contains(out.String(), "lym adopt --discard") || len(dobbies) != 2 {

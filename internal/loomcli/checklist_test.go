@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -1309,8 +1310,8 @@ func TestChecklistCmd_ReportsAResolutionFailureOnTheEnvelope(t *testing.T) {
 	t.Parallel()
 
 	var out bytes.Buffer
-	if code := RunCLIIn(t.TempDir(), &out, []string{"checklist"}); code != 1 {
-		t.Errorf("RunCLIIn(checklist) outside a worktree = %d; want 1", code)
+	if code := clihelp.ExecuteIn(Command(), t.TempDir(), &out, []string{"checklist"}); code != 1 {
+		t.Errorf("ExecuteIn(checklist) outside a worktree = %d; want 1", code)
 	}
 	var envelope map[string]any
 	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {

@@ -79,12 +79,13 @@
 // When present it points at `pattern/<the entry's own name>.md`, and that file exists.
 // Every file under `pattern/` is named by exactly one entry.
 //
-// Check enforces the shape on an fs.FS holding the root, and the real file is checked under `go test`.
+// A format checker in the package's tests enforces the shape on an fs.FS holding the root.
+// The real file is checked under `go test`.
 // It caps the overview at MaxOverviewBytes and an entry's rule text at MaxEntryTextChars.
 // The rule text, as EntryRuleText cuts it, is the line without its bullet, name, `(test)` and background link,
 // so the room for the wording does not depend on the entry's name or tail.
-// Check also reports an entry that continues onto a second line, an empty overview and an overview with no entry.
-// MaxOverviewBytes is a hard cap that Check enforces on any tree, and its finding names the bytes over it.
+// It also reports an entry that continues onto a second line, an empty overview and an overview with no entry.
+// MaxOverviewBytes is a hard cap that it enforces on any tree, and its finding names the bytes over it.
 // HeadroomBytes is a line set below the cap, and Headroom binds growth to it:
 // given the overview at a base and at the head, it fails when the head is longer than both the base and the line.
 // It names the smallest cut that passes: the head size minus the larger of the base size and the line.
@@ -99,5 +100,5 @@
 // EntryBullet returns the bullet an entry has as it stands.
 // PATTERN text states rules for the code only:
 // it never says how an agent, a run, a stencil or a workflow uses it.
-// Nothing in the render path calls Check, so Directive inlines a malformed overview verbatim.
+// The render path runs no format check, so Directive inlines a malformed overview verbatim.
 package pattern

@@ -262,10 +262,10 @@ func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 
 	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
-		t.Fatalf("snapshotWarpSHA() error = %v", err)
+		t.Fatalf("SnapshotWarpSHAForTest() error = %v", err)
 	}
 	if got != warpHEAD {
-		t.Errorf("snapshotWarpSHA() = %q; want %q", got, warpHEAD)
+		t.Errorf("SnapshotWarpSHAForTest() = %q; want %q", got, warpHEAD)
 	}
 }
 

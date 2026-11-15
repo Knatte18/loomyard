@@ -1,7 +1,8 @@
-// Package shedcheck is an authoring-time structural analysis of an assembled shedengine producer graph.
+// Package shedcheckkit is an authoring-time structural analysis of an assembled shedengine producer graph.
 // It walks the OnDone/OnStuck routing the way shedengine.Run would, without calling a producer.
 // It reports every structural defect it finds.
-// It imports internal/shedengine and the standard library, and nothing else.
+// It also reports the engine set a recipe file's rows name.
+// It imports internal/shedengine, internal/shedbuild and the standard library, and nothing else.
 //
 // # Nothing in production calls Check
 //
@@ -59,7 +60,7 @@
 // A duplicate Name resolves to its first occurrence, as shedengine.findProducer's linear first-match scan does.
 // The shadowed later row is therefore reported as unreachable, and Check emits no duplicate-specific kind.
 // shedengine.validate() rejects a duplicate Name with its own message,
-// so a caller who sees only shedcheck's diagnosis should not read "unreachable" as the row's actual defect.
+// so a caller who sees only shedcheckkit's diagnosis should not read "unreachable" as the row's actual defect.
 //
 // # One perch mis-wiring Check cannot catch
 //
@@ -72,4 +73,4 @@
 //
 // Check never reads ProducerDef.Segment and never calls a producer.
 // It reads only Name, OnDone, and OnStuck off each entry.
-package shedcheck
+package shedcheckkit

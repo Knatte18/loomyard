@@ -1,4 +1,4 @@
-// cleanup_integration_test.go drives "lym batten cleanup" through RunCLIIn over a hubforge hub:
+// cleanup_integration_test.go drives "lym batten cleanup" through clihelp.ExecuteIn over a hubforge hub:
 // the prime-only refusal, the dry run and the applied removal with its records commit.
 // The push is spawned, and the test binary's spawn forks nothing.
 // It stays a white-box "package battencli" test, like the other integration files here.
@@ -11,6 +11,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -35,7 +36,7 @@ func stringsOf(t *testing.T, value any) []string {
 func runCleanup(t *testing.T, cwd string, args ...string) (string, int) {
 	t.Helper()
 	var out bytes.Buffer
-	code := RunCLIIn(cwd, &out, append([]string{"cleanup"}, args...))
+	code := clihelp.ExecuteIn(Command(), cwd, &out, append([]string{"cleanup"}, args...))
 	return out.String(), code
 }
 
@@ -52,7 +53,7 @@ func TestCleanupIntegration_RefusesOutsideThePrimeThenDryRunsThenRemovesAndPushe
 	if _, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), h.Location, rels, "test: finished run", fabricengine.EnvSyncOptions()); err != nil || !committed {
 		t.Fatalf("commit the finished run: committed=%v err=%v", committed, err)
 	}
-	if _, err := fabricengine.PushAnchored(h.Location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
+	if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
 		t.Fatalf("push the finished run: %v", err)
 	}
 

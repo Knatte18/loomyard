@@ -1,5 +1,5 @@
 // configcli_integration_test.go holds the end-to-end tests of configcli.
-// They drive the real fabriccli.RunCLI over a hubforge.CopyHub fixture.
+// They drive the real fabric command through clihelp.Execute over a hubforge.CopyHub fixture.
 
 package configcli
 
@@ -64,7 +64,8 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("lymcwd.Resolve(%q): %v", codeWorktreePath, err)
 		}
 
-		// A task session's own edit syncs through fabriccli.RunCLIIn, which runs without a parent and so passes the role guard.
+		// A task session's own edit syncs through clihelp.ExecuteIn on the fabric command.
+		// That command runs without a parent, and so passes the role guard.
 		t.Setenv(agentname.StrandNameEnv, "ly:"+slug+":webster")
 
 		// loom is per-worktree, so this exercises the fabric-sync path.
@@ -75,7 +76,7 @@ func TestConfigOverRealHub(t *testing.T) {
 
 		// sync calls a detached spawnPush that cannot run in-process, so the injected sync commits instead.
 		injectedSync := func(w io.Writer) int {
-			return fabriccli.RunCLIIn(codeWorktreePath, w, []string{"commit"})
+			return clihelp.ExecuteIn(fabriccli.Command(), codeWorktreePath, w, []string{"commit"})
 		}
 
 		var out bytes.Buffer
@@ -189,7 +190,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			before := readChecked()
 
 			var out bytes.Buffer
-			if code := RunCLIIn(row.cwd, &out, args); code != row.wantCode {
+			if code := clihelp.ExecuteIn(Command(), row.cwd, &out, args); code != row.wantCode {
 				t.Fatalf("lym config %s = %d; want %d; output: %s", strings.Join(args, " "), code, row.wantCode, out.String())
 			}
 			after := readChecked()
@@ -211,7 +212,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		headBefore := boardHead(t, boardDir)
 
 		var out bytes.Buffer
-		if code := RunCLIIn(primeWorktreePath, &out, []string{"gate", "--layer", "machine", "--set", "tier_parallel.tier0=8"}); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), primeWorktreePath, &out, []string{"gate", "--layer", "machine", "--set", "tier_parallel.tier0=8"}); code != 0 {
 			t.Fatalf("lym config gate --layer machine --set tier_parallel.tier0=8 = %d; want 0; output: %s", code, out.String())
 		}
 		if data, err := os.ReadFile(configengine.MachineFile(boardDir, "gate")); err != nil || string(data) != "tier_parallel:\n    tier0: \"8\"\n" {
@@ -303,7 +304,7 @@ func TestConfigOverRealHub(t *testing.T) {
 	for _, row := range rows {
 		t.Run("hub-wide "+row.module+" --set commits in the Bolt checkout", func(t *testing.T) {
 			var out bytes.Buffer
-			if code := RunCLIIn(primeWorktreePath, &out, []string{row.module, "--set", row.set}); code != 0 {
+			if code := clihelp.ExecuteIn(Command(), primeWorktreePath, &out, []string{row.module, "--set", row.set}); code != 0 {
 				t.Fatalf("lym config %s --set %s = %d; output: %s", row.module, row.set, code, out.String())
 			}
 
@@ -466,7 +467,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		for _, refusal := range refusals {
 			var out bytes.Buffer
-			if code := RunCLIIn(refusal.cwd, &out, append([]string{"reconcile"}, refusal.args...)); code != 1 {
+			if code := clihelp.ExecuteIn(Command(), refusal.cwd, &out, append([]string{"reconcile"}, refusal.args...)); code != 1 {
 				t.Errorf("reconcile from %s = %d; want 1; output: %s", refusal.name, code, out.String())
 			}
 			assertJSONErrContains(t, out.String(), refusal.wantErr)
@@ -491,7 +492,7 @@ func TestConfigOverRealHub(t *testing.T) {
 				headBefore := boardHead(t, boardDir)
 
 				var out bytes.Buffer
-				if code := RunCLIIn(primeWorktreePath, &out, []string{"reconcile", "--layer", "default", "--apply"}); code != 1 {
+				if code := clihelp.ExecuteIn(Command(), primeWorktreePath, &out, []string{"reconcile", "--layer", "default", "--apply"}); code != 1 {
 					t.Fatalf("reconcile --layer default --apply into a read-only dir = %d; want 1; output: %s", code, out.String())
 				}
 				assertJSONErrContains(t, out.String(), "reconcile:")

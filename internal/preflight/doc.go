@@ -42,8 +42,8 @@
 // HubPresent asks whether the hub-level directory a write targets exists, and it is the stencil seed gate for cmd/lym.
 // cmd/lym's never-block-a-command contract differs from a CLI choosing how to wire itself,
 // so the seed gate keeps its own predicate rather than sharing ResolveMode's.
-// Wired asks the narrower question whether fabric is wired for this worktree;
-// it is the per-worktree fabric-readiness question a composing orchestrator asks, and not the mode trigger.
+// fabricengine.Ready asks the narrower question whether fabric is wired for this worktree;
+// it is the per-worktree fabric-readiness question, and not the mode trigger.
 // ResolveMode is the mode-selection trigger every standalone-capable CLI consumes:
 // it selects hub mode when a hub exists for this location and standalone mode when one does not.
 // It refuses when Resolve could not answer at all.
@@ -54,16 +54,16 @@
 // So a HubPresent-only trigger would start a standalone session there.
 // That session would relocate a live hub's state into the per-OS state directory.
 //
-// Mode selection cannot key on Wired.
-// fabricengine.Ready, which Wired calls, probes the paired sibling of the current worktree rather than the hub,
-// so Wired is false at the Bolt checkout, in an unpaired sibling, and in a worktree whose pair was removed.
+// Mode selection cannot key on fabricengine.Ready.
+// It probes the paired sibling of the current worktree rather than the hub,
+// so it is false at the Bolt checkout, in an unpaired sibling, and in a worktree whose pair was removed.
 // These are three healthy hub situations that run producer verbs.
-// Keying mode selection on Wired would route all three to standalone mode.
+// Keying mode selection on it would route all three to standalone mode.
 // That would relocate a live hub's state to the per-OS standalone state directory.
 // Keying on HubPresent's board-level stat, as HubPresent and ResolveMode do, gives a damaged hub hub mode.
 // It then fails loudly at the point of use.
 // A plain downloaded git repository lands in standalone, because it has no board-level lym directory beside it.
 //
-// The stencil seed gate cannot key on Wired for the same reason:
-// narrowing it to Wired would stop the seed in all three healthy hub situations above.
+// The stencil seed gate cannot key on fabricengine.Ready for the same reason:
+// narrowing it to that probe would stop the seed in all three healthy hub situations above.
 package preflight

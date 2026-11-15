@@ -1,6 +1,6 @@
 // finding.go declares the Finding value type and its Kind discriminator, the vocabulary Check reports its results in.
 
-package shedcheck
+package shedcheckkit
 
 import "fmt"
 

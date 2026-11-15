@@ -23,12 +23,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunCLI_WeftSkipPushScenario runs the push and sync checks over one hub.
+// TestCommand_WeftSkipPushScenario runs the push and sync checks over one hub.
 // It runs serially: t.Setenv("FABRIC_SKIP_PUSH", "1") panics under t.Parallel,
 // and the env var is process-global state.
 // The steps run in this order, because both rewrite the weft placeholder file,
 // and each commit must differ from the last.
-func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
+func TestCommand_WeftSkipPushScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
@@ -53,7 +53,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 
 		code, output := runFabric(t, h.PrimeWorktree(), "push")
 		if code != 0 {
-			t.Errorf("RunCLI push returned %d; want 0", code)
+			t.Errorf("Execute push returned %d; want 0", code)
 			t.Logf("output: %s", output)
 		}
 
@@ -82,7 +82,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 
 		code, output := runFabric(t, h.PrimeWorktree(), "sync")
 		if code != 0 {
-			t.Fatalf("RunCLI(sync) = %d; want 0\noutput: %s", code, output)
+			t.Fatalf("Execute(sync) = %d; want 0\noutput: %s", code, output)
 		}
 
 		result := envelope.RequireOK(t, output)
@@ -103,7 +103,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 		// In a task pair, sync hands the detached child both sides, one push_spawned entry each.
 		const slug = "sync-both-sides-pair"
 		if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
-			t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
+			t.Fatalf("Execute(add) = %d; want 0\noutput: %s", code, output)
 		}
 		pairLym := filepath.Join(h.PairRecordsSibling(slug), lymdirs.LymDirName)
 		if err := os.MkdirAll(pairLym, 0o755); err != nil {
@@ -115,7 +115,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 
 		code, output := runFabric(t, h.PairCodeWorktree(slug), "sync")
 		if code != 0 {
-			t.Fatalf("RunCLI(sync) = %d; want 0\noutput: %s", code, output)
+			t.Fatalf("Execute(sync) = %d; want 0\noutput: %s", code, output)
 		}
 
 		if got := pushSpawnedTargets(envelope.RequireOK(t, output)); len(got) != 2 {
@@ -147,7 +147,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 			code, output := runFabric(t, h.PrimeWorktree(), "add", tt.slug)
 			fabriccli.SetPairPushForTest(previous)
 			if code != 0 {
-				t.Fatalf("%s: RunCLI(add) = %d; want 0\noutput: %s", tt.name, code, output)
+				t.Fatalf("%s: Execute(add) = %d; want 0\noutput: %s", tt.name, code, output)
 			}
 			result := envelope.RequireOK(t, output)
 

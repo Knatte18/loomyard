@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -74,11 +75,11 @@ func TestSmokeWarmPath(t *testing.T) {
 	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLIIn(worktree, &buf, []string{"down"})
+		clihelp.ExecuteIn(Command(), worktree, &buf, []string{"down"})
 	})
 
 	var out bytes.Buffer
-	if code := RunCLIIn(worktree, &out, []string{"up"}); code != 0 {
+	if code := clihelp.ExecuteIn(Command(), worktree, &out, []string{"up"}); code != 0 {
 		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
 	}
 	guid := addStrandIn(t, worktree, smokeReapLaunchCmd(), "--name", "warm-strand")
@@ -94,7 +95,7 @@ func TestSmokeWarmPath(t *testing.T) {
 		}
 
 		var statusOut bytes.Buffer
-		if code := RunCLIIn(worktree, &statusOut, []string{"status"}); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), worktree, &statusOut, []string{"status"}); code != 0 {
 			t.Fatalf("status = %d; want 0, output: %s", code, statusOut.String())
 		}
 		var statusResult map[string]any
@@ -208,7 +209,7 @@ func TestSmokeWarmPath(t *testing.T) {
 		})
 
 		var attachOut bytes.Buffer
-		if code := RunCLIIn(worktree, &attachOut, []string{"attach"}); code == 0 {
+		if code := clihelp.ExecuteIn(Command(), worktree, &attachOut, []string{"attach"}); code == 0 {
 			t.Fatalf("warm attach with an unreadable reed.json = 0; want a failure, output: %s", attachOut.String())
 		}
 		unreadable := envelopeError(t, attachOut.Bytes())
@@ -235,12 +236,12 @@ func TestSmokeWarmPath(t *testing.T) {
 		}
 
 		var downOut bytes.Buffer
-		if code := RunCLIIn(worktree, &downOut, []string{"down"}); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), worktree, &downOut, []string{"down"}); code != 0 {
 			t.Fatalf("down = %d; want 0, output: %s", code, downOut.String())
 		}
 
 		var coldOut bytes.Buffer
-		if code := RunCLIIn(worktree, &coldOut, []string{"attach"}); code == 0 {
+		if code := clihelp.ExecuteIn(Command(), worktree, &coldOut, []string{"attach"}); code == 0 {
 			t.Fatalf("cold attach with the same bad config = 0; want a refusal, output: %s", coldOut.String())
 		}
 		refusal := envelopeError(t, coldOut.Bytes())

@@ -1,6 +1,5 @@
 // lifecycle_test.go tests the lifecycle ops' planning seams: the parts that decide what would run.
 // It needs no live tmux server.
-// planUpLaunches checks that Up never launches anything.
 // planResumeLaunches covers three states:
 // server dead, server up after a CLI restart, and a single strand's pane died.
 // Any real-tmux round trip (ensureServerAndSessionLocked, and Up/Resume/Down/Status themselves) is
@@ -362,23 +361,6 @@ func TestStripIdentityEnv_DropsNameParentAndRunMarkOnly(t *testing.T) {
 	want := []string{"LYM_PARENTAL=keep", "PATH=/bin"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("stripIdentityEnv(%v) = %v, want %v", env, got, want)
-	}
-}
-
-func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
-	tiergate.Require(t, 0)
-	tables := [][]Strand{
-		nil,
-		{{GUID: "a", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
-		{
-			{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
-			{GUID: "b", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}},
-		},
-	}
-	for _, strands := range tables {
-		if got := planUpLaunches(strands); got != nil {
-			t.Errorf("planUpLaunches(%+v) = %v, want nil (Up never launches a strand command)", strands, got)
-		}
 	}
 }
 

@@ -1,5 +1,4 @@
 // cli.go defines the cobra command tree for the selfreport module.
-// It also holds RunCLI, the seam that runs the tree in process.
 
 // Package selfreportcli provides the cobra command tree for filing LoomYard bugs and enhancements as GitHub issues.
 // The tree is reachable as `lym selfreport create`.
@@ -26,7 +25,7 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "selfreport",
 		Short: "self-report a LoomYard bug or enhancement to lym's own repo on GitHub",
-		// ArbitraryArgs lets GroupRunE handle unknown subcommands when this group is the cobra root, as in RunCLI.
+		// ArbitraryArgs lets GroupRunE handle unknown subcommands when this group is the cobra root, as under clihelp.Execute.
 		Args: cobra.ArbitraryArgs,
 		RunE: clihelp.GroupRunE,
 	}
@@ -64,11 +63,6 @@ Examples:
 	cmd.AddCommand(createCmd)
 
 	return cmd
-}
-
-// RunCLI runs the selfreport command tree on args in process, writing its output to out.
-func RunCLI(out io.Writer, args []string) int {
-	return clihelp.Execute(Command(), out, args)
 }
 
 // runCreate runs the create subcommand for title and writes the result to out.

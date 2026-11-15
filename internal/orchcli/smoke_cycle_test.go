@@ -1,7 +1,10 @@
 // smoke_cycle_test.go drives one full handoff cycle against a real Claude Code session in a real reed strand: start, one turn that launches a background task, a manual cycle, and the assertions that the handoff was written, the session was cleared and the resume prompt was typed.
 // It also records, without failing, the two questions only a live session answers: whether a background task's completion notification survives `/clear`, and whether the session's `SendMessage` address does.
 //
-// Like the loomcli smoke tests it drives the real built cmd/lym binary as a subprocess, never RunCLI in-process, because `lym beam start` spawns a detached `lym orch watch` from os.Executable(), which must never be this test binary (Live-Substrate Spawn Observability Invariant).
+// Like the loomcli smoke tests, it drives the real built cmd/lym binary as a subprocess.
+// It never runs the orch command in-process.
+// `lym beam start` spawns a detached `lym orch watch` from os.Executable(), which must never be this test binary.
+// This is the Live-Substrate Spawn Observability Invariant.
 // The one in-process call is BeamUp, whose watcher spawn is a no-op under `go test`, so the test starts the built binary's watcher itself.
 // The threshold is set far above anything the session can reach so the manual `lym orch refresh` is the only trigger;
 // the threshold-triggered path is covered by the watcher's unit cases.

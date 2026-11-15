@@ -49,11 +49,6 @@ var (
 	_ shuttleengine.SessionOpener  = (*Codex)(nil)
 )
 
-// New returns a Codex engine with the default redraw settle and no dirs, so it serves reading uses only.
-func New() *Codex {
-	return &Codex{submitRedrawSettleMS: defaultSubmitRedrawSettleMS, warn: logger.Warn, sandboxProbe: runSandboxProbe}
-}
-
 // NewFromConfig returns a Codex engine whose redraw settle is cfg.SubmitRedrawSettleMS.
 // It reads codex.yaml and its anchor from dirs.
 func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs) *Codex {

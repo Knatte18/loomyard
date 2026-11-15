@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -93,7 +94,7 @@ func TestArmAt_StartGuardRefusesBeforeAnyWrite(t *testing.T) {
 
 	t.Run("RunOnTheDirtySourceRefusesOnTheEnvelopeWithNoSeed", func(t *testing.T) {
 		var out bytes.Buffer
-		RunCLIIn(h.PrimeWorktree(), &out, []string{"run", slug})
+		clihelp.ExecuteIn(Command(), h.PrimeWorktree(), &out, []string{"run", slug})
 
 		envelope.RequireErr(t, out.String(), "README")
 		assertNoRunWritten(t, h.Location, slug)

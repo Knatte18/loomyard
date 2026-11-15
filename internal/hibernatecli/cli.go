@@ -1,11 +1,8 @@
 // cli.go builds the `lym hibernate` cobra command with its request, cancel and status verbs.
-// The RunCLI and RunCLIIn seams run that command with its output written to an io.Writer.
 
 package hibernatecli
 
 import (
-	"io"
-
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -172,18 +169,4 @@ Example:
 			})
 		},
 	}
-}
-
-// RunCLI runs the `lym hibernate` command with args, writes its output to out, and returns its exit code.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the `lym hibernate` command with cwd as its working directory.
-// An empty cwd reads the process directory instead, since seeding an empty directory into the context panics.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

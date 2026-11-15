@@ -584,22 +584,6 @@ func parentTipsReader(l *lymcwd.Location, parentBranch string) func(fetch bool) 
 	}
 }
 
-// mergeableTips returns the parent tips a Parent-Align would merge, with empty tips dropped.
-// It is the local tip alone when pushes are skipped, and the local tip and the upstream tip otherwise.
-func mergeableTips(tips fabricengine.ParentTips, pushSkipped bool) []string {
-	candidates := []string{tips.Local}
-	if !pushSkipped {
-		candidates = append(candidates, tips.Upstream)
-	}
-	var merged []string
-	for _, tip := range candidates {
-		if tip != "" {
-			merged = append(merged, tip)
-		}
-	}
-	return merged
-}
-
 // pauseCovered returns the parent lock store's Covered seam: whether the hub's pause record covers a slug at call time.
 // A geometry or record that cannot be read covers nothing, so a corrupt file never freezes the lock queue.
 func pauseCovered(l *lymcwd.Location) func(slug string) bool {

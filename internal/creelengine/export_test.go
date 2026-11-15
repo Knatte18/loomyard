@@ -1,5 +1,6 @@
 // export_test.go exposes the store internals the external tests drive.
-// It holds a callback that journals and then fails, and an injected journal write fault.
+// It holds the single-purpose post wrappers and a callback that journals and then fails.
+// It also holds an injected journal write fault.
 
 package creelengine
 
@@ -7,6 +8,26 @@ import "errors"
 
 // ErrAfterJournaling is what ReadThenFail returns once it has journaled the read.
 var ErrAfterJournaling = errors.New("creel: failed after journaling")
+
+// Post stores a message for receiver and returns its id.
+func (s *Store) Post(sender Sender, receiver, body string) (int64, error) {
+	posted, err := s.post(sender, receiver, body, PostOptions{})
+	return posted.ID, err
+}
+
+// PostWait stores a message for receiver and registers a wait for its reply, before any reply can arrive.
+func (s *Store) PostWait(sender Sender, receiver, body string) (int64, *Waiter, error) {
+	posted, err := s.post(sender, receiver, body, PostOptions{Wait: true})
+	return posted.ID, posted.Waiter, err
+}
+
+// PostInterrupt stores a message for receiver after stopping the receiver's running turn.
+// With wait set it also registers a wait for the reply.
+// It reports whether a running turn was stopped; a receiver with no running turn still gets the post.
+func (s *Store) PostInterrupt(sender Sender, receiver, body string, wait bool) (int64, bool, *Waiter, error) {
+	posted, err := s.post(sender, receiver, body, PostOptions{Wait: wait, Interrupt: true})
+	return posted.ID, posted.Interrupted, posted.Waiter, err
+}
 
 // ReadThenFail journals message id read by holder inside the store's locked section and then fails.
 // It stands in for a verb whose step after the journal write failed.

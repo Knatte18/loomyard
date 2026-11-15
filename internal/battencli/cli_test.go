@@ -137,19 +137,21 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 	}
 }
 
-// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lym batten" invocation succeeds outside a git repository.
+// TestCommand_GroupGuard_NoGitRepoNeeded asserts that a bare "lym batten" invocation succeeds outside a git repository.
 // It proves the PersistentPreRunE guard for cmd.Name() == "batten" fires before any cwd resolution.
-func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
+//
+//testtiming:keep a bare group exiting 0 outside a git repository; coverage of its blocks by other tests does not show an assertion of this
+func TestCommand_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()
 	var out bytes.Buffer
 	// An empty, non-nil slice: a nil one makes cobra read os.Args, which carries the test binary's own flags.
-	exitCode := RunCLIIn(dir, &out, []string{})
+	exitCode := clihelp.ExecuteIn(Command(), dir, &out, []string{})
 
 	if exitCode != 0 {
-		t.Errorf("RunCLIIn(%q, no args) = %d; want 0", dir, exitCode)
+		t.Errorf("ExecuteIn(%q, no args) = %d; want 0", dir, exitCode)
 	}
 }
 

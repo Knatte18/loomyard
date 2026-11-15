@@ -53,7 +53,7 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 	cmd := &cobra.Command{
 		Use:   "gate",
 		Short: "run the hub's test tiers inside the hub's gate-slot pool",
-		// ArbitraryArgs lets this group, as the cobra root of a standalone RunCLI, reach GroupRunE.
+		// ArbitraryArgs lets this group, as the cobra root of a standalone run, reach GroupRunE.
 		// Without it, cobra answers with its own unknown-command error.
 		Args: cobra.ArbitraryArgs,
 		RunE: clihelp.GroupRunE,
@@ -139,22 +139,6 @@ Examples:
 	}, seams))
 
 	return cmd
-}
-
-// RunCLI runs the gate command tree with args, writing to out, and returns its exit code.
-// It serves in-process test capture.
-func RunCLI(out io.Writer, args []string) int {
-	return clihelp.Execute(Command(), out, args)
-}
-
-// RunCLIIn runs the gate command tree with args, writing to out.
-// The verb resolves against cwd instead of the process's working directory, and it returns the exit code.
-// An empty cwd uses the process's working directory, since lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return RunCLI(out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
 
 // testRequest is one `lym gate test` invocation after flag parsing.

@@ -1,4 +1,4 @@
-// report_test.go tests Report's bookkeeping methods, AddFailure and Has.
+// report_test.go tests Report's bookkeeping method, AddFailure.
 // It also checks the invariant OK == (len(Failures) == 0), and it spawns no process.
 
 package preflight
@@ -47,44 +47,6 @@ func TestReport_AddFailure(t *testing.T) {
 			}
 			if r.OK != (len(r.Failures) == 0) {
 				t.Errorf("Report violates OK == (len(Failures) == 0): %+v", r)
-			}
-		})
-	}
-}
-
-func TestReport_Has(t *testing.T) {
-	tiergate.Require(t, 0)
-	tests := []struct {
-		name  string
-		r     Report
-		check CheckID
-		want  bool
-	}{
-		{
-			name:  "ZeroValueReport",
-			r:     Report{},
-			check: CheckGeometry,
-			want:  false,
-		},
-		{
-			name:  "RecordedCheckID",
-			r:     Report{Failures: []Failure{{Check: CheckJunction, Reason: "broken"}}},
-			check: CheckJunction,
-			want:  true,
-		},
-		{
-			name:  "UnrecordedCheckID",
-			r:     Report{Failures: []Failure{{Check: CheckJunction, Reason: "broken"}}},
-			check: CheckFabricSync,
-			want:  false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.r.Has(tt.check)
-			if got != tt.want {
-				t.Errorf("Report.Has(%q) = %v; want %v", tt.check, got, tt.want)
 			}
 		})
 	}

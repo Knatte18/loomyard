@@ -1,10 +1,9 @@
-// cli.go builds the cobra command for the adopt module and the RunCLI and RunCLIIn entry points that run it.
+// cli.go builds the cobra command for the adopt module.
 
 package adoptcli
 
 import (
 	"context"
-	"io"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -21,7 +20,7 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "adopt [<subject>...]",
 		Short: "take over beam projects, or root, and the runs under them from another machine",
-		// ArbitraryArgs lets RunCLI pass a subject to RunE, where cobra would reject it as an unknown command.
+		// ArbitraryArgs lets the command pass a subject to RunE, where cobra would reject it as an unknown command.
 		Args:        cobra.ArbitraryArgs,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Records this machine as the owner of each subject named, a beam or the word root, and
@@ -207,20 +206,4 @@ func adoptFields(result outcome) map[string]any {
 		fields["archives"] = command
 	}
 	return fields
-}
-
-// RunCLI runs the adopt command in-process with args and writes its output to out.
-// It runs from the process working directory and returns the exit code.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the adopt command in-process with args, writes its output to out, and returns the exit code.
-// An empty cwd reads the process working directory;
-// any other value is seeded into the execution context, because seeding an empty one panics.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

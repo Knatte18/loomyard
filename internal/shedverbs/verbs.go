@@ -22,7 +22,7 @@ import "github.com/spf13/cobra"
 // Verbs registers no flag beyond status's --watch and --interval, step's --full and goto's --to, and declares no
 // Args constraint of its own.
 //
-// This package exposes no Command()/RunCLI seam: it is not a CLI module and is not counted in the
+// This package exposes no Command(): it is not a CLI module and is not counted in the
 // CLI/Cobra Invariant's module tally.
 func Verbs(texts VerbTexts, spec *Spec) []*cobra.Command {
 	return []*cobra.Command{

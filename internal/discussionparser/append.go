@@ -35,41 +35,32 @@ type AddedDecision struct {
 	WithdrawnPattern string
 }
 
-// AppendDecision writes the `## Decisions` section.
-// When d.PatternChange or d.WithdrawnPattern is set, it also writes the `## PATTERN changes` section.
+// AppendDecisions adds every entry of ds, in order, at the end of the decision record's `## Decisions` section.
+// It then runs Validate over the result.
+//
+// The entries land after the section's last non-blank line.
+// The blank lines that separate the section from the next H2 keep separating it.
+// Every other byte of the record is unchanged.
+// The support log is read, never written.
+//
+// An entry that sets PatternChange or WithdrawnPattern also writes the `## PATTERN changes` section.
 // The section holds one bullet per entry ID, so a bullet it already holds for the change's ID is replaced in place.
 // Otherwise the bullet goes after the section's last bullet, and the section is created when the record has none.
 // The bullet carries the suffix ` — added after Discussion (<by>, <date>)`.
 // A bullet of the wrong shape comes back as a finding like any other.
-// With d.WithdrawnPattern set, it strikes that entry's bullet and keeps the section's heading.
+// With WithdrawnPattern set, it strikes that entry's bullet and keeps the section's heading.
 // It closes the entry with a `Withdraws:` line naming the ID, so the strike does not read as a dropped bullet.
 // A record with no bullet for that ID is an error wrapping ErrPatternBulletAbsent, and nothing is written.
 //
 // It reads the record at decisionRecordPath first; a missing file comes back as an error wrapping os.ErrNotExist,
 // so the caller can refuse with its own way forward.
-// An empty By, Title, Decision or Rationale, after trimming, and a record with no `## Decisions` heading are errors.
-// Neither error writes anything.
-//
-// AppendDecision adds d as the last entry of the decision record's `## Decisions` section.
-// It then runs Validate over the result.
-//
-// The entry lands after the section's last non-blank line.
-// The blank lines that separate the section from the next H2 keep separating it.
-// Every other byte of the record is unchanged.
-// The support log is read, never written.
+// The record is written once and Validate runs once over the result, so the batch lands whole or not at all.
+// An entry with an empty By, Title, Decision or Rationale after trimming is an error and nothing is written.
+// So is a record with no `## Decisions` heading.
+// An empty ds is an error.
 //
 // When Validate returns findings, the prior bytes are restored and the findings come back with a nil error.
 // When Validate returns an error, the prior bytes are restored and the error comes back.
-func AppendDecision(decisionRecordPath, supportLogPath string, d AddedDecision) ([]Finding, error) {
-	return AppendDecisions(decisionRecordPath, supportLogPath, []AddedDecision{d})
-}
-
-// AppendDecisions adds every entry of ds, in order, at the end of the record's `## Decisions` section.
-// An entry that sets PatternChange also gets its PATTERN bullet.
-// The record is written once and Validate runs once over the result, so the batch lands whole or not at all:
-// an empty field in any entry, or a record with no `## Decisions` heading, is an error and nothing is written,
-// and a finding or an error from Validate restores the prior bytes.
-// An empty ds is an error.
 func AppendDecisions(decisionRecordPath, supportLogPath string, ds []AddedDecision) ([]Finding, error) {
 	if len(ds) == 0 {
 		return nil, errors.New("no decision to append")
@@ -234,7 +225,8 @@ const checkAddedDecisionDropped = "added-decision-dropped"
 // Each finding's Detail names the entry's full heading and says to restore it from the record's history, since an added entry is never the writer's to remove.
 //
 // It then returns one pattern-change-dropped Finding per entry ID of an appended `## PATTERN changes` bullet some of versions holds for which record holds no appended bullet, in the same order and with a Detail that names the bullet and says to restore it.
-// The ID alone is the key, because AppendDecision replaces the bullet it finds for an ID with one carrying the new call's author and date.
+// The ID alone is the key.
+// AppendDecisions replaces the bullet it finds for an ID with one carrying the new call's author and date.
 // An ID a `Withdraws:` line of an added-decision entry of record names is no finding, since that call struck the bullet; such a line exempts the ID for good, so a bullet re-added after the withdrawal is not held to the record either.
 //
 // A record whose added-decision heading does not parse is one finding carrying the parse error, because the writer can fix it.

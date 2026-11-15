@@ -1,5 +1,4 @@
 // cli.go builds the drift cobra command and its verbs: capture, check, amend, defer, status and hidden capture-child.
-// It also holds the RunCLI and RunCLIIn entry points that run that command over an io.Writer.
 
 package driftcli
 
@@ -7,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"testing"
 	"time"
 
@@ -429,20 +427,4 @@ func readStatus(w *worktree) (any, error) {
 		result["capture"] = capture
 	}
 	return result, nil
-}
-
-// RunCLI runs the drift command over args, writes its output to out and returns the exit code.
-// It is the public entry point for the drift module CLI.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the drift command over args in the directory cwd, writes its output to out and returns the exit code.
-// An empty cwd reads the process's working directory;
-// any other value is seeded into the execution context, since seeding an empty directory panics.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

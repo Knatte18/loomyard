@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/reportengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -47,7 +48,7 @@ func TestReportVerbs_RefuseBadFlags(t *testing.T) {
 
 			// A temp directory is no git checkout, so only a refusal that precedes cwd resolution can name the flag.
 			var out bytes.Buffer
-			code := RunCLIIn(t.TempDir(), &out, append([]string{tt.verb}, tt.args...))
+			code := clihelp.ExecuteIn(Command(), t.TempDir(), &out, append([]string{tt.verb}, tt.args...))
 
 			if code != 1 {
 				t.Errorf("exit code = %d; want 1", code)

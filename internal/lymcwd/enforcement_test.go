@@ -661,7 +661,7 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 			}
 			f := file.AST(t, parser.ParseComments|parser.SkipObjectResolution)
 			bareIdent, bareLiteralOrComment, hostHit := fabricVocabularyHits(f)
-			if bareScope && !fabricvocab.SkipsBareCheck(dir) && fabricvocab.FailsBareCheck(dir, bareIdent, bareLiteralOrComment) {
+			if bareScope && !fabricvocab.SkipsBareCheck(dir) && failsBareCheck(dir, bareIdent, bareLiteralOrComment) {
 				fail(rel, "bare weft/warp token outside the owner set")
 			}
 			if hostScope && hostHit {
@@ -689,6 +689,16 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 		}
 	})
 	return failures, scanned
+}
+
+// failsBareCheck reports whether a file in dir fails the bare-token check, given its hits.
+// fabricvocab.ConfigsyncOwnerDir passes on a literal-or-comment-only hit and fails on an identifier hit.
+// Any other directory reaching it is not an owner, so it fails on either kind of hit.
+func failsBareCheck(dir string, bareIdent, bareLiteralOrComment bool) bool {
+	if dir == fabricvocab.ConfigsyncOwnerDir {
+		return bareIdent
+	}
+	return bareIdent || bareLiteralOrComment
 }
 
 // hostPhrases are the fabric-sense "host X" phrases fabric-vocabulary-rule polices, checked
@@ -859,7 +869,7 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 			if !bareLiteralOrComment {
 				t.Fatal("expected the literal/comment hit to be detected")
 			}
-			if fabricvocab.FailsBareCheck(fabricvocab.ConfigsyncOwnerDir, bareIdent, bareLiteralOrComment) {
+			if failsBareCheck(fabricvocab.ConfigsyncOwnerDir, bareIdent, bareLiteralOrComment) {
 				t.Error("configsync row must pass on a literal/comment-only hit")
 			}
 
@@ -868,7 +878,7 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 			if !identHit {
 				t.Fatal("expected the identifier hit to be detected")
 			}
-			if !fabricvocab.FailsBareCheck(fabricvocab.ConfigsyncOwnerDir, identHit, true) {
+			if !failsBareCheck(fabricvocab.ConfigsyncOwnerDir, identHit, true) {
 				t.Error("configsync row must still fail on an identifier hit")
 			}
 		})

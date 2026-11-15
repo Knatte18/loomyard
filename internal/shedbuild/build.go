@@ -26,8 +26,7 @@ import (
 // A recipe declaring `contract: loom` is checked for the loom contract before any registry lookup;
 // it is refused when it breaks the contract.
 //
-// Build runs no reachability, cycle, blind-gate, dangling-target or segment analysis;
-// it never calls internal/shedcheck.
+// Build runs no reachability, cycle, blind-gate, dangling-target or segment analysis.
 // A legitimately resumable graph starts mid-graph, so reachability from the entry is the wrong question at build time.
 // shedengine's own validation rejects dangling targets, duplicate names and cross-segment OnStuck before a run starts.
 //

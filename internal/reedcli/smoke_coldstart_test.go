@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
@@ -63,7 +64,7 @@ func TestSmokeColdStart(t *testing.T) {
 		deferHubRelease(t, worktree)
 		t.Cleanup(func() {
 			var buf bytes.Buffer
-			RunCLIIn(worktree, &buf, []string{"down"})
+			clihelp.ExecuteIn(Command(), worktree, &buf, []string{"down"})
 		})
 		return worktree
 	}
@@ -129,7 +130,7 @@ func TestSmokeColdStart(t *testing.T) {
 		worktree := coldWorktree(t, "cold-ifabsent")
 
 		var out bytes.Buffer
-		if code := RunCLIIn(worktree, &out, []string{"up"}); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), worktree, &out, []string{"up"}); code != 0 {
 			t.Fatalf("up = %d; want 0, output: %s", code, out.String())
 		}
 		matchedGUID := addStrandIn(t, worktree, smokeReapLaunchCmd(), "--name", "reopen-me")
@@ -147,7 +148,7 @@ func TestSmokeColdStart(t *testing.T) {
 		}
 
 		out.Reset()
-		if code := RunCLIIn(worktree, &out, []string{"status"}); code != 0 {
+		if code := clihelp.ExecuteIn(Command(), worktree, &out, []string{"status"}); code != 0 {
 			t.Fatalf("status = %d; want 0, output: %s", code, out.String())
 		}
 		var statusResult map[string]any
@@ -208,7 +209,7 @@ func TestSmokeColdStart(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		if code := RunCLIIn(worktree, &out, []string{"add", "--cmd", smokeReapLaunchCmd()}); code == 0 {
+		if code := clihelp.ExecuteIn(Command(), worktree, &out, []string{"add", "--cmd", smokeReapLaunchCmd()}); code == 0 {
 			t.Fatalf("cold add with an unreadable reed.json = 0; want a failure, output: %s", out.String())
 		}
 		unreadable := envelopeError(t, out.Bytes())

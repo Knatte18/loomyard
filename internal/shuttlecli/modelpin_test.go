@@ -34,15 +34,15 @@ const wantSpawnSiteCount = 15
 
 // spawnSiteOpeners recognises the two shapes a real-`claude` spawn takes in this package's smoke suite.
 // Each shape is paired with the bracket that closes its argument list.
-// A bare `RunCLI(` is this package's own seam for `lym shuttle run`.
-// A qualified `reedcli.RunCLI(` is a reed verb that spawns no provider, so the pattern does not match it.
-// The scan keeps a RunCLI call only when its argument list carries the "run" verb.
+// A `clihelp.Execute(Command(), ...` call runs this package's own command tree, including `lym shuttle run`.
+// A `clihelp.Execute(reedcli.Command(), ...` call is a reed verb that spawns no provider.
+// The scan keeps an Execute call only when its argument list carries the "run" verb.
 var spawnSiteOpeners = []struct {
 	name    string
 	pattern *regexp.Regexp
 	closer  byte
 }{
-	{"shuttlecli.RunCLI run verb", regexp.MustCompile(`(^|[^.\w])RunCLI\(`), ')'},
+	{"clihelp.Execute run verb", regexp.MustCompile(`clihelp\.Execute\(`), ')'},
 	{"shuttleengine.Spec literal", regexp.MustCompile(`shuttleengine\.Spec\{`), '}'},
 }
 
@@ -78,7 +78,7 @@ func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
 				if !ok {
 					t.Fatalf("%s: unbalanced %s at byte %d; the scan cannot be trusted", file, opener.name, match[0])
 				}
-				// A RunCLI call without the "run" verb starts no provider process, so the scan skips it.
+				// An Execute call without the "run" verb starts no provider process, so the scan skips it.
 				if opener.closer == ')' && !strings.Contains(argumentList, `"run"`) {
 					continue
 				}

@@ -1,6 +1,6 @@
 // smoke_test.go is the shared smoke-test harness for the smoke test files in this package.
 // It holds the helpers: binary discovery, live-tmux process and pane probes, transcript watching, and fixture wiring.
-// Those files drive the live-tmux behaviors through RunCLIIn against a real server.
+// Those files drive the live-tmux behaviors through clihelp.ExecuteIn against a real server.
 // Hermetic tests prove nothing on these paths:
 // tmux's real semantics show up only live: positional select-layout, silent split failures, corpse panes, and async kill-server.
 // claude's real transcript persistence does too.
@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -144,12 +146,21 @@ func socketAndSession(t *testing.T) (socket, session string) {
 	return socketAndSessionIn(t, "")
 }
 
-// socketAndSessionIn returns the socket and session names that `status` reports, run from cwd through RunCLIIn.
+// executeReedIn runs the reed command tree on args with cwd as its working directory.
+// An empty cwd runs on the process working directory, because clihelp.ExecuteIn panics on an empty directory.
+func executeReedIn(cwd string, out io.Writer, args []string) int {
+	if cwd == "" {
+		return clihelp.Execute(Command(), out, args)
+	}
+	return clihelp.ExecuteIn(Command(), cwd, out, args)
+}
+
+// socketAndSessionIn returns the socket and session names that `status` reports, run from cwd.
 // It also registers a cleanup that kills the tmux server on that socket.
 func socketAndSessionIn(t *testing.T, cwd string) (socket, session string) {
 	t.Helper()
 	var out bytes.Buffer
-	if code := RunCLIIn(cwd, &out, []string{"status"}); code != 0 {
+	if code := executeReedIn(cwd, &out, []string{"status"}); code != 0 {
 		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
 	}
 	var result map[string]any
@@ -249,7 +260,7 @@ func addStrandIn(t *testing.T, cwd, cmdStr string, extra ...string) string {
 	t.Helper()
 	var out bytes.Buffer
 	args := append([]string{"add", "--cmd", cmdStr}, extra...)
-	if code := RunCLIIn(cwd, &out, args); code != 0 {
+	if code := executeReedIn(cwd, &out, args); code != 0 {
 		t.Fatalf("add %v = %d; want 0, output: %s", extra, code, out.String())
 	}
 	var result map[string]any
@@ -743,7 +754,7 @@ func paneRootPID(t *testing.T, tmuxPath, socket, session, paneID string) int {
 func paneIDForStrandIn(t *testing.T, cwd, guid string) string {
 	t.Helper()
 	var out bytes.Buffer
-	if code := RunCLIIn(cwd, &out, []string{"status"}); code != 0 {
+	if code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"status"}); code != 0 {
 		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
 	}
 	strand, ok := statusStrand(t, out.Bytes(), guid)

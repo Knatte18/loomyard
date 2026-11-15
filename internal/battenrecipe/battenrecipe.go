@@ -20,7 +20,7 @@ import (
 // shedbuild.NewShed already names the offending row's zero-based index and name in every error it raises after decode.
 // The decoder keeps yaml line numbers, so no further position work is needed.
 //
-// New never calls shedbuild.Check, which is for authoring time only.
+// New runs no reachability check, which is for authoring time only.
 // A resumed run legitimately starts mid-graph, so reachability from the entry is the wrong question in production.
 //
 // New performs no nil-guard or absolute-path check of its own on any Env field:

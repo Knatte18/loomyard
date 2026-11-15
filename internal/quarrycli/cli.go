@@ -9,7 +9,6 @@ package quarrycli
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/spf13/cobra"
 
@@ -74,22 +73,4 @@ Examples:
 
 	cmd.AddCommand(newTOCCmd(rootFn), newGlyphsCmd(rootFn), newResolveCmd(rootFn), newExpandCmd(rootFn))
 	return cmd
-}
-
-// RunCLI runs the quarry command tree with args, writes its output to out, and returns the exit code.
-// It resolves the repository root from the process working directory.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the quarry command tree with args, writes its output to out, and returns the exit code.
-// The group resolves the repository root from cwd.
-// A non-empty cwd is seeded into the execution context through clihelp.ExecuteIn;
-// an empty cwd reads the process working directory through clihelp.Execute.
-// The branch exists because lymcwd.WithCwd panics on an empty directory, so ExecuteIn cannot take an empty cwd.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

@@ -1,6 +1,12 @@
 // parity_test.go asserts byte-identical envelopes from the same fixture across the two invocation paths -- "lym <module> <verb> [<run-id>]" and "lym shed <verb> [<run-id>]" -- for every verb/ recipe pair this table supports, plus the lightweight-wiring proof.
 //
-// Every case here is tier 2: RunCLIIn reaches each module's PersistentPreRunE and therefore lymcwd.Resolve, which spawns git through internal/gitexec, and the Test Tier Purity Invariant bans gitexec.Run outside tier-tagged files -- loom's own run additionally calls c.reed.Up() and fabricengine.Open. internal/loomcli/parity_test.go is the precedent for the comparison shape but not for the tier -- its own header states no test there calls RunCLIIn, so it stays tier 1.
+// Every case here is tier 2.
+// clihelp.ExecuteIn reaches each module's PersistentPreRunE and therefore lymcwd.Resolve.
+// That spawns git through internal/gitexec.
+// The Test Tier Purity Invariant bans gitexec.Run outside tier-tagged files.
+// Loom's own run additionally calls c.reed.Up() and fabricengine.Open.
+// internal/loomcli/parity_test.go is the precedent for the comparison shape but not for the tier.
+// Its own header states no test there calls clihelp.ExecuteIn, so it stays tier 1.
 //
 // Every case that drives a verb through "lym shed" first writes the addressed run-id's own seed via shedrun.WriteSeed: shedcli's own pre-run reads a seed before it can resolve which recipe arms the invocation, and both module paths (loomcli's own resolveRunID, battencli's own armSeed) apply their own seed-presence check too, so a missing seed would refuse before either side ever reaches the fixture behaviour a case means to compare.
 //
@@ -22,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -71,10 +78,10 @@ func seedLoomStatus(t *testing.T, cwd string, st shedengine.Status) {
 	}
 }
 
-// runBoth invokes moduleFn and shedFn -- each a thin wrapper around a <module>cli.RunCLIIn and a
-// shedcli.RunCLIIn call over the identical cwd and equivalent arguments -- and asserts their
-// captured stdout is byte-identical and their exit codes agree. A mismatch reports both sides in
-// full, so a diverging byte is never left for the reader to spot by eye.
+// runBoth invokes moduleFn and shedFn, and asserts their captured stdout is byte-identical and their exit codes agree.
+// Each is a thin wrapper around a clihelp.ExecuteIn call, one on <module>cli.Command() and one on shedcli.Command().
+// Both calls use the identical cwd and equivalent arguments.
+// A mismatch reports both sides in full, so a diverging byte is never left for the reader to spot by eye.
 func runBoth(t *testing.T, label string, moduleFn, shedFn func() (exitCode int, out string)) {
 	t.Helper()
 
@@ -98,12 +105,12 @@ func parityLoomRunNoStatusFile(t *testing.T, h *hubforge.Hub) {
 	runBoth(t, "tapestry run (no status file)",
 		func() (int, string) {
 			var out bytes.Buffer
-			code := loomcli.RunCLIIn(cwd, &out, []string{"run"})
+			code := clihelp.ExecuteIn(loomcli.Command(), cwd, &out, []string{"run"})
 			return code, out.String()
 		},
 		func() (int, string) {
 			var out bytes.Buffer
-			code := RunCLIIn(cwd, &out, []string{"run"})
+			code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"run"})
 			return code, out.String()
 		},
 	)
@@ -152,13 +159,13 @@ func parityLoomStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	runBoth(t, "loom step (run lock busy)",
 		func() (int, string) {
 			var out bytes.Buffer
-			code := loomcli.RunCLIIn(cwd, &out, []string{"step"})
+			code := clihelp.ExecuteIn(loomcli.Command(), cwd, &out, []string{"step"})
 			moduleOut = out.String()
 			return code, moduleOut
 		},
 		func() (int, string) {
 			var out bytes.Buffer
-			code := RunCLIIn(cwd, &out, []string{"step"})
+			code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"step"})
 			shedOut = out.String()
 			return code, shedOut
 		},
@@ -221,13 +228,13 @@ func parityBattenStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	runBoth(t, "batten step (run lock busy)",
 		func() (int, string) {
 			var out bytes.Buffer
-			code := battencli.RunCLIIn(cwd, &out, []string{"step", slug})
+			code := clihelp.ExecuteIn(battencli.Command(), cwd, &out, []string{"step", slug})
 			moduleOut = out.String()
 			return code, moduleOut
 		},
 		func() (int, string) {
 			var out bytes.Buffer
-			code := RunCLIIn(cwd, &out, []string{"step", slug})
+			code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"step", slug})
 			shedOut = out.String()
 			return code, shedOut
 		},
@@ -263,12 +270,12 @@ func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 	runBoth(t, "loom status (seeded)",
 		func() (int, string) {
 			var out bytes.Buffer
-			code := loomcli.RunCLIIn(cwd, &out, []string{"status"})
+			code := clihelp.ExecuteIn(loomcli.Command(), cwd, &out, []string{"status"})
 			return code, out.String()
 		},
 		func() (int, string) {
 			var out bytes.Buffer
-			code := RunCLIIn(cwd, &out, []string{"status"})
+			code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"status"})
 			return code, out.String()
 		},
 	)
@@ -289,17 +296,17 @@ func parityLoomPauseSeeded(t *testing.T, h *hubforge.Hub) {
 	runBoth(t, "loom pause (seeded)",
 		func() (int, string) {
 			var out bytes.Buffer
-			code := loomcli.RunCLIIn(cwd, &out, []string{"pause", "--after", "Discussion-Write"})
+			code := clihelp.ExecuteIn(loomcli.Command(), cwd, &out, []string{"pause", "--after", "Discussion-Write"})
 			return code, out.String()
 		},
 		func() (int, string) {
 			// The loom call recorded the condition; clearing it first keeps this call from answering replaced_after.
 			var cleared bytes.Buffer
-			if code := RunCLIIn(cwd, &cleared, []string{"pause", "--clear"}); code != 0 {
+			if code := clihelp.ExecuteIn(Command(), cwd, &cleared, []string{"pause", "--clear"}); code != 0 {
 				t.Fatalf("shed pause --clear exit code = %d; output: %s", code, cleared.String())
 			}
 			var out bytes.Buffer
-			code := RunCLIIn(cwd, &out, []string{"pause", "--after", "Discussion-Write"})
+			code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"pause", "--after", "Discussion-Write"})
 			return code, out.String()
 		},
 	)
@@ -328,12 +335,12 @@ func parityBattenRunStateDone(t *testing.T, h *hubforge.Hub) {
 	runBoth(t, "batten run (state done)",
 		func() (int, string) {
 			var out bytes.Buffer
-			code := battencli.RunCLIIn(cwd, &out, []string{"run", slug})
+			code := clihelp.ExecuteIn(battencli.Command(), cwd, &out, []string{"run", slug})
 			return code, out.String()
 		},
 		func() (int, string) {
 			var out bytes.Buffer
-			code := RunCLIIn(cwd, &out, []string{"run", slug})
+			code := clihelp.ExecuteIn(Command(), cwd, &out, []string{"run", slug})
 			return code, out.String()
 		},
 	)
@@ -366,15 +373,15 @@ func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubfor
 	}
 
 	var runOut bytes.Buffer
-	runCode := RunCLIIn(cwd, &runOut, []string{"run"})
+	runCode := clihelp.ExecuteIn(Command(), cwd, &runOut, []string{"run"})
 	if runCode == 0 {
-		t.Fatalf("RunCLIIn(shed run) over a broken loom.yaml exit code = 0; want non-zero (the config must refuse). output: %s", runOut.String())
+		t.Fatalf("ExecuteIn(shed run) over a broken loom.yaml exit code = 0; want non-zero (the config must refuse). output: %s", runOut.String())
 	}
 
 	var statusOut bytes.Buffer
-	statusCode := RunCLIIn(cwd, &statusOut, []string{"status"})
+	statusCode := clihelp.ExecuteIn(Command(), cwd, &statusOut, []string{"status"})
 	if statusCode != 0 {
-		t.Fatalf("RunCLIIn(shed status) over a broken loom.yaml exit code = %d; want 0 (status must reach the lightweight wiring, not the full wire()). output: %s", statusCode, statusOut.String())
+		t.Fatalf("ExecuteIn(shed status) over a broken loom.yaml exit code = %d; want 0 (status must reach the lightweight wiring, not the full wire()). output: %s", statusCode, statusOut.String())
 	}
 }
 

@@ -41,7 +41,6 @@ their mechanics are documented there per the [doc-lifecycle convention](../overv
   `LYM_LOG_LEVEL`/`LYM_LOG_FILE` env vars activate it for entry points (e.g. `go test`) that bypass CLI flag parsing;
   every line also carries a process trace ID (`TraceID()`);
   `LYM_TRACE_ID` exports it so a spawned child continues its parent's trace;
-  a caller holding an explicit-parent diagnostic span (`StartSpan`/`Child`/`End`) also stamps `trace=`/`span=`;
   independent of stderr verbosity, every Info+ record also lands in a durable, `AnchorPath()`-anchored sink (`.lym/logs`);
   the sink is opened, appended to and closed per record rather than held open, and swept at exit by trace group and last activity;
   its bounds come from `logger.yaml`, with a per-file size cap;

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -27,22 +28,22 @@ import (
 )
 
 // lymFabricCLISubprocessCwdEnv is the env var that gates the re-exec entry point in init.
-// When it is set, the process is a subprocess that the cwd-fallback step of TestRunCLI_CleanHubScenario spawns.
+// When it is set, the process is a subprocess that the cwd-fallback step of TestCommand_CleanHubScenario spawns.
 // That step starts it with exec.Command's Dir field set to a target directory.
-// This exercises the Getwd fallback of fabriccli.RunCLI for real, without any t.Chdir or os.Chdir call.
+// This exercises the Getwd fallback of clihelp.Execute for real, without any t.Chdir or os.Chdir call.
 // This file is in the cwdmutation guard's subject set (cmd/lym/cwdmutation_test.go) and has no exemption.
 const lymFabricCLISubprocessCwdEnv = "LYM_FABRICCLI_SUBPROCESS_CWD"
 
 // init intercepts the subprocess-mode re-exec before testing.Main runs.
-// The child's stdout then carries only the JSON output of fabriccli.RunCLI.
+// The child's stdout then carries only the JSON output of clihelp.Execute.
 // Any "=== RUN" or "--- PASS" line from go test would break the byte-for-byte comparison.
-// The cwd-fallback step makes that comparison against the output of fabriccli.RunCLIIn.
+// The cwd-fallback step makes that comparison against the output of clihelp.ExecuteIn.
 func init() {
 	if os.Getenv(lymFabricCLISubprocessCwdEnv) == "" {
 		return
 	}
 	var out bytes.Buffer
-	code := fabriccli.RunCLI(&out, []string{"pairs"})
+	code := clihelp.Execute(fabriccli.Command(), &out, []string{"pairs"})
 	os.Stdout.Write(out.Bytes())
 	os.Exit(code)
 }
@@ -97,7 +98,7 @@ func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
 	return bare
 }
 
-// TestRunCLI_CloneEndToEnd drives "fabric clone --subpath backend <weft> <warp>" against a local two-repo fixture.
+// TestCommand_CloneEndToEnd drives "fabric clone --subpath backend <weft> <warp>" against a local two-repo fixture.
 // It asserts the clone-does-everything contract:
 // the JSON envelope, with the "warp" and "warp_binding_recorded" keys;
 // the wired warp junctions;
@@ -105,7 +106,7 @@ func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
 // repo-wide config and the warp-binding record committed onto weft:main;
 // and per-worktree module config reconciliation.
 // The test checks the CLI orchestration itself, not only the git-level clone that fabricengine.CloneHub performs.
-func TestRunCLI_CloneEndToEnd(t *testing.T) {
+func TestCommand_CloneEndToEnd(t *testing.T) {
 	tiergate.Require(t, 1)
 	fixtures := t.TempDir()
 	warpBare := makeCLICloneWarpBare(t, fixtures, "clonecli-warp")
@@ -114,27 +115,27 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	cloneParent := t.TempDir()
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{
+	exitCode := clihelp.Execute(fabriccli.Command(), &out, []string{
 		"clone", "--shortname", "tst", "--into", cloneParent, "--subpath", "backend",
 		filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
-		t.Fatalf("RunCLI(clone --subpath backend) = %d; want 0\noutput: %s", exitCode, out.String())
+		t.Fatalf("Execute(clone --subpath backend) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
 	result := envelope.RequireOK(t, out.String())
 	hubPath, _ := result.Raw["hub"].(string)
 	if hubPath == "" {
-		t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", result)
+		t.Fatalf("Execute(clone) output missing non-empty 'hub' key; got %v", result)
 	}
 	if anchor, _ := result.Raw["anchor"].(string); anchor != "backend" {
-		t.Errorf("RunCLI(clone) anchor = %q; want %q", anchor, "backend")
+		t.Errorf("Execute(clone) anchor = %q; want %q", anchor, "backend")
 	}
 	if warp, _ := result.Raw["warp"].(string); warp != filepath.ToSlash(warpBare) {
-		t.Errorf("RunCLI(clone) warp = %q; want %q", warp, filepath.ToSlash(warpBare))
+		t.Errorf("Execute(clone) warp = %q; want %q", warp, filepath.ToSlash(warpBare))
 	}
 	if recorded, ok := result.Raw["warp_binding_recorded"].(bool); !ok || !recorded {
-		t.Errorf("RunCLI(clone) warp_binding_recorded = %v; want true", result.Raw["warp_binding_recorded"])
+		t.Errorf("Execute(clone) warp_binding_recorded = %v; want true", result.Raw["warp_binding_recorded"])
 	}
 
 	// The prime warp worktree's structural junctions (_lym and .lym) must be wired.
@@ -248,12 +249,12 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	rejectedFixtures := t.TempDir()
 	rejectedParent := t.TempDir()
 	var rejectedOut bytes.Buffer
-	rejectedCode := fabriccli.RunCLI(&rejectedOut, []string{
+	rejectedCode := clihelp.Execute(fabriccli.Command(), &rejectedOut, []string{
 		"clone", "--shortname", "tst", "--into", rejectedParent,
 		filepath.ToSlash(makeCLICloneWeftBare(t, rejectedFixtures, "rejected-weft")), filepath.ToSlash(makeCLICloneWarpBare(t, rejectedFixtures, "rejected-warp")),
 	})
 	if rejectedCode == 0 {
-		t.Fatalf("RunCLI(clone) with a hook rejecting the marker = 0; want non-zero\noutput: %s", rejectedOut.String())
+		t.Fatalf("Execute(clone) with a hook rejecting the marker = 0; want non-zero\noutput: %s", rejectedOut.String())
 	}
 	envelope.RequireErr(t, rejectedOut.String(), "pre-commit")
 	rejectedHubs, err := filepath.Glob(filepath.Join(rejectedParent, "*"+fabricengine.HubSuffix))
@@ -266,11 +267,13 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk clones a weft with no marker anywhere.
+// TestCommand_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk clones a weft with no marker anywhere.
 // Its board holds a full base file, and its prime holds a full loom.yaml at a former template value.
 // The clone writes no marker of its own.
 // The walk it runs strips both files once and commits the board marker in its own board commit.
-func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
+//
+//testtiming:keep the tracked board marker, the walk commit's subject and the stripped fabric.yaml after an unmigrated clone; coverage of its blocks by other tests does not show an assertion of this
+func TestCommand_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -293,12 +296,12 @@ func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
 	gitkit.MustRun(t, seed, "git", "push", "-u", "origin", "main")
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{
+	exitCode := clihelp.Execute(fabriccli.Command(), &out, []string{
 		"clone", "--shortname", "tst", "--into", t.TempDir(),
 		filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
-		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, out.String())
+		t.Fatalf("Execute(clone) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 	hubPath, _ := envelope.RequireOK(t, out.String()).Raw["hub"].(string)
 
@@ -337,11 +340,11 @@ func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CloneDestination asserts where "fabric clone" puts the hub and which anchor it echoes.
-// With --into, the hub lands under that directory, not under the cwd given to RunCLIIn.
+// TestCommand_CloneDestination asserts where "fabric clone" puts the hub and which anchor it echoes.
+// With --into, the hub lands under that directory, not under the cwd given to clihelp.ExecuteIn.
 // Without it, the hub lands at the resolved cwd, which is the --into default.
 // With no --subpath, the anchor is the default root anchor ".".
-func TestRunCLI_CloneDestination(t *testing.T) {
+func TestCommand_CloneDestination(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -372,16 +375,16 @@ func TestRunCLI_CloneDestination(t *testing.T) {
 
 			code, output := runFabric(t, callerCwd, args...)
 			if code != 0 {
-				t.Fatalf("RunCLIIn(%v) = %d; want 0\noutput: %s", args, code, output)
+				t.Fatalf("ExecuteIn(%v) = %d; want 0\noutput: %s", args, code, output)
 			}
 
 			result := envelope.RequireOK(t, output)
 			hubPath, _ := result.Raw["hub"].(string)
 			if hubPath == "" {
-				t.Fatalf("RunCLIIn(clone) output missing non-empty 'hub' key; got %v", result)
+				t.Fatalf("ExecuteIn(clone) output missing non-empty 'hub' key; got %v", result)
 			}
 			if anchor, _ := result.Raw["anchor"].(string); anchor != "." {
-				t.Errorf("RunCLIIn(clone) anchor = %q; want %q", anchor, ".")
+				t.Errorf("ExecuteIn(clone) anchor = %q; want %q", anchor, ".")
 			}
 
 			wantRoot, otherRoot := callerCwd, dest
@@ -398,10 +401,10 @@ func TestRunCLI_CloneDestination(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged drives a one-positional clone against a bare weft.
+// TestCommand_CloneEngineRefusalReachesEnvelopeUnchanged drives a one-positional clone against a bare weft.
 // That weft carries no recorded binding.
 // The test requires the envelope's error to equal the engine's refusal text exactly.
-func TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged(t *testing.T) {
+func TestCommand_CloneEngineRefusalReachesEnvelopeUnchanged(t *testing.T) {
 	tiergate.Require(t, 1)
 	fixtures := t.TempDir()
 	weftBare := filepath.ToSlash(makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft"))
@@ -412,23 +415,23 @@ func TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"clone", "--into", t.TempDir(), weftBare})
+	exitCode := clihelp.Execute(fabriccli.Command(), &out, []string{"clone", "--into", t.TempDir(), weftBare})
 	if exitCode != 1 {
-		t.Fatalf("RunCLI(clone <weft-url>) = %d; want 1\noutput: %s", exitCode, out.String())
+		t.Fatalf("Execute(clone <weft-url>) = %d; want 1\noutput: %s", exitCode, out.String())
 	}
 
 	result := envelope.RequireErr(t, out.String(), "")
 	if result.Error != engineErr.Error() {
-		t.Errorf("RunCLI(clone <weft-url>) error = %q; want the engine's %q", result.Error, engineErr.Error())
+		t.Errorf("Execute(clone <weft-url>) error = %q; want the engine's %q", result.Error, engineErr.Error())
 	}
 }
 
-// runFabric runs the fabric CLI through RunCLIIn from cwd and returns the exit code and the raw output.
+// runFabric runs the fabric CLI through clihelp.ExecuteIn from cwd and returns the exit code and the raw output.
 func runFabric(t *testing.T, cwd string, args ...string) (int, string) {
 	t.Helper()
 
 	var out bytes.Buffer
-	code := fabriccli.RunCLIIn(cwd, &out, args)
+	code := clihelp.ExecuteIn(fabriccli.Command(), cwd, &out, args)
 	return code, out.String()
 }
 
@@ -445,7 +448,7 @@ func gitOutputCLI(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
-// TestRunCLI_ReconcileBacksFillsWarpBinding drives both the two-positional clone and reconcile through fabriccli.RunCLI.
+// TestCommand_ReconcileBacksFillsWarpBinding drives the two-positional clone and reconcile through the fabric command.
 // The commit-and-push half of the backfill is exercised this way.
 // The record_failed value is set only by the handler, so an engine-only test cannot observe it.
 // The test builds the hub, deletes the recorded binding with plain git, and commits that deletion.
@@ -454,7 +457,9 @@ func gitOutputCLI(t *testing.T, dir string, args ...string) string {
 // It then asserts that reconcile exits 0 and reports "recorded".
 // It also asserts that the record stays tracked on the board worktree.
 // The "pairs" data is still present and unchanged in shape.
-func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
+//
+//testtiming:keep the recorded warp_binding and the binding file tracked again after a reconcile; coverage of its blocks by other tests does not show an assertion of this
+func TestCommand_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	tiergate.Require(t, 1)
 	fixtures := t.TempDir()
 	warpBare := makeCLICloneWarpBare(t, fixtures, "reconcilecli-warp")
@@ -465,16 +470,16 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	var cloneOut bytes.Buffer
 	// The clone runs without --force-bootstrap, because makeCLICloneWeftBare's fixture has no commits.
 	// That is the unborn-HEAD case the weft-candidate guard admits on its own.
-	exitCode := fabriccli.RunCLI(&cloneOut, []string{
+	exitCode := clihelp.Execute(fabriccli.Command(), &cloneOut, []string{
 		"clone", "--shortname", "tst", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
-		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
+		t.Fatalf("Execute(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
 	}
 	cloneResult := envelope.Decode(t, cloneOut.String())
 	hubPath, _ := cloneResult.Raw["hub"].(string)
 	if hubPath == "" {
-		t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", cloneResult)
+		t.Fatalf("Execute(clone) output missing non-empty 'hub' key; got %v", cloneResult)
 	}
 
 	boardDir := fabricengine.BoardDir(hubPath)
@@ -485,17 +490,17 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	// cwd is a per-call value, passed here rather than hoisted to a shared variable.
 	// This reconcile runs against a different directory than the clone above.
 	var reconcileOut bytes.Buffer
-	exitCode = fabriccli.RunCLIIn(filepath.Join(hubPath, "reconcilecli-warp"), &reconcileOut, []string{"reconcile"})
+	exitCode = clihelp.ExecuteIn(fabriccli.Command(), filepath.Join(hubPath, "reconcilecli-warp"), &reconcileOut, []string{"reconcile"})
 	if exitCode != 0 {
-		t.Fatalf("RunCLI(reconcile) = %d; want 0\noutput: %s", exitCode, reconcileOut.String())
+		t.Fatalf("Execute(reconcile) = %d; want 0\noutput: %s", exitCode, reconcileOut.String())
 	}
 
 	result := envelope.RequireOK(t, reconcileOut.String())
 	if binding, _ := result.Raw["warp_binding"].(string); binding != string(fabricengine.WarpBindingOutcomeRecorded) {
-		t.Errorf("RunCLI(reconcile) warp_binding = %q; want %q", binding, fabricengine.WarpBindingOutcomeRecorded)
+		t.Errorf("Execute(reconcile) warp_binding = %q; want %q", binding, fabricengine.WarpBindingOutcomeRecorded)
 	}
 	if _, present := result.Raw["pairs"]; !present {
-		t.Errorf("RunCLI(reconcile) output missing 'pairs' key; want it present and unchanged in shape")
+		t.Errorf("Execute(reconcile) output missing 'pairs' key; want it present and unchanged in shape")
 	}
 
 	tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", fabricengine.WarpBindingFileName))
@@ -507,12 +512,12 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	}
 }
 
-// TestRunCLI_ReconcileBoardFailureFailsTheVerb runs reconcile over a cloned hub whose board commit or push fails.
+// TestCommand_ReconcileBoardFailureFailsTheVerb runs reconcile over a cloned hub whose board commit or push fails.
 // The failure is set at the hub-wide heal, the warp-binding record, or both.
 // Each row asserts a non-zero exit with the envelope kept:
 // it still carries "pairs", the error names the first failure, and each side's detail names its own failure.
 // The exit-code assertion is the point of this test.
-func TestRunCLI_ReconcileBoardFailureFailsTheVerb(t *testing.T) {
+func TestCommand_ReconcileBoardFailureFailsTheVerb(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -584,16 +589,16 @@ func TestRunCLI_ReconcileBoardFailureFailsTheVerb(t *testing.T) {
 			weftBare := makeCLICloneWeftBare(t, fixtures, "reconcilecli-fail-weft")
 
 			var cloneOut bytes.Buffer
-			exitCode := fabriccli.RunCLI(&cloneOut, []string{
+			exitCode := clihelp.Execute(fabriccli.Command(), &cloneOut, []string{
 				"clone", "--shortname", "tst", "--into", t.TempDir(), filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 			})
 			if exitCode != 0 {
-				t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
+				t.Fatalf("Execute(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
 			}
 			cloneResult := envelope.Decode(t, cloneOut.String())
 			hubPath, _ := cloneResult.Raw["hub"].(string)
 			if hubPath == "" {
-				t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", cloneResult)
+				t.Fatalf("Execute(clone) output missing non-empty 'hub' key; got %v", cloneResult)
 			}
 
 			boardDir := fabricengine.BoardDir(hubPath)
@@ -617,29 +622,29 @@ func TestRunCLI_ReconcileBoardFailureFailsTheVerb(t *testing.T) {
 
 			// cwd is passed per call, so this reconcile runs against a different directory than the clone above.
 			var reconcileOut bytes.Buffer
-			exitCode = fabriccli.RunCLIIn(filepath.Join(hubPath, "reconcilecli-fail-warp"), &reconcileOut, []string{"reconcile"})
+			exitCode = clihelp.ExecuteIn(fabriccli.Command(), filepath.Join(hubPath, "reconcilecli-fail-warp"), &reconcileOut, []string{"reconcile"})
 			if exitCode == 0 {
-				t.Fatalf("RunCLI(reconcile) = 0; want non-zero (a failed board commit or push fails the verb)\noutput: %s", reconcileOut.String())
+				t.Fatalf("Execute(reconcile) = 0; want non-zero (a failed board commit or push fails the verb)\noutput: %s", reconcileOut.String())
 			}
 
 			result := envelope.RequireErr(t, reconcileOut.String(), tt.wantErr)
 			if _, ok := result.Raw["pairs"]; !ok {
-				t.Errorf("RunCLI(reconcile) envelope lacks \"pairs\"; want the envelope kept on failure")
+				t.Errorf("Execute(reconcile) envelope lacks \"pairs\"; want the envelope kept on failure")
 			}
 			hubConfigDetail, _ := result.Raw["hub_config_detail"].(string)
 			if (tt.wantHubConfigDetail == "") != (hubConfigDetail == "") || !strings.Contains(hubConfigDetail, tt.wantHubConfigDetail) {
-				t.Errorf("RunCLI(reconcile) hub_config_detail = %q; want it to contain %q", hubConfigDetail, tt.wantHubConfigDetail)
+				t.Errorf("Execute(reconcile) hub_config_detail = %q; want it to contain %q", hubConfigDetail, tt.wantHubConfigDetail)
 			}
 			binding, _ := result.Raw["warp_binding"].(string)
 			bindingDetail, _ := result.Raw["warp_binding_detail"].(string)
 			if tt.wantWarpBindingError == "" {
 				if binding == string(fabricengine.WarpBindingOutcomeRecordFailed) {
-					t.Errorf("RunCLI(reconcile) warp_binding = %q, detail %q; want the binding not failed", binding, bindingDetail)
+					t.Errorf("Execute(reconcile) warp_binding = %q, detail %q; want the binding not failed", binding, bindingDetail)
 				}
 				return
 			}
 			if binding != string(fabricengine.WarpBindingOutcomeRecordFailed) || !strings.Contains(bindingDetail, tt.wantWarpBindingError) {
-				t.Errorf("RunCLI(reconcile) warp_binding = %q, detail %q; want %q naming %q", binding, bindingDetail, fabricengine.WarpBindingOutcomeRecordFailed, tt.wantWarpBindingError)
+				t.Errorf("Execute(reconcile) warp_binding = %q, detail %q; want %q naming %q", binding, bindingDetail, fabricengine.WarpBindingOutcomeRecordFailed, tt.wantWarpBindingError)
 			}
 		})
 	}

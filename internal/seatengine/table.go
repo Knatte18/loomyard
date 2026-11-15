@@ -63,11 +63,6 @@ var reservedMarkers = []string{
 	"worktree_root",
 }
 
-// ReservedMarkers returns the marker names the seat engine fills itself, sorted.
-func ReservedMarkers() []string {
-	return slices.Clone(reservedMarkers)
-}
-
 // SeatRole returns the role segment of the strand name of the seat called seat, under the table's role prefix.
 // The lead has no name, so its role is the prefix alone.
 func SeatRole(prefix, seat string) string {

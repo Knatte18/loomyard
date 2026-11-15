@@ -1,4 +1,4 @@
-// start_integration_test.go runs "lym beam start" through RunCLIIn over a hubforge hub.
+// start_integration_test.go runs "lym beam start" through clihelp.ExecuteIn over a hubforge hub.
 // It covers every target it refuses before the hub is reconciled or an orch is started.
 
 package beamcli_test
@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/beamcli"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -82,7 +83,7 @@ func TestStart_RefusesBeforeTheReconcile(t *testing.T) {
 		// The rows share one hub, so they run in sequence.
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			exit := beamcli.RunCLIIn(tt.cwd, &out, tt.args)
+			exit := clihelp.ExecuteIn(beamcli.Command(), tt.cwd, &out, tt.args)
 
 			if exit == 0 {
 				t.Errorf("lym beam %v exit = 0; want non-zero", tt.args)

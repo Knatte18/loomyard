@@ -1272,22 +1272,6 @@ func lookupSelector(m map[string]any) (any, error) {
 	}
 }
 
-// RunCLI runs the board module CLI against the process working directory, writing to out, and returns the exit code.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the board module CLI with cwd as its working directory.
-// An empty cwd reads the process working directory through clihelp.Execute,
-// and any other value seeds cwd into the execution context through clihelp.ExecuteIn.
-// The empty case cannot go through ExecuteIn, because lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
-}
-
 // outputError writes {"ok":false,"error":"..."} and returns exit code 1.
 func outputError(out io.Writer, message string) int {
 	return output.Err(out, message)

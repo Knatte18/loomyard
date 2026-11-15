@@ -47,15 +47,3 @@ func (r *Report) AddFailure(check CheckID, reason string) {
 	r.Failures = append(r.Failures, Failure{Check: check, Reason: reason})
 	r.OK = false
 }
-
-// Has reports whether any entry in r.Failures carries check.
-// A composing orchestrator uses it for control-flow signals, such as whether to short-circuit a later check.
-// Deriving them from the Report keeps the type free of bespoke fields.
-func (r Report) Has(check CheckID) bool {
-	for _, f := range r.Failures {
-		if f.Check == check {
-			return true
-		}
-	}
-	return false
-}

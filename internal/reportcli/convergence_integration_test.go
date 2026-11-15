@@ -1,4 +1,4 @@
-// convergence_integration_test.go drives `lym report convergence` through RunCLIIn over a hubforge hub.
+// convergence_integration_test.go drives `lym report convergence` through clihelp.ExecuteIn over a hubforge hub.
 // It covers the prime-only refusals and the empty report before any tag.
 // It also covers the report of one finished run, seeded the way a landing leaves it.
 
@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -64,7 +65,7 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 
 	runVerb := func(verb, cwd string, args ...string) (string, int) {
 		var out bytes.Buffer
-		code := RunCLIIn(cwd, &out, append([]string{verb}, args...))
+		code := clihelp.ExecuteIn(Command(), cwd, &out, append([]string{verb}, args...))
 		return out.String(), code
 	}
 	run := func(cwd string, args ...string) (string, int) { return runVerb("convergence", cwd, args...) }

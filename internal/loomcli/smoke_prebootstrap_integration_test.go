@@ -107,7 +107,7 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 		if err != nil {
 			t.Fatalf("preflight.Check: %v", err)
 		}
-		if report.Has(preflight.CheckWorktreeClean) {
+		if slices.ContainsFunc(report.Failures, func(f preflight.Failure) bool { return f.Check == preflight.CheckWorktreeClean }) {
 			t.Errorf("Check report still carries CheckWorktreeClean after the seed commit; the bootstrap must reach past the first precondition row rather than block on it")
 		}
 	})

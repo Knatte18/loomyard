@@ -3,7 +3,7 @@
 // The load-bearing empty and self-route OnStuck edges and the empty terminal OnDone edge are checked.
 // Run-Shed's in-call wait configuration is checked, and no row has a Segment.
 // The returned *shedengine.Shed carries ShedPaths' five values verbatim.
-// It also asserts the shape of RecipeEngines().
+// It also asserts the shape of shedcheckkit.RecipeEngines over the batten recipe.
 // A silently empty return would disable the cross-consumer coverage guard rather than fail it.
 
 package battenrecipe
@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/shedcheckkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -189,11 +190,12 @@ func TestNew_CarriesShedPathsVerbatim(t *testing.T) {
 	}
 }
 
-// TestRecipeEngines_ReportsEveryEngineNameSortedOnce asserts RecipeEngines returns each engine name once, sorted.
+// TestRecipeEngines_ReportsEveryEngineNameSortedOnce asserts the batten recipe's engine set is complete.
+// shedcheckkit.RecipeEngines returns each engine name once, sorted.
 // It is the input the cross-consumer guard trusts, so a silently empty return would disable that guard rather than fail it.
 func TestRecipeEngines_ReportsEveryEngineNameSortedOnce(t *testing.T) {
 	tiergate.Require(t, 0)
-	got := RecipeEngines()
+	got := shedcheckkit.RecipeEngines(recipes.BattenRecipe)
 	var want []string
 	for _, engine := range battenRowEngines {
 		want = append(want, engine)

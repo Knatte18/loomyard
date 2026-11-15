@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -25,7 +26,7 @@ import (
 )
 
 // selvagePaneID reads the persisted SelvagePaneID for worktree, and fails the test if it is empty.
-// RunCLI's status output carries no Selvage field, so every caller reads the id straight from reed.json.
+// The status output carries no Selvage field, so every caller reads the id straight from reed.json.
 func selvagePaneID(t *testing.T, worktree string) string {
 	t.Helper()
 	st, err := reedengine.LoadState(filepath.Join(worktree, ".lym"))
@@ -50,7 +51,7 @@ func TestSmokeSelvage(t *testing.T) {
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLIIn(prime, &buf, []string{"down"})
+		clihelp.ExecuteIn(Command(), prime, &buf, []string{"down"})
 	})
 
 	// SurvivesUpAddRemoveAndReconcile pins Selvage's keepalive guarantee across a full up -> add -> remove -> add cycle.

@@ -15,7 +15,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -163,12 +162,6 @@ func PairComplete(l *lymcwd.Location) (ok bool, reason string, err error) {
 		return false, "the pair's origin record is missing", nil
 	}
 	return true, "", nil
-}
-
-// WeftLymDir returns the path to the _lym directory in l's weft sibling worktree.
-// It is the junction target for lym weft and the pathspec base for weft operations.
-func WeftLymDir(l *lymcwd.Location) string {
-	return filepath.Join(RecordsWorktree(l), l.AnchorRel, lymdirs.LymDirName)
 }
 
 // OriginURL returns the URL of the warp side's configured "origin" remote.

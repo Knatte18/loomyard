@@ -71,6 +71,8 @@ func commandNames(cmds []helpJSONCmd) map[string]bool {
 // TestJSONHelp_Schema asserts that "--json" help exits 0 and prints valid JSON with the expected schema fields.
 // The cases cover the root, a verb module, a module with one verb and a leaf verb, with or without --help.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
+//
+//testtiming:keep the JSON help schema fields at every level of the command tree; coverage of its blocks by other tests does not show an assertion of this
 func TestJSONHelp_Schema(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -126,7 +128,7 @@ func TestJSONHelp_Schema(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			code := run(tt.args, &out)
+			code := run(tt.args, &out, &out)
 			if code != 0 {
 				t.Fatalf("run(%v) = %d; want 0. output:\n%s", tt.args, code, out.String())
 			}

@@ -1,4 +1,4 @@
-// predicates.go implements Wired, HubPresent and ResolveMode, which a CLI's pre-run consults before every command.
+// predicates.go implements HubPresent and ResolveMode, which a CLI's pre-run consults before every command.
 
 package preflight
 
@@ -24,30 +24,6 @@ const (
 	// not a git repository, a plain git repo (root or subdirectory), or a hub damaged at the Bolt checkout's _lym.
 	ModeStandalone
 )
-
-// Wired reports whether fabric is wired for this worktree:
-// lymcwd.Resolve(cwd) succeeds, and fabricengine.Ready(l) reports true.
-// It is the per-worktree fabric-readiness question a composing orchestrator asks.
-// It does not choose between hub mode and standalone mode.
-//
-// Wired probes the paired sibling of the current worktree, not the hub.
-// It is false at the Bolt checkout, in an unpaired sibling, and in a worktree whose pair was removed.
-// These are healthy hub situations, so a false answer there does not mean the hub is broken.
-//
-// It returns (nil, false) on any error rather than surfacing one.
-// A CLI pre-run calls it, and it must never block a command.
-// It spawns no process beyond the one lymcwd.Resolve performs, since the pre-run runs before every command.
-func Wired(cwd string) (*lymcwd.Location, bool) {
-	l, err := lymcwd.Resolve(cwd)
-	if err != nil {
-		return nil, false
-	}
-	ready, err := fabricengine.Ready(l)
-	if err != nil || !ready {
-		return nil, false
-	}
-	return l, true
-}
 
 // HubPresent reports whether the hub this write targets exists:
 // lymcwd.Resolve(cwd) succeeds, and a single os.Stat of the hub's board-level lym directory succeeds.

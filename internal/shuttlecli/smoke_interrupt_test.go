@@ -2,7 +2,7 @@
 // The *Run that Runner.Start returns stays usable while its Wait call blocks in a goroutine,
 // so an operator or another caller can stop the agent's turn and send it a one-line replacement instruction
 // without killing the pane or the session.
-// The test drives shuttleengine.NewRunner directly rather than shuttlecli.RunCLI.
+// The test drives shuttleengine.NewRunner directly rather than the shuttle command tree.
 // It needs the *Run handle while Wait blocks elsewhere;
 // the CLI's `run` verb blocks on Runner.Run, which returns no handle to interrupt.
 //
@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -203,12 +204,12 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		reedcli.RunCLI(&buf, []string{"down"})
+		clihelp.Execute(reedcli.Command(), &buf, []string{"down"})
 	})
 
 	// A strand must exist in an up'd session before shuttle's AddStrand can bind it to a pane.
 	var reedOut bytes.Buffer
-	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+	if code := clihelp.Execute(reedcli.Command(), &reedOut, []string{"up"}); code != 0 {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 

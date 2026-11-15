@@ -325,7 +325,6 @@ github.com/Knatte18/loomyard/
 ├── internal/shedtransient/       the one translation from lower-level failure classifications into the shed engine's transient mark
 ├── internal/seatengine/          the seat runner: starts, joins, probes, resumes and stops a chair and its advisors over shuttle, each seat in its own strand
 ├── internal/shedadapters/        the Shed engine adapters (Webster, the Burler review and fix row producers, MultiLLMProducer, and the Bouncer) over shuttle/websterengine/burlerengine/seatengine
-├── internal/shedcheck/           authoring-time structural checker over an assembled OnDone/OnStuck producer graph
 ├── internal/loomcli/             loom's cobra module: the session bootstrap, arming `internal/shedverbs`' generic status and pause verb bodies, and mounting `internal/sheddriver` for `lym loom drive`
 ├── internal/loomshed/            loom's own row-name constants and producer constructors over `shedengine`
 ├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the tapestry, darn, pawl, sampler, motif, raddle and arras recipes from their embedded files, and expands tapestry's and arras's `Motif` block from motif, the recipe that makes a sketch, the decision record
@@ -429,14 +428,11 @@ The `ly:cli` skill carries that index, and the orch's role file points at it.
 Which commands count as invocable, and so carry one, is the audience bullet of [PATTERN-cli-cobra](../pattern/PATTERN-cli-cobra.md).
 A tree walk in `cmd/lym/clitree_test.go` pins the form of `Use`, `Short` and `Long` beside the audience.
 
-`run(args, out)` is the testable seam.
-It builds a fresh root, merges stdout and stderr into `out`, and calls `root.ExecuteContext`.
-It returns the process exit code without spawning a binary or trapping `os.Exit`.
-Each module also exposes `RunCLI(out io.Writer, args []string) int`, which is `return RunCLIIn("", out, args)`.
-It is an in-process test seam that drives a module in isolation without involving the cobra root.
-Every module but `internal/selfreportcli`, which references `lymcwd` nowhere, also exposes `RunCLIIn(cwd string, out io.Writer, args []string) int`:
-`cwd == ""` delegates to `clihelp.Execute(Command(), out, args)`,
-and any other value delegates to `clihelp.ExecuteIn(Command(), cwd, out, args)`.
+`main` and the tests share `run(args, stdout, stderr)`.
+It builds a fresh root, runs it through `clihelp.RunRoot` and returns the exit code;
+a test passes one buffer as both writers, so it neither spawns a binary nor traps `os.Exit`.
+A test drives one module without the cobra root through `clihelp.Execute(<module>.Command(), out, args)`,
+or through `clihelp.ExecuteIn(<module>.Command(), cwd, out, args)` at an explicit working directory.
 `ExecuteIn` seeds `cwd` into the execution context.
 The module's handlers read it back via `lymcwd.CwdFrom(cmd.Context())` instead of the process working directory.
 `clihelp.ExecuteIn`, `clihelp.RunRootCtx` and `clihelp.WrapRunCtx` carry a context into a command's execution.
@@ -768,7 +764,7 @@ User-facing modules each get one `lym <module>` namespace:
   the worktree-relative form (`PlanDirName`/`PlanDirRel`) and the absolute told-anchor form (`PlanDir`/`PlanOverview`), with the caller supplying the anchor path (`internal/planparser`).
   ✅ Implemented.
 - **planglyph** — the sole owner of every `quarry.Repo` call (`Open`, `Resolve`, `EncloseAt`, `DeltaGit`) and of the package-level `quarry.Name`, plus the resolve-backed validation pass layered on top of `planparser`'s pure checks:
-  `planglyph.ValidateFormat`/`Validate` call `planparser.ValidateFormat`/`Validate` and append only resolve findings, composing rather than reimplementing (`internal/planglyph`).
+  planglyph's plan gates call `planparser.ValidateFormat`/`Validate` and append only resolve findings, composing rather than reimplementing (`internal/planglyph`).
   ✅ Implemented.
 - **planindex** — the cgo-free seam over `planglyph`:
   the plan gates' finding types, `ErrQuarryUnavailable` and the `Index` and `Delta` interfaces a package receives instead of importing the package that links tree-sitter (`internal/planindex`).
@@ -1508,8 +1504,8 @@ User-facing modules each get one `lym <module>` namespace:
   A bare verb would be a command with no list to walk; the `lym shed` subtree below arms named recipes.
   The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**.
   So are the engine adapters.
-  `internal/shedcheck` is the structural checker over an assembled producer list.
-  A `go test` invariant enforces it over loom's own list; no production constructor calls it.
+  `internal/testkit/shedcheckkit` is the structural checker over an assembled producer list.
+  A `go test` invariant enforces it over loom's own list; no production code calls it.
   Its package documentation lists the finding kinds it reports.
   The Shed recipe group's engine registry is ✅ **implemented** as `internal/shedrecipe`.
   Its `registry` map literal declares every engine name a recipe row may use.
@@ -1988,6 +1984,7 @@ It also holds the file-tree fixture glyph resolution needs.
 It gives each test a self-cleaning `-L` key through `Socket`.
 `internal/testkit/stencilkit` seeds stencil fixtures from the registry through `stencilstore`.
 Seeded files carry production's hash stamp.
+`internal/testkit/shedcheckkit` checks an assembled OnDone/OnStuck producer graph for structural defects.
 
 ## Sandbox Hub
 

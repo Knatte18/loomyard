@@ -1,4 +1,4 @@
-// fabric.go holds the cobra Command() entry point and the RunCLI seam for the fabric module.
+// fabric.go holds the cobra Command() entry point for the fabric module.
 // Command builds the "fabric" parent command and its hub-scoped topology verbs.
 // Each topology verb drives fabricengine.Topology for the warp↔weft worktree pairing.
 // The weft-git content-sync verbs are wired in by weft_verbs.go.
@@ -429,23 +429,6 @@ Example:
 	addWeftVerbs(cmd)
 
 	return cmd
-}
-
-// RunCLI runs the fabric command tree with args, writing output to out.
-// It lets in-process tests capture that output.
-// Returns the exit code (0 on success, 1 on error).
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the fabric command tree with cwd as the working directory, writing output to out.
-// An empty cwd means the process working directory.
-// The empty-cwd branch exists because lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
 
 // resolveWarpLocation resolves the cwd carried on ctx, or the process cwd if none is carried, into the acting Location.

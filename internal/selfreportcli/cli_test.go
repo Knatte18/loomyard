@@ -4,7 +4,7 @@
 // The GitHub transport is swapped via the exported selfreportengine.NewGitHubClient seam.
 // Each test injects a real go-github client pointed at an httptest server.
 // That server lets the tests assert on the request shape: method, path and JSON body.
-// All tests drive the full cobra->flag->CreateIssue->go-github pipeline through RunCLI.
+// All tests drive the full cobra->flag->CreateIssue->go-github pipeline through clihelp.Execute.
 // No test calls t.Parallel: each swaps the package-level NewGitHubClient seam, and the stdin rows swap the stdin seam.
 
 package selfreportcli
@@ -22,6 +22,7 @@ import (
 
 	"github.com/google/go-github/v75/github"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/selfreportengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -99,7 +100,7 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 	t.Cleanup(func() { selfreportengine.NewGitHubClient = orig })
 }
 
-// runCLI drives RunCLI into a buffer and returns the exit code and output text.
+// runCLI drives clihelp.Execute into a buffer and returns the exit code and output text.
 // No args are passed as an empty slice, not nil:
 // cobra reads os.Args when handed nil and would then parse the test binary's own -test.* flags.
 func runCLI(t *testing.T, args ...string) (int, string) {
@@ -108,7 +109,7 @@ func runCLI(t *testing.T, args ...string) (int, string) {
 		args = []string{}
 	}
 	var buf bytes.Buffer
-	code := RunCLI(&buf, args)
+	code := clihelp.Execute(Command(), &buf, args)
 	return code, buf.String()
 }
 
@@ -171,7 +172,7 @@ func TestRunCreate_Success(t *testing.T) {
 			env := envelope.Decode(t, stdout)
 
 			if code != 0 {
-				t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
+				t.Errorf("Execute() exit = %d; want 0\nstdout: %s", code, stdout)
 			}
 			if !env.OK {
 				t.Errorf("envelope ok = %v; want true", env.OK)
@@ -243,7 +244,7 @@ func TestRunCreate_Failure(t *testing.T) {
 			env := envelope.Decode(t, stdout)
 
 			if code != 1 {
-				t.Errorf("RunCLI() exit = %d; want 1\nstdout: %s", code, stdout)
+				t.Errorf("Execute() exit = %d; want 1\nstdout: %s", code, stdout)
 			}
 			if env.OK {
 				t.Errorf("envelope ok = true; want false")
@@ -255,11 +256,11 @@ func TestRunCreate_Failure(t *testing.T) {
 	}
 }
 
-// TestRunCLI_RefusedBeforeTransport verifies the cobra-level surface of the selfreport group.
+// TestCommand_RefusedBeforeTransport verifies the cobra-level surface of the selfreport group.
 // A bare invocation lists create; an unknown subcommand gets the shared envelope;
 // a wrong positional count gets cobra's "accepts 1 arg(s)" message.
 // None of them reaches the transport.
-func TestRunCLI_RefusedBeforeTransport(t *testing.T) {
+func TestCommand_RefusedBeforeTransport(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
@@ -281,7 +282,7 @@ func TestRunCLI_RefusedBeforeTransport(t *testing.T) {
 			code, stdout := runCLI(t, tt.args...)
 
 			if code != tt.wantExit {
-				t.Errorf("RunCLI(%v) exit = %d; want %d\nstdout: %s", tt.args, code, tt.wantExit, stdout)
+				t.Errorf("Execute(%v) exit = %d; want %d\nstdout: %s", tt.args, code, tt.wantExit, stdout)
 			}
 			if !strings.Contains(stdout, tt.wantOutput) {
 				t.Errorf("output does not contain %q; stdout: %q", tt.wantOutput, stdout)

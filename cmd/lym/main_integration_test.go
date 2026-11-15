@@ -59,7 +59,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	// The steps share the one repo and board config and are independent of each other.
 	t.Run("a succeeding board command exits 0 with an ok envelope", func(t *testing.T) {
 		var out bytes.Buffer
-		code := run([]string{"board", "rerender"}, &out)
+		code := run([]string{"board", "rerender"}, &out, &out)
 		if code != 0 {
 			t.Fatalf("expected exit 0, got %d; output: %s", code, out.String())
 		}
@@ -69,7 +69,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 
 	t.Run("a failing board command propagates exit 1 with an error envelope", func(t *testing.T) {
 		var out bytes.Buffer
-		code := run([]string{"board", "remove", `{"slug":"nope"}`}, &out)
+		code := run([]string{"board", "remove", `{"slug":"nope"}`}, &out, &out)
 		if code != 1 {
 			t.Fatalf("expected exit 1 from failing board command, got %d; output: %s", code, out.String())
 		}
@@ -151,7 +151,7 @@ func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Create a temp cwd with a git repo and a _lym/config, so config reconcile can run.
-	// configcli.RunCLI recognizes the subcommand and produces JSON output.
+	// The config module recognizes the subcommand and produces JSON output.
 	cwd := t.TempDir()
 
 	// Initialize git repo so lymcwd.Resolve succeeds.
@@ -168,7 +168,7 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	t.Chdir(cwd)
 
 	var out bytes.Buffer
-	code := run([]string{"config", "reconcile"}, &out)
+	code := run([]string{"config", "reconcile"}, &out, &out)
 	if code != 0 {
 		t.Fatalf("expected exit 0 for config reconcile, got %d; output: %s", code, out.String())
 	}

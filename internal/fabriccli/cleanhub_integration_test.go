@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
@@ -63,7 +64,7 @@ func hubRelativeWeftTarget(t *testing.T, h *hubforge.Hub) string {
 func runShortnameVerb(t *testing.T, h *hubforge.Hub, args ...string) (exit int, env map[string]any) {
 	t.Helper()
 	var out bytes.Buffer
-	exit = fabriccli.RunCLIIn(h.PrimeWorktree(), &out, append([]string{"shortname"}, args...))
+	exit = clihelp.ExecuteIn(fabriccli.Command(), h.PrimeWorktree(), &out, append([]string{"shortname"}, args...))
 	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
 		t.Fatalf("decode shortname envelope: %v\noutput: %s", err, out.String())
 	}
@@ -92,12 +93,12 @@ func boardGit(t *testing.T, h *hubforge.Hub, args ...string) string {
 	return strings.TrimSpace(out)
 }
 
-// TestRunCLI_CleanHubScenario runs the read-only, refusal and shortname checks over one hub.
+// TestCommand_CleanHubScenario runs the read-only, refusal and shortname checks over one hub.
 // Steps run serially in this order:
 // the shortname steps that rewrite the record come after the ones that read it;
 // the pollution step comes last because it replaces the warp _lym junction with a tracked directory.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
-func TestRunCLI_CleanHubScenario(t *testing.T) {
+func TestCommand_CleanHubScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -193,15 +194,15 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 		{"PairsReturnsPairsKey", func(t *testing.T) {
 			code, output := runFabric(t, h.PrimeWorktree(), "pairs")
 			if code != 0 {
-				t.Errorf("RunCLI(pairs) = %d; want 0\noutput: %s", code, output)
+				t.Errorf("Execute(pairs) = %d; want 0\noutput: %s", code, output)
 			}
 
 			result := envelope.Decode(t, output)
 			if !result.OK {
-				t.Errorf("RunCLI(pairs) ok = %v; want true", result.OK)
+				t.Errorf("Execute(pairs) ok = %v; want true", result.OK)
 			}
 			if _, hasPairs := result.Raw["pairs"]; !hasPairs {
-				t.Errorf("RunCLI(pairs) output missing 'pairs' key; got %v", result)
+				t.Errorf("Execute(pairs) output missing 'pairs' key; got %v", result)
 			}
 		}},
 		{"ReadOnlyVerbsOmitMutationsKey", func(t *testing.T) {
@@ -222,14 +223,14 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 				t.Run(tt.name, func(t *testing.T) {
 					code, output := runFabric(t, h.PrimeWorktree(), tt.args...)
 					if code != 0 {
-						t.Fatalf("RunCLI(%v) = %d; want 0\noutput: %s", tt.args, code, output)
+						t.Fatalf("Execute(%v) = %d; want 0\noutput: %s", tt.args, code, output)
 					}
 					result := envelope.Decode(t, output)
 					if _, present := result.Raw["mutations"]; present {
-						t.Errorf("RunCLI(%v) output has a 'mutations' key; want it absent from a read-only verb's envelope: %v", tt.args, result)
+						t.Errorf("Execute(%v) output has a 'mutations' key; want it absent from a read-only verb's envelope: %v", tt.args, result)
 					}
 					if _, rawPartial := result.Raw["partial"]; rawPartial || result.Partial != nil {
-						t.Errorf("RunCLI(%v) output has a 'partial' key; want it absent from a read-only verb's envelope: %v", tt.args, result)
+						t.Errorf("Execute(%v) output has a 'partial' key; want it absent from a read-only verb's envelope: %v", tt.args, result)
 					}
 				})
 			}
@@ -239,31 +240,31 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			// The "changes" key is reported alongside it.
 			code, output := runFabric(t, h.PrimeWorktree(), "status")
 			if code != 0 {
-				t.Fatalf("RunCLI(status) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(status) = %d; want 0\noutput: %s", code, output)
 			}
 
 			result := envelope.Decode(t, output)
 			inProgress, present := result.Raw["merge_in_progress"]
 			if !present {
-				t.Fatalf("RunCLI(status) output missing 'merge_in_progress' key; got %v", result)
+				t.Fatalf("Execute(status) output missing 'merge_in_progress' key; got %v", result)
 			}
 			if inProgress != false {
-				t.Errorf("RunCLI(status) merge_in_progress = %v; want false", inProgress)
+				t.Errorf("Execute(status) merge_in_progress = %v; want false", inProgress)
 			}
 			if _, present := result.Raw["changes"]; !present {
-				t.Errorf("RunCLI(status) output missing 'changes' key; got %v", result)
+				t.Errorf("Execute(status) output missing 'changes' key; got %v", result)
 			}
 		}},
 		{"FallbackCwdMatchesInjectedCwd", func(t *testing.T) {
-			// RunCLI's process-cwd fallback and RunCLIIn's explicit-cwd branch must agree on one read-only verb.
-			// "pairs" runs through RunCLIIn in this process.
-			// It also runs through RunCLI in a separate OS process, whose working directory is the prime worktree.
+			// Execute's process-cwd fallback and ExecuteIn's explicit-cwd branch must agree on one read-only verb.
+			// "pairs" runs through ExecuteIn in this process.
+			// It also runs through Execute in a separate OS process, whose working directory is the prime worktree.
 			// The working directory is set by exec.Command's Dir field, never by a Chdir on this test binary.
 			// That subprocess is this test binary re-exec'd and intercepted by cli_test.go's package-level init.
 			// The init is gated by lymFabricCLISubprocessCwdEnv.
 			injectedCode, injectedOut := runFabric(t, h.PrimeWorktree(), "pairs")
 			if injectedCode != 0 {
-				t.Fatalf("RunCLIIn(pairs) = %d; want 0\noutput: %s", injectedCode, injectedOut)
+				t.Fatalf("ExecuteIn(pairs) = %d; want 0\noutput: %s", injectedCode, injectedOut)
 			}
 
 			cmd := exec.Command(os.Args[0])
@@ -277,23 +278,23 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			if runErr != nil {
 				var exitErr *exec.ExitError
 				if !errors.As(runErr, &exitErr) {
-					t.Fatalf("subprocess RunCLI(pairs) failed to run: %v\nstderr: %s", runErr, stderr.String())
+					t.Fatalf("subprocess Execute(pairs) failed to run: %v\nstderr: %s", runErr, stderr.String())
 				}
 				fallbackCode = exitErr.ExitCode()
 			}
 
 			if fallbackCode != injectedCode {
-				t.Errorf("RunCLI (process-cwd fallback) exit code = %d; want %d (RunCLIIn's)\nstderr: %s", fallbackCode, injectedCode, stderr.String())
+				t.Errorf("Execute (process-cwd fallback) exit code = %d; want %d (ExecuteIn's)\nstderr: %s", fallbackCode, injectedCode, stderr.String())
 			}
 			if string(fallbackOut) != injectedOut {
-				t.Errorf("RunCLI (process-cwd fallback) output = %q; want it identical to RunCLIIn(h.PrimeWorktree(), …) output %q", fallbackOut, injectedOut)
+				t.Errorf("Execute (process-cwd fallback) output = %q; want it identical to ExecuteIn(h.PrimeWorktree(), …) output %q", fallbackOut, injectedOut)
 			}
 		}},
 		{"PruneEmitsAnEmptyArrayNotNull", func(t *testing.T) {
 			// prune's "entries" key is an empty array, never null, on a hub with nothing stale.
 			code, output := runFabric(t, h.Location.WorktreePath(), "prune")
 			if code != 0 {
-				t.Fatalf("RunCLI(prune) = %d; want 0\noutput: %s", code, output)
+				t.Fatalf("Execute(prune) = %d; want 0\noutput: %s", code, output)
 			}
 
 			env := envelope.Decode(t, output)
@@ -317,15 +318,15 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			// Driven against a real hub so PersistentPreRunE's cwd resolution succeeds first and the mutual-exclusion refusal is the only error the run produces.
 			code, output := runFabric(t, h.PrimeWorktree(), "merge", "--continue", "--abort")
 			if code != 1 {
-				t.Fatalf("RunCLI(merge --continue --abort) = %d; want 1\noutput: %s", code, output)
+				t.Fatalf("Execute(merge --continue --abort) = %d; want 1\noutput: %s", code, output)
 			}
 
 			result := envelope.Decode(t, output)
 			if result.OK {
-				t.Errorf("RunCLI(merge --continue --abort) ok = true; want false")
+				t.Errorf("Execute(merge --continue --abort) ok = true; want false")
 			}
 			if result.Error == "" {
-				t.Errorf("RunCLI(merge --continue --abort) error is empty; want a usage-shaped message naming the mutual exclusion")
+				t.Errorf("Execute(merge --continue --abort) error is empty; want a usage-shaped message naming the mutual exclusion")
 			}
 		}},
 		{"MergeRejectsFlagsItWouldOtherwiseIgnore", func(t *testing.T) {
@@ -352,11 +353,11 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 				t.Run(tt.name, func(t *testing.T) {
 					code, output := runFabric(t, h.PrimeWorktree(), tt.args...)
 					if code != 1 {
-						t.Fatalf("RunCLI(%v) = %d; want 1\noutput: %s", tt.args, code, output)
+						t.Fatalf("Execute(%v) = %d; want 1\noutput: %s", tt.args, code, output)
 					}
 					result := envelope.RequireErr(t, output, "")
 					if result.Error != tt.wantErr {
-						t.Errorf("RunCLI(%v) error = %q; want %q", tt.args, result.Error, tt.wantErr)
+						t.Errorf("Execute(%v) error = %q; want %q", tt.args, result.Error, tt.wantErr)
 					}
 				})
 			}
@@ -366,19 +367,19 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			// It never claims the weft counterpart is not fabric-managed, because the weft side is not a merge participant.
 			code, output := runFabric(t, h.PrimeWorktree(), "merge", "nonexistent-branch")
 			if code != 1 {
-				t.Fatalf("RunCLI(merge nonexistent-branch) = %d; want 1\noutput: %s", code, output)
+				t.Fatalf("Execute(merge nonexistent-branch) = %d; want 1\noutput: %s", code, output)
 			}
 
 			result := envelope.RequireErr(t, output, "source branch not found")
 			if strings.Contains(result.Error, "source branch is not fabric-managed") {
-				t.Errorf("RunCLI(merge nonexistent-branch) error = %q; must not claim the weft counterpart is not fabric-managed (unreachable now the weft side is not a merge participant)", result.Error)
+				t.Errorf("Execute(merge nonexistent-branch) error = %q; must not claim the weft counterpart is not fabric-managed (unreachable now the weft side is not a merge participant)", result.Error)
 			}
 		}},
 		{"MergeStageRequiresAtLeastOnePath", func(t *testing.T) {
 			// With no paths, merge-stage refuses rather than succeeding vacuously.
 			// A caller that passed nothing meant to pass something.
 			if code, output := runFabric(t, h.PrimeWorktree(), "merge-stage"); code == 0 {
-				t.Errorf("RunCLI(merge-stage) with no paths = 0; want a refusal\noutput: %s", output)
+				t.Errorf("Execute(merge-stage) with no paths = 0; want a refusal\noutput: %s", output)
 			}
 		}},
 		{"RemoveNothingLeftIsNotFound", func(t *testing.T) {
@@ -505,13 +506,13 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 
 			code, output := runFabric(t, h.PrimeWorktree(), "pairs")
 			if code != 0 {
-				t.Errorf("RunCLI(pairs) = %d; want 0\noutput: %s", code, output)
+				t.Errorf("Execute(pairs) = %d; want 0\noutput: %s", code, output)
 			}
 
 			result := envelope.Decode(t, output)
 			pairs, ok := result.Raw["pairs"].([]any)
 			if !ok || len(pairs) == 0 {
-				t.Fatalf("RunCLI(pairs) 'pairs' = %v; want a non-empty array", result.Raw["pairs"])
+				t.Fatalf("Execute(pairs) 'pairs' = %v; want a non-empty array", result.Raw["pairs"])
 			}
 
 			var found map[string]any
@@ -550,11 +551,11 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 	}
 }
 
-// TestRunCLI_AnchoredHubScenario runs the checks only a subpath-anchored hub can show.
+// TestCommand_AnchoredHubScenario runs the checks only a subpath-anchored hub can show.
 // It runs them over one hub anchored at "backend".
 // Steps run serially in this order.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
-func TestRunCLI_AnchoredHubScenario(t *testing.T) {
+func TestCommand_AnchoredHubScenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -587,7 +588,7 @@ func TestRunCLI_AnchoredHubScenario(t *testing.T) {
 			// It is never the generic cwd-gate error, which would direct the operator deeper into the weft.
 			code, output := runFabric(t, h.PrimeRecords(), "pairs")
 			if code == 0 {
-				t.Fatalf("RunCLI(pairs) from weft sibling = 0; want a refusal\noutput: %s", output)
+				t.Fatalf("Execute(pairs) from weft sibling = 0; want a refusal\noutput: %s", output)
 			}
 			envelope.RequireErr(t, output, "records sibling of a pair")
 		}},

@@ -16,7 +16,7 @@
 // so every root it builds, the fresh roots a shortcut runs its argvs on included, carries the same shortcuts.
 // Mount adds one root command per shortcut under the group GroupID, which cobra lists as `Shortcuts:` in `lym --help`.
 // A file that does not parse logs one Warn and mounts nothing.
-// Shortcuts are not modules: they have no `Command()` or `RunCLI`, and the module guards in `cmd/lym` skip their group.
+// Shortcuts are not modules: they have no `Command()`, and the module guards in `cmd/lym` skip their group.
 //
 // # Words
 //

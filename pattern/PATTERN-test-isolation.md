@@ -185,6 +185,7 @@ the `shedfake` `Call` and `RequireOutcome` outcome check,
 and the `envelope` `RequireOK` and `RequireErr` shape check.
 `scankit` additionally asserts scan results.
 `plankit` and `stencilkit` assert nothing beyond `t.Fatalf` on their own setup.
+`shedcheckkit` asserts nothing: it returns its findings to the test.
 
 ## Hub fixtures
 

@@ -1,6 +1,6 @@
 // validate_test.go covers validate-discussion and validate-plan's clean, findings, and I/O-fault cases:
 // exit code, exactly-one-JSON-line output, and the decoded envelope's ok value and findings key presence.
-// Both verbs are driven directly, never through RunCLIIn or wire.
+// Both verbs are driven directly, never through clihelp.ExecuteIn or wire.
 // They run the leaf command built by validateDiscussionCmd/validatePlanCmd on a hand-populated *loomCLI.
 // Every case is tier 1: it spawns no subprocess, opens no real hub fixture, and sleeps on no real clock.
 

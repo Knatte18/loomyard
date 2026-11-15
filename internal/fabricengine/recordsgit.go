@@ -1,6 +1,6 @@
-// recordsgit.go holds the weft-git content-sync verbs on Fabric: commitWeft, PushWeft and PullWeft.
+// recordsgit.go holds the weft-git content-sync verbs on Fabric: commitWeftLocked, PushWeft and PullWeft.
 // It also holds commitWeftAt, which makes board's commit on weft:main without a warp tether, via Bolt.
-// A commitWeft commit carries a Warp-SHA trailer and records the correspondence at once.
+// A commitWeftLocked commit carries a Warp-SHA trailer and records the correspondence at once.
 // On an unborn warp HEAD, both are skipped for that one commit.
 
 package fabricengine
@@ -290,27 +290,6 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 	}
 
 	return sha, true, nil
-}
-
-// commitWeft stages the pathspec and commits it while holding the weft write lock.
-// Returns ("", false, nil) when opts.SkipGit is true.
-// Snapshot tags force an empty commit when nothing is staged, so the tags are still recorded.
-func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
-	if opts.SkipGit {
-		return "", false, nil
-	}
-
-	lockDir, err := f.ensureWeftLockDir()
-	if err != nil {
-		return "", false, err
-	}
-	l, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
-	if err != nil {
-		return "", false, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
-	}
-	defer func() { _ = l.Release() }()
-
-	return f.commitWeftLocked(pathspec, message, opts, snapshotTags...)
 }
 
 // PushResult carries the mutation record of a push.

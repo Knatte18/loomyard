@@ -1,13 +1,11 @@
 // cli.go builds the tender cobra command with its pause, resume, revive, status and reap verbs.
 // It also holds the caller rules.
-// The RunCLI and RunCLIIn seams wire the verbs into the standard io.Writer-based call contract.
 
 package tendercli
 
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strings"
@@ -408,19 +406,4 @@ Example:
 			return nil
 		},
 	}
-}
-
-// RunCLI runs the tender module CLI on args, writes its output to out, and returns the exit code.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the tender module CLI in cwd, writes its output to out, and returns the exit code.
-// An empty cwd reads the process working directory;
-// any other value seeds cwd into the execution context, because the cwd setup panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

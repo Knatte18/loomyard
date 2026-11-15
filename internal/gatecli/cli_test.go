@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -40,7 +41,7 @@ func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			code := RunCLIIn(t.TempDir(), &out, tc.args)
+			code := clihelp.ExecuteIn(Command(), t.TempDir(), &out, tc.args)
 
 			var envelope struct {
 				OK    bool   `json:"ok"`
@@ -50,7 +51,7 @@ func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
 				t.Fatalf("output %q is not a JSON envelope: %v", out.String(), err)
 			}
 			if code != 1 || envelope.OK || !strings.Contains(envelope.Error, tc.wantError) || !strings.Contains(envelope.Error, "way forward") {
-				t.Errorf("RunCLIIn(%v) = %d, %+v; want exit 1, ok false and an error holding %q and a way forward", tc.args, code, envelope, tc.wantError)
+				t.Errorf("ExecuteIn(%v) = %d, %+v; want exit 1, ok false and an error holding %q and a way forward", tc.args, code, envelope, tc.wantError)
 			}
 		})
 	}

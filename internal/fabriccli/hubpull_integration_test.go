@@ -1,4 +1,5 @@
-// hubpull_integration_test.go drives `lym fabric pull --hub` through RunCLIIn from a task pair of a hubforge hub:
+// hubpull_integration_test.go drives `lym fabric pull --hub` through clihelp.ExecuteIn.
+// It runs from a task pair of a hubforge hub:
 // the prime resolved from the pair, the real parent lock taken and released, and the envelope on a clean and a stopped pull.
 
 package fabriccli_test
@@ -23,7 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-func TestRunCLI_PullHubFromATaskPair(t *testing.T) {
+func TestCommand_PullHubFromATaskPair(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 	tests := []struct {
@@ -53,7 +54,7 @@ func TestRunCLI_PullHubFromATaskPair(t *testing.T) {
 
 			code, out := runFabric(t, h.PairCodeWorktree(hubforge.TemplatePairSlug), "pull", "--hub")
 			if code != tt.wantExit {
-				t.Errorf("RunCLI(pull --hub) = %d; want %d\noutput: %s", code, tt.wantExit, out)
+				t.Errorf("Execute(pull --hub) = %d; want %d\noutput: %s", code, tt.wantExit, out)
 			}
 			env := envelope.Decode(t, out)
 			sides, _ := env.Raw["sides"].([]any)

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -51,9 +52,9 @@ func TestHookBatchingVerb_RunsOutsideAHub(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	var out bytes.Buffer
-	code := RunCLIIn(t.TempDir(), &out, []string{"hook-batching", "no-such-engine", "unused-state-file"})
+	code := clihelp.ExecuteIn(Command(), t.TempDir(), &out, []string{"hook-batching", "no-such-engine", "unused-state-file"})
 	if code != 0 || !strings.HasPrefix(out.String(), "shuttle: the engine") {
-		t.Errorf("RunCLIIn(hook-batching) = exit %d, output %q; want exit 0 and the verb's own report", code, out.String())
+		t.Errorf("ExecuteIn(hook-batching) = exit %d, output %q; want exit 0 and the verb's own report", code, out.String())
 	}
 }
 

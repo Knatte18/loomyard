@@ -1,6 +1,7 @@
 // cli_test.go — tests for the board CLI (cli.go).
 //
-// Drives RunCLI in-process and asserts the JSON envelope and exit code of each subcommand.
+// Drives the board command through clihelp.Execute in-process.
+// It asserts the JSON envelope and exit code of each subcommand.
 // The envelope carries ok=true or ok=false; success exits 0 and error exits 1.
 // Each verb's distinctive field (task, tasks[], Home.md written) is checked too.
 //
@@ -8,7 +9,7 @@
 // The board data dir is then the Bolt checkout under Hub, where Hub = filepath.Dir(cwd).
 // This is the production code path; no --board-path injection is used for operational tests.
 //
-// seedCwd spawns "git init", and every RunCLI call spawns "git rev-parse" via lymcwd.Resolve,
+// seedCwd spawns "git init", and every runCLI call spawns "git rev-parse" via lymcwd.Resolve,
 // so this file is integration-tagged per the Test Tier Purity Invariant.
 // Spawn-free CLI tests live in cli_unit_test.go.
 

@@ -1,7 +1,7 @@
 // reconcile_integration_test.go holds the reconcile scenario that seeds a real git repo with gitexec.RunGit:
 // the dry-run and --apply round trips and the --set-then-reconcile drift check.
 // This file is integration-tagged per the Test Tier Purity Invariant;
-// the spawn-free not-a-git-repo assertion lives in TestRunCLIIn_FromNonGitDirectory.
+// the spawn-free not-a-git-repo assertion lives in TestCommand_FromNonGitDirectory.
 
 package configcli
 
@@ -12,6 +12,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -23,7 +24,7 @@ import (
 func runReconcileCLI(t *testing.T, dir string, args ...string) (int, map[string]any) {
 	t.Helper()
 	var out bytes.Buffer
-	code := RunCLIIn(dir, &out, append([]string{"reconcile"}, args...))
+	code := clihelp.ExecuteIn(Command(), dir, &out, append([]string{"reconcile"}, args...))
 	var result map[string]any
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 		t.Fatalf("parse JSON: %v, output: %s", err, out.String())
@@ -75,7 +76,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		code, result := runReconcileCLI(t, tmpDir)
 
 		if code != 0 {
-			t.Errorf("RunCLI(reconcile) = %d; want 0, result: %v", code, result)
+			t.Errorf("Execute(reconcile) = %d; want 0, result: %v", code, result)
 		}
 		if ok, _ := result["ok"].(bool); !ok {
 			t.Error("ok flag is not true")
@@ -153,7 +154,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		code, result := runReconcileCLI(t, tmpDir)
 
 		if code != 0 {
-			t.Fatalf("RunCLI(reconcile) = %d; want 0; result: %v", code, result)
+			t.Fatalf("Execute(reconcile) = %d; want 0; result: %v", code, result)
 		}
 		removed, ok := reconcileModule(t, result, "loom")["removed"].([]any)
 		if !ok {
@@ -179,7 +180,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		code, result := runReconcileCLI(t, tmpDir, "--apply")
 
 		if code != 0 {
-			t.Errorf("RunCLI(reconcile --apply) = %d; want 0, result: %v", code, result)
+			t.Errorf("Execute(reconcile --apply) = %d; want 0, result: %v", code, result)
 		}
 		if ok, _ := result["ok"].(bool); !ok {
 			t.Error("ok flag is not true")

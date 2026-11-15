@@ -7,7 +7,6 @@ package orchcli
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -286,18 +285,4 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 		}
 	}
 	return nil
-}
-
-// RunCLI runs the orch module CLI on args and writes its output to out.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the orch module CLI on args with cwd as the working directory, writing its output to out.
-// An empty cwd reads the process working directory instead, since the execution context panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

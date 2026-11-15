@@ -152,7 +152,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		if err := fslink.Remove(link); err != nil {
 			t.Fatalf("remove junction: %v", err)
 		}
-		wrongTarget := filepath.Join(filepath.Dir(fabricengine.WeftLymDir(l)), "not-the-weft-target")
+		wrongTarget := filepath.Join(filepath.Dir(fabricengine.WeftLymDirFor(l, slug)), "not-the-weft-target")
 		if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
 			t.Fatalf("mkdir wrong target: %v", err)
 		}

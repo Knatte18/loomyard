@@ -40,6 +40,11 @@ func readFile(t *testing.T, path string) string {
 	return string(data)
 }
 
+// AppendDecision appends d alone, as AppendDecisions does for a batch of one.
+func AppendDecision(decisionRecordPath, supportLogPath string, d AddedDecision) ([]Finding, error) {
+	return AppendDecisions(decisionRecordPath, supportLogPath, []AddedDecision{d})
+}
+
 // TestAppendDecision_AppendsAtEndOfDecisionsSection asserts the entry follows the Decisions body's last non-blank line.
 // A heading inside a fence is ignored, and the support log and the rest of the record stay byte-identical.
 // A PATTERN change replaces the section's bullet for its ID in place and is appended when the section holds none.

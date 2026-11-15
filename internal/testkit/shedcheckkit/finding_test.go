@@ -1,6 +1,6 @@
 // finding_test.go pins the eight Kind constants' exact string values and Finding.String's substring contract.
 
-package shedcheck
+package shedcheckkit
 
 import (
 	"strings"

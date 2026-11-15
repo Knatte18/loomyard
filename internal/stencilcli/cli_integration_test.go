@@ -1,4 +1,4 @@
-// cli_integration_test.go drives the stencil module through RunCLIIn against one real fabric hub.
+// cli_integration_test.go drives the stencil module through clihelp.ExecuteIn against one real fabric hub.
 // internal/hubforge builds that hub.
 // It exercises list, validate, diff (both modes), sync, and the promote round trip.
 // Its steps run end to end, serially, as TestStencilCLI_Scenario.
@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -28,19 +29,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// runCLI drives RunCLIIn against cwd with args, and parses the printed envelope as JSON when the output is non-empty.
+// runCLI drives clihelp.ExecuteIn against cwd with args.
+// It parses the printed envelope as JSON when the output is non-empty.
 // It fails the test outright on a malformed envelope, since every command under test always emits one.
 func runCLI(t *testing.T, cwd string, args ...string) (env map[string]any, code int, raw string) {
 	t.Helper()
 
 	var out bytes.Buffer
-	code = RunCLIIn(cwd, &out, args)
+	code = clihelp.ExecuteIn(Command(), cwd, &out, args)
 	raw = strings.TrimSpace(out.String())
 	if raw == "" {
 		return nil, code, raw
 	}
 	if err := json.Unmarshal([]byte(raw), &env); err != nil {
-		t.Fatalf("RunCLIIn(%v) output not valid JSON: %v; output: %s", args, err, raw)
+		t.Fatalf("ExecuteIn(%v) output not valid JSON: %v; output: %s", args, err, raw)
 	}
 	return env, code, raw
 }

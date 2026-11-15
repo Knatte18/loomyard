@@ -62,19 +62,6 @@ func collectEdits(fset *token.FileSet, filename, src string, maxWidth int) ([]ed
 	return edits, nil
 }
 
-// reflowSource returns src with its reflow edits applied, or src unchanged when nothing qualifies.
-// err is non-nil only on a parse failure.
-func reflowSource(fset *token.FileSet, filename, src string, maxWidth int) (string, error) {
-	edits, err := collectEdits(fset, filename, src, maxWidth)
-	if err != nil {
-		return src, err
-	}
-	if len(edits) == 0 {
-		return src, nil
-	}
-	return applyEdits(src, edits), nil
-}
-
 // collectGroups returns every comment group eligible for reflow consideration.
 // The file-level header comment qualifies when a blank line separates it from the package clause.
 // The package doc comment qualifies too.

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -179,7 +180,7 @@ func TestVerbs_RunFromABeam(t *testing.T) {
 	run := func(cwd string, args ...string) string {
 		t.Helper()
 		var out bytes.Buffer
-		RunCLIIn(cwd, &out, args)
+		clihelp.ExecuteIn(Command(), cwd, &out, args)
 		return out.String()
 	}
 
@@ -237,7 +238,7 @@ func TestCancelCmd_RemoveRefusesFromInsideTheBeam(t *testing.T) {
 	h, primeName := beamHub(t)
 
 	var out bytes.Buffer
-	RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"cancel", "b", "--remove"})
+	clihelp.ExecuteIn(Command(), h.PairCodeWorktree("b"), &out, []string{"cancel", "b", "--remove"})
 
 	envelope.RequireErr(t, out.String(), `"`+primeName+`"`)
 }

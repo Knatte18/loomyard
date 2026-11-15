@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -51,10 +52,10 @@ func newTurnHub(t *testing.T) turnHub {
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		reedcli.RunCLI(&buf, []string{"down"})
+		clihelp.Execute(reedcli.Command(), &buf, []string{"down"})
 	})
 	var reedOut bytes.Buffer
-	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+	if code := clihelp.Execute(reedcli.Command(), &reedOut, []string{"up"}); code != 0 {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 	runner, engine, reedEngine, cfg := newSmokeRunner(t)
@@ -373,7 +374,7 @@ func TestSmokeTurnsMessageMidTurn(t *testing.T) {
 		ModelChoice: shuttleengine.ModelChoice{Model: smokeClaudeModel},
 	})
 	time.Sleep(15 * time.Second)
-	if err := w.run.Send(shuttleengine.WithMessageTail("Say in one line what you are doing.")); err != nil {
+	if err := w.run.Send("Say in one line what you are doing. " + shuttleengine.MessageTail); err != nil {
 		t.Fatalf("run.Send: %v", err)
 	}
 	w.finishDone()

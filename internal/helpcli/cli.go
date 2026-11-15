@@ -104,18 +104,3 @@ The default audience is operator.`,
 	cmd.Flags().StringVar(&audience, "audience", clihelp.AudienceOperator, "audience to list: operator, role or internal")
 	return cmd
 }
-
-// RunCLI runs the help module CLI on args, writing to out, and returns its exit code.
-// It reads the process's working directory.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the help module CLI on args, writing to out, and returns its exit code.
-// An empty cwd reads the process's working directory; any other value is seeded into the execution context as cwd.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
-}

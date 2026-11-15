@@ -623,7 +623,7 @@ func TestPushFailureClasses(t *testing.T) {
 						p := newPairFixture(t, "stuckpair")
 						gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 						gitkit.Git(t, p.weftPath, "remote", "set-url", "origin", refusedOriginURL)
-						_, err := fabricengine.PushAnchored(p.location, p.fake.options(backoff), fabricengine.LockWaitUnbounded)
+						_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(backoff), fabricengine.LockWaitUnbounded)
 						return p.hub.Location.HubPath, p.fake, err
 					},
 					wantFailed: true,
@@ -678,14 +678,14 @@ func TestPushFailureClasses(t *testing.T) {
 			gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 			var sleeps int
 
-			_, err := fabricengine.PushAnchored(p.location, p.fake.options(countingBackoff(&sleeps, nil)), fabricengine.LockWaitUnbounded)
+			_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(countingBackoff(&sleeps, nil)), fabricengine.LockWaitUnbounded)
 
 			var failed *fabricengine.PushFailedError
 			if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureGone || !errors.Is(err, fabricengine.ErrBranchGone) {
-				t.Fatalf("PushAnchored() error = %v; want a gone *PushFailedError wrapping ErrBranchGone", err)
+				t.Fatalf("PushPairAnchored() error = %v; want a gone *PushFailedError wrapping ErrBranchGone", err)
 			}
 			if !strings.HasSuffix(err.Error(), "way forward: "+fabricengine.FailedPushWayForward(failed.Record)) {
-				t.Errorf("PushAnchored() error = %q; want it to end in the gone way forward", err)
+				t.Errorf("PushPairAnchored() error = %q; want it to end in the gone way forward", err)
 			}
 			if originHasBranch(t, p.hub.RecordsBare, p.weftBranch) {
 				t.Errorf("origin holds %s again; want a parked push never to recreate it", p.weftBranch)
@@ -706,8 +706,8 @@ func TestPushFailureClasses(t *testing.T) {
 			gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 			var sleeps int
 
-			if _, err := fabricengine.PushAnchored(p.location, p.fake.options(countingBackoff(&sleeps, nil)), fabricengine.LockWaitUnbounded); err != nil {
-				t.Fatalf("PushAnchored() error = %v; want nil, the ended entry's branch is left to its teardown", err)
+			if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(countingBackoff(&sleeps, nil)), fabricengine.LockWaitUnbounded); err != nil {
+				t.Fatalf("PushPairAnchored() error = %v; want nil, the ended entry's branch is left to its teardown", err)
 			}
 
 			if originHasBranch(t, p.hub.RecordsBare, p.weftBranch) {
@@ -729,8 +729,8 @@ func TestPushFailureClasses(t *testing.T) {
 			var sleeps int
 			backoff := countingBackoff(&sleeps, func(int) { p.endEntryOnOrigin("latepair") })
 
-			if _, err := fabricengine.PushAnchored(p.location, p.fake.options(backoff), fabricengine.LockWaitUnbounded); err != nil {
-				t.Fatalf("PushAnchored() error = %v; want nil", err)
+			if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(backoff), fabricengine.LockWaitUnbounded); err != nil {
+				t.Fatalf("PushPairAnchored() error = %v; want nil", err)
 			}
 
 			if sleeps != 1 {
@@ -750,8 +750,8 @@ func TestPushFailureClasses(t *testing.T) {
 			var sleeps int
 			backoff := countingBackoff(&sleeps, func(int) { gitkit.Git(t, p.weftPath, "remote", "set-url", "origin", realURL) })
 
-			if _, err := fabricengine.PushAnchored(p.location, p.fake.options(backoff), fabricengine.LockWaitUnbounded); err != nil {
-				t.Fatalf("PushAnchored() error = %v; want nil", err)
+			if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(backoff), fabricengine.LockWaitUnbounded); err != nil {
+				t.Fatalf("PushPairAnchored() error = %v; want nil", err)
 			}
 
 			if got, want := bareBranchTip(t, p.hub.RecordsBare, p.weftBranch), gitkit.RevParse(t, p.weftPath, "HEAD"); got != want {

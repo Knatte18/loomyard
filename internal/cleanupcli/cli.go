@@ -1,10 +1,9 @@
-// cli.go builds the cobra command for the cleanup module and the RunCLI and RunCLIIn seams that run it.
+// cli.go builds the cobra command for the cleanup module.
 
 package cleanupcli
 
 import (
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
@@ -123,19 +122,4 @@ Example:
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "remove what the dry run lists (default is dry-run/report)")
 	return cmd
-}
-
-// RunCLI runs the cleanup CLI with args, writes its output to out, and returns the exit code.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the cleanup CLI with args in cwd, writes its output to out, and returns the exit code.
-// An empty cwd reads the process working directory; any other value is seeded into the execution context.
-// The seed cannot be empty, because `lymcwd.WithCwd` panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -50,7 +51,7 @@ func TestSync_DeferrableExitsUnderACoveringPause(t *testing.T) {
 			t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{Geometry: pauserecord.Geometry{RecordPath: recordPath}, Defer: true}))
 
 			var stdout bytes.Buffer
-			code := RunCLI(&stdout, tt.args)
+			code := clihelp.Execute(Command(), &stdout, tt.args)
 			var envelope struct {
 				OK    bool   `json:"ok"`
 				Error string `json:"error"`

@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/adoptcli"
 	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -95,7 +96,7 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	if _, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), first.Location, rels, "test: run record", fabricengine.EnvSyncOptions()); err != nil || !committed {
 		t.Fatalf("commit the run record: committed=%v err=%v", committed, err)
 	}
-	if _, err := fabricengine.PushAnchored(first.Location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
+	if _, err := fabricengine.PushPairAnchored(first.Location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
 		t.Fatalf("push the run record: %v", err)
 	}
 
@@ -242,7 +243,7 @@ func TestCommand_RunsFromABeam(t *testing.T) {
 
 	run := func(cwd string) string {
 		var out bytes.Buffer
-		adoptcli.RunCLIIn(cwd, &out, []string{"ghost"})
+		clihelp.ExecuteIn(adoptcli.Command(), cwd, &out, []string{"ghost"})
 		return out.String()
 	}
 
@@ -282,7 +283,7 @@ func TestCommand_HereAdoptsTheSubjectOfItsWorktree(t *testing.T) {
 	}
 	for _, tt := range tests {
 		var out bytes.Buffer
-		exit := adoptcli.RunCLIIn(tt.cwd, &out, []string{"--here"})
+		exit := clihelp.ExecuteIn(adoptcli.Command(), tt.cwd, &out, []string{"--here"})
 		got := envelope.RequireOK(t, out.String())
 		if exit != 0 || got.Raw["outcome"] != "owned_here" || got.Raw["subject"] != tt.wantSubject {
 			t.Errorf("%s: lym adopt --here = exit %d, envelope %+v; want exit 0, outcome owned_here and subject %q", tt.name, exit, got, tt.wantSubject)
@@ -311,7 +312,7 @@ func TestCheckCmd_FromABeamExitsZeroWhileOneRuns(t *testing.T) {
 	t.Cleanup(func() { _ = held.Release() })
 
 	var out bytes.Buffer
-	exit := adoptcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"check", "root"})
+	exit := clihelp.ExecuteIn(adoptcli.Command(), h.PairCodeWorktree("b"), &out, []string{"check", "root"})
 
 	got := envelope.RequireOK(t, out.String())
 	if exit != 0 || got.Raw["already_running"] != true {

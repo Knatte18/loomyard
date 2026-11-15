@@ -1,4 +1,4 @@
-// create_integration_test.go runs "lym beam create" through RunCLIIn over a hubforge hub.
+// create_integration_test.go runs "lym beam create" through clihelp.ExecuteIn over a hubforge hub.
 // It runs the create from the parent beam of the entry it names, where it reaches the verb's refusal.
 // It runs it from the prime too, where the create is refused and the refusal names the parent beam.
 
@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/beamcli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -52,10 +53,10 @@ func TestCreate_RunsFromABeamAndReachesTheVerbsOwnRefusal(t *testing.T) {
 	}
 
 	var fromBeam bytes.Buffer
-	beamcli.RunCLIIn(h.PairCodeWorktree("b"), &fromBeam, []string{"create", "t"})
+	clihelp.ExecuteIn(beamcli.Command(), h.PairCodeWorktree("b"), &fromBeam, []string{"create", "t"})
 	envelope.RequireErr(t, fromBeam.String(), "is a task")
 
 	var fromPrime bytes.Buffer
-	beamcli.RunCLIIn(h.PrimeWorktree(), &fromPrime, []string{"create", "t"})
+	clihelp.ExecuteIn(beamcli.Command(), h.PrimeWorktree(), &fromPrime, []string{"create", "t"})
 	envelope.RequireErr(t, fromPrime.String(), "is created from its parent's worktree")
 }

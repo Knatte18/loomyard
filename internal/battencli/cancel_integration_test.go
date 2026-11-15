@@ -1,4 +1,4 @@
-// cancel_integration_test.go drives "lym batten cancel" through RunCLIIn over hubforge hubs.
+// cancel_integration_test.go drives "lym batten cancel" through clihelp.ExecuteIn over hubforge hubs.
 // It covers a blocked run with no pair, a kept pair whose reconcile only judges, and a removed pair.
 
 package battencli
@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -63,7 +64,7 @@ func seedCancelRun(t *testing.T, h *hubforge.Hub, slug, producer string, rowStat
 func runCancel(t *testing.T, cwd string, args ...string) string {
 	t.Helper()
 	var out bytes.Buffer
-	RunCLIIn(cwd, &out, append([]string{"cancel"}, args...))
+	clihelp.ExecuteIn(Command(), cwd, &out, append([]string{"cancel"}, args...))
 	return out.String()
 }
 

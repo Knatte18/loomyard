@@ -1,6 +1,5 @@
-// planglyph.go declares ValidateFormat and Validate, the composed validation entry points batch 5
-// names in the Gate Self-Check Parity Invariant, plus resolvePass, the resolve-backed half both
-// share.
+// planglyph.go declares the plan gates' bodies: validateFormat, validateFormatAfter, validateRework and validate.
+// It also declares ValidateDispatch and resolvePass, the resolve-backed half the gates share.
 
 package planglyph
 
@@ -13,24 +12,20 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// ValidateFormat runs planparser.ValidateFormat's pure checks against plan, converts every
-// finding, and appends the resolve-backed findings resolvePass collects on top. Its second return
-// is a non-nil ErrQuarryUnavailable-wrapped error exactly when resolvePass could not get a clean
-// answer from quarry — the pure findings already collected are still returned alongside it, since
-// the gate cannot certify a plan as valid against code it failed to read, and the error must
-// report as a gate/infrastructure failure rather than as a plan finding so nobody mistakes "quarry
-// broke" for "the plan is wrong".
+// validateFormat runs planparser.ValidateFormat's pure checks against plan and converts every finding.
+// It appends the resolve-backed findings resolvePass collects on top.
+// After resolvePass it appends planGatePass's findings, skipping that pass when resolvePass failed;
+// the caller-uncovered type load runs through loader.
 //
-// After resolvePass it appends planGatePass's findings, skipping that pass when resolvePass failed.
+// Its second return is a non-nil ErrQuarryUnavailable-wrapped error.
+// That error comes back exactly when resolvePass could not get a clean answer from quarry.
+// The findings already collected come back alongside it.
+// The gate cannot certify a plan against code it failed to read.
+// The error reports as an infrastructure failure rather than a plan finding.
+// So "quarry broke" is never mistaken for "the plan is wrong".
 //
-// This is the WHOLE-plan form, correct before execution starts (both plan gate sites -- Plan-Write's
-// and Plan-Burler-Fix's own gates -- and the standalone verbs). Once execution is under way, use
-// ValidateDispatch instead.
-func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
-	return validateFormat(plan, worktreeRoot, defaultTypesLoader)
-}
-
-// validateFormat is ValidateFormat's body, its caller-uncovered type load run through loader.
+// This is the whole-plan form, correct before execution starts: both plan gate sites and the standalone verbs.
+// Once execution is under way, ValidateDispatch is the form to use.
 func validateFormat(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([]Finding, error) {
 	findings := convertAll(planparser.ValidateFormat(plan, worktreeRoot))
 	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
@@ -42,17 +37,13 @@ func validateFormat(plan *planparser.Plan, worktreeRoot string, loader typesLoad
 	return append(findings, gateFindings...), err
 }
 
-// ValidateFormatAfter is ValidateFormat for a plan some of whose cards webster already ran: done names the cards of the batches its run record holds done.
-// With no done card it is ValidateFormat.
+// validateFormatAfter is validateFormat for a plan some of whose cards webster already ran.
+// Here done names the cards of the batches its run record holds done.
+// With no done card it is validateFormat.
 // Otherwise it is ValidateDispatch's check set with done as completed and nothing forthcoming, less its scan-only delete-before-reference, plus planGatePass over the cards not in done, which reports that check typed.
 // A done card's work is in the tree, so resolving it again reports its own landed work as create-already-exists, glyph-not-found, path-missing or caller-uncovered, defects no fixer can repair:
 // a run moved back to the plan review after Webster executed batches wedged its plan gate on exactly those.
-// It has ValidateFormat's error contract.
-func ValidateFormatAfter(plan *planparser.Plan, worktreeRoot string, done []planparser.Card) ([]Finding, error) {
-	return validateFormatAfter(plan, worktreeRoot, done, defaultTypesLoader)
-}
-
-// validateFormatAfter is ValidateFormatAfter's body, its caller-uncovered type load run through loader.
+// It has validateFormat's error contract, and the caller-uncovered type load runs through loader.
 func validateFormatAfter(plan *planparser.Plan, worktreeRoot string, done []planparser.Card, loader typesLoader) ([]Finding, error) {
 	if len(done) == 0 {
 		return validateFormat(plan, worktreeRoot, loader)
@@ -65,27 +56,19 @@ func validateFormatAfter(plan *planparser.Plan, worktreeRoot string, done []plan
 	return append(findings, gateFindings...), err
 }
 
-// ValidateRework is the rework gate's check set: ValidateFormat's findings, then planparser.CheckFirstCard's finding when plan's first_card differs from told, the card number Go told the rework session to start at.
-// It has ValidateFormat's error contract.
-func ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
-	return validateRework(plan, worktreeRoot, told, defaultTypesLoader)
-}
-
-// validateRework is ValidateRework's body, its caller-uncovered type load run through loader.
+// validateRework is the rework gate's check set.
+// It returns validateFormat's findings, then planparser.CheckFirstCard's finding.
+// That finding appears when plan's first_card differs from told, the card number Go told the rework session to start at.
+// It has validateFormat's error contract, and the caller-uncovered type load runs through loader.
 func validateRework(plan *planparser.Plan, worktreeRoot string, told int, loader typesLoader) ([]Finding, error) {
 	findings, err := validateFormat(plan, worktreeRoot, loader)
 	findings = append(findings, convertAll(planparser.CheckFirstCard(plan, told))...)
 	return findings, err
 }
 
-// Validate runs planparser.Validate's pure checks against plan, including the plan-unapproved
-// approval gate, converts every finding, and appends the same resolve-backed findings on top,
-// with the same error contract ValidateFormat documents.
-func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
-	return validate(plan, worktreeRoot, defaultTypesLoader)
-}
-
-// validate is Validate's body, its caller-uncovered type load run through loader.
+// validate runs planparser.Validate's pure checks against plan, including the plan-unapproved approval gate.
+// It converts every finding and appends the same resolve-backed findings on top.
+// It has validateFormat's error contract, and the caller-uncovered type load runs through loader.
 func validate(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([]Finding, error) {
 	findings := convertAll(planparser.Validate(plan, worktreeRoot))
 	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
@@ -97,9 +80,10 @@ func validate(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([
 	return append(findings, gateFindings...), err
 }
 
-// ValidateDispatch is ValidateFormat's mid-execution form: the same check set, scoped to the cards
+// ValidateDispatch is the plan gates' mid-execution form: the same check set, scoped to the cards
 // whose work has NOT landed yet.
-// completed names every card already built, and a caller with none gets ValidateFormat's answer less planGatePass's findings, a pass that runs at the plan gates only.
+// completed names every card already built.
+// A caller with none gets the whole-plan answer less planGatePass's findings, a pass that runs at the plan gates only.
 //
 // The scoping is not an optimisation, it is correctness. A plan describes intended change, so a card
 // whose work already landed necessarily contradicts the tree it is re-resolved against: a completed
@@ -280,7 +264,7 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 	return findings
 }
 
-// resolvePass is the resolve-backed half both ValidateFormat and Validate delegate to: the single
+// resolvePass is the resolve-backed half the plan gates delegate to: the single
 // shared body that makes the parity pair one function in every mode. Under plan.Language "none" it
 // returns nil findings and a nil error immediately, opening no repository at all — language: none
 // degrades to today's path-only behaviour, with no quarry call whatsoever.

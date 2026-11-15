@@ -15,11 +15,12 @@ import (
 
 	"github.com/Knatte18/quarry/quarry"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeFixtureRepo writes files, keyed by repository-relative path, under a fresh t.TempDir().
-// It returns that directory's absolute path, ready to hand to RunCLIIn as cwd.
+// It returns that directory's absolute path, ready to hand to clihelp.ExecuteIn as cwd.
 func writeFixtureRepo(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -35,10 +36,10 @@ func writeFixtureRepo(t *testing.T, files map[string]string) string {
 	return root
 }
 
-// TestRunCLIIn_EachVerb_Answers drives each of the four verbs against a fixture repository.
+// TestCommand_EachVerb_Answers drives each of the four verbs against a fixture repository.
 // A positive answer must exit 0 with a parseable JSON payload.
 // Expand on a directory exits non-zero, because a directory is not a type and answers not_found.
-func TestRunCLIIn_EachVerb_Answers(t *testing.T) {
+func TestCommand_EachVerb_Answers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -60,22 +61,22 @@ func TestRunCLIIn_EachVerb_Answers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			exitCode := RunCLIIn(root, &out, tt.args)
+			exitCode := clihelp.ExecuteIn(Command(), root, &out, tt.args)
 
 			if !tt.wantExit0 {
 				if exitCode == 0 {
-					t.Errorf("RunCLIIn(%v) = 0; want non-zero for a non-type target", tt.args)
+					t.Errorf("ExecuteIn(%v) = 0; want non-zero for a non-type target", tt.args)
 				}
 				return
 			}
 
 			if exitCode != 0 {
-				t.Fatalf("RunCLIIn(%v) = %d; want 0; output: %s", tt.args, exitCode, out.String())
+				t.Fatalf("ExecuteIn(%v) = %d; want 0; output: %s", tt.args, exitCode, out.String())
 			}
 
 			var payload map[string]any
 			if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
-				t.Fatalf("RunCLIIn(%v) output is not valid JSON: %v; got: %q", tt.args, err, out.String())
+				t.Fatalf("ExecuteIn(%v) output is not valid JSON: %v; got: %q", tt.args, err, out.String())
 			}
 		})
 	}
@@ -96,22 +97,22 @@ func decodeDocuments(t *testing.T, out string) []map[string]any {
 	return docs
 }
 
-// TestRunCLIIn_Resolve_PerGlyphAnswers asserts resolve prints one answer per glyph in argument order.
+// TestCommand_Resolve_PerGlyphAnswers asserts resolve prints one answer per glyph in argument order.
 // It exits 1 on any negative answer and 0 when every glyph is found.
-func TestRunCLIIn_Resolve_PerGlyphAnswers(t *testing.T) {
+func TestCommand_Resolve_PerGlyphAnswers(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 
 	t.Run("not_found", func(t *testing.T) {
 		args := []string{"resolve", "sub#Foo", "sub#Missing"}
 		var out bytes.Buffer
-		if exitCode := RunCLIIn(root, &out, args); exitCode != 1 {
-			t.Fatalf("RunCLIIn(%v) = %d; want 1; output: %s", args, exitCode, out.String())
+		if exitCode := clihelp.ExecuteIn(Command(), root, &out, args); exitCode != 1 {
+			t.Fatalf("ExecuteIn(%v) = %d; want 1; output: %s", args, exitCode, out.String())
 		}
 
 		docs := decodeDocuments(t, out.String())
 		if len(docs) != 2 {
-			t.Fatalf("RunCLIIn(%v) printed %d documents; want 2; got: %q", args, len(docs), out.String())
+			t.Fatalf("ExecuteIn(%v) printed %d documents; want 2; got: %q", args, len(docs), out.String())
 		}
 		if docs[1]["status"] != "not_found" {
 			t.Errorf("second document status = %v; want not_found", docs[1]["status"])
@@ -146,13 +147,13 @@ func TestRunCLIIn_Resolve_PerGlyphAnswers(t *testing.T) {
 	t.Run("grammar_rejection", func(t *testing.T) {
 		args := []string{"resolve", "sub#Foo", "sub##Foo"}
 		var out bytes.Buffer
-		if exitCode := RunCLIIn(root, &out, args); exitCode != 1 {
-			t.Fatalf("RunCLIIn(%v) = %d; want 1; output: %s", args, exitCode, out.String())
+		if exitCode := clihelp.ExecuteIn(Command(), root, &out, args); exitCode != 1 {
+			t.Fatalf("ExecuteIn(%v) = %d; want 1; output: %s", args, exitCode, out.String())
 		}
 
 		docs := decodeDocuments(t, out.String())
 		if len(docs) != 2 {
-			t.Fatalf("RunCLIIn(%v) printed %d documents; want 2; got: %q", args, len(docs), out.String())
+			t.Fatalf("ExecuteIn(%v) printed %d documents; want 2; got: %q", args, len(docs), out.String())
 		}
 		for _, key := range []string{"error", "reason"} {
 			if _, has := docs[1][key]; !has {
@@ -172,13 +173,13 @@ func TestRunCLIIn_Resolve_PerGlyphAnswers(t *testing.T) {
 	t.Run("all_found", func(t *testing.T) {
 		args := []string{"resolve", "sub#Foo", "sub#Foo"}
 		var out bytes.Buffer
-		if exitCode := RunCLIIn(root, &out, args); exitCode != 0 {
-			t.Fatalf("RunCLIIn(%v) = %d; want 0; output: %s", args, exitCode, out.String())
+		if exitCode := clihelp.ExecuteIn(Command(), root, &out, args); exitCode != 0 {
+			t.Fatalf("ExecuteIn(%v) = %d; want 0; output: %s", args, exitCode, out.String())
 		}
 
 		docs := decodeDocuments(t, out.String())
 		if len(docs) != 2 {
-			t.Fatalf("RunCLIIn(%v) printed %d documents; want 2; got: %q", args, len(docs), out.String())
+			t.Fatalf("ExecuteIn(%v) printed %d documents; want 2; got: %q", args, len(docs), out.String())
 		}
 		for i, doc := range docs {
 			if doc["status"] != "found" {
@@ -188,11 +189,11 @@ func TestRunCLIIn_Resolve_PerGlyphAnswers(t *testing.T) {
 	})
 }
 
-// TestRunCLIIn_Glyphs_GoldenAgainstFacade asserts glyphs' emitted bytes are byte-identical to the facade's.
+// TestCommand_Glyphs_GoldenAgainstFacade asserts glyphs' emitted bytes are byte-identical to the facade's.
 // Both the JSON and the --text output are checked, against the facade's RenderGlyphsJSON and RenderGlyphsText.
 // The expected answer comes straight from quarry.Open and Glyphs.
 // That copied-verbatim guarantee is what this verb exists to provide.
-func TestRunCLIIn_Glyphs_GoldenAgainstFacade(t *testing.T) {
+func TestCommand_Glyphs_GoldenAgainstFacade(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -221,9 +222,9 @@ func TestRunCLIIn_Glyphs_GoldenAgainstFacade(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			exitCode := RunCLIIn(root, &out, tt.args)
+			exitCode := clihelp.ExecuteIn(Command(), root, &out, tt.args)
 			if exitCode != 0 {
-				t.Fatalf("RunCLIIn(%v) = %d; want 0; output: %s", tt.args, exitCode, out.String())
+				t.Fatalf("ExecuteIn(%v) = %d; want 0; output: %s", tt.args, exitCode, out.String())
 			}
 
 			repo, err := quarry.Open(root)
@@ -237,31 +238,31 @@ func TestRunCLIIn_Glyphs_GoldenAgainstFacade(t *testing.T) {
 			want := tt.render(t, answer)
 
 			if out.String() != want {
-				t.Errorf("RunCLIIn(%v) output = %q; want byte-identical to facade rendering %q", tt.args, out.String(), want)
+				t.Errorf("ExecuteIn(%v) output = %q; want byte-identical to facade rendering %q", tt.args, out.String(), want)
 			}
 		})
 	}
 }
 
-// TestRunCLIIn_GlyphsText_EmptyAnswer asserts that glyphs --text writes nothing and exits 0.
+// TestCommand_GlyphsText_EmptyAnswer asserts that glyphs --text writes nothing and exits 0.
 // The directory holds no symbols and no incomplete files.
-func TestRunCLIIn_GlyphsText_EmptyAnswer(t *testing.T) {
+func TestCommand_GlyphsText_EmptyAnswer(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"docs/notes.txt": "just prose\n"})
 
 	var out bytes.Buffer
-	exitCode := RunCLIIn(root, &out, []string{"glyphs", "--text", "docs"})
+	exitCode := clihelp.ExecuteIn(Command(), root, &out, []string{"glyphs", "--text", "docs"})
 	if exitCode != 0 {
-		t.Fatalf("RunCLIIn(glyphs --text docs) = %d; want 0; output: %s", exitCode, out.String())
+		t.Fatalf("ExecuteIn(glyphs --text docs) = %d; want 0; output: %s", exitCode, out.String())
 	}
 	if out.Len() != 0 {
-		t.Errorf("RunCLIIn(glyphs --text docs) wrote %q; want zero bytes", out.String())
+		t.Errorf("ExecuteIn(glyphs --text docs) wrote %q; want zero bytes", out.String())
 	}
 }
 
-// TestRunCLIIn_GlyphsText_TestFileFilter asserts a line filter on _test.go drops exactly the test-file symbol lines.
+// TestCommand_GlyphsText_TestFileFilter asserts a line filter on _test.go drops exactly the test-file symbol lines.
 // Each symbol is one line carrying its own file path.
-func TestRunCLIIn_GlyphsText_TestFileFilter(t *testing.T) {
+func TestCommand_GlyphsText_TestFileFilter(t *testing.T) {
 	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{
 		"sub/a.go":      "package sub\n\nfunc Prod() {}\n",
@@ -269,9 +270,9 @@ func TestRunCLIIn_GlyphsText_TestFileFilter(t *testing.T) {
 	})
 
 	var out bytes.Buffer
-	exitCode := RunCLIIn(root, &out, []string{"glyphs", "--text", "sub"})
+	exitCode := clihelp.ExecuteIn(Command(), root, &out, []string{"glyphs", "--text", "sub"})
 	if exitCode != 0 {
-		t.Fatalf("RunCLIIn(glyphs --text sub) = %d; want 0; output: %s", exitCode, out.String())
+		t.Fatalf("ExecuteIn(glyphs --text sub) = %d; want 0; output: %s", exitCode, out.String())
 	}
 
 	// A line's id is its last field, so the lines are selected by id, never by substring.
@@ -303,10 +304,10 @@ func TestRunCLIIn_GlyphsText_TestFileFilter(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_TextFlagRefusals asserts the --text paths that fail exit non-zero.
+// TestCommand_TextFlagRefusals asserts the --text paths that fail exit non-zero.
 // A failing glyphs query under --text still emits the JSON error envelope.
 // --text is glyphs-only, so the other verbs reject it.
-func TestRunCLIIn_TextFlagRefusals(t *testing.T) {
+func TestCommand_TextFlagRefusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -325,9 +326,9 @@ func TestRunCLIIn_TextFlagRefusals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			exitCode := RunCLIIn(root, &out, tt.args)
+			exitCode := clihelp.ExecuteIn(Command(), root, &out, tt.args)
 			if exitCode == 0 {
-				t.Fatalf("RunCLIIn(%v) = 0; want non-zero; output: %s", tt.args, out.String())
+				t.Fatalf("ExecuteIn(%v) = 0; want non-zero; output: %s", tt.args, out.String())
 			}
 			if !tt.wantEnvelope {
 				return

@@ -45,7 +45,7 @@ func TestRunDispatchesToUninitializedRepoModules(t *testing.T) {
 			t.Chdir(t.TempDir())
 
 			var out bytes.Buffer
-			code := run(tt.args, &out)
+			code := run(tt.args, &out, &out)
 			if code != 1 {
 				t.Fatalf("expected exit 1 for %v in uninitialized repo, got %d; output: %s", tt.args, code, out.String())
 			}

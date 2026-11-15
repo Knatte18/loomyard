@@ -762,26 +762,10 @@ module retired it, since a newer lym binary may have written it.`,
 	return configCmd
 }
 
-// RunCLI runs the lym config command with args and returns its exit code.
-// Both stdout and stderr go to out, so a caller can capture them in one buffer.
-// The working directory is the process's.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the lym config command with args, using cwd as the working directory.
-// An empty cwd means the process's working directory and goes to clihelp.Execute instead.
-// lymcwd.WithCwd panics on an empty directory, so an empty cwd must not reach clihelp.ExecuteIn.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
-}
-
 // runConfig runs the lym config command for args and returns its exit code.
 // It resolves the layout from the cwd in ctx and builds the real editor, sync, and hub commit.
-// The real sync runs fabriccli.RunCLIIn with "sync" in that same cwd, rather than re-deriving it from process state.
+// The real sync runs the fabric "sync" verb through clihelp.ExecuteIn in that same cwd.
+// It does not re-derive the cwd from process state.
 // When printOnly is true the command is read-only: it prints on-disk YAML without opening an editor or running sync.
 // setFlags carries the raw "key=value" strings collected from repeated --set flags.
 func runConfig(ctx context.Context, in io.Reader, out io.Writer, args []string, printOnly bool, setFlags []string, layer string) int {
@@ -816,7 +800,7 @@ func runMenu(ctx context.Context, in io.Reader, out io.Writer) int {
 
 // resolveReal resolves the layout from the cwd in ctx and builds the real sync function and hub commit.
 //
-// The sync is fabriccli.RunCLIIn with "sync" in that resolved cwd.
+// The sync is the fabric "sync" verb, run through clihelp.ExecuteIn in that resolved cwd.
 // The nested call must not re-derive the cwd from process state.
 // The hub commit is newHubCommit over the Bolt checkout.
 func resolveReal(ctx context.Context) (*lymcwd.Location, syncFunc, hubCommitFunc, error) {
@@ -829,7 +813,7 @@ func resolveReal(ctx context.Context) (*lymcwd.Location, syncFunc, hubCommitFunc
 		return nil, nil, nil, err
 	}
 	realSync := func(w io.Writer) int {
-		return fabriccli.RunCLIIn(cwd, w, []string{"sync"})
+		return clihelp.ExecuteIn(fabriccli.Command(), cwd, w, []string{"sync"})
 	}
 	return l, realSync, newHubCommit(fabricengine.BoltDir(l.HubPath)), nil
 }

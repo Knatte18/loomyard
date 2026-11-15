@@ -1,4 +1,4 @@
-// cli.go builds the cobra command tree for the reed module and the RunCLI seam that runs it.
+// cli.go builds the cobra command tree for the reed module.
 // The group's pre-run resolves the Engine once per invocation, and the verbs that need it read it from reedCLI.
 // The watchdog, switch, follow, button and window verbs skip that resolution and resolve nothing from the cwd.
 
@@ -7,7 +7,6 @@ package reedcli
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"testing"
 	"time"
@@ -196,23 +195,4 @@ rather than booting substrate it cannot reach.`,
 	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.windowCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd(), c.followCmd(), c.buttonCmd())
 
 	return parent
-}
-
-// RunCLI is the public seam for the reed module CLI.
-//
-// It runs the command tree on args in the process working directory.
-// All output, including cobra's error text, goes to out.
-func RunCLI(out io.Writer, args []string) int {
-	return RunCLIIn("", out, args)
-}
-
-// RunCLIIn runs the reed command tree on args with cwd as its working directory, writing all output to out.
-// An empty cwd means the process working directory and runs through clihelp.Execute;
-// any other value is seeded into the execution context through clihelp.ExecuteIn.
-// The branch exists because lymcwd.WithCwd panics on an empty directory.
-func RunCLIIn(cwd string, out io.Writer, args []string) int {
-	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
-	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

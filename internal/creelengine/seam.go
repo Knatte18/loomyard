@@ -172,15 +172,6 @@ func (s Sender) Envelope() string {
 	return strings.Join(parts, ", ")
 }
 
-// String renders the sender as a reader sees it.
-// An EXTERNAL sender carries its envelope, as in "ly:EXTERNAL (claude, pts/4, ~/Code/…)".
-func (s Sender) String() string {
-	if envelope := s.Envelope(); envelope != "" {
-		return s.Name + " (" + envelope + ")"
-	}
-	return s.Name
-}
-
 // isOrchName reports whether full names an orch strand, a role that matches orch or orch-N.
 func isOrchName(full string) bool {
 	name, err := agentname.Parse(full)

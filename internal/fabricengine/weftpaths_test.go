@@ -1,5 +1,5 @@
 // weftpaths_test.go covers the weft-sibling path accessors:
-// RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor, with AnchorRel "." (root) and subpath cases.
+// RecordsWorktree, RecordsWorktreePath and WeftLymDirFor, with AnchorRel "." (root) and subpath cases.
 // It pins the "-weft" sibling naming across container, base and subpath combinations.
 
 package fabricengine
@@ -15,7 +15,7 @@ import (
 // TestWeftPathAccessors checks that the weft path accessors mirror AnchorRel.
 // It also checks that each weft worktree pairs with its warp-side worktree.
 //
-//testtiming:keep RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep RecordsWorktree, RecordsWorktreePath and WeftLymDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftPathAccessors(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -26,7 +26,6 @@ func TestWeftPathAccessors(t *testing.T) {
 
 		wantWeftWorktree     string
 		wantWeftWorktreePath string
-		wantWeftLymDir       string
 		wantWeftLymDirFor    string
 	}{
 		{
@@ -36,7 +35,6 @@ func TestWeftPathAccessors(t *testing.T) {
 			relPath:              ".",
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
-			wantWeftLymDir:       filepath.Join("/h", "feat-weft", "_lym"),
 			wantWeftLymDirFor:    filepath.Join("/h", "x-weft", "_lym"),
 		},
 		{
@@ -46,7 +44,6 @@ func TestWeftPathAccessors(t *testing.T) {
 			relPath:              "sub",
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
-			wantWeftLymDir:       filepath.Join("/h", "feat-weft", "sub", "_lym"),
 			wantWeftLymDirFor:    filepath.Join("/h", "x-weft", "sub", "_lym"),
 		},
 		{
@@ -56,7 +53,6 @@ func TestWeftPathAccessors(t *testing.T) {
 			relPath:              "sub/dir",
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "y-weft"),
-			wantWeftLymDir:       filepath.Join("/h", "feat-weft", "sub/dir", "_lym"),
 			wantWeftLymDirFor:    filepath.Join("/h", "y-weft", "sub/dir", "_lym"),
 		},
 	}
@@ -75,10 +71,6 @@ func TestWeftPathAccessors(t *testing.T) {
 
 			if got := RecordsWorktreePath(loc, tt.slug); got != tt.wantWeftWorktreePath {
 				t.Errorf("RecordsWorktreePath(l, %q) = %q; want %q", tt.slug, got, tt.wantWeftWorktreePath)
-			}
-
-			if got := WeftLymDir(loc); got != tt.wantWeftLymDir {
-				t.Errorf("WeftLymDir(l) = %q; want %q", got, tt.wantWeftLymDir)
 			}
 
 			if got := WeftLymDirFor(loc, tt.slug); got != tt.wantWeftLymDirFor {

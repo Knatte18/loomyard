@@ -19,11 +19,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflightshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
-	"github.com/Knatte18/loomyard/internal/shedcheck"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/shedcheckkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -82,7 +82,7 @@ func frictionReflectProducerType() reflect.Type {
 }
 
 var wantProducerTable = []wantProducerRow{
-	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
+	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflightWithChecks("", "", preflightshed.Checks{}))},
 	{loomshed.NameMotif, shedrecipe.EngineBlock, blockProducerType()},
 	{loomshed.NameDiscussionWrite, "DiscussionWrite", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameDiscussionBouncer, "Bouncer", bouncerType},
@@ -261,7 +261,7 @@ func TestNew_PassesShedValidation(t *testing.T) {
 //
 // It does not catch a Burler row that hands back via OnDone instead of OnStuck.
 // Both wirings produce the identical routing graph.
-// The difference is a verdict returned inside Call, which shedcheck.Check never inspects.
+// The difference is a verdict returned inside Call, which shedcheckkit.Check never inspects.
 func TestNew_RoutingGraphIsClean(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
@@ -270,7 +270,7 @@ func TestNew_RoutingGraphIsClean(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 
-	findings := shedcheck.Check(shed.Producers, loomshed.NamePreflight, []string{loomshed.NameFrictionReflect})
+	findings := shedcheckkit.Check(shed.Producers, loomshed.NamePreflight, []string{loomshed.NameFrictionReflect})
 	for _, f := range findings {
 		t.Errorf("%s", f.String())
 	}
