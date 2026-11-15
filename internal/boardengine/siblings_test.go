@@ -38,8 +38,8 @@ func TestWriteSiblings(t *testing.T) {
 	}
 	upsert := func(fields map[string]any) func(b *boardengine.Board) ([]boardengine.Sibling, error) {
 		return func(b *boardengine.Board) ([]boardengine.Sibling, error) {
-			_, siblings, err := b.UpsertTaskSiblings(fields)
-			return siblings, err
+			result, err := b.UpsertTaskReporting(fields)
+			return result.Siblings, err
 		}
 	}
 	merge := func(remove []string, fields map[string]any, status *boardengine.MergeStatusUpdate) func(b *boardengine.Board) ([]boardengine.Sibling, error) {

@@ -657,17 +657,23 @@ Example:
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				var task boardengine.Task
-				var siblings []boardengine.Sibling
+				var result boardengine.UpsertResult
 				if recordFile != "" {
-					task, siblings, err = board().UpsertTaskWithRecord(fields, record, recordsBranchLive)
+					result.Task, result.Siblings, err = board().UpsertTaskWithRecord(fields, record, recordsBranchLive)
 				} else {
-					task, siblings, err = board().UpsertTaskSiblings(fields)
+					result, err = board().UpsertTaskReporting(fields)
 				}
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				return outputSuccessWithTask(out, task, joinNotices(notice, siblingNotice(siblings), landedNotice(task, fields)))
+				envelope := map[string]any{"task": result.Task}
+				if notices := joinNotices(notice, siblingNotice(result.Siblings), landedNotice(result.Task, fields)); notices != "" {
+					envelope["notice"] = notices
+				}
+				if result.RecordWarning != "" {
+					envelope["warning"] = result.RecordWarning
+				}
+				return output.Ok(out, envelope)
 			})(cmd, args)
 		},
 	}

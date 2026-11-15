@@ -266,6 +266,90 @@ func TestPromoteToRecordWarning(t *testing.T) {
 	}
 }
 
+// TestUpsertTaskReportingRecordWarning asserts that a body edit on a task with a stored decision record warns.
+// The edit still lands.
+// The warning names the slug, `--record-file` and `lym loom decision add`.
+// The warning is empty when the write leaves the body alone.
+// It is also empty when the write restores the body the record was stored against.
+// It is also empty when the entry has no stored record, whether it was never discussed or its record file is gone.
+// It is also empty when the entry is done.
+func TestUpsertTaskReportingRecordWarning(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		storeRecord bool
+		// clearStamp removes record_body_sha256 from board.json after the store.
+		clearStamp bool
+		// markDone sets the entry done through the board's status path after the store.
+		markDone bool
+		// removeRecordFile deletes the entry's decision record file after the store.
+		removeRecordFile bool
+		// prior is upserted before the write under test when not nil.
+		prior      map[string]any
+		fields     map[string]any
+		wantWarned bool
+	}{
+		{"BodyEditOfADiscussedTaskWarns", true, false, false, false, nil, map[string]any{"slug": "filed", "body": "second body"}, true},
+		{"BodyEditOfAnUnstampedDiscussedTaskWarns", true, true, false, false, nil, map[string]any{"slug": "filed", "body": "second body"}, true},
+		{"TitleEditOfADiscussedTaskIsSilent", true, false, false, false, nil, map[string]any{"slug": "filed", "title": "Renamed"}, false},
+		{"BodyRestoredToTheStoredBodyIsSilent", true, false, false, false, map[string]any{"slug": "filed", "body": "second body"}, map[string]any{"slug": "filed", "body": "first body"}, false},
+		{"BodyEditOfAnUndiscussedTaskIsSilent", false, false, false, false, nil, map[string]any{"slug": "filed", "body": "second body"}, false},
+		{"BodyEditOfADoneDiscussedTaskIsSilent", true, false, true, false, nil, map[string]any{"slug": "filed", "body": "second body"}, false},
+		{"BodyEditOfADiscussedTaskWithNoRecordFileIsSilent", true, false, false, true, nil, map[string]any{"slug": "filed", "body": "second body"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			b, boardPath := newPromotionBoard(t)
+			mustUpsertEntry(t, b, map[string]any{"slug": "filed", "title": "Filed", "kind": "task", "labels": bugLabels, "body": "first body"})
+			if tt.storeRecord {
+				if err := b.StoreDecisionRecord("filed", []byte("record\n")); err != nil {
+					t.Fatalf("StoreDecisionRecord() error = %v; want nil", err)
+				}
+			}
+			if tt.clearStamp {
+				clearRecordStamps(t, filepath.Join(boardPath, "board.json"))
+			}
+			if tt.markDone {
+				done := "done"
+				if err := b.SetStatus("filed", &done); err != nil {
+					t.Fatalf("SetStatus() error = %v; want nil", err)
+				}
+			}
+			if tt.removeRecordFile {
+				if err := os.Remove(filepath.Join(boardPath, boardengine.DecisionFileName("filed"))); err != nil {
+					t.Fatalf("remove record file: %v", err)
+				}
+			}
+			if tt.prior != nil {
+				mustUpsertEntry(t, b, tt.prior)
+			}
+
+			result, err := b.UpsertTaskReporting(tt.fields)
+
+			if err != nil {
+				t.Fatalf("UpsertTaskReporting(%v) error = %v; want nil", tt.fields, err)
+			}
+			if body, _ := tt.fields["body"].(string); body != "" && result.Task.Body != body {
+				t.Errorf("UpsertTaskReporting(%v) task body = %q; want %q written", tt.fields, result.Task.Body, body)
+			}
+			if !tt.wantWarned {
+				if result.RecordWarning != "" {
+					t.Errorf("UpsertTaskReporting(%v) RecordWarning = %q; want empty", tt.fields, result.RecordWarning)
+				}
+				return
+			}
+			for _, want := range []string{`"filed"`, "--record-file", "lym loom decision add filed"} {
+				if !strings.Contains(result.RecordWarning, want) {
+					t.Errorf("UpsertTaskReporting(%v) RecordWarning = %q; want it to contain %q", tt.fields, result.RecordWarning, want)
+				}
+			}
+		})
+	}
+}
+
 // clearRecordStamps removes the record_body_sha256 key from every entry of the board.json file at path.
 func clearRecordStamps(t *testing.T, path string) {
 	t.Helper()

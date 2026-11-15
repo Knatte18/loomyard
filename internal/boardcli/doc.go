@@ -144,6 +144,9 @@
 // any other recipe is refused, naming the plain promote.
 // `promote` of a Sketch whose body changed after its record was stored adds a `warning` to its envelope.
 // The warning names `upsert --record-file`; `promote` never refuses on it.
+// `upsert` without `--record-file` that changes the body of an open entry whose record is stored adds a `warning` too.
+// It stays silent when the new body is the one the record was stored against.
+// The warning names `upsert --record-file` and `lym loom decision add`; `upsert` never refuses on it.
 //
 // `profiles` prints `{"ok":true,"defaults":{…},"profiles":[{"name":…,"settings":{recipe:{module:{…}}}}]}`:
 // every run profile in the hub's `profiles.yaml` in name order, with its settings per recipe.

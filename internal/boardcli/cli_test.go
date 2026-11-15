@@ -141,7 +141,7 @@ func TestCLI(t *testing.T) {
 		{"GetBodyRoundTrip", stepGetBodyRoundTrip},
 		{"GetRecord", stepGetRecord},
 		{"UpsertRecordFile", stepUpsertRecordFile},
-		{"PromoteWarnsOnChangedSketchBody", stepPromoteWarnsOnChangedSketchBody},
+		{"UpsertAndPromoteWarnOnChangedSketchBody", stepUpsertAndPromoteWarnOnChangedSketchBody},
 		{"LabelsMapShapedPrintsFileOrderWithDescriptions", stepLabelsMapShapedPrintsFileOrderWithDescriptions},
 		{"LabelsListShapedPrintsNamesWithEmptyDescriptions", stepLabelsListShapedPrintsNamesWithEmptyDescriptions},
 		{"RunSettings", stepRunSettings},

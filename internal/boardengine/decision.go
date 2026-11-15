@@ -81,6 +81,23 @@ func recordBodyChanged(task Task) bool {
 	return task.RecordBodySHA256 != "" && task.RecordBodySHA256 != bodySHA256(task.Body)
 }
 
+// bodyEditRecordWarning returns the warning for a write that took an entry from before to after.
+// It is set when the write changed the body of an open, discussed entry whose record file exists,
+// and the entry's record_body_sha256 stamp is not the new body's digest, an absent stamp included.
+// It names the upsert that replaces the stored record before the run starts.
+// It also names the verb that amends the record of a started run.
+// It is empty for every other write.
+func (b *Board) bodyEditRecordWarning(before, after Task) string {
+	if before.Body == after.Body || !after.Discussed || isDone(after) ||
+		after.RecordBodySHA256 == bodySHA256(after.Body) || !b.recordStored(after.Slug) {
+		return ""
+	}
+	return fmt.Sprintf("entry %q has a stored decision record, and its run reads that record, never the body, so this body edit does not reach the run; "+
+		"before the run starts, fold the edit into the record `lym board get '{\"slug\":\"%s\"}' --record` prints and store it with `lym board upsert '{\"slug\":\"%s\"}' --record-file <record.md>`; "+
+		"once the run has a task worktree, record it with `lym loom decision add %s`",
+		after.Slug, after.Slug, after.Slug, after.Slug)
+}
+
 // recordStored reports whether the decision record file of the entry slug exists in the board directory.
 func (b *Board) recordStored(slug string) bool {
 	_, err := os.Stat(filepath.Join(b.boardPath, DecisionFileName(slug)))

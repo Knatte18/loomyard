@@ -133,6 +133,9 @@ That task splits the Sketch's decision record into tasks or a project.
 A Sketch takes no other recipe.
 When the Sketch's body changed after its record was stored, the promote still lands and adds a `warning` key to its output.
 The warning names `upsert --record-file`, which brings the record up to the body before the run starts.
+An `upsert` without `--record-file` adds a `warning` key when it edits the body of an open entry whose record is stored
+and was not stored against the new body.
+That warning names `upsert --record-file` and `lym loom decision add`, and the write still lands.
 Give a Sketch's dependencies in the promotion, because it releases the task and the parent's dobby can start it before a later `set-deps` lands:
 
 ```

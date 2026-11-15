@@ -203,8 +203,8 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 // UpsertTask creates or updates the task identified by fields["slug"] under the write lock;
 // field validation (allowlist, slug shape) is the store's job.
 func (b *Board) UpsertTask(fields map[string]any) (Task, error) {
-	task, _, err := b.UpsertTaskSiblings(fields)
-	return task, err
+	result, err := b.UpsertTaskReporting(fields)
+	return result.Task, err
 }
 
 // SetStatus sets or clears the status field of the task identified by idOrSlug.

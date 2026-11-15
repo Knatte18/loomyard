@@ -979,6 +979,9 @@ func stepUpsertRecordFile(t *testing.T, f *cliFixture) {
 		if ok, _ := result["ok"].(bool); !ok {
 			t.Fatalf("envelope = %v; want ok", result)
 		}
+		if warning, present := result["warning"]; present {
+			t.Errorf("upsert --record-file warning = %v; want no warning key", warning)
+		}
 		if exitCode, stdout := runCLI(t, "get", `{"slug":"sketched"}`, "--record"); exitCode != 0 || stdout != valid {
 			t.Errorf("get --record: exit %d, stdout %q; want 0 and the file's bytes %q", exitCode, stdout, valid)
 		}
@@ -991,16 +994,20 @@ func stepUpsertRecordFile(t *testing.T, f *cliFixture) {
 // ptr returns a pointer to value.
 func ptr[T any](value T) *T { return &value }
 
-// stepPromoteWarnsOnChangedSketchBody pins the promote envelope's warning:
-// a Sketch whose body changed after its record was stored is still promoted and the warning names --record-file,
+// stepUpsertAndPromoteWarnOnChangedSketchBody pins the upsert and promote envelopes' warning:
+// a body edit on a Sketch whose record is stored is saved and the upsert's warning names --record-file;
+// the Sketch is then still promoted and the promote's warning names --record-file,
 // and a Sketch whose body is unchanged carries no warning key.
-func stepPromoteWarnsOnChangedSketchBody(t *testing.T, f *cliFixture) {
+func stepUpsertAndPromoteWarnOnChangedSketchBody(t *testing.T, f *cliFixture) {
 	record := decisionRecordText("Goal")
 	seedDiscussedSketch(t, f, "changed", "v1", record)
 	seedDiscussedSketch(t, f, "steady", "v1", record)
-	runJSON(t, 0, "upsert", `{"slug":"changed","body":"v2"}`)
+	result := runJSON(t, 0, "upsert", `{"slug":"changed","body":"v2"}`)
+	if warning, _ := result["warning"].(string); !strings.Contains(warning, "--record-file") {
+		t.Errorf("upsert of a body edit on a Sketch: warning = %q; want one naming --record-file", warning)
+	}
 
-	result := runJSON(t, 0, "promote", `{"slug":"changed"}`)
+	result = runJSON(t, 0, "promote", `{"slug":"changed"}`)
 	if warning, _ := result["warning"].(string); !strings.Contains(warning, "--record-file") {
 		t.Errorf("promote of a Sketch with an edited body: warning = %q; want one naming --record-file", warning)
 	}

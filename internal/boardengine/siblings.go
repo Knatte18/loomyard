@@ -128,15 +128,38 @@ func (b *Board) writeReportingSiblings(fn func(store *Store) (any, error)) (any,
 	return result, siblings, nil
 }
 
-// UpsertTaskSiblings creates or updates the task identified by fields["slug"] under the write lock.
-// It returns the siblings the write created beside the task.
+// UpsertResult is what an upsert wrote.
+// It holds the task, the siblings the write created, and a warning about its decision record.
+type UpsertResult struct {
+	Task     Task
+	Siblings []Sibling
+	// RecordWarning is set when the write changed the body of an entry whose decision record is stored,
+	// and the record was not stored against the new body;
+	// it names the ways to carry the edit into the record.
+	RecordWarning string
+}
+
+// UpsertTaskReporting creates or updates the task identified by fields["slug"] under the write lock.
+// It returns the task with the siblings the write created beside it.
+// It also returns a warning when the write changed the body of an open entry whose decision record is stored:
+// a run of such an entry reads the record and never the body, so the edit does not reach the run.
+// The warning never refuses the write.
 // Field validation (allowlist, slug shape) is the store's job.
-func (b *Board) UpsertTaskSiblings(fields map[string]any) (Task, []Sibling, error) {
+func (b *Board) UpsertTaskReporting(fields map[string]any) (UpsertResult, error) {
+	var warning string
 	result, siblings, err := b.writeReportingSiblings(func(store *Store) (any, error) {
-		return store.UpsertTask(fields)
+		before, existed := store.GetTask(fields["slug"])
+		task, err := store.UpsertTask(fields)
+		if err != nil {
+			return nil, err
+		}
+		if existed {
+			warning = b.bodyEditRecordWarning(before, task)
+		}
+		return task, nil
 	})
 	if err != nil {
-		return Task{}, nil, err
+		return UpsertResult{}, err
 	}
-	return result.(Task), siblings, nil
+	return UpsertResult{Task: result.(Task), Siblings: siblings, RecordWarning: warning}, nil
 }

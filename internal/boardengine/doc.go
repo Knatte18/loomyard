@@ -564,6 +564,13 @@
 // It answers found only when the entry exists, carries the flag and the file exists;
 // an absent entry, an unflagged one and a flagged one with no file each answer not found.
 // A merge that removes a flagged slug and upserts it again keeps the flag.
+// A run of a discussed entry reads its stored record and never its body.
+// Board.UpsertTaskReporting therefore warns when it changes the body of an open entry whose record file exists.
+// The write still lands.
+// It stays silent when the new body is the one the stamp records.
+// An entry with no stamp warns on any body change.
+// The warning names `lym board upsert --record-file` before the run starts.
+// It names `lym loom decision add` once the run has a task worktree.
 // LoadConfig refuses a design_prefix that would render a design file onto a record file's name:
 // a prefix of `decision-` or one starting with it, the empty prefix included.
 //
@@ -690,7 +697,7 @@
 // A dependency that is met is not added, and a done written task is skipped.
 // A sibling that is done or abandoned is not one; a running sibling is.
 // A pair reached from both sides, as in a batch, is reported once with the dependencies of both sides.
-// SetDeps, UpsertTaskSiblings, UpsertTasksBatch and MergeTasks return the siblings.
+// SetDeps, UpsertTaskReporting, UpsertTasksBatch and MergeTasks return the siblings.
 // They are computed under the write lock from the entries as loaded and as the mutation left them.
 // The check never refuses, never changes a stored record and returns no siblings for a refused write.
 //
