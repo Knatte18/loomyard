@@ -64,7 +64,8 @@ type DarnInputs struct {
 	LanguageSkills []string
 	// SubagentModel is the model name the writer passes to the Agent tool for the fresh subagents it hands work to.
 	SubagentModel string
-	// GateFixed reports that a cold fixer clears the writer's verify gate, so the writer and its subagents run no gate.
+	// GateFixed reports that a cold fixer clears the writer's verify gate,
+	// so the writer and its subagents run no gate and the writer asks its parent for a reported failure's single run.
 	GateFixed bool
 }
 
@@ -75,8 +76,9 @@ type DarnInputs struct {
 // The table's values are the stencil's markers,
 // and the seat engine renders the parent and edit directives from its geometry.
 // The table carries no gate; the producer entry sets it.
-// With in.GateFixed, the prompt's Step 4 has the writer and its subagents run no gate;
-// they act only on what the verify gate's fixer leaves.
+// With in.GateFixed, the prompt's Step 4 has the writer and its subagents run no gate.
+// They act only on what the verify gate's fixer leaves,
+// and the writer asks its parent for the single run of the test a task's reported failure names.
 // Otherwise the step has them run the gate after each commit.
 // A friction directive that fails to render is logged and left empty, because the note is optional bookkeeping.
 func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {

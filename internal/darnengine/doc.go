@@ -78,6 +78,8 @@
 // The caller tells DarnTable whether a cold fixer clears the row's verify gate.
 // With a cold fixer, the prompt's Step 4 has the writer and its subagents run no gate;
 // the writer acts only on what the fixer leaves.
+// The writer asks its parent for the single run of the test a task's reported failure names.
+// That run comes before the writer diagnoses the failure, so a failure that no longer reproduces costs no diagnosis.
 // Without one, the step has them run the gate after each commit.
 // The seat engine renders the parent and edit directives, so DarnTable reads no parent name.
 // DarnTable refuses an empty required field by name and a writer model-spec the registry cannot resolve.
