@@ -98,7 +98,7 @@ func TestLoad(t *testing.T) {
 // the Code perch's for darn, every hard cap its rounds plus one.
 // It also pins that each profile's sampler block carries its darn block's rounds;
 // sampler.code_review is on from light up, and sampler has no default profile.
-// Only the darn block sets the Code-Review reviewer, to opus[high].
+// Only the darn block sets the Code-Review reviewer, to opus[medium].
 // Each profile's motif block holds its tapestry block's Discussion perch and nothing else.
 // Each profile's arras block holds that Discussion perch's rounds and the split perch's alike, with a hard cap one above.
 //
@@ -203,8 +203,8 @@ func TestTemplateLadder(t *testing.T) {
 					t.Errorf("Settings(%s, %s) code_reviewer_fan = %v, present %v; want %q present %v", tt.profile, block, fan, present, "", wantSolo)
 				}
 				model, present := keys["code_reviewer_model"]
-				if wantOpus := block == "darn"; present != wantOpus || (present && model != "opus[high]") {
-					t.Errorf("Settings(%s, %s) code_reviewer_model = %v, present %v; want %q present %v", tt.profile, block, model, present, "opus[high]", wantOpus)
+				if wantOpus := block == "darn"; present != wantOpus || (present && model != "opus[medium]") {
+					t.Errorf("Settings(%s, %s) code_reviewer_model = %v, present %v; want %q present %v", tt.profile, block, model, present, "opus[medium]", wantOpus)
 				}
 			}
 		})
@@ -212,7 +212,7 @@ func TestTemplateLadder(t *testing.T) {
 }
 
 // TestTemplateDocsProfile pins the template's darn-only docs profile:
-// a Sonnet medium writer, one solo Code round with its hard cap and an Opus high reviewer, and drift scope off.
+// a Sonnet medium writer, one solo Code round with its hard cap and an Opus medium reviewer, and drift scope off.
 // Drift scope is off since a docs task changes no captured value.
 //
 //testtiming:keep pins the docs darn block's full settings map, including its code_reviewer_model, which the lookup tests over a fixture file cannot see
@@ -230,7 +230,7 @@ func TestTemplateDocsProfile(t *testing.T) {
 	want := map[string]any{
 		"darn":  map[string]any{"writer": "sonnet[medium]"},
 		"drift": map[string]any{"scope": "off"},
-		"loom":  map[string]any{"code_max_bounces": 1, "code_hard_max_bounces": 2, "code_reviewer_fan": "", "code_reviewer_model": "opus[high]"},
+		"loom":  map[string]any{"code_max_bounces": 1, "code_hard_max_bounces": 2, "code_reviewer_fan": "", "code_reviewer_model": "opus[medium]"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Settings(docs, darn) = %v; want %v", got, want)
