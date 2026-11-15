@@ -13,6 +13,9 @@
 // It states that in lym sessions it overrides any harness text that permits reading or changing files by shell.
 // A Go file's formatting goes through `lym loom fmt`.
 // Scratch files go under `.scratch/`, and those with a source extension are written with Write.
+// `.scratch` is a link to a directory kept for the task alone,
+// so a build there resolves a relative reference from the link's target;
+// the directive has a project built there name the working tree's files by absolute path.
 // It also keeps a role in its own worktree:
 // no edit, commit, push or new worktree elsewhere unless its parent or the operator says so for that case.
 // It names the tools a role edits with and the worktree it edits in, never what the role may write.

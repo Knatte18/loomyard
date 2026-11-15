@@ -651,6 +651,9 @@
 // A real directory would change its own modification time with every file an agent creates or removes beneath it,
 // and every source-scan test that opens the module root hashes that time into its `go test` cache key;
 // a link's own `Lstat` stays fixed while files change under its target.
+// The link has a cost.
+// A build under `.scratch` resolves a relative project reference from the target in the weft worktree.
+// It does not resolve it from the warp anchor.
 // The warp `.git/info/exclude` carries `/<anchor>/.scratch` (`/.scratch` at anchor `.`) with no trailing slash;
 // git matches a link as a file, so a directory-only pattern would not exclude it.
 // A legacy line with the trailing slash is replaced.
