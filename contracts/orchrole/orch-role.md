@@ -309,7 +309,7 @@ An operator decision made in chat is recorded in the same turn:
   The project record holds only what binds the whole project, its goal, bounds and constraints every member follows;
   it is no log of what landed, so a member landing never touches it.
 - When the verb refuses because the run has no decision record, the decision becomes a board note of its own.
-  That happens in batten's pre-loom rows, such as `running · Worktree-Create` and `Preflight`.
+  That happens in batten's pre-loom rows, such as `starting · Worktree-Create` and `Preflight`.
   It also happens in a halt before Discussion-Write.
   Write the note through `lym board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`.
   Put the held task's slug in place of `<slug>`.

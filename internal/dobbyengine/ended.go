@@ -30,10 +30,12 @@ type endedRetry struct {
 // strandedEnded reports whether batten left run short of its own teardown although its board entry ended.
 // Its entry is done or gone, its pair is still on disk, and dobby gives it no pass:
 // batten's state is neither running, nor paused with its work on its parent, nor done.
-// A run with a pass in flight, a held driver lock or a cancel marker is not, since its driver or the cancel ends it.
+// A paused run whose work reached its parent is not stranded, since its Land is unfinished.
+// A run with a pass in flight, a held driver lock or a cancel under way is not, since its driver or the cancel ends it.
 // Nor is a run a pause covers, or one recorded owned elsewhere, whose pair is not this dobby's to remove.
 func strandedEnded(run RunView, rs RunState, inFlight bool) bool {
-	return run.EntryEnded && run.PairPresent && !drivable(run) && run.State != runStateDone &&
+	pausedWithWorkOnParent := run.State == runStatePaused && run.ReachedParent
+	return run.EntryEnded && run.PairPresent && !drivable(run) && !pausedWithWorkOnParent && run.State != runStateDone &&
 		!inFlight && !run.DriverLockHeld && !run.CancelMarker && !run.Covered && !rs.OwnedElsewhere
 }
 

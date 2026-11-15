@@ -517,6 +517,7 @@ writing its stop report; retry that one a few seconds later.
 It refuses with the kind "owned_elsewhere" over a run another machine owns,
 naming the owner and "lym adopt".
 While a pause covers this task it refuses and names "lym tender resume".
+A run the act rule waits on, such as a cancelling or cancelled one, is refused with its way forward.
 
 Example:
   lym loom start
@@ -533,6 +534,9 @@ Example:
 				return nil
 			}
 			if c.refuseOwnedElsewhere(ctx, out, `run "lym loom start" again`) {
+				return nil
+			}
+			if c.refuseByAct(ctx, out, `"lym loom start"`) {
 				return nil
 			}
 

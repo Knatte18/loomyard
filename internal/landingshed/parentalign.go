@@ -302,7 +302,7 @@ func (m *ParentAlign) readBefore() error {
 // removeAttempts removes the row's fixer attempt record and the one stored under the retired row name `Merge-In`.
 func (m *ParentAlign) removeAttempts() error {
 	for _, row := range []string{parentAlignName, retiredMergeInName} {
-		if err := RemoveFixerAttempts(FixerAttemptsPath(m.deps.ScratchDir, row)); err != nil {
+		if err := RemoveFixerAttempts(FixerAttemptsPath(m.deps.RecordsDir, row)); err != nil {
 			return err
 		}
 	}
@@ -321,10 +321,15 @@ func (m *ParentAlign) readAttempts() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: read the row entry: %w", parentAlignName, err)
 	}
-	ownPath := FixerAttemptsPath(m.deps.ScratchDir, parentAlignName)
+	for _, row := range []string{parentAlignName, retiredMergeInName} {
+		if err := moveScratchAttempts(m.deps.ScratchDir, m.deps.RecordsDir, row); err != nil {
+			return "", err
+		}
+	}
+	ownPath := FixerAttemptsPath(m.deps.RecordsDir, parentAlignName)
 	path := ownPath
 	if _, statErr := os.Stat(ownPath); errors.Is(statErr, fs.ErrNotExist) {
-		retired := FixerAttemptsPath(m.deps.ScratchDir, retiredMergeInName)
+		retired := FixerAttemptsPath(m.deps.RecordsDir, retiredMergeInName)
 		if _, retiredErr := os.Stat(retired); retiredErr == nil {
 			path = retired
 		}
@@ -354,7 +359,7 @@ func (m *ParentAlign) readAttempts() (string, error) {
 // stop is false when Parent-Align may proceed to record the merge and advance the aligned tip;
 // when stop is true, the other results go back to the caller as they are.
 func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateReason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	attemptsPath := FixerAttemptsPath(m.deps.ScratchDir, parentAlignName)
+	attemptsPath := FixerAttemptsPath(m.deps.RecordsDir, parentAlignName)
 	rec := m.attempts
 	passed := gateReason == ""
 	capacity := m.deps.Config.ParentAlignFixAttempts
@@ -482,7 +487,7 @@ func (m *ParentAlign) judgeFixerChange(ctx context.Context, rec FixerAttempts) (
 		return proceed()
 	}
 	rec.Halt = fixerHaltOverCap
-	if err := WriteFixerAttempts(FixerAttemptsPath(m.deps.ScratchDir, parentAlignName), rec); err != nil {
+	if err := WriteFixerAttempts(FixerAttemptsPath(m.deps.RecordsDir, parentAlignName), rec); err != nil {
 		return m.alignError(ctx, err)
 	}
 	m.attempts = rec

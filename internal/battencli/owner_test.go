@@ -134,7 +134,7 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 			c := &battenCLI{slug: slug, owner: seams}
 			if tt.markerAfterPull {
 				c.guard.Marker = func() (cancelMarkerReading, error) {
-					return cancelMarkerReading{Present: fake.pulls > 0, WriterAlive: true, Marker: cancelMarker{PID: 4242}}, nil
+					return cancelMarkerReading{Present: fake.pulls > 0, WriterAlive: true}, nil
 				}
 			}
 

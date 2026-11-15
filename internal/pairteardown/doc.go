@@ -152,7 +152,8 @@
 // That is a registered batten process of the slug.
 // Between two passes it is a live dobby registered under the run's parent:
 // the parent beam's slug, or the hub owner for the prime.
-// That gap counts only while batten's status reads running and no cancel marker of the slug stands.
+// That gap counts only while batten's status reads running and no cancel of the slug is under way:
+// no unfinished cancel intent in the record and no cancel lock held.
 // It is the gap dobby drives.
 // Every reader of that liveness reads the gap between passes as alive, and a halted status as settled.
 // With no owner alive the claim is still kept, and the warning names `lym batten cancel <slug>` instead.
@@ -178,6 +179,14 @@
 // A failed read of the record or of the owner pause is logged and adds no warning.
 // A refusal or stopped reason elsewhere that quotes `lym fabric remove` ends in the same text.
 // It reads the follow-up through ReadBattenRecord, OwnerPauseHeld and FollowUpFor.
+//
+// # Run FSM inputs
+//
+// ReadRun is the run FSM's input reader.
+// It reads a slug's tracked records and the act rule's machine-local inputs once, for every verb that asks the rule.
+// The pair's child record is read from the task worktree when the pair stands here.
+// Otherwise it is read from origin's fetched records branch.
+// Every read goes through the hub's tracked records and origin's fetched refs, never a cache a fresh machine lacks.
 //
 // # Local mode
 //

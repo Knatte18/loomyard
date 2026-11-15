@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -139,7 +140,7 @@ func (fx *finalizeGateFixture) scriptGate(results ...verifytree.Result) {
 // seed writes rec as the entry's attempt record.
 func (fx *finalizeGateFixture) seed(t *testing.T, rec FixerAttempts) {
 	t.Helper()
-	if err := WriteFixerAttempts(FixerAttemptsPath(fx.deps.ScratchDir, finalizeName), rec); err != nil {
+	if err := WriteFixerAttempts(FixerAttemptsPath(fx.deps.RecordsDir, finalizeName), rec); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -147,7 +148,7 @@ func (fx *finalizeGateFixture) seed(t *testing.T, rec FixerAttempts) {
 // attempts returns the attempt record for the fixture's entry and whether the file exists.
 func (fx *finalizeGateFixture) attempts(t *testing.T) (FixerAttempts, bool) {
 	t.Helper()
-	path := FixerAttemptsPath(fx.deps.ScratchDir, finalizeName)
+	path := FixerAttemptsPath(fx.deps.RecordsDir, finalizeName)
 	if _, err := os.Stat(path); err != nil {
 		return FixerAttempts{}, false
 	}
@@ -667,7 +668,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 
 	t.Run("an attempt record that does not decode halts naming the file and how to remove it", func(t *testing.T) {
 		fx := newFinalizeGateFixture(t)
-		path := FixerAttemptsPath(fx.deps.ScratchDir, finalizeName)
+		path := FixerAttemptsPath(fx.deps.RecordsDir, finalizeName)
 		if err := os.WriteFile(path, []byte("{nope"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -736,6 +737,28 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		fx.requireHaltNoLanding(t, outcome, ptr, "spent every attempt", "fixer commits: t2..f2", "way forward: fix the failure on the task branch", "`lym loom resume`")
 		if rec, _ := fx.attempts(t); rec.Spent != 2 || rec.Halt != fixerHaltSpent {
 			t.Errorf("attempt record = %+v; want both attempts spent and %q noted", rec, fixerHaltSpent)
+		}
+	})
+
+	t.Run("an attempt record found only under the scratch directory is moved to the records directory with its spent count", func(t *testing.T) {
+		fx := newFinalizeGateFixture(t)
+		fx.scriptGate(failing)
+		scratchPath := FixerAttemptsPath(fx.deps.ScratchDir, finalizeName)
+		if err := WriteFixerAttempts(scratchPath, FixerAttempts{Entry: 1, Spent: 2, Baseline: "t2"}); err != nil {
+			t.Fatal(err)
+		}
+
+		outcome, ptr := fx.call(t)
+
+		fx.requireHaltNoLanding(t, outcome, ptr, "spent every attempt")
+		if rec, found := fx.attempts(t); !found || rec.Spent != 2 {
+			t.Errorf("attempt record under the records directory = %+v, %v; want the 2 spent turns kept", rec, found)
+		}
+		if _, err := os.Stat(scratchPath); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("stat of the scratch attempt record = %v; want it gone", err)
+		}
+		if len(fx.seats.tables) != 0 {
+			t.Errorf("fixer sessions = %d; want none over the spent attempts the scratch record carried", len(fx.seats.tables))
 		}
 	})
 

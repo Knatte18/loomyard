@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,13 +16,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -66,9 +71,9 @@ type fakeSubstrates struct {
 	endedProcs  []runproc.Ended
 	endOwnedErr error
 	spared      []string
-	// parent is the slug's parent, empty for the prime; cancelMark is whether a cancel marker stands.
+	// parent is the slug's parent, empty for the prime; cancelling is whether a cancel is under way.
 	parent     string
-	cancelMark bool
+	cancelling bool
 	// ownedUnder answers the live owned processes of the owners it names, ahead of the owned list.
 	ownedUnder map[string][]runproc.Record
 	// driverLockHeld is whether the driver lock reads held after the owned end.
@@ -100,6 +105,8 @@ type fakeSubstrates struct {
 	driverLockHeldByProbe []bool
 	// droppedRunMail holds the slug of each run mail drop, in call order.
 	droppedRunMail []string
+	// removeCancelledErr fails the deletion of a cancelled run record, which only a cancelled runRecord reaches.
+	removeCancelledErr error
 }
 
 // awaitCall is one call of the pre-end run-lock wait.
@@ -110,11 +117,11 @@ type awaitCall struct {
 
 func (f *fakeSubstrates) teardown() *Teardown {
 	return &Teardown{
-		prime:        &lymcwd.Location{HubPath: "/hub", AnchorRel: "."},
-		interval:     time.Second,
-		goos:         "linux",
-		parentOf:     func(string) (string, error) { return f.parent, nil },
-		cancelMarked: func(string) bool { return f.cancelMark },
+		prime:      &lymcwd.Location{HubPath: "/hub", AnchorRel: "."},
+		interval:   time.Second,
+		goos:       "linux",
+		parentOf:   func(string) (string, error) { return f.parent, nil },
+		cancelling: func(string) bool { return f.cancelling },
 		endOwned: func(_ string, spare ...string) ([]runproc.Ended, error) {
 			f.calls = append(f.calls, "endOwned")
 			f.spared = spare
@@ -226,6 +233,17 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			return *f.runRecord, true, nil
 		},
 		ownerHeld: func(string) (bool, error) { return f.ownerPaused, nil },
+		removeCancelledRecord: func(string) (bool, error) {
+			if f.runRecord == nil || f.runRecord.State != shedengine.StateCancelled {
+				return false, nil
+			}
+			f.calls = append(f.calls, "removeCancelledRecord")
+			if f.removeCancelledErr != nil {
+				return false, f.removeCancelledErr
+			}
+			f.runRecord = nil
+			return true, nil
+		},
 		sleep: func(context.Context, time.Duration) error {
 			f.sleeps++
 			return nil
@@ -394,6 +412,8 @@ func TestTeardown_CallSequence(t *testing.T) {
 		runRecord   *shedengine.Status
 		ownerPaused bool
 		wantWarning string
+		// removeCancelledErr fails the deletion of a cancelled run record.
+		removeCancelledErr error
 		// gone makes the task worktree read as gone.
 		gone    bool
 		request Request
@@ -785,6 +805,24 @@ func TestTeardown_CallSequence(t *testing.T) {
 			wantWarning: "the batten run of slug still stands; " + BattenFollowUp("slug", *runShed, true, false),
 		},
 		{
+			name:      "CancelledRecordIsDeletedAfterTheRemovalAndGivesNoWarning",
+			run:       true,
+			quiets:    []quietState{{quiet: true}},
+			request:   Request{Slug: "slug"},
+			runRecord: &shedengine.Status{State: shedengine.StateCancelled, CurrentProducer: battenrecipe.NameRunShed},
+			wantCalls: sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,removeCancelledRecord",
+		},
+		{
+			name:               "FailedCancelledRecordDeletionWarnsWithTheCleanupStep",
+			run:                true,
+			quiets:             []quietState{{quiet: true}},
+			request:            Request{Slug: "slug"},
+			runRecord:          &shedengine.Status{State: shedengine.StateCancelled, CurrentProducer: battenrecipe.NameRunShed},
+			removeCancelledErr: errors.New("disk full"),
+			wantCalls:          sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,removeCancelledRecord",
+			wantWarning:        `the pair of slug is removed but its cancelled run record is not: disk full; way forward: run "lym batten cleanup --apply", which removes it`,
+		},
+		{
 			name:        "OwnerPauseCoveringTheSlugGivesNoWarning",
 			run:         true,
 			quiets:      []quietState{{quiet: true}},
@@ -933,7 +971,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 				endedProcs: tt.endedProcs, endOwnedErr: tt.endOwnedErr, driverLockHeld: tt.driverLockHeld,
 				driverPID: tt.driverPID, driverFound: tt.driverFound, battenAlive: tt.battenAlive,
 				paused: tt.paused, hubEntry: tt.hubEntry, pausedErr: tt.pausedErr, awaitOrPassErr: tt.awaitOrPassErr, owned: tt.owned,
-				runRecord: tt.runRecord, ownerPaused: tt.ownerPaused,
+				runRecord: tt.runRecord, ownerPaused: tt.ownerPaused, removeCancelledErr: tt.removeCancelledErr,
 			}
 			td := f.teardown()
 			if tt.goos != "" {
@@ -1259,7 +1297,9 @@ func TestLoopTeardown_LockMarkAndRunLockWait(t *testing.T) {
 	})
 }
 
-// TestRegisteredBattenAlive_ReadsADobbyDrivenRun pins that the gap between two batten passes reads as a live lifecycle owner only while a dobby of the run's parent stands and batten's status reads running with no cancel marker.
+// TestRegisteredBattenAlive_ReadsADobbyDrivenRun pins the gap between two batten passes.
+// It reads as a live lifecycle owner only while a dobby of the run's parent stands.
+// Batten's status must also read running with no cancel under way.
 func TestRegisteredBattenAlive_ReadsADobbyDrivenRun(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1273,7 +1313,7 @@ func TestRegisteredBattenAlive_ReadsADobbyDrivenRun(t *testing.T) {
 		{"RunningStatusWithADobbyUnderTheParentIsAlive", fakeSubstrates{battenSeeded: true, battenState: "running", parent: "beam", ownedUnder: map[string][]runproc.Record{"beam": dobby}}, true},
 		{"RunningStatusWithADobbyUnderTheHubIsAlive", fakeSubstrates{battenSeeded: true, battenState: "running", ownedUnder: map[string][]runproc.Record{runproc.HubOwner: dobby}}, true},
 		{"HaltedStatusIsNotAlive", fakeSubstrates{battenSeeded: true, battenState: "blocked", parent: "beam", ownedUnder: map[string][]runproc.Record{"beam": dobby}}, false},
-		{"CancelMarkerIsNotAlive", fakeSubstrates{battenSeeded: true, battenState: "running", parent: "beam", cancelMark: true, ownedUnder: map[string][]runproc.Record{"beam": dobby}}, false},
+		{"UnfinishedCancelIntentIsNotAlive", fakeSubstrates{battenSeeded: true, battenState: "running", parent: "beam", cancelling: true, ownedUnder: map[string][]runproc.Record{"beam": dobby}}, false},
 		{"NoDobbyRecordIsNotAlive", fakeSubstrates{battenSeeded: true, battenState: "running", parent: "beam", ownedUnder: map[string][]runproc.Record{"beam": nil}}, false},
 		{"RegisteredBattenIsAlive", fakeSubstrates{ownedUnder: map[string][]runproc.Record{"slug": {{PID: 8, Role: runproc.RoleBatten}}}}, true},
 	}
@@ -1288,6 +1328,62 @@ func TestRegisteredBattenAlive_ReadsADobbyDrivenRun(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("registeredBattenAlive() = %t; want %t", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCancelUnderWay pins which records and locks read as a batten cancel under way or interrupted.
+func TestCancelUnderWay(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const slug = "slug"
+	writeRecord := func(t *testing.T, prime *lymcwd.Location, finish *shedengine.CancelFinish) {
+		t.Helper()
+		status := shedengine.Status{State: shedengine.StateRunning, Cancel: &shedengine.CancelIntent{StartedAt: "2026-11-15T09:00:00Z", Machine: "other-machine", Finish: finish}}
+		if err := state.WriteJSON(shedrun.StatusFile(prime, slug), shedrun.StatusLock(prime, slug), status); err != nil {
+			t.Fatalf("write the record: %v", err)
+		}
+	}
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, prime *lymcwd.Location)
+		want  bool
+	}{
+		{"NoRecordAndNoLockIsNotUnderWay", func(*testing.T, *lymcwd.Location) {}, false},
+		{"UnfinishedIntentIsUnderWay", func(t *testing.T, prime *lymcwd.Location) { writeRecord(t, prime, nil) }, true},
+		{"FinishedIntentIsNotUnderWay", func(t *testing.T, prime *lymcwd.Location) {
+			writeRecord(t, prime, &shedengine.CancelFinish{EndedAt: "2026-11-15T09:05:00Z"})
+		}, false},
+		{"UndecodableRecordIsUnderWay", func(t *testing.T, prime *lymcwd.Location) {
+			if err := os.MkdirAll(filepath.Dir(shedrun.StatusFile(prime, slug)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(shedrun.StatusFile(prime, slug), []byte(`{"state":`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, true},
+		{"HeldCancelLockIsUnderWay", func(t *testing.T, prime *lymcwd.Location) {
+			if err := os.MkdirAll(shedrun.ScratchRoot(prime), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			held, err := lock.AcquireWriteLock(shedrun.CancelMarkerLock(prime, slug))
+			if err != nil {
+				t.Fatalf("take the cancel's lock: %v", err)
+			}
+			t.Cleanup(func() { _ = held.Release() })
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			prime := locationkit.Location(t.TempDir(), "prime", ".")
+			tt.setup(t, prime)
+
+			if got := cancelUnderWay(prime, slug); got != tt.want {
+				t.Errorf("cancelUnderWay() = %t; want %t", got, tt.want)
 			}
 		})
 	}

@@ -1,5 +1,5 @@
 // fixerattempts.go implements FixerAttempts, the record of the fixer turns one landing row entry spent.
-// The record lives in the run's scratch directory, so a resume never grants a fresh cap.
+// The record lives in the run's records directory, which each transition commits, so a resume never grants a fresh cap.
 
 package landingshed
 
@@ -43,9 +43,33 @@ type FixerAttempts struct {
 	Judged string `json:"judged,omitempty"`
 }
 
-// FixerAttemptsPath is the attempt record's path for row under scratchDir: one file per row.
-func FixerAttemptsPath(scratchDir, row string) string {
-	return filepath.Join(scratchDir, row+"-fixer-attempts.json")
+// FixerAttemptsPath is the attempt record's path for row under recordsDir: one file per row.
+func FixerAttemptsPath(recordsDir, row string) string {
+	return filepath.Join(recordsDir, row+"-fixer-attempts.json")
+}
+
+// moveScratchAttempts moves the attempt record of row found only under scratchDir into recordsDir.
+// It moves nothing when recordsDir holds the record or scratchDir holds none.
+// A run in flight when the record moved so keeps its spent count, and no resume grants it a fresh cap.
+func moveScratchAttempts(scratchDir, recordsDir, row string) error {
+	current := FixerAttemptsPath(recordsDir, row)
+	if _, err := os.Stat(current); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("landingshed: stat fixer attempts %s: %w", current, err)
+	}
+	scratch := FixerAttemptsPath(scratchDir, row)
+	data, err := os.ReadFile(scratch)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("landingshed: read fixer attempts %s: %w", scratch, err)
+	}
+	if err := writeBytesAtomic(current, "fixer-attempts", data); err != nil {
+		return err
+	}
+	return RemoveFixerAttempts(scratch)
 }
 
 // ReadFixerAttempts reads the record at path and returns it when it names entry.

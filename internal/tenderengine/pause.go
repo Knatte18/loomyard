@@ -41,6 +41,19 @@ type PauseRequest struct {
 	// A scope that already had a live entry adds none and calls no Added.
 	// An error ends the pause at once with it wrapped; the entry stays live.
 	Added func(entry pauserecord.Entry) error
+	// Owner, when set, is asked first for the machine that owns the pair's run and the adopt subject that takes it over.
+	// A non-empty owner refuses the pause with no entry written, and an error ends the pause with it.
+	Owner func() (owner, subject string, err error)
+	// Record, when set, is called once the entry is on disk, an already-paused scope included, and before the grace.
+	// An error ends the pause at once with it wrapped; the entry stays live, so the run's processes stay held.
+	Record func() error
+}
+
+// OwnerRefusal is the refusal of a pause of slug that machine owner owns.
+// subject is the adopt subject that takes the run over.
+func OwnerRefusal(slug, owner, subject string) error {
+	return fmt.Errorf("pause: %s is owned by machine %s; way forward: run \"lym tender pause %s\" on %s, or \"lym adopt %s\" on this machine first",
+		slug, owner, slug, owner, subject)
 }
 
 // PauseReport is what a pause did and what it left held.
@@ -97,7 +110,8 @@ type session struct {
 
 // Pause runs the pause sequence: it records the entry, waits out the grace, then interrupts the covered sessions.
 // The entry is on disk before the first Esc, and each session is recorded in it before its Esc.
-// The Added callback runs after the entry is on disk and before the grace.
+// The Added and Record callbacks run after the entry is on disk and before the grace.
+// A request's Owner is asked before anything is written, and a run another machine owns is refused.
 func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 	scope := pauserecord.ScopeHub
 	if req.Slug != "" {
@@ -107,6 +121,16 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 		Scope:       scope,
 		Interrupted: []string{}, NoRunningTurn: []string{}, AlreadyIdle: []string{}, Background: []BackgroundSession{}, StillBusy: []string{},
 		Refused: []SessionNote{}, Skipped: []SessionNote{},
+	}
+
+	if req.Owner != nil {
+		owner, subject, err := req.Owner()
+		if err != nil {
+			return report, err
+		}
+		if owner != "" {
+			return report, OwnerRefusal(scope, owner, subject)
+		}
 	}
 
 	var entry pauserecord.Entry
@@ -136,6 +160,11 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 	if req.Added != nil && !report.AlreadyPaused {
 		if err := req.Added(entry); err != nil {
 			return report, fmt.Errorf("pause: report the added entry: %w", err)
+		}
+	}
+	if req.Record != nil {
+		if err := req.Record(); err != nil {
+			return report, fmt.Errorf("pause: record the pause intent of %s: %w; way forward: fix the cause, then run \"lym tender pause %s\" again, which records the intent over the entry that stays live", scope, err, scope)
 		}
 	}
 

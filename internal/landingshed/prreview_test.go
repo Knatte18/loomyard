@@ -175,6 +175,11 @@ func TestPRReview_Call(t *testing.T) {
 		wantRecord  *pullrequest.Record
 		// wantNoRecord asserts the record's file is gone; a case with neither it nor wantRecord leaves the record unchecked.
 		wantNoRecord bool
+		// commitErr is what the CommitRecord seam fails with.
+		commitErr error
+		// wantCommits is how many times the row commits the record.
+		// Starting a PR-Review session writes the session's identity into the record, which commits it once more.
+		wantCommits int
 	}{
 		{
 			name: "OffWithNoFieldReadsTheParentRulesAndIsDone", parentMode: "off", origin: githubOrigin,
@@ -182,7 +187,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantCalls:   []string{"RequiresPullRequest main"},
 		},
 		{
-			name: "OffWithAParentRuleRequiringAPullRequestOpensOne", parentMode: "off", origin: githubOrigin,
+			name: "OffWithAParentRuleRequiringAPullRequestOpensOne", parentMode: "off", origin: githubOrigin, wantCommits: 2,
 			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{found: true}}, "Create": {created}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"RequiresPullRequest main", "FindOpen task main", wantCreateCall, "Status 7"},
@@ -224,14 +229,14 @@ func TestPRReview_Call(t *testing.T) {
 			wantOutcome: shedengine.Done,
 		},
 		{
-			name: "NoClosesTheRecordedOpenPullRequestAndRemovesTheRecord", parentMode: "on", origin: localOrigin,
+			name: "NoClosesTheRecordedOpenPullRequestAndRemovesTheRecord", parentMode: "on", origin: localOrigin, wantCommits: 1,
 			record:      &pullrequest.Record{Number: 7},
 			scripts:     map[string][]scriptedCall{"Status": {open}},
 			wantOutcome: shedengine.Done, wantNoRecord: true,
 			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: " + localNoReason},
 		},
 		{
-			name: "NoLeavesAMergedPullRequestAndRemovesTheRecord", parentMode: "off", origin: githubOrigin,
+			name: "NoLeavesAMergedPullRequestAndRemovesTheRecord", parentMode: "off", origin: githubOrigin, wantCommits: 1,
 			record:      &pullrequest.Record{Number: 7},
 			scripts:     map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateMerged}}}},
 			wantOutcome: shedengine.Done, wantNoRecord: true,
@@ -252,14 +257,14 @@ func TestPRReview_Call(t *testing.T) {
 			wantOutcome: shedengine.Done, wantNoRecord: true,
 		},
 		{
-			name: "FirstYesPushesCreatesAndRecordsThePullRequest", parentMode: "on", origin: githubOrigin,
+			name: "FirstYesPushesCreatesAndRecordsThePullRequest", parentMode: "on", origin: githubOrigin, wantCommits: 2,
 			scripts:     map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main", wantCreateCall, "Status 7"},
 			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: taskHead},
 		},
 		{
-			name: "ReentryEditsTheRecordedPullRequestKeepsItsGatedHeadAndTheContinueFlag", parentMode: "on", origin: githubOrigin,
+			name: "ReentryEditsTheRecordedPullRequestKeepsItsGatedHeadAndTheContinueFlag", parentMode: "on", origin: githubOrigin, wantCommits: 2,
 			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: recordedGated, Continue: true},
 			dirty:       []string{"wip.go"},
 			scripts:     map[string][]scriptedCall{"Status": {open, {status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: recordedGated}}}},
@@ -269,7 +274,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: recordedGated, Continue: true},
 		},
 		{
-			name: "ReentryOnADraftMarksItReadyForReviewBeforeTheEdit", parentMode: "on", origin: githubOrigin,
+			name: "ReentryOnADraftMarksItReadyForReviewBeforeTheEdit", parentMode: "on", origin: githubOrigin, wantCommits: 2,
 			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: recordedGated},
 			dirty:       []string{"wip.go"},
 			scripts:     map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateOpen, Draft: true}}, {status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: recordedGated}}}},
@@ -278,7 +283,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantCalls:  []string{"Status 7", "SetDraft 7 false", wantEditSeven, "Status 7"},
 		},
 		{
-			name: "ReentryRefreshesTheBodyWithTheRegressionCheckOnce", parentMode: "on", origin: githubOrigin, verdict: testVerdict,
+			name: "ReentryRefreshesTheBodyWithTheRegressionCheckOnce", parentMode: "on", origin: githubOrigin, verdict: testVerdict, wantCommits: 2,
 			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: recordedGated},
 			dirty:       []string{"wip.go"},
 			scripts:     map[string][]scriptedCall{"Status": {open, {status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: recordedGated}}}},
@@ -287,7 +292,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantCalls:  []string{"Status 7", "Edit 7|Change title|" + wantPRBodyWithVerdict, "Status 7"},
 		},
 		{
-			name: "YesWithNoneRecordedButOneOpenReusesIt", parentMode: "on", origin: githubOrigin,
+			name: "YesWithNoneRecordedButOneOpenReusesIt", parentMode: "on", origin: githubOrigin, wantCommits: 2,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{ref: pullrequest.Ref{Number: 9, URL: "u9"}, found: true}}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main", "Edit 9|Change title|" + wantPRBody, "Status 9"},
@@ -302,7 +307,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantRecord: &pullrequest.Record{Number: 7, ReviewEnded: true, GatedHead: taskHead},
 		},
 		{
-			name: "ReviewEndedPastTheGatedHeadOpensANewPullRequest", parentMode: "on", origin: githubOrigin,
+			name: "ReviewEndedPastTheGatedHeadOpensANewPullRequest", parentMode: "on", origin: githubOrigin, wantCommits: 3,
 			record:      &pullrequest.Record{Number: 7, ReviewEnded: true, GatedHead: recordedGated},
 			scripts:     map[string][]scriptedCall{"Create": {{ref: pullrequest.Ref{Number: 8, URL: "u8"}}}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
@@ -332,7 +337,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantOutcome: shedengine.Done, wantNoRecord: true,
 		},
 		{
-			name: "EmptyTaskBranchClosesTheRecordedOpenPullRequestAndRemovesTheRecord", parentMode: "on", origin: githubOrigin, taskEmpty: true,
+			name: "EmptyTaskBranchClosesTheRecordedOpenPullRequestAndRemovesTheRecord", parentMode: "on", origin: githubOrigin, taskEmpty: true, wantCommits: 1,
 			record:      &pullrequest.Record{Number: 7},
 			scripts:     map[string][]scriptedCall{"Status": {open}},
 			wantOutcome: shedengine.Done, wantNoRecord: true,
@@ -386,12 +391,28 @@ func TestPRReview_Call(t *testing.T) {
 			wantErr: true, wantPushes: 1,
 			wantCalls: []string{"FindOpen task main"},
 		},
+		{
+			name: "AFailingCommitOfTheNewRecordIsAnErrorNamingIt", parentMode: "on", origin: githubOrigin,
+			scripts:   map[string][]scriptedCall{"Create": {created}},
+			commitErr: errors.New("push stopped"),
+			wantErr:   true, wantErrText: "commit the pull request record", wantPushes: 1, wantCommits: 1,
+			wantCalls: []string{"FindOpen task main", wantCreateCall},
+		},
+		{
+			name: "AFailingCommitOfTheRecordRemovalIsAnErrorNamingIt", parentMode: "on", origin: localOrigin,
+			record:    &pullrequest.Record{Number: 7},
+			scripts:   map[string][]scriptedCall{"Status": {open}},
+			commitErr: errors.New("push stopped"),
+			wantErr:   true, wantErrText: "commit the pull request record", wantCommits: 1,
+			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: " + localNoReason},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newPRReviewFixture(t, tt.parentMode, tt.parentErr, tt.field, tt.origin, tt.record, tt.scripts, tt.pushErr)
 			fx.dirty = tt.dirty
+			fx.commits.err = tt.commitErr
 			fx.deps.PullRequest.TaskHasCommits = func() (bool, error) { return !tt.taskEmpty, tt.taskErr }
 			if tt.verdict != "" {
 				fx.deps.DriftVerdict = func() (string, error) { return tt.verdict, nil }
@@ -425,6 +446,9 @@ func TestPRReview_Call(t *testing.T) {
 			}
 			if fx.pushes != tt.wantPushes {
 				t.Errorf("Call() pushed %d times; want %d", fx.pushes, tt.wantPushes)
+			}
+			if fx.commits.calls != tt.wantCommits {
+				t.Errorf("Call() committed the record %d times; want %d", fx.commits.calls, tt.wantCommits)
 			}
 			got, found, rerr := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath)
 			if rerr != nil {
@@ -467,6 +491,7 @@ func TestPRReview_Call(t *testing.T) {
 			"PullRequest.Sessions":        func(d *Deps) { d.PullRequest.Sessions = nil },
 			"PullRequest.SessionLive":     func(d *Deps) { d.PullRequest.SessionLive = nil },
 			"PullRequest.RegisterSession": func(d *Deps) { d.PullRequest.RegisterSession = nil },
+			"PullRequest.CommitRecord":    func(d *Deps) { d.PullRequest.CommitRecord = nil },
 			"TaskHead":                    func(d *Deps) { d.TaskHead = nil },
 		}
 		for field, unset := range unsetters {
@@ -579,6 +604,8 @@ type prReviewFixture struct {
 	deps   Deps
 	api    *fakePullRequestAPI
 	pushes int
+	// commits counts the calls of the CommitRecord seam and holds the error it fails with.
+	commits *commitRecorder
 	// dirty is what the task worktree's uncommitted-paths seam reports.
 	dirty []string
 	// asks are the lines the parent-ask seam was handed.
@@ -659,6 +686,7 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 				return nil
 			},
 			RecordChanges:      func() (<-chan struct{}, func()) { return nil, func() {} },
+			CommitRecord:       func() error { return nil },
 			ParentReviewWanted: func() (bool, error) { return false, nil },
 			AskParent:          func(string) (bool, error) { return true, nil },
 		},
@@ -669,9 +697,10 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 // record, when set, is written before the row runs; the task head reads "head-new".
 func newPRReviewFixture(t *testing.T, parentMode string, parentErr error, field string, origin Origin, record *pullrequest.Record, scripts map[string][]scriptedCall, pushErr error) *prReviewFixture {
 	t.Helper()
-	fx := &prReviewFixture{api: &fakePullRequestAPI{scripts: scripts}}
+	fx := &prReviewFixture{api: &fakePullRequestAPI{scripts: scripts}, commits: &commitRecorder{}}
 	fx.deps = prReviewTestDeps(t, fx.api)
 	pr := &fx.deps.PullRequest
+	pr.CommitRecord = fx.commits.commit
 	pr.ParentMode = func() (string, string, error) { return parentMode, "wt-parent", parentErr }
 	pr.EntryField = func() (string, error) { return field, nil }
 	pr.Origin = func() (Origin, error) { return origin, nil }

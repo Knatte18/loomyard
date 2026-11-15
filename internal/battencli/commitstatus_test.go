@@ -103,7 +103,8 @@ func TestNewCommitStatusSeam(t *testing.T) {
 }
 
 // TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed pins the seam's board write.
-// A transition at a row before Run-Shed writes "<state> · <row>" on the entry.
+// A transition at a row before Run-Shed writes "<FSM state> · <row>" on the entry:
+// a running transition reads starting, a blocked one halted and a paused one paused.
 // A transition at Run-Shed or a later row writes nothing: the inner run writes the entry's status from its start on.
 func TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -122,6 +123,7 @@ func TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed(t *testing.T) {
 		{"Worktree-Create", "running"},
 		{"Seed-Child", "blocked"},
 		{"Open-IDE", "running"},
+		{"Open-IDE", "paused"},
 		{"Run-Shed", "running"},
 		{"Land", "running"},
 		{"Worktree-Teardown", "done"},
@@ -131,7 +133,7 @@ func TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed(t *testing.T) {
 		}
 	}
 
-	want := []string{"running · Worktree-Create", "blocked · Seed-Child", "running · Open-IDE"}
+	want := []string{"starting · Worktree-Create", "halted · Seed-Child", "starting · Open-IDE", "paused · Open-IDE"}
 	if !reflect.DeepEqual(written, want) {
 		t.Errorf("board statuses written = %q; want %q", written, want)
 	}

@@ -202,9 +202,12 @@ func TestDobbyTasks_ReadsTheStartRefusalOfAFinishedRunRecord(t *testing.T) {
 		// defaultRecipe is the board's `default_recipe`; an empty value leaves the template's recipe in place.
 		defaultRecipe string
 		wantRefused   bool
+		// wantCancelled expects the cancelled-record refusal in place of the done-slug one.
+		wantCancelled bool
 	}{
 		{name: "NoRunRecordHoldsNothing"},
 		{name: "ADoneRunRecordHoldsTheStart", status: `{"state":"done"}`, wantRefused: true},
+		{name: "ACancelledRunRecordHoldsTheStartWithTheCancelledWording", status: `{"state":"cancelled"}`, wantCancelled: true},
 		{name: "ARunningRunRecordHoldsNothing", status: `{"state":"running"}`},
 		{name: "AnUndecodableRunRecordHoldsNothing", status: `{not json`},
 		{name: "ADoneMotifRunOfARaddleEntryHoldsNothing", status: `{"state":"done"}`, recipe: shedrun.RecipeRaddle, childRecipe: shedrun.RecipeMotif},
@@ -248,6 +251,9 @@ func TestDobbyTasks_ReadsTheStartRefusalOfAFinishedRunRecord(t *testing.T) {
 			want := ""
 			if tt.wantRefused {
 				want = doneSlugRefusal(prime, "released").Error()
+			}
+			if tt.wantCancelled {
+				want = cancelledRunRefusal("released").Error()
 			}
 			if len(views) != 1 || views[0].StartRefusal != want {
 				t.Errorf("DobbyTasks() = %+v; want one task with StartRefusal %q", views, want)

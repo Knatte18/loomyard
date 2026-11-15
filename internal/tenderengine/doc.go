@@ -18,6 +18,9 @@
 // every covered session reads idle and no covered network operation is in flight;
 // the grace end passes;
 // or the entry is no longer live.
+// A request's `Owner` is asked first; a non-empty owner refuses the pause with no entry written.
+// A request's `Record` is called once the entry is on disk, an already-paused scope included, and before the grace;
+// its error ends the pause with the entry left live.
 // An entry resumed during the grace ends the sequence with no Esc.
 // A request's `Added` callback is called once with the entry a pause adds, after the record update and before the grace.
 // It is never called for a scope that already had a live entry.
@@ -50,6 +53,10 @@
 // # Resume
 //
 // An empty slug resumes every live entry; a slug resumes that pair's own entry.
+// A request's `Verdict` is asked first, with a terminal wait set aside.
+// Any answer but act refuses the resume with nothing lifted.
+// A resume lifts an entry and drives nothing.
+// A request's `Clear` then runs, and its error refuses the resume with nothing lifted.
 // A slug that only a live hub entry covers is refused, naming `lym tender resume`.
 // An adopt pause is an operator pause: a resume of its slug lifts it, and a pause of its slug answers already paused.
 // Under the record lock each resumed entry moves to the resumed list,

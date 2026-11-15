@@ -24,7 +24,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -338,6 +340,9 @@ func (c *battenCLI) armAt(location *lymcwd.Location, runID string, explicit bool
 	if c.guard.Marker == nil {
 		c.guard = hubStartGuard(location, runID)
 	}
+	if c.runVerdict == nil {
+		c.runVerdict = hubRunVerdict(location, runID)
+	}
 	if verb == "run" && c.readopt.Add == nil {
 		c.readopt = hubReadoptSeams(location)
 	}
@@ -516,7 +521,7 @@ func ArmAt(location *lymcwd.Location, verb string, runID string) (shedverbs.Spec
 }
 
 // checkRunStatus is the read-only pre-flight check of the `run` verb.
-// It decodes the status file, refuses a done slug, and resumes silently from every other known state.
+// It decodes the status file, refuses a done slug and a cancelled one, and resumes silently from every other known state.
 // It reports found false for an absent status file and never seeds one.
 // A decode failure, an unrecognized state and a done slug come back as errors.
 func (c *battenCLI) checkRunStatus() (found bool, err error) {
@@ -530,6 +535,8 @@ func (c *battenCLI) checkRunStatus() (found bool, err error) {
 	switch st.State {
 	case shedengine.StateDone:
 		return true, doneSlugRefusal(c.location, c.slug)
+	case shedengine.StateCancelled:
+		return true, cancelledRunRefusal(c.slug)
 	case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateAwaiting, shedengine.StateFailed, shedengine.StatePaused:
 		// Each of these resumes silently from the persisted current producer, with no re-seed, no prompt and no flag.
 		// The engine already resumes from blocked and failed.
@@ -626,24 +633,56 @@ func (c *battenCLI) refuseContinuePass() error {
 	return nil
 }
 
-// refuseCovered returns the refusal naming "lym tender resume" when a live pause entry covers this run's slug;
-// it returns nil otherwise.
-// A geometry or record that cannot be read refuses nothing and logs one Warn, so a corrupt file never blocks a run.
-func (c *battenCLI) refuseCovered() error {
-	geometry, err := hubgeom.PauseGeometry(c.location)
+// runAside is what batten's own verbs set aside before the act rule decides.
+// They resume a shed pause themselves, so a shed state of paused never makes them wait.
+var runAside = runfsm.Aside{ShedPause: true}
+
+// hubRunVerdict returns a reader of the act rule's verdict for slug's run over the hub of location.
+// The verdict is judged over the run's tracked records and this machine's inputs, with runAside set aside.
+func hubRunVerdict(location *lymcwd.Location, slug string) func() (runfsm.Verdict, error) {
+	return func() (runfsm.Verdict, error) {
+		records, inputs, err := pairteardown.ReadRun(location, slug)
+		if err != nil {
+			return runfsm.Verdict{}, err
+		}
+		_, verdict := runfsm.Judge(records, inputs, runAside)
+		return verdict, nil
+	}
+}
+
+// refuseByAct asks the act rule whether this run may act and returns its refusal when it may not.
+// The refusal keeps the meaning of the pass's exit code:
+// a covering pause is a coveredRefusal,
+// and a run another machine owns is an OwnedElsewhereError carrying the rule's text.
+// Any other wait is a plain error.
+// A landed run that still has a batten record is refused with the done-slug refusal.
+// That refusal names the steps a re-run needs.
+// A failed read of the run refuses naming the re-run.
+// A receiver with no verdict seam checks nothing.
+func (c *battenCLI) refuseByAct() error {
+	if c.runVerdict == nil {
+		return nil
+	}
+	rerun := fmt.Sprintf("%q", "lym batten run "+c.slug)
+	verdict, err := c.runVerdict()
 	if err != nil {
-		logger.Warn("battencli: pause geometry unreadable, running despite a possible pause", "slug", c.slug, "cause", err)
-		return nil
+		return fmt.Errorf("battencli: could not read the state of %s to decide whether it may act: %w; way forward: fix the cause, then run %s again", c.slug, err, rerun)
 	}
-	coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, c.slug, time.Now())
-	if err != nil {
-		logger.Warn("battencli: pause record unreadable, running despite a possible pause", "slug", c.slug, "cause", err)
+	refusal := verdict.Refusal(c.slug, rerun)
+	switch {
+	case refusal == nil:
 		return nil
+	case verdict.Answer == runfsm.AnswerHandOver:
+		return &OwnedElsewhereError{Slug: c.slug, Owner: verdict.Owner, Subject: subjectOrSlug(verdict.AdoptSubject, c.slug), text: refusal.Error()}
+	case verdict.Reason == runfsm.ReasonPauseCovers:
+		return &coveredRefusal{err: refusal}
 	}
-	if !coverage.Covered {
-		return nil
+	if verdict.Reason == runfsm.ReasonTerminal && verdict.State == runfsm.Landed {
+		if _, statErr := os.Stat(c.shedPaths.StatusPath); statErr == nil {
+			return doneSlugRefusal(c.location, c.slug)
+		}
 	}
-	return &coveredRefusal{err: pauserecord.CoveredError(coverage.Entry, c.slug, fmt.Sprintf(`run "lym batten run %s" again`, c.slug))}
+	return refusal
 }
 
 // pausedExtras returns the status keys a live pause entry covering this run's slug adds:
@@ -674,7 +713,7 @@ func (c *battenCLI) pausedExtras() map[string]any {
 }
 
 // battenPreRun implements the PreRun hook for batten's spec:
-// the pause or continue-pass refusal, then checkRunStatus, then seeding a fresh status when absent.
+// the act rule's refusal or the continue-pass refusal, then checkRunStatus, then seeding a fresh status when absent.
 // Each step's error becomes a returned error, which the generic body reports on the error envelope.
 // A found status file resumes only after the owner pre-flight (ownerPreflight) lets it;
 // that pre-flight is the run-scope origin reconcile (reconcileResume) for every run but these:
@@ -683,7 +722,7 @@ func (c *battenCLI) pausedExtras() map[string]any {
 // Once the owner pre-flight lets a found status resume, reopenWindow reopens the terminal window;
 // it does so when no client is attached, unless --no-reopen is set.
 // Under --continue-pass, refuseContinuePass runs first,
-// and a run it lets through skips the pause refusal, the owner pre-flight and the reopening:
+// and a run it lets through skips the act rule, the owner pre-flight and the reopening:
 // the run is one dobby already drives, and the pass is not a resume.
 //
 // This seed-when-absent behaviour is batten's alone and must stay out of the generic body:
@@ -693,7 +732,7 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		if err := c.refuseContinuePass(); err != nil {
 			return err
 		}
-	} else if err := c.refuseCovered(); err != nil {
+	} else if err := c.refuseByAct(); err != nil {
 		return err
 	}
 	found, err := c.checkRunStatus()
@@ -756,13 +795,14 @@ func (c *battenCLI) seedAbsentStatus(cur shedengine.Status, found bool) (shedeng
 	}, nil
 }
 
-// preDriveCheck re-reads the cancel marker and the seed:
+// preDriveCheck re-reads the cancel's lock and the seed:
 // a run that passed the arm-time checks before a cancel began must still be refused.
-// A present marker refuses with the cancel refusal,
-// and an absent seed refuses naming the fresh start, since the run was cancelled or never started.
+// A held cancel lock refuses with the cancel refusal.
+// A cancel holds it from before it writes its intent until it ends, and this check runs under batten's status lock.
+// An absent seed refuses naming the fresh start, since the run was cancelled or never started.
 // It writes nothing.
 func (c *battenCLI) preDriveCheck() error {
-	if err := c.refuseCancelMarker(); err != nil {
+	if err := c.refuseCancelLock(); err != nil {
 		return err
 	}
 	_, found, err := shedrun.ReadSeed(c.location, c.slug)
@@ -853,7 +893,7 @@ func doneSlugRefusal(location *lymcwd.Location, slug string) error {
 }
 
 // battenPreStep implements the PreStep hook for batten's spec.
-// It probes the run lock first, then decodes the status:
+// It probes the run lock first, then asks the act rule, then decodes the status:
 // a done slug is refused, a known state other than done resumes silently, and an absent status is seeded.
 //
 // Without this hook, stepLocked's read gate would hit an absent status and hard-error.
@@ -894,6 +934,10 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 		return shedverbs.KindBusy, fmt.Errorf("battencli: another batten run already holds the run lock %q", c.shedPaths.LockPath)
 	}
 
+	if err := c.refuseByAct(); err != nil {
+		return shedverbs.KindBootstrap, err
+	}
+
 	st, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
 		return shedverbs.KindUnseeded, errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
@@ -902,6 +946,8 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 		switch st.State {
 		case shedengine.StateDone:
 			return shedverbs.KindBootstrap, doneSlugRefusal(c.location, c.slug)
+		case shedengine.StateCancelled:
+			return shedverbs.KindBootstrap, cancelledRunRefusal(c.slug)
 		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateAwaiting, shedengine.StateFailed, shedengine.StatePaused:
 			// These states resume silently; the owner pre-flight below judges them.
 		default:

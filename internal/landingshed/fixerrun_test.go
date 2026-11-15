@@ -132,6 +132,7 @@ func newFixerRunFixture(t *testing.T) *fixerRunFixture {
 	fx.deps = Deps{
 		GateKey:            "parent-align",
 		ScratchDir:         scratch,
+		RecordsDir:         t.TempDir(),
 		StencilsDir:        stencilsDir,
 		DecisionRecordPath: filepath.Join(scratch, "decision-record.md"),
 		MergeRecordPath:    MergeRecordPath(scratch),
@@ -337,7 +338,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 			if rec.Spent != tt.wantSpent {
 				t.Errorf("run() record Spent = %d; want %d", rec.Spent, tt.wantSpent)
 			}
-			onDisk, err := ReadFixerAttempts(FixerAttemptsPath(fx.deps.ScratchDir, fixerTestRow), start.Entry)
+			onDisk, err := ReadFixerAttempts(FixerAttemptsPath(fx.deps.RecordsDir, fixerTestRow), start.Entry)
 			if err != nil || !reflect.DeepEqual(onDisk, rec) {
 				t.Errorf("attempt record on disk = %+v, %v; want the returned %+v", onDisk, err, rec)
 			}
@@ -423,7 +424,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 		if !reflect.DeepEqual(rec, start) || !reflect.DeepEqual(outcome, fixerOutcome{}) {
 			t.Errorf("run() = %+v, %+v; want the record as it was and no outcome", outcome, rec)
 		}
-		onDisk, readErr := ReadFixerAttempts(FixerAttemptsPath(fx.deps.ScratchDir, fixerTestRow), 1)
+		onDisk, readErr := ReadFixerAttempts(FixerAttemptsPath(fx.deps.RecordsDir, fixerTestRow), 1)
 		if readErr != nil || !reflect.DeepEqual(onDisk, start) {
 			t.Errorf("attempt record on disk = %+v, %v; want %+v", onDisk, readErr, start)
 		}

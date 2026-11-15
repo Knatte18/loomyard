@@ -48,11 +48,11 @@
 // WriteLandedCommit writes it and ReadLandedCommit reads it, empty when none is recorded.
 // ParentNoticeFile is an ephemeral file under ScratchDir.
 // It holds the key of the parent-branch notice a run's pre-push check last posted.
-// CancelMarker is the ephemeral marker `lym batten cancel` writes.
-// CancelMarkerLock is the lock whose holder is its live writer.
-// Both sit directly under ScratchRoot beside the per-slug scratch directories, never inside RunDir or ScratchDir.
-// A slug's records removal therefore leaves them.
-// Batten's verbs read the marker.
+// The intent writers own the batten record's `cancel` and `pause_intent` keys.
+// CancelMarkerLock is the lock a cancel under way on this machine holds, whose holder is its live writer.
+// It sits directly under ScratchRoot beside the per-slug scratch directories, never inside RunDir or ScratchDir.
+// A slug's records removal therefore leaves it.
+// Batten's verbs read the cancel's intent in the record and this lock.
 // SettleRecords is the Go driver's settle-record file under a run's directory, beside its drive reports.
 // The settle-record format is declared here too: SettleRecord, StopKey, and the settler and action names.
 // ParseSettleRecords is the tolerant decoder; it skips a line that does not decode and reports it by line number.

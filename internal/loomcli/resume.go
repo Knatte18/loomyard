@@ -258,6 +258,7 @@ finishes its post-run work or a Go driver is still settling the stop. An
 unfinished merge in the worktree is refused with the kind "merge_in_progress",
 and a run another machine owns with the kind "owned_elsewhere".
 While a pause covers this task it refuses and names "lym tender resume".
+A run the act rule waits on, such as a cancelling or cancelled one, is refused with its way forward.
 
 Example:
   lym loom resume`,
@@ -274,6 +275,9 @@ Example:
 				return nil
 			}
 			if c.refuseOwnedElsewhere(ctx, out, `run "lym loom resume" again`) {
+				return nil
+			}
+			if c.refuseByAct(ctx, out, `"lym loom resume"`) {
 				return nil
 			}
 

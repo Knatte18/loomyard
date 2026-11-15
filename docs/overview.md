@@ -1594,7 +1594,8 @@ User-facing modules each get one `lym <module>` namespace:
   Its verbs are `lym batten run|step|status|pause|goto|cancel <run-id>` and `lym batten cleanup [--apply]`.
   `lym batten lock list|release` lists and releases the hub's parent locks.
   `lym batten cancel <slug> [--remove]` ends a run for good from the prime, whatever its state.
-  It leaves the task's claim `draft` and removes the run's records; `--remove` also removes its pair and task branches.
+  It leaves the task's claim `draft` and keeps batten's record with the cancel's finish, state `cancelled`.
+  `--remove` also removes its pair and task branches and deletes the record.
   The hidden `lym batten overview` is the pane process of the `runs` strand of the prime and of each beam.
   `lym beam start` ensures it, in the beam's window named `beam: prime` or `<handle>: beam: <slug>`.
   A pawl run's `lym loom start` first puts a `loom-status` strand in an overview window, the session's first.

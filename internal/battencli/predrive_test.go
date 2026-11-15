@@ -22,11 +22,11 @@ import (
 )
 
 // newPreDriveReceiver returns a fake receiver.
-// Its pre-drive check reads the real cancel marker and seed under its location.
+// Its pre-drive check reads the real cancel lock and seed under its location.
 func newPreDriveReceiver(t *testing.T) *battenCLI {
 	t.Helper()
 	c := newFakeReceiver(t, nil)
-	c.guard = startGuard{Marker: func() (cancelMarkerReading, error) { return readCancelMarker(c.location, c.slug) }}
+	c.guard = startGuard{Lock: func() (cancelMarkerReading, error) { return readCancelLock(c.location, c.slug) }}
 	c.preDrive = c.preDriveCheck
 	return c
 }
@@ -48,14 +48,14 @@ func requireNoStatus(t *testing.T, c *battenCLI) {
 }
 
 // TestPreDriveCheck drives the check through both pre-run hooks and the built shed:
-// a seeded run with no marker passes, a marker refuses with the cancel's way forward,
+// a seeded run with no cancel lock held passes, a held cancel lock refuses with the cancel's way forward,
 // and a missing seed refuses naming the fresh start.
 // Each refusal writes no status and clears no run marker.
 func TestPreDriveCheck(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	const markerWayForward = "way forward: wait for the cancel"
+	const markerWayForward = "way forward: wait for it to end"
 	const freshStartWayForward = `way forward: run "lym board set-status '{"slug":"some-slug","status":null}'" and "lym batten run some-slug" for a fresh start`
 
 	t.Run("SeededRunWithNoMarkerSeedsTheStatusAndClearsTheRunMarkers", func(t *testing.T) {
@@ -89,7 +89,7 @@ func TestPreDriveCheck(t *testing.T) {
 		if err != nil {
 			t.Fatalf("takeCancelMarker: %v", err)
 		}
-		t.Cleanup(func() { _ = held.release(true) })
+		t.Cleanup(func() { _ = held.release() })
 		rowNotice := filepath.Join(c.env.ScratchDir, battenrecipe.NameWorktreeTeardown+"-row-notice")
 		if err := os.WriteFile(rowNotice, []byte("failure 3\n"), 0o644); err != nil {
 			t.Fatal(err)
@@ -146,7 +146,7 @@ func TestPreDriveCheck(t *testing.T) {
 		if err != nil {
 			t.Fatalf("takeCancelMarker: %v", err)
 		}
-		t.Cleanup(func() { _ = held.release(true) })
+		t.Cleanup(func() { _ = held.release() })
 		var producerCalled bool
 		c.env.CreateWorktree = func(context.Context, battenshed.HoldPrimeLock) error {
 			producerCalled = true

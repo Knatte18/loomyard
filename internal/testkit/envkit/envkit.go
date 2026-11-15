@@ -190,6 +190,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		StencilsDir:      dir,
 		ParentName:       "fixture-parent-session",
 		ScratchDir:       filepath.Join(dir, "landing-scratch"),
+		RecordsDir:       filepath.Join(dir, "landing-records"),
 		OpenFabric:       nilFabricOpener,
 		OpenParentFabric: nilFabricOpener,
 		Shuttle:          &shedfake.MergeShuttle{},
@@ -224,6 +225,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		PullRequest: landingshed.PullRequestDeps{
 			RecordPath:     filepath.Join(dir, "landing-scratch", "pull-request.json"),
 			RecordLockPath: filepath.Join(dir, "landing-scratch", "pull-request.lock"),
+			CommitRecord:   func() error { return nil },
 			ParentMode:     func() (string, string, error) { return "off", "fixture-parent", nil },
 			EntryField:     func() (string, error) { return "", nil },
 			Origin:         func() (landingshed.Origin, error) { return landingshed.Origin{}, nil },

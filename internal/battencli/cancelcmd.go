@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -52,30 +53,28 @@ func (c *battenCLI) cancelCmd() *cobra.Command {
 		Short:       "end a run for good, whatever its state, and optionally remove its pair",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `cancel ends the batten run of one slug for good, from the prime or a beam, whatever its state.
-It ends the run's registered processes and strands, stops the tackler strand its marker names,
-clears the board claim, removes the run's records and scratch and commits that removal on the
-records side, lifts the slug's own pause entries and pushes the records.
-The pair is kept by default, and "lym batten cancel <slug> --remove" must run before the slug runs again.
---remove removes the pair, keeps its uncommitted paths under a local snapshot tag, and archives
-and deletes its task branch locally and on origin, each tip held by an archive tag on origin.
+It commits and pushes its intent in batten's record first, so another machine reads a cancel under way.
+It then ends the run's registered processes and strands, stops the tackler strand its marker names,
+clears the board claim, lifts the slug's own pause entries and pushes the records.
+The pair and batten's record are kept by default; the record gains the cancel's finish and the state
+cancelled, and "lym batten cancel <slug> --remove" must run before the slug runs again.
+--remove removes the pair, keeps its uncommitted paths under a local snapshot tag, archives
+and deletes its task branch locally and on origin, and deletes batten's record with the pair.
 
 It refuses, before it ends or removes anything, while a hub pause covers the prime, when the run's
-work already reached its parent (finish the landing with "lym batten run" instead), when another
-machine owns the slug, when origin stopped the entry, when another cancel of the slug is under way,
-and when nothing of the slug is left to cancel.
+work already reached its parent (finish the landing with "lym batten run"), when the slug already
+landed, when another machine owns it, when origin stopped the entry, when the cancel already finished
+with its pair kept (run it with --remove), when another cancel is under way, and when nothing is left.
 It skips every wait a teardown makes for a working driver.
-With origin unreachable it only ends the run's processes and strands, leaves its marker, and posts a
-notice; "lym batten cancel" run again finishes an interrupted cancel.
+With origin unreachable it only ends the run's processes and strands and posts a notice;
+running it again finishes the cancel.
 
 The cancel of a beam first runs the hub's origin reconcile and refuses while members remain,
-naming each to land or cancel first; with origin unreachable it refuses naming the re-run.
-A beam with no members ends the pawl run's processes and the beam's dobby, then stops the
-beam's orch and watcher; "lym beam create <slug>" starts the run again.
+naming each to land or cancel first. A beam with no members ends the pawl run's processes and
+the beam's dobby, then stops its orch and watcher; "lym beam create <slug>" starts the run again.
 
-Output: {"slug", "state", "row", "ended", "strands_stopped", "tackler_stopped", "pair_removed",
-"stray_directory_deleted", "snapshot_tag", "archive_tags", "records_removed", "claim_cleared", "lifted", "push_spawned",
-"notice_posted", "end_only", "way_forward", "warnings"}.
-push_spawned says the push was started, not that origin took it.
+Output: a JSON envelope of the slug, its state and row, what ended, and whether the pair and record were
+removed or kept, the claim cleared and the push spawned; push_spawned says the push was started, not that origin took it.
 
 Example:
   lym batten cancel some-slug
@@ -164,6 +163,7 @@ func cancelEnvelope(report cancelReport) map[string]any {
 		"snapshot_tag":            report.SnapshotTag,
 		"archive_tags":            slices.Concat([]string{}, report.ArchiveTags),
 		"records_removed":         report.RecordsRemoved,
+		"record_kept":             report.RecordKept,
 		"claim_cleared":           report.ClaimCleared,
 		"lifted":                  slices.Concat([]string{}, report.Lifted),
 		"push_spawned":            report.PushSpawned,
@@ -202,7 +202,7 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		ExemptGate:          func() (func(), error) { return pauserecord.SetGateExemptAll(), nil },
 		TaskWorktreePresent: func() (bool, error) { return taskWorktreePresent(location, slug) },
 		Reconcile:           func() (fabricengine.OriginReport, error) { return reconcileRun(location, slug, true) },
-		PullBolt:            func() error { return pullBolt(boltDir) },
+		PullBolt:            func() error { return boardengine.PullBolt(boltDir) },
 		Owner: func() (string, string, string, error) {
 			machine, err := machinename.Name()
 			if err != nil {
@@ -249,12 +249,12 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		},
 		ChildReachedParent: hubChildReachedParent(location, slug),
 		ReadMarker:         func() (cancelMarkerReading, error) { return readCancelMarker(location, slug) },
-		TakeMarker: func() (func(bool) error, bool, error) {
+		TakeMarker: func() (func() error, error) {
 			held, err := takeCancelMarker(location, slug, pairteardown.CancelLockWait)
 			if err != nil {
-				return nil, false, err
+				return nil, err
 			}
-			return held.release, held.fresh, nil
+			return held.release, nil
 		},
 		GOOS:         runtime.GOOS,
 		LiveRecords:  func() ([]runproc.Record, error) { return runproc.List(runProcDir, slug) },
@@ -286,6 +286,32 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		RemovePair:         teardown.RemovePair,
 		TaskBranchOnOrigin: func() (bool, error) { return topology.TaskBranchOnOrigin(location, slug) },
 		DiscardTaskBranch:  func() (fabricengine.DiscardResult, error) { return topology.DiscardTaskBranch(location, slug) },
+		Verdict: func() (runfsm.Verdict, error) {
+			records, inputs, err := pairteardown.ReadRun(location, slug)
+			if err != nil {
+				return runfsm.Verdict{}, err
+			}
+			return cancelVerdict(records, inputs), nil
+		},
+		WriteIntent: func(remove bool) (bool, error) {
+			machine, err := machinename.Name()
+			if err != nil {
+				return false, err
+			}
+			if err := os.MkdirAll(filepath.Dir(shedrun.StatusLock(location, slug)), 0o755); err != nil {
+				return false, err
+			}
+			return shedrun.WriteCancelIntent(location, slug, shedengine.CancelIntent{StartedAt: time.Now().Format(time.RFC3339), Machine: machine, Remove: remove})
+		},
+		CommitRecord: func() (bool, error) {
+			return commitCancelRecord(battenCommitStatusDeps(location, slug), slug)
+		},
+		FinishCancel: func(remove bool) (bool, error) {
+			if err := os.MkdirAll(filepath.Dir(shedrun.StatusLock(location, slug)), 0o755); err != nil {
+				return false, err
+			}
+			return shedrun.FinishCancel(location, slug, shedengine.CancelFinish{EndedAt: time.Now().Format(time.RFC3339), Remove: remove})
+		},
 		RemoveRecords: func() (bool, error) {
 			statusLockPath := shedrun.StatusLock(location, slug)
 			if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
@@ -412,14 +438,53 @@ func childRestepped(location *lymcwd.Location, slug string) func(shedengine.Stat
 }
 
 // childParentHolds returns a reader that reports whether the parent branch already holds the task worktree's work.
+// It reads origin's fetched parent branch, never the local one.
+// The landing's parent push is what makes the merge final.
+// Under the push skip nothing reaches origin, so it reads the local parent branch.
 func childParentHolds(location *lymcwd.Location, slug string) func() (bool, error) {
 	return func() (bool, error) {
 		task, err := taskWorktreeLocation(location, slug)
 		if err != nil {
 			return false, err
 		}
-		return fabricengine.ParentHoldsTaskWork(location, task, slug)
+		if fabricengine.EnvSyncOptions().SkipPush {
+			return fabricengine.ParentHoldsTaskWork(location, task, slug)
+		}
+		return fabricengine.OriginParentHoldsTaskWork(location, task, slug)
 	}
+}
+
+// cancelAside is what a cancel sets aside before the act rule decides.
+// A cancel resolves a cancel under way, a pause, a hold, a shed pause and an owed push itself.
+// So a paused, held or offline run is still cancelled.
+var cancelAside = runfsm.Aside{Cancel: true, Pause: true, Hold: true, ShedPause: true, PushOwed: true}
+
+// cancelVerdict returns the act rule's verdict for a cancel over the run's records and inputs.
+// Only a landed run, and a run another machine owns, are refused.
+func cancelVerdict(records runfsm.Records, inputs runfsm.Inputs) runfsm.Verdict {
+	_, verdict := runfsm.Judge(records, inputs, cancelAside)
+	return verdict
+}
+
+// commitCancelRecord commits batten's record with the run's other records and spawns the push of the records side.
+// It refuses while a merge is in progress on the prime's records side, so no cancel goes on with its record uncommitted.
+// A push that fails to start is logged, never returned, since the next push carries the commit.
+func commitCancelRecord(deps commitStatusDeps, slug string) (committed bool, err error) {
+	active, err := deps.MergeActive()
+	if err != nil {
+		return false, fmt.Errorf("read the prime's records merge state: %w", err)
+	}
+	if active {
+		return false, errors.New("a merge is in progress on the prime's records side; conclude or abort that merge there")
+	}
+	committed, err = deps.Commit("batten cancel: record the run state of " + slug)
+	if err != nil || !committed {
+		return committed, err
+	}
+	if err := deps.Spawn(); err != nil {
+		logger.Warn("battencli: the push of the cancel record did not start; the next push carries it", "slug", slug, "error", err)
+	}
+	return true, nil
 }
 
 // pairSessionLive reports whether the pair's reed session of slug is live on the hub's tmux server; a hub with no server has none.

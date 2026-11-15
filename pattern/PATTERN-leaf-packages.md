@@ -143,3 +143,9 @@ It is importable from production code, not a kit.
 Imports only the standard library, `github.com/fsnotify/fsnotify` and `internal/logger`.
 - Every lym process that waits on a file event goes through it, so fsnotify is imported nowhere else.
 - `internal/logger` is admitted because fsnotify's error channel is drained and logged at Debug.
+
+## `internal/runfsm`
+
+Imports only the standard library and `internal/shedengine`, for the record type.
+It derives a run's state and decides whether a verb may act, and reads nothing:
+callers read the tracked records and the machine-local facts and hand them in.

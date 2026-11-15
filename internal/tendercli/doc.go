@@ -40,6 +40,20 @@
 // The resume report names the spawned seams under `spawned` and the failed ones under `spawn_failed`.
 // A pair a live entry still covers, one another machine owns and one that is gone is not pushed.
 //
+// # Run pause intent
+//
+// `pause <slug>` and `resume <slug>` also write and clear the run's pause intent in its batten record on the prime.
+// Each commits the record and spawns the push of the prime's records side, held under the slug.
+// A slug with no batten record writes and commits nothing.
+// Both verbs pull the Bolt first and refuse a run another machine owns, naming that machine;
+// with origin unreachable they read the owner from the local Bolt.
+// `pause` asks before its no-pair check, so a run owned elsewhere that has no pair here is refused naming its owner.
+// `resume` asks the act rule with a pause, a cancel under way, a shed pause and an owed push set aside.
+// It lifts its own entry and drives nothing; a landed or cancelled run's entry is lifted too.
+// Offline, the pause entry still stops the run's processes here, and the intent is committed with its push owed.
+// Until it lands another machine reads the run unpaused.
+// `PausePair`, `PauseOwnedElsewhere` and every hub-wide pause record no intent.
+//
 // # Owned elsewhere
 //
 // `PauseOwnedElsewhere` pauses a run another machine owns,
@@ -52,6 +66,7 @@
 // That step runs when `pairteardown.BattenFollowUp` words one.
 // The removal would otherwise leave the record standing.
 // A run whose Finalize is past its parent-side merge keeps its processes.
+// Origin's fetched parent branch decides that, or the local one while pushes are skipped.
 // It finishes its landing on either machine, and its pair's removal ends them.
 // A task worktree with no status file, or none at all, is ended by slug, since no Finalize can be running there.
 // `PausePair` pauses a run with a plain pair entry, for a run lym stopped because origin moved what it works on;

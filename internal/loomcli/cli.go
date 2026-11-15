@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -173,6 +174,9 @@ type loomCLI struct {
 	spawnGoDriverFrom func(executable string) (int, error)
 	// ownerOf judges who owns the run of slug, and a nil ownerOf reads the run as owned here without calling anything.
 	ownerOf func(l *lymcwd.Location, slug string) (ownerVerdict, error)
+	// runVerdict judges whether the act rule lets the run of slug act, with a shed pause set aside.
+	// A nil runVerdict checks nothing.
+	runVerdict func(l *lymcwd.Location, slug string) (runfsm.Verdict, error)
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI.
@@ -190,6 +194,7 @@ func newLoomCLI() *loomCLI {
 	c.ownerOf = func(l *lymcwd.Location, slug string) (ownerVerdict, error) {
 		return runOwnerVerdict(l, slug, machinename.Name)
 	}
+	c.runVerdict = hubRunVerdict
 	c.spawnGoDriverFrom = func(executable string) (int, error) { return spawnDetachedDrive(c.location, executable) }
 	c.spawnGoDriver = func() (int, error) {
 		executable, err := selfexec.LymBinary()

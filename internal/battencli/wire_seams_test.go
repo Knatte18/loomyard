@@ -109,6 +109,7 @@ var intentionallyNil = map[string]string{
 	"Landing.PullRequest.Now":                "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.Sleep":              "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.RecordChanges":      "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.CommitRecord":       "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.Sessions":           "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.SessionLive":        "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.RegisterSession":    "loom-only seam, batten lands no branch",
@@ -694,7 +695,7 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 		{
 			name: "AbsentEntryPassesTheClaimWithNothingWritten",
 			set: func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
-				if req.Machine != machine || len(req.Slugs) != 1 || req.Slugs[0] != slug || req.Claim != "running · Worktree-Create" || req.Takeover {
+				if req.Machine != machine || len(req.Slugs) != 1 || req.Slugs[0] != slug || req.Claim != "starting · Worktree-Create" || req.Takeover {
 					return boardengine.OwnerWrite{}, fmt.Errorf("claim request = %+v; want %q's Worktree-Create claim for %q with no takeover", req, machine, slug)
 				}
 				return boardengine.OwnerWrite{}, nil
@@ -711,7 +712,7 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 		},
 		{
 			name:       "RealSetterRecordsTheClaimStatusAlone",
-			wantStatus: "running · Worktree-Create",
+			wantStatus: "starting · Worktree-Create",
 		},
 	}
 	for _, tt := range tests {

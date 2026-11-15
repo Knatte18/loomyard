@@ -320,7 +320,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // Such a run is coming back from its fixer, and it queues at the front.
 // A record that does not decode reads as no, and the gate then halts naming it.
 func (fz *Finalize) returningFromFixer() (bool, error) {
-	rec, reason, err := fz.readAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName))
+	rec, reason, err := fz.readAttempts(FixerAttemptsPath(fz.deps.RecordsDir, finalizeName))
 	if err != nil {
 		return false, err
 	}
@@ -808,7 +808,7 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 		return fz.stuckOrCancelled(ctx, reason, "error", err)
 	}
 	// The landing is done, so a failed removal of the attempt record changes no verdict.
-	if err := RemoveFixerAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName)); err != nil {
+	if err := RemoveFixerAttempts(FixerAttemptsPath(fz.deps.RecordsDir, finalizeName)); err != nil {
 		logger.Warn("landingshed: remove the fixer attempt record failed", "producer", finalizeName, "cause", err)
 	}
 	if notice != "" && fz.deps.Notify != nil {
@@ -905,7 +905,7 @@ func (fz *Finalize) mergeAndGate(ctx context.Context, parentHandle parentMerger)
 // done is false when the tree passed and its change is settled, and the caller proceeds;
 // otherwise the other values are the result to return at once.
 func (fz *Finalize) gateAndFix(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	attemptsPath := FixerAttemptsPath(fz.deps.ScratchDir, finalizeName)
+	attemptsPath := FixerAttemptsPath(fz.deps.RecordsDir, finalizeName)
 	rec, reason, err := fz.readAttempts(attemptsPath)
 	if err != nil {
 		return fz.errorStop(ctx, err)
@@ -973,13 +973,17 @@ func (fz *Finalize) rebaseAfterParentMerge(rec FixerAttempts) (FixerAttempts, er
 		return rec, fmt.Errorf("landingshed: %s: read the task head: %w", finalizeName, err)
 	}
 	rec.Baseline, rec.Judged = head, head
-	return rec, WriteFixerAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName), rec)
+	return rec, WriteFixerAttempts(FixerAttemptsPath(fz.deps.RecordsDir, finalizeName), rec)
 }
 
 // readAttempts reads the fixer attempt record of the row's current entry.
 // A record that does not decode comes back as a halting reason naming the file and how to remove it.
 // A Finalize built with no row-entry read reads entry 0.
+// A record found only under the scratch directory is moved to the records directory first.
 func (fz *Finalize) readAttempts(path string) (FixerAttempts, string, error) {
+	if err := moveScratchAttempts(fz.deps.ScratchDir, fz.deps.RecordsDir, finalizeName); err != nil {
+		return FixerAttempts{}, "", err
+	}
 	entry := 0
 	if fz.deps.RowEntry != nil {
 		var err error
@@ -1023,7 +1027,7 @@ func (fz *Finalize) runFixer(ctx context.Context, rec FixerAttempts) (shedengine
 		fz.gate.clearFailure()
 		if updated.FixReview != "" {
 			updated.FixReview = ""
-			if err := WriteFixerAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName), updated); err != nil {
+			if err := WriteFixerAttempts(FixerAttemptsPath(fz.deps.RecordsDir, finalizeName), updated); err != nil {
 				return fz.errorStop(ctx, err)
 			}
 		}
@@ -1067,7 +1071,7 @@ func (fz *Finalize) judgeFixerChange(ctx context.Context, rec FixerAttempts) (sh
 	if err != nil {
 		return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the task head: %w", finalizeName, err))
 	}
-	attemptsPath := FixerAttemptsPath(fz.deps.ScratchDir, finalizeName)
+	attemptsPath := FixerAttemptsPath(fz.deps.RecordsDir, finalizeName)
 	letThrough := func(rec FixerAttempts) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 		rec.Judged = head
 		if err := WriteFixerAttempts(attemptsPath, rec); err != nil {
@@ -1131,7 +1135,7 @@ func (fz *Finalize) judgeFixerChange(ctx context.Context, rec FixerAttempts) (sh
 // An acceptance writes those findings into the change description.
 func (fz *Finalize) haltReviewCapped(ctx context.Context, rec FixerAttempts, head, capReason string, review fixReviewOutcome) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	rec.Halt, rec.Findings, rec.AcceptedHead = fixerHaltReviewCapped, review.openFindings(), ""
-	if err := WriteFixerAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName), rec); err != nil {
+	if err := WriteFixerAttempts(FixerAttemptsPath(fz.deps.RecordsDir, finalizeName), rec); err != nil {
 		return fz.errorStop(ctx, err)
 	}
 	return fz.halt(ctx, fmt.Sprintf("%sthe fix review of %s did not approve the fixer's change over the caps (%s) in %d rounds: %s; fixer commits: %s..%s; way forward: run `lym loom circling accept %s` to land the change as it stands with the open findings in the change description, or fix the findings on the task branch; then `lym loom resume`",
@@ -1150,7 +1154,7 @@ func (fz *Finalize) endSpent(ctx context.Context, rec FixerAttempts, log string)
 		commits = rec.Baseline + ".." + head
 	}
 	rec.Halt = fixerHaltSpent
-	if err := WriteFixerAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName), rec); err != nil {
+	if err := WriteFixerAttempts(FixerAttemptsPath(fz.deps.RecordsDir, finalizeName), rec); err != nil {
 		return fz.errorStop(ctx, err)
 	}
 	return fz.halt(ctx, fmt.Sprintf("%sthe fixer spent every attempt of %s and the landing gate still fails; log: %s; fixer commits: %s; way forward: fix the failure on the task branch, then `lym loom resume`", LandingStopPrefix, finalizeName, log, commits))

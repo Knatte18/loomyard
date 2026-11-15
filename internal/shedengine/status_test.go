@@ -158,6 +158,27 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 		t.Error("ParseStatusTolerant({) error = nil; want a decode error")
 	}
 
+	// A finished cancel intent and a pause intent round-trip; a file with neither key decodes both as nil.
+	withIntents := Status{
+		State:       StateCancelled,
+		Cancel:      &CancelIntent{StartedAt: "2026-11-15T10:00:00Z", Machine: "neve", Remove: true, Finish: &CancelFinish{EndedAt: "2026-11-15T10:01:00Z", Remove: true}},
+		PauseIntent: &PauseIntent{By: "orch", At: "2026-11-15T09:00:00Z"},
+	}
+	intentData, err := json.Marshal(withIntents)
+	if err != nil {
+		t.Fatalf("json.Marshal(withIntents) = %v", err)
+	}
+	var gotIntents Status
+	if err := json.Unmarshal(intentData, &gotIntents); err != nil {
+		t.Fatalf("json.Unmarshal(intentData) = %v", err)
+	}
+	if !reflect.DeepEqual(gotIntents, withIntents) {
+		t.Errorf("intent round trip = %+v; want %+v", gotIntents, withIntents)
+	}
+	if legacy.Cancel != nil || legacy.PauseIntent != nil || strings.Contains(string(reencoded), `"cancel"`) || strings.Contains(string(reencoded), "pause_intent") {
+		t.Errorf("record without intents = %+v re-encoded as %s; want nil intents and no cancel or pause_intent key", legacy, reencoded)
+	}
+
 	// A span object carrying a key this binary does not know decodes both ways, keeping the span's known fields.
 	spanWithUnknownKey := []byte(`{"history":[{"producer":"Plan-Write","outcome":"stuck","output":"","at":"t","gate_spans":[{"gate":"g","kind":"held","start":"s","end":"e","future":1}]}]}`)
 	wantSpan := []GateSpan{{Gate: "g", Kind: GateSpanKindHeld, Start: "s", End: "e"}}
@@ -186,6 +207,7 @@ func TestState_Valid(t *testing.T) {
 		{"done", StateDone, true},
 		{"blocked", StateBlocked, true},
 		{"failed", StateFailed, true},
+		{"cancelled", StateCancelled, true},
 		{"typo", State("Runnning"), false},
 		{"empty", State(""), false},
 	}
