@@ -467,6 +467,10 @@
 // so the attempt counts against `arbiter_max_spawns` whatever happens next.
 // The budget is counted from those records, so a restart never resets it.
 // The directory also holds `prompt.md`, the agent's `verdict.yaml` and the verb's validated `envelope.json`.
+// The verb wires `Deps.Worktree` through fabric's read-only reads,
+// so the arbiter may make one fix of its own, committed on the task branch.
+// `attempt.json` records the worktree snapshot and the uncommitted paths taken at spawn.
+// `envelope.json` and the verb's output list the arbiter's commits.
 // Once the re-launch consumed a `resume`, it also holds the `applied` mark.
 // While an arbiter may be live an ephemeral marker names the attempt, its strand and its deadline.
 // The status commit stages the arbiter directory with the run records.

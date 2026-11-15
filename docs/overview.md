@@ -1543,6 +1543,8 @@ User-facing modules each get one `lym <module>` namespace:
   A message asking for a stop at a point becomes `lym shed pause <run-id> --before|--after <producer>`.
   At a stop it cannot settle, the driver runs `lym loom arbiter`.
   That verb spawns a cold arbiter agent and returns a verdict the driver applies or hands on.
+  While the task worktree exists, the arbiter may make one fix of its own, committed on the task branch.
+  A resume after its commits names a goto, so the run's own rows check the fix.
   The driver re-launches the loop once after a deployed `lym`.
   A loom-launched driver parks at a hand-back until `lym loom start` resumes it.
   `internal/shedrun` is the sole declarer of the `shed` run-directory path segment.

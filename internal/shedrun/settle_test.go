@@ -4,6 +4,7 @@ package shedrun
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -69,7 +70,7 @@ func TestParseSettleRecords(t *testing.T) {
 				t.Fatalf("ParseSettleRecords = %d records %+v; want %d", len(got), got, len(tt.want))
 			}
 			for i := range got {
-				if got[i] != tt.want[i] {
+				if !reflect.DeepEqual(got[i], tt.want[i]) {
 					t.Errorf("record %d = %+v; want %+v", i, got[i], tt.want[i])
 				}
 			}

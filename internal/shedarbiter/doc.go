@@ -28,6 +28,21 @@
 // The hand-on's question names the error, so the stop reaches the run's parent at once rather than at the deadline.
 // Every refusal ends with Deps.HandBackWayForward, which names the verb that shows the stop.
 //
+// # The fix
+//
+// A driver that sets Deps.Worktree lets its arbiter make one fix of its own:
+// it edits the task's code worktree and commits the edit on the task branch before it writes its verdict.
+// The plan, the decision record and PATTERN entries still change only through the recipe's repair verbs.
+// The call snapshots the worktree at spawn, in the attempt record.
+// When the arbiter is done, the call reads the commits it made since.
+// The arbiter must leave every change committed, on the branch and on top of the HEAD it found;
+// otherwise a resume is handed on with cause `precondition`.
+// A resume after commits needs a goto target.
+// The run's own rows, and their gates, then check the fix before the run goes on.
+// The envelope lists the commits.
+// A hand-on's question names them for the run's parent to keep or revert.
+// A driver that leaves Deps.Worktree nil keeps its arbiter to a verdict, and its prompt says so.
+//
 // # The prompt
 //
 // Prompt fills the arbiter stencil over one stop's paths and the description of the recipe whose run it judges,

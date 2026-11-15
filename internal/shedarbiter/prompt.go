@@ -7,6 +7,7 @@ package shedarbiter
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
@@ -28,12 +29,24 @@ const AbsentPath = "none"
 // verdictGateAttempts is how many times the verdict gate re-prompts an arbiter whose verdict file does not read.
 const verdictGateAttempts = 2
 
+// The fragments the arbiter stencil's edit_scope marker carries:
+// the one-shot fix an arbiter may make and commit, or the rule that it edits nothing.
+const (
+	fixStencilName   = "loom-fragment-arbiter-fix"
+	noFixStencilName = "loom-fragment-arbiter-no-fix"
+)
+
+// editScopeMarker is the arbiter stencil's marker for the fragment that states what the arbiter may edit.
+const editScopeMarker = "edit_scope"
+
 // PromptInput carries what the arbiter stencil's markers are filled from.
 // Recipe, ReportPath, BriefPath, CaseBriefPath, DecisionRecordPath, SupportLogPath and AmendmentTarget may be empty.
 // Every other field is required.
 // Recipe is the description of the run's recipe, including the repair verbs the arbiter may run.
 // AmendmentTarget is the row a plan amendment routes to.
+// MayEdit lets the arbiter make one fix of its own and commit it in Worktree; false keeps it to a verdict.
 type PromptInput struct {
+	MayEdit            bool
 	Recipe             string
 	RunID              string
 	Slug               string
@@ -50,6 +63,7 @@ type PromptInput struct {
 
 // Prompt composes the arbiter session's launch prompt from the arbiter stencil in stencilsDir, filled with in.
 // It renders the no-parent directive, since the verdict file is the arbiter's only channel.
+// Its edit rules are the one-shot fix fragment when in.MayEdit is set, and the no-fix fragment otherwise.
 // An empty recipe description, report, brief, case brief, decision record, support log or amendment target is filled as the literal "none".
 // It returns the read or fill error wrapped with the stencil's name.
 func Prompt(stencilsDir string, in PromptInput) (string, error) {
@@ -58,6 +72,10 @@ func Prompt(stencilsDir string, in PromptInput) (string, error) {
 		return "", err
 	}
 	editDirective, err := editdirective.Directive(stencilsDir)
+	if err != nil {
+		return "", err
+	}
+	editScope, err := editScope(stencilsDir, in)
 	if err != nil {
 		return "", err
 	}
@@ -80,11 +98,32 @@ func Prompt(stencilsDir string, in PromptInput) (string, error) {
 		"amendment_target":         pathOrNone(in.AmendmentTarget),
 		parentdirective.MarkerName: directive,
 		editdirective.MarkerName:   editDirective,
+		editScopeMarker:            editScope,
 	})
 	if err != nil {
 		return "", fmt.Errorf("loom: arbiter prompt: fill stencil %q: %w", stencilName, err)
 	}
 	return string(filled), nil
+}
+
+// editScope returns the arbiter's edit rules.
+// When in.MayEdit is set, they are the fix fragment filled with in's worktree and run.
+// Otherwise they are the no-fix fragment.
+// It returns the read or fill error wrapped with the fragment's name.
+func editScope(stencilsDir string, in PromptInput) (string, error) {
+	name := noFixStencilName
+	if in.MayEdit {
+		name = fixStencilName
+	}
+	template, err := stencilstore.Read(stencilsDir, name)
+	if err != nil {
+		return "", fmt.Errorf("loom: arbiter prompt: read stencil %q: %w", name, err)
+	}
+	filled, err := stencil.Fill(template, map[string]string{"worktree": in.Worktree, "run_id": in.RunID})
+	if err != nil {
+		return "", fmt.Errorf("loom: arbiter prompt: fill stencil %q: %w", name, err)
+	}
+	return strings.TrimSpace(string(filled)), nil
 }
 
 // pathOrNone returns path, or the literal "none" for an empty one.

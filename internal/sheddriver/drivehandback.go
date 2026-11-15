@@ -25,6 +25,8 @@ type driveAttemptNote struct {
 	Verdict     string
 	Cause       string
 	VerdictPath string
+	// Commits are the arbiter's own commits on the task branch, each a short SHA and its subject.
+	Commits []string
 }
 
 // driveHandBack describes one hand-back.
@@ -99,6 +101,9 @@ func (r driveReport) render() string {
 		fmt.Fprintf(&b, "- %s attempt %d: verdict %s", attempt.Role, attempt.Number, attempt.Verdict)
 		if attempt.Cause != "" {
 			fmt.Fprintf(&b, ", cause %s", attempt.Cause)
+		}
+		if len(attempt.Commits) > 0 {
+			fmt.Fprintf(&b, ", commits %s", strings.Join(attempt.Commits, "; "))
 		}
 		fmt.Fprintf(&b, ", verdict file %s\n", attempt.VerdictPath)
 	}

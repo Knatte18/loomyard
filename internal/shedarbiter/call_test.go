@@ -3,9 +3,11 @@ package shedarbiter
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -115,6 +117,39 @@ type callFixture struct {
 	gotoGuard        shedengine.GotoGuard
 	amendmentTarget  func() string
 	wayForward       string
+	// worktree, when set, is the worktree seam the call reads; nil leaves Deps.Worktree unset.
+	worktree *fakeWorktree
+}
+
+// fakeWorktree is a scripted worktree seam over one current snapshot and changed-path list.
+// A test swaps them while the arbiter runs.
+// Each read has its own error, so a test fails the spawn read or one read after the arbiter.
+type fakeWorktree struct {
+	current     sheddriver.WorktreeSnapshot
+	changes     map[string]string
+	snapshotErr error
+	changesErr  error
+	ancestorErr error
+	logErr      error
+	descends    bool
+	commits     []string
+	// ancestorArgs and logArgs are the (sha, ref) and (from, to) pairs the last IsAncestor and CommitLog reads received.
+	ancestorArgs, logArgs [2]string
+}
+
+func (w *fakeWorktree) seam() *WorktreeSeam {
+	return &WorktreeSeam{
+		Snapshot: func() (sheddriver.WorktreeSnapshot, error) { return w.current, w.snapshotErr },
+		Changes:  func() (map[string]string, error) { return w.changes, w.changesErr },
+		IsAncestor: func(sha, ref string) (bool, error) {
+			w.ancestorArgs = [2]string{sha, ref}
+			return w.descends, w.ancestorErr
+		},
+		CommitLog: func(from, to string) ([]string, error) {
+			w.logArgs = [2]string{from, to}
+			return w.commits, w.logErr
+		},
+	}
 }
 
 const testRun = "operator-surface"
@@ -168,7 +203,12 @@ func (f *callFixture) deps() Deps {
 	if amendmentTarget == nil {
 		amendmentTarget = func() string { return AbsentPath }
 	}
+	var worktree *WorktreeSeam
+	if f.worktree != nil {
+		worktree = f.worktree.seam()
+	}
 	return Deps{
+		Worktree: worktree,
 		ReadStatus: func() (shedengine.Status, bool, error) {
 			if f.statusErr != nil {
 				return shedengine.Status{}, false, f.statusErr
@@ -703,6 +743,232 @@ func TestVerdictGate(t *testing.T) {
 					if !file.wantPassed && !strings.Contains(result.Findings, want) {
 						t.Errorf("%s: findings = %q; want them to contain %q", file.name, result.Findings, want)
 					}
+				}
+			}
+		})
+	}
+}
+
+// TestCall_Edits covers an arbiter that may edit.
+// The call snapshots the worktree at spawn and reads the commits the arbiter made since.
+// It hands on a resume over a worktree the run may not go on from.
+// With no worktree seam the arbiter is told it edits nothing and its attempt records no snapshot.
+func TestCall_Edits(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const commit = "bbb1234 fix the gate"
+	const gotoVerdict = "verdict: resume\nreason: fixed the gate\ngoto: Plan-Write\n"
+	spawn := sheddriver.WorktreeSnapshot{Head: "aaa", Branch: "task"}
+	moved := sheddriver.WorktreeSnapshot{Head: "bbb", Branch: "task"}
+
+	tests := []struct {
+		name string
+		// noSeam leaves Deps.Worktree unset.
+		noSeam bool
+		// snapshotErr is what the seam's spawn read fails with.
+		snapshotErr error
+		// spawnChanges is the uncommitted paths and their content hashes at spawn; afterChanges is those the arbiter leaves.
+		spawnChanges, afterChanges map[string]string
+		// spawnChangesErr is what the seam's spawn read of the uncommitted paths fails with.
+		spawnChangesErr error
+		// after is the worktree the arbiter leaves; descends and commits answer the commit reads.
+		after      sheddriver.WorktreeSnapshot
+		descends   bool
+		commits    []string
+		verdict    string
+		waitResult shuttleengine.Result
+		// afterSnapshotErr, afterChangesErr, ancestorErr and logErr are what each read fails with after the arbiter.
+		afterSnapshotErr, afterChangesErr, ancestorErr, logErr error
+		// viaSeam also settles the stop through Seam's Judge, whose outcome must carry the envelope's commits.
+		viaSeam bool
+
+		wantRefusal  string
+		wantVerdict  string
+		wantCause    string
+		wantCommits  []string
+		wantReason   string
+		wantQuestion []string
+		wantPrompt   string
+	}{
+		{
+			name: "a resume with no commit carries none", after: spawn, verdict: resumeVerdict,
+			wantVerdict: loomengine.ArbiterVerdictResume, wantPrompt: "## Your one fix",
+		},
+		{
+			name: "a resume after commits with a goto lists them", after: moved, descends: true, commits: []string{commit}, verdict: gotoVerdict,
+			viaSeam:     true,
+			wantVerdict: loomengine.ArbiterVerdictResume, wantCommits: []string{commit},
+		},
+		{
+			name: "a resume after commits with no goto hands on naming them", after: moved, descends: true, commits: []string{commit}, verdict: resumeVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition, wantCommits: []string{commit},
+			wantReason: "needs a goto target", wantQuestion: []string{commit, "keep or revert"},
+		},
+		{
+			name: "an agent's hand-on after commits keeps its question and names them", after: moved, descends: true, commits: []string{commit}, verdict: handOnVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCommits: []string{commit},
+			wantReason: "the design is wrong", wantQuestion: []string{"should the parent widen the task?", commit},
+		},
+		{
+			name: "a resume over uncommitted changes hands on", after: sheddriver.WorktreeSnapshot{Head: "aaa", Branch: "task", Dirty: map[string]string{"/wt/a.go": "hash"}}, verdict: gotoVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition, wantReason: "uncommitted changes",
+		},
+		{
+			name: "a resume over a new untracked file hands on", after: spawn, afterChanges: map[string]string{"new.go": "h1"}, verdict: gotoVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition, wantReason: "uncommitted changes",
+		},
+		{
+			name: "a resume leaving an untracked file it found untouched goes on", after: spawn, verdict: resumeVerdict,
+			spawnChanges: map[string]string{"b.go": "h2", "a.go": "h1"}, afterChanges: map[string]string{"a.go": "h1", "b.go": "h2"},
+			wantVerdict: loomengine.ArbiterVerdictResume,
+		},
+		{
+			name: "a resume over an untracked file it found and edited hands on", after: spawn, verdict: gotoVerdict,
+			spawnChanges: map[string]string{"a.go": "h1"}, afterChanges: map[string]string{"a.go": "h2"},
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition, wantReason: "uncommitted changes",
+		},
+		{
+			name: "a resume over uncommitted changes after commits hands on and lists the commits", descends: true, commits: []string{commit},
+			after:   sheddriver.WorktreeSnapshot{Head: "bbb", Branch: "task", Dirty: map[string]string{"/wt/a.go": "hash"}},
+			verdict: gotoVerdict, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
+			wantCommits: []string{commit}, wantReason: "uncommitted changes", wantQuestion: []string{commit},
+		},
+		{
+			name:  "an agent's hand-on over uncommitted changes gains the worktree note",
+			after: sheddriver.WorktreeSnapshot{Head: "aaa", Branch: "task", Dirty: map[string]string{"/wt/a.go": "hash"}}, verdict: handOnVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantReason: "the design is wrong",
+			wantQuestion: []string{"should the parent widen the task?", "Check the worktree first", "uncommitted changes"},
+		},
+		{
+			name: "a resume after a worktree that cannot be read hands on", after: spawn, afterSnapshotErr: errors.New("HEAD is detached"), verdict: gotoVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition, wantReason: "could not be read after the arbiter",
+		},
+		{
+			name: "a resume after uncommitted paths that cannot be read hands on", after: spawn, afterChangesErr: errors.New("index locked"), verdict: gotoVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition, wantReason: "uncommitted paths could not be read",
+		},
+		{
+			name: "a resume after a failed ancestry read hands on naming the move", after: moved, ancestorErr: errors.New("bad object"), verdict: gotoVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
+			wantReason: "HEAD moved from aaa to bbb and the arbiter's commits could not be read",
+		},
+		{
+			name: "a resume after a failed commit log read hands on naming the move", after: moved, descends: true, logErr: errors.New("bad object"), verdict: gotoVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
+			wantReason: "HEAD moved from aaa to bbb and the arbiter's commits could not be read", wantQuestion: []string{"HEAD moved from aaa to bbb"},
+		},
+		{
+			name: "a resume after a branch switch hands on", after: sheddriver.WorktreeSnapshot{Head: "aaa", Branch: "other"}, verdict: gotoVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition, wantReason: "left branch",
+		},
+		{
+			name: "a resume over rewritten history hands on", after: moved, descends: false, verdict: gotoVerdict,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition, wantReason: "rewrote the branch's history",
+		},
+		{
+			name: "a timeout after commits hands on naming them", after: moved, descends: true, commits: []string{commit},
+			waitResult:  shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout},
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseTimeout, wantCommits: []string{commit}, wantQuestion: []string{commit},
+		},
+		{
+			name: "a worktree that cannot be read at spawn refuses and spawns nothing", snapshotErr: errors.New("index locked"),
+			wantRefusal: "the worktree could not be read before the spawn",
+		},
+		{
+			name: "uncommitted paths that cannot be read at spawn refuse and spawn nothing", spawnChangesErr: errors.New("index locked"),
+			wantRefusal: "the worktree's uncommitted paths could not be read before the spawn",
+		},
+		{
+			name: "no worktree seam tells the arbiter it edits nothing", noSeam: true, verdict: resumeVerdict,
+			wantVerdict: loomengine.ArbiterVerdictResume, wantPrompt: "## No fix of your own",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newCallFixture(t, loomshed.NameParentAlign, shedengine.StateFailed)
+			f.stopEnvelope = `{"kind":"producer"}`
+			worktree := &fakeWorktree{
+				current: spawn, changes: tt.spawnChanges, changesErr: tt.spawnChangesErr, snapshotErr: tt.snapshotErr,
+				descends: tt.descends, commits: tt.commits, ancestorErr: tt.ancestorErr, logErr: tt.logErr,
+			}
+			if !tt.noSeam {
+				f.worktree = worktree
+			}
+			f.fake.waitResult = tt.waitResult
+			f.fake.onWait = func(shuttleengine.Spec) {
+				worktree.current = tt.after
+				worktree.changes = tt.afterChanges
+				worktree.snapshotErr = tt.afterSnapshotErr
+				worktree.changesErr = tt.afterChangesErr
+				if tt.verdict != "" {
+					writeVerdictFile(t, f.attemptDir(1), tt.verdict)
+				}
+			}
+
+			envelope, err := f.run()
+
+			if tt.wantRefusal != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantRefusal) || !strings.Contains(err.Error(), "way forward:") {
+					t.Fatalf("Settle() error = %v; want a refusal containing %q and a way forward", err, tt.wantRefusal)
+				}
+				if len(f.fake.starts) != 0 {
+					t.Errorf("starts = %d; want none", len(f.fake.starts))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Settle() error = %v; want nil", err)
+			}
+			if envelope.Verdict != tt.wantVerdict || envelope.Cause != tt.wantCause {
+				t.Errorf("verdict, cause = %q, %q; want %q, %q", envelope.Verdict, envelope.Cause, tt.wantVerdict, tt.wantCause)
+			}
+			if !slices.Equal(envelope.Commits, tt.wantCommits) {
+				t.Errorf("commits = %q; want %q", envelope.Commits, tt.wantCommits)
+			}
+			if !strings.Contains(envelope.Reason, tt.wantReason) {
+				t.Errorf("reason = %q; want it to contain %q", envelope.Reason, tt.wantReason)
+			}
+			for _, want := range tt.wantQuestion {
+				if !strings.Contains(envelope.Question, want) {
+					t.Errorf("question = %q; want it to contain %q", envelope.Question, want)
+				}
+			}
+			if len(f.fake.starts) != 1 || !strings.Contains(f.fake.starts[0].Prompt, tt.wantPrompt) {
+				t.Errorf("the spawned prompt lacks %q", tt.wantPrompt)
+			}
+			saved, _, err := loomengine.ReadArbiterEnvelope(loomengine.ArbiterEnvelopePath(f.attemptDir(1)))
+			if err != nil || !slices.Equal(saved.Commits, tt.wantCommits) {
+				t.Errorf("envelope.json commits = %q, err %v; want %q", saved.Commits, err, tt.wantCommits)
+			}
+			if tt.viaSeam {
+				// The attempt is settled, so the second call returns its envelope without spawning.
+				outcome, err := Seam(f.deps(), testRun, func(string) bool { return false }).Judge(f.envelopePath, f.reportPath, f.caseBriefPath)
+				if err != nil || !slices.Equal(outcome.Commits, tt.wantCommits) {
+					t.Errorf("Judge commits = %q, err %v; want %q", outcome.Commits, err, tt.wantCommits)
+				}
+			}
+			attempt, err := loomengine.ReadArbiterAttempt(f.attemptDir(1))
+			if err != nil {
+				t.Fatalf("ReadArbiterAttempt: %v", err)
+			}
+			switch {
+			case tt.noSeam && attempt.Snapshot != nil:
+				t.Errorf("attempt snapshot = %+v; want none with no worktree seam", attempt.Snapshot)
+			case !tt.noSeam && (attempt.Snapshot == nil || !attempt.Snapshot.Equal(spawn)):
+				t.Errorf("attempt snapshot = %+v; want the worktree at spawn, %+v", attempt.Snapshot, spawn)
+			}
+			if !maps.Equal(attempt.Changes, tt.spawnChanges) {
+				t.Errorf("attempt changes = %q; want the uncommitted paths at spawn, %q", attempt.Changes, tt.spawnChanges)
+			}
+			if tt.after.Head == moved.Head {
+				wantPair := [2]string{spawn.Head, moved.Head}
+				if worktree.ancestorArgs != wantPair {
+					t.Errorf("IsAncestor(sha, ref) = %q; want the spawn HEAD and the current HEAD, %q", worktree.ancestorArgs, wantPair)
+				}
+				if tt.descends && tt.ancestorErr == nil && worktree.logArgs != wantPair {
+					t.Errorf("CommitLog(from, to) = %q; want the spawn HEAD and the current HEAD, %q", worktree.logArgs, wantPair)
 				}
 			}
 		})

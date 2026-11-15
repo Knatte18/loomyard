@@ -56,6 +56,9 @@ type Deps struct {
 	StencilsDir string
 	// AmendmentTarget is the row a plan amendment routes to, or "none"; read per spawn, as the plan is approved mid-drive.
 	AmendmentTarget func() string
+	// Worktree reads the task's code worktree the arbiter may edit and commit in;
+	// nil keeps the arbiter to a verdict, with no edit of its own.
+	Worktree *WorktreeSeam
 	// Shuttle starts, attaches to and stops the arbiter.
 	Shuttle sheddriver.AgentShuttle
 	// Now is the clock.
@@ -194,6 +197,20 @@ func (c *Call) settleFresh(attempts []loomengine.ArbiterAttempt) (loomengine.Arb
 		return loomengine.ArbiterEnvelope{}, refusal(c.deps, "spawn budget spent: the run has used %d of its %d arbiter spawns", len(attempts), settings.MaxSpawns)
 	}
 
+	var snapshot *sheddriver.WorktreeSnapshot
+	var changes map[string]string
+	if c.deps.Worktree != nil {
+		read, err := c.deps.Worktree.Snapshot()
+		if err != nil {
+			return loomengine.ArbiterEnvelope{}, refusal(c.deps, "the worktree could not be read before the spawn: %v", err)
+		}
+		snapshot = &read
+		changes, err = c.deps.Worktree.Changes()
+		if err != nil {
+			return loomengine.ArbiterEnvelope{}, refusal(c.deps, "the worktree's uncommitted paths could not be read before the spawn: %v", err)
+		}
+	}
+
 	number := 1
 	if len(attempts) > 0 {
 		number = attempts[len(attempts)-1].Number + 1
@@ -210,6 +227,8 @@ func (c *Call) settleFresh(attempts []loomengine.ArbiterAttempt) (loomengine.Arb
 		EnvelopePath:  c.in.EnvelopePath,
 		ReportPath:    c.in.ReportPath,
 		CaseBriefPath: c.in.CaseBriefPath,
+		Snapshot:      snapshot,
+		Changes:       changes,
 		Dir:           dir,
 	}
 	if err := loomengine.WriteArbiterAttempt(dir, attempt); err != nil {
@@ -224,6 +243,7 @@ func (c *Call) settleFresh(attempts []loomengine.ArbiterAttempt) (loomengine.Arb
 	promptInput.CaseBriefPath = c.in.CaseBriefPath
 	promptInput.VerdictPath = loomengine.ArbiterVerdictPath(dir)
 	promptInput.AmendmentTarget = c.deps.AmendmentTarget()
+	promptInput.MayEdit = c.deps.Worktree != nil
 	prompt, err := Prompt(c.deps.StencilsDir, promptInput)
 	if err != nil {
 		return loomengine.ArbiterEnvelope{}, err
@@ -296,6 +316,8 @@ func (c *Call) stopRunAndHandOn(attempt loomengine.ArbiterAttempt, stop func() e
 }
 
 // conclude validates the attempt's verdict file and finishes the call with it.
+// A resume is handed on when the worktree the arbiter left fails readEdits or the resume's precondition;
+// an agent's own hand-on keeps its question, followed by the arbiter's commits and any problem with the worktree.
 func (c *Call) conclude(attempt loomengine.ArbiterAttempt) (loomengine.ArbiterEnvelope, error) {
 	verdict, found, err := loomengine.ReadArbiterVerdict(loomengine.ArbiterVerdictPath(attempt.Dir))
 	if err != nil {
@@ -304,20 +326,28 @@ func (c *Call) conclude(attempt loomengine.ArbiterAttempt) (loomengine.ArbiterEn
 	if !found {
 		return c.handOn(attempt, sheddriver.CauseMissing, "the arbiter left no verdict")
 	}
+	edits := c.readEdits(attempt)
+	question := verdict.Question
 	if verdict.Verdict == loomengine.ArbiterVerdictResume {
-		if problem := c.resumePrecondition(verdict); problem != "" {
-			return c.handOn(attempt, sheddriver.CausePrecondition, problem)
+		if edits.problem != "" {
+			return c.handOnWith(attempt, edits, sheddriver.CausePrecondition, edits.problem)
 		}
+		if problem := c.resumePrecondition(verdict, edits.commits); problem != "" {
+			return c.handOnWith(attempt, edits, sheddriver.CausePrecondition, problem)
+		}
+	} else {
+		question = edits.appendTo(question)
 	}
 	envelope := loomengine.ArbiterEnvelope{
 		Verdict:     verdict.Verdict,
 		Reason:      verdict.Reason,
-		Question:    verdict.Question,
+		Question:    question,
 		Goto:        verdict.Goto,
 		Verbs:       verdict.Verbs,
 		Attempt:     attempt.Number,
 		AttemptDir:  attempt.Dir,
 		VerdictPath: loomengine.ArbiterVerdictPath(attempt.Dir),
+		Commits:     edits.commits,
 	}
 	if verdict.Verdict == loomengine.ArbiterVerdictResume {
 		envelope.Relaunch = fmt.Sprintf("lym shed step %s --until-stop --arbiter-attempt %d", c.deps.RelaunchRunID, attempt.Number)
@@ -326,7 +356,11 @@ func (c *Call) conclude(attempt loomengine.ArbiterAttempt) (loomengine.ArbiterEn
 }
 
 // resumePrecondition returns what stops a resume from being sound at the call's stop, or empty when nothing does.
-func (c *Call) resumePrecondition(verdict loomengine.ArbiterVerdict) string {
+// commits are the arbiter's own commits: a resume after any needs a goto, so the run's own rows check them.
+func (c *Call) resumePrecondition(verdict loomengine.ArbiterVerdict, commits []string) string {
+	if len(commits) > 0 && verdict.Goto == "" {
+		return "a resume after the arbiter's commits needs a goto target, so the run's own rows check them, and the verdict names none"
+	}
 	switch c.status.State {
 	case shedengine.StateAwaiting:
 		pending, err := c.deps.PendingCirclingDecision(c.status.CurrentProducer)
@@ -358,17 +392,25 @@ func (c *Call) resumePrecondition(verdict loomengine.ArbiterVerdict) string {
 	return ""
 }
 
-// handOn finishes the call with a hand-on the call made itself.
-// Its question names cause and, for an API error, the error itself.
+// handOn finishes the call with a hand-on the call made itself, over the edits the arbiter left in the worktree.
 func (c *Call) handOn(attempt loomengine.ArbiterAttempt, cause, detail string) (loomengine.ArbiterEnvelope, error) {
+	return c.handOnWith(attempt, c.readEdits(attempt), cause, detail)
+}
+
+// handOnWith finishes the call with a hand-on the call made itself.
+// Its question names cause and, for an API error, the error itself;
+// it then names the arbiter's commits and any problem with the worktree, which the envelope also lists.
+func (c *Call) handOnWith(attempt loomengine.ArbiterAttempt, edits attemptEdits, cause, detail string) (loomengine.ArbiterEnvelope, error) {
+	question := fmt.Sprintf("The arbiter could not settle this stop (%s); decide it yourself and report the choice in the stop report.", sheddriver.HandBackQuestionCause(cause, detail))
 	return c.finish(loomengine.ArbiterEnvelope{
 		Verdict:     loomengine.ArbiterVerdictHandOn,
 		Reason:      detail,
-		Question:    fmt.Sprintf("The arbiter could not settle this stop (%s); decide it yourself and report the choice in the stop report.", sheddriver.HandBackQuestionCause(cause, detail)),
+		Question:    edits.appendTo(question),
 		Cause:       cause,
 		Attempt:     attempt.Number,
 		AttemptDir:  attempt.Dir,
 		VerdictPath: loomengine.ArbiterVerdictPath(attempt.Dir),
+		Commits:     edits.commits,
 	})
 }
 

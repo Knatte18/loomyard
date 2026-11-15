@@ -37,6 +37,7 @@ func Seam(deps Deps, runID string, escalationEligible func(producer string) bool
 				VerdictPath: envelope.VerdictPath,
 				Verdict:     envelope.Verdict,
 				Role:        loomengine.ArbiterRole,
+				Commits:     envelope.Commits,
 			}, nil
 		},
 		AttemptEnvelope: func(attemptDir string) (string, error) {

@@ -29,6 +29,8 @@ func seededStencils(t *testing.T) string {
 // TestPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives.
 // The recipe description renders too, and absent inputs render as the literal none.
 // No marker stays unfilled, and the verdict example is one the verdict reader accepts.
+//
+//testtiming:keep pins every marker value, absent inputs reading none, the parent and edit directives, and the worktree and Arbiter-Attempt trailer filled into the fix fragment, which TestCall_Edits does not assert
 func TestPrompt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -47,26 +49,36 @@ func TestPrompt(t *testing.T) {
 		SupportLogPath:     "/hub/wt/_lym/discussion/support-log.md",
 		VerdictPath:        "/hub/wt/.lym/arbiter/attempt-1/verdict.yaml",
 		AmendmentTarget:    "Plan-Burler-Review",
+		MayEdit:            true,
 	}
 	batten := in
 	batten.Recipe = battenRecipe
+	batten.MayEdit = false
 	absent := PromptInput{RunID: in.RunID, Slug: in.Slug, Worktree: in.Worktree, EnvelopePath: in.EnvelopePath, VerdictPath: in.VerdictPath}
+	const fixHeading, noFixHeading = "## Your one fix", "## No fix of your own"
 	cases := []struct {
 		name string
 		in   PromptInput
 		want []string
 		// absent lists the lines that must read none.
 		absent []string
+		// wantNot lists text the prompt must not carry.
+		wantNot []string
 	}{
 		{
-			name: "every marker value",
+			name: "every marker value, with the fix rules naming the worktree and the run's commit trailer",
 			in:   in,
-			want: []string{in.Recipe, in.RunID, in.Slug, in.Worktree, in.EnvelopePath, in.ReportPath, in.BriefPath, in.CaseBriefPath, in.DecisionRecordPath, in.SupportLogPath, in.VerdictPath, "amendment target `" + in.AmendmentTarget + "`"},
+			want: []string{
+				in.Recipe, in.RunID, in.Slug, in.Worktree, in.EnvelopePath, in.ReportPath, in.BriefPath, in.CaseBriefPath, in.DecisionRecordPath, in.SupportLogPath, in.VerdictPath,
+				"amendment target `" + in.AmendmentTarget + "`", fixHeading, "committed in `" + in.Worktree + "`", "`Arbiter-Attempt: " + in.RunID + "`",
+			},
+			wantNot: []string{noFixHeading},
 		},
 		{
-			name: "a batten description fills the recipe marker",
-			in:   batten,
-			want: []string{battenRecipe},
+			name:    "a batten description fills the recipe marker, and an arbiter that may not edit gets the no-fix rules",
+			in:      batten,
+			want:    []string{battenRecipe, noFixHeading},
+			wantNot: []string{fixHeading},
 		},
 		{
 			name: "absent recipe, report, brief, case brief, amendment target, decision record and support log read none",
@@ -89,6 +101,11 @@ func TestPrompt(t *testing.T) {
 			for _, want := range append(tc.want, tc.absent...) {
 				if !strings.Contains(got, want) {
 					t.Errorf("Prompt() does not carry %q", want)
+				}
+			}
+			for _, unwanted := range tc.wantNot {
+				if strings.Contains(got, unwanted) {
+					t.Errorf("Prompt() carries %q; want it absent", unwanted)
 				}
 			}
 			directive, err := parentdirective.Directive(dir, "", false)

@@ -136,6 +136,11 @@ func TestGoDriver_Settle(t *testing.T) {
 		dir := fmt.Sprintf("arbiter/%d", attempt)
 		return ArbiterOutcome{Resume: verdict == "resume", Verdict: verdict, Role: arbiterTestRole, Reason: "because", Question: "which way?", Attempt: attempt, AttemptDir: dir, VerdictPath: dir + "/verdict.yaml"}
 	}
+	const arbiterCommit = "bbb1234 fix the gate"
+	committed := func(outcome ArbiterOutcome) ArbiterOutcome {
+		outcome.Commits = []string{arbiterCommit}
+		return outcome
+	}
 	repairSeed := func(key StopKey) []SettleRecord {
 		record := SettleRecord{StopKey: key, Settler: shedrun.SettlerGoRule, Action: shedrun.SettleRestep}
 		return []SettleRecord{record, record}
@@ -242,6 +247,8 @@ func TestGoDriver_Settle(t *testing.T) {
 		wantOrder []string
 		// wantBuild, when set, is the build the last settle record names.
 		wantBuild string
+		// wantRestepCommits, when set, is the commits the last re-step settle record lists.
+		wantRestepCommits []string
 	}{
 		{name: "done commits and exits with no park", steps: []func(*testing.T) []byte{done}, wantCalls: []string{"step", "commit-records"}, wantExit: ExitDone},
 		{
@@ -412,6 +419,21 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls:   []string{"step", "arbiter:"},
 			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {"a row the arbiter judges first", "which way?"}},
+		},
+		{
+			name:  "an arbiter hand-on after its own commits names them in the stop report's attempt line",
+			steps: []func(*testing.T) []byte{blocked}, judgesFirst: "Build", arbiterReturns: committed(arbiterOutcome("hand-on", 1)),
+			wantCalls:   []string{"step", "arbiter:"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantReportHas: map[int][]string{2: {"arbiter attempt 1: verdict hand-on, commits " + arbiterCommit + ", verdict file"}},
+		},
+		{
+			name:  "an arbiter resume after its own commits lists them in its re-step settle record",
+			steps: []func(*testing.T) []byte{blocked, done}, judgesFirst: "Build", arbiterReturns: committed(arbiterOutcome("resume", 1)),
+			wantCalls:   []string{"step", "arbiter:", "step:1", "commit-records"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerArbiter},
+			wantReports: 1, wantExit: ExitDone, wantRestepCommits: []string{arbiterCommit},
 		},
 		{
 			name:  "a blocked stop at a row the arbiter judges first by its escalate reason goes to the arbiter with no tackler call",
@@ -960,6 +982,17 @@ func TestGoDriver_Settle(t *testing.T) {
 			if tt.wantBuild != "" {
 				if last := records[len(records)-1]; last.Build != tt.wantBuild {
 					t.Errorf("last settle record build = %q; want %q", last.Build, tt.wantBuild)
+				}
+			}
+			if tt.wantRestepCommits != nil {
+				var got []string
+				for _, record := range records {
+					if record.Action == shedrun.SettleRestep {
+						got = record.Commits
+					}
+				}
+				if !slices.Equal(got, tt.wantRestepCommits) {
+					t.Errorf("re-step settle record commits = %q; want %q", got, tt.wantRestepCommits)
 				}
 			}
 			if tt.wantHandBack {
