@@ -193,6 +193,41 @@ func TestDetachedChild(t *testing.T) {
 	}
 }
 
+// TestRunCommand_MarksOnlyARunsOwnVerbs pins which commands the root marks as a run's own process, which a pause holds.
+// The operator verbs a pause must not hold read false, among them the three steps of the lym s shortcut.
+func TestRunCommand_MarksOnlyARunsOwnVerbs(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	root := newRoot()
+	tests := []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"board", "get"}, false},
+		{[]string{"board", "list"}, false},
+		{[]string{"machine", "name"}, false},
+		{[]string{"selfreport", "create"}, false},
+		{[]string{"adopt"}, false},
+		{[]string{"beam", "start"}, false},
+		{[]string{"reed", "attach"}, false},
+		{[]string{"batten", "run"}, true},
+		{[]string{"batten", "step"}, true},
+		{[]string{"loom", "run"}, true},
+		{[]string{"shed", "run"}, true},
+		{[]string{"beam", "dobby"}, true},
+	}
+	for _, tt := range tests {
+		path := "lym " + strings.Join(tt.args, " ")
+		cmd, _, err := root.Find(tt.args)
+		if err != nil || cmd.CommandPath() != path {
+			t.Fatalf("Find(%q) = %v, %v; want the command %q", tt.args, cmd, err, path)
+		}
+		if got := runCommand(cmd); got != tt.want {
+			t.Errorf("runCommand(%s) = %v; want %v", path, got, tt.want)
+		}
+	}
+}
+
 // ptr returns a pointer to a copy of s.
 func ptr(s string) *string {
 	return &s

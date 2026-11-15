@@ -630,7 +630,7 @@ func dobbyCmd() *cobra.Command {
 		Use:         "dobby <worktree-root>",
 		Short:       "run the dobby daemon of the worktree at <worktree-root>",
 		Hidden:      true,
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal, clihelp.RunProcessAnnotation: clihelp.AnnotationEnabled},
 		Long: `Runs the dobby of the hub's prime or of a local beam until it is signalled or another
 machine owns the beam. It is launched by "lym beam start", never by hand.`,
 		Args: cobra.ExactArgs(1),

@@ -26,6 +26,14 @@ const (
 	waitingDirName = "waiting"
 )
 
+const (
+	// RunProcessEnv is the environment variable that marks a process, and every process it starts, as a run's own.
+	// A pause holds the network calls of such a process.
+	RunProcessEnv = "LYM_RUN_PROCESS"
+	// RunProcessMarked is the value a run command sets RunProcessEnv to; any non-empty value marks the process.
+	RunProcessMarked = "1"
+)
+
 // Waiter holds the seams of a wait; its zero value waits on real timers and writes to stderr.
 type Waiter struct {
 	// Notify receives the one line a wait writes when it starts; nil writes the line to stderr.
@@ -234,7 +242,7 @@ type Gate struct {
 	// ExemptScope and ExemptPausedAt name the one live entry the gate lets pass; both zero means no entry passes.
 	ExemptScope    string
 	ExemptPausedAt time.Time
-	// ExemptAll lets every live entry pass, for the one process an operator's explicit verb runs in.
+	// ExemptAll lets every live entry pass, for a process that runs an operator's verb rather than a run's own work.
 	ExemptAll bool
 	// Defer makes a call that finds a live entry covering the process hand off to the deferral SetGateDeferral stored, before any wait.
 	Defer bool
@@ -343,7 +351,7 @@ func SetGateExempt(scope string, pausedAt time.Time) (restore func()) {
 }
 
 // SetGateExemptAll makes the installed gate let every live entry pass.
-// It serves the one process an explicit operator verb runs in.
+// It serves an explicit operator verb that runs in a process a pause would otherwise hold, such as one an agent starts.
 // It returns the function that restores the previous setting.
 // It does nothing when no gate is installed.
 // The exemption stays in this process: a child installs its own gate.

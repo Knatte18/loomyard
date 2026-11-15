@@ -8,6 +8,8 @@
 // a CLI module such as internal/shedcli can import shedverbs, but shedverbs never imports back.
 // The one resolving import it admits is internal/logger, per the Shed Verb-Set Invariant.
 // It serves boundary logging and the two sink-location accessors.
+// run and step carry `clihelp.RunProcessAnnotation`, so a pause holds their processes and every lym process they start;
+// status, pause and goto are an operator's and pass a pause.
 //
 // pause with no flag requests a pause at the next producer boundary, unless the spec's BarePause hook refuses it.
 // --before <producer> and --after <producer> record a stop condition the engine fires at that producer;

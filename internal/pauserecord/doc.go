@@ -71,8 +71,10 @@
 // While an admission stands, every network call of the process passes at once and stays marked in flight.
 // It does so whichever goroutine or repository makes the call.
 // A caller takes it before a lock other processes wait on, so a pause never holds the lock's holder.
+// `Gate.ExemptAll` lets every live entry pass; the installer sets it for every process that is no run's own.
+// `RunProcessEnv` is the environment mark of a run's own process, which every process it starts inherits.
 // SetGateExemptAll sets `Gate.ExemptAll` on the installed gate, so its waiter lets every live entry pass.
-// It serves the one process an explicit operator verb runs in.
+// It serves an explicit operator verb that runs in a process a pause would otherwise hold.
 // It does nothing with no gate installed, and the returned function restores the previous value.
 // The exemption never reaches a child, which installs its own gate.
 // GateExemptsAll reports whether the exemption is set, so a parent can hand it to a child in the child's own input.

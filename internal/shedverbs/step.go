@@ -326,7 +326,7 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 		Use:         texts.Step.Use,
 		Short:       texts.Step.Short,
 		Long:        texts.Step.Long,
-		Annotations: map[string]string{clihelp.AudienceAnnotation: texts.Step.Audience},
+		Annotations: map[string]string{clihelp.AudienceAnnotation: texts.Step.Audience, clihelp.RunProcessAnnotation: clihelp.AnnotationEnabled},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

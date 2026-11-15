@@ -114,6 +114,18 @@ func detachedChild(cmd *cobra.Command) tendercli.DetachedChild {
 	}
 }
 
+// installPauseGate installs the pause gate that holds this process's network git and GitHub calls.
+// The gate holds them only while a pause covers the process.
+// It holds only a run's own process; an operator's verb passes.
+func installPauseGate(cmd *cobra.Command) {
+	tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd), detachedChild(cmd), runCommand(cmd))
+}
+
+// runCommand reports whether the executing command is marked as a run's own process, which a pause holds.
+func runCommand(cmd *cobra.Command) bool {
+	return cmd.Annotations[clihelp.RunProcessAnnotation] == clihelp.AnnotationEnabled
+}
+
 // newRoot builds the lym cobra root with all module subcommands, --json flag, and JSON help.
 func newRoot() *cobra.Command {
 	var verbosity int
@@ -147,8 +159,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 			if !testing.Testing() {
 				logger.MintOrAdoptAndExport()
 				logger.Arm()
-				// The pause gate holds this process's network git and GitHub calls while a pause covers it.
-				tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd), detachedChild(cmd))
+				installPauseGate(cmd)
 				// A push that the origin refuses reaches the prime orch as creel mail from FABRIC, whichever process pushed.
 				orchcli.InstallPushNotifier(cmd.Context())
 				// A reconcile that rewrites or flags a reinterpreted hub config value reaches the prime orch as creel mail from RECONCILE.

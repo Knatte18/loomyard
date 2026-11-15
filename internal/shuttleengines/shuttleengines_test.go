@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -220,14 +221,14 @@ func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
 
 	environ := []string{
 		"HOME=/home/x", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODEX=keep", "CODEX_HOME=/home/x/.lym/codex",
-		logger.TraceIDEnv + "=abc", "LYM_STRAND_NAME=ab:orch", "LYM_PARENT=ab:driver", "LYM_OTHER=keep", "PATH=/bin",
+		logger.TraceIDEnv + "=abc", "LYM_STRAND_NAME=ab:orch", "LYM_PARENT=ab:driver", pauserecord.RunProcessEnv + "=1", "LYM_OTHER=keep", "PATH=/bin",
 	}
 
 	clean, _ := EnvScrub().Apply(environ)
 	var want []string
 	for _, entry := range clean {
 		switch strings.SplitN(entry, "=", 2)[0] {
-		case logger.TraceIDEnv, "LYM_STRAND_NAME", "LYM_PARENT":
+		case logger.TraceIDEnv, "LYM_STRAND_NAME", "LYM_PARENT", pauserecord.RunProcessEnv:
 		default:
 			want = append(want, entry)
 		}

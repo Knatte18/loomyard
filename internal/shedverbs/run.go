@@ -20,7 +20,7 @@ func runCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 		Use:         texts.Run.Use,
 		Short:       texts.Run.Short,
 		Long:        texts.Run.Long,
-		Annotations: map[string]string{clihelp.AudienceAnnotation: texts.Run.Audience},
+		Annotations: map[string]string{clihelp.AudienceAnnotation: texts.Run.Audience, clihelp.RunProcessAnnotation: clihelp.AnnotationEnabled},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

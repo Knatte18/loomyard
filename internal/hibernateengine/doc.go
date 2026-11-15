@@ -120,7 +120,7 @@
 // The pause's `Added` callback records the entry as the request's owned entry before the grace, whatever the phase.
 // The sequence keeps the entry in memory even when that write fails.
 // A pause that found a live hub entry owns none, so neither the sequence nor Cancel lifts that pause.
-// The pause holds sessions and the network calls of other processes.
+// The pause holds sessions and the network calls of a run's own processes.
 // The dobby that carries the request is no session, and its sequence never waits on a pause.
 // The pause it adds therefore never stops the wait.
 // A pause lifted during its grace cancels the request.

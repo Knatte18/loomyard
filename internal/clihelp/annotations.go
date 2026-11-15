@@ -9,6 +9,12 @@ package clihelp
 // A value other than "true" never opts out, so a "false" cannot silently read as an opt-out.
 const SkipStencilSeedAnnotation = "lym.skip-stencil-seed"
 
+// RunProcessAnnotation is the cobra-annotation key a command sets to mark its process as a run's own.
+// A pause holds the network calls of such a process and of every lym process it starts;
+// those of any other command pass a pause.
+// Only the value "true" marks a command.
+const RunProcessAnnotation = "lym.run-process"
+
 // AnnotationEnabled is the one value that reads as "on" for every annotation key in this package.
 const AnnotationEnabled = "true"
 

@@ -74,6 +74,13 @@
 // # Network gate
 //
 // InstallNetworkGate installs the process gate that holds network git and GitHub calls while a pause covers the process.
+// A pause stops runs, so the gate holds only a run's own process.
+// That is a run command, a lym process a run command started, a detached child, or an agent of a strand.
+// A run command is one whose cobra command carries `clihelp.RunProcessAnnotation`.
+// It sets `pauserecord.RunProcessEnv`, which every process it starts inherits.
+// An orch's strand is the operator's delegate and is not held.
+// Any other process runs an operator's verb from a terminal or a script, and its gate lets every live entry pass.
+// Its network calls are still marked in flight, so a pause's grace still waits for them.
 // It resolves the working directory and installs nothing outside a hub.
 // A git worktree whose parent holds no board-level `_lym` is outside one.
 // An agent worktree nested in the prime is an example.

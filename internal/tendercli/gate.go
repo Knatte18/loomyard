@@ -31,6 +31,10 @@ type DetachedChild struct {
 }
 
 // InstallNetworkGate installs the pause gate that holds the process's network git and GitHub calls during a pause.
+// Only a run's own process is held; any other process runs an operator's verb, and its gate lets every live entry pass.
+// A run's own process is a run command, a lym process a run command started, or a detached child.
+// An agent of a strand other than an orch is one too.
+// A run command marks the process environment, so every lym process it starts is held too.
 // The hub is the one the context's working directory resolves to; outside a hub nothing is installed.
 // A git worktree nested in a repository without a board-level _lym is outside a hub,
 // so no in-flight marker is written under a path guessed from its parent.
@@ -47,7 +51,11 @@ type DetachedChild struct {
 // A child that is Deferrable and not ParentLocked defers under a pause instead of waiting.
 // A ParentLocked child lets its own slug's owner entry pass.
 // The parent lock it was spawned under makes it the process that must finish the run's push.
-func InstallNetworkGate(ctx context.Context, pauseSlug *string, child DetachedChild) {
+func InstallNetworkGate(ctx context.Context, pauseSlug *string, child DetachedChild, runCommand bool) {
+	if runCommand {
+		// The key is a valid constant, so Setenv cannot fail.
+		_ = os.Setenv(pauserecord.RunProcessEnv, pauserecord.RunProcessMarked)
+	}
 	if pauseSlug == nil && child.HubScope {
 		hubSlug := ""
 		pauseSlug = &hubSlug
@@ -75,11 +83,13 @@ func InstallNetworkGate(ctx context.Context, pauseSlug *string, child DetachedCh
 	pid := os.Getpid()
 	startTime, _ := proc.StartTime(pid)
 	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(location.HubPath))}
+	strand := os.Getenv(agentname.StrandNameEnv)
 	pauserecord.InstallGate(pauserecord.Gate{
 		Geometry:         geometry,
-		Strand:           os.Getenv(agentname.StrandNameEnv),
+		Strand:           strand,
 		PID:              pid,
 		StartTime:        startTime,
+		ExemptAll:        !heldByPause(child, strand),
 		Defer:            child.Deferrable && !child.ParentLocked,
 		OwnerEntryExempt: child.ParentLocked,
 		HoldsParentLock: func(slug string) bool {
@@ -95,4 +105,20 @@ func InstallNetworkGate(ctx context.Context, pauseSlug *string, child DetachedCh
 			logger.Info("tendercli: a network call is held by a pause", "line", line)
 		},
 	})
+}
+
+// heldByPause reports whether a pause holds the network calls of this process, which is a run's own process.
+// That is a detached child, a process whose environment carries the run-process mark,
+// or an agent of the named strand when the strand is no orch.
+// A strand name that does not parse is held.
+// Every other process runs an operator's verb, which a pause never holds.
+func heldByPause(child DetachedChild, strand string) bool {
+	if child != (DetachedChild{}) || os.Getenv(pauserecord.RunProcessEnv) != "" {
+		return true
+	}
+	if strand == "" {
+		return false
+	}
+	name, err := agentname.Parse(strand)
+	return err != nil || !agentname.MatchesRole(name.Role, agentname.RoleOrch)
 }

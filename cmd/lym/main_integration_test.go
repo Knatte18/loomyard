@@ -16,10 +16,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -317,6 +322,58 @@ func TestExitSweep_QuietZeroExitNeitherArmsNorSweeps(t *testing.T) {
 				if !names[seeded] {
 					t.Errorf("seeded trace %s missing; logs: %v", seeded, names)
 				}
+			}
+		})
+	}
+}
+
+// TestInstallPauseGate_HoldsOnlyARunsOwnVerbs drives the gate the root hook installs.
+// Each command is found in the real command tree.
+// Under a live hub pause, an operator verb's gate lets the entry pass and a run command's gate is held by it.
+// It installs a process-global gate and sets the environment, so neither it nor its rows run in parallel.
+func TestInstallPauseGate_HoldsOnlyARunsOwnVerbs(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv(agentname.StrandNameEnv, "")
+	t.Setenv(pauserecord.RunProcessEnv, "")
+	sentinel := pauserecord.Geometry{RecordPath: filepath.Join(t.TempDir(), pauserecord.RecordFileName)}
+	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{Geometry: sentinel}))
+
+	tests := []struct {
+		args        []string
+		wantCovered bool
+	}{
+		{[]string{"board", "get"}, false},
+		{[]string{"machine", "name"}, false},
+		{[]string{"beam", "start"}, false},
+		{[]string{"shed", "run"}, true},
+		{[]string{"beam", "dobby"}, true},
+	}
+	root := newRoot()
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.args, "_"), func(t *testing.T) {
+			t.Setenv(pauserecord.RunProcessEnv, "")
+			hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			geometry, err := hubgeom.PauseGeometry(hub.Location)
+			if err != nil {
+				t.Fatal(err)
+			}
+			hubEntry := pauserecord.Entry{Scope: pauserecord.ScopeHub, Caller: "EXTERNAL", PausedAt: time.Now()}
+			if _, err := pauserecord.Update(geometry.RecordPath, time.Now(), func(r *pauserecord.Record) error {
+				r.Live = []pauserecord.Entry{hubEntry}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			cmd, _, err := root.Find(tt.args)
+			if err != nil {
+				t.Fatalf("Find(%q): %v", tt.args, err)
+			}
+			cmd.SetContext(lymcwd.WithCwd(t.Context(), hub.PrimeWorktree()))
+
+			installPauseGate(cmd)
+
+			if got := pauserecord.GateCovered(); got != tt.wantCovered {
+				t.Errorf("GateCovered() after installPauseGate(%q) = %v; want %v", tt.args, got, tt.wantCovered)
 			}
 		})
 	}

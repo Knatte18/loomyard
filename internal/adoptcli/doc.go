@@ -71,7 +71,9 @@
 // An adopt is the operator's own takeover, so no pause holds it.
 // `runAdopt` and `runWorker` each set `pauserecord.SetGateExemptAll` on their own process's network gate first.
 // They do it through the `ExemptPause` seam and restore the gate when they return.
-// A process the worker starts, a dobby or an adopt check among them, installs its own gate, which a pause still holds.
+// A process the worker starts installs its own gate, which a pause holds only when it is a run's own process:
+// one that carries the run-process mark, a detached child or a non-orch strand's agent.
+// The dobby is marked through `beam dobby`; an adopt check is none of these and passes a pause.
 //
 // `follow` reads the record on each wake and prints `adopt: <step> done` on stderr for each step that ended.
 // It returns the record of the followed worker once that reads `done` or `stopped`.

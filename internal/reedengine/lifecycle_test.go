@@ -352,16 +352,16 @@ func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins the pane env dropping exactly LYM_STRAND_NAME and LYM_PARENT and keeping a longer key sharing the prefix; its covering tests run this code without asserting it
-func TestStripAgentNameEnv_DropsNameAndParentOnly(t *testing.T) {
+//testtiming:keep pins the pane env dropping exactly LYM_STRAND_NAME, LYM_PARENT and LYM_RUN_PROCESS and keeping a longer key sharing the prefix; its covering tests run this code without asserting it
+func TestStripIdentityEnv_DropsNameParentAndRunMarkOnly(t *testing.T) {
 	tiergate.Require(t, 0)
-	env := []string{"LYM_STRAND_NAME=ly:task:driver", "LYM_PARENT=ly:orch", "LYM_PARENTAL=keep", "PATH=/bin"}
+	env := []string{"LYM_STRAND_NAME=ly:task:driver", "LYM_PARENT=ly:orch", "LYM_RUN_PROCESS=1", "LYM_PARENTAL=keep", "PATH=/bin"}
 
-	got := stripAgentNameEnv(env)
+	got := stripIdentityEnv(env)
 
 	want := []string{"LYM_PARENTAL=keep", "PATH=/bin"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Errorf("stripAgentNameEnv(%v) = %v, want %v", env, got, want)
+		t.Errorf("stripIdentityEnv(%v) = %v, want %v", env, got, want)
 	}
 }
 

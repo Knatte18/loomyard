@@ -526,7 +526,8 @@ func startServer(tmux, key string) error {
 }
 
 // ServerEnviron returns environ without the variables no pane may inherit from the process that starts the server.
-// Those are the engines' variables, the trace id, and the agent name variables of the enclosing strand.
+// Those are the engines' variables, the trace id, the agent name variables of the enclosing strand,
+// and the mark of a run's own process.
 // The engine filter copies the scrub the engines declare.
 // This package cannot import the engines, because their tests import the kit.
 // A test outside the kit pins the two copies together.
@@ -536,7 +537,7 @@ func ServerEnviron(environ []string) []string {
 		key, _, _ := strings.Cut(entry, "=")
 		switch {
 		case key == "CLAUDECODE", strings.HasPrefix(key, "CLAUDE_CODE_"), strings.HasPrefix(key, "CODEX_"):
-		case key == "LYM_TRACE_ID", key == agentname.StrandNameEnv, key == agentname.ParentEnv:
+		case key == "LYM_TRACE_ID", key == agentname.StrandNameEnv, key == agentname.ParentEnv, key == "LYM_RUN_PROCESS":
 		default:
 			clean = append(clean, entry)
 		}

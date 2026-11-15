@@ -461,7 +461,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// it is an engine-injected-variable diagnostic.
 	// LYM_TRACE_ID is neither engine-injected nor meant to be recorded there.
 	clean = stripTraceID(clean)
-	clean = stripAgentNameEnv(clean)
+	clean = stripIdentityEnv(clean)
 	spawnSession := func() error {
 		if err := CheckTmuxFloor(e.cfg.Tmux); err != nil {
 			return fmt.Errorf("start tmux: %w", err)
@@ -678,14 +678,17 @@ func stripTraceID(env []string) []string {
 	return out
 }
 
-// stripAgentNameEnv removes LYM_STRAND_NAME and LYM_PARENT from env before the tmux server inherits them.
+// stripIdentityEnv removes LYM_STRAND_NAME, LYM_PARENT and the run-process mark from env.
+// It runs before the tmux server inherits them.
 // A server booted from inside a strand would otherwise hand that strand's name and parent to every pane it later creates,
 // and a pane told no parent exports none of its own, so it would escalate to the booting strand's parent.
-func stripAgentNameEnv(env []string) []string {
+// A server booted by a run's own process would otherwise mark every pane's processes as a run's own,
+// so a pause would hold an orch's verbs.
+func stripIdentityEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, entry := range env {
 		key := strings.SplitN(entry, "=", 2)[0]
-		if key == agentname.StrandNameEnv || key == agentname.ParentEnv {
+		if key == agentname.StrandNameEnv || key == agentname.ParentEnv || key == pauserecord.RunProcessEnv {
 			continue
 		}
 		out = append(out, entry)

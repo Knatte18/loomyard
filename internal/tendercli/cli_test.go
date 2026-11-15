@@ -362,6 +362,7 @@ func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")
+	t.Setenv(pauserecord.RunProcessEnv, "")
 	h := newHub(t)
 	allAlive := func(int, string) bool { return true }
 	sentinel := pauserecord.Geometry{RecordPath: filepath.Join(t.TempDir(), "sentinel", pauserecord.RecordFileName)}
@@ -372,7 +373,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	agentWorktree := filepath.Join(agentWorktrees, "agent")
 	gitkit.Git(t, h.PrimeWorktree(), "worktree", "add", "--detach", agentWorktree)
 	for _, outside := range []string{t.TempDir(), agentWorktree} {
-		InstallNetworkGate(lymcwd.WithCwd(t.Context(), outside), nil, DetachedChild{})
+		InstallNetworkGate(lymcwd.WithCwd(t.Context(), outside), nil, DetachedChild{}, false)
 		_, probeDone := pauserecord.Network("probe")
 		probeDone()
 	}
@@ -384,7 +385,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 		t.Errorf("Stat(agent worktree's sibling Bolt checkout) error = %v; want it absent", err)
 	}
 
-	InstallNetworkGate(lymcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)), nil, DetachedChild{})
+	InstallNetworkGate(lymcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)), nil, DetachedChild{}, false)
 	pauserecord.Network("pair-probe")
 	geometry, err := hubgeom.PauseGeometry(h.Location)
 	if err != nil {
@@ -410,7 +411,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 			hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: tt.anchor})
 			slug := tt.pauseSlug
 			boardWorktree := fabricengine.BoardDir(hub.Location.HubPath)
-			InstallNetworkGate(lymcwd.WithCwd(t.Context(), boardWorktree), &slug, DetachedChild{})
+			InstallNetworkGate(lymcwd.WithCwd(t.Context(), boardWorktree), &slug, DetachedChild{}, false)
 			pauserecord.Network("board-probe")
 			geometry, err := hubgeom.PauseGeometry(hub.Location)
 			if err != nil {
@@ -423,7 +424,8 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 		})
 	}
 
-	// A detached child's flags decide what the installed gate reads as covering it.
+	// The process's kind decides what the installed gate reads as covering it:
+	// a run's own process is held, and an operator's verb passes every live entry.
 	setLive := func(t *testing.T, recordPath string, entries ...pauserecord.Entry) {
 		t.Helper()
 		if _, err := pauserecord.Update(recordPath, time.Now(), func(r *pauserecord.Record) error {
@@ -435,30 +437,52 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	}
 	hubEntry := pauserecord.Entry{Scope: pauserecord.ScopeHub, Caller: "EXTERNAL", PausedAt: time.Now()}
 	ownerEntry := pauserecord.Entry{Scope: "child", Caller: pauserecord.OwnerCaller, PausedAt: time.Now()}
+	pairEntry := pauserecord.Entry{Scope: pairSlug, Caller: "EXTERNAL", PausedAt: time.Now()}
+	boardDir := func(hub *hubforge.Hub) string { return fabricengine.BoardDir(hub.Location.HubPath) }
+	pairDir := func(hub *hubforge.Hub) string { return hub.PairCodeWorktree(pairSlug) }
 	childTests := []struct {
 		name        string
 		cwd         func(hub *hubforge.Hub) string
 		pauseSlug   *string
 		child       DetachedChild
+		strand      string
+		marked      bool
+		runCommand  bool
 		live        []pauserecord.Entry
 		wantCovered bool
 	}{
-		{"DeferrableUnderHubEntry", func(hub *hubforge.Hub) string { return fabricengine.BoardDir(hub.Location.HubPath) }, ptr("child"), DetachedChild{Deferrable: true}, []pauserecord.Entry{hubEntry}, true},
-		{"ParentLockedPassesOwnerEntry", func(hub *hubforge.Hub) string { return fabricengine.BoardDir(hub.Location.HubPath) }, ptr("child"), DetachedChild{Deferrable: true, ParentLocked: true}, []pauserecord.Entry{ownerEntry}, false},
-		{"HubScopeIgnoresTaskSlugEntry", func(hub *hubforge.Hub) string { return hub.PairCodeWorktree(pairSlug) }, nil, DetachedChild{Deferrable: true, HubScope: true}, []pauserecord.Entry{{Scope: pairSlug, Caller: "EXTERNAL", PausedAt: time.Now()}}, false},
-		{"HubScopeHeldByHubEntry", func(hub *hubforge.Hub) string { return hub.PairCodeWorktree(pairSlug) }, nil, DetachedChild{Deferrable: true, HubScope: true}, []pauserecord.Entry{{Scope: pairSlug, Caller: "EXTERNAL", PausedAt: time.Now()}, hubEntry}, true},
+		{"DeferrableUnderHubEntry", boardDir, ptr("child"), DetachedChild{Deferrable: true}, "", false, false, []pauserecord.Entry{hubEntry}, true},
+		{"ParentLockedPassesOwnerEntry", boardDir, ptr("child"), DetachedChild{Deferrable: true, ParentLocked: true}, "", false, false, []pauserecord.Entry{ownerEntry}, false},
+		{"HubScopeIgnoresTaskSlugEntry", pairDir, nil, DetachedChild{Deferrable: true, HubScope: true}, "", false, false, []pauserecord.Entry{pairEntry}, false},
+		{"HubScopeHeldByHubEntry", pairDir, nil, DetachedChild{Deferrable: true, HubScope: true}, "", false, false, []pauserecord.Entry{pairEntry, hubEntry}, true},
+		{"OperatorVerbPassesHubEntry", pairDir, nil, DetachedChild{}, "", false, false, []pauserecord.Entry{hubEntry}, false},
+		{"OperatorVerbPassesItsPairsEntry", pairDir, nil, DetachedChild{}, "", false, false, []pauserecord.Entry{pairEntry}, false},
+		{"OrchPassesHubEntry", pairDir, nil, DetachedChild{}, "ly:orch", false, false, []pauserecord.Entry{hubEntry}, false},
+		{"AgentHeldByItsPairsEntry", pairDir, nil, DetachedChild{}, "ly:" + pairSlug + ":writer", false, false, []pauserecord.Entry{pairEntry}, true},
+		{"UnparsableStrandHeld", pairDir, nil, DetachedChild{}, "not a strand", false, false, []pauserecord.Entry{hubEntry}, true},
+		{"RunCommandHeldAndMarksItsChildren", pairDir, nil, DetachedChild{}, "", false, true, []pauserecord.Entry{hubEntry}, true},
+		{"ChildOfARunCommandHeld", pairDir, nil, DetachedChild{}, "", true, false, []pauserecord.Entry{pairEntry}, true},
 	}
 	for _, tt := range childTests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(agentname.StrandNameEnv, tt.strand)
+			mark := ""
+			if tt.marked {
+				mark = pauserecord.RunProcessMarked
+			}
+			t.Setenv(pauserecord.RunProcessEnv, mark)
 			hub := newHub(t)
 			geometry, err := hubgeom.PauseGeometry(hub.Location)
 			if err != nil {
 				t.Fatal(err)
 			}
 			setLive(t, geometry.RecordPath, tt.live...)
-			InstallNetworkGate(lymcwd.WithCwd(t.Context(), tt.cwd(hub)), tt.pauseSlug, tt.child)
+			InstallNetworkGate(lymcwd.WithCwd(t.Context(), tt.cwd(hub)), tt.pauseSlug, tt.child, tt.runCommand)
 			if got := pauserecord.GateCovered(); got != tt.wantCovered {
 				t.Errorf("GateCovered() = %v; want %v", got, tt.wantCovered)
+			}
+			if got, want := os.Getenv(pauserecord.RunProcessEnv) != "", tt.marked || tt.runCommand; got != want {
+				t.Errorf("run-process mark set = %v after InstallNetworkGate; want %v", got, want)
 			}
 		})
 	}
