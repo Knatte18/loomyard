@@ -1,0 +1,60 @@
+{
+  "baseline_functions": 7609,
+  "baseline_rta_seconds": 1.02995694,
+  "covered_functions_static_misses_total": 0,
+  "dynamic_functions_per_test": {
+    "max": 797,
+    "median": 108,
+    "p10": 78,
+    "p90": 245
+  },
+  "functions_some_test_covers": 2301,
+  "functions_some_test_reaches_statically": 7609,
+  "load_end": "22.06 14.34 9.76 20/3303 1196655",
+  "load_seconds": 1.76026647,
+  "load_start": "4.53 8.80 7.47 4/3105 1105755",
+  "mean_tests_selected_per_covered_function_dynamic": 16.37592351151673,
+  "mean_tests_selected_per_covered_function_static": 259,
+  "mean_tests_selected_per_statically_reached_function": 259,
+  "module_functions_linked": 10347,
+  "package": "internal/loomcli",
+  "per_test_rta_seconds": {
+    "max": 4.18067195,
+    "median": 2.043170136,
+    "p10": 1.181759217,
+    "p90": 3.198271584
+  },
+  "per_test_rta_wall_seconds": 135.334280902,
+  "ssa_seconds": 0.773830337,
+  "started": "2026-11-15T17:38:42+01:00",
+  "static_functions_per_test": {
+    "max": 7609,
+    "median": 7609,
+    "p10": 7609,
+    "p90": 7609
+  },
+  "static_over_dynamic_per_test": {
+    "max": 98.81818181818181,
+    "median": 70.45370370370371,
+    "p10": 29.83921568627451,
+    "p90": 97.55128205128206
+  },
+  "static_share_of_linked_functions": {
+    "max": 0.7353822363970233,
+    "median": 0.7353822363970233,
+    "p10": 0.7353822363970233,
+    "p90": 0.7353822363970233
+  },
+  "tests": 259,
+  "tests_with_a_covered_function_static_misses": 0,
+  "tests_without_ssa_function": 0,
+  "top_missed": [],
+  "union_rta_seconds": 1.755999089,
+  "union_walk_functions_per_test": {
+    "max": 7412,
+    "median": 7412,
+    "p10": 7412,
+    "p90": 7412
+  },
+  "union_walk_seconds": 31.091172708
+}
