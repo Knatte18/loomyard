@@ -47,6 +47,7 @@ The `tapestry` recipe, for a task big enough to need a discussion and a plan:
 The decision record, the plan and the final diff each pass **review rounds** before the run moves on.
 A fresh reviewer reviews the artifact and a fresh fixer fixes what it found.
 A **judge**, who reads the review and the earlier rounds but never the artifact, decides whether another round is needed.
+A decision-record round can also ask the run's parent orch for a review, with a deadline, and the round keeps the orch's findings.
 The reviewer, the fixer and the judge are never the session that wrote the artifact.
 They are Claude sessions like the writer, though, so a review can share the writer's blind spots.
 Each review has a budget of rounds, by default 2 for the decision record, 3 for the plan and 1 for the code.
@@ -73,11 +74,16 @@ The recipe files are data, in [`contracts/recipes/`](contracts/recipes/).
 - **Mechanical gates.** Tests run in tiers, from fast to slow, and only for the code a change reaches.
   A project with numerical output can add a regression gate that compares against a baseline taken before the change.
   The gates support Go and .NET projects today.
-- **Review lenses in forks.** A reviewer can fork one subagent per lens, a focus such as missing tests.
-  A fork inherits its parent's context and prompt cache, so it starts without re-reading what the parent read.
+  For Go, a gate with the coverage scope selects tests from per-package coverage maps, so a change runs the tests that reach it,
+  including those of packages that import the changed code.
+  `lym gate redundant` lists the tests of a package that other tests already cover.
+- **Lens reviews in forks.** Writers and reviewers alike hand each lens, a focus such as missing tests, to a forked subagent.
+  A fork inherits its parent's context and prompt cache, so it starts without re-reading what the parent read,
+  and a lens costs far less than a new review.
 - **Parallel tasks, beams and machines.** Tasks run in parallel.
   A project on the board can become a **beam**, a long-lived branch its tasks land into and that lands as one unit.
-  A run's state is pushed with the records repository, so several machines can work on different projects at once.
+  A run's state is pushed with the records repository.
+  Each board entry has one owner machine, and `lym adopt` takes a project's runs over from another of your machines.
 - **Interactive sessions.** Every agent runs in an interactive terminal as a [Claude Code](https://claude.ai/code) session,
   with its skills, hooks and subagents; attach to any session with `lym reed attach`.
 - **Messaging through hooks.** `creel`, the hub's message service, delivers messages from the orch, other agents and `lym`
@@ -101,6 +107,9 @@ A gating finding below is a blocking or medium one of the kind the judge acts on
 | [What do later review rounds find?](docs/research/burler/review-setup-audit-2026-10-28/report.md) | 8 landed runs with discussion and plan reviews | In later discussion rounds, 92 of the 94 findings that could be traced concerned text the previous fixer had changed; 37 more could not be traced. Gating findings per round fell from 8.4 to 2.3 between discussion rounds 1 and 3, and from 5.9 to 2.1 between plan rounds 1 and 2. | Review later rounds only as the delta the fixer changed | Not yet decided |
 | [Can the fixers run on Sonnet instead of Opus?](docs/research/burler/fixers-on-sonnet-2026-11-03/report.md) | 2 runs per model on one plan and one decision record | Every run, on either model, fixed all 9 plan findings. Over two runs on the decision record, Opus fixed 28 of 30 findings and Sonnet 25 of 30, a gap within noise at two runs. | Plan fixer on Sonnet; decision-record fixer stays on Opus until a larger test | Not yet decided |
 | [Do larger implementation batches cost more?](docs/research/webster/batch-budget/batch-budget-trial-2026-11-01/report.md) | Runs with wider batches against earlier runs, not randomized | No sign of a higher cost: the median cost per card was $1.13 over 9 runs with wider batches against $1.15 over 51 earlier runs, and $1.13 against $1.50 on runs of 10 cards or more (6 runs against 18). Every batch finished. | Make wider batches the default | Adopted |
+| [Can a coverage map select the gate's tests and find redundant ones?](docs/research/speed/coverage-map-pilot-2026-11-12/report.md) | 1 package of 34 tests; 2 landed commits | A map built in 34.3 s, and the full set was estimated at 45 to 165 minutes on one gate slot; the hub's own pass took 44. The selector never left out a test that covers the change: it chose no test for one commit and the whole package for the other, where 6 of 34 sufficed. Of 30 judged tests, 2 were redundancy candidates, and neither was redundant on a read, since coverage cannot see assertions. | Use the map to scope the gate; read each redundancy candidate by hand before cutting | Not yet decided |
+| [Is a twill plan worth its cost against a solo plan writer?](docs/research/loom/plan-writer-bench-2026-11-12/report.md) | 1 reference task; 1 plan per arm, 3 arms | The twill plan phase, with lens forks and two review rounds, cost $12.41. A solo Opus plan cost $2.87 and a solo Fable plan about $6.73, estimated. Graded on 9 findings from the twill plan's own review, which favour twill, solo Opus repeated 2 and partly repeated 2; solo Fable repeated 3 and partly 2, including both blocking ones. | None; a solo Opus plan followed by the same review rounds was not run | Not yet decided |
+| [Can a Sonnet darn writer with an Opus advisor replace an Opus writer?](docs/research/loom/advisor-model-bench-2026-11-12/report.md) | 3 landed darn tasks, 1 rerun each, no tests run | No: the writer cost 35%, 19% and 10% less than the recorded Opus writer, a saving that shrank as the task grew. Its diffs drew a blocking or medium finding on each task and fared worse than the Opus diffs under the same reviewer on every task. | Add no advisor config key yet | Not yet decided |
 | [Do reviewers need a rule to write concrete findings?](docs/research/burler/concrete-review-findings-2026-11-03/report.md) | 374 findings in 44 review files | Every finding names its place and a fix; in 4 of them the fix is a choice between options. | Add no rule, and skip the planned eight-run test | Adopted |
 
 [`docs/research/README.md`](docs/research/README.md) indexes every study by topic.
