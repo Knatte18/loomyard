@@ -1,0 +1,9 @@
+# Leave beam startup files empty and document preview diagnostics
+
+The IDE template now sets `open_files.beam: []`, so opening a beam no longer requests its README by default. Prime and task defaults are also empty. Explicit hub or local file lists retain their meaning, including a configured README. The existing config test and package and overview documentation reflect the new default.
+
+`render_markdown` is retained. VS Code's built-in Markdown Language Features extension registers the exact editor ID lym uses, and lym seeds the association before copying the target worktree's settings into the generated workspace. The existing beam integration check covers that workspace association. The [upstream manifest](https://github.com/microsoft/vscode/blob/1.100.0/extensions/markdown-language-features/package.json#L741) and [editor resolver](https://github.com/microsoft/vscode/blob/1.100.0/src/vs/workbench/services/editor/browser/editorResolverService.ts#L239) support this configuration. No defect was identified in that wiring.
+
+The reported runtime preview failure remains unresolved: the affected window's settings and extension state were unavailable. Ordinary Extension Bisect selects user extensions, so its presence alone does not establish that the built-in Markdown extension was disabled. The new preview diagnostics document distinguishes manual-preview failures, association precedence, existing source tabs and skipped seeding, with upstream references and concrete checks for the affected window. It does not claim that the original rendering failure is fixed.
+
+Validation: `go build ./internal/ideconfig` and `git diff --check` passed. Gate tests are reserved for the handoff verifier. Board comparison and drift validation were unavailable in this standalone checkout, which has no board configuration or `_lym/drift/expected.yaml`.
