@@ -465,7 +465,7 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location,
 	releaseParentLock = release
 	if len(dobbies) > 0 {
 		relayMayBeEnded = slug == deps.Prime
-		ended, err = deps.EndDobbies(dobbies, runproc.RolePush, runproc.RoleSync)
+		ended, err = deps.EndDobbies(dobbies, runproc.RolePush, runproc.RoleSync, runproc.RoleOrch)
 		if err != nil {
 			return fail(err)
 		}

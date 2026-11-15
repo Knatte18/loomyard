@@ -58,7 +58,7 @@
 // Shuttle loads the orch's skills before that pointer on every launch path, a resume included;
 // the skills come from the `orch` role in agents.yaml.
 // `BeamUp` records the orch session's id in orch's state and resumes it after a reboot, a `stop` or a dead strand.
-// When the resume fails it falls back to the last note, else the start stencil;
+// When this machine holds no transcript of the session it launches fresh from the last note, else the start stencil;
 // the internal/orchengine package documentation's `Continuing after a reboot` section has the detail.
 // A context cycle asks the session for an orch note at the path it names, following `.lym/orch/note-template.md`.
 // The note stands in for a general handoff skill.
@@ -66,6 +66,20 @@
 // both write the note first.
 // The role's on-demand files render beside it, and the role carries no command list:
 // it sends the session to `lym help index`.
+//
+// # The orch's provider process
+//
+// After each launch `BeamUp` registers the session's provider process in `internal/runproc` as `runproc.RoleOrch`.
+// The record sits under the beam's slug, or `runproc.HubOwner` for the prime.
+// It outlives the strand's removal and is pruned once the process dies.
+// A resume the provider refuses because a live process holds the session reads that record.
+// When the record names the holder, `BeamUp` ends it through `runproc.EndRole` and resumes the same session.
+// A holder lym has not registered, such as an orch the pre-upgrade lym launched, refuses the start, naming its pid;
+// the way forward is to exit that session and run `lym beam start` again.
+// A resume refused because this machine holds no transcript of the session launches fresh with shuttle's carry-over,
+// and the report's warnings say so.
+// Any other failed resume fails the start, which launches nothing fresh.
+// A provider process the start could not find or register is a warning, and a later start refuses over it.
 //
 // # The cycle request
 //
@@ -92,13 +106,18 @@
 // # The watcher leaves a beam it no longer owns
 //
 // `watch` tells its watcher the owner read `beamOwnerElsewhere` and the strand removal.
-// A beam another machine owns therefore loses its orch strand with its dobby.
+// A beam another machine owns therefore loses its orch strand and its processes on this machine.
 // The read takes the prime's owner for the prime and a beam's effective owner through `hubgeom.ParentOf`.
 // It reads from the hub's local Bolt and compares the owner with this machine's name from `machinename`.
 // The verdict is as fresh as that Bolt.
 // `watch` also tells it the under-adopt accessor `UnderAdoptWatch` builds.
 // The accessor reads the hub's adopt record, its local board and `hubgeom.ParentOf`.
 // While an adopt in flight on this machine covers the worktree, a foreign owner leaves the orch strand up.
+// Before it removes the strand, the watcher ends every process this machine runs for the worktree's subject.
+// `pairteardown.EndSubjectProcesses` first ends the runs whose adopt subject is the beam, or the root for the prime.
+// It then ends the worktree's own records, the orch's provider process among them.
+// It leaves the dobby running, since the dobby's own hand-over pauses the runs and archives the local tips.
+// The watcher removes the strand even when that end failed, so a failing end never keeps the orch up.
 //
 // # Status restarts a dead watcher
 //

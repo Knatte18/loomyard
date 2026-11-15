@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -36,7 +37,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeStarter records the specs it is asked to start and answers a fixed guid and warning, and the resumed session id or else sessionID.
+// fakeStarter records the specs it is asked to start.
+// It answers a fixed guid, warning, holder pid and carry-over count, and the resumed session id or else sessionID.
 type fakeStarter struct {
 	specs     []shuttleengine.Spec
 	guid      string
@@ -45,6 +47,14 @@ type fakeStarter struct {
 	err       error
 	// resumeErr, when set, is returned only for a spec whose ResumeSessionID is set, so a resume fails and the fresh launch after it succeeds.
 	resumeErr error
+	// resumeErrs, when set, answers each resume in turn in place of resumeErr, a nil entry starting the resume.
+	resumeErrs []error
+	// holderPID is the provider process every started session reports holding it.
+	holderPID int
+	// holderErr is why every started session reports its holder unreadable.
+	holderErr error
+	// carried is the count of operator instructions every started session reports carrying over.
+	carried int
 	// calls, when set, receives "start" as each session starts.
 	calls *[]string
 }
@@ -54,14 +64,20 @@ func (f *fakeStarter) StartSession(spec shuttleengine.Spec) (startedSession, err
 		*f.calls = append(*f.calls, "start")
 	}
 	f.specs = append(f.specs, spec)
-	if spec.ResumeSessionID != "" && f.resumeErr != nil {
-		return startedSession{}, f.resumeErr
+	if spec.ResumeSessionID != "" {
+		err := f.resumeErr
+		if len(f.resumeErrs) > 0 {
+			err = popError(&f.resumeErrs)
+		}
+		if err != nil {
+			return startedSession{}, err
+		}
 	}
 	sessionID := f.sessionID
 	if spec.ResumeSessionID != "" {
 		sessionID = spec.ResumeSessionID
 	}
-	return startedSession{GUID: f.guid, SessionID: sessionID, Warning: f.warning}, f.err
+	return startedSession{GUID: f.guid, SessionID: sessionID, Warning: f.warning, HolderPID: f.holderPID, HolderErr: f.holderErr, Carried: f.carried}, f.err
 }
 
 // scriptedCreel is a recording fake of creel whose withdraws and releases answer the errors and withdrawn messages a test scripts, one per call in call order.
@@ -1322,6 +1338,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that a failed launch spawns no watcher and leaves the saved state unchanged
 func TestStart_StarterErrorFailsAndSavesNoState(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1334,8 +1351,8 @@ func TestStart_StarterErrorFailsAndSavesNoState(t *testing.T) {
 	}{
 		{name: "fresh launch", err: "provider never came up"},
 		{
-			name: "a resume and the fresh launch after it both failing",
-			err:  "no transcript for that session",
+			name: "a failed resume",
+			err:  "pane never came up",
 			seed: &orchengine.State{Phase: orchengine.PhaseIdle, SessionID: "rec-id"},
 		},
 	}
@@ -1390,6 +1407,10 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 		stopFirst bool
 		// presence sets the machine's presence to slack, so the pointer the launch carries ends with the presence line.
 		presence bool
+		// carried is the count of operator instructions the starter reports a launch carried over.
+		carried int
+		// wantWarning is the warning the start adds beside the starter's own.
+		wantWarning string
 
 		wantStarts    int
 		wantResumeID  string
@@ -1417,12 +1438,12 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 			wantStarts: 1, wantResumeID: recordedTestSessionID, wantSource: orchengine.SourceResume, wantSaved: recordedTestSessionID, wantSessionID: recordedTestSessionID,
 		},
 		{
-			name: "a resume that fails to start falls back to a fresh launch from the last note and names the id it gave up", recorded: "old-id", note: true, resumeErr: errors.New("no transcript for that session"),
-			wantStarts: 2, wantResumeID: "old-id", wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id", wantAbandoned: "old-id",
+			name: "a session with no transcript here launches fresh from the last note with the carry-over, names the id it gave up and says so", recorded: "old-id", note: true, resumeErr: noTranscriptErr, carried: 2,
+			wantStarts: 2, wantResumeID: "old-id", wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id", wantAbandoned: "old-id", wantWarning: freshLaunchNote("old-id", 2),
 		},
 		{
-			name: "a resume that fails with no note falls back to the start stencil", recorded: "old-id", resumeErr: errors.New("pane never came up"),
-			wantStarts: 2, wantResumeID: "old-id", wantSource: orchengine.SourceFresh, wantSaved: "minted-id", wantAbandoned: "old-id",
+			name: "a session with no transcript here and no note launches the start stencil", recorded: "old-id", resumeErr: noTranscriptErr,
+			wantStarts: 2, wantResumeID: "old-id", wantSource: orchengine.SourceFresh, wantSaved: "minted-id", wantAbandoned: "old-id", wantWarning: freshLaunchNote("old-id", 0),
 		},
 		{
 			name: "presence slack: a recorded id is resumed with the reload pointer and the presence line", strands: corpse, recorded: recordedTestSessionID, presence: true,
@@ -1447,6 +1468,7 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 			h := newStartHarness(t, c.strands...)
 			h.starter.warning = c.warning
 			h.starter.resumeErr = c.resumeErr
+			h.starter.carried = c.carried
 			if c.noSessionID {
 				h.starter.sessionID = ""
 			}
@@ -1489,8 +1511,8 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 					t.Errorf("report %s = %q (present %v); want %q", key, got, has, want)
 				}
 			}
-			if warning := warningText(env); warning != c.warning {
-				t.Errorf("warnings = %q; want %q", warning, c.warning)
+			if warning, want := warningText(env), joinFailures(c.warning, c.wantWarning); warning != want {
+				t.Errorf("warnings = %q; want %q", warning, want)
 			}
 			if len(h.starter.specs) != c.wantStarts || h.spawns != 1 {
 				t.Fatalf("starts = %d, spawns = %d; want %d and 1", len(h.starter.specs), h.spawns, c.wantStarts)
@@ -1534,6 +1556,133 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 			}
 			if st := h.state(t); st.Strand != "new-guid" || st.SessionID != c.wantSaved || st.LastHandoff != wantNote {
 				t.Errorf("state = %+v; want LastHandoff %q kept, strand new-guid and session id %q", st, wantNote, c.wantSaved)
+			}
+		})
+	}
+}
+
+// noTranscriptErr is a resume refusal for a session this machine holds no transcript of.
+var noTranscriptErr = fmt.Errorf("shuttle: resume check: claudeengine: no transcript for that session: %w", shuttleengine.ErrNoTranscript)
+
+func TestStart_ResumeOverALiveHolder(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	held := &shuttleengine.SessionHeldError{SessionID: recordedTestSessionID, PID: 4242, Err: errors.New("claudeengine: session held by live process 4242")}
+	tests := []struct {
+		name       string
+		resumeErrs []error
+		registered bool
+		// registeredErr is the error the read of who registered the holder fails with.
+		registeredErr error
+		endErr        error
+		wantCode      int
+		wantAsked     []int
+		wantEnds      int
+		wantStarts    int
+		wantError     []string
+	}{
+		{name: "ThisWorktreesOwnEarlierOrchIsEndedAndTheSameSessionResumed", resumeErrs: []error{held, nil}, registered: true, wantAsked: []int{4242}, wantEnds: 1, wantStarts: 2},
+		{name: "AHolderLymDidNotRegisterRefusesNamingItsPIDAndLaunchesNothingFresh", resumeErrs: []error{held}, wantCode: 1, wantAsked: []int{4242}, wantStarts: 1, wantError: []string{"live process 4242", "lym beam start"}},
+		{name: "AFailedEndOfTheOwnHolderRefusesAndLaunchesNothingFresh", resumeErrs: []error{held}, registered: true, endErr: errors.New("signal refused"), wantCode: 1, wantAsked: []int{4242}, wantEnds: 1, wantStarts: 1, wantError: []string{"signal refused", "lym beam start"}},
+		{name: "AResumeThatFailsForAnotherCauseLaunchesNothingFresh", resumeErrs: []error{errors.New("pane never came up")}, wantCode: 1, wantStarts: 1, wantError: []string{"pane never came up", "lym beam start"}},
+		{name: "AFailedReadOfWhoRegisteredTheHolderRefusesAndLaunchesNothingFresh", resumeErrs: []error{held}, registeredErr: errors.New("process table unreadable"), wantCode: 1, wantAsked: []int{4242}, wantStarts: 1, wantError: []string{"process table unreadable", "lym beam start"}},
+		{name: "AResumeThatFailsAfterTheOwnHolderWasEndedLaunchesNothingFresh", resumeErrs: []error{held, held}, registered: true, wantCode: 1, wantAsked: []int{4242}, wantEnds: 1, wantStarts: 2, wantError: []string{"session held by live process 4242", "lym beam start"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newStartHarness(t)
+			h.starter.resumeErrs = tt.resumeErrs
+			var asked []int
+			h.cli.orchRegistered = func(pid int) (bool, error) {
+				asked = append(asked, pid)
+				return tt.registered, tt.registeredErr
+			}
+			ends := 0
+			h.cli.endOrch = func() ([]runproc.Ended, error) {
+				ends++
+				return nil, tt.endErr
+			}
+			saveSeedState(t, h, orchengine.State{Phase: orchengine.PhaseIdle, SessionID: recordedTestSessionID})
+
+			code, env := h.run(t)
+
+			if code != tt.wantCode {
+				t.Fatalf("exit = %d; env = %v; want exit %d", code, env, tt.wantCode)
+			}
+			msg, _ := env["error"].(string)
+			for _, want := range tt.wantError {
+				if !strings.Contains(msg, want) {
+					t.Errorf("error = %q; want it to name %q", msg, want)
+				}
+			}
+			if !slices.Equal(asked, tt.wantAsked) || ends != tt.wantEnds {
+				t.Errorf("registration asked for %v and ends = %d; want %v and %d", asked, ends, tt.wantAsked, tt.wantEnds)
+			}
+			if len(h.starter.specs) != tt.wantStarts {
+				t.Fatalf("starts = %d; want %d", len(h.starter.specs), tt.wantStarts)
+			}
+			for _, spec := range h.starter.specs {
+				if spec.ResumeSessionID != recordedTestSessionID {
+					t.Errorf("started spec resumes %q; want every start to resume %q and none to launch fresh", spec.ResumeSessionID, recordedTestSessionID)
+				}
+			}
+			if tt.wantCode != 0 {
+				return
+			}
+			if env["session_id"] != recordedTestSessionID || env["prompt_source"] != orchengine.SourceResume {
+				t.Errorf("report = %v; want the session %s resumed", env, recordedTestSessionID)
+			}
+			if st := h.state(t); st.SessionID != recordedTestSessionID {
+				t.Errorf("state session id = %q; want %q kept", st.SessionID, recordedTestSessionID)
+			}
+		})
+	}
+}
+
+func TestStart_RegistersTheLaunchedOrchProcess(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		holderPID      int
+		holderErr      error
+		registerErr    error
+		wantRegistered []int
+		wantWarning    string
+	}{
+		{name: "TheProviderProcessIsRegistered", holderPID: 777, wantRegistered: []int{777}},
+		{name: "NoProviderProcessFoundWarns", wantWarning: "is not registered as this worktree's orch (the provider names no live process holding it)"},
+		{name: "AHolderReadFailureIsNamedInTheWarning", holderErr: errors.New("process table unreadable"), wantWarning: "is not registered as this worktree's orch (process table unreadable)"},
+		{name: "AFailedRegistrationWarns", holderPID: 777, registerErr: errors.New("disk full"), wantRegistered: []int{777}, wantWarning: "process 777 is not registered as this worktree's orch (disk full)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newStartHarness(t)
+			h.starter.holderPID = tt.holderPID
+			h.starter.holderErr = tt.holderErr
+			var registered []int
+			h.cli.registerOrch = func(pid int) error {
+				registered = append(registered, pid)
+				return tt.registerErr
+			}
+
+			code, env := h.run(t)
+
+			if code != 0 {
+				t.Fatalf("exit = %d; env = %v", code, env)
+			}
+			if !slices.Equal(registered, tt.wantRegistered) {
+				t.Errorf("registered = %v; want %v", registered, tt.wantRegistered)
+			}
+			warning := warningText(env)
+			if (warning == "") != (tt.wantWarning == "") || !strings.Contains(warning, tt.wantWarning) {
+				t.Errorf("warnings = %q; want %q", warning, tt.wantWarning)
 			}
 		})
 	}

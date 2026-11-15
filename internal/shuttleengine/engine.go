@@ -5,6 +5,7 @@
 package shuttleengine
 
 import (
+	"errors"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -332,8 +333,41 @@ type SessionResumer interface {
 	// CheckResume answers whether a new run may resume the provider session sessionID.
 	// The session is recorded under the pane cwd workdir.
 	// A non-nil error refuses the resume.
+	// A refusal because a live process holds the session is a *SessionHeldError.
+	// A refusal because this machine holds no transcript of the session wraps ErrNoTranscript.
 	// A non-empty warning means the check could not confirm something, and the resume proceeds.
 	CheckResume(sessionID, workdir string) (warning string, err error)
+}
+
+// ErrNoTranscript marks a resume a SessionResumer refused because this machine holds no transcript of the session.
+// A caller that may start the session's work over tells this refusal from every other by errors.Is.
+var ErrNoTranscript = errors.New("shuttle: this machine holds no transcript of the session")
+
+// SessionHeldError is a SessionResumer's refusal of a resume because a live process on this machine holds the session.
+// It names the holder, so a caller that launched that process itself can end it and resume again.
+type SessionHeldError struct {
+	// SessionID is the session the resume asked for.
+	SessionID string
+	// PID is the live process that holds it.
+	PID int
+	// Err is the engine's refusal in its own words.
+	Err error
+}
+
+// Error returns the engine's refusal.
+func (e *SessionHeldError) Error() string { return e.Err.Error() }
+
+// Unwrap returns the engine's refusal.
+func (e *SessionHeldError) Unwrap() error { return e.Err }
+
+// SessionHolderFinder is an optional capability of an engine:
+// the live process on this machine that holds a provider session.
+// A caller reads it to register the provider process of a session it launched,
+// so a later start knows that process as its own.
+// An engine without it names no holder.
+type SessionHolderFinder interface {
+	// SessionHolder returns the pid of the live process holding sessionID, and whether one was found.
+	SessionHolder(sessionID string) (pid int, found bool, err error)
 }
 
 // OpenSpec describes one named session that runs with no prompt:

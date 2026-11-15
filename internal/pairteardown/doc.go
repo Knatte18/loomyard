@@ -48,6 +48,7 @@
 //     runproc.End ends every process registered under the pair's slug and the processes below them.
 //     Those include batten, the driver, the step loop and the pair's pushes.
 //     It spares the calling process and its ancestors.
+//     It always spares the orch's provider process, which only a beam another machine now owns ends.
 //     It always spares a teardown child.
 //     That child holds the slug's teardown lock to run the remote steps of an earlier teardown.
 //     It runs for a present or a gone task worktree,
@@ -269,6 +270,16 @@
 // It fills `Machine` with `machinename.Name` and `ParentOf` with `hubgeom.ParentOf` over the prime's location.
 // It leaves the wake-hold fields nil, which read as no wake hold.
 //
+// # Ending a subject owned elsewhere
+//
+// EndSubjectProcesses ends every process this machine runs for a subject another machine now owns.
+// The subject is a beam, or the hub's root for runproc.HubOwner.
+// The registered runs whose adopt subject is that subject end first, through runproc.EndSubject.
+// The subject's own processes end after them.
+// The subject's own record is never one of its runs.
+// A run whose subject cannot be resolved is left alone and logged.
+// The subject's dobby ends last, and only when endDobby is set.
+//
 // # Quiet rule
 //
 // A pair is quiet when its run lock and its loop lock are free,
@@ -293,7 +304,8 @@
 // Not running is no Go-driver lock held, the loop lock free, no live driver strand and no registered batten alive;
 // there is no stopped reading, since that is a reconcile verdict.
 // It then waits for the run lock as a skipped teardown does, with the retry step `lym reed down`.
-// Then it ends the slug's registered processes with the dobby role spared:
+// Then it ends the slug's registered processes with the dobby role spared.
+// It always spares the orch and teardown children as well.
 // a beam's dobby runs from the hub root outside the session, and its member runs still need it, so it stays live;
 // a teardown's own end ends a landed beam's dobby.
 // A run that holds none of the readings is running and unpaused.

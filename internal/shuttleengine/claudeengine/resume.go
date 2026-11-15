@@ -1,4 +1,5 @@
-// resume.go implements Claude's shuttleengine.SessionResumer: the check that a new run may take over a session.
+// resume.go implements Claude's shuttleengine.SessionResumer and shuttleengine.SessionHolderFinder:
+// the check that a new run may take over a session, and the read of the live process that holds one.
 // It reads the session's transcript under Claude's project directory for the pane cwd and Claude's session registry,
 // and every fact about either layout stays in this file, per the Shuttle Provider-Seam Invariant.
 
@@ -15,7 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-var _ shuttleengine.SessionResumer = (*Claude)(nil)
+var (
+	_ shuttleengine.SessionResumer      = (*Claude)(nil)
+	_ shuttleengine.SessionHolderFinder = (*Claude)(nil)
+)
 
 // registryEntry is the subset of one Claude session-registry file that the resume check reads.
 type registryEntry struct {
@@ -31,16 +35,34 @@ func (c *Claude) CheckResume(sessionID, workdir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	registryDir, err := sessionRegistryDir()
+	if err != nil {
+		return "", err
+	}
+	return checkResumable(sessionID, projectDir, registryDir, proc.IsAlive, proc.StartTime)
+}
+
+// SessionHolder implements shuttleengine.SessionHolderFinder over Claude's session registry.
+func (c *Claude) SessionHolder(sessionID string) (int, bool, error) {
+	registryDir, err := sessionRegistryDir()
+	if err != nil {
+		return 0, false, err
+	}
+	return sessionHolder(sessionID, registryDir, proc.IsAlive, proc.StartTime)
+}
+
+// sessionRegistryDir returns Claude's session registry directory under the home directory.
+func sessionRegistryDir() (string, error) {
 	home, err := claudeHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("claudeengine: resolve home dir: %w", err)
 	}
-	registryDir := filepath.Join(home, ".claude", "sessions")
-	return checkResumable(sessionID, projectDir, registryDir, proc.IsAlive, proc.StartTime)
+	return filepath.Join(home, ".claude", "sessions"), nil
 }
 
 // checkResumable refuses a resume unless sessionID is well-formed and has a transcript under projectDir.
-// It also refuses while a live process in registryDir holds the session.
+// A missing transcript refuses with an error wrapping shuttleengine.ErrNoTranscript.
+// It also refuses while a live process in registryDir holds the session, with a *shuttleengine.SessionHeldError.
 // A live pid refuses unless its start time differs from the entry's procStart, which proves the pid was reused.
 // When either start time cannot be read, the pid still refuses, so two processes never drive one session.
 // An unreadable registry returns a warning and the check proceeds.
@@ -52,7 +74,7 @@ func checkResumable(sessionID, projectDir, registryDir string, alive func(pid in
 
 	transcript := filepath.Join(projectDir, sessionID+".jsonl")
 	if _, err := os.Stat(transcript); errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("claudeengine: no transcript for session %s in %s; only a session run from this directory can be resumed: %w", sessionID, projectDir, err)
+		return "", fmt.Errorf("claudeengine: no transcript for session %s in %s; only a session run from this directory can be resumed: %w: %w", sessionID, projectDir, shuttleengine.ErrNoTranscript, err)
 	} else if err != nil {
 		return "", fmt.Errorf("claudeengine: cannot stat the transcript of session %s: %w", sessionID, err)
 	}
@@ -72,19 +94,58 @@ func checkResumable(sessionID, projectDir, registryDir string, alive func(pid in
 			continue
 		}
 		entry := record.Entry
-		if entry.SessionID != sessionID || !alive(entry.PID) {
+		if entry.SessionID != sessionID {
 			continue
 		}
-		live, readable := startTime(entry.PID)
-		if readable && entry.ProcStart != "" {
-			if live != entry.ProcStart {
-				continue
-			}
-			return "", fmt.Errorf("claudeengine: session %s is held by live process %d (%s); exit that session first, then resume", sessionID, entry.PID, record.Path)
+		held, proven := liveHolder(entry, alive, startTime)
+		if !held {
+			continue
 		}
-		return "", fmt.Errorf("claudeengine: session %s is held by live process %d (%s), and the pid could not be proven reused; exit that session first, then resume", sessionID, entry.PID, record.Path)
+		unproven := ""
+		if !proven {
+			unproven = ", and the pid could not be proven reused"
+		}
+		return "", &shuttleengine.SessionHeldError{
+			SessionID: sessionID,
+			PID:       entry.PID,
+			Err:       fmt.Errorf("claudeengine: session %s is held by live process %d (%s)%s; exit that session first, then resume", sessionID, entry.PID, record.Path, unproven),
+		}
 	}
 	return warning, nil
+}
+
+// sessionHolder returns the pid of the live process a registry entry in registryDir names as holding sessionID.
+// It applies the resume check's rule, so a pid whose start time differs from the entry's procStart holds nothing.
+// Unreadable and undecodable entries are skipped, and an unreadable registry is an error.
+func sessionHolder(sessionID, registryDir string, alive func(pid int) bool, startTime func(pid int) (string, bool)) (int, bool, error) {
+	records, err := readRegistry(registryDir)
+	if err != nil {
+		return 0, false, fmt.Errorf("claudeengine: read session registry %s: %w", registryDir, err)
+	}
+	for _, record := range records {
+		if record.ReadErr != nil || record.DecodeErr != nil || record.Entry.SessionID != sessionID {
+			continue
+		}
+		if held, _ := liveHolder(record.Entry, alive, startTime); held {
+			return record.Entry.PID, true, nil
+		}
+	}
+	return 0, false, nil
+}
+
+// liveHolder reports whether entry's process is alive and may still be the one that registered.
+// It also reports whether the start time proved it.
+// A start time that differs from the entry's procStart proves the pid reused, which holds nothing.
+// An unreadable start time, or an entry with no procStart, holds unproven, so two processes never drive one session.
+func liveHolder(entry registryEntry, alive func(pid int) bool, startTime func(pid int) (string, bool)) (held, proven bool) {
+	if !alive(entry.PID) {
+		return false, false
+	}
+	live, readable := startTime(entry.PID)
+	if readable && entry.ProcStart != "" {
+		return live == entry.ProcStart, true
+	}
+	return true, false
 }
 
 // registryRecord is one session-registry file as read.

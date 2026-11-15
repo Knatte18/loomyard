@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
@@ -123,6 +124,16 @@ type orchCLI struct {
 	endDobby func() error
 	// endTestMap ends the prime's coverage-map upkeep pass, and no other process; nil, as for a beam, ends none.
 	endTestMap func() error
+	// registerOrch registers pid as this worktree's orch provider process; nil registers none.
+	registerOrch func(pid int) error
+	// orchRegistered reports whether pid is registered as this worktree's orch; nil reads every pid as unregistered.
+	orchRegistered func(pid int) (bool, error)
+	// endOrch ends this worktree's registered orch provider process and the processes below it.
+	endOrch func() ([]runproc.Ended, error)
+	// endSubject ends every process this machine runs for the worktree's subject but its dobby.
+	// The dobby hands the subject over itself.
+	// The watcher calls it once another machine owns the worktree.
+	endSubject func() error
 	// reapInherited waits on the children a re-exec'd watcher inherited, which `watch` calls before it starts anything.
 	reapInherited func()
 }
@@ -283,6 +294,18 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 			_, err := runproc.EndRole(runProcDir, runproc.HubOwner, runproc.RoleTestMap, os.Getpid())
 			return err
 		}
+	}
+	c.registerOrch = func(pid int) error { return runproc.RegisterOrch(runProcDir, owner, pid) }
+	c.orchRegistered = func(pid int) (bool, error) { return runproc.IsRegistered(runProcDir, owner, runproc.RoleOrch, pid) }
+	c.endOrch = func() ([]runproc.Ended, error) {
+		return runproc.EndRole(runProcDir, owner, runproc.RoleOrch, os.Getpid())
+	}
+	c.endSubject = func() error {
+		prime, err := resolvePrime(location)
+		if err != nil {
+			return err
+		}
+		return pairteardown.EndSubjectProcesses(prime, owner, false)
 	}
 	return nil
 }

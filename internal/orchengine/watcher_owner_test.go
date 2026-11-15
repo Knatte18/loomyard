@@ -1,4 +1,5 @@
-// watcher_owner_test.go drives the watcher's owner check over a scripted owner read and a recording strand stop.
+// watcher_owner_test.go drives the watcher's owner check.
+// It scripts the owner read and records the end and the strand stop.
 
 package orchengine
 
@@ -38,7 +39,7 @@ func TestWatcher_AnAdoptThatLiftsLetsTheNextTickStopTheStrand(t *testing.T) {
 	}
 }
 
-func TestWatcher_StopsTheOrchOfABeamOwnedElsewhere(t *testing.T) {
+func TestWatcher_EndsTheProcessesAndStopsTheOrchOfABeamOwnedElsewhere(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -48,30 +49,37 @@ func TestWatcher_StopsTheOrchOfABeamOwnedElsewhere(t *testing.T) {
 		elsewhere  bool
 		underAdopt bool
 		readErr    error
+		endErr     error
 		stopErr    error
 		wantDone   bool
 		wantErr    bool
-		wantStops  []string
+		wantCalls  []string
 		wantExit   string
 		wantNoExit bool
 	}{
-		{name: "OwnerNamingAnotherMachineStopsTheStrandOnceAndEndsTheWatcher", owner: "there", elsewhere: true, wantDone: true, wantStops: []string{"s1"}, wantExit: "owned by machine there"},
-		{name: "OwnerNamingAnotherMachineUnderAnAdoptInFlightKeepsTheStrand", owner: "there", elsewhere: true, underAdopt: true, wantNoExit: true},
+		{name: "OwnerNamingAnotherMachineEndsTheProcessesThenStopsTheStrandAndEndsTheWatcher", owner: "there", elsewhere: true, wantDone: true, wantCalls: []string{"end", "stop s1"}, wantExit: "owned by machine there"},
+		{name: "OwnerNamingAnotherMachineUnderAnAdoptInFlightKeepsEverything", owner: "there", elsewhere: true, underAdopt: true, wantNoExit: true},
 		{name: "OwnerNamingThisMachineGoesOn", owner: "here", wantNoExit: true},
 		{name: "NoOwnerRecordedGoesOn", wantNoExit: true},
-		{name: "FailingReadGoesOnWithNoStop", readErr: errors.New("board unreadable"), wantNoExit: true},
-		{name: "FailingStopReturnsTheErrorAndKeepsTheWatcherRunning", owner: "there", elsewhere: true, stopErr: errors.New("reed busy"), wantErr: true, wantStops: []string{"s1"}, wantNoExit: true},
+		{name: "FailingReadGoesOnWithNoEndOrStop", readErr: errors.New("board unreadable"), wantNoExit: true},
+		{name: "FailingEndStillStopsTheStrandAndEndsTheWatcherWithTheOwnerExit", owner: "there", elsewhere: true, endErr: errors.New("survivors"), wantDone: true, wantCalls: []string{"end", "stop s1"}, wantExit: "owned by machine there"},
+		{name: "FailingEndAndStopReturnTheErrorAndKeepTheWatcherRunning", owner: "there", elsewhere: true, endErr: errors.New("survivors"), stopErr: errors.New("reed busy"), wantErr: true, wantCalls: []string{"end", "stop s1"}, wantNoExit: true},
+		{name: "FailingStopReturnsTheErrorAndKeepsTheWatcherRunning", owner: "there", elsewhere: true, stopErr: errors.New("reed busy"), wantErr: true, wantCalls: []string{"end", "stop s1"}, wantNoExit: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			e := newWatchEnv(t)
-			var stops []string
+			var calls []string
 			e.w.WatchOwner(OwnerWatch{
 				Read: func() (string, bool, error) { return tt.owner, tt.elsewhere, tt.readErr },
+				End: func() error {
+					calls = append(calls, "end")
+					return tt.endErr
+				},
 				Stop: func(guid string) error {
-					stops = append(stops, guid)
+					calls = append(calls, "stop "+guid)
 					return tt.stopErr
 				},
 				UnderAdopt: func() bool { return tt.underAdopt },
@@ -85,8 +93,8 @@ func TestWatcher_StopsTheOrchOfABeamOwnedElsewhere(t *testing.T) {
 			if done != tt.wantDone {
 				t.Errorf("Tick() done = %v; want %v", done, tt.wantDone)
 			}
-			if !slices.Equal(stops, tt.wantStops) {
-				t.Errorf("Stop calls = %v; want %v", stops, tt.wantStops)
+			if !slices.Equal(calls, tt.wantCalls) {
+				t.Errorf("End and Stop calls = %v; want %v", calls, tt.wantCalls)
 			}
 			st, loadErr := LoadState(e.paths)
 			if loadErr != nil {

@@ -1,5 +1,5 @@
-// record.go declares the owner record:
-// the Record type, its constructors, and the Register, List and Owners functions that write and read the record files.
+// record.go declares the owner record: the Record type and its constructors.
+// Register and RegisterOrch write the record files; IsRegistered, List and Owners read them.
 
 package runproc
 
@@ -51,6 +51,9 @@ const (
 	RoleTestMap = "test-map"
 	// RoleAdopt is the detached worker of `lym adopt`, registered under HubOwner.
 	RoleAdopt = "adopt"
+	// RoleOrch is the provider process of a worktree's orch session.
+	// The orch's start registers it under the beam's slug, or HubOwner for the prime.
+	RoleOrch = "orch"
 )
 
 // Record is one registered process of a run.
@@ -84,9 +87,16 @@ func ChildRecord(pid int, role string, argv []string) Record {
 // Its group is recorded only when the process leads it,
 // so a role started inside a shell's group is never group-signalled.
 func SelfRecord(role string) Record {
-	pid := os.Getpid()
+	record := processRecord(os.Getpid(), role)
+	record.Argv = os.Args
+	return record
+}
+
+// processRecord builds the record of the running process pid under role, with no command line.
+// Its group is recorded only when the process leads it.
+func processRecord(pid int, role string) Record {
 	startTime, _ := proc.StartTime(pid)
-	record := Record{PID: pid, StartTime: startTime, Role: role, Argv: os.Args, RegisteredAt: time.Now().UTC()}
+	record := Record{PID: pid, StartTime: startTime, Role: role, RegisteredAt: time.Now().UTC()}
 	stats, err := proc.ListStats()
 	if err != nil {
 		return record
@@ -97,6 +107,27 @@ func SelfRecord(role string) Record {
 		}
 	}
 	return record
+}
+
+// RegisterOrch registers pid, the provider process of a worktree's orch session, under owner in dir as RoleOrch.
+// The process runs in its pane rather than as the caller's child, so its group is read from the process table.
+// The record outlives the orch's strand and is pruned once the process is gone.
+func RegisterOrch(dir, owner string, pid int) error {
+	return Register(dir, owner, processRecord(pid, RoleOrch))
+}
+
+// IsRegistered reports whether a live record of owner in dir names pid under role.
+func IsRegistered(dir, owner, role string, pid int) (bool, error) {
+	records, err := List(dir, owner)
+	if err != nil {
+		return false, err
+	}
+	for _, record := range records {
+		if record.PID == pid && record.Role == role {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Register writes the record of one process of owner under dir, replacing the file of the same pid and start time.

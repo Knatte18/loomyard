@@ -401,10 +401,13 @@
 // the time bound keeps a limit an earlier turn already met from counting again.
 // A session with no previous turn end counts every fork, and every failure reads as no limit.
 //
-// The resume check refuses a session whose registry entry names a live pid.
+// The resume check refuses a session whose registry entry names a live pid, with a `shuttleengine.SessionHeldError`.
 // It does not refuse when the live process's start time differs from the entry's `procStart`;
 // that difference proves the pid was reused.
 // An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
+// A session with no transcript in the pane cwd's project directory refuses with `shuttleengine.ErrNoTranscript` wrapped.
+// SessionHolder names the live pid holding a session by the same rule.
+// A caller reads it to register the provider process of a session it launched.
 //
 // The session prober (SessionProber) reads process liveness from the same registry.
 // A session is alive when an entry names it and the live pid's start time equals `procStart`.

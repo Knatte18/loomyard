@@ -125,9 +125,15 @@
 // and the watcher exits with its reason recorded in State.WatcherExit once the cap is reached.
 //
 // A watcher told an OwnerWatch through WatchOwner reads its beam's owner after the strand-alive check of each tick.
-// An owner other than this machine stops the orch strand through OwnerWatch.Stop.
-// The watcher records `owned by machine <owner>` as the exit and ends as done.
-// A failed stop is the tick's error, and the next tick retries it.
+// An owner other than this machine ends every process this machine runs for the beam through OwnerWatch.End.
+// The dobby is not among them.
+// The orch's provider process is among the ended ones, and the dobby is left to hand the beam over itself.
+// The watcher then stops the orch strand through OwnerWatch.Stop, records `owned by machine <owner>` and ends as done.
+// The strand is stopped even when the end failed, so a failing end never keeps the strand up.
+// The exit reason is recorded and the watcher ends as done whenever the strand was stopped, a failed end included.
+// A failed end is then logged at Warn and never retried.
+// A failed stop is the tick's error, joined with a failed end, and the tick is not done.
+// A failed stop leaves the strand, so the next tick ends and stops again.
 // A failed read reads as not owned elsewhere and logs once per episode.
 // A foreign owner stops nothing while OwnerWatch.UnderAdopt reports an adopt in flight here covering the beam.
 // The watcher goes on, and the hold's start and end each log once.
@@ -675,8 +681,13 @@
 // After a reboot, a `lym orch stop` or a dead strand, a start resumes State.SessionID's session with the reload pointer.
 // A start records the id of every launch and the watcher keeps it current across `/clear`,
 // so it names the context the orchestrator last ran.
-// A resume that fails to start falls back to a fresh launch from the last completed handoff, else the start stencil.
-// A failure is a transcript gone or a process not coming up live, and the report names the session it gave up.
+// State lives under the worktree's `.lym/orch/`, so the id stays on the machine that ran the session.
+// No tracked record names it, and nothing carries the session's transcript to another machine.
+// A resume refused because a live process holds the session ends that process when it is this worktree's own orch.
+// The orch's start registers that process in `internal/runproc`, and a holder it did not register refuses the start.
+// A resume refused because this machine holds no transcript of the session launches fresh.
+// It takes the last completed handoff, else the start stencil, and the report names the session it gave up.
+// Every other failed resume fails the start, which launches nothing fresh.
 // With no session recorded the start launches fresh the same way.
 // A fresh orch otherwise comes only from `lym orch refresh` on a live orch, since `lym orch stop` keeps the recorded id.
 // `lym orch status` shows the recorded id as `session_id`.
