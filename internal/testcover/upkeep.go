@@ -1,4 +1,4 @@
-// upkeep.go decides, for one package's coverage map, what an upkeep pass keeps, drops and queues at a new commit.
+// upkeep.go decides, for one package's coverage map, what a map build keeps, drops and queues at a new commit.
 // It builds nothing and runs no test.
 
 package testcover
@@ -48,7 +48,17 @@ type UpkeepInput struct {
 	Spawns func() (map[string]SpawnVerdict, error)
 }
 
-// UpkeepPlan is what an upkeep pass does with one map.
+// PlanCounts are an upkeep plan's verdict counts over the maps it planned.
+type PlanCounts struct {
+	// Current counts the maps with no affected test and no miss.
+	Current int `json:"current"`
+	// Affected counts the maps with affected tests.
+	Affected int `json:"affected"`
+	// Misses counts the maps the selector missed for, by reason.
+	Misses map[MissReason]int `json:"misses,omitempty"`
+}
+
+// UpkeepPlan is what a map build does with one map.
 type UpkeepPlan struct {
 	Verdict UpkeepVerdict
 	// Miss is the selector's miss under UpkeepMiss, nil otherwise.

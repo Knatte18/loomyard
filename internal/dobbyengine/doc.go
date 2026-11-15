@@ -32,12 +32,7 @@
 //     Its `land_notice` key, all, per-task or off, decides which runs get a landing notice.
 //     Its `adopt_fix_tries` key is the adopt check's try limit, which dobby itself never reads.
 //     It caps the fix tasks a failed adopt check files for the worktree's subject between two hand adopts.
-//     Its `test_map_upkeep` key, true by default, switches the prime dobby's coverage-map upkeep passes on.
-//     `test_map_every` and `test_map_batch` are retired keys, which every load drops.
-//     MigrateConfig carries `test_map_every: 0`, the old off switch, into `test_map_upkeep: false` and drops any other value.
-//     beam's reconcile migration runs it and logs the rewrite it writes;
-//     ConfigSpec sets it as each layer's in-memory migration.
-//     So a layer no walk has rewritten loads the same, logging nothing.
+//     `test_map_upkeep`, `test_map_every` and `test_map_batch` are retired keys, which a reconcile prunes.
 //   - Run is the daemon loop, with every seam it reads in Deps.
 //   - `dobby.log` holds the dobby's own lines only.
 //     AppendLog appends each line through its own open, which creates no directory.
@@ -76,7 +71,7 @@
 //     so an idle machine learns a new owner; a failed pull logs once per episode.
 //     While an adopt in flight on this machine covers the beam another machine owns (Deps.UnderAdopt),
 //     the dobby stays up and hands nothing over.
-//     It spawns no pass, starts no task, and runs no tidy, test-map or landing step.
+//     It spawns no pass, starts no task, and runs no tidy or landing step.
 //     The hold's start and end each log one line.
 //     Any other foreign owner gets the hand-over.
 //     The dobby owner-pauses each run it drives that is neither done nor recorded owned elsewhere,
@@ -123,7 +118,7 @@
 //     a cancelled context ends it after the tick in flight.
 //   - Any existing path of Geometry.MoveRecords means an anchor change stands.
 //     The change is on the dobby's own records worktree or the prime's.
-//     While it stands, a tick spawns no pass, starts no task and runs no board-tidy or test-map step.
+//     While it stands, a tick spawns no pass, starts no task and runs no board-tidy step.
 //     The tidy agent is a strand whose state sits at the anchor.
 //     The state record's upkeep and the landing count go on.
 //     A full pass the dobby owes stays owed, and the first tick of the episode logs the change once.
@@ -503,26 +498,9 @@
 //   - Bound: while a board-tidy agent is in flight nothing is counted,
 //     so a run that landed meanwhile stays until the agent is settled.
 //
-// The coverage-map upkeep:
+// The coverage maps:
 //
-//   - Only the prime's dobby takes the step: the hub wiring fills Deps.StartTestMap and the other upkeep seams for it alone.
-//   - While `test_map_upkeep` is true, a tick starts a pass through Deps.StartTestMap when the maps have work left:
-//     no exit record exists, the prime's HEAD differs from the planned HEAD in the last exit record,
-//     or that record names queued work.
-//     On a hub of fewer than two gate slots queued work alone starts no pass, since such a pass takes no slot.
-//   - The pass is `lym gate testmap --upkeep`. It registers itself under `runproc.HubOwner` as `runproc.RoleTestMap`,
-//     plans every map at HEAD, works its queue, ends once HEAD moves, and writes the exit record as it exits.
-//   - No pass starts while Deps.TestMapRunning reads one registered, a hand-started one included,
-//     nor while the pass this dobby started is still its child, registered or not.
-//     The tick that reads that child's exit starts none, so a pass whose registration failed is started again a tick later.
-//     A failed exit is logged once per episode, as a failed tick is, and so is a start or read that fails;
-//     neither holds the rest of the tick.
-//   - The step runs only while the tick schedules, so no pass starts while an anchor move of the prime stands.
-//     That move does not wait for a running pass: it ends the prime's hub-owner processes, the pass among them.
-//   - `lym beam stop` of the prime ends a registered pass after the dobby, whether or not the dobby is live.
-//   - Bound: a dobby re-exec'd while its pass has not yet registered no longer waits on it,
-//     so for that moment a second pass can start; the second one's registration refuses while the first one lives.
-//   - Bound: a dobby that dies without a stop leaves its pass running until HEAD moves or its queue empties.
+//   - The dobby builds no coverage maps; the operator builds them on command with `lym gate testmap`.
 //
 // The view:
 //

@@ -1,14 +1,13 @@
-// testmap.go holds `lym gate testmap`, which keeps the per-package coverage maps current from the hub's prime worktree.
-// It refuses a call outside the prime, plans the packages at HEAD, then measures the queued ones under a cap and audits.
+// testmap.go holds `lym gate testmap`.
+// It builds the per-package coverage maps on command from the hub's prime worktree.
+// It refuses a call outside the prime, plans the packages at HEAD, then measures the queued ones and audits.
 // It prints what it measured, skipped and failed with its plan's counts.
-// Under `--upkeep` it registers as the hub's upkeep pass and writes its exit record as it exits.
 
 package gatecli
 
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -32,25 +31,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testcover"
 )
 
 // testMapSite labels the slot holder record of a `lym gate testmap` call.
 const testMapSite = "lym gate testmap"
 
-// defaultTestMapMax caps the packages a `lym gate testmap` call without --max measures.
-const defaultTestMapMax = 5
-
-// testMapAuditTests is how many passing entries the audit round that ends a pass re-measures, oldest measurement first.
+// testMapAuditTests is how many passing entries the audit round that ends a call re-measures, oldest measurement first.
 const testMapAuditTests = 3
 
 // testMapBuildLockSuffix ends the name of the lock a call holds on a package's map while it plans or builds the map.
 const testMapBuildLockSuffix = ".build.lock"
-
-// testMapRegistrationLockName names the lock in the hub's scratch directory.
-// A `--upkeep` call holds it while it checks for another upkeep pass and registers itself.
-const testMapRegistrationLockName = "testmap-upkeep.lock"
 
 // mappedTiers are the tiers whose tests a coverage map holds, lowest first.
 var mappedTiers = []int{0, 1}
@@ -73,13 +64,8 @@ type testMapRequest struct {
 	grace time.Duration
 	// auditTests is how many passing entries the closing audit round re-measures: testMapAuditTests in production.
 	auditTests int
-	// upkeep marks a `--upkeep` call: it registers as the hub's upkeep pass and alone writes the exit record.
-	upkeep bool
-	// waitBase is the first pause of a pass's slot wait and of a named call's build lock wait;
-	// waitCeiling is the pause they double up to.
+	// waitBase is the first pause of a named call's build lock wait; waitCeiling is the pause it doubles up to.
 	waitBase, waitCeiling time.Duration
-	// yieldPoll is the pause between a pass's checks, while it holds its slot, of whether a gate needs it.
-	yieldPoll time.Duration
 }
 
 // testMapCmd builds `lym gate testmap`.
@@ -88,25 +74,24 @@ type testMapRequest struct {
 // grace is the wait for a killed build's or test's exit and output.
 func testMapCmd(goBinary string, minuteUnit, grace time.Duration) *cobra.Command {
 	var maxPackages int
-	var upkeep bool
 	cmd := &cobra.Command{
 		Use:         "testmap [<package>...]",
-		Short:       "keep the per-package coverage maps current at the HEAD of the hub's prime worktree",
+		Short:       "build the per-package coverage maps at the HEAD of the hub's prime worktree, on command",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `testmap keeps the coverage map of every package current at the prime's HEAD, or rebuilds each named package's map whole.
+		Long: `testmap builds the coverage map of every package at the prime's HEAD, or rebuilds each named package's map whole.
+Nothing else builds the maps: run it before lym gate redundant, and run it over the whole module before a sweep of redundant tests.
 A map records, for each tier0 and tier1 test of the package run alone under coverage, the blocks it covers of the package's own files and the functions it covers of the linked packages.
 With no package named, it first plans every package at HEAD, building nothing, by comparing each map with HEAD through the coverage selector.
 A map moves to HEAD keeping every entry but those of affected tests and of tests no longer declared; the affected ones are queued.
 A map the selector misses for stays as it is, and its package is queued for a whole rebuild.
-It then measures the queued packages, at most --max per call: first those the gate's run records show costliest, then the rest in import path order.
-With no package named it takes a gate slot only while another stays free, gives it back once a gate needs it, and ends once HEAD moves.
-Named packages wait for a gate slot and for each package's map build lock, and are rebuilt whole.
-Each test runs alone in its own process, those calling t.Parallel() first side by side; the map is written per round.
-A test that fails, times out, skips or covers nothing gets an entry naming that outcome; a test the spawn scan marks is recorded and never run.
-A failed build keeps the map's entries and records the failure with HEAD.
+It then measures the queued packages, all of them unless --max caps the count: first those the gate's run records show costliest, then the rest in import path order.
+It waits for one gate slot and holds it to its end, and it ends once HEAD moves.
+Named packages also wait for each package's map build lock, and are rebuilt whole.
+Each test runs alone in its own process, up to the slot's tier0 parallel side by side; a test that fails beside others runs once more alone.
+A test that fails, times out, skips or covers nothing gets an entry naming that outcome; a test the spawn scan marks is never run.
 Once nothing is left queued, it re-measures the oldest passing entries if a gate slot is free at once, counting each difference as an audit mismatch.
 A package with a modified or untracked Go file, its own or a linked package's, is skipped; one whose map another call is building is skipped and counted as queued.
-It prints the packages it measured, skipped and failed, the timed-out tests, the planned HEAD, the queued work left, the plan's and mismatch counts, and each measured package's build and run seconds.
+It prints what it measured, skipped and failed, the queued work left, the plan's and mismatch counts, and each package's build and run seconds.
 
 Examples:
 
@@ -118,23 +103,19 @@ Examples:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			limit := maxPackages
-			if upkeep && !cmd.Flags().Changed("max") {
-				limit = math.MaxInt
+			limit := math.MaxInt
+			if cmd.Flags().Changed("max") {
+				limit = maxPackages
 			}
 			clihelp.SetExit(cmd.Context(), runTestMap(cmd.Context(), cmd.OutOrStdout(), testMapRequest{
 				goBinary: goBinary, maxPackages: limit, packages: args, environ: os.Environ(),
 				secondUnit: time.Second, minuteUnit: minuteUnit, grace: grace, auditTests: testMapAuditTests,
-				upkeep: upkeep, waitBase: testMapWaitBase, waitCeiling: testMapWaitCeiling, yieldPoll: testMapYieldPoll,
+				waitBase: testMapWaitBase, waitCeiling: testMapWaitCeiling,
 			}))
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&maxPackages, "max", defaultTestMapMax, "the most packages the call measures; a --upkeep call has no cap unless it is given")
-	cmd.Flags().BoolVar(&upkeep, "upkeep", false, "run as the hub's registered upkeep pass, which alone writes the exit record")
-	if err := cmd.Flags().MarkHidden("upkeep"); err != nil {
-		panic(err)
-	}
+	cmd.Flags().IntVar(&maxPackages, "max", 0, "the most packages the call measures; no cap unless it is given")
 	return cmd
 }
 
@@ -148,6 +129,17 @@ type testMapSkip struct {
 type testMapFailure struct {
 	Package string `json:"package"`
 	Failure string `json:"failure"`
+}
+
+// testMapMeasure is the time one package's measurement took.
+type testMapMeasure struct {
+	Package string `json:"package"`
+	// BuildSeconds is the coverage build's duration.
+	BuildSeconds float64 `json:"build_seconds"`
+	// RunSeconds is the duration of the package's test runs together.
+	RunSeconds float64 `json:"run_seconds"`
+	// Tests counts the test runs.
+	Tests int `json:"tests"`
 }
 
 // testMapJob is one queued measurement of a package.
@@ -195,19 +187,23 @@ type testMapRun struct {
 	head string
 	// headMoved is set once a later read of HEAD differs from head, which ends the call.
 	headMoved bool
-	// spare marks a pass: a call naming no package that runs outside an inherited slot.
-	// It takes its slot only while another stays free, and gives it back once a gate needs it.
-	spare bool
 	// selector compares the maps with head; nil until the plan needs it.
 	selector *testcover.Selector
 	// lease is the held slot; it stays nil before the first build and inside an enclosing gate run's slot.
 	lease *gateslot.Lease
 	// holderEnv is env with the slot's Go flags, nil until the call holds its slot.
 	holderEnv []string
-	// parallel is the `-p` of the `lym` build, read with the slot.
+	// parallel is the `-p` of the `lym` build and the most tests run side by side, read with the slot.
 	parallel int
 	// tmp holds the coverage binaries and profiles, empty until the call holds its slot.
 	tmp string
+	// next is the job the walk measures after the current one, whose binary the current job builds ahead;
+	// its pkg is empty when none follows.
+	next testMapJob
+	// ahead is the coverage build started for next, nil when none runs or waits to be taken up.
+	ahead *coverageBuild
+	// builds counts the coverage builds the call started, so each writes its own binary.
+	builds int
 	// lymBuilt is set once the call built `lym`; lymBin is the binary, and lymErr the build's failure.
 	lymBuilt bool
 	lymBin   string
@@ -221,13 +217,13 @@ type testMapRun struct {
 	timedOut []string
 	// queued counts the queued work the call leaves.
 	// That is the jobs past the cap and the packages whose build lock another call held.
-	// It also counts the jobs a HEAD move, a slotless hub, an error or a terminating signal left unmeasured.
+	// It also counts the jobs a HEAD move, an error or a terminating signal left unmeasured.
 	queued int
 	// plan counts the plan's verdicts.
 	plan                                 testcover.PlanCounts
 	selfCheckMismatches, auditMismatches int
 	// measures holds the build and run time of each package the call built.
-	measures []testcover.PackageMeasure
+	measures []testMapMeasure
 }
 
 // runTestMap runs one `lym gate testmap` call and returns its exit code.
@@ -235,11 +231,8 @@ type testMapRun struct {
 // It is 1 for a refusal or a failure that ends the call.
 // It is 128 plus the signal number after a terminating signal.
 func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int {
-	if request.upkeep && len(request.packages) > 0 {
-		return output.Err(out, "gate testmap: --upkeep takes no package, since a pass plans every package; way forward: drop the packages to run a pass, or drop --upkeep to rebuild the named packages")
-	}
 	if request.maxPackages < 1 {
-		return output.Err(out, fmt.Sprintf("gate testmap: --max %d; way forward: pass --max 1 or more", request.maxPackages))
+		return output.Err(out, fmt.Sprintf("gate testmap: --max %d; way forward: pass --max 1 or more, or drop --max to measure every queued package", request.maxPackages))
 	}
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -249,11 +242,6 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 	if refusal != "" {
 		return output.Err(out, refusal)
 	}
-	if request.upkeep {
-		if refusal := registerUpkeepPass(location); refusal != "" {
-			return output.Err(out, refusal)
-		}
-	}
 
 	runCtx, caught, stop := catchTerminatingSignals(ctx)
 	defer stop()
@@ -261,7 +249,7 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 		ctx: runCtx, request: request, location: location,
 		mapsDir: testcover.Dir(fabricengine.BoltDir(location.HubPath)),
 		built:   []string{}, skipped: []testMapSkip{}, failed: []testMapFailure{}, timedOut: []string{},
-		measures: []testcover.PackageMeasure{},
+		measures: []testMapMeasure{},
 	}
 	defer run.close()
 	if refusal := run.prepare(); refusal != "" {
@@ -278,17 +266,16 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 		}
 		return output.Err(out, fmt.Sprintf("gate testmap: %v; way forward: re-run the same command", err))
 	}
-	record := run.exitRecord()
 	return output.Ok(out, map[string]any{
 		"built":                 run.built,
 		"skipped":               run.skipped,
 		"failed":                run.failed,
 		"timed_out":             run.timedOut,
-		"planned_head":          record.PlannedHead,
-		"queued":                record.Queued,
-		"plan":                  record.Plan,
-		"self_check_mismatches": record.SelfCheckMismatches,
-		"audit_mismatches":      record.AuditMismatches,
+		"planned_head":          run.head,
+		"queued":                run.queued,
+		"plan":                  run.plan,
+		"self_check_mismatches": run.selfCheckMismatches,
+		"audit_mismatches":      run.auditMismatches,
 		"packages":              run.measures,
 	})
 }
@@ -314,41 +301,6 @@ func testMapLocation(cwd string) (*lymcwd.Location, string) {
 		primePath = "the hub's prime worktree"
 	}
 	return nil, fmt.Sprintf("gate testmap: %s is not the hub's prime worktree, and a coverage map records the prime branch; way forward: run lym gate testmap from %s", location.WorktreePath(), primePath)
-}
-
-// registerUpkeepPass registers the calling process as the hub's upkeep pass:
-// `runproc.RoleTestMap` under `runproc.HubOwner`.
-// It refuses while another live process holds that registration, and reports a registration that fails;
-// either way the call then plans nothing.
-// A lock held across the check and the registration keeps two calls starting together from both passing the check.
-func registerUpkeepPass(location *lymcwd.Location) string {
-	dir := fabricengine.RunProcDir(location.HubPath)
-	guardPath := filepath.Join(fabricengine.HubScratchDir(location.HubPath), testMapRegistrationLockName)
-	if err := os.MkdirAll(filepath.Dir(guardPath), 0o755); err != nil {
-		return fmt.Sprintf("gate testmap: cannot register the upkeep pass, so it plans nothing: %v; way forward: re-run the same command", err)
-	}
-	guard, err := lock.AcquireWriteLock(guardPath)
-	if err != nil {
-		return fmt.Sprintf("gate testmap: cannot register the upkeep pass, so it plans nothing: %v; way forward: re-run the same command", err)
-	}
-	defer func() {
-		if err := guard.Release(); err != nil {
-			logger.Warn("gate testmap: could not release the upkeep registration lock", "cause", err)
-		}
-	}()
-	records, err := runproc.List(dir, runproc.HubOwner)
-	if err != nil {
-		return fmt.Sprintf("gate testmap: cannot read the hub's registered processes: %v; way forward: re-run the same command", err)
-	}
-	for _, record := range records {
-		if record.Role == runproc.RoleTestMap && record.PID != os.Getpid() {
-			return fmt.Sprintf("gate testmap: the upkeep pass %d is running for the hub; way forward: wait for it to end, then re-run the same command", record.PID)
-		}
-	}
-	if err := runproc.Register(dir, runproc.HubOwner, runproc.SelfRecord(runproc.RoleTestMap)); err != nil {
-		return fmt.Sprintf("gate testmap: cannot register the upkeep pass, so it plans nothing: %v; way forward: re-run the same command", err)
-	}
-	return ""
 }
 
 // prepare loads the hub's gate and env config, finds the Go module and reads the uncommitted and untracked files.
@@ -467,7 +419,6 @@ func holdsGoFile(dir string) bool {
 // mapPackages reads HEAD, plans every package at it and measures the queued jobs in order until maxPackages are measured.
 // A job skipped before its build does not count against the cap.
 // A job whose build lock another call holds is skipped and counted as queued, and so is each job past the cap.
-// A pass on a hub of fewer than two slots measures nothing and counts every job as queued.
 // The call reads HEAD before each job, and ends once HEAD moved, counting the jobs left as queued.
 // With nothing left queued, the closing audit round runs.
 // The error reports a read, slot or write failure, or a cancelled call, that ends the walk.
@@ -478,7 +429,6 @@ func (r *testMapRun) mapPackages(packages []string, named bool) error {
 		return fmt.Errorf("read HEAD: %w", err)
 	}
 	r.head = head
-	r.spare = !named && !r.inheritsSlot()
 	var jobs []testMapJob
 	for _, pkg := range packages {
 		if err := r.ctx.Err(); err != nil {
@@ -495,17 +445,6 @@ func (r *testMapRun) mapPackages(packages []string, named bool) error {
 		}
 	}
 	jobs = r.orderJobs(jobs)
-	if r.spare && len(jobs) > 0 {
-		limits, err := r.pool.Limits()
-		if err != nil {
-			r.queued += len(jobs)
-			return fmt.Errorf("read the hub's gate limits: %w", err)
-		}
-		if limits.Slots < 2 {
-			r.queued += len(jobs)
-			return nil
-		}
-	}
 	measured := 0
 	for i, job := range jobs {
 		if err := r.ctx.Err(); err != nil {
@@ -524,6 +463,10 @@ func (r *testMapRun) mapPackages(packages []string, named bool) error {
 			r.queued += len(jobs) - i
 			return nil
 		}
+		r.next = testMapJob{}
+		if i+1 < len(jobs) && measured+1 < r.request.maxPackages {
+			r.next = jobs[i+1]
+		}
 		counted, err := r.measureJob(job, named)
 		if err != nil {
 			r.queued += len(jobs) - i
@@ -533,6 +476,7 @@ func (r *testMapRun) mapPackages(packages []string, named bool) error {
 			measured++
 		}
 	}
+	r.next = testMapJob{}
 	if r.queued > 0 || r.headMoved {
 		return nil
 	}
@@ -542,10 +486,6 @@ func (r *testMapRun) mapPackages(packages []string, named bool) error {
 // measureJob measures job under its package's build lock and reports whether the job counts against the call's cap.
 // A call naming packages waits for the lock.
 // Any other takes it without waiting, and skips the package, counted as queued, when another call holds it.
-// A pass that gives its slot back, or finds none it may take, releases the lock and waits for a slot.
-// With a slot it takes the lock again without waiting.
-// It then plans the package afresh at the call's HEAD and measures what is left.
-// A HEAD move during that wait counts the package as queued.
 // The error reports a failure that ends the call.
 func (r *testMapRun) measureJob(job testMapJob, named bool) (bool, error) {
 	buildLock, held, err := r.lockPackage(job.pkg)
@@ -556,38 +496,14 @@ func (r *testMapRun) measureJob(job testMapJob, named bool) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for {
-		if !held {
-			r.skip(job.pkg, "another call holds its map build lock")
-			r.queued++
-			return false, nil
-		}
-		skippedBeforeBuild, err := r.mapPackage(job)
-		releaseBuildLock(buildLock, job.pkg)
-		if !errors.Is(err, errSlotYielded) {
-			return !skippedBeforeBuild, err
-		}
-		r.releaseHeldSlot()
-		if err := r.waitForSpareSlot(); err != nil {
-			return false, err
-		}
-		if r.headMoved {
-			r.queued++
-			return true, nil
-		}
-		if buildLock, held, err = r.lockPackage(job.pkg); err != nil {
-			return false, err
-		}
-		if !held {
-			continue
-		}
-		replanned, queued, err := r.planLockedPackage(testMapJob{pkg: job.pkg, dir: job.dir, files: job.files, whole: true}, false)
-		if err != nil || !queued {
-			releaseBuildLock(buildLock, job.pkg)
-			return true, err
-		}
-		job = replanned
+	if !held {
+		r.skip(job.pkg, "another call holds its map build lock")
+		r.queued++
+		return false, nil
 	}
+	defer releaseBuildLock(buildLock, job.pkg)
+	skippedBeforeBuild, err := r.mapPackage(job)
+	return !skippedBeforeBuild, err
 }
 
 // orderJobs returns jobs in the order the call takes them.
@@ -689,23 +605,13 @@ func (r *testMapRun) skip(pkg, cause string) {
 	r.skipped = append(r.skipped, testMapSkip{Package: pkg, Cause: cause})
 }
 
-// exitRecord returns the call's exit record as its state stands.
-func (r *testMapRun) exitRecord() testcover.ExitRecord {
-	return testcover.ExitRecord{
-		PID: os.Getpid(), PlannedHead: r.head, Queued: r.queued, Plan: r.plan,
-		SelfCheckMismatches: r.selfCheckMismatches, AuditMismatches: r.auditMismatches, Packages: r.measures,
-	}
-}
-
-// close writes the exit record of a `--upkeep` call that read HEAD.
-// It also releases the call's slot and its temporary directory.
-// A call that refused before reading HEAD leaves the record as it was, since one with no planned HEAD never equals HEAD.
-// A failed write is logged.
+// close cancels a coverage build still running ahead and waits for it to end.
+// It then releases the call's slot and its temporary directory.
 func (r *testMapRun) close() {
-	if r.request.upkeep && r.head != "" {
-		if err := testcover.WriteExitRecord(r.mapsDir, r.exitRecord()); err != nil {
-			logger.Warn("gate testmap: could not write the exit record", "dir", r.mapsDir, "cause", err)
-		}
+	if r.ahead != nil {
+		r.ahead.cancel()
+		<-r.ahead.done
+		r.ahead = nil
 	}
 	r.releaseHeldSlot()
 	if r.tmp != "" {

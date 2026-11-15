@@ -636,13 +636,12 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	})
 
-	t.Run("--gate with scope coverage runs whole on a whole fallback, and takes all_targets under the none scoper", func(t *testing.T) {
+	t.Run("--gate with scope diff runs whole on a whole fallback, and takes all_targets under the none scoper", func(t *testing.T) {
 		edit(t, "nested/n.go", "package nested\n\nvar Changed = 2\n")
 		g := gate(t, pair, nil, "--gate", "darn-write")
 		wantArgs(t, g, []string{"./..."})
-		if !strings.Contains(g.stdout.String(), "falls back to whole: nested/n.go is neither a Markdown file nor under a Go package directory") ||
-			strings.Contains(g.stdout.String(), " coverage: ") {
-			t.Errorf("stdout = %q; want the whole fallback and no coverage line", g.stdout.String())
+		if !strings.Contains(g.stdout.String(), "falls back to whole: nested/n.go is neither a Markdown file nor under a Go package directory") {
+			t.Errorf("stdout = %q; want the whole fallback", g.stdout.String())
 		}
 
 		writeScoper(t, "none")

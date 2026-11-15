@@ -30,7 +30,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
-	"github.com/Knatte18/loomyard/internal/testcover"
 )
 
 // siteLabelPrefix starts every holder and wait record this verb writes.
@@ -79,9 +78,6 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	request.root = buildRoot(location, dir)
 	request.busyQuit = cfg.Limits().BusyQuit
 	request.hubEnv = hubEnv
-	if inHub {
-		request.coverageMaps = testcover.Dir(fabricengine.BoltDir(location.HubPath))
-	}
 
 	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
 	sc, err := computeScope(preCtx, cfg, location, request.root, request, green)
@@ -437,7 +433,6 @@ func preTierExpiry(preCtx, runCtx context.Context, request testRequest, step str
 }
 
 // tierNumbers returns the tier numbers of the listed runs of plan, each once, leaving out the vet and guard steps.
-// A tier's selected-tests run counts as that tier.
 func tierNumbers(plan []tierRun) []int {
 	var numbers []int
 	for _, run := range plan {

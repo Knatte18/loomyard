@@ -292,7 +292,7 @@ github.com/Knatte18/loomyard/
 ├── internal/agentconfig/         the hub-wide `agents.yaml` config: the skills each role lym starts loads, and the effort of its Claude sessions and their subagents by role and model, a leaf
 ├── internal/agentname/           the sole former, parser and validator of agent names (`<shortname>:<slug>:<role>`), a stdlib-only leaf
 ├── internal/beamcli/             the beam CLI command (`lym beam`, the making and starting of beams from board project entries, and the wiring of their dobby, the prime's carrying the hibernate request and bringing back the Slack relay)
-├── internal/dobbyengine/         dobby, the daemon of a beam worktree: it starts released tasks, drives their batten runs in passes and spawns the board-tidy agent; the prime's dobby also starts `lym gate testmap` every few landings
+├── internal/dobbyengine/         dobby, the daemon of a beam worktree: it starts released tasks, drives their batten runs in passes and spawns the board-tidy agent
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
 ├── internal/hubissues/           the GitHub issues of the hub's own repository that `lym board intake` lists, reads, comments on and closes
@@ -300,7 +300,7 @@ github.com/Knatte18/loomyard/
 ├── internal/cleanupcli/          the cleanup CLI command (`lym cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
-├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate testmap`, the per-package coverage maps rebuilt from the hub's prime worktree; `lym gate redundant`, one package's redundancy candidates read from its coverage map)
+├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate testmap`, the per-package coverage maps built on command from the hub's prime worktree; `lym gate redundant`, one package's redundancy candidates read from its coverage map)
 ├── internal/helpcli/             the help CLI command (`lym help [<command>...]`, `lym help index`)
 ├── internal/shortcutcli/         the top-level operator shortcuts (`lym a`, `lym s`, `lym p`, `lym r`) from one embedded file
 ├── internal/idecli/              the ide CLI command
@@ -402,7 +402,7 @@ github.com/Knatte18/loomyard/
 ├── internal/commentlint/        the comment line lint: fixed-column wraps and over-long lines in the `//` comment blocks a diff creates, over a told worktree and base
 ├── internal/patternlint/        the PATTERN headroom lint: growth of the overview past its headroom line, over a told worktree and base
 ├── internal/impactset/          the impacted-set command a gate key's `diff` scope runs: the packages a diff reaches over the import graph, plus the `//lym:guard` tests, or a fallback reason to run the full verify
-├── internal/testcover/          the per-test coverage engine: runs each test of a package alone under a coverage binary, keys blocks by content, judges contained and removable tests, reads and writes the per-package coverage map, and selects an importing package's tests from it or names the miss that runs the package whole
+├── internal/testcover/          the per-test coverage engine: runs each test of a package alone under a coverage binary, keys blocks by content, judges contained and removable tests, reads and writes the per-package coverage map, and compares a map with a commit to plan which tests a build re-measures or to name the miss that rebuilds the package whole
 ├── internal/dotnetimpact/       the `dotnet` scoper's derivation: the test projects and test classes a C# diff or a card's targets reach, by type-name closure over the source, or a fallback reason to run the tier whole
 ├── internal/verifytree/         the one plan-verify function: clean-tree check, verified-tree record and running marker, used by landing, both webster gates and `lym webster verify`
 └── internal/verifyrun/          in-process shell-command runner behind `internal/verifytree` and webster's card-verify rerun
@@ -818,11 +818,11 @@ User-facing modules each get one `lym <module>` namespace:
   Finalize then merges the beam into its parent, through the pull request the beam's landing record names when one is recorded, and keeps that pull request's text.
   Land starts a short batten run over the `beam` recipe, after a refusal that stops it while members or forked pairs remain under the beam.
   Start brings up a beam's dobby and orch, the one the acting worktree is or the one a slug names, or with `--all` the prime and every beam this machine owns, each part only when it is not live.
-  Stop takes a beam's orch and dobby down; the prime's stop also ends its coverage-map upkeep pass, whether or not its dobby is live.
+  Stop takes a beam's orch and dobby down.
   Status prints, once, the dobby section a beam's window draws, for the prime and for each local beam:
   alive or not, the runs it drives with their state, stage, time in stage and last pass, and each released task it has not started with what the task waits on, and the beam's orch: strand live, watcher live and the recorded session, then one adopt check item per subject, shown only when the hub holds a record of it: the subject, its state, the tier in flight, the tiers done and the paths of its log and output.
   Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends the nearest live orch its own notices and the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents), and spawns the board-tidy agent every few landings.
-  While `test_map_upkeep` is on, the prime's dobby also starts the coverage-map upkeep pass, `lym gate testmap --upkeep`, when no exit record exists, the prime's HEAD moved past the last pass's plan, or that pass left work queued on a hub of two or more gate slots; it starts none while a pass registered as `runproc.RoleTestMap`, or its own unregistered child, still runs, or while an anchor move of the prime stands, and such a move ends a running pass rather than waiting for it.
+  No dobby builds the coverage maps: the operator builds them on command with `lym gate testmap`.
   It logs to its `dobby.log` the changes it sees, such as a task start, a run changing state and a failing pass episode, plus a heartbeat line every ten minutes.
   A front task, filed through `internal/fronttask`, is the one open task of its worktree that dobby starts first, past `max_runs`, while no other task of that worktree starts.
   Its `on_land` action runs once it lands or its entry is removed by hand with `lym board remove`, from a closed action table and on the subject's owner machine only.
@@ -931,9 +931,10 @@ User-facing modules each get one `lym <module>` namespace:
   `lym gate card-verify <card id>` runs a plan card's `**Verify:**` line through the shared `internal/cardverify` runner and exits with the line's code.
   `lym gate redundant <package>` judges one package's coverage map by the redundancy verdict and lists its candidates,
   each with its seconds, its covering tests and whether it is in the removable set; it runs no test and takes no slot.
-  `lym gate testmap [--max <n>] [<package>...]` rebuilds the stale per-package coverage maps of `internal/testcover` from the hub's prime worktree:
-  each tier0 and tier1 test runs alone inside one gate slot, bounded by `redundancy_build_timeout_min` and `redundancy_test_timeout_sec`,
-  under a coverage binary over every in-module package its test binary links.
+  `lym gate testmap [--max <n>] [<package>...]` builds the stale per-package coverage maps of `internal/testcover` from the hub's prime worktree, only on command:
+  each tier0 and tier1 test runs alone in its own process, up to the tier0 parallel side by side inside one gate slot,
+  bounded by `redundancy_build_timeout_min` and `redundancy_test_timeout_sec`,
+  under a coverage binary over every in-module package its test binary links; the gate selects no test from the maps.
   A package with a modified or untracked Go file, or whose map another call is building, is skipped,
   and so is one whose linked packages hold a modified or untracked file just before its build or after its tests.
   A run inside a slot an enclosing gate run holds takes no second one,

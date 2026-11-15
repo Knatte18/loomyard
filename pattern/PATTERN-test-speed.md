@@ -49,11 +49,11 @@ No site spells a tier list, a scope or a test command.
 |---|---|---|
 | `card` | each Webster card, through `--card`, then the comment lint and the headroom lint | `card` |
 | `batch` | each Webster batch, each tier run failing on a tmux server socket its end-of-package check finds | `card` |
-| `webster-fix` | Webster-Burler-Fix's verify fixers, after the headroom and comment lints | `coverage` |
+| `webster-fix` | Webster-Burler-Fix's verify fixers, after the headroom and comment lints | `diff` |
 | `webster` | Webster's end gate | `all` |
 | `parent-align`, `finalize` | Parent-Align and Finalize | `all` |
 | `adopt` | `lym adopt check <subject>`, in-process through `gatecli.RunGate` in the subject's worktree | `all` |
-| `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `coverage` |
+| `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
 | `pr-review` | PR-Review's gate over the agent's commits | `diff` |
 | By hand | the `tier3` tier | |
 
@@ -288,13 +288,12 @@ this section keeps only what is project-specific or stricter here.
   A map records, for each tier0 and tier1 test, its function hash, the blocks it covers of its own package's files,
   the functions it covers of each other in-module package its test binary links, and its spawn scan verdict.
   It also records the hashes of the package's files and of each linked package's files at the commit it was built from.
-  Each pass plans every map at the prime's HEAD through the coverage selector, building nothing:
+  The maps are built only on command: no dobby, landing or gate builds them, and the gate selects no test from them.
+  A call naming no package plans every map at the prime's HEAD through the coverage selector, building nothing:
   a current map moves to HEAD with its entries, an affected one drops the affected tests' entries, which are re-measured,
   and a miss rebuilds the package whole.
   A failed build keeps the map's entries and is not retried at the same HEAD.
   A self-check re-measures a kept entry a fresh build cannot place, and an audit round re-measures the oldest entries.
-  While `test_map_upkeep` is on, the prime's dobby starts a `--upkeep` pass whenever work is left:
-  no exit record, a HEAD past the last pass's plan, or queued work on a hub of two or more slots.
 - `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict.
   It lists the candidates with their seconds and covering tests, the keep-marked tests and the tests not judged.
   It runs no test, so its candidates are evidence exactly as the report's are.

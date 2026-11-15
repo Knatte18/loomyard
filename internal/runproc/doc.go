@@ -6,7 +6,7 @@
 // It also holds the role, the command line and the registration time.
 // The role is one of the `Role` constants.
 // The hub's own processes register under `HubOwner`.
-// Their roles are `RoleSync`, `RoleSlackRelay`, `RoleTestMap` and `RoleAdopt`.
+// Their roles are `RoleSync`, `RoleSlackRelay` and `RoleAdopt`.
 // A fixer strand role that `internal/gatefixer` declares is also valid; its `Registrar` registers it.
 // Register writes `<dir>/<owner>/<pid>-<start time>.json` through `internal/state`,
 // so a key the record does not declare survives a rewrite by an older binary.

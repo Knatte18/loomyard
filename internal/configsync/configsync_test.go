@@ -329,14 +329,13 @@ func TestReconcileAll(t *testing.T) {
 			}},
 		},
 		{
-			name:  "apply migrates a retired beam test_map_every of 0 before the retired-key prune removes it",
-			seed:  map[string]string{"beam": "test_map_every: 0\n"},
+			name:  "apply prunes the retired beam keys test_map_every and test_map_upkeep",
+			seed:  map[string]string{"beam": "test_map_every: 0\ntest_map_upkeep: false\n"},
 			apply: true,
 			want: map[string]moduleWant{"beam": {
 				applied:         true,
-				migratedAll:     []string{"test_map_every: 0 became test_map_upkeep: false"},
-				fileContains:    []string{"test_map_upkeep: false"},
-				fileNotContains: []string{"test_map_every"},
+				removedAll:      []string{"test_map_every", "test_map_upkeep"},
+				fileNotContains: []string{"test_map_every", "test_map_upkeep"},
 			}},
 		},
 	}

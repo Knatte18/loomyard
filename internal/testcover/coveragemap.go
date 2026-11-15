@@ -104,7 +104,7 @@ type MapFailure struct {
 
 // FailedAt reports whether m records a failed coverage build at commit:
 // its Failure names commit, or it holds no test entry and its BuildFailure is set and its Commit is commit.
-// An upkeep pass queues no build of such a package while commit is the HEAD it plans at.
+// A map build queues no build of such a package while commit is the HEAD it plans at.
 func (m Map) FailedAt(commit string) bool {
 	if m.Failure != nil && m.Failure.Commit == commit {
 		return true

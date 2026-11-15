@@ -93,11 +93,6 @@ type Miss struct {
 	Detail string
 }
 
-// String renders the miss as its reason and detail.
-func (m Miss) String() string {
-	return string(m.Reason) + ": " + m.Detail
-}
-
 // Selection is the outcome of selecting one package's tests.
 type Selection struct {
 	// Tests are the affected tests' names, sorted, each once.

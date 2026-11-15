@@ -47,8 +47,6 @@ const (
 	RoleTeardown = "teardown"
 	// RoleSlackRelay is the hub's Slack relay, registered under HubOwner.
 	RoleSlackRelay = "slack-relay"
-	// RoleTestMap is the coverage-map upkeep pass, `lym gate testmap --upkeep`, which registers itself under HubOwner.
-	RoleTestMap = "test-map"
 	// RoleAdopt is the detached worker of `lym adopt`, registered under HubOwner.
 	RoleAdopt = "adopt"
 )

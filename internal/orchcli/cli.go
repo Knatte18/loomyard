@@ -121,8 +121,6 @@ type orchCLI struct {
 	dobbyLive func() (bool, error)
 	// endDobby ends this worktree's dobby and the processes below it, and no other process of the beam.
 	endDobby func() error
-	// endTestMap ends the prime's coverage-map upkeep pass, and no other process; nil, as for a beam, ends none.
-	endTestMap func() error
 	// reapInherited waits on the children a re-exec'd watcher inherited, which `watch` calls before it starts anything.
 	reapInherited func()
 }
@@ -277,12 +275,6 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.endDobby = func() error {
 		_, err := runproc.EndRole(runProcDir, owner, runproc.RoleDobby, os.Getpid())
 		return err
-	}
-	if !beam {
-		c.endTestMap = func() error {
-			_, err := runproc.EndRole(runProcDir, runproc.HubOwner, runproc.RoleTestMap, os.Getpid())
-			return err
-		}
 	}
 	return nil
 }

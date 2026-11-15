@@ -188,10 +188,6 @@ type testRequest struct {
 
 	// The fields below are filled by runTest once the hub is resolved and the config loaded, and read by the tier runs.
 
-	// coverage is set when the --gate key's scope is coverage, so the computed scope narrows its importing packages.
-	coverage bool
-	// coverageMaps is the hub's coverage map directory; empty outside a hub.
-	coverageMaps string
 	// hubEnv is the hub's env.yaml variables, which the call's children run with.
 	hubEnv envconfig.Config
 	// root is the worktree root the tiers' dirs and a prebuild are relative to.

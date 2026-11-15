@@ -1,7 +1,7 @@
 //go:build linux
 
 // anchorchild_linux_test.go pins which live children of a dobby the anchor verb counts as a pass in flight.
-// A child registered as a push, board sync or coverage-map upkeep pass is spared, and any other child counts.
+// A child registered as a push or board sync is spared, and any other child counts.
 
 package fabriccli_test
 
@@ -66,7 +66,6 @@ func TestLiveUnsparedChild(t *testing.T) {
 		role      string
 		wantFound bool
 	}{
-		{name: "a child registered as the upkeep pass is spared", role: runproc.RoleTestMap},
 		{name: "a child registered as a push is spared", role: runproc.RolePush},
 		{name: "a child registered as a board sync is spared", role: runproc.RoleSync},
 		{name: "a child registered under another role counts", role: runproc.RoleBatten, wantFound: true},
