@@ -255,7 +255,7 @@ Revised record: [record-adopt-foreground-leftovers.md](record-adopt-foreground-l
 
 ### The new entry `leftover-pairs-teardown`
 
-`depends_on` is `adopt-foreground-leftovers` and `adopt-build-revision`, so the two parts that rewrite `dobbyengine` do not run together; recipe `tapestry`, with labels `feature`, `dobby`, `fabric`, `cleanup`, `workspaces`.
+`depends_on` is `adopt-foreground-leftovers`, so the two parts that rewrite `dobbyengine` do not run together; recipe `tapestry`, with labels `feature`, `dobby`, `fabric`, `cleanup`, `workspaces`.
 Title: `The dobby tears down or reports leftover pairs`.
 The ended-run teardown's stranded-run condition today reads a board entry that ended (`strandedEnded` in `internal/dobbyengine/ended.go`), which neither a cancelled run, whose entry is unclaimed, nor a landed run's leftover pair satisfies; the record says so.
 
@@ -455,7 +455,7 @@ a run whose step was cut off halts (`loop-exited`) and the orch settles it.
 Finding what was running is the hard part, not resuming it.
 VS Code needs nothing: on Kubuntu it reopens the windows it had open by itself.
 
-## Idea (operator, revised 2026-11-16)
+## Idea (operator, 2026-11-08 and 2026-11-11; revised by adopt-build-revision, 2026-11-16)
 
 A simple way to start again every project that was in flight on the machine, such as launcher scripts lym puts on the desktop:
 
@@ -487,7 +487,9 @@ A simple way to start again every project that was in flight on the machine, suc
 
 ## 9. Order, dependencies and recipes
 
-Order after the changes, each line `depends_on` plus `adopt-build-revision`:
+Order after the changes.
+Each member's dependency on `adopt-build-revision` clears when this study lands;
+the table shows the `depends_on` that stands after that.
 
 | Member | depends_on | Recipe | Change |
 | --- | --- | --- | --- |
