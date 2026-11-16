@@ -247,13 +247,13 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 var readmeTypes = []string{"bug", "enhancement", "research"}
 
 // readmeFixture returns the tasks and notes the README golden tests render.
-// They mix labels, dates, priorities, dependencies, bodies, profiles, recipes, and run settings.
+// They mix labels, dates, priorities, dependencies, bodies, profiles, recipes, run fields and run settings.
 func readmeFixture() []boardengine.Task {
 	task, note := boardengine.KindTask, boardengine.KindNote
 	return []boardengine.Task{
-		{ID: 1, Handle: "T1", Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Status: stringPtr(boardengine.StatusDraft), Brief: "The foundation.", Created: renderTime.AddDate(0, 0, -40), Revised: renderTime.AddDate(0, 0, -3), RunSettings: map[string]any{"loom": map[string]any{"review_max_bounces": 2.0, "review_hard_max_bounces": 3.0}}},
+		{ID: 1, Handle: "T1", Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Status: stringPtr(boardengine.StatusDraft), Brief: "The foundation.", Created: renderTime.AddDate(0, 0, -40), Revised: renderTime.AddDate(0, 0, -3), PullRequest: boardengine.PullRequestMergeIn, OnLand: "refresh", RunSettings: map[string]any{"loom": map[string]any{"review_max_bounces": 2.0, "review_hard_max_bounces": 3.0}}},
 		{ID: 2, Handle: "T2", Slug: "top", Title: "Top | work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Profile: "a|b", Brief: "Builds on base.\nSecond brief line.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}, RunSettings: map[string]any{"darn": map[string]any{"models": map[string]any{"writer": "opus|fast"}, "skip": []any{"a&b", "<c>"}, "note": "use `x`"}}},
-		{ID: 6, Handle: "T3", Slug: "alone", Title: "Alone work", Kind: task, Labels: []string{"enhancement"}, Isolated: true, Recipe: "darn", Profile: "docs", RunSettings: map[string]any{"darn": map[string]any{"review_max_bounces": 1.0}}},
+		{ID: 6, Handle: "T3", Slug: "alone", Title: "Alone work", Kind: task, Labels: []string{"enhancement"}, Isolated: true, Recipe: "darn", Profile: "docs", PullRequest: "on", RunSettings: map[string]any{"darn": map[string]any{"review_max_bounces": 1.0}}},
 		{ID: 3, Handle: "E2", Slug: "idea", Title: "An idea", Kind: note, Labels: []string{"enhancement", "undecided"}, Priority: boardengine.PriorityLow},
 		{ID: 8, Handle: "E1", Slug: "plain", Title: "Plain idea", Kind: note, Labels: []string{"enhancement"}},
 		{ID: 9, Handle: "R1", Slug: "measure", Title: "A measurement", Kind: note, Labels: []string{"research"}},
@@ -276,6 +276,8 @@ func readmeFixture() []boardengine.Task {
 // so each row stays one table row.
 // It pins that each run setting stacks as a sorted code-span bullet in the entry cell after any brief;
 // a nested key appears as its dotted path, a non-string value as JSON, a pipe is escaped, and no column is added.
+// It pins that a pull_request and an on_land the task sets stack as code-span bullets in that order.
+// Both bullets sit between the brief and the settings.
 // Every Tasks table pins a Recipe column after the slug, when the task names one.
 // The column holds the fixture's default recipe for an empty recipe and the stored name otherwise;
 // it is followed by ` · ` and the profile, with a pipe escaped.
@@ -372,7 +374,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T3 | **Alone work**<br>• `darn: review_max_bounces 1` | `alone` | darn · docs |  |  |  |\n" +
+				"| T3 | **Alone work**<br>• `pull_request: on`<br>• `darn: review_max_bounces 1` | `alone` | darn · docs |  |  |  |\n" +
 				"\n" +
 				"#### Draft (1)\n" +
 				"\n" +
@@ -380,7 +382,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T1 | `draft` **Base work**<br>• The foundation.<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | tapestry |  | 5w<br>3d |  |\n" +
+				"| T1 | `draft` **Base work**<br>• The foundation.<br>• `pull_request: merge-in`<br>• `on_land: refresh`<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | tapestry |  | 5w<br>3d |  |\n" +
 				"\n" +
 				"### Notes (5)\n" +
 				"\n" +
