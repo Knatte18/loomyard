@@ -105,6 +105,8 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 
 - [lym-state-map-2026-11-15.md](loom/lym-state-map-2026-11-15.md) — every piece of state lym keeps, where it lives and whether git holds it, the steps of `lym adopt`, the adopt failures on record and a first-draft state machine of a run.
 
+- [adopt-build-revision-2026-11-16](loom/adopt-build-revision-2026-11-16/report.md) — what the remaining members of the beam `adopt-build` take, deliver and depend on after the run FSM and the orch's own-session resume landed, with revised bodies and decision records.
+
 ### plan-split — splitting a plan into parts
 
 - [plan-split-bench-2026-11-01](loom/plan-split/plan-split-bench-2026-11-01/report.md) — Parts-Write and Parts-Plan-Write against Plan-Write.
