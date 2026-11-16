@@ -1,0 +1,1 @@
+{"audit_mismatches":0,"built":["internal/loomcli"],"failed":[],"ok":true,"packages":[{"package":"internal/loomcli","build_seconds":19.42906339,"run_seconds":24.595047614,"tests":270}],"plan":{"current":0,"affected":0},"planned_head":"02a4f92d911de85d789098105cc1517ea937150d","queued":0,"self_check_mismatches":0,"skipped":[],"timed_out":[]}

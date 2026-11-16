@@ -3,7 +3,7 @@
 // Its verb `status` shows who holds the hub's gate slots, and its verb `report` totals the run records per gate key.
 // Its verb `card-verify` runs a plan card's `**Verify:**` line.
 // Its verb `testmap` builds the per-package coverage maps on command at the HEAD of the worktree it runs in,
-// and its verb `redundant` lists one package's redundancy candidates from its map.
+// and its verb `redundant` lists one package's redundancy candidates from its map, confirmed by mutation.
 //
 // The module is not standalone-capable and does not go through internal/cliwire.
 // It has no target directory, state, plan or stencils to wire, and it resolves hub membership itself.
@@ -1120,21 +1120,55 @@
 // Its `packages` holds each measured package's build seconds, run seconds and test count.
 // It exits 0 once it walked its packages, and 1 for a refusal or a read, slot or write failure that ends the walk.
 //
-// `lym gate redundant <package>` judges the map of one package and prints its redundancy candidates.
+// `lym gate redundant <package>` judges the map of one package and confirms its redundancy candidates by mutation.
 // It runs from any worktree of the hub and resolves the module as the redundancy report step does.
 // It reads the map as it stands where `lym gate testmap` from the same worktree writes it.
-// It runs no test and takes no slot.
 // The redundancy report step reads the hub's shared maps from every worktree.
 // It judges through `testcover.JudgeMap`.
 // It leaves out the tests the keep scan of the package's directory in this worktree names.
+// A contained test whose check reads source files, which no mutant changes, is not judged.
+// Such a test carries `//lym:guard`, read through `impactset.FindGuardTests`, or `testcover.ScanSourceReaders` marks it.
+// With no other contained test the call runs nothing and takes no slot.
+// Otherwise it refuses when the package's Go files in the worktree differ from those the map records.
+// It then checks the contained tests inside one gate slot, which it waits for and holds to its end.
+// It builds the package's coverage binary over the package alone and reads its block table from a run of no test.
+// `testcover.PlanMutants` gives the mutants of the contained tests' blocks,
+// and `testcover.Toolchain.BuildMutantBinary` builds one test binary holding them all.
+// A refused build drops the mutants on the lines the compiler names and builds again, up to `mutantBuildRounds` builds.
+// A contained test's covering tests here are those `testcover.CoveringTests` picks among the other judged tests.
+// The pick ignores what the greedy pass removed, so it never depends on the tests' seconds.
+// A source-checking test is no covering test, since it kills no mutant.
+// It runs every contained test and each of their covering tests once with no mutant on.
+// A test that does not pass then runs with no mutant.
+// Each other test gets a bound of `mutantTimeoutFactor` times its seconds, and at least `mutantTimeoutFloor` seconds.
+// The bound stays within `redundancy_test_timeout_sec`, so a mutant that makes a loop endless ends early.
+// Each contained test then runs with each mutant of its blocks on.
+// A test that killed a mutant has its covering tests run with that mutant on.
+// Only a covering test whose entry covers the mutant's block runs.
+// A run that fails or times out kills its mutant.
+// Up to the slot's tier0 parallel runs go side by side, each alone in its process under its test's tier env.
+// A tier with `prebuilt_lym` gets the `lym` the call builds once into the pool's prebuilt store.
+// A covering test that kills beside other runs runs once more alone, and that run stands.
+// That holds for a covering test that is also a contained test.
+// `testcover.JudgeMutants` judges each contained test from the kills.
+// Bound: a contained test's own kill from its candidate runs is not rerun alone,
+// so a disturbed run can refute it falsely.
+// Bound: a mutant changes the package's own code only,
+// so a contained test whose check differs from its covers only in another package's result is confirmed falsely.
 // It prints the map's commit, build time and test count.
 // It prints `map_build_failure` with the commit and error of a later failed coverage build the map records.
 // It omits the key when the map records none.
-// It prints `candidates`, each contained test with its tier, seconds, covering tests and whether it is removable;
-// `kept`, each keep-marked test with its reason; and `not_judged`, each other unjudged test with why.
+// It prints `candidates`, each redundant test with its tier, seconds, covering tests and `mutants_killed`.
+// The covering tests are the pick described above.
+// A candidate is removable when both the coverage pass and the mutation pass remove it.
+// It prints `refuted`, each test that kills a mutant its covering tests miss.
+// Each carries those mutants' file, line and operator.
+// It prints `kept`, each keep-marked test with its reason, and `not_judged`, each other unjudged test with why.
+// When it checked a test it prints `mutation`: the mutants built and dropped, the build and run seconds and the runs.
 // It refuses outside a hub.
-// It refuses for a package whose map is missing, unreadable or holds only a failed build.
-// It refuses for a failed keep scan.
+// It refuses for a package whose map is missing, unreadable, holds only a failed build or records other Go files.
+// It refuses for a failed keep or source scan, and for a mutation check whose slot, build or run fails.
+// A terminating signal ends it with 128 plus the signal number.
 //
 // # In-process run
 //

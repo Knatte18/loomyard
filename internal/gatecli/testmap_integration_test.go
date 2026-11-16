@@ -648,9 +648,10 @@ func TestGateTestMapInATaskWorktreeKeepsItsOwnMaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	plankit.WriteTree(t, anchor, map[string]string{
-		"go.mod":            "module " + module + "\n\ngo 1.21\n",
-		"solo/solo.go":      testMapSource("solo"),
-		"solo/solo_test.go": testMapTestFile("solo", map[string]int{"TestSoloOne": 0, "TestSoloTwo": 0}),
+		"go.mod":       "module " + module + "\n\ngo 1.21\n",
+		"solo/solo.go": testMapSource("solo"),
+		// One test leaves no contained test, so `lym gate redundant` reads the map and builds nothing.
+		"solo/solo_test.go": testMapTestFile("solo", map[string]int{"TestSoloOne": 0}),
 	})
 	gitkit.Git(t, pair, "add", "backend")
 	gitkit.Git(t, pair, "commit", "-q", "-m", "seed the tasked module")

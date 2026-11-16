@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -144,14 +146,17 @@ func (tc Toolchain) ListTests(importPath, tags string) ([]string, error) {
 
 var testResultLine = regexp.MustCompile(`(?m)^--- (PASS|FAIL|SKIP): (\S+) \(([0-9.]+)s\)$`)
 
-// RunAlone runs the top-level test name alone under the coverage binary bin in dir, writing its profile to profile.
+// RunAlone runs the top-level test name alone under the test binary bin in dir, writing its profile to profile.
 // It reads the test's outcome and elapsed time from the binary's verbose output,
 // and the profile's blocks for a test that passed, or skipped after writing one.
+// A profile of "" runs the test with no coverage profile, as a binary built without coverage needs, and reads none.
 // A failing test is returned as such, never as an error, and so is a test killed at TestTimeout, marked TimedOut.
 // The error reports a binary that did not start, or a passing test whose profile is missing or malformed.
 func (tc Toolchain) RunAlone(bin, dir, profile, name string) (RunResult, error) {
-	if err := os.Remove(profile); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return RunResult{}, fmt.Errorf("remove the previous profile: %w", err)
+	if profile != "" {
+		if err := os.Remove(profile); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return RunResult{}, fmt.Errorf("remove the previous profile: %w", err)
+		}
 	}
 	cmd, ctx, cancel := tc.command(tc.TestTimeout, bin, runAloneArgs(name, profile)...)
 	defer cancel()
@@ -180,7 +185,7 @@ func (tc Toolchain) RunAlone(bin, dir, profile, name string) (RunResult, error) 
 			run.Elapsed, _ = strconv.ParseFloat(m[3], 64)
 		}
 	}
-	if run.Action == ActionFail {
+	if run.Action == ActionFail || profile == "" {
 		return run, nil
 	}
 	f, err := os.Open(profile)
@@ -197,16 +202,88 @@ func (tc Toolchain) RunAlone(bin, dir, profile, name string) (RunResult, error) 
 	return run, nil
 }
 
-// runAloneArgs returns the coverage binary's arguments for running one top-level test alone.
+// runAloneArgs returns the test binary's arguments for running one top-level test alone.
+// It passes no profile flag for profile "".
 // Every flag is one `-flag=value` argument, the form `go test` passes:
 // a test that runs a cobra command without `SetArgs` reads the process's arguments,
 // and a separate flag value would show up there as a positional argument.
 func runAloneArgs(name, profile string) []string {
-	return []string{
-		"-test.run=^" + regexp.QuoteMeta(name) + "$",
-		"-test.coverprofile=" + profile,
-		"-test.v=true",
+	args := []string{"-test.run=^" + regexp.QuoteMeta(name) + "$"}
+	if profile != "" {
+		args = append(args, "-test.coverprofile="+profile)
 	}
+	return append(args, "-test.v=true")
+}
+
+// ProfileBlocks runs the coverage binary bin in dir with no test, writing its profile to profile.
+// It returns the profile's blocks.
+// The profile lists every block the binary counts, none of them covered.
+// The error reports a binary that did not start, failed or outlasted TestTimeout, or a profile missing or malformed.
+func (tc Toolchain) ProfileBlocks(bin, dir, profile string) ([]ProfileBlock, error) {
+	cmd, ctx, cancel := tc.command(tc.TestTimeout, bin, "-test.run=^$", "-test.coverprofile="+profile)
+	defer cancel()
+	cmd.Dir = dir
+	cmd.Env = tc.Env
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &out
+	logger.Info("testcover: spawning a coverage binary for its block table", "binary", bin)
+	err := cmd.Run()
+	logger.Info("testcover: coverage binary ended", "binary", bin, "error", err)
+	if errors.Is(err, exec.ErrWaitDelay) {
+		err = nil
+	}
+	switch {
+	case err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return nil, fmt.Errorf("block table run: timed out after %s", tc.TestTimeout)
+	case err != nil:
+		return nil, fmt.Errorf("block table run: %w: %s", err, strings.TrimSpace(out.String()))
+	}
+	f, err := os.Open(profile)
+	if err != nil {
+		return nil, fmt.Errorf("block table run wrote no coverage profile: %w", err)
+	}
+	defer f.Close()
+	return ParseProfile(f)
+}
+
+// compileErrorLine matches a compiler error line, capturing its file and line.
+var compileErrorLine = regexp.MustCompile(`(?m)^(\S+\.go):(\d+):\d+: `)
+
+// MutantBuildError is a mutant build the compiler refused, with the source lines its errors name.
+type MutantBuildError struct {
+	Lines []SourceLine
+	err   error
+}
+
+// SourceLine is one line of a package's file, the file named by its base name.
+type SourceLine struct {
+	File string
+	Line int
+}
+
+func (e *MutantBuildError) Error() string { return "mutant binary: " + e.err.Error() }
+
+func (e *MutantBuildError) Unwrap() error { return e.err }
+
+// BuildMutantBinary builds the test binary of the package at importPath into out.
+// The files the overlay file names stand in place of the package's own.
+// It runs no vet, and asks the compiler for every error of the package rather than its first few.
+// A build the compiler refused returns a *MutantBuildError naming the source lines of its errors.
+// Any other failure returns an error carrying the go command's stderr, or saying the build timed out.
+func (tc Toolchain) BuildMutantBinary(importPath, overlay, out string) error {
+	_, err := tc.goOutput([]string{"test", "-c", "-o", out, "-vet=off", "-overlay=" + overlay, "-gcflags=" + importPath + "=-e", importPath})
+	if err == nil {
+		return nil
+	}
+	var lines []SourceLine
+	for _, m := range compileErrorLine.FindAllStringSubmatch(err.Error(), -1) {
+		line, _ := strconv.Atoi(m[2])
+		lines = append(lines, SourceLine{File: path.Base(filepath.ToSlash(m[1])), Line: line})
+	}
+	if len(lines) > 0 {
+		return &MutantBuildError{Lines: lines, err: err}
+	}
+	return fmt.Errorf("mutant binary: %w", err)
 }
 
 // appendTags appends the `-tags` flag for tags to args, or nothing when tags is empty.

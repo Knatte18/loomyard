@@ -4,9 +4,11 @@
 package testcover_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -115,6 +117,65 @@ func TestGoEnvironment(t *testing.T) {
 	}
 }
 
+func TestBuildMutantBinary(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		env       []string
+		wantLines []testcover.SourceLine
+	}{
+		{name: "BuildsWithTheOverlayAndEveryCompileError"},
+		{
+			name:      "NamesTheLinesOfARefusedBuild",
+			env:       []string{standInCompileErrorsEnv + "=1"},
+			wantLines: []testcover.SourceLine{{File: "x.go", Line: 4}, {File: "y.go", Line: 12}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tc, record := standIn(t)
+			tc.Env = append(tc.Env, tt.env...)
+			out := filepath.Join(t.TempDir(), "mutants.test")
+			err := tc.BuildMutantBinary("m/p", "/tmp/o/overlay.json", out)
+			wantArgs := []string{"test", "-c", "-o", out, "-vet=off", "-overlay=/tmp/o/overlay.json", "-gcflags=m/p=-e", "m/p"}
+			if got := recordedArgs(t, record); !reflect.DeepEqual(got, wantArgs) {
+				t.Errorf("BuildMutantBinary ran go %q; want %q", got, wantArgs)
+			}
+			var buildErr *testcover.MutantBuildError
+			switch {
+			case tt.wantLines == nil && err != nil:
+				t.Errorf("BuildMutantBinary error = %v; want none", err)
+			case tt.wantLines != nil && !errors.As(err, &buildErr):
+				t.Errorf("BuildMutantBinary error = %v; want a *MutantBuildError", err)
+			case tt.wantLines != nil && !reflect.DeepEqual(buildErr.Lines, tt.wantLines):
+				t.Errorf("MutantBuildError lines = %v; want %v", buildErr.Lines, tt.wantLines)
+			}
+		})
+	}
+}
+
+func TestProfileBlocks(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tc, record := standIn(t)
+	profile := filepath.Join(t.TempDir(), "blocks.out")
+	got, err := tc.ProfileBlocks(tc.Go, t.TempDir(), profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []testcover.ProfileBlock{{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ProfileBlocks = %+v; want %+v, every block uncovered", got, want)
+	}
+	if args, wantArgs := recordedArgs(t, record), []string{"-test.run=^$", "-test.coverprofile=" + profile}; !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("ProfileBlocks ran the binary with %q; want %q", args, wantArgs)
+	}
+}
+
 func TestBuildBinaryTimesOut(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -138,10 +199,16 @@ func TestRunAlone(t *testing.T) {
 		// timeout is the run's TestTimeout; zero leaves it unbounded.
 		timeout time.Duration
 		// within, when above zero, is the longest the run may take.
-		within  time.Duration
-		want    testcover.RunResult
-		wantErr string
+		within time.Duration
+		// noProfile runs the test with no profile flag, as a binary built without coverage.
+		noProfile bool
+		want      testcover.RunResult
+		wantErr   string
 	}{
+		{
+			name: "PassWithNoProfileFlag", test: standInPass, noProfile: true,
+			want: testcover.RunResult{Name: standInPass, Elapsed: 0.25, Action: testcover.ActionPass},
+		},
 		{
 			name: "Pass",
 			test: standInPass,
@@ -185,6 +252,9 @@ func TestRunAlone(t *testing.T) {
 			tc, record := standIn(t)
 			tc.TestTimeout, tc.Grace = tt.timeout, time.Second
 			profile := filepath.Join(t.TempDir(), "cover.out")
+			if tt.noProfile {
+				profile = ""
+			}
 			started := time.Now()
 			got, err := tc.RunAlone(tc.Go, t.TempDir(), profile, tt.test)
 			if elapsed := time.Since(started); tt.within > 0 && elapsed > tt.within {
@@ -203,6 +273,9 @@ func TestRunAlone(t *testing.T) {
 				t.Errorf("RunAlone(%s) = %+v; want %+v", tt.test, got, tt.want)
 			}
 			wantArgs := []string{"-test.run=^" + tt.test + "$", "-test.coverprofile=" + profile, "-test.v=true"}
+			if tt.noProfile {
+				wantArgs = slices.Delete(wantArgs, 1, 2)
+			}
 			if args := recordedArgs(t, record); !reflect.DeepEqual(args, wantArgs) {
 				t.Errorf("RunAlone ran the binary with %q; want %q, each flag one -flag=value argument", args, wantArgs)
 			}

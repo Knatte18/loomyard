@@ -66,6 +66,8 @@
 // so a hub that declares `tier0` bounds them by its parallel and a hub that declares none adds no `-p`.
 // `lym gate testmap` is one: it waits for its slot and holds it from its first build to its end.
 // The redundancy report step of `lym gate test` is another: it takes one slot after the call's tiers released theirs.
+// `lym gate redundant` is a third.
+// It waits for its slot once it has a candidate to check by mutation, and holds it to its end.
 //
 // # Prebuilt store
 //
@@ -171,7 +173,9 @@
 // `lym gate testmap` builds coverage maps under two bounds.
 // `redundancy_build_timeout_min` bounds each build in minutes.
 // `redundancy_test_timeout_sec` bounds each test in seconds.
-// The redundancy report step of `lym gate test` takes the two redundancy bounds too, and two of its own.
+// The redundancy report step of `lym gate test` and the mutation check of `lym gate redundant` take the two bounds too.
+// A mutant run past the test bound counts as a kill in `lym gate redundant`.
+// The report step has two bounds of its own.
 // `redundancy_max_tests` caps the tests it judges in one call.
 // `redundancy_budget_min` bounds, in minutes, its builds and tests once it holds its slot.
 // They are cross-pair keys, since every worktree of the hub reads the maps, and LoadConfig refuses a value below 1.

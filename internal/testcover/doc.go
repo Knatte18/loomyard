@@ -27,6 +27,24 @@
 // Its in-process coverage cannot see that code.
 // The keep scan reads each `//testtiming:keep <reason>` directive, which a caller reports and never judges by.
 //
+// The mutation check confirms a contained test by the mutants it kills, since running a block is not checking it.
+// ProfileBlocks reads the block table of a package's coverage binary from a run of no test.
+// PlanMutants places those blocks in the package's own files.
+// A mutant changes one site of a target block by one operator.
+// One operator negates an if or for condition or a comparison, or drops a call, assignment or increment statement.
+// Another operator changes an integer, rune or string constant.
+// MutantPlan.WriteOverlay writes every mutant into one copy of the changed files and an overlay naming them.
+// Each mutant sits behind a helper that changes its value only while MutantEnv names the mutant's ID.
+// No line moves, so a compiler error names the mutant's own line.
+// BuildMutantBinary builds the package's test binary with the overlay;
+// a refused build is a MutantBuildError, and UnbuildableMutants names the mutants on its lines for the caller to drop.
+// RunAlone with no profile runs a test of that binary.
+// JudgeMutants calls a candidate redundant when it kills a mutant and a covering test kills each one it kills;
+// a candidate that kills a mutant no covering test kills is refuted.
+// One that does not pass unmutated, holds no mutant in its blocks or kills none is not judged.
+// Its greedy pass, slowest first, removes a candidate only while a test it keeps kills each mutant the candidate killed.
+// ScanSourceReaders marks the tests that reach the module's scan kit, whose check reads source files no mutant changes.
+//
 // A block's key is its content: its file, its enclosing function, a hash of its source text and its ordinal.
 // The ordinal counts blocks equal in the first three parts.
 // An unchanged block keeps its key when lines above it move; an edited block gets a new one.

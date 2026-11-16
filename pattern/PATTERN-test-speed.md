@@ -217,11 +217,12 @@ so every run takes its slots, its timeout and its log.
 
 - Tests run only through `lym gate test` over `gate.yaml`'s tiers.
   Two things run outside it: a card `**Verify:**` line and `cmd/testtiming`'s runs in every mode.
-- Two coverage runs take a tier's `env` and a gate slot as a tier run does:
-  `lym gate testmap`, which rebuilds the per-package coverage maps at the HEAD of the worktree it runs in,
-  into the hub's shared maps from the prime and into the worktree's anchor `.lym` elsewhere,
-  and the `redundancy` report step a gate key's `reports` lists, which runs after the key's tiers released their slots.
-  Each runs every test alone under a coverage binary, since coverage counters are process-wide.
+- Three redundancy runs take a tier's `env` and a gate slot as a tier run does.
+  `lym gate testmap` rebuilds the per-package coverage maps at the HEAD of the worktree it runs in,
+  into the hub's shared maps from the prime and into the worktree's anchor `.lym` elsewhere.
+  The `redundancy` report step a gate key's `reports` lists runs after the key's tiers released their slots.
+  Both run every test alone under a coverage binary, since coverage counters are process-wide.
+  `lym gate redundant` runs each test alone under a binary holding the mutants of its package, one mutant on per run.
 - A card `**Verify:**` line runs through the shared `internal/cardverify` runner,
   and `cmd/testtiming` measures outside the gate because its modes measure what a tier run hides.
 - A site or stencil names a gate key, never a tier list, scope form, test command or target list.
@@ -295,9 +296,15 @@ this section keeps only what is project-specific or stricter here.
   and a miss rebuilds the package whole.
   A failed build keeps the map's entries and is not retried at the same HEAD.
   A self-check re-measures a kept entry a fresh build cannot place, and an audit round re-measures the oldest entries.
-- `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict.
-  It lists the candidates with their seconds and covering tests, the keep-marked tests and the tests not judged.
-  It runs no test, so its candidates are evidence exactly as the report's are.
+- `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict,
+  then confirms each candidate by mutation inside a gate slot.
+  It mutates the candidates' blocks and keeps a candidate only when its covering tests kill every mutant it kills;
+  one that kills a mutant they miss is listed as refuted, with those mutants.
+  A `//lym:guard` test and one reaching `internal/testkit/scankit` are never candidates:
+  their check reads source files, which no mutant changes.
+  It lists the candidates with their seconds, covering tests and kills, and the refuted, keep-marked and unjudged tests.
+  Bound: a mutant changes the package's own code only,
+  so a candidate whose check differs from its covers only in another package's result is confirmed falsely.
 - A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
   It takes the diff's new and changed top-level tests against the merge base with the parent branch,
   leaving out tier2 and tier3 tests, tests marked `//testtiming:keep` and tests that may run module code in another process.
