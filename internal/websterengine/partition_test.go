@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -229,7 +230,7 @@ func TestExecutionBatches_Refusals(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := websterengine.ExecutionBatches(tc.plan, &websterengine.State{Partition: tc.partition}, sizeBatcher{}, linesSizes(10), batcher.StartBase{})
+			_, err := websterengine.ExecutionBatches(tc.plan, &websterengine.State{State: runplan.State{Partition: tc.partition}}, sizeBatcher{}, linesSizes(10), batcher.StartBase{})
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("ExecutionBatches() error = %v; want errors.Is(err, %v)", err, tc.wantErr)
 			}

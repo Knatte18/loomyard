@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -44,13 +45,12 @@ func TestState_RoundTrip(t *testing.T) {
 	websterDir, scratchDir := scratchSibling(t)
 	want := &websterengine.State{
 		RunGUID:         "run-1",
-		PlanFingerprint: "abc123",
 		CurrentBatch:    2,
 		MasterStrand:    "master-strand-1",
 		MasterSessionID: "session-1",
 		MasterEngine:    "claude",
 		PreFixHead:      "cafef00d",
-		Batches: map[int]*websterengine.BatchState{
+		State: runplan.State{PlanFingerprint: "abc123", Batches: map[int]*websterengine.BatchState{
 			1: {
 				Slug:      "first",
 				StartSHA:  "deadbeef",
@@ -84,7 +84,7 @@ func TestState_RoundTrip(t *testing.T) {
 				RecoverySessions: []string{"r1", "r2"},
 				RecoveryEngines:  map[string]string{"r1": "claude", "r2": "fake"},
 			},
-		},
+		}},
 		SeenForkTranscripts: []string{"subagents/abc.jsonl"},
 		AuditDispositions:   map[string]string{"i": "warned"},
 		AuditWarnings:       []websterengine.AuditWarning{{Identity: "r", Class: "c", Detail: "d"}},

@@ -8,6 +8,8 @@ package websterengine
 import (
 	"fmt"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/runplan"
 )
 
 // ClassifyInputs carries every signal that decides a batch's classification.
@@ -33,7 +35,7 @@ func Classify(in ClassifyInputs) (Digest, bool) {
 	batch := fmt.Sprintf("%02d-%s", in.BatchNumber, in.BatchSlug)
 
 	if in.Report != nil {
-		d := distill(in.Report)
+		d := runplan.Distill(in.Report)
 		d.Batch = batch
 		return d, true
 	}

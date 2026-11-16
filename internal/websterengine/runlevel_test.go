@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -205,7 +206,7 @@ func deadEndRefusalCase(name string, bs *websterengine.BatchState, want string) 
 		name:  name,
 		cards: 1,
 		setup: func(t *testing.T, fx *runFixture) func() {
-			seedMatchingState(t, fx, &websterengine.State{Batches: map[int]*websterengine.BatchState{1: bs}})
+			seedMatchingState(t, fx, &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{1: bs}}})
 			return func() {
 				st := loadRunState(t, fx)
 				st.Batches[1].Recoveries, st.Batches[1].RecoveryStartSHA = 0, ""
@@ -440,7 +441,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			cards: 2,
 			fresh: true,
 			setup: func(t *testing.T, fx *runFixture) func() {
-				st := &websterengine.State{PlanFingerprint: "stale-fingerprint", Batches: map[int]*websterengine.BatchState{}}
+				st := &websterengine.State{State: runplan.State{PlanFingerprint: "stale-fingerprint", Batches: map[int]*websterengine.BatchState{}}}
 				if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
 					t.Fatalf("seed stale state: %v", err)
 				}
@@ -522,7 +523,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			name:  "a stale fingerprint without --fresh",
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) func() {
-				st := &websterengine.State{PlanFingerprint: "stale-fingerprint", Batches: map[int]*websterengine.BatchState{}}
+				st := &websterengine.State{State: runplan.State{PlanFingerprint: "stale-fingerprint", Batches: map[int]*websterengine.BatchState{}}}
 				if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
 					t.Fatalf("seed stale state: %v", err)
 				}
@@ -539,7 +540,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			name:  "a dead recovery whose start commit cannot be read is no dead end",
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) func() {
-				seedMatchingState(t, fx, &websterengine.State{Batches: map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1, RecoveryStartSHA: "unknown-sha"}}})
+				seedMatchingState(t, fx, &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1, RecoveryStartSHA: "unknown-sha"}}}})
 				return nil
 			},
 			msgContains: []string{"unknown commit"},
@@ -707,7 +708,7 @@ func TestRun_DeadEndRefusalSparesRecoverableBatches(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newRunFixture(t, 1)
-			seedMatchingState(t, fx, &websterengine.State{Batches: map[int]*websterengine.BatchState{1: tt.bs}})
+			seedMatchingState(t, fx, &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{1: tt.bs}}})
 			diedMaster(t, fx, "spared")
 
 			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
@@ -749,7 +750,7 @@ func TestRun_AutoRebaseline(t *testing.T) {
 		if shape != nil {
 			shape(bs)
 		}
-		seedMatchingState(t, fx, &websterengine.State{Batches: map[int]*websterengine.BatchState{1: bs}})
+		seedMatchingState(t, fx, &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{1: bs}}})
 		return fx
 	}
 	// addCards rewrites the plan to total cards: cards 2 to total are follow-up cards, each with its Card Index line.
@@ -1202,7 +1203,7 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 				writeWorktreeFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n")
 				seedMatchingState(t, fx, &websterengine.State{
 					RunGUID: "resume-run",
-					Batches: map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"}},
+					State:   runplan.State{Batches: map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"}}},
 				})
 			},
 		},
@@ -1214,7 +1215,7 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 				writeWorktreeFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n")
 				seedMatchingState(t, fx, &websterengine.State{
 					RunGUID: "resume-run",
-					Batches: map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "fork", StartSHA: startSHA}},
+					State:   runplan.State{Batches: map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "fork", StartSHA: startSHA}}},
 				})
 			},
 		},
@@ -1227,7 +1228,7 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 				addCardUses(t, fx.PlanDir, 2, "internal/batch1/new.go")
 				seedMatchingState(t, fx, &websterengine.State{
 					RunGUID: "resume-run",
-					Batches: map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "fork", StartSHA: startSHA}},
+					State:   runplan.State{Batches: map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "fork", StartSHA: startSHA}}},
 				})
 			},
 		},
@@ -1301,7 +1302,7 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 			name:  "--fresh archives the stale state and reports and clears the prompts",
 			fresh: true,
 			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
-				staleState := &websterengine.State{PlanFingerprint: "stale", Batches: map[int]*websterengine.BatchState{}}
+				staleState := &websterengine.State{State: runplan.State{PlanFingerprint: "stale", Batches: map[int]*websterengine.BatchState{}}}
 				if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, staleState); err != nil {
 					t.Fatalf("seed stale state: %v", err)
 				}
@@ -1407,10 +1408,10 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
 				seedMatchingState(t, fx, &websterengine.State{
 					MasterStrand: "prior-master-strand",
-					Batches: map[int]*websterengine.BatchState{
+					State: runplan.State{Batches: map[int]*websterengine.BatchState{
 						1: {Slug: "batch1", Kind: "recovery", Terminal: false, StrandGUID: "prior-recovery-strand"},
 						2: {Slug: "batch2", Kind: "recovery", Terminal: true, StrandGUID: "terminal-recovery-strand"},
-					},
+					}},
 					VerifyFixers: []*websterengine.VerifyFixerState{
 						{StrandGUID: "terminal-fixer-strand", Status: websterengine.DigestStatusDone},
 						{StrandGUID: "prior-fixer-strand"},
@@ -1841,7 +1842,7 @@ func TestRun_MasterEndedEarly(t *testing.T) {
 			)
 			fx := newRunFixture(t, 1)
 			seedMatchingState(t, fx, &websterengine.State{
-				Batches: map[int]*websterengine.BatchState{1: doneBatch("batch1", session)},
+				State: runplan.State{Batches: map[int]*websterengine.BatchState{1: doneBatch("batch1", session)}},
 			})
 			fx.Starter.handle = &runFakeHandle{
 				strandGUID: strand,
@@ -1889,9 +1890,9 @@ func TestRun_DoneOutcome(t *testing.T) {
 			name:    "a passing verify gate is carried on the done result",
 			cards:   1,
 			session: "master-session-gate-pass",
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-			}},
+			}}},
 			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(1)} },
 			batchesDone: 1,
 			gate:        passingGate,
@@ -1905,9 +1906,9 @@ func TestRun_DoneOutcome(t *testing.T) {
 			name:    "a failing verify gate demotes to stuck and is still carried",
 			cards:   1,
 			session: "master-session-gate-fail",
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-			}},
+			}}},
 			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(1)} },
 			batchesDone: 1,
 			gate:        failingGate,
@@ -1922,9 +1923,9 @@ func TestRun_DoneOutcome(t *testing.T) {
 			name:    "a stuck outcome reads stuck with its reason and is never reported as a question",
 			cards:   1,
 			session: "master-session-stuck",
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-			}},
+			}}},
 			audit:   func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(1)} },
 			outcome: "outcome: stuck\nstuck_reason: \"batch 2 red after a recovery\"\nbatches_done: 1\n",
 			summary: "# Stopped on batch 2\n\nBatch 2 stayed red.\n",
@@ -1946,9 +1947,9 @@ func TestRun_DoneOutcome(t *testing.T) {
 			name:    "a valid summary and a clean audit populate the result",
 			cards:   1,
 			session: "master-session-done",
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-			}},
+			}}},
 			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(1)} },
 			batchesDone: 1,
 			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
@@ -1969,7 +1970,7 @@ func TestRun_DoneOutcome(t *testing.T) {
 			session: "master-session-spawn",
 			state: &websterengine.State{
 				AuditDispositions: map[string]string{"master-session-spawn/parent:named-spawn:1": "warned"},
-				Batches: map[int]*websterengine.BatchState{
+				State: runplan.State{Batches: map[int]*websterengine.BatchState{
 					1: doneBatch("batch1", "master-session-spawn"),
 					2: func() *websterengine.BatchState {
 						batch := doneBatch("batch2", "master-session-spawn")
@@ -1977,7 +1978,7 @@ func TestRun_DoneOutcome(t *testing.T) {
 						return batch
 					}(),
 					3: doneBatch("batch3", "master-session-spawn"),
-				},
+				}},
 			},
 			audit: func(*runFixture) shuttleengine.ForkAudit {
 				return shuttleengine.ForkAudit{NamedSpawns: 1, Forks: forkReports(3)}
@@ -2008,9 +2009,9 @@ func TestRun_DoneOutcome(t *testing.T) {
 			cards:   1,
 			session: "master-session-nested",
 			prepare: func(t *testing.T, fx *runFixture) { appendIntegrationVerify(t, fx.PlanDir, "true") },
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-nested", CardSHAs: []string{"deadbeef"}},
-			}},
+			}}},
 			audit: func(*runFixture) shuttleengine.ForkAudit {
 				forks := forkReports(1)
 				forks = append(forks, shuttleengine.ForkReport{TranscriptPath: "/transcripts/fixer.jsonl", ReportReturned: true, AgentCalls: 1})
@@ -2040,9 +2041,9 @@ func TestRun_DoneOutcome(t *testing.T) {
 			cards:   1,
 			session: "master-session-statewrite",
 			prepare: func(t *testing.T, fx *runFixture) { appendIntegrationVerify(t, fx.PlanDir, "true") },
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-statewrite", CardSHAs: []string{"deadbeef"}, ForkTranscripts: []string{"/transcripts/fork1.jsonl"}},
-			}},
+			}}},
 			audit: func(fx *runFixture) shuttleengine.ForkAudit {
 				forks := forkReports(2)
 				forks[0].WritePaths = []string{filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")}
@@ -2065,9 +2066,9 @@ func TestRun_DoneOutcome(t *testing.T) {
 			cards:   1,
 			session: "master-session-statewrite",
 			prepare: func(t *testing.T, fx *runFixture) { appendIntegrationVerify(t, fx.PlanDir, "true") },
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-statewrite", CardSHAs: []string{"deadbeef"}, ForkTranscripts: []string{"/transcripts/fork1.jsonl"}},
-			}},
+			}}},
 			audit: func(fx *runFixture) shuttleengine.ForkAudit {
 				forks := forkReports(2)
 				forks[0].WritePaths = []string{filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "batch1"))}
@@ -2086,9 +2087,9 @@ func TestRun_DoneOutcome(t *testing.T) {
 			name:    "the fixer fork writing the plan directory is flagged",
 			cards:   1,
 			session: "master-session-fixer",
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-fixer", CardSHAs: []string{"deadbeef"}, ForkTranscripts: []string{"/transcripts/fork1.jsonl"}},
-			}},
+			}}},
 			audit: func(fx *runFixture) shuttleengine.ForkAudit {
 				forks := forkReports(2)
 				forks[1].TranscriptPath = "/transcripts/fixer.jsonl"
@@ -2115,9 +2116,9 @@ func TestRun_DoneOutcome(t *testing.T) {
 				appendIntegrationVerify(t, fx.PlanDir, "true")
 			},
 			session: "master-session-fabric",
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-fabric", CardSHAs: []string{"deadbeef"}},
-			}},
+			}}},
 			audit: func(fx *runFixture) shuttleengine.ForkAudit {
 				forks := forkReports(2)
 				forks[1].TranscriptPath = "/transcripts/fixer.jsonl"
@@ -2142,9 +2143,9 @@ func TestRun_DoneOutcome(t *testing.T) {
 			name:    "the fixer prompt names the gate report and no integration prompt is rendered",
 			cards:   1,
 			session: "master-session-fixprompt",
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-fixprompt", CardSHAs: []string{"deadbeef"}},
-			}},
+			}}},
 			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(1)} },
 			batchesDone: 1,
 			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
@@ -2195,9 +2196,9 @@ var endedSleepShell = shuttleengine.EndedShell{Label: "sleep 9999", ID: "sh-1", 
 func expiredShellRun(t *testing.T, fx *runFixture, shells []shuttleengine.EndedShell, outcomeYAML string) websterengine.RunResult {
 	t.Helper()
 	seedMatchingState(t, fx, &websterengine.State{
-		Batches: map[int]*websterengine.BatchState{
+		State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-		},
+		}},
 	})
 	fx.Starter.handle = &runFakeHandle{
 		strandGUID: "master-strand-shells",
@@ -2292,7 +2293,7 @@ func TestRun_ExpiredShells(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		fx.Deps.FrictionDir = t.TempDir()
 		seedMatchingState(t, fx, &websterengine.State{
-			Batches: map[int]*websterengine.BatchState{1: doneBatch("batch1", session)},
+			State: runplan.State{Batches: map[int]*websterengine.BatchState{1: doneBatch("batch1", session)}},
 		})
 		fx.Starter.handle = &runFakeHandle{
 			strandGUID: strand,
@@ -2365,10 +2366,10 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	t.Parallel()
 	fx := newRunFixture(t, 1)
 	seedMatchingState(t, fx, &websterengine.State{
-		Batches: map[int]*websterengine.BatchState{
+		State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-violation",
 				Digest: &websterengine.Digest{Status: "done", HeadSHA: fx.Git.head}},
-		},
+		}},
 	})
 	tracked := filepath.Join(fx.Worktree, "base.txt")
 	forks := forkReports(1)
@@ -2696,7 +2697,7 @@ func TestRun_RunExitRefusals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newRunFixture(t, tt.cards)
-			seedMatchingState(t, fx, &websterengine.State{Batches: tt.state})
+			seedMatchingState(t, fx, &websterengine.State{State: runplan.State{Batches: tt.state}})
 			fx.Starter.handle = &runFakeHandle{
 				strandGUID: strand,
 				result: shuttleengine.Result{
@@ -2763,10 +2764,10 @@ func TestRun_FreshRunOverNewGenerationAfterArchive(t *testing.T) {
 	geom := fx.Deps.Geom
 
 	seedMatchingState(t, fx, &websterengine.State{
-		Batches: map[int]*websterengine.BatchState{
+		State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
 			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done"},
-		},
+		}},
 	})
 	outcomePath := filepath.Join(geom.WebsterDir, "outcome.yaml")
 	if err := os.WriteFile(outcomePath, []byte("outcome: done\nstuck_reason: null\nbatches_done: 2\n"), 0o644); err != nil {
@@ -2827,9 +2828,9 @@ func seedFreshPendingState(t *testing.T, fx *runFixture, paths ...string) string
 	start := fx.Git.head
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "stale-run",
-		Batches: map[int]*websterengine.BatchState{
+		State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", StartSHA: start},
-		},
+		}},
 		PendingAuditFindings: []websterengine.PendingAuditFinding{{ID: "sess/parent:write:1", Class: "parent-write", Detail: "master wrote a tracked file", Paths: paths}},
 	})
 	return start
@@ -2842,13 +2843,13 @@ func seedUncheckableState(t *testing.T, fx *runFixture) string {
 	start := fx.Git.head
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "stale-run",
-		Batches: map[int]*websterengine.BatchState{
+		State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {
 				Slug: "batch1", Kind: "fork", StartSHA: start, Terminal: true, Status: websterengine.DigestStatusFailed,
 				Digest:      &websterengine.Digest{Batch: "01-batch1", Status: websterengine.DigestStatusFailed, HeadSHA: start},
 				Uncheckable: []string{"fabric-reference: cat FABRICREF/webster/state.json"},
 			},
-		},
+		}},
 	})
 	return start
 }
@@ -3087,13 +3088,13 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		right := fx.Git.commit()
 		seedMatchingState(t, fx, &websterengine.State{
 			RunGUID: "stale-run",
-			Batches: map[int]*websterengine.BatchState{
+			State: runplan.State{Batches: map[int]*websterengine.BatchState{
 				1: {
 					Slug: "batch1", Kind: "fork", StartSHA: left, Terminal: true, Status: websterengine.DigestStatusFailed,
 					Uncheckable: []string{"fabric-reference: cat FABRICREF/webster/state.json"},
 				},
 				2: {Slug: "batch2", Kind: "fork", StartSHA: right},
-			},
+			}},
 		})
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})

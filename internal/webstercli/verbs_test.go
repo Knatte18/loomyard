@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -1570,7 +1571,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 	t.Run("rebaseline with a bad profile leaves state untouched", func(t *testing.T) {
 		seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), "fork_messages: 4", "fork_messages: -1", 1))
 		geom := hubgeom.WebsterGeometry(h.Location)
-		st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
+		st := &websterengine.State{State: runplan.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}}
 		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st); err != nil {
 			t.Fatalf("SaveState() error = %v", err)
 		}
@@ -1600,7 +1601,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 
 	t.Run("config load refusals carry config_invalid only for broken content", func(t *testing.T) {
 		geom := hubgeom.WebsterGeometry(h.Location)
-		st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
+		st := &websterengine.State{State: runplan.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}}
 		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st); err != nil {
 			t.Fatalf("SaveState() error = %v", err)
 		}
@@ -1795,7 +1796,7 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "")
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := hubgeom.WebsterGeometry(h.Location)
-	st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
+	st := &websterengine.State{State: runplan.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}}
 	if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}

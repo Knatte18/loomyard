@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 )
 
 // ErrAutoRebaseline is the sentinel every error of an auto-rebaseline wraps.
@@ -41,13 +42,13 @@ func autoRebaseline(deps RunDeps, plan *planparser.Plan, st *State, sizes batche
 		return fmt.Errorf("%w: %w; way forward: transient, %s", ErrAutoRebaseline, err, step)
 	}
 
-	changed, err := changedPlanFiles(st, deps.Geom.PlanDir)
+	changed, err := runplan.ChangedPlanFiles(&st.State, deps.Geom.PlanDir)
 	if err != nil {
 		return "", transient(err)
 	}
 	var cards []int
 	for _, name := range changed {
-		if number, err := strconv.Atoi(cardNumberOf(name)); err == nil && name != planOverviewFile {
+		if number, err := strconv.Atoi(cardNumberOf(name)); err == nil && name != runplan.PlanOverviewFile {
 			cards = append(cards, number)
 		}
 	}

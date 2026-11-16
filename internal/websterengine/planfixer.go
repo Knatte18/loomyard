@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -109,7 +110,7 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 	}
 	fixersForBatch := 0
 	for _, earlier := range st.PlanFixers {
-		if sameFindingSet(earlier.Findings, record.Findings) {
+		if runplan.SameFindingSet(earlier.Findings, record.Findings) {
 			return nil, false, fmt.Errorf("webster: a plan fixer was already given these plan-conflict findings and did not clear them; %s", planFixRefusalWayForward)
 		}
 		if earlier.Batch == record.Batch {

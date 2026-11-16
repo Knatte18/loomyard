@@ -16,17 +16,8 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/runplan"
 )
-
-// AuditWarning is one recorded warning: the finding's identity, its class, and the detail line.
-type AuditWarning struct {
-	// Identity is the finding's ledger identity (findingIdentity).
-	Identity string `json:"identity"`
-	// Class is the finding's class name.
-	Class string `json:"class"`
-	// Detail is the human-readable detail.
-	Detail string `json:"detail"`
-}
 
 // The disposition values State.AuditDispositions records.
 const (
@@ -123,12 +114,12 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 			}
 		}
 	}
-	bases, err := runEvidenceBases(geom, st)
+	bases, err := runplan.RunEvidenceBases(geom.runPlan(), &st.State)
 	if err != nil {
 		return nil, false, err
 	}
 	if len(bases.Missing) > 0 {
-		return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, missingCommitsClause(bases.Missing))
+		return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, runplan.MissingCommitsClause(bases.Missing))
 	}
 	head := bases.Last
 	if head != "" {
@@ -147,7 +138,7 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 	if err != nil {
 		return nil, false, err
 	}
-	differing, unverifiable, err := checkSuspectPaths(geom, st, head, contracts.Rest)
+	differing, unverifiable, err := runplan.CheckSuspectPaths(geom.runPlan(), &st.State, head, contracts.Rest)
 	if err != nil {
 		return nil, false, err
 	}
@@ -159,7 +150,7 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 	if len(contracts.Uncleared) > 0 {
 		parts = append(parts, contractDeleteClause(contracts.Uncleared, "lym webster accept-audit"))
 	}
-	planDiffering, gitDiffering, err := splitPlanPaths(geom, differing)
+	planDiffering, gitDiffering, err := runplan.SplitPlanPaths(geom.runPlan(), differing)
 	if err != nil {
 		return nil, false, err
 	}
@@ -309,7 +300,7 @@ func runOwnPath(geom Geometry, rel string) bool {
 		if dir == "" {
 			continue
 		}
-		if pathWithin(dir, p) || pathWithin(p, dir) {
+		if runplan.PathWithin(dir, p) || runplan.PathWithin(p, dir) {
 			return true
 		}
 	}
@@ -357,7 +348,7 @@ func auditWarningText(w AuditWarning) string {
 func RecordedAuditWarnings(st *State, batches []batcher.Batch) []string {
 	var out []string
 	for _, b := range batches {
-		number, _ := batchIdentity(b)
+		number, _ := runplan.BatchIdentity(b)
 		bs := st.Batches[number]
 		if bs == nil {
 			continue

@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -349,7 +350,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 			if err != nil {
 				return shuttleengine.GateResult{}, err
 			}
-			report.Hint, err = cardHint(s.modulePath(), report.Failures, shas, labels, s.changedPaths)
+			report.Hint, err = runplan.CardHint(s.modulePath(), report.Failures, shas, labels, s.changedPaths)
 			if err != nil {
 				return shuttleengine.GateResult{}, err
 			}
@@ -385,16 +386,16 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
-		return fail(VerifyGateReport{TimedOut: res.Detail, LogPath: res.Log, LogTail: logTail(output)})
+		return fail(VerifyGateReport{TimedOut: res.Detail, LogPath: res.Log, LogTail: runplan.LogTail(output)})
 	}
 
 	// failHung fails the gate for res, a failed verify whose output classifyHang read as a hang.
 	// A hang is not flakiness, so it is never rerun.
 	failHung := func(res verifytree.Result, output string, hang verifyHang) (shuttleengine.GateResult, error) {
 		return fail(VerifyGateReport{
-			Failures:       parseVerifyFailures(output, false),
+			Failures:       runplan.ParseVerifyRun(output, false),
 			LogPath:        res.Log,
-			LogTail:        logTail(output),
+			LogTail:        runplan.LogTail(output),
 			Hang:           hang.Matched,
 			HangStacks:     hang.Stacks,
 			WatchdogWindow: hang.Window,
@@ -477,7 +478,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if hang, hung := classifyHang(res, firstOutput); hung {
 			return failHung(res, firstOutput, hang)
 		}
-		first := parseVerifyFailures(firstOutput, false)
+		first := runplan.ParseVerifyRun(firstOutput, false)
 		res, err = s.verify(site, command)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: verify gate: %w", err)
@@ -503,11 +504,11 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if hang, hung := classifyHang(res, rerunOutput); hung {
 			return failHung(res, rerunOutput, hang)
 		}
-		report := VerifyGateReport{Failures: parseVerifyFailures(rerunOutput, false), LogPath: res.Log, ExitCode: res.ExitCode}
+		report := VerifyGateReport{Failures: runplan.ParseVerifyRun(rerunOutput, false), LogPath: res.Log, ExitCode: res.ExitCode}
 		if len(report.Failures) == 1 && report.Failures[0].Kind == FailureKindOpaque {
 			// A failure that names no test, such as a build error or the gate tool's own error, is shown by its output alone.
 			report.Failures = nil
-			report.LogTail = logTail(rerunOutput)
+			report.LogTail = runplan.LogTail(rerunOutput)
 		}
 		return fail(report)
 	}

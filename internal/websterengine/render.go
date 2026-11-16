@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -105,14 +106,9 @@ const noPrecedingBatchDigest = "none (first batch)"
 func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 	bullets := make([]string, 0, len(cards))
 	for _, c := range cards {
-		bullets = append(bullets, fmt.Sprintf("- `%s`", cardPointerPath(c, planDirDisplay)))
+		bullets = append(bullets, fmt.Sprintf("- `%s`", runplan.CardPointerPath(c, planDirDisplay)))
 	}
 	return strings.Join(bullets, "\n")
-}
-
-// cardPointerPath returns c's card file path re-rooted onto planDirDisplay: the path its pointer bullet and its card gate bullet both spell.
-func cardPointerPath(c planparser.Card, planDirDisplay string) string {
-	return planDirDisplay + "/" + filepath.Base(c.SourcePath)
 }
 
 // RenderForkPrompt fills the composed fork template for one execution batch's in-session fork, read from stencilsDir.
@@ -505,7 +501,7 @@ func renderParentDecisions(decisions []string) string {
 // The lines keep the slice's order, which the caller sequences and which is the execution order.
 // The number on each line is the batch's identity, which the verbs key on, not its position in the list.
 // Each line reads "%02d — %s — %s":
-// the number and slug from batchIdentity(b), then the Summary of every card in the batch joined with "; ".
+// the number and slug from runplan.BatchIdentity(b), then the Summary of every card in the batch joined with "; ".
 // A batch with no cards is skipped rather than emitting a "00 —" line.
 func RenderBatchIndex(batches []batcher.Batch) string {
 	lines := make([]string, 0, len(batches))
@@ -513,7 +509,7 @@ func RenderBatchIndex(batches []batcher.Batch) string {
 		if len(b.Cards) == 0 {
 			continue
 		}
-		number, slug := batchIdentity(b)
+		number, slug := runplan.BatchIdentity(b)
 		summaries := make([]string, len(b.Cards))
 		for i, c := range b.Cards {
 			summaries[i] = c.Summary
@@ -538,7 +534,7 @@ func RenderProgress(batches []batcher.Batch, st *State) string {
 
 	var lines []string
 	for _, b := range batches {
-		number, slug := batchIdentity(b)
+		number, slug := runplan.BatchIdentity(b)
 		// The nil-value check is not redundant with ok: a state.json carrying an explicit null for a
 		// batch key parses to a present-but-nil entry.
 		// Every other reader of this map already guards it.
@@ -572,7 +568,7 @@ func RenderProgress(batches []batcher.Batch, st *State) string {
 func RenderRemaining(batches []batcher.Batch, st *State) string {
 	var names []string
 	for _, b := range batches {
-		number, slug := batchIdentity(b)
+		number, slug := runplan.BatchIdentity(b)
 		if len(b.Cards) == 0 {
 			continue
 		}

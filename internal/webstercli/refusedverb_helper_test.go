@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -101,11 +102,13 @@ func testPlanFingerprint(t *testing.T, planDir string) string {
 func seedRunState(t *testing.T, c *websterCLI) *websterengine.State {
 	t.Helper()
 	st := &websterengine.State{
-		RunGUID:         "guid-1",
-		PlanFingerprint: testPlanFingerprint(t, c.geom.PlanDir),
+		RunGUID: "guid-1",
+		State: runplan.State{
+			PlanFingerprint: testPlanFingerprint(t, c.geom.PlanDir),
+			Batches:         map[int]*websterengine.BatchState{},
+		},
 		MasterStrand:    "master-strand-1",
 		MasterSessionID: "master-session-1",
-		Batches:         map[int]*websterengine.BatchState{},
 	}
 	if err := websterengine.RestampPlanBaseline(st, c.geom.PlanDir, c.geom.WebsterDir); err != nil {
 		t.Fatalf("RestampPlanBaseline() error = %v", err)

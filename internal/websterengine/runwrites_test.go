@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -29,10 +30,10 @@ func TestLoadRunWrites(t *testing.T) {
 
 		st := &State{
 			MasterSessionID: "s1",
-			Batches: map[int]*BatchState{
+			State: runplan.State{Batches: map[int]*BatchState{
 				1: {SessionID: "s1"},
 				2: {SessionID: "s2"},
-			},
+			}},
 		}
 		var audited []string
 		engine := &shuttlefake.Engine{AuditForksFn: func(session, _ string) (shuttleengine.ForkAudit, error) {
@@ -68,10 +69,10 @@ func TestLoadRunWrites(t *testing.T) {
 
 		st := &State{
 			MasterSessionID: "s1",
-			Batches: map[int]*BatchState{
+			State: runplan.State{Batches: map[int]*BatchState{
 				1: {SessionID: "s1", RecoverySessions: []string{"r1", "r2"}},
 				2: {SessionID: "s2", RecoverySessions: []string{"r2", "s1"}},
-			},
+			}},
 			VerifyFixers: []*VerifyFixerState{{SessionID: "v1"}, {SessionID: "r1"}},
 			PlanFixers:   []*PlanFixerState{{SessionID: "p1"}},
 		}
@@ -106,11 +107,11 @@ func TestLoadRunWrites(t *testing.T) {
 
 		st := &State{
 			MasterSessionID: "s1",
-			Batches: map[int]*BatchState{
+			State: runplan.State{Batches: map[int]*BatchState{
 				1: {SessionID: "s1"},
 				2: {SessionID: "s1"},
 				3: {},
-			},
+			}},
 		}
 		calls := 0
 		engine := &shuttlefake.Engine{AuditForksFn: func(string, string) (shuttleengine.ForkAudit, error) {
@@ -192,12 +193,12 @@ func TestLoadRunWrites(t *testing.T) {
 		st := &State{
 			MasterSessionID: "m",
 			MasterEngine:    "a",
-			Batches: map[int]*BatchState{
+			State: runplan.State{Batches: map[int]*BatchState{
 				// The Master session recorded again under another engine is audited once, through its first sighting.
 				1: {SessionID: "m", Engine: "b"},
 				2: {SessionID: "f", Engine: "b", RecoverySessions: []string{"r1", "r2"}, RecoveryEngines: map[string]string{"r1": "a", "r2": "b"}},
 				3: {SessionID: "legacy"},
-			},
+			}},
 		}
 
 		got, err := loadRunWrites(engines, st, "/wt")

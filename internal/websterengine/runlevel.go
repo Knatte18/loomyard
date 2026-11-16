@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -408,7 +409,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	var overview []byte
 	plan, err := planparser.ParsePlanFrom(deps.Geom.PlanDir, func(name string) ([]byte, error) {
 		data, err := os.ReadFile(filepath.Join(deps.Geom.PlanDir, name))
-		if name == planOverviewFile {
+		if name == runplan.PlanOverviewFile {
 			overview = data
 		}
 		return data, err
@@ -442,15 +443,15 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 			return RunResult{}, fmt.Errorf("webster: RunDeps.Gate already names an entry %q; Run adds the plan-level verify gate itself; way forward: drop the %q entry from the Webster row's gates", verifyGateName, verifyGateName)
 		}
 	}
-	fingerprint, err := fingerprint(deps.Geom.PlanDir)
+	fingerprint, err := runplan.Fingerprint(deps.Geom.PlanDir)
 	if err != nil {
 		return RunResult{}, err
 	}
-	fileHashes, err := planFileHashes(deps.Geom.PlanDir)
+	fileHashes, err := runplan.PlanFileHashes(deps.Geom.PlanDir)
 	if err != nil {
 		return RunResult{}, err
 	}
-	frameHash, err := overviewFrameHashOf(overview)
+	frameHash, err := runplan.OverviewFrameHashOf(overview)
 	if err != nil {
 		panic(fmt.Sprintf("websterengine: the overview planparser.ParsePlanFrom accepted has no frame: %v", err))
 	}
@@ -541,14 +542,16 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 			return RunResult{}, err
 		}
 		st = &State{
-			RunGUID:               guid,
-			PlanFingerprint:       fingerprint,
-			PlanFileHashes:        fileHashes,
-			PlanOverviewFrameHash: frameHash,
-			Batches:               map[int]*BatchState{},
+			RunGUID: guid,
+			State: runplan.State{
+				PlanFingerprint:       fingerprint,
+				PlanFileHashes:        fileHashes,
+				PlanOverviewFrameHash: frameHash,
+				Batches:               map[int]*BatchState{},
+			},
 		}
 		RecordPartition(st, batches)
-		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
+		if err := runplan.StorePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
 			return RunResult{}, err
 		}
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
@@ -591,14 +594,16 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 			return RunResult{}, err
 		}
 		st = &State{
-			RunGUID:               guid,
-			PlanFingerprint:       fingerprint,
-			PlanFileHashes:        fileHashes,
-			PlanOverviewFrameHash: frameHash,
-			Batches:               map[int]*BatchState{},
+			RunGUID: guid,
+			State: runplan.State{
+				PlanFingerprint:       fingerprint,
+				PlanFileHashes:        fileHashes,
+				PlanOverviewFrameHash: frameHash,
+				Batches:               map[int]*BatchState{},
+			},
 		}
 		RecordPartition(st, batches)
-		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
+		if err := runplan.StorePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
 			return RunResult{}, err
 		}
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
@@ -977,15 +982,6 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 	}, nil
 }
 
-// batchIdentity returns the number and slug that identify b: a batch takes both from its first card.
-// So `begin-batch NN` names a batch by that card's number.
-func batchIdentity(b batcher.Batch) (number int, slug string) {
-	if len(b.Cards) == 0 {
-		return 0, ""
-	}
-	return b.Cards[0].Number, b.Cards[0].Slug
-}
-
 // zeroBatchesError is the refusal for a plan whose cards form no batch: nothing to build is a malformed plan.
 // A set step replaces the manual rebaseline and run verbs in the way forward, an empty one keeps them.
 func zeroBatchesError(planDir, step string) error {
@@ -1017,7 +1013,7 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 
 	var offenders []string
 	for _, b := range batches {
-		number, slug := batchIdentity(b)
+		number, slug := runplan.BatchIdentity(b)
 		bs, ok := st.Batches[number]
 		switch {
 		case !ok || bs == nil:
@@ -1183,7 +1179,7 @@ var ErrBatchDeadEnd = errors.New("webster: a batch of this run is at a dead end"
 // A git read that fails while judging a dead recovery returns a plain error naming a re-run, never a dead end.
 func deadEndBatchError(geom Geometry, st *State, batches []batcher.Batch, reentry string) error {
 	for _, b := range batches {
-		number, slug := batchIdentity(b)
+		number, slug := runplan.BatchIdentity(b)
 		bs := st.Batches[number]
 		if bs == nil || !bs.Terminal || bs.Status == DigestStatusDone {
 			continue
@@ -1278,7 +1274,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 		notes[u.Path] = noteWroteLast(u.Writer)
 		unclearedPaths = append(unclearedPaths, u.Path)
 	}
-	plan, rest, err := splitPlanPaths(geom, contracts.Rest)
+	plan, rest, err := runplan.SplitPlanPaths(geom.runPlan(), contracts.Rest)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1293,7 +1289,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 			unchecked = true
 		}
 	}
-	bases, err := runEvidenceBases(geom, st)
+	bases, err := runplan.RunEvidenceBases(geom.runPlan(), &st.State)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1307,7 +1303,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 		return []string{stepResetToStart, reentry}, notes, nil
 	}
 	if len(rest) > 0 {
-		differing, _, err := checkSuspectPaths(geom, st, bases.Last, rest)
+		differing, _, err := runplan.CheckSuspectPaths(geom.runPlan(), &st.State, bases.Last, rest)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1346,12 +1342,12 @@ func freshPendingDrop(engines AuditEngines, geom Geometry, st *State, opts RunOp
 	if !opts.Fresh || st == nil || !hasPendingFindings(st) {
 		return false, nil, nil
 	}
-	bases, err := runEvidenceBases(geom, st)
+	bases, err := runplan.RunEvidenceBases(geom.runPlan(), &st.State)
 	if err != nil {
 		return false, nil, err
 	}
 	if len(bases.Missing) > 0 {
-		return false, nil, fmt.Errorf("%w: %s", ErrPendingAuditFindings, missingCommitsClause(bases.Missing))
+		return false, nil, fmt.Errorf("%w: %s", ErrPendingAuditFindings, runplan.MissingCommitsClause(bases.Missing))
 	}
 	head, err := geom.git().HeadSHA(geom.WorktreeRoot)
 	if err != nil {
@@ -1423,7 +1419,7 @@ func appendRecordedAuditWarnings(deps RunDeps, batches []batcher.Batch, summaryP
 // the case should not arise once every batch is confirmed terminal-done, so it is handled rather than assumed.
 func accumulatedCardSHAs(batches []batcher.Batch, st *State) (shas, labels []string) {
 	for _, b := range batches {
-		number, slug := batchIdentity(b)
+		number, slug := runplan.BatchIdentity(b)
 		bs, ok := st.Batches[number]
 		if !ok || bs == nil {
 			continue

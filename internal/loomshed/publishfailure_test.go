@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -38,10 +39,10 @@ func TestWebsterRecordNote(t *testing.T) {
 		{
 			name: "begun batches, done cards and the follow-up rule",
 			write: func(t *testing.T, anchorPath string) {
-				st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+				st := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 					2: {Slug: "second", Cards: []string{"02-second", "03-third"}},
 					1: {Slug: "first", Cards: []string{"01-first"}, Terminal: true, Status: websterengine.DigestStatusDone},
-				}}
+				}}}
 				if err := websterengine.SaveState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath), st); err != nil {
 					t.Fatal(err)
 				}

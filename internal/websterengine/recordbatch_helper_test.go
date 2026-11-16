@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -134,9 +135,9 @@ func newRecordFixtureOver(t *testing.T, worktree string, git websterengine.Git, 
 	state := &websterengine.State{
 		MasterSessionID: "session-1",
 		CurrentBatch:    1,
-		Batches: map[int]*websterengine.BatchState{
+		State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "json-flag", StartSHA: startSHA, Kind: "fork", SessionID: "session-1"},
-		},
+		}},
 	}
 
 	// RecordBatch refuses a plan that differs from the recorded fingerprint, so the state records this one.

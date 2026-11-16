@@ -20,24 +20,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
-
-// ErrFingerprintMismatch is the sentinel BeginBatch returns when the on-disk plan's recomputed
-// fingerprint disagrees with State.PlanFingerprint.
-// It guards a crashed or resumed run against a plan edited since the run recorded its fingerprint.
-var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
-
-// planOverviewFile is the plan's overview file, which carries the integration verify.
-// rebaseline accepts a change to its Card Index only.
-const planOverviewFile = "00-overview.md"
 
 // fingerprintMismatchWayForward is the trailing clause BeginBatch and Run put on an ErrFingerprintMismatch wrap.
 // It reads the changed plan files, so the clause names the cards to pass to rebaseline.
 // A state without PlanFileHashes names rebaseline without card numbers.
-// A changedPlanFiles error falls back to the generic text.
+// A runplan.ChangedPlanFiles error falls back to the generic text.
 // An overview change confined to the Card Index names rebaseline with the changed and added cards,
 // and any other overview change names the follow-up card landing.
 // The reset route it names ends in reentry.
@@ -47,14 +38,14 @@ func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry strin
 	if len(st.PlanFileHashes) == 0 {
 		return "way forward: if the edit keeps every begun batch's cards, run `lym webster rebaseline` to accept it, " + restore + "otherwise " + fresh
 	}
-	changed, err := changedPlanFiles(st, planDir)
+	changed, err := runplan.ChangedPlanFiles(&st.State, planDir)
 	if err != nil {
 		return "way forward: if the edit keeps every begun batch's cards, run `lym webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 	}
 	var flags []string
 	indexChanged := false
 	for _, name := range changed {
-		if name == planOverviewFile {
+		if name == runplan.PlanOverviewFile {
 			recorded, _, _, err := recordedOverviewFrame(st, websterDir)
 			indexOnly := false
 			if err == nil {
@@ -65,9 +56,9 @@ func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry strin
 			}
 			if !indexOnly {
 				if recorded == "" {
-					return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it with \"lym webster restore-plan\", or " + fresh
+					return "way forward: " + runplan.PlanOverviewFile + " changed and is never rebaselined; restore it with \"lym webster restore-plan\", or " + fresh
 				}
-				return "way forward: " + planOverviewFile + " changed outside its Card Index; restore it with \"lym webster restore-plan\", or " + followUpCardLanding + ", or " + fresh
+				return "way forward: " + runplan.PlanOverviewFile + " changed outside its Card Index; restore it with \"lym webster restore-plan\", or " + followUpCardLanding + ", or " + fresh
 			}
 			indexChanged = true
 			continue
@@ -76,7 +67,7 @@ func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry strin
 	}
 	if len(flags) == 0 {
 		if indexChanged {
-			return "way forward: only the Card Index of " + planOverviewFile + " changed; run `lym webster rebaseline` to accept it, " + restore + "otherwise " + fresh
+			return "way forward: only the Card Index of " + runplan.PlanOverviewFile + " changed; run `lym webster rebaseline` to accept it, " + restore + "otherwise " + fresh
 		}
 		return "way forward: run `lym webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 	}
@@ -88,44 +79,6 @@ func cardNumberOf(name string) string {
 	num, _, _ := strings.Cut(name, "-")
 	return num
 }
-
-// ErrPlanConflict is the sentinel a *PlanConflictError unwraps to.
-// It marks a begin refused because the plan re-resolution at dispatch reported a blocking finding.
-// Callers match it with errors.Is.
-// Dispatching a fork on a re-resolve that failed is worse than not dispatching.
-var ErrPlanConflict = errors.New("webster: plan re-resolution at begin-batch reported a blocking finding")
-
-// The three causes a PlanConflictError carries, and the only values its Cause takes.
-const (
-	// ConflictCausePlanDefect is a conflict found before any batch was begun: the approved plan contradicts the tree.
-	ConflictCausePlanDefect = "plan_defect"
-	// ConflictCauseTreeMoved is a conflict found after a batch was begun: the tree moved under the plan.
-	ConflictCauseTreeMoved = "tree_moved"
-	// ConflictCausePlanOrder marks a conflict where every blocking finding is a delete a later card still references.
-	ConflictCausePlanOrder = "plan_order"
-)
-
-// PlanConflictError is the refusal BeginBatch returns when the re-resolution at dispatch reports blocking findings.
-// Batch is the batch whose begin was refused.
-// Cause is ConflictCausePlanDefect, ConflictCauseTreeMoved or ConflictCausePlanOrder.
-// Findings is every blocking finding as an error string, in the order the re-resolution reported them.
-type PlanConflictError struct {
-	Batch    int
-	Cause    string
-	Findings []string
-}
-
-// Error renders the refusal with its class and cause, the findings and the way forward.
-func (e *PlanConflictError) Error() string {
-	planEdit := "edit the plan so the named cards match the tree"
-	if e.Cause == ConflictCausePlanOrder {
-		planEdit = "move each named delete to a card after the card that still references it"
-	}
-	return fmt.Sprintf("%s (plan_conflict: %s): %s; way forward: %s, run \"lym webster rebaseline --card NN\" naming each card you edited, then begin-batch %02d again", ErrPlanConflict.Error(), e.Cause, strings.Join(e.Findings, "; "), planEdit, e.Batch)
-}
-
-// Unwrap returns ErrPlanConflict, so errors.Is identifies the refusal.
-func (e *PlanConflictError) Unwrap() error { return ErrPlanConflict }
 
 // BeginDeps carries every seam BeginBatch needs, so a test can fake each one independently.
 // Plan is the already-parsed plan.
@@ -182,63 +135,6 @@ type BeginResult struct {
 	ArchivedReport string
 }
 
-// completedCards returns the cards of every batch that has reached a terminal classification, in batches' own order.
-//
-// It scopes the dispatch-boundary re-resolution and record-batch's drift detection to work that has not landed yet.
-// A plan describes intended change, so a card already built contradicts the tree it is re-resolved against:
-// its Create target exists, its Delete target is gone, and its Rename's old side no longer resolves.
-// A non-zero exclude also counts that batch as completed:
-// record-batch calls this while the batch it records is still non-terminal, and that batch's work has just landed.
-func completedCards(batches []batcher.Batch, st *State, exclude int) []planparser.Card {
-	if st == nil {
-		return nil
-	}
-
-	var done []planparser.Card
-	for _, b := range batches {
-		number, _ := batchIdentity(b)
-		if number != exclude {
-			bs, ok := st.Batches[number]
-			if !ok || bs == nil || !bs.Terminal {
-				continue
-			}
-		}
-		done = append(done, b.Cards...)
-	}
-	return done
-}
-
-// DispatchScope computes the one dispatch scoping shared across webster's begin, run and validate paths.
-// begun is every card of a batch that begin-batch recorded, terminal or not, in batches' own order.
-// forthcoming is the cards of every begun batch whose record is not terminal.
-// A terminal batch's cards are never forthcoming: its done-checks proved its targets present.
-// A nil state returns two nil slices.
-//
-// A batch begun but never recorded may already have landed its work, so its Create targets can exist.
-// Validating it as unstarted would refuse the very resume that records it.
-// Its targets may equally not have landed yet, which is why forthcoming exists:
-// the dispatch validation excludes a forthcoming card's Create and Rename New targets from its status check,
-// so a later card that Uses them is not refused.
-// Master re-drives such a batch through record-batch or recover-batch, which apply their own checks.
-func DispatchScope(batches []batcher.Batch, st *State) (begun, forthcoming []planparser.Card) {
-	if st == nil {
-		return nil, nil
-	}
-
-	for _, b := range batches {
-		number, _ := batchIdentity(b)
-		bs, ok := st.Batches[number]
-		if !ok || bs == nil {
-			continue
-		}
-		begun = append(begun, b.Cards...)
-		if !bs.Terminal {
-			forthcoming = append(forthcoming, b.Cards...)
-		}
-	}
-	return begun, forthcoming
-}
-
 // DoneCards returns the cards of plan, in plan order, that belong to a batch st records terminal with status done.
 // It reads the batch records alone: a record's own card ids name its cards,
 // and a record written before those ids existed names the single card NN-<Slug>.
@@ -268,7 +164,7 @@ func DoneCards(plan *planparser.Plan, st *State) []planparser.Card {
 
 	var cards []planparser.Card
 	for _, c := range plan.Cards {
-		if done[cardID(c)] {
+		if done[runplan.CardID(c)] {
 			cards = append(cards, c)
 		}
 	}
@@ -318,7 +214,7 @@ func EditedDoneCards(plan *planparser.Plan, st *State) ([]string, error) {
 
 	cardsByID := make(map[string]planparser.Card, len(plan.Cards))
 	for _, c := range plan.Cards {
-		cardsByID[cardID(c)] = c
+		cardsByID[runplan.CardID(c)] = c
 	}
 
 	var edited []string
@@ -332,7 +228,7 @@ func EditedDoneCards(plan *planparser.Plan, st *State) ([]string, error) {
 				recorded = append(recorded, c)
 			}
 		}
-		now, err := cardHashesFrom(batcher.Batch{Cards: recorded}, plan.ReadFile)
+		now, err := runplan.CardHashesFrom(batcher.Batch{Cards: recorded}, plan.ReadFile)
 		if err != nil {
 			return nil, err
 		}
@@ -344,17 +240,6 @@ func EditedDoneCards(plan *planparser.Plan, st *State) ([]string, error) {
 	}
 	sort.Strings(edited)
 	return edited, nil
-}
-
-// findBatch returns the batch in batches whose number matches number.
-// When none matches, it returns an error that names the way forward.
-func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
-	for _, b := range batches {
-		if n, _ := batchIdentity(b); n == number {
-			return b, nil
-		}
-	}
-	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches; way forward: `lym webster status` lists the run's batches, name one of those", number)
 }
 
 // ErrRenameToolMissing is the sentinel error a refusal wraps.
@@ -369,7 +254,7 @@ func renameToolRefusal(plan *planparser.Plan, batch batcher.Batch, renameTools [
 	if len(renameTools) > 0 {
 		return nil
 	}
-	number, slug := batchIdentity(batch)
+	number, slug := runplan.BatchIdentity(batch)
 	for _, card := range batch.Cards {
 		pairs := planparser.SymbolRenamePairs(plan, []planparser.Card{card})
 		if len(pairs) == 0 {
@@ -400,14 +285,14 @@ func digestSummaryLine(d *Digest) string {
 // predecessorDigestLine renders the digest of the batch that ran immediately before batchNumber in execution order.
 // batches must already be in execution order, which need not match batch number order.
 // The predecessor is found by position: batchNumber-1 is right only while batch number and execution position coincide.
-// It locates batchNumber's position in batches by batchIdentity.
+// It locates batchNumber's position in batches by runplan.BatchIdentity.
 // It returns "" when the batch is absent from batches or sits at index 0, which means nothing ran before it.
 // It also returns "" when the predecessor's state entry or its digest is absent.
 // A nil st or nil st.Batches also yields "".
 func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) string {
 	idx := -1
 	for i, b := range batches {
-		if n, _ := batchIdentity(b); n == batchNumber {
+		if n, _ := runplan.BatchIdentity(b); n == batchNumber {
 			idx = i
 			break
 		}
@@ -419,7 +304,7 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 		return ""
 	}
 
-	prevNumber, _ := batchIdentity(batches[idx-1])
+	prevNumber, _ := runplan.BatchIdentity(batches[idx-1])
 	prev, ok := st.Batches[prevNumber]
 	if !ok || prev == nil {
 		return ""
@@ -485,81 +370,31 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		}
 	}
 
-	// Re-resolve the plan against the current tree before the fork prompt is written, never from a cache.
-	// An infrastructure error (errors.Is(err, planindex.ErrQuarryUnavailable)) blocks exactly like a blocking finding:
-	// dispatching a fork on a re-resolve that failed is worse than not dispatching.
-	// The scope is the cards still to be built:
-	// a card already built contradicts the tree by design;
-	// re-resolving it would report a working plan as a blocking defect.
-	// The batch record is written further down, so on a first begin this batch is still validated;
-	// a re-begin of a batch whose earlier fork already landed its work is not refused for it.
-	// The forthcoming half keeps the Create targets of begun, unrecorded batches out of the status check,
-	// so a re-begun batch whose fork landed nothing does not refuse the later cards that Use them.
-	// Once any batch is begun, a pending card's Delete target that is already gone,
-	// and it arrives in the advisories below as delete-target-gone, not as a blocking finding.
-	begun, forthcoming := DispatchScope(deps.Batches, deps.State)
-	index, err := deps.Geom.index()
+	// Re-resolve the plan against the current tree before the fork prompt is written.
+	// The batch record is written further down, so on a first begin this batch is still validated.
+	advisories, err := runplan.ResolveAtDispatch(deps.Geom.runPlan(), deps.Plan, deps.Batches, &deps.State.State, batchNumber, planConflictWayForward(batchNumber))
 	if err != nil {
 		return nil, err
-	}
-	resolveFindings, resolveErr := index.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begun, forthcoming)
-	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk.
-	// The status and Create-inversion passes run after that rewrite,
-	// so a rewritten plan routinely also reports a blocking finding,
-	// and the rewrite also survives the pass's own hard-error paths.
-	// The staleness re-baseline therefore runs before every refusal below.
-	// Otherwise state.json keeps the pre-rewrite fingerprint while the plan on disk carries this run's own sanctioned edit,
-	// and every later begin-batch refuses it as a foreign one.
-	// A restamp failure never masks resolveErr: the caller is already returning for that reason.
-	if err := restampFingerprint(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil && resolveErr == nil {
-		return nil, err
-	}
-	if resolveErr != nil {
-		return nil, resolveErr
-	}
-	var blocking []string
-	var advisories []string
-	orderOnly := true
-	for _, f := range resolveFindings {
-		if f.Severity == planindex.SeverityBlocking {
-			blocking = append(blocking, f.Error())
-			orderOnly = orderOnly && f.Check == planindex.CheckDeleteBeforeReference
-		} else {
-			advisories = append(advisories, f.Error())
-		}
-	}
-	if len(blocking) > 0 {
-		// begun is computed before this call records its batch:
-		// a first begin of batch 1 has none begun (plan_defect), and a re-begin of a recorded batch has it begun (tree_moved).
-		// A set holding any other finding keeps those two causes, since moving a delete would not settle it.
-		cause := ConflictCauseTreeMoved
-		switch {
-		case orderOnly:
-			cause = ConflictCausePlanOrder
-		case len(begun) == 0:
-			cause = ConflictCausePlanDefect
-		}
-		return nil, &PlanConflictError{Batch: batchNumber, Cause: cause, Findings: blocking}
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
 		return nil, err
 	}
-	number, slug := batchIdentity(batch)
+	number, slug := runplan.BatchIdentity(batch)
 
-	cardHashes, err := batchCardHashes(batch, deps.Plan.Dir)
+	cardHashes, err := runplan.BatchCardHashes(batch, deps.Plan.Dir)
 	if err != nil {
 		return nil, fmt.Errorf("%w; way forward: transient, re-run `lym webster begin-batch %d`", err, batchNumber)
 	}
 
 	// The gate calls render before the first mutation,
 	// so a gate list the config lacks refuses with no prompt written and no state recorded.
-	cardGates, err := renderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.PaneCwd, deps.Geom.PlanDir), deps.Gate)
+	cardGates, err := runplan.RenderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.PaneCwd, deps.Geom.PlanDir), deps.Gate)
 	if err != nil {
 		return nil, err
 	}
-	batchGate, err := renderBatchGate(batch.Cards, deps.Gate, isLastBatch(deps.Batches, batch))
+	batchGate, err := runplan.RenderBatchGate(batch.Cards, deps.Gate, runplan.IsLastBatch(deps.Batches, batch))
 	if err != nil {
 		return nil, err
 	}
@@ -686,7 +521,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 
 	deps.State.Batches[number] = &BatchState{
 		Slug:             slug,
-		Cards:            batchCardIDs(batch),
+		Cards:            runplan.BatchCardIDs(batch),
 		CardHashes:       cardHashes,
 		StartSHA:         startSHA,
 		Kind:             "fork",

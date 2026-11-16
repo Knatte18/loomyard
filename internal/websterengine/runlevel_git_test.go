@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -96,9 +97,9 @@ func (s *gateScenario) restart(t *testing.T, verify string) (*runFixture, string
 	gitkit.CommitFile(t, fx.Worktree, "go.mod", "module example.com/m\n", "go.mod")
 	sha := gitkit.CommitFile(t, fx.Worktree, "internal/batch1/a.go", "package batch1\n", "card 1")
 	seedMatchingState(t, fx, &websterengine.State{
-		Batches: map[int]*websterengine.BatchState{
+		State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha}},
-		},
+		}},
 	})
 	return fx, sha
 }

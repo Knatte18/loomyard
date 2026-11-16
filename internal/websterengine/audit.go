@@ -9,13 +9,13 @@ package websterengine
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -118,15 +118,15 @@ func (v AuditViolation) Error() string {
 
 // isOwnReportWrite reports whether write, resolved against workdir, is ownReport: equal to its cleaned path, or canonicalizing to the same path.
 func isOwnReportWrite(workdir, write, ownReport string) bool {
-	resolved := resolveWritePath(workdir, write)
+	resolved := runplan.ResolveWritePath(workdir, write)
 	if resolved == filepath.Clean(ownReport) {
 		return true
 	}
-	canonOwn, err := canonicalPath(ownReport)
+	canonOwn, err := runplan.CanonicalPath(ownReport)
 	if err != nil {
 		return false
 	}
-	canonWrite, err := canonicalPath(resolved)
+	canonWrite, err := runplan.CanonicalPath(resolved)
 	return err == nil && canonWrite == canonOwn
 }
 
@@ -162,7 +162,7 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 	planWrites := 0
 	stateWrites := 0
 	for _, w := range f.WritePaths {
-		cw := resolveWritePath(workdir, w)
+		cw := runplan.ResolveWritePath(workdir, w)
 		if cw == cleanOutcome || cw == cleanSummary {
 			contractWrites++
 			violations = append(violations, AuditViolation{
@@ -175,7 +175,7 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 			continue
 		}
 		for _, dir := range planDirs {
-			if pathWithin(filepath.Clean(dir), cw) {
+			if runplan.PathWithin(filepath.Clean(dir), cw) {
 				planWrites++
 				violations = append(violations, AuditViolation{
 					Class:          ClassForkPlanWrite,
@@ -191,7 +191,7 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 			continue
 		}
 		for _, dir := range websterDirs {
-			if pathWithin(filepath.Clean(dir), cw) {
+			if runplan.PathWithin(filepath.Clean(dir), cw) {
 				stateWrites++
 				violations = append(violations, AuditViolation{
 					Class:          ClassForkStateWrite,
@@ -238,7 +238,7 @@ func websterDirSpellings(geom Geometry) ([]string, error) {
 // dirSpellings returns dir and its link-resolved form, deduplicated.
 // It returns an error when dir cannot be canonicalized.
 func dirSpellings(dir string) ([]string, error) {
-	canon, err := canonicalPath(dir)
+	canon, err := runplan.CanonicalPath(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -247,26 +247,6 @@ func dirSpellings(dir string) ([]string, error) {
 		dirs = append(dirs, canon)
 	}
 	return dirs, nil
-}
-
-// resolveWritePath canonicalizes a transcript-recorded write path: cleaned,
-// and — when relative — resolved against workdir. This prevents false matches
-// when agents mix absolute and relative spellings for the same file.
-func resolveWritePath(workdir, path string) string {
-	cleaned := filepath.Clean(path)
-	if isTranscriptPathAbsolute(path) {
-		return cleaned
-	}
-	return filepath.Join(workdir, cleaned)
-}
-
-// isTranscriptPathAbsolute reports whether a transcript-recorded write path is absolute:
-// either in the running OS's sense or as a POSIX path with a leading "/".
-// Transcript-recorded write paths and the workdir and contract paths are always POSIX-style, whatever the platform.
-// On Windows, filepath.IsAbs alone misses a leading "/".
-// Joining such a path onto workdir again yields a path that never matches the contract paths.
-func isTranscriptPathAbsolute(path string) bool {
-	return filepath.IsAbs(path) || strings.HasPrefix(path, "/")
 }
 
 // CheckParent reports the violations in Master's own parent session.
@@ -293,7 +273,7 @@ func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir st
 	cleanOutcome := filepath.Clean(outcomePath)
 	cleanSummary := filepath.Clean(summaryPath)
 	for i, w := range a.ParentWrites {
-		cw := resolveWritePath(workdir, w)
+		cw := runplan.ResolveWritePath(workdir, w)
 		if cw != cleanOutcome && cw != cleanSummary {
 			violations = append(violations, AuditViolation{
 				Class:  ClassParentWrite,
@@ -377,22 +357,22 @@ func ClassifyViolation(v AuditViolation, geom Geometry, readOnly func(cmd string
 		return AuditSeverityPolicy, nil
 	}
 
-	written, err := canonicalPath(resolveWritePath(geom.PaneCwd, v.Path))
+	written, err := runplan.CanonicalPath(runplan.ResolveWritePath(geom.PaneCwd, v.Path))
 	if err != nil {
 		return "", err
 	}
 	runDirs := []string{geom.WebsterDir, geom.ReportsDir, geom.PlanDir, filepath.Dir(geom.WebsterDir), filepath.Dir(geom.ScratchDir)}
 	for _, dir := range runDirs {
-		canon, err := canonicalPath(dir)
+		canon, err := runplan.CanonicalPath(dir)
 		if err != nil {
 			return "", err
 		}
-		if pathWithin(canon, written) {
+		if runplan.PathWithin(canon, written) {
 			return AuditSeverityCorrectness, nil
 		}
 	}
 
-	worktree, err := canonicalPath(geom.WorktreeRoot)
+	worktree, err := runplan.CanonicalPath(geom.WorktreeRoot)
 	if err != nil {
 		return "", err
 	}
@@ -403,18 +383,18 @@ func ClassifyViolation(v AuditViolation, geom Geometry, readOnly func(cmd string
 	for _, other := range others {
 		// The innermost worktree holding a write decides its class,
 		// so an enclosing worktree never claims a write inside this one.
-		if pathWithin(other, worktree) && pathWithin(worktree, written) {
+		if runplan.PathWithin(other, worktree) && runplan.PathWithin(worktree, written) {
 			continue
 		}
-		lym, err := canonicalPath(filepath.Join(other, lymdirs.LymDirName))
+		lym, err := runplan.CanonicalPath(filepath.Join(other, lymdirs.LymDirName))
 		if err != nil {
 			return "", err
 		}
-		if pathWithin(other, written) || pathWithin(lym, written) {
+		if runplan.PathWithin(other, written) || runplan.PathWithin(lym, written) {
 			return AuditSeverityCorrectness, nil
 		}
 	}
-	if !pathWithin(worktree, written) {
+	if !runplan.PathWithin(worktree, written) {
 		return AuditSeverityPolicy, nil
 	}
 	ignored, err := geom.git().IgnoredPath(geom.WorktreeRoot, written)
@@ -425,42 +405,6 @@ func ClassifyViolation(v AuditViolation, geom Geometry, readOnly func(cmd string
 		return AuditSeverityPolicy, nil
 	}
 	return AuditSeverityCorrectness, nil
-}
-
-// pathWithin reports whether path is dir itself or lies beneath it;
-// both must already be canonical.
-func pathWithin(dir, path string) bool {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
-		return false
-	}
-	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
-}
-
-// canonicalPath resolves links in path through its nearest existing ancestor.
-// It re-joins the missing tail, so a path that does not exist yet still compares against a link-resolved directory.
-func canonicalPath(path string) (string, error) {
-	cleaned := filepath.Clean(path)
-	var tail []string
-	cur := cleaned
-	for {
-		resolved, err := filepath.EvalSymlinks(cur)
-		if err == nil {
-			for i := len(tail) - 1; i >= 0; i-- {
-				resolved = filepath.Join(resolved, tail[i])
-			}
-			return resolved, nil
-		}
-		if !errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("websterengine: resolve links in %s: %w", cur, err)
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return cleaned, nil
-		}
-		tail = append(tail, filepath.Base(cur))
-		cur = parent
-	}
 }
 
 // ForkWarnings returns a warning for a fork that never returned a final report, and nil otherwise.

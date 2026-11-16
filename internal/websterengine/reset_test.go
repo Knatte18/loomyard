@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -87,10 +88,12 @@ func newResolutionFixture(t *testing.T) *resolutionFixture {
 	fx.batch1Head = git.commit()
 	fx.batch2Head = git.commit()
 	fx.state = &websterengine.State{
-		Partition: []websterengine.PartitionBatch{{Cards: []string{"01-one"}}, {Cards: []string{"02-two"}}, {Cards: []string{"03-three"}}},
-		Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "one", Kind: "fork", StartSHA: fx.root, Terminal: true, Status: "done", Digest: &websterengine.Digest{HeadSHA: fx.batch1Head}},
-			2: {Slug: "two", Kind: "fork", StartSHA: fx.batch1Head},
+		State: runplan.State{
+			Partition: []websterengine.PartitionBatch{{Cards: []string{"01-one"}}, {Cards: []string{"02-two"}}, {Cards: []string{"03-three"}}},
+			Batches: map[int]*websterengine.BatchState{
+				1: {Slug: "one", Kind: "fork", StartSHA: fx.root, Terminal: true, Status: "done", Digest: &websterengine.Digest{HeadSHA: fx.batch1Head}},
+				2: {Slug: "two", Kind: "fork", StartSHA: fx.batch1Head},
+			},
 		},
 	}
 	worktree := t.TempDir()

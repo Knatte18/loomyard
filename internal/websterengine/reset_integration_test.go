@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -45,7 +46,7 @@ func (fx *resetFixture) step(t *testing.T, name string, run func(t *testing.T)) 
 	t.Run(name, func(t *testing.T) {
 		fx.deps = ResetDeps{
 			Geom:         Geometry{WorktreeRoot: fx.root, PaneCwd: fx.root, ScratchDir: t.TempDir()},
-			State:        &State{MasterSessionID: "s1", Batches: map[int]*BatchState{1: {Slug: "one", StartSHA: fx.first}}},
+			State:        &State{MasterSessionID: "s1", State: runplan.State{Batches: map[int]*BatchState{1: {Slug: "one", StartSHA: fx.first}}}},
 			Engines:      shuttlefake.EngineSet(&shuttlefake.Engine{}),
 			ParentBranch: func() (string, error) { return "main", nil },
 			Branch:       func() (string, error) { return "task", nil },

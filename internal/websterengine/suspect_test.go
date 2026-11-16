@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -47,9 +48,9 @@ func newSuspectFixture(t *testing.T) *suspectFixture {
 		WebsterDir:   filepath.Join(root, "_lym", "webster"),
 		ScratchDir:   filepath.Join(root, ".lym", "webster"),
 	}
-	st := &State{Batches: map[int]*BatchState{
+	st := &State{State: runplan.State{Batches: map[int]*BatchState{
 		1: {Slug: "one", StartSHA: start, Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: head}},
-	}}
+	}}}
 	if err := restampFingerprint(st, planDir, geom.WebsterDir); err != nil {
 		t.Fatal(err)
 	}
@@ -189,6 +190,28 @@ func TestCheckRecoveredSuspects_EmptyStartHoldsNothing(t *testing.T) {
 	}
 	if len(reasons) != 1 || !strings.Contains(reasons[0], "at tracked.txt") {
 		t.Errorf("reasons = %v; want one naming the copy at tracked.txt", reasons)
+	}
+}
+
+// TestCheckRecoveredSuspects_PlanEditNamesRecoverBatchWayForward proves a plan-edit reason names recover-batch.
+// The reason is for a suspect plan file that differs from the recorded plan.
+// It ends in webster's way forward, which re-runs recover-batch for the batch.
+func TestCheckRecoveredSuspects_PlanEditNamesRecoverBatchWayForward(t *testing.T) {
+	tiergate.Require(t, 1)
+	fx := newSuspectFixture(t)
+	card := filepath.Join(fx.geom.PlanDir, "01-card.md")
+	if err := os.WriteFile(card, []byte("edited"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bs := &BatchState{SuspectPaths: []SuspectPath{{Path: card}}}
+
+	reasons, err := checkRecoveredSuspects(fx.geom, fx.st, bs, 1, fx.head)
+	if err != nil {
+		t.Fatalf("checkRecoveredSuspects() error = %v", err)
+	}
+	want := "then re-run \"lym webster recover-batch 01\""
+	if len(reasons) != 1 || !strings.HasSuffix(reasons[0], want) {
+		t.Errorf("reasons = %v; want one ending in %q", reasons, want)
 	}
 }
 

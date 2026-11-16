@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -566,9 +567,9 @@ func TestNewPlanGate(t *testing.T) {
 	// The cards that the Webster run record holds as done are history:
 	// a run moved back to the plan review after Webster built card 1 must not wedge on card 1's own landed Create.
 	builtRepo := map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"}
-	doneBatchOne := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+	doneBatchOne := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 		1: {Slug: "first-card", Cards: []string{"01-first-card"}, Terminal: true, Status: websterengine.DigestStatusDone},
-	}}
+	}}}
 	saveState := func(t *testing.T, anchorPath string, st *websterengine.State) {
 		t.Helper()
 		if err := websterengine.SaveState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath), st); err != nil {
@@ -657,9 +658,9 @@ func TestNewPlanGate(t *testing.T) {
 		}
 	}
 	batchOne := func(terminal bool, status string, hashes map[string]string) *websterengine.State {
-		return &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		return &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "first-card", Cards: []string{"01-first-card"}, Terminal: terminal, Status: status, CardHashes: hashes},
-		}}
+		}}}
 	}
 
 	for _, tt := range []struct {
@@ -1167,9 +1168,9 @@ func TestValidatePlan_CardChecks(t *testing.T) {
 		dropClause     = "drop untagged or the tier"
 	)
 	tierTags := []string{"tier0", "tier1", "tier2", "tier3"}
-	doneBatchOne := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+	doneBatchOne := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 		1: {Slug: "first-card", Cards: []string{"01-first-card"}, Terminal: true, Status: websterengine.DigestStatusDone},
-	}}
+	}}}
 
 	type cardCheckCase struct {
 		name     string

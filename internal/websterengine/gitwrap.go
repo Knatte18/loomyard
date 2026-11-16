@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/dotgit"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/runplan"
 )
 
 // headSHA returns the SHA of worktree's HEAD commit.
@@ -323,7 +324,7 @@ func commitChangedPaths(worktree, commit string) ([]string, error) {
 // otherWorktrees returns the canonical root of every worktree of worktree's repository except worktree itself.
 // It reads the repository's own worktree list, so websterengine derives no hub path.
 func otherWorktrees(worktree string) ([]string, error) {
-	self, err := canonicalPath(worktree)
+	self, err := runplan.CanonicalPath(worktree)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +334,7 @@ func otherWorktrees(worktree string) ([]string, error) {
 	}
 	var others []string
 	for _, root := range roots {
-		canon, err := canonicalPath(root)
+		canon, err := runplan.CanonicalPath(root)
 		if err != nil {
 			return nil, err
 		}

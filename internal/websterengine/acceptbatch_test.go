@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -48,13 +49,13 @@ func acceptBatchFixture(t *testing.T) (*websterengine.State, websterengine.Geome
 	t.Helper()
 	g := newFakeGit()
 	start := g.head
-	st := &websterengine.State{Batches: map[int]*websterengine.BatchState{8: {
+	st := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{8: {
 		StartSHA:    start,
 		Terminal:    true,
 		Status:      websterengine.DigestStatusFailed,
 		Digest:      &websterengine.Digest{Status: websterengine.DigestStatusFailed, HeadSHA: start},
 		Uncheckable: []string{fabricEntry},
-	}}}
+	}}}}
 	root := t.TempDir()
 	return st, websterengine.Geometry{WorktreeRoot: root, PaneCwd: root, WebsterDir: filepath.Join(root, "_lym", "webster"), Git: g}, g
 }

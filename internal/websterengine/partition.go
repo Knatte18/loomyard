@@ -5,32 +5,12 @@
 package websterengine
 
 import (
-	"errors"
 	"fmt"
-	"sort"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 )
-
-// ErrPartitionMismatch is the sentinel error for a recorded partition that does not name the same cards as the plan.
-var ErrPartitionMismatch = errors.New("webster: recorded partition does not match the plan")
-
-// PartitionBatch is one recorded batch of a run's partition:
-// the NN-<slug> ids of its cards in card order, the profile that formed it, and its estimate.
-// Breakdown keeps the estimate's components, so a finished run can be fitted against the peak context its forks measured.
-type PartitionBatch struct {
-	Cards     []string           `json:"cards"`
-	Profile   string             `json:"profile,omitempty"`
-	Estimate  float64            `json:"estimate,omitempty"`
-	Breakdown *batcher.Breakdown `json:"breakdown,omitempty"`
-}
-
-// cardID returns the NN-<slug> id of c.
-func cardID(c planparser.Card) string {
-	return fmt.Sprintf("%02d-%s", c.Number, c.Slug)
-}
 
 // formBatches batches the plan's whole card list with active.
 // It reads file sizes from sizes and prices the master session's start at base.
@@ -74,7 +54,7 @@ func ExecutionBatches(plan *planparser.Plan, st *State, active batcher.Batcher, 
 		return formBatches(plan, batcher.Identity(), sizes, 0, base)
 	}
 
-	batches, err := mapPartition(plan, st.Partition)
+	batches, err := runplan.MapPartition(plan, st.Partition, partitionMismatchWayForward)
 	if err != nil {
 		return nil, err
 	}
@@ -82,61 +62,4 @@ func ExecutionBatches(plan *planparser.Plan, st *State, active batcher.Batcher, 
 		return nil, err
 	}
 	return batches, nil
-}
-
-// mapPartition maps the recorded batches onto the plan's cards by id.
-// It refuses with ErrPartitionMismatch when a recorded id is not a card of the plan.
-// It also refuses when a plan card is in no recorded batch.
-func mapPartition(plan *planparser.Plan, partition []PartitionBatch) ([]batcher.Batch, error) {
-	cardsByID := make(map[string]planparser.Card, len(plan.Cards))
-	for _, c := range plan.Cards {
-		cardsByID[cardID(c)] = c
-	}
-
-	recorded := make(map[string]bool, len(plan.Cards))
-	var unknown []string
-	batches := make([]batcher.Batch, 0, len(partition))
-	for _, pb := range partition {
-		batch := batcher.Batch{Profile: pb.Profile, Estimate: pb.Estimate, Breakdown: pb.Breakdown}
-		for _, id := range pb.Cards {
-			card, ok := cardsByID[id]
-			if !ok {
-				unknown = append(unknown, id)
-				continue
-			}
-			recorded[id] = true
-			batch.Cards = append(batch.Cards, card)
-		}
-		batches = append(batches, batch)
-	}
-
-	var unrecorded []string
-	for _, c := range plan.Cards {
-		if id := cardID(c); !recorded[id] {
-			unrecorded = append(unrecorded, id)
-		}
-	}
-	if len(unknown) == 0 && len(unrecorded) == 0 {
-		return batches, nil
-	}
-
-	sort.Strings(unknown)
-	var problems []string
-	if len(unknown) > 0 {
-		problems = append(problems, "recorded cards "+strings.Join(unknown, ", ")+" are not cards of the plan")
-	}
-	if len(unrecorded) > 0 {
-		problems = append(problems, "plan cards "+strings.Join(unrecorded, ", ")+" are in no recorded batch")
-	}
-	return nil, fmt.Errorf("%w: %s; way forward: `lym webster rebaseline --card NN` naming each card you edited, or restore the plan with `lym webster restore-plan`",
-		ErrPartitionMismatch, strings.Join(problems, "; "))
-}
-
-// RecordPartition writes the batches' card ids, profiles, estimates and estimate breakdowns into st.Partition, replacing any partition it held.
-func RecordPartition(st *State, batches []batcher.Batch) {
-	partition := make([]PartitionBatch, len(batches))
-	for i, b := range batches {
-		partition[i] = PartitionBatch{Cards: batchCardIDs(b), Profile: b.Profile, Estimate: b.Estimate, Breakdown: b.Breakdown}
-	}
-	st.Partition = partition
 }

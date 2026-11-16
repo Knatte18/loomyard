@@ -1,6 +1,6 @@
 // verifyparse.go parses a verify command's combined output into failure identities.
 
-package websterengine
+package runplan
 
 import (
 	"strings"
@@ -26,9 +26,9 @@ type VerifyFailure struct {
 	Tail string `yaml:"tail"`
 }
 
-// opaqueFailureID is the id of the single identity reported when a red verify run yields nothing parseable.
+// OpaqueFailureID is the id of the single identity reported when a red verify run yields nothing parseable.
 // It covers a failing go vet, go build, or non-Go command.
-const opaqueFailureID = "verify-command"
+const OpaqueFailureID = "verify-command"
 
 // failureTailMaxLines caps every VerifyFailure.Tail.
 const failureTailMaxLines = 40
@@ -49,10 +49,10 @@ const subtestIndent = 4
 // ParseVerifyFailures returns the failure identities of a failed verify run's output, as the verify gate names them.
 // Callers that report a failed run use it so they name the same identities the gate does.
 func ParseVerifyFailures(output string) []VerifyFailure {
-	return parseVerifyFailures(output, false)
+	return ParseVerifyRun(output, false)
 }
 
-// parseVerifyFailures returns the failure identities in output, in first-seen order and deduplicated by id.
+// ParseVerifyRun returns the failure identities in output, in first-seen order and deduplicated by id.
 // It returns nil when passed is true.
 // A test identity is "<package>.<test path>", naming the deepest failing test or subtest as go test prints it.
 // So a failing TestX/a and a failing TestX/b are distinct identities.
@@ -62,8 +62,8 @@ func ParseVerifyFailures(output string) []VerifyFailure {
 // Such a binary hides every test it never ran.
 // Each test and package identity carries its import path in Package.
 // The opaque identity has none.
-// When neither is found, one opaque identity (opaqueFailureID) carries the output tail.
-func parseVerifyFailures(output string, passed bool) []VerifyFailure {
+// When neither is found, one opaque identity (OpaqueFailureID) carries the output tail.
+func ParseVerifyRun(output string, passed bool) []VerifyFailure {
 	if passed {
 		return nil
 	}
@@ -115,7 +115,7 @@ func parseVerifyFailures(output string, passed bool) []VerifyFailure {
 	}
 
 	if len(failures) == 0 {
-		return []VerifyFailure{{ID: opaqueFailureID, Kind: FailureKindOpaque, Tail: outputTail(lines)}}
+		return []VerifyFailure{{ID: OpaqueFailureID, Kind: FailureKindOpaque, Tail: outputTail(lines)}}
 	}
 	return failures
 }

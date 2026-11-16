@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -300,7 +301,9 @@ func TestRenumberVerbs_Refusals(t *testing.T) {
 	openBatch := map[int]*websterengine.BatchState{1: {Cards: []string{"01-alpha"}}}
 	withState := func(batches map[int]*websterengine.BatchState) func(*testing.T, renumberDeps) renumberDeps {
 		return func(_ *testing.T, d renumberDeps) renumberDeps {
-			d.loadState = func() (*websterengine.State, error) { return &websterengine.State{Batches: batches}, nil }
+			d.loadState = func() (*websterengine.State, error) {
+				return &websterengine.State{State: runplan.State{Batches: batches}}, nil
+			}
 			return d
 		}
 	}

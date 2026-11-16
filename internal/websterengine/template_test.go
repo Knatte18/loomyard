@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -1137,15 +1138,15 @@ func TestRenderBatchLists(t *testing.T) {
 		batchOf(1, "first", "do the first thing"),
 		batchOf(2, "second", "do the second thing"),
 	}
-	allDone := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+	allDone := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 		1: {Slug: "first", Terminal: true, Status: "done"},
 		2: {Slug: "second", Terminal: true, Status: "done"},
 		3: {Slug: "third", Terminal: true, Status: "done"},
-	}}
-	partial := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+	}}}
+	partial := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 		3: {Slug: "third", Terminal: true, Status: "done"},
 		1: {Slug: "first", Terminal: false},
-	}}
+	}}}
 
 	cases := []struct {
 		name string
@@ -1153,29 +1154,29 @@ func TestRenderBatchLists(t *testing.T) {
 		want string
 	}{
 		{"progress with nil state is none", websterengine.RenderProgress(inOrder, nil), "none"},
-		{"progress with no terminal batch is none", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		{"progress with no terminal batch is none", websterengine.RenderProgress(inOrder, &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "seam-extensions", Terminal: false},
-		}}), "none"},
-		{"progress lists terminal batches only, omitting in-flight and unrecorded ones", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		}}}), "none"},
+		{"progress lists terminal batches only, omitting in-flight and unrecorded ones", websterengine.RenderProgress(inOrder, &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "seam-extensions", Terminal: true, Status: "done"},
 			2: {Slug: "webster-foundation", Terminal: true, Status: "stuck"},
 			3: {Slug: "webster-audit-policy", Terminal: false},
-		}}), "01-seam-extensions: done\n02-webster-foundation: stuck"},
+		}}}), "01-seam-extensions: done\n02-webster-foundation: stuck"},
 		{"progress follows slice order", websterengine.RenderProgress(reordered, allDone), "03-third: done\n01-first: done\n02-second: done"},
-		{"progress lists a waiting batch with its need and the verb that resumes it", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		{"progress lists a waiting batch with its need and the verb that resumes it", websterengine.RenderProgress(inOrder, &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "seam-extensions", Terminal: true, Status: "done"},
 			2: {Slug: "webster-foundation", Kind: "fork", Status: websterengine.DigestStatusWaiting, Digest: &websterengine.Digest{Status: websterengine.DigestStatusWaiting, Need: "set the tier commands"}},
 			3: {Slug: "webster-audit-policy", Kind: "recovery", Status: websterengine.DigestStatusWaiting, Digest: &websterengine.Digest{Status: websterengine.DigestStatusWaiting, Need: "run lym fabric reconcile"}},
-		}}), "01-seam-extensions: done\n02-webster-foundation: waiting (need: set the tier commands; resume: lym webster begin-batch 2)\n03-webster-audit-policy: waiting (need: run lym fabric reconcile; resume: lym webster recover-batch 3)"},
+		}}}), "01-seam-extensions: done\n02-webster-foundation: waiting (need: set the tier commands; resume: lym webster begin-batch 2)\n03-webster-audit-policy: waiting (need: run lym fabric reconcile; resume: lym webster recover-batch 3)"},
 		// A state.json carrying an explicit null for a batch key parses to a present-but-nil entry.
-		{"progress skips a nil batch record", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		{"progress skips a nil batch record", websterengine.RenderProgress(inOrder, &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: nil,
 			2: {Slug: "webster-foundation", Terminal: true, Status: "done"},
-		}}), "02-webster-foundation: done"},
-		{"progress appends a done batch's pattern departures", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		}}}), "02-webster-foundation: done"},
+		{"progress appends a done batch's pattern departures", websterengine.RenderProgress(inOrder, &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "seam-extensions", Terminal: true, Status: "done", Digest: &websterengine.Digest{Departures: []string{"1: seam: kept the old name", "2: seam: skipped a scan"}}},
 			2: {Slug: "webster-foundation", Terminal: true, Status: "done", Digest: &websterengine.Digest{}},
-		}}), "01-seam-extensions: done (pattern departures: 1: seam: kept the old name; 2: seam: skipped a scan)\n02-webster-foundation: done"},
+		}}}), "01-seam-extensions: done (pattern departures: 1: seam: kept the old name; 2: seam: skipped a scan)\n02-webster-foundation: done"},
 		{"remaining names every batch in execution order for a nil state", websterengine.RenderRemaining(reordered, nil), "03-third, 01-first, 02-second"},
 		{"remaining drops terminal batches", websterengine.RenderRemaining(reordered, partial), "01-first, 02-second"},
 		{"remaining is none once every batch is terminal", websterengine.RenderRemaining(reordered, allDone), "none"},

@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 )
 
 // ErrRebaselineCardSetChanged reports an edited plan that changes the cards of a batch the run has already begun.
@@ -25,7 +26,7 @@ var ErrRebaselineCardSetChanged = errors.New("webster: the edited plan changes t
 // followUpCardLanding is the landing for a decision that reaches a done card or an overview outside its Card Index.
 // The landing asks for a follow-up card after the last begun batch.
 // It carries no "way forward: " prefix.
-const followUpCardLanding = "add a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + planOverviewFile + ", then run `lym webster rebaseline --card NN` naming it"
+const followUpCardLanding = "add a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + runplan.PlanOverviewFile + ", then run `lym webster rebaseline --card NN` naming it"
 
 // The three causes of an empty recorded overview frame.
 const (
@@ -44,7 +45,7 @@ func followUpLanding(step string) string {
 	if step == "" {
 		return followUpCardLanding
 	}
-	return "fix the plan: move a done card's edit to a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + planOverviewFile + ", then " + step
+	return "fix the plan: move a done card's edit to a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + runplan.PlanOverviewFile + ", then " + step
 }
 
 // transientWayForward is the clause of a transient rebaseline failure:
@@ -70,11 +71,11 @@ func recordedOverviewFrame(st *State, websterDir string) (frame, cause, path str
 	if st.PlanOverviewFrameHash != "" {
 		return st.PlanOverviewFrameHash, "", "", nil
 	}
-	hash := st.PlanFileHashes[planOverviewFile]
+	hash := st.PlanFileHashes[runplan.PlanOverviewFile]
 	if hash == "" {
 		return "", causeNoOverviewHash, "", nil
 	}
-	path = planBaselinePath(websterDir, hash)
+	path = runplan.PlanBaselinePath(websterDir, hash)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", causeBaselineCopyAbsent, path, nil
@@ -82,7 +83,7 @@ func recordedOverviewFrame(st *State, websterDir string) (frame, cause, path str
 	if err != nil {
 		return "", "", "", fmt.Errorf("websterengine: recorded overview frame: read plan baseline copy %s: %w", hash, err)
 	}
-	frame, err = overviewFrameHashOf(data)
+	frame, err = runplan.OverviewFrameHashOf(data)
 	if err != nil {
 		return "", causeNoCardIndex, path, nil
 	}
@@ -106,7 +107,7 @@ func overviewIndexOnly(recorded, planDir string) (bool, error) {
 	if recorded == "" {
 		return false, nil
 	}
-	now, err := overviewFrameHash(planDir)
+	now, err := runplan.OverviewFrameHash(planDir)
 	if err != nil {
 		return false, err
 	}
@@ -123,9 +124,9 @@ func overviewRefusal(recorded, cause, path, step string) error {
 		if path != "" {
 			where += " (" + path + ")"
 		}
-		return fmt.Errorf("%w: %s changed and this run recorded no overview frame: %s, so the change cannot be confined to its Card Index; it carries the plan's integration verify and is never rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, where, planOverviewFile, freshRestartSteps(stepOrRun(step)))
+		return fmt.Errorf("%w: %s changed and this run recorded no overview frame: %s, so the change cannot be confined to its Card Index; it carries the plan's integration verify and is never rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, runplan.PlanOverviewFile, where, runplan.PlanOverviewFile, freshRestartSteps(stepOrRun(step)))
 	}
-	return fmt.Errorf("%w: %s changed outside its Card Index; it carries the plan's integration verify and only its Card Index is rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile, followUpLanding(step))
+	return fmt.Errorf("%w: %s changed outside its Card Index; it carries the plan's integration verify and only its Card Index is rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, runplan.PlanOverviewFile, runplan.PlanOverviewFile, followUpLanding(step))
 }
 
 // editableTerminalStatus reports whether a batch with this terminal status accepts a named card edit.
@@ -208,7 +209,7 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 	for _, pb := range st.Partition[:keptCount] {
 		end := min(offset+len(pb.Cards), len(plan.Cards))
 		batch := batcher.Batch{Cards: plan.Cards[offset:end], Profile: pb.Profile, Estimate: pb.Estimate, Breakdown: pb.Breakdown}
-		if now := batchCardIDs(batch); !slices.Equal(now, pb.Cards) {
+		if now := runplan.BatchCardIDs(batch); !slices.Equal(now, pb.Cards) {
 			nowText := "no longer in the plan"
 			if len(now) > 0 {
 				nowText = "[" + strings.Join(now, ", ") + "]"
@@ -282,13 +283,13 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 
 	var cardsAccepted []string
 	if len(deps.State.PlanFileHashes) > 0 {
-		changedFiles, err := changedPlanFiles(deps.State, deps.Plan.Dir)
+		changedFiles, err := runplan.ChangedPlanFiles(&deps.State.State, deps.Plan.Dir)
 		if err != nil {
 			return nil, fmt.Errorf("%w; way forward: %s", err, transientWayForward(deps.Step, "transient, re-run `lym webster rebaseline`"))
 		}
 		var unnamed []string
 		for _, name := range changedFiles {
-			if name == planOverviewFile {
+			if name == runplan.PlanOverviewFile {
 				recorded, cause, path, overviewErr := recordedOverviewFrame(deps.State, deps.Geom.WebsterDir)
 				indexOnly := false
 				if overviewErr == nil {
@@ -324,8 +325,8 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	current := make(map[int][]string, len(batches))
 	currentCards := make(map[int][]planparser.Card, len(batches))
 	for _, b := range batches {
-		n, _ := batchIdentity(b)
-		current[n] = batchCardIDs(b)
+		n, _ := runplan.BatchIdentity(b)
+		current[n] = runplan.BatchCardIDs(b)
 		currentCards[n] = b.Cards
 	}
 
@@ -351,7 +352,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 			if len(bs.CardHashes) == 0 {
 				continue
 			}
-			got, err := batchCardHashes(batcher.Batch{Cards: currentCards[n]}, deps.Plan.Dir)
+			got, err := runplan.BatchCardHashes(batcher.Batch{Cards: currentCards[n]}, deps.Plan.Dir)
 			if err != nil {
 				return nil, fmt.Errorf("%w; way forward: %s", err, transientWayForward(deps.Step, "transient, re-run `lym webster rebaseline`"))
 			}
@@ -417,7 +418,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	sort.Strings(cardsAmended)
 
 	previous := deps.State.PlanFingerprint
-	if err := restampBaseline(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil {
+	if err := runplan.RestampBaseline(&deps.State.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil {
 		if deps.Step == "" {
 			return nil, err
 		}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -56,7 +57,7 @@ func TestFindingIdentity_ParentKeyPerSession(t *testing.T) {
 func TestRecordedAuditWarnings_BatchesThenRunLevel(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	st := &State{Batches: map[int]*BatchState{1: {}, 3: {}}}
+	st := &State{State: runplan.State{Batches: map[int]*BatchState{1: {}, 3: {}}}}
 	recordBatchWarning(st, st.Batches[1], "a", "c1", "d1")
 	recordBatchWarning(st, st.Batches[3], "b", "c3", "d3")
 	recordRunWarning(st, "r", "cr", "dr")

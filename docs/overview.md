@@ -404,6 +404,7 @@ github.com/Knatte18/loomyard/
 ├── internal/impactset/          the impacted-set command a gate key's `diff` scope runs: the packages a diff reaches over the import graph, plus the `//lym:guard` tests, or a fallback reason to run the full verify
 ├── internal/testcover/          the per-test coverage engine: runs each test of a package alone under a coverage binary, keys blocks by content, judges contained and removable tests, reads and writes the per-package coverage map, and compares a map with a commit to plan which tests a build re-measures or to name the miss that rebuilds the package whole
 ├── internal/dotnetimpact/       the `dotnet` scoper's derivation: the test projects and test classes a C# diff or a card's targets reach, by type-name closure over the source, or a fallback reason to run the tier whole
+├── internal/runplan/            the run-plan state and batch machinery an implementer embeds and calls: plan fingerprint and file hashes, recorded partition, batch records, the batch report contract, dispatch re-resolution and plan-conflict record, post-batch checks, suspect-path checks, digest, card gates, report await and verify-failure record, told its paths and each refusal's way forward by the implementer
 ├── internal/verifytree/         the one plan-verify function: clean-tree check, verified-tree record and running marker, used by landing, both webster gates and `lym webster verify`
 └── internal/verifyrun/          in-process shell-command runner behind `internal/verifytree` and webster's card-verify rerun
 ```
@@ -733,6 +734,7 @@ User-facing modules each get one `lym <module>` namespace:
   Consumes the flat card-list plan (pinned in the plan-format blocks `contracts/stencils/loom/loom-block-plan-*.md`, which `contracts/stencils/loom/loom-template-plan.md`, the Plan producer's own stencil, includes) via its own sole parser, `internal/planparser`.
   It groups cards into execution batches via `internal/batcher`, a separate config-selected registry module webster consumes (profiles in `batcher.yaml`, the `wide` cost profile by default), then runs those batches in card order, refusing a backward dependency derived from the cards' own `Targets`/`Uses` refs.
   It records the partition in `state.json` at first init.
+  The run-plan part of `state.json` and the batch machinery around it (report contract, plan fingerprint and conflict refusal, post-batch checks, suspect-path checks, digest, card gates, report await and verify-failure record) live in `internal/runplan`, which webster's `State` embeds and which names webster's way forward in each refusal only through what webster passes it.
   It also carries the plan's `## verify:` command as a must-pass gate on Merriam's strand:
   a failure is rerun once (a pass on the rerun records the identities as flaky;
   a run that exceeds the verify timeout is not rerun, since a hang is not flakiness, and fails the gate at once with the timeout, the log path and the log tail as findings),

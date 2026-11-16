@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -24,10 +25,10 @@ func TestDispatchScope(t *testing.T) {
 		return batcher.Batch{Cards: []planparser.Card{{Number: number, Slug: slug}}}
 	}
 	batches := []batcher.Batch{batch(1, "done"), batch(2, "begun-unrecorded"), batch(3, "unstarted")}
-	st := &State{Batches: map[int]*BatchState{
+	st := &State{State: runplan.State{Batches: map[int]*BatchState{
 		1: {Slug: "done", Terminal: true, Status: "done"},
 		2: {Slug: "begun-unrecorded"},
-	}}
+	}}}
 
 	begun, forthcoming := DispatchScope(batches, st)
 	if len(begun) != 2 || begun[0].Slug != "done" || begun[1].Slug != "begun-unrecorded" {
@@ -54,17 +55,17 @@ func TestLastBegunCard(t *testing.T) {
 		want int
 	}{
 		{"nil state", nil, 0},
-		{"no records", &State{Batches: map[int]*BatchState{}}, 0},
-		{"record with cards", &State{Batches: map[int]*BatchState{
+		{"no records", &State{State: runplan.State{Batches: map[int]*BatchState{}}}, 0},
+		{"record with cards", &State{State: runplan.State{Batches: map[int]*BatchState{
 			1: {Cards: []string{"01-a", "02-b", "03-c"}},
-		}}, 3},
-		{"record without cards falls back to its key", &State{Batches: map[int]*BatchState{
+		}}}, 3},
+		{"record without cards falls back to its key", &State{State: runplan.State{Batches: map[int]*BatchState{
 			4: {Slug: "old"},
-		}}, 4},
-		{"done record beside a later non-terminal one", &State{Batches: map[int]*BatchState{
+		}}}, 4},
+		{"done record beside a later non-terminal one", &State{State: runplan.State{Batches: map[int]*BatchState{
 			1: {Cards: []string{"01-a"}, Terminal: true, Status: "done"},
 			2: {Cards: []string{"02-b"}},
-		}}, 2},
+		}}}, 2},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -87,9 +88,9 @@ func TestEditedDoneCards(t *testing.T) {
 	t.Run("a recorded id the plan lacks reports nothing", func(t *testing.T) {
 		t.Parallel()
 		plan := &planparser.Plan{Dir: t.TempDir()}
-		st := &State{Batches: map[int]*BatchState{
+		st := &State{State: runplan.State{Batches: map[int]*BatchState{
 			1: {Slug: "gone", Terminal: true, Status: "done", Cards: []string{"01-gone"}, CardHashes: map[string]string{"01-gone": "recorded-at-begin"}},
-		}}
+		}}}
 
 		if got, err := EditedDoneCards(plan, st); err != nil || len(got) != 0 {
 			t.Errorf("EditedDoneCards() = %v, %v; want nothing for an id the plan lacks", got, err)
@@ -108,9 +109,9 @@ func TestEditedDoneCards(t *testing.T) {
 			t.Fatalf("ReadFile(01-one.md) failed: %v", err)
 		}
 		sum := sha256.Sum256(onDisk)
-		st := &State{Batches: map[int]*BatchState{
+		st := &State{State: runplan.State{Batches: map[int]*BatchState{
 			1: {Slug: "one", Terminal: true, Status: "done", Cards: []string{"01-one"}, CardHashes: map[string]string{"01-one": hex.EncodeToString(sum[:])}},
-		}}
+		}}}
 
 		diskPlan, err := planparser.ParsePlan(planDir)
 		if err != nil {

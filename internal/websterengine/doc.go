@@ -73,7 +73,9 @@
 //
 // # Fork-return contract: OK/FAILED and a head SHA
 //
-// A fork's whole return contract is the minimal report shape report.go implements (Report/ParseReport/WriteReport).
+// A fork's whole return contract is the minimal report shape internal/runplan implements.
+// The shape is Report, ParseReport and WriteReport.
+// The report's optional `journal` is left empty by webster's forks.
 // It carries `status: OK`, `status: FAILED` or `status: NEEDS_PARENT` with its `need`.
 // It also carries the `head_sha` the fork left the worktree at.
 // The plan's glyph names are the fork's contract.
@@ -151,7 +153,7 @@
 //
 // A batch reaches terminal down one of two paths:
 // record-batch after an ordinary in-session fork, or recover-batch after a cold recovery strand.
-// Both run the identical post-batch mechanical pass (postBatchChecks):
+// Both run the identical post-batch mechanical pass (runplan.PostBatchChecks):
 // the card done-checks, the re-sign rebind, one shared delta and handle binding.
 // It also runs the informational glyph scope guard and drift detection with its exact-tier auto-repair.
 // Each rewrite among them also requires the plan-staleness re-baseline.
@@ -517,7 +519,7 @@
 // An uncleared path is one a fork, recovery or verify-fixer session wrote last, and the refusal names which.
 // A Master write whose result failed is not evidence, and an acknowledgement never clears it.
 // Every other path under `_lym`, `.lym` or the scratch directory stays uncheckable.
-// These sites consult contractFileStatus before checkSuspectPaths:
+// These sites consult contractFileStatus before runplan.CheckSuspectPaths:
 // AcceptPendingAudit, RecoverSpawnOrAttach, pendingPathsWayForward and `run --fresh`.
 // A cleared contract path is resolved, so at run exit `lym webster accept-audit` clears the finding directly;
 // an uncleared one refuses with `rm <path>` as the first step, then the verb to re-run.
@@ -1191,7 +1193,7 @@
 // It quotes the output tail of a failure that named no test.
 // It also carries the commits the fixer made since the pre-fix head and a hint:
 // the cards, in trail order, whose commits changed a file directly in a failing package's directory.
-// cardHint computes it over accumulatedCardSHAs.
+// runplan.CardHint computes it over accumulatedCardSHAs.
 // The hint claims only that a card touched a failing package;
 // Merriam judges it with the plan in hand.
 // The gate runs no bisect, no baseline run and no detached checkout of the live worktree.
@@ -1224,14 +1226,16 @@
 // A test that drives the real resolve pass sets planglyph.NewIndex.
 // A test that steers the batch delta sets a fake planindex.Delta.
 //
-// # No shared substrate or parser with any other batch-implementation loop
+// # Only the run-plan machinery is shared with other batch-implementation loops
 //
 // websterengine imports no other batch-implementation module's plan parser, report schema, or digest contract.
-// Only planparser and this package's own Report and Digest types are in play.
+// It shares only internal/runplan's run-plan machinery with other batch-implementation loops.
 // It reuses the provider-invariant orchestration substrate that every `lym` module built on shuttle shares:
 // internal/reedengine, internal/shuttleengine and its claudeengine, and internal/gitrepo.
+// Webster reaches the shared batch machinery through internal/runplan.
+// State embeds runplan.State, and runplan.go keeps webster's names for what moved.
+// Every shared refusal names webster's way forward through the text webster passes.
 // It owns the rest of its mechanism, with no cross-module import.
-// The plan-fingerprint hash is in fingerprint.go.
 // The git-query helpers built on gitrepo are in gitwrap.go and are reached through the Git seam.
 // The archive-never-refuse primitives are in archive.go, and the recovery classification is in classify.go.
 //

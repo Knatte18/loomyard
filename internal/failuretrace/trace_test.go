@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -36,12 +37,12 @@ func tracePlan() *planparser.Plan {
 // traceState records cards 3 and 4 in one batch, 5 and 6 in another, and card 7 in a batch with no card commit.
 // Card 12 sits in a batch record that predates the Cards field.
 func traceState() *websterengine.State {
-	return &websterengine.State{Batches: map[int]*websterengine.BatchState{
+	return &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
 		1:  {Slug: "alpha", Cards: []string{"03-alpha", "04-beta"}, StartSHA: "s1", CardSHAs: []string{"c3", "c4"}},
 		2:  {Slug: "gamma", Cards: []string{"05-gamma", "06-delta"}, StartSHA: "s2", CardSHAs: []string{"c5", "c6"}},
 		7:  {Slug: "eps", Cards: []string{"07-eps"}, StartSHA: "s7"},
 		12: {Slug: "tests", StartSHA: "s12", CardSHAs: []string{"c12"}},
-	}}
+	}}}
 }
 
 // buildFailure is the go test output of a package that fails to build with one error at location.

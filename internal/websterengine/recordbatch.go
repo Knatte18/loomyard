@@ -18,15 +18,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/cardverify"
-	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -55,73 +53,6 @@ func (e *ReportArchivedError) Error() string {
 
 // Unwrap returns the archived-report sentinel and the attribution cause, so errors.Is matches either.
 func (e *ReportArchivedError) Unwrap() []error { return []error{ErrReportArchived, e.Cause} }
-
-// ErrCardNotDone is the sentinel RecordBatch returns when a done-check reports a blocking finding.
-// Such a finding concerns the batch's own cards.
-// It is a Create target that still does not resolve, or a Delete target that still does.
-// RecordBatch turns it into a failed batch, with the findings as its reasons.
-var ErrCardNotDone = errors.New("webster: record-batch's done-checks reported a blocking finding")
-
-// ErrLaterTargetRemoved is the sentinel record-batch returns when a fork batch removes a symbol that a later card names.
-// The batch is handed back to its fork once, while the fork still holds the batch's context.
-var ErrLaterTargetRemoved = errors.New("webster: the batch removed a symbol a later card names")
-
-// LaterTargetRemovedError is the refusal record-batch returns, once per bracket.
-// It covers a fork batch that removes a symbol a later card names without reporting a rename.
-// The batch stays non-terminal with its report in place.
-// The next record-batch call records the batch instead of refusing again.
-type LaterTargetRemovedError struct {
-	// Batch names the batch as NN-<slug>.
-	Batch string
-	// Number is the batch's number, which Error formats as two digits.
-	Number int
-	// Reasons holds one line per later card and removed symbol.
-	Reasons []string
-}
-
-// Error names each removed symbol and the later card that names it.
-// It also gives the way forward through the batch's fork.
-func (e *LaterTargetRemovedError) Error() string {
-	return fmt.Sprintf("%s: batch %s: %s; way forward: send this message to the batch's fork, which either restores each name and commits, or lists each rename under its report's renames, and then rewrites its report with its head; then run `lym webster record-batch %02d` again, which records the batch without handing it back a second time",
-		ErrLaterTargetRemoved, e.Batch, strings.Join(e.Reasons, "; "), e.Number)
-}
-
-// Unwrap returns the later-target-removed sentinel, so errors.Is matches it.
-func (e *LaterTargetRemovedError) Unwrap() error { return ErrLaterTargetRemoved }
-
-// cardNotDoneError is the error the post-batch done-checks return, and it unwraps to the card-not-done sentinel.
-// Its message carries the findings' text.
-// The flags record which kinds of finding it holds.
-// deleteNotDone is set for a Delete target that still resolves.
-// glyphRejected is set when quarry rejects a card's target before resolving it.
-// createNotDone is set for a Create target that still does not resolve, or for a Rename pair that did not happen.
-// signatureMismatch is set when a target's member is declared only with another parameter list.
-type cardNotDoneError struct {
-	reasons           []string
-	deleteNotDone     bool
-	glyphRejected     bool
-	createNotDone     bool
-	signatureMismatch bool
-}
-
-func (e *cardNotDoneError) Error() string {
-	return fmt.Sprintf("%s: %s", ErrCardNotDone, strings.Join(e.reasons, "; "))
-}
-
-func (e *cardNotDoneError) Unwrap() error { return ErrCardNotDone }
-
-// unbegunCards returns the cards of every batch with no record in st, in batches' own order.
-func unbegunCards(batches []batcher.Batch, st *State) []planparser.Card {
-	var cards []planparser.Card
-	for _, b := range batches {
-		number, _ := batchIdentity(b)
-		if bs, ok := st.Batches[number]; ok && bs != nil {
-			continue
-		}
-		cards = append(cards, b.Cards...)
-	}
-	return cards
-}
 
 // deleteReferencedWayForward is the way forward for a batch whose Delete target a later, unbegun card still references.
 // Recovery cannot change the plan, so the way forward edits it.
@@ -181,30 +112,6 @@ func exhaustedRecoveryWayForward(number int) string {
 	return fmt.Sprintf("%s; or %s", wayForwardSteps(resetVerb(ResetToBatchStart, number), fmt.Sprintf("lym webster recover-batch %d", number)), freshRestartSteps(stepRun))
 }
 
-// laterDeleteReferenceReasons returns one reason per blocking reference from an unbegun card.
-// The referenced symbol is one the cards in own delete.
-// A method matched by name alone is informational and gives no reason.
-// Its receiver is not resolved, and the later card's verify build catches a real call.
-// laterDeleteReferenceReasons returns the blocking later-delete findings as reasons.
-// An infrastructure error is wrapped in planindex.ErrQuarryUnavailable.
-func laterDeleteReferenceReasons(plan *planparser.Plan, batches []batcher.Batch, st *State, own []planparser.Card, geom Geometry) ([]string, error) {
-	index, err := geom.index()
-	if err != nil {
-		return nil, err
-	}
-	findings, err := index.LaterDeleteReferences(plan, own, unbegunCards(batches, st), geom.WorktreeRoot)
-	if err != nil {
-		return nil, err
-	}
-	reasons := make([]string, 0, len(findings))
-	for _, f := range findings {
-		if f.Severity == planindex.SeverityBlocking {
-			reasons = append(reasons, f.Error())
-		}
-	}
-	return reasons, nil
-}
-
 // cardNotDoneInputs carries what a batch needs to be failed on its post-batch findings.
 // Verb names the calling verb, which a transient error tells the operator to re-run.
 type cardNotDoneInputs struct {
@@ -233,13 +140,13 @@ type cardNotDoneInputs struct {
 func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, error) {
 	var reasons []string
 	var deleteNotDone, glyphRejected, createNotDone, signatureMismatch bool
-	var notDone *cardNotDoneError
+	var notDone *runplan.CardNotDoneError
 	if errors.As(cause, &notDone) {
-		reasons = notDone.reasons
-		deleteNotDone = notDone.deleteNotDone
-		glyphRejected = notDone.glyphRejected
-		createNotDone = notDone.createNotDone
-		signatureMismatch = notDone.signatureMismatch
+		reasons = notDone.Reasons
+		deleteNotDone = notDone.DeleteNotDone
+		glyphRejected = notDone.GlyphRejected
+		createNotDone = notDone.CreateNotDone
+		signatureMismatch = notDone.SignatureMismatch
 	} else {
 		reasons = strings.Split(strings.TrimPrefix(cause.Error(), ErrCardNotDone.Error()+": "), "; ")
 	}
@@ -253,7 +160,7 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 	exhausted := in.Batch.Recoveries >= maxRecoveries && !rendersNewAmendment(in.Batch)
 	var wayForward string
 	if deleteNotDone {
-		referenced, err := laterDeleteReferenceReasons(in.Plan, in.Batches, in.State, in.Cards, in.Geom)
+		referenced, err := runplan.LaterDeleteReferenceReasons(in.Plan, in.Batches, &in.State.State, in.Cards, in.Geom.runPlan())
 		if err != nil {
 			return nil, fmt.Errorf("%w; way forward: transient, re-run `lym webster %s %d`", err, in.Verb, in.Number)
 		}
@@ -385,7 +292,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		number, slug := batchIdentity(batch)
+		number, slug := runplan.BatchIdentity(batch)
 		return archiveUnattributable(deps, number, slug, ErrNoBeginRecord)
 	}
 	if bs.Terminal {
@@ -413,7 +320,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	number, slug := batchIdentity(batch)
+	number, slug := runplan.BatchIdentity(batch)
 
 	// The bracket's own transcripts are left out of the seen set, so the engine re-reads them in full.
 	seenSet := make(map[string]bool, len(deps.State.SeenForkTranscripts))
@@ -621,7 +528,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 
 	// A batch waiting on its parent has not finished, so it runs no post-batch pass and spends no recovery.
 	if report.Status == ReportStatusNeedsParent {
-		digest := distill(report)
+		digest := runplan.Distill(report)
 		digest.Batch = polledID
 		if err := recordWaiting(bs, &digest, deps.Geom.ReportsDir, number, slug, time.Now); err != nil {
 			return nil, err
@@ -629,21 +536,8 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return &RecordResult{Digest: &digest, Warnings: warnings}, nil
 	}
 
-	deviations, postWarnings, err := postBatchChecks(postBatchInputs{
-		Plan:      deps.Plan,
-		State:     deps.State,
-		Batch:     bs,
-		Geom:      deps.Geom,
-		Number:    batchNumber,
-		Cards:     batch.Cards,
-		Completed: completedCards(deps.Batches, deps.State, batchNumber),
-		StartSHA:  bs.StartSHA,
-		HeadSHA:   report.HeadSHA,
-		Label:     polledID,
-		Renames:   report.Renames,
-		// Only an OK report's fork is waiting to be told: a FAILED one goes to a recovery strand instead.
-		HandBackRemovedTargets: report.Status == ReportStatusOK,
-	})
+	// Only an OK report's fork is waiting to be told: a FAILED one goes to a recovery strand instead.
+	deviations, postWarnings, err := runplan.PostBatchChecks(postBatchInputs(deps.Geom, deps.Plan, deps.Batches, deps.State, bs, batch.Cards, report.HeadSHA, report.Renames, report.Status == ReportStatusOK))
 	warnings = append(warnings, postWarnings...)
 	if err != nil {
 		if !errors.Is(err, ErrCardNotDone) {
@@ -689,12 +583,12 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
 	}
 
-	departures, err := batchDepartures(deps.Geom, bs.StartSHA, report.HeadSHA)
+	departures, err := runplan.BatchDepartures(deps.Geom.runPlan(), bs.StartSHA, report.HeadSHA)
 	if err != nil {
 		return nil, err
 	}
 
-	digest := distill(report)
+	digest := runplan.Distill(report)
 	digest.Batch = polledID
 	digest.Deviations = deviations
 	digest.Departures = departures
@@ -727,6 +621,23 @@ func failOnCorrectness(deps RecordDeps, bs *BatchState, number int, slug, headSH
 		}
 	}
 	return failFromFindings(deps, bs, number, slug, headSHA, all, nil, nil, suspects, uncheckable, newPaths, warnings)
+}
+
+// uncheckableSuspects returns the paths that cannot be checked:
+// neither under geom.PlanDir with st.PlanFileHashes recorded, nor in the task worktree's tracked tree.
+// The error is a link-resolution or git probe failure.
+func uncheckableSuspects(geom Geometry, st *State, paths []string) ([]string, error) {
+	var out []string
+	for _, p := range paths {
+		_, uncheckable, err := uncheckableReason(geom, st, p)
+		if err != nil {
+			return nil, err
+		}
+		if uncheckable {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 // pathlessViolationClasses is every class a pathless correctness finding can carry.
@@ -778,7 +689,7 @@ func auditTerminalFork(deps RecordDeps, bs *BatchState, batchNumber int) (*Recor
 	if err != nil {
 		return nil, err
 	}
-	number, slug := batchIdentity(batch)
+	number, slug := runplan.BatchIdentity(batch)
 
 	seenSet := make(map[string]bool, len(deps.State.SeenForkTranscripts))
 	for _, p := range deps.State.SeenForkTranscripts {
@@ -885,327 +796,29 @@ func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA
 	return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
 }
 
-// postBatchInputs carries everything the shared post-batch mechanical pass needs.
-// Cards are the completed batch's own cards;
-// Completed names every card whose work landed before this batch, so drift detection scopes to the remaining work;
-// StartSHA is the bracket record's captured start SHA and HeadSHA the reconciled report head;
-// Label names the batch in warnings;
-// Batch is the record being finished, which later-card drift warnings are recorded onto;
-// Renames are the glyph renames the batch's report lists, which drift detection repairs in the cards not yet begun;
-// HandBackRemovedTargets asks the pass to refuse with *LaterTargetRemovedError.
-// The refusal fires when the batch removed a symbol a later card names;
-// it comes before any plan rewrite past the re-sign rebind.
-type postBatchInputs struct {
-	Plan                   *planparser.Plan
-	State                  *State
-	Batch                  *BatchState
-	Geom                   Geometry
-	Number                 int
-	Cards                  []planparser.Card
-	Completed              []planparser.Card
-	StartSHA               string
-	HeadSHA                string
-	Label                  string
-	Renames                []ReportRename
-	HandBackRemovedTargets bool
-}
-
-// Bind reasons that postBatchChecks decides itself.
-const (
-	// bindCardNotDone marks a handle of a card the done-checks reported findings for.
-	bindCardNotDone planindex.BindReason = "card-not-done"
-	// bindBatchNotDone marks a handle of a card whose batch-mate failed the done-checks, so the pass never bound it.
-	bindBatchNotDone planindex.BindReason = "batch-not-done"
-	// bindDeltaUnavailable marks a handle the pass could not bind because the batch's delta was unavailable.
-	bindDeltaUnavailable planindex.BindReason = "delta-unavailable"
-	// bindLanguageNone marks a handle of a plan whose language opts out of glyphs.
-	bindLanguageNone planindex.BindReason = "language-none"
-)
-
-// failedBindOutcomes returns one failed outcome for each handle the cards own, in card and body order.
-// reasonFor picks the reason each card's handles fail with.
-func failedBindOutcomes(cards []planparser.Card, reasonFor func(planparser.Card) planindex.BindReason) []planindex.BindOutcome {
-	var outcomes []planindex.BindOutcome
-	for _, c := range cards {
-		for _, handle := range planparser.OwnedHandles(c) {
-			outcomes = append(outcomes, planindex.BindOutcome{Card: c.Number, Handle: handle, Reason: reasonFor(c)})
-		}
+// postBatchInputs returns the shared post-batch checks' inputs for batch record bs, whichever verb takes it terminal.
+// headSHA is the reconciled report head and renames the glyph renames its report lists.
+// handBack asks the checks to hand a batch that removed a later card's symbol back to its fork.
+// The refusal names record-batch again.
+// A drift finding on a later card is recorded once on bs through webster's audit ledger.
+func postBatchInputs(geom Geometry, plan *planparser.Plan, batches []batcher.Batch, st *State, bs *BatchState, cards []planparser.Card, headSHA string, renames []ReportRename, handBack bool) runplan.PostBatchInputs {
+	number, slug := runplan.BatchIdentity(batcher.Batch{Cards: cards})
+	return runplan.PostBatchInputs{
+		Plan:                   plan,
+		State:                  &st.State,
+		Batch:                  bs,
+		Geom:                   geom.runPlan(),
+		Batches:                batches,
+		Number:                 number,
+		Cards:                  cards,
+		StartSHA:               bs.StartSHA,
+		HeadSHA:                headSHA,
+		Label:                  runplan.CardID(planparser.Card{Number: number, Slug: slug}),
+		Renames:                renames,
+		HandBackRemovedTargets: handBack,
+		HandBackWayForward:     laterTargetHandBackWayForward(number),
+		RecordWarning: func(id, class, detail string) (string, bool) {
+			return recordBatchWarning(st, bs, id, class, detail)
+		},
 	}
-	return outcomes
-}
-
-// logBindOutcomes writes one Info line per handle outcome, so the bind rate is countable by grep.
-func logBindOutcomes(batch int, outcomes []planindex.BindOutcome) {
-	for _, o := range outcomes {
-		if o.Reason == "" {
-			logger.Info("webster: handle bind", "batch", batch, "card", o.Card, "handle", o.Handle, "outcome", "bound", "glyph", o.Glyph)
-			continue
-		}
-		logger.Info("webster: handle bind", "batch", batch, "card", o.Card, "handle", o.Handle, "outcome", "failed", "reason", string(o.Reason))
-	}
-}
-
-// cardNotDoneFor returns the ErrCardNotDone-wrapped error that findings make against the batch's own cards.
-// It returns nil when findings is empty.
-// It logs every handle of the batch as failed,
-// so the bind trace names the card that was not done and the batch-mates held back with it.
-func cardNotDoneFor(in postBatchInputs, findings []planindex.Finding) *cardNotDoneError {
-	if len(findings) == 0 {
-		return nil
-	}
-	notDone := &cardNotDoneError{}
-	notDoneCards := map[string]bool{}
-	for _, f := range findings {
-		notDone.reasons = append(notDone.reasons, f.Error())
-		notDoneCards[f.Card] = true
-		switch f.Check {
-		case "delete-not-done":
-			notDone.deleteNotDone = true
-		case "glyph-rejected":
-			notDone.glyphRejected = true
-		case "create-not-done", "rename-not-done":
-			notDone.createNotDone = true
-		case "signature-mismatch":
-			notDone.signatureMismatch = true
-		}
-	}
-	logBindOutcomes(in.Number, failedBindOutcomes(in.Cards, func(c planparser.Card) planindex.BindReason {
-		if notDoneCards[c.ID()] {
-			return bindCardNotDone
-		}
-		return bindBatchNotDone
-	}))
-	return notDone
-}
-
-// rereadCards returns cards as plan holds them now, matched by card ID; a card plan no longer holds stays as given.
-func rereadCards(plan *planparser.Plan, cards []planparser.Card) []planparser.Card {
-	reread := make([]planparser.Card, len(cards))
-	for i, c := range cards {
-		reread[i] = c
-		for _, current := range plan.Cards {
-			if current.ID() == c.ID() {
-				reread[i] = current
-				break
-			}
-		}
-	}
-	return reread
-}
-
-// postBatchChecks runs the mechanical pass every terminal batch owes, whichever verb takes it terminal.
-// It runs the card done-checks and carries a recorded C# re-sign into the plan.
-// It computes the single delta that the rest of the pass shares.
-// It then binds handles, runs the glyph scope guard, and runs drift detection with its exact-tier auto-repair.
-// It also runs the plan-staleness re-baseline each of those rewrites requires.
-//
-// The scope guard's findings come back as deviations.
-// They are the deduplicated, sorted files the batch changed outside its targets.
-// They are informational and never join the warnings.
-// When the delta cannot be computed, there are no deviations, and the could-not-run warning is returned instead.
-//
-// It is one function rather than two because a batch that reached done through recover-batch is
-// exactly as done as one that reached it through record-batch:
-// its Create targets have to resolve, its plan: handles have to bind,
-// and the drift its work caused has to be repaired or reported.
-// Skipping this pass for a recovered batch would leave its plan: handles unbound.
-// Every later card would then reference an unbound handle.
-// Drift detection would not see those references, since its reference index keys on the ref as the card spells it.
-//
-// Findings about the batch's own cards (done-checks, blocking bind findings) are returned as an
-// ErrCardNotDone-wrapped error.
-// Drift findings concern later cards, so they become `later card:` warnings recorded once on in.Batch.
-// Informational findings ride out on warnings too.
-// Warnings come back alongside any error, so a caller never loses them.
-func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err error) {
-	// A card's completion has a mechanical verdict.
-	// A Create target that still does not resolve, or a Delete target that still does, blocks the card.
-	// This runs its own batched Resolve against the post-card tree, distinct from the single delta call below.
-	index, err := in.Geom.index()
-	if err != nil {
-		return nil, nil, err
-	}
-	doneFindings, err := index.DoneChecks(in.Plan, in.Cards, in.Geom.WorktreeRoot)
-	if err != nil {
-		return nil, nil, err
-	}
-	if notDone := cardNotDoneFor(in, doneFindings); notDone != nil {
-		return nil, nil, notDone
-	}
-
-	// A recorded C# re-sign is carried into the plan once its edit is in the tree:
-	// every later card naming the member by its old glyph then names the minted id.
-	// This rewrite runs before the delta, so everything after it reads the re-read plan,
-	// and the plan is re-baselined before the guard and drift detection run.
-	fingerprintBefore, err := fingerprint(in.Geom.PlanDir)
-	if err != nil {
-		return nil, nil, err
-	}
-	resignFindings, err := index.RebindResigns(in.Plan, in.Cards, in.Geom.WorktreeRoot)
-	if err != nil {
-		return nil, nil, err
-	}
-	if notDone := cardNotDoneFor(in, resignFindings); notDone != nil {
-		return nil, nil, notDone
-	}
-	fingerprintAfter, err := fingerprint(in.Geom.PlanDir)
-	if err != nil {
-		return nil, nil, err
-	}
-	recordedCards := in.Cards
-	if fingerprintAfter != fingerprintBefore {
-		if err := restampFingerprint(in.State, in.Geom.PlanDir, in.Geom.WebsterDir); err != nil {
-			return nil, nil, err
-		}
-		reparsed, err := in.Plan.Reparse()
-		if err != nil {
-			return nil, nil, fmt.Errorf("re-parse plan %s after re-sign rebinding: %w", in.Geom.PlanDir, err)
-		}
-		in.Plan = reparsed
-		in.Cards = rereadCards(reparsed, in.Cards)
-	}
-
-	// One planindex.Delta serves the whole batch: BindHandles, ScopeGuard and DetectDrift all consume it.
-	// HeadSHA is the reconciled report head, which the caller has already cross-checked against the worktree's real HEAD.
-	// That cross-check is why the delta can be trusted here and nowhere earlier.
-	// A DeltaGit infrastructure error does not abort the sequence.
-	// The scope guard degrades to an informational notice on this same deltaErr.
-	// The done-checks above ran on their own Resolve and are unaffected.
-	// delta is the zero value on error, so BindHandles cannot confirm any handle bound.
-	// It reports bind-count-mismatch for every card that declared one.
-	// An unconfirmed Create is exactly a not-done card.
-	// The floor error of a git below lym's minimum is not a quarry degrade,
-	// so it stops the batch here like any other non-quarry error.
-	delta, deltaErr := index.Delta(in.Geom.WorktreeRoot, in.StartSHA, in.HeadSHA)
-	if deltaErr != nil && !errors.Is(deltaErr, planindex.ErrQuarryUnavailable) {
-		return nil, nil, deltaErr
-	}
-
-	// The report's renames are what drift detection repairs further down,
-	// so a removal the fork reported is no hand-back.
-	reported := make([]planindex.Rename, len(in.Renames))
-	for i, r := range in.Renames {
-		reported[i] = planindex.Rename{Old: r.Old, New: r.New}
-	}
-
-	// A removed later target is handed back before binding,
-	// so the plan carries no bind or drift rewrite of a batch its fork is still to change.
-	if in.HandBackRemovedTargets && deltaErr == nil && !in.Batch.LaterTargetsReturned {
-		if removed := delta.RemovedTargets(in.Plan, in.Completed, in.Cards, reported); len(removed) > 0 {
-			reasons := make([]string, len(removed))
-			for i, f := range removed {
-				reasons[i] = f.Error()
-			}
-			in.Batch.LaterTargetsReturned = true
-			return nil, nil, &LaterTargetRemovedError{Batch: in.Label, Number: in.Number, Reasons: reasons}
-		}
-	}
-
-	// Binding runs after the done-checks above, so a card that already failed create-not-done is never bound.
-	// It applies its whole batch of substitutions in one RewriteRefs call.
-	bindFindings, bindOutcomes, bindErr := delta.BindHandles(in.Plan, in.Geom.PlanDir, in.Cards)
-	// The trace is logged before the restamp below, so a restamp failure still reports the bind that landed.
-	// The trace names the reason the pass decided.
-	// That reason overrides the outcomes BindHandles computed when there is no glyph language or no delta.
-	if bindErr == nil {
-		if !in.Plan.GlyphLanguage() {
-			bindOutcomes = failedBindOutcomes(in.Cards, func(planparser.Card) planindex.BindReason { return bindLanguageNone })
-		} else if deltaErr != nil {
-			bindOutcomes = failedBindOutcomes(in.Cards, func(planparser.Card) planindex.BindReason { return bindDeltaUnavailable })
-		}
-		logBindOutcomes(in.Number, bindOutcomes)
-	}
-	// BindHandles rewrites plan references on disk before it reports a finding or an error.
-	// The substitutions come from delta.Created;
-	// a bind-count mismatch comes from a card whose handle matched nothing.
-	// One call can therefore do both.
-	// The staleness re-baseline runs here, not once after every refusal below.
-	// See this package's doc.go for what restamping past the refusals costs.
-	// A restamp failure never masks bindErr: the caller is already returning for that reason.
-	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir, in.Geom.WebsterDir); rebaseErr != nil && bindErr == nil {
-		return nil, nil, rebaseErr
-	}
-	if bindErr != nil {
-		return nil, nil, bindErr
-	}
-	var bindBlocking []string
-	for _, f := range bindFindings {
-		bindBlocking = append(bindBlocking, f.Error())
-	}
-	if len(bindBlocking) > 0 {
-		return nil, nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(bindBlocking, "; "))
-	}
-
-	// The informational glyph scope guard never blocks.
-	// It degrades explicitly on the deltaErr above rather than running against a zero-value delta;
-	// such a delta would look like a real, empty one.
-	// An unavailable diff costs visibility, not correctness,
-	// and the done-checks above have already blocked on the same infrastructure error.
-	if deltaErr != nil {
-		warnings = append(warnings, fmt.Sprintf("glyph scope guard could not run for batch %s: %v", in.Label, deltaErr))
-	} else {
-		deviationSet := map[string]bool{}
-		// The guard's targets are the cards as recorded and as re-read.
-		// A re-signed member's old glyph and its minted id both count as the batch's own.
-		for _, f := range delta.ScopeGuard(in.Plan, append(slices.Clone(recordedCards), in.Cards...)) {
-			if f.File != "" && !deviationSet[f.File] {
-				deviationSet[f.File] = true
-				deviations = append(deviations, f.File)
-			}
-		}
-		sort.Strings(deviations)
-	}
-
-	// Drift detection runs after binding and before the digest is persisted, on the delta's own
-	// deleted-symbols-still-referenced signal.
-	// HeadSHA is the triggering SHA that every exact-tier repair's own amendment records.
-	// Drift runs against the remaining plan:
-	// the delta's deleted symbols intersected with what the plan still has to do.
-	// Every already-built card is excluded, and so is this batch's own.
-	// Without that exclusion, a Delete card's own deletion is reported against the very card that asked for it,
-	// and no Delete card could ever be recorded.
-	// in.Plan rides along as DetectDrift's fullPlan so gate one can recognize this batch's own declared Rename outcome:
-	// the pending view excludes exactly the cards whose renames the delta reports.
-	// The report's renames ride along,
-	// so a later card naming a glyph the batch renamed is rewritten even where quarry cannot prove the rename.
-	driftFindings, driftErr := delta.DetectDrift(in.Plan, in.Completed, reported, in.Geom.PlanDir, in.Geom.WorktreeRoot, in.HeadSHA, time.Now().UTC().Format(time.RFC3339))
-	// The exact-tier repair's RewriteRefs writes to disk before this call reports anything.
-	// Its blocking plan-references-deleted-symbol finding comes from another part of the same delta,
-	// so the re-baseline runs here, for the reason the bind step above gives.
-	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir, in.Geom.WebsterDir); rebaseErr != nil && driftErr == nil {
-		return nil, warnings, rebaseErr
-	}
-	if driftErr != nil {
-		return nil, warnings, driftErr
-	}
-	// DetectDrift is the one index call in this sequence that returns a mixed severity set:
-	// its plan-references-deleted-symbol finding is blocking;
-	// the evidence tier's rename-candidate is informational by construction.
-	// drift.go's contract makes the rename-versus-genuine-delete decision the reviewer's, never the pipeline's.
-	// Failing the batch on it would destroy the very tier it belongs to.
-	// A finding that kills the batch never reaches a reviewer at all.
-	// So the split is by whose card the finding concerns.
-	// A blocking finding concerns a later card;
-	// it is recorded as a "later card:" warning rather than failing this batch,
-	// and an informational one rides out on warnings.
-	for _, f := range driftFindings {
-		if f.Severity != planindex.SeverityBlocking {
-			warnings = append(warnings, f.Error())
-			continue
-		}
-		// Drift runs over the pending plan, which already excludes this batch's cards.
-		// So a blocking finding concerns a card still to be built.
-		// It warns here, recorded once in the batch's state, and refuses at that card's own begin-batch.
-		detail := "later card: " + f.Error()
-		if text, added := recordBatchWarning(in.State, in.Batch, "later-card-drift:"+f.Error(), "later-card-drift", detail); added {
-			warnings = append(warnings, text)
-		}
-	}
-
-	// No third restamp is needed.
-	// The two above cover every rewrite this pass performs,
-	// and each runs right after its own rewriting call rather than past the refusals between them.
-	// The amendment log the exact-tier repair writes is excluded from the fingerprint,
-	// so it needs no re-baseline.
-	return deviations, warnings, nil
 }

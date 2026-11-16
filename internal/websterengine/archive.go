@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/runplan"
 )
 
 // archiveTimestampFormat is the UTC compact timestamp format webster archive helpers share.
@@ -281,25 +282,25 @@ func checkPendingFindings(engines AuditEngines, geom Geometry, st *State, base s
 	if len(contracts.Uncleared) > 0 {
 		return nil, fmt.Errorf("%w: %s would drop pending audit findings while %s", ErrPendingAuditFindings, guard.verb, contractDeleteClause(contracts.Uncleared, guard.rerun))
 	}
-	planPaths, paths, err := splitPlanPaths(geom, contracts.Rest)
+	planPaths, paths, err := runplan.SplitPlanPaths(geom.runPlan(), contracts.Rest)
 	if err != nil {
 		return nil, err
 	}
-	differing, _, err := checkSuspectPaths(geom, st, base, paths)
+	differing, _, err := runplan.CheckSuspectPaths(geom.runPlan(), &st.State, base, paths)
 	if err != nil {
 		return nil, err
 	}
 	if len(differing) > 0 {
 		return nil, fmt.Errorf("%w: %s would drop pending audit findings while their suspect paths still differ from %s %s: %s; %s", ErrPendingAuditFindings, guard.verb, guard.baseName, base, strings.Join(differing, ", "), guard.suspectWayForward(base, differing))
 	}
-	planDiffering, _, err := checkSuspectPaths(geom, st, base, planPaths)
+	planDiffering, _, err := runplan.CheckSuspectPaths(geom.runPlan(), &st.State, base, planPaths)
 	if err != nil {
 		return nil, err
 	}
 	var restorable []string
 	noCopy := map[string]bool{}
 	for _, p := range planDiffering {
-		name, err := planFileName(geom, p)
+		name, err := runplan.PlanFileName(geom.runPlan(), p)
 		if err != nil {
 			return nil, err
 		}

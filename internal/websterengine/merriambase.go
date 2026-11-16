@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/runplan"
 )
 
 // merriamFixedContext is the context, in tokens, of Merriam's system prompt, tools and the skills loaded at launch.
@@ -75,9 +76,9 @@ func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, e
 	if err != nil {
 		return batcher.StartBase{}, merriamBaseError("PATTERN.md", err)
 	}
-	overview, err := os.ReadFile(filepath.Join(geom.PlanDir, planOverviewFile))
+	overview, err := os.ReadFile(filepath.Join(geom.PlanDir, runplan.PlanOverviewFile))
 	if err != nil {
-		return batcher.StartBase{}, merriamBaseError(planOverviewFile, err)
+		return batcher.StartBase{}, merriamBaseError(runplan.PlanOverviewFile, err)
 	}
 	texts = append(texts, string(template), directive, string(overview))
 

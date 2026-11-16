@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -1591,7 +1592,7 @@ func TestFailCardNotDone_WayForward(t *testing.T) {
 			batch := &websterengine.BatchState{Recoveries: tt.recoveries, Uncheckable: tt.uncheckable, AmendedCards: tt.amended}
 			in := websterengine.CardNotDoneInputs{
 				Plan:   &planparser.Plan{},
-				State:  &websterengine.State{Batches: map[int]*websterengine.BatchState{1: batch}},
+				State:  &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{1: batch}}},
 				Batch:  batch,
 				Cards:  []planparser.Card{{Number: 1, Slug: "json-flag"}},
 				Number: 1,

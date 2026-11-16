@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -44,13 +45,15 @@ func TestBuildProfileReport(t *testing.T) {
 	record("multi", "multirec")
 	state("multirec", websterengine.State{
 		RunGUID: "g",
-		Partition: []websterengine.PartitionBatch{
-			{Cards: []string{"01-a", "02-b"}, Profile: "cautious"},
-			{Cards: []string{"03-c"}, Profile: "wide"},
-		},
-		Batches: map[int]*websterengine.BatchState{
-			1: {Kind: "fork", Terminal: true, Status: "done", ForkTranscripts: transcripts("subagents/agent-1.jsonl")},
-			3: {Kind: "recovery", Terminal: true, Status: "done", ForkTranscripts: transcripts("subagents/agent-2.jsonl")},
+		State: runplan.State{
+			Partition: []websterengine.PartitionBatch{
+				{Cards: []string{"01-a", "02-b"}, Profile: "cautious"},
+				{Cards: []string{"03-c"}, Profile: "wide"},
+			},
+			Batches: map[int]*websterengine.BatchState{
+				1: {Kind: "fork", Terminal: true, Status: "done", ForkTranscripts: transcripts("subagents/agent-1.jsonl")},
+				3: {Kind: "recovery", Terminal: true, Status: "done", ForkTranscripts: transcripts("subagents/agent-2.jsonl")},
+			},
 		},
 	})
 	review("multirec", "round-1-review.md", 2)
@@ -60,9 +63,11 @@ func TestBuildProfileReport(t *testing.T) {
 
 	record("solo", "solorec")
 	state("solorec", websterengine.State{
-		RunGUID:   "g",
-		Partition: []websterengine.PartitionBatch{{Cards: []string{"01-x", "02-y"}, Profile: "cautious"}},
-		Batches:   map[int]*websterengine.BatchState{1: {Kind: "fork", Terminal: true, Status: "done", ForkTranscripts: transcripts("agent-1.jsonl")}},
+		RunGUID: "g",
+		State: runplan.State{
+			Partition: []websterengine.PartitionBatch{{Cards: []string{"01-x", "02-y"}, Profile: "cautious"}},
+			Batches:   map[int]*websterengine.BatchState{1: {Kind: "fork", Terminal: true, Status: "done", ForkTranscripts: transcripts("agent-1.jsonl")}},
+		},
 	})
 	// A run of the Code-Review recipe writes its rounds to the code directory.
 	history.files["solorec:"+path.Join(loomengine.LoomReviewsDirRel(), "code", "round-1-review.md")] = reviewFile(1)
@@ -71,7 +76,7 @@ func TestBuildProfileReport(t *testing.T) {
 	record("plain", "plainrec")
 	state("plainrec", websterengine.State{
 		RunGUID: "g",
-		Batches: map[int]*websterengine.BatchState{1: {Kind: "fork", Terminal: true, Status: "failed", ForkTranscripts: transcripts("agent-1.jsonl")}},
+		State:   runplan.State{Batches: map[int]*websterengine.BatchState{1: {Kind: "fork", Terminal: true, Status: "failed", ForkTranscripts: transcripts("agent-1.jsonl")}}},
 	})
 	history.commits[planCommitSubjectPrefix+"plain"] = []gitrepo.SubjectCommit{{SHA: "plainplan", Committed: firstFork.Add(-time.Hour)}}
 	for name, data := range planWith(map[int]string{1: "internal/a/a.go", 2: "internal/b/b.go"}) {
@@ -90,8 +95,8 @@ func TestBuildProfileReport(t *testing.T) {
 	// A review file that does not parse leaves the findings not read, while the run's batches still count.
 	record("garbled", "garbledrec")
 	state("garbledrec", websterengine.State{
-		RunGUID:   "g",
-		Partition: []websterengine.PartitionBatch{{Cards: []string{"01-g"}, Profile: "noisy"}},
+		RunGUID: "g",
+		State:   runplan.State{Partition: []websterengine.PartitionBatch{{Cards: []string{"01-g"}, Profile: "noisy"}}},
 	})
 	history.files["garbledrec:"+path.Join(loomengine.LoomReviewsDirRel(), "webster", "round-1-review.md")] = "not a review"
 

@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -19,12 +20,12 @@ func TestRemoveRecoveryStrands(t *testing.T) {
 
 	st := &websterengine.State{
 		MasterStrand: "master",
-		Batches: map[int]*websterengine.BatchState{
+		State: runplan.State{Batches: map[int]*websterengine.BatchState{
 			3: {Kind: "recovery", StrandGUID: "recovery-3"},
 			1: {Kind: "recovery", StrandGUID: "recovery-1"},
 			2: {Kind: "fork"},
 			4: {Kind: "recovery"},
-		},
+		}},
 		VerifyFixers: []*websterengine.VerifyFixerState{{StrandGUID: "fixer-1", Status: websterengine.DigestStatusDead}, {StrandGUID: "fixer-2"}},
 		PlanFixers:   []*websterengine.PlanFixerState{{StrandGUID: "plan-fixer-1"}},
 	}

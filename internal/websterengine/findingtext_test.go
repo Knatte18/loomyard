@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -152,7 +153,7 @@ func TestUncheckableReason(t *testing.T) {
 			wantUncheck: true,
 		},
 		{name: "plan file with no recorded plan", st: &State{}, path: filepath.Join(geom.PlanDir, "01-a.md"), wantReason: "no plan copy recorded", wantUncheck: true},
-		{name: "plan file with a recorded plan", st: &State{PlanFileHashes: map[string]string{"01-a.md": "x"}}, path: filepath.Join(geom.PlanDir, "01-a.md")},
+		{name: "plan file with a recorded plan", st: &State{State: runplan.State{PlanFileHashes: map[string]string{"01-a.md": "x"}}}, path: filepath.Join(geom.PlanDir, "01-a.md")},
 		{name: "outside the worktree", st: &State{}, path: outside, wantReason: "outside the task worktree", wantUncheck: true},
 		{
 			name:        "under the lym directory",
