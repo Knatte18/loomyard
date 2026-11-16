@@ -54,7 +54,8 @@
 // Map.FailedAt tells either from the commit.
 // Its MapFormat marker names that shape and holds the writer's commit, build time and EnvironmentStamp.
 // A map without the marker, or whose marker's commit and time differ from the map's own, was written otherwise.
-// The maps live under Dir, one directory per package, shared by every worktree of the hub on the machine.
+// The maps live under Dir, one directory per package:
+// the hub's shared maps under its board directory, or a worktree's own maps under its anchor.
 // A package owns every file under its directory except those below a nested package or module.
 // NestedPackageDirs finds those nested directories.
 //

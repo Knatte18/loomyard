@@ -51,8 +51,9 @@ const FrontTaskDirName = "fronttask"
 // Each task's snapshot of its checkouts is taken before the drift judge runs.
 const DriftJudgeDirName = "drift-judge"
 
-// TestCoverDirName is the directory under the hub's board-level `.lym` that holds the per-package coverage maps.
-// Every worktree of the hub on the machine shares them.
+// TestCoverDirName is the directory under a `.lym` that holds per-package coverage maps.
+// Under the hub's board-level `.lym` it holds the maps every worktree of the hub on the machine shares;
+// under a worktree's `.lym` it holds the maps that worktree builds for itself.
 const TestCoverDirName = "testcover"
 
 // BeamDirName is the directory under a worktree's `.lym` that holds dobby's lock, state record and markers.

@@ -2,7 +2,7 @@
 // Its verb `test` is the sanctioned route for running the hub's test tiers.
 // Its verb `status` shows who holds the hub's gate slots, and its verb `report` totals the run records per gate key.
 // Its verb `card-verify` runs a plan card's `**Verify:**` line.
-// Its verb `testmap` builds the per-package coverage maps on command from the hub's prime worktree,
+// Its verb `testmap` builds the per-package coverage maps on command at the HEAD of the worktree it runs in,
 // and its verb `redundant` lists one package's redundancy candidates from its map.
 //
 // The module is not standalone-capable and does not go through internal/cliwire.
@@ -986,14 +986,20 @@
 //
 // # Coverage maps
 //
-// `lym gate testmap [--max <n>] [<package>...]` builds the `internal/testcover` maps at the prime's HEAD.
+// `lym gate testmap [--max <n>] [<package>...]` builds the `internal/testcover` maps.
+// It builds them at the HEAD of the worktree it runs in.
 // It runs only on command: no dobby, landing or gate starts it, and the gate selects no test from the maps.
 // The operator runs it before `lym gate redundant`, and over the whole module before a sweep of redundant tests.
 // The module root is the dir of the lowest declared of tier0 and tier1, and its go.mod names the import path.
 // A package is a directory relative to that root holding a Go file, found as `go list ./...` finds one:
 // testdata, a directory whose name opens with a dot or an underscore, and a nested module are left out.
-// The verb runs only in the hub's prime worktree, told by `hubgeom.IsPrime`.
-// Elsewhere it refuses, naming the prime's code worktree.
+// The verb runs in any worktree of the hub and refuses outside every hub.
+// From the hub's prime, told by `hubgeom.IsPrime`, it reads and writes the hub's shared maps.
+// Those are `testcover.Dir` of the board directory.
+// From any other worktree it reads and writes that worktree's own maps.
+// Those are `testcover.Dir` of its anchor; they go with the worktree and never touch the shared maps.
+// A task's call therefore builds at the HEAD only its own session moves.
+// The build lock of a package lies beside its map, so it is per worktree as the maps are.
 // It reads HEAD through `Fabric.HeadSHA` before its walk, and plans and measures every package at that HEAD.
 // It reads HEAD again before each package job and once a job's tests ran.
 // Once HEAD moved it ends, counting the jobs it left as queued, so the next call plans at the new HEAD.
@@ -1116,7 +1122,9 @@
 //
 // `lym gate redundant <package>` judges the map of one package and prints its redundancy candidates.
 // It runs from any worktree of the hub and resolves the module as the redundancy report step does.
-// It reads the map as it stands, runs no test and takes no slot.
+// It reads the map as it stands where `lym gate testmap` from the same worktree writes it.
+// It runs no test and takes no slot.
+// The redundancy report step reads the hub's shared maps from every worktree.
 // It judges through `testcover.JudgeMap`.
 // It leaves out the tests the keep scan of the package's directory in this worktree names.
 // It prints the map's commit, build time and test count.

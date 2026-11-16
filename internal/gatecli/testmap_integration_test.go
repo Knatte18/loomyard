@@ -631,6 +631,59 @@ func readTestMap(t *testing.T, mapsDir, pkg string) testcover.Map {
 	return m
 }
 
+// TestGateTestMapInATaskWorktreeKeepsItsOwnMaps builds a map from a task worktree at that worktree's HEAD.
+// The call writes the map under the worktree's own `.lym` and leaves the hub's shared maps alone,
+// and `lym gate redundant` from the same worktree reads the map it wrote.
+func TestGateTestMapInATaskWorktreeKeepsItsOwnMaps(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend", Pairs: []string{hubforge.TemplatePairSlug}})
+	pair := h.PairCodeWorktree(hubforge.TemplatePairSlug)
+	anchor := filepath.Join(pair, "backend")
+	const module = "example.com/tasked"
+	gate := "slots: 1\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\ntiers:\n" +
+		"  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n"
+	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gate), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plankit.WriteTree(t, anchor, map[string]string{
+		"go.mod":            "module " + module + "\n\ngo 1.21\n",
+		"solo/solo.go":      testMapSource("solo"),
+		"solo/solo_test.go": testMapTestFile("solo", map[string]int{"TestSoloOne": 0, "TestSoloTwo": 0}),
+	})
+	gitkit.Git(t, pair, "add", "backend")
+	gitkit.Git(t, pair, "commit", "-q", "-m", "seed the tasked module")
+	head := gitkit.RevParse(t, pair, "HEAD")
+	standIn, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := append(os.Environ(), helperEnv+"="+helperRoleTestMapGo, testMapModuleEnv+"="+module)
+
+	got := callTestMap(t, pair, standIn, env, time.Minute, 10)
+	if diff := cmp.Diff(testMapOutcome{Built: []string{"solo"}}, got, cmpopts.EquateEmpty()); diff != "" {
+		t.Errorf("runTestMap() from the task worktree mismatch (-want +got):\n%s", diff)
+	}
+	// The worktree's own maps lie under its anchor's `.lym`, not under the worktree root's.
+	if m := readTestMap(t, testcover.Dir(anchor), "solo"); m.Commit != head {
+		t.Errorf("the task worktree's map of solo has commit %s; want the worktree's HEAD %s", m.Commit, head)
+	}
+	if _, found, err := testcover.ReadMap(testcover.Dir(fabricengine.BoltDir(h.Location.HubPath)), "solo"); err != nil || found {
+		t.Errorf("ReadMap(solo) in the hub's shared maps = found %v, err %v; want no map", found, err)
+	}
+
+	var out bytes.Buffer
+	code := clihelp.ExecuteIn(Command(), pair, &out, []string{"redundant", "solo"})
+	var answer struct {
+		OK        bool   `json:"ok"`
+		MapCommit string `json:"map_commit"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &answer); err != nil || code != 0 || !answer.OK || answer.MapCommit != head {
+		t.Errorf("redundant solo from the task worktree = %d, %s; want exit 0 and map_commit %s", code, out.Bytes(), head)
+	}
+}
+
 // TestGateTestMap runs `lym gate testmap` calls in order over one hub.
 // Each call builds on the maps and HEAD the last one left.
 // Its subtests share that state and run in sequence, so none is parallel.
@@ -639,7 +692,7 @@ func TestGateTestMap(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
-	prime, pair := h.PrimeWorktree(), h.PairCodeWorktree(hubforge.TemplatePairSlug)
+	prime := h.PrimeWorktree()
 	const module = "example.com/mapped"
 	// A test past 20 seconds of 150 milliseconds each times out: 3 seconds, long enough for a stand-in to start under load.
 	// tierFields adds fields to the flow mapping of tier0 and tier1.
@@ -780,20 +833,12 @@ func TestGateTestMap(t *testing.T) {
 			setup func(t *testing.T)
 		}{
 			{
-				name: "OutsideThePrime", dir: pair, args: []string{"testmap"},
-				want: "gate testmap: " + pair + " is not the hub's prime worktree, and a coverage map records the prime branch; way forward: run lym gate testmap from " + prime,
-			},
-			{
-				name: "FromAPairsRecordsSibling", dir: h.PairRecordsSibling(hubforge.TemplatePairSlug), args: []string{"testmap"},
-				want: "gate testmap: " + pair + " is not the hub's prime worktree, and a coverage map records the prime branch; way forward: run lym gate testmap from " + prime,
-			},
-			{
 				name: "FromThePrimesRecordsSiblingActsInThePrime", dir: h.PrimeRecords(), args: []string{"testmap", "nosuch"},
 				want: "gate testmap: \"nosuch\" names no package directory of the module at " + prime + "; way forward: name a package by its directory relative to the module root, such as internal/foo",
 			},
 			{
 				name: "OutsideEveryHub", dir: outsideHub, args: []string{"testmap"},
-				want: "gate testmap: " + outsideHub + " is in no hub, and the coverage maps live in a hub; way forward: run lym gate testmap from a hub's prime worktree",
+				want: "gate testmap: " + outsideHub + " is in no hub, and the coverage maps live in a hub; way forward: run lym gate testmap from a worktree of a hub",
 			},
 			{
 				name: "MaxBelowOne", dir: prime, args: []string{"testmap", "--max", "0"},

@@ -48,7 +48,8 @@ func redundantCmd() *cobra.Command {
 A candidate is a tier0 or tier1 test whose covered blocks of the package's own files the package's other judged tests cover.
 Each comes with its standalone seconds and the tests that cover it; removable marks the set a greedy pass, slowest first, can delete together while every block stays covered.
 A test marked //testtiming:keep is neither a candidate nor a cover, and nor is a test the spawn scan marks or one whose entry records no passing run.
-It reads the map as the last lym gate testmap call left it and the keep markers from this worktree; it runs no test and takes no slot.
+It reads the map as the last lym gate testmap call from this worktree left it: the hub's shared maps from the prime, this worktree's own elsewhere.
+It reads the keep markers from this worktree; it runs no test and takes no slot.
 It prints the map's commit and build time, map_build_failure when a later coverage build failed, the candidates, the kept tests with their reasons and the tests not judged with why.
 
 Examples:
@@ -66,7 +67,7 @@ Examples:
 }
 
 // runRedundant writes the redundancy candidates of the package pkg.
-// It reads them from the package's coverage map in the hub of the seam cwd.
+// It reads them from the package's coverage map where `lym gate testmap` from the worktree of the seam cwd writes it.
 // It returns the verb's exit code.
 func runRedundant(ctx context.Context, out io.Writer, pkg string) int {
 	cwd, err := lymcwd.CwdFrom(ctx)
@@ -89,9 +90,14 @@ func runRedundant(ctx context.Context, out io.Writer, pkg string) int {
 		return output.Err(out, fmt.Sprintf("gate redundant: %v; way forward: declare tier0 or tier1 with its dir at the Go module's root with lym config gate from the prime, then re-run the same command", err))
 	}
 
+	mapsDir, err := coverageMapsDir(location)
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("gate redundant: %v; way forward: re-run the same command", err))
+	}
+
 	pkg = path.Clean(filepath.ToSlash(pkg))
-	rebuild := fmt.Sprintf("way forward: build it with lym gate testmap %s from the hub's prime worktree, then re-run the same command", pkg)
-	m, found, err := testcover.ReadMap(testcover.Dir(fabricengine.BoltDir(location.HubPath)), pkg)
+	rebuild := fmt.Sprintf("way forward: build it with lym gate testmap %s from this worktree, then re-run the same command", pkg)
+	m, found, err := testcover.ReadMap(mapsDir, pkg)
 	if err == nil && found {
 		err = checkMapBlocks(m)
 	}

@@ -218,7 +218,8 @@ so every run takes its slots, its timeout and its log.
 - Tests run only through `lym gate test` over `gate.yaml`'s tiers.
   Two things run outside it: a card `**Verify:**` line and `cmd/testtiming`'s runs in every mode.
 - Two coverage runs take a tier's `env` and a gate slot as a tier run does:
-  `lym gate testmap`, which rebuilds the per-package coverage maps from the hub's prime worktree,
+  `lym gate testmap`, which rebuilds the per-package coverage maps at the HEAD of the worktree it runs in,
+  into the hub's shared maps from the prime and into the worktree's anchor `.lym` elsewhere,
   and the `redundancy` report step a gate key's `reports` lists, which runs after the key's tiers released their slots.
   Each runs every test alone under a coverage binary, since coverage counters are process-wide.
 - A card `**Verify:**` line runs through the shared `internal/cardverify` runner,
@@ -289,7 +290,7 @@ this section keeps only what is project-specific or stricter here.
   the functions it covers of each other in-module package its test binary links, and its spawn scan verdict.
   It also records the hashes of the package's files and of each linked package's files at the commit it was built from.
   The maps are built only on command: no dobby, landing or gate builds them, and the gate selects no test from them.
-  A call naming no package plans every map at the prime's HEAD through the coverage selector, building nothing:
+  A call naming no package plans every map at the HEAD of the worktree it runs in through the coverage selector, building nothing:
   a current map moves to HEAD with its entries, an affected one drops the affected tests' entries, which are re-measured,
   and a miss rebuilds the package whole.
   A failed build keeps the map's entries and is not retried at the same HEAD.
