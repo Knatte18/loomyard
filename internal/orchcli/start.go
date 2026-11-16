@@ -753,8 +753,8 @@ func (c *orchCLI) launchOrch(st orchengine.State, note, remoteControlName string
 	return started, source, abandoned, err
 }
 
-// resumeOrch resumes the orch session sessionID with the reload pointer,
-// with remote control on under remoteControlName when it is non-empty.
+// resumeOrch resumes the orch session sessionID with the reload pointer.
+// Remote control is on under remoteControlName when it is non-empty.
 // A resume refused for a live holder ends that holder when it is this worktree's registered orch.
 // It then resumes once more.
 // Any other holder refuses, naming its pid.
