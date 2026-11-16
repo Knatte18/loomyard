@@ -216,6 +216,25 @@ func (f *Fabric) HoldsWork(base, source string) (bool, error) {
 	return merged == baseTree, nil
 }
 
+// ConflictsWith reports whether merging ref into the pair's code HEAD stops on a conflict.
+// The merge runs in memory and changes no worktree, index or ref.
+// A ref that does not resolve is an error naming it.
+func (f *Fabric) ConflictsWith(ref string) (bool, error) {
+	refSHA, err := f.code.ResolveSHA(ref)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: conflict test against %s: %w", ref, err)
+	}
+	headSHA, err := f.code.ResolveSHA("HEAD")
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: conflict test against %s: %w", ref, err)
+	}
+	_, clean, err := f.code.MergeTree(headSHA, refSHA)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: conflict test against %s: %w", ref, err)
+	}
+	return !clean, nil
+}
+
 // FastForwardRefusal names why a fast-forward left the pair unmoved without returning an error.
 type FastForwardRefusal string
 

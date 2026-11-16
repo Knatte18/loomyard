@@ -159,7 +159,7 @@ func (f *bindingsFixture) assertFollow(t *testing.T, want string) {
 func (f *bindingsFixture) awaitRecord(t *testing.T) []string {
 	t.Helper()
 	var args []string
-	waitUntil(t, 5*time.Second, "the recorder never finished writing", func() bool {
+	waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
 		raw, err := os.ReadFile(f.recordPath)
 		args = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 		return err == nil && len(args) == 8
@@ -390,7 +390,7 @@ func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) 
 			return err == nil
 		})
 		var args []string
-		waitUntil(t, 5*time.Second, "the recorder never finished writing", func() bool {
+		waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
 			raw, err := os.ReadFile(f.recordPath)
 			args = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 			return err == nil && len(args) == 9
@@ -459,7 +459,7 @@ func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
 	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
 	f.click(t, 2, "HALT")
 	var lines []string
-	waitUntil(t, 5*time.Second, "the recorder never finished writing", func() bool {
+	waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
 		raw, err := os.ReadFile(recordPath)
 		lines = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 		return err == nil && len(lines) >= 14

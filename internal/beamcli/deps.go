@@ -144,6 +144,39 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			ParentBranch: parentBranch,
 		}, nil
 	}
+	// beamParentTips opens the beam's pair and returns it with its HEAD and the parent branch's tips.
+	// Origin decides: the upstream tip is read after a fetch under the remote-refs lock if upstream is set and pushes run.
+	// The tips are the local tip and that upstream tip, each left out when absent.
+	beamParentTips := func(slug string) (*fabricengine.Fabric, string, []string, error) {
+		beam, parentBranch, err := beamAndParent(slug)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		pair, err := fabricengine.Open(beam)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		tips, err := pair.ReadParentTips(parentBranch, false)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		if tips.Upstream != "" && !fabricengine.EnvSyncOptions().SkipPush {
+			if tips, err = pair.ReadParentTips(parentBranch, true); err != nil {
+				return nil, "", nil, err
+			}
+		}
+		head, err := pair.HeadSHA()
+		if err != nil {
+			return nil, "", nil, err
+		}
+		var present []string
+		for _, tip := range []string{tips.Local, tips.Upstream} {
+			if tip != "" {
+				present = append(present, tip)
+			}
+		}
+		return pair, head, present, nil
+	}
 	return landDeps{
 		Machine: machinename.Name,
 		ReadOwners: func() (boardengine.Owners, error) {
@@ -377,38 +410,33 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				return nil
 			}
 		},
-		// Origin decides: parent tips are read after a fetch under the remote-refs lock if upstream is set and pushes run.
 		ParentUnmerged: func(slug string) (bool, error) {
-			beam, parentBranch, err := beamAndParent(slug)
+			pair, head, tips, err := beamParentTips(slug)
 			if err != nil {
 				return false, err
 			}
-			pair, err := fabricengine.Open(beam)
-			if err != nil {
-				return false, err
-			}
-			tips, err := pair.ReadParentTips(parentBranch, false)
-			if err != nil {
-				return false, err
-			}
-			if tips.Upstream != "" && !fabricengine.EnvSyncOptions().SkipPush {
-				if tips, err = pair.ReadParentTips(parentBranch, true); err != nil {
-					return false, err
-				}
-			}
-			head, err := pair.HeadSHA()
-			if err != nil {
-				return false, err
-			}
-			for _, tip := range []string{tips.Local, tips.Upstream} {
-				if tip == "" {
-					continue
-				}
+			for _, tip := range tips {
 				held, err := pair.IsAncestor(tip, head)
 				if err != nil {
 					return false, err
 				}
 				if !held {
+					return true, nil
+				}
+			}
+			return false, nil
+		},
+		ParentConflicts: func(slug string) (bool, error) {
+			pair, _, tips, err := beamParentTips(slug)
+			if err != nil {
+				return false, err
+			}
+			for _, tip := range tips {
+				conflicts, err := pair.ConflictsWith(tip)
+				if err != nil {
+					return false, err
+				}
+				if conflicts {
 					return true, nil
 				}
 			}

@@ -158,6 +158,12 @@
 // It refuses a beam with no commit beyond its parent.
 // The refusal names landing a member into the beam first, or `lym beam ready <slug>` to land without a pull request.
 // It refuses an origin that `landingshed.OriginMissing` finds a fact missing from.
+// Before it pushes for a pull request none records, or reopens a recorded one GitHub reports closed,
+// `judgeOpenable` refuses a beam whose pull request GitHub could not merge as it stands:
+//   - a beam with a merge task not done, naming `lym batten status` of the task, since its landing changes the beam;
+//   - a beam whose head conflicts with its parent, naming `lym beam merge-parent <slug>`.
+//
+// A beam only behind its parent opens, since GitHub merges it.
 // A recorded pull request that GitHub reports open answers `already` and commits the landing directory.
 // One reported closed is reopened and answered `reopened`.
 // One reported merged changes nothing and names `lym beam ready <slug>`, after which Finalize lands it.
@@ -201,6 +207,8 @@
 // It also carries whether GitHub's rules for the parent branch require a pull request.
 // `parentRuleRequired` reads that only when the origin allows a pull request,
 // and it reads no rule when the token is unusable or the call fails for a reason that is not transient.
+// `ParentConflicts` reads the parent tips `ParentUnmerged` reads.
+// It merges each into the beam's head in memory through `fabricengine`'s `ConflictsWith`.
 //
 // # land
 //
