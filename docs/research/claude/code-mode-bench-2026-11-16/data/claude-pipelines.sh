@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /home/knatte/.local/bin/claude --append-system-prompt "Bench override of the Editing files rule on reading: in this session you may read and search files with shell, one read-only pipeline per call, for example grep -n pattern a b c | head -80 or cat a b | sed -n 1,200p. This replaces the rule that you read a file with Read and search files with grep, and the part of the rule that forbids reading with cat, head or sed -n. Changing files by shell stays refused." "$@"
