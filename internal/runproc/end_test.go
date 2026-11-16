@@ -521,7 +521,7 @@ func TestEndSubject_EndsTheRunsThenTheSubjectAndItsDobbyLast(t *testing.T) {
 			wantEnded:   []Ended{{10, RoleDriver}, {20, RoleLoop}, {40, RoleOrch}},
 		},
 		{
-			name:        "TheHubOwnerSubjectLeavesTheHubWidePushesTestMapSlackRelayAndTeardownAlone",
+			name:        "TheHubOwnerSubjectLeavesTheHubWidePushesSlackRelayAndTeardownAlone",
 			subject:     HubOwner,
 			endDobby:    true,
 			wantSignals: []string{"term pid 84", "term pid 85"},
