@@ -503,6 +503,8 @@
 // The settings set `CLAUDE_CODE_SUBAGENT_EFFORT` to the role's effort on a model the efforts table does not name,
 // so a subagent whose call names no effort still gets the role's effort instead of Claude Code's default.
 // A launch whose model-spec names no effort takes `--effort` from the same table, by config role and model alias.
+// A spec that names a remote-control session adds `--remote-control` with that name to the launch and resume lines.
+// RemoteControlSequence types `/remote-control` with a name into a live session.
 // The standing passages heddle's layers hold for the claude engine follow it, each after a blank line and in order.
 // They are read through the process-wide passage reader that shuttleengine installs a seam for.
 // The one-line rule applies to lym's own sentences alone, since passages may span lines,

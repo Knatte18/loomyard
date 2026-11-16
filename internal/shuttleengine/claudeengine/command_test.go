@@ -64,9 +64,22 @@ func TestBuildLaunchCmd(t *testing.T) {
 		interactive      bool
 		forkSubagents    bool
 		// promptCacheTTL defaults to 5m when empty.
-		promptCacheTTL string
-		want           string
+		promptCacheTTL    string
+		remoteControlName string
+		want              string
 	}{
+		{
+			// The remote session's name is quoted as one argument, separators and all.
+			name:              "remote_control_posix",
+			sh:                shell.Posix(),
+			bin:               "claude",
+			promptPath:        "/run/prompt.md",
+			settingsPath:      "/run/settings.json",
+			sessionID:         "abc-123",
+			interactive:       true,
+			remoteControlName: "neve::ly:orch",
+			want:              posixEnvLead + `'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --remote-control 'neve::ly:orch'`,
+		},
 		{
 			name:           "prompt_cache_ttl_one_hour",
 			bin:            "claude",
@@ -327,7 +340,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			if promptCacheTTL == "" {
 				promptCacheTTL = "5m"
 			}
-			got := buildLaunchCmd(sh, tt.bin, launchPointer(tt.promptPath), tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.appendPromptPath, envFilePath, promptCacheTTL, false, !tt.interactive, tt.forkSubagents)
+			got := buildLaunchCmd(sh, tt.bin, launchPointer(tt.promptPath), tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.appendPromptPath, envFilePath, promptCacheTTL, tt.remoteControlName, false, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildLaunchCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -758,29 +771,35 @@ func TestBuildResumeCmd(t *testing.T) {
 	// it stalls at its first tool dialog with no operator present, which shuttle can only classify as a timeout,
 	// and it comes back on the provider default model rather than the pinned one.
 	tests := []struct {
-		name             string
-		model            string
-		effort           string
-		appendPromptPath string
-		interactive      bool
-		forkSubagents    bool
-		ttl              string
-		want             string
+		name              string
+		model             string
+		effort            string
+		appendPromptPath  string
+		interactive       bool
+		forkSubagents     bool
+		ttl               string
+		remoteControlName string
+		want              string
 	}{
-		{"autonomous_bare", "", "", "", false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions`},
-		{"interactive_bare", "", "", "", true, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`},
-		{"model_and_effort_pinned", "haiku", "low", "", false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --model 'haiku' --effort 'low' --dangerously-skip-permissions`},
-		{"prompt_file_on_resume", "", "", `C:\run\append-system-prompt.txt`, false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt-file 'C:\run\append-system-prompt.txt'`},
+		{"autonomous_bare", "", "", "", false, false, "5m", "", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions`},
+		{"interactive_bare", "", "", "", true, false, "5m", "", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`},
+		{"model_and_effort_pinned", "haiku", "low", "", false, false, "5m", "", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --model 'haiku' --effort 'low' --dangerously-skip-permissions`},
+		{"prompt_file_on_resume", "", "", `C:\run\append-system-prompt.txt`, false, false, "5m", "", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt-file 'C:\run\append-system-prompt.txt'`},
 		{
 			// A resumed fork-mode session must keep the fork-subagent capability it launched with.
-			"fork_mode_on", "", "", "", true, true, "5m",
+			"fork_mode_on", "", "", "", true, true, "5m", "",
 			pwshEnvLead + `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`,
 		},
-		{"prompt_cache_ttl_one_hour", "", "", "", true, false, "1h", `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`},
+		{"prompt_cache_ttl_one_hour", "", "", "", true, false, "1h", "", `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`},
+		{
+			// A revived session must come back with the remote control it launched with.
+			"remote_control_on_resume", "", "", "", true, false, "5m", "neve::ly:orch",
+			pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --remote-control 'neve::ly:orch'`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.appendPromptPath, pwshEnvFilePath, tt.ttl, !tt.interactive, tt.forkSubagents)
+			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.appendPromptPath, pwshEnvFilePath, tt.ttl, tt.remoteControlName, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildResumeCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -799,7 +818,7 @@ func TestBuildResumeCmd_NoticePosix(t *testing.T) {
 	tiergate.Require(t, 0)
 	want := posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' --resume 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt-file '/run/append-system-prompt.txt'`
 
-	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", "/run/append-system-prompt.txt", posixEnvFilePath, "5m", true, true)
+	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", "/run/append-system-prompt.txt", posixEnvFilePath, "5m", "", true, true)
 	if got != want {
 		t.Errorf("buildResumeCmd(...) = %q; want %q", got, want)
 	}

@@ -379,6 +379,17 @@ func TestReloadPluginsSequence(t *testing.T) {
 	}
 }
 
+func TestRemoteControlSequence(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	got := New().RemoteControlSequence("neve::ly:orch")
+	want := []shuttleengine.PaneInput{{Text: "/remote-control neve::ly:orch"}, {Key: "Enter"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("RemoteControlSequence(%q) = %#v; want %#v", "neve::ly:orch", got, want)
+	}
+}
+
 func TestClearInputSequence(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

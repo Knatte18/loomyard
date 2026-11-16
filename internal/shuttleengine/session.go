@@ -366,6 +366,28 @@ func (r *Runner) ReloadPlugins(guid string) error {
 	return r.sendSessionSequence(guid, "", SessionCycler.ReloadPluginsSequence)
 }
 
+// TurnOnRemoteControl sends the provider's remote-control command into the live pane of the run identified by guid.
+// The command carries the session name name.
+// An engine without the RemoteController capability types nothing.
+// It waits for an idle session first,
+// and it fails with ErrSessionBusy while the session or its input box is held.
+// It refuses a name containing a newline, since the name is sent as one line.
+func (r *Runner) TurnOnRemoteControl(guid, name string) error {
+	if r.toldErr != nil {
+		return r.toldErr
+	}
+	if strings.ContainsAny(name, "\r\n") {
+		return fmt.Errorf("shuttle: remote-control name for strand %q spans several lines; it is typed as one line, so join it into one", guid)
+	}
+	return r.sendSessionSequence(guid, "", func(cycler SessionCycler) []PaneInput {
+		controller, ok := cycler.(RemoteController)
+		if !ok {
+			return nil
+		}
+		return controller.RemoteControlSequence(name)
+	})
+}
+
 // TypeColor sends the provider's color command for color into the live pane of the run identified by guid.
 // It suits a caller that colors the session itself.
 // A provider with no color command, or none for color, types nothing.

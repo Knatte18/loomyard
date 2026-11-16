@@ -109,6 +109,18 @@
 // The trigger selection, gates and re-read under "Idle rules" are shared;
 // the two machines follow under "The four-phase cycle (clear mode)" and "The compact cycle (compact mode)".
 //
+// # Remote control
+//
+// `remote_control` in orch.yaml is on in the template.
+// While it is on, every orch session lym launches or resumes starts with the provider's remote control on.
+// `remote_control_name` is the template of the remote session's name.
+// Config.RemoteControlSessionName fills {machine}, {hub}, {role} and {name} from the machine and the orch strand's name;
+// the template's `{machine}::{name}` is the cross-machine address creel uses.
+// LoadConfig refuses a name holding a control character, and an empty name while the switch is on.
+// RemoteControlRecord holds what lym last set for the orch strand, which the status bar's RC button shows.
+// Claude Code gives lym no reading of the state,
+// so a session whose remote control the operator turned off inside Claude Code still reads on.
+//
 // # The watcher
 //
 // Watcher.Run polls at the configured interval, calling Tick once per poll.

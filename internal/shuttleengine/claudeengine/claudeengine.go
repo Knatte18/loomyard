@@ -268,8 +268,8 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		launchArg, promptLine = skillLoadMessage, pointer
 	}
 	return shuttleengine.Launch{
-		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, resume, skipPermissions, spec.ForkSubagents),
-		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, skipPermissions, spec.ForkSubagents),
+		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, resume, skipPermissions, spec.ForkSubagents),
+		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, skipPermissions, spec.ForkSubagents),
 		SessionID:  sessionID,
 		PromptLine: promptLine,
 

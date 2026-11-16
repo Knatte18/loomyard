@@ -41,23 +41,29 @@ func StrandOf(worktree *lymcwd.Location) (name string, recorded bool, err error)
 			}
 		}
 	}
+	fixed, err := FixedStrandName(worktree)
+	if err != nil {
+		return "", false, err
+	}
+	return fixed, true, nil
+}
+
+// FixedStrandName answers the name the orch strand of worktree takes when reed holds none for it:
+// `<shortname>:orch` for the prime and `<shortname>:<slug>:orch` for a beam.
+func FixedStrandName(worktree *lymcwd.Location) (string, error) {
 	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(worktree.HubPath))
 	if !found {
-		return "", false, fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lym fabric shortname <shortname>`", worktree.WorktreePath())
+		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lym fabric shortname <shortname>`", worktree.WorktreePath())
 	}
 	primeName, err := fabricengine.PrimeName(worktree)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	slug := worktree.WorktreeName
 	if slug == primeName {
 		slug = ""
 	}
-	fixed, err := agentname.Format(shortname, slug, agentname.RoleOrch)
-	if err != nil {
-		return "", false, err
-	}
-	return fixed, true, nil
+	return agentname.Format(shortname, slug, agentname.RoleOrch)
 }
 
 // Prime resolves the prime worktree of the hub that location's worktree belongs to.

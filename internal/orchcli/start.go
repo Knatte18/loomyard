@@ -197,12 +197,13 @@ func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (startedSess
 // Its turn hook is the Slack hook.
 // It switches the presence back on the operator's typed line.
 // While away, it forwards each turn's final reply to the orch's channel.
-func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
+// A non-empty remoteControlName starts the session with remote control on under that name.
+func (c *orchCLI) orchSpec(prompt string, now time.Time, remoteControlName string) shuttleengine.Spec {
 	sentinel := filepath.Join(c.paths.Dir, "session-"+now.UTC().Format("20060102T150405Z")+".never")
 	return shuttleengine.Spec{
 		Prompt:         prompt,
 		OutputFiles:    []string{sentinel},
-		ModelChoice:    shuttleengine.ModelChoice{Model: c.cfg.Model, Effort: c.cfg.Effort},
+		ModelChoice:    c.orchModelChoice(),
 		Interactive:    true,
 		PermissionMode: c.cfg.PermissionMode,
 		ForkSubagents:  true,
@@ -217,6 +218,7 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 
 		ContextAfterCompaction: resumeContextCommand(c.location.AnchorPath()),
 		TurnHookCommand:        slackengine.HookCommand,
+		RemoteControlName:      remoteControlName,
 	}
 }
 
@@ -655,11 +657,13 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 		if err := orchengine.RenderRoleFile(c.paths.RolePath); err != nil {
 			return report, err
 		}
-		started, source, abandoned, err := c.launchOrch(st, note)
+		remoteControlName := c.launchRemoteControlName(strand, hasStrand)
+		started, source, abandoned, err := c.launchOrch(st, note, remoteControlName)
 		report.AbandonedSession = abandoned
 		if err != nil {
 			return report, err
 		}
+		c.recordRemoteControl(started.GUID, remoteControlName != "")
 		report.Strand = started.GUID
 		if started.Warning != "" {
 			report.Warnings = append(report.Warnings, started.Warning)
@@ -681,6 +685,7 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 		if err := c.adoptListedStrand(st, strand); err != nil {
 			return report, err
 		}
+		c.recordUnrecordedRemoteControl(strand.GUID)
 		logger.Info("orch: restarted a dead watcher", "strandGUID", strand.GUID, "previousExit", st.WatcherExit)
 		if err := c.spawnWatcher(); err != nil {
 			return report, err
@@ -690,6 +695,7 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 		if err := c.adoptListedStrand(st, strand); err != nil {
 			return report, err
 		}
+		c.recordUnrecordedRemoteControl(strand.GUID)
 		report.Action = actionAlreadyRunning
 	}
 	if watcherLive && st.WatcherStopping {
@@ -703,13 +709,14 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 // A resume that fails to start, its transcript gone or its process not coming up live, falls back to a fresh launch.
 // The session it gave up is named as abandoned.
 // A fresh launch takes the last completed handoff, else the start stencil, and note joins its prompt.
-func (c *orchCLI) launchOrch(st orchengine.State, note string) (started startedSession, source, abandoned string, err error) {
+// Either launch starts with remote control on under remoteControlName when it is non-empty.
+func (c *orchCLI) launchOrch(st orchengine.State, note, remoteControlName string) (started startedSession, source, abandoned string, err error) {
 	if st.SessionID != "" {
 		reload, err := orchengine.RenderReloadPrompt(c.stencilsDir, c.paths.RolePath)
 		if err != nil {
 			return startedSession{}, "", "", err
 		}
-		spec := c.orchSpec(orchengine.WithPresence(c.paths, reload), time.Now())
+		spec := c.orchSpec(orchengine.WithPresence(c.paths, reload), time.Now(), remoteControlName)
 		spec.ResumeSessionID = st.SessionID
 		started, err := c.starter.StartSession(spec)
 		if err == nil {
@@ -726,7 +733,7 @@ func (c *orchCLI) launchOrch(st orchengine.State, note string) (started startedS
 	if note != "" {
 		prompt += "\n\n" + note
 	}
-	started, err = c.starter.StartSession(c.orchSpec(prompt, time.Now()))
+	started, err = c.starter.StartSession(c.orchSpec(prompt, time.Now(), remoteControlName))
 	return started, source, abandoned, err
 }
 

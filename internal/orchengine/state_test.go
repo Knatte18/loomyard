@@ -27,6 +27,49 @@ func testPaths(t *testing.T) Paths {
 		RolePath:         filepath.Join(dir, "role.md"),
 		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
 		PrimeRoot:        filepath.Dir(dir),
+
+		RemoteControlPath:     filepath.Join(dir, "remote-control.json"),
+		RemoteControlLockPath: filepath.Join(dir, "remote-control.json.lock"),
+	}
+}
+
+// TestRemoteControlOn pins the record's reading.
+// It reads off while the record is absent.
+// It reads on only for the strand the record names while the record reads on.
+// An undecodable record is an error.
+func TestRemoteControlOn(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	p := testPaths(t)
+	at := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+
+	if on, err := RemoteControlOn(p, "g1"); on || err != nil {
+		t.Errorf("RemoteControlOn(g1) of an absent record = %v, %v; want false, nil", on, err)
+	}
+	tests := []struct {
+		name   string
+		record RemoteControlRecord
+		strand string
+		want   bool
+	}{
+		{"OnForItsStrand", RemoteControlRecord{Strand: "g1", On: true, At: at}, "g1", true},
+		{"OnForAnotherStrand", RemoteControlRecord{Strand: "g1", On: true, At: at}, "g2", false},
+		{"OffForItsStrand", RemoteControlRecord{Strand: "g1", On: false, At: at}, "g1", false},
+	}
+	for _, tt := range tests {
+		if err := WriteRemoteControl(p, tt.record); err != nil {
+			t.Fatalf("%s: WriteRemoteControl: %v", tt.name, err)
+		}
+		if on, err := RemoteControlOn(p, tt.strand); on != tt.want || err != nil {
+			t.Errorf("%s: RemoteControlOn(%s) = %v, %v; want %v, nil", tt.name, tt.strand, on, err, tt.want)
+		}
+	}
+
+	if err := os.WriteFile(p.RemoteControlPath, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RemoteControlOn(p, "g1"); err == nil {
+		t.Error("RemoteControlOn of undecodable JSON returned no error")
 	}
 }
 

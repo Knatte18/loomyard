@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -206,6 +207,69 @@ func TestLoadConfig_PermissionMode(t *testing.T) {
 		if !strings.Contains(err.Error(), "set permission_mode: bypass or remove the key") {
 			t.Errorf("permission_mode: %s error = %q, want the fix named", mode, err)
 		}
+	}
+}
+
+func TestLoadConfig_RemoteControl(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name      string
+		content   string
+		wantOn    bool
+		wantName  string
+		wantError string
+	}{
+		{"the template is on with the cross-machine address", "model: opus\n", true, "{machine}::{name}", ""},
+		{"switched off with an empty name loads", "remote_control: false\nremote_control_name: \"\"\n", false, "", ""},
+		{"on with an empty name is refused", "remote_control_name: \" \"\n", false, "", "remote_control_name is empty"},
+		{"a control character is refused", "remote_control_name: \"a\\tb\"\n", false, "", "control character"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tmpDir := t.TempDir()
+			seedLymConfig(t, tmpDir, "orch", tt.content)
+			cfg, err := orchengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "orch")
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Errorf("LoadConfig(%q) error = %v; want it to contain %q", tt.content, err, tt.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadConfig(%q): %v", tt.content, err)
+			}
+			if cfg.RemoteControl != tt.wantOn || cfg.RemoteControlName != tt.wantName {
+				t.Errorf("LoadConfig(%q) remote control = %v, %q; want %v, %q", tt.content, cfg.RemoteControl, cfg.RemoteControlName, tt.wantOn, tt.wantName)
+			}
+		})
+	}
+}
+
+func TestConfig_RemoteControlSessionName(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	beamOrch := agentname.Name{Shortname: "ly", Slug: "b", Role: "orch"}
+	tests := []struct {
+		name     string
+		template string
+		orch     agentname.Name
+		want     string
+	}{
+		{"the template's form is the cross-machine address", "{machine}::{name}", beamOrch, agentname.FormatMachineAddress("neve", beamOrch.String())},
+		{"every placeholder fills", "{hub}:{role}[{machine}]", beamOrch, "ly:orch[neve]"},
+		{"other brace text stays literal", "{machine} {slug}", beamOrch, "neve {slug}"},
+		{"a value is never filled again", "{name}", agentname.Name{Shortname: "ly", Role: "orch"}, "ly:orch"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := orchengine.Config{RemoteControlName: tt.template}
+			if got := cfg.RemoteControlSessionName("neve", tt.orch); got != tt.want {
+				t.Errorf("RemoteControlSessionName(neve, %s) with %q = %q; want %q", tt.orch, tt.template, got, tt.want)
+			}
+		})
 	}
 }
 
