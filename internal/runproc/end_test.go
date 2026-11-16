@@ -478,7 +478,6 @@ func TestEndSubject_EndsTheRunsThenTheSubjectAndItsDobbyLast(t *testing.T) {
 		"other": {{PID: 70, StartTime: "700", Role: RoleLoop}},
 		HubOwner: {
 			{PID: 80, StartTime: "800", Role: RolePush},
-			{PID: 81, StartTime: "810", Role: RoleTestMap},
 			{PID: 82, StartTime: "820", Role: RoleSlackRelay},
 			{PID: 83, StartTime: "830", Role: RoleTeardown},
 			{PID: 84, StartTime: "840", Role: RoleOrch},

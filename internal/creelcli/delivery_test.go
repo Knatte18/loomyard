@@ -101,6 +101,11 @@ func (r *recordingCommands) LoadSkills(guid string, skills []string) error {
 	return nil
 }
 
+func (r *recordingCommands) TurnOnRemoteControl(guid, name string) error {
+	r.called = "TurnOnRemoteControl(" + guid + "," + name + ")"
+	return nil
+}
+
 // restoringPane is a pane drawn like Claude's across an interrupt.
 // It shows a running turn over an empty box until the Escape.
 // After the Escape it shows the stopped turn's prompt in the box until a C-u deletes it.
@@ -441,6 +446,7 @@ func TestHubDelivery(t *testing.T) {
 			{creelengine.Command{Name: creelengine.CommandReloadPlugins}, "ReloadPlugins(guid-orch)"},
 			{creelengine.Command{Name: creelengine.CommandColor, Argument: "blue"}, "TypeColor(guid-orch,blue)"},
 			{creelengine.Command{Name: creelengine.CommandLoadSkills, Argument: "scribe:prose scribe:testing"}, "LoadSkills(guid-orch,scribe:prose+scribe:testing)"},
+			{creelengine.Command{Name: creelengine.CommandRemoteControl, Argument: "neve::ly:orch"}, "TurnOnRemoteControl(guid-orch,neve::ly:orch)"},
 		}
 		for _, tt := range tests {
 			recorder := &recordingCommands{}

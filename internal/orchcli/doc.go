@@ -45,9 +45,6 @@
 // `BeamDown` removes the orch strand, after which the watcher exits on its own.
 // It ends the worktree's dobby through `runproc.EndRole`, so no other process of the beam is signalled;
 // each part stops only when live.
-// For the prime it then ends the coverage-map upkeep pass, whether or not the dobby is live.
-// The pass is the `runproc.RoleTestMap` record under `runproc.HubOwner`, which the pass registers itself.
-// It has its own record and process group and so outlives the dobby's end.
 // `OrchLive` is the liveness predicate other modules call:
 // the worktree's orch state records a strand that reed tracks and reports live.
 //
@@ -273,6 +270,33 @@
 // It prints the resume pointer as the provider's additional-context JSON and nothing else.
 // It also writes the delivery mark the watcher reads.
 // A failure prints the JSON error envelope and writes no mark, so the watcher types the pointer itself.
+//
+// # Remote control
+//
+// A launch, fresh or resumed, names the remote session on the orch run's spec.
+// It does so only when orch.yaml's `remote_control` is on and the orch's engine has the provider's remote control.
+// A Codex orch gets nothing.
+// The name is formed from the strand name the launch takes:
+// the listed strand's, else the fixed `<shortname>:orch` or `<shortname>:<slug>:orch`.
+// A name that cannot be formed is logged, and the session launches without remote control.
+// The launch records the new strand's remote control, on or off, for reed's RC button.
+// An orch on an engine with no remote control records nothing, so the button is not drawn for it.
+// A start that finds a live orch strand already running records it off when the record does not name it,
+// so the button is drawn and a click can turn remote control on.
+// Two hidden verbs serve the button.
+// `lym orch rc-bar --dir <dir>` prints rc-on or rc-off for the strand the orch state at dir records.
+// It does so only while the remote-control record names that strand, and it prints nothing otherwise.
+// It skips the orch wiring, which would refuse a task pair's session.
+// `lym orch rc-on` is the click.
+// It queues creel's remote-control command into the worktree's live orch strand.
+// It signs the command as the REMOTECONTROL program.
+// The name is the one a launch would pass, whatever the switch says.
+// It then records the strand's remote control on and redraws the clicking client's bar.
+// A click refuses and sends nothing when the record already reads on.
+// Claude Code's answer to a second command in a session with remote control on is unverified.
+// The refusal names `/remote-control` typed by hand in the orch pane for a session turned off inside Claude Code.
+// A record write that fails after the command is queued leaves the click a success carrying a warning field.
+// A worktree with several orch strands refuses too, naming them and `lym reed remove`.
 //
 // # Reaching the orch from another module
 //

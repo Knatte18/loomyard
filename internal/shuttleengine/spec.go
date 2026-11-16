@@ -159,6 +159,10 @@ type Spec struct {
 	// Its output and exit status are discarded, so it never steers the session.
 	// An engine that installs no hook for it ignores it.
 	TurnHookCommand string
+	// RemoteControlName, when non-empty, starts the session with the provider's remote control on, under this session name.
+	// The launch and the resume line both carry it, so a revived session comes back with it on.
+	// An engine whose provider has no remote control ignores it.
+	RemoteControlName string
 	// Requires lists what the run requires of its engine, from the closed set of Requirement constants.
 	// Start refuses an unknown entry and an engine that does not meet every entry.
 	// Attach checks the engine the run's record names in the same way.

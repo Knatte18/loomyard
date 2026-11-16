@@ -95,7 +95,7 @@ const DefaultTestTimeoutMin = 20
 type GateKey struct {
 	// Tiers are the tier numbers the key runs, in order.
 	Tiers []int `yaml:"tiers"`
-	// Scope is card, diff, coverage or all.
+	// Scope is card, diff or all.
 	Scope string `yaml:"scope"`
 	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
 	Lints []string `yaml:"lints"`
@@ -117,9 +117,9 @@ const (
 	scopeAll  = "all"
 )
 
-// ScopeCoverage is the gate key scope that runs the diff scope's changed packages whole.
-// Each importing package runs the tests its coverage map selects.
-const ScopeCoverage = "coverage"
+// retiredScopeCoverage is the gate key scope that once narrowed importing packages to the tests a coverage map selected.
+// The load refuses it and MigrateConfig rewrites it to scopeDiff.
+const retiredScopeCoverage = "coverage"
 
 // Lint step names a gate key's lints may hold.
 const (

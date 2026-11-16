@@ -21,10 +21,11 @@ const mapFileName = "map.json"
 // It also holds each test's spawn verdict.
 const MapFormatVersion = 2
 
-// Dir returns the directory under the board directory boardDir that holds the coverage maps and the exit record.
-// Every worktree of the hub on the machine shares it.
-func Dir(boardDir string) string {
-	return filepath.Join(boardDir, lymdirs.DotLymDirName, lymdirs.TestCoverDirName)
+// Dir returns the coverage map directory under the `.lym` of the directory root.
+// Under the hub's board directory it holds the maps every worktree of the hub on the machine shares;
+// under a worktree's anchor it holds the maps that worktree keeps for itself, which go with the worktree.
+func Dir(root string) string {
+	return filepath.Join(root, lymdirs.DotLymDirName, lymdirs.TestCoverDirName)
 }
 
 // Map is one package's coverage map.
@@ -104,7 +105,7 @@ type MapFailure struct {
 
 // FailedAt reports whether m records a failed coverage build at commit:
 // its Failure names commit, or it holds no test entry and its BuildFailure is set and its Commit is commit.
-// An upkeep pass queues no build of such a package while commit is the HEAD it plans at.
+// A map build queues no build of such a package while commit is the HEAD it plans at.
 func (m Map) FailedAt(commit string) bool {
 	if m.Failure != nil && m.Failure.Commit == commit {
 		return true

@@ -61,6 +61,13 @@ type ArbiterAttempt struct {
 	ReportPath   string             `json:"report_path"`
 	// CaseBriefPath is the case brief the tackler was given, so a re-run names the same one; empty when there was none.
 	CaseBriefPath string `json:"case_brief_path,omitempty"`
+	// Snapshot is the task's code worktree as the arbiter found it, so the call reads what the arbiter changed;
+	// nil when the run's driver lets its arbiter edit nothing.
+	Snapshot *sheddriver.WorktreeSnapshot `json:"snapshot,omitempty"`
+	// Changes maps every uncommitted path of the task's code worktree at spawn to the SHA-256 of its content.
+	// Untracked files are included, paths are relative to the worktree, and a file that is gone maps to "deleted".
+	// The call compares it with the worktree the arbiter left, since the snapshot's dirty map never lists a new file.
+	Changes map[string]string `json:"changes,omitempty"`
 
 	// Dir is the attempt's directory, filled by the readers and never serialized.
 	Dir string `json:"-"`
@@ -197,6 +204,7 @@ func ReadArbiterVerdict(path string) (ArbiterVerdict, bool, error) {
 // ArbiterEnvelope is envelope.json, the arbiter verb's validated result for an attempt.
 // Cause is empty for the agent's own verdict and names the failure that made the verb hand on otherwise.
 // Relaunch is the full re-launch line a resume carries.
+// Commits lists the commits the arbiter made on the task branch, newest first, each a short SHA and its subject.
 type ArbiterEnvelope struct {
 	Verdict     string   `json:"verdict"`
 	Reason      string   `json:"reason"`
@@ -208,6 +216,7 @@ type ArbiterEnvelope struct {
 	AttemptDir  string   `json:"attempt_dir"`
 	VerdictPath string   `json:"verdict_path"`
 	Relaunch    string   `json:"relaunch"`
+	Commits     []string `json:"commits,omitempty"`
 }
 
 // WriteArbiterEnvelope writes e at path, creating its directory.

@@ -263,6 +263,47 @@ func composeSlackStateCommand(sh shell.Shell, executablePath func() (string, err
 	return strings.ReplaceAll(sh.Invoke(exe), "#", "##") + " slack bar --dir #{" + buttonDirOption + "}", true
 }
 
+// composeRemoteControlClickCommand returns the shell line the click binding runs for the RC button, on sh's dialect.
+// It changes into the session's run directory, as composeButtonCommand's line does.
+// Then it runs the absolute path of this binary with `orch rc-on`.
+// The line also carries the told socket and tmux paths and the clicking client, so the verb can redraw its bar.
+// Every pinned token is quoted once and then has each # doubled, since the click format-expands the line.
+// #{q:client_name} is left for that expansion as its own word.
+// The output of both steps is discarded and the line ends with status zero, so tmux opens no view mode.
+// An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
+// It then returns false, so the caller pins no RC click.
+func composeRemoteControlClickCommand(sh shell.Shell, executablePath func() (string, error), socketPath, tmuxPath string) (string, bool) {
+	exe, err := selfexec.ResolveLymBinary(executablePath)
+	if err != nil {
+		logger.Warn("reed: could not resolve this binary, pinning no RC click", "err", err)
+		return "", false
+	}
+	pinned := func(token string) string { return strings.ReplaceAll(token, "#", "##") }
+	words := []string{
+		pinned(sh.Invoke(exe)), "orch", RemoteControlOnVerb,
+		"--socket", pinned(sh.Quote(socketPath)),
+		"--tmux", pinned(sh.Quote(tmuxPath)),
+		"--client", "#{q:client_name}",
+	}
+	return sh.Chain(sh.DiscardOutput(sh.ChangeDirToWord("#{"+buttonDirOption+"}")), sh.DiscardOutput(strings.Join(words, " ")), sh.ExitSuccess()), true
+}
+
+// composeRemoteControlStateCommand returns the shell line the RC button's state job runs, on sh's dialect:
+// the absolute path of this binary with `orch rc-bar --dir` and the session's run directory.
+// It prints the remote control lym last set for the orch strand that the worktree there records.
+// The job's format expands the line once more, so the run directory's session option is left for that expansion,
+// and the pinned path has each # doubled.
+// An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
+// It then returns false, so no RC button is drawn.
+func composeRemoteControlStateCommand(sh shell.Shell, executablePath func() (string, error)) (string, bool) {
+	exe, err := selfexec.ResolveLymBinary(executablePath)
+	if err != nil {
+		logger.Warn("reed: could not resolve this binary, pinning no RC state line", "err", err)
+		return "", false
+	}
+	return strings.ReplaceAll(sh.Invoke(exe), "#", "##") + " orch " + RemoteControlBarVerb + " --dir #{" + buttonDirOption + "}", true
+}
+
 // The flags a button's prompt re-enters the click verb with.
 // buttonStageAnswered is passed after the ask prompt, and buttonStageConfirmed after a yes to the confirm prompt.
 const (

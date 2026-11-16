@@ -8,11 +8,8 @@ package loomcli
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,6 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/shedworktree"
 )
 
 // driveRefusal is the refusal of a second Go driver for a run one already drives.
@@ -201,7 +199,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		AttemptDir: func(number int) string { return shedrun.TacklerAttemptDir(location, c.runID, number) },
 		MarkerPath: shedrun.TacklerMarker(location, c.runID),
 		Producers:  c.routing.Producers,
-		Snapshot:   func() (sheddriver.WorktreeSnapshot, error) { return worktreeSnapshot(location) },
+		Snapshot:   func() (sheddriver.WorktreeSnapshot, error) { return shedworktree.Snapshot(location) },
 		PausedWithin: func(from, to time.Time) (time.Duration, error) {
 			geometry, err := pauseGeometry()
 			if err != nil {
@@ -314,7 +312,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 			},
 		},
 		Tamper: &sheddriver.TamperSeam{
-			Snapshot: func() (sheddriver.WorktreeSnapshot, error) { return worktreeSnapshot(location) },
+			Snapshot: func() (sheddriver.WorktreeSnapshot, error) { return shedworktree.Snapshot(location) },
 			AttemptSnapshot: func(tacklerDir string) (sheddriver.WorktreeSnapshot, error) {
 				attempt, err := sheddriver.ReadTacklerAttempt(tacklerDir)
 				return attempt.Snapshot, err
@@ -388,46 +386,6 @@ func writeDrivePausedNote(frictionDir, runID string, stop sheddriver.Stop) error
 		return fmt.Errorf("loom: write go-driver-paused note %s: %w", path, err)
 	}
 	return nil
-}
-
-// worktreeSnapshot reads the state a tackler must leave unchanged in the task's code worktree:
-// HEAD, branch and the SHA-256 of each dirty path.
-// The records side is left out, since the run's own records change under every step.
-func worktreeSnapshot(location *lymcwd.Location) (sheddriver.WorktreeSnapshot, error) {
-	fab, err := fabricengine.Open(location)
-	if err != nil {
-		return sheddriver.WorktreeSnapshot{}, err
-	}
-	head, err := fab.HeadSHA()
-	if err != nil {
-		return sheddriver.WorktreeSnapshot{}, err
-	}
-	branch, err := fab.CurrentBranch()
-	if err != nil {
-		return sheddriver.WorktreeSnapshot{}, err
-	}
-	paths, err := fab.DirtyPaths()
-	if err != nil {
-		return sheddriver.WorktreeSnapshot{}, err
-	}
-	codeRoot := location.WorktreePath() + string(filepath.Separator)
-	dirty := map[string]string{}
-	for _, path := range paths {
-		if !strings.HasPrefix(path, codeRoot) {
-			continue
-		}
-		content, err := os.ReadFile(path)
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			dirty[path] = "deleted"
-		case err != nil:
-			return sheddriver.WorktreeSnapshot{}, fmt.Errorf("hash dirty path %s: %w", path, err)
-		default:
-			sum := sha256.Sum256(content)
-			dirty[path] = hex.EncodeToString(sum[:])
-		}
-	}
-	return sheddriver.WorktreeSnapshot{Head: head, Branch: branch, Dirty: dirty}, nil
 }
 
 // dirtyPathsOutsideRecords lists the pair's uncommitted or untracked paths outside the run's own records directories.

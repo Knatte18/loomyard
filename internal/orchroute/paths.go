@@ -32,6 +32,8 @@ func Paths(location *lymcwd.Location) orchengine.Paths {
 		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
 		PrimeRoot:        location.WorktreePath(),
 
-		RetiredNoticeLogPath: filepath.Join(dotLym, "notices.log"),
+		RetiredNoticeLogPath:  filepath.Join(dotLym, "notices.log"),
+		RemoteControlPath:     filepath.Join(dir, "remote-control.json"),
+		RemoteControlLockPath: filepath.Join(dir, "remote-control.json.lock"),
 	}
 }

@@ -85,7 +85,7 @@ func EndRole(dir, owner, role string, callerPID int) ([]Ended, error) {
 // A teardown child is left alone in every pass.
 // Only an operator's deliberate end may stop the remote steps of a teardown.
 // The subject's pass also leaves alone the processes that serve the whole hub:
-// the adopt worker, the board syncs, the detached pushes, the coverage-map pass and the Slack relay.
+// the adopt worker, the board syncs, the detached pushes and the Slack relay.
 // It goes on past a failed end and returns every process it ended, with the failures joined;
 // errors.As still finds a *SurvivorsError among them.
 func EndSubject(dir, subject string, runs []string, callerPID int, endDobby bool) ([]Ended, error) {
@@ -97,7 +97,7 @@ var (
 	runPassSpared = []string{RoleTeardown}
 	// subjectPassSpared lists the roles the pass over the subject's own records leaves alone:
 	// the dobby, which the last pass ends or leaves to its own hand-over, and the roles that serve the whole hub.
-	subjectPassSpared = []string{RoleDobby, RoleTeardown, RoleAdopt, RoleSync, RolePush, RoleTestMap, RoleSlackRelay}
+	subjectPassSpared = []string{RoleDobby, RoleTeardown, RoleAdopt, RoleSync, RolePush, RoleSlackRelay}
 )
 
 func (e ender) endSubject(dir, subject string, runs []string, callerPID int, endDobby bool) ([]Ended, error) {

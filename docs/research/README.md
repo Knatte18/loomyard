@@ -137,6 +137,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [tier1-test-revision-2026-11-06](speed/tier1-test-revision-2026-11-06/report.md) — where a tier 1 pass goes, which levers of the fabricengine survey still stand, which tests can fold, and the changes that would cut a pass, ranked.
 - [testmap-upkeep-2026-11-11](speed/testmap-upkeep-2026-11-11/report.md) — three independent proposals, two by Fable and one by Opus, for keeping the per-test coverage maps fresh, compared side by side.
 - [coverage-map-pilot-2026-11-12](speed/coverage-map-pilot-2026-11-12/report.md) — a pilot of the coverage map on `internal/adoptcli`: what building it costs, and whether its redundancy candidates hold up as deletable tests.
+- [testmap-smart-build-2026-11-15](speed/testmap-smart-build-2026-11-15/report.md) — five ways to build and keep the per-test coverage maps more cheaply, weighed by three probes on `internal/loomcli`, with one recommended design.
 
 ## tokens — token use, cost and models
 

@@ -35,10 +35,6 @@
 // Pool.Draining reports whether the drain lock is held, and creates no file in a pool that never had one.
 //
 // Pool.TryAcquire takes a free slot at once or none, and takes none while the drain lock is held.
-// Pool.TryAcquireSpare takes one only while at least two are free and the drain lock is not held.
-// One thus stays free after the take, and a pool of fewer than two slots gives none.
-// Pool.Contended reports whether every slot but a lease's own is held, or the drain lock is held:
-// the state in which a spare holder gives its slot back.
 //
 // # Inheritance
 //
@@ -68,9 +64,7 @@
 // The non-tier holders hold one slot and set their own Go flags through HolderEnv.
 // Each passes the `-p` value it reads from the pool's Limits at its acquire,
 // so a hub that declares `tier0` bounds them by its parallel and a hub that declares none adds no `-p`.
-// `lym gate testmap` is one.
-// A call naming packages waits for its slot and holds it from its first build to its end.
-// A pass takes its slot through Pool.TryAcquireSpare and gives it back once Pool.Contended reports true.
+// `lym gate testmap` is one: it waits for its slot and holds it from its first build to its end.
 // The redundancy report step of `lym gate test` is another: it takes one slot after the call's tiers released theirs.
 //
 // # Prebuilt store
@@ -105,12 +99,11 @@
 // A tier is written whole with one `lym config gate --set 'tiers.tierN={...}'` flow mapping.
 // It may also be written one key at a time, as `--set tiers.tier0.env.LYM_TEST_TIER=0` or `--set build.timeout_min=10`.
 // A key no tier or build step holds is refused.
-// `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|coverage|all}`,
+// `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`,
 // so a hub file that sets one key keeps the template's value for every other.
-// ScopeCoverage is the `diff` scope with each importing package narrowed to the tests its coverage map selects.
-// The template gives it to `webster-fix`, `darn-write` and `code-burler-fix`, and keeps `pr-review` on `diff`.
-// It is a new value, so a hub file holding `diff` keeps its meaning,
-// and a binary that predates the value refuses a hub file holding it until it updates.
+// The template gives `webster-fix`, `darn-write`, `code-burler-fix` and `pr-review` the `diff` scope.
+// The scope `coverage` is retired, since the gate always runs whole packages and selects no test from a coverage map.
+// MigrateConfig rewrites it to `diff`, and the load refuses it with that way forward.
 // `tier_parallel` is an open map from a tier name to this machine's parallel for it.
 // A GateKey may also hold `lints`, the lint steps its call runs after its tiers, each LintComments or LintPattern.
 // The template's `card` key lists both.
@@ -168,7 +161,7 @@
 // a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`;
 // a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces;
 // a `tier_parallel` entry that is no integer of at least 1;
-// a gate key whose scope is not `card`, `diff`, `coverage` or `all`;
+// a gate key whose scope is not `card`, `diff` or `all`, and the retired `coverage`, which names `lym fabric reconcile`;
 // a `card` scope on any key but `card` and `batch`; a lint other than `comments` or `pattern`;
 // a report other than ReportRedundancy, `redundancy`.
 // A GateKey may also hold `fixer`, a model-spec naming the cold fixer an agent's red call hands its failures to.
@@ -210,7 +203,8 @@
 // `landing` becomes `parent-align` and `finalize` with scope `all`;
 // it also becomes `darn-write` and `code-burler-fix` with scope `diff`;
 // `final` becomes `webster` with scope `all`; `round` becomes `webster-fix` with scope `diff`;
-// a `card` or `batch` list becomes a mapping with scope `card`.
+// a `card` or `batch` list becomes a mapping with scope `card`;
+// a gates entry with the retired scope `coverage` takes scope `diff`.
 // A `merge-in` key is renamed to `parent-align` with its value, and dropped beside an existing `parent-align`.
 // A key the file already holds in the new shape keeps its value, and a second pass changes nothing.
 // SeedAdoptGate runs over the hub base file alone, through the registry's hub-base step.
@@ -229,14 +223,14 @@
 //	Recipe                         Row                                         Key              Scope
 //	loom                           Webster, per card                           card             card
 //	loom                           Webster, per batch                          batch            card
-//	loom                           Webster, verify fixers                      webster-fix      coverage
+//	loom                           Webster, verify fixers                      webster-fix      diff
 //	loom                           Webster, end gate                           webster          all
 //	loom                           Parent-Align                                parent-align     all
-//	tapestry, darn, sampler        Code-Burler-Fix                             code-burler-fix  coverage
+//	tapestry, darn, sampler        Code-Burler-Fix                             code-burler-fix  diff
 //	tapestry, darn, pawl, sampler  PR-Review                                   pr-review        diff
 //	tapestry, darn, sampler        Finalize                                    finalize         all
 //	adopt                          lym adopt check <subject>, in its worktree  adopt            all
-//	darn                           Darn-Write                                  darn-write       coverage
+//	darn                           Darn-Write                                  darn-write       diff
 //	darn                           Darn-Write, Code-Burler-Fix, Finalize       the row's key    the touched trees' targets
 //
 // The last line holds for a diff wholly under darn's `tree_scope`:

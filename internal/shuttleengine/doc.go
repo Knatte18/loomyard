@@ -453,6 +453,8 @@
 // Runner.TypeColor sends the same sequence into a live shuttle strand for a caller that colors its own session.
 // It returns a held color's error, wrapping ErrSessionBusy, so the caller may retry.
 // Runner.ClearSession, Runner.CompactSession and Runner.ReloadPlugins send their slash commands through the same path.
+// So does Runner.TurnOnRemoteControl.
+// Remote control is the optional RemoteController capability, and an engine without it types nothing for it.
 // A draft in the box or an active operator holds them with ErrSessionBusy,
 // so a caller's earlier idle probe never lets them type.
 // The idle reading takes a box of whitespace as empty, and a provider takes a command behind whitespace as a prompt,

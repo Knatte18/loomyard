@@ -325,8 +325,6 @@
 //
 // `stop [slug]` resolves its target as `start` does and calls `orchcli.BeamDown`.
 // That removes the orch strand and ends the beam's dobby through `runproc.EndRole`, each only when live.
-// For the prime it then ends the registered coverage-map upkeep pass, whether or not the dobby was live.
-// It does so through `runproc.EndRole` with `runproc.RoleTestMap`.
 // It prints what it stopped and takes no `--all`.
 //
 // # status
@@ -374,15 +372,6 @@
 // `ArchiveOwner` is through `archiveOwnerTips`.
 // `archiveOwnerTips` archives the worktree's own pair, named `root` for the prime.
 // It also archives the pair of each run `battencli.DobbyRuns` lists under it, through `fabricengine.ArchiveOwnerTips`.
-// For the prime, `hubDobbyDeps` also fills the coverage-map upkeep seams.
-// `startTestMap` starts `lym gate testmap --upkeep` with the binary `selfexec.LymBinary` names.
-// The process runs in the prime's anchor and its own process group.
-// It registers itself under `runproc.HubOwner` as `runproc.RoleTestMap`; the dobby registers nothing.
-// Its exit, with the error text its output carries, is delivered once.
-// `testMapRunning` reads whether a live `runproc.RoleTestMap` record stands under `runproc.HubOwner`.
-// The pass's exit record is read through `testcover.ReadExitRecord`.
-// The prime's HEAD is read through `fabricengine.Fabric.HeadSHA`.
-// The slot count is read through `gateslot.LoadConfig` over the prime's layers.
 // It prints `already_running` when the lock stays held past the lock wait, with nothing registered.
 //
 // `runDobbyWith` takes the wiring and the notice as seams, and each exit it takes before `Run` leaves a trace:

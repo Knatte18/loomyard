@@ -1,8 +1,7 @@
 // dobbydeps.go fills the seams of dobbyengine.Run over a hub.
 // It covers the runs and tasks it reads, the pass it spawns, and the notices it sends.
 // It also covers the owner pause and board tidy it sends, and the teardown of an ended run's pair it starts.
-// It also covers the hibernate request and the coverage-map upkeep pass the prime's dobby carries,
-// and the registration of the dobby process itself.
+// It also covers the hibernate request the prime's dobby carries, and the registration of the dobby process itself.
 
 package beamcli
 
@@ -11,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -32,14 +30,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fronttask"
-	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
@@ -55,7 +51,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
-	"github.com/Knatte18/loomyard/internal/testcover"
 )
 
 const (
@@ -241,27 +236,6 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			return false, errors.Join(carrier.Tick(), ensureSlackRelay(prime, &relayEpisodes))
 		}
 		deps.CheckBinary = holdReexec(carrier.HoldsReexec, deps.CheckBinary)
-		runProcDir := fabricengine.RunProcDir(prime.HubPath)
-		mapsDir := testcover.Dir(fabricengine.BoltDir(prime.HubPath))
-		deps.StartTestMap = func() (<-chan dobbyengine.PassExit, error) {
-			return startTestMap(selfexec.LymBinary, geom.PrimeAnchor)
-		}
-		deps.TestMapRunning = func() (bool, error) { return testMapRunning(runProcDir) }
-		deps.TestMapExitRecord = func() (dobbyengine.TestMapExit, bool, error) {
-			record, found, err := testcover.ReadExitRecord(mapsDir)
-			return dobbyengine.TestMapExit{PlannedHead: record.PlannedHead, Queued: record.Queued}, found, err
-		}
-		deps.PrimeHead = func() (string, error) {
-			fabric, err := fabricengine.Open(prime)
-			if err != nil {
-				return "", err
-			}
-			return fabric.HeadSHA()
-		}
-		deps.GateSlots = func() (int, error) {
-			cfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(prime))
-			return cfg.Slots, err
-		}
 	}
 	if geom.Slug != "" {
 		// The removed worktree's config is gone by the time this stops a strand, so the runner is built over the prime.
@@ -614,82 +588,6 @@ func spawnPass(geom dobbyengine.Geometry, slug string, continuePass, noReopen bo
 		exit <- dobbyengine.PassExit{Code: cmd.ProcessState.ExitCode(), Error: passErrorText(output.Bytes(), waitErr)}
 	}()
 	return exit, nil
-}
-
-// testMapRunning reports whether a live process registered under the hub owner in runProcDir is the upkeep pass.
-func testMapRunning(runProcDir string) (bool, error) {
-	records, err := runproc.List(runProcDir, runproc.HubOwner)
-	if err != nil {
-		return false, err
-	}
-	return slices.ContainsFunc(records, func(record runproc.Record) bool { return record.Role == runproc.RoleTestMap }), nil
-}
-
-// startTestMap starts the coverage-map upkeep pass, `<lym> gate testmap --upkeep`, in primeAnchor.
-// It runs the binary lookupLymBinary returns.
-// The process gets its own process group and registers itself for the hub, so the dobby registers nothing.
-// Its output goes to a file rather than a pipe the dobby reads, so the pass outlives a dead dobby without a broken pipe.
-// The channel delivers its exit once, which reaps it, with the error text the output file carries.
-// A binary that does not resolve fails and starts nothing; in a test binary the lym binary does not resolve.
-func startTestMap(lookupLymBinary func() (string, error), primeAnchor string) (<-chan dobbyengine.PassExit, error) {
-	executable, err := lookupLymBinary()
-	if err != nil {
-		return nil, err
-	}
-	args := []string{"gate", "testmap", "--upkeep"}
-	outputFile, err := lymtemp.CreateTemp("upkeep-pass-*.log")
-	if err != nil {
-		return nil, fmt.Errorf("create the upkeep pass's output file: %w", err)
-	}
-	outputPath := outputFile.Name()
-	cmd := exec.Command(executable, args...)
-	cmd.Dir = primeAnchor
-	cmd.Stdout = outputFile
-	cmd.Stderr = outputFile
-	proc.Detach(cmd)
-	startErr := cmd.Start()
-	// The child holds its own descriptor of the file, so this one is not needed once the child started.
-	_ = outputFile.Close()
-	if startErr != nil {
-		_ = os.Remove(outputPath)
-		logger.Warn("beamcli: spawn the upkeep pass failed", "exe", executable, "args", args, "dir", primeAnchor, "error", startErr)
-		return nil, startErr
-	}
-	pid := cmd.Process.Pid
-	logger.Info("beamcli: spawned the upkeep pass", "exe", executable, "args", args, "dir", primeAnchor, "pid", pid)
-	exit := make(chan dobbyengine.PassExit, 1)
-	go func() {
-		waitErr := cmd.Wait()
-		code := cmd.ProcessState.ExitCode()
-		logger.Info("beamcli: the upkeep pass exited", "pid", pid, "code", code, "error", waitErr)
-		exit <- dobbyengine.PassExit{Code: code, Error: passErrorText(readFileTail(outputPath, passErrorTailBytes), waitErr)}
-		_ = os.Remove(outputPath)
-	}()
-	return exit, nil
-}
-
-// readFileTail returns the last limit bytes of the file at path, or nothing when the file cannot be read.
-func readFileTail(path string, limit int) []byte {
-	file, err := os.Open(path)
-	if err != nil {
-		logger.Debug("beamcli: a pass's output file is not read", "path", path, "error", err)
-		return nil
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		logger.Debug("beamcli: a pass's output file is not read", "path", path, "error", err)
-		return nil
-	}
-	if _, err := file.Seek(max(info.Size()-int64(limit), 0), io.SeekStart); err != nil {
-		logger.Debug("beamcli: a pass's output file is not read", "path", path, "error", err)
-		return nil
-	}
-	data, err := io.ReadAll(file)
-	if err != nil {
-		logger.Debug("beamcli: a pass's output file is not read", "path", path, "error", err)
-	}
-	return data
 }
 
 // tailBuffer keeps the last limit bytes written to it.

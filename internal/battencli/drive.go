@@ -38,6 +38,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/shedworktree"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -55,7 +56,8 @@ const battenArbiterRecipe = "batten: a task worktree's whole lifecycle run from 
 	"Run-Shed watches the child's own run; " +
 	"Land pulls the prime, deploys and prunes the board; " +
 	"Worktree-Teardown ends the session and removes the pair. " +
-	"The arbiter's only moves are a plain re-launch, a goto to the halted row, or a hand-on."
+	"While the task worktree exists, the arbiter may make one fix of its own in it and commit it there; " +
+	"otherwise, and after any fix, it re-launches, goes to the halted row or hands on."
 
 // battenDriveRefusal is the refusal of a second batten driver for a run one already drives.
 // A way-forward clause follows it.
@@ -363,7 +365,7 @@ func (c *battenCLI) runRecordsDeps() commitStatusDeps {
 // arbiterSeam builds batten's arbiter seam, whose deps load on its first `Judge` call.
 // A batten stop never awaits a review escalation, so `EscalationPending` answers false.
 func (c *battenCLI) arbiterSeam(runID string) *sheddriver.ArbiterSeam {
-	var loaded *sheddriver.ArbiterSeam
+	var loaded *shedarbiter.Deps
 	seam := shedarbiter.Seam(shedarbiter.Deps{}, runID, func(string) bool { return false })
 	seam.Judge = func(envelopePath, reportPath, caseBriefPath string) (sheddriver.ArbiterOutcome, error) {
 		if loaded == nil {
@@ -371,11 +373,36 @@ func (c *battenCLI) arbiterSeam(runID string) *sheddriver.ArbiterSeam {
 			if err != nil {
 				return sheddriver.ArbiterOutcome{}, err
 			}
-			loaded = shedarbiter.Seam(deps, runID, func(string) bool { return false })
+			loaded = &deps
 		}
-		return loaded.Judge(envelopePath, reportPath, caseBriefPath)
+		deps, err := c.withTaskWorktree(*loaded)
+		if err != nil {
+			return sheddriver.ArbiterOutcome{}, err
+		}
+		return shedarbiter.Seam(deps, runID, func(string) bool { return false }).Judge(envelopePath, reportPath, caseBriefPath)
 	}
 	return seam
+}
+
+// withTaskWorktree returns deps with the arbiter's worktree seam and prompt worktree over the task worktree.
+// The prime's HEAD and tree move under other writers, so the arbiter never edits there.
+// It is read on each call, since the task worktree appears at Worktree-Create and goes at Worktree-Teardown;
+// while it is absent the call gets no seam and gives a verdict only.
+func (c *battenCLI) withTaskWorktree(deps shedarbiter.Deps) (shedarbiter.Deps, error) {
+	present, err := taskWorktreePresent(c.location, c.slug)
+	if err != nil {
+		return shedarbiter.Deps{}, err
+	}
+	if !present {
+		return deps, nil
+	}
+	taskLocation, err := taskWorktreeLocation(c.location, c.slug)
+	if err != nil {
+		return shedarbiter.Deps{}, err
+	}
+	deps.Worktree = shedworktree.ArbiterSeam(taskLocation)
+	deps.Prompt.Worktree = taskLocation.WorktreePath()
+	return deps, nil
 }
 
 // tacklerDepsFor fills the tackler call's seams and fixed values over settings and shuttle.

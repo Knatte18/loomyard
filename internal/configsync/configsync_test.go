@@ -329,14 +329,13 @@ func TestReconcileAll(t *testing.T) {
 			}},
 		},
 		{
-			name:  "apply migrates a retired beam test_map_every of 0 before the retired-key prune removes it",
-			seed:  map[string]string{"beam": "test_map_every: 0\n"},
+			name:  "apply prunes the retired beam keys test_map_every and test_map_upkeep",
+			seed:  map[string]string{"beam": "test_map_every: 0\ntest_map_upkeep: false\n"},
 			apply: true,
 			want: map[string]moduleWant{"beam": {
 				applied:         true,
-				migratedAll:     []string{"test_map_every: 0 became test_map_upkeep: false"},
-				fileContains:    []string{"test_map_upkeep: false"},
-				fileNotContains: []string{"test_map_every"},
+				removedAll:      []string{"test_map_every", "test_map_upkeep"},
+				fileNotContains: []string{"test_map_every", "test_map_upkeep"},
 			}},
 		},
 	}
@@ -937,9 +936,9 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	const (
-		lightDarn            = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[high]\"}\n"
-		lightDarnSolo        = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[high]\"}\n"
-		lightDarnOperator    = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: standard, code_reviewer_model: \"opus[high]\"}\n"
+		lightDarn            = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[medium]\"}\n"
+		lightDarnSolo        = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[medium]\"}\n"
+		lightDarnOperator    = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: standard, code_reviewer_model: \"opus[medium]\"}\n"
 		lightDarnNoModel     = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
 		lightDarnOwnModel    = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"sonnet[high]\"}\n"
 		lightSamplerReview   = "    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n    sampler: {code_review: true}\n"
@@ -1006,7 +1005,7 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 			hubFile:      strings.Replace(template, lightDarn, lightDarnOwnModel, 1),
 			baseFile:     withoutReviewerModel,
 			wantAdded:    []string{},
-			wantDiffers:  []string{"light.darn.loom.code_reviewer_model: file \"sonnet[high]\", template \"opus[high]\""},
+			wantDiffers:  []string{"light.darn.loom.code_reviewer_model: file \"sonnet[high]\", template \"opus[medium]\""},
 			wantContains: []string{lightDarnOwnModel},
 		},
 		{

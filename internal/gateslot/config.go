@@ -477,9 +477,11 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 			if name != cardGateKey && name != "batch" {
 				return nil, guidedError{fmt.Errorf("gate config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
 			}
-		case scopeDiff, ScopeCoverage, scopeAll:
+		case scopeDiff, scopeAll:
+		case retiredScopeCoverage:
+			return nil, guidedError{fmt.Errorf("gate config key %q: scope coverage is retired, since the gate no longer selects tests from the coverage maps; fix it with \"lym fabric reconcile\" (or \"lym config reconcile --layer default --apply\") from the prime, which migrates it to scope diff%s", path, roleClause)}
 		default:
-			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff, coverage or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
+			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
 		}
 		for _, lint := range key.Lints {
 			if lint != LintComments && lint != LintPattern {
@@ -544,6 +546,8 @@ var retiredGateLists = map[string][]gateTarget{
 // A landing, final or round list becomes the keys that `retiredGateLists` maps it to,
 // and a card or batch list becomes a mapping with scope card.
 // A gates.merge-in key is renamed to gates.parent-align, keeping its value.
+// A gates entry whose mapping holds the retired `scope: coverage` is rewritten to `scope: diff`.
+// It keeps its other fields.
 // A key the file already holds in the new shape keeps its value,
 // and every comment and other key is carried through yaml node editing.
 // A document with nothing to migrate is returned unchanged, so a migrated file is unchanged on a second pass.
@@ -568,6 +572,7 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 		}
 		lines = append(lines, migrateGateLists(gates)...)
 		lines = append(lines, renameGateKeys(gates)...)
+		lines = append(lines, migrateCoverageScopes(gates)...)
 	}
 	if at := mappingKeyIndex(root, "guard_tier"); at >= 0 {
 		root.Content = append(root.Content[:at], root.Content[at+2:]...)
@@ -726,6 +731,25 @@ func renameGateKeys(gates *yaml.Node) []string {
 	}
 	gates.Content[at].Value = parentAlignGateKey
 	return []string{fmt.Sprintf("gates.%s: renamed to gates.%s", retiredMergeInGateKey, parentAlignGateKey)}
+}
+
+// migrateCoverageScopes rewrites the retired scope coverage of every gates mapping entry to scope diff.
+// It returns one line per rewrite, in the order of the entries; the entry's other fields and comments stay.
+func migrateCoverageScopes(gates *yaml.Node) []string {
+	var lines []string
+	for i := 0; i+1 < len(gates.Content); i += 2 {
+		entry := gates.Content[i+1]
+		if entry.Kind != yaml.MappingNode {
+			continue
+		}
+		scope := mappingValue(entry, "scope")
+		if scope == nil || scope.Kind != yaml.ScalarNode || scope.Value != retiredScopeCoverage {
+			continue
+		}
+		scope.Value = scopeDiff
+		lines = append(lines, fmt.Sprintf("gates.%s: scope %s retired, migrated to scope %s", gates.Content[i].Value, retiredScopeCoverage, scopeDiff))
+	}
+	return lines
 }
 
 // gateMapping returns a flow mapping node holding a copy of the tiers list and the scope.

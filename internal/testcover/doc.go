@@ -15,8 +15,6 @@
 // A test past its bound comes back marked TimedOut, never as an error.
 // ScanTestFuncs reads a package's top-level Test functions.
 // Each comes with its file, the tier its `tiergate.Require` names and the hash of its source text.
-// It also says whether the test calls Parallel on its `*testing.T` as a top-level statement.
-// Only `tiergate.Require` calls may come before it; such a test tolerates its package's other parallel tests.
 // ParseTestFuncs reads them from one test file's source, such as the file as a commit stores it.
 //
 // Judge marks a test contained when another judged test of the same run covers each of its covered blocks.
@@ -39,6 +37,7 @@
 //
 // FuncIndex names the functions that hold one package's covered blocks, as a FuncKey of import path, file and function.
 // Its ProfiledFuncs names every function a profile holds a block of, covered or not.
+// Both read only the package's own blocks, which ProfileByPackage groups out of a profile in one pass.
 // LinkedPackages lists the main module's packages a package's test binary links, the coverpkg of a cross-package build.
 // GoEnvironment reads the toolchain's Go version and platform, and GoRoot its root directory.
 //
@@ -55,10 +54,8 @@
 // Map.FailedAt tells either from the commit.
 // Its MapFormat marker names that shape and holds the writer's commit, build time and EnvironmentStamp.
 // A map without the marker, or whose marker's commit and time differ from the map's own, was written otherwise.
-// The maps live under Dir, one directory per package, shared by every worktree of the hub on the machine.
-// Beside them, the exit record holds the process ID of the last upkeep pass.
-// It also holds the HEAD the pass planned at, the queued work it left and its plan's verdict counts.
-// It holds as well its self-check and audit mismatch counts and each measured package's build and run seconds.
+// The maps live under Dir, one directory per package:
+// the hub's shared maps under its board directory, or a worktree's own maps under its anchor.
 // A package owns every file under its directory except those below a nested package or module.
 // NestedPackageDirs finds those nested directories.
 //

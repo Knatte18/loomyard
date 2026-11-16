@@ -1,0 +1,1 @@
+{"candidates":[],"kept":[{"name":"TestCollapsed","reason":"pins collapsed's own output, the oracle TestReflowText_CollapsedInvariant compares against, which that test cannot check itself"}],"map_built_at":"2026-11-16T11:01:21+01:00","map_commit":"894abe594a3272b1f94f362c0e427f0f6e7d7163","not_judged":[],"ok":true,"package":"tools/mdreflow","tests":3}

@@ -1,10 +1,9 @@
-// testmapaudit.go runs the audit round that ends a `lym gate testmap` pass:
+// testmapaudit.go runs the audit round that ends a `lym gate testmap` call:
 // it re-measures the oldest passing entries of the maps at HEAD and counts each fresh result that differs.
 
 package gatecli
 
 import (
-	"errors"
 	"maps"
 	"path"
 	"slices"
@@ -13,14 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testcover"
 )
 
-// audit runs the closing audit round of a pass whose queue is empty.
+// audit runs the closing audit round of a call whose queue is empty.
 // It re-measures up to auditTests passing entries of the maps of packages, oldest measurement first.
 // It takes only maps that stand at the call's HEAD and record no failed build there.
 // An entry with no recorded measurement time counts as the oldest.
-// It runs only when the call holds a gate slot or gets one at once, for a pass only while another stays free.
+// It runs only when the call holds a gate slot or gets one at once.
 // It skips a package with an uncommitted or untracked Go file, or whose build lock another call holds.
 // It reads HEAD before each package job.
-// A pass's yield or a HEAD move ends the round.
+// A HEAD move ends the round.
 // Each re-measured entry is replaced, and one whose fresh coverage differs counts as an audit mismatch;
 // replacing an equal one moves its measurement time, so the next round reaches other entries.
 // The error reports a slot, read or write failure, or a cancelled call, that ends the call.
@@ -50,11 +49,7 @@ func (r *testMapRun) audit(packages []string) error {
 	}
 	slices.SortStableFunc(candidates, func(a, b candidate) int { return a.measured.Compare(b.measured) })
 	candidates = candidates[:min(len(candidates), r.request.auditTests)]
-	acquire := r.pool.TryAcquire
-	if r.spare {
-		acquire = r.pool.TryAcquireSpare
-	}
-	held, err := r.takeSlot(acquire)
+	held, err := r.takeSlot(r.pool.TryAcquire)
 	if err != nil || !held {
 		return err
 	}
@@ -89,9 +84,6 @@ func (r *testMapRun) audit(packages []string) error {
 		}
 		_, err = r.mapPackage(testMapJob{pkg: pkg, dir: dir, files: files, tests: tests[pkg], audit: true})
 		releaseBuildLock(buildLock, pkg)
-		if errors.Is(err, errSlotYielded) {
-			return nil
-		}
 		if err != nil {
 			return err
 		}

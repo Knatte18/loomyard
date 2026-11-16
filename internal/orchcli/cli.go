@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
@@ -122,8 +123,6 @@ type orchCLI struct {
 	dobbyLive func() (bool, error)
 	// endDobby ends this worktree's dobby and the processes below it, and no other process of the beam.
 	endDobby func() error
-	// endTestMap ends the prime's coverage-map upkeep pass, and no other process; nil, as for a beam, ends none.
-	endTestMap func() error
 	// registerOrch registers pid as this worktree's orch provider process; nil registers none.
 	registerOrch func(pid int) error
 	// orchRegistered reports whether pid is registered as this worktree's orch; nil reads every pid as unregistered.
@@ -136,6 +135,10 @@ type orchCLI struct {
 	endSubject func() error
 	// reapInherited waits on the children a re-exec'd watcher inherited, which `watch` calls before it starts anything.
 	reapInherited func()
+	// machineName answers this machine's name, which the remote session's name carries.
+	machineName func() (string, error)
+	// injectRemoteControl queues creel's remote-control command with name into the orch strand receiver.
+	injectRemoteControl func(receiver, name string) error
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -153,11 +156,12 @@ strand of the hub's prime worktree or of a beam's. A detached watcher reads each
 turn's context usage and, past a threshold and while the session is idle, has the
 session write a handoff, clears it and resumes it from that handoff.
 "lym beam start" brings the orchestrator up and "lym beam stop" takes it down.
-Every verb runs from the hub's prime worktree or from a beam.`,
+Every verb but the hidden rc-bar runs from the hub's prime worktree or from a beam.`,
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// The bare group and its unknown-subcommand path need no repository.
-			if cmd.Name() == "orch" {
+			// The bare group and its unknown-subcommand path need no repository,
+			// and the RC button's state verb resolves its own directory.
+			if cmd.Name() == "orch" || cmd.Name() == remoteControlBarVerb {
 				return nil
 			}
 			ctx := cmd.Context()
@@ -183,7 +187,8 @@ Every verb runs from the hub's prime worktree or from a beam.`,
 		},
 	}
 
-	parent.AddCommand(c.statusCmd(), c.refreshCmd(), c.distillCmd(), c.withdrawCmd(), c.stopCmd(), c.rulesCmd(), c.watchCmd(), c.resumeContextCmd())
+	parent.AddCommand(c.statusCmd(), c.refreshCmd(), c.distillCmd(), c.withdrawCmd(), c.stopCmd(), c.rulesCmd(), c.watchCmd(), c.resumeContextCmd(),
+		remoteControlBarCmd(), c.remoteControlOnCmd())
 	return parent
 }
 
@@ -257,6 +262,10 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 		}
 		return creelSeam{client: client}, nil
 	}
+	c.machineName = machinename.Name
+	c.injectRemoteControl = func(receiver, name string) error {
+		return injectRemoteControlCommand(location, receiver, name)
+	}
 	c.spawnWatcher = c.spawnWatcherProcess
 	c.startLockWait = stopStartLockWait
 	c.sleep = time.Sleep
@@ -288,12 +297,6 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.endDobby = func() error {
 		_, err := runproc.EndRole(runProcDir, owner, runproc.RoleDobby, os.Getpid())
 		return err
-	}
-	if !beam {
-		c.endTestMap = func() error {
-			_, err := runproc.EndRole(runProcDir, runproc.HubOwner, runproc.RoleTestMap, os.Getpid())
-			return err
-		}
 	}
 	c.registerOrch = func(pid int) error { return runproc.RegisterOrch(runProcDir, owner, pid) }
 	c.orchRegistered = func(pid int) (bool, error) { return runproc.IsRegistered(runProcDir, owner, runproc.RoleOrch, pid) }

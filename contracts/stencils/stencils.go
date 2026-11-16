@@ -185,6 +185,16 @@ var LoomTemplatePartsChair []byte
 //go:embed loom/loom-template-arbiter.md
 var LoomTemplateArbiter []byte
 
+// LoomFragmentArbiterFix is the arbiter's edit rules when its driver lets it make and commit one fix of its own.
+//
+//go:embed loom/loom-fragment-arbiter-fix.md
+var LoomFragmentArbiterFix []byte
+
+// LoomFragmentArbiterNoFix is the arbiter's edit rules when its driver keeps it to a verdict.
+//
+//go:embed loom/loom-fragment-arbiter-no-fix.md
+var LoomFragmentArbiterNoFix []byte
+
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by every row of the Discussion-Review perch.
 //
 //go:embed loom/loom-rubric-discussion-review.md
@@ -764,6 +774,8 @@ var entries = []registryEntry{
 	{"loom-template-part-writer", &LoomTemplatePartWriter},
 	{"loom-template-parts-chair", &LoomTemplatePartsChair},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
+	{"loom-fragment-arbiter-fix", &LoomFragmentArbiterFix},
+	{"loom-fragment-arbiter-no-fix", &LoomFragmentArbiterNoFix},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-raddle-review", &LoomRubricRaddleReview},

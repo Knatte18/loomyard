@@ -1,4 +1,4 @@
-// testmapplan.go plans `lym gate testmap`'s packages at the prime's HEAD, building nothing and running no test.
+// testmapplan.go plans `lym gate testmap`'s packages at the worktree's HEAD, building nothing and running no test.
 // It asks the coverage selector what changed since each map's commit.
 // It writes what still holds at HEAD, and queues the tests and packages left to measure.
 

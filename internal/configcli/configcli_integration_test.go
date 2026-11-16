@@ -391,11 +391,11 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		baseFile := configengine.TemplateBaseFile(boardDir, "profiles")
 		baseOriginal, baseErr := os.ReadFile(baseFile)
-		const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[high]\"}\n"
-		const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[high]\"}\n"
-		const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3, code_reviewer_model: \"opus[high]\"}\n"
-		const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 4, code_reviewer_model: \"opus[high]\"}\n"
-		const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4, code_reviewer_model: \"opus[high]\"}\n"
+		const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[medium]\"}\n"
+		const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[medium]\"}\n"
+		const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3, code_reviewer_model: \"opus[medium]\"}\n"
+		const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 4, code_reviewer_model: \"opus[medium]\"}\n"
+		const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4, code_reviewer_model: \"opus[medium]\"}\n"
 		const formerPair = "paired:\n  loom:\n    loom: {code_max_bounces: 1}\n  tapestry:\n    loom: {code_max_bounces: 2}\n"
 		olderTemplate := strings.Replace(runprofile.ConfigTemplate(), lightDarn, lightDarnSolo, 1)
 		basePlanted := strings.Replace(olderTemplate, solidDarn, solidDarnBase, 1)

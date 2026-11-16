@@ -622,3 +622,13 @@ type SessionCycler interface {
 	// The sequence starts no turn.
 	ReloadPluginsSequence() []PaneInput
 }
+
+// RemoteController is an optional engine capability:
+// the provider's command that turns on remote control in a live session.
+// An engine without it has no remote control, so a request to turn it on types nothing.
+type RemoteController interface {
+	// RemoteControlSequence returns the key choreography that turns on remote control in a live session under name.
+	// The caller guarantees name is a single line.
+	// The sequence starts no turn.
+	RemoteControlSequence(name string) []PaneInput
+}

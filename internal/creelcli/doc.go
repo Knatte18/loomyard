@@ -155,8 +155,9 @@
 // The hub delivery in this package implements the engine's delivery seam.
 // It works over the hub's worktrees, reed's persisted state and shuttle.
 // Its Command operation runs a command inject through the worktree's shuttle runner.
-// The commands are clear, reload-plugins, compact, color and load-skills.
+// The commands are clear, reload-plugins, compact, color, load-skills and remote-control.
 // The argument is the focus for compact, the segment color for color, and the space-separated skills for load-skills.
+// It is the remote session's name for remote-control.
 // Shuttle's busy and not-confirmed answers map onto the engine's ErrBusy and ErrNotLanded, as they do for a typed line.
 // A command the provider took as a prompt fails as a plain send error.
 // Creel then requeues the inject and types it again once the session is idle.

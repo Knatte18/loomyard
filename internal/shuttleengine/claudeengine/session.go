@@ -418,6 +418,20 @@ func (c *Claude) ReloadPluginsSequence() []shuttleengine.PaneInput {
 	}
 }
 
+// RemoteControlSequence returns /remote-control with name and its Enter.
+// It has no leading Escape:
+// the caller has just read the input box empty and empties any whitespace in it before the paste.
+// There is no pause between the text and the Enter: the paste path submits them in one tmux invocation.
+func (c *Claude) RemoteControlSequence(name string) []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{
+		{Text: "/remote-control " + name},
+		{Key: "Enter"},
+	}
+}
+
+// Compile-time proof that Claude can turn on remote control in a live session.
+var _ shuttleengine.RemoteController = (*Claude)(nil)
+
 // defaultSkillLoadTimeout bounds one load turn of the whole skill list: a load turn is one short model turn.
 const defaultSkillLoadTimeout = 2 * time.Minute
 

@@ -1,4 +1,4 @@
-// testmapstamp_test.go covers the environment stamp a coverage map build and a coverage scope both compute.
+// testmapstamp_test.go covers the environment stamp a coverage map build and the plan's selector both compute.
 
 package gatecli
 
