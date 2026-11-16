@@ -51,6 +51,9 @@ type startGuard struct {
 	// Project reads whether the slug's board entry is a project, and whether its beam flag is set.
 	// A nil Project reads every entry as a task.
 	Project func() (project, beam bool, err error)
+	// FilingMarked reports whether the slug's run filed a family, which turned the slug's entry into that family's project.
+	// A nil FilingMarked reads every run as one that filed nothing.
+	FilingMarked func() (bool, error)
 	// PairMark reads the origin record of the slug's local pair.
 	// found is false when the pair has no readable record; marked says whether it carries the beam mark.
 	PairMark func() (marked, found bool, err error)
@@ -119,6 +122,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			entry := owners.Entries[slug]
 			return entry.IsProject, entry.Beam, nil
 		},
+		FilingMarked: func() (bool, error) { return shedrun.FilingMarked(location, slug) },
 		PairMark: func() (bool, bool, error) {
 			origin, found, err := fabricengine.ReadOriginFor(location, slug)
 			if err != nil {
@@ -264,6 +268,7 @@ func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boarden
 // A task that forks from a beam skips that check:
 // its pair forks from the beam's last commit, not from the source worktree.
 // A run or step of a project entry is judged by the project check.
+// A resume of a run that filed a family is judged as a task's, since the filing made its entry a grouping project.
 // A resume past Worktree-Create passes over all the checks.
 // A marked beam pair passes over the dirty-source and left-pair checks.
 // A beam project with no marked pair here is left to the checks of a task.
@@ -374,7 +379,9 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 // beam reports whether the entry is a beam project.
 // judged is false for an entry that is not a project, which the task checks then judge.
 // It is also false for a beam project with no marked pair here, which they judge as a fresh start.
-// A grouping project is refused naming the create that makes it a beam.
+// It is false too for a grouping project whose run is on record and filed its family:
+// the filing made the run's own entry that family's project, and the run still has its landing and teardown to drive.
+// Any other grouping project is refused naming the create that makes it a beam.
 // A resume past Worktree-Create passes.
 // A beam pair here with no readable origin record is refused.
 // A marked one passes the dirty-source and left-pair checks, as the legacy beam's or the resumed run's own pair.
@@ -387,6 +394,15 @@ func (g startGuard) refuseProject(slug, rerun string, status shedengine.Status, 
 		return false, false, nil
 	}
 	if !beamFlag {
+		if found && g.FilingMarked != nil {
+			filed, err := g.FilingMarked()
+			if err != nil {
+				return false, true, probeRefusal("the run's filing mark", slug, rerun, err)
+			}
+			if filed {
+				return false, false, nil
+			}
+		}
 		return false, true, fmt.Errorf("%s is a grouping project, and only a beam project runs; way forward: run \"lym beam create %s\" to make it a beam, then %s", slug, slug, rerun)
 	}
 	if found && status.CurrentProducer != battenrecipe.NameWorktreeCreate {

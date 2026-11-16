@@ -59,6 +59,9 @@ func TestStartGuard_Refuse(t *testing.T) {
 		// project and beam feed the Project seam; marked and unreadable feed the PairMark seam.
 		project, beam, marked, unreadable bool
 		projectErr                        error
+		// filed is what the FilingMarked seam reads: the run filed a family.
+		filed    bool
+		filedErr error
 		// unreleased is the board status of a task no run starts; it is empty for a released entry.
 		unreleased    string
 		unreleasedErr error
@@ -282,6 +285,40 @@ func TestStartGuard_Refuse(t *testing.T) {
 			wantErrors: []string{"grouping project", `run "lym beam create some-slug"`},
 		},
 		{
+			name:       "GroupingProjectWithAFilingMarkButNoRunIsRefused",
+			verbs:      []string{"run", "step"},
+			project:    true,
+			filed:      true,
+			wantErrors: []string{"grouping project", `run "lym beam create some-slug"`},
+		},
+		{
+			name:     "FiledRunUnderItsFamilysProjectResumes",
+			verbs:    []string{"run", "step"},
+			project:  true,
+			filed:    true,
+			found:    true,
+			producer: battenrecipe.NameRunShed,
+			dirty:    []string{"a.txt"},
+			parts:    fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true},
+		},
+		{
+			name:       "UnfiledRunOfAGroupingProjectIsRefused",
+			verbs:      []string{"run", "step"},
+			project:    true,
+			found:      true,
+			producer:   battenrecipe.NameRunShed,
+			wantErrors: []string{"grouping project", `run "lym beam create some-slug"`},
+		},
+		{
+			name:       "FilingMarkProbeErrorRefusesNamingTheProbeAndTheRerun",
+			verbs:      []string{"run", "step"},
+			project:    true,
+			filedErr:   errors.New("run dir unreadable"),
+			found:      true,
+			producer:   battenrecipe.NameRunShed,
+			wantErrors: []string{"the run's filing mark", "run dir unreadable", `run "lym batten {verb} some-slug" again`},
+		},
+		{
 			name:    "FreshBeamProjectWithNoPairPassesOverACleanPrime",
 			verbs:   []string{"run", "step"},
 			project: true,
@@ -405,10 +442,11 @@ func TestStartGuard_Refuse(t *testing.T) {
 						ReachedParent: func(shedengine.Status, bool) (bool, error) {
 							return tt.reached, tt.reachedErr
 						},
-						Project:    func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
-						PairMark:   func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
-						Unreleased: func() (string, error) { return tt.unreleased, tt.unreleasedErr },
-						Raddle:     tt.raddle,
+						Project:      func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
+						FilingMarked: func() (bool, error) { return tt.filed, tt.filedErr },
+						PairMark:     func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
+						Unreleased:   func() (string, error) { return tt.unreleased, tt.unreleasedErr },
+						Raddle:       tt.raddle,
 					}
 				}
 
