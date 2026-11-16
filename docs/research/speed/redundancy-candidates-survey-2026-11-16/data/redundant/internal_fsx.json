@@ -1,0 +1,1 @@
+{"candidates":[],"kept":[{"name":"TestAtomicWriteBytes","reason":"pins the exported byte writer's absolute-path, binary-data and overwrite contract, which AtomicWrite's string subtests reach only through delegation"}],"map_built_at":"2026-11-16T11:01:11+01:00","map_commit":"894abe594a3272b1f94f362c0e427f0f6e7d7163","not_judged":[],"ok":true,"package":"internal/fsx","tests":4}

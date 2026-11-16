@@ -1,0 +1,1 @@
+{"candidates":[{"name":"TestToldGeometryInvariant_AllowlistOnly","tier":0,"seconds":0,"removable":true,"covering":["TestBatchingNudger"]}],"kept":[],"map_built_at":"2026-11-16T11:00:27+01:00","map_commit":"894abe594a3272b1f94f362c0e427f0f6e7d7163","not_judged":[],"ok":true,"package":"internal/shuttleengines","tests":10}
