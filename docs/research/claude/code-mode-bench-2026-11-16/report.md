@@ -107,6 +107,7 @@ The keys are findings of the landed run's own review, so they favour a plan that
   Its plans repeat one key fewer on each input, which is inside what a second sample of the control could differ by.
 - C does not explain a Code Mode gain, because there is none to explain; pipelines alone cost more on both inputs and made the worst large plan on the keys.
 - A Code Mode writer makes twice the tool calls of the control on the large input, but the batches replace few turns, because each REPL call needs a Poll call and the control already batches in the shell.
+  The `Poll` part is corrected in [code-mode-web-research-2026-11-16](../code-mode-web-research-2026-11-16/report.md): the writers sent most `Poll` calls in the same turn as their `REPL` call.
 - A lookup subagent runs in Code Mode with its session.
 - The Discussion writer bench is not warranted by this result; the gate the board entry set, a gain on the Plan writer, was not met.
 - Adopting Code Mode per role would need the launch line to carry the variable, as `forkSubagentEnvKey` rides it in `internal/shuttleengine/claudeengine/command.go`, and a resume to carry it too.

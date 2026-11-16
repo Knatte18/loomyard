@@ -22,6 +22,11 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [lens-fan-lab-phase0.md](burler/lens-fan/lens-fan-lab-phase0.md) — what the fan's forks read, and variants of the master's instructions.
 - [lens-fan-lab-phase1.md](burler/lens-fan/lens-fan-lab-phase1.md) — measured runs of the master-instruction variants.
 
+## claude — Claude Code features
+
+- [code-mode-bench-2026-11-16](claude/code-mode-bench-2026-11-16/report.md) — Code Mode and shell pipelines on the Plan writer, one sample per arm.
+- [code-mode-web-research-2026-11-16](claude/code-mode-web-research-2026-11-16/report.md) — how Anthropic and users say to use Code Mode, each tip judged for lym's writers, and a correction to the bench's reading of `Poll`.
+
 ## codex — the Codex engine
 
 - [codex-feasibility.md](codex/codex-feasibility.md) — which Claude couplings stand between lym and the Codex CLI.
