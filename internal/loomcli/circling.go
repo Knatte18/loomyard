@@ -233,7 +233,7 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 				}
 				return f.HeadSHA()
 			}
-			if err := landingshed.AcceptFixReview(loomengine.LoomScratchDir(target), entry, summaryparser.Path(loomengine.LandingDir(target)), taskHead); err != nil {
+			if err := landingshed.AcceptFixReview(loomengine.LoomDurableDir(target), entry, summaryparser.Path(loomengine.LandingDir(target)), taskHead); err != nil {
 				return err
 			}
 			description := filepath.Join(loomengine.LandingDirRel(), summaryparser.FileName)

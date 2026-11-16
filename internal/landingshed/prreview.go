@@ -167,6 +167,8 @@ func (p *PRReview) checkWiring() error {
 		missing = "PullRequest.SessionLive"
 	case pr.RegisterSession == nil:
 		missing = "PullRequest.RegisterSession"
+	case pr.CommitRecord == nil:
+		missing = "PullRequest.CommitRecord"
 	case p.deps.TaskHead == nil:
 		missing = "TaskHead"
 	}
@@ -212,6 +214,9 @@ func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, 
 	if err := pullrequest.RemoveRecord(pr.RecordPath, pr.RecordLockPath); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
 	}
+	if err := p.commitRecord(); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
@@ -253,6 +258,9 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 		}
 		if err := pullrequest.RemoveRecord(pr.RecordPath, pr.RecordLockPath); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
+		}
+		if err := p.commitRecord(); err != nil {
+			return "", shedengine.OutputPointer{}, err
 		}
 		found = false
 	}
@@ -430,7 +438,7 @@ func (p *PRReview) pushHalt(ctx context.Context, err error) (shedengine.Outcome,
 	return stuckVerdict(ctx, p.name, pushHaltReason(p.deps.WorktreeRoot, err), true)
 }
 
-// recordPullRequest writes ref into the run's record.
+// recordPullRequest writes ref into the run's record and commits the record.
 // A new record is written whole with head as its gated head;
 // an existing one gets only the pull request's fields, plus the gated head when it carries none,
 // so a continue flag written meanwhile survives.
@@ -458,7 +466,7 @@ func (p *PRReview) recordPullRequest(ref pullrequest.Ref, head string, hadRecord
 	if err != nil {
 		return fmt.Errorf("landingshed: %s: record the pull request: %w", p.name, err)
 	}
-	return nil
+	return p.commitRecord()
 }
 
 // nextPRWait returns the wait that follows current.
@@ -767,6 +775,7 @@ func (p *PRReview) mailFailure(strandName, reason string) {
 }
 
 // updateRecord applies mutate to the run's pull request record under its lock, so a flag written meanwhile survives.
+// It then commits the record.
 func (p *PRReview) updateRecord(mutate func(rec *pullrequest.Record)) error {
 	pr := p.deps.PullRequest
 	err := pullrequest.UpdateRecord(pr.RecordPath, pr.RecordLockPath, func(rec *pullrequest.Record) error {
@@ -775,6 +784,14 @@ func (p *PRReview) updateRecord(mutate func(rec *pullrequest.Record)) error {
 	})
 	if err != nil {
 		return fmt.Errorf("landingshed: %s: update the pull request record: %w", p.name, err)
+	}
+	return p.commitRecord()
+}
+
+// commitRecord commits and pushes the pull request record's last change through the told seam.
+func (p *PRReview) commitRecord() error {
+	if err := p.deps.PullRequest.CommitRecord(); err != nil {
+		return fmt.Errorf("landingshed: %s: commit the pull request record: %w", p.name, err)
 	}
 	return nil
 }

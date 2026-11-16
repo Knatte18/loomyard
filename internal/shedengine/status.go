@@ -10,27 +10,30 @@ import "encoding/json"
 // It is a superset of RunOutcome, adding running and failed, which Run never returns.
 type State string
 
-// The six legal State values.
+// The legal State values: running, paused, done, blocked, failed, awaiting and cancelled.
 // A persisted value outside this set, including the empty string, is a hard error at the read gate.
 // StateAwaiting is the planned hand-off halt.
 // It behaves like blocked wherever a halt is observed, but it is no failure and spends no bounce budget.
+// StateCancelled is the state a finished cancel writes, never StateDone.
+// Shed itself never writes it.
 const (
-	StateRunning  State = "running"
-	StatePaused   State = "paused"
-	StateDone     State = "done"
-	StateBlocked  State = "blocked"
-	StateFailed   State = "failed"
-	StateAwaiting State = "awaiting"
+	StateRunning   State = "running"
+	StatePaused    State = "paused"
+	StateDone      State = "done"
+	StateBlocked   State = "blocked"
+	StateFailed    State = "failed"
+	StateAwaiting  State = "awaiting"
+	StateCancelled State = "cancelled"
 )
 
-// valid reports whether s is one of the six legal State constants.
+// valid reports whether s is one of the legal State constants.
 // The empty string is rejected rather than tolerated:
 // State is a mandatory enum string read from a file an external actor seeds,
 // so a typo or a partial seed would otherwise be silently treated as running, or as done.
 // PauseRequested (bool) and History (slice) tolerate their zero value, since neither is a mandatory enum string.
 func (s State) valid() bool {
 	switch s {
-	case StateRunning, StatePaused, StateDone, StateBlocked, StateFailed, StateAwaiting:
+	case StateRunning, StatePaused, StateDone, StateBlocked, StateFailed, StateAwaiting, StateCancelled:
 		return true
 	default:
 		return false
@@ -129,6 +132,34 @@ type HistoryEntry struct {
 	Block string `json:"block,omitempty"`
 }
 
+// CancelFinish records how a cancel ended.
+type CancelFinish struct {
+	// EndedAt is the RFC 3339 time the cancel finished.
+	EndedAt string `json:"ended_at"`
+	// Remove is true when the finished cancel removed the pair, false when it kept it.
+	Remove bool `json:"remove"`
+}
+
+// CancelIntent is a cancel recorded in the run's status file, by the machine that started it.
+type CancelIntent struct {
+	// StartedAt is the RFC 3339 time the cancel started.
+	StartedAt string `json:"started_at"`
+	// Machine is the machine that started the cancel.
+	Machine string `json:"machine"`
+	// Remove is true for a cancel that removes the pair, false for one that keeps it.
+	Remove bool `json:"remove"`
+	// Finish is nil until the cancel has ended.
+	Finish *CancelFinish `json:"finish,omitempty"`
+}
+
+// PauseIntent is a pause recorded in the run's status file, held until a resume clears it.
+type PauseIntent struct {
+	// By is the caller label of the pause.
+	By string `json:"by"`
+	// At is the RFC 3339 time the pause was recorded.
+	At string `json:"at"`
+}
+
 // Status is the whole status file.
 //
 // Field ownership follows who writes each field.
@@ -142,6 +173,7 @@ type HistoryEntry struct {
 // EnteredRow is Shed-owned.
 // Its writers are the entry evaluation, the routed writes, Goto, Relaunch and RenameProducers.
 // Product is external-writer-owned and only ever carried through.
+// Cancel and PauseIntent are outside-owned like PauseRequested: Shed never writes them.
 type Status struct {
 	// CurrentProducer names the row the run is at;
 	// empty means the run is at its start, the first row of its producer list.
@@ -182,6 +214,12 @@ type Status struct {
 	// Product is an opaque, product-owned payload Shed round-trips verbatim and never inspects, validates, or interprets.
 	// It carries no compatibility claim for loom's own schema.
 	Product json.RawMessage `json:"product,omitempty"`
+	// Cancel is the run's cancel intent, written by the cancel verb and never by Shed.
+	// A status file written before the field existed decodes as nil.
+	Cancel *CancelIntent `json:"cancel,omitempty"`
+	// PauseIntent is the run's pause intent, written by the pause verb and never by Shed.
+	// A status file written before the field existed decodes as nil.
+	PauseIntent *PauseIntent `json:"pause_intent,omitempty"`
 }
 
 // ParseStatusTolerant decodes data, the bytes of a status.json a caller read elsewhere, such as from a git tree.

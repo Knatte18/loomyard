@@ -1,5 +1,5 @@
 // end.go implements the one end sequence of a run's processes:
-// End, EndSparing and EndRole for an owner's registered processes and EndProcess for one unregistered pid.
+// End, EndSparing, EndRole and EndSubject for an owner's registered processes and EndProcess for one unregistered pid.
 
 package runproc
 
@@ -74,6 +74,49 @@ func EndSparing(dir, owner string, callerPID int, spare ...string) ([]Ended, err
 // It serves the end of one part of a run, such as a beam's dobby, while the rest of the owner's processes go on.
 func EndRole(dir, owner, role string, callerPID int) ([]Ended, error) {
 	return productionEnder().end(dir, owner, callerPID, endsOnlyRole(role))
+}
+
+// EndSubject ends every process this machine runs for a subject that another machine now owns.
+// subject is the owner the subject's own processes register under: a beam's slug, or HubOwner for the hub's root.
+// runs are the owners of the runs the subject holds.
+// It ends each run's processes first, then the subject's own processes but its dobby.
+// When endDobby is set, the dobby ends last, so no dobby pass starts a run again while the rest end.
+// A caller whose dobby hands the subject over itself leaves endDobby unset, so the hand-over runs to its end.
+// A teardown child is left alone in every pass.
+// Only an operator's deliberate end may stop the remote steps of a teardown.
+// The subject's pass also leaves alone the processes that serve the whole hub:
+// the adopt worker, the board syncs, the detached pushes and the Slack relay.
+// It goes on past a failed end and returns every process it ended, with the failures joined;
+// errors.As still finds a *SurvivorsError among them.
+func EndSubject(dir, subject string, runs []string, callerPID int, endDobby bool) ([]Ended, error) {
+	return productionEnder().endSubject(dir, subject, runs, callerPID, endDobby)
+}
+
+var (
+	// runPassSpared lists the roles the pass over a subject's run leaves alone.
+	runPassSpared = []string{RoleTeardown}
+	// subjectPassSpared lists the roles the pass over the subject's own records leaves alone:
+	// the dobby, which the last pass ends or leaves to its own hand-over, and the roles that serve the whole hub.
+	subjectPassSpared = []string{RoleDobby, RoleTeardown, RoleAdopt, RoleSync, RolePush, RoleSlackRelay}
+)
+
+func (e ender) endSubject(dir, subject string, runs []string, callerPID int, endDobby bool) ([]Ended, error) {
+	var ended []Ended
+	var failures []error
+	collect := func(more []Ended, err error) {
+		ended = append(ended, more...)
+		if err != nil {
+			failures = append(failures, err)
+		}
+	}
+	for _, run := range runs {
+		collect(e.end(dir, run, callerPID, endsEveryRoleBut(runPassSpared)))
+	}
+	collect(e.end(dir, subject, callerPID, endsEveryRoleBut(subjectPassSpared)))
+	if endDobby {
+		collect(e.end(dir, subject, callerPID, endsOnlyRole(RoleDobby)))
+	}
+	return ended, errors.Join(failures...)
 }
 
 func endsEveryRole(string) bool { return true }

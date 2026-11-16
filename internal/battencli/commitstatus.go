@@ -7,7 +7,8 @@
 // The child logs a push rejected because a Board write advanced the branch at warn,
 // and the next transition's spawn catches the branch up.
 //
-// A transition at a row listed before Run-Shed first writes "<state> · <row>" on the task's board entry.
+// A transition at a row listed before Run-Shed first writes "<FSM state> · <row>" on the task's board entry.
+// The FSM state is runfsm.TransitionState's word for the transition: starting, halted or paused, never the shed state.
 // The board follows batten from its claim at Worktree-Create until the inner run writes the entry's status itself.
 // A failed board write only warns, since the board is the hub's overview, never the run's own bookkeeping.
 //
@@ -36,6 +37,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/runfsm"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/statuscommit"
@@ -187,7 +190,8 @@ func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath strin
 	preRunRows := battenrecipe.RowsBeforeRunShed()
 	return func(producer, st string) error {
 		if deps.SetBoardStatus != nil && slices.Contains(preRunRows, producer) {
-			if err := deps.SetBoardStatus(boardengine.RunStatus(st, producer)); err != nil {
+			display := runfsm.TransitionState(shedengine.State(st), false, false)
+			if err := deps.SetBoardStatus(boardengine.RunStatus(string(display), producer)); err != nil {
 				logger.Warn("battencli: board status write failed, next transition retries", "producer", producer, "state", st, "error", err)
 			}
 		}

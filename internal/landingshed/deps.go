@@ -50,8 +50,12 @@ type Deps struct {
 	// Empty means none.
 	LanguageSkills []string
 
-	// ScratchDir is the told absolute scratch directory, used only as the directory of the conflict-resolution report.
+	// ScratchDir is the told absolute scratch directory.
+	// It is used only as the directory of the conflict-resolution and fixer reports.
 	ScratchDir string
+	// RecordsDir is the told absolute tracked directory that holds the fixer attempt records.
+	// The run's transition commit stages it, so a spent count reaches the pair's records.
+	RecordsDir string
 
 	// PushSkipped is the told decision to skip the parent push.
 	PushSkipped bool
@@ -344,9 +348,13 @@ type Deps struct {
 // The row treats every field but `BeamRecord` and `DropBeamRecord` as required.
 // It returns an error naming the first one left unset.
 type PullRequestDeps struct {
-	// RecordPath is the run's pull-request record file, and RecordLockPath the advisory lock that guards it.
+	// RecordPath is the run's pull-request record file, tracked with the run's records.
+	// RecordLockPath is the advisory lock that guards it.
 	RecordPath     string
 	RecordLockPath string
+	// CommitRecord commits the record's file, or its removal, to the pair's records and starts their push.
+	// The row calls it after every successful write or removal of the record, and returns its error.
+	CommitRecord func() error
 	// ParentMode reads the receiving branch's beam.yaml `pull_request`.
 	// It returns that value with the name of the worktree it was read in.
 	// On an error the worktree name is still returned, so the halt names where to fix the file.

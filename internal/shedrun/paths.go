@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
@@ -226,16 +227,35 @@ func StatusLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "status.json.lock")
 }
 
-// PullRequestRecord returns the path to the ephemeral, never-tracked record of the run's pull request.
-// It is pull-request.json under ScratchDir(l, runID).
+// pullRequestRecordFileName is the filename of the run's pull request record, whose paths the constructors below return.
+const pullRequestRecordFileName = "pull-request.json"
+
+// pullRequestRecordLockSuffix ends the name of the lock guarding the run's pull request record.
+const pullRequestRecordLockSuffix = ".lock"
+
+// PullRequestRecord returns the path to the durable record of the run's pull request.
+// It is pull-request.json under RunDir(l, runID), tracked with the run's other records.
 func PullRequestRecord(l *lymcwd.Location, runID string) string {
-	return filepath.Join(ScratchDir(l, runID), "pull-request.json")
+	return filepath.Join(RunDir(l, runID), pullRequestRecordFileName)
 }
 
 // PullRequestRecordLock returns the path to the advisory lock guarding PullRequestRecord(l, runID).
-// It sits beside that record under ScratchDir(l, runID).
+// lock.TrackedFileLockPath places it in the never-tracked lock directory, outside the tracked run directory.
 func PullRequestRecordLock(l *lymcwd.Location, runID string) string {
-	return filepath.Join(ScratchDir(l, runID), "pull-request.json.lock")
+	return lock.TrackedFileLockPath(PullRequestRecord(l, runID), pullRequestRecordLockSuffix)
+}
+
+// PullRequestRecordRel returns the worktree-anchor-relative form of PullRequestRecord's path.
+// It is the pathspec a records commit takes for the record.
+func PullRequestRecordRel(l *lymcwd.Location, runID string) string {
+	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), pullRequestRecordFileName)
+}
+
+// LegacyPullRequestRecord returns the path where the run's pull request record lived while it was never-tracked.
+// It is pull-request.json under ScratchDir(l, runID).
+// A record found only there is moved to PullRequestRecord's path once, so a run in flight keeps its pull request.
+func LegacyPullRequestRecord(l *lymcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), pullRequestRecordFileName)
 }
 
 // ParentNoticeFile returns the path to the ephemeral file, pre-push-parent-notice under ScratchDir(l, runID).
@@ -450,16 +470,11 @@ func OriginOwedMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), originOwedMarkerFileName)
 }
 
-// CancelMarker returns the path to the ephemeral batten cancel marker.
-// The file is <run segment>.cancel.json directly under ScratchRoot(l).
+// CancelMarkerLock returns the path to the cancel's local lock, whose holder is the live writer of a cancel under way.
+// The cancel's intent lives in the batten record; the lock is held only on the machine that runs the cancel.
+// The file is <run segment>.cancel.lock directly under ScratchRoot(l).
 // It sits beside the per-slug scratch directories, never inside RunDir or ScratchDir.
 // Removing a slug's records and scratch leaves it in place.
-func CancelMarker(l *lymcwd.Location, runID string) string {
-	return filepath.Join(ScratchRoot(l), runSegment(l, runID)+".cancel.json")
-}
-
-// CancelMarkerLock returns the path to the lock whose holder is the cancel marker's live writer.
-// The file is <run segment>.cancel.lock directly under ScratchRoot(l).
 func CancelMarkerLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchRoot(l), runSegment(l, runID)+".cancel.lock")
 }

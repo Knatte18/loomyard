@@ -164,7 +164,8 @@ type activityStamp struct {
 	usageLimited bool
 }
 
-// runNotices runs the run notices of every listed run in the running state with no cancel marker.
+// runNotices runs the run notices of every listed run in the running state with no cancel under way.
+// A cancel under way is an unfinished cancel intent, or a cancel lock another process holds.
 // It runs on a probe tick only.
 // A failure is logged once per episode and never fails the tick.
 func (d *daemon) runNotices(ctx context.Context, now time.Time) {

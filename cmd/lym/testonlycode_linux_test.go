@@ -56,6 +56,7 @@ var testOnlyCodeAllowed = []scankit.Entry{
 	{Key: "internal/seatengine.Prompts", Why: "oracle of the seat prompts for the tests of the packages that start seats"},
 	{Key: "internal/shortcutcli.Load", Why: "reads the embedded shortcut file for cmd/lym's shortcut test"},
 	{Key: "internal/shuttleengine/claudeengine.New", Why: "builds the engine, unexported state included, for the tests of the packages that drive it"},
+	{Key: "internal/runfsm.Order", Why: "no caller until the board displays a run's state from the FSM; that card removes this entry"},
 	{Key: "internal/slackengine.WriteSetup", Why: "writes the credentials file slackengine alone writes, for internal/slackcli's and internal/beamcli's tests"},
 	{Key: "internal/websterengine.ConflictRecordRel", Why: "oracle of the conflict record path in internal/loomrecipe's recipe test"},
 	{Key: "internal/websterengine.Fingerprint", Why: "oracle of the plan fingerprint in internal/webstercli's tests"},

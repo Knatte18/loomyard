@@ -982,6 +982,21 @@ func (run *Run) ResumeWarning() string {
 	return run.resumeWarning
 }
 
+// SessionHolder returns the pid of the live provider process holding the run's session, and whether one was found.
+// It finds none for a run whose launch named no session or whose engine cannot name a holder.
+func (run *Run) SessionHolder() (pid int, found bool, err error) {
+	finder, ok := run.engine.(SessionHolderFinder)
+	if !ok || run.state.SessionID == "" {
+		return 0, false, nil
+	}
+	return finder.SessionHolder(run.state.SessionID)
+}
+
+// CarriedInstructions returns the operator instructions the run's prompt carried over from an unfinished predecessor.
+func (run *Run) CarriedInstructions() []string {
+	return run.state.CarriedInstructions
+}
+
 // RunDir returns the directory holding this run's artifacts (prompt.md, settings.json, the events file).
 // A caller that starts a run and never Waits on it has no other way to name that directory.
 // A caller that reports a not-ready start names this directory so an operator can look in it.

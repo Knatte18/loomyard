@@ -285,6 +285,7 @@ var endOwnedElsewhere = EndOwnedElsewhere
 // EndOwnedElsewhere ends the processes registered under slug in the hub location belongs to.
 // It does so because another machine owns the run.
 // A run whose Finalize is past its parent-side merge keeps them, since it finishes its landing on either machine.
+// Origin's fetched parent branch decides that, or the local parent branch while pushes are skipped.
 // A run whose reading fails keeps them too.
 // The calling process and its ancestors are never ended.
 func EndOwnedElsewhere(location *lymcwd.Location, slug string) ([]runproc.Ended, error) {
@@ -336,7 +337,10 @@ func EndOwnedElsewhere(location *lymcwd.Location, slug string) ([]runproc.Ended,
 			if err != nil {
 				return false, err
 			}
-			return fabricengine.ParentHoldsTaskWork(location, task, slug)
+			if fabricengine.EnvSyncOptions().SkipPush {
+				return fabricengine.ParentHoldsTaskWork(location, task, slug)
+			}
+			return fabricengine.OriginParentHoldsTaskWork(location, task, slug)
 		},
 		end: func() ([]runproc.Ended, error) {
 			return runproc.End(fabricengine.RunProcDir(location.HubPath), slug, os.Getpid())

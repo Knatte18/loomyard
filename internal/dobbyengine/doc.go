@@ -125,8 +125,9 @@
 //     An empty list, as a hand-built Geometry leaves it, gates nothing.
 //   - The log records changes only, each one line through the Log seam stamped with its time, and a heartbeat.
 //     A task start logs `start <slug>`; a pass spawn logs nothing.
-//     A run's batten state or producer changing logs `run <slug>: <old> -> <new>`.
-//     The line carries the state alone for running and done;
+//     A run's state or producer changing logs `run <slug>: <old> -> <new>`.
+//     The state is the run's FSM state, RunView.Run.
+//     The line carries the state alone for running and landed;
 //     for any other state it adds ` at <producer>`.
 //     A run first seen logs its state once.
 //     The memory is in process only, so a re-exec logs no change it did not see.
@@ -145,15 +146,16 @@
 //
 //   - Each tick lists the runs whose parent worktree is this dobby's, from the prime's local batten status files.
 //     It never reads the board for this, so a run whose task Land pruned is still driven through its teardown.
-//   - A run gets a pass only while batten's state is running, or paused with its work on its parent,
-//     and its cancel marker is absent.
+//   - A run gets a pass only while batten's state is running and the act rule's verdict, RunView.Verdict, is act.
+//     The rule waits a paused, covered or cancelling run and hands over a run another machine owns.
+//     A cancel under way gives no pass either, beside the rule:
+//     an unfinished cancel intent in the batten record, or a cancel lock another process holds.
 //     A run never gets a pass while one of its passes is in flight.
 //     A held driver lock reads as in flight, so a pass left by a dead dobby is waited for and never doubled.
-//     A halted batten run gets no pass, nor does a paused one whose work has not reached its parent.
+//     A halted batten run gets no pass, nor does a paused one.
 //     The orch or the operator resumes it with a hand pass.
-//     A paused run whose work reached its parent, RunView.ReachedParent, has nothing left to decide:
-//     while no pause entry covers it, each trigger gives it a full pass.
-//     That pass resumes it through its Land and Worktree-Teardown rows, and a covering pause holds it until the lift.
+//     A paused run whose work reached its parent, RunView.ReachedParent, gets no pass.
+//     It waits until `lym batten run <slug>` resumes it, and its Land is unfinished, so the dobby never counts it stranded.
 //   - A done batten run is driven no further:
 //     once no pass of it is in flight, it takes no slot under `max_runs` and gets no pass.
 //     Its entry leaves the state record.
@@ -167,10 +169,9 @@
 //     Every other pass is full, and it runs with `--no-reopen` while the run's origin-owed marker stands.
 //     A start and each recorded sleep owe every run a full pass.
 //     The state record keeps it until a full pass exits 0 with no origin-owed marker standing.
-//   - While a pause covers the run, only continue passes run, and the full pass at the lift.
-//     A run an adopt pause covers, the legacy `adopt-hold` entry included,
-//     gets no pass of any kind and no owner-pause recheck.
-//     Only a hand lifts that pause, and the lift gives the run the full pass.
+//   - While a pause covers the run, the act rule waits it and it gets no pass, and the lift gives it the full pass.
+//     A run an adopt pause covers, the legacy `adopt-hold` entry included, gets no owner-pause recheck.
+//     Only a hand lifts that pause.
 //   - A refused continue pass owes a full pass, and a covered pass counts as no failure.
 //     Any other non-zero exit counts a failure by its error text and is retried on the next probe tick.
 //     The third failure in a row with one text posts one notice to the nearest live orch.
@@ -278,7 +279,9 @@
 //
 //   - A run is stranded when its entry ended (RunView.EntryEnded) and its pair is on disk (RunView.PairPresent),
 //     while dobby gives it no pass: batten's state is neither running, nor paused with its work on its parent, nor done.
-//     A run with a pass in flight, a held driver lock, a cancel marker, a covering pause or an owned-elsewhere mark is not.
+//     A paused run whose work reached its parent is not stranded, since its Land is unfinished.
+//     A run with a pass in flight, a held driver lock or a cancel under way is not.
+//     Nor is a run a pause covers or one marked owned elsewhere.
 //   - After the passes, each tick hands every stranded run whose wait ran out to one call of Deps.TearDownEnded.
 //     The hub wiring runs the hub's origin reconcile there, as `lym cleanup --apply` does,
 //     and that reconcile tears down the pair of each run origin has ended.
@@ -330,7 +333,7 @@
 // The run notices:
 //
 //   - On each probe tick, after the scheduling steps, dobby reads children through Deps.RunNotices.
-//     It reads the child of every listed run whose batten state is running with no cancel marker.
+//     It reads the child of every listed run whose batten state is running with no cancel under way.
 //     It sends the notice the child's condition calls for, and a nil RunNotices.ReadChild sends none.
 //   - A child that is not running, or that a pause covers, is in no condition.
 //     A dead driver is no live driver strand and no held driver, run or loom bootstrap lock.
@@ -377,7 +380,7 @@
 // The wait reminders:
 //
 //   - Every dobby, the prime's included, checks at most once a minute, riding its ticks with no wait of its own.
-//     It checks the child of each listed run whose batten state is running with no cancel marker.
+//     It checks the child of each listed run whose batten state is running with no cancel under way.
 //     It does so through Deps.RunNotices' child and pause reads.
 //     A nil WaitReminders.Post or RunNotices.ReadChild checks nothing.
 //   - A child running at a row of WaitReminders.Rows with no pause covering it is in a wait, whatever the presence.

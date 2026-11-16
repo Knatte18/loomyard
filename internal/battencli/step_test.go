@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -94,6 +95,16 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 			wantKind: shedverbs.KindBusy,
 		},
 		{
+			// A step asks the act rule right after the run-lock probe, so a wait refuses before any status is read.
+			name: "ActRuleWaitIsBootstrap",
+			arrange: func(t *testing.T, c *battenCLI) {
+				paused := runfsm.Act(runfsm.Inputs{State: runfsm.Paused})
+				c.runVerdict = func() (runfsm.Verdict, error) { return paused, nil }
+			},
+			wantKind:   shedverbs.KindBootstrap,
+			wantSubstr: []string{"the run is paused", "lym batten run some-slug"},
+		},
+		{
 			name: "DecodeFailureIsUnseeded",
 			arrange: func(t *testing.T, c *battenCLI) {
 				if err := os.WriteFile(c.shedPaths.StatusPath, []byte("not valid json{{{"), 0o644); err != nil {
@@ -114,6 +125,18 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 			},
 			wantKind:   shedverbs.KindBootstrap,
 			wantSubstr: []string{"lym batten cleanup --apply", "task branch", "locally and on the remote", "to run it again", "different slug"},
+		},
+		{
+			// A cancelled record keeps its pair-removal step, so a step names the cancel with --remove rather than an unknown state.
+			name: "CancelledRecordIsBootstrapNamingTheCancel",
+			arrange: func(t *testing.T, c *battenCLI) {
+				writeStatus(t, c, shedengine.Status{
+					CurrentProducer: battenrecipe.NameRunShed,
+					State:           shedengine.StateCancelled,
+				})
+			},
+			wantKind:   shedverbs.KindBootstrap,
+			wantSubstr: []string{"was cancelled", "lym batten cancel", "--remove", "which removes its record and any pair"},
 		},
 		{
 			// A step drives no run another machine owns,

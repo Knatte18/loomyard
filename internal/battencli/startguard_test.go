@@ -31,8 +31,8 @@ func TestStartGuard_Refuse(t *testing.T) {
 	t.Parallel()
 
 	const slug = "some-slug"
-	markerAlive := &cancelMarkerReading{Present: true, WriterAlive: true, Marker: cancelMarker{PID: 4242, StartedAt: "2026-10-23T08:00:00Z"}}
-	markerGone := &cancelMarkerReading{Present: true}
+	markerAlive := &cancelMarkerReading{Present: true, WriterAlive: true, Intent: shedengine.CancelIntent{StartedAt: "2026-10-23T08:00:00Z"}}
+	markerGone := &cancelMarkerReading{Present: true, Intent: shedengine.CancelIntent{Machine: "other-machine"}}
 	tests := []struct {
 		name  string
 		verbs []string
@@ -77,7 +77,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			marker:     markerAlive,
 			found:      true,
 			producer:   battenrecipe.NameRunShed,
-			wantErrors: []string{"a cancel of some-slug is under way", "way forward: wait for the cancel (pid 4242)", `"ps -p 4242"`},
+			wantErrors: []string{"a cancel of some-slug is under way", "since 2026-10-23T08:00:00Z", "way forward: wait for it to end"},
 		},
 		{
 			name:       "MarkerWithTheWriterGoneRefusesTheDrivingVerbs",
@@ -85,7 +85,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			marker:     markerGone,
 			found:      true,
 			producer:   battenrecipe.NameRunShed,
-			wantErrors: []string{"a cancel of some-slug was interrupted", `way forward: run "lym batten cancel some-slug"`},
+			wantErrors: []string{"a cancel of some-slug was interrupted", `way forward: run "lym batten cancel some-slug"`, "machine other-machine"},
 		},
 		{
 			name:     "MarkerPassesTheVerbsThatDoNotDrive",
@@ -219,7 +219,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:       "MarkerProbeErrorRefusesNamingTheProbeAndTheRerun",
 			verbs:      []string{"run", "step", "goto"},
 			markerErr:  errors.New("marker unreadable"),
-			wantErrors: []string{"the cancel marker", "marker unreadable", `run "lym batten {verb} some-slug" again`},
+			wantErrors: []string{"the cancel intent", "marker unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:       "DirtyProbeErrorRefusesNamingTheProbeAndTheRerun",
@@ -797,7 +797,7 @@ func TestArmSeed_CancelMarkerRefusesTheWrite(t *testing.T) {
 		wantErr    string
 		wantSeeded bool
 	}{
-		{name: "PresentMarkerRefusesAndWritesNoSeed", marker: cancelMarkerReading{Present: true, WriterAlive: true, Marker: cancelMarker{PID: 4242}}, wantErr: "a cancel of some-slug is under way"},
+		{name: "PresentMarkerRefusesAndWritesNoSeed", marker: cancelMarkerReading{Present: true, WriterAlive: true}, wantErr: "a cancel of some-slug is under way"},
 		{name: "AbsentMarkerSeedsAsBefore", wantSeeded: true},
 	}
 	for _, tt := range tests {

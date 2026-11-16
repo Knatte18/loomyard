@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -75,9 +76,17 @@ func TestPathConstructors(t *testing.T) {
 		{"StatusLock", func(l *lymcwd.Location) string { return StatusLock(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "status.json.lock") }},
 		{"PullRequestRecord", func(l *lymcwd.Location) string { return PullRequestRecord(l, "self") },
-			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "pull-request.json") }},
+			func(l *lymcwd.Location) string { return filepath.Join(RunDir(l, "self"), "pull-request.json") }},
+		{"PullRequestRecordRel", func(l *lymcwd.Location) string { return PullRequestRecordRel(l, "self") },
+			func(l *lymcwd.Location) string {
+				return filepath.Join("_lym", "shed", worktreeName, "pull-request.json")
+			}},
 		{"PullRequestRecordLock", func(l *lymcwd.Location) string { return PullRequestRecordLock(l, "self") },
-			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "pull-request.json.lock") }},
+			func(l *lymcwd.Location) string {
+				return lock.TrackedFileLockPath(filepath.Join(RunDir(l, "self"), "pull-request.json"), ".lock")
+			}},
+		{"LegacyPullRequestRecord", func(l *lymcwd.Location) string { return LegacyPullRequestRecord(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "pull-request.json") }},
 		{"ParentNoticeFile", func(l *lymcwd.Location) string { return ParentNoticeFile(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "pre-push-parent-notice") }},
 		{"SamplerRecord", func(l *lymcwd.Location) string { return SamplerRecord(l, "self") },
@@ -108,14 +117,6 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lymcwd.Location) string { return filepath.Join(TacklerDir(l, "self"), "attempt-2") }},
 		{"TacklerMarker", func(l *lymcwd.Location) string { return TacklerMarker(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "tackler-inflight.json") }},
-		{"CancelMarker", func(l *lymcwd.Location) string { return CancelMarker(l, "self") },
-			func(l *lymcwd.Location) string {
-				return filepath.Join(ScratchRoot(l), worktreeName+".cancel.json")
-			}},
-		{"CancelMarkerSlug", func(l *lymcwd.Location) string { return CancelMarker(l, worktreeName) },
-			func(l *lymcwd.Location) string {
-				return filepath.Join(l.AnchorPath(), ".lym", "shed", worktreeName+".cancel.json")
-			}},
 		{"CancelMarkerLock", func(l *lymcwd.Location) string { return CancelMarkerLock(l, "self") },
 			func(l *lymcwd.Location) string {
 				return filepath.Join(ScratchRoot(l), worktreeName+".cancel.lock")
@@ -144,7 +145,7 @@ func TestPathConstructors(t *testing.T) {
 			if got, want := tt.got(l), tt.want(l); got != want {
 				t.Errorf("%s = %q; want %q", tt.name, got, want)
 			}
-			if strings.HasPrefix(tt.name, "CancelMarker") {
+			if strings.HasPrefix(tt.name, "CancelMarker") || tt.name == "PullRequestRecordLock" {
 				for _, dir := range []string{RunDir(l, "self"), ScratchDir(l, "self")} {
 					if strings.HasPrefix(tt.got(l), dir+string(filepath.Separator)) {
 						t.Errorf("%s = %q lies under %q", tt.name, tt.got(l), dir)

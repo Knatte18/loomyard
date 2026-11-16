@@ -1,4 +1,5 @@
-// resume_test.go covers checkResumable: a temp project directory, a fixture session registry and a fake liveness probe.
+// resume_test.go covers checkResumable and sessionHolder.
+// It uses a temp project directory, a fixture session registry and a fake liveness probe.
 // A malformed id, a missing or unstattable transcript and a live holder refuse.
 // A live holder whose start time cannot be compared refuses as unproven.
 // A dead, non-matching or pid-reused holder proceeds;
@@ -7,12 +8,14 @@
 package claudeengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -59,6 +62,10 @@ func TestCheckResumable(t *testing.T) {
 		start       func(int) (string, bool) // nil reads "100" for every pid
 		wantErr     string
 		wantWarning bool
+		// wantNoTranscript expects the refusal to wrap shuttleengine.ErrNoTranscript.
+		wantNoTranscript bool
+		// wantHolder is the pid a *shuttleengine.SessionHeldError refusal names, zero for any other outcome.
+		wantHolder int
 	}{
 		{
 			name:       "malformed id refuses before any file is read",
@@ -68,11 +75,12 @@ func TestCheckResumable(t *testing.T) {
 			wantErr:    "/status",
 		},
 		{
-			name:       "missing transcript refuses",
-			id:         resumeTestID,
-			transcript: false,
-			alive:      aliveAll,
-			wantErr:    "only a session run from this directory",
+			name:             "missing transcript refuses",
+			id:               resumeTestID,
+			transcript:       false,
+			alive:            aliveAll,
+			wantErr:          "only a session run from this directory",
+			wantNoTranscript: true,
 		},
 		{
 			name:       "live matching pid refuses",
@@ -82,8 +90,9 @@ func TestCheckResumable(t *testing.T) {
 				writeRegistryEntry(t, dir, "a.json", fmt.Sprintf(`{"pid":4242,"sessionId":%q,"procStart":"100"}`, resumeTestID))
 				return dir
 			},
-			alive:   aliveAll,
-			wantErr: "live process 4242",
+			alive:      aliveAll,
+			wantErr:    "live process 4242",
+			wantHolder: 4242,
 		},
 		{
 			name:       "live pid with a mismatching start time is reused and proceeds",
@@ -103,9 +112,10 @@ func TestCheckResumable(t *testing.T) {
 				writeRegistryEntry(t, dir, "a.json", fmt.Sprintf(`{"pid":4242,"sessionId":%q,"procStart":"99"}`, resumeTestID))
 				return dir
 			},
-			alive:   aliveAll,
-			start:   func(int) (string, bool) { return "", false },
-			wantErr: "could not be proven reused",
+			alive:      aliveAll,
+			start:      func(int) (string, bool) { return "", false },
+			wantErr:    "could not be proven reused",
+			wantHolder: 4242,
 		},
 		{
 			name:       "live pid with no procStart refuses as unproven",
@@ -115,8 +125,9 @@ func TestCheckResumable(t *testing.T) {
 				writeRegistryEntry(t, dir, "a.json", fmt.Sprintf(`{"pid":4242,"sessionId":%q}`, resumeTestID))
 				return dir
 			},
-			alive:   aliveAll,
-			wantErr: "and the pid could not be proven reused",
+			alive:      aliveAll,
+			wantErr:    "and the pid could not be proven reused",
+			wantHolder: 4242,
 		},
 		{
 			name:       "dead matching pid proceeds silently",
@@ -176,6 +187,17 @@ func TestCheckResumable(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("err = %v, want containing %q", err, tt.wantErr)
 				}
+				if got := errors.Is(err, shuttleengine.ErrNoTranscript); got != tt.wantNoTranscript {
+					t.Errorf("errors.Is(err, ErrNoTranscript) = %v; want %v", got, tt.wantNoTranscript)
+				}
+				holder := 0
+				var held *shuttleengine.SessionHeldError
+				if errors.As(err, &held) {
+					holder = held.PID
+				}
+				if holder != tt.wantHolder {
+					t.Errorf("SessionHeldError pid = %d; want %d", holder, tt.wantHolder)
+				}
 				return
 			}
 			if err != nil {
@@ -183,6 +205,54 @@ func TestCheckResumable(t *testing.T) {
 			}
 			if (warning != "") != tt.wantWarning {
 				t.Fatalf("warning = %q, wantWarning %v", warning, tt.wantWarning)
+			}
+		})
+	}
+}
+
+func TestSessionHolder(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// entry is the one registry file's content; empty leaves the registry empty.
+		entry string
+		// missingRegistry points the read at a registry directory that does not exist.
+		missingRegistry bool
+		alive           bool
+		startReadable   bool
+		wantPID         int
+		wantFound       bool
+		wantErr         bool
+	}{
+		{name: "LiveEntryWithAMatchingStartTimeNamesItsPID", entry: `{"pid":4242,"sessionId":%q,"procStart":"100"}`, alive: true, startReadable: true, wantPID: 4242, wantFound: true},
+		{name: "LiveEntryWithAnUnreadableStartTimeStillNamesItsPID", entry: `{"pid":4242,"sessionId":%q,"procStart":"100"}`, alive: true, wantPID: 4242, wantFound: true},
+		{name: "ReusedPIDHoldsNothing", entry: `{"pid":4242,"sessionId":%q,"procStart":"99"}`, alive: true, startReadable: true},
+		{name: "DeadPIDHoldsNothing", entry: `{"pid":4242,"sessionId":%q,"procStart":"100"}`, startReadable: true},
+		{name: "AnotherSessionsEntryHoldsNothing", entry: `{"pid":4242,"sessionId":"ffffffff-ffff-4fff-8fff-ffffffffffff%.0s"}`, alive: true, startReadable: true},
+		{name: "UnreadableRegistryIsAnError", missingRegistry: true, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, registryDir := resumeFixture(t, false)
+			if tt.entry != "" {
+				writeRegistryEntry(t, registryDir, "a.json", fmt.Sprintf(tt.entry, resumeTestID))
+			}
+			if tt.missingRegistry {
+				registryDir = filepath.Join(registryDir, "missing")
+			}
+			alive := func(int) bool { return tt.alive }
+			start := func(int) (string, bool) { return "100", tt.startReadable }
+
+			pid, found, err := sessionHolder(resumeTestID, registryDir, alive, start)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("sessionHolder() error = %v; want error %v", err, tt.wantErr)
+			}
+			if pid != tt.wantPID || found != tt.wantFound {
+				t.Errorf("sessionHolder() = %d, %v; want %d, %v", pid, found, tt.wantPID, tt.wantFound)
 			}
 		})
 	}

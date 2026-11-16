@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -72,7 +73,7 @@ func TestTearDownEnded(t *testing.T) {
 		if retry, held := h.d.endedRetries["x"]; held {
 			t.Errorf("endedRetries[x] = %+v; want no wait for a run whose pair is gone", retry)
 		}
-		if want := []string{"run x: failed at Run-Shed", "teardown x: pair removed"}; !slices.Equal(*lines, want) {
+		if want := []string{"run x: halted at Run-Shed", "teardown x: pair removed"}; !slices.Equal(*lines, want) {
 			t.Errorf("log lines = %q; want %q", *lines, want)
 		}
 	})
@@ -103,7 +104,7 @@ func TestTearDownEnded(t *testing.T) {
 			t.Errorf("wait, time to next attempt after 12 failures read = %v, %v; want %v, %v",
 				retry.interval, next, endedTeardownCeiling, endedTeardownCeiling)
 		}
-		if want := []string{"run x: failed at Run-Shed", "teardown x failing: its pair is busy"}; !slices.Equal(*lines, want) {
+		if want := []string{"run x: halted at Run-Shed", "teardown x failing: its pair is busy"}; !slices.Equal(*lines, want) {
 			t.Errorf("log lines = %q; want %q", *lines, want)
 		}
 	})
@@ -163,7 +164,7 @@ func TestTearDownEnded(t *testing.T) {
 		h.tick(false)
 		h.tick(false)
 
-		want := []string{"run x: failed at Run-Shed", "teardown x failing: " + errTeardownUnreported.Error()}
+		want := []string{"run x: halted at Run-Shed", "teardown x failing: " + errTeardownUnreported.Error()}
 		if !slices.Equal(*lines, want) {
 			t.Errorf("log lines = %q; want %q", *lines, want)
 		}
@@ -172,7 +173,7 @@ func TestTearDownEnded(t *testing.T) {
 
 // strandedRun is a run batten left failed at Run-Shed whose board entry ended and whose pair is still on disk.
 func strandedRun(slug string) RunView {
-	return RunView{Slug: slug, State: "failed", Producer: producerRunShed, EntryEnded: true, PairPresent: true}
+	return RunView{Slug: slug, State: "failed", Run: runfsm.Halted, Producer: producerRunShed, EntryEnded: true, PairPresent: true}
 }
 
 // teardownFake answers the TearDownEnded seam with its next result, delivered at once, and records each call's slugs.

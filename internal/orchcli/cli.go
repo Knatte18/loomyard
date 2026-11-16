@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
@@ -122,6 +123,16 @@ type orchCLI struct {
 	dobbyLive func() (bool, error)
 	// endDobby ends this worktree's dobby and the processes below it, and no other process of the beam.
 	endDobby func() error
+	// registerOrch registers pid as this worktree's orch provider process; nil registers none.
+	registerOrch func(pid int) error
+	// orchRegistered reports whether pid is registered as this worktree's orch; nil reads every pid as unregistered.
+	orchRegistered func(pid int) (bool, error)
+	// endOrch ends this worktree's registered orch provider process and the processes below it.
+	endOrch func() ([]runproc.Ended, error)
+	// endSubject ends every process this machine runs for the worktree's subject but its dobby.
+	// The dobby hands the subject over itself.
+	// The watcher calls it once another machine owns the worktree.
+	endSubject func() error
 	// reapInherited waits on the children a re-exec'd watcher inherited, which `watch` calls before it starts anything.
 	reapInherited func()
 	// machineName answers this machine's name, which the remote session's name carries.
@@ -286,6 +297,18 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.endDobby = func() error {
 		_, err := runproc.EndRole(runProcDir, owner, runproc.RoleDobby, os.Getpid())
 		return err
+	}
+	c.registerOrch = func(pid int) error { return runproc.RegisterOrch(runProcDir, owner, pid) }
+	c.orchRegistered = func(pid int) (bool, error) { return runproc.IsRegistered(runProcDir, owner, runproc.RoleOrch, pid) }
+	c.endOrch = func() ([]runproc.Ended, error) {
+		return runproc.EndRole(runProcDir, owner, runproc.RoleOrch, os.Getpid())
+	}
+	c.endSubject = func() error {
+		prime, err := resolvePrime(location)
+		if err != nil {
+			return err
+		}
+		return pairteardown.EndSubjectProcesses(prime, owner, false)
 	}
 	return nil
 }

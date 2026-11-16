@@ -164,7 +164,8 @@
 // A move waits, printing what it waits on to stderr, until no dobby it will end has a pass in flight.
 // It takes the parent lock of the worktree's branch.
 // It ends the worktree's dobby when it is a beam.
-// For the prime it ends every dobby of the machine, sparing the push and sync roles.
+// For the prime it ends every dobby of the machine.
+// Every such end spares the push, sync and orch roles, so the worktree's orch outlives the move.
 // It moves the trace sink to the weft's lock directory while the move record stands and calls `Apply`.
 // It then reopens the sink at the anchor `Apply` left.
 //

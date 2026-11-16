@@ -52,6 +52,7 @@ var intentionallyNil = map[string]string{
 	"Landing.PullRequest.Sessions":           "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.SessionLive":        "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.RegisterSession":    "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.PullRequest.CommitRecord":       "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.BeamRecord":         "beam-only seam, filled by run.go for a recipe with a Beam-Await row",
 	"Landing.PullRequest.DropBeamRecord":     "beam-only seam, filled by run.go for a recipe with a Beam-Await row",
 	"DarnTable":                              "darn-only seam, filled by wire for a darn seed",

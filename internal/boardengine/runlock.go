@@ -10,10 +10,11 @@ import (
 	"strings"
 )
 
-// runStatusSeparator joins the shed state and the producer in a run status.
+// runStatusSeparator joins the FSM state and the producer in a run status.
 const runStatusSeparator = " · "
 
-// RunStatus composes the status of a board entry held by a run: the shed state and the producer it stands at.
+// RunStatus composes the status of a board entry held by a run: the run's FSM state and the producer it stands at.
+// The state half is display only; every decision reads the producer half.
 func RunStatus(state, producer string) string {
 	return state + runStatusSeparator + producer
 }
@@ -91,7 +92,7 @@ func (e *RunLockedError) Error() string {
 		"record the new finding as a note of its own with `lym board upsert` and \"kind\":\"note\"; "+
 		"to unlock, run `lym batten status %s` from the hub's prime worktree, "+
 		"and to abandon the run end it with `lym batten cancel %s` from the prime, "+
-		"which ends its processes, removes its records and clears this status",
+		"which ends its processes, keeps its record with the cancel's finish (`--remove` deletes it with the pair) and clears this status",
 		e.Slug, e.Status, e.Slug, e.Slug)
 }
 

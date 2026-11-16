@@ -512,7 +512,7 @@ func TestChangeAnchor(t *testing.T) {
 			"note waiting for a pass of the dobby of beam1", "wait",
 			"note waiting for a pass of the dobby of beam1", "wait",
 			"parent-lock",
-			"end-dobbies beam1 spare " + runproc.RolePush + "," + runproc.RoleSync,
+			"end-dobbies beam1 spare " + runproc.RolePush + "," + runproc.RoleSync + "," + runproc.RoleOrch,
 			"reopen-log " + f.lockDir("beam1"),
 			"apply",
 			"reopen-log " + f.logsDir("beam1", "sub"),
@@ -538,8 +538,8 @@ func TestChangeAnchor(t *testing.T) {
 		if err != nil {
 			t.Fatalf("changeAnchor() error = %v; want nil", err)
 		}
-		if !f.did("end-dobbies prime,beam1,beam2 spare push,sync") || !f.did("ensure-dobbies prime,beam1,beam2") {
-			t.Errorf("calls = %v; want every dobby ended with push and sync spared and ensured live after", f.calls)
+		if !f.did("end-dobbies prime,beam1,beam2 spare push,sync,orch") || !f.did("ensure-dobbies prime,beam1,beam2") {
+			t.Errorf("calls = %v; want every dobby ended with push, sync and orch spared and ensured live after", f.calls)
 		}
 	})
 

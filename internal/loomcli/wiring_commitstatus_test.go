@@ -75,7 +75,9 @@ func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 	}
 }
 
-// TestNewCommitStatusSeam_BoardStatus asserts the seam writes "<state> · <producer>" to the board only when it changed.
+// TestNewCommitStatusSeam_BoardStatus asserts the seam's board status write.
+// The status reads "<FSM state> · <producer>" and is written only when it changed.
+// A running transition at Finalize reads landing, a paused one paused and an awaiting one halted.
 // It writes nothing for a finished run.
 // It retries a failed write on the next transition and still commits when the board write fails.
 func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
@@ -115,6 +117,8 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 		{"Plan-Review", "running", true},
 		{"Plan-Review", "running", false},
 		{"PR-Gate", "awaiting", false},
+		{"Finalize", "running", false},
+		{"Finalize", "paused", false},
 		{"Friction-Reflect", "done", false},
 	}
 	for _, st := range steps {
@@ -124,7 +128,7 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 		}
 	}
 
-	want := []string{"running · Plan-Write", "running · Plan-Review", "awaiting · PR-Gate"}
+	want := []string{"running · Plan-Write", "running · Plan-Review", "halted · PR-Gate", "landing · Finalize", "paused · Finalize"}
 	if !reflect.DeepEqual(written, want) {
 		t.Errorf("board writes = %q; want %q", written, want)
 	}
@@ -241,7 +245,16 @@ func TestStatusCommitPathspec(t *testing.T) {
 		wantTackler bool
 		wantSettle  bool
 		wantUsage   bool
+		// wantPullRequest is whether the pull request record joins the pathspec.
+		wantPullRequest bool
 	}{
+		{
+			name: "pull request record",
+			setup: func(t *testing.T, loc *lymcwd.Location) {
+				writeFile(t, shedrun.PullRequestRecord(loc, shedrun.SelfRunID), "{}\n")
+			},
+			wantPullRequest: true,
+		},
 		{
 			name: "usage file",
 			setup: func(t *testing.T, loc *lymcwd.Location) {
@@ -400,6 +413,9 @@ func TestStatusCommitPathspec(t *testing.T) {
 			}
 			if tt.wantUsage {
 				want = append(want, shedrun.UsageDirRel())
+			}
+			if tt.wantPullRequest {
+				want = append(want, shedrun.PullRequestRecordRel(location, shedrun.SelfRunID))
 			}
 			got := statusCommitPathspec(location, shedrun.SelfRunID)
 			if !reflect.DeepEqual(got, want) {

@@ -174,6 +174,7 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 func pawlRetiredMove(location *lymcwd.Location, slug string, pawl pawlengine.Deps) func(from, to string, resumed bool) error {
 	recordPath := shedrun.PullRequestRecord(location, shedrun.SelfRunID)
 	recordLock := shedrun.PullRequestRecordLock(location, shedrun.SelfRunID)
+	commitRecord := pullRequestRecordCommitter(newPrePushCheck(location, shedrun.SelfRunID), location)
 	deps := pawlengine.RetiredMoveDeps{
 		Slug:            slug,
 		Paths:           hubgeom.PawlPaths(location),
@@ -204,9 +205,14 @@ func pawlRetiredMove(location *lymcwd.Location, slug string, pawl pawlengine.Dep
 			}
 			return fabric.HeadSHA()
 		},
-		RemoveScratch: func() error { return pullrequest.RemoveRecord(recordPath, recordLock) },
-		Commit:        func() error { return commitLandingDirectory(location, slug) },
-		SetStatus:     pawl.SetStatus,
+		RemoveScratch: func() error {
+			if err := pullrequest.RemoveRecord(recordPath, recordLock); err != nil {
+				return err
+			}
+			return commitRecord()
+		},
+		Commit:    func() error { return commitLandingDirectory(location, slug) },
+		SetStatus: pawl.SetStatus,
 		Notify: func(line string) error {
 			_, err := pawl.Notify(line)
 			return err

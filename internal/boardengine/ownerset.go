@@ -1,7 +1,8 @@
 // ownerset.go holds the owner write, the only writer of a beam project's owner machine and of the hub's prime owner.
 //
 // SetOwners records a machine as the owner of named beam projects in one pull-first Bolt commit and pushes it;
-// ReadOwners reads the owners a board directory's local board.json records.
+// ReadOwners reads the owners a board directory's local board.json records;
+// PullBolt brings the Bolt level with origin before a read that needs it.
 
 package boardengine
 
@@ -29,6 +30,30 @@ const ownerPushRetryWait = time.Second
 // ErrOwnerOriginUnreachable is returned, wrapped, by an owner write that needs origin and found it unreachable.
 // Callers match it with errors.Is.
 var ErrOwnerOriginUnreachable = errors.New("board: origin is unreachable, so the owner write was not pushed")
+
+// PullBolt brings the Bolt at boardDir level with its upstream through a pull-first write of nothing.
+// BOARD_SKIP_GIT and BOARD_SKIP_PUSH skip the pull, as they skip the owner write's.
+// An unreachable origin returns an error wrapping ErrOwnerOriginUnreachable.
+// A Bolt that cannot be brought level returns an error naming the detail.
+func PullBolt(boardDir string) error {
+	skip := ApplySkipEnv(Config{})
+	if skip.SkipGit || skip.SkipPush {
+		return nil
+	}
+	nothing := fabricengine.BoltWrite{Message: "board: pull", Write: func() ([]string, error) { return nil, nil }}
+	result, err := fabricengine.NewBolt(boardDir).PullThenCommitWritten([]fabricengine.BoltWrite{nothing}, fabricengine.NewMutations(filepath.Dir(boardDir)))
+	if err != nil {
+		return err
+	}
+	switch result.Skipped {
+	case "":
+		return nil
+	case fabricengine.BoltSkipFetchFailed:
+		return fmt.Errorf("%w: %s", ErrOwnerOriginUnreachable, result.SkipDetail)
+	default:
+		return fmt.Errorf("the board could not be brought up to date: %s", result.SkipDetail)
+	}
+}
 
 // OwnerRequest describes an owner write.
 // It records Machine as the owner of the root project and of beam projects, or claims one entry for it.

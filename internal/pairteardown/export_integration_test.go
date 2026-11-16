@@ -21,6 +21,11 @@ func (t *Teardown) ReedEngineForTest(slug string) (*reedengine.Engine, error) {
 	return t.reedEngine(task)
 }
 
+// RemoveCancelledRecordForTest runs the deletion of a cancelled run's record that Run makes after a pair's removal.
+func (t *Teardown) RemoveCancelledRecordForTest(slug string) (bool, error) {
+	return t.removeCancelledRecord(slug)
+}
+
 // SetIntervalForTest sets the quiet-wait poll interval.
 func (t *Teardown) SetIntervalForTest(d time.Duration) {
 	t.interval = d

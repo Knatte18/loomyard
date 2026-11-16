@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,11 +27,11 @@ const interruptMarkerPrefix = "[Request interrupted by user"
 // ProcessLiveness reports the liveness of the session's process.
 // It reads Claude's session registry under the home directory.
 func (c *Claude) ProcessLiveness(sessionID string) shuttleengine.Liveness {
-	home, err := claudeHomeDir()
+	registryDir, err := sessionRegistryDir()
 	if err != nil {
 		return shuttleengine.LivenessUnproven
 	}
-	return processLiveness(sessionID, filepath.Join(home, ".claude", "sessions"), proc.IsAlive, proc.StartTime)
+	return processLiveness(sessionID, registryDir, proc.IsAlive, proc.StartTime)
 }
 
 // processLiveness answers from the registry entries that name sessionID.

@@ -1,121 +1,202 @@
-// cancelmarker_test.go pins the cancel marker's record and its writer-liveness reading.
+// cancelmarker_test.go pins the reading of a cancel under way: the intent in batten's record and the cancel's lock.
 // It also pins the refusal words a reading earns.
 
 package battencli
 
 import (
-	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCancelMarker walks one marker through its life over a temporary location:
-// absent, taken, contended, left by a dead writer, taken over, removed and torn.
+// TestCancelMarker reads one slug's cancel over a temporary location, once per state of the record and the lock.
 func TestCancelMarker(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	location := locationkit.Location(t.TempDir(), "prime", ".")
 	const slug = "slug"
 	const takeWait = 200 * time.Millisecond
-
-	reading, err := readCancelMarker(location, slug)
-	if err != nil || reading.Present {
-		t.Fatalf("readCancelMarker(no marker) = %+v, %v; want not present", reading, err)
+	intent := shedengine.CancelIntent{StartedAt: "2026-11-15T09:00:00Z", Machine: "other-machine"}
+	writeRecord := func(t *testing.T, location *lymcwd.Location, status shedengine.Status) {
+		t.Helper()
+		if err := state.WriteJSON(shedrun.StatusFile(location, slug), shedrun.StatusLock(location, slug), status); err != nil {
+			t.Fatalf("write the record: %v", err)
+		}
 	}
-
-	held, err := takeCancelMarker(location, slug, takeWait)
-	if err != nil {
-		t.Fatalf("takeCancelMarker(no marker) error = %v, want nil", err)
+	holdLock := func(t *testing.T, location *lymcwd.Location) {
+		t.Helper()
+		held, err := takeCancelMarker(location, slug, takeWait)
+		if err != nil {
+			t.Fatalf("takeCancelMarker: %v", err)
+		}
+		t.Cleanup(func() { _ = held.release() })
 	}
-	if !held.fresh {
-		t.Error("takeCancelMarker(no marker).fresh = false, want true")
+	withIntent := func(change func(*shedengine.CancelIntent)) shedengine.Status {
+		withChange := intent
+		if change != nil {
+			change(&withChange)
+		}
+		return shedengine.Status{State: shedengine.StateRunning, Cancel: &withChange}
 	}
-
-	reading, err = readCancelMarker(location, slug)
-	if err != nil || !reading.Present || !reading.WriterAlive {
-		t.Fatalf("readCancelMarker(taken) = %+v, %v; want present with the writer alive", reading, err)
-	}
-	if reading.Marker.PID != os.Getpid() || reading.Marker.StartedAt == "" {
-		t.Errorf("readCancelMarker(taken).Marker = %+v, want this process's pid and a start time", reading.Marker)
-	}
-	wantAlive := fmt.Sprintf("way forward: wait for the cancel (pid %d) to end, seeing it with \"ps -p %d\"", os.Getpid(), os.Getpid())
-	if got := cancelMarkerRefusal(slug, reading).Error(); !strings.Contains(got, wantAlive) || !strings.HasSuffix(got, "then run the verb again") {
-		t.Errorf("cancelMarkerRefusal(writer alive) = %q, want it to end with the clause containing %q", got, wantAlive)
-	}
-
-	if _, err := takeCancelMarker(location, slug, 0); err == nil || !strings.Contains(err.Error(), "way forward: wait for the cancel") {
-		t.Errorf("takeCancelMarker(held, no wait) error = %v, want the live-cancel refusal", err)
-	}
-
-	if err := held.release(false); err != nil {
-		t.Fatalf("release(false): %v", err)
-	}
-	reading, err = readCancelMarker(location, slug)
-	if err != nil || !reading.Present || reading.WriterAlive {
-		t.Fatalf("readCancelMarker(writer gone) = %+v, %v; want present with the writer gone", reading, err)
-	}
-	wantGone := `way forward: run "lym batten cancel slug" from the prime to finish it`
-	if got := cancelMarkerRefusal(slug, reading).Error(); !strings.HasSuffix(got, wantGone) {
-		t.Errorf("cancelMarkerRefusal(writer gone) = %q, want it to end with %q", got, wantGone)
-	}
-
-	held, err = takeCancelMarker(location, slug, takeWait)
-	if err != nil {
-		t.Fatalf("takeCancelMarker(dead writer's marker) error = %v, want nil", err)
-	}
-	if held.fresh {
-		t.Error("takeCancelMarker(dead writer's marker).fresh = true, want false")
-	}
-	if err := held.release(true); err != nil {
-		t.Fatalf("release(true): %v", err)
-	}
-	if _, statErr := os.Stat(shedrun.CancelMarker(location, slug)); !os.IsNotExist(statErr) {
-		t.Errorf("stat of the marker after release(true) = %v, want not exist", statErr)
-	}
-	if reading, err = readCancelMarker(location, slug); err != nil || reading.Present {
-		t.Errorf("readCancelMarker(removed) = %+v, %v; want not present", reading, err)
-	}
-
-	if err := os.WriteFile(shedrun.CancelMarker(location, slug), []byte(`{"pid":`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	reading, err = readCancelMarker(location, slug)
-	if err != nil || !reading.Present || reading.WriterAlive || reading.Marker != (cancelMarker{}) {
-		t.Errorf("readCancelMarker(undecodable) = %+v, %v; want present with empty fields", reading, err)
-	}
-}
-
-// TestJudgeCancelMarker pins each reading of the marker's probes.
-// The cases include the writer removing the marker between the first stat and the shared lock.
-func TestJudgeCancelMarker(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
 
 	tests := []struct {
-		name                                      string
-		presentBefore, lockFree, presentUnderLock bool
-		wantPresent, wantWriterAlive              bool
+		name        string
+		setup       func(t *testing.T, location *lymcwd.Location)
+		wantPresent bool
+		wantAlive   bool
+		wantIntent  shedengine.CancelIntent
+		// wantRefusal is the refusal's whole text when the reading is present.
+		wantRefusal string
 	}{
-		{"AbsentBeforeReadsNotPresent", false, true, false, false, false},
-		{"PresentWithTheLockHeldElsewhereReadsWriterAlive", true, false, false, true, true},
-		{"PresentWithTheLockFreeAndStillThereReadsWriterGone", true, true, true, true, false},
-		{"RemovedBetweenTheStatAndTheSharedLockReadsNotPresent", true, true, false, false, false},
+		{
+			name:  "AbsentRecordAndLockReadsAbsent",
+			setup: func(*testing.T, *lymcwd.Location) {},
+		},
+		{
+			name: "IntentWithAFreeLockReadsInterruptedNamingItsMachine",
+			setup: func(t *testing.T, location *lymcwd.Location) {
+				writeRecord(t, location, withIntent(nil))
+			},
+			wantPresent: true,
+			wantIntent:  intent,
+			wantRefusal: `a cancel of slug was interrupted; way forward: run "lym batten cancel slug" from the prime of machine other-machine to finish it`,
+		},
+		{
+			name: "IntentWithRemoveSetNamesTheRemoveFlag",
+			setup: func(t *testing.T, location *lymcwd.Location) {
+				writeRecord(t, location, withIntent(func(i *shedengine.CancelIntent) { i.Remove = true }))
+			},
+			wantPresent: true,
+			wantIntent:  shedengine.CancelIntent{StartedAt: intent.StartedAt, Machine: intent.Machine, Remove: true},
+			wantRefusal: `a cancel of slug was interrupted; way forward: run "lym batten cancel slug --remove" from the prime of machine other-machine to finish it`,
+		},
+		{
+			name: "IntentWithAHeldLockReadsLiveSinceItsStart",
+			setup: func(t *testing.T, location *lymcwd.Location) {
+				writeRecord(t, location, withIntent(nil))
+				holdLock(t, location)
+			},
+			wantPresent: true,
+			wantAlive:   true,
+			wantIntent:  intent,
+			wantRefusal: "a cancel of slug is under way on this machine since 2026-11-15T09:00:00Z; way forward: wait for it to end, then run the verb again",
+		},
+		{
+			name:        "HeldLockWithNoIntentYetReadsLiveWithNoStartTime",
+			setup:       func(t *testing.T, location *lymcwd.Location) { holdLock(t, location) },
+			wantPresent: true,
+			wantAlive:   true,
+			wantRefusal: "a cancel of slug is under way on this machine; way forward: wait for it to end, then run the verb again",
+		},
+		{
+			name: "FinishedIntentReadsAbsent",
+			setup: func(t *testing.T, location *lymcwd.Location) {
+				status := withIntent(nil)
+				status.Cancel.Finish = &shedengine.CancelFinish{EndedAt: "2026-11-15T09:05:00Z"}
+				writeRecord(t, location, status)
+			},
+		},
+		{
+			name: "UndecodableRecordReadsPresentWithAnEmptyIntent",
+			setup: func(t *testing.T, location *lymcwd.Location) {
+				path := shedrun.StatusFile(location, slug)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(`{"state":`), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantPresent: true,
+			wantRefusal: "a cancel of slug may have been interrupted, but its batten record does not decode, so a cancel cannot read it; way forward: repair the record by hand, then run the verb again",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			present, writerAlive := judgeCancelMarker(tt.presentBefore, tt.lockFree, tt.presentUnderLock)
+			location := locationkit.Location(t.TempDir(), "prime", ".")
+			tt.setup(t, location)
+
+			reading, err := readCancelMarker(location, slug)
+
+			if err != nil || reading.Present != tt.wantPresent || reading.WriterAlive != tt.wantAlive || reading.Intent != tt.wantIntent {
+				t.Fatalf("readCancelMarker() = %+v, %v; want present %v, alive %v, intent %+v", reading, err, tt.wantPresent, tt.wantAlive, tt.wantIntent)
+			}
+			if !tt.wantPresent {
+				return
+			}
+			if got := cancelMarkerRefusal(slug, reading).Error(); got != tt.wantRefusal {
+				t.Errorf("cancelMarkerRefusal() = %q; want %q", got, tt.wantRefusal)
+			}
+			if tt.wantAlive {
+				if _, err := takeCancelMarker(location, slug, 0); err == nil || !strings.Contains(err.Error(), "way forward: wait for it to end") {
+					t.Errorf("takeCancelMarker(held, no wait) error = %v; want the live-cancel refusal", err)
+				}
+			}
+		})
+	}
+}
+
+// TestCancelMarker_ReadsNothingFromAPrimeWithNoScratchRoot pins the read of a fresh prime.
+// It creates no lock file or scratch root.
+//
+//testtiming:keep pins that a read of a prime with no scratch root creates no lock file or scratch directory
+func TestCancelMarker_ReadsNothingFromAPrimeWithNoScratchRoot(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	location := locationkit.Location(t.TempDir(), "prime", ".")
+
+	reading, err := readCancelMarker(location, "slug")
+
+	if err != nil || reading.Present {
+		t.Fatalf("readCancelMarker() = %+v, %v; want absent with no error", reading, err)
+	}
+	for _, path := range []string{shedrun.CancelMarkerLock(location, "slug"), shedrun.ScratchRoot(location)} {
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			t.Errorf("stat of %s after the read = %v; want not exist", path, statErr)
+		}
+	}
+}
+
+// TestJudgeCancelMarker pins each reading of the cancel's probes.
+// The cases include the intent being finished between the first read and the shared lock,
+// and a lock held before the intent is written.
+//
+//testtiming:keep pins the race rows of the three probes, the intent finished between the read and the shared lock and a lock held before the intent is written
+func TestJudgeCancelMarker(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name                                    string
+		intentBefore, lockFree, intentUnderLock bool
+		wantPresent, wantWriterAlive            bool
+	}{
+		{"NoIntentWithTheLockFreeReadsNotPresent", false, true, false, false, false},
+		{"NoIntentWithTheLockHeldElsewhereReadsWriterAlive", false, false, false, true, true},
+		{"IntentWithTheLockHeldElsewhereReadsWriterAlive", true, false, false, true, true},
+		{"IntentWithTheLockFreeAndStillThereReadsWriterGone", true, true, true, true, false},
+		{"FinishedBetweenTheReadAndTheSharedLockReadsNotPresent", true, true, false, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			present, writerAlive := judgeCancelMarker(tt.intentBefore, tt.lockFree, tt.intentUnderLock)
 			if present != tt.wantPresent || writerAlive != tt.wantWriterAlive {
 				t.Errorf("judgeCancelMarker(%v, %v, %v) = %v, %v; want %v, %v",
-					tt.presentBefore, tt.lockFree, tt.presentUnderLock, present, writerAlive, tt.wantPresent, tt.wantWriterAlive)
+					tt.intentBefore, tt.lockFree, tt.intentUnderLock, present, writerAlive, tt.wantPresent, tt.wantWriterAlive)
 			}
 		})
 	}

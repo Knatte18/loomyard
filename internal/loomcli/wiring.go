@@ -40,6 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -92,6 +93,7 @@ type commitStatusDeps struct {
 // The status file is always included, and the settle records join when their file exists.
 // The reviews directory, the durable directory and the usage directory each join when they hold a file.
 // The driver records join per directory (drive reports, arbiter, tackler) when each holds a file.
+// The pull request record joins when its file exists.
 // The durable directory is staged whole rather than its friction directory alone:
 // staging the parent carries the friction directory and every timestamped archive sibling in one entry,
 // where a friction-only entry would miss the archives.
@@ -120,6 +122,9 @@ func statusCommitPathspec(location *lymcwd.Location, runID string) []string {
 	}
 	if shedrun.HoldsFile(shedrun.UsageDir(location)) {
 		paths = append(paths, shedrun.UsageDirRel())
+	}
+	if _, err := os.Stat(shedrun.PullRequestRecord(location, runID)); err == nil {
+		paths = append(paths, shedrun.PullRequestRecordRel(location, runID))
 	}
 	return paths
 }
@@ -311,7 +316,8 @@ func sketchRefusedNotice(slug string, refusal error) string {
 }
 
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.
-// It first writes the run's board status, `<state> · <producer>`, when that status changed.
+// It first writes the run's board status, `<FSM state> · <producer>`, when that status changed.
+// The FSM state is runfsm.TransitionState's word: running, landing at Finalize, paused or halted.
 // On the run's finish it calls Finish until it succeeds once;
 // a failed board write only warns, and the next transition retries it;
 // the board is the hub's overview, never the run's own bookkeeping.
@@ -344,7 +350,8 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 				}
 			}
 		case deps.SetBoardStatus != nil:
-			if status := boardengine.RunStatus(state, producer); status != lastBoardStatus {
+			display := runfsm.TransitionState(shedengine.State(state), true, producer == loomshed.NameFinalize)
+			if status := boardengine.RunStatus(string(display), producer); status != lastBoardStatus {
 				if err := deps.SetBoardStatus(status); err != nil {
 					logger.Warn("loomcli: board status write failed, next transition retries", "status", status, "error", err)
 				} else {

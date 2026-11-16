@@ -11,6 +11,7 @@ const LymDirName = "_lym"
 
 // DotLymDirName is the ephemeral, machine-bound directory in a worktree that git never tracks.
 // Every never-tracked file lives under it, at the subpath that mirrors the `_lym` content it relates to.
+// What lives under it is a cache a fresh machine rebuilds or starts without; an absent cache reads as empty.
 const DotLymDirName = ".lym"
 
 // BoltDirName is the name of the Bolt checkout inside a hub.

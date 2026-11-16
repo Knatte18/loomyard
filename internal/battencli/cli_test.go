@@ -11,15 +11,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -189,10 +187,13 @@ func TestStartFirstPass(t *testing.T) {
 		beam      = "some-beam"
 		otherHost = "elsewhere"
 	)
+	paused := runfsm.Act(runfsm.Inputs{State: runfsm.Paused})
 	tests := []struct {
-		name         string
-		status       shedengine.State
+		name   string
+		status shedengine.State
+		// pauseCovers makes the act rule read a covering pause; verdict, when set, replaces the rule's verdict whole.
 		pauseCovers  bool
+		verdict      *runfsm.Verdict
 		driverSet    bool
 		childSet     bool
 		beamParent   bool
@@ -290,6 +291,11 @@ func TestStartFirstPass(t *testing.T) {
 			pauseCovers: true,
 			wantRefusal: []string{"lym tender resume"},
 		},
+		{
+			name:        "PausedRunWaitsBeforeAnythingStarts",
+			verdict:     &paused,
+			wantRefusal: []string{"the run is paused", "lym batten run some-slug"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -314,18 +320,11 @@ func TestStartFirstPass(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if tt.pauseCovers {
-				geometry, err := hubgeom.PauseGeometry(c.location)
-				if err != nil {
-					t.Fatalf("hubgeom.PauseGeometry: %v", err)
+			c.runVerdict = func() (runfsm.Verdict, error) {
+				if tt.verdict != nil {
+					return *tt.verdict, nil
 				}
-				now := time.Now()
-				if _, err := pauserecord.Update(geometry.RecordPath, now, func(record *pauserecord.Record) error {
-					record.Live = append(record.Live, pauserecord.Entry{Scope: c.slug, PausedAt: now, Caller: "EXTERNAL"})
-					return nil
-				}); err != nil {
-					t.Fatalf("pauserecord.Update: %v", err)
-				}
+				return runfsm.Act(runfsm.Inputs{State: runfsm.Running, PauseCovers: tt.pauseCovers}), nil
 			}
 			if tt.status != "" {
 				writeStatus(t, c, shedengine.Status{CurrentProducer: battenrecipe.NameWorktreeTeardown, State: tt.status})

@@ -28,8 +28,11 @@ import (
 // startGuard carries the local reads the pre-run's guard refuses on, as function values.
 // A nil field checks nothing, which only a hand-populated receiver has.
 type startGuard struct {
-	// Marker reads the slug's cancel marker and the liveness of its writer.
+	// Marker reads the slug's cancel intent in batten's record and the liveness of its writer.
 	Marker func() (cancelMarkerReading, error)
+	// Lock reads only the cancel's local lock.
+	// The pre-drive check reads it under batten's status lock, where a read of the record would wait on itself.
+	Lock func() (cancelMarkerReading, error)
 	// SourceDirty lists the tracked uncommitted paths of the source worktree.
 	SourceDirty func() ([]string, error)
 	// PairParts reads which parts of the slug's pair are present locally.
@@ -80,11 +83,12 @@ type raddleRefusal struct {
 func (r raddleRefusal) Error() string { return r.message }
 
 // hubStartGuard builds the startGuard over the hub of location:
-// the cancel marker, the prime's tracked dirty paths, the slug's pair parts and its beam.
+// the cancel's intent and lock, the prime's tracked dirty paths, the slug's pair parts and its beam.
 // All these are local reads with no network call.
 func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 	return startGuard{
 		Marker:      func() (cancelMarkerReading, error) { return readCancelMarker(location, slug) },
+		Lock:        func() (cancelMarkerReading, error) { return readCancelLock(location, slug) },
 		SourceDirty: func() ([]string, error) { return fabricengine.SourceDirtyPaths(location) },
 		ParentBeam: func() (string, error) {
 			tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
@@ -251,7 +255,7 @@ func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boarden
 }
 
 // refuse judges verb's start or resume of slug, in order.
-// A present cancel marker refuses run, step and goto.
+// An unfinished cancel intent in batten's record, or a held cancel lock, refuses run, step and goto.
 // A run or step of a task whose pair carries the beam mark refuses, with or without a status file.
 // Only a stopped promote leaves the mark behind.
 // A run whose work reached its parent passes that check, since a cancel refuses it and only the run finishes it.
@@ -279,7 +283,7 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 	if (verb == "run" || verb == "step" || verb == "goto") && g.Marker != nil {
 		reading, err := g.Marker()
 		if err != nil {
-			return probeRefusal("the cancel marker", slug, rerun, err)
+			return probeRefusal("the cancel intent", slug, rerun, err)
 		}
 		if reading.Present {
 			return cancelMarkerRefusal(slug, reading)
@@ -447,20 +451,39 @@ func releaseCommand(slug string) string {
 	return `"` + releaseCommandText(slug) + `"`
 }
 
+// cancelledRunRefusal words the refusal of a start, step or resume over a cancelled batten record.
+// The cancel with --remove deletes the record and any pair, and the slug is released and run again after it.
+func cancelledRunRefusal(slug string) error {
+	return fmt.Errorf("%s was cancelled; way forward: run \"lym batten cancel %s --remove\", which removes its record and any pair, then %s and \"lym batten run %s\"", slug, slug, releaseCommandText(slug), slug)
+}
+
 // probeRefusal words the refusal of a guard probe that failed with err, naming the probe and the step to run again.
 func probeRefusal(probe, slug, rerun string, err error) error {
 	return fmt.Errorf("battencli: could not read %s of %s: %w; way forward: fix the cause, then run %s again", probe, slug, err, rerun)
 }
 
 // refuseCancelMarker refuses when a cancel of the slug is under way or was interrupted.
+// It reads the intent in batten's record and the cancel's lock.
 // A receiver with no guard seam checks nothing.
 func (c *battenCLI) refuseCancelMarker() error {
-	if c.guard.Marker == nil {
+	return c.refuseCancelReading(c.guard.Marker)
+}
+
+// refuseCancelLock refuses when a cancel of the slug holds its lock.
+// It reads no record, so it is safe under batten's status lock.
+// A receiver with no guard seam checks nothing.
+func (c *battenCLI) refuseCancelLock() error {
+	return c.refuseCancelReading(c.guard.Lock)
+}
+
+// refuseCancelReading refuses with the cancel refusal when read reports a cancel present; a nil read checks nothing.
+func (c *battenCLI) refuseCancelReading(read func() (cancelMarkerReading, error)) error {
+	if read == nil {
 		return nil
 	}
-	reading, err := c.guard.Marker()
+	reading, err := read()
 	if err != nil {
-		return probeRefusal("the cancel marker", c.slug, "the verb", err)
+		return probeRefusal("the cancel intent", c.slug, "the verb", err)
 	}
 	if reading.Present {
 		return cancelMarkerRefusal(c.slug, reading)

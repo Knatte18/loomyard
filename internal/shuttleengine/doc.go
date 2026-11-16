@@ -315,6 +315,9 @@
 // The run record reads running until a stop ends it.
 // A resume treats the strand like any other non-live one, since an empty done-when list never drops it as finished.
 // A Spec with ResumeSessionID resumes that session through the engine's resume capability.
+// The capability refuses a session a live process holds with a SessionHeldError naming the process.
+// It refuses a session this machine holds no transcript of with an error wrapping ErrNoTranscript.
+// Run.SessionHolder names the live provider process holding a run's session, through the engine's SessionHolderFinder.
 // Bound: one session per call in the caller's worktree, with no timeout classification, since nothing waits on it;
 // the caller stops it through StopStrand.
 //

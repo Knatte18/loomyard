@@ -63,7 +63,8 @@
 // They report a failed copy as `record_store_error` and never fail the verb.
 // `decision store` makes the same copy by hand on the same runs.
 // It admits the unnamed shell, the run's arbiter and its parent orch.
-// Each status transition writes `<state> · <producer>` on the run's board entry, the run's start write included.
+// Each status transition writes `<FSM state> · <producer>` on the run's board entry, the run's start write included.
+// The FSM state is the run FSM's display word for the transition, such as running, landing, paused or halted.
 // The entry thus names the first row while it runs.
 // A finished run of a recipe with a Finalize row writes nothing, its landing having marked the entry done.
 // A finished run of a recipe with a RaddleFile row, a raddle or arras run, writes nothing either.
@@ -121,7 +122,7 @@
 // so a run moved off a retired row gets the landing's side effects,
 // and it sets `ShedPaths.RetiredWayForward` to `lym loom resume` for every loom run:
 // `pawlRetiredMove` ends the PR-Review session through the run's `RoleSession` records.
-// It reads the scratch pull request's state through the pair's origin.
+// It reads the recorded pull request's state through the pair's origin, and commits the removal of its record.
 // It commits the landing directory in the beam's worktree.
 // The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record.
 // It is restarted through `orchcli.BeamUpWorktree` naming the beam, which brings the beam's orch up with it.
@@ -581,6 +582,7 @@
 // `lym loom pr-continue` is the PR-Review agent's verb for the operator's ending of a review:
 // it sets the continue flag in the run's pull-request record and clears the head whose gate failure the row mailed,
 // so the row gates that head again.
+// It commits the record, which every write of the PR-Review and Finalize rows does too.
 // It writes nothing else, and it is refused until the PR-Review row has opened the pull request.
 //
 // `lym loom sampler-done` ends a sampler run's build:
