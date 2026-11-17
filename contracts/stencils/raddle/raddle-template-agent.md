@@ -55,6 +55,9 @@ Put no design question to the operator before the proposal passes the spec's che
 - When parts that share a package must be chained, order the chain by the Sketch's own order first: a part the record says waits for nothing goes first in its chain.
   Where the record states no order, put first the part with the largest stated saving, or the one the others gain from earliest.
 - List every place your order departs from an order the decision record states in the proposal's `order_departures`, with what the departure costs.
+- Give each part, beside its type, the module labels of the modules its own packages fall in, never the Sketch's whole set copied onto every part.
+  A part that changes a module the Sketch's labels missed carries that module's label too.
+  `lym board labels` lists the board's module labels.
 - When a live `PATTERN.md` entry absorbs a PATTERN change the Sketch declares, map the change with the part's `pattern_clusters`, so the part's record declares the live entry; a contract line that folds it in is not enough.
 - Weigh the next-best split too, since the proposal states its cost beside the chosen one.
 - Write each cost line so it says when a cell it rests on reads "too few runs", and never guess a figure for such a cell.

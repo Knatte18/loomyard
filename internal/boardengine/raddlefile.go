@@ -47,7 +47,7 @@ type RaddleEntry struct {
 	Title string
 	// Kind is KindTask or KindProject.
 	Kind string
-	// Labels holds the entry's type label and the Sketch's module labels; a filed entry never carries the sketch label.
+	// Labels holds the entry's type label and its module labels; a filed entry never carries the sketch label.
 	Labels []string
 	// Recipe and Profile are the task's run recipe and run profile; both are empty for a project.
 	Recipe  string

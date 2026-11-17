@@ -39,6 +39,7 @@ func raddleFileProposal(shape string) raddleparser.Proposal {
 		first.Criteria = append(first.Criteria, second.Criteria...)
 		first.PatternChanges = append(first.PatternChanges, second.PatternChanges...)
 		first.Packages = append(first.Packages, second.Packages...)
+		first.Labels = []string{"mod-a", "mod-b"}
 		proposal.Parts = []raddleparser.Part{first}
 	case raddleparser.ShapeProject, raddleparser.ShapeBeam:
 		proposal.Project = &raddleparser.Project{Slug: "proj-1", Title: "Project", Type: "feature"}
@@ -94,7 +95,7 @@ func newRaddleFileFixture(t *testing.T, proposal raddleparser.Proposal, mode loo
 	t.Helper()
 	dir := t.TempDir()
 	f := &raddleFileFixture{t: t, proposal: proposal, created: time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), failing: map[string]error{}}
-	f.entry = loomshed.RaddleRunEntry{Slug: "sketch-x", Created: f.created, ModuleLabels: []string{"mod-a"}, Project: "grouping", Kind: boardengine.KindTask, StatusProducer: "Raddle-File"}
+	f.entry = loomshed.RaddleRunEntry{Slug: "sketch-x", Created: f.created, ModuleLabels: []string{"mod-a", "mod-sketch"}, Project: "grouping", Kind: boardengine.KindTask, StatusProducer: "Raddle-File"}
 	f.deps = loomshed.RaddleFileDeps{
 		ProposalPath:   filepath.Join(dir, "proposal.yaml"),
 		ColdPath:       filepath.Join(dir, "cold-proposal.yaml"),
@@ -306,12 +307,17 @@ func TestRaddleFile(t *testing.T) {
 					t.Fatalf("project entry = %+v; want one only for the project shapes", filing.ProjectEntry)
 				}
 				if isProject {
-					if want := []string{"feature", "mod-a"}; !slices.Equal(filing.ProjectEntry.Labels, want) || filing.ProjectEntry.Kind != boardengine.KindProject || string(filing.ProjectEntry.Record) != raddleFileRecord {
-						t.Errorf("project entry = %+v; want labels %v, kind project and the Sketch's record whole", filing.ProjectEntry, want)
+					if want := []string{"feature", "mod-a", "mod-b"}; !slices.Equal(filing.ProjectEntry.Labels, want) || filing.ProjectEntry.Kind != boardengine.KindProject || string(filing.ProjectEntry.Record) != raddleFileRecord {
+						t.Errorf("project entry = %+v; want labels %v, its parts' module labels each once, kind project and the Sketch's record whole", filing.ProjectEntry, want)
 					}
 				}
+				// Each part carries its own module labels, never the Sketch's mod-sketch.
+				wantLabels := map[string][]string{"part-a": {"feature", "mod-a"}, "part-b": {"feature", "mod-a", "mod-b"}}
+				if tt.shape == raddleparser.ShapeTapestry {
+					wantLabels["part-a"] = []string{"feature", "mod-a", "mod-b"}
+				}
 				for _, part := range filing.Parts {
-					if want := []string{"feature", "mod-a"}; !slices.Equal(part.Labels, want) || part.Kind != boardengine.KindTask {
+					if want := wantLabels[part.Slug]; !slices.Equal(part.Labels, want) || part.Kind != boardengine.KindTask {
 						t.Errorf("part %s labels/kind = %v/%q; want %v and a task", part.Slug, part.Labels, part.Kind, want)
 					}
 					for _, want := range []string{"`sketch-x`", "takes " + part.Slug, "delivers " + part.Slug, "Exports" + part.Slug, "(about 10 changed lines)"} {

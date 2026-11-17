@@ -456,7 +456,8 @@ func raddlePartBody(sketch string, part raddleparser.Part) string {
 // filing builds the board filing from the proposal, the part records on disk and the staged store files.
 // The parts are in dependency order, the project is the project shapes' own entry,
 // and the entries are filed at the run's own project level.
-// Every entry carries its type label and the Sketch's module labels, never the sketch label.
+// Every part carries its type label and its own module labels,
+// and the project its type label and every module label its parts carry; no entry carries the sketch label.
 func (p *raddleFile) filing(proposal raddleparser.Proposal, hash string, entry RaddleRunEntry) (boardengine.RaddleFiling, error) {
 	staged := make(map[string][]byte, 3)
 	for _, name := range []string{stageProposalFile, stageColdFile, stageRecordFile} {
@@ -467,9 +468,6 @@ func (p *raddleFile) filing(proposal raddleparser.Proposal, hash string, entry R
 		staged[name] = content
 	}
 
-	labels := func(entryType string) []string {
-		return append([]string{entryType}, entry.ModuleLabels...)
-	}
 	filing := boardengine.RaddleFiling{
 		Sketch:       proposal.Sketch,
 		Created:      entry.Created,
@@ -506,7 +504,7 @@ func (p *raddleFile) filing(proposal raddleparser.Proposal, hash string, entry R
 			Slug:      part.Slug,
 			Title:     part.Title,
 			Kind:      boardengine.KindTask,
-			Labels:    labels(part.Type),
+			Labels:    append([]string{part.Type}, part.Labels...),
 			Recipe:    part.Recipe,
 			Profile:   part.Profile,
 			DependsOn: part.DependsOn,
@@ -523,12 +521,26 @@ func (p *raddleFile) filing(proposal raddleparser.Proposal, hash string, entry R
 			Slug:   proposal.Project.Slug,
 			Title:  proposal.Project.Title,
 			Kind:   boardengine.KindProject,
-			Labels: labels(proposal.Project.Type),
+			Labels: append([]string{proposal.Project.Type}, raddleProjectLabels(proposal.Parts)...),
 			Body:   fmt.Sprintf("%s: %s.\n", boardengine.RaddleProjectBodyPrefix(proposal.Sketch), strings.Join(slugs, ", ")),
 			Record: record,
 		}
 	}
 	return filing, nil
+}
+
+// raddleProjectLabels returns the module labels of every part, each once, in the order the parts first name them:
+// a project touches every module its parts change.
+func raddleProjectLabels(parts []raddleparser.Part) []string {
+	var labels []string
+	for _, part := range parts {
+		for _, label := range part.Labels {
+			if !slices.Contains(labels, label) {
+				labels = append(labels, label)
+			}
+		}
+	}
+	return labels
 }
 
 // raddleBoardEntries maps the board's entries onto the entries the proposal's checks read.

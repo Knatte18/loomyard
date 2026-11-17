@@ -1,5 +1,6 @@
 // raddlecontext.go builds the board context that a raddle check reads.
-// The context holds the run's Sketch, the board's entries, the raddle store's slugs and the board's type labels.
+// The context holds the run's Sketch, the board's entries, the raddle store's slugs,
+// and the board's type and module labels.
 // It also holds the run profiles and the live PATTERN.md entries.
 
 package loomcli
@@ -26,7 +27,7 @@ import (
 // The Sketch is the run's own entry, whose slug is the worktree's.
 // Its module labels are the entry's labels that are not type labels.
 // Entries holds every entry of the hub's board and Store the slugs the raddle store holds.
-// TypeLabels holds the board config's type labels.
+// TypeLabels holds the board config's type labels, and LabelVocabulary its module labels.
 // Profiles names the profiles that hold a block for each recipe a part may name.
 // LivePattern answers from the worktree's PATTERN.md, and a worktree with none holds no live entry.
 // The filing flag goes to the context unchanged.
@@ -63,13 +64,14 @@ func raddleBoardContext(location *lymcwd.Location, filing bool) (raddleparser.Bo
 	vocabulary := boardConfig.Vocabulary()
 	sketch := seedSlug(location.WorktreeName)
 	board := raddleparser.BoardContext{
-		Sketch:     sketch,
-		Entry:      sketch,
-		Store:      store.Slugs(),
-		TypeLabels: vocabulary.Types,
-		Profiles:   map[string][]string{},
-		Filing:     filing,
-		Perch:      recorded.Mode == loomengine.RaddleModePerch,
+		Sketch:          sketch,
+		Entry:           sketch,
+		Store:           store.Slugs(),
+		TypeLabels:      vocabulary.Types,
+		LabelVocabulary: vocabulary.Labels,
+		Profiles:        map[string][]string{},
+		Filing:          filing,
+		Perch:           recorded.Mode == loomengine.RaddleModePerch,
 		LivePattern: func(id string) bool {
 			_, live := pattern.EntryBullet(overview, id)
 			return live

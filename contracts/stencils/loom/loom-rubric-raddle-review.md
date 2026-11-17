@@ -42,6 +42,9 @@ Judge the split's judgement, not its format:
   Two unchained parts where one uses what the other builds, with no interface fixed in both bodies, is a finding.
 - **The order follows the record.**
   The parts follow the record's stated order, or each departure is listed in `order_departures` with its cost.
+- **Each part's labels name its modules.**
+  A part's `labels` name the module of each package its body names, and no module the part does not change.
+  A label for a module the part never touches is a finding, and so is a named package whose module no label names.
 - **Each part's recipe and profile fit it.**
   A part's recipe and profile fit its size and risk, and each cost line rests on the cells it cites.
 - **The outcome fits the record's scope.**
@@ -68,6 +71,7 @@ In this segment, `design` means the split is wrong:
 a decision no part can build, a seam that does not hold,
 a part added only so parts run at once,
 a cut that runs fewer parts at once than another cut with the same part count,
+labels that do not match the packages a part changes,
 or a recipe or profile that does not fit its part.
 In this segment, `decision` means a question only the run's parent can settle:
 two record entries that contradict each other on what the split must build,

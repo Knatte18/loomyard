@@ -73,9 +73,11 @@ type BoardCheck struct {
 // Part is one entry the proposal files.
 // ExpectedCostUSD is nil when a cell the figure rests on reads "too few runs".
 type Part struct {
-	Slug           string    `json:"slug"`
-	Title          string    `json:"title"`
-	Type           string    `json:"type"`
+	Slug  string `json:"slug"`
+	Title string `json:"title"`
+	Type  string `json:"type"`
+	// Labels are the module labels of the modules the part's own work changes; the part is filed with them beside its type.
+	Labels         []string  `json:"labels"`
 	Recipe         string    `json:"recipe"`
 	Profile        string    `json:"profile"`
 	Decisions      []string  `json:"decisions"`

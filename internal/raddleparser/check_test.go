@@ -99,6 +99,10 @@ func TestCheck(t *testing.T) {
 		{"RecipeInvalid", func(p *Proposal, _ *BoardContext) { p.Parts[0].Recipe = "batten" }, []string{CheckRecipeInvalid}},
 		{"ProfileUnknown", func(p *Proposal, _ *BoardContext) { p.Parts[0].Profile = "ghost" }, []string{CheckProfileUnknown}},
 		{"PartTypedSketch", func(p *Proposal, _ *BoardContext) { p.Parts[0].Type = TypeSketch }, []string{CheckTypeInvalid}},
+		{"PartWithNoModuleLabel", func(p *Proposal, _ *BoardContext) { p.Parts[0].Labels = nil }, []string{CheckLabelsMissing}},
+		{"PartLabelOutsideTheBoardsVocabulary", func(p *Proposal, _ *BoardContext) { p.Parts[0].Labels = []string{"mod-a", "ghost"} }, []string{CheckLabelUnknown}},
+		{"PartLabelListedTwice", func(p *Proposal, _ *BoardContext) { p.Parts[0].Labels = []string{"mod-a", "mod-a"} }, []string{CheckLabelDuplicate}},
+		{"PartLabelThatIsATypeLabel", func(p *Proposal, _ *BoardContext) { p.Parts[0].Labels = []string{"feature"} }, []string{CheckLabelUnknown}},
 		{"ProjectWithNoValidType", func(p *Proposal, _ *BoardContext) {
 			p.Shape = ShapeProject
 			p.Project = &Project{Slug: "proj-new", Title: "Project"}
@@ -110,7 +114,7 @@ func TestCheck(t *testing.T) {
 		}, []string{CheckSlugTaken}},
 		{"SlugEqualToTheSketchs", func(p *Proposal, _ *BoardContext) { p.Parts[1].Slug = "sketch-x" }, []string{CheckSlugSketch}},
 		{"SlugFiledTwice", func(p *Proposal, _ *BoardContext) {
-			p.Parts = append(p.Parts, Part{Slug: "part-b", Type: "feature", Recipe: RecipeTapestry, Profile: "standard", Packages: []Package{{Path: "internal/c", Size: 1}}})
+			p.Parts = append(p.Parts, Part{Slug: "part-b", Type: "feature", Labels: []string{"mod-a"}, Recipe: RecipeTapestry, Profile: "standard", Packages: []Package{{Path: "internal/c", Size: 1}}})
 		}, []string{CheckSlugDuplicate}},
 		{"TapestryWithTwoParts", func(p *Proposal, _ *BoardContext) { p.Shape = ShapeTapestry }, []string{CheckShapeInvalid}},
 		{"ProjectShapeWithNoProject", func(p *Proposal, _ *BoardContext) { p.Shape = ShapeProject }, []string{CheckShapeInvalid}},
@@ -203,6 +207,7 @@ func mergeIntoOnePart(p *Proposal) {
 	first.Criteria = append(first.Criteria, second.Criteria...)
 	first.PatternChanges = append(first.PatternChanges, second.PatternChanges...)
 	first.Packages = append(first.Packages, second.Packages...)
+	first.Labels = append(first.Labels, second.Labels...)
 	p.Parts = []Part{first}
 }
 
