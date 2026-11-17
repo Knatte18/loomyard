@@ -157,7 +157,8 @@ type testRequest struct {
 	rerunDelay time.Duration
 	// pipeWaitDelay is how long a tier's or the build's output is still read after its shell exits.
 	pipeWaitDelay time.Duration
-	// stderr receives the verb's lines beside its output: the CPU watchdog's quit, a tier's timeout and each tier's summary.
+	// stderr receives the verb's lines beside its output:
+	// the CPU watchdog's quit, the memory guard's kills, a tier's timeout or memory cap, and each tier's summary.
 	stderr io.Writer
 	// dir is the -C value as typed; empty means the tier's own dir.
 	dir  string
@@ -198,6 +199,10 @@ type testRequest struct {
 	busyQuit time.Duration
 	// watching is whether the CPU watchdog applies to this run.
 	watching bool
+	// memoryQuit is the bytes a test binary's tree may hold before the memory guard kills it.
+	memoryQuit int64
+	// memoryGuarding is whether the memory guard applies to this run.
+	memoryGuarding bool
 	// observer hears each tier start and end; its zero value observes nothing.
 	observer TierObserver
 	// phase, when set, hears where the call stands as each tier waits for slots and runs; only a detached runner sets it.
@@ -205,6 +210,9 @@ type testRequest struct {
 	// processCapFor builds the process cap over a tier run's marker; nil means newProcessCap.
 	// A test replaces it so the cap trips without a runaway.
 	processCapFor func(marker string, period time.Duration) processCap
+	// memoryGuardFor builds the memory guard over a tier run's command; nil means newMemoryGuard.
+	// A test replaces it so the guard kills without a runaway.
+	memoryGuardFor func(limit int64, out io.Writer) memoryGuard
 }
 
 // absoluteDir returns the directory a request runs in: dir made absolute against cwd, or cwd when dir is empty.

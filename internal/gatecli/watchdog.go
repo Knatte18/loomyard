@@ -38,7 +38,7 @@ type watchdog struct {
 	window time.Duration
 	period time.Duration
 	// sample returns the process tree under root.
-	sample func(root int) ([]proc.ProcessCPU, error)
+	sample func(root int) ([]proc.ProcessSample, error)
 	// signal sends SIGQUIT to pid.
 	signal func(pid int) error
 	now    func() time.Time
@@ -52,7 +52,7 @@ func newWatchdog(window, period time.Duration, out io.Writer) watchdog {
 	return watchdog{
 		window: window,
 		period: period,
-		sample: proc.TreeCPU,
+		sample: proc.TreeSample,
 		signal: sendQuit,
 		now:    time.Now,
 		after:  time.After,
@@ -104,7 +104,7 @@ func (w watchdog) run(ctx context.Context, root int) {
 }
 
 // account folds one sample of the tree into tracks and quits each test binary whose busy time reached the window.
-func (w watchdog) account(tracks map[int]*busyTrack, tree []proc.ProcessCPU) {
+func (w watchdog) account(tracks map[int]*busyTrack, tree []proc.ProcessSample) {
 	now := w.now()
 	seen := map[int]bool{}
 	for _, sampled := range tree {
@@ -137,7 +137,7 @@ func (w watchdog) account(tracks map[int]*busyTrack, tree []proc.ProcessCPU) {
 }
 
 // quit sends SIGQUIT to the test binary and prints the watchdog line.
-func (w watchdog) quit(binary proc.ProcessCPU) {
+func (w watchdog) quit(binary proc.ProcessSample) {
 	if err := w.signal(binary.PID); err != nil {
 		logger.Warn("gate test: CPU watchdog could not signal the test binary", "binary", binary.Path, "pid", binary.PID, "cause", err)
 		return

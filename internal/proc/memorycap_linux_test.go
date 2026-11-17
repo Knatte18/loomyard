@@ -103,6 +103,53 @@ func TestRunMemoryCapped_AKillOfAChildLeavesTheCommandRunningAndEndsItsScope(t *
 	requireProcessGone(t, pid)
 }
 
+func TestRunMemoryCappedVia_StartsThroughItsStartAndReportsAChildKilledAtTheCap(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	if !proc.MemoryCapCoversTree() {
+		t.Skip("this host has no systemd user manager that caps a scope's memory")
+	}
+
+	// The shell runs the hog the cap kills as a plain child and exits 0, so only the tree saw a kill.
+	hog := memoryHog(t, hogOverCap)
+	cmd := exec.Command("sh", "-c", `"$0"; echo survived`, hog.Path)
+	cmd.Env = hog.Env
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	starts := 0
+	treeKilled, err := proc.RunMemoryCappedVia(cmd, testMemoryCap, func(cmd *exec.Cmd) (func() error, error) {
+		starts++
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		return cmd.Wait, nil
+	})
+	if !treeKilled || err != nil || starts != 1 || out.String() != "survived\n" {
+		t.Errorf("RunMemoryCappedVia of a shell whose child keeps %d MB under %d = tree killed %v, %v, %d starts, output %q; want a tree kill, no error, one start and survived", hogOverCap, testMemoryCap, treeKilled, err, starts, out.String())
+	}
+}
+
+func TestRunMemoryCappedVia_ASigkillFromOutsideIsNoKillAtTheCap(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	if !proc.MemoryCapCoversTree() {
+		t.Skip("this host has no systemd user manager that caps a scope's memory")
+	}
+
+	// The shell kills itself with SIGKILL, as a process cap or an operator does, so the kernel's cap kills nothing.
+	cmd := exec.Command("sh", "-c", "kill -9 $$")
+	treeKilled, err := proc.RunMemoryCappedVia(cmd, testMemoryCap, func(cmd *exec.Cmd) (func() error, error) {
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		return cmd.Wait, nil
+	})
+	var exitErr *exec.ExitError
+	if treeKilled || !errors.As(err, &exitErr) {
+		t.Errorf("RunMemoryCappedVia of a shell that kills itself = tree killed %v, %v; want no tree kill and the shell's *exec.ExitError", treeKilled, err)
+	}
+}
+
 // requireProcessGone fails the test when the process pid is still present a minute from now.
 func requireProcessGone(t *testing.T, pid int) {
 	t.Helper()
@@ -123,8 +170,8 @@ func TestRunMemoryCapped_AScopeThatNeverStartsIsAnErrorAndNotTheCommandsExit(t *
 	// /bin/false stands in for a systemd-run that cannot create the scope: it exits 1 before it runs the command.
 	killed, err := proc.RunMemoryCappedWithStarter(exec.Command("echo", "never runs"), testMemoryCap, "/bin/false")
 	var exitErr *exec.ExitError
-	if err == nil || errors.As(err, &exitErr) || killed {
-		t.Errorf("RunMemoryCapped with a starter that fails at once = killed %v, %v; want no kill and an error that is no *exec.ExitError", killed, err)
+	if !errors.Is(err, proc.ErrMemoryCap) || errors.As(err, &exitErr) || killed {
+		t.Errorf("RunMemoryCapped with a starter that fails at once = killed %v, %v; want no kill and an error wrapping proc.ErrMemoryCap, never an *exec.ExitError", killed, err)
 	}
 }
 

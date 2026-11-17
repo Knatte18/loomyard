@@ -685,7 +685,7 @@
 //
 // # CPU watchdog
 //
-// While a tier's command runs, the verb samples its child tree through `proc.TreeCPU` once per period.
+// While a tier's command runs, the verb samples its child tree through `proc.TreeSample` once per period.
 // The period is 5 seconds in production.
 // A `.test` process that keeps at least 90 percent of one core busy for `busy_quit_sec` gets one SIGQUIT,
 // so the Go runtime prints every goroutine's stack,
@@ -693,7 +693,7 @@
 // The window counts whole samples, and a pid's first sample is its baseline.
 // Any sample below 90 percent restarts the count.
 // The verb prints `gateslot.WatchdogLine` to its stderr after the quit, and a halt names `gateslot.BusyQuitWayForward`.
-// Off Linux `proc.TreeCPU` reports `errors.ErrUnsupported`.
+// Off Linux `proc.TreeSample` reports `errors.ErrUnsupported`.
 // The watchdog then logs that no watchdog applies and ends, and the tier runs as before.
 // The watchdog is off when `busy_quit_sec` is 0.
 // It is off when the words after `--` carry `-bench` or `-fuzz`, which keep a core busy by intent.
@@ -704,6 +704,38 @@
 // An inherited slot does not turn it off:
 // a verify run holds a slot and passes it to a verify command whose `lym gate test` call is the outermost gate run.
 // It watches `.test` processes only, so a `vstest` tier is bounded by its `timeout_min` alone.
+//
+// # Memory guard
+//
+// While a tier's command runs, a memory guard samples its child tree through `proc.TreeSample` once a second.
+// A `.test` process is killed whole with SIGKILL when its tree holds more than `memory_quit_mb` resident.
+// The tree is the process itself and every process it started.
+// A tree that holds another tree over the cap is spared, and the inner binary is killed.
+// When no tree passes the cap, the guard reads the memory limit the verb sits under through `proc.ReadMemoryLimit`.
+// If that limit has less than a tenth of its Max left, the largest tree of 1024 MB or more is killed whole.
+// Each kill prints a line naming the binary and its package directory, read from its working directory.
+// The line also names the `-test.run` value the binary was given and the reason.
+// The tier's log and failure report carry the line, and the tier is never rerun.
+// A go-json tier's log and failure report also name the tests that had started and never passed, failed or skipped.
+// `lym gate redundant`, `lym gate testmap` and the redundancy report step of `lym gate test` run the same guard.
+// It watches their own process tree for the whole call, or for the step alone.
+// It runs beside the kernel cap of `redundancy_test_memory_mb` on each test run, and each kill's line goes to stderr.
+// A test run the guard kills in the redundancy report step or `lym gate redundant` is not judged,
+// and a mutant run it kills counts as no mutant kill.
+// `lym gate testmap` records the entry of a test run the guard kills as failed.
+// The guard is off when `memory_quit_mb` is 0.
+// It is also off when `LYM_GATE_TEST_PID` names a live ancestor, whose own guard already sees these test binaries.
+// Off Linux `proc.TreeSample` reports `errors.ErrUnsupported`, and the guard logs that and ends.
+//
+// A tier's `memory_mb` runs its command under `proc.RunMemoryCappedVia`, with the shell still tied to the verb.
+// That is the kernel cap of `proc.RunMemoryCapped`.
+// The cap holds the command's builds and test binaries together.
+// A kill at that cap fails the run with a line naming the tier and its cap, and the tier is never rerun.
+// On a host whose user manager cannot cap a scope, the cap limits each process's data segment to `memory_mb` alone.
+// An allocation past it fails in that process, and no cap line is printed.
+// A command that cannot be started under the cap is a refusal naming the cap and its way forward.
+// The guard watches `.test` processes only.
+// This cap holds every process of the command, a `vstest` tier's included.
 //
 // # Process cap
 //

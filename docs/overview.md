@@ -965,6 +965,12 @@ User-facing modules each get one `lym <module>` namespace:
   and a git worktree outside every hub runs unslotted under its own `gate.yaml`.
   A Go test binary that keeps a core busy past `busy_quit_sec` gets one SIGQUIT,
   so its goroutine stacks reach the log long before the tier's own timeout.
+  A memory guard kills a Go test binary whose process tree holds more than `memory_quit_mb`,
+  or the largest one once the memory limit lym sits under runs short, and names its package,
+  under `lym gate test` (its redundancy report step included), `lym gate redundant` and `lym gate testmap` alike,
+  and a test run it kills is listed as not judged under the redundancy paths, never as a mutant kill,
+  and recorded as failed by `lym gate testmap`;
+  a tier's `memory_mb` runs its whole command under the kernel cap `lym gate redundant` uses.
   The `dotnet` scoper narrows a C# hub's computed, `--base` and `--card` scopes to the test projects and classes that name a changed type, rendered into the tier's `{filter}` placeholder (`internal/dotnetimpact`),
   and a hub's `build` step runs once per call inside the slots of the first tier that sets `shared_build`, with its own summary line and run record.
   `inert_paths` makes a diff of files no test reads run no tier,

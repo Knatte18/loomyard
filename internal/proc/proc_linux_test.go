@@ -96,36 +96,36 @@ func TestProcessTreeReads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
 	}
-	find := func(tree []ProcessCPU, pid int) (ProcessCPU, bool) {
+	find := func(tree []ProcessSample, pid int) (ProcessSample, bool) {
 		for _, process := range tree {
 			if process.PID == pid {
 				return process, true
 			}
 		}
-		return ProcessCPU{}, false
+		return ProcessSample{}, false
 	}
 
-	tree, err := TreeCPU(os.Getpid())
+	tree, err := TreeSample(os.Getpid())
 	if err != nil {
-		t.Fatalf("TreeCPU(own pid): %v", err)
+		t.Fatalf("TreeSample(own pid): %v", err)
 	}
 	self, found := find(tree, os.Getpid())
-	if !found || self.Path != executable || self.CPU <= 0 {
-		t.Errorf("TreeCPU(own pid) test process = %+v, found %v; want Path %q and CPU above zero", self, found, executable)
+	if !found || self.Path != executable || self.CPU <= 0 || self.RSS <= 0 || self.Parent != os.Getppid() {
+		t.Errorf("TreeSample(own pid) test process = %+v, found %v; want Path %q, CPU and RSS above zero and Parent %d", self, found, executable, os.Getppid())
 	}
-	if sleeper, found := find(tree, childPID); !found || sleeper.Path == "" {
-		t.Errorf("TreeCPU(own pid) child = %+v, found %v; want the child with a non-empty Path", sleeper, found)
+	if sleeper, found := find(tree, childPID); !found || sleeper.Path == "" || sleeper.Parent != os.Getpid() {
+		t.Errorf("TreeSample(own pid) child = %+v, found %v; want the child with a non-empty Path and Parent %d", sleeper, found, os.Getpid())
 	}
 
-	childTree, err := TreeCPU(childPID)
+	childTree, err := TreeSample(childPID)
 	if err != nil {
-		t.Fatalf("TreeCPU(child pid): %v", err)
+		t.Fatalf("TreeSample(child pid): %v", err)
 	}
 	if _, found := find(childTree, childPID); !found {
-		t.Errorf("TreeCPU(child pid) = %+v; want it to hold the child", childTree)
+		t.Errorf("TreeSample(child pid) = %+v; want it to hold the child", childTree)
 	}
 	if _, found := find(childTree, os.Getpid()); found {
-		t.Errorf("TreeCPU(child pid) = %+v; want it not to hold the test process", childTree)
+		t.Errorf("TreeSample(child pid) = %+v; want it not to hold the test process", childTree)
 	}
 
 	listed, err := ListProcesses()

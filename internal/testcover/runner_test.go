@@ -202,6 +202,8 @@ func TestRunAlone(t *testing.T) {
 		within time.Duration
 		// memory is the run's MemoryLimit; zero leaves it uncapped.
 		memory int64
+		// guard is the run's GuardKilled; nil sets none.
+		guard func(pid int) bool
 		// noProfile runs the test with no profile flag, as a binary built without coverage.
 		noProfile bool
 		want      testcover.RunResult
@@ -219,6 +221,14 @@ func TestRunAlone(t *testing.T) {
 			}},
 		},
 		{name: "Fail", test: standInFail, want: testcover.RunResult{Name: standInFail, Elapsed: 0.1, Action: testcover.ActionFail}},
+		{
+			name: "FailedRunTheGuardKilledIsGuardKilled", test: standInFail, guard: func(int) bool { return true },
+			want: testcover.RunResult{Name: standInFail, Action: testcover.ActionFail, GuardKilled: true},
+		},
+		{
+			name: "FailedRunTheGuardDidNotKillStaysAFailure", test: standInFail, guard: func(int) bool { return false },
+			want: testcover.RunResult{Name: standInFail, Elapsed: 0.1, Action: testcover.ActionFail},
+		},
 		{name: "SkipWithoutProfile", test: standInSkip, want: testcover.RunResult{Name: standInSkip, Action: testcover.ActionSkip}},
 		{
 			name: "SkipWithProfile",
@@ -269,7 +279,7 @@ func TestRunAlone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tc, record := standIn(t)
-			tc.TestTimeout, tc.MemoryLimit, tc.Grace = tt.timeout, tt.memory, time.Second
+			tc.TestTimeout, tc.MemoryLimit, tc.GuardKilled, tc.Grace = tt.timeout, tt.memory, tt.guard, time.Second
 			profile := filepath.Join(t.TempDir(), "cover.out")
 			if tt.noProfile {
 				profile = ""

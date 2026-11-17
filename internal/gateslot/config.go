@@ -32,6 +32,9 @@ type Config struct {
 	Slots int `yaml:"slots"`
 	// BusyQuitSec is the seconds a Go test binary may keep a core busy before the watchdog quits it; 0 turns it off.
 	BusyQuitSec int `yaml:"busy_quit_sec"`
+	// MemoryQuitMB is the megabytes a Go test binary, with every process it starts, may hold;
+	// past it the memory guard kills them all, and 0 turns the guard off.
+	MemoryQuitMB int `yaml:"memory_quit_mb"`
 	// FixerTimeoutMin is the minutes a cold gate fixer may run before its caller stops waiting for it.
 	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
 	// RedundancyBuildTimeoutMin is the minutes each build of a coverage map run or the redundancy report step may take.
@@ -89,6 +92,7 @@ type buildFile struct {
 type configFile struct {
 	Slots                     int                  `yaml:"slots"`
 	BusyQuitSec               int                  `yaml:"busy_quit_sec"`
+	MemoryQuitMB              int                  `yaml:"memory_quit_mb"`
 	FixerTimeoutMin           int                  `yaml:"fixer_timeout_min"`
 	RedundancyBuildTimeoutMin int                  `yaml:"redundancy_build_timeout_min"`
 	RedundancyTestTimeoutSec  int                  `yaml:"redundancy_test_timeout_sec"`
@@ -123,7 +127,8 @@ func ConfigPerNameMaps() []string {
 
 // ConfigSpec returns gate's layered-load spec.
 // `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
-// `fixer_timeout_min` is cross-pair like `busy_quit_sec`; a gate key's `fixer` sits inside `gates`, a guard key.
+// `fixer_timeout_min` and `memory_quit_mb` are cross-pair like `busy_quit_sec`;
+// a gate key's `fixer` sits inside `gates`, a guard key.
 // The coverage map and redundancy report keys are cross-pair too:
 // every worktree of the hub reads the maps they bound.
 // `tiers` and `build` run any shell command in a task worktree, so they are executable.
@@ -148,6 +153,7 @@ func ConfigSpec() configengine.Spec {
 			"slots":                        configengine.CategoryMachine,
 			"tier_parallel":                configengine.CategoryMachine,
 			"busy_quit_sec":                configengine.CategoryCrossPair,
+			"memory_quit_mb":               configengine.CategoryCrossPair,
 			"fixer_timeout_min":            configengine.CategoryCrossPair,
 			"redundancy_build_timeout_min": configengine.CategoryCrossPair,
 			"redundancy_test_timeout_sec":  configengine.CategoryCrossPair,
@@ -276,6 +282,9 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	if file.BusyQuitSec < 0 {
 		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 0", "busy_quit_sec", file.BusyQuitSec)
 	}
+	if file.MemoryQuitMB < 0 {
+		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 0", "memory_quit_mb", file.MemoryQuitMB)
+	}
 	for _, bound := range []struct {
 		key   string
 		value int
@@ -321,6 +330,7 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	return Config{
 		Slots:                     file.Slots,
 		BusyQuitSec:               file.BusyQuitSec,
+		MemoryQuitMB:              file.MemoryQuitMB,
 		FixerTimeoutMin:           file.FixerTimeoutMin,
 		RedundancyBuildTimeoutMin: file.RedundancyBuildTimeoutMin,
 		RedundancyTestTimeoutSec:  file.RedundancyTestTimeoutSec,
@@ -466,6 +476,12 @@ func refuseRetiredGateLists(hubFile string) error {
 // FixerTimeout returns the bound on a cold gate fixer's run as a duration.
 func (c Config) FixerTimeout() time.Duration {
 	return time.Duration(c.FixerTimeoutMin) * time.Minute
+}
+
+// MemoryQuit returns the memory a test binary may hold before the memory guard kills it, `memory_quit_mb` in bytes.
+// It is 0 when the guard is off.
+func (c Config) MemoryQuit() int64 {
+	return int64(c.MemoryQuitMB) << 20
 }
 
 // RedundancyTestMemory returns the memory cap `redundancy_test_memory_mb` sets, in bytes.

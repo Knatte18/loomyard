@@ -68,6 +68,8 @@ type testMapRequest struct {
 	cappedParallel func(parallel int, limit int64) int
 	// waitBase is the first pause of a named call's build lock wait; waitCeiling is the pause it doubles up to.
 	waitBase, waitCeiling time.Duration
+	// stderr receives the memory guard's line for each test binary it kills; nil prints none.
+	stderr io.Writer
 }
 
 // testMapCmd builds `lym gate testmap`.
@@ -90,11 +92,12 @@ A map the selector misses for stays as it is, and its package is queued for a wh
 It then measures the queued packages, all of them unless --max caps the count: first those the gate's run records show costliest, then the rest in import path order.
 It holds one gate slot to its end, and ends once HEAD moves.
 Named packages wait for each map build lock and are rebuilt whole.
-Each test runs alone in its own process, up to the slot's tier0 parallel side by side, fewer when memory is short; a test that fails beside others runs once more alone.
+Each test runs alone in its own process, up to the slot's tier0 parallel, fewer when memory is short; a test that fails beside others runs once more alone.
 A test that fails, times out, skips or covers nothing gets an entry naming that outcome; a test the spawn scan marks is never run.
-Once nothing is left queued, it re-measures the oldest passing entries if a gate slot is free at once, counting each difference as an audit mismatch.
-A package with a modified or untracked Go file, its own or a linked package's, is skipped; one whose map another call is building is skipped and counted as queued.
-It prints what it measured, skipped and failed, the queued work left, the plan's and mismatch counts, and each package's build and run seconds.
+A test binary past memory_quit_mb is killed and named on stderr.
+Once nothing is left queued, it re-measures the oldest passing entries if a slot is free, counting each difference as an audit mismatch.
+A package with a modified or untracked Go file, its own or a linked package's, is skipped; one whose map another call is building is skipped and queued.
+It prints what it measured, skipped and failed, the queued work left, the plan's and mismatch counts and each package's seconds.
 
 Examples:
 
@@ -114,6 +117,7 @@ Examples:
 				goBinary: goBinary, maxPackages: limit, packages: args, environ: os.Environ(),
 				secondUnit: time.Second, minuteUnit: minuteUnit, grace: grace, auditTests: testMapAuditTests,
 				cappedParallel: memoryCappedParallel, waitBase: testMapWaitBase, waitCeiling: testMapWaitCeiling,
+				stderr: cmd.ErrOrStderr(),
 			}))
 			return nil
 		},
@@ -177,6 +181,10 @@ type testMapRun struct {
 	buildTimeout, testTimeout time.Duration
 	// testMemory caps the bytes each test run may hold.
 	testMemory int64
+	// memoryQuit is the bytes a test binary's tree may hold before the memory guard kills it.
+	memoryQuit int64
+	// guardKilled reports whether the memory guard killed the process with a pid; nil means it killed none.
+	guardKilled func(pid int) bool
 	// env is the environment the call's children start from, before the slot's Go flags.
 	env []string
 	// hubEnv is the hub's env.yaml variables, which env holds.
@@ -262,6 +270,9 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 	if refusal := run.prepare(); refusal != "" {
 		return output.Err(out, refusal)
 	}
+	stopGuard, guardKilled := guardOwnTests(runCtx, run.memoryQuit, request.stderr)
+	defer stopGuard()
+	run.guardKilled = guardKilled
 	packages, named, refusal := run.packages()
 	if refusal != "" {
 		return output.Err(out, refusal)
@@ -346,6 +357,7 @@ func (r *testMapRun) prepare() string {
 	r.buildTimeout = time.Duration(cfg.RedundancyBuildTimeoutMin) * r.request.minuteUnit
 	r.testTimeout = time.Duration(cfg.RedundancyTestTimeoutSec) * r.request.secondUnit
 	r.testMemory = cfg.RedundancyTestMemory()
+	r.memoryQuit = cfg.MemoryQuit()
 	r.env = gateEnv(r.request.environ, hubEnv)
 	r.hubEnv = hubEnv
 	r.inert = cfg.Inert

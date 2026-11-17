@@ -87,6 +87,8 @@ func TestCounters(t *testing.T) {
 		wantFailures []runFailure
 		// wantUnparsed is the first lines that were no JSON event.
 		wantUnparsed []string
+		// wantUnfinished is the per-package tests that started and never ended.
+		wantUnfinished map[string][]string
 	}{
 		{
 			name: "a package with start, a later event and a closing pass has one launch entry",
@@ -129,6 +131,19 @@ func TestCounters(t *testing.T) {
 			writes:       []string{goEvent("run", "TestA", "") + "\n" + goEvent("skip", "TestA", "") + "\n"},
 			wantCounts:   tierCounts{discovered: 1, skipped: 1},
 			wantTestsRun: map[string]int{"example.com/p": 1},
+		},
+		{
+			name: "tests that started and never passed, failed or skipped are unfinished, as a killed test binary leaves them",
+			kind: "go-json",
+			writes: []string{strings.Join([]string{
+				goEvent("run", "TestA", ""), goEvent("pass", "TestA", ""),
+				goEvent("run", "TestB", ""), goEvent("run", "TestB/sub", ""),
+				goEvent("run", "TestC", ""), goEvent("fail", "TestC", ""),
+			}, "\n") + "\n"},
+			wantCounts:     tierCounts{discovered: 4, passed: 1, failed: 1},
+			wantTestsRun:   map[string]int{"example.com/p": 4},
+			wantFailures:   []runFailure{{pkg: "example.com/p", test: "TestC"}},
+			wantUnfinished: map[string][]string{"example.com/p": {"TestB", "TestB/sub"}},
 		},
 		{
 			name: "subtests count each",
@@ -323,6 +338,9 @@ func TestCounters(t *testing.T) {
 			}
 			if got := c.Unparsed(); !slices.Equal(got, tt.wantUnparsed) {
 				t.Errorf("Unparsed() = %q; want %q", got, tt.wantUnparsed)
+			}
+			if diff := cmp.Diff(tt.wantUnfinished, c.Unfinished()); diff != "" {
+				t.Errorf("Unfinished() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

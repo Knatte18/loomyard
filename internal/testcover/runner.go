@@ -45,6 +45,11 @@ type Toolchain struct {
 	TestTimeout time.Duration
 	// MemoryLimit caps the bytes each test binary's run may hold, with every process it starts; zero leaves it uncapped.
 	MemoryLimit int64
+	// GuardKilled reports whether a memory guard outside the toolchain killed the test binary with a pid,
+	// or a test binary that binary started.
+	// Nil means none runs.
+	// RunAlone asks it once about each run that failed, and returns a run it names as GuardKilled.
+	GuardKilled func(pid int) bool
 	// Grace bounds the wait for a bounded command's exit and output once it ended or was killed; zero waits for both.
 	Grace time.Duration
 }
@@ -62,6 +67,9 @@ type RunResult struct {
 	TimedOut bool
 	// MemoryCapped marks a run ended for passing MemoryLimit; its Action is ActionFail.
 	MemoryCapped bool
+	// GuardKilled marks a run the toolchain's memory guard killed for the machine's memory, not the test's own cap;
+	// its Action is ActionFail, and it says nothing about the test.
+	GuardKilled bool
 }
 
 // BuildBinary builds the coverage test binary of the package at importPath into out.
@@ -161,6 +169,7 @@ var outOfMemoryLine = regexp.MustCompile(`(?m)^fatal error: .*(out of memory|can
 // A failing test is returned as such, never as an error, and so is a test killed at TestTimeout, marked TimedOut.
 // So is a test ended for passing MemoryLimit, marked MemoryCapped:
 // the kernel killed it, or the run failed with the Go runtime's out-of-memory error in its output.
+// A failed test that GuardKilled names is returned marked GuardKilled instead, and is never MemoryCapped.
 // The error reports a binary that did not start, or a passing test whose profile is missing or malformed.
 func (tc Toolchain) RunAlone(bin, dir, profile, name string) (RunResult, error) {
 	if profile != "" {
@@ -176,10 +185,14 @@ func (tc Toolchain) RunAlone(bin, dir, profile, name string) (RunResult, error) 
 	cmd.Stdout, cmd.Stderr = &out, &out
 	logger.Info("testcover: spawning a coverage binary for one test", "binary", bin, "test", name, "memory_limit", tc.MemoryLimit)
 	killed, err := tc.runTestBinary(cmd)
-	capped := tc.MemoryLimit > 0 && err != nil && (killed || outOfMemoryLine.Match(out.Bytes()))
-	logger.Info("testcover: coverage binary ended", "test", name, "error", err, "memory_capped", capped)
+	guardKilled := err != nil && tc.GuardKilled != nil && cmd.Process != nil && tc.GuardKilled(cmd.Process.Pid)
+	capped := tc.MemoryLimit > 0 && err != nil && !guardKilled && (killed || outOfMemoryLine.Match(out.Bytes()))
+	logger.Info("testcover: coverage binary ended", "test", name, "error", err, "memory_capped", capped, "guard_killed", guardKilled)
 	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return RunResult{Name: name, Action: ActionFail, TimedOut: true}, nil
+	}
+	if guardKilled {
+		return RunResult{Name: name, Action: ActionFail, GuardKilled: true}, nil
 	}
 	if capped {
 		return RunResult{Name: name, Action: ActionFail, MemoryCapped: true}, nil

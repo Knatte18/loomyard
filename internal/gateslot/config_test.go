@@ -68,7 +68,7 @@ func TestConfigSpec_SetNestedKeys(t *testing.T) {
 }
 
 var templateDefaults = Config{
-	Slots: 2, BusyQuitSec: 120, FixerTimeoutMin: 30,
+	Slots: 2, BusyQuitSec: 120, MemoryQuitMB: 4096, FixerTimeoutMin: 30,
 	RedundancyBuildTimeoutMin: 10, RedundancyTestTimeoutSec: 120, RedundancyTestMemoryMB: 2048, RedundancyMaxTests: 40, RedundancyBudgetMin: 10,
 	Gates: map[string]GateKey{
 		"card":            {Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}, Fixer: "sonnet[medium]"},
@@ -249,6 +249,9 @@ func TestLoadConfig(t *testing.T) {
 		{"a retired guard_tier still loads", "slots: 3\nguard_tier: 1\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"a retired test_map_max_age_days still loads, whatever its value", "slots: 3\ntest_map_max_age_days: 0\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"busy_quit_sec zero turns the watchdog off", "slots: 2\nbusy_quit_sec: 0\n", hubWith(func(c *Config) { c.BusyQuitSec = 0 }), ""},
+		{"memory_quit_mb zero turns the memory guard off", "slots: 2\nmemory_quit_mb: 0\n", hubWith(func(c *Config) { c.MemoryQuitMB = 0 }), ""},
+		{"negative memory_quit_mb", baseKeys + "memory_quit_mb: -1\n", Config{}, `gate config key "memory_quit_mb": -1; want at least 0` + fixIt},
+		{"tier with memory_mb 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, memory_mb: 0}}`, Config{}, `gate config key "tiers.tier0.memory_mb": 0; want at least 1, or no memory_mb for an uncapped tier` + fixIt},
 		{
 			"a tier in flow form reads parallel and slots as 1", baseKeys + tier0Flow,
 			hubWith(func(c *Config) {
@@ -258,11 +261,11 @@ func TestLoadConfig(t *testing.T) {
 		{
 			"a tier with slots all, covers and every key loads", baseKeys + `tiers:
   tier0: {command: "go test", timeout_min: 5, counter: vstest}
-  tier1: {about: integration, command: "go test -tags integration {targets}", all_targets: ./..., dir: sub, env: {GOFLAGS: "-p={parallel}"}, parallel: 3, timeout_min: 30, counter: go-json, covers: [0], slots: all, prebuilt_lym: true}
+  tier1: {about: integration, command: "go test -tags integration {targets}", all_targets: ./..., dir: sub, env: {GOFLAGS: "-p={parallel}"}, parallel: 3, timeout_min: 30, counter: go-json, covers: [0], slots: all, prebuilt_lym: true, memory_mb: 8192}
 `,
 			hubWith(func(c *Config) {
 				c.Tiers["tier0"] = Tier{Command: "go test", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
-				c.Tiers["tier1"] = Tier{About: "integration", Command: "go test -tags integration {targets}", Dir: "sub", Env: map[string]string{"GOFLAGS": "-p={parallel}"}, AllTargets: "./...", Parallel: 3, TimeoutMin: 30, Counter: "go-json", Covers: []int{0}, Slots: 0, PrebuiltLym: true}
+				c.Tiers["tier1"] = Tier{About: "integration", Command: "go test -tags integration {targets}", Dir: "sub", Env: map[string]string{"GOFLAGS": "-p={parallel}"}, AllTargets: "./...", Parallel: 3, TimeoutMin: 30, Counter: "go-json", Covers: []int{0}, Slots: 0, PrebuiltLym: true, MemoryMB: 8192}
 			}), "",
 		},
 		{

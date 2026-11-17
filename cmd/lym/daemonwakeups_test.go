@@ -35,6 +35,7 @@ var unboundedWaitFiles = []string{
 	"internal/pawlengine/beamawait.go",
 	"internal/parentlock/acquire.go",
 	"internal/gatecli/watchdog.go",
+	"internal/gatecli/memoryguard.go",
 	"internal/gatecli/detachrun.go",
 	"internal/gatecli/detachfront.go",
 	"internal/gatecli/testmapwait.go",

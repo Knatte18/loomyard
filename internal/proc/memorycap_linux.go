@@ -46,7 +46,8 @@ const (
 // It then closes the descriptor and becomes the command, so the command's process is the shell's.
 const scopeStartScript = "while IFS= read -r line; do echo \"$line\"; done < " + selfCgroupFile + ` >&3; exec 3>&-; exec "$@"`
 
-// markerReadBound bounds the read of the scope's cgroup listing, which a scope that started or failed answers at once.
+// markerReadBound bounds how long the read of the scope's cgroup listing may go on once the command has ended.
+// Every writer of the start pipe has closed by then, so the read ends at once unless a stray process holds the pipe.
 const markerReadBound = time.Second
 
 // cgroupKillFile names the cgroup v2 file whose write of 1 kills every process in the cgroup.
@@ -105,9 +106,9 @@ func memoryScopeArgs(limit int64, command ...string) []string {
 	}, command...)
 }
 
-// runMemoryCappedPlatform runs cmd capped at limit bytes by the means the probe found.
-func runMemoryCappedPlatform(cmd *exec.Cmd, limit int64) (bool, error) {
-	return runMemoryCapped(cmd, limit, hostMemoryScope())
+// runMemoryCappedPlatform runs cmd capped at limit bytes by the means the probe found, starting it through start.
+func runMemoryCappedPlatform(cmd *exec.Cmd, limit int64, start StartFunc) (killed, treeKilled bool, err error) {
+	return runMemoryCapped(cmd, limit, hostMemoryScope(), start)
 }
 
 // memoryCapCoversTreePlatform reports whether the host caps a command in a scope, which holds its whole tree.
@@ -116,19 +117,31 @@ func memoryCapCoversTreePlatform() bool {
 }
 
 // runMemoryCapped runs cmd capped at limit bytes: in a scope when scope can start one, else under a data segment limit.
+// It starts cmd through start and waits through the wait start returns.
 // In a scope, killed reports a command the kernel ended with SIGKILL when no cancel of cmd sent one.
-// After any kill at the cap, every process left in the scope is killed too.
-// A scope that never ran the command returns an error that is no *exec.ExitError, so it never reads as a failing command.
+// treeKilled reports that the kernel killed a process in the scope at the scope's own limit.
+// The scope's count of kills at its own limit tells.
+// A SIGKILL sent from outside, to the command or to any other process, is no such kill.
+// Neither is a kill at the limit of a cgroup that encloses the scope.
+// After any SIGKILL of the command or kill at the cap, every process left in the scope is killed too.
+// A cap that could not be set, a scope that never ran the command included, returns an error wrapping ErrMemoryCap.
+// That error is never an *exec.ExitError, so it never reads as a failing command.
 // The scope path uses cmd.ExtraFiles, so cmd must carry none.
-func runMemoryCapped(cmd *exec.Cmd, limit int64, scope memoryScope) (killed bool, err error) {
+func runMemoryCapped(cmd *exec.Cmd, limit int64, scope memoryScope, start StartFunc) (killed, treeKilled bool, err error) {
 	if scope.starter == "" {
-		return false, runDataLimited(cmd, limit)
+		return false, false, runDataLimited(cmd, limit, start)
 	}
 	started, marker, err := os.Pipe()
 	if err != nil {
-		return false, fmt.Errorf("create the pipe that marks the scope's start: %w", err)
+		return false, false, fmt.Errorf("%w: create the pipe that marks the scope's start: %w", ErrMemoryCap, err)
 	}
 	defer started.Close()
+	watchEnded, endWatch, err := os.Pipe()
+	if err != nil {
+		return false, false, fmt.Errorf("%w: create the pipe that ends the watch of the scope: %w", ErrMemoryCap, err)
+	}
+	defer watchEnded.Close()
+	defer endWatch.Close()
 	// systemd-run moves itself into the scope and then becomes the shell, which becomes the command,
 	// so the pid and process group stay cmd's own.
 	shell := []string{"/bin/sh", "-c", scopeStartScript, "sh", cmd.Path}
@@ -142,50 +155,118 @@ func runMemoryCapped(cmd *exec.Cmd, limit int64, scope memoryScope) (killed bool
 			return cancel()
 		}
 	}
-	err = cmd.Start()
+	wait, err := start(cmd)
 	marker.Close()
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	err = cmd.Wait()
+	// A scope is removed once its last process exits, taking its OOM-kill count with it,
+	// so the count is watched while the command runs.
+	// The read of the scope's cgroup listing has no deadline while the command runs.
+	// systemd-run may take long to start the scope on a loaded host.
+	var sawOOMKill atomic.Bool
+	watched, cgroupFound := make(chan struct{}), make(chan string, 1)
+	go func() {
+		defer close(watched)
+		cgroup, ok := scopeCgroup(started)
+		if !ok {
+			cgroupFound <- ""
+			return
+		}
+		cgroupFound <- cgroup
+		sawOOMKill.Store(watchForOOMKill(cgroup, watchEnded))
+	}()
+	err = wait()
+	_ = started.SetReadDeadline(time.Now().Add(markerReadBound))
+	_ = endWatch.Close()
+	cgroup := <-cgroupFound
+	<-watched
 	if cmd.ProcessState == nil || cancelled.Load() {
-		return false, err
+		return false, false, err
 	}
-	cgroup, ok := scopeCgroup(started)
-	if !ok {
-		return false, fmt.Errorf("the scope did not run the command, and %s ended with: %v", systemdRun, err)
+	if cgroup == "" {
+		return false, false, fmt.Errorf("%w: the scope did not run the command, and %s ended with: %v", ErrMemoryCap, systemdRun, err)
 	}
 	status, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
 	killed = ok && status.Signaled() && status.Signal() == syscall.SIGKILL
-	if !killed && !scopeHadOOMKill(cgroup) {
-		return false, err
+	oomKilled := sawOOMKill.Load() || scopeHadOOMKill(cgroup)
+	if !killed && !oomKilled {
+		return false, false, err
 	}
 	if killErr := killScope(cgroup); killErr != nil {
 		err = errors.Join(err, killErr)
 	}
-	return killed, err
+	return killed, oomKilled, err
 }
 
-// scopeHadOOMKill reports whether the kernel killed a process in the scope whose cgroup is cgroup.
+// scopeHadOOMKill reports whether the kernel killed a process of the scope at the scope's own limit.
+// The scope is the one whose cgroup is cgroup.
 // A scope already gone had nothing left to kill, so it reports false.
 func scopeHadOOMKill(cgroup string) bool {
 	events, err := os.ReadFile(filepath.Join(cgroupMount, filepath.FromSlash(cgroup), cgroupMemoryEventsFile))
+	return err == nil && killedAtOwnLimit(string(events))
+}
+
+// killedAtOwnLimit reports whether the content of a cgroup's memory.events file shows a kill at the cgroup's own limit.
+// The oom_kill count also rises for a kill at the limit of an enclosing cgroup or of the host.
+// The oom count rises on the cgroup whose own limit ran out and on its ancestors, never on a cgroup below it,
+// so a kill counts only when both are above 0.
+func killedAtOwnLimit(events string) bool {
+	var oomKills, ooms int
+	for _, line := range strings.Split(events, "\n") {
+		name, value, found := strings.Cut(line, " ")
+		count, err := strconv.Atoi(value)
+		if !found || err != nil {
+			continue
+		}
+		switch name {
+		case "oom":
+			ooms = count
+		case "oom_kill":
+			oomKills = count
+		}
+	}
+	return oomKills > 0 && ooms > 0
+}
+
+// watchForOOMKill blocks until the scope whose cgroup is cgroup shows a kill at its own limit, and reports true then.
+// It reports false once ended, the read end of a pipe, becomes readable or hangs up.
+// It also reports false when the scope's events cannot be read.
+// The kernel wakes a poll of memory.events on each change to it, so the watch wakes no more than the scope's events do.
+func watchForOOMKill(cgroup string, ended *os.File) bool {
+	events, err := os.Open(filepath.Join(cgroupMount, filepath.FromSlash(cgroup), cgroupMemoryEventsFile))
 	if err != nil {
 		return false
 	}
-	for _, line := range strings.Split(string(events), "\n") {
-		if count, ok := strings.CutPrefix(line, "oom_kill "); ok {
-			kills, err := strconv.Atoi(count)
-			return err == nil && kills > 0
+	defer events.Close()
+	watched := []unix.PollFd{
+		{Fd: int32(events.Fd()), Events: unix.POLLPRI},
+		{Fd: int32(ended.Fd()), Events: unix.POLLIN},
+	}
+	buffer := make([]byte, 4096)
+	for {
+		// One read from the start re-arms the file's poll, so a change after it wakes the next one.
+		// A second read to fill the buffer would re-arm it again and could swallow a change between the two.
+		count, err := unix.Pread(int(events.Fd()), buffer, 0)
+		if err != nil {
+			return false
+		}
+		if killedAtOwnLimit(string(buffer[:count])) {
+			return true
+		}
+		if watched[1].Revents != 0 {
+			return false
+		}
+		if _, err := unix.Poll(watched, -1); err != nil && !errors.Is(err, unix.EINTR) {
+			return false
 		}
 	}
-	return false
 }
 
 // scopeCgroup returns the cgroup the scope's shell wrote to started, the read end of the scope's start pipe.
+// It reads until every writer of the pipe has closed, so a caller bounds it with a read deadline when that must end.
 // ok is false when the shell wrote none, which means the scope never ran it.
 func scopeCgroup(started *os.File) (cgroup string, ok bool) {
-	_ = started.SetReadDeadline(time.Now().Add(markerReadBound))
 	listing, err := io.ReadAll(started)
 	if err != nil {
 		return "", false
@@ -215,16 +296,17 @@ func killScope(cgroup string) error {
 // runDataLimited runs cmd with the data segment of its process limited to limit bytes.
 // Every process cmd starts from then on inherits the limit as its own.
 // The limit counts the memory a process maps to write to, not the address space it only reserves.
-// It is set once cmd has started, since a command cannot be started with one.
-func runDataLimited(cmd *exec.Cmd, limit int64) error {
-	if err := cmd.Start(); err != nil {
+// It is set once start has started cmd, since a command cannot be started with one.
+func runDataLimited(cmd *exec.Cmd, limit int64, start StartFunc) error {
+	wait, err := start(cmd)
+	if err != nil {
 		return err
 	}
 	bound := unix.Rlimit{Cur: uint64(limit), Max: uint64(limit)}
 	if err := unix.Prlimit(cmd.Process.Pid, unix.RLIMIT_DATA, &bound, nil); err != nil && !errors.Is(err, unix.ESRCH) {
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		return fmt.Errorf("limit the data segment of process %d: %w", cmd.Process.Pid, err)
+		_ = wait()
+		return fmt.Errorf("%w: limit the data segment of process %d: %w", ErrMemoryCap, cmd.Process.Pid, err)
 	}
-	return cmd.Wait()
+	return wait()
 }

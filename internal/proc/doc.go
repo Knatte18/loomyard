@@ -24,16 +24,19 @@
 // a process that re-execs itself keeps its children but not the goroutines that waited on them,
 // so the new image calls it before it starts a child of its own.
 //
-// TreeCPU samples the user plus system CPU time of a process and each of its descendants.
+// TreeSample samples a process and each of its descendants:
+// its parent, its user plus system CPU time and the memory it holds resident.
 // IsAncestor reports whether a pid is one of the calling process's ancestors.
 // ListProcesses lists every process with its start time, exe and cwd links and command line.
+// ReadProcess reads the same of one process.
 // ListStats lists every process with its parent, group, start time and zombie state, read from its stat alone.
 // It also lists a process whose links the caller cannot read.
 // PIDsWithEnv lists every process whose environment holds a given `NAME=value` entry.
 // SignalProcess and SignalGroup send SIGTERM, or SIGKILL when asked, to one pid or to one process group.
 // They return the raw syscall error.
 // All of these read /proc or signal by pid, so they work on Linux only.
-// On Windows TreeCPU, ListProcesses, ListStats and PIDsWithEnv return errors.ErrUnsupported and IsAncestor is false;
+// On Windows TreeSample, ListProcesses, ListStats and PIDsWithEnv return errors.ErrUnsupported.
+// ReadProcess and IsAncestor are false there.
 // SignalProcess only kills, and SignalGroup returns ErrNoProcessGroup.
 // CreationTime is the exception: it reads a process's creation time by pid on Windows, where StartTime is unreadable.
 // Elsewhere it is always the zero time and false.
@@ -51,7 +54,9 @@
 // RunMemoryCapped runs a command with the memory of its process tree capped.
 // On Linux the command runs in a transient scope of the systemd user manager, started through `systemd-run`.
 // The scope's `MemoryMax` is the cap and it has no swap, so the kernel kills the command alone.
-// The call reports that kill, and after any kill at the cap it kills what is left in the scope through its `cgroup.kill`.
+// The call reports a kill at the scope's own limit, read from the scope's `memory.events` while the command runs.
+// A kill at the limit of an enclosing cgroup or of the host is no such kill.
+// After a SIGKILL of the command or a kill at the cap, it kills what is left in the scope through its `cgroup.kill`.
 // The scope's `OOMPolicy` is `continue`, so the kill never fails the scope with the result `oom-kill`.
 // KDE Plasma's out-of-memory notifier reports each unit that ends with that result as a host low on memory.
 // The command keeps its pid and process group, so a group kill still reaches it.
@@ -61,6 +66,10 @@
 // On Windows the command runs in a kill-on-close job object with a job memory limit.
 // That limit fails an allocation the same way.
 // A cancel there ends the whole job, and the job ends with the command.
+// RunMemoryCappedVia runs a command under the same cap through a caller's own start and wait.
+// An example is a start that ties the child to the caller's life.
+// It reports whether the kernel killed any process of the tree at the cap.
+// A cap that could not be set, a scope that never ran the command included, returns an error wrapping `ErrMemoryCap`.
 // MemoryCapCoversTree reports whether the cap bounds a command's whole tree as one.
 // Only the data segment limit does not.
 // proc cannot log, so the caller logs the command it hands over and its end.

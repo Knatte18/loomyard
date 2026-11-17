@@ -51,6 +51,13 @@ type Tier struct {
 	SharedBuild bool
 	// NoCarry keeps a green run from being carried over an unchanged tree; the zero value carries.
 	NoCarry bool
+	// MemoryMB caps, in megabytes, the memory the tier's command holds with every process it starts; 0 leaves it uncapped.
+	MemoryMB int
+}
+
+// MemoryLimit returns the tier's memory cap in bytes, 0 for an uncapped tier.
+func (t Tier) MemoryLimit() int64 {
+	return int64(t.MemoryMB) << 20
 }
 
 // tierFile is a tier as gate.yaml spells it, before defaults and validation.
@@ -71,6 +78,7 @@ type tierFile struct {
 	Filter         string            `yaml:"filter"`
 	SharedBuild    bool              `yaml:"shared_build"`
 	Carry          *bool             `yaml:"carry"`
+	MemoryMB       *int              `yaml:"memory_mb"`
 }
 
 // TestTimeoutPlaceholder is the tier command placeholder a run fills with the tier's TestTimeoutMin followed by `m`.
@@ -229,6 +237,12 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 			return Tier{}, refuse("parallel", fmt.Sprintf("%d; want at least 1", *file.Parallel))
 		}
 		tier.Parallel = *file.Parallel
+	}
+	if file.MemoryMB != nil {
+		if *file.MemoryMB < 1 {
+			return Tier{}, refuse("memory_mb", fmt.Sprintf("%d; want at least 1, or no memory_mb for an uncapped tier", *file.MemoryMB))
+		}
+		tier.MemoryMB = *file.MemoryMB
 	}
 	switch tier.Counter {
 	case "go-json", "vstest":

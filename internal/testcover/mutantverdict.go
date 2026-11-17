@@ -14,6 +14,7 @@ const (
 	ReasonNoMutant       = "its blocks hold no mutant"
 	ReasonKillsNone      = "kills no mutant of its blocks"
 	ReasonFailsUnmutated = "does not pass with no mutant on"
+	ReasonGuardKilled    = "the memory guard killed one of its runs"
 )
 
 // MutantCandidate is one coverage redundancy candidate as JudgeMutants sees it.
@@ -27,6 +28,8 @@ type MutantCandidate struct {
 	Mutants []int
 	// FailsUnmutated is set when the candidate did not pass with no mutant on.
 	FailsUnmutated bool
+	// GuardKilled is set when the memory guard killed a run of the candidate, so the check cannot tell what it kills.
+	GuardKilled bool
 }
 
 // Kills holds, for each mutant by ID, the tests that failed while it was on.
@@ -49,7 +52,8 @@ type MutantVerdict struct {
 }
 
 // JudgeMutants returns the verdict of each of candidates, in the order given, from kills.
-// A candidate that did not pass with no mutant on, whose blocks hold no mutant or that killed none is not judged.
+// A candidate is not judged when it did not pass with no mutant on or the memory guard killed a run of it.
+// It is not judged either when its blocks hold no mutant or it killed none.
 // The removable set is a greedy pass over the redundant candidates, slowest first, then by name.
 // It drops a candidate while some other test still kept killed each mutant the candidate killed.
 func JudgeMutants(candidates []MutantCandidate, kills Kills) []MutantVerdict {
@@ -58,6 +62,8 @@ func JudgeMutants(candidates []MutantCandidate, kills Kills) []MutantVerdict {
 	for i, c := range candidates {
 		verdict := MutantVerdict{Name: c.Name}
 		switch {
+		case c.GuardKilled:
+			verdict.Reason = ReasonGuardKilled
 		case c.FailsUnmutated:
 			verdict.Reason = ReasonFailsUnmutated
 		case len(c.Mutants) == 0:

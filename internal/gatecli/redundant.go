@@ -80,6 +80,8 @@ type redundantRequest struct {
 	grace time.Duration
 	// cappedParallel returns how many of parallel test runs, each capped at limit bytes of memory, go side by side.
 	cappedParallel func(parallel int, limit int64) int
+	// stderr receives the memory guard's line for each test binary it kills; nil prints none.
+	stderr io.Writer
 }
 
 // redundantCmd builds `lym gate redundant`.
@@ -98,11 +100,12 @@ It runs each candidate with each mutant of its blocks on, and its covering tests
 A candidate stays listed only when a covering test kills every mutant it kills; one that kills a mutant they miss is listed as refuted, with those mutants.
 One that kills no mutant, holds none in its blocks or does not pass unmutated is listed as not judged.
 Each listed candidate comes with its standalone seconds, the tests that cover it and the mutants it killed; removable marks the set a greedy pass, slowest first, can delete together while every block stays covered and every mutant killed.
-A test marked //testtiming:keep is neither a candidate nor a cover, and nor is a test the spawn scan marks or one whose entry records no passing run.
+A test marked //testtiming:keep is neither a candidate nor a cover, nor is a test the spawn scan marks or one whose entry records no passing run.
 It reads the map as the last lym gate testmap call from this worktree left it.
 It refuses a map built from other Go files of the package than this worktree holds.
-It reads the keep markers from this worktree, and runs its builds and tests inside one gate slot, bounded by redundancy_build_timeout_min and redundancy_test_timeout_sec.
+It reads the keep markers from this worktree, and runs its builds and tests in one gate slot, bounded by redundancy_build_timeout_min and redundancy_test_timeout_sec.
 Each test run is capped at redundancy_test_memory_mb of memory; a mutant run past the cap or its time bound is a kill.
+A test binary past memory_quit_mb is killed and named on stderr.
 It prints the map's commit and build time, map_build_failure when a later coverage build failed, the candidates, the refuted tests, the kept tests with their reasons, the tests not judged with why, and what the mutation check cost.
 
 Examples:
@@ -115,7 +118,7 @@ Examples:
 			}
 			clihelp.SetExit(cmd.Context(), runRedundant(cmd.Context(), cmd.OutOrStdout(), redundantRequest{
 				pkg: args[0], goBinary: goBinary, environ: os.Environ(), secondUnit: time.Second, minuteUnit: minuteUnit, grace: grace,
-				cappedParallel: memoryCappedParallel,
+				cappedParallel: memoryCappedParallel, stderr: cmd.ErrOrStderr(),
 			}))
 			return nil
 		},
@@ -143,6 +146,8 @@ func runRedundant(ctx context.Context, out io.Writer, request redundantRequest) 
 		return output.Err(out, fmt.Sprintf("gate redundant: cannot read the hub's gate config: %v; way forward: take the step it names, then re-run the same command", err))
 	}
 	cfg = cfg.WithDefaultDir(location.AnchorRel)
+	stopGuard, guardKilled := guardOwnTests(ctx, cfg.MemoryQuit(), request.stderr)
+	defer stopGuard()
 	module, err := redundancyModule(cfg, location.WorktreePath())
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("gate redundant: %v; way forward: declare tier0 or tier1 with its dir at the Go module's root with lym config gate from the prime, then re-run the same command", err))
@@ -235,6 +240,7 @@ func runRedundant(ctx context.Context, out io.Writer, request redundantRequest) 
 		buildTimeout: time.Duration(cfg.RedundancyBuildTimeoutMin) * request.minuteUnit,
 		testTimeout:  time.Duration(cfg.RedundancyTestTimeoutSec) * request.secondUnit,
 		testMemory:   cfg.RedundancyTestMemory(),
+		guardKilled:  guardKilled,
 		env:          gateEnv(request.environ, hubEnv),
 	}
 	defer check.close()

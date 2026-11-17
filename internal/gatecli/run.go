@@ -77,6 +77,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	cfg = cfg.WithDefaultDir(location.AnchorRel)
 	request.root = buildRoot(location, dir)
 	request.busyQuit = cfg.Limits().BusyQuit
+	request.memoryQuit = cfg.MemoryQuit()
 	request.hubEnv = hubEnv
 
 	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
@@ -137,6 +138,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	watching, reason := watchdogApplies(request.busyQuit, request.args, os.Getenv(enclosingGateEnv), proc.IsAncestor)
 	logger.Info("gate test: CPU watchdog decision", "applies", watching, "reason", reason)
 	exe.request.watching = watching
+	guarding, guardReason := memoryGuardApplies(request.memoryQuit, os.Getenv(enclosingGateEnv), proc.IsAncestor)
+	logger.Info("gate test: memory guard decision", "applies", guarding, "reason", guardReason)
+	exe.request.memoryGuarding = guarding
 	// A nested `lym gate test` reads the variable to learn this run's watchdog already sees its test binaries.
 	exe.env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), enclosingGateEnv+"="+strconv.Itoa(os.Getpid()))
 
@@ -209,7 +213,11 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		}
 		// The report steps run last and never change the code.
 		if slices.Contains(cfg.Gates[request.gate].Reports, gateslot.ReportRedundancy) {
-			exe.redundancyStep().run(red, inHub)
+			stopGuard, guardKilled := startMemoryGuard(runCtx, newMemoryGuard(request.memoryQuit, request.stderr), os.Getpid(), exe.request.memoryGuarding)
+			step := exe.redundancyStep()
+			step.guardKilled = guardKilled
+			step.run(red, inHub)
+			stopGuard()
 		}
 	}
 	exe.printReport(inHub)

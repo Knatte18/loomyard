@@ -57,6 +57,7 @@ const (
 	reasonLymFailed     = "the lym build failed"
 	reasonTimedOut      = "timed out after %s"
 	reasonMemoryCapped  = "ended at the memory cap of %d MB"
+	reasonGuardKilled   = "the memory guard killed it"
 	reasonNotRun        = "it could not run"
 	reasonUnkeyed       = "its covered blocks could not be keyed"
 )
@@ -81,6 +82,8 @@ type redundancyStep struct {
 	minuteUnit, secondUnit time.Duration
 	// grace bounds the wait for a killed build's or test's exit and output.
 	grace time.Duration
+	// guardKilled reports whether the memory guard killed the process with a pid; nil means it killed none.
+	guardKilled func(pid int) bool
 }
 
 // redundancyStep returns the redundancy report step of the call e runs.
@@ -529,7 +532,8 @@ func (r *redundancyRun) buildLym() error {
 // runTest runs test alone under the coverage binary bin in the package directory pkgDir with its tier's env.
 // It returns the test's run with the keys of the package blocks it covered.
 // It returns the reason the test is not judged instead when the call was cancelled.
-// It does so too when the test timed out, ended at the memory cap, could not run or had blocks that could not be keyed.
+// It does so too when the test timed out, ended at the memory cap or was killed by the memory guard.
+// It does so as well when the test could not run or had blocks that could not be keyed.
 func (r *redundancyRun) runTest(pkg, pkgDir, importPath, bin string, test redundancyCandidate, tier gateslot.Tier) (testcover.Run, string) {
 	s := r.step
 	env := slices.Concat(r.holderEnv, renderTierEnv(tier))
@@ -537,7 +541,9 @@ func (r *redundancyRun) runTest(pkg, pkgDir, importPath, bin string, test redund
 		env = append(env, gateslot.PrebuiltLymEnv+"="+r.lymBin)
 	}
 	timeout := time.Duration(s.cfg.RedundancyTestTimeoutSec) * s.secondUnit
-	runner := testcover.Toolchain{Env: env, Ctx: s.ctx, TestTimeout: timeout, MemoryLimit: s.cfg.RedundancyTestMemory(), Grace: s.grace}
+	runner := testcover.Toolchain{
+		Env: env, Ctx: s.ctx, TestTimeout: timeout, MemoryLimit: s.cfg.RedundancyTestMemory(), GuardKilled: s.guardKilled, Grace: s.grace,
+	}
 	result, err := runner.RunAlone(bin, pkgDir, filepath.Join(r.tmp, "cover.out"), test.fn.Name)
 	// A cancelled call kills the test in flight, which then reads as a failed test; it is listed as cancelled instead,
 	// so the report asks for a retry.
@@ -550,6 +556,8 @@ func (r *redundancyRun) runTest(pkg, pkgDir, importPath, bin string, test redund
 		return testcover.Run{}, reasonNotRun
 	case result.TimedOut:
 		return testcover.Run{}, fmt.Sprintf(reasonTimedOut, timeout)
+	case result.GuardKilled:
+		return testcover.Run{}, reasonGuardKilled
 	case result.MemoryCapped:
 		return testcover.Run{}, fmt.Sprintf(reasonMemoryCapped, s.cfg.RedundancyTestMemoryMB)
 	}

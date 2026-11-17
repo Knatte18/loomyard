@@ -671,12 +671,17 @@ func (r *testMapRun) runTest(p *packageRun, fn testcover.TestFunc, profile strin
 	if tier.PrebuiltLym && r.lymBin != "" {
 		env = append(env, gateslot.PrebuiltLymEnv+"="+r.lymBin)
 	}
-	runner := testcover.Toolchain{Env: env, Ctx: r.ctx, TestTimeout: r.testTimeout, MemoryLimit: r.testMemory, Grace: r.request.grace}
+	runner := testcover.Toolchain{
+		Env: env, Ctx: r.ctx, TestTimeout: r.testTimeout, MemoryLimit: r.testMemory, GuardKilled: r.guardKilled, Grace: r.request.grace,
+	}
 	result, err := runner.RunAlone(p.bin, p.pkgDir, profile, fn.Name)
 	run := mappedRun{fn: fn, result: result}
 	switch {
 	case err != nil:
 		logger.Warn("gate testmap: a test that could not run is recorded as failed", "package", p.job.pkg, "test", fn.Name, "cause", err)
+		run.outcome = testcover.OutcomeFailed
+	case result.GuardKilled:
+		logger.Warn("gate testmap: a test the memory guard killed is recorded as failed", "package", p.job.pkg, "test", fn.Name)
 		run.outcome = testcover.OutcomeFailed
 	case result.TimedOut:
 		run.outcome = testcover.OutcomeTimedOut

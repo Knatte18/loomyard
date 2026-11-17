@@ -40,15 +40,17 @@ func TestJudgeMutants(t *testing.T) {
 			want:       []testcover.MutantVerdict{{Name: "A", Killed: []int{1, 2}, Unique: []int{2}}},
 		},
 		{
-			name: "a candidate that fails unmutated, holds no mutant or kills none is not judged",
+			name: "a candidate that fails unmutated, was killed by the memory guard, holds no mutant or kills none is not judged",
 			candidates: []testcover.MutantCandidate{
 				{Name: "Fails", Covering: []string{"B"}, Mutants: []int{1}, FailsUnmutated: true},
+				{Name: "Guarded", Covering: []string{"B"}, Mutants: []int{1}, GuardKilled: true},
 				{Name: "Empty", Covering: []string{"B"}},
 				{Name: "Silent", Covering: []string{"B"}, Mutants: []int{1}},
 			},
 			kills: testcover.Kills{1: killedBy("Fails", "B")},
 			want: []testcover.MutantVerdict{
 				{Name: "Fails", Reason: testcover.ReasonFailsUnmutated},
+				{Name: "Guarded", Reason: testcover.ReasonGuardKilled},
 				{Name: "Empty", Reason: testcover.ReasonNoMutant},
 				{Name: "Silent", Reason: testcover.ReasonKillsNone},
 			},

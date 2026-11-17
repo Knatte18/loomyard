@@ -88,6 +88,8 @@ type mutationCheck struct {
 	buildTimeout, testTimeout time.Duration
 	// testMemory caps the bytes each test run may hold.
 	testMemory int64
+	// guardKilled reports whether the memory guard killed the process with a pid; nil means it killed none.
+	guardKilled func(pid int) bool
 	// env is the environment the check's children start from, before the slot's Go flags.
 	env []string
 
@@ -198,6 +200,8 @@ func (c *mutationCheck) run(m testcover.Map, contained []testcover.Verdict, cove
 // A covering test that kills beside other tests runs once more alone, and that run stands.
 // That holds for a covering test that is itself a candidate, whose kill from the candidate runs is replaced by that run.
 // A run that ends at its time bound or at the memory cap kills its mutant too, and the check's stats list it.
+// A run the memory guard killed records no kill.
+// Its candidate, and each candidate it covers, is marked GuardKilled, never FailsUnmutated.
 func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[string]testcover.MapTest, candidates []testcover.MutantCandidate) (testcover.Kills, error) {
 	var involved []string
 	for _, candidate := range candidates {
@@ -222,8 +226,12 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 		return nil, err
 	}
 	timeouts := map[string]time.Duration{}
+	guarded := map[string]bool{}
 	for i, result := range results {
-		if result.Action == testcover.ActionPass {
+		switch {
+		case result.GuardKilled:
+			guarded[involved[i]] = true
+		case result.Action == testcover.ActionPass:
 			timeouts[involved[i]] = c.mutantTimeout(result.Elapsed)
 		}
 	}
@@ -232,6 +240,10 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 	timedOut, capped := map[mutantRun]bool{}, map[mutantRun]bool{}
 	record := func(jobs []mutantJob, results []testcover.RunResult) {
 		for i, result := range results {
+			if result.GuardKilled {
+				guarded[jobs[i].test.Name] = true
+				continue
+			}
 			if result.Action != testcover.ActionFail {
 				continue
 			}
@@ -252,7 +264,7 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 	ran := map[int]map[string]bool{}
 	for i, candidate := range candidates {
 		if _, passes := timeouts[candidate.Name]; !passes {
-			candidates[i].FailsUnmutated = true
+			candidates[i].FailsUnmutated = !guarded[candidate.Name]
 			continue
 		}
 		for _, id := range candidate.Mutants {
@@ -299,6 +311,9 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 	}
 	record(jobs, results)
 	c.stats.TimedOut, c.stats.MemoryCapped = c.stopsOf(timedOut), c.stopsOf(capped)
+	for i := range candidates {
+		candidates[i].GuardKilled = guarded[candidates[i].Name] || slices.ContainsFunc(candidates[i].Covering, func(name string) bool { return guarded[name] })
+	}
 	return kills, nil
 }
 
@@ -387,6 +402,7 @@ func (c *mutationCheck) toolchain() testcover.Toolchain {
 // It returns the runs in the order of jobs.
 // With rerunFailed, a job that failed beside other jobs runs once more alone, and that run stands.
 // A job the memory cap ended is not run again: its cap is its own, so it reaches it alone too.
+// Nor is a job the memory guard killed, whose kill says nothing about the test.
 // The error reports a test binary that did not start, or the context's error once the call is cancelled.
 func (c *mutationCheck) runJobs(bin string, jobs []mutantJob, rerunFailed bool) ([]testcover.RunResult, error) {
 	results, err := c.runSideBySide(bin, jobs)
@@ -394,7 +410,7 @@ func (c *mutationCheck) runJobs(bin string, jobs []mutantJob, rerunFailed bool) 
 		return results, err
 	}
 	for i, result := range results {
-		if result.Action != testcover.ActionFail || result.MemoryCapped {
+		if result.Action != testcover.ActionFail || result.MemoryCapped || result.GuardKilled {
 			continue
 		}
 		alone, err := c.runSideBySide(bin, jobs[i:i+1])
@@ -438,6 +454,7 @@ func (c *mutationCheck) runSideBySide(bin string, jobs []mutantJob) ([]testcover
 // runJob runs the job's test alone under bin in the package directory, with its tier's env and its mutant on.
 // A run past its timeout comes back failed and TimedOut, and one past the memory cap failed and MemoryCapped.
 // Either counts as a kill.
+// A run the memory guard killed comes back GuardKilled, which counts as none.
 // It logs the mutant before the run starts, so the log names the mutant of a run that never reports back.
 func (c *mutationCheck) runJob(bin string, job mutantJob) (testcover.RunResult, error) {
 	tier := c.tiers[job.test.Tier]
@@ -449,7 +466,9 @@ func (c *mutationCheck) runJob(bin string, job mutantJob) (testcover.RunResult, 
 		logger.Info("gate redundant: running a test with a mutant on",
 			"test", job.test.Name, "mutant", mutant.ID, "file", mutant.File, "line", mutant.Line, "operator", mutant.Operator)
 	}
-	runner := testcover.Toolchain{Env: env, Ctx: c.ctx, TestTimeout: job.timeout, MemoryLimit: c.testMemory, Grace: c.request.grace}
+	runner := testcover.Toolchain{
+		Env: env, Ctx: c.ctx, TestTimeout: job.timeout, MemoryLimit: c.testMemory, GuardKilled: c.guardKilled, Grace: c.request.grace,
+	}
 	result, err := runner.RunAlone(bin, c.pkgDir, "", job.test.Name)
 	if err != nil {
 		return testcover.RunResult{}, fmt.Errorf("run %s with mutant %d: %w", job.test.Name, job.mutant, err)

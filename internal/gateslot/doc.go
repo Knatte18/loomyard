@@ -90,7 +90,9 @@
 // `tier_parallel` replaces `go_parallel`.
 // The guard step runs each guard test under the tier its file belongs to, so no key names one tier for them all.
 // LoadConfig reads the file strictly and refuses any value below 1 naming its key.
-// `busy_quit_sec` is the exception: it accepts 0 and is refused below it.
+// `busy_quit_sec` and `memory_quit_mb` are the exceptions:
+// each accepts 0, which turns its guard off, and is refused below it.
+// Config.MemoryQuit returns `memory_quit_mb` in bytes.
 // Config.Limits converts the config to the Limits a Pool reads.
 // An absent hub file is ErrConfigAbsent with the way forward `lym fabric reconcile`.
 // Outside every hub, where the dirs tell no board, the file is the worktree's own.
@@ -148,13 +150,15 @@
 // A machine layer holding part of `tiers` would therefore replace all of the hub's tiers.
 // A tier's `manual: true` keeps it out of a `lym gate test --upto` range, so it runs only when named by number.
 // A declared tier's effective Parallel is its `tier_parallel` entry from whichever layer sets one, else 1.
+// A tier's `memory_mb` caps the memory its command holds with every process it starts;
+// Tier.MemoryLimit returns it in bytes, and a tier without one runs uncapped.
 // A standalone worktree has no machine layer and sets the key in its own file.
 //
 // LoadConfig refuses at load, naming the key and `lym config gate`:
 // a tier lacking `command`, `timeout_min` or `counter`;
 // a tier lacking `all_targets` when its command holds `{targets}` or `{test_targets}`;
 // `manual: true` on `tier0`, the tier a call with no tier flag runs;
-// `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1;
+// `parallel`, `timeout_min` or `memory_mb` below 1, `slots` neither `all` nor at least 1;
 // a counter other than `go-json` or `vstest`, a scoper other than `go`, `none` or `dotnet`;
 // a tier `filter` whose command holds no `{filter}`;
 // a `test_timeout_min` below 1 or on a command that holds no `{test_timeout}`;

@@ -29,7 +29,7 @@ const (
 
 // scriptedSample is what the fake sampler returns on one call.
 type scriptedSample struct {
-	tree []proc.ProcessCPU
+	tree []proc.ProcessSample
 	err  error
 }
 
@@ -37,7 +37,7 @@ type scriptedSample struct {
 func series(path string, cumulative ...time.Duration) []scriptedSample {
 	samples := make([]scriptedSample, 0, len(cumulative))
 	for _, cpu := range cumulative {
-		samples = append(samples, scriptedSample{tree: []proc.ProcessCPU{{PID: testBinaryPID, Path: path, CPU: cpu}}})
+		samples = append(samples, scriptedSample{tree: []proc.ProcessSample{{PID: testBinaryPID, Path: path, CPU: cpu}}})
 	}
 	return samples
 }
@@ -68,7 +68,7 @@ func runScripted(t *testing.T, window time.Duration, script []scriptedSample) wa
 	w := watchdog{
 		window: window,
 		period: testPeriod,
-		sample: func(int) ([]proc.ProcessCPU, error) {
+		sample: func(int) ([]proc.ProcessSample, error) {
 			next := script[result.samples]
 			result.samples++
 			if result.samples == len(script) {

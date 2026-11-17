@@ -19,6 +19,8 @@
 // That is a test the kernel killed.
 // It is also a test whose run failed with the Go runtime's out-of-memory error in its output.
 // That error is how the cap shows where the host fails the allocation instead.
+// A failed test whose pid the toolchain's GuardKilled names comes back marked GuardKilled.
+// Such a kill reflects the machine's memory, not the test, so a caller judges nothing from it.
 // ScanTestFuncs reads a package's top-level Test functions.
 // Each comes with its file, the tier its `tiergate.Require` names and the hash of its source text.
 // ParseTestFuncs reads them from one test file's source, such as the file as a commit stores it.
