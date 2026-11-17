@@ -8,6 +8,8 @@ import "os/exec"
 // It exists so a runaway command is ended alone, before it takes the memory of everything beside it.
 // On Linux, cmd runs in a transient scope of the systemd user manager whose memory limit is limit, with no swap.
 // The kernel kills a command that passes the limit, and killed reports that kill.
+// After any kill at the cap, every process left in the scope is killed too,
+// and the kill raises no desktop low-memory notice.
 // cmd keeps its pid and process group there, so a cancel that kills the group still reaches it.
 // On a Linux host whose user manager cannot cap a scope's memory, the data segment of each process is limited instead.
 // On Windows, cmd runs in a job object whose memory limit is limit, and a cancel ends the whole job.

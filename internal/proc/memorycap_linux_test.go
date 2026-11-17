@@ -1,15 +1,20 @@
 // memorycap_linux_test.go covers what a memory-capped run does on Linux alone.
 // A scope reports the kernel's kill, and a host with no user manager fails the child's own allocation.
+// A kill at the cap, of the child or of one of its children, ends what is left in the scope.
 // A scope that never starts is an error, and a cancel still ends a capped run through its process group.
 
 package proc_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,10 +43,76 @@ func TestRunMemoryCapped_EndsAChildOverTheCapByTheHostsMeans(t *testing.T) {
 				t.Skip("this host has no systemd user manager that caps a scope's memory")
 			}
 			killed, err := tt.run(memoryHog(t, hogOverCap), testMemoryCap)
-			if err == nil || killed != tt.wantKilled {
-				t.Errorf("capped run of a child keeping %d MB under %d = killed %v, %v; want killed %v and an error", hogOverCap, testMemoryCap, killed, err, tt.wantKilled)
+			if _, isExit := err.(*exec.ExitError); !isExit || killed != tt.wantKilled {
+				t.Errorf("capped run of a child keeping %d MB under %d = killed %v, %T %v; want killed %v and exactly an *exec.ExitError", hogOverCap, testMemoryCap, killed, err, err, tt.wantKilled)
 			}
 		})
+	}
+}
+
+func TestRunMemoryCapped_AKillAtTheCapEndsWhatTheChildLeftInItsScope(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	if !proc.MemoryCapCoversTree() {
+		t.Skip("this host has no systemd user manager that caps a scope's memory")
+	}
+
+	// The shell starts a sleep that outlasts the test, prints its pid and becomes the hog the cap kills.
+	hog := memoryHog(t, hogOverCap)
+	cmd := exec.Command("sh", "-c", `sleep 300 >/dev/null 2>&1 & echo $!; exec "$0"`, hog.Path)
+	cmd.Env = hog.Env
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	killed, err := proc.RunMemoryCapped(cmd, testMemoryCap)
+	if !killed || err == nil {
+		t.Fatalf("capped run of a child keeping %d MB under %d = killed %v, %v; want killed and an error", hogOverCap, testMemoryCap, killed, err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(out.String()))
+	if err != nil {
+		t.Fatalf("the capped shell printed %q; want the sleep's pid", out.String())
+	}
+	requireProcessGone(t, pid)
+}
+
+func TestRunMemoryCapped_AKillOfAChildLeavesTheCommandRunningAndEndsItsScope(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	if !proc.MemoryCapCoversTree() {
+		t.Skip("this host has no systemd user manager that caps a scope's memory")
+	}
+
+	// The shell starts a sleep that outlasts the test, runs the hog the cap kills as a plain child, and exits 0.
+	// Only a scope that continues after the kill lets the shell print its last line.
+	hog := memoryHog(t, hogOverCap)
+	cmd := exec.Command("sh", "-c", `sleep 300 >/dev/null 2>&1 & echo $!; "$0"; echo survived`, hog.Path)
+	cmd.Env = hog.Env
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	killed, err := proc.RunMemoryCapped(cmd, testMemoryCap)
+	if killed || err != nil {
+		t.Fatalf("capped run of a shell whose child keeps %d MB under %d = killed %v, %v; want no kill and no error", hogOverCap, testMemoryCap, killed, err)
+	}
+	printedPid, rest, found := strings.Cut(out.String(), "\n")
+	if !found || rest != "survived\n" {
+		t.Fatalf("the capped shell printed %q; want the sleep's pid and then survived", out.String())
+	}
+	pid, err := strconv.Atoi(printedPid)
+	if err != nil {
+		t.Fatalf("the capped shell printed %q first; want the sleep's pid", printedPid)
+	}
+	requireProcessGone(t, pid)
+}
+
+// requireProcessGone fails the test when the process pid is still present a minute from now.
+func requireProcessGone(t *testing.T, pid int) {
+	t.Helper()
+	for deadline := time.Now().Add(time.Minute); ; time.Sleep(20 * time.Millisecond) {
+		if _, err := os.Stat("/proc/" + strconv.Itoa(pid)); errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the sleep %d the capped command started was still running a minute after the kill", pid)
+		}
 	}
 }
 

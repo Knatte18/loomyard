@@ -51,7 +51,9 @@
 // RunMemoryCapped runs a command with the memory of its process tree capped.
 // On Linux the command runs in a transient scope of the systemd user manager, started through `systemd-run`.
 // The scope's `MemoryMax` is the cap and it has no swap, so the kernel kills the command alone.
-// The call reports that kill.
+// The call reports that kill, and after any kill at the cap it kills what is left in the scope through its `cgroup.kill`.
+// The scope's `OOMPolicy` is `continue`, so the kill never fails the scope with the result `oom-kill`.
+// KDE Plasma's out-of-memory notifier reports each unit that ends with that result as a host low on memory.
 // The command keeps its pid and process group, so a group kill still reaches it.
 // One probe per process tells whether the user manager can cap a scope's memory.
 // Where it cannot, `RLIMIT_DATA` limits each process's data segment instead, set once the command started.

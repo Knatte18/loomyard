@@ -1,4 +1,5 @@
 // memorycap_linux.go caps a command's memory with a transient scope of the systemd user manager.
+// It ends what is left in the scope once the kernel kills a process in it at the cap.
 // On a host whose user manager cannot cap a scope's memory, it limits the data segment of each process instead.
 
 package proc
@@ -7,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -39,12 +42,18 @@ const (
 )
 
 // scopeStartScript is what a scope runs ahead of its command, with the command and its arguments as the script's own.
-// It writes a line to file descriptor 3, which tells the caller the scope started.
+// It writes its cgroup listing to file descriptor 3, which tells the caller the scope started and which cgroup it has.
 // It then closes the descriptor and becomes the command, so the command's process is the shell's.
-const scopeStartScript = `echo >&3; exec 3>&-; exec "$@"`
+const scopeStartScript = "while IFS= read -r line; do echo \"$line\"; done < " + selfCgroupFile + ` >&3; exec 3>&-; exec "$@"`
 
-// markerReadBound bounds the read of the scope's start line, which a scope that started or failed answers at once.
+// markerReadBound bounds the read of the scope's cgroup listing, which a scope that started or failed answers at once.
 const markerReadBound = time.Second
+
+// cgroupKillFile names the cgroup v2 file whose write of 1 kills every process in the cgroup.
+const cgroupKillFile = "cgroup.kill"
+
+// cgroupMemoryEventsFile names the cgroup v2 file that counts the memory events of the cgroup, such as its OOM kills.
+const cgroupMemoryEventsFile = "memory.events"
 
 // memoryScope is how the host runs a command in a memory-capped scope; its zero value is a host that cannot.
 type memoryScope struct {
@@ -86,10 +95,13 @@ func probeMemoryScope() memoryScope {
 
 // memoryScopeArgs returns systemd-run's arguments for running command in a scope capped at limit bytes with no swap.
 // The scope is collected once it ends, whatever ended it.
+// Its OOM policy is continue, so a kill at the cap never fails the scope with the result oom-kill.
+// A desktop's out-of-memory notifier reports each unit that ends with that result as a host low on memory,
+// and a kill at a test's own cap says nothing about the host.
 func memoryScopeArgs(limit int64, command ...string) []string {
 	return append([]string{
 		"--user", "--scope", "--quiet", "--collect",
-		"-p", "MemoryMax=" + strconv.FormatInt(limit, 10), "-p", "MemorySwapMax=0", "--",
+		"-p", "MemoryMax=" + strconv.FormatInt(limit, 10), "-p", "MemorySwapMax=0", "-p", "OOMPolicy=continue", "--",
 	}, command...)
 }
 
@@ -105,6 +117,7 @@ func memoryCapCoversTreePlatform() bool {
 
 // runMemoryCapped runs cmd capped at limit bytes: in a scope when scope can start one, else under a data segment limit.
 // In a scope, killed reports a command the kernel ended with SIGKILL when no cancel of cmd sent one.
+// After any kill at the cap, every process left in the scope is killed too.
 // A scope that never ran the command returns an error that is no *exec.ExitError, so it never reads as a failing command.
 // The scope path uses cmd.ExtraFiles, so cmd must carry none.
 func runMemoryCapped(cmd *exec.Cmd, limit int64, scope memoryScope) (killed bool, err error) {
@@ -138,18 +151,65 @@ func runMemoryCapped(cmd *exec.Cmd, limit int64, scope memoryScope) (killed bool
 	if cmd.ProcessState == nil || cancelled.Load() {
 		return false, err
 	}
-	if !scopeStarted(started) {
+	cgroup, ok := scopeCgroup(started)
+	if !ok {
 		return false, fmt.Errorf("the scope did not run the command, and %s ended with: %v", systemdRun, err)
 	}
 	status, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
-	return ok && status.Signaled() && status.Signal() == syscall.SIGKILL, err
+	killed = ok && status.Signaled() && status.Signal() == syscall.SIGKILL
+	if !killed && !scopeHadOOMKill(cgroup) {
+		return false, err
+	}
+	if killErr := killScope(cgroup); killErr != nil {
+		err = errors.Join(err, killErr)
+	}
+	return killed, err
 }
 
-// scopeStarted reports whether the scope's shell wrote its start line to started, the read end of the scope's start pipe.
-func scopeStarted(started *os.File) bool {
+// scopeHadOOMKill reports whether the kernel killed a process in the scope whose cgroup is cgroup.
+// A scope already gone had nothing left to kill, so it reports false.
+func scopeHadOOMKill(cgroup string) bool {
+	events, err := os.ReadFile(filepath.Join(cgroupMount, filepath.FromSlash(cgroup), cgroupMemoryEventsFile))
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(events), "\n") {
+		if count, ok := strings.CutPrefix(line, "oom_kill "); ok {
+			kills, err := strconv.Atoi(count)
+			return err == nil && kills > 0
+		}
+	}
+	return false
+}
+
+// scopeCgroup returns the cgroup the scope's shell wrote to started, the read end of the scope's start pipe.
+// ok is false when the shell wrote none, which means the scope never ran it.
+func scopeCgroup(started *os.File) (cgroup string, ok bool) {
 	_ = started.SetReadDeadline(time.Now().Add(markerReadBound))
-	_, err := started.Read(make([]byte, 1))
-	return err == nil
+	listing, err := io.ReadAll(started)
+	if err != nil {
+		return "", false
+	}
+	return cgroupV2Path(string(listing))
+}
+
+// killScope kills every process left in the scope whose cgroup is cgroup.
+// The scope's OOM policy keeps it running after the kernel kills its command,
+// so the processes the command started would otherwise outlive it.
+// A scope already emptied and removed is no error.
+func killScope(cgroup string) error {
+	killFile := filepath.Join(cgroupMount, filepath.FromSlash(cgroup), cgroupKillFile)
+	file, err := os.OpenFile(killFile, os.O_WRONLY, 0)
+	if err == nil {
+		_, err = file.Write([]byte("1"))
+		if closeErr := file.Close(); err == nil {
+			err = closeErr
+		}
+	}
+	if err != nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, unix.ENODEV) {
+		return fmt.Errorf("kill what the capped command left in its scope: %w", err)
+	}
+	return nil
 }
 
 // runDataLimited runs cmd with the data segment of its process limited to limit bytes.
