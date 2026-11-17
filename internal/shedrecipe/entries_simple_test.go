@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -82,6 +83,18 @@ func zeroEnvField(env Env, field string) Env {
 		env.WebsterRun = nil
 	case "CommitWebster":
 		env.CommitWebster = nil
+	case "WeaverRun":
+		env.WeaverRun = nil
+	case "WeaverDeps.Runner":
+		env.WeaverDeps.Runner = nil
+	case "WeaverDeps.Fixer":
+		env.WeaverDeps.Fixer = nil
+	case "WeaverDeps.Reed":
+		env.WeaverDeps.Reed = nil
+	case "WeaverDeps.CommitRecords":
+		env.WeaverDeps.CommitRecords = nil
+	case "WeaverDeps.RecordsHead":
+		env.WeaverDeps.RecordsHead = nil
 	case "WebsterDeps.Starter":
 		env.WebsterDeps.Starter = nil
 	case "WebsterDeps.Stopper":
@@ -424,6 +437,7 @@ func TestWebsterEntry_GateKeys(t *testing.T) {
 
 	t.Run("DriftGateReachesTheRunLevelGate", func(t *testing.T) {
 		env := newTestEnv(t)
+		env.ImplementerSeam = weaverengine.ActiveDeps{AnchorRoot: t.TempDir()}
 		var received []websterengine.RunDeps
 		env.WebsterRun = func(deps websterengine.RunDeps, _ websterengine.RunOptions) (websterengine.RunResult, error) {
 			received = append(received, deps)

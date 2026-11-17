@@ -101,7 +101,7 @@ const findBatchWayForward = "`lym webster status` lists the run's batches, name 
 
 // ConflictRecordRel returns the conflict record's path relative to the anchor, forward-slashed for recipe text.
 func ConflictRecordRel() string {
-	return path.Join(lymdirs.DotLymDirName, websterDirName, runplan.ConflictRecordName)
+	return path.Join(lymdirs.DotLymDirName, lymdirs.ImplementerDirName, runplan.ConflictRecordName)
 }
 
 // runPlan returns the shared machinery's view of g: webster's run directory is its WebsterDir.

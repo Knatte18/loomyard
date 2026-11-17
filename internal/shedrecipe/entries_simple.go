@@ -129,7 +129,8 @@ func stubEntry(row RowIdentity, cfg Config, _ Env) (shedengine.ShedProducer, err
 // It resolves the row's "gates" Config key through resolveGateSpec onto the gate field of Env.WebsterDeps.
 // It validates Env.ConfigDirs.Anchor, Env.WebsterRun and Env.CommitWebster;
 // it also validates the Starter, Stopper, Engines and RefMatcher fields of Env.WebsterDeps.
-// It returns loomshed.NewWebsterProducer(name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster).
+// It returns loomshed.NewWebsterProducer over the row's name and the gated deps.
+// It also hands it Env.ConfigDirs, Env.WebsterRun, Env.CommitWebster and Env.ImplementerSeam.
 //
 // The gate is resolved here for the same reason the other gated rows resolve theirs here:
 // one key means one thing at every gated site,
@@ -174,5 +175,5 @@ func websterEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	}
 	deps := env.WebsterDeps
 	deps.Gate = gate
-	return loomshed.NewWebsterProducer(row.Name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster), nil
+	return loomshed.NewWebsterProducer(row.Name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster, env.ImplementerSeam), nil
 }

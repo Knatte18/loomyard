@@ -399,6 +399,18 @@ var WebsterFragmentCardFixer []byte
 //go:embed webster/webster-body-implementer.md
 var WebsterBodyImplementer []byte
 
+// WeaverTemplateBatch is weaver's shipped-default batch attempt prompt:
+// the whole instruction set of the cold strand that builds one batch of the plan.
+//
+//go:embed weaver/weaver-template-batch.md
+var WeaverTemplateBatch []byte
+
+// WeaverBodyVerifyFix is weaver's shipped-default plan-level verify fixer body.
+// The shared gate-fixer cold frame is joined ahead of it to compose the fixer prompt.
+//
+//go:embed weaver/weaver-body-verify-fix.md
+var WeaverBodyVerifyFix []byte
+
 // OrchTemplateStart is orch's shipped-default fresh-launch prompt.
 //
 //go:embed orch/orch-template-start.md
@@ -823,6 +835,8 @@ var entries = []registryEntry{
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},
 	{"webster-fragment-card-fixer", &WebsterFragmentCardFixer},
+	{"weaver-template-batch", &WeaverTemplateBatch},
+	{"weaver-body-verify-fix", &WeaverBodyVerifyFix},
 	{"orch-template-start", &OrchTemplateStart},
 	{"orch-template-handoff", &OrchTemplateHandoff},
 	{"orch-template-resume", &OrchTemplateResume},
@@ -891,6 +905,7 @@ var roleOpeningStencils = map[string][]string{
 	"discussion-advisor":   {"loom-template-discussion-advisor"},
 	"plan":                 {"loom-template-plan"},
 	"webster-master":       {"webster-template-master"},
+	"weaver":               {"weaver-template-batch"},
 	"webster-recovery":     {"webster-prefix-recovery"},
 	"verify-fixer":         {"gatefix-frame-cold"},
 	"plan-fixer":           {"webster-template-plan-fix"},

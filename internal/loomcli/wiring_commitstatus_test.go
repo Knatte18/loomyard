@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -435,7 +436,7 @@ func reworkRoundSetup(writeFile func(t *testing.T, path, content string), record
 }
 
 // TestPlanCommitPathspec asserts the plan commit always names the plan directory.
-// It adds webster's durable directory only when it holds a file.
+// It adds each implementer's durable directory only when it holds a file.
 // Plan-Write's rotation archiving a run record under the plan also adds it.
 // The moved-from deletions and the archive then land in one commit.
 // An empty or absent directory would make the pathspec match nothing and fail.
@@ -459,6 +460,9 @@ func TestPlanCommitPathspec(t *testing.T) {
 		tracked     bool
 		trackedErr  error
 		wantWebster bool
+		// weaverTracked answers whether git tracks a path under weaver's directory.
+		weaverTracked bool
+		wantWeaver    bool
 		// wantAmendment marks a row whose setup writes the plan amendment record.
 		wantAmendment bool
 	}{
@@ -507,6 +511,19 @@ func TestPlanCommitPathspec(t *testing.T) {
 			trackedErr:  errors.New("git failed"),
 			wantWebster: true,
 		},
+		{
+			name: "weaver directory holding a file",
+			setup: func(t *testing.T, anchorPath string) {
+				writeFile(t, filepath.Join(weaverengine.Dir(anchorPath), "state.json"))
+			},
+			wantWeaver: true,
+		},
+		{
+			name:          "weaver directory tracked and emptied by an archive",
+			setup:         func(t *testing.T, anchorPath string) {},
+			weaverTracked: true,
+			wantWeaver:    true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -517,13 +534,19 @@ func TestPlanCommitPathspec(t *testing.T) {
 			if tt.wantWebster {
 				want = append(want, websterengine.DirRel())
 			}
+			if tt.wantWeaver {
+				want = append(want, weaverengine.DirRel())
+			}
 			if tt.wantAmendment {
 				want = append(want, loomengine.LoomAmendmentRecordRel())
 			}
-			// The tracked answer is webster's directory's alone: the amendment record is untracked in every row.
+			// The tracked answer is each implementer directory's alone: the amendment record is untracked in every row.
 			tracked := func(rel string) (bool, error) {
-				if rel == websterengine.DirRel() {
+				switch rel {
+				case websterengine.DirRel():
 					return tt.tracked, tt.trackedErr
+				case weaverengine.DirRel():
+					return tt.weaverTracked, nil
 				}
 				return false, nil
 			}

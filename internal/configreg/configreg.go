@@ -46,6 +46,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -210,6 +211,7 @@ func Modules() []Module {
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},
 		{Name: "slack", Template: slackengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(slackengine.LoadConfig), Spec: slackengine.ConfigSpec},
 		{Name: "tapestry", Template: loomengine.TapestryConfigTemplate, OpenMaps: loomengine.TapestryConfigOpenMaps(), CheckValues: loomengine.ValidateTapestryLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadTapestryConfig, "tapestry"), Spec: loomengine.TapestryConfigSpec},
+		{Name: "weaver", Template: weaverengine.ConfigTemplate, OpenMaps: weaverengine.ConfigOpenMaps(), CheckLoad: checkLoadNamed(weaverengine.LoadConfig, "weaver"), Spec: weaverengine.ConfigSpec},
 		{Name: "webster", Template: websterengine.ConfigTemplate, CheckLoad: checkLoadNamed(websterengine.LoadConfig, "webster"), Spec: websterengine.ConfigSpec},
 	}
 	for _, engine := range shuttleengines.ConfigModules() {

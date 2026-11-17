@@ -67,6 +67,10 @@ const CreelFlagDirName = "flags"
 // It holds the ask record and the parent orch's report for each answered ask.
 const ParentReviewDirName = "parent-review"
 
+// ImplementerDirName is the directory under a worktree's `.lym` that holds what both implementers share.
+// It holds the plan-conflict record and the last-routed conflict.
+const ImplementerDirName = "implementer"
+
 // HeddleDirName is the directory under a worktree's `.lym` that holds heddle's render lock.
 const HeddleDirName = "heddle"
 
@@ -78,6 +82,10 @@ const UsageDirName = "usage"
 // the proposals, the approval, the run's state, the staged store and the part records.
 // internal/lymdirs is the only place `raddle` is named under `_lym`.
 const RaddleDirName = "raddle"
+
+// WeaverDirName is the directory under a worktree's `_lym` and `.lym` that holds Weaver's run:
+// the durable state, reports, journal and outcome under `_lym`, and the prompts and locks under `.lym`.
+const WeaverDirName = "weaver"
 
 // LocksDirName is the directory under a checkout's `.lym` that holds the lock files for the checkout's tracked files.
 const LocksDirName = "locks"

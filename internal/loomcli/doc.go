@@ -341,9 +341,10 @@
 // The agent fixes them by hand.
 // `restore-renumber` reports `plan_dir`, `journal`, `restored` and `removed`.
 //
-// Each verb takes webster's state-mutation lease first and releases it before it prints,
+// Each verb takes the active implementer's state-mutation lease first and releases it before it prints,
 // so no begin-batch records a batch between the bound check and the renumber.
-// `insert-card` and `remove-card` refuse a position at or before the last card of any batch webster has begun.
+// The active implementer is the one `weaverengine.Active` names, and a refusal of that seam is the verb's own.
+// `insert-card` and `remove-card` refuse a position at or before the last card of any batch the implementer has begun.
 // A batch counts whether it is terminal or not, since a begun card is frozen.
 // They touch only the current generation's card files and the Card Index of the overview.
 // They never touch an archive, a prior generation, the overview's frontmatter or any other section.
@@ -723,7 +724,9 @@
 // It may also have `pattern_entry`, `pattern_action` and `pattern_text`.
 // `--by` and `--amends-plan` apply to every entry, and all entries land in one write and one commit, or none does.
 // Each live agent gets one notice naming the headings (`headings`).
-// A run that is not running wakes no Webster Master session left live from its last run:
+// A Webster Master session and a Weaver strand get every entry's text inline.
+// The verb records each notice a Weaver strand got in Weaver's state, so a resumed run sends it only what it lacks.
+// A run that is not running wakes no Webster Master session or Weaver strand left live from its last run:
 // the envelope names each such strand and why under `notice_held_back`.
 // Two entries may not share a title or a PATTERN entry.
 // A `pattern_action` of `withdraws`, like `--pattern-action withdraws`, strikes a declared `## PATTERN changes` bullet.

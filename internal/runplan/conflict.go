@@ -1,5 +1,5 @@
 // conflict.go holds the plan re-resolution at dispatch and its refusal, the plan conflict.
-// It also holds the never-tracked plan-conflict record that refusal leaves in the implementer's scratch directory.
+// It also holds the never-tracked plan-conflict record that refusal leaves in the implementer-neutral conflict directory.
 // The record has its writers, readers and removers here too.
 
 package runplan
@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
@@ -119,31 +120,41 @@ func ResolveAtDispatch(geom Geometry, plan *planparser.Plan, batches []batcher.B
 }
 
 const (
-	// ConflictRecordName is the file in the scratch directory a dispatch writes when it refuses with a plan conflict.
+	// ConflictRecordName is the file in the conflict directory a dispatch writes when it refuses with a plan conflict.
 	ConflictRecordName = "plan-conflict.md"
 	// routedConflictName is the file holding the findings of the conflict last routed to plan review.
 	routedConflictName = "plan-conflict-routed.md"
 )
 
-// ConflictRecordPath returns the conflict record's path under scratchDir.
-func ConflictRecordPath(scratchDir string) string {
-	return filepath.Join(scratchDir, ConflictRecordName)
+// ConflictDir returns the never-tracked directory under anchorRoot that holds the plan-conflict record.
+// It also holds the last-routed conflict.
+// It belongs to no implementer, so a reroute to plan review finds a conflict whichever implementer refused.
+func ConflictDir(anchorRoot string) string {
+	return filepath.Join(anchorRoot, lymdirs.DotLymDirName, lymdirs.ImplementerDirName)
 }
 
-// RoutedConflictPath returns the path of the last-routed conflict file under scratchDir.
-func RoutedConflictPath(scratchDir string) string {
-	return filepath.Join(scratchDir, routedConflictName)
+// ConflictRecordPath returns the conflict record's path under dir.
+func ConflictRecordPath(dir string) string {
+	return filepath.Join(dir, ConflictRecordName)
+}
+
+// RoutedConflictPath returns the path of the last-routed conflict file under dir.
+func RoutedConflictPath(dir string) string {
+	return filepath.Join(dir, routedConflictName)
 }
 
 // WriteConflictRecord writes the conflict record naming conflict's batch, cause and blocking findings.
-// The scratch directory must already exist: every caller holds a lock file in it.
-func WriteConflictRecord(scratchDir string, conflict *PlanConflictError) error {
+// It creates dir first, since no lock file of either implementer sits in it.
+func WriteConflictRecord(dir string, conflict *PlanConflictError) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("runplan: create plan-conflict directory: %w", err)
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Plan conflict at begin-batch %02d\ncause: %s\n\n", conflict.Batch, conflict.Cause)
 	for _, finding := range conflict.Findings {
 		b.WriteString("- " + finding + "\n")
 	}
-	if err := os.WriteFile(ConflictRecordPath(scratchDir), []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(ConflictRecordPath(dir), []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("runplan: write plan-conflict record: %w", err)
 	}
 	return nil

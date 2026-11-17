@@ -96,6 +96,12 @@ func (realGit) CommitLog(worktree, base, head string) ([]CommitLogEntry, error) 
 	return commitLog(worktree, base, head)
 }
 
+// NewGit returns the Git over the repository on disk.
+// It serves a caller outside the package that reads a worktree the way webster does.
+func NewGit() Git {
+	return realGit{}
+}
+
 // git returns the Git the geometry carries, or realGit when it carries none.
 func (g Geometry) git() Git {
 	return orReal(g.Git)

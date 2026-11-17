@@ -64,6 +64,10 @@ var excludedModules = []scankit.Entry{
 		Why: "name <name> rewrites the per-user machine file and the owners on every hub of the machine record, which no sandbox scenario may do; exercised by internal/machinecli's own tests instead",
 	},
 	{
+		Key: "weaver",
+		Why: "runs only as a loom row inside a hub's task worktree and reset tears down a run's shuttle, reed and fabric state, which no sandbox scenario builds; exercised by internal/weavercli's own tests instead",
+	},
+	{
 		Key: "retro",
 		Why: "files a darn task on the board and releases it, so the hub's dobby starts a run, which no sandbox scenario may do; exercised by internal/retrocli's own tests instead",
 	},

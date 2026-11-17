@@ -6,7 +6,8 @@
 // The package reaches quarry through internal/planglyph, so it lives apart from the landing and loom producer packages.
 // Those producers link no tree-sitter grammar.
 // It is told the worktree root and the anchor path.
-// It takes the plan, Webster and scratch directories from the owning packages' own path functions.
+// It takes the plan directory from the owning package's path function,
+// and the active implementer's run-plan state through the implementer seam over the anchor.
 // It joins `go.mod` and its existence checks onto the worktree root.
 // It reads plan refs only through internal/planparser.
 //
@@ -33,10 +34,10 @@
 //   - A rejected location is untraced.
 //   - A not_found location no card matches is untraced, and so is a found location no card's targets hold.
 //
-// Each matched card carries its Webster batch and that batch's commit range.
+// Each matched card carries its implementer batch and that batch's commit range.
 // The range runs from the batch's start to its last card commit.
 // The later range runs from the last card commit of the highest-numbered matched batch to the head.
-// A card Webster holds no record of reads as batch 0 with an empty range.
+// A card the implementer holds no record of reads as batch 0 with an empty range.
 //
 // The trace often names no card:
 // a failure in code no card touched, or in a location the log does not print, lands in untraced,

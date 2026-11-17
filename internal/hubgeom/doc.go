@@ -6,6 +6,7 @@
 //
 // ReedGeometry converts a Location into a reedengine.Geometry.
 // BurlerGeometry converts it into a burlerengine.Geometry, and WebsterGeometry into a websterengine.Geometry.
+// WeaverGeometry converts it into a weaverengine.Geometry the same way, with Weaver's own run directories.
 // ReconcileGeometry converts a Location into the hubreconcile.Geometry that start verbs hand to EnsureOrWarn.
 // The Preflight row hands it over too.
 // It reports false for a repository with no hub-level board lym dir, which never reconciles.

@@ -90,6 +90,9 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
 - The record is written only by `Verify`, and only after a pass; no prompt names its path.
 - The sites are the webster gate, the Webster-Burler-Fix gate and `lym webster verify`.
   They also include the Code-Burler-Fix, Darn-Write and Drift-Verify gates, Parent-Align and Finalize.
+- Weaver's plan-level verify, `runVerify`, is a site too: it runs the hub's `webster` call through `verifytree.Verify` under the geometry's pause hold.
+- Weaver's batch strand gates are sites too:
+  the `card` and `batch` entries of `batchGateSpec` each run their call through `verifytree.Verify` under the geometry's pause hold.
 - The `round` gate's sites are Webster's verify-gate fixers:
   the fixer fork and the cold fixer `lym webster fix-verify` spawns.
   They share one prompt body.

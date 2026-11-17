@@ -7,7 +7,7 @@ import "github.com/Knatte18/loomyard/internal/agentname"
 const (
 	// RoleGateFixer is the strand role of a fixer a writer's or an agent's gate hands its failure to.
 	RoleGateFixer = "gate-fixer"
-	// RoleVerifyFixer is the strand role of the cold fixer webster's verify gate escalates a failure to.
+	// RoleVerifyFixer is the strand role of the cold fixer of an implementer's plan-level verify, Webster's or Weaver's.
 	RoleVerifyFixer = "verify-fixer"
 )
 

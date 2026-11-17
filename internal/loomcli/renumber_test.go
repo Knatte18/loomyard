@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -44,6 +45,7 @@ func newCardVerbFixture(t *testing.T, cards ...plankit.Card) cardVerbFixture {
 	anchor := t.TempDir()
 	c := &loomCLI{}
 	c.env.AnchorPath = anchor
+	c.env.ImplementerSeam.AnchorRoot = anchor
 	d := c.newRenumberDeps()
 	plankit.Write(t, d.planDir, plankit.Plan{Cards: cards})
 	return cardVerbFixture{anchor: anchor, planDir: d.planDir, deps: d}
@@ -74,7 +76,7 @@ func (w *leaseWatch) watch(d renumberDeps) renumberDeps {
 			return release()
 		}, nil
 	}
-	d.loadState = func() (*websterengine.State, error) {
+	d.loadState = func() (*runplan.State, error) {
 		w.require("loadState")
 		return load()
 	}
@@ -297,12 +299,12 @@ func TestRenumberVerbs_Refusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	doneBatch := map[int]*websterengine.BatchState{1: {Cards: []string{"01-alpha", "02-beta"}, Terminal: true, Status: websterengine.DigestStatusDone}}
-	openBatch := map[int]*websterengine.BatchState{1: {Cards: []string{"01-alpha"}}}
-	withState := func(batches map[int]*websterengine.BatchState) func(*testing.T, renumberDeps) renumberDeps {
+	doneBatch := map[int]*runplan.BatchState{1: {Cards: []string{"01-alpha", "02-beta"}, Terminal: true, Status: websterengine.DigestStatusDone}}
+	openBatch := map[int]*runplan.BatchState{1: {Cards: []string{"01-alpha"}}}
+	withState := func(batches map[int]*runplan.BatchState) func(*testing.T, renumberDeps) renumberDeps {
 		return func(_ *testing.T, d renumberDeps) renumberDeps {
-			d.loadState = func() (*websterengine.State, error) {
-				return &websterengine.State{State: runplan.State{Batches: batches}}, nil
+			d.loadState = func() (*runplan.State, error) {
+				return &runplan.State{Batches: batches}, nil
 			}
 			return d
 		}
@@ -320,6 +322,8 @@ func TestRenumberVerbs_Refusals(t *testing.T) {
 		run     cardVerbRun
 		// want lists fragments the message must hold: the cause and the way forward.
 		want []string
+		// absent lists fragments the message must not hold.
+		absent []string
 		// untouched asserts the plan directory is byte-identical after the refusal.
 		untouched bool
 		// then are the other verbs run afterwards, each refusing with the same way forward.
@@ -331,14 +335,20 @@ func TestRenumberVerbs_Refusals(t *testing.T) {
 		{name: "remove: position out of range", run: runRemove("9"), want: []string{"way forward: pass a position from first_card to the last card"}, untouched: true},
 		{name: "insert: invalid slug", run: func(d renumberDeps, out io.Writer) int { return insertCardVerb(out, d, "2", "Bad/Slug", "x") }, want: []string{"way forward: pass lowercase letters and digits joined by single hyphens"}, untouched: true},
 		{name: "insert: invalid intent", run: func(d renumberDeps, out io.Writer) int { return insertCardVerb(out, d, "2", "new", " ") }, want: []string{"way forward: pass a non-empty one-line --intent"}, untouched: true},
-		{name: "insert: at a done card", prepare: withState(doneBatch), run: runInsert("2"), want: []string{"card 2, the last card webster has begun", "way forward: a begun card is frozen, so insert or remove after card 2"}, untouched: true},
+		{name: "insert: at a done card", prepare: withState(doneBatch), run: runInsert("2"), want: []string{"card 2, the last card the implementer has begun", "way forward: a begun card is frozen, so insert or remove after card 2"}, untouched: true},
 		{name: "remove: at a done card", prepare: withState(doneBatch), run: runRemove("1"), want: []string{"way forward: a begun card is frozen, so insert or remove after card 2"}, untouched: true},
-		{name: "insert: at a batch begun and not terminal", prepare: withState(openBatch), run: runInsert("1"), want: []string{"card 1, the last card webster has begun", "way forward: a begun card is frozen, so insert or remove after card 1"}, untouched: true},
+		{name: "insert: at a batch begun and not terminal", prepare: withState(openBatch), run: runInsert("1"), want: []string{"card 1, the last card the implementer has begun", "way forward: a begun card is frozen, so insert or remove after card 1"}, untouched: true},
 		{name: "remove: at a batch begun and not terminal", prepare: withState(openBatch), run: runRemove("1"), want: []string{"way forward: a begun card is frozen, so insert or remove after card 1"}, untouched: true},
 		{name: "insert: run record unreadable", prepare: func(_ *testing.T, d renumberDeps) renumberDeps {
-			d.loadState = func() (*websterengine.State, error) { return nil, errors.New("state.json is malformed") }
+			d.loadState = func() (*runplan.State, error) { return nil, errors.New("state.json is malformed") }
 			return d
 		}, run: runInsert("2"), want: []string{"state.json is malformed", "way forward: transient, re-run the refused verb; nothing is mutated"}, untouched: true},
+		{name: "insert: active implementer unreadable", prepare: func(_ *testing.T, d renumberDeps) renumberDeps {
+			d.loadState = func() (*runplan.State, error) {
+				return nil, seamRefusal{cause: errors.New("both state files hold begun batches; way forward: end the run you do not mean to keep")}
+			}
+			return d
+		}, run: runInsert("2"), want: []string{"both state files hold begun batches; way forward: end the run you do not mean to keep", "way forward: take the way forward the message names, then re-run the verb"}, absent: []string{"transient", "raw I/O"}, untouched: true},
 		{name: "remove: lease unavailable", prepare: func(_ *testing.T, d renumberDeps) renumberDeps {
 			d.acquireLease = func() (func() error, error) { return nil, errors.New("lock held") }
 			return d
@@ -397,6 +407,11 @@ func TestRenumberVerbs_Refusals(t *testing.T) {
 					t.Errorf("message %q does not contain %q", message, fragment)
 				}
 			}
+			for _, fragment := range tc.absent {
+				if strings.Contains(message, fragment) {
+					t.Errorf("message %q contains %q", message, fragment)
+				}
+			}
 			if tc.untouched && !maps.Equal(before, planDirTree(t, fx.planDir)) {
 				t.Errorf("the plan directory changed")
 			}
@@ -409,6 +424,105 @@ func TestRenumberVerbs_Refusals(t *testing.T) {
 				if !strings.Contains(nextMessage, "way forward: run lym loom restore-renumber") {
 					t.Errorf("follow-up message %q does not name restore-renumber", nextMessage)
 				}
+			}
+		})
+	}
+}
+
+// TestRenumberDepsFor asserts the card verbs read their begun bound from the implementer the seam names.
+// It also asserts they take that implementer's state-mutation lease, and refuse when the seam does.
+func TestRenumberDepsFor(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	begun := runplan.State{Batches: map[int]*runplan.BatchState{1: {Cards: []string{"01-alpha", "02-beta"}}}}
+	implementers := []weaverengine.Implementer{weaverengine.ImplementerWeaver, weaverengine.ImplementerWebster}
+	scratchEntries := func(t *testing.T, implementer weaverengine.Implementer, anchor string) []string {
+		t.Helper()
+		_, scratchDir := weaverengine.RunDirs(implementer, anchor)
+		items, err := os.ReadDir(scratchDir)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			t.Fatalf("read %s: %v", scratchDir, err)
+		}
+		names := make([]string, 0, len(items))
+		for _, item := range items {
+			names = append(names, item.Name())
+		}
+		return names
+	}
+
+	tests := []struct {
+		name                      string
+		weaverBegun, websterBegun bool
+		// setting is the tapestry.implementer value the seam reads, empty for a seam with no setting.
+		setting   string
+		wantBound int
+		// wantLease is the implementer whose scratch directory the lease lands in.
+		wantLease weaverengine.Implementer
+		// wantSeamRefusal means both loadState and acquireLease refuse wrapping errRenumberSeam.
+		wantSeamRefusal bool
+	}{
+		{name: "WeaverBegun_BoundsAndLeasesOnWeaver", weaverBegun: true, wantBound: 2, wantLease: weaverengine.ImplementerWeaver},
+		{name: "WebsterBegun_BoundsAndLeasesOnWebster", websterBegun: true, wantBound: 2, wantLease: weaverengine.ImplementerWebster},
+		{name: "NothingBegun_LeasesOnTheSetting", setting: string(weaverengine.ImplementerWeaver), wantLease: weaverengine.ImplementerWeaver},
+		{name: "BothBegun_RefusesOnTheSeam", weaverBegun: true, websterBegun: true, wantSeamRefusal: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchor := t.TempDir()
+			if tt.weaverBegun {
+				if err := weaverengine.SaveState(weaverengine.Dir(anchor), weaverengine.ScratchDir(anchor), &weaverengine.State{State: begun}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.websterBegun {
+				if err := websterengine.SaveState(websterengine.Dir(anchor), websterengine.ScratchDir(anchor), &websterengine.State{State: begun}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			active := weaverengine.ActiveDeps{AnchorRoot: anchor}
+			if tt.setting != "" {
+				active.Setting = func() (string, error) { return tt.setting, nil }
+			}
+			d := renumberDepsFor(anchor, active)
+
+			if tt.wantSeamRefusal {
+				if _, err := d.loadState(); !errors.Is(err, errRenumberSeam) {
+					t.Errorf("loadState() error = %v; want it to wrap errRenumberSeam", err)
+				}
+				if _, err := d.acquireLease(); !errors.Is(err, errRenumberSeam) {
+					t.Errorf("acquireLease() error = %v; want it to wrap errRenumberSeam", err)
+				}
+				return
+			}
+
+			st, err := d.loadState()
+			if err != nil {
+				t.Fatalf("loadState() error = %v", err)
+			}
+			if got := runplan.LastBegunCard(st); got != tt.wantBound {
+				t.Errorf("last begun card = %d; want %d", got, tt.wantBound)
+			}
+			before := map[weaverengine.Implementer][]string{}
+			for _, implementer := range implementers {
+				before[implementer] = scratchEntries(t, implementer, anchor)
+			}
+			release, err := d.acquireLease()
+			if err != nil {
+				t.Fatalf("acquireLease() error = %v", err)
+			}
+			for _, implementer := range implementers {
+				changed := !slices.Equal(before[implementer], scratchEntries(t, implementer, anchor))
+				if changed != (implementer == tt.wantLease) {
+					t.Errorf("the lease changed %s's scratch directory = %v; want %v", implementer, changed, implementer == tt.wantLease)
+				}
+			}
+			if err := release(); err != nil {
+				t.Errorf("release() error = %v", err)
 			}
 		})
 	}

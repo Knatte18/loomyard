@@ -46,7 +46,7 @@ func ReportsDir(anchorRoot string) string {
 }
 
 // ScratchDir returns the path to the base directory for webster's never-tracked artifacts:
-// the rendered fork prompts, every *.lock, and the plan-conflict record and last-routed conflict.
+// the rendered fork prompts and every *.lock.
 // Each artifact sits at the subpath that mirrors the _lym/webster content it relates to.
 // The base is joined onto the told anchorRoot.
 // Per the Cwd Resolution Invariant, no other package may construct this path.

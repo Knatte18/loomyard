@@ -9,32 +9,60 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
 
-// websterInFlightWarning is the one warning merge-in reports while a Webster run is mid-flight in this worktree.
-const websterInFlightWarning = "Webster is mid-run in this worktree: `lym webster record-batch` tolerates a clean parent merge commit " +
-	"after a fork's commit but refuses a fast-forward past it and a merge whose conflicts were resolved by hand"
+// The two warnings merge-in reports while an implementer's run is mid-flight in this worktree, one per implementer.
+const (
+	websterInFlightWarning = "Webster is mid-run in this worktree: `lym webster record-batch` tolerates a clean parent merge commit " +
+		"after a fork's commit but refuses a fast-forward past it and a merge whose conflicts were resolved by hand"
+	weaverInFlightWarning = "Weaver is mid-run in this worktree: a batch strand's commits sit on the task branch " +
+		"and its post-batch checks run against them, so a parent merge that lands mid-run changes what those checks read"
+)
 
 // websterInFlightWarnings returns the merge-in warning list for the worktree at l.
+// It names the active implementer's run, read through the advisory form of the implementer seam;
+// a seam refusal falls back to the `tapestry.implementer` setting and is logged,
+// so a corrupt state never blocks the warning.
 // It is nil when no run is in flight.
 // An error from the in-flight check degrades to nil plus a logged warning, never a failure.
 func websterInFlightWarnings(l *lymcwd.Location) []string {
-	inFlight, err := websterengine.RunInFlight(l.AnchorPath())
+	lookup := configreg.SettingLookup(fabricengine.ConfigDirs(l))
+	implementer, _, fallbackReason := weaverengine.ActiveOrSetting(weaverengine.ActiveDeps{
+		AnchorRoot: l.AnchorPath(),
+		Setting: func() (string, error) {
+			value, err := lookup("tapestry", "implementer")
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprint(value), nil
+		},
+	})
+	if fallbackReason != "" {
+		logger.Warn("fabriccli: merge-in: active implementer unreadable, reading the setting's implementer instead", "reason", fallbackReason)
+	}
+
+	runInFlight, warning, name := websterengine.RunInFlight, websterInFlightWarning, "Webster"
+	if implementer == weaverengine.ImplementerWeaver {
+		runInFlight, warning, name = weaverengine.RunInFlight, weaverInFlightWarning, "Weaver"
+	}
+	inFlight, err := runInFlight(l.AnchorPath())
 	if err != nil {
-		logger.Warn("fabriccli: merge-in: webster in-flight check failed, emitting no warning", "error", err)
+		logger.Warn("fabriccli: merge-in: in-flight check failed, emitting no warning", "implementer", name, "error", err)
 		return nil
 	}
 	if !inFlight {
 		return nil
 	}
-	logger.Warn("fabriccli: merge-in: merged the parent while a Webster run is in flight")
-	return []string{websterInFlightWarning}
+	logger.Warn("fabriccli: merge-in: merged the parent while a run is in flight", "implementer", name)
+	return []string{warning}
 }
 
 // setMergeExit maps a merge lifecycle verb's (res, err) result onto the shared envelope.
@@ -78,7 +106,7 @@ func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResul
 // Each RunE body calls fabric() after the handle is resolved.
 //
 // loc is a getter for the same reason, returning the location resolved at run time.
-// merge-in reads it to check whether a Webster run is in flight in this worktree.
+// merge-in reads it to check whether an implementer's run is in flight in this worktree.
 func addMergeVerbs(cmd *cobra.Command, fabric func() *fabricengine.Fabric, loc func() *lymcwd.Location) {
 	mergeInCmd := &cobra.Command{
 		Use:         "merge-in <branch>",
@@ -101,9 +129,10 @@ or abandon it with "lym fabric merge --abort". A conflict and a hard failure
 both exit 1 with "ok": false; only a conflict result carries the "conflicts"
 array of worktree-relative paths.
 
-While a Webster run is in flight in this worktree (its state file exists and
-its outcome is absent, paused or stuck), a merge-in that moved HEAD or
-conflicted adds a "warnings" array to its envelope; the merge itself proceeds.
+While a run of the active implementer, Webster or Weaver, is in flight in this
+worktree (its state file exists and its outcome is absent, paused or stuck), a
+merge-in that moved HEAD or conflicted adds a "warnings" array to its envelope;
+the merge itself proceeds.
 
 Example:
   lym fabric merge-in my-task

@@ -30,7 +30,7 @@ type Geometry struct {
 	// PromptsDir is the directory holding the implementer's rendered batch prompts.
 	PromptsDir string
 	// ScratchDir is the implementer's never-tracked directory.
-	// It holds its locks, its state-mutation lease and its plan-conflict record.
+	// It holds its locks and its state-mutation lease.
 	ScratchDir string
 	// Git is the git surface every worktree read goes through; the caller always sets it.
 	Git Git

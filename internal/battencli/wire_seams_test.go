@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -30,6 +31,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // intentionallyNil maps each shedrecipe.Env field path wire leaves nil to the reason.
@@ -68,6 +71,19 @@ var intentionallyNil = map[string]string{
 	"WebsterDeps.ReadOnly":                   "loom-only seam, batten runs no webster",
 	"WebsterDeps.Geom.Index":                 "loom-only seam, batten runs no webster",
 	"WebsterDeps.Geom.VerifyHold":            "loom-only seam, batten runs no webster",
+	"WeaverRun":                              "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Runner":                      "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Fixer":                       "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Deliver":                     "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Reed":                        "loom-only seam, batten runs no weaver",
+	"WeaverDeps.CommitRecords":               "loom-only seam, batten runs no weaver",
+	"WeaverDeps.RecordsHead":                 "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Geom.Index":                  "loom-only seam, batten runs no weaver",
+	"WeaverDeps.Geom.VerifyHold":             "loom-only seam, batten runs no weaver",
+	"ImplementerSeam.Setting":                "loom-only seam, batten runs no implementer",
+	"ImplementerSeam.StateHistory":           "loom-only seam, batten runs no implementer",
+	"ImplementerSeam.TaskHead":               "loom-only seam, batten runs no implementer",
+	"ImplementerSeam.LiveStrands":            "loom-only seam, batten runs no implementer",
 	"PlanIndex":                              "loom-only seam, batten has no plan segment",
 	"CommitWebster":                          "loom-only seam, batten runs no webster",
 	"ApproveDiscussion":                      "loom-only seam, batten has no discussion segment",
@@ -222,6 +238,10 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/shedrecipe#Env
 //lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
+//lym:seam internal/weaverengine#ActiveDeps
+//lym:seam internal/weaverengine#Config
+//lym:seam internal/weaverengine#Geometry
+//lym:seam internal/weaverengine#RunDeps
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
@@ -632,6 +652,55 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 			t.Errorf("readAgentActivity() waitLive = %v, error = %v for %s; want %v, nil", waitLive, err, step.name, step.wantLive)
 		}
 	}
+
+	// A Weaver run's verify fixer is bounded by weaver.yaml's fixer_timeout_min, 10 minutes here, below Webster's 60.
+	// A fixer 30 minutes old is past Weaver's bound and within Webster's, so it tells the two bounds apart.
+	writeConfigLayer := func(baseDir, module, content string) {
+		path := configengine.ConfigFile(baseDir, module)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	anchorPath := taskLocation.AnchorPath()
+	writeConfigLayer(anchorPath, "weaver", strings.Replace(weaverengine.ConfigTemplate(), "fixer_timeout_min: 60", "fixer_timeout_min: 10", 1))
+	begunWeaver := &weaverengine.State{State: runplan.State{Batches: map[int]*runplan.BatchState{1: {Slug: "first"}}}}
+	if err := weaverengine.SaveState(weaverengine.Dir(anchorPath), weaverengine.ScratchDir(anchorPath), begunWeaver); err != nil {
+		t.Fatal(err)
+	}
+	checkWeaverVerifyFixerBound := func(stage string) {
+		for _, step := range []struct {
+			name         string
+			registeredAt time.Time
+			wantLive     bool
+		}{
+			{"VerifyFixerWithinWeaversBoundIsAWait", time.Now().Add(-5 * time.Minute), true},
+			{"VerifyFixerPastWeaversBoundIsNoWait", time.Now().Add(-30 * time.Minute), false},
+		} {
+			record := runproc.SelfRecord(gatefixer.RoleVerifyFixer)
+			record.RegisteredAt = step.registeredAt
+			if err := runproc.Register(runProcDir, taskLocation.WorktreeName, record); err != nil {
+				t.Fatal(err)
+			}
+			if _, waitLive, err := readAgentActivity(taskLocation); err != nil || waitLive != step.wantLive {
+				t.Errorf("readAgentActivity() waitLive = %v, error = %v for %s %s; want %v, nil", waitLive, err, step.name, stage, step.wantLive)
+			}
+		}
+	}
+	checkWeaverVerifyFixerBound("with a begun Weaver state")
+
+	// With Webster's state file corrupt the seam refuses, and the setting naming weaver still selects Weaver's bound.
+	websterStatePath := filepath.Join(websterengine.Dir(anchorPath), "state.json")
+	if err := os.MkdirAll(filepath.Dir(websterStatePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(websterStatePath, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeConfigLayer(fabricengine.BoltDir(taskLocation.HubPath), "tapestry", strings.Replace(loomengine.TapestryConfigTemplate(), "implementer: webster", "implementer: weaver", 1))
+	checkWeaverVerifyFixerBound("beside a corrupt Webster state with the setting naming weaver")
 }
 
 // TestWire_CreateWorktreeClaimsTheBoardEntry asserts the closure claims the board entry before it touches the pair.

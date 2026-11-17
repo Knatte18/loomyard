@@ -46,7 +46,7 @@ func TestInterruptPolicyFor(t *testing.T) {
 
 // TestInterruptPolicies_ClosedVocabulary asserts every value in InterruptPolicies is one of the two declared constants, so a typo'd third policy word cannot ship.
 //
-//testtiming:keep pins that every policy value is a declared constant, which TestArchivedWebsterDirs never asserts
+//testtiming:keep pins that every policy value is a declared constant, which TestArchivedRunRecordDirs never asserts
 func TestInterruptPolicies_ClosedVocabulary(t *testing.T) {
 	tiergate.Require(t, 0)
 	for row, policy := range InterruptPolicies {

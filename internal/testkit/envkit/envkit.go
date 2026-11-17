@@ -47,6 +47,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/verifytree"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"gopkg.in/yaml.v3"
 )
@@ -103,6 +104,13 @@ var nilLegal = map[string]bool{
 	"WebsterDeps.Geom.Git":             true,
 	"WebsterDeps.Geom.GateSlots":       true,
 	"WebsterDeps.Geom.GateConfig":      true,
+	"WeaverDeps.Batcher":               true,
+	"WeaverDeps.Verify":                true,
+	"WeaverDeps.Clock":                 true,
+	"WeaverDeps.ParentBranch":          true,
+	"WeaverDeps.Geom.Git":              true,
+	"WeaverDeps.Geom.GateSlots":        true,
+	"WeaverDeps.Geom.GateConfig":       true,
 	"InnerRun.Now":                     true,
 	"InnerRun.Awake":                   true,
 	"InnerRun.Pause":                   true,
@@ -425,7 +433,18 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		WebsterDeps:   shedfake.WebsterSeams(),
 		CommitWebster: func() error { return nil },
-		Landing:       LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
+		WeaverRun: func(weaverengine.RunDeps) (weaverengine.RunResult, error) {
+			return weaverengine.RunResult{}, nil
+		},
+		WeaverDeps: shedfake.WeaverSeams(),
+		ImplementerSeam: weaverengine.ActiveDeps{
+			AnchorRoot:   filepath.Join(dir, "anchor"),
+			Setting:      func() (string, error) { return "webster", nil },
+			StateHistory: func() ([]weaverengine.StateVersion, error) { return nil, nil },
+			TaskHead:     func() (string, error) { return "task-head", nil },
+			LiveStrands:  func() ([]string, error) { return nil, nil },
+		},
+		Landing: LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",

@@ -102,18 +102,18 @@ func TestWebsterProducer_OutcomeDone(t *testing.T) {
 	}
 }
 
-// websterDepsWithScratch returns RunDeps whose scratch directory is a fresh temporary one.
+// websterDepsWithScratch returns RunDeps whose scratch directory and anchor root are fresh temporary ones.
 // A stuck outcome's conflict claim then never resolves against the test's working directory.
 func websterDepsWithScratch(t *testing.T) websterengine.RunDeps {
 	t.Helper()
-	return websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: t.TempDir(), ScratchDir: t.TempDir()}}
+	return websterengine.RunDeps{Geom: websterengine.Geometry{AnchorRoot: t.TempDir(), WebsterDir: t.TempDir(), ScratchDir: t.TempDir()}}
 }
 
-// seedWebsterConflictRecord writes a conflict record naming findings into deps' scratch directory.
+// seedWebsterConflictRecord writes a conflict record naming findings into deps' conflict directory.
 func seedWebsterConflictRecord(t *testing.T, deps websterengine.RunDeps, findings ...string) {
 	t.Helper()
 	conflict := &websterengine.PlanConflictError{Batch: 1, Cause: websterengine.ConflictCausePlanDefect, Findings: findings}
-	if err := websterengine.WriteConflictRecord(deps.Geom.ScratchDir, conflict); err != nil {
+	if err := websterengine.WriteConflictRecord(deps.Geom.ConflictDir(), conflict); err != nil {
 		t.Fatalf("WriteConflictRecord() error = %v", err)
 	}
 }
@@ -230,7 +230,10 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := websterDepsWithScratch(t)
-			scratch := deps.Geom.ScratchDir
+			scratch := deps.Geom.ConflictDir()
+			if err := os.MkdirAll(scratch, 0o755); err != nil {
+				t.Fatalf("mkdir conflict dir: %v", err)
+			}
 			if tt.seed != nil {
 				tt.seed(t, scratch, deps)
 			}
@@ -315,7 +318,7 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 			p := NewWebsterProducer("loom", fake.run, deps)
 
 			outcome, ptr, err := p.Call(context.Background())
-			if _, statErr := os.Stat(websterengine.RoutedConflictPath(deps.Geom.ScratchDir)); !os.IsNotExist(statErr) {
+			if _, statErr := os.Stat(websterengine.RoutedConflictPath(deps.Geom.ConflictDir())); !os.IsNotExist(statErr) {
 				t.Errorf("stat routed file = %v; want it absent, since an error never consults the record", statErr)
 			}
 			if tt.wantStuck {
@@ -467,7 +470,7 @@ func TestWebsterProducer_CancelledDuringRun_StuckPausedAndErrorBecomeContextErro
 			p := NewWebsterProducer("loom", fake.run, deps)
 
 			outcome, ptr, err := p.Call(ctx)
-			if _, statErr := os.Stat(websterengine.RoutedConflictPath(deps.Geom.ScratchDir)); !os.IsNotExist(statErr) {
+			if _, statErr := os.Stat(websterengine.RoutedConflictPath(deps.Geom.ConflictDir())); !os.IsNotExist(statErr) {
 				t.Errorf("stat routed file = %v; want it absent, since the cancellation check precedes the claim", statErr)
 			}
 			if err == nil {
@@ -551,7 +554,7 @@ func TestWebsterProducer_ConflictRerouteCapThenRepeatHalts(t *testing.T) {
 	if first.Outcome != shedengine.RunBlocked || !strings.Contains(first.Reason, "reroute cap reached") || !strings.Contains(first.Reason, capWayForward) {
 		t.Fatalf("first Run() = %q, %q; want blocked with the reroute cap reason and the told clause", first.Outcome, first.Reason)
 	}
-	requireWebsterFile(t, websterengine.RoutedConflictPath(deps.Geom.ScratchDir), "- finding-a\n")
+	requireWebsterFile(t, websterengine.RoutedConflictPath(deps.Geom.ConflictDir()), "- finding-a\n")
 
 	second, err := shed.Run(context.Background())
 	if err != nil {

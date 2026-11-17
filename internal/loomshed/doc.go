@@ -7,6 +7,11 @@
 // The stops its gate rows halt on each name a way forward, as contracts/specs/refusal-spec.md defines one.
 // The Webster row loads `batcher.yaml` through the layer stack under the told `configengine.Dirs`;
 // it does so when it partitions the plan, and a load fault stops the row with the fix-and-re-step way forward.
+// Both implementer rows, Webster's and Weaver's, run a guard first, so one run stays on one implementer.
+// The guard asks `weaverengine.Active` for the run's implementer.
+// A row whose run holds the other implementer's begun batches stops without spawning anything.
+// It names the command that ends that run and the `tapestry.implementer` setting to set back.
+// A state file the seam cannot read stops the row with the seam's own way forward.
 //
 // Its plan gates, and the discussion gate's citation check, resolve refs and symbols through a told planindex.Index,
 // so the package links no tree-sitter grammar.
@@ -24,9 +29,10 @@
 // With it set, ValidateDiscussion also runs the citation check and the relevant-list check.
 // NewDiscussionGate maps it onto the gate contract and commits nothing.
 // The plan gate and `lym loom validate-plan` share ValidatePlan.
-// It reads webster's run record under the anchor and tells the index the cards of every batch it holds done.
+// It reads the active implementer's run record under the anchor, the one `weaverengine.Active` names.
+// It tells the index the cards of every batch that record holds done.
 // Those cards are history, not targets:
-// a run moved back to the plan review after Webster executed batches has their work in the tree,
+// a run moved back to the plan review after the implementer executed batches has their work in the tree,
 // so their tree-dependent checks are skipped.
 // Every other card, and every card of a plan with no run record, is checked against the tree.
 // A done card is also frozen:
@@ -169,8 +175,9 @@
 // A retired generation lives in the Plan-Write rotation's archive above or in the rework round that retired it.
 // A round holds it under `round-<N>/prior-generation/`.
 // This package declares the round layout once.
-// It builds every path from the existing accessors and tells webster its archive destination.
-// Webster's run record and the Plan-Review and Code-Review run directories are generation-scoped:
+// It builds every path from the existing accessors and tells the implementers' archive seam its destinations:
+// webster's slot, and weaver's slot beside it.
+// Webster's and Weaver's run records and the Plan-Review and Code-Review run directories are generation-scoped:
 // they move into the round with the plan, so the next generation starts with none.
 //
 // The Discussion-Write and Darn-Write producers share runAndCommit.
@@ -287,7 +294,7 @@
 // PlanReviewSkippable classifies the live plan generation from the committed round records.
 // It answers false while the plan amendment record exists,
 // so the amended plan is judged and its settle records a round start.
-// ArchivedWebsterDirs lists each round's archived webster run record.
+// ArchivedRunRecordDirs lists each round's archived webster and weaver run records.
 //
 // InterruptPolicies also names the pawl recipe's Beam-Up, Beam-Await and Beam-Down rows as reinvoke:
 // each spawns no agent and is idempotent,

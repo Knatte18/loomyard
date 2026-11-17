@@ -160,14 +160,11 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 	return &logs
 }
 
-// seedConflictRecord writes a plan-conflict record into the fixture's scratch directory.
+// seedConflictRecord writes a plan-conflict record into the fixture's conflict directory.
 func seedConflictRecord(t *testing.T, fx *runFixture) {
 	t.Helper()
-	if err := os.MkdirAll(fx.Deps.Geom.ScratchDir, 0o755); err != nil {
-		t.Fatalf("mkdir webster scratch dir: %v", err)
-	}
 	conflict := &websterengine.PlanConflictError{Batch: 1, Cause: websterengine.ConflictCausePlanDefect, Findings: []string{"a finding"}}
-	if err := websterengine.WriteConflictRecord(fx.Deps.Geom.ScratchDir, conflict); err != nil {
+	if err := websterengine.WriteConflictRecord(fx.Deps.Geom.ConflictDir(), conflict); err != nil {
 		t.Fatalf("seed plan-conflict record: %v", err)
 	}
 }
@@ -175,7 +172,7 @@ func seedConflictRecord(t *testing.T, fx *runFixture) {
 // requireNoConflictRecord fails the test when the fixture's plan-conflict record still exists.
 func requireNoConflictRecord(t *testing.T, fx *runFixture) {
 	t.Helper()
-	if _, err := os.Stat(websterengine.ConflictRecordPath(fx.Deps.Geom.ScratchDir)); !os.IsNotExist(err) {
+	if _, err := os.Stat(websterengine.ConflictRecordPath(fx.Deps.Geom.ConflictDir())); !os.IsNotExist(err) {
 		t.Errorf("stat plan-conflict record = %v; want it removed", err)
 	}
 }
@@ -373,7 +370,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			wayForward: []string{"lym webster status"},
 			// The live run's record survives a Run refused as busy.
 			check: func(t *testing.T, fx *runFixture, _ error) {
-				if _, err := os.Stat(websterengine.ConflictRecordPath(fx.Deps.Geom.ScratchDir)); err != nil {
+				if _, err := os.Stat(websterengine.ConflictRecordPath(fx.Deps.Geom.ConflictDir())); err != nil {
 					t.Errorf("stat plan-conflict record = %v; want it kept after ErrRunBusy", err)
 				}
 			},
@@ -1468,7 +1465,7 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 		{
 			name: "a plan-conflict record that cannot be removed does not refuse the run",
 			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
-				recordPath := websterengine.ConflictRecordPath(fx.Deps.Geom.ScratchDir)
+				recordPath := websterengine.ConflictRecordPath(fx.Deps.Geom.ConflictDir())
 				if err := os.MkdirAll(filepath.Join(recordPath, "occupant"), 0o755); err != nil {
 					t.Fatalf("plant a non-empty directory at the record path: %v", err)
 				}

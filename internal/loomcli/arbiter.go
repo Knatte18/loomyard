@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -22,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedworktree"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 )
 
 // arbiterVerb runs `lym loom arbiter` over deps and prints its envelope to out, returning the exit code.
@@ -134,6 +136,10 @@ func (c *loomCLI) arbiterDepsFor() (shedarbiter.Deps, error) {
 	location := c.location
 	runID := shedrun.ResolveRunID(location, c.runID)
 	record := runRecordOf(location, c.recipe)
+	implementer, _, fallbackReason := weaverengine.ActiveOrSetting(anchorImplementerSeam(location))
+	if fallbackReason != "" {
+		logger.Warn("loomcli: arbiter: active implementer unreadable, naming the setting's implementer", "reason", fallbackReason)
+	}
 	planApproved := planApprovedReader(location.AnchorPath())
 	reviewsDir := loomengine.LoomReviewsDir(location)
 	bouncerRunDir := func(producer string) (string, bool, error) {
@@ -161,7 +167,7 @@ func (c *loomCLI) arbiterDepsFor() (shedarbiter.Deps, error) {
 			return shedadapters.PendingCirclingDecision(runDir)
 		},
 		Prompt: shedarbiter.PromptInput{
-			Recipe:             arbiterRecipeDescription(c.recipe),
+			Recipe:             arbiterRecipeDescription(c.recipe, weaverengine.ArbiterNote(implementer, location.AnchorPath())),
 			Slug:               seedSlug(location.WorktreeName),
 			Worktree:           location.WorktreePath(),
 			DecisionRecordPath: record.path,

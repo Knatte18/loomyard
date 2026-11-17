@@ -231,8 +231,11 @@
 //	Recipe                         Row                                         Key              Scope
 //	loom                           Webster, per card                           card             card
 //	loom                           Webster, per batch                          batch            card
+//	tapestry                       Weaver, per card                            card             card
+//	tapestry                       Weaver, per batch                           batch            card
 //	loom                           Webster, verify fixers                      webster-fix      diff
 //	loom                           Webster, end gate                           webster          all
+//	tapestry                       Weaver, end gate                            webster          all
 //	loom                           Parent-Align                                parent-align     all
 //	tapestry, darn, sampler        Code-Burler-Fix                             code-burler-fix  diff
 //	tapestry, darn, pawl, sampler  PR-Review                                   pr-review        diff

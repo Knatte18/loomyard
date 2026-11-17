@@ -361,7 +361,7 @@ producers:
             plan's overview file: a fixer that set the flag would be approving the very artifact
             the review round is judging, and this row already has write access to the overview
             because it runs fix-scope: overlay with the plan directory in its target paths. When
-            .lym/webster/plan-conflict.md exists, Webster's begin-batch refused the approved plan
+            .lym/implementer/plan-conflict.md exists, the implementer's begin refused the approved plan
             against the current tree: each blocking finding it lists is a finding of this round,
             fixed by editing only cards Webster's auto-rebaseline accepts: a pending card, or a
             card of a failed or in-flight batch. When _lym/loom/amendment.yaml exists, each

@@ -223,10 +223,10 @@
 // A forthcoming target that never lands keeps the run from outcome done.
 // The run-exit check requires a terminal done record for every batch.
 //
-// loom's plan gate takes a narrower scope from DoneCards:
+// loom's plan gate takes a narrower scope from runplan's DoneCards:
 // only the cards of a batch recorded terminal with status done, read from the batch records alone, with no batchifier.
 // A run moved back to the plan review keeps its run record, and those cards are history whose work is in the tree.
-// The gate reads EditedDoneCards beside DoneCards:
+// The gate reads runplan's EditedDoneCards beside DoneCards:
 // the ids of those cards whose file no longer hashes to the CardHashes entry their batch recorded at begin.
 // It reads the batch records and the card bytes alone.
 //
@@ -823,8 +823,8 @@
 //
 // # The plan-conflict record
 //
-// begin-batch leaves two never-tracked files in the scratch directory (`.lym/webster/`), never under `_lym`,
-// so no sync carries them:
+// begin-batch leaves two never-tracked files in the implementer-neutral conflict directory (`.lym/implementer/`).
+// They are never under `_lym`, so no sync carries them:
 // the conflict record `plan-conflict.md`, naming the batch, the cause and each blocking finding;
 // the last-routed conflict `plan-conflict-routed.md`, holding the findings of the conflict last routed to plan review.
 // Their paths are ConflictRecordPath and RoutedConflictPath.

@@ -50,6 +50,10 @@ import (
 //lym:seam internal/shedrecipe#Env
 //lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
+//lym:seam internal/weaverengine#ActiveDeps
+//lym:seam internal/weaverengine#Config
+//lym:seam internal/weaverengine#Geometry
+//lym:seam internal/weaverengine#RunDeps
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
@@ -125,6 +129,10 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 //lym:seam internal/shedrecipe#Env
 //lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
+//lym:seam internal/weaverengine#ActiveDeps
+//lym:seam internal/weaverengine#Config
+//lym:seam internal/weaverengine#Geometry
+//lym:seam internal/weaverengine#RunDeps
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
@@ -173,6 +181,10 @@ func TestNilSeams_ReportsExactPaths(t *testing.T) {
 //lym:seam internal/shedrecipe#Env
 //lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
+//lym:seam internal/weaverengine#ActiveDeps
+//lym:seam internal/weaverengine#Config
+//lym:seam internal/weaverengine#Geometry
+//lym:seam internal/weaverengine#RunDeps
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps

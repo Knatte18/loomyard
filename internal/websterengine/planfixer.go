@@ -101,7 +101,7 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 		return st.PlanFixers[n-1], false, nil
 	}
 
-	record, err := ReadConflictRecord(deps.Geom.ScratchDir)
+	record, err := ReadConflictRecord(deps.Geom.ConflictDir())
 	if err != nil {
 		return nil, false, fmt.Errorf("%w; way forward: transient, re-run `%s`", err, fixPlanCommand)
 	}
@@ -142,7 +142,7 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 	if err != nil {
 		return nil, false, fmt.Errorf("webster: resolve plan fixer reply path: %w", err)
 	}
-	recordPath, err := filepath.Abs(ConflictRecordPath(deps.Geom.ScratchDir))
+	recordPath, err := filepath.Abs(ConflictRecordPath(deps.Geom.ConflictDir()))
 	if err != nil {
 		return nil, false, fmt.Errorf("webster: resolve plan-conflict record path: %w", err)
 	}

@@ -38,6 +38,8 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/planindex",
 	"github.com/Knatte18/loomyard/internal/battenshed",
 	"github.com/Knatte18/loomyard/internal/preflightshed",
+	// internal/weaverengine is imported for the told ActiveDeps type of Env.ImplementerSeam; it resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/weaverengine",
 	"github.com/Knatte18/loomyard/internal/websterengine",
 	"github.com/Knatte18/loomyard/internal/burlerengine",
 	// internal/configengine is imported for the told Dirs type the batcher-backed rows load through; it resolves no geometry.

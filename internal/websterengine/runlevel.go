@@ -400,7 +400,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 
 	// A record is bounded to one Webster call.
 	// The removal sits behind the lock, so a refused-busy Run never removes the live run's record.
-	if err := RemoveConflictRecord(deps.Geom.ScratchDir); err != nil {
+	if err := RemoveConflictRecord(deps.Geom.ConflictDir()); err != nil {
 		logger.Warn("websterengine: stale plan-conflict record not removed", "err", err)
 	}
 

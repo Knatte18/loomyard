@@ -326,7 +326,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedtransient/       the one translation from lower-level failure classifications into the shed engine's transient mark
 ├── internal/seatengine/          the seat runner: starts, joins, probes, resumes and stops a chair and its advisors over shuttle, each seat in its own strand
-├── internal/shedadapters/        the Shed engine adapters (Webster, the Burler review and fix row producers, MultiLLMProducer, and the Bouncer) over shuttle/websterengine/burlerengine/seatengine
+├── internal/shedadapters/        the Shed engine adapters (Webster, Weaver, the Burler review and fix row producers, MultiLLMProducer, and the Bouncer) over shuttle/websterengine/burlerengine/seatengine
 ├── internal/loomcli/             loom's cobra module: the session bootstrap, arming `internal/shedverbs`' generic status and pause verb bodies, and mounting `internal/sheddriver` for `lym loom drive`
 ├── internal/loomshed/            loom's own row-name constants and producer constructors over `shedengine`
 ├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the tapestry, darn, pawl, sampler, motif, raddle and arras recipes from their embedded files, and expands tapestry's and arras's `Motif` block from motif, the recipe that makes a sketch, the decision record
@@ -407,6 +407,8 @@ github.com/Knatte18/loomyard/
 ├── internal/testcover/          the per-test coverage engine: runs each test of a package alone under a coverage binary, keys blocks by content, judges contained and removable tests, reads and writes the per-package coverage map, and compares a map with a commit to plan which tests a build re-measures or to name the miss that rebuilds the package whole
 ├── internal/dotnetimpact/       the `dotnet` scoper's derivation: the test projects and test classes a C# diff or a card's targets reach, by type-name closure over the source, or a fallback reason to run the tier whole
 ├── internal/runplan/            the run-plan state and batch machinery an implementer embeds and calls: plan fingerprint and file hashes, recorded partition, batch records, the batch report contract, dispatch re-resolution and plan-conflict record, post-batch checks, suspect-path checks, digest, card gates, report await and verify-failure record, told its paths and each refusal's way forward by the implementer
+├── internal/weaverengine/       Weaver, the cold-start implementer with model escalation
+├── internal/weavercli/          Weaver's cobra module, mounted on the root: `lym weaver reset`
 ├── internal/verifytree/         the one plan-verify function: clean-tree check, verified-tree record and running marker, used by landing, both webster gates and `lym webster verify`
 └── internal/verifyrun/          in-process shell-command runner behind `internal/verifytree` and webster's card-verify rerun
 ```
@@ -1041,8 +1043,8 @@ User-facing modules each get one `lym <module>` namespace:
   `insert-card`, `remove-card` and `restore-renumber` are the plan-editing verbs.
   They add or drop one card and renumber the cards after it through `internal/planparser`.
   A journal makes an interrupted call restorable.
-  They refuse a position at or before the last card webster has begun.
-  They hold webster's state-mutation lease while they run.
+  They refuse a position at or before the last card the active implementer has begun.
+  They hold the active implementer's state-mutation lease while they run.
   A second embedded recipe, `contracts/recipes/darn-recipe.yaml`, drives a darn run.
   `Record-Write` writes the decision record and support log from the board entry, with no agent.
   `Drift-Baseline` records the regression scope from config with no agent and starts the baseline capture.
@@ -1191,7 +1193,7 @@ User-facing modules each get one `lym <module>` namespace:
   The bullet goes under `## PATTERN changes`; for `withdraws`, the call strikes it in the same commit.
   `--from <file>` in place of the per-entry flags records a JSON array of such calls in one write and one commit.
   Each live agent gets one notice naming the new headings.
-  Webster's Merriam, which reads no record, gets every entry's text inline.
+  Webster's Merriam, which reads no record, gets every entry's text inline, and so do Weaver's strands.
   The verb also works on a Record-Write run once Record-Write has committed the record, under these checks:
   the record equals its committed copy;
   it holds every `Added after Discussion` entry its history held;
@@ -1217,7 +1219,8 @@ User-facing modules each get one `lym <module>` namespace:
   The line names the record and the heading of each entry.
   The tackler, the arbiter and the caller get no line.
   It reports the strands told under `notified` and any failed notice under `notice_errors`, without failing.
-  A Webster Master session of a run that is not running gets no notice and is named under `notice_held_back`.
+  A Weaver strand gets every entry's text inline too, and the verb records each such notice in Weaver's state.
+  A Webster Master session or a Weaver strand of a run that is not running gets no notice and is named under `notice_held_back`.
   `validate-plan` runs the same checks a non-twill Plan-Write run's and Plan-Burler-Fix's own gates run, standalone.
   The exit-code and findings-envelope contract is the same as `validate-discussion`'s.
   It works over the current worktree's plan instead of its discussion.

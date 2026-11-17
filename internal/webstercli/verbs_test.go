@@ -533,9 +533,9 @@ func TestBeginBatchCmd_PlanConflict(t *testing.T) {
 				tt.shapePlan(t, fx)
 			}
 			fx.initState(t)
-			scratch := fx.CLI.geom.ScratchDir
+			scratch := fx.CLI.geom.ConflictDir()
 			if err := os.MkdirAll(scratch, 0o755); err != nil {
-				t.Fatalf("mkdir scratch dir: %v", err)
+				t.Fatalf("mkdir conflict dir: %v", err)
 			}
 			stale := &websterengine.PlanConflictError{Batch: 9, Cause: websterengine.ConflictCauseTreeMoved, Findings: []string{"stale-finding"}}
 			recordPath, routedPath := websterengine.ConflictRecordPath(scratch), websterengine.RoutedConflictPath(scratch)

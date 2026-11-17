@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -202,6 +203,14 @@ type Env struct {
 	// it also commits the plan directory whose cards the run rewrote;
 	// the Webster entry's producer invokes it once the run reports Done.
 	CommitWebster func() error
+	// WeaverRun is the injected shedadapters.WeaverRunner seam.
+	WeaverRun shedadapters.WeaverRunner
+	// WeaverDeps is the already-resolved weaverengine.RunDeps value; the Weaver entry fills the gate, config and ladder.
+	// Its Batcher stays nil, since the producer resolves it on every Call.
+	WeaverDeps weaverengine.RunDeps
+	// ImplementerSeam is the active-implementer seam's deps, handed to the implementer rows' guard.
+	// The guard refuses a zero AnchorRoot when the row runs.
+	ImplementerSeam weaverengine.ActiveDeps
 	// Landing is a whole-struct passthrough handed unchanged to landingshed.NewPublish and NewFinalize.
 	// It is not flattened into fields, since landingshed.Deps is one value the caller fills as a unit.
 	// The caller of the registry fills it;

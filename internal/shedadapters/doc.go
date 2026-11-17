@@ -1,6 +1,7 @@
 // Package shedadapters holds the shedengine.ShedProducer adapters for a Shed-built product's flat producer list.
 // Each adapter lets Shed drive one engine as an ordinary producer.
 // WebsterProducer wraps one websterengine multi-spawn run.
+// WeaverProducer wraps one weaverengine run, which builds every remaining batch of the plan as cold strands.
 // BurlerReviewProducer and BurlerFixProducer each wrap one half of a burlerengine round.
 // The halves are a reviewer strand and a fixer strand.
 // MultiLLMProducer wraps one seatengine table, a chair strand and its advisors' strands, as a single Shed row.
@@ -33,6 +34,12 @@
 //     Any other outcome value reaching Call is an engine-level error.
 //     WebsterProducer is a gate carrier: its done and stuck pointers carry the gate count and spans of the master run.
 //     The spans include the verify gate's entry.
+//   - WeaverProducer: Weaver's "done" outcome maps to Done, and the pointer's path is Weaver's summary path.
+//     Its "stuck" outcome maps to Stuck, and consults the plan-conflict record under the same claim as Webster's.
+//     So do ErrRunBusy and every other fault Weaver's run returns, such as a wiring error or a state read or write error;
+//     their text already names the way forward, which ends in this row's re-entry step.
+//     A cancellation replaces every non-success verdict with the context error.
+//     WeaverProducer carries no gate count: the verify fixer's gates are Weaver's own.
 //   - BurlerReviewProducer and BurlerFixProducer: a finished half maps to Stuck, never Done.
 //     A half is finished when shuttleengine.OutcomeDone is reached within the bounded retry.
 //     The pointer's path is the round's review path.

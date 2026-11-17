@@ -48,6 +48,7 @@ var configStrictnessDegradingSet = map[string]bool{
 	"internal/shuttleengine/codexengine":  true,
 	"internal/reedengine":                 true,
 	"internal/websterengine":              true,
+	"internal/weaverengine":               true,
 	"internal/batcher":                    true,
 	"internal/orchengine":                 true,
 	"internal/loggerconfig":               true,

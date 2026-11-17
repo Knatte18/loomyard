@@ -47,10 +47,10 @@ No site spells a tier list, a scope or a test command.
 
 | Key | Site | Template scope |
 |---|---|---|
-| `card` | each Webster card, through `--card`, then the comment lint and the headroom lint | `card` |
-| `batch` | each Webster batch, each tier run failing on a tmux server socket its end-of-package check finds | `card` |
+| `card` | each Webster or Weaver card, through `--card`, then the comment lint and the headroom lint | `card` |
+| `batch` | each Webster or Weaver batch, each tier run failing on a tmux server socket its end-of-package check finds | `card` |
 | `webster-fix` | Webster-Burler-Fix's verify fixers, after the headroom and comment lints | `diff` |
-| `webster` | Webster's end gate | `all` |
+| `webster` | Webster's end gate, and Weaver's plan-level verify | `all` |
 | `parent-align`, `finalize` | Parent-Align and Finalize | `all` |
 | `adopt` | `lym adopt check <subject>`, in-process through `gatecli.RunGate` in the subject's worktree | `all` |
 | `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |

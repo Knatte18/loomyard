@@ -23,6 +23,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -52,6 +54,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -315,6 +318,10 @@ type decisionDeps struct {
 	liveStrands func() ([]string, error)
 	// notify posts line to the strand named receiver through creel.
 	notify func(receiver, line string) error
+	// implementerSeam is the active-implementer seam, which tells whether the run's implementer is Weaver.
+	implementerSeam weaverengine.ActiveDeps
+	// recordDelivery records headings as delivered to the Weaver strand named strandName in Weaver's state.
+	recordDelivery func(strandName string, headings []string) error
 	// amendmentPath is the plan amendment record a call with --amends-plan writes.
 	amendmentPath string
 	// approvedPlan reports whether the current generation holds an approved plan.
@@ -410,11 +417,24 @@ func noticeFits(deps decisionDeps, line string) bool {
 	return creelengine.LineFits(programName, line)
 }
 
+// weaverStrand reports whether the live run's strand named strand is one of Weaver's:
+// a batch strand, or a verify fixer while weaverActive says Weaver is the run's implementer.
+// The qualifier is for the fixer alone, since Webster's verify fixers run under the same role.
+func weaverStrand(strand string, weaverActive bool) bool {
+	name, err := agentname.Parse(strand)
+	if err != nil {
+		return false
+	}
+	return agentname.MatchesRole(name.Role, weaverengine.BatchStrandRole) ||
+		(weaverActive && agentname.MatchesRole(name.Role, gatefixer.RoleVerifyFixer))
+}
+
 // decisionNoticeInline reports whether the live run's strand named strand reads no decision record.
 // Its notice then carries every entry's text.
-func decisionNoticeInline(strand string) bool {
+// Webster's Master session and Weaver's strands read none; weaverActive says Weaver is the run's implementer.
+func decisionNoticeInline(strand string, weaverActive bool) bool {
 	name, err := agentname.Parse(strand)
-	return err == nil && agentname.MatchesRole(name.Role, websterengine.MerriamStrandRole)
+	return err == nil && (agentname.MatchesRole(name.Role, websterengine.MerriamStrandRole) || weaverStrand(strand, weaverActive))
 }
 
 // decisionNoticeReceiver reports whether the live run's strand named strand gets the notice of a call by caller.
@@ -437,21 +457,29 @@ type decisionNoticeHeldBack struct {
 // A Webster Master session of a halted run is left over from a run that ended:
 // woken, it would drive the run's bracket verbs with no `lym webster run` owning them.
 // The fresh session a re-entry starts carries the decision in its prompt instead.
-func heldBackReason(strand string, halted shedengine.State) string {
+// A Weaver strand of a halted run is left over the same way, and the re-entry sends it the entries it lacks.
+// weaverActive says Weaver is the run's implementer.
+func heldBackReason(strand string, halted shedengine.State, weaverActive bool) string {
 	if halted == "" {
 		return ""
 	}
 	name, err := agentname.Parse(strand)
-	if err != nil || !agentname.MatchesRole(name.Role, websterengine.MerriamStrandRole) {
+	switch {
+	case err != nil:
 		return ""
+	case agentname.MatchesRole(name.Role, websterengine.MerriamStrandRole):
+		return fmt.Sprintf("the run is %s, so this Webster session's run has ended and waking it would start work no run owns; the fresh session the run's re-entry starts carries the decision", halted)
+	case weaverStrand(strand, weaverActive):
+		return fmt.Sprintf("the run is %s, so this Weaver strand's run has ended and waking it would start work no run owns; the run's re-entry sends the strand the entries it lacks", halted)
 	}
-	return fmt.Sprintf("the run is %s, so this Webster session's run has ended and waking it would start work no run owns; the fresh session the run's re-entry starts carries the decision", halted)
+	return ""
 }
 
 // addedNoticeLines returns the notice lines the live strand named strand gets for the entries added.
 // A batch whose one notice would not fit creel's line goes as one line per entry.
-func addedNoticeLines(deps decisionDeps, added []discussionparser.AddedDecision, strand string) []string {
-	lines := []string{decisionNoticeLine(deps.recordPath, added, decisionNoticeInline(strand))}
+// weaverActive says Weaver is the run's implementer.
+func addedNoticeLines(deps decisionDeps, added []discussionparser.AddedDecision, strand string, weaverActive bool) []string {
+	lines := []string{decisionNoticeLine(deps.recordPath, added, decisionNoticeInline(strand, weaverActive))}
 	if len(added) > 1 && !noticeFits(deps, lines[0]) {
 		// Each one-entry notice fits, which decisionVerb checked before it recorded anything.
 		lines = lines[:0]
@@ -466,7 +494,12 @@ func addedNoticeLines(deps decisionDeps, added []discussionparser.AddedDecision,
 // halted is the run's state when it is not running, and empty otherwise; heldBackReason picks the strands it keeps from.
 // It returns the strands posted to, the strands held back, and the failures, each logged at Warn;
 // a failure never stops the next post.
-func notifyLiveRuns(deps decisionDeps, halted shedengine.State, linesFor func(strand string) []string) ([]string, []decisionNoticeHeldBack, []decisionNoticeError) {
+// It reads once whether the run's implementer is Weaver, advisorily.
+// A seam refusal falls back to the setting and is logged.
+// linesFor and heldBackReason take that answer.
+// A strand of Weaver's that got its notice has headings, those of the entries the notice carried, recorded as delivered;
+// no headings records nothing, and a failed record is that strand's failure.
+func notifyLiveRuns(deps decisionDeps, halted shedengine.State, headings []string, linesFor func(strand string, weaverActive bool) []string) ([]string, []decisionNoticeHeldBack, []decisionNoticeError) {
 	notified := []string{}
 	heldBack := []decisionNoticeHeldBack{}
 	failures := []decisionNoticeError{}
@@ -475,19 +508,29 @@ func notifyLiveRuns(deps decisionDeps, halted shedengine.State, linesFor func(st
 		logger.Warn("loom: a decision call could not list the run's live agents; no notice sent", "error", err)
 		return notified, heldBack, append(failures, decisionNoticeError{Error: "list the run's live agents: " + err.Error()})
 	}
+	implementer, _, seamReason := weaverengine.ActiveOrSetting(deps.implementerSeam)
+	if seamReason != "" {
+		logger.Warn("loom: a decision call read the run's implementer from the setting, since the seam refused", "reason", seamReason)
+	}
+	weaverActive := implementer == weaverengine.ImplementerWeaver
 	for _, strand := range strands {
 		if !decisionNoticeReceiver(strand, deps.strandName) {
 			continue
 		}
-		if reason := heldBackReason(strand, halted); reason != "" {
+		if reason := heldBackReason(strand, halted, weaverActive); reason != "" {
 			logger.Warn("loom: a decision call held its notice back from a live agent of a halted run", "strand", strand, "state", string(halted))
 			heldBack = append(heldBack, decisionNoticeHeldBack{Strand: strand, Reason: reason})
 			continue
 		}
 		var err error
-		for _, line := range linesFor(strand) {
+		for _, line := range linesFor(strand, weaverActive) {
 			if err = deps.notify(strand, line); err != nil {
 				break
+			}
+		}
+		if err == nil && len(headings) > 0 && weaverStrand(strand, weaverActive) {
+			if err = deps.recordDelivery(strand, headings); err != nil {
+				err = fmt.Errorf("record the delivery in Weaver's state: %w", err)
 			}
 		}
 		if err != nil {
@@ -1027,8 +1070,8 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	if found && st.State != shedengine.StateRunning {
 		halted = st.State
 	}
-	notified, heldBack, noticeErrors := notifyLiveRuns(deps, halted, func(strand string) []string {
-		return addedNoticeLines(deps, added, strand)
+	notified, heldBack, noticeErrors := notifyLiveRuns(deps, halted, headings, func(strand string, weaverActive bool) []string {
+		return addedNoticeLines(deps, added, strand, weaverActive)
 	})
 	result := map[string]any{
 		"slug":          slug,
@@ -1350,7 +1393,7 @@ func decisionReplaceVerb(out io.Writer, slug string, deps decisionDeps, input re
 	if found && st.State != shedengine.StateRunning {
 		halted = st.State
 	}
-	notified, heldBack, noticeErrors := notifyLiveRuns(deps, halted, func(string) []string { return []string{line} })
+	notified, heldBack, noticeErrors := notifyLiveRuns(deps, halted, nil, func(string, bool) []string { return []string{line} })
 	result := map[string]any{
 		"slug":          slug,
 		"record":        deps.recordPath,
@@ -1467,15 +1510,9 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	s.deps = decisionDeps{
-		strandName: os.Getenv(agentname.StrandNameEnv),
-		programName: func() (string, error) {
-			geometry, err := hubgeom.ReedGeometry(target)
-			if err != nil {
-				return "", err
-			}
-			return agentname.FormatProgram(geometry.NameShortname, loomProgram)
-		},
-		parent: func() (hubgeom.Parent, error) { return decisionParent(target, record, orchcli.OrchLive) },
+		strandName:  os.Getenv(agentname.StrandNameEnv),
+		programName: loomProgramName(target),
+		parent:      func() (hubgeom.Parent, error) { return decisionParent(target, record, orchcli.OrchLive) },
 		arbiterStrand: func(name string) bool {
 			geometry, err := hubgeom.ReedGeometry(target)
 			if err != nil {
@@ -1550,6 +1587,10 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		},
 		notify: func(receiver, line string) error {
 			return postDecisionNotice(decisionNoticeClients(target), os.Getenv(agentname.StrandNameEnv), receiver, line)
+		},
+		implementerSeam: anchorImplementerSeam(target),
+		recordDelivery: func(strandName string, headings []string) error {
+			return weaverengine.RecordDelivery(target.AnchorPath(), strandName, headings)
 		},
 		amendmentPath: loomengine.LoomAmendmentRecord(target),
 		approvedPlan:  planApprovedReader(target.AnchorPath()),
@@ -1788,6 +1829,62 @@ func decisionNoticeClients(target *lymcwd.Location) noticeClients {
 		program: func() (noticePoster, error) {
 			return creelcli.NewProgramClient(target, loomProgram)
 		},
+	}
+}
+
+// loomProgramName returns the resolver of the hub's full LOOM program name, '<shortname>:LOOM', for target's worktree.
+func loomProgramName(target *lymcwd.Location) func() (string, error) {
+	return func() (string, error) {
+		geometry, err := hubgeom.ReedGeometry(target)
+		if err != nil {
+			return "", err
+		}
+		return agentname.FormatProgram(geometry.NameShortname, loomProgram)
+	}
+}
+
+// weaverDeliver returns the production form of Weaver's decision delivery over location's run.
+// For the strand named strandName it reads the decision record's added entries.
+// It keeps those whose headings delivered lacks.
+// It posts them as one inline notice from the hub's LOOM program, split per entry when one line would not fit.
+// It returns the headings it posted.
+// A run with no decision record, and a strand that lacks nothing, post nothing.
+func weaverDeliver(location *lymcwd.Location) func(strandName string, delivered []string) ([]string, error) {
+	return func(strandName string, delivered []string) ([]string, error) {
+		recipe, err := seedRecipe(location)
+		if err != nil {
+			return nil, fmt.Errorf("read the run's seed: %w", err)
+		}
+		record := runRecordOf(location, recipe)
+		data, err := os.ReadFile(record.path)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read the decision record: %w", err)
+		}
+		entries, err := discussionparser.ParseAddedDecisions(data)
+		if err != nil {
+			return nil, fmt.Errorf("parse the decision record's added entries: %w", err)
+		}
+		var missing []discussionparser.AddedDecision
+		var headings []string
+		for _, entry := range entries {
+			if heading := addedDecisionHeading(entry); !slices.Contains(delivered, heading) {
+				missing = append(missing, entry)
+				headings = append(headings, heading)
+			}
+		}
+		if len(missing) == 0 {
+			return nil, nil
+		}
+		deps := decisionDeps{recordPath: record.path, programName: loomProgramName(location)}
+		for _, line := range addedNoticeLines(deps, missing, strandName, true) {
+			if err := postDecisionNotice(decisionNoticeClients(location), "", strandName, line); err != nil {
+				return nil, fmt.Errorf("post the decision notice to %s: %w", strandName, err)
+			}
+		}
+		return headings, nil
 	}
 }
 

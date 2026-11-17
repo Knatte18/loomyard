@@ -1,4 +1,4 @@
-// trace_test.go covers Trace over fakes of its three quarry seams, with a fixed plan and Webster state.
+// trace_test.go covers Trace over fakes of its three quarry seams, with a fixed plan and implementer state.
 // It also covers the errors NewTracer returns for a missing plan or state, over temp-dir fixtures.
 
 package failuretrace
@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
-	"github.com/Knatte18/loomyard/internal/websterengine"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -36,13 +36,13 @@ func tracePlan() *planparser.Plan {
 
 // traceState records cards 3 and 4 in one batch, 5 and 6 in another, and card 7 in a batch with no card commit.
 // Card 12 sits in a batch record that predates the Cards field.
-func traceState() *websterengine.State {
-	return &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
+func traceState() *runplan.State {
+	return &runplan.State{Batches: map[int]*runplan.BatchState{
 		1:  {Slug: "alpha", Cards: []string{"03-alpha", "04-beta"}, StartSHA: "s1", CardSHAs: []string{"c3", "c4"}},
 		2:  {Slug: "gamma", Cards: []string{"05-gamma", "06-delta"}, StartSHA: "s2", CardSHAs: []string{"c5", "c6"}},
 		7:  {Slug: "eps", Cards: []string{"07-eps"}, StartSHA: "s7"},
 		12: {Slug: "tests", StartSHA: "s12", CardSHAs: []string{"c12"}},
-	}}}
+	}}
 }
 
 // buildFailure is the go test output of a package that fails to build with one error at location.
@@ -255,12 +255,16 @@ func TestNewTracer(t *testing.T) {
 	const overview = "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n"
 	const card = "# Card 1 — only\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n"
 	tests := []struct {
-		name      string
-		withPlan  bool
+		name     string
+		withPlan bool
+		// weaverBegun plants a Weaver state holding one begun batch.
+		weaverBegun bool
+		// wantError is empty for a row that traces.
 		wantError string
 	}{
 		{name: "a missing plan directory is an error", withPlan: false, wantError: "failuretrace: read the plan:"},
-		{name: "a plan with no webster state is an error", withPlan: true, wantError: "failuretrace: no webster state to trace against"},
+		{name: "a plan with no implementer state is an error", withPlan: true, wantError: "failuretrace: no implementer state to trace against"},
+		{name: "a plan with a begun Weaver state traces", withPlan: true, weaverBegun: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -279,7 +283,23 @@ func TestNewTracer(t *testing.T) {
 				}
 			}
 
-			_, err := NewTracer(anchor, anchor)("x", traceHead)
+			if tt.weaverBegun {
+				begun := &weaverengine.State{State: runplan.State{Batches: map[int]*runplan.BatchState{1: {Slug: "only"}}}}
+				if err := weaverengine.SaveState(weaverengine.Dir(anchor), weaverengine.ScratchDir(anchor), begun); err != nil {
+					t.Fatalf("plant weaver state: %v", err)
+				}
+			}
+
+			got, err := NewTracer(anchor, anchor)("x", traceHead)
+			if tt.wantError == "" {
+				if err != nil {
+					t.Fatalf("NewTracer()(log, head) error = %v; want nil", err)
+				}
+				if len(got.Cards) != 0 || len(got.Untraced) != 0 {
+					t.Errorf("NewTracer()(log, head) = %+v; want an empty trace for a log with no locations", got)
+				}
+				return
+			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
 				t.Errorf("NewTracer()(log, head) error = %v; want one containing %q", err, tt.wantError)
 			}

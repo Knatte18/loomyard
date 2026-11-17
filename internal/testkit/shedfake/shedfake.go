@@ -19,12 +19,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
+	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -455,7 +457,30 @@ type (
 	auditEngines   struct{ websterengine.AuditEngines }
 	refMatcherSeam struct{ websterengine.RefMatcher }
 	indexSeam      struct{ planindex.Index }
+	weaverRunner   struct{ weaverengine.StrandRunner }
+	verifyFixer    struct{ gatefixer.Fixer }
+	reedOps        struct{ shuttleengine.ReedOps }
 )
+
+// WeaverSeams returns a weaverengine.RunDeps of placeholder seams for constructor checks.
+// Runner, Fixer, Reed and Geom.Index are placeholders that embed their interface,
+// so each is non-nil for a constructor check and panics if called.
+// CommitRecords and RecordsHead are no-op closures.
+// Geom.VerifyHold is a verify pause hold over an empty pause record.
+func WeaverSeams() weaverengine.RunDeps {
+	return weaverengine.RunDeps{
+		Runner:        weaverRunner{},
+		Fixer:         verifyFixer{},
+		Reed:          reedOps{},
+		CommitRecords: func(string) error { return nil },
+		RecordsHead:   func() (string, error) { return "records-head", nil },
+		Deliver:       func(string, []string) ([]string, error) { return nil, nil },
+		Geom: weaverengine.Geometry{
+			Index:      indexSeam{},
+			VerifyHold: verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
+		},
+	}
+}
 
 // WebsterSeams returns a RunDeps of placeholder seams for constructor checks.
 // Starter, Stopper, Engines, RefMatcher and Geom.Index are placeholders.
