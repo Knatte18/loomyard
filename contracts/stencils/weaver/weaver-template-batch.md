@@ -73,8 +73,8 @@ A card that departs from its own text because a PATTERN entry forbids the card's
 ## Where and how you run commands
 
 Your session's working directory already is the worktree root: run every Bash command from there and give paths in Bash commands worktree-relative.
-Paths you pass to the Read, Write and Edit tools stay absolute.
-Follow the gate rule in your system prompt for every gate call.
+{{template "engine-absolute-paths"}}
+Follow the gate rule in {{template "engine-standing-instructions"}} for every gate call.
 You never run a Bash call in the background.
 The hub's tiers and gate lists follow:
 

@@ -413,6 +413,15 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			want:   []string{"- rename Go symbols with `gopls rename`\n"},
 		},
 		{
+			name: "the prompt is worded for Master's engine",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.Engine = "codex"
+			},
+			number:  1,
+			want:    []string{"your developer instructions"},
+			wantNot: []string{"your system prompt"},
+		},
+		{
 			name:   "each card carries its gate call, and the batch carries the batch gate call",
 			number: 1,
 			want: []string{

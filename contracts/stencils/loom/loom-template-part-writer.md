@@ -78,6 +78,6 @@ Never change a contract on your own: act on the chair's ruling, and on a ruling 
 Keep answering the chair until the step ends.
 When the chair asks you to fix your part, change only your own cards, run `lym loom validate-plan --part {{.part_name}}` again until it passes, and then reply to the chair that the fix is done.
 
-## Never use `AskUserQuestion`
+## Never use {{template "engine-question-tool"}}
 
-Never call the `AskUserQuestion` tool: this session is autonomous, and no operator is present.
+Never call the {{template "engine-question-tool"}} tool: this session is autonomous, and no operator is present.

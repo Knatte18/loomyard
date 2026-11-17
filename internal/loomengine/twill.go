@@ -73,7 +73,8 @@ func twillLenses(dirs configengine.Dirs, fan, module, key string) ([]twilldirect
 // A fan that does not resolve is refused naming the plan_lenses key.
 // With fixerOn set, a cold fixer clears the plan gate's findings, so the writer is told to run no validator.
 // The spawn point drops the validator's pass, and the directive carries no self-check command.
-func planLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, fan string, fixerOn bool) (string, error) {
+// The directive is worded for engine, the engine the writer launches on.
+func planLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, fan, engine string, fixerOn bool) (string, error) {
 	fanLenses, err := twillLenses(dirs, fan, tapestryModule, planLensesKey)
 	if err != nil {
 		return "", err
@@ -85,6 +86,7 @@ func planLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencils
 	anchorPath := layout.AnchorPath()
 	lensReviewPath := filepath.Join(planparser.PlanDir(anchorPath), planparser.LensReviewFileName)
 	return twilldirective.Directive(stencilsDir, twilldirective.Values{
+		Engine:                engine,
 		ReviewedFiles:         "`" + planparser.PlanOverview(anchorPath) + "` and every card file its Card Index names",
 		SpawnPoint:            spawnPoint,
 		SeverityRule:          planTwillSeverityRule,
@@ -118,7 +120,8 @@ func planLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencils
 // The error names the discussion_lenses key and the way forward.
 // With fixerOn set, a cold fixer clears the discussion gate's findings,
 // so the spawn point drops the validator's pass, and the directive carries no final self-check.
-func discussionLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, fan string, fixerOn bool) (string, error) {
+// The directive is worded for engine, the engine the writer launches on.
+func discussionLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, fan, engine string, fixerOn bool) (string, error) {
 	fanLenses, err := twillLenses(dirs, fan, loomModule, discussionLensesKey)
 	if err != nil {
 		return "", err
@@ -128,6 +131,7 @@ func discussionLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, st
 		spawnPoint, finalSelfCheckCommand = discussionTwillSpawnPointGated, ""
 	}
 	return twilldirective.Directive(stencilsDir, twilldirective.Values{
+		Engine:                engine,
 		ReviewedFiles:         "`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "`",
 		RelaunchFiles:         "`" + DiscussionDecisionRecord(layout) + "`, `" + DiscussionSupportLog(layout) + "` and `" + DiscussionRelevant(layout) + "`",
 		SpawnPoint:            spawnPoint,

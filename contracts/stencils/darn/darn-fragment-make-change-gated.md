@@ -1,7 +1,8 @@
 <!-- This is the darn writer's Step 4 list for a run whose verify gate has a cold fixer:
      the writer and its subagents run no gate, and the writer acts only on what the fixer leaves.
      The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it.
-     internal/darnengine's DarnTable fills its one marker, {{.subagent_model}}, from loom.yaml's subagent_model,
+     internal/darnengine's DarnTable reads it for the writer's engine,
+     fills the {{.subagent_model}} marker its Claude engine block declares from loom.yaml's subagent_model,
      then fills the result whole into darn-template-write's make_change marker. -->
 
 1. When the task starts from a reported test failure, ask your parent before you diagnose it or make any edit:
@@ -15,9 +16,7 @@
    Edit the repository to make the change.
    Follow the existing patterns, and the PATTERN entries in this prompt.
    Each commit is one change, with its own reads and edits.
-2. Hand work that needs no overview of the change to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`: a batch of lookups, and per-package work whose edits you have already decided, one subagent per package, each owning its own files.
-   Launch every subagent of a batch together in one message.
-   Give each Agent call the `effort`, and each prompt the skills, that the subagent passage of your system prompt names.
+2. {{template "engine-darn-subagents"}}
    A fresh subagent sees none of this session, so each prompt names the files the subagent owns and the edits to make, and tells the subagent to run no `lym gate test`.
    Keep in this session the work that needs the overview: the design, a change that spans packages, the commits and the change description.
 3. Run no `lym gate test` yourself.

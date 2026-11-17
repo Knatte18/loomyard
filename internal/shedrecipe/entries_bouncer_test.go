@@ -258,7 +258,7 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 		env := newTestEnv(t)
 		env.Segments[testReviewSegment] = SegmentSettings{Bouncer: shedadapters.BouncerModels{Seed: seed, Judge: judge}}
 		stencilkit.SeedInto(t, env.StencilsDir)
-		stencilkit.SeedEditDirectiveCopies(t, env.StencilsDir, seed.Engine, judge.Engine)
+		stencilkit.SeedEngineBlockCopies(t, env.StencilsDir, seed.Engine, judge.Engine)
 		writeStencil(t, env.StencilsDir, "bouncer-template-seed", "seed template, no markers\n")
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 

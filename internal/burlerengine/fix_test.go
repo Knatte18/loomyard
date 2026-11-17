@@ -388,7 +388,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 			fixFan: "standard",
 			opts:   RunOpts{FixKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion_fixer_model"}, FixFanKey: "discussion_fixer_fan"},
 			wantContains: []string{
-				"burler: the twill fixer's fan from discussion_fixer_fan needs fork subagents, which the engine of discussion_fixer_model in loom.yaml cannot run",
+				"burler: the twill fixer's fan from discussion_fixer_fan needs forks, which the engine of discussion_fixer_model in loom.yaml cannot run",
 				"move discussion_fixer_model in loom.yaml to an engine with forks, then resume",
 			},
 		},

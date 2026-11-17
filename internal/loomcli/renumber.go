@@ -270,8 +270,8 @@ func (c *loomCLI) insertCardCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `insert-card adds a card numbered N and moves every card from N up by one:
 its file name prefix, its heading number, its explicit Commit: prefix and its
-Card Index number. The new card is a heading-only stub the agent fills with
-Edit or Write, and its Card Index line carries --intent. A card id naming a
+Card Index number. The new card is a heading-only stub the agent fills in,
+and its Card Index line carries --intent. A card id naming a
 moved card, <N>-<slug> or its zero-padded file form, and a bare reference
 naming one, such as "card 4" or "cards 4-6", are rewritten to the new number
 in the overview and every card file and reported under rewritten_refs. Every

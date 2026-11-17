@@ -26,7 +26,7 @@ import (
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
 	dir := stencilkit.Seed(t)
-	stencilkit.SeedEditDirectiveCopies(t, dir, "b")
+	stencilkit.SeedEngineBlockCopies(t, dir, "b")
 	return dir
 }
 

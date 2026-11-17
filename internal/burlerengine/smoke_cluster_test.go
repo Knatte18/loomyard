@@ -239,8 +239,8 @@ func TestSmokeBurlerClusterRogueFork(t *testing.T) {
 		t.Fatalf("cluster round failed with a fork-count shortfall, not the expected Agent-call violation: %v", err)
 	}
 	// The error names the Agent-call violation specifically.
-	// auditClusterRound words it as "attempted N Agent tool call(s)", so the check matches on "Agent tool call".
-	if !strings.Contains(err.Error(), "Agent tool call") {
+	// auditClusterRound words it as "attempted N nested spawn call(s)", so the check matches on "nested spawn call".
+	if !strings.Contains(err.Error(), "nested spawn call") {
 		t.Fatalf("cluster round error = %q; want it to name the Agent-call-in-fork violation", err.Error())
 	}
 

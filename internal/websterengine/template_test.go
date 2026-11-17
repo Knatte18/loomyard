@@ -37,7 +37,7 @@ import (
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
 	dir := stencilkit.Seed(t)
-	stencilkit.SeedEditDirectiveCopies(t, dir, shuttlefake.EngineName)
+	stencilkit.SeedEngineBlockCopies(t, dir, shuttlefake.EngineName)
 	return dir
 }
 
@@ -73,7 +73,7 @@ func newTestSpecsDir(t *testing.T) string {
 // Call sites that do not test the error path stay short.
 func mustMasterTemplate(t *testing.T, stencilsDir string) []byte {
 	t.Helper()
-	got, err := websterengine.MasterTemplate(stencilsDir)
+	got, err := websterengine.MasterTemplate(stencilsDir, "claude")
 	if err != nil {
 		t.Fatalf("MasterTemplate(%q) = _, %v; want nil error", stencilsDir, err)
 	}
@@ -82,7 +82,7 @@ func mustMasterTemplate(t *testing.T, stencilsDir string) []byte {
 
 func mustForkTemplate(t *testing.T, stencilsDir string) []byte {
 	t.Helper()
-	got, err := websterengine.ForkTemplate(stencilsDir)
+	got, err := websterengine.ForkTemplate(stencilsDir, "claude")
 	if err != nil {
 		t.Fatalf("ForkTemplate(%q) = _, %v; want nil error", stencilsDir, err)
 	}
@@ -91,7 +91,7 @@ func mustForkTemplate(t *testing.T, stencilsDir string) []byte {
 
 func mustRecoveryTemplate(t *testing.T, stencilsDir string) []byte {
 	t.Helper()
-	got, err := websterengine.RecoveryTemplate(stencilsDir)
+	got, err := websterengine.RecoveryTemplate(stencilsDir, "claude")
 	if err != nil {
 		t.Fatalf("RecoveryTemplate(%q) = _, %v; want nil error", stencilsDir, err)
 	}
@@ -312,20 +312,20 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 // root is both the anchor root and the prompt worktree root,
 // and the plan directory is derived under it.
 func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string) (string, error) {
-	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, "none", nil, testOutcomePath, testSummaryPath, selfFixCap, notePath, false)
+	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, "claude", specsDir, "none", nil, testOutcomePath, testSummaryPath, selfFixCap, notePath, false)
 	return string(prompt), err
 }
 
 // renderForkWithCardFixer renders the fork prompt for batch.
 // Its card gate goes through a cold fixer.
 func renderForkWithCardFixer(batch batcher.Batch, root, stencilsDir, specsDir string) (string, error) {
-	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, "none", nil, testOutcomePath, testSummaryPath, 2, "", true)
+	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, "claude", specsDir, "none", nil, testOutcomePath, testSummaryPath, 2, "", true)
 	return string(prompt), err
 }
 
 // renderForkWithLists renders the fork prompt for batch with the given gate tiers and rename tools.
 func renderForkWithLists(batch batcher.Batch, root, stencilsDir, specsDir, gateTiers string, renameTools []string) (string, error) {
-	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, gateTiers, renameTools, testOutcomePath, testSummaryPath, 2, "", false)
+	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, "claude", specsDir, gateTiers, renameTools, testOutcomePath, testSummaryPath, 2, "", false)
 	return string(prompt), err
 }
 
@@ -374,7 +374,7 @@ func renderMasterWithDecisions(batches []batcher.Batch, anchorRoot, repoRoot, st
 
 // renderVerifyFix renders the fixer prompt for reportPath with the shared placeholder paths and testFixGate.
 func renderVerifyFix(reportPath, anchorRoot, stencilsDir, notePath string) (string, error) {
-	got, err := websterengine.RenderVerifyFixPrompt(reportPath, anchorRoot, filepath.Join(anchorRoot, "_lym", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath, testFixGate)
+	got, err := websterengine.RenderVerifyFixPrompt(reportPath, anchorRoot, filepath.Join(anchorRoot, "_lym", "plan"), stencilsDir, "claude", testOutcomePath, testSummaryPath, notePath, testFixGate)
 	return string(got), err
 }
 
@@ -629,7 +629,7 @@ func TestTemplates_Composition(t *testing.T) {
 		t.Parallel()
 		missingDir := filepath.Join(t.TempDir(), "does-not-exist")
 
-		_, err := websterengine.MasterTemplate(missingDir)
+		_, err := websterengine.MasterTemplate(missingDir, "claude")
 		if err == nil {
 			t.Fatalf("MasterTemplate(%q) error = nil; want an error naming the missing stencil", missingDir)
 		}

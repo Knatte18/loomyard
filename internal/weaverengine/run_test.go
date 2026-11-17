@@ -255,7 +255,7 @@ func TestRun(t *testing.T) {
 			t.Parallel()
 			fx := newRunFixture(t, 1, "one")
 			fx.deps.Ladder[1].Engine = shuttlefake.EngineName
-			stencilkit.SeedEditDirectiveCopies(t, fx.deps.Geom.StencilsDir, shuttlefake.EngineName)
+			stencilkit.SeedEngineBlockCopies(t, fx.deps.Geom.StencilsDir, shuttlefake.EngineName)
 			fx.runner.scripts = []attemptScript{tt.first, {}}
 			if tt.setup != nil {
 				tt.setup(fx)
@@ -660,7 +660,7 @@ func TestRun(t *testing.T) {
 		t.Parallel()
 		fx := newRunFixture(t, 1, "one")
 		fx.deps.Ladder[1].Engine = shuttlefake.EngineName
-		stencilkit.SeedEditDirectiveCopies(t, fx.deps.Geom.StencilsDir, shuttlefake.EngineName)
+		stencilkit.SeedEngineBlockCopies(t, fx.deps.Geom.StencilsDir, shuttlefake.EngineName)
 		for range 8 {
 			fx.verify.scripts = append(fx.verify.scripts, verifyScript{failing: "TestBroken"})
 		}

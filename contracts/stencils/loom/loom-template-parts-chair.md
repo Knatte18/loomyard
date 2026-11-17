@@ -77,6 +77,6 @@ The verbs above are the whole of what `lym quarry` offers you — there is no fu
 Run `lym loom validate-plan`, which takes no arguments, and fix what it reports until it passes.
 Then write `{{.join_path}}` last, since its existence ends your step: for each part, whether its cards met its contract and what you sent back or fixed yourself; every ruling you made on a contract; and for each shared spot, the cards you wrote for it and where they went.
 
-## Never use `AskUserQuestion`
+## Never use {{template "engine-question-tool"}}
 
-Never call the `AskUserQuestion` tool: this session is autonomous, and no operator is present.
+Never call the {{template "engine-question-tool"}} tool: this session is autonomous, and no operator is present.

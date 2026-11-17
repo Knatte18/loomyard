@@ -73,8 +73,10 @@ func asWriters(table *Table) {
 
 // asAssistants makes every seat of table after the lead an assistant on Codex, with an end marker of its own.
 // It gives the lead and the assistants the stencils that include the assistant directives.
+// It puts the lead on Claude, so the engine blocks the chair directive includes resolve.
 func asAssistants(table *Table) {
 	table.Seats[0].Stencil = "seat-test-assistant-chair"
+	table.Seats[0].Engine = "claude"
 	for i := 1; i < len(table.Seats); i++ {
 		seat := &table.Seats[i]
 		seat.Stencil = "seat-test-assistant"
@@ -343,7 +345,7 @@ func TestTable_CheckMarkers(t *testing.T) {
 		}, wantErrs: []string{`has marker(s) topic that no value fills`}},
 		{name: "an included block that does not parse", mutate: func(tb *Table) {
 			tb.Seats[0].Stencil = "seat-test-malformed"
-		}, wantErrs: []string{`seatengine: seat "multi": stencil "seat-test-malformed": parse template`}},
+		}, wantErrs: []string{`seatengine: seat "multi": stencilstore: stencil "seat-test-malformed-block": parse template`}},
 		{name: "a marker in the stencil and in its block", mutate: func(tb *Table) {
 			tb.Seats[0].Stencil = "seat-test-twice"
 		}, wantErrs: []string{`has marker(s) topic that no value fills`}},

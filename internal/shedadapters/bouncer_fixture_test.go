@@ -120,7 +120,7 @@ func newBouncerFixture(t *testing.T, opts ...bouncerFixtureOpt) *bouncerFixture 
 		}
 	}
 	stencilsDir := stencilkit.Seed(t)
-	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, "s", "j")
+	stencilkit.SeedEngineBlockCopies(t, stencilsDir, "s", "j")
 	files := map[string]string{spec.rubricName: spec.rubricBody}
 	for name, body := range spec.overrides {
 		files[name] = body

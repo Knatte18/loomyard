@@ -719,6 +719,126 @@ var EngineClaudeEditDirective []byte
 //go:embed engine/codex/edit-directive.md
 var EngineCodexEditDirective []byte
 
+// EngineClaudeForkSpawn is the Claude engine's fork-spawn block:
+// the phrase saying how a session on Claude spawns a fork that inherits its whole context.
+//
+//go:embed engine/claude/fork-spawn.md
+var EngineClaudeForkSpawn []byte
+
+// EngineCodexForkSpawn is the Codex engine's fork-spawn block:
+// the phrase saying how a session on Codex spawns a fork that inherits its whole context.
+//
+//go:embed engine/codex/fork-spawn.md
+var EngineCodexForkSpawn []byte
+
+// EngineClaudeForkWait is the Claude engine's fork-wait block:
+// how a session on Claude waits for every fork it spawned.
+//
+//go:embed engine/claude/fork-wait.md
+var EngineClaudeForkWait []byte
+
+// EngineCodexForkWait is the Codex engine's fork-wait block:
+// how a session on Codex waits for every fork it spawned.
+//
+//go:embed engine/codex/fork-wait.md
+var EngineCodexForkWait []byte
+
+// EngineClaudeForkMessage is the Claude engine's fork-message block:
+// the phrase saying how a session on Claude sends a message to a fork it spawned.
+//
+//go:embed engine/claude/fork-message.md
+var EngineClaudeForkMessage []byte
+
+// EngineCodexForkMessage is the Codex engine's fork-message block:
+// the phrase saying how a session on Codex sends a message to a fork it spawned.
+//
+//go:embed engine/codex/fork-message.md
+var EngineCodexForkMessage []byte
+
+// EngineClaudeBackgroundCommand is the Claude engine's background-command block:
+// the phrase saying how a session on Claude runs a long lym command and learns that it ended.
+//
+//go:embed engine/claude/background-command.md
+var EngineClaudeBackgroundCommand []byte
+
+// EngineCodexBackgroundCommand is the Codex engine's background-command block:
+// the phrase saying how a session on Codex runs a long lym command and learns that it ended.
+//
+//go:embed engine/codex/background-command.md
+var EngineCodexBackgroundCommand []byte
+
+// EngineClaudeForegroundTimeout is the Claude engine's foreground-timeout block:
+// the phrase that gives a long foreground wait command on Claude a timeout of an hour.
+//
+//go:embed engine/claude/foreground-timeout.md
+var EngineClaudeForegroundTimeout []byte
+
+// EngineCodexForegroundTimeout is the Codex engine's foreground-timeout block:
+// the phrase that gives a long foreground wait command on Codex a timeout of an hour.
+//
+//go:embed engine/codex/foreground-timeout.md
+var EngineCodexForegroundTimeout []byte
+
+// EngineClaudeStandingInstructions is the Claude engine's standing-instructions block:
+// the phrase naming where a session on Claude finds its standing rules.
+//
+//go:embed engine/claude/standing-instructions.md
+var EngineClaudeStandingInstructions []byte
+
+// EngineCodexStandingInstructions is the Codex engine's standing-instructions block:
+// the phrase naming where a session on Codex finds its standing rules.
+//
+//go:embed engine/codex/standing-instructions.md
+var EngineCodexStandingInstructions []byte
+
+// EngineClaudeAbsolutePaths is the Claude engine's absolute-paths block:
+// the line that keeps the paths a session on Claude passes to its file tools absolute.
+//
+//go:embed engine/claude/absolute-paths.md
+var EngineClaudeAbsolutePaths []byte
+
+// EngineCodexAbsolutePaths is the Codex engine's absolute-paths block:
+// the line that keeps the paths a session on Codex passes to its file tools absolute.
+//
+//go:embed engine/codex/absolute-paths.md
+var EngineCodexAbsolutePaths []byte
+
+// EngineClaudeSubagentLookups is the Claude engine's subagent-lookups block:
+// how a writer on Claude sends its independent lookups to fresh subagents in one batch.
+//
+//go:embed engine/claude/subagent-lookups.md
+var EngineClaudeSubagentLookups []byte
+
+// EngineCodexSubagentLookups is the Codex engine's subagent-lookups block:
+// how a writer on Codex sends its independent lookups to fresh subagents in one batch.
+//
+//go:embed engine/codex/subagent-lookups.md
+var EngineCodexSubagentLookups []byte
+
+// EngineClaudeDarnSubagents is the Claude engine's darn-subagents block:
+// how the darn writer on Claude hands lookups and per-package work to fresh subagents.
+//
+//go:embed engine/claude/darn-subagents.md
+var EngineClaudeDarnSubagents []byte
+
+// EngineCodexDarnSubagents is the Codex engine's darn-subagents block:
+// how the darn writer on Codex hands lookups and per-package work to fresh subagents.
+//
+//go:embed engine/codex/darn-subagents.md
+var EngineCodexDarnSubagents []byte
+
+// EngineClaudeQuestionTool is the Claude engine's question-tool block:
+// the name of the Claude tool that puts a question to the operator in a dialog.
+//
+//go:embed engine/claude/question-tool.md
+var EngineClaudeQuestionTool []byte
+
+// EngineCodexQuestionTool is the Codex engine's question-tool block:
+// the name of the Codex tool that puts a question to the operator in a dialog.
+//
+//go:embed engine/codex/question-tool.md
+var EngineCodexQuestionTool []byte
+
 // GatefixFrameCold is the shared cold frame every gate fixer's prompt opens with:
 // it is joined ahead of one caller body stencil.
 //
@@ -878,6 +998,26 @@ var entries = []registryEntry{
 	{"engine/codex/assist-reading", &EngineCodexAssistReading},
 	{"engine/claude/edit-directive", &EngineClaudeEditDirective},
 	{"engine/codex/edit-directive", &EngineCodexEditDirective},
+	{"engine/claude/fork-spawn", &EngineClaudeForkSpawn},
+	{"engine/codex/fork-spawn", &EngineCodexForkSpawn},
+	{"engine/claude/fork-wait", &EngineClaudeForkWait},
+	{"engine/codex/fork-wait", &EngineCodexForkWait},
+	{"engine/claude/fork-message", &EngineClaudeForkMessage},
+	{"engine/codex/fork-message", &EngineCodexForkMessage},
+	{"engine/claude/background-command", &EngineClaudeBackgroundCommand},
+	{"engine/codex/background-command", &EngineCodexBackgroundCommand},
+	{"engine/claude/foreground-timeout", &EngineClaudeForegroundTimeout},
+	{"engine/codex/foreground-timeout", &EngineCodexForegroundTimeout},
+	{"engine/claude/standing-instructions", &EngineClaudeStandingInstructions},
+	{"engine/codex/standing-instructions", &EngineCodexStandingInstructions},
+	{"engine/claude/absolute-paths", &EngineClaudeAbsolutePaths},
+	{"engine/codex/absolute-paths", &EngineCodexAbsolutePaths},
+	{"engine/claude/subagent-lookups", &EngineClaudeSubagentLookups},
+	{"engine/codex/subagent-lookups", &EngineCodexSubagentLookups},
+	{"engine/claude/darn-subagents", &EngineClaudeDarnSubagents},
+	{"engine/codex/darn-subagents", &EngineCodexDarnSubagents},
+	{"engine/claude/question-tool", &EngineClaudeQuestionTool},
+	{"engine/codex/question-tool", &EngineCodexQuestionTool},
 	{"beam-template-board-tidy", &BeamTemplateBoardTidy},
 	{"retro-template-task", &RetroTemplateTask},
 	{"gatefix-frame-cold", &GatefixFrameCold},

@@ -218,7 +218,7 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 	}
 	coldWayForward := verifyGateWayForward(FixerCold, fixPromptPath)
 	if !strings.Contains(coldWayForward, "`lym webster fix-verify`") || !strings.Contains(coldWayForward, "spawn no fork") || strings.Contains(coldWayForward, fixPromptPath) {
-		t.Errorf("cold way forward = %q; want it to name the backgrounded fix-verify call, spawn no fork and not name %s", coldWayForward, fixPromptPath)
+		t.Errorf("cold way forward = %q; want it to name the fix-verify call, spawn no fork and not name %s", coldWayForward, fixPromptPath)
 	}
 	cold := r
 	cold.Fixer = FixerCold

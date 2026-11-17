@@ -721,7 +721,12 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// The fixer fork's prompt is rendered and written by Go up front:
 	// Merriam may write nothing but its two contract files.
 	verifyFixNotePath := friction.NotePath(deps.FrictionDir, "webster-verify-fix")
-	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.PaneCwd, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, verifyFixNotePath, verifyFixGate)
+	choice, ok := deps.Roles[RoleMaster]
+	if !ok {
+		return RunResult{}, fmt.Errorf("webster: no resolved model-spec for role %q", RoleMaster)
+	}
+	engine := deps.Engines.EngineName(choice)
+	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.PaneCwd, deps.Geom.PlanDir, deps.Geom.StencilsDir, engine, outcomePath, summaryPath, verifyFixNotePath, verifyFixGate)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -745,11 +750,6 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("%w %s", err, deps.reentryStep())
 	}
 	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
-	choice, ok := deps.Roles[RoleMaster]
-	if !ok {
-		return RunResult{}, fmt.Errorf("webster: no resolved model-spec for role %q", RoleMaster)
-	}
-	engine := deps.Engines.EngineName(choice)
 	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.PaneCwd, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, engine, patternChanges, parentDecisions, masterNotePath, deps.Geom.ParentName)
 	if err != nil {
 		return RunResult{}, err

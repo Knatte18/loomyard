@@ -134,7 +134,7 @@ The rule narrows only which fix shapes a reviewer proposes; no defect becomes un
 Before writing a finding whose `fix` adds, drops, moves or pairs targets, or changes a verify command, the agent writing the review file checks the fixes against the plan gate with `lym loom validate-plan --overlay`, which checks proposed plan file contents in memory and writes no file.
 `lym loom validate-plan --help` shows the stdin format; this rubric does not restate it.
 It first runs `validate-plan --overlay` with `{}` as a baseline, never the flag-less run, so that no run writes a file.
-It then runs it once with every such fix applied together, with its Bash timeout raised to cover a type load, and proposes no fix whose run reports a blocking finding the baseline does not.
+It then runs it once with every such fix applied together, with its shell command's timeout raised to cover a type load, and proposes no fix whose run reports a blocking finding the baseline does not.
 When the combined run reports a new blocking finding, it re-runs with each fix overlaid alone.
 A fix whose solo run reports a new blocking finding is withheld, and its defect is reported with the constraining check named, as above for a defect with no admissible fix.
 A new blocking finding of the combined run that no solo run reproduces is a joint conflict: the fixes that finding names by card are withheld, and their defects are reported together the same way.

@@ -7,7 +7,7 @@
      {{.lens_list}} is the round's lenses as one bullet per lens in fan order;
      {{.lens_report_path}} is the path each fork's report is saved at;
      and {{.lens_report_spec_path}} is the deployed spec of that report's format. -->
-This is a cluster round: after exploring the target fully, spawn ALL of the fork reviewers below in a SINGLE message via the Agent tool with `subagent_type: "fork"`, one per lens listed here — never pass a `name` (named forks silently lose inherited context).
+This is a cluster round: after exploring the target fully, spawn ALL of the fork reviewers below in a SINGLE message, one per lens listed here, {{template "engine-fork-spawn"}}.
 
 Lenses for this round:
 
@@ -19,14 +19,12 @@ Each fork's prompt is the boilerplate below, then the line `Your lens: <name>` a
 
 Boilerplate:
 
-> You are one fork reviewer of this round, and you own one lens; the other forks own the other lenses, and the handler reviews holistically. Your inherited context already holds the target, the rules and the code listed in the reading manifest; review from it. Work your lens's procedure, and start your final message with the list your lens asks for. Report every finding your lens's procedure produces and nothing outside it, because the other lenses and the handler cover the rest. You may make at most 6 tool calls, each only for something your procedure needs that the manifest lacks, such as a caller or a spawned process one hop beyond it, and never to re-read what your context already shows; end your final message with one line per tool call: what you read and why your context lacked it. You are READ-ONLY: never Write, Edit or delete any file, run only git commands that read, such as `git diff`, `git log` or `git show`, and never one that changes the repository, its index, its refs or its working tree, never touch the two round output files, and never call the Agent tool. Return your findings ONLY as your final message, each with a severity, a class, a location, a one-line summary and the file and line of the evidence you read.
+> You are one fork reviewer of this round, and you own one lens; the other forks own the other lenses, and the handler reviews holistically. Your inherited context already holds the target, the rules and the code listed in the reading manifest; review from it. Work your lens's procedure, and start your final message with the list your lens asks for. Report every finding your lens's procedure produces and nothing outside it, because the other lenses and the handler cover the rest. You may make at most 6 tool calls, each only for something your procedure needs that the manifest lacks, such as a caller or a spawned process one hop beyond it, and never to re-read what your context already shows; end your final message with one line per tool call: what you read and why your context lacked it. You are READ-ONLY: never write, edit or delete any file, run only git commands that read, such as `git diff`, `git log` or `git show`, and never one that changes the repository, its index, its refs or its working tree, never touch the two round output files, and spawn no fork or subagent of your own. Return your findings ONLY as your final message, each with a severity, a class, a location, a one-line summary and the file and line of the evidence you read.
 
 While the forks run, YOU (the handler) do your own HOLISTIC review: what no lens owns, such as the target against its fasit and its board entry, the rubric's leanness and relocation rules, architecture and PATTERN-fit, reading further only where your review needs it.
 Then prepare the ground truths and the severity rubric you will judge every finding against.
 Write nothing to the review file while any fork is outstanding, whatever an early report says: consolidate only once the last fork has returned, with every finding in view.
-Then wait for the forks with `lym shuttle await-forks`, run in the foreground with the Bash tool's `timeout` at 300000, and never end your turn while a fork is outstanding: every fork result reaches you together, in the turn after it answers `ready: true`.
-While it answers `ready: false`, run it again in a turn that does nothing else, until it has answered `ready: false` five times in a row.
-When it fails, or has answered `ready: false` five times in a row, end your turn instead, and take each fork's result as it arrives.
+Then wait for the forks: {{template "engine-fork-wait"}}
 
 Once the last fork has returned, and before you consolidate, save each fork's final message verbatim to `{{.lens_report_path}}`, with its lens name for `<lens>`, in the format `{{.lens_report_spec_path}}` defines; a fork that returned no report gets its file too.
 These lens reports are part of your write surface, beside the review file, and are the one exception to the "nothing else" and "no other file" of the write-surface rules in your prompt.

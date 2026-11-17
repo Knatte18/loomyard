@@ -37,7 +37,7 @@
 
 ## Agents and prompts
 
-- `PATTERN-stencil-ownership` — Reading or writing a prompt, spec or stencil: read at call time via `stencilstore`; engine text in engine blocks; a spawned role's stencil renders the parent and edit directives. (test) — [background](pattern/PATTERN-stencil-ownership.md)
+- `PATTERN-stencil-ownership` — Reading or writing a prompt, spec or stencil: read at call time via `stencilstore`; one engine's wording only in its engine blocks, rendered for the launch's engine; a spawned role's stencil renders the parent and edit directives. (test) — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-heddle-instructions` — Rendering or writing agent instructions: heddle entries only via `heddleengine`; lym's own instructions in its code, stencils, specs or heddle's shipped layer. — [background](pattern/PATTERN-heddle-instructions.md)
 - `PATTERN-reed-panes` — Spawning an agent or touching its pane: an interactive tmux session through reed, never headless; text typed only via guarded paths; the wait mark is display only. (test) — [background](pattern/PATTERN-reed-panes.md)
 - `PATTERN-agent-addressing` — Naming or messaging an agent: names only via `internal/agentname`; messages only through creel; across hubs daemon to daemon with the sender confirmed, authority only for a trusted hub's orch. (test) — [background](pattern/PATTERN-agent-addressing.md)

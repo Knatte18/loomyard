@@ -409,8 +409,8 @@ func TestPlanTable(t *testing.T) {
 						t.Errorf("twill lead prompt lacks the spawn point line %q", line)
 					}
 				}
-				if strings.Contains(prompt, "died before its Agent call") {
-					t.Error("twill lead prompt carries \"died before its Agent call\"; want the fork0 part instead of the relaunch part")
+				if strings.Contains(prompt, "died before its lens spawn call") {
+					t.Error("twill lead prompt carries \"died before its lens spawn call\"; want the fork0 part instead of the relaunch part")
 				}
 
 				markerAt := 0
@@ -423,6 +423,24 @@ func TestPlanTable(t *testing.T) {
 				}
 			})
 		}
+	})
+
+	t.Run("a codex lead gets the twill directive worded for codex", func(t *testing.T) {
+		t.Parallel()
+		layout := planTableLayout(t, "")
+		stencilsDir := newTestStencilsDir(t)
+		cfg := planTableConfig(templatePlanFan)
+		cfg.Plan = "sol"
+
+		table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)
+		if err != nil {
+			t.Fatalf("PlanTable(Plan=%q) = _, %v; want nil error", cfg.Plan, err)
+		}
+		prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
+		if err != nil {
+			t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
+		}
+		requireCodexForkWording(t, prompts[""])
 	})
 
 	t.Run("the gate tiers reach the lead prompt", func(t *testing.T) {

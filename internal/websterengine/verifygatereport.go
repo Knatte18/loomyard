@@ -19,12 +19,13 @@ const (
 )
 
 // verifyGateWayForward returns the one line that names Merriam's way forward from a verify-gate failure.
-// The line tells Merriam not to fix the findings itself and to end the turn.
-// For FixerCold it names `lym webster fix-verify`, run as a backgrounded command with no fork spawned.
+// The line tells Merriam not to fix the findings itself and, for a fork, to end the turn.
+// For FixerCold it names `lym webster fix-verify`, with no fork spawned.
+// Merriam runs it as the gate-failure section of its prompt says.
 // Otherwise it names one fixer fork, with the prompt file at fixPromptPath.
 func verifyGateWayForward(fixer, fixPromptPath string) string {
 	if fixer == FixerCold {
-		return fmt.Sprintf("Do not fix the findings yourself and spawn no fork; run `%s` as a backgrounded Bash command, as the gate-failure section of your prompt says; then end your turn.", fixVerifyCommand)
+		return fmt.Sprintf("Do not fix the findings yourself and spawn no fork; run `%s` as the gate-failure section of your prompt says.", fixVerifyCommand)
 	}
 	return fmt.Sprintf("Do not fix the findings yourself; spawn one fixer fork as the gate-failure section of your prompt says, with the prompt file at %s; then end your turn.", fixPromptPath)
 }

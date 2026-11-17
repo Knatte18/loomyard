@@ -106,6 +106,6 @@ Run `lym loom validate-parts`, which takes no arguments, and fix every finding i
 Besides the format, it refuses an export that already exists and runs on each `plan:` export the name checks its writer's card will face.
 Your turn ends once the parts file passes.
 
-## Never use `AskUserQuestion`
+## Never use {{template "engine-question-tool"}}
 
-Never call the `AskUserQuestion` tool: this session is autonomous, and no operator is present.
+Never call the {{template "engine-question-tool"}} tool: this session is autonomous, and no operator is present.

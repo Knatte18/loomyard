@@ -49,6 +49,9 @@ type Lens struct {
 
 // Values are the host-specific values Directive fills into the directive stencil's markers.
 type Values struct {
+	// Engine is the engine the writer launches on; every part is worded for it.
+	// It must not be empty: a part that includes an engine block fails to read without one.
+	Engine string
 	// ReviewedFiles is the phrase naming the files each fork reviews, rendered verbatim with the host's own backticks.
 	ReviewedFiles string
 	// SpawnPoint is the sentence that opens the procedure and says when the writer runs it, rendered verbatim.
@@ -112,6 +115,7 @@ type WriterFork struct {
 // With v.Gated set the writer runs no validator.
 // The writer-fork part drops its self-check steps, the closing step ends the turn without a final self-check,
 // and the reviewed files are not said to have passed one.
+// Every part is read worded for v.Engine.
 // Every error names the stencil it comes from.
 func Directive(stencilsDir string, v Values) (string, error) {
 	closingStep := "6. Run `" + v.FinalSelfCheckCommand + "` again until it passes, then end your turn."
@@ -141,7 +145,7 @@ func Directive(stencilsDir string, v Values) (string, error) {
 		"lens_report_spec_path": v.LensReportSpecPath,
 	}
 	if v.WriterFork != nil {
-		part, err := fillPart(stencilsDir, writerForkPart, mergedValues(values, map[string]string{
+		part, err := fillPart(stencilsDir, v.Engine, writerForkPart, mergedValues(values, map[string]string{
 			"explore_step": v.WriterFork.ExploreStep,
 			"input_record": v.WriterFork.InputRecord,
 			"last_file":    v.WriterFork.LastFile,
@@ -152,37 +156,38 @@ func Directive(stencilsDir string, v Values) (string, error) {
 		}
 		values["writer_fork"] = part + "\n\n"
 	} else {
-		part, err := fillPart(stencilsDir, relaunchStencil, mergedValues(values, map[string]string{"relaunch_files": v.RelaunchFiles}), nil)
+		part, err := fillPart(stencilsDir, v.Engine, relaunchStencil, mergedValues(values, map[string]string{"relaunch_files": v.RelaunchFiles}), nil)
 		if err != nil {
 			return "", err
 		}
 		values["relaunch_rules"] = part + "\n\n"
 	}
-	judge, err := judgePart(stencilsDir, values, v.CriticalJudge)
+	judge, err := judgePart(stencilsDir, v.Engine, values, v.CriticalJudge)
 	if err != nil {
 		return "", err
 	}
 	values["judge_steps"] = judge
-	return fillPart(stencilsDir, directiveStencil, values, []string{"writer_fork", "relaunch_rules", "checked_clause"})
+	return fillPart(stencilsDir, v.Engine, directiveStencil, values, []string{"writer_fork", "relaunch_rules", "checked_clause"})
 }
 
 // judgePart returns the judge part filled over values.
 // It fills the critical judge, with critical's values merged in, when critical is set, and the plain judge otherwise.
-func judgePart(stencilsDir string, values map[string]string, critical *CriticalJudge) (string, error) {
+func judgePart(stencilsDir, engine string, values map[string]string, critical *CriticalJudge) (string, error) {
 	if critical == nil {
-		return fillPart(stencilsDir, plainJudgeStencil, values, nil)
+		return fillPart(stencilsDir, engine, plainJudgeStencil, values, nil)
 	}
-	return fillPart(stencilsDir, criticalJudgeStencil, mergedValues(values, map[string]string{
+	return fillPart(stencilsDir, engine, criticalJudgeStencil, mergedValues(values, map[string]string{
 		"governing_input":  critical.GoverningInput,
 		"dispute_evidence": critical.DisputeEvidence,
 	}), nil)
 }
 
-// fillPart reads stencil name from stencilsDir and returns it filled with values, without trailing newlines.
+// fillPart reads stencil name from stencilsDir, worded for engine.
+// It returns the stencil filled with values, without trailing newlines.
 // Markers named in optional may be left empty.
 // Every error names the stencil.
-func fillPart(stencilsDir, name string, values map[string]string, optional []string) (string, error) {
-	content, err := stencilstore.Read(stencilsDir, name)
+func fillPart(stencilsDir, engine, name string, values map[string]string, optional []string) (string, error) {
+	content, err := stencilstore.ReadForEngine(stencilsDir, engine, name)
 	if err != nil {
 		return "", fmt.Errorf("twilldirective: read stencil %s: %w", name, err)
 	}

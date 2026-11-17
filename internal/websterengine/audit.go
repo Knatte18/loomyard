@@ -150,7 +150,7 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 			TranscriptPath: f.TranscriptPath,
 			Key:            forkKey(f.TranscriptPath, ClassNestedAgent, 1),
 			Detail: fmt.Sprintf(
-				"attempted %d Agent tool call(s) — forks cannot nest and must never call the Agent tool, even when the attempt was denied",
+				"attempted %d nested spawn call(s) — forks cannot nest and must never spawn a fork or subagent, even when the attempt was denied",
 				f.AgentCalls,
 			),
 		})

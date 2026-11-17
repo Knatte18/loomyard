@@ -491,7 +491,8 @@ type Config struct {
 	// DiscussionGateFixer is the model-spec of the cold fixer of Discussion-Write's discussion gate; empty turns the fixer off.
 	DiscussionGateFixer string `yaml:"discussion_gate_fixer"`
 
-	// SubagentModel is the model name the writers pass to the Agent tool for the fresh subagents they hand lookups to.
+	// SubagentModel is the model the writers on Claude give the fresh subagents they hand lookups to.
+	// A writer on Codex runs them on its own model.
 	SubagentModel string `yaml:"subagent_model"`
 
 	// PlanLenses names the lenses.yaml fan whose lenses the Plan-Write lead forks itself for.

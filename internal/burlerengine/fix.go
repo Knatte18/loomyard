@@ -383,5 +383,5 @@ func twillEngineRefusal(opts RunOpts, err error) error {
 		modelKey = fmt.Sprintf("%s in %s.yaml", opts.FixKey.Key, opts.FixKey.Module)
 		step = fmt.Sprintf("move %s to an engine with forks, then resume; setting the %s entry to \"\" reaches only rounds whose reviewer is spawned after the edit", modelKey, opts.FixFanKey)
 	}
-	return &engineRefusalError{message: fmt.Sprintf("burler: the twill fixer's fan from %s needs fork subagents, which the engine of %s cannot run: %s%s%s", opts.FixFanKey, modelKey, refusal, wayForwardMarker, step)}
+	return &engineRefusalError{message: fmt.Sprintf("burler: the twill fixer's fan from %s needs forks, which the engine of %s cannot run: %s%s%s", opts.FixFanKey, modelKey, refusal, wayForwardMarker, step)}
 }

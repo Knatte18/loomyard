@@ -14,7 +14,7 @@ Your assistants, each with its report and its end marker:
 
 {{.assistants}}
 
-- When your instructions say to wait for an assistant, wait for its end marker with `lym shuttle await <end marker>`, run in the foreground with the Bash tool's `timeout` at 3600000.
+- When your instructions say to wait for an assistant, wait for its end marker with `lym shuttle await <end marker>`, run in the foreground {{template "engine-foreground-timeout"}}.
   While it answers `ready: false`, run it again in a turn that does nothing else, until it answers `ready: true`.
 - Then read the end marker.
   When it reads `done`, read the assistant's report and use it as your instructions say.

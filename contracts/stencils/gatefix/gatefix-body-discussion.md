@@ -12,8 +12,8 @@ You fix the discussion files the failures point at.
 
 ## The rules
 
-You run every Bash command from the repository's worktree root, with paths worktree-relative, and follow the gate rule in your system prompt for `cd` and for quick checks.
-Paths you pass to the Read, Write and Edit tools stay absolute.
+You run every Bash command from the repository's worktree root, with paths worktree-relative, and follow the gate rule in {{template "engine-standing-instructions"}} for `cd` and for quick checks.
+{{template "engine-absolute-paths"}}
 You never run a Bash call in the background.
 
 - Read the file behind each failure before you change it, and fix every failure you can in one pass.

@@ -119,7 +119,7 @@ func newTestLLMArmReceiver(t *testing.T, starter driverStarter, probe driverPane
 	dir := t.TempDir()
 	stencilsDir := filepath.Join(dir, "stencils")
 	stencilkit.SeedInto(t, stencilsDir)
-	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, "fake")
+	stencilkit.SeedEngineBlockCopies(t, stencilsDir, "fake")
 	return &loomCLI{
 		location:        &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
@@ -320,7 +320,7 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 	}
 	stencilsDir := filepath.Join(dir, "stencils")
 	stencilkit.SeedInto(t, stencilsDir)
-	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, "fake")
+	stencilkit.SeedEngineBlockCopies(t, stencilsDir, "fake")
 	c := &loomCLI{
 		location:        &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},

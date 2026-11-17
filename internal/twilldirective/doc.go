@@ -45,6 +45,8 @@
 //
 // The package imports only the standard library, `stencil` and `stencilstore`.
 // It derives no path.
-// The stencil is read at call time from the told stencils directory through `stencilstore.Read`.
+// Each stencil is read at call time from the told stencils directory through `stencilstore.ReadForEngine`.
+// Every engine block it includes is written in place for Values.Engine.
+// An empty Values.Engine is an error when a part includes an engine block.
 // It is never read from embedded bytes.
 package twilldirective

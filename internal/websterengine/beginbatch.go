@@ -116,6 +116,9 @@ type BeginDeps struct {
 
 	// CardFixer reports whether a failed card gate call goes through a cold fixer first.
 	CardFixer bool
+
+	// Engine is the engine Master runs on, which its forks inherit; the fork prompt is worded for it.
+	Engine string
 }
 
 // BeginResult is what one successful BeginBatch call returns to its caller.
@@ -353,7 +356,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve prompt path: %w", err)
 	}
-	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, deps.CardFixer)
+	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, deps.Engine, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, deps.CardFixer)
 	if err != nil {
 		return nil, err
 	}

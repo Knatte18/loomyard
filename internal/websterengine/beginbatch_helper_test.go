@@ -106,6 +106,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	seedHubStencils(t, hubPath)
 
 	deps := websterengine.BeginDeps{
+		Engine:  "claude",
 		Plan:    plan,
 		Batches: batches,
 		State:   &websterengine.State{State: runplan.State{PlanFingerprint: fp}, MasterStrand: "master-strand-1"},

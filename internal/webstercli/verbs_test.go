@@ -55,7 +55,7 @@ func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
 	stencilsDir := fabricengine.StencilsDir(hub)
 	stencilkit.SeedInto(t, stencilsDir)
-	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, shuttlefake.EngineName)
+	stencilkit.SeedEngineBlockCopies(t, stencilsDir, shuttlefake.EngineName)
 }
 
 func newScratchRepo(t *testing.T) string {
@@ -309,6 +309,37 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 	if bs.Kind != "fork" {
 		t.Errorf("loaded.Batches[1].Kind = %q; want \"fork\"", bs.Kind)
+	}
+}
+
+// TestBeginBatchCmd_PromptFollowsMasterEngine proves begin-batch words the fork prompt for Master's engine.
+// Master's engine is the one its model choice resolves to.
+// Recovery stays on the default engine, whose copies carry the Claude wording,
+// so a prompt worded for Recovery's engine or the default one fails it.
+func TestBeginBatchCmd_PromptFollowsMasterEngine(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv("FABRIC_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.CLI.roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Engine: "codex", Model: "master-model"}
+	fx.initState(t)
+
+	var out strings.Builder
+	if exitCode := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); exitCode != 0 {
+		t.Fatalf("begin-batch 1 = %d; want 0, output: %s", exitCode, out.String())
+	}
+	var envelope struct {
+		PromptPath string `json:"prompt_path"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &envelope); err != nil {
+		t.Fatalf("decode begin-batch envelope %q: %v", out.String(), err)
+	}
+	prompt, err := os.ReadFile(envelope.PromptPath)
+	if err != nil {
+		t.Fatalf("read the fork prompt %q: %v", envelope.PromptPath, err)
+	}
+
+	if !strings.Contains(string(prompt), "your developer instructions") || strings.Contains(string(prompt), "your system prompt") {
+		t.Errorf("fork prompt = %q; want Master's engine wording (your developer instructions) and not the other engine's (your system prompt)", prompt)
 	}
 }
 

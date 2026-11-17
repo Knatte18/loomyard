@@ -17,11 +17,9 @@
 {{.spawn_point}}
 
 {{.writer_fork}}1. Read the rubric at `{{.rubric_path}}`, so every fork you spawn inherits it.
-2. Spawn every lens below in one message through the Agent tool with `subagent_type: "fork"`, one fork per lens, and never pass a `name`.
+2. Spawn every lens below in one message, one fork per lens, {{template "engine-fork-spawn"}}.
    Each fork's prompt is the fork boilerplate below plus its lens text and nothing else: no design hint, no direction to read code.
-3. Wait for every fork to return: in the message after the spawn, run `lym shuttle await-forks` in the foreground with the Bash tool's `timeout` at 300000, and never end your turn while a fork is outstanding, so every fork result reaches you together, in the turn after it answers `ready: true`.
-   While it answers `ready: false`, run it again in a turn that does nothing else, until it has answered `ready: false` five times in a row.
-   When it fails, or has answered `ready: false` five times in a row, end your turn instead, and take each fork's result as it arrives.
+3. Wait for every fork to return: in the message after the spawn, {{template "engine-fork-wait"}}
    Edit nothing while any fork is outstanding, whatever an early report says: start judging only once the last fork has returned, judge all findings together, and only then edit.
    Once the last fork has returned, and before you judge, save each fork's final message verbatim to `{{.lens_report_path}}`, with its lens name for `<lens>`, in the format `{{.lens_report_spec_path}}` defines; a fork that returned no report gets its file too.
 {{.judge_steps}}
@@ -42,7 +40,7 @@ Copy these lines verbatim into every fork's prompt, ahead of its lens text.
 - Your context already holds the writer's exploration, the reviewed files and the rubric, so never re-read what your context shows.
   Make at most 6 further tool calls, each for something your lens needs that your context lacks.
   End your report with one line per such call, saying what you read and why your context lacked it.
-- You are read-only: never write, edit or delete a file, run no git command, and never call the Agent tool.
+- You are read-only: never write, edit or delete a file, run no git command, and spawn no fork or subagent of your own.
 - Return your findings only as your final message, each with {{.severity_rule}}, the section or decision it concerns, a one-line summary and the evidence.
 
-A fork never calls the Agent tool, so the writer is the only session that spawns.
+A fork spawns nothing, so the writer is the only session that spawns.

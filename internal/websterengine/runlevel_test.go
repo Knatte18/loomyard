@@ -1539,7 +1539,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 					shuttlefake.EngineName: fake,
 					"master-engine":        fake,
 				})
-				stencilkit.SeedEditDirectiveCopies(t, fx.Deps.Geom.StencilsDir, "master-engine")
+				stencilkit.SeedEngineBlockCopies(t, fx.Deps.Geom.StencilsDir, "master-engine")
 			},
 			check: func(t *testing.T, fx *runFixture) {
 				spec := fx.Starter.startCalls[0]
@@ -1570,6 +1570,34 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
+			// Recovery stays on the fake engine, so a prompt worded for Recovery's engine would carry the Claude copy.
+			name:  "the Master prompt and the verify-fix prompt are worded for Master's engine",
+			cards: 1,
+			prepare: func(t *testing.T, fx *runFixture) {
+				choice := fx.Deps.Roles[websterengine.RoleMaster]
+				choice.Engine = "codex"
+				fx.Deps.Roles[websterengine.RoleMaster] = choice
+				fake := &shuttlefake.Engine{}
+				fx.Deps.Engines = shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{
+					shuttlefake.EngineName: fake,
+					"codex":                fake,
+				})
+			},
+			check: func(t *testing.T, fx *runFixture) {
+				masterPrompt := fx.Starter.startCalls[0].Prompt
+				if !strings.Contains(masterPrompt, "`spawn_agent`") || strings.Contains(masterPrompt, `subagent_type: "fork"`) {
+					t.Errorf("Spec.Prompt = %q; want the Codex fork-spawn wording and not the Claude one", masterPrompt)
+				}
+				verifyFixPrompt, err := os.ReadFile(filepath.Join(fx.Deps.Geom.PromptsDir, "verify-fix.md"))
+				if err != nil {
+					t.Fatalf("read verify-fix prompt: %v", err)
+				}
+				if !strings.Contains(string(verifyFixPrompt), "your developer instructions") || strings.Contains(string(verifyFixPrompt), "your system prompt") {
+					t.Errorf("verify-fix prompt = %q; want the Codex standing-instructions wording and not the Claude one", verifyFixPrompt)
+				}
+			},
+		},
+		{
 			// The default engine is checked only when a role's choice resolves to it.
 			name:  "a default without fork audit does not refuse roles naming an engine that audits",
 			cards: 1,
@@ -1582,7 +1610,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 				})
 				fx.Deps.Roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Model: "m", Engine: "a"}
 				fx.Deps.Roles[websterengine.RoleRecovery] = shuttleengine.ModelChoice{Model: "r", Engine: "a"}
-				stencilkit.SeedEditDirectiveCopies(t, fx.Deps.Geom.StencilsDir, "a")
+				stencilkit.SeedEngineBlockCopies(t, fx.Deps.Geom.StencilsDir, "a")
 			},
 			check: func(t *testing.T, fx *runFixture) {
 				if got := fx.Starter.startCalls[0].Engine; got != "a" {

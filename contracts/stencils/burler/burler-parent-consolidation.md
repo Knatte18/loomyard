@@ -8,7 +8,7 @@
 
 This round asked the run's parent orch to review the same target beside you.
 Before you consolidate, and before you write anything to the review file, wait for the parent's answer:
-run `lym loom parent-review await` in the foreground with the Bash tool's `timeout` at 3600000.
+run `lym loom parent-review await` in the foreground {{template "engine-foreground-timeout"}}.
 While it answers `ready: false`, run it again in a turn that does nothing else, until it answers `ready: true`.
 
 When it answers `ready: true` with `state: done`, read the parent's report at the path its `report` names.

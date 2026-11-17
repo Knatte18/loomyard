@@ -29,6 +29,6 @@ Your only job is to fix the failures the report at `{{.report_path}}` lists, as 
 
 ## Your final action
 
-Your last action, after the rules below are met, is writing your reply to `{{.reply_path}}` with Write: a short markdown note naming each failure you fixed, and each you left with why.
+Your last action, after the rules below are met, is writing your reply to `{{.reply_path}}`: a short markdown note naming each failure you fixed, and each you left with why.
 That file is the one file you write outside the repository's code, and writing it ends your work: end your turn right after it.
 The gate is run again after you end, and that run, never you, judges the fix.

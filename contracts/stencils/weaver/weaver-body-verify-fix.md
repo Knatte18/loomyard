@@ -27,7 +27,7 @@ Read it for what the batches struggled with: the cause of a failure often sits i
 ## The rules
 
 Your session's working directory already is the worktree root, `{{.worktree_root}}`: run every Bash command from there and give paths in Bash commands worktree-relative.
-Paths you pass to the Read, Write and Edit tools stay absolute.
+{{template "engine-absolute-paths"}}
 You never run a Bash call in the background, and you end your turn only after your final action.
 
 - Read `_lym/plan/00-overview.md` before you edit anything: the task framing and `## Shared Decisions` say what the plan intends, which is what a test must assert.

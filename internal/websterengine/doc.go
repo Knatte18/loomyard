@@ -654,7 +654,7 @@
 // `lym webster reset --to start` likewise stops every recovery strand the state records before it resets,
 // so no recovery agent keeps writing into the tree the reset moves;
 // `--to pre-fix` removes none.
-// Merriam runs the call as a backgrounded Bash command, ends its turn and acts on the completion notification.
+// Merriam runs the call as the Master stencil's background-command block says, and acts on its result.
 // Only an operator's shorter --wait can return a running snapshot.
 // A recovery strand's turn end with no report classifies dead/asking only when it is the strand's newest turn signal.
 // Nothing may keep the strand waiting (gatefixer's TurnEndedAfter).
@@ -866,7 +866,7 @@
 // Merriam then ends its turn.
 // On the fork's notification it rewrites its outcome and summary files, which re-arrives at the gate.
 // The gate's re-prompt line and its findings both open with the way forward to the routed fixer.
-// It names the fixer-fork step and the prompt file's path, or the backgrounded `lym webster fix-verify` call,
+// It names the fixer-fork step and the prompt file's path, or the `lym webster fix-verify` call,
 // so the rule stands where Merriam reads the failure.
 // The waiting turn end in between is no arrival.
 // Both fixers' prompts share one body, webster-body-verify-fix, behind a prefix of their own.
@@ -885,10 +885,9 @@
 //
 // # The cold verify-gate fixer
 //
-// For a cold failure, Merriam runs `lym webster fix-verify` as a backgrounded Bash command.
+// For a cold failure, Merriam runs `lym webster fix-verify` as the Master stencil's background-command block says.
 // Master's spawn declares that command an awaited shell prefix beside recover-batch.
-// Merriam ends its turn.
-// Whatever its exit, on the command's completion notification it rewrites its outcome and summary files as after a fork.
+// Whatever its exit, once the command ends it rewrites its outcome and summary files as after a fork.
 // internal/gatefixer owns the cold fixer's spawn, wait and runproc registration.
 // Webster adapts it through a store over State.VerifyFixers.
 // FixVerifySpawnOrAttach spawns the cold fixer as its own strand through it, with role `verify-fixer`.
@@ -928,7 +927,7 @@
 // Master ends stuck only after it.
 // A refusal with the cause `plan_order` goes to no fixer, since moving a delete reshapes cards.
 // Master ends stuck at once quoting the refusal.
-// For the fixer, Merriam runs `lym webster fix-plan` backgrounded and ends its turn.
+// For the fixer, Merriam runs `lym webster fix-plan` as the Master stencil's background-command block says.
 // On the verb's completion it calls begin-batch again for the same batch on verdict `fixed`.
 // Otherwise it writes `outcome: stuck` quoting the begin-batch refusal,
 // so a tapestry run still reroutes to plan review through the conflict record.

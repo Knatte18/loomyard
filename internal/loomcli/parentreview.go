@@ -388,7 +388,7 @@ with ready true, the ask's state, the reason of a not-sent ask and the report
 of a done one. An ask still pending-post or open at or past its deadline is set
 timeout, which ends it. When the calling session's keep-warm cap elapses first
 it prints ok with ready false and exits 0: run it again, in a turn that does
-nothing else, with a Bash tool timeout above the cap. A run with no ask is
+nothing else, with a shell command timeout above the cap. A run with no ask is
 refused. Any caller may run it; it writes only timeout, and only to an ask at
 or past its deadline.
 

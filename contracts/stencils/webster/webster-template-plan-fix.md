@@ -18,7 +18,7 @@ Your one job is to edit those cards so they match the tree, when that leaves wha
 ## Orient yourself
 
 Your session's working directory is the worktree root, `{{.worktree_root}}`: run every Bash command from there.
-Paths you pass to the Read, Write and Edit tools stay absolute.
+{{template "engine-absolute-paths"}}
 You never run a Bash call in the background.
 
 1. Read the plan-conflict record `{{.record_path}}` in full: its heading names the batch, and each `- ` line is one blocking finding, naming its check, its card and the target the tree does not hold.
@@ -52,6 +52,6 @@ If you already edited one, run `lym webster restore-plan`.
 
 ## Your final action
 
-Write your reply to `{{.reply_path}}` with Write, then end your turn.
+Write your reply to `{{.reply_path}}`, then end your turn.
 Its first line is exactly `verdict: fixed` when `rebaseline` accepted every card you edited and every finding was mechanical, and exactly `verdict: plan_writer` otherwise.
 Below it, one line per finding: the card, the old and new target for a fix, or why it needs the plan writer.
