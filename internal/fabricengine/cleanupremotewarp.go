@@ -6,6 +6,7 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -216,7 +217,13 @@ func (t *Topology) keptReason(branch, defaultBranch string, weftBranches map[str
 	if slug == "" {
 		return "not fabric-managed: empty slug"
 	}
-	if !hasWeftEvidence(slug, RecordsBranchName(branch), weftBranches, archiveTagRefs) {
+	// An archive tag is evidence only for a branch this machine's prefix names:
+	// the slug of any other branch is a guess at where its prefix stops, so a tag of that slug proves nothing of it.
+	evidenceTagRefs := archiveTagRefs
+	if !slices.Contains(pairBranchNames(t.cfg, slug), branch) {
+		evidenceTagRefs = nil
+	}
+	if !hasWeftEvidence(slug, RecordsBranchName(branch), weftBranches, evidenceTagRefs) {
 		return "not fabric-managed: the weft origin holds neither a weft branch nor an archive tag for it"
 	}
 	if checkedOut[branch] {

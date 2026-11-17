@@ -130,6 +130,7 @@
 // The machine layer holds only keys classified [CategoryMachine].
 // Such a key's value is a bound on a resource every worktree of the hub on that machine shares.
 // It may instead be a fact of the machine, such as its desktop or a path on its disk.
+// It may also be a convention of the person working on that machine, such as the prefix of the branches made there.
 // [MachineKeys] lists them, and the local layer keeps refusing them, since [CategoryMachine] is not [CategoryNone].
 // [ValidateMachine] checks a machine document with the units, template-existence and shape checks of [ValidateLocal].
 // It admits a unit only when the longest covering `Categories` entry or retired key is [CategoryMachine].

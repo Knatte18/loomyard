@@ -193,6 +193,9 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 			if m.Name == "codex" {
 				wantMachineKeys = []string{"sandbox_mode"}
 			}
+			if m.Name == "fabric" {
+				wantMachineKeys = []string{"branch_prefix"}
+			}
 			if got := configengine.MachineKeys(spec); !slices.Equal(got, wantMachineKeys) {
 				t.Errorf("%s MachineKeys = %v; want %v, so no stray machine file is read by a registered loader; %s", m.Name, got, wantMachineKeys, keyListWayForward(fmt.Sprintf("the wantMachineKeys of %s", m.Name), got, wantMachineKeys))
 			}

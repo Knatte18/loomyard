@@ -768,8 +768,13 @@
 // A records worktree whose repository cannot be resolved is skipped, so a half-torn pair stays readable.
 // `Topology.PairTaskBranchOrOrigin` reads the same for a caller that runs after the pair's local parts are gone.
 // A pair no local worktree or branch names is named by the first of its names origin holds.
+// Failing that, it is named by the one origin branch ending in `/<slug>` whose records branch the weft origin holds.
+// That is how a pair made under another machine's prefix is found.
+// Two such branches are an error.
 // A pair's names are the current `branch_prefix` plus slug and the bare slug of a pair made before the prefix was set.
 // So `branch_prefix` names only the branches of pairs made after it changes, and it can be set while pairs are live.
+// It is a machine key: a machine's override file may set it over the hub file,
+// so each machine names its new pairs its own way.
 // Every step that starts while a pair's worktree stands reads its branches this way;
 // the remote teardown job carries the names read when the teardown started;
 // and every step going from a branch to its slug accepts a branch with the current prefix and one without.

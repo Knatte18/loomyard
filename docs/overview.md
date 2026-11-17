@@ -516,7 +516,8 @@ User-facing modules each get one `lym <module>` namespace:
   The embedded template comes first, then the repo default at `<BoltDir>/_lym/config/<module>.yaml`.
   The worktree's sparse file follows, and the untracked local override at `<anchor>/.lym/config/<module>.local.yaml` is last.
   See [internal/configengine](../internal/configengine/doc.go).
-  A module's machine keys, such as gate's `slots` and `tier_parallel` and codex's `sandbox_mode`, also take a machine override.
+  A module's machine keys also take a machine override.
+  Examples are gate's `slots` and `tier_parallel`, codex's `sandbox_mode` and fabric's `branch_prefix`.
   The override lives at `<BoltDir>/.lym/config/<module>.machine.yaml` and is never tracked.
   It is written from the prime beside the local override.
   `lym config --layer default|worktree|machine|local` picks the layer a verb addresses,

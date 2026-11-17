@@ -48,6 +48,8 @@ func (t *Topology) PairParts(l *lymcwd.Location, slug string) (PairParts, error)
 
 // TaskBranchOnOrigin reports whether slug's task branch exists on the task repository's origin.
 // It matches the branch under the current branch prefix, or the bare slug of a pair made before the prefix was set.
+// Failing both, it matches the one branch another machine's prefix names, whose records branch the weft origin holds;
+// more than one such branch is an error.
 // A repository with no origin remote reads false, and a failed lookup on a configured origin is returned.
 func (t *Topology) TaskBranchOnOrigin(l *lymcwd.Location, slug string) (bool, error) {
 	found, err := t.originTaskBranch(l, slug)

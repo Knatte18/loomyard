@@ -63,7 +63,9 @@ const (
 	// CategoryGuard is a key that switches off or hollows a guard, a review or an approval gate.
 	CategoryGuard Category = "guard"
 	// CategoryMachine is a key whose value is a machine property; the machine layer holds it and the local layer refuses it.
-	// Such a value bounds a resource shared by a hub's worktrees, or a machine fact such as its desktop or disk path.
+	// Such a value bounds a resource shared by a hub's worktrees.
+	// It may also be a machine fact such as its desktop or disk path.
+	// It may also be a convention of the person working on the machine, such as the prefix of the branches made there.
 	CategoryMachine Category = "machine"
 )
 
