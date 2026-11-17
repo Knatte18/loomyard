@@ -1194,7 +1194,7 @@
 // Each contained test then runs with each mutant of its blocks on.
 // The call logs each such run's mutant, with its file, line and operator, before the run starts.
 // A test that killed a mutant, or whose own run of it was unjudged, has its covering tests run with that mutant on.
-// Only a covering test whose entry covers the mutant's block runs.
+// Only a covering test whose entry covers one of the mutant's blocks runs.
 // A run that fails kills its mutant.
 // A run that times out or ends at the memory cap is unjudged, never a kill, since it proves no check of the mutant.
 // Up to the slot's tier0 parallel runs go side by side, each alone in its process under its test's tier env.

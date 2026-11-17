@@ -73,7 +73,7 @@ func TestRunMutantsRerunsACoveringTestThatTimedOutAsACandidate(t *testing.T) {
 		sideBySide:  1,
 		env:         holderEnv,
 		holderEnv:   holderEnv,
-		mutants:     map[int]testcover.Mutant{1: {ID: 1, Block: block.String()}},
+		mutants:     map[int]testcover.Mutant{1: {ID: 1, Blocks: []string{block.String()}}},
 	}
 	candidates := []testcover.MutantCandidate{
 		{Name: killer, Covering: []string{hangsOnce}, Mutants: []int{1}},
@@ -132,7 +132,7 @@ func TestRunMutantsGuardKilledRunIsNoKill(t *testing.T) {
 				sideBySide:  1,
 				env:         os.Environ(),
 				holderEnv:   os.Environ(),
-				mutants:     map[int]testcover.Mutant{1: {ID: 1, Block: block.String()}},
+				mutants:     map[int]testcover.Mutant{1: {ID: 1, Blocks: []string{block.String()}}},
 				guardKilled: func(int) bool { return tt.guardKilled },
 			}
 			candidates := []testcover.MutantCandidate{

@@ -172,7 +172,7 @@ func (c *mutationCheck) run(m testcover.Map, contained []testcover.Verdict, cove
 			Name: verdict.Name, Elapsed: entries[verdict.Name].Seconds, Covering: testcover.CoveringTests(blocks, pool),
 		}
 		for id, mutant := range mutants {
-			if _, covered := blocks[mutant.Block]; covered {
+			if mutant.InBlocks(blocks) {
 				candidates[i].Mutants = append(candidates[i].Mutants, id)
 			}
 		}
@@ -197,7 +197,7 @@ func (c *mutationCheck) run(m testcover.Map, contained []testcover.Verdict, cove
 // A test that does not pass unmutated runs with no mutant.
 // Each candidate then runs with each mutant of its blocks on.
 // A candidate that killed a mutant, or whose own run of it was unjudged, has its covering tests run with that mutant on.
-// Only a covering test whose entry covers the mutant's block runs.
+// Only a covering test whose entry covers one of the mutant's blocks runs.
 // A covering test that kills or times out beside other tests runs once more alone, and that run stands.
 // A covering test that is itself a candidate has its answer from the candidate runs replaced by that run.
 // A run that ends at its time bound or at the memory cap kills nothing: it is unjudged, and the check's stats list it.
@@ -301,7 +301,7 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 			}
 			for _, name := range candidate.Covering {
 				_, passes := timeouts[name]
-				_, covers := blocks[name][c.mutants[id].Block]
+				covers := c.mutants[id].InBlocks(blocks[name])
 				run := mutantRun{id, name}
 				// A covering test that ran the mutant as a candidate and did not kill it has its answer already.
 				// A run alone decides the answer when that candidate run timed out beside other runs.

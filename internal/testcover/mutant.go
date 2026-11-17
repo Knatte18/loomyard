@@ -4,11 +4,13 @@
 package testcover
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"maps"
@@ -16,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -28,12 +31,19 @@ const mutantFileName = "lym_testcover_mutant.go"
 // overlayFileName is the `go build -overlay` file WriteOverlay writes.
 const overlayFileName = "overlay.json"
 
+// embedDirective opens the comment that fills a package-level variable from files at build time.
+const embedDirective = "//go:embed "
+
 // The mutation operators.
 const (
 	OperatorNegateCondition  = "negate condition"
 	OperatorNegateComparison = "negate comparison"
-	OperatorDropStatement    = "drop statement"
-	OperatorChangeConstant   = "change constant"
+	// OperatorDeleteClause replaces an operand of a && or || chain with the value that ignores it.
+	// The operand is still evaluated, and only its value is replaced, so a side effect of the operand stays.
+	OperatorDeleteClause       = "delete clause"
+	OperatorDropStatement      = "drop statement"
+	OperatorChangeConstant     = "change constant"
+	OperatorChangeEmbeddedLine = "change embedded line"
 )
 
 // mutantHelpers is the source of the file the overlay adds, after its package clause.
@@ -43,6 +53,7 @@ const mutantHelpers = `
 import (
 	lymmutantos "os"
 	lymmutantstrconv "strconv"
+	lymmutantstrings "strings"
 )
 
 var lymMutantActive, _ = lymmutantstrconv.Atoi(lymmutantos.Getenv("` + MutantEnv + `"))
@@ -50,6 +61,20 @@ var lymMutantActive, _ = lymmutantstrconv.Atoi(lymmutantos.Getenv("` + MutantEnv
 func lymMutantBool[T ~bool](v T, id int) T {
 	if id == lymMutantActive {
 		return !v
+	}
+	return v
+}
+
+func lymMutantDropOr[T ~bool](v T, id int) T {
+	if id == lymMutantActive {
+		return false
+	}
+	return v
+}
+
+func lymMutantDropAnd[T ~bool](v T, id int) T {
+	if id == lymMutantActive {
+		return true
 	}
 	return v
 }
@@ -71,6 +96,17 @@ func lymMutantString[T ~string](v T, id int) T {
 	}
 	return v
 }
+
+func lymMutantLine[T ~string](v T, line, id int) T {
+	if id != lymMutantActive {
+		return v
+	}
+	lines := lymmutantstrings.SplitAfter(string(v), "\n")
+	text := lines[line-1]
+	indent := len(text) - len(lymmutantstrings.TrimLeft(text, " \t"))
+	lines[line-1] = text[:indent] + "~" + text[indent:]
+	return T(lymmutantstrings.Join(lines, ""))
+}
 `
 
 // Mutant is one small change at one site of a package's own source.
@@ -82,15 +118,46 @@ type Mutant struct {
 	Line int
 	// Operator is one of the Operator constants.
 	Operator string
-	// Block is the rendered key of the coverage block holding the site.
-	Block string
+	// Blocks are the rendered keys of the coverage blocks whose run reaches the site, ascending.
+	// A site of a function body has the one block holding it;
+	// a site of a package-level variable's value has each block that reads the variable.
+	// It also has each block that reads a variable whose value names it.
+	Blocks []string
 
 	// lastLine is the line the site ends on.
 	lastLine int
 	// start and end are the site's byte offsets in its file.
 	start, end int
-	// prefix and suffix are the text the mutant inserts before and after the site.
-	prefix, suffix string
+	// helper is the function the site's value passes through, empty for a dropped statement;
+	// args are the arguments the helper takes between the value and the ID.
+	helper, args string
+}
+
+// InBlocks reports whether blocks holds one of the mutant's blocks, so a run of those blocks reaches the mutant.
+func (m Mutant) InBlocks(blocks BlockSet) bool {
+	return slices.ContainsFunc(m.Blocks, func(key string) bool {
+		_, held := blocks[key]
+		return held
+	})
+}
+
+// opening returns the text the mutant inserts before its site.
+func (m Mutant) opening() string {
+	if m.helper == "" {
+		return fmt.Sprintf("if lymMutantKeep(%d) { ", m.ID)
+	}
+	return m.helper + "("
+}
+
+// closing returns the text the mutant inserts after its site.
+func (m Mutant) closing() string {
+	switch {
+	case m.helper == "":
+		return " }"
+	case m.args != "":
+		return fmt.Sprintf(", %s, %d)", m.args, m.ID)
+	}
+	return fmt.Sprintf(", %d)", m.ID)
 }
 
 // MutantPlan holds the mutants of one package and the source they change.
@@ -103,25 +170,52 @@ type MutantPlan struct {
 	sources map[string][]byte
 }
 
-// site is one place of a file a mutant can change, before it is placed in a block and given an ID.
+// site is one place of a file a mutant can change, before it is placed in its blocks and given an ID.
 type site struct {
 	operator   string
 	start, end int
-	// helper is the function the site's value passes through; empty for a dropped statement.
-	helper string
+	// helper and args are the Mutant fields of the same names.
+	helper, args string
+	// variables names the package-level variables whose value holds the site; it is empty for a site of a function body.
+	variables []string
+}
+
+// packageFile is one parsed non-test Go file of a package.
+type packageFile struct {
+	name      string
+	text      []byte
+	file      *ast.File
+	tokenFile *token.File
+}
+
+// packageDecls is what the mutation sites depend on in a package's package-level declarations.
+type packageDecls struct {
+	// constants maps each constant whose value is a literal to the helper that changes its value.
+	constants map[string]string
+	// embedded maps each string variable an embed directive fills from one file to that file's non-blank lines.
+	embedded map[string][]int
+	// variables holds the names of the package-level variables.
+	variables map[string]bool
 }
 
 // PlanMutants returns the mutants of the blocks of the package at importPath that targets holds.
 // profile is a profile of the package's coverage binary, which lists each of its blocks, covered or not.
 // targets holds rendered block keys, keyed as KeyBlocks keys every block of the package's own files in profile.
-// The files are read from the package directory dir.
-// A site belongs to the innermost block holding its start, and it is a mutant when that block is a target.
-// The sites lie in function bodies.
-// They are each if and for condition, and each other comparison.
-// They also include each call, assignment or increment statement of a statement list.
-// Each integer, rune or string literal is a site too.
-// A literal of a constant declaration, an array length, a composite key or a field tag stays, since it must be constant.
-// A file that does not parse, or a block outside its file, is an error.
+// The files are read from the package directory dir, and so is each file an embed directive names.
+// A site of a function body belongs to the innermost block holding its start.
+// A site of a package-level variable's value belongs to each block that names the variable.
+// It also belongs to each block that names a variable whose value names it.
+// A site is a mutant when one of its blocks is a target.
+// Function bodies hold these sites: each if and for condition, and each other comparison;
+// each operand of a chain of && or of ||, which the mutant deletes;
+// each call, assignment or increment statement of a statement list;
+// each integer, rune or string literal, and each use of a package-level constant whose value is one;
+// and, at each use of a string variable an embed directive fills from one file, each non-blank line of that file.
+// A deleted operand is still evaluated, and only its value is replaced, so a side effect of the operand stays.
+// The literals of a package-level variable's value are sites too.
+// A literal of a constant declaration, an array length or a field tag stays, since it must be constant.
+// So does a composite literal's key unless it is a string literal, which only a map key can be.
+// A file that does not parse, an embedded file that cannot be read, or a block outside its file is an error.
 func PlanMutants(dir, importPath string, profile []ProfileBlock, targets BlockSet) (*MutantPlan, error) {
 	var own []ProfileBlock
 	seen := map[string]bool{}
@@ -160,139 +254,462 @@ func PlanMutants(dir, importPath string, profile []ProfileBlock, targets BlockSe
 		}
 		spans[name] = append(spans[name], span{start: start, end: end, key: keys[i].String()})
 	}
+	blockAt := func(name string, offset int) (string, bool) {
+		innermost := -1
+		for i, b := range spans[name] {
+			if b.start <= offset && offset < b.end && (innermost < 0 || b.end-b.start < spans[name][innermost].end-spans[name][innermost].start) {
+				innermost = i
+			}
+		}
+		if innermost < 0 {
+			return "", false
+		}
+		return spans[name][innermost].key, true
+	}
 
-	plan := &MutantPlan{dir: dir, sources: map[string][]byte{}}
-	for _, name := range slices.Sorted(maps.Keys(spans)) {
-		if !slices.ContainsFunc(spans[name], func(s span) bool { _, target := targets[s.key]; return target }) {
-			continue
+	files, err := parsePackageFiles(dir, sources)
+	if err != nil {
+		return nil, err
+	}
+	decls, err := scanPackageDecls(dir, files)
+	if err != nil {
+		return nil, err
+	}
+	readers := map[string]map[string]bool{}
+	addReader := func(variable, key string) bool {
+		if readers[variable][key] {
+			return false
 		}
-		fset := token.NewFileSet()
-		file, err := parser.ParseFile(fset, filepath.Join(dir, name), sources[name].text, parser.SkipObjectResolution)
-		if err != nil {
-			return nil, err
+		if readers[variable] == nil {
+			readers[variable] = map[string]bool{}
 		}
-		plan.packageName = file.Name.Name
-		tokenFile := fset.File(file.Pos())
-		for _, s := range fileSites(file, tokenFile) {
-			innermost := -1
-			for i, b := range spans[name] {
-				if b.start <= s.start && s.start < b.end && (innermost < 0 || b.end-b.start < spans[name][innermost].end-spans[name][innermost].start) {
-					innermost = i
+		readers[variable][key] = true
+		return true
+	}
+	valueReads := map[string][]string{}
+	for _, f := range files {
+		for variable, offsets := range variableReads(f.file, f.tokenFile, decls) {
+			for _, offset := range offsets {
+				if key, ok := blockAt(f.name, offset); ok {
+					addReader(variable, key)
 				}
 			}
-			if innermost < 0 {
-				continue
+		}
+		for variable, names := range variableValueReads(f.file, decls) {
+			valueReads[variable] = append(valueReads[variable], names...)
+		}
+	}
+	// A variable a reader's value names is read wherever the reader is, however many variables lie between.
+	for grew := true; grew; {
+		grew = false
+		for variable, names := range valueReads {
+			for _, name := range names {
+				for key := range readers[variable] {
+					if addReader(name, key) {
+						grew = true
+					}
+				}
 			}
-			key := spans[name][innermost].key
-			if _, target := targets[key]; !target {
+		}
+	}
+
+	plan := &MutantPlan{dir: dir, sources: map[string][]byte{}}
+	for _, f := range files {
+		plan.packageName = f.file.Name.Name
+		for _, s := range fileSites(f.file, f.tokenFile, decls) {
+			var blocks []string
+			if len(s.variables) == 0 {
+				if key, ok := blockAt(f.name, s.start); ok {
+					blocks = []string{key}
+				}
+			} else {
+				for _, variable := range s.variables {
+					blocks = append(blocks, slices.Collect(maps.Keys(readers[variable]))...)
+				}
+				slices.Sort(blocks)
+				blocks = slices.Compact(blocks)
+			}
+			if !slices.ContainsFunc(blocks, func(key string) bool { _, target := targets[key]; return target }) {
 				continue
 			}
 			plan.Mutants = append(plan.Mutants, Mutant{
-				File: name, Line: tokenFile.Line(tokenFile.Pos(s.start)), lastLine: tokenFile.Line(tokenFile.Pos(s.end)),
-				Operator: s.operator, Block: key, start: s.start, end: s.end,
-				prefix: s.helper,
+				File: f.name, Line: f.tokenFile.Line(f.tokenFile.Pos(s.start)), lastLine: f.tokenFile.Line(f.tokenFile.Pos(s.end)),
+				Operator: s.operator, Blocks: blocks, start: s.start, end: s.end, helper: s.helper, args: s.args,
 			})
+			plan.sources[f.name] = f.text
 		}
-		plan.sources[name] = sources[name].text
 	}
 	for i := range plan.Mutants {
-		m := &plan.Mutants[i]
-		m.ID = i + 1
-		if m.prefix == "" {
-			m.prefix, m.suffix = fmt.Sprintf("if lymMutantKeep(%d) { ", m.ID), " }"
-		} else {
-			m.prefix, m.suffix = m.prefix+"(", fmt.Sprintf(", %d)", m.ID)
-		}
+		plan.Mutants[i].ID = i + 1
 	}
 	return plan, nil
 }
 
-// fileSites returns the mutation sites of the function bodies of file, ordered by start, the longer first at one start.
-func fileSites(file *ast.File, tokenFile *token.File) []site {
-	var sites []site
-	add := func(node ast.Node, operator, helper string) {
-		sites = append(sites, site{operator: operator, start: tokenFile.Offset(node.Pos()), end: tokenFile.Offset(node.End()), helper: helper})
+// parsePackageFiles parses every file sources holds, in name order.
+// It also parses every other non-test Go file of dir that the default build context takes;
+// a build tag set through GOFLAGS is not read, so a file gated by one may be skipped or its alternative scanned.
+// A file of sources keeps the text read there.
+func parsePackageFiles(dir string, sources map[string]*sourceFile) ([]packageFile, error) {
+	names := slices.Collect(maps.Keys(sources))
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
 	}
-	conditions := map[ast.Expr]bool{}
-	fixed := map[*ast.BasicLit]bool{}
-	markFixed := func(node ast.Expr) {
-		if node == nil {
-			return
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || sources[name] != nil {
+			continue
 		}
-		ast.Inspect(node, func(n ast.Node) bool {
-			if lit, ok := n.(*ast.BasicLit); ok {
-				fixed[lit] = true
+		if match, err := build.Default.MatchFile(dir, name); err != nil {
+			return nil, err
+		} else if match {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	files := make([]packageFile, len(names))
+	for i, name := range names {
+		var text []byte
+		if src := sources[name]; src != nil {
+			text = src.text
+		} else if text, err = os.ReadFile(filepath.Join(dir, name)); err != nil {
+			return nil, err
+		}
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, filepath.Join(dir, name), text, parser.ParseComments|parser.SkipObjectResolution)
+		if err != nil {
+			return nil, err
+		}
+		files[i] = packageFile{name: name, text: text, file: file, tokenFile: fset.File(file.Pos())}
+	}
+	return files, nil
+}
+
+// scanPackageDecls reads the package-level constants and variables of files.
+// It reads each file an embed directive names from dir.
+func scanPackageDecls(dir string, files []packageFile) (packageDecls, error) {
+	decls := packageDecls{constants: map[string]string{}, embedded: map[string][]int{}, variables: map[string]bool{}}
+	for _, f := range files {
+		for _, decl := range f.file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || (gen.Tok != token.CONST && gen.Tok != token.VAR) {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				value := spec.(*ast.ValueSpec)
+				for i, name := range value.Names {
+					switch {
+					case name.Name == "_":
+					case gen.Tok == token.VAR:
+						decls.variables[name.Name] = true
+					case len(value.Values) == len(value.Names):
+						if lit, ok := value.Values[i].(*ast.BasicLit); ok && literalHelper(lit.Kind) != "" {
+							decls.constants[name.Name] = literalHelper(lit.Kind)
+						}
+					}
+				}
+				pattern, ok := embeddedFile(gen, value)
+				if !ok {
+					continue
+				}
+				data, err := os.ReadFile(filepath.Join(dir, pattern))
+				if err != nil {
+					return packageDecls{}, fmt.Errorf("read the embedded file of %s: %w", value.Names[0].Name, err)
+				}
+				for i, line := range bytes.SplitAfter(data, []byte("\n")) {
+					if len(bytes.TrimSpace(line)) > 0 {
+						decls.embedded[value.Names[0].Name] = append(decls.embedded[value.Names[0].Name], i+1)
+					}
+				}
+			}
+		}
+	}
+	return decls, nil
+}
+
+// embeddedFile returns the file an embed directive fills value from.
+// It reports false unless value is one string variable that one plain file name fills.
+func embeddedFile(gen *ast.GenDecl, value *ast.ValueSpec) (string, bool) {
+	typeName, ok := value.Type.(*ast.Ident)
+	if gen.Tok != token.VAR || len(value.Names) != 1 || !ok || typeName.Name != "string" {
+		return "", false
+	}
+	doc := value.Doc
+	if doc == nil && len(gen.Specs) == 1 {
+		doc = gen.Doc
+	}
+	if doc == nil {
+		return "", false
+	}
+	for _, comment := range doc.List {
+		pattern, found := strings.CutPrefix(comment.Text, embedDirective)
+		pattern = strings.TrimSpace(pattern)
+		if found && len(strings.Fields(pattern)) == 1 && !strings.ContainsAny(pattern, "*?[\"`") {
+			return pattern, true
+		}
+	}
+	return "", false
+}
+
+// localNames returns every name fn declares itself:
+// its receiver, parameters and results, and each name its body declares.
+// A use of such a name in fn may refer to the local, so no use of it there counts as a use of a package-level name.
+func localNames(fn *ast.FuncDecl) map[string]bool {
+	names := map[string]bool{}
+	addIdents := func(exprs ...ast.Expr) {
+		for _, expr := range exprs {
+			if ident, ok := expr.(*ast.Ident); ok {
+				names[ident.Name] = true
+			}
+		}
+	}
+	ast.Inspect(fn, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.Field:
+			for _, name := range n.Names {
+				names[name.Name] = true
+			}
+		case *ast.ValueSpec:
+			for _, name := range n.Names {
+				names[name.Name] = true
+			}
+		case *ast.TypeSpec:
+			names[n.Name.Name] = true
+		case *ast.AssignStmt:
+			if n.Tok == token.DEFINE {
+				addIdents(n.Lhs...)
+			}
+		case *ast.RangeStmt:
+			if n.Tok == token.DEFINE {
+				addIdents(n.Key, n.Value)
+			}
+		}
+		return true
+	})
+	return names
+}
+
+// literalHelper returns the helper that changes a literal of kind, or "" for a kind no mutant changes.
+func literalHelper(kind token.Token) string {
+	switch kind {
+	case token.INT, token.CHAR:
+		return "lymMutantInt"
+	case token.STRING:
+		return "lymMutantString"
+	}
+	return ""
+}
+
+// markFixed records in fixed the literals and identifiers below node that must stay as written:
+// those of a constant declaration, an array length, a field's names and tag, and a selected name.
+// A composite key stays too, unless it is a string literal.
+func markFixed(node ast.Node, fixed map[ast.Node]bool) {
+	var held []ast.Node
+	switch n := node.(type) {
+	case *ast.GenDecl:
+		if n.Tok == token.CONST {
+			held = append(held, n)
+		}
+	case *ast.ArrayType:
+		if n.Len != nil {
+			held = append(held, n.Len)
+		}
+	case *ast.KeyValueExpr:
+		if lit, ok := n.Key.(*ast.BasicLit); !ok || lit.Kind != token.STRING {
+			held = append(held, n.Key)
+		}
+	case *ast.Field:
+		for _, name := range n.Names {
+			held = append(held, name)
+		}
+		if n.Tag != nil {
+			held = append(held, n.Tag)
+		}
+	case *ast.SelectorExpr:
+		held = append(held, n.Sel)
+	}
+	for _, h := range held {
+		ast.Inspect(h, func(inner ast.Node) bool {
+			switch inner.(type) {
+			case *ast.BasicLit, *ast.Ident:
+				fixed[inner] = true
 			}
 			return true
 		})
 	}
-	addStatements := func(list []ast.Stmt) {
-		for _, stmt := range list {
-			if droppable(stmt) {
-				add(stmt, OperatorDropStatement, "")
-			}
-		}
-	}
+}
+
+// variableReads finds each identifier of file's function bodies that names a package-level variable.
+// It returns their offsets by variable name.
+func variableReads(file *ast.File, tokenFile *token.File, decls packageDecls) map[string][]int {
+	reads := map[string][]int{}
+	fixed := map[ast.Node]bool{}
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
 		if !ok || fn.Body == nil {
 			continue
 		}
+		locals := localNames(fn)
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			switch n := n.(type) {
-			case *ast.GenDecl:
-				if n.Tok == token.CONST {
-					ast.Inspect(n, func(inner ast.Node) bool {
-						if lit, ok := inner.(*ast.BasicLit); ok {
-							fixed[lit] = true
+			markFixed(n, fixed)
+			if ident, ok := n.(*ast.Ident); ok && !fixed[ident] && !locals[ident.Name] && decls.variables[ident.Name] {
+				reads[ident.Name] = append(reads[ident.Name], tokenFile.Offset(ident.Pos()))
+			}
+			return true
+		})
+	}
+	return reads
+}
+
+// variableValueReads finds, for each package-level variable of file, the package-level variables its value names.
+func variableValueReads(file *ast.File, decls packageDecls) map[string][]string {
+	reads := map[string][]string{}
+	fixed := map[ast.Node]bool{}
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			value := spec.(*ast.ValueSpec)
+			for _, expr := range value.Values {
+				ast.Inspect(expr, func(n ast.Node) bool {
+					markFixed(n, fixed)
+					if ident, ok := n.(*ast.Ident); ok && !fixed[ident] && decls.variables[ident.Name] {
+						for _, name := range value.Names {
+							if name.Name != "_" {
+								reads[name.Name] = append(reads[name.Name], ident.Name)
+							}
+						}
+					}
+					return true
+				})
+			}
+		}
+	}
+	return reads
+}
+
+// fileSites returns the mutation sites of the function bodies and package-level variable values of file.
+// They are ordered by start, the longer first at one start.
+func fileSites(file *ast.File, tokenFile *token.File, decls packageDecls) []site {
+	var sites []site
+	add := func(node ast.Node, operator, helper, args string, variables []string) {
+		sites = append(sites, site{
+			operator: operator, start: tokenFile.Offset(node.Pos()), end: tokenFile.Offset(node.End()),
+			helper: helper, args: args, variables: variables,
+		})
+	}
+	conditions := map[ast.Expr]bool{}
+	fixed := map[ast.Node]bool{}
+	addStatements := func(list []ast.Stmt) {
+		for _, stmt := range list {
+			if droppable(stmt) {
+				add(stmt, OperatorDropStatement, "", "", nil)
+			}
+		}
+	}
+	for _, decl := range file.Decls {
+		switch decl := decl.(type) {
+		case *ast.GenDecl:
+			if decl.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range decl.Specs {
+				value := spec.(*ast.ValueSpec)
+				for i, expr := range value.Values {
+					names := value.Names
+					if len(value.Values) == len(value.Names) {
+						names = names[i : i+1]
+					}
+					var variables []string
+					for _, name := range names {
+						if name.Name != "_" {
+							variables = append(variables, name.Name)
+						}
+					}
+					if len(variables) == 0 {
+						continue
+					}
+					ast.Inspect(expr, func(n ast.Node) bool {
+						markFixed(n, fixed)
+						switch n := n.(type) {
+						case *ast.FuncLit:
+							return false
+						case *ast.BasicLit:
+							if helper := literalHelper(n.Kind); helper != "" && !fixed[n] {
+								add(n, OperatorChangeConstant, helper, "", variables)
+							}
 						}
 						return true
 					})
 				}
-			case *ast.ArrayType:
-				markFixed(n.Len)
-			case *ast.KeyValueExpr:
-				markFixed(n.Key)
-			case *ast.Field:
-				if n.Tag != nil {
-					fixed[n.Tag] = true
-				}
-			case *ast.IfStmt:
-				conditions[n.Cond] = true
-				add(n.Cond, OperatorNegateCondition, "lymMutantBool")
-			case *ast.ForStmt:
-				if n.Cond != nil {
-					conditions[n.Cond] = true
-					add(n.Cond, OperatorNegateCondition, "lymMutantBool")
-				}
-			case *ast.BinaryExpr:
-				if isComparison(n.Op) && !conditions[n] {
-					add(n, OperatorNegateComparison, "lymMutantBool")
-				}
-			case *ast.BasicLit:
-				if fixed[n] {
-					break
-				}
-				switch n.Kind {
-				case token.INT, token.CHAR:
-					add(n, OperatorChangeConstant, "lymMutantInt")
-				case token.STRING:
-					add(n, OperatorChangeConstant, "lymMutantString")
-				}
-			case *ast.BlockStmt:
-				addStatements(n.List)
-			case *ast.CaseClause:
-				addStatements(n.Body)
-			case *ast.CommClause:
-				addStatements(n.Body)
 			}
-			return true
-		})
+		case *ast.FuncDecl:
+			if decl.Body == nil {
+				continue
+			}
+			locals := localNames(decl)
+			ast.Inspect(decl.Body, func(n ast.Node) bool {
+				markFixed(n, fixed)
+				switch n := n.(type) {
+				case *ast.IfStmt:
+					conditions[n.Cond] = true
+					add(n.Cond, OperatorNegateCondition, "lymMutantBool", "", nil)
+				case *ast.ForStmt:
+					if n.Cond != nil {
+						conditions[n.Cond] = true
+						add(n.Cond, OperatorNegateCondition, "lymMutantBool", "", nil)
+					}
+				case *ast.BinaryExpr:
+					if isComparison(n.Op) && !conditions[n] {
+						add(n, OperatorNegateComparison, "lymMutantBool", "", nil)
+					}
+					addClauses(n, func(operand ast.Expr, helper string) { add(operand, OperatorDeleteClause, helper, "", nil) })
+				case *ast.BasicLit:
+					if helper := literalHelper(n.Kind); helper != "" && !fixed[n] {
+						add(n, OperatorChangeConstant, helper, "", nil)
+					}
+				case *ast.Ident:
+					if fixed[n] || locals[n.Name] {
+						break
+					}
+					if helper, ok := decls.constants[n.Name]; ok {
+						add(n, OperatorChangeConstant, helper, "", nil)
+					}
+					for _, line := range decls.embedded[n.Name] {
+						add(n, OperatorChangeEmbeddedLine, "lymMutantLine", strconv.Itoa(line), nil)
+					}
+				case *ast.BlockStmt:
+					addStatements(n.List)
+				case *ast.CaseClause:
+					addStatements(n.Body)
+				case *ast.CommClause:
+					addStatements(n.Body)
+				}
+				return true
+			})
+		}
 	}
 	slices.SortStableFunc(sites, func(a, b site) int {
 		return cmp.Or(cmp.Compare(a.start, b.start), cmp.Compare(b.end, a.end))
 	})
 	return sites
+}
+
+// addClauses calls add with each operand of expr when expr is a && or || chain, and with the helper that deletes it:
+// an operand of && turns true and one of || turns false.
+// An operand that is itself a chain of the same operator passes on its own operands when it is visited.
+func addClauses(expr *ast.BinaryExpr, add func(operand ast.Expr, helper string)) {
+	helper := map[token.Token]string{token.LAND: "lymMutantDropAnd", token.LOR: "lymMutantDropOr"}[expr.Op]
+	if helper == "" {
+		return
+	}
+	for _, operand := range []ast.Expr{expr.X, expr.Y} {
+		if inner, ok := operand.(*ast.BinaryExpr); !ok || inner.Op != expr.Op {
+			add(operand, helper)
+		}
+	}
 }
 
 // droppable reports whether dropping stmt can change what the code does and still compiles:
@@ -361,23 +778,24 @@ func (p *MutantPlan) WriteOverlay(outDir string, dropped map[int]bool) (string, 
 	return overlay, os.WriteFile(overlay, data, 0o644)
 }
 
-// applyMutants returns text with the prefix and suffix of each of mutants inserted around its site.
+// applyMutants returns text with the opening and closing text of each of mutants inserted around its site.
 // Every insertion adds no line, so a line of the result is the line of text it came from.
-// At one offset a closing suffix goes before an opening prefix;
-// suffixes close the inner site first and prefixes open the outer site first.
+// At one offset a closing goes before an opening;
+// closings close the inner site first and openings open the outer site first.
+// Of two mutants on one site, the earlier in mutants is the outer.
 func applyMutants(text []byte, mutants []Mutant) []byte {
 	type insertion struct {
 		offset int
-		// opening is set for a prefix; length is the site's length.
-		opening bool
-		length  int
-		text    string
+		// opening is set for an opening; length is the site's length and rank the mutant's index in mutants.
+		opening      bool
+		length, rank int
+		text         string
 	}
 	var insertions []insertion
-	for _, m := range mutants {
+	for i, m := range mutants {
 		insertions = append(insertions,
-			insertion{offset: m.start, opening: true, length: m.end - m.start, text: m.prefix},
-			insertion{offset: m.end, length: m.end - m.start, text: m.suffix})
+			insertion{offset: m.start, opening: true, length: m.end - m.start, rank: i, text: m.opening()},
+			insertion{offset: m.end, length: m.end - m.start, rank: i, text: m.closing()})
 	}
 	slices.SortStableFunc(insertions, func(a, b insertion) int {
 		if a.offset != b.offset {
@@ -390,9 +808,9 @@ func applyMutants(text []byte, mutants []Mutant) []byte {
 			return -1
 		}
 		if a.opening {
-			return cmp.Compare(b.length, a.length)
+			return cmp.Or(cmp.Compare(b.length, a.length), cmp.Compare(a.rank, b.rank))
 		}
-		return cmp.Compare(a.length, b.length)
+		return cmp.Or(cmp.Compare(a.length, b.length), cmp.Compare(b.rank, a.rank))
 	})
 	var out strings.Builder
 	at := 0

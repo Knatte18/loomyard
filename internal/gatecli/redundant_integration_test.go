@@ -35,6 +35,8 @@ import (
 // TestHoardChecked and TestHoardCheckedAgain check a loop that keeps a megabyte a pass.
 // Its negated condition makes it endless.
 // Hoard panics at hoardStop megabytes, so a memory cap that does not hold fails the test and never the machine.
+// TestAllowedChecked checks what TestAllowedRun only runs: an || chain and an && chain that one clause each decides,
+// and the lines of an embedded file.
 // TestAll and TestDoubleChecked also call Timeout, whose constant does not compile behind the mutant helper.
 // The module stands in its own tiergate, at the import path a coverage map reads tiers from, so it builds alone.
 var redundantModuleFiles = map[string]string{
@@ -43,7 +45,27 @@ var redundantModuleFiles = map[string]string{
 	"internal/testkit/scankit/scankit.go":   "package scankit\n\n// Files stands in for the module's source scan.\nfunc Files() int { return 0 }\n",
 	"cov/cov.go": `package cov
 
-import "time"
+import (
+	_ "embed"
+	"time"
+)
+
+//go:embed banner.txt
+var banner string
+
+// Allowed is decided by admin alone whenever owner is false.
+func Allowed(admin, owner bool) bool {
+	return admin || owner
+}
+
+// Both is decided by active alone whenever admin is true.
+func Both(admin, active bool) bool {
+	return admin && active
+}
+
+func Banner() string {
+	return banner
+}
 
 func Classify(n int) string {
 	if n < 0 {
@@ -86,9 +108,11 @@ func Hoard(n int) int {
 	return len(kept)
 }
 `,
+	"cov/banner.txt": "first\nsecond\n",
 	"cov/cov_test.go": `package cov
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
@@ -118,6 +142,26 @@ func TestDoubleChecked(t *testing.T) {
 	if Double(2) != 4 {
 		t.Fatal("Double(2) != 4")
 	}
+}
+
+func TestAllowedChecked(t *testing.T) {
+	tiergate.Require(t, 0)
+	if !Allowed(true, false) || Allowed(false, false) {
+		t.Fatal("Allowed is not admin || owner")
+	}
+	if Both(true, false) {
+		t.Fatal("Both is not admin && active")
+	}
+	if lines := strings.Split(Banner(), "\n"); lines[0] != "first" || lines[1] != "second" {
+		t.Fatal("Banner's first two lines are not first and second")
+	}
+}
+
+func TestAllowedRun(t *testing.T) {
+	tiergate.Require(t, 0)
+	Allowed(true, true)
+	Both(true, true)
+	Banner()
 }
 
 func TestDoubleUnchecked(t *testing.T) {
@@ -294,20 +338,20 @@ func TestGateRedundant(t *testing.T) {
 			t.Errorf("redundant ./cov lists %d removable candidates; want at most 1, one of the pair", removable)
 		}
 		// Timeout's constant is the one mutant that does not compile.
-		if got.Mutation.Mutants != 14 || got.Mutation.Unbuildable != 1 {
-			t.Errorf("redundant ./cov mutation = %+v; want 14 buildable mutants and 1 unbuildable", got.Mutation)
+		if got.Mutation.Mutants != 20 || got.Mutation.Unbuildable != 1 {
+			t.Errorf("redundant ./cov mutation = %+v; want 20 buildable mutants and 1 unbuildable", got.Mutation)
 		}
 		// Each involved test runs once with no mutant on, and each contained test once with each mutant of its blocks.
 		// Each covering test then runs with each mutant a contained test killed or left unjudged, when it covers the mutant.
 		// A covering test that left the mutant alive, or ended at the memory cap on it, keeps that answer and does not run.
 		// Every other covering run kills or ends at its time bound, and one beside another run runs once more alone.
 		// The tally loop's covering runs time out again, so no covering test kills the mutants ending the loops.
-		const unmutatedRuns, containedRuns, coveringRuns = 8, 29, 16
+		const unmutatedRuns, containedRuns, coveringRuns = 10, 41, 16
 		if want := unmutatedRuns + containedRuns + 2*coveringRuns; got.Mutation.Runs != want {
 			t.Errorf("redundant ./cov started %d runs; want %d, with no covering run of a mutant the memory cap ended", got.Mutation.Runs, want)
 		}
-		hoardLoop := redundantMutant{File: "cov.go", Line: 33, Operator: testcover.OperatorNegateCondition}
-		tallyStep := redundantMutant{File: "cov.go", Line: 23, Operator: testcover.OperatorDropStatement}
+		hoardLoop := redundantMutant{File: "cov.go", Line: 53, Operator: testcover.OperatorNegateCondition}
+		tallyStep := redundantMutant{File: "cov.go", Line: 43, Operator: testcover.OperatorDropStatement}
 		stops := func(site redundantMutant, tests ...string) []mutantStop {
 			var listed []mutantStop
 			for _, test := range tests {
@@ -325,7 +369,7 @@ func TestGateRedundant(t *testing.T) {
 		// The covering lists are the pick among every judged test but the source checks.
 		// TestSourceScan sorts before the Tally tests and overlaps them fully, yet neither it nor TestGuarded is named.
 		want := answer{
-			OK: true, Package: "cov", Tests: 12,
+			OK: true, Package: "cov", Tests: 14,
 			Failure: &testcover.MapFailure{Commit: "deadbeef", Error: "later build broke"},
 			Candidates: []redundantCandidate{
 				{Name: "TestAll", Covering: []string{"TestClassifyChecked", "TestDoubleChecked"}, MutantsKilled: 1},
@@ -338,12 +382,21 @@ func TestGateRedundant(t *testing.T) {
 				{Name: "TestTallyChecked", Covering: []string{"TestTallyCheckedAgain"}, MutantsKilled: 6, Unjudged: []redundantMutant{tallyStep}},
 				{Name: "TestTallyCheckedAgain", Covering: []string{"TestTallyChecked"}, MutantsKilled: 6, Unjudged: []redundantMutant{tallyStep}},
 			},
+			// TestAllowedRun only runs what TestAllowedChecked checks, so the deleted clause and the changed line are unique kills.
 			Refuted: []redundantRefuted{{
+				Name: "TestAllowedChecked", Covering: []string{"TestAllowedRun"},
+				Unique: []redundantMutant{
+					{File: "cov.go", Line: 13, Operator: testcover.OperatorDeleteClause},
+					{File: "cov.go", Line: 18, Operator: testcover.OperatorDeleteClause},
+					{File: "cov.go", Line: 22, Operator: testcover.OperatorChangeEmbeddedLine},
+					{File: "cov.go", Line: 22, Operator: testcover.OperatorChangeEmbeddedLine},
+				},
+			}, {
 				Name: "TestClassifyChecked", Covering: []string{"TestAll"},
 				Unique: []redundantMutant{
-					{File: "cov.go", Line: 6, Operator: testcover.OperatorNegateCondition},
-					{File: "cov.go", Line: 7, Operator: testcover.OperatorChangeConstant},
-					{File: "cov.go", Line: 9, Operator: testcover.OperatorChangeConstant},
+					{File: "cov.go", Line: 26, Operator: testcover.OperatorNegateCondition},
+					{File: "cov.go", Line: 27, Operator: testcover.OperatorChangeConstant},
+					{File: "cov.go", Line: 29, Operator: testcover.OperatorChangeConstant},
 				},
 			}},
 			Kept: []redundantSkip{{Name: "TestKept", Reason: "pins the message"}},
@@ -351,6 +404,7 @@ func TestGateRedundant(t *testing.T) {
 				{Name: "TestFails", Reason: string(testcover.OutcomeFailed)},
 				{Name: "TestGuarded", Reason: testcover.ReasonSourceCheck},
 				{Name: "TestSourceScan", Reason: testcover.ReasonSourceCheck},
+				{Name: "TestAllowedRun", Reason: testcover.ReasonKillsNone},
 				{Name: "TestDoubleUnchecked", Reason: testcover.ReasonKillsNone},
 			},
 		}

@@ -42,7 +42,12 @@
 // PlanMutants places those blocks in the package's own files.
 // A mutant changes one site of a target block by one operator.
 // One operator negates an if or for condition or a comparison, or drops a call, assignment or increment statement.
-// Another operator changes an integer, rune or string constant.
+// Another deletes one operand of a chain of && or ||, so a clause only one test feeds has a mutant that test alone kills;
+// the operand is still evaluated, and only its value is replaced.
+// Another changes an integer, rune or string constant: a literal, or a use of a package-level constant holding one.
+// A literal of a package-level variable's value is a site of each block that names the variable.
+// It is also a site of each block that names a variable whose value names it.
+// At a use of a string variable an embed directive fills, one mutant per non-blank line of the file changes that line.
 // MutantPlan.WriteOverlay writes every mutant into one copy of the changed files and an overlay naming them.
 // Each mutant sits behind a helper that changes its value only while MutantEnv names the mutant's ID.
 // No line moves, so a compiler error names the mutant's own line.
