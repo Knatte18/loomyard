@@ -91,6 +91,10 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [drift-csharp-trial-2026-11-03.md](drift/csharp-trial/drift-csharp-trial-2026-11-03.md) — the first trial.
 - [drift-csharp-trial-2-2026-11-03.md](drift/csharp-trial/drift-csharp-trial-2-2026-11-03.md) — the second trial.
 
+## engines — candidate agent engines
+
+- [gemini-antigravity-engine-study-2026-11-17.md](engines/gemini-antigravity-engine-study-2026-11-17.md) — the work to support Gemini CLI or Antigravity CLI as a third agent engine, measured against Codex.
+
 ## glyph — what Webster forks read
 
 - [glyph-audit-2026-10-12](glyph/glyph-audit-2026-10-12/report.md) — the Webster kick-start pack.
