@@ -312,9 +312,11 @@ this section keeps only what is project-specific or stricter here.
   then confirms each candidate by mutation inside a gate slot.
   It mutates the candidates' blocks and keeps a candidate only when its covering tests kill every mutant it kills;
   one that kills a mutant they miss is listed as refuted, with those mutants.
+  A run that ends at its time bound or the memory cap is no kill,
+  and a candidate whose answer rests on one is listed as unconfirmed, with those mutants.
   A `//lym:guard` test and one reaching `internal/testkit/scankit` are never candidates:
   their check reads source files, which no mutant changes.
-  It lists the candidates with their seconds, covering tests and kills, and the refuted, keep-marked and unjudged tests.
+  It lists the candidates with their seconds, covering tests and kills, and the refuted, unconfirmed, keep-marked and unjudged tests.
   Bound: a mutant changes the package's own code only,
   so a candidate whose check differs from its covers only in another package's result is confirmed falsely.
 - A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.

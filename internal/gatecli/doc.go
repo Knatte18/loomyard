@@ -1193,18 +1193,19 @@
 // and the rest of the machine keeps its memory.
 // Each contained test then runs with each mutant of its blocks on.
 // The call logs each such run's mutant, with its file, line and operator, before the run starts.
-// A test that killed a mutant has its covering tests run with that mutant on.
+// A test that killed a mutant, or whose own run of it was unjudged, has its covering tests run with that mutant on.
 // Only a covering test whose entry covers the mutant's block runs.
-// A run that fails, times out or ends at the memory cap kills its mutant.
+// A run that fails kills its mutant.
+// A run that times out or ends at the memory cap is unjudged, never a kill, since it proves no check of the mutant.
 // Up to the slot's tier0 parallel runs go side by side, each alone in its process under its test's tier env.
 // Fewer go side by side when memory is short.
 // The caps of the runs together stay within the memory `proc.ReadMemoryLimit` finds left.
 // Where `proc.MemoryCapCoversTree` says the cap bounds each process alone, one run goes at a time.
 // A tier with `prebuilt_lym` gets the `lym` the call builds once into the pool's prebuilt store.
-// A covering test that kills beside other runs runs once more alone, and that run stands.
+// A covering test that kills or times out beside other runs runs once more alone, and that run stands.
 // A run the memory cap ended is not run again, since it reaches the cap alone too.
 // That holds for a covering test that is also a contained test.
-// `testcover.JudgeMutants` judges each contained test from the kills.
+// `testcover.JudgeMutants` judges each contained test from the kills and the unjudged runs.
 // Bound: a contained test's own kill from its candidate runs is not rerun alone,
 // so a disturbed run can refute it falsely.
 // Bound: a mutant changes the package's own code only,
@@ -1217,6 +1218,10 @@
 // A candidate is removable when both the coverage pass and the mutation pass remove it.
 // It prints `refuted`, each test that kills a mutant its covering tests miss.
 // Each carries those mutants' file, line and operator.
+// It prints `unconfirmed`, each other contained test whose answer rests on an unjudged run:
+// its own run of a mutant none of its covering tests killed,
+// or its covering tests' runs of a mutant it killed and none of them killed.
+// Each carries its tier, seconds, covering tests, `mutants_killed` and those mutants' file, line and operator.
 // It prints `kept`, each keep-marked test with its reason, and `not_judged`, each other unjudged test with why.
 // When it checked a test it prints `mutation`: the mutants built and dropped, the build and run seconds and the runs.
 // `mutation` also holds `timed_out` and `memory_capped`.

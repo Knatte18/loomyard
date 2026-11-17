@@ -42,21 +42,33 @@ type MutantVerdict struct {
 	Reason string
 	// Killed are the IDs of the mutants the candidate killed, ascending.
 	Killed []int
-	// Unique are the IDs of the mutants it killed that none of its covering tests killed, ascending.
+	// Unique are the IDs of the mutants it killed that none of its covering tests killed or left unjudged, ascending.
 	Unique []int
-	// Redundant is set when it killed a mutant and a covering test killed each one it killed.
+	// Unjudged are the IDs of the mutants whose answer rests on an unjudged run, ascending:
+	// the candidate's own run of a mutant none of its covering tests killed,
+	// or the covering tests' runs of a mutant the candidate killed and none of them killed.
+	Unjudged []int
+	// Redundant is set when it killed a mutant and no answer rests on an unjudged run.
+	// It also requires that a covering test killed each mutant it killed.
 	Redundant bool
 	// Removable is set for a redundant candidate the greedy pass drops:
 	// a test it keeps killed each mutant the candidate killed.
 	Removable bool
 }
 
-// JudgeMutants returns the verdict of each of candidates, in the order given, from kills.
+// JudgeMutants returns the verdict of each of candidates, in the order given, from kills and unjudged.
+// unjudged holds, in the shape of kills, the tests whose run with a mutant on ended at its time bound or the memory cap.
+// Such a run is no proof that the test checks the mutant, so it counts as no kill.
 // A candidate is not judged when it did not pass with no mutant on or the memory guard killed a run of it.
-// It is not judged either when its blocks hold no mutant or it killed none.
+// It is not judged either when its blocks hold no mutant.
+// Nor is it judged when it killed none and no answer of it rests on an unjudged run.
+// A covering test that killed a mutant makes the candidate's own unjudged run of it moot:
+// deleting the candidate loses no check of the mutant, so it is in none of Killed, Unique and Unjudged.
+// A candidate with a unique kill is refuted.
+// One without, whose answer rests on an unjudged run, is unconfirmed: neither redundant nor refuted.
 // The removable set is a greedy pass over the redundant candidates, slowest first, then by name.
 // It drops a candidate while some other test still kept killed each mutant the candidate killed.
-func JudgeMutants(candidates []MutantCandidate, kills Kills) []MutantVerdict {
+func JudgeMutants(candidates []MutantCandidate, kills, unjudged Kills) []MutantVerdict {
 	out := make([]MutantVerdict, len(candidates))
 	var redundant []int
 	for i, c := range candidates {
@@ -71,18 +83,31 @@ func JudgeMutants(candidates []MutantCandidate, kills Kills) []MutantVerdict {
 		}
 		if verdict.Reason == "" {
 			for _, id := range slices.Sorted(slices.Values(c.Mutants)) {
+				coveringRunIn := func(runs Kills) bool {
+					return slices.ContainsFunc(c.Covering, func(name string) bool { return runs[id][name] })
+				}
+				if unjudged[id][c.Name] {
+					if !coveringRunIn(kills) {
+						verdict.Unjudged = append(verdict.Unjudged, id)
+					}
+					continue
+				}
 				if !kills[id][c.Name] {
 					continue
 				}
 				verdict.Killed = append(verdict.Killed, id)
-				if !slices.ContainsFunc(c.Covering, func(name string) bool { return kills[id][name] }) {
+				switch {
+				case coveringRunIn(kills):
+				case coveringRunIn(unjudged):
+					verdict.Unjudged = append(verdict.Unjudged, id)
+				default:
 					verdict.Unique = append(verdict.Unique, id)
 				}
 			}
 			switch {
-			case len(verdict.Killed) == 0:
+			case len(verdict.Killed) == 0 && len(verdict.Unjudged) == 0:
 				verdict.Reason = ReasonKillsNone
-			case len(verdict.Unique) == 0:
+			case len(verdict.Unique) == 0 && len(verdict.Unjudged) == 0:
 				verdict.Redundant = true
 				redundant = append(redundant, i)
 			}

@@ -177,7 +177,7 @@
 // `redundancy_test_memory_mb` caps the memory of each test and of every process it starts, in megabytes.
 // Config.RedundancyTestMemory returns it in bytes.
 // The redundancy report step of `lym gate test` and the mutation check of `lym gate redundant` take the three bounds too.
-// A mutant run past the test bound or the memory cap counts as a kill in `lym gate redundant`.
+// In `lym gate redundant` a mutant run past the test bound or the memory cap is unjudged, never a kill.
 // `lym gate test --map` and `lym gate redundant` run fewer tests side by side when memory is short.
 // That is when the limit they sit under leaves less than the caps of those tests together.
 // A map call runs each mapped tier's tests up to that tier's parallel.

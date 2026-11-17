@@ -23,6 +23,8 @@ const standInRecordEnv = "TESTCOVER_STAND_IN_RECORD"
 // standInProfileLine is the profile line it writes for a pass.
 const (
 	standInPass        = "TestStandInPass"
+	standInTimed       = "TestStandInTimed"
+	standInSplit       = "TestStandInSplit"
 	standInFail        = "TestStandInFail"
 	standInSkip        = "TestStandInSkip"
 	standInSkipProfile = "TestStandInSkipWithProfile"
@@ -77,6 +79,9 @@ const standInGoEnv = "go1.26.8\nlinux\namd64\n"
 // As `go test -c` with standInCompileErrorsEnv set, it prints standInCompileErrors and fails.
 // As a coverage binary, it reports the outcome of the one test its `-test.run` names.
 // It writes a profile for a passing test, and for a skipped one that standInSkipProfile names, when given a profile flag.
+// The test standInTimed prints its `=== RUN` line and its result line in one write, and reports 0.00s.
+// The test standInSplit writes its `=== RUN` line and an indented subtest result line.
+// It then writes its result line in two writes, and reports 0.00s.
 // Run with a pattern matching no test, it writes the profile with its block uncovered.
 // The test standInHang never ends on its own.
 // The test standInHoldsPipe passes and exits, leaving a child that holds the output pipe for standInChildSleep;
@@ -139,6 +144,19 @@ func runStandIn(record string, args []string) int {
 			return 1
 		}
 		fmt.Printf("--- PASS: %s (0.25s)\n", name)
+	case standInTimed:
+		if err := writeProfile("1"); err != nil {
+			return 1
+		}
+		fmt.Printf("=== RUN   %s\n--- PASS: %s (0.00s)\n", name, name)
+	case standInSplit:
+		if err := writeProfile("1"); err != nil {
+			return 1
+		}
+		fmt.Printf("=== RUN   %s\n", name)
+		fmt.Printf("    --- PASS: %s/sub (0.00s)\n", name)
+		fmt.Print("--- PA")
+		fmt.Printf("SS: %s (0.00s)\n", name)
 	case standInSkipProfile:
 		if err := writeProfile("1"); err != nil {
 			return 1

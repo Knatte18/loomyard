@@ -181,6 +181,7 @@ func TestHoardCheckedAgain(t *testing.T) {
 `,
 	"lacking/lacking.go":   "package lacking\n\nfunc One() int { return 1 }\n",
 	"stale/stale.go":       "package stale\n\nfunc One() int { return 1 }\n",
+	"alone/alone.go":       "package alone\n\nfunc One() int { return 1 }\n",
 	"badkeep/keep_test.go": "package badkeep\n\nimport \"testing\"\n\n//testtiming:keep\nfunc TestBadKeepMarked(t *testing.T) {}\n",
 }
 
@@ -206,7 +207,7 @@ func TestGateRedundant(t *testing.T) {
 	}
 	prime := h.PrimeWorktree()
 	plankit.WriteTree(t, prime, redundantModuleFiles)
-	gitkit.Git(t, prime, "add", "go.mod", "internal", "cov", "stale", "lacking", "badkeep")
+	gitkit.Git(t, prime, "add", "go.mod", "internal", "cov", "stale", "lacking", "badkeep", "alone")
 	gitkit.Git(t, prime, "commit", "-q", "-m", "seed the fixture module")
 
 	mapsDir := testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))
@@ -223,6 +224,8 @@ func TestGateRedundant(t *testing.T) {
 			Blocks: []testcover.BlockKey{{File: "lacking.go", Func: "One", Hash: "h"}},
 			Tests:  []testcover.MapTest{{Name: "TestSub", Seconds: 1, Blocks: []int{0}}, {Name: "TestSuper", Seconds: 1, Blocks: []int{0}}},
 		},
+		// The map holds one test, which no other test covers, so no test is contained.
+		"alone":    {Commit: "c0ffee", BuiltAt: builtAt, Blocks: []testcover.BlockKey{key}, Tests: []testcover.MapTest{{Name: "TestAlone", Seconds: 1, Blocks: []int{0}}}},
 		"badindex": {Commit: "c0ffee", BuiltAt: builtAt, Blocks: []testcover.BlockKey{key}, Tests: []testcover.MapTest{{Name: "TestBadIndex", Blocks: []int{5}}}},
 		"badkeep":  {Commit: "c0ffee", BuiltAt: builtAt, Blocks: []testcover.BlockKey{key}, Tests: []testcover.MapTest{{Name: "TestBadKeep", Blocks: []int{0}}}},
 		"broken":   {Commit: "c0ffee", BuildFailure: "boom"},
@@ -233,7 +236,7 @@ func TestGateRedundant(t *testing.T) {
 		}
 	}
 
-	t.Run("ListsTheCandidatesMutationConfirmsAndSetsApartTheRefutedKeptAndUnjudgedOnes", func(t *testing.T) {
+	t.Run("ListsTheCandidatesMutationConfirmsAndSetsApartTheRefutedUnconfirmedKeptAndUnjudgedOnes", func(t *testing.T) {
 		t.Parallel()
 		var built bytes.Buffer
 		// cov's TestFails fails, so the call exits 1 after it wrote the map.
@@ -257,15 +260,16 @@ func TestGateRedundant(t *testing.T) {
 			cappedParallel: func(int, int64) int { return 2 },
 		})
 		type answer struct {
-			OK         bool                  `json:"ok"`
-			Package    string                `json:"package"`
-			Tests      int                   `json:"tests"`
-			Failure    *testcover.MapFailure `json:"map_build_failure"`
-			Candidates []redundantCandidate  `json:"candidates"`
-			Refuted    []redundantRefuted    `json:"refuted"`
-			Kept       []redundantSkip       `json:"kept"`
-			NotJudged  []redundantSkip       `json:"not_judged"`
-			Mutation   mutationStats         `json:"mutation"`
+			OK          bool                   `json:"ok"`
+			Package     string                 `json:"package"`
+			Tests       int                    `json:"tests"`
+			Failure     *testcover.MapFailure  `json:"map_build_failure"`
+			Candidates  []redundantCandidate   `json:"candidates"`
+			Refuted     []redundantRefuted     `json:"refuted"`
+			Unconfirmed []redundantUnconfirmed `json:"unconfirmed"`
+			Kept        []redundantSkip        `json:"kept"`
+			NotJudged   []redundantSkip        `json:"not_judged"`
+			Mutation    mutationStats          `json:"mutation"`
 		}
 		var got answer
 		if err := json.Unmarshal(out.Bytes(), &got); err != nil || code != 0 {
@@ -282,29 +286,32 @@ func TestGateRedundant(t *testing.T) {
 		for i := range got.Refuted {
 			got.Refuted[i].Seconds = 0
 		}
-		// Each pair of candidates kills the same mutants, so the greedy pass never drops both of a pair.
-		if removable > 3 {
-			t.Errorf("redundant ./cov lists %d removable candidates; want at most 3, one of each pair", removable)
+		for i := range got.Unconfirmed {
+			got.Unconfirmed[i].Seconds = 0
+		}
+		// The two candidates kill the same mutant, so the greedy pass never drops both.
+		if removable > 1 {
+			t.Errorf("redundant ./cov lists %d removable candidates; want at most 1, one of the pair", removable)
 		}
 		// Timeout's constant is the one mutant that does not compile.
 		if got.Mutation.Mutants != 14 || got.Mutation.Unbuildable != 1 {
 			t.Errorf("redundant ./cov mutation = %+v; want 14 buildable mutants and 1 unbuildable", got.Mutation)
 		}
 		// Each involved test runs once with no mutant on, and each contained test once with each mutant of its blocks.
-		// Each covering test then runs with each mutant a contained test killed and it covers, unless it left that mutant alive.
-		// Every one of those covering runs kills, and one that kills beside another run runs once more alone.
-		// The two the memory cap ended do not.
-		const unmutatedRuns, containedRuns, coveringRuns, cappedCoveringRuns = 8, 29, 18, 2
-		if want := unmutatedRuns + containedRuns + 2*coveringRuns - cappedCoveringRuns; got.Mutation.Runs != want {
-			t.Errorf("redundant ./cov started %d runs; want %d, with no second run of one the memory cap ended", got.Mutation.Runs, want)
+		// Each covering test then runs with each mutant a contained test killed or left unjudged, when it covers the mutant.
+		// A covering test that left the mutant alive, or ended at the memory cap on it, keeps that answer and does not run.
+		// Every other covering run kills or ends at its time bound, and one beside another run runs once more alone.
+		// The tally loop's covering runs time out again, so no covering test kills the mutants ending the loops.
+		const unmutatedRuns, containedRuns, coveringRuns = 8, 29, 16
+		if want := unmutatedRuns + containedRuns + 2*coveringRuns; got.Mutation.Runs != want {
+			t.Errorf("redundant ./cov started %d runs; want %d, with no covering run of a mutant the memory cap ended", got.Mutation.Runs, want)
 		}
-		hoardLoop := mutantStop{File: "cov.go", Line: 33, Operator: testcover.OperatorNegateCondition}
-		tallyStep := mutantStop{File: "cov.go", Line: 23, Operator: testcover.OperatorDropStatement}
-		stops := func(site mutantStop, tests ...string) []mutantStop {
+		hoardLoop := redundantMutant{File: "cov.go", Line: 33, Operator: testcover.OperatorNegateCondition}
+		tallyStep := redundantMutant{File: "cov.go", Line: 23, Operator: testcover.OperatorDropStatement}
+		stops := func(site redundantMutant, tests ...string) []mutantStop {
 			var listed []mutantStop
 			for _, test := range tests {
-				site.Test = test
-				listed = append(listed, site)
+				listed = append(listed, mutantStop{File: site.File, Line: site.Line, Operator: site.Operator, Test: test})
 			}
 			return listed
 		}
@@ -323,10 +330,13 @@ func TestGateRedundant(t *testing.T) {
 			Candidates: []redundantCandidate{
 				{Name: "TestAll", Covering: []string{"TestClassifyChecked", "TestDoubleChecked"}, MutantsKilled: 1},
 				{Name: "TestDoubleChecked", Covering: []string{"TestAll"}, MutantsKilled: 1},
-				{Name: "TestHoardChecked", Covering: []string{"TestHoardCheckedAgain"}, MutantsKilled: 1},
-				{Name: "TestHoardCheckedAgain", Covering: []string{"TestHoardChecked"}, MutantsKilled: 1},
-				{Name: "TestTallyChecked", Covering: []string{"TestTallyCheckedAgain"}, MutantsKilled: 7},
-				{Name: "TestTallyCheckedAgain", Covering: []string{"TestTallyChecked"}, MutantsKilled: 7},
+			},
+			// Each loop test's own run of the mutant that makes its loop endless ended unjudged.
+			Unconfirmed: []redundantUnconfirmed{
+				{Name: "TestHoardChecked", Covering: []string{"TestHoardCheckedAgain"}, Unjudged: []redundantMutant{hoardLoop}},
+				{Name: "TestHoardCheckedAgain", Covering: []string{"TestHoardChecked"}, Unjudged: []redundantMutant{hoardLoop}},
+				{Name: "TestTallyChecked", Covering: []string{"TestTallyCheckedAgain"}, MutantsKilled: 6, Unjudged: []redundantMutant{tallyStep}},
+				{Name: "TestTallyCheckedAgain", Covering: []string{"TestTallyChecked"}, MutantsKilled: 6, Unjudged: []redundantMutant{tallyStep}},
 			},
 			Refuted: []redundantRefuted{{
 				Name: "TestClassifyChecked", Covering: []string{"TestAll"},
@@ -346,6 +356,23 @@ func TestGateRedundant(t *testing.T) {
 		}
 		if diff := cmp.Diff(want, got); diff != "" {
 			t.Errorf("redundant ./cov mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("AnswersEmptyListsForAMapHoldingNoContainedTest", func(t *testing.T) {
+		t.Parallel()
+		var out bytes.Buffer
+		if code := clihelp.ExecuteIn(Command(), prime, &out, []string{"redundant", "alone"}); code != 0 {
+			t.Fatalf("redundant alone = %d, %s; want exit 0", code, out.Bytes())
+		}
+		var got map[string]json.RawMessage
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatalf("output %q is not a JSON envelope: %v", out.String(), err)
+		}
+		for _, key := range []string{"candidates", "refuted", "unconfirmed"} {
+			if string(got[key]) != "[]" {
+				t.Errorf("redundant alone %s = %s; want [], as the map holds no contained test", key, got[key])
+			}
 		}
 	})
 

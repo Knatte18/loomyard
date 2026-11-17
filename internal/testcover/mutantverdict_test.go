@@ -25,7 +25,9 @@ func TestJudgeMutants(t *testing.T) {
 		name       string
 		candidates []testcover.MutantCandidate
 		kills      testcover.Kills
-		want       []testcover.MutantVerdict
+		// unjudged holds the runs that ended at their time bound or the memory cap.
+		unjudged testcover.Kills
+		want     []testcover.MutantVerdict
 	}{
 		{
 			name:       "a covering test that kills every mutant the candidate kills makes it redundant and removable",
@@ -56,6 +58,46 @@ func TestJudgeMutants(t *testing.T) {
 			},
 		},
 		{
+			name: "a candidate whose own run of a mutant was unjudged is unconfirmed, whether or not it killed another",
+			candidates: []testcover.MutantCandidate{
+				{Name: "A", Covering: []string{"B"}, Mutants: []int{1, 2}},
+				{Name: "Stalls", Covering: []string{"B"}, Mutants: []int{3}},
+			},
+			kills:    testcover.Kills{1: killedBy("A", "B")},
+			unjudged: testcover.Kills{2: killedBy("A"), 3: killedBy("Stalls")},
+			want: []testcover.MutantVerdict{
+				{Name: "A", Killed: []int{1}, Unjudged: []int{2}},
+				{Name: "Stalls", Unjudged: []int{3}},
+			},
+		},
+		{
+			name:       "a candidate's own unjudged run of a mutant a covering test killed rests nothing on it, so the candidate stays redundant",
+			candidates: []testcover.MutantCandidate{{Name: "A", Elapsed: 1, Covering: []string{"B"}, Mutants: []int{1, 2}}},
+			kills:      testcover.Kills{1: killedBy("A", "B"), 2: killedBy("B")},
+			unjudged:   testcover.Kills{2: killedBy("A")},
+			want:       []testcover.MutantVerdict{{Name: "A", Killed: []int{1}, Redundant: true, Removable: true}},
+		},
+		{
+			name:       "a candidate whose every mutant is an own unjudged run a covering test killed kills none that it can show",
+			candidates: []testcover.MutantCandidate{{Name: "A", Covering: []string{"B"}, Mutants: []int{1}}},
+			kills:      testcover.Kills{1: killedBy("B")},
+			unjudged:   testcover.Kills{1: killedBy("A")},
+			want:       []testcover.MutantVerdict{{Name: "A", Reason: testcover.ReasonKillsNone}},
+		},
+		{
+			name: "a covering run that was unjudged confirms no kill, yet a unique kill still refutes",
+			candidates: []testcover.MutantCandidate{
+				{Name: "A", Covering: []string{"B"}, Mutants: []int{1}},
+				{Name: "C", Covering: []string{"B"}, Mutants: []int{1, 2}},
+			},
+			kills:    testcover.Kills{1: killedBy("A", "C"), 2: killedBy("C")},
+			unjudged: testcover.Kills{1: killedBy("B")},
+			want: []testcover.MutantVerdict{
+				{Name: "A", Killed: []int{1}, Unjudged: []int{1}},
+				{Name: "C", Killed: []int{1, 2}, Unique: []int{2}, Unjudged: []int{1}},
+			},
+		},
+		{
 			name: "two candidates killing only each other's mutants: the slower is removable and the other kept",
 			candidates: []testcover.MutantCandidate{
 				{Name: "D", Elapsed: 1, Covering: []string{"C"}, Mutants: []int{1}},
@@ -71,7 +113,7 @@ func TestJudgeMutants(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := testcover.JudgeMutants(tt.candidates, tt.kills); !reflect.DeepEqual(got, tt.want) {
+			if got := testcover.JudgeMutants(tt.candidates, tt.kills, tt.unjudged); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("JudgeMutants = %+v\nwant           %+v", got, tt.want)
 			}
 		})

@@ -55,7 +55,7 @@ type mutationStats struct {
 	// Runs counts the test processes the check started.
 	Runs int `json:"runs"`
 	// TimedOut and MemoryCapped list the runs with a mutant on that ended at their time bound or at the memory cap.
-	// Each killed its mutant.
+	// Each is unjudged: it proves no check of its mutant, so it is no kill.
 	TimedOut     []mutantStop `json:"timed_out"`
 	MemoryCapped []mutantStop `json:"memory_capped"`
 }
@@ -180,29 +180,30 @@ func (c *mutationCheck) run(m testcover.Map, contained []testcover.Verdict, cove
 		coverings[i] = candidates[i].Covering
 	}
 	if len(mutants) == 0 {
-		return testcover.JudgeMutants(candidates, nil), coverings, mutants, nil
+		return testcover.JudgeMutants(candidates, nil, nil), coverings, mutants, nil
 	}
 	started = time.Now()
-	kills, err := c.runMutants(bin, m, entries, candidates)
+	kills, unjudged, err := c.runMutants(bin, m, entries, candidates)
 	c.stats.RunSeconds = time.Since(started).Seconds()
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return testcover.JudgeMutants(candidates, kills), coverings, mutants, nil
+	return testcover.JudgeMutants(candidates, kills, unjudged), coverings, mutants, nil
 }
 
-// runMutants runs the tests of candidates with each mutant of their blocks on and returns the kills.
+// runMutants runs the tests of candidates with each mutant of their blocks on.
+// It returns the kills, and in their shape the unjudged runs: those that ended at their time bound or at the memory cap.
 // It first runs every candidate and covering test unmutated, setting FailsUnmutated on a candidate that does not pass.
 // A test that does not pass unmutated runs with no mutant.
 // Each candidate then runs with each mutant of its blocks on.
-// A candidate that killed a mutant has its covering tests run with that mutant on.
+// A candidate that killed a mutant, or whose own run of it was unjudged, has its covering tests run with that mutant on.
 // Only a covering test whose entry covers the mutant's block runs.
-// A covering test that kills beside other tests runs once more alone, and that run stands.
-// That holds for a covering test that is itself a candidate, whose kill from the candidate runs is replaced by that run.
-// A run that ends at its time bound or at the memory cap kills its mutant too, and the check's stats list it.
+// A covering test that kills or times out beside other tests runs once more alone, and that run stands.
+// A covering test that is itself a candidate has its answer from the candidate runs replaced by that run.
+// A run that ends at its time bound or at the memory cap kills nothing: it is unjudged, and the check's stats list it.
 // A run the memory guard killed records no kill.
 // Its candidate, and each candidate it covers, is marked GuardKilled, never FailsUnmutated.
-func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[string]testcover.MapTest, candidates []testcover.MutantCandidate) (testcover.Kills, error) {
+func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[string]testcover.MapTest, candidates []testcover.MutantCandidate) (testcover.Kills, testcover.Kills, error) {
 	var involved []string
 	for _, candidate := range candidates {
 		involved = append(involved, candidate.Name)
@@ -215,7 +216,7 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 		blocks[name] = mapBlocksOf(m, entries[name])
 	}
 	if err := c.buildLymFor(involved, entries); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var baseline []mutantJob
 	for _, name := range involved {
@@ -223,7 +224,7 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 	}
 	results, err := c.runJobs(bin, baseline, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	timeouts := map[string]time.Duration{}
 	guarded := map[string]bool{}
@@ -248,15 +249,16 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 				continue
 			}
 			run := mutantRun{mutant: jobs[i].mutant, test: jobs[i].test.Name}
-			if kills[run.mutant] == nil {
-				kills[run.mutant] = map[string]bool{}
-			}
-			kills[run.mutant][run.test] = true
 			switch {
 			case result.MemoryCapped:
 				capped[run] = true
 			case result.TimedOut:
 				timedOut[run] = true
+			default:
+				if kills[run.mutant] == nil {
+					kills[run.mutant] = map[string]bool{}
+				}
+				kills[run.mutant][run.test] = true
 			}
 		}
 	}
@@ -276,25 +278,37 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 		}
 	}
 	if results, err = c.runJobs(bin, jobs, false); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	record(jobs, results)
 
 	jobs = nil
 	queued := map[mutantRun]bool{}
-	for _, id := range slices.Sorted(maps.Keys(kills)) {
+	answered := map[int]bool{}
+	for id := range kills {
+		answered[id] = true
+	}
+	for _, ended := range []map[mutantRun]bool{timedOut, capped} {
+		for run := range ended {
+			answered[run.mutant] = true
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(answered)) {
 		for _, candidate := range candidates {
-			if !kills[id][candidate.Name] {
+			own := mutantRun{id, candidate.Name}
+			if !kills[id][candidate.Name] && !timedOut[own] && !capped[own] {
 				continue
 			}
 			for _, name := range candidate.Covering {
 				_, passes := timeouts[name]
 				_, covers := blocks[name][c.mutants[id].Block]
+				run := mutantRun{id, name}
 				// A covering test that ran the mutant as a candidate and did not kill it has its answer already.
-				if !passes || !covers || queued[mutantRun{id, name}] || (ran[id][name] && !kills[id][name]) {
+				// A run alone decides the answer when that candidate run timed out beside other runs.
+				if !passes || !covers || queued[run] || (ran[id][name] && !kills[id][name] && !timedOut[run]) {
 					continue
 				}
-				queued[mutantRun{id, name}] = true
+				queued[run] = true
 				jobs = append(jobs, mutantJob{test: entries[name], mutant: id, timeout: timeouts[name]})
 			}
 		}
@@ -307,14 +321,23 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 		delete(capped, run)
 	}
 	if results, err = c.runJobs(bin, jobs, true); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	record(jobs, results)
 	c.stats.TimedOut, c.stats.MemoryCapped = c.stopsOf(timedOut), c.stopsOf(capped)
+	unjudged := testcover.Kills{}
+	for _, ended := range []map[mutantRun]bool{timedOut, capped} {
+		for run := range ended {
+			if unjudged[run.mutant] == nil {
+				unjudged[run.mutant] = map[string]bool{}
+			}
+			unjudged[run.mutant][run.test] = true
+		}
+	}
 	for i := range candidates {
 		candidates[i].GuardKilled = guarded[candidates[i].Name] || slices.ContainsFunc(candidates[i].Covering, func(name string) bool { return guarded[name] })
 	}
-	return kills, nil
+	return kills, unjudged, nil
 }
 
 // stopsOf returns the runs of ended, each with its mutant's site, ordered by mutant and then by test.
@@ -453,7 +476,7 @@ func (c *mutationCheck) runSideBySide(bin string, jobs []mutantJob) ([]testcover
 
 // runJob runs the job's test alone under bin in the package directory, with its tier's env and its mutant on.
 // A run past its timeout comes back failed and TimedOut, and one past the memory cap failed and MemoryCapped.
-// Either counts as a kill.
+// The check holds either unjudged, never a kill.
 // A run the memory guard killed comes back GuardKilled, which counts as none.
 // It logs the mutant before the run starts, so the log names the mutant of a run that never reports back.
 func (c *mutationCheck) runJob(bin string, job mutantJob) (testcover.RunResult, error) {

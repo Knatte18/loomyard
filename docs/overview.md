@@ -966,7 +966,8 @@ User-facing modules each get one `lym <module>` namespace:
   Each listed candidate comes with its seconds, its covering tests and whether it is in the removable set.
   Every test run is capped at `redundancy_test_memory_mb` of memory, in a transient systemd scope where the user manager caps one,
   so a mutant that keeps memory for ever is killed alone;
-  a run that ends at the cap or at its time bound kills its mutant and is listed.
+  a run that ends at the cap or at its time bound is unjudged, never a kill, and is listed,
+  and a candidate whose answer rests on such a run is listed as unconfirmed, with those mutants.
   `lym gate test --map [<targets>...]` builds the per-package coverage maps of `internal/testcover` over its scope's packages at the HEAD of the worktree it runs in, only on command,
   the hub's shared maps from the prime and a worktree's own, under its `.lym`, from any other worktree:
   each tier0 and tier1 test runs alone in its own process, a package's tier0 tests before its tier1 tests,

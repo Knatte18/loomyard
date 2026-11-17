@@ -13,6 +13,8 @@
 // A bounded command runs in its own process group, which the bound kills whole.
 // The wait for its exit and output then lasts at most Grace, so a descendant holding the output pipe cannot stall it.
 // A test past its bound comes back marked TimedOut, never as an error.
+// A test's elapsed time runs from the arrival of its `=== RUN` line to that of its result line, to the microsecond.
+// The binary's own figure is rounded to the hundredth and records most tests as taking no time.
 // A Toolchain with a MemoryLimit runs each test binary through `proc.RunMemoryCapped`.
 // That caps the memory of the test and of every process it starts; the go commands are never capped.
 // A test the cap ends comes back marked MemoryCapped, never as an error.
@@ -49,6 +51,8 @@
 // RunAlone with no profile runs a test of that binary.
 // JudgeMutants calls a candidate redundant when it kills a mutant and a covering test kills each one it kills;
 // a candidate that kills a mutant no covering test kills is refuted.
+// A run that ends at its time bound or the memory cap is unjudged, never a kill, since it proves no check.
+// A candidate with no unique kill whose answer rests on such a run is unconfirmed, neither redundant nor refuted.
 // One that does not pass unmutated, holds no mutant in its blocks or kills none is not judged.
 // Its greedy pass, slowest first, removes a candidate only while a test it keeps kills each mutant the candidate killed.
 // ScanSourceReaders marks the tests that reach the module's scan kit, whose check reads source files no mutant changes.

@@ -52,6 +52,20 @@ type redundantRefuted struct {
 	Unique []redundantMutant `json:"unique_mutants"`
 }
 
+// redundantUnconfirmed is one test whose blocks other tests cover and whose answer rests on an unjudged run:
+// a run with a mutant on that ended at its time bound or the memory cap, which proves no check.
+type redundantUnconfirmed struct {
+	Name     string   `json:"name"`
+	Tier     int      `json:"tier"`
+	Seconds  float64  `json:"seconds"`
+	Covering []string `json:"covering"`
+	// MutantsKilled counts the mutants the test killed.
+	MutantsKilled int `json:"mutants_killed"`
+	// Unjudged are the mutants whose answer rests on such a run:
+	// the test's own run, or the covering tests' runs of a mutant the test killed and none of them killed.
+	Unjudged []redundantMutant `json:"unjudged_mutants"`
+}
+
 // redundantMutant names one mutant by its site and operator.
 type redundantMutant struct {
 	File     string `json:"file"`
@@ -95,18 +109,19 @@ func redundantCmd(goBinary string, minuteUnit, grace time.Duration) *cobra.Comma
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `redundant judges the coverage map of one package, named by its directory relative to the module root, and confirms each candidate by mutation.
 A candidate is a tier0 or tier1 test whose covered blocks of the package's own files the package's other judged tests cover.
-Equal coverage is not equal checks, so the verb then mutates the candidates' blocks: it negates conditions and comparisons, drops statements and changes constants, one mutant at a time.
+Equal coverage is not equal checks, so the verb then mutates the candidates' blocks, one mutant at a time.
 It runs each candidate with each mutant of its blocks on, and its covering tests with each mutant it kills.
 A candidate stays listed only when a covering test kills every mutant it kills; one that kills a mutant they miss is listed as refuted, with those mutants.
+A run that ends at the memory cap or its time bound is unjudged, never a kill; a candidate resting on one is listed as unconfirmed.
 One that kills no mutant, holds none in its blocks or does not pass unmutated is listed as not judged.
-Each listed candidate comes with its standalone seconds, the tests that cover it and the mutants it killed; removable marks the set a greedy pass, slowest first, can delete together while every block stays covered and every mutant killed.
+Each listed candidate comes with its standalone seconds, the tests that cover it and the mutants it killed; removable marks the set a greedy pass can delete together.
 A test marked //testtiming:keep is neither a candidate nor a cover, nor is a test the spawn scan marks or one whose entry records no passing run.
 It reads the map as the last lym gate test --map call from this worktree left it.
 It refuses a map built from other Go files of the package than this worktree holds.
 It reads the keep markers from this worktree, and runs its builds and tests in one gate slot, bounded by redundancy_build_timeout_min and redundancy_test_timeout_sec.
-Each test run is capped at redundancy_test_memory_mb of memory; a mutant run past the cap or its time bound is a kill.
+Each test run is capped at redundancy_test_memory_mb of memory.
 A test binary past memory_quit_mb is killed and named on stderr.
-It prints the map's commit and build time, map_build_failure when a later coverage build failed, the candidates, the refuted tests, the kept tests with their reasons, the tests not judged with why, and what the mutation check cost.
+It prints the map's commit and build time, map_build_failure when a later coverage build failed, the candidates, the refuted tests, the unconfirmed tests, the kept tests with their reasons, the tests not judged with why, and what the mutation check cost.
 
 Examples:
 
@@ -214,9 +229,9 @@ func runRedundant(ctx context.Context, out io.Writer, request redundantRequest) 
 	if m.Failure != nil {
 		answer["map_build_failure"] = map[string]string{"commit": m.Failure.Commit, "error": m.Failure.Error}
 	}
-	candidates, refuted := []redundantCandidate{}, []redundantRefuted{}
+	candidates, refuted, unconfirmed := []redundantCandidate{}, []redundantRefuted{}, []redundantUnconfirmed{}
 	if len(contained) == 0 {
-		answer["candidates"], answer["refuted"], answer["not_judged"] = candidates, refuted, notJudged
+		answer["candidates"], answer["refuted"], answer["unconfirmed"], answer["not_judged"] = candidates, refuted, unconfirmed, notJudged
 		return output.Ok(out, answer)
 	}
 
@@ -267,17 +282,29 @@ func runRedundant(ctx context.Context, out io.Writer, request redundantRequest) 
 				Name: test.Name, Tier: test.Tier, Seconds: test.Seconds, Removable: verdict.Removable && mutated.Removable,
 				Covering: coverings[j], MutantsKilled: len(mutated.Killed),
 			})
+		case len(mutated.Unique) > 0:
+			refuted = append(refuted, redundantRefuted{
+				Name: test.Name, Tier: test.Tier, Seconds: test.Seconds, Covering: coverings[j], Unique: mutantSites(mutated.Unique, mutants),
+			})
 		default:
-			line := redundantRefuted{Name: test.Name, Tier: test.Tier, Seconds: test.Seconds, Covering: coverings[j]}
-			for _, id := range mutated.Unique {
-				line.Unique = append(line.Unique, redundantMutant{File: mutants[id].File, Line: mutants[id].Line, Operator: mutants[id].Operator})
-			}
-			refuted = append(refuted, line)
+			unconfirmed = append(unconfirmed, redundantUnconfirmed{
+				Name: test.Name, Tier: test.Tier, Seconds: test.Seconds, Covering: coverings[j],
+				MutantsKilled: len(mutated.Killed), Unjudged: mutantSites(mutated.Unjudged, mutants),
+			})
 		}
 	}
-	answer["candidates"], answer["refuted"], answer["not_judged"] = candidates, refuted, notJudged
+	answer["candidates"], answer["refuted"], answer["unconfirmed"], answer["not_judged"] = candidates, refuted, unconfirmed, notJudged
 	answer["mutation"] = check.stats
 	return output.Ok(out, answer)
+}
+
+// mutantSites returns the site and operator of each mutant ids names, in the order given.
+func mutantSites(ids []int, mutants map[int]testcover.Mutant) []redundantMutant {
+	sites := make([]redundantMutant, len(ids))
+	for i, id := range ids {
+		sites[i] = redundantMutant{File: mutants[id].File, Line: mutants[id].Line, Operator: mutants[id].Operator}
+	}
+	return sites
 }
 
 // sourceCheckingTests returns the tests of the module package pkg whose check reads the module's source files:

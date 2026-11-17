@@ -52,12 +52,16 @@ type Toolchain struct {
 	GuardKilled func(pid int) bool
 	// Grace bounds the wait for a bounded command's exit and output once it ended or was killed; zero waits for both.
 	Grace time.Duration
+	// Now stamps the arrival of a test run's `=== RUN` line and result line; nil uses time.Now.
+	Now func() time.Time
 }
 
 // RunResult is one top-level test run alone under a coverage binary.
 type RunResult struct {
 	Name string
-	// Elapsed is the seconds the binary reported for the test.
+	// Elapsed is the test's seconds, to the microsecond, from the arrival of its `=== RUN` line to that of its result line.
+	// A run whose output holds no `=== RUN` line before the result line has the binary's own figure.
+	// The binary rounds that figure to the hundredth.
 	Elapsed float64
 	// Action is ActionPass, ActionFail or ActionSkip.
 	Action string
@@ -171,12 +175,15 @@ func (tc Toolchain) RunAlone(bin, dir, profile, name string) (RunResult, error) 
 	defer cancel()
 	cmd.Dir = dir
 	cmd.Env = tc.Env
-	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &out
+	out := &testOutput{name: name, now: tc.Now}
+	if out.now == nil {
+		out.now = time.Now
+	}
+	cmd.Stdout, cmd.Stderr = out, out
 	logger.Info("testcover: spawning a coverage binary for one test", "binary", bin, "test", name, "memory_limit", tc.MemoryLimit)
 	killed, err := tc.runTestBinary(cmd)
 	guardKilled := err != nil && tc.GuardKilled != nil && cmd.Process != nil && tc.GuardKilled(cmd.Process.Pid)
-	capped := tc.MemoryLimit > 0 && err != nil && !guardKilled && (killed || outOfMemoryLine.Match(out.Bytes()))
+	capped := tc.MemoryLimit > 0 && err != nil && !guardKilled && (killed || outOfMemoryLine.Match(out.buf.Bytes()))
 	logger.Info("testcover: coverage binary ended", "test", name, "error", err, "memory_capped", capped, "guard_killed", guardKilled)
 	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return RunResult{Name: name, Action: ActionFail, TimedOut: true}, nil
@@ -196,11 +203,14 @@ func (tc Toolchain) RunAlone(bin, dir, profile, name string) (RunResult, error) 
 	}
 
 	run := RunResult{Name: name, Action: ActionFail}
-	for _, m := range testResultLine.FindAllStringSubmatch(out.String(), -1) {
+	for _, m := range testResultLine.FindAllStringSubmatch(out.buf.String(), -1) {
 		if m[2] == name {
 			run.Action = strings.ToLower(m[1])
 			run.Elapsed, _ = strconv.ParseFloat(m[3], 64)
 		}
+	}
+	if !out.ended.IsZero() {
+		run.Elapsed = out.ended.Sub(out.started).Round(time.Microsecond).Seconds()
 	}
 	if run.Action == ActionFail || profile == "" {
 		return run, nil
@@ -217,6 +227,52 @@ func (tc Toolchain) RunAlone(bin, dir, profile, name string) (RunResult, error) 
 		return RunResult{}, fmt.Errorf("test %s: %w", name, err)
 	}
 	return run, nil
+}
+
+// runLinePrefix opens the line a verbose test binary prints as a test starts, before the test's name.
+const runLinePrefix = "=== RUN   "
+
+// testOutput collects the output of a test binary running one top-level test.
+// It stamps the arrival of the test's `=== RUN` line and of the result line that follows it.
+// The binary's own figure is rounded to the hundredth and records most tests as taking no time.
+// A binary's stdout and stderr share one testOutput, which exec then writes from a single goroutine.
+type testOutput struct {
+	name string
+	now  func() time.Time
+	buf  bytes.Buffer
+	// scanned is the length of the complete lines of buf already stamped.
+	scanned int
+	// started and ended are the arrival times of the two lines, zero until each arrives.
+	started, ended time.Time
+}
+
+// Write implements io.Writer, stamping each line it completes.
+func (o *testOutput) Write(p []byte) (int, error) {
+	o.buf.Write(p)
+	for {
+		rest := o.buf.Bytes()[o.scanned:]
+		end := bytes.IndexByte(rest, '\n')
+		if end < 0 {
+			return len(p), nil
+		}
+		o.stamp(string(rest[:end]))
+		o.scanned += end + 1
+	}
+}
+
+// stamp records the arrival of line when it is the test's first `=== RUN` line.
+// It also records the arrival of the first result line of the test after it.
+func (o *testOutput) stamp(line string) {
+	switch {
+	case o.started.IsZero():
+		if line == runLinePrefix+o.name {
+			o.started = o.now()
+		}
+	case o.ended.IsZero() && strings.HasPrefix(line, "--- "):
+		if m := testResultLine.FindStringSubmatch(line); m != nil && m[2] == o.name {
+			o.ended = o.now()
+		}
+	}
 }
 
 // runAloneArgs returns the test binary's arguments for running one top-level test alone.

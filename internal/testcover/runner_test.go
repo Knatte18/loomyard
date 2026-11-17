@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -42,6 +43,13 @@ func standIn(t *testing.T) (testcover.Toolchain, string) {
 		_ = proc.KillPID(pid)
 	})
 	return testcover.Toolchain{Go: testBinary, Env: append(os.Environ(), standInRecordEnv+"="+record)}, record
+}
+
+// steppingClock returns a clock that advances by step on each call.
+func steppingClock(step time.Duration) func() time.Time {
+	start := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	var calls atomic.Int64
+	return func() time.Time { return start.Add(time.Duration(calls.Add(1)) * step) }
 }
 
 func recordedArgs(t *testing.T, record string) []string {
@@ -206,9 +214,26 @@ func TestRunAlone(t *testing.T) {
 		guard func(pid int) bool
 		// noProfile runs the test with no profile flag, as a binary built without coverage.
 		noProfile bool
-		want      testcover.RunResult
-		wantErr   string
+		// now is the run's Now; nil sets none.
+		now     func() time.Time
+		want    testcover.RunResult
+		wantErr string
 	}{
+		{
+			// The stand-in prints both lines in one write and reports 0.00s, so only stamping each line separates them.
+			name: "ElapsedRunsFromTheRunLineToTheResultLine", test: standInTimed, now: steppingClock(1500 * time.Microsecond),
+			want: testcover.RunResult{Name: standInTimed, Elapsed: 0.0015, Action: testcover.ActionPass, Profile: []testcover.ProfileBlock{
+				{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1, Count: 1},
+			}},
+		},
+		{
+			// The stand-in splits its result line across two writes and prints an indented subtest result line before it.
+			// Only the RUN line and the completed top-level result line are stamped, so the clock steps twice.
+			name: "ElapsedStampsOnlyTheRunLineAndTheCompletedTopLevelResultLine", test: standInSplit, now: steppingClock(1500 * time.Microsecond),
+			want: testcover.RunResult{Name: standInSplit, Elapsed: 0.0015, Action: testcover.ActionPass, Profile: []testcover.ProfileBlock{
+				{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1, Count: 1},
+			}},
+		},
 		{
 			name: "PassWithNoProfileFlag", test: standInPass, noProfile: true,
 			want: testcover.RunResult{Name: standInPass, Elapsed: 0.25, Action: testcover.ActionPass},
@@ -279,7 +304,7 @@ func TestRunAlone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tc, record := standIn(t)
-			tc.TestTimeout, tc.MemoryLimit, tc.GuardKilled, tc.Grace = tt.timeout, tt.memory, tt.guard, time.Second
+			tc.TestTimeout, tc.MemoryLimit, tc.GuardKilled, tc.Grace, tc.Now = tt.timeout, tt.memory, tt.guard, time.Second, tt.now
 			profile := filepath.Join(t.TempDir(), "cover.out")
 			if tt.noProfile {
 				profile = ""
