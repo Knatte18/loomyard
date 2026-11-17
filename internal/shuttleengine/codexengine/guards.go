@@ -1,5 +1,5 @@
 // guards.go renders the shell guard table as the PreToolUse hooks a Codex launch carries.
-// The same rows also render as the deny notice that opens the Codex prompt file.
+// The same rows also render as the deny notice that opens the Codex developer instructions.
 // Each installed row is one Bash entry that prints Codex's deny decision when the payload matches all its patterns.
 
 package codexengine

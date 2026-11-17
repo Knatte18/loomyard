@@ -35,6 +35,9 @@ const (
 	// agentsFileTarget is the shared file target for an instruction every agent family reads.
 	// It renders into the files of claudeFileTarget and codexFileTarget.
 	agentsFileTarget = "agents-file"
+	// agentsPromptTarget is the shared prompt target for a passage every Claude and Codex session's prompt carries.
+	// It renders into the passages of the claude-prompt and codex-prompt targets.
+	agentsPromptTarget = "agents-prompt"
 	// claudeSettingsTarget is the JSON-object file target merged into ClaudeSettingsFile.
 	claudeSettingsTarget = "claude-settings"
 )
@@ -43,8 +46,8 @@ const (
 // File is the anchor-relative path of a file target and empty for a prompt target.
 // ReRender lists the anchor-relative paths whose change re-renders a file target.
 // JSONObject marks a file target whose entries each hold one JSON object, merged into the file in place of joined text.
-// RendersInto names the file targets whose files carry the entries of a shared file target.
-// A shared file target has no File or ReRender of its own.
+// RendersInto names the targets, of either delivery, that a shared target's entries reach.
+// A shared target has no File or ReRender of its own.
 // Engine and Role narrow the sessions a prompt target reaches.
 // Engine must equal the session's engine, and Role must match the session's role or a numbered sibling of it;
 // an empty field narrows nothing.
@@ -68,6 +71,7 @@ var targetTable = []Target{
 	{Name: "claude-prompt", Delivery: DeliveryPrompt, Engine: "claude"},
 	{Name: "codex-prompt", Delivery: DeliveryPrompt, Engine: "codex"},
 	{Name: OrchPromptTarget, Delivery: DeliveryPrompt, Role: agentname.RoleOrch},
+	{Name: agentsPromptTarget, Delivery: DeliveryPrompt, RendersInto: []string{"claude-prompt", "codex-prompt"}},
 }
 
 // LookupTarget returns the target named name, and false when the table holds none.
@@ -100,7 +104,7 @@ func TargetFiles(name string) []string {
 	return files
 }
 
-// reachesFileTarget reports whether an entry aimed at targets renders into the file target named name:
+// reachesFileTarget reports whether an entry aimed at targets renders into the file or prompt target named name:
 // the entry names it, or names a shared target that renders into it.
 func reachesFileTarget(name string, targets []string) bool {
 	for _, aimed := range targets {
@@ -146,10 +150,11 @@ func objectTargetCount(names []string) int {
 }
 
 // promptTargetsFor returns the names of the prompt targets that reach a session of engine whose strand role is role.
+// A shared prompt target is left out: its entries reach a session through a target it renders into.
 func promptTargetsFor(engine, role string) []string {
 	var names []string
 	for _, target := range targetTable {
-		if target.Delivery != DeliveryPrompt {
+		if target.Delivery != DeliveryPrompt || len(target.RendersInto) > 0 {
 			continue
 		}
 		if target.Engine != "" && target.Engine != engine {

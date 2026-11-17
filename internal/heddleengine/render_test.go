@@ -42,7 +42,7 @@ func newRenderFixture(t *testing.T, store Store) renderFixture {
 }
 
 func (f renderFixture) request(only ...string) RenderRequest {
-	return RenderRequest{Anchor: f.anchor, ScratchDir: f.scratch, BoltDir: f.bolt, Excluded: f.excluded, Only: only}
+	return RenderRequest{Anchor: f.anchor, Root: f.anchor, ScratchDir: f.scratch, BoltDir: f.bolt, Excluded: f.excluded, Only: only}
 }
 
 func (f renderFixture) writeAnchor(t *testing.T, rel, content string) {
@@ -330,7 +330,8 @@ func TestRender(t *testing.T) {
 		}{
 			{"RootAgents", map[string]string{"AGENTS.md": "repository rules\n"}, codexFileWant("repository rules", "codex text")},
 			{"ClaudeMdWhenNoAgents", map[string]string{"CLAUDE.md": "claude rules\n"}, codexFileWant("claude rules", "codex text")},
-			{"AgentsWinsOverClaudeMd", map[string]string{"AGENTS.md": "repository rules\n", "CLAUDE.md": "claude rules\n"}, codexFileWant("repository rules", "codex text")},
+			{"BothFiles", map[string]string{"AGENTS.md": "repository rules\n", "CLAUDE.md": "claude rules\n"}, codexFileWant("repository rules\n\nclaude rules", "codex text")},
+			{"ClaudeMdImport", map[string]string{"CLAUDE.md": "@docs/rules.md\n", "docs/rules.md": "imported rules\n"}, codexFileWant("imported rules", "codex text")},
 			{"NeitherFile", nil, codexFileWant("", "codex text")},
 		}
 		for _, tt := range tests {
@@ -346,6 +347,71 @@ func TestRender(t *testing.T) {
 				}
 			})
 		}
+	})
+
+	t.Run("CodexFileRecordsItsImports", func(t *testing.T) {
+		t.Parallel()
+		newCodexFixture := func(t *testing.T) renderFixture {
+			t.Helper()
+			f := newRenderFixture(t, Store{Entries: []Entry{entryFor("c", "codex text", 1, "codex-file")}})
+			f.writeAnchor(t, "docs/rules.md", "imported rules\n")
+			return f
+		}
+
+		t.Run("InsideTheWorktree", func(t *testing.T) {
+			t.Parallel()
+			f := newCodexFixture(t)
+			f.writeAnchor(t, "CLAUDE.md", "@docs/rules.md\n")
+			mustRender(t, f)
+			if got := recordedImports(f.scratch); !slices.Equal(got, []string{"docs/rules.md"}) {
+				t.Errorf("recordedImports() = %v; want [docs/rules.md]", got)
+			}
+		})
+
+		t.Run("OutsideTheWorktree", func(t *testing.T) {
+			t.Parallel()
+			f := newCodexFixture(t)
+			outside := filepath.Join(t.TempDir(), "outside.md")
+			if err := os.WriteFile(outside, []byte("outside rules\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			f.writeAnchor(t, "CLAUDE.md", "@"+outside+"\n")
+			mustRender(t, f)
+			if !strings.Contains(f.readAnchor(t, "AGENTS.override.md"), "outside rules") {
+				t.Error("AGENTS.override.md lacks the imported text of the file outside the worktree")
+			}
+			if got := recordedImports(f.scratch); len(got) != 0 {
+				t.Errorf("recordedImports() = %v; want none, since the import lies outside the worktree", got)
+			}
+		})
+
+		t.Run("DroppedImport", func(t *testing.T) {
+			t.Parallel()
+			f := newCodexFixture(t)
+			f.writeAnchor(t, "CLAUDE.md", "@docs/rules.md\n")
+			mustRender(t, f)
+			f.writeAnchor(t, "CLAUDE.md", "no imports\n")
+			mustRender(t, f)
+			if got := recordedImports(f.scratch); len(got) != 0 {
+				t.Errorf("recordedImports() after the import was dropped = %v; want none", got)
+			}
+		})
+
+		t.Run("RecordUnwritable", func(t *testing.T) {
+			t.Parallel()
+			f := newCodexFixture(t)
+			f.writeAnchor(t, "CLAUDE.md", "@docs/rules.md\n")
+			if err := os.MkdirAll(importRecordPath(f.scratch), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			report := mustRender(t, f)
+			if len(report.Warnings) != 1 || !strings.Contains(report.Warnings[0], "lym heddle render") {
+				t.Errorf("warnings = %v; want one naming lym heddle render", report.Warnings)
+			}
+			if !strings.Contains(f.readAnchor(t, "AGENTS.override.md"), "imported rules") {
+				t.Error("AGENTS.override.md was not written although the record was not")
+			}
+		})
 	})
 
 	t.Run("BothFilesHoldTheShippedLayerWithNoEntry", func(t *testing.T) {
@@ -664,6 +730,8 @@ func TestRender(t *testing.T) {
 			entryFor("b", "prompt two", 2, "claude-prompt"),
 			entryFor("a", "prompt one", 1, "claude-prompt"),
 			entryFor("c", "file text", 3, "claude-file"),
+			entryFor("d", "shared text", 4, "agents-prompt"),
+			entryFor("e", "shared and orch text", 5, "agents-prompt", "orch-prompt"),
 		}})
 		r := Renderer{}
 		shown, err := r.Show(f.bolt, "claude-file", f.anchor)
@@ -671,7 +739,7 @@ func TestRender(t *testing.T) {
 			t.Errorf("Show(claude-file) = %q, %v", shown, err)
 		}
 		shown, err = r.Show(f.bolt, "claude-prompt", f.anchor)
-		if err != nil || shown != "prompt one\n\nprompt two" {
+		if err != nil || shown != "prompt one\n\nprompt two\n\nshared text\n\nshared and orch text" {
 			t.Errorf("Show(claude-prompt) = %q, %v", shown, err)
 		}
 		if _, err := r.Show(f.bolt, "nope", f.anchor); err == nil || !strings.Contains(err.Error(), "claude-file") {
@@ -680,13 +748,20 @@ func TestRender(t *testing.T) {
 		if _, err := r.Show(f.bolt, "agents-file", f.anchor); err == nil || !strings.Contains(err.Error(), "claude-file, codex-file") || !strings.Contains(err.Error(), "lym heddle show <target>") {
 			t.Errorf("Show(agents-file) = %v; want a refusal naming the targets it renders into and lym heddle show", err)
 		}
+		if _, err := r.Show(f.bolt, "agents-prompt", f.anchor); err == nil || !strings.Contains(err.Error(), "claude-prompt, codex-prompt") || !strings.Contains(err.Error(), "lym heddle show <target>") {
+			t.Errorf("Show(agents-prompt) = %v; want a refusal naming the targets it renders into and lym heddle show", err)
+		}
 		claude, err := r.Passages(f.bolt, "claude", "")
-		if err != nil || !slices.Equal(claude, []string{"prompt one", "prompt two"}) {
+		if err != nil || !slices.Equal(claude, []string{"prompt one", "prompt two", "shared text", "shared and orch text"}) {
 			t.Errorf("Passages(claude) = %v, %v", claude, err)
 		}
+		claudeOrch, err := r.Passages(f.bolt, "claude", "orch")
+		if err != nil || !slices.Equal(claudeOrch, []string{"prompt one", "prompt two", "shared text", "shared and orch text"}) {
+			t.Errorf("Passages(claude, orch) = %v, %v; want each text once", claudeOrch, err)
+		}
 		codex, err := r.Passages(f.bolt, "codex", "")
-		if err != nil || len(codex) != 0 {
-			t.Errorf("Passages(codex) = %v, %v; want none", codex, err)
+		if err != nil || !slices.Equal(codex, []string{"shared text", "shared and orch text"}) {
+			t.Errorf("Passages(codex) = %v, %v; want the two agents-prompt texts", codex, err)
 		}
 		if f.anchorHas("CLAUDE.local.md") || f.anchorHas(".heddle") {
 			t.Error("Show or Passages wrote a file")

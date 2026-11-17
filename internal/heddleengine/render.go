@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/claudeimports"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -39,12 +40,14 @@ const (
 // Anchor is the worktree's anchor directory, where the file targets render.
 // The repository's own CLAUDE and AGENTS files are read there too.
 // It is the worktree's root when the worktree has no anchor.
+// Root is the worktree's root, which the files an import resolves to are placed in.
 // ScratchDir is the pair's never-tracked directory.
 // BoltDir is the Bolt checkout holding the store.
 // Excluded lists the anchor-relative paths that fabric's exclude list names.
 // Only names the file targets to render, all of them when empty.
 type RenderRequest struct {
 	Anchor     string
+	Root       string
 	ScratchDir string
 	BoltDir    string
 	Excluded   []string
@@ -118,9 +121,14 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 			}
 			continue
 		}
-		text, held, err := fileText(target, req.Anchor, entries)
+		text, imports, held, err := fileText(target, req.Anchor, entries)
 		if err != nil {
 			return report, err
+		}
+		if target.Name == codexFileTarget {
+			if err := recordImports(req, imports); err != nil {
+				report.warn(fmt.Sprintf("%v; way forward: run `%s` once the cause is fixed", err, renderVerb))
+			}
 		}
 		path := filepath.Join(req.Anchor, target.File)
 		existing, err := os.ReadFile(path)
@@ -263,10 +271,12 @@ func removeTempDir(dir string) error {
 // The shipped layer's texts follow under their own heading.
 // The repository's texts follow them, under a heading of their own only when shipped texts precede them.
 // The claude-file target imports the AGENTS.md files the anchor holds when the anchor holds no CLAUDE.md.
-// The codex-file target opens with the anchor's AGENTS.md, or with its CLAUDE.md when the anchor holds no AGENTS.md.
+// The codex-file target opens with the anchor's AGENTS.md when it exists.
+// It then carries the anchor's CLAUDE.md with its imports expanded.
 // It opens with neither file when the anchor holds neither.
+// imports lists the absolute paths of the files the CLAUDE.md imports, and is empty for every other target.
 // An entry reaches the target when it names it, or names a shared target that renders into it.
-func fileText(target Target, anchor string, entries []LayeredEntry) (string, bool, error) {
+func fileText(target Target, anchor string, entries []LayeredEntry) (text string, imports []string, held bool, err error) {
 	var shipped, repository []string
 	for _, entry := range entries {
 		if !reachesFileTarget(target.Name, entry.Targets) {
@@ -288,7 +298,7 @@ func fileText(target Target, anchor string, entries []LayeredEntry) (string, boo
 	}
 	texts = append(texts, repository...)
 	if len(texts) == 0 {
-		return "", false, nil
+		return "", nil, false, nil
 	}
 	parts := []string{Marker}
 	switch target.Name {
@@ -305,19 +315,23 @@ func fileText(target Target, anchor string, entries []LayeredEntry) (string, boo
 			}
 		}
 	case codexFileTarget:
-		for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
-			content, err := os.ReadFile(filepath.Join(anchor, name))
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			if err != nil {
-				return "", false, fmt.Errorf("read %s: %w", name, err)
-			}
-			parts = append(parts, strings.Trim(string(content), "\n"))
-			break
+		agents, err := os.ReadFile(filepath.Join(anchor, "AGENTS.md"))
+		switch {
+		case err == nil:
+			parts = append(parts, strings.Trim(string(agents), "\n"))
+		case !errors.Is(err, os.ErrNotExist):
+			return "", nil, false, fmt.Errorf("read AGENTS.md: %w", err)
+		}
+		claude, err := claudeimports.Expand(filepath.Join(anchor, "CLAUDE.md"))
+		switch {
+		case err == nil:
+			parts = append(parts, strings.Trim(claude.Text, "\n"))
+			imports = claude.Files
+		case !errors.Is(err, os.ErrNotExist):
+			return "", nil, false, fmt.Errorf("read CLAUDE.md: %w", err)
 		}
 	}
-	return strings.Join(append(parts, texts...), "\n\n") + "\n", true, nil
+	return strings.Join(append(parts, texts...), "\n\n") + "\n", imports, true, nil
 }
 
 // fileExists reports whether path names an existing file or directory.
@@ -331,14 +345,14 @@ func fileExists(path string) bool {
 // A prompt target gives its passages joined by blank lines, and a target with no entry gives no text.
 // A JSON-object target gives the object its entries fold to, before any merge into the file.
 // The entries derived from the agents.yaml the anchor and boltDir resolve are among them.
-// A shared target is refused, since it renders into the files of other targets and has no text of its own.
+// A shared target is refused, since it renders into other targets and has no text of its own.
 func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 	named, ok := LookupTarget(target)
 	if !ok {
 		return "", fmt.Errorf("unknown target %q; way forward: use one of %s", target, strings.Join(TargetNames(), ", "))
 	}
 	if len(named.RendersInto) > 0 {
-		return "", fmt.Errorf("target %q renders into the files of %s and has no text of its own; way forward: run `lym heddle show <target>` with one of them", target, strings.Join(named.RendersInto, ", "))
+		return "", fmt.Errorf("target %q renders into the targets %s and has no text of its own; way forward: run `lym heddle show <target>` with one of them", target, strings.Join(named.RendersInto, ", "))
 	}
 	layers, err := r.read(boltDir)
 	if err != nil {
@@ -355,7 +369,7 @@ func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 		}
 		return encodeObject(folded)
 	}
-	text, _, err := fileText(named, anchor, layers.Ordered())
+	text, _, _, err := fileText(named, anchor, layers.Ordered())
 	return text, err
 }
 
@@ -374,11 +388,12 @@ func (r Renderer) Passages(boltDir, engine, role string) ([]string, error) {
 	return passagesOf(layers, targets...), nil
 }
 
-// passagesOf returns the texts of the layered entries that name one of targets, in render order.
+// passagesOf returns the texts of the layered entries in render order.
+// An entry counts when it names one of targets or a shared target rendering into one.
 func passagesOf(layers Layers, targets ...string) []string {
 	var passages []string
 	for _, entry := range layers.Ordered() {
-		if slices.ContainsFunc(entry.Targets, func(name string) bool { return slices.Contains(targets, name) }) {
+		if slices.ContainsFunc(targets, func(name string) bool { return reachesFileTarget(name, entry.Targets) }) {
 			passages = append(passages, strings.Trim(entry.Text, "\n"))
 		}
 	}

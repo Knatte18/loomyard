@@ -324,6 +324,9 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 	if err != nil {
 		return passOverOrFail(w.Path, err)
 	}
+	// The rendered files are git-excluded, so no commit or merge below touches them.
+	// The seam logs a failed render, which never fails the walk.
+	_ = fabricengine.NotifyWorktreeMadeAt(w.Path)
 	blocked, err := f.MergeBlocked()
 	if err != nil {
 		return false, &WorktreeError{Worktree: w.Path, Err: err}

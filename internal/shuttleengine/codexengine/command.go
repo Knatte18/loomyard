@@ -54,6 +54,14 @@ type launchLine struct {
 	model string
 	// effort is the reasoning effort; empty takes Codex's default.
 	effort string
+	// developerInstructions is the text of the session's developer instructions; empty passes none.
+	developerInstructions string
+	// subagentEffort is the reasoning effort the session's subagents take; empty leaves Codex's default.
+	subagentEffort string
+	// maxSubagentThreads caps the concurrent child threads of the session; zero leaves Codex's default.
+	maxSubagentThreads int
+	// projectDocMaxBytes is the cap on the project instruction text Codex reads; zero leaves Codex's default.
+	projectDocMaxBytes int
 	// hooks are the `-c` hook settings, each one `hooks.<Event>=[…]` value; none for an opened session.
 	hooks []string
 	// firstTurn is the session's first turn, typed as the positional prompt;
@@ -78,8 +86,11 @@ func buildLaunchCmd(sh shell.Shell, line launchLine) string {
 // The danger-full-access mode has no sandbox, so the command sets neither the network access nor the writable roots.
 // A hook given by `-c` otherwise waits on a review prompt,
 // so the command passes `--dangerously-bypass-hook-trust` with the hook settings.
+// It passes the developer instructions as a single-line TOML string setting when there are any.
+// It passes the subagent effort and the thread cap as `agents` settings when they are set.
 // It passes the first turn as the positional prompt when there is one,
 // and it loads CLAUDE.md as the project instructions of a directory with no AGENTS.md.
+// It passes the cap on the project instructions it reads when the line carries one.
 // CODEX_HOME names the lym home as a command-scoped assignment.
 func codexCommand(sh shell.Shell, line launchLine) string {
 	// The mode is one of two fixed words the config load admits, so it needs no quoting.
@@ -96,7 +107,19 @@ func codexCommand(sh shell.Shell, line launchLine) string {
 	if line.effort != "" {
 		cmd += " -c " + sh.Quote("model_reasoning_effort="+tomlString(line.effort))
 	}
+	if line.developerInstructions != "" {
+		cmd += " -c " + sh.Quote(developerInstructionsSetting(line.developerInstructions))
+	}
+	if line.subagentEffort != "" {
+		cmd += " -c " + sh.Quote("agents.default_subagent_reasoning_effort="+tomlString(line.subagentEffort))
+	}
+	if line.maxSubagentThreads > 0 {
+		cmd += " -c " + sh.Quote("agents.max_concurrent_threads_per_session="+strconv.Itoa(line.maxSubagentThreads))
+	}
 	cmd += " -c " + sh.Quote("project_doc_fallback_filenames="+tomlArray([]string{instructionFallbackFile}))
+	if line.projectDocMaxBytes > 0 {
+		cmd += " -c " + sh.Quote("project_doc_max_bytes="+strconv.Itoa(line.projectDocMaxBytes))
+	}
 	for _, hook := range line.hooks {
 		cmd += " -c " + sh.Quote(hook)
 	}

@@ -37,6 +37,9 @@
 // A pair registered while the walk ran is therefore walked before the stamp is written.
 // The board commit carries the per-worktree repo defaults beside the hub-wide files.
 // Each worktree's applied files are committed in that worktree.
+// The walk also renders each walked worktree's heddle file targets through fabric's worktree seam,
+// so a shipped-entry change in a new build reaches an existing worktree.
+// A failed render is the seam's logged warning and never fails or skips the walk.
 // The board write also renders the heddle overview, HEDDLE.md, afresh in the Bolt checkout, under the Bolt write lock.
 // A hub therefore gets the file, or a file the shipped entries of a new build made stale renewed, with no hand step.
 // A render that changes no byte adds nothing to the commit.

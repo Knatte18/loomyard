@@ -10,7 +10,9 @@
 // The claude-file target renders into CLAUDE.local.md, which a Claude session reads.
 // The codex-file target renders into AGENTS.override.md, which a Codex session reads.
 // The agents-file target is shared: it has no file of its own, and its entries render into both files.
-// The codex-file target opens with the anchor's AGENTS.md, else its CLAUDE.md.
+// The codex-file target carries the anchor's AGENTS.md and its CLAUDE.md both, with CLAUDE.md's imports expanded.
+// Its render records the imported files that lie inside the worktree in the scratch directory's heddle directory,
+// so a take-in of one of them re-renders the file.
 // heddle.json carries a format version.
 // A store without one was written while claude-file rendered into both files,
 // so a read takes its claude-file targets as agents-file, and the next save writes the version.
@@ -46,8 +48,10 @@
 //
 // A prompt target is read as passages appended to a session's system prompt, the shipped ones first.
 // A prompt target reaches the sessions its row names by engine, by strand role, or both:
-// `claude-prompt` reaches every Claude session and `orch-prompt` every orch session,
-// and an engine whose launch appends no passages delivers neither.
+// `claude-prompt` reaches every Claude session, `codex-prompt` every Codex session and `orch-prompt` every orch session.
+// The shared `agents-prompt` target has no engine or role of its own:
+// its entries reach every session `claude-prompt` or `codex-prompt` reaches, the Claude orch included.
+// An engine whose launch appends no passages delivers none of them.
 // A hub whose heddle.yaml sets lym_override renders a shipped entry with the text of its override.
 // The override lives in heddle-lym-override.json beside heddle.json, so lym's own text is tuned there with no build.
 // With the setting off every override is ignored.

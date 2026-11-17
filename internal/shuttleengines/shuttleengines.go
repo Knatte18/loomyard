@@ -79,7 +79,10 @@ var registry = map[string]entry{
 	"codex": {
 		scrub: codexScrub(),
 		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs) shuttleengine.Engine {
-			return codexengine.NewFromConfig(cfg, dirs)
+			return codexengine.NewFromConfig(cfg, dirs, codexengine.Seams{
+				UserSetup: claudeengine.NewUserSetupSource(dirs),
+				RunHook:   claudeengine.RunPluginHook,
+			})
 		},
 		config: ConfigModule{
 			Name:     "codex",

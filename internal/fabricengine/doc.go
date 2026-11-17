@@ -523,6 +523,8 @@
 // `InstallWorktreeSeam` stores one process-wide `WorktreeSeam`, and with none installed no event fires.
 // "Made" fires through `NotifyWorktreeMade` once a worktree is fully set up:
 // wired, with its exclude lines seeded and the Bolt checkout present.
+// `NotifyWorktreeMadeAt` fires it for the worktree at a path and resolves the worktree itself.
+// It serves a caller that holds a path and may not import the working-directory resolver.
 // It fires last in `Topology.add`.
 // In the clone's wiring sequence it fires once the prime's per-worktree module configs are committed, before the walk.
 // The render reads only the Bolt checkout's heddle store and the shipped layer, so it needs nothing the walk writes.

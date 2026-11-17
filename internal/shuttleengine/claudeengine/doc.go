@@ -691,4 +691,38 @@
 // so a new case joins without a code change.
 // A failing llm-tier live scenario keeps its events file and transcript in a directory it prints;
 // so promoting it to a case is a copy, a trim and a case.yaml.
+//
+// UserSetupSource resolves what a Claude session loads from the user's Claude setup.
+// It serves another provider's session through shuttleengine's seam.
+// It returns the user's global CLAUDE.md from Claude Code's config directory.
+// It then returns each CLAUDE.md in a directory above the worktree root, outermost first.
+// Each file has its `@` imports expanded.
+// A CLAUDE.md inside the root is left to the provider, which reads the worktree's own files.
+// It also returns a listing of the skills the session's scope turns on.
+// The listing holds each skill of a plugin the scope turns on, named `<plugin>:<skill>`, with its SKILL.md path.
+// It holds the user's skills and the project's the same way.
+// A plugin counts for the worktree when it has a user-scope install or a project-scope install for that worktree's root.
+// The config directory is CLAUDE_CONFIG_DIR, else `.claude` under the home directory.
+// When it cannot be resolved, the source leaves out the parts that need it and warns.
+// It keeps the project skills and the CLAUDE.md files above the root.
+// An unreadable global file is the one error.
+// An unreadable CLAUDE.md above the root, plugins file or SKILL.md is left out with a warning.
+//
+// The source also runs the `SessionStart` command hooks of each plugin the scope turns on, as Claude Code runs them.
+// A plugin's hooks come from its `hooks/hooks.json`.
+// A hook counts when its entry's matcher is empty, `*` or matches `startup`.
+// Each hook runs through the request's runner with the session's working directory as its directory.
+// Its environment holds `CLAUDE_PLUGIN_ROOT`, the plugin's directory, and `CLAUDE_PROJECT_DIR`, the working directory.
+// It reads Claude Code's `SessionStart` input on standard input.
+// Its timeout is its own, else the request's.
+// A JSON object on its standard output gives its `hookSpecificOutput.additionalContext` as the context,
+// and any other output is the context as plain text.
+// A hook that errors or times out is left out and listed as omitted, as is a hooks file that cannot be read.
+// A nil runner runs nothing and lists every hook as not run.
+// RunPluginHook is the runner: `sh -c` under a context bounded by the timeout, with the spawn and its end logged.
+// On Unix the hook starts in its own process group and a timeout kills the group,
+// so a child its shell forked cannot hold the output pipes open;
+// a wait delay of two seconds bounds the wait for them on every system.
+// A hook run is short-lived and waited on in Prepare, so it registers no run process record.
+// Bound: a hook left by a Prepare killed mid-run runs to its own end with no owner to end it.
 package claudeengine

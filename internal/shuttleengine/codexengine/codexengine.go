@@ -1,5 +1,6 @@
 // codexengine.go defines the Codex type, its constructors, Prepare and OpenLaunch.
-// Prepare readies the lym Codex home and writes the run's prompt file before returning the launch.
+// Prepare readies the lym Codex home and assembles the developer instructions.
+// It writes the run's prompt file before returning the launch.
 // OpenLaunch readies the same home for a session opened with no prompt.
 
 package codexengine
@@ -9,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -42,6 +42,21 @@ type Codex struct {
 	// sandboxProbe runs executable bin under the Codex home in dir and reports why Codex's sandbox cannot start.
 	// It returns nil when the sandbox starts; tests replace it so that no test runs Codex.
 	sandboxProbe func(bin, home, dir string) error
+	// userSetup resolves the user's Claude setup for a launch; nil adds none.
+	userSetup shuttleengine.UserSetupSource
+	// runHook runs a plugin hook for the user setup; nil lists each hook as not run.
+	runHook shuttleengine.HookRunner
+}
+
+// Seams are the collaborators a Codex engine takes from its wiring, so a test can fake each of them.
+type Seams struct {
+	// UserSetup resolves the user's Claude setup; nil adds no user setup to a launch.
+	UserSetup shuttleengine.UserSetupSource
+	// RunHook runs one plugin hook for UserSetup; nil lists each hook as not run.
+	RunHook shuttleengine.HookRunner
+	// SandboxProbe runs executable bin under the Codex home in dir and reports why Codex's sandbox cannot start;
+	// nil runs Codex's own probe.
+	SandboxProbe func(bin, home, dir string) error
 }
 
 var (
@@ -51,9 +66,20 @@ var (
 )
 
 // NewFromConfig returns a Codex engine whose redraw settle is cfg.SubmitRedrawSettleMS.
-// It reads codex.yaml and its anchor from dirs.
-func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs) *Codex {
-	return &Codex{dirs: dirs, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS, warn: logger.Warn, sandboxProbe: runSandboxProbe}
+// It reads codex.yaml and its anchor from dirs, and takes its collaborators from seams.
+func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs, seams Seams) *Codex {
+	probe := seams.SandboxProbe
+	if probe == nil {
+		probe = runSandboxProbe
+	}
+	return &Codex{
+		dirs:                 dirs,
+		submitRedrawSettleMS: cfg.SubmitRedrawSettleMS,
+		warn:                 logger.Warn,
+		sandboxProbe:         probe,
+		userSetup:            seams.UserSetup,
+		runHook:              seams.RunHook,
+	}
 }
 
 // permissionModeBypass is the permission mode every Codex launch runs in.
@@ -90,7 +116,19 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // A gate config that fails to load refuses the launch, and so does a checkout that Codex rules refuse.
 // It readies the lym home, settles the sandbox and writes prompt.md into runDir.
 // Under codex.yaml's workspace-write, a sandbox that cannot start on the machine refuses the launch, naming the cause.
-// The prompt holds the deny notice, the creel trust sentence, the standing passages and the spec's prompt.
+// The prompt file holds the spec's prompt alone.
+// The launch line carries the standing items as the developer instructions:
+// the deny notice with the creel trust sentence.
+// Then comes the subagent passage when agents.yaml gives the role an effort.
+// The standing passages follow.
+// After the sandbox settles, the user's Claude setup follows them:
+// the instruction files, the skill listing, then the plugin contexts.
+// A source error refuses the launch before the prompt file is written.
+// The instruction-file pointers sit between the instruction files and the skill listing.
+// They name each CLAUDE.md in the worktree that Codex does not read itself.
+// The launch line raises Codex's cap on the project instructions it reads to the size of the files it reads there.
+// The launch line also carries the effort its subagents take and the cap on their concurrent threads.
+// Items whose setting reaches the argument cap refuse the launch before anything is written.
 // The launch line carries a PreToolUse hook per installed shell guard.
 // It runs the settled sandbox mode, and under workspace-write it turns on the sandbox's network access,
 // so the session reaches the creel daemon's socket.
@@ -116,7 +154,19 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		return shuttleengine.Launch{}, fmt.Errorf("codexengine: %w", err)
 	}
 	guards := installedGuards(gate.RefuseRaw, guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish})
-	home, writableRoots, err := c.readyHome(codex)
+	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
+	passages := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
+	items := []instructionItem{creelHeadItem(denyNotice(guards))}
+	subagentEffort := c.subagentEffort(cfg.Agents, spec.ConfigRole, codex)
+	if passage := subagentPassage(subagentEffort, spec.Skills); passage != "" {
+		items = append(items, instructionItem{
+			name:       "the subagent passage",
+			text:       passage,
+			wayForward: "shorten the role's skills in agents.yaml with lym config agents, since the passage lists them",
+		})
+	}
+	items = append(items, passageItems(passages)...)
+	home, writableRoots, found, err := c.readyHome(codex)
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
@@ -129,10 +179,42 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("codexengine: resolve run directory %s: %w", runDir, err)
 	}
+	workDir, err := filepath.EvalSymlinks(c.dirs.Anchor)
+	if err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("codexengine: resolve the working directory %s: %w", c.dirs.Anchor, err)
+	}
+	docMaxBytes, err := projectDocMaxBytes(found, workDir)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	// LoadConfig refused a value that does not parse as a positive duration.
+	hookTimeout, _ := time.ParseDuration(codex.PluginHookTimeout)
+	setup, err := c.resolveUserSetup(shuttleengine.UserSetupRequest{
+		WorkDir:     workDir,
+		RepoRoot:    found.root,
+		Skills:      spec.Skills,
+		Role:        spec.Role,
+		SessionID:   filepath.Base(absRunDir),
+		HookTimeout: hookTimeout,
+		RunHook:     c.runHook,
+	})
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	items = append(items, instructionItemsOf(setup.InstructionFiles)...)
+	items = append(items, instructionItem{
+		name:       instructionPointersItemName,
+		text:       instructionPointers(c.unreadClaudeFiles(found, workDir)),
+		wayForward: instructionPointersWayForward,
+	})
+	items = append(items, instructionItem{name: skillListingItemName, text: setup.SkillListing, wayForward: skillListingWayForward})
+	items = append(items, instructionItemsOf(setup.PluginContexts)...)
+	instructions, err := developerInstructions(items)
+	if err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("codexengine: %w", err)
+	}
 	promptPath := filepath.Join(absRunDir, "prompt.md")
-	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
-	passages := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
-	if err := os.WriteFile(promptPath, []byte(promptText(denyNotice(guards), passages, spec.Prompt)), 0o644); err != nil {
+	if err := os.WriteFile(promptPath, []byte(spec.Prompt), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("codexengine: write prompt: %w", err)
 	}
 	firstTurn, promptLine := launchPointer(promptPath), ""
@@ -149,15 +231,19 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	}
 	return shuttleengine.Launch{
 		Cmd: buildLaunchCmd(sh, launchLine{
-			bin:           codexBinary(codex),
-			home:          home,
-			sandboxMode:   sandboxMode,
-			writableRoots: writableRoots,
-			model:         spec.Model,
-			effort:        spec.Effort,
-			hooks:         hookSettings(eventsPath, guards, creel),
-			firstTurn:     firstTurn,
-			eventsPath:    eventsPath,
+			bin:                   codexBinary(codex),
+			home:                  home,
+			sandboxMode:           sandboxMode,
+			writableRoots:         writableRoots,
+			model:                 spec.Model,
+			effort:                spec.Effort,
+			developerInstructions: instructions,
+			subagentEffort:        subagentEffort,
+			maxSubagentThreads:    codex.MaxSubagentThreads,
+			projectDocMaxBytes:    docMaxBytes,
+			hooks:                 hookSettings(eventsPath, guards, creel),
+			firstTurn:             firstTurn,
+			eventsPath:            eventsPath,
 		}),
 		ResumeCmd:            buildResumeCmd(sh),
 		PromptLine:           promptLine,
@@ -174,7 +260,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 // The line runs the settled sandbox mode, and under workspace-write it turns on the sandbox's network access,
 // so an opened session reaches the creel daemon's socket too.
 // It writes nothing into the directory it is given and names no session id.
-// It carries no creel hooks, since the session has no prompt file to hold the creel trust sentence.
+// It carries no creel hooks, since the session has no developer instructions to hold the creel trust sentence.
 // Codex reads a hook's block as a failed tool call without that sentence, so the strand gets its mail by the pane path.
 // Its resume line is empty: Codex mints the session id at the first turn,
 // so a revive starts no Codex and the chain after it ends the strand.
@@ -186,7 +272,7 @@ func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengin
 	if err := validateChoice(spec.ModelChoice, spec.PermissionMode, codex); err != nil {
 		return shuttleengine.Launch{}, err
 	}
-	home, writableRoots, err := c.readyHome(codex)
+	home, writableRoots, _, err := c.readyHome(codex)
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
@@ -210,35 +296,36 @@ func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengin
 // Before anything is written, it refuses an anchor that is not absolute or sits in no git checkout.
 // It also refuses a checkout that Codex rules refuse, and an empty or relative writable_roots value.
 // Then it trusts the checkout's roots in the home.
-// It returns the home and the launch's writable roots, each symlink-resolved, in this order:
+// It returns the home, the launch's writable roots and the checkout it read.
+// The roots are each symlink-resolved, in this order:
 // the records checkout the engine is told, or none outside a hub;
 // the checkout's git dir and the common git dir it links to;
 // then codex.yaml's writable_roots that exist.
 // A records checkout that cannot be resolved is kept as told, with a warning logged.
 // The git dirs are listed because a linked worktree's git dirs lie under the main checkout, outside the workspace,
 // and a commit writes its index lock, objects and refs there.
-func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, err error) {
+func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, found checkout, err error) {
 	homes, err := resolveHomes(codex)
 	if err != nil {
-		return "", nil, err
+		return "", nil, checkout{}, err
 	}
 	anchor := c.dirs.Anchor
 	if anchor == "" || !filepath.IsAbs(anchor) {
-		return "", nil, fmt.Errorf("codexengine: the engine was told no absolute anchor (%q), so it cannot locate the checkout a launch starts in", anchor)
+		return "", nil, checkout{}, fmt.Errorf("codexengine: the engine was told no absolute anchor (%q), so it cannot locate the checkout a launch starts in", anchor)
 	}
-	found, err := readCheckout(anchor)
+	found, err = readCheckout(anchor)
 	if err != nil {
-		return "", nil, err
+		return "", nil, checkout{}, err
 	}
 	if err := c.checkCodexFolders(found, anchor); err != nil {
-		return "", nil, err
+		return "", nil, checkout{}, err
 	}
 	configured, err := configuredWritableRoots(codex)
 	if err != nil {
-		return "", nil, err
+		return "", nil, checkout{}, err
 	}
 	if err := c.prepareHome(homes, found.trustRoots()); err != nil {
-		return "", nil, err
+		return "", nil, checkout{}, err
 	}
 	if c.dirs.Records != "" {
 		// Codex keys a linked path by its resolved target, so the writable root must be the resolved path.
@@ -250,18 +337,7 @@ func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, er
 		writableRoots = []string{records}
 	}
 	writableRoots = append(writableRoots, found.gitDirs()...)
-	return homes.lym, append(writableRoots, configured...), nil
-}
-
-// promptText returns the prompt file's text as paragraphs separated by blank lines.
-// The first paragraph is `shuttleengine.CreelTrustSentence`, with a non-empty deny notice before it on the same line.
-// Each passage follows as its own paragraph, and the prompt comes last.
-func promptText(notice string, passages []string, prompt string) string {
-	head := shuttleengine.CreelTrustSentence
-	if notice != "" {
-		head = notice + " " + head
-	}
-	return strings.Join(append(append([]string{head}, passages...), prompt), "\n\n")
+	return homes.lym, append(writableRoots, configured...), found, nil
 }
 
 // PromptCacheLifetime returns zero: Codex has no warm lifetime for its prompt cache, so a caller keeps nothing warm.

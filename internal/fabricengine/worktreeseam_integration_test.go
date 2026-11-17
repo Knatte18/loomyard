@@ -154,6 +154,18 @@ func requireOneEvent(t *testing.T, seam *fakeWorktreeSeam, dir, kind string) rec
 	return found[0]
 }
 
+// requireCloneMadeEvent fails the test unless a clone under dir fired two made events for one worktree.
+// It returns the first of them.
+// The first is the clone's wiring event; the second is the one its hub walk fires when it reconciles the prime.
+func requireCloneMadeEvent(t *testing.T, seam *fakeWorktreeSeam, dir string) recordedEvent {
+	t.Helper()
+	found := seam.under(dir, seamMade)
+	if len(found) != 2 || found[0].event.Root != found[1].event.Root {
+		t.Fatalf("%q events under %s = %+v; want the clone's event and its hub walk's, both for one worktree", seamMade, dir, found)
+	}
+	return found[0]
+}
+
 // requireWarning fails the test unless warning names worktree and the render verb that repairs it.
 func requireWarning(t *testing.T, label, warning, worktree string) {
 	t.Helper()
@@ -180,6 +192,9 @@ func TestWorktreeSeam_Events(t *testing.T) {
 		if !result.WarpAdvanced || result.SeamWarning != "" {
 			t.Errorf("Pull() WarpAdvanced = %v, SeamWarning = %q; want warp advanced with no warning", result.WarpAdvanced, result.SeamWarning)
 		}
+		if warning := fabricengine.NotifyWorktreeMadeAt(hub.PrimeWorktree()); warning != "" {
+			t.Errorf("NotifyWorktreeMadeAt() with no seam = %q; want none", warning)
+		}
 	})
 
 	// Every later subtest's template copy is taken before the seam is installed:
@@ -200,7 +215,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 	fab := hubforge.OpenFabric(t, hub)
 
 	t.Run("A hub made through the clone and a pair added to it each fire one made event", func(t *testing.T) {
-		made := requireOneEvent(t, seam, hub.Path, seamMade)
+		made := requireCloneMadeEvent(t, seam, hub.Path)
 		if made.event.Root != hub.PrimeWorktree() {
 			t.Errorf("clone made event root = %q; want the prime worktree %q", made.event.Root, hub.PrimeWorktree())
 		}
@@ -213,16 +228,39 @@ func TestWorktreeSeam_Events(t *testing.T) {
 
 		hubforge.AddPair(t, hub, "p1")
 		pair := seam.under(hub.Path, seamMade)
-		if len(pair) != 2 {
-			t.Fatalf("made events after the add = %d; want 2", len(pair))
+		if len(pair) != 3 {
+			t.Fatalf("made events after the add = %d; want 3, the clone's and its walk's for the prime and the pair's", len(pair))
 		}
-		added := pair[1]
+		added := pair[2]
 		wantScratch := filepath.Join(hub.PairRecordsSibling("p1"), lymdirs.DotLymDirName)
 		if added.event.Root != hub.PairCodeWorktree("p1") || added.event.ScratchDir != wantScratch || added.event.BoltDir != hub.BoardDir() {
 			t.Errorf("added made event = %+v; want root %q, scratch dir %q and Bolt dir %q", added.event, hub.PairCodeWorktree("p1"), wantScratch, hub.BoardDir())
 		}
 		if !added.boltPresent || !added.linesSeeded {
 			t.Errorf("added made event = %+v; want the Bolt checkout present and the exclude lines seeded", added)
+		}
+	})
+
+	t.Run("NotifyWorktreeMadeAt fires one made event for a hub worktree and only a warning for a path in none", func(t *testing.T) {
+		prime := hub.PrimeWorktree()
+		before := len(seam.under(prime, seamMade))
+		if warning := fabricengine.NotifyWorktreeMadeAt(prime); warning != "" {
+			t.Errorf("NotifyWorktreeMadeAt(prime) = %q; want none", warning)
+		}
+		if got := len(seam.under(prime, seamMade)); got != before+1 {
+			t.Errorf("made events under the prime after NotifyWorktreeMadeAt = %d; want %d", got, before+1)
+		}
+
+		outside := t.TempDir()
+		eventCount := func() int {
+			seam.mu.Lock()
+			defer seam.mu.Unlock()
+			return len(seam.events)
+		}
+		total := eventCount()
+		requireWarning(t, "NotifyWorktreeMadeAt(outside)", fabricengine.NotifyWorktreeMadeAt(outside), outside)
+		if got := eventCount(); got != total {
+			t.Errorf("events after NotifyWorktreeMadeAt on a path in no worktree = %d; want %d", got, total)
 		}
 	})
 
@@ -275,7 +313,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 			WarpURL:   filepath.ToSlash(hub.CodeBare),
 			Shortname: hubforge.TestShortname,
 		})
-		made := requireOneEvent(t, seam, container, seamMade)
+		made := requireCloneMadeEvent(t, seam, container)
 		hubforge.RegisterTeardown(t, filepath.Dir(made.event.Root))
 		if err == nil {
 			t.Fatal("CloneAndWire() with a blocked build stamp error = nil; want the walk to fail the clone")
@@ -340,7 +378,7 @@ func TestWorktreeSeam_Events(t *testing.T) {
 				if envelope.SeamWarning == nil {
 					t.Fatalf("fabric clone output = %s; want a seam_warning field", out.String())
 				}
-				prime := requireOneEvent(t, seam, container, seamMade).event.Root
+				prime := requireCloneMadeEvent(t, seam, container).event.Root
 				if tt.failing {
 					requireWarning(t, "seam_warning", *envelope.SeamWarning, prime)
 				} else if *envelope.SeamWarning != "" {

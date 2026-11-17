@@ -24,6 +24,7 @@ const OverviewFileName = "HEDDLE.md"
 // overviewIntro opens the overview under its title and names the sources the overview labels entries with.
 const overviewIntro = "What heddle delivers to every worktree and session in this hub.\n" +
 	"lym rewrites this file whole at every heddle write; change an entry with `lym heddle set`, never this file.\n" +
+	"Two targets are shared: `agents-file` lands in both agent files, and `agents-prompt` in the prompt of every Claude and Codex session.\n" +
 	"\n" +
 	"Sources:\n" +
 	"\n" +

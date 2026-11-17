@@ -927,4 +927,12 @@
 // it is also gone when the events file ends, past its size at the wait's first liveness tick, in a process-ending session end and the registry does not read the id alive.
 // An unproven reading, a session end at or before that first-tick size and a session end beside an alive reading end nothing, so an earlier launch's end never fails a resumed launch.
 // A gone session ends the run died, or done when every output file exists, the way a dead pane does; a startup that finds it fails as died.
+//
+// UserSetupSource is the seam through which one engine hands another the user's Claude setup for a session.
+// A UserSetupRequest names the session's working directory, worktree root, preloaded skills and role.
+// The UserSetup it returns holds the CLAUDE.md files and a listing of the skills the session's scope turns on.
+// It also holds the plugin contexts, the hooks left out, and the warnings the resolution went on despite.
+// A provider other than Claude takes the setup through the seam, so it imports no Claude specifics.
+// Only internal/shuttleengines wires a concrete source to it.
+// HookRunner runs one plugin hook for the source, and a nil runner runs none.
 package shuttleengine

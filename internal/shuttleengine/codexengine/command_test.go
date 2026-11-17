@@ -12,12 +12,15 @@ import (
 
 // TestBuildLaunchCmd pins the POSIX launch line.
 // CODEX_HOME leads, and the spike's flags carry the sandbox mode and, under workspace-write, the network access.
-// It carries the writable root, model and effort when set, each hook setting, the bypass flag and the first turn.
+// It carries the writable root, model, effort, developer instructions, subagent effort and thread cap when set.
+// It also carries each hook setting, the bypass flag and the first turn.
 // A danger-full-access line carries neither the network access nor the writable roots.
 // It ends with the exit record appended to the events file, and then the shell exit.
 // It also pins an opened session's command.
 // That command has the network access.
 // It has no hook bypass, first turn, exit record or exit when the line has no hooks and no first turn.
+//
+//testtiming:keep pins the literal flag order and shell quoting of the launch line, which TestPrepare_Launch and TestPrepare_SubagentTerms miss since they compare against buildLaunchCmd itself
 func TestBuildLaunchCmd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -29,8 +32,8 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}{
 		{
 			name: "EveryInput",
-			line: launchLine{bin: "codex", home: "/h", sandboxMode: sandboxWorkspaceWrite, writableRoots: []string{"/links"}, model: "gpt-6-luna", effort: "low", hooks: []string{`hooks.Stop=[{hooks=[]}]`}, firstTurn: "Read it", eventsPath: "/run/events.jsonl"},
-			want: `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'sandbox_workspace_write.network_access=true' -c 'sandbox_workspace_write.writable_roots=["/links"]' -m 'gpt-6-luna' -c 'model_reasoning_effort="low"' -c 'project_doc_fallback_filenames=["CLAUDE.md"]' -c 'hooks.Stop=[{hooks=[]}]' --dangerously-bypass-hook-trust 'Read it'; printf '%s\n' '{"hook_event_name":"LymExit"}' >> '/run/events.jsonl'; exit`,
+			line: launchLine{bin: "codex", home: "/h", sandboxMode: sandboxWorkspaceWrite, writableRoots: []string{"/links"}, model: "gpt-6-luna", effort: "low", developerInstructions: "say \"hi\"\nnext", subagentEffort: "medium", maxSubagentThreads: 16, projectDocMaxBytes: 40000, hooks: []string{`hooks.Stop=[{hooks=[]}]`}, firstTurn: "Read it", eventsPath: "/run/events.jsonl"},
+			want: `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'sandbox_workspace_write.network_access=true' -c 'sandbox_workspace_write.writable_roots=["/links"]' -m 'gpt-6-luna' -c 'model_reasoning_effort="low"' -c 'developer_instructions="say \"hi\"\nnext"' -c 'agents.default_subagent_reasoning_effort="medium"' -c 'agents.max_concurrent_threads_per_session=16' -c 'project_doc_fallback_filenames=["CLAUDE.md"]' -c 'project_doc_max_bytes=40000' -c 'hooks.Stop=[{hooks=[]}]' --dangerously-bypass-hook-trust 'Read it'; printf '%s\n' '{"hook_event_name":"LymExit"}' >> '/run/events.jsonl'; exit`,
 		},
 		{
 			name: "NoWritableRootModelOrEffort",

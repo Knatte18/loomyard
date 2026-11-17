@@ -7,6 +7,8 @@
 // New hands every engine those Dirs, so an engine loads its own config module lazily where it reads it.
 // It refuses a config whose engine: key names no registered engine, whichever config layer set it.
 // Names lists the registered names, which equal modelspec's closed set of engine names.
+// The codex entry builds its engine with the claude engine's user-setup source and plugin hook runner.
+// That is the one route from the user's Claude setup to a Codex launch.
 //
 // Each registry entry carries its engine's config module as plain data.
 // ConfigModules lists them sorted by name for the config registry.

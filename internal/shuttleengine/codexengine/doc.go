@@ -60,7 +60,22 @@
 // Hooks given by `-c` append to the run's events file a stamp line and the payload of these events:
 // SessionStart, UserPromptSubmit, Stop and PermissionRequest.
 // A PostToolUse hook touches the activity stamp.
-// The prompt file holds the deny notice, then the creel trust sentence.
+// The standing items ride the launch line as the `developer_instructions` setting, a single-line TOML string,
+// and the prompt file holds the spec's prompt alone.
+// The items are the deny notice with the creel trust sentence, then each standing passage.
+// The setting is one argument of the `codex` command, which Linux caps at 128 KiB counting its terminating NUL;
+// a launch whose setting reaches the cap is refused before anything is written.
+// The refusal names the setting's size, the largest item and the step that shrinks it.
+// The launch line also carries two `agents` settings.
+// `agents.default_subagent_reasoning_effort` is the effort agents.yaml gives the spec's role on a model it does not list.
+// It is the counterpart of the effort a Claude session's subagents fall back to.
+// An effort codex.yaml's efforts does not list is left off with a warning, so the subagents take Codex's default.
+// `agents.max_concurrent_threads_per_session` is codex.yaml's max_subagent_threads.
+// It raises Codex's default cap of three.
+// With an effort, the developer instructions gain a subagent passage after the creel trust sentence.
+// It tells the session to set that `reasoning_effort` on every fresh `spawn_agent` call and leave `model` unset.
+// For a spec with skills, it also tells the session to name the fitting ones in each child's brief.
+// A `fork_turns: "all"` fork shares the session's effort and sets none.
 // Codex reads a hook's block reason as a failed tool call unless its instructions say `[creel]` lines are mail.
 // A Stop is the turn end and carries the reply;
 // an interrupt fires no Stop, so a newest turn_aborted in the rollout the payloads name marks the turn interrupted.
@@ -83,7 +98,7 @@
 //
 // Every installed row of the shell guard table rides the launch line as a PreToolUse hook matching Bash.
 // The hook prints Codex's deny decision with the row's Codex steer,
-// and the prompt file opens with the rows' Codex notices;
+// and the developer instructions open with the rows' Codex notices;
 // a hook that fails to run fails open in Codex, so a guard is a guardrail and not a barrier.
 //
 // A skill `<plugin>:<name>` is a file the model reads:
@@ -117,13 +132,40 @@
 // A failed queue leaves the mail unread, and creel's bell, typed into the pane, wakes the session instead.
 // An engine told no board directory, a standalone run, keeps the plain Stop recording and adds no creel hook.
 //
+// NewFromConfig takes Seams: the user-setup source, the plugin hook runner and the sandbox probe.
+// A nil source adds no user setup, a nil probe runs Codex's own, and a nil runner lists each plugin hook as not run.
+// The registry wires the Claude engine's source and hook runner.
+// That is the one route from the user's Claude setup to this engine.
+// After the sandbox settles, Prepare resolves the setup for the run and appends its items to the developer instructions:
+// the instruction files, the skill listing, then the plugin contexts.
+// Each item keeps the name and way forward the source gave, so the argument-cap refusal names the largest one.
+// The source's warnings, and each plugin hook it left out with its cause, reach the launch's warnings.
+// A source error refuses the launch before the prompt file is written.
+// codex.yaml's `plugin_hook_timeout` bounds each plugin hook that sets no timeout of its own.
+//
+// Codex reads one instruction file in each directory from the checkout root down to the engine's anchor:
+// the first of AGENTS.override.md, AGENTS.md and CLAUDE.md there.
+// The launch line sets `project_doc_max_bytes` to the sum of their sizes, never below Codex's default of 32 KiB.
+// Codex then reads every one of them whole.
+// A file that cannot be examined refuses the launch, naming it.
+// The developer instructions also name the CLAUDE.md files of the worktree that Codex does not read itself.
+// They sit between the user's instruction files and the skill listing, with the rule to read each in full first.
+// Those are the files below the anchor, the ones beside an AGENTS.md, and a CLAUDE.md on the path that imports files.
+// A CLAUDE.md beside the anchor's AGENTS.override.md that opens with heddle's marker is not named.
+// Heddle's render carries it in that file.
+// The walk follows no link.
+// It skips `.git` and the dependency directories `node_modules` and `vendor`.
+// It never skips the checkout root or a directory that holds the anchor.
+// A directory it cannot read is skipped with a warning.
+//
 // OpenLaunch opens a named interactive session with no prompt, for `lym shuttle open`:
 // it validates the model choice and readies the lym home as Prepare does,
 // and its line runs Codex with no hooks and no first turn,
 // so the session carries no shell guard and waits at its composer.
 // The line keeps the sandbox mode and, under workspace-write, the network access, so an opened session reaches creel too.
 // It appends no exit record, since an opened session has no events file.
-// An opened session carries no creel hooks either, since it has no prompt file to hold the creel trust sentence.
+// An opened session carries no creel hooks either.
+// It has no developer instructions to hold the creel trust sentence.
 // It is a pane-mail strand.
 // Its resume line is empty, so a revive starts no Codex and Runner.Open's chain ends the strand.
 //

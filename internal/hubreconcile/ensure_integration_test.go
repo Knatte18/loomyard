@@ -1691,3 +1691,89 @@ func TestEnsure_PairCallReconcilesDespiteAFreshStamp(t *testing.T) {
 		t.Errorf("the pair call reconciled the prime as well")
 	}
 }
+
+// refusingSeam is a worktree seam whose render of a made worktree always fails.
+type refusingSeam struct{}
+
+func (refusingSeam) Made(fabricengine.WorktreeEvent) error {
+	return errors.New("the seam refuses")
+}
+
+func (refusingSeam) TookIn(fabricengine.WorktreeEvent) error { return nil }
+
+// TestEnsure_RendersTheHeddleFileTargetsOfEveryWalkedWorktree does not call t.Parallel:
+// it installs the process-wide worktree seam and swaps the package-global detached board sync.
+func TestEnsure_RendersTheHeddleFileTargetsOfEveryWalkedWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
+	tests := []struct {
+		name string
+		seam fabricengine.WorktreeSeam
+		// pair is the pair directory under the hub that Options.Pair names, empty for the hub-wide walk.
+		pair string
+		// rendered returns the worktree roots whose anchors end up holding the rendered files.
+		rendered func(h *hubforge.Hub) []string
+	}{
+		{
+			name:     "StaleWalk",
+			seam:     heddleengine.Seam{},
+			rendered: func(h *hubforge.Hub) []string { return []string{h.PrimeWorktree(), h.PairCodeWorktree("pair-a")} },
+		},
+		{
+			name:     "PairCall",
+			seam:     heddleengine.Seam{},
+			pair:     "pair-a",
+			rendered: func(h *hubforge.Hub) []string { return []string{h.PairCodeWorktree("pair-a")} },
+		},
+		{
+			name:     "FailingSeam",
+			seam:     refusingSeam{},
+			rendered: func(*hubforge.Hub) []string { return nil },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recordBoardSyncs(t)
+			h := newStaleHub(t)
+			geom := geometryOf(h)
+			worktrees, err := fabricengine.CodeWorktrees(h.PrimeWorktree())
+			if err != nil {
+				t.Fatalf("CodeWorktrees() error = %v", err)
+			}
+			renderedFiles := []string{"CLAUDE.local.md", "AGENTS.override.md"}
+			for _, w := range worktrees {
+				for _, name := range renderedFiles {
+					if err := os.Remove(filepath.Join(w.Anchor, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("remove %s from %s: %v", name, w.Anchor, err)
+					}
+				}
+			}
+			t.Cleanup(fabricengine.InstallWorktreeSeam(tt.seam))
+			options := hubreconcile.Options{}
+			if tt.pair != "" {
+				options.Pair = filepath.Join(h.Path, tt.pair)
+			}
+
+			if err := hubreconcile.Ensure(geom, options); err != nil {
+				t.Fatalf("Ensure() error = %v; want nil whatever the seam does", err)
+			}
+
+			rendered := tt.rendered(h)
+			for _, w := range worktrees {
+				for _, name := range renderedFiles {
+					content, err := os.ReadFile(filepath.Join(w.Anchor, name))
+					if slices.Contains(rendered, w.Path) {
+						if err != nil || !strings.HasPrefix(string(content), heddleengine.Marker) {
+							t.Errorf("%s of %s = %q, %v; want a file rendered by heddle", name, w.Path, content, err)
+						}
+					} else if !errors.Is(err, os.ErrNotExist) {
+						t.Errorf("%s of %s = %q, %v; want it absent", name, w.Path, content, err)
+					}
+				}
+			}
+			key, found := stampKey(t, geom)
+			if wantStamp := tt.pair == ""; wantStamp != (found && key == runningKey()) {
+				t.Errorf("stamp = %q (found %v); want the running key written: %v", key, found, wantStamp)
+			}
+		})
+	}
+}
