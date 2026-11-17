@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -230,10 +231,7 @@ func TestSeedKeybindings(t *testing.T) {
 		path := filepath.Join(dir, "keybindings.json")
 		const content = "[\n  { \"key\": \"ctrl+k\" }\n]\n"
 		write(t, path, content, 0o644)
-		if err := os.Chmod(dir, 0o555); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { os.Chmod(dir, 0o755) })
+		permkit.Chmod(t, dir, 0o555)
 		if got := SeedKeybindings(path); got.Outcome != KeybindingsSkipped || got.Reason == "" {
 			t.Fatalf("run = %+v; want skipped with a reason", got)
 		}

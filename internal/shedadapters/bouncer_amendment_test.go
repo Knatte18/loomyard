@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -324,10 +325,7 @@ func TestBouncer_Amendment(t *testing.T) {
 			h.layoutSettledRound1(h.subject, nil)
 			h.subject = amendmentChangedSubject
 			parent := filepath.Dir(h.cfg.RunDir)
-			if err := os.Chmod(parent, 0o555); err != nil {
-				t.Fatalf("Chmod(parent) = %v; want nil", err)
-			}
-			t.Cleanup(func() { _ = os.Chmod(parent, 0o755) })
+			permkit.Chmod(t, parent, 0o555)
 
 			if ptr := shedfake.RequireOutcome(t, h.b, shedengine.Stuck); ptr.GenerationStart {
 				t.Error("degraded Stuck GenerationStart = true; want false")

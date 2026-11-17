@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -485,10 +486,7 @@ func TestConfigOverRealHub(t *testing.T) {
 					t.Skip("file mode bits do not bind root")
 				}
 				configDir := configengine.ConfigDir(boardDir)
-				if err := os.Chmod(configDir, 0o555); err != nil {
-					t.Fatalf("make the board config dir read-only: %v", err)
-				}
-				t.Cleanup(func() { _ = os.Chmod(configDir, 0o755) })
+				permkit.Chmod(t, configDir, 0o555)
 				headBefore := boardHead(t, boardDir)
 
 				var out bytes.Buffer

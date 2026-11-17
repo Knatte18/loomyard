@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -332,10 +333,7 @@ func TestCleanup(t *testing.T) {
 			}
 			if tt.denyRunsRoot {
 				root := shedrun.RunsRoot(location)
-				if err := os.Chmod(root, 0o444); err != nil {
-					t.Fatalf("chmod: %v", err)
-				}
-				t.Cleanup(func() { _ = os.Chmod(root, 0o755) })
+				permkit.Chmod(t, root, 0o444)
 			}
 
 			report, err := cleanup(location, true, stubs.deps())
@@ -664,10 +662,7 @@ func TestClearDoneRun_RemovesADoneRunTheRecipeFilterAdmits(t *testing.T) {
 			if tt.blockScratch {
 				blocked := filepath.Join(shedrun.ScratchDir(location, slug), "steps")
 				writeCleanupFile(t, filepath.Join(blocked, "record.json"), []byte("x"))
-				if err := os.Chmod(blocked, 0o000); err != nil {
-					t.Fatalf("chmod: %v", err)
-				}
-				t.Cleanup(func() { _ = os.Chmod(blocked, 0o755) })
+				permkit.Chmod(t, blocked, 0o000)
 			}
 			if tt.childRecipe != "" {
 				if err := shedrun.WriteChildRecipe(location, slug, tt.childRecipe); err != nil {

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
@@ -262,10 +263,7 @@ func TestAnswerParentAsk_FailedWriteAtDeadline(t *testing.T) {
 		t.Skip("a read-only directory does not block writes on Windows or for root")
 	}
 	files := recordParentAsks(t, burlerengine.ParentAsk{State: burlerengine.ParentAskOpen, Deadline: parentAskBase})
-	if err := os.Chmod(files.Dir, 0o500); err != nil {
-		t.Fatalf("make the record directory read-only: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(files.Dir, 0o700) })
+	permkit.Chmod(t, files.Dir, 0o500)
 
 	_, err := burlerengine.AnswerParentAsk(files, 1, parentAskBase.Add(time.Minute), nil)
 	if err == nil {

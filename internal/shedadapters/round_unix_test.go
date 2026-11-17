@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -30,12 +31,7 @@ func TestResolveRound_NonNotExistStatErrorIsReturned(t *testing.T) {
 	writeReport(t, dir, 1)
 
 	// Remove the directory's search (execute) bit, so a stat inside it fails with a permission error.
-	if err := os.Chmod(dir, 0o000); err != nil {
-		t.Fatalf("Chmod(%q, 0o000) = %v; want nil", dir, err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chmod(dir, 0o755)
-	})
+	permkit.Chmod(t, dir, 0o000)
 
 	got, err := ResolveRound(dir, reportName)
 	if err == nil {

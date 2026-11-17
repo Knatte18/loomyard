@@ -39,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
@@ -2305,14 +2306,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		if os.Geteuid() == 0 {
 			t.Skip("root reads any file")
 		}
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(path, 0o000); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = os.Chmod(path, info.Mode().Perm()) })
+		permkit.Chmod(t, path, 0o000)
 	}
 	scanRefusals := []struct {
 		name  string

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -26,15 +27,7 @@ func TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback(t *testing.T) {
 	}
 
 	tmpDir, _ := newBase(t, baseLym, "board", "")
-	t.Cleanup(func() {
-		if err := os.Chmod(tmpDir, 0755); err != nil {
-			t.Errorf("failed to restore tmpDir mode: %v", err)
-		}
-	})
-
-	if err := os.Chmod(tmpDir, 0o000); err != nil {
-		t.Fatalf("failed to chmod tmpDir: %v", err)
-	}
+	permkit.Chmod(t, tmpDir, 0o000)
 
 	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: tmpDir}, boardSpec("path: "+fabricengine.BoltDirName+"\n", nil))
 	if err == nil {

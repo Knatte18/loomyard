@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -77,10 +78,7 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 			lockedDir := filepath.Join(dir, lockedDirName)
 			if tt.readOnly {
 				gitkit.CommitFile(t, dir, lockedDirName+"/held.txt", "committed\n", "add a file under the directory made read-only")
-				if err := os.Chmod(lockedDir, 0o555); err != nil {
-					t.Fatalf("make %s read-only: %v", lockedDir, err)
-				}
-				t.Cleanup(func() { _ = os.Chmod(lockedDir, 0o755) })
+				permkit.Chmod(t, lockedDir, 0o555)
 			}
 			if tt.locked {
 				gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "lock", dir)

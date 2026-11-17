@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -297,10 +298,7 @@ func TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest(t *testing.T) {
 		}
 	}
 	// A directory whose own write bit is cleared cannot have its child unlinked, so RemoveAll fails.
-	if err := os.Chmod(stuck, 0o500); err != nil {
-		t.Fatalf("Chmod(%q) error = %v", stuck, err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(stuck, 0o755) })
+	permkit.Chmod(t, stuck, 0o500)
 
 	// Neither dir carries a run.json, so both are orphans; both are old enough for the age guard.
 	removed, err := sweepOrphans(root, map[string]bool{}, time.Minute, time.Now().Add(time.Hour))

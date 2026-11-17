@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -41,7 +42,7 @@ func TestModuleGuardTests_OverAModule(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Run("an unreadable test file is a parse error naming it with no line", func(t *testing.T) {
 			skipAsRoot(t)
-			makeUnreadable(t, filepath.Join(moduleDir, "p", "p_test.go"))
+			permkit.Chmod(t, filepath.Join(moduleDir, "p", "p_test.go"), 0o000)
 
 			_, err := ModuleGuardTests(moduleDir)
 			var scanErr *GuardScanError
@@ -59,7 +60,7 @@ func TestModuleGuardTests_OverAModule(t *testing.T) {
 		t.Run("an unreadable package directory is a plain error naming the module and the directory", func(t *testing.T) {
 			skipAsRoot(t)
 			writeRepoFile(t, moduleDir, "c/c.go", "package c\n")
-			makeUnreadable(t, filepath.Join(moduleDir, "c"))
+			permkit.Chmod(t, filepath.Join(moduleDir, "c"), 0o000)
 
 			_, err := ModuleGuardTests(moduleDir)
 			if err == nil || IsGuardScanError(err) || !strings.Contains(err.Error(), moduleDir) || !strings.Contains(err.Error(), "open c:") {
@@ -82,17 +83,4 @@ func skipAsRoot(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root reads any file")
 	}
-}
-
-// makeUnreadable removes every permission from path and restores them at cleanup so the temp directory can be removed.
-func makeUnreadable(t *testing.T, path string) {
-	t.Helper()
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("Stat(%s): %v", path, err)
-	}
-	if err := os.Chmod(path, 0o000); err != nil {
-		t.Fatalf("Chmod(%s): %v", path, err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(path, info.Mode().Perm()) })
 }

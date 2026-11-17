@@ -87,3 +87,13 @@ func TestEnforcement_ScankitStdlibOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/testkit/scankit")
 }
+
+// TestEnforcement_PermkitStdlibOnly fails when a non-test permkit file imports a package outside the standard library.
+// A narrowed gate runs it only when a permkit file changes; a whole gate always runs it.
+//
+//lym:guard
+//lym:watch internal/testkit/permkit/*.go
+func TestEnforcement_PermkitStdlibOnly(t *testing.T) {
+	tiergate.Require(t, 0)
+	scankit.AssertImportAllowlist(t, "internal/testkit/permkit")
+}

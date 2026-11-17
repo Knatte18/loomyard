@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -147,10 +148,7 @@ func TestStopStrand_UnrecordableStopRemovesNothing(t *testing.T) {
 			if _, _, err := loadRunState(runDir); err != nil {
 				t.Fatalf("loadRunState: %v", err)
 			}
-			if err := os.Chmod(runDir, 0o555); err != nil {
-				t.Fatalf("make run dir read-only: %v", err)
-			}
-			t.Cleanup(func() { os.Chmod(runDir, 0o755) })
+			permkit.Chmod(t, runDir, 0o555)
 		}},
 	}
 	for _, tt := range tests {

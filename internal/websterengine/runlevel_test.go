@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -591,10 +592,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				seedMatchingState(t, fx, &websterengine.State{})
 				fx.Deps.Geom.WorktreeRoot = filepath.Join(t.TempDir(), "no-such-tree")
 				websterDir := fx.Deps.Geom.WebsterDir
-				if err := os.Chmod(websterDir, 0o555); err != nil {
-					t.Fatalf("chmod webster dir read-only: %v", err)
-				}
-				t.Cleanup(func() { _ = os.Chmod(websterDir, 0o755) })
+				permkit.Chmod(t, websterDir, 0o555)
 				return nil
 			},
 			errIs:       planglyph.ErrQuarryUnavailable,
@@ -910,10 +908,7 @@ func TestRun_AutoRebaseline(t *testing.T) {
 					skipAsRoot(t)
 					addCards(t, fx, 2)
 					websterDir := fx.Deps.Geom.WebsterDir
-					if err := os.Chmod(websterDir, 0o555); err != nil {
-						t.Fatalf("make the webster dir read-only: %v", err)
-					}
-					t.Cleanup(func() { _ = os.Chmod(websterDir, 0o755) })
+					permkit.Chmod(t, websterDir, 0o555)
 				},
 				want: []string{"way forward: transient, " + reStep},
 			},
