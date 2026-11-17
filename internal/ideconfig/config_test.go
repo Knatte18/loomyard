@@ -29,7 +29,7 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{
 			name: "TemplateDefaults",
-			want: ideconfig.Config{OpenFiles: ideconfig.OpenFiles{Prime: []string{}, Beam: []string{"README.md"}, Task: []string{}}, RenderMarkdown: true},
+			want: ideconfig.Config{OpenFiles: ideconfig.OpenFiles{Prime: []string{}, Beam: []string{}, Task: []string{}}, RenderMarkdown: true},
 		},
 		{
 			name: "HubFileSetsBothKeys",
@@ -39,7 +39,7 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name:  "LocalOverrideSetsRenderMarkdown",
 			local: "render_markdown: false\n",
-			want:  ideconfig.Config{OpenFiles: ideconfig.OpenFiles{Prime: []string{}, Beam: []string{"README.md"}, Task: []string{}}},
+			want:  ideconfig.Config{OpenFiles: ideconfig.OpenFiles{Prime: []string{}, Beam: []string{}, Task: []string{}}},
 		},
 		{name: "AbsoluteEntryRefused", hub: "open_files:\n  task: [/etc/hosts]\n", wantErr: `ide config key "open_files.task" holds "/etc/hosts"`},
 		{name: "ClimbingEntryRefused", hub: "open_files:\n  beam: [../README.md]\n", wantErr: `ide config key "open_files.beam" holds "../README.md"`},
