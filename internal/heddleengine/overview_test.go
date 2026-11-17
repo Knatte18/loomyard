@@ -61,7 +61,6 @@ func TestRenderOverview(t *testing.T) {
 	claudeFile := overviewSection(t, text, "claude-file")
 	for _, want := range []string{
 		"\nRendered into `CLAUDE.local.md` at every worktree's anchor. It also carries every entry aimed at `agents-file`.\n",
-		"- From: shipped with lym\n",
 		"````markdown\nUse ```go fences.\n````\n",
 		"### `house-rules`\n\n- From: the hub's heddle.json\n- Order: 10\n- Targets: `claude-file`\n\n```markdown\nBe kind.\n```\n",
 	} {
@@ -72,6 +71,7 @@ func TestRenderOverview(t *testing.T) {
 	agentsFile := overviewSection(t, text, "agents-file")
 	for _, want := range []string{
 		"\nRendered into `CLAUDE.local.md`, `AGENTS.override.md` at every worktree's anchor.\n",
+		"- From: shipped with lym\n",
 		"### `shared-rules`\n\n- From: the hub's heddle.json\n- Order: 15\n- Targets: `agents-file`\n\n```markdown\nBe brief.\n```\n",
 	} {
 		if !strings.Contains(agentsFile, want) {

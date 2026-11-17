@@ -90,8 +90,10 @@ func TestSeam_PullTakeIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AGENTS.override.md was not rendered by the pull: %v", err)
 	}
-	if want := heddleengine.Marker + "\n\nnew rules\n\ncodex text\n"; string(rendered) != want {
-		t.Errorf("AGENTS.override.md = %q; want %q", rendered, want)
+	// The shipped layer's section sits between the anchor's AGENTS.md and the store's entry.
+	wantPrefix, wantSuffix := heddleengine.Marker+"\n\nnew rules\n\n", "\n\ncodex text\n"
+	if !strings.HasPrefix(string(rendered), wantPrefix) || !strings.HasSuffix(string(rendered), wantSuffix) {
+		t.Errorf("AGENTS.override.md = %q; want it to open with %q and end with %q", rendered, wantPrefix, wantSuffix)
 	}
 	exclude := gitkit.Git(t, hub.PrimeWorktree(), "rev-parse", "--git-path", "info/exclude")
 	if !filepath.IsAbs(exclude) {

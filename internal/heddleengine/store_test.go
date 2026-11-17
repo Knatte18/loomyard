@@ -181,8 +181,8 @@ func TestStore(t *testing.T) {
 			target      string
 			wantHeading string
 		}{
-			{"lym-batching", "claude-file", "## Batch your calls"},
-			{"lym-plan-edits-before-gate", "claude-file", "## Make every round of edits in this order"},
+			{"lym-batching", "agents-file", "## Batch your calls"},
+			{"lym-plan-edits-before-gate", "agents-file", "## Make every round of edits in this order"},
 			{"lym-no-attribution", "claude-settings", ""},
 			{"lym-plugins", "claude-settings", ""},
 			{"lym-tool-deny", "claude-settings", ""},

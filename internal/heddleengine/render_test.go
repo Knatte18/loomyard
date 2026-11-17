@@ -74,13 +74,27 @@ func (f renderFixture) anchorHas(rel string) bool {
 // The file holds the marker, the imports when they are non-empty, and the shipped layer's section.
 // It ends with the repository's texts under their heading when any are given.
 func claudeFileWant(imports string, texts ...string) string {
+	return fileTargetWant("claude-file", imports, texts...)
+}
+
+// codexFileWant returns the AGENTS.override.md a render writes.
+// The file holds the marker, the anchor's opening file text when it is non-empty, and the shipped layer's section.
+// It ends with the repository's texts under their heading when any are given.
+func codexFileWant(opening string, texts ...string) string {
+	return fileTargetWant("codex-file", opening, texts...)
+}
+
+// fileTargetWant returns the file a render writes for target.
+// opening follows the marker when it is non-empty,
+// and the shipped section holds every shipped entry aimed at target or at agents-file.
+func fileTargetWant(target, opening string, texts ...string) string {
 	parts := []string{Marker}
-	if imports != "" {
-		parts = append(parts, imports)
+	if opening != "" {
+		parts = append(parts, opening)
 	}
 	parts = append(parts, shippedHeading)
 	for _, entry := range shippedStore.Ordered() {
-		if slices.Contains(entry.Targets, "claude-file") {
+		if slices.Contains(entry.Targets, target) || slices.Contains(entry.Targets, "agents-file") {
 			parts = append(parts, entry.Text)
 		}
 	}
@@ -221,6 +235,20 @@ func TestShowAndPassagesReadTheShippedLayerFirst(t *testing.T) {
 	}
 }
 
+// TestRenderRemovesAStaleMarkedRenderEvenOffExcluded is not parallel: it replaces shippedStore, which every render reads.
+// The real shipped layer holds text for every file target, so only an empty one leaves a target with no entry.
+func TestRenderRemovesAStaleMarkedRenderEvenOffExcluded(t *testing.T) {
+	tiergate.Require(t, 0)
+	useShippedLayer(t, `{"entries": []}`)
+	f := newRenderFixture(t, Store{})
+	f.excluded = nil
+	f.writeAnchor(t, "AGENTS.override.md", Marker+"\n\nold\n")
+	report := mustRender(t, f)
+	if f.anchorHas("AGENTS.override.md") || !slices.Equal(report.Removed, []string{"AGENTS.override.md"}) {
+		t.Errorf("stale render kept or not reported: removed %v", report.Removed)
+	}
+}
+
 func TestRender(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -237,11 +265,14 @@ func TestRender(t *testing.T) {
 		if want := claudeFileWant("", "one", "two"); f.readAnchor(t, "CLAUDE.local.md") != want {
 			t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 		}
-		if want := []string{"CLAUDE.local.md", ClaudeSettingsFile}; !slices.Equal(report.Written, want) || len(report.Warnings) != 0 {
+		if want := codexFileWant(""); f.readAnchor(t, "AGENTS.override.md") != want {
+			t.Errorf("AGENTS.override.md = %q; want %q, the shipped section alone", f.readAnchor(t, "AGENTS.override.md"), want)
+		}
+		if want := []string{"CLAUDE.local.md", "AGENTS.override.md", ClaudeSettingsFile}; !slices.Equal(report.Written, want) || len(report.Warnings) != 0 {
 			t.Errorf("report = %+v; want %v written", report, want)
 		}
-		if f.anchorHas("AGENTS.override.md") || f.anchorHas(".heddle") {
-			t.Error("AGENTS.override.md written, or .heddle left behind")
+		if f.anchorHas(".heddle") {
+			t.Error(".heddle left behind")
 		}
 	})
 
@@ -257,7 +288,7 @@ func TestRender(t *testing.T) {
 		if want := claudeFileWant("@AGENTS.md", "shared text", "claude text"); f.readAnchor(t, "CLAUDE.local.md") != want {
 			t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 		}
-		if want := Marker + "\n\nrepository rules\n\nshared text\n\ncodex text\n"; f.readAnchor(t, "AGENTS.override.md") != want {
+		if want := codexFileWant("repository rules", "shared text", "codex text"); f.readAnchor(t, "AGENTS.override.md") != want {
 			t.Errorf("AGENTS.override.md = %q; want %q", f.readAnchor(t, "AGENTS.override.md"), want)
 		}
 	})
@@ -297,10 +328,10 @@ func TestRender(t *testing.T) {
 			files map[string]string
 			want  string
 		}{
-			{"RootAgents", map[string]string{"AGENTS.md": "repository rules\n"}, Marker + "\n\nrepository rules\n\ncodex text\n"},
-			{"ClaudeMdWhenNoAgents", map[string]string{"CLAUDE.md": "claude rules\n"}, Marker + "\n\nclaude rules\n\ncodex text\n"},
-			{"AgentsWinsOverClaudeMd", map[string]string{"AGENTS.md": "repository rules\n", "CLAUDE.md": "claude rules\n"}, Marker + "\n\nrepository rules\n\ncodex text\n"},
-			{"NeitherFile", nil, Marker + "\n\ncodex text\n"},
+			{"RootAgents", map[string]string{"AGENTS.md": "repository rules\n"}, codexFileWant("repository rules", "codex text")},
+			{"ClaudeMdWhenNoAgents", map[string]string{"CLAUDE.md": "claude rules\n"}, codexFileWant("claude rules", "codex text")},
+			{"AgentsWinsOverClaudeMd", map[string]string{"AGENTS.md": "repository rules\n", "CLAUDE.md": "claude rules\n"}, codexFileWant("repository rules", "codex text")},
+			{"NeitherFile", nil, codexFileWant("", "codex text")},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -317,15 +348,24 @@ func TestRender(t *testing.T) {
 		}
 	})
 
-	t.Run("ClaudeFileHoldsTheShippedLayerWithNoEntry", func(t *testing.T) {
+	t.Run("BothFilesHoldTheShippedLayerWithNoEntry", func(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, Store{})
 		report := mustRender(t, f)
 		if want := claudeFileWant(""); f.readAnchor(t, "CLAUDE.local.md") != want {
 			t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 		}
-		if !slices.Equal(report.Written, []string{"CLAUDE.local.md", ClaudeSettingsFile}) || f.anchorHas("AGENTS.override.md") {
-			t.Errorf("report = %+v; want CLAUDE.local.md and the settings file written, and no AGENTS.override.md", report)
+		override := f.readAnchor(t, "AGENTS.override.md")
+		if want := codexFileWant(""); override != want {
+			t.Errorf("AGENTS.override.md = %q; want %q", override, want)
+		}
+		for _, heading := range []string{"## Batch your calls", "## Make every round of edits in this order"} {
+			if !strings.Contains(override, heading) {
+				t.Errorf("AGENTS.override.md lacks the shipped section %q", heading)
+			}
+		}
+		if want := []string{"CLAUDE.local.md", "AGENTS.override.md", ClaudeSettingsFile}; !slices.Equal(report.Written, want) {
+			t.Errorf("report = %+v; want %v written", report, want)
 		}
 	})
 
@@ -435,17 +475,6 @@ func TestRender(t *testing.T) {
 					t.Errorf("warnings = %v; want none", report.Warnings)
 				}
 			})
-		}
-	})
-
-	t.Run("StaleMarkedRenderIsRemovedEvenOffExcluded", func(t *testing.T) {
-		t.Parallel()
-		f := newRenderFixture(t, Store{})
-		f.excluded = nil
-		f.writeAnchor(t, "AGENTS.override.md", Marker+"\n\nold\n")
-		report := mustRender(t, f)
-		if f.anchorHas("AGENTS.override.md") || !slices.Equal(report.Removed, []string{"AGENTS.override.md"}) {
-			t.Errorf("stale render kept or not reported: removed %v", report.Removed)
 		}
 	})
 
