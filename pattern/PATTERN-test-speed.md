@@ -47,13 +47,13 @@ No site spells a tier list, a scope or a test command.
 
 | Key | Site | Template scope |
 |---|---|---|
-| `card` | each Webster or Weaver card, through `--card`, then the comment lint and the headroom lint | `card` |
-| `batch` | each Webster or Weaver batch, each tier run failing on a tmux server socket its end-of-package check finds | `card` |
-| `webster-fix` | Webster-Burler-Fix's verify fixers, after the headroom and comment lints | `diff` |
-| `webster` | Webster's end gate, and Weaver's plan-level verify | `all` |
+| `card` | each Webster card, through `--card`, then the comment lint and the headroom lint | `card` |
+| `batch` | each Webster batch, each tier run failing on a tmux server socket its end-of-package check finds | `card` |
+| `webster-fix` | Webster-Burler-Fix's verify fixers, after the headroom and comment lints | `coverage` |
+| `webster` | Webster's end gate | `all` |
 | `parent-align`, `finalize` | Parent-Align and Finalize | `all` |
 | `adopt` | `lym adopt check <subject>`, in-process through `gatecli.RunGate` in the subject's worktree | `all` |
-| `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
+| `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `coverage` |
 | `pr-review` | PR-Review's gate over the agent's commits | `diff` |
 | By hand | the `tier3` tier | |
 
@@ -217,12 +217,10 @@ so every run takes its slots, its timeout and its log.
 
 - Tests run only through `lym gate test` over `gate.yaml`'s tiers.
   Two things run outside it: a card `**Verify:**` line and `cmd/testtiming`'s runs in every mode.
-- Three redundancy runs take a tier's `env` and a gate slot as a tier run does.
-  `lym gate test --map` rebuilds the per-package coverage maps over its scope at the HEAD of the worktree it runs in,
-  into the hub's shared maps from the prime and into the worktree's anchor `.lym` elsewhere.
-  The `redundancy` report step a gate key's `reports` lists runs after the key's tiers released their slots.
-  Both run every test alone under a coverage binary, since coverage counters are process-wide.
-  `lym gate redundant` runs each test alone under a binary holding the mutants of its package, one mutant on per run.
+- Two coverage runs take a tier's `env` and a gate slot as a tier run does:
+  `lym gate testmap`, which rebuilds the per-package coverage maps from the hub's prime worktree,
+  and the `redundancy` report step a gate key's `reports` lists, which runs after the key's tiers released their slots.
+  Each runs every test alone under a coverage binary, since coverage counters are process-wide.
 - A card `**Verify:**` line runs through the shared `internal/cardverify` runner,
   and `cmd/testtiming` measures outside the gate because its modes measure what a tier run hides.
 - A site or stencil names a gate key, never a tier list, scope form, test command or target list.
@@ -286,37 +284,20 @@ this section keeps only what is project-specific or stricter here.
 
 ### The coverage map and the gate's redundancy report
 
-- `lym gate test --map` keeps one coverage map per package under `internal/testcover`.
+- `lym gate testmap` keeps one coverage map per package under `internal/testcover`.
   A map records, for each tier0 and tier1 test, its function hash, the blocks it covers of its own package's files,
   the functions it covers of each other in-module package its test binary links, and its spawn scan verdict.
   It also records the hashes of the package's files and of each linked package's files at the commit it was built from.
-  The maps are built only on command: no dobby, landing or gate builds them, and the gate selects no test from them.
-  A call measures each package of its scope's set whole at the HEAD of the worktree it runs in, and replaces the package's map.
-  A failed build keeps the map's entries.
-  The map run bounds its test processes by the tiers' own limits:
-  a package's tier0 tests run before its tier1 tests, each tier's tests up to its `parallel` side by side,
-  clamped to the memory its limit leaves and, for a tier that sets `memory_mb`, to that memory divided by `redundancy_test_memory_mb`.
-  A hub whose tier0 or tier1 sets a `memory_mb` below `redundancy_test_memory_mb` is refused.
-  A test that fails, times out or is ended by the memory guard or its cap beside others runs again alone, and that run stands.
-  A test that passed only alone is listed as `passed_alone` and logged, and enters the map as a plain pass.
-  The run holds the larger of tier0's and tier1's slot asks, where `slots: all` ranks above any count, and builds no `lym`.
-  It writes every map that passes its checks, failed entries included,
-  and exits 1 when a build failed, a package was left unmeasured or an entry records a failed or timed-out test.
-  A map is written only when HEAD is still the commit the call read at its start and no file the package or a linked package owns is modified or untracked.
-  The check runs once the build ended and again before the write, and guards every write path, a failed build's included.
-  A package that fails it writes no map and is listed under `unmeasured` with its reason, and a moved HEAD ends the walk.
-  Bound: an edit made before a package's first check, or between its two checks, and reverted before the next goes unseen,
-  and a gitignored file is seen by neither check, so a gitignored Go file the build compiles enters the map under HEAD's hashes.
-  It writes no run record or green record, and a green record never stands in for a map run.
-- `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict,
-  then confirms each candidate by mutation inside a gate slot.
-  It mutates the candidates' blocks and keeps a candidate only when its covering tests kill every mutant it kills;
-  one that kills a mutant they miss is listed as refuted, with those mutants.
-  A `//lym:guard` test and one reaching `internal/testkit/scankit` are never candidates:
-  their check reads source files, which no mutant changes.
-  It lists the candidates with their seconds, covering tests and kills, and the refuted, keep-marked and unjudged tests.
-  Bound: a mutant changes the package's own code only,
-  so a candidate whose check differs from its covers only in another package's result is confirmed falsely.
+  Each pass plans every map at the prime's HEAD through the coverage selector, building nothing:
+  a current map moves to HEAD with its entries, an affected one drops the affected tests' entries, which are re-measured,
+  and a miss rebuilds the package whole.
+  A failed build keeps the map's entries and is not retried at the same HEAD.
+  A self-check re-measures a kept entry a fresh build cannot place, and an audit round re-measures the oldest entries.
+  While `test_map_upkeep` is on, the prime's dobby starts a `--upkeep` pass whenever work is left:
+  no exit record, a HEAD past the last pass's plan, or queued work on a hub of two or more slots.
+- `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict.
+  It lists the candidates with their seconds and covering tests, the keep-marked tests and the tests not judged.
+  It runs no test, so its candidates are evidence exactly as the report's are.
 - A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
   It takes the diff's new and changed top-level tests against the merge base with the parent branch,
   leaving out tier2 and tier3 tests, tests marked `//testtiming:keep` and tests that may run module code in another process.

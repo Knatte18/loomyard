@@ -258,7 +258,6 @@ func fixerSpec(in gateFixerInputs, req shedrecipe.GateFixerRequest, choice shutt
 		return nil, err
 	}
 	notePath := friction.NotePath(in.frictionDir, "gate-fixer-"+strings.ToLower(req.Row))
-	engine := in.engines.EngineName(choice)
 	return func(reportPath, replyPath string) (gatefixer.Spec, error) {
 		patternChanges, err := discussionparser.DeclaredPatternChanges(in.patternRecordPath)
 		if err != nil {
@@ -274,21 +273,19 @@ func fixerSpec(in gateFixerInputs, req shedrecipe.GateFixerRequest, choice shutt
 			PatternChanges: patternChanges,
 			ParentName:     in.parentName,
 			NotePath:       notePath,
-			Engine:         engine,
 		})
 		if err != nil {
 			return gatefixer.Spec{}, err
 		}
 		return gatefixer.Spec{
-			Prompt:       prompt,
-			PromptEngine: engine,
-			ReportPath:   reportPath,
-			ReplyPath:    replyPath,
-			Role:         gatefixer.RoleGateFixer,
-			ModelChoice:  choice,
-			Skills:       in.languageSkills,
-			Segment:      body.segment,
-			Timeout:      in.gate.FixerTimeout(),
+			Prompt:      prompt,
+			ReportPath:  reportPath,
+			ReplyPath:   replyPath,
+			Role:        gatefixer.RoleGateFixer,
+			ModelChoice: choice,
+			Skills:      in.languageSkills,
+			Segment:     body.segment,
+			Timeout:     in.gate.FixerTimeout(),
 		}, nil
 	}, nil
 }

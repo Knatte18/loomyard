@@ -12,15 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
-
-// fixedEngineNamer is an EngineNamer double that names the choice's engine.
-type fixedEngineNamer struct{}
-
-func (fixedEngineNamer) EngineName(choice shuttleengine.ModelChoice) string { return choice.Engine }
 
 // TestSessionSpec covers the spec a valid call builds, with and without a PATTERN overview in the worktree;
 // the required inputs it refuses by name; and an agent the registry cannot resolve.
@@ -36,7 +30,6 @@ func TestSessionSpec(t *testing.T) {
 		Slug:               "try-the-thing",
 		WorktreeRoot:       "/work/try-the-thing",
 		DecisionRecordPath: "/work/try-the-thing/decision.md",
-		Engines:            fixedEngineNamer{},
 	}
 	cfg := Config{Agent: "opus[high]"}
 
@@ -52,10 +45,6 @@ func TestSessionSpec(t *testing.T) {
 		if spec.Role != Role || spec.Segment != segmentcolor.Darn {
 			t.Errorf("SessionSpec() Role, Segment = %q, %q; want %q, %q", spec.Role, spec.Segment, Role, segmentcolor.Darn)
 		}
-		if spec.PromptEngine != "claude" {
-			t.Errorf("SessionSpec() PromptEngine = %q; want %q", spec.PromptEngine, "claude")
-		}
-		stencilkit.RequireEditDirectiveOf(t, stencilsDir, spec.Prompt, "claude", "codex")
 		if spec.ConfigRole != agentconfig.RoleSampler || len(spec.Skills) != 0 {
 			t.Errorf("SessionSpec() ConfigRole, Skills = %q, %v; want %q and no skills", spec.ConfigRole, spec.Skills, agentconfig.RoleSampler)
 		}
@@ -68,19 +57,6 @@ func TestSessionSpec(t *testing.T) {
 				t.Errorf("SessionSpec() prompt lacks %q", want)
 			}
 		}
-	})
-
-	t.Run("an agent on codex renders its prompt with the codex edit directive", func(t *testing.T) {
-		t.Parallel()
-		codexRegistry := modelspec.Registry{"gpt": {Engine: "codex", Model: "gpt"}}
-		spec, err := SessionSpec(valid, Config{Agent: "gpt[high]"}, codexRegistry)
-		if err != nil {
-			t.Fatalf("SessionSpec() = _, %v; want nil error", err)
-		}
-		if spec.PromptEngine != "codex" {
-			t.Errorf("SessionSpec() PromptEngine = %q; want %q", spec.PromptEngine, "codex")
-		}
-		stencilkit.RequireEditDirectiveOf(t, stencilsDir, spec.Prompt, "codex", "claude")
 	})
 
 	t.Run("a worktree with a PATTERN overview carries the implementer directive", func(t *testing.T) {
@@ -116,7 +92,6 @@ func TestSessionSpec(t *testing.T) {
 		{"empty Slug", func(in *SessionInputs, _ *Config) { in.Slug = "" }, "Slug"},
 		{"empty WorktreeRoot", func(in *SessionInputs, _ *Config) { in.WorktreeRoot = "" }, "WorktreeRoot"},
 		{"empty DecisionRecordPath", func(in *SessionInputs, _ *Config) { in.DecisionRecordPath = "" }, "DecisionRecordPath"},
-		{"nil Engines", func(in *SessionInputs, _ *Config) { in.Engines = nil }, "Engines"},
 		{"an agent the registry cannot resolve", func(_ *SessionInputs, c *Config) { c.Agent = "nosuchmodel" }, "agent"},
 	}
 	for _, tt := range refusals {

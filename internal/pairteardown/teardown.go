@@ -112,8 +112,7 @@ type Teardown struct {
 	gone    func(slug string) (bool, error)
 	quiet   func(slug string) (quietState, error)
 	refusal func(slug string, force bool) error
-	// endOwned ends the pair's processes.
-	// It spares the caller, its ancestors, roles named in spare, teardown children and the orch.
+	// endOwned ends the pair's processes, sparing the caller, its ancestors, roles named in spare and teardown children.
 	endOwned func(slug string, spare ...string) ([]runproc.Ended, error)
 	// driverLockHeld reports whether the present task worktree's Go-driver lock is held.
 	driverLockHeld func(slug string) (bool, error)
@@ -121,8 +120,8 @@ type Teardown struct {
 	battenAlive func(slug string) (bool, error)
 	// parentOf names the slug of the pair's parent, or "" for the prime.
 	parentOf func(slug string) (string, error)
-	// cancelling reports whether a batten cancel of the slug is under way or was interrupted.
-	cancelling func(slug string) bool
+	// cancelMarked reports whether a batten cancel marker of the slug stands.
+	cancelMarked func(slug string) bool
 	// driverPID returns the pid of the slug's live registered driver; found is false when there is none.
 	driverPID func(slug string) (pid int, found bool)
 	// paused reports whether a live pause entry covers the slug, and whether a hub entry is among those covering it.
@@ -161,9 +160,6 @@ type Teardown struct {
 	// ownerHeld reports whether an owner pause covers the slug.
 	// Nil reads as none.
 	ownerHeld func(slug string) (bool, error)
-	// removeCancelledRecord deletes the slug's batten run record when its state is cancelled, and reports whether it did.
-	// Nil removes nothing.
-	removeCancelledRecord func(slug string) (removed bool, err error)
 
 	// killCapture terminates the pair's drift capture job, which ends the capture child and its command on Windows.
 	killCapture func(slug string) (bool, error)
@@ -197,8 +193,7 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	t.driverLockHeld = t.driverLockHeldIn
 	t.battenAlive = t.registeredBattenAlive
 	t.parentOf = func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) }
-	t.cancelling = func(slug string) bool { return cancelUnderWay(prime, slug) }
-	t.removeCancelledRecord = t.removeCancelledRunRecord
+	t.cancelMarked = func(slug string) bool { return fileExists(shedrun.CancelMarker(prime, slug)) }
 	t.driverPID = t.driverRecordPID
 	t.paused = t.pausedIn
 	t.awaitOrPass = t.awaitRunLockOrPass
@@ -548,10 +543,8 @@ func (t *Teardown) takeSnapshot(req Request) (snapshotOutcome, error) {
 }
 
 // Run ends the session, then removes the pair; a failed session end skips the removal.
-// After a successful removal it deletes the slug's batten run record when the run was cancelled.
-// A failed deletion sets Result.Warning naming the cleanup that finishes it, since the pair is already gone.
-// After a successful removal without LeaveClaim, it otherwise sets Result.Warning.
-// That warning comes from the batten run record that the removal left standing.
+// After a successful removal without LeaveClaim, it sets Result.Warning.
+// The warning comes from the batten run record that the removal left standing.
 func (t *Teardown) Run(ctx context.Context, req Request) (Result, error) {
 	session, err := t.EndSession(ctx, req)
 	if err != nil {
@@ -559,21 +552,12 @@ func (t *Teardown) Run(ctx context.Context, req Request) (Result, error) {
 	}
 	removal, err := t.RemovePair(req)
 	result := Result{Session: session, Removal: removal}
-	if err != nil {
-		return result, err
-	}
-	if t.removeCancelledRecord != nil {
-		if _, err := t.removeCancelledRecord(req.Slug); err != nil {
-			result.Warning = fmt.Sprintf("the pair of %s is removed but its cancelled run record is not: %v; way forward: run \"lym batten cleanup --apply\", which removes it", req.Slug, err)
-			return result, nil
-		}
-	}
-	if !req.LeaveClaim {
+	if err == nil && !req.LeaveClaim {
 		if followUp := followUpOver(req.Slug, t.battenRecord, t.ownerHeld); followUp != "" {
 			result.Warning = fmt.Sprintf("the batten run of %s still stands; %s", req.Slug, followUp)
 		}
 	}
-	return result, nil
+	return result, err
 }
 
 // waitQuiet probes until the driver is quiet or the bound is spent.
@@ -710,10 +694,8 @@ func sessionsOfOtherPairs(live, pairSessions []string) []string {
 // Processes of the roles in spare are spared too.
 // A teardown child holds the slug's teardown lock to run the remote steps of an earlier teardown.
 // It is always spared; only an operator's deliberate end of it stops those steps.
-// The orch's provider process registers under the beam's slug and is always spared too:
-// only a beam another machine now owns ends its orch.
 func (t *Teardown) endOwnedProcesses(slug string, spare ...string) ([]runproc.Ended, error) {
-	return runproc.EndSparing(fabricengine.RunProcDir(t.prime.HubPath), slug, os.Getpid(), append(spare, runproc.RoleTeardown, runproc.RoleOrch)...)
+	return runproc.EndSparing(fabricengine.RunProcDir(t.prime.HubPath), slug, os.Getpid(), append(spare, runproc.RoleTeardown)...)
 }
 
 // driverLockHeldIn reports whether the Go-driver lock of the slug's task worktree is held.
@@ -728,7 +710,7 @@ func (t *Teardown) driverLockHeldIn(slug string) (bool, error) {
 
 // registeredBattenAlive reports whether the slug's run has a live lifecycle owner.
 // The owner is a live record of the slug carrying the batten role;
-// otherwise, batten's status reads running with no cancel under way,
+// otherwise, batten's status reads running with no cancel marker,
 // and a live dobby record stands under the run's parent.
 // That second case covers the gap between two passes dobby drives.
 func (t *Teardown) registeredBattenAlive(slug string) (bool, error) {
@@ -740,7 +722,7 @@ func (t *Teardown) registeredBattenAlive(slug string) (bool, error) {
 		return true, nil
 	}
 	_, state, err := t.battenRun(slug)
-	if err != nil || state != string(shedengine.StateRunning) || t.cancelling(slug) {
+	if err != nil || state != string(shedengine.StateRunning) || t.cancelMarked(slug) {
 		return false, err
 	}
 	parent, err := t.parentOf(slug)
@@ -755,32 +737,6 @@ func (t *Teardown) registeredBattenAlive(slug string) (bool, error) {
 		return false, err
 	}
 	return hasRole(dobbies, runproc.RoleDobby), nil
-}
-
-// cancelUnderWay reports whether a batten cancel of slug is under way or was interrupted.
-// That holds while batten's record carries a cancel intent with no finish.
-// It also holds while another process holds the cancel's lock.
-// A record that does not read or decode counts as a cancel under way, so a torn write never hides one.
-// An absent lock file reads free.
-func cancelUnderWay(prime *lymcwd.Location, slug string) bool {
-	record, found, err := ReadBattenRecord(prime, slug)
-	if err != nil || (found && record.Cancel != nil && record.Cancel.Finish == nil) {
-		return true
-	}
-	lockPath := shedrun.CancelMarkerLock(prime, slug)
-	if !fileExists(lockPath) {
-		return false
-	}
-	shared, free, err := lock.TryAcquireReadLock(lockPath)
-	if err != nil {
-		return true
-	}
-	if free {
-		if err := shared.Release(); err != nil {
-			logger.Warn("pairteardown: could not release the shared probe of the cancel's lock", "slug", slug, "cause", err)
-		}
-	}
-	return !free
 }
 
 // hasRole reports whether any record carries the role.

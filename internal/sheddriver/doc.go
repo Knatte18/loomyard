@@ -111,8 +111,6 @@
 // The line goes through `HandBackDeps.Notify`.
 // It is sent when an orch strand is recorded and once the step has consumed the resume.
 // The resume asks nothing and parks nothing, and a resume the step refuses hands back with no outcome line.
-// The commits an arbiter made on the task branch appear in its resume's settle record.
-// They also appear in the stop report's attempt line.
 // Loom's, darn's and batten's drivers all wire the arbiter after the tackler.
 // Batten's wiring uses `batten.yaml`'s arbiter overrides of `shed.yaml`.
 // The loom CLI's wiring, shared by tapestry, darn and sampler, marks these blocked stops for the arbiter to judge first.

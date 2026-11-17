@@ -4,11 +4,9 @@
 package testcover_test
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -117,65 +115,6 @@ func TestGoEnvironment(t *testing.T) {
 	}
 }
 
-func TestBuildMutantBinary(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		env       []string
-		wantLines []testcover.SourceLine
-	}{
-		{name: "BuildsWithTheOverlayAndEveryCompileError"},
-		{
-			name:      "NamesTheLinesOfARefusedBuild",
-			env:       []string{standInCompileErrorsEnv + "=1"},
-			wantLines: []testcover.SourceLine{{File: "x.go", Line: 4}, {File: "y.go", Line: 12}},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			tc, record := standIn(t)
-			tc.Env = append(tc.Env, tt.env...)
-			out := filepath.Join(t.TempDir(), "mutants.test")
-			err := tc.BuildMutantBinary("m/p", "/tmp/o/overlay.json", out)
-			wantArgs := []string{"test", "-c", "-o", out, "-vet=off", "-overlay=/tmp/o/overlay.json", "-gcflags=m/p=-e", "m/p"}
-			if got := recordedArgs(t, record); !reflect.DeepEqual(got, wantArgs) {
-				t.Errorf("BuildMutantBinary ran go %q; want %q", got, wantArgs)
-			}
-			var buildErr *testcover.MutantBuildError
-			switch {
-			case tt.wantLines == nil && err != nil:
-				t.Errorf("BuildMutantBinary error = %v; want none", err)
-			case tt.wantLines != nil && !errors.As(err, &buildErr):
-				t.Errorf("BuildMutantBinary error = %v; want a *MutantBuildError", err)
-			case tt.wantLines != nil && !reflect.DeepEqual(buildErr.Lines, tt.wantLines):
-				t.Errorf("MutantBuildError lines = %v; want %v", buildErr.Lines, tt.wantLines)
-			}
-		})
-	}
-}
-
-func TestProfileBlocks(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tc, record := standIn(t)
-	profile := filepath.Join(t.TempDir(), "blocks.out")
-	got, err := tc.ProfileBlocks(tc.Go, t.TempDir(), profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []testcover.ProfileBlock{{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("ProfileBlocks = %+v; want %+v, every block uncovered", got, want)
-	}
-	if args, wantArgs := recordedArgs(t, record), []string{"-test.run=^$", "-test.coverprofile=" + profile}; !reflect.DeepEqual(args, wantArgs) {
-		t.Errorf("ProfileBlocks ran the binary with %q; want %q", args, wantArgs)
-	}
-}
-
 func TestBuildBinaryTimesOut(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -199,20 +138,10 @@ func TestRunAlone(t *testing.T) {
 		// timeout is the run's TestTimeout; zero leaves it unbounded.
 		timeout time.Duration
 		// within, when above zero, is the longest the run may take.
-		within time.Duration
-		// memory is the run's MemoryLimit; zero leaves it uncapped.
-		memory int64
-		// guard is the run's GuardKilled; nil sets none.
-		guard func(pid int) bool
-		// noProfile runs the test with no profile flag, as a binary built without coverage.
-		noProfile bool
-		want      testcover.RunResult
-		wantErr   string
+		within  time.Duration
+		want    testcover.RunResult
+		wantErr string
 	}{
-		{
-			name: "PassWithNoProfileFlag", test: standInPass, noProfile: true,
-			want: testcover.RunResult{Name: standInPass, Elapsed: 0.25, Action: testcover.ActionPass},
-		},
 		{
 			name: "Pass",
 			test: standInPass,
@@ -221,14 +150,6 @@ func TestRunAlone(t *testing.T) {
 			}},
 		},
 		{name: "Fail", test: standInFail, want: testcover.RunResult{Name: standInFail, Elapsed: 0.1, Action: testcover.ActionFail}},
-		{
-			name: "FailedRunTheGuardKilledIsGuardKilled", test: standInFail, guard: func(int) bool { return true },
-			want: testcover.RunResult{Name: standInFail, Action: testcover.ActionFail, GuardKilled: true},
-		},
-		{
-			name: "FailedRunTheGuardDidNotKillStaysAFailure", test: standInFail, guard: func(int) bool { return false },
-			want: testcover.RunResult{Name: standInFail, Elapsed: 0.1, Action: testcover.ActionFail},
-		},
 		{name: "SkipWithoutProfile", test: standInSkip, want: testcover.RunResult{Name: standInSkip, Action: testcover.ActionSkip}},
 		{
 			name: "SkipWithProfile",
@@ -250,23 +171,6 @@ func TestRunAlone(t *testing.T) {
 			want: testcover.RunResult{Name: standInHang, Action: testcover.ActionFail, TimedOut: true},
 		},
 		{
-			name: "PassUnderTheMemoryLimit", test: standInPass, memory: 128 << 20,
-			want: testcover.RunResult{Name: standInPass, Elapsed: 0.25, Action: testcover.ActionPass, Profile: []testcover.ProfileBlock{
-				{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1, Count: 1},
-			}},
-		},
-		{
-			// The stand-in passes by itself once it holds three times the limit, so a cap that does not hold fails the row.
-			name: "MemoryCapped", test: standInHoards, memory: 128 << 20,
-			want: testcover.RunResult{Name: standInHoards, Action: testcover.ActionFail, MemoryCapped: true},
-		},
-		{
-			// The stand-in fails as a test does whose allocation the cap refused.
-			// So the row pins the runtime-error branch on any host.
-			name: "MemoryCappedByTheRuntimesOutOfMemoryLine", test: standInOutOfMemory, memory: 128 << 20,
-			want: testcover.RunResult{Name: standInOutOfMemory, Action: testcover.ActionFail, MemoryCapped: true},
-		},
-		{
 			// The test passes and exits, but a child it left holds the output pipe past the grace.
 			// The child outlasts the minute the row allows, so a run that waits on it fails however loaded the machine.
 			name: "ReturnsWithinTheGraceWhileADescendantHoldsTheOutput", test: standInHoldsPipe, timeout: time.Minute, within: time.Minute,
@@ -279,11 +183,8 @@ func TestRunAlone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tc, record := standIn(t)
-			tc.TestTimeout, tc.MemoryLimit, tc.GuardKilled, tc.Grace = tt.timeout, tt.memory, tt.guard, time.Second
+			tc.TestTimeout, tc.Grace = tt.timeout, time.Second
 			profile := filepath.Join(t.TempDir(), "cover.out")
-			if tt.noProfile {
-				profile = ""
-			}
 			started := time.Now()
 			got, err := tc.RunAlone(tc.Go, t.TempDir(), profile, tt.test)
 			if elapsed := time.Since(started); tt.within > 0 && elapsed > tt.within {
@@ -302,9 +203,6 @@ func TestRunAlone(t *testing.T) {
 				t.Errorf("RunAlone(%s) = %+v; want %+v", tt.test, got, tt.want)
 			}
 			wantArgs := []string{"-test.run=^" + tt.test + "$", "-test.coverprofile=" + profile, "-test.v=true"}
-			if tt.noProfile {
-				wantArgs = slices.Delete(wantArgs, 1, 2)
-			}
 			if args := recordedArgs(t, record); !reflect.DeepEqual(args, wantArgs) {
 				t.Errorf("RunAlone ran the binary with %q; want %q, each flag one -flag=value argument", args, wantArgs)
 			}

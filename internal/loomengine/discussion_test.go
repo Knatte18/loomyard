@@ -45,8 +45,6 @@ func lensNames(resolved []lenses.Lens) []string {
 // It checks that the prompt names the told parent, and that an empty parent renders the no-parent variant.
 // Every row reads the lead and its prompt through seatengine.Prompts, under a geometry that names the parent.
 // The operator-ban line is absent only for the interactive Discussion.
-//
-//testtiming:keep pins the told parent, the no-parent variant and the operator-ban line, which TestDiscussionTable and TestPlanTable do not assert
 func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -71,11 +69,9 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 			WorktreeRoot: layout.WorktreePath(),
 			AnchorPath:   layout.AnchorPath(),
 			StencilsDir:  stencilsDir,
-			// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
-			DefaultEngine: "claude",
-			ParentName:    parent,
-			Shortname:     "ly",
-			Slug:          "add-json-flag",
+			ParentName:   parent,
+			Shortname:    "ly",
+			Slug:         "add-json-flag",
 		}, table)
 		if err != nil {
 			return seatengine.Seat{}, "", err

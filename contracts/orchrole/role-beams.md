@@ -36,8 +36,6 @@ When the operator says so, run:
   with a pull request recorded, it also updates the pull request.
 - `lym beam pr open <slug>`, `update`, `status` and `close` for the beam's pull request into its parent.
   `status` reads whether it can merge now and what stops it, and changes nothing.
-  `open` refuses while the beam conflicts with its parent or its merge task is not done:
-  run `merge-parent` and let its task land first.
 - `lym beam merge-parent <slug>`, which brings the parent in.
 
 Write the description for a reader of the pull request:

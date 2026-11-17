@@ -183,8 +183,6 @@ func SourceDirtyPaths(l *lymcwd.Location) ([]string, error) {
 // It deletes it only once its pre-flight refusals have passed, so a refused Add leaves the directory.
 // A delete that fails returns an error wrapping ErrStrayPathKept and leaves the path on disk.
 // With opts.AdoptOnly, Add re-makes a live pair and forks nothing.
-// It takes the pair's warp branch from the pair itself, so a pair made under another machine's prefix keeps its name;
-// a pair nothing names gets the current prefix's name.
 // A weft branch that is not live is refused with *ErrNotLive (Records true).
 // A task branch that is neither local nor on origin is refused with *ErrNotLive too.
 // Both match ErrPairNotLive, and both are refused before any mutation.
@@ -229,14 +227,6 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	defer releaseTeardown()
 
 	warpBranch := t.cfg.BranchPrefix + slug
-	if opts.AdoptOnly {
-		// A re-made pair keeps the branch it was made under, which another machine's prefix may have named.
-		adoptedBranch, branchErr := t.PairTaskBranchOrOrigin(l, slug)
-		if branchErr != nil {
-			return AddResult{}, fmt.Errorf("read the warp branch of pair %q: %w", slug, branchErr)
-		}
-		warpBranch = adoptedBranch
-	}
 	weftBranch := RecordsBranchName(warpBranch)
 
 	// A missing branch is not an error; a failed read is.

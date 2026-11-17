@@ -18,7 +18,7 @@ var ErrNoFixReviewHalt = errors.New("the Finalize entry is not halted at its fix
 const fixAcceptHeading = "## Unresolved fix review findings"
 
 // AcceptFixReview records the operator's acceptance of the fixer change the Finalize entry halted on.
-// It stores the acceptance in the entry's attempt record under recordsDir.
+// It stores the acceptance in the entry's attempt record under scratchDir.
 // It appends the findings the last fix review left open to the change description at descriptionPath,
 // so the run lands with them on record.
 // The acceptance is bound to the task HEAD that taskHead returns.
@@ -26,8 +26,8 @@ const fixAcceptHeading = "## Unresolved fix review findings"
 // An entry not halted at its fix review round cap returns ErrNoFixReviewHalt and writes nothing.
 // A description that already holds the section is not appended to again.
 // An entry already accepted writes nothing, so a retry after a failed write is safe.
-func AcceptFixReview(recordsDir string, entry int, descriptionPath string, taskHead func() (string, error)) error {
-	path := FixerAttemptsPath(recordsDir, finalizeName)
+func AcceptFixReview(scratchDir string, entry int, descriptionPath string, taskHead func() (string, error)) error {
+	path := FixerAttemptsPath(scratchDir, finalizeName)
 	rec, err := ReadFixerAttempts(path, entry)
 	if err != nil {
 		return err

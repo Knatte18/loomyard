@@ -24,8 +24,6 @@ func promptGeometry(t *testing.T) Geometry {
 		ParentName:   "ly:orch",
 		Shortname:    "ly",
 		Slug:         "task",
-		// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
-		DefaultEngine: "claude",
 	}
 }
 
@@ -139,9 +137,9 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 
 	table.Round = "r7"
 	table.Seats[1].ForkSubagents = true
-	chairSpec := seatSpec(table, table.Seats[0], chairPrompt, "claude")
-	if chairSpec.Prompt != chairPrompt || chairSpec.PromptEngine != "claude" || !slices.Equal(chairSpec.OutputFiles, []string{"/w/out.md"}) {
-		t.Errorf("chair spec prompt/prompt engine/outputs = %q / %q / %v, want the prompt, its engine and the chair's outputs", chairSpec.Prompt, chairSpec.PromptEngine, chairSpec.OutputFiles)
+	chairSpec := seatSpec(table, table.Seats[0], chairPrompt)
+	if chairSpec.Prompt != chairPrompt || !slices.Equal(chairSpec.OutputFiles, []string{"/w/out.md"}) {
+		t.Errorf("chair spec prompt/outputs = %q / %v, want the prompt and the chair's outputs", chairSpec.Prompt, chairSpec.OutputFiles)
 	}
 	if chairSpec.Engine != "claude" || chairSpec.Model != "opus" || chairSpec.Effort != "high" || chairSpec.Version != "5" {
 		t.Errorf("chair spec engine/model triple = %q/%q/%q/%q, want claude/opus/high/5", chairSpec.Engine, chairSpec.Model, chairSpec.Effort, chairSpec.Version)
@@ -153,7 +151,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		t.Errorf("chair spec config role/skills = %q/%v, want the seat's config role and skills", chairSpec.ConfigRole, chairSpec.Skills)
 	}
 
-	advisorSpec := seatSpec(table, table.Seats[1], advisorPrompt, "claude")
+	advisorSpec := seatSpec(table, table.Seats[1], advisorPrompt)
 	if chairSpec.ForkSubagents || !advisorSpec.ForkSubagents || chairSpec.Round != "r7" || advisorSpec.Round != "r7" {
 		t.Errorf("spec ForkSubagents/Round = chair %v/%q, advisor %v/%q, want the seat's flag and the table's round", chairSpec.ForkSubagents, chairSpec.Round, advisorSpec.ForkSubagents, advisorSpec.Round)
 	}
@@ -163,22 +161,22 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	}
 	noRound := table
 	noRound.Round = ""
-	if got := seatSpec(noRound, noRound.Seats[0], "", "").Display.Window; got != "multi" {
+	if got := seatSpec(noRound, noRound.Seats[0], "").Display.Window; got != "multi" {
 		t.Errorf("window group with the round cleared = %q, want the bare role prefix", got)
 	}
 	oneSeat := table
 	oneSeat.Seats = table.Seats[:1]
-	if got := seatSpec(oneSeat, oneSeat.Seats[0], "", "").Display; got.Window != "" || got.WindowSize != 1 {
+	if got := seatSpec(oneSeat, oneSeat.Seats[0], "").Display; got.Window != "" || got.WindowSize != 1 {
 		t.Errorf("one-seat table Display = %+v, want an empty window group and size 1", got)
 	}
 	oneSeatNames, err := strandNames(geom, oneSeat)
 	if err != nil {
 		t.Fatalf("strandNames(one seat) = %v", err)
 	}
-	if got := seatSpec(oneSeat, oneSeat.Seats[0], "", "").Role; got != "multi" || oneSeatNames[""] != "ly:task:multi" {
+	if got := seatSpec(oneSeat, oneSeat.Seats[0], "").Role; got != "multi" || oneSeatNames[""] != "ly:task:multi" {
 		t.Errorf("one-seat table role %q and strand %q, want the prefix alone", got, oneSeatNames[""])
 	}
-	if got := seatSpec(oneSeat, oneSeat.Seats[0], "", "").Requires; len(got) != 0 {
+	if got := seatSpec(oneSeat, oneSeat.Seats[0], "").Requires; len(got) != 0 {
 		t.Errorf("lone seat spec Requires = %v, want none", got)
 	}
 	if len(chairSpec.Requires) != 0 || len(advisorSpec.Requires) != 0 {
@@ -186,18 +184,18 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	}
 	wakeSeat := table.Seats[0]
 	wakeSeat.Requires = []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}
-	if got, want := seatSpec(table, wakeSeat, "", "").Requires, []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}; !slices.Equal(got, want) {
+	if got, want := seatSpec(table, wakeSeat, "").Requires, []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}; !slices.Equal(got, want) {
 		t.Errorf("seat spec Requires with its own background-wake = %v, want %v", got, want)
 	}
-	requiredSpec := seatSpec(table, Seat{Name: advisorName(1), Required: true}, "", "")
+	requiredSpec := seatSpec(table, Seat{Name: advisorName(1), Required: true}, "")
 	if requiredSpec.QuietHold || !requiredSpec.KeepPane {
 		t.Errorf("required advisor spec QuietHold/KeepPane = %v/%v, want false/true", requiredSpec.QuietHold, requiredSpec.KeepPane)
 	}
-	writerSpec := seatSpec(table, Seat{Name: advisorName(1), Writer: true, Timeout: 90 * time.Minute}, "", "")
+	writerSpec := seatSpec(table, Seat{Name: advisorName(1), Writer: true, Timeout: 90 * time.Minute}, "")
 	if !writerSpec.QuietHold || !writerSpec.KeepPane || writerSpec.Timeout != 90*time.Minute {
 		t.Errorf("writer spec QuietHold/KeepPane/Timeout = %v/%v/%v, want true/true/90m, the seat's own timeout over the table's", writerSpec.QuietHold, writerSpec.KeepPane, writerSpec.Timeout)
 	}
-	if got := seatSpec(table, Seat{Name: advisorName(1), Writer: true}, "", "").Timeout; got != 7*time.Minute {
+	if got := seatSpec(table, Seat{Name: advisorName(1), Writer: true}, "").Timeout; got != 7*time.Minute {
 		t.Errorf("writer spec with no timeout of its own: Timeout = %v, want the table's 7m", got)
 	}
 	if advisorSpec.Interactive || !advisorSpec.KeepPane || !advisorSpec.QuietHold {

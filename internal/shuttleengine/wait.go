@@ -302,9 +302,6 @@ func (run *Run) Wait() (Result, error) {
 	// so a reattach never re-notifies a dialog it already did.
 	run.dialog = dialogLatch{cursor: max(run.state.PromptOffset, run.state.DialogNotifiedOffset)}
 	run.apiErrors = apiErrorWatch{cursor: run.state.PromptOffset}
-	// The edit-loop watch reads the edit records file from the last edit-loop-notified offset,
-	// so a reattach never repeats a notice it already sent.
-	run.editLoops = editLoopWatch{cursor: run.state.EditLoopNotifiedOffset}
 
 	run.turnSince = run.clock.Now()
 	for tick := 1; ; tick++ {
@@ -421,7 +418,6 @@ func (run *Run) Wait() (Result, error) {
 		run.sendShellNudge()
 		run.settleDeferredHold()
 		run.watchDialog()
-		run.watchEditLoops()
 		run.logSessionState("", tick%livenessEvery == 0)
 
 		if tick%livenessEvery == 0 {

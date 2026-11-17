@@ -1,5 +1,5 @@
-// guards.go renders the PreToolUse denies a Codex launch carries: the question-tool deny and the shell guard table.
-// The same denies also render as the deny notice that opens the Codex developer instructions.
+// guards.go renders the shell guard table as the PreToolUse hooks a Codex launch carries.
+// The same rows also render as the deny notice that opens the Codex prompt file.
 // Each installed row is one Bash entry that prints Codex's deny decision when the payload matches all its patterns.
 
 package codexengine
@@ -79,34 +79,11 @@ func guardEntries(rows []shellguard.Row) []string {
 	return entries
 }
 
-// questionToolPattern matches a payload whose tool name ends in request_user_input or request_user_input_async,
-// so a name Codex prefixes with its namespace, as it prefixes spawn_agent, still matches.
-const questionToolPattern = `"tool_name":[[:space:]]*"[^"]*request_user_input(_async)?"`
-
-// steerQuestionDeny is the reason the question-tool deny gives the model: an autonomous run has no operator to answer.
-// It holds no quote or backslash, since it rides a shell-quoted JSON constant.
-const steerQuestionDeny = "you cannot ask the operator a question here. If you are blocked or need operator input, state the question as your final message and end your turn WITHOUT writing the result file. The run then waits for the answer, which arrives as your next turn."
-
-// noticeQuestionDeny announces the question-tool deny in the developer instructions.
-const noticeQuestionDeny = "request_user_input is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file; the run then waits for the answer, which arrives as your next turn."
-
-// questionDenyCommand returns the hook command of the question-tool deny.
-// It greps the payload for a question tool's name.
-// It prints Codex's deny when the name matches and the empty hook output otherwise, exiting 0 either way.
-func questionDenyCommand() string {
-	posix := shell.Posix()
-	return `grep -Eq ` + posix.Quote(questionToolPattern) + ` && echo ` + posix.Quote(denyDecision(steerQuestionDeny)) + ` || ` + emptyHookOutput
-}
-
-// denyNotice returns the sentences announcing a launch's denies to a Codex session, space-separated, or "" for none:
-// the question-tool deny's when questionDeny is set, then each of rows'.
-func denyNotice(questionDeny bool, rows []shellguard.Row) string {
-	var notices []string
-	if questionDeny {
-		notices = append(notices, noticeQuestionDeny)
-	}
-	for _, row := range rows {
-		notices = append(notices, row.NoticeFor(engineName))
+// denyNotice returns the sentences announcing each of rows to a Codex session, space-separated, or "" for no rows.
+func denyNotice(rows []shellguard.Row) string {
+	notices := make([]string, len(rows))
+	for i, row := range rows {
+		notices[i] = row.NoticeFor(engineName)
 	}
 	return strings.Join(notices, " ")
 }

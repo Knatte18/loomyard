@@ -1,6 +1,6 @@
 # PATTERN-lym-files
 
-Placing a file, temp dir, lock or link: tracked under `_lym`, never-tracked under `.lym` as a cache a fresh machine rebuilds or starts without; named only by `lymdirs`; temp under `lymtemp`, lock paths via `lock`, links via `fslink`.
+Placing a file, temp dir, lock or link: tracked under `_lym`, never-tracked under `.lym`, named only by `lymdirs`; temp under `lymtemp`, lock paths via `lock`, links via `fslink`.
 
 ## Durable and ephemeral state
 
@@ -17,16 +17,6 @@ Every never-tracked file lives under `.lym`, at the mirrored subpath of the `_ly
 - Nothing a run, the orch or a landing depends on lives only under `.lym`.
   Decisions, landings, stop reports and board state are always in git (board, records, decision record).
   Never-tracked state such as the creel journal is a delivery path or cache that a fresh machine starts without.
-- `.lym` holds only caches.
-  The cancel and pause intents live in the batten record, and the pull-request record and the fixer attempt counts live in the pair's tracked records.
-  Everything else run-related under `.lym` is a cache:
-  the merge record, the driver park marker and resume report, batten's per-row marks, the dobby's `beam/state.json`,
-  shuttle run directories, reed state, loom scratch, gate and verify records, the parent lock, the run process registry,
-  the creel journal, adopt check views, failed-push records, the hibernate request and the pause record.
-- An absent cache reads as empty and refuses nothing.
-  A lost sent-notice memory can repeat a notice or a revive once.
-- A tracked value that holds only on the machine that wrote it, such as a Claude session id or an absolute path,
-  is read as such on any other machine.
 - The two are siblings under `AnchorPath()`.
   In a hub the sibling is `BoltDir(hub)`; standalone it is `standalonestate.Derive`.
 - No engine derives its own `.lym` path; each module exposes a scratch accessor beside its durable one.

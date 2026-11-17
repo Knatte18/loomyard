@@ -76,15 +76,10 @@ type landWorld struct {
 	modeErr       error
 	// slept is the time the fake clock has advanced by Sleep, which every read of the merge state waits through.
 	slept time.Duration
-	// parentUnmerged answers ParentUnmerged and parentConflicts answers ParentConflicts.
-	// findings answers DescriptionFindings and mergedLacks answers MergedLacks.
-	parentUnmerged  bool
-	parentConflicts bool
-	findings        []string
-	mergedLacks     []string
-	// tasksErr and parentConflictsErr are what the Tasks and ParentConflicts seams fail with.
-	tasksErr           error
-	parentConflictsErr error
+	// parentUnmerged, findings and mergedLacks are what ParentUnmerged, DescriptionFindings and MergedLacks answer.
+	parentUnmerged bool
+	findings       []string
+	mergedLacks    []string
 	// apiErr, when set, leaves the pull request side with no API and this as the reason.
 	apiErr error
 	// landing holds each beam's landing record, and writes counts the WriteLanding calls, which fail with writeErr.
@@ -167,7 +162,7 @@ func (w *landWorld) deps() landDeps {
 			return "/hub/" + slug + "/.lym/beam/land-request.json", nil
 		},
 		Now:   func() time.Time { return landNow.Add(w.slept) },
-		Tasks: func() ([]boardengine.Task, error) { return w.tasks, w.tasksErr },
+		Tasks: func() ([]boardengine.Task, error) { return w.tasks, nil },
 		FileTask: func(fields map[string]any) error {
 			w.filed = append(w.filed, fields)
 			return nil
@@ -207,7 +202,6 @@ func (w *landWorld) deps() landDeps {
 			return nil
 		},
 		ParentUnmerged:      func(string) (bool, error) { return w.parentUnmerged, nil },
-		ParentConflicts:     func(string) (bool, error) { return w.parentConflicts, w.parentConflictsErr },
 		DescriptionFindings: func(string) ([]string, error) { return w.findings, nil },
 		MergedLacks:         func(string, string) ([]string, error) { return w.mergedLacks, nil },
 		Landing: func(slug string) (pawlengine.LandingRecord, bool, error) {

@@ -27,9 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
-	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -132,14 +130,8 @@ func readDobbyRunStatus(path string) (shedengine.Status, bool, error) {
 // It is keyed by slug, so a persistent failure logs one Warn, not one line per dobby tick.
 var unreadableReachedParent logger.EpisodeSet
 
-// unreadableRunRecords keeps one failure episode per run whose tracked records or act inputs do not read.
-// It is keyed by slug, so a persistent failure logs one Warn, not one line per dobby tick.
-var unreadableRunRecords logger.EpisodeSet
-
 // DobbyRuns builds the RunView of every batten run whose parent worktree is geom's.
 // The pause coverage is read from the record at pauseRecord.
-// Each run also carries its FSM state and the act rule's verdict, judged with nothing set aside.
-// A run whose records or act inputs do not read is left out of the call, with one Warn per episode.
 // A run's place against its Land row is read from its status,
 // and a landed run carries the landing commit its landing recorded, empty when none is readable.
 // Whether the run takes no slot is judged from its board entry on the local board at geom.BoardDir.
@@ -182,14 +174,6 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 		}
 		outcome := battenrecipe.LandOutcomeOf(run.status)
 		view.PastLand, view.Landed = outcome != battenrecipe.LandOutcomeAhead, outcome == battenrecipe.LandOutcomeLanded
-		records, inputs, err := pairteardown.ReadRun(prime, slug)
-		if err != nil {
-			unreadableRunRecords.Fail(slug, "battencli: a run's records and act inputs are unreadable and the run is left out of this tick", "slug", slug, "error", err)
-			continue
-		}
-		unreadableRunRecords.Recover(slug, "battencli: a run's records and act inputs read again", "slug", slug)
-		reading, verdict := runfsm.Judge(records, inputs, runfsm.Aside{})
-		view.Run, view.Verdict = reading.State, verdict
 		pair, err := lymcwd.NamedWorktree(prime.HubPath, slug)
 		if err != nil {
 			return nil, fmt.Errorf("locate the pair %s: %w", slug, err)
@@ -200,11 +184,7 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 				view.ChildStatusModified, err = modTimeOf(shedrun.StatusFile(pair, shedrun.SelfRunID))
 				return
 			},
-			func() error {
-				reading, err := readCancelMarker(prime, slug)
-				view.CancelMarker = reading.Present
-				return err
-			},
+			func() (err error) { view.CancelMarker, err = markerExists(shedrun.CancelMarker(prime, slug)); return },
 			func() (err error) { view.OriginOwed, err = markerExists(shedrun.OriginOwedMarker(prime, slug)); return },
 			func() (err error) { view.DriverLockHeld, err = lockHeld(shedrun.DriverLock(prime, slug)); return },
 			func() (err error) { view.PairPresent, err = markerExists(pair.WorktreePath()); return },
@@ -343,7 +323,6 @@ func readTaskPlacement(prime *lymcwd.Location, parents *DobbyParents, owners boa
 // A released task whose run record under the prime is done carries a start refusal.
 // The exception is a done motif run of a task whose recipe the board resolves to raddle.
 // Its start clears the run.
-// A released task whose record is cancelled carries the cancelled refusal, since only a cancel with --remove clears it.
 // A run status that does not read holds no start.
 // A dependency is pending until its entry is done, whatever its kind.
 // A plain project is also pending until every landing member of it is done.
@@ -383,9 +362,6 @@ func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) 
 			status, found, err := readDobbyRunStatus(shedrun.StatusFile(prime, task.Slug))
 			if err != nil {
 				logger.Warn("battencli: a released task's run status is unreadable and holds no start", "slug", task.Slug, "error", err)
-			}
-			if err == nil && found && status.State == shedengine.StateCancelled {
-				view.StartRefusal = cancelledRunRefusal(task.Slug).Error()
 			}
 			if err == nil && found && status.State == shedengine.StateDone {
 				clears, err := startClearsMotifRun(prime, task)

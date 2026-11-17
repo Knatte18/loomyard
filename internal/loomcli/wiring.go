@@ -24,7 +24,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -41,7 +40,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -55,7 +53,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/statuscommit"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -95,7 +92,6 @@ type commitStatusDeps struct {
 // The status file is always included, and the settle records join when their file exists.
 // The reviews directory, the durable directory and the usage directory each join when they hold a file.
 // The driver records join per directory (drive reports, arbiter, tackler) when each holds a file.
-// The pull request record joins when its file exists.
 // The durable directory is staged whole rather than its friction directory alone:
 // staging the parent carries the friction directory and every timestamped archive sibling in one entry,
 // where a friction-only entry would miss the archives.
@@ -125,20 +121,16 @@ func statusCommitPathspec(location *lymcwd.Location, runID string) []string {
 	if shedrun.HoldsFile(shedrun.UsageDir(location)) {
 		paths = append(paths, shedrun.UsageDirRel())
 	}
-	if _, err := os.Stat(shedrun.PullRequestRecord(location, runID)); err == nil {
-		paths = append(paths, shedrun.PullRequestRecordRel(location, runID))
-	}
 	return paths
 }
 
 // planCommitPathspec returns the pathspec the plan commit stages.
-// It holds the plan directory.
-// It adds each implementer's durable directory when it holds a file or git tracks a path under it.
-// An implementer's directory is tracked, so a record the plan write's rotation moved out of it leaves pending deletions:
+// It holds the plan directory, plus webster's durable directory when it holds a file or git tracks a path under it.
+// Webster's directory is tracked, so a record the plan write's rotation moved out of it leaves pending deletions:
 // this pathspec stages them together with the archive under the plan, in the same commit.
 // Otherwise it is left out, because git refuses a pathspec that matches nothing in the index or the working tree.
 // An archived run record alone does not match:
-// once its deletions are committed, nothing under the implementer's directory is left.
+// once its deletions are committed, nothing under webster's directory is left.
 // A failed tracked check keeps the path, since dropping it could leave the deletions unstaged.
 // The plan amendment record joins when it exists or is tracked, so its removal is staged in the same commit.
 func planCommitPathspec(location *lymcwd.Location) []string {
@@ -151,15 +143,10 @@ func planCommitPathspec(location *lymcwd.Location) []string {
 // tracked answers whether a relative path is tracked in the git index.
 func planCommitPathspecWith(location *lymcwd.Location, tracked func(rel string) (bool, error)) []string {
 	paths := []string{planparser.PlanDirRel()}
-	for _, dir := range []struct{ abs, rel string }{
-		{websterengine.Dir(location.AnchorPath()), websterengine.DirRel()},
-		{weaverengine.Dir(location.AnchorPath()), weaverengine.DirRel()},
-	} {
-		if shedrun.HoldsFile(dir.abs) {
-			paths = append(paths, dir.rel)
-		} else if isTracked, err := tracked(dir.rel); err != nil || isTracked {
-			paths = append(paths, dir.rel)
-		}
+	if shedrun.HoldsFile(websterengine.Dir(location.AnchorPath())) {
+		paths = append(paths, websterengine.DirRel())
+	} else if isTracked, err := tracked(websterengine.DirRel()); err != nil || isTracked {
+		paths = append(paths, websterengine.DirRel())
 	}
 	return append(paths, amendmentPathspec(location, tracked)...)
 }
@@ -324,8 +311,7 @@ func sketchRefusedNotice(slug string, refusal error) string {
 }
 
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.
-// It first writes the run's board status, `<FSM state> · <producer>`, when that status changed.
-// The FSM state is runfsm.TransitionState's word: running, landing at Finalize, paused or halted.
+// It first writes the run's board status, `<state> · <producer>`, when that status changed.
 // On the run's finish it calls Finish until it succeeds once;
 // a failed board write only warns, and the next transition retries it;
 // the board is the hub's overview, never the run's own bookkeeping.
@@ -358,8 +344,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 				}
 			}
 		case deps.SetBoardStatus != nil:
-			display := runfsm.TransitionState(shedengine.State(state), true, producer == loomshed.NameFinalize)
-			if status := boardengine.RunStatus(string(display), producer); status != lastBoardStatus {
+			if status := boardengine.RunStatus(state, producer); status != lastBoardStatus {
 				if err := deps.SetBoardStatus(status); err != nil {
 					logger.Warn("loomcli: board status write failed, next transition retries", "status", status, "error", err)
 				} else {
@@ -419,7 +404,6 @@ func (c *loomCLI) wireLightweight(location *lymcwd.Location, cwd string) error {
 	// Filling only the fields the validate verbs read keeps this path from re-acquiring the eight-config load.
 	// This path exists to avoid that load.
 	c.env.AnchorPath = location.AnchorPath()
-	c.env.ImplementerSeam = anchorImplementerSeam(location)
 	c.env.WorktreeRoot = location.WorktreePath()
 	record := runRecordOf(location, c.recipe)
 	c.env.DecisionRecordPath = record.path
@@ -439,31 +423,6 @@ func (c *loomCLI) wireLightweight(location *lymcwd.Location, cwd string) error {
 	c.env.RecordEngine = recordEngine
 	c.env.PlanIndex = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath()))
 	return nil
-}
-
-// implementerSetting returns the reader of the `tapestry.implementer` setting over lookup.
-func implementerSetting(lookup func(module, key string) (any, error)) func() (string, error) {
-	return func() (string, error) {
-		value, err := lookup("tapestry", "implementer")
-		if err != nil {
-			return "", err
-		}
-		if text, ok := value.(string); ok {
-			return text, nil
-		}
-		return fmt.Sprint(value), nil
-	}
-}
-
-// anchorImplementerSeam returns the active-implementer seam over location's anchor and its setting alone.
-// It wires none of the repair-advice reads, so a refusal's repair advice names `lym weaver reset` alone.
-// The setting's config loads only when no implementer has begun a batch.
-// A verb on the lightweight wiring is therefore not held up by an unrelated module's config.
-func anchorImplementerSeam(location *lymcwd.Location) weaverengine.ActiveDeps {
-	return weaverengine.ActiveDeps{
-		AnchorRoot: location.AnchorPath(),
-		Setting:    implementerSetting(configreg.SettingLookup(fabricengine.ConfigDirs(location))),
-	}
 }
 
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location.
@@ -744,19 +703,19 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	statusPath := shedrun.StatusFile(location, c.runID)
 	statusLockPath := shedrun.StatusLock(location, c.runID)
 
-	weaverGeom := hubgeom.WeaverGeometry(location)
-
 	// reworkDeps opens nothing at wire time.
 	// Every closure reads or writes on demand, since wire() also runs for status/pause.
 	// The Plan-Review skip seam and Plan-Write's rotation share it.
 	reworkDeps := loomshed.PRReworkDeps{
-		PlanDir:        planparser.PlanDir(anchorPath),
-		ReworkDir:      loomengine.LoomReworkDir(location),
-		ReworkDirRel:   loomengine.LoomReworkDirRel(),
-		ReviewsDir:     loomengine.LoomReviewsDir(location),
-		AmendmentPath:  loomengine.LoomAmendmentRecord(location),
-		ReadCommitted:  committedAnchoredReader(location),
-		ArchiveWebster: archiveRunRecords(websterGeom, weaverGeom),
+		PlanDir:       planparser.PlanDir(anchorPath),
+		ReworkDir:     loomengine.LoomReworkDir(location),
+		ReworkDirRel:  loomengine.LoomReworkDirRel(),
+		ReviewsDir:    loomengine.LoomReviewsDir(location),
+		AmendmentPath: loomengine.LoomAmendmentRecord(location),
+		ReadCommitted: committedAnchoredReader(location),
+		ArchiveWebster: func(dest string) error {
+			return websterengine.ArchiveRunRecord(websterGeom, dest)
+		},
 	}
 
 	// A pair run records its parent branch in the origin record,
@@ -810,80 +769,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	planDir := planparser.PlanDir(anchorPath)
 	// Setting is one lookup per wiring, so every row of a recipe build reads one snapshot of each module's stack.
 	settingLookup := configreg.SettingLookup(fabricengine.ConfigDirs(location))
-
-	weaverGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), weaverGeom.GateSlots, weaverGeom.GateWaitDir)
-	weaverGeom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
-	weaverDeps := weaverengine.RunDeps{
-		Geom:   weaverGeom,
-		Runner: runner,
-		Fixer: gatefixer.NewStrandFixer(gatefixer.Deps{
-			Starter:    runner,
-			Stopper:    runner,
-			Reed:       reedEngine,
-			Engines:    engines,
-			ShuttleCfg: shuttleCfg,
-			AnchorRoot: reedGeom.AnchorPath,
-			Clock:      wallClock{},
-			Register:   gatefixer.Registrar(reedEngine, fabricengine.RunProcDir(location.HubPath), pairSlug, gatefixer.RoleVerifyFixer),
-		}),
-		Reed: reedEngine,
-		// CommitRecords commits Weaver's run directory and the plan directory, which Weaver rewrites for handle binding.
-		CommitRecords: func(msg string) error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{weaverengine.DirRel(), planparser.PlanDirRel()}, msg, fabricengine.EnvSyncOptions())
-			return err
-		},
-		RecordsHead: func() (string, error) {
-			_, records, err := fabricengine.CheckoutStates(location)
-			if err != nil {
-				return "", err
-			}
-			return records.Head, nil
-		},
-		ParentBranch: func() (string, error) {
-			return readRecordedParentBranch(location)
-		},
-		// Deliver sends a Weaver strand the decision entries recorded since it began.
-		Deliver:        weaverDeliver(location),
-		LanguageSkills: languageSkills,
-		RenameTools:    language.RenameTools,
-		FrictionDir:    frictionDir,
-	}
-	// implementerSeam reads the run's implementer state; every closure reads on demand.
-	implementerSeam := weaverengine.ActiveDeps{
-		AnchorRoot: anchorPath,
-		Setting:    implementerSetting(settingLookup),
-		StateHistory: func() ([]weaverengine.StateVersion, error) {
-			versions, err := fabricengine.AnchoredFileFirstParentHistory(location, weaverengine.StateRel())
-			if err != nil {
-				return nil, err
-			}
-			history := make([]weaverengine.StateVersion, 0, len(versions))
-			for _, version := range versions {
-				history = append(history, weaverengine.StateVersion{Commit: version.SHA, Data: version.Data})
-			}
-			return history, nil
-		},
-		TaskHead: func() (string, error) {
-			opened, err := fabricengine.Open(location)
-			if err != nil {
-				return "", err
-			}
-			return opened.HeadSHA()
-		},
-		LiveStrands: func() ([]string, error) {
-			status, err := reedEngine.Status()
-			if err != nil {
-				return nil, err
-			}
-			var names []string
-			for _, strand := range status.Strands {
-				if strand.Live {
-					names = append(names, strand.Name)
-				}
-			}
-			return names, nil
-		},
-	}
 
 	c.env = shedrecipe.Env{
 		PreflightBatcher: preflightBatcher,
@@ -967,10 +852,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{websterengine.DirRel(), planparser.PlanDirRel()}, fmt.Sprintf("loom: webster run record for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		// WeaverRun is filled explicitly, as WebsterRun is, since weaverEntry fails on a nil WeaverRun rather than defaulting it.
-		WeaverRun:       weaverengine.Run,
-		WeaverDeps:      weaverDeps,
-		ImplementerSeam: implementerSeam,
 		// Shuttle is the runner, which satisfies shedadapters.Shuttle.
 		// The Bouncer and the Burler probes read it; no writer row does.
 		Shuttle: runner,
@@ -1041,11 +922,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			if err != nil {
 				return seatengine.Table{}, err
 			}
-			runRecordPath, err := activeRunRecordPath(implementerSeam)
-			if err != nil {
-				return seatengine.Table{}, err
-			}
-			priorDirs, err := loomshed.ArchivedRunRecordDirs(loomengine.LoomReworkDir(location))
+			priorDirs, err := loomshed.ArchivedWebsterDirs(loomengine.LoomReworkDir(location))
 			if err != nil {
 				return seatengine.Table{}, err
 			}
@@ -1061,7 +938,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 				DriftVerdict:        verdict,
 				StencilsDir:         websterGeom.StencilsDir,
 				DecisionRecordPath:  loomengine.DiscussionDecisionRecord(location),
-				RunRecordPath:       runRecordPath,
+				RunRecordPath:       summaryparser.Path(websterGeom.WebsterDir),
 				PriorRunRecordPaths: priorRecords,
 				DescriptionPath:     summaryparser.Path(loomengine.LandingDir(location)),
 				TaskBranch:          taskBranch,
@@ -1195,23 +1072,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		Resume:       "lym loom resume",
 
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
-		ReviewStalemateRounds:    loomCfg.ReviewStalemateRounds,
 		ReviewTimeout:            reviewSettings.Timeout,
-		// The tree closures open the fabric on each call, since wire() also runs for status and pause.
-		ReviewTreeID: func() (string, error) {
-			handle, err := fabricengine.Open(location)
-			if err != nil {
-				return "", err
-			}
-			return handle.WorktreeTreeID()
-		},
-		ReviewTreeChanges: func(fromID, toID string) ([]string, error) {
-			handle, err := fabricengine.Open(location)
-			if err != nil {
-				return nil, err
-			}
-			return handle.ChangedPathsBetween(fromID, toID)
-		},
 
 		// Landing is left unfilled here: wireLanding fills Env.Landing separately.
 		// NewPublish and NewFinalize open their fabric pair eagerly at construction.
@@ -1312,7 +1173,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 				Slug:               seedSlug(location.WorktreeName),
 				WorktreeRoot:       location.WorktreePath(),
 				DecisionRecordPath: record.path,
-				Engines:            engines,
 			}, samplerCfg, registry)
 		})
 	}

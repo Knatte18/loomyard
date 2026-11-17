@@ -45,7 +45,7 @@ func openRoot(path string, uid int, now func() time.Time) (*Root, error) {
 	if err := checkRoot(path, uid); err != nil {
 		return nil, err
 	}
-	return &Root{path: path, now: now, remove: removeTreeMakingWritable, retryNow: time.Now, sleep: time.Sleep, runName: randomRunName}, nil
+	return &Root{path: path, now: now, remove: os.RemoveAll, retryNow: time.Now, sleep: time.Sleep, runName: randomRunName}, nil
 }
 
 // resolveRootPath returns the root path under tempDir.

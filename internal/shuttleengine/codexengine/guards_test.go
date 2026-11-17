@@ -54,8 +54,6 @@ func TestInstalledGuards_CoverEveryRow(t *testing.T) {
 // TestGuardEntries_RenderEveryRowWithItsCodexText pins the literal deny output Codex honours.
 // It pins one entry per row: each opens with the literal Bash matcher and carries the row's Codex steer in its deny.
 // It also pins a deny notice of the rows' Codex notices in order.
-//
-//testtiming:keep pins the literal deny JSON and the deny notice order, question notice first, which TestPrepare_CreelHooksInAHub does not read
 func TestGuardEntries_RenderEveryRowWithItsCodexText(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -81,19 +79,13 @@ func TestGuardEntries_RenderEveryRowWithItsCodexText(t *testing.T) {
 		}
 		notices = append(notices, row.NoticeFor(engineName))
 	}
-	if got, want := denyNotice(false, rows), strings.Join(notices, " "); got != want {
-		t.Errorf("denyNotice(false, rows) = %q; want %q", got, want)
+	if got, want := denyNotice(rows), strings.Join(notices, " "); got != want {
+		t.Errorf("denyNotice() = %q; want %q", got, want)
 	}
-	if got, want := denyNotice(true, rows), noticeQuestionDeny+" "+strings.Join(notices, " "); got != want {
-		t.Errorf("denyNotice(true, rows) = %q; want %q", got, want)
-	}
-	if got := denyNotice(false, rows); strings.Contains(got, "with Read") || !strings.Contains(got, "apply_patch") {
+	if got := denyNotice(rows); strings.Contains(got, "with Read") || !strings.Contains(got, "apply_patch") {
 		t.Errorf("denyNotice() = %q; want the Codex edit rule in place of the Claude one", got)
 	}
-	if got := denyNotice(false, nil); got != "" {
-		t.Errorf("denyNotice(false, nil) = %q; want empty", got)
-	}
-	if !strings.Contains(questionDenyCommand(), denyDecision(steerQuestionDeny)) || strings.ContainsAny(steerQuestionDeny, `'"\`) {
-		t.Errorf("questionDenyCommand() = %s; want it to carry the question deny, whose steer holds no quote or backslash", questionDenyCommand())
+	if got := denyNotice(nil); got != "" {
+		t.Errorf("denyNotice(nil) = %q; want empty", got)
 	}
 }

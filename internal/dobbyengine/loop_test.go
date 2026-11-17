@@ -18,7 +18,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -725,7 +724,7 @@ func (h *loopHarness) countLogged(prefix string) int {
 func TestRun_Heartbeat(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	listedRun := RunView{Slug: "a", State: runStateRunning, Run: runfsm.Running, Producer: producerRunShed}
+	listedRun := RunView{Slug: "a", State: runStateRunning, Producer: producerRunShed}
 
 	// ticksAcrossTen runs three ticks.
 	// The clock reads nine minutes and ten seconds past the start at the second tick and past ten minutes at the third.

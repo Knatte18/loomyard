@@ -78,7 +78,7 @@ type BeamUpReport struct {
 	PromptSource string `json:"prompt_source,omitempty"`
 	// SessionID is the session a resume continued, empty for any other launch.
 	SessionID string `json:"session_id,omitempty"`
-	// AbandonedSession is the recorded session this machine holds no transcript of, which a fresh launch replaced.
+	// AbandonedSession is the recorded session whose resume failed to start and which a fresh launch replaced.
 	AbandonedSession string `json:"abandoned_session,omitempty"`
 	// Hint names the way forward when the watcher was still stopping.
 	Hint            string `json:"hint,omitempty"`
@@ -168,12 +168,6 @@ type startedSession struct {
 	SessionID string
 	// Warning is the resume check's warning, empty when there is none.
 	Warning string
-	// HolderPID is the live provider process holding the started session, zero when none was found.
-	HolderPID int
-	// HolderErr is why the holder could not be read, nil when the read succeeded or found none.
-	HolderErr error
-	// Carried counts the operator instructions the launch carried over from an unfinished predecessor.
-	Carried int
 }
 
 // sessionStarter starts the orchestrator's shuttle run and returns its strand guid, session id and the resume check's warning.
@@ -187,23 +181,15 @@ type runnerSessionStarter struct {
 }
 
 // StartSession delegates to Runner.Start, which returns only once the provider is past its startup gates.
-// It then reads the live provider process holding the started session.
 func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (startedSession, error) {
 	run, err := s.runner.Start(spec)
 	if err != nil {
 		return startedSession{}, err
 	}
-	started := startedSession{GUID: run.StrandGUID(), SessionID: run.SessionID(), Warning: run.ResumeWarning(), Carried: len(run.CarriedInstructions())}
-	if pid, found, err := run.SessionHolder(); found {
-		started.HolderPID = pid
-	} else {
-		started.HolderErr = err
-	}
-	return started, nil
+	return startedSession{GUID: run.StrandGUID(), SessionID: run.SessionID(), Warning: run.ResumeWarning()}, nil
 }
 
 // orchSpec builds the orchestrator run's spec as an interactive, focused run that awaits the operator.
-// It names the Claude engine and its prompt engine explicitly, so a Codex default engine never takes the orch role.
 // Its one output file is a sentinel that is never written, so the run never finishes on its own.
 // It carries the configured permission mode verbatim and authorizes forks,
 // so the hosted hub can spawn forks beside typed subagents.
@@ -211,14 +197,12 @@ func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (startedSess
 // Its turn hook is the Slack hook.
 // It switches the presence back on the operator's typed line.
 // While away, it forwards each turn's final reply to the orch's channel.
-// A non-empty remoteControlName starts the session with remote control on under that name.
-func (c *orchCLI) orchSpec(prompt string, now time.Time, remoteControlName string) shuttleengine.Spec {
+func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 	sentinel := filepath.Join(c.paths.Dir, "session-"+now.UTC().Format("20060102T150405Z")+".never")
 	return shuttleengine.Spec{
 		Prompt:         prompt,
 		OutputFiles:    []string{sentinel},
-		ModelChoice:    c.orchModelChoice(),
-		PromptEngine:   orchEngine,
+		ModelChoice:    shuttleengine.ModelChoice{Model: c.cfg.Model, Effort: c.cfg.Effort},
 		Interactive:    true,
 		PermissionMode: c.cfg.PermissionMode,
 		ForkSubagents:  true,
@@ -233,7 +217,6 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time, remoteControlName strin
 
 		ContextAfterCompaction: resumeContextCommand(c.location.AnchorPath()),
 		TurnHookCommand:        slackengine.HookCommand,
-		RemoteControlName:      remoteControlName,
 	}
 }
 
@@ -672,24 +655,14 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 		if err := orchengine.RenderRoleFile(c.paths.RolePath); err != nil {
 			return report, err
 		}
-		remoteControlName := c.launchRemoteControlName(strand, hasStrand)
-		started, source, abandoned, err := c.launchOrch(st, note, remoteControlName)
+		started, source, abandoned, err := c.launchOrch(st, note)
 		report.AbandonedSession = abandoned
 		if err != nil {
 			return report, err
 		}
-		if remoteControlName != "" {
-			c.markLaunchedRemoteControl(started.GUID)
-		}
 		report.Strand = started.GUID
 		if started.Warning != "" {
 			report.Warnings = append(report.Warnings, started.Warning)
-		}
-		if abandoned != "" {
-			report.Warnings = append(report.Warnings, freshLaunchNote(abandoned, started.Carried))
-		}
-		if warning := c.registerOrchProcess(started); warning != "" {
-			report.Warnings = append(report.Warnings, warning)
 		}
 		next := orchengine.ResetForFreshLaunch(st, started.GUID, time.Now())
 		next.SessionID = started.SessionID
@@ -727,20 +700,22 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 }
 
 // launchOrch starts the orch session: the session st records, resumed with the reload pointer, else a fresh launch.
-// A resume refused because this machine holds no transcript of the session launches fresh,
-// and the session it gave up is named as abandoned; every other failed resume fails the start.
+// A resume that fails to start, its transcript gone or its process not coming up live, falls back to a fresh launch.
+// The session it gave up is named as abandoned.
 // A fresh launch takes the last completed handoff, else the start stencil, and note joins its prompt.
-// Either launch starts with remote control on under remoteControlName when it is non-empty.
-func (c *orchCLI) launchOrch(st orchengine.State, note, remoteControlName string) (started startedSession, source, abandoned string, err error) {
+func (c *orchCLI) launchOrch(st orchengine.State, note string) (started startedSession, source, abandoned string, err error) {
 	if st.SessionID != "" {
-		started, err := c.resumeOrch(st.SessionID, remoteControlName)
+		reload, err := orchengine.RenderReloadPrompt(c.stencilsDir, c.paths.RolePath)
+		if err != nil {
+			return startedSession{}, "", "", err
+		}
+		spec := c.orchSpec(orchengine.WithPresence(c.paths, reload), time.Now())
+		spec.ResumeSessionID = st.SessionID
+		started, err := c.starter.StartSession(spec)
 		if err == nil {
 			return started, orchengine.SourceResume, "", nil
 		}
-		if !errors.Is(err, shuttleengine.ErrNoTranscript) {
-			return startedSession{}, "", "", err
-		}
-		logger.Warn("orch: this machine holds no transcript of the recorded session; launching fresh", "sessionID", st.SessionID, "cause", err)
+		logger.Warn("orch: the recorded session could not be resumed; launching fresh", "sessionID", st.SessionID, "cause", err)
 		abandoned = st.SessionID
 	}
 	prompt, source, err := orchengine.ChooseStartPrompt(c.stencilsDir, c.paths.RolePath, st, fileExists)
@@ -751,89 +726,8 @@ func (c *orchCLI) launchOrch(st orchengine.State, note, remoteControlName string
 	if note != "" {
 		prompt += "\n\n" + note
 	}
-	started, err = c.starter.StartSession(c.orchSpec(prompt, time.Now(), remoteControlName))
+	started, err = c.starter.StartSession(c.orchSpec(prompt, time.Now()))
 	return started, source, abandoned, err
-}
-
-// resumeOrch resumes the orch session sessionID with the reload pointer.
-// Remote control is on under remoteControlName when it is non-empty.
-// A resume refused for a live holder ends that holder when it is this worktree's registered orch.
-// It then resumes once more.
-// Any other holder refuses, naming its pid.
-func (c *orchCLI) resumeOrch(sessionID, remoteControlName string) (startedSession, error) {
-	reload, err := orchengine.RenderReloadPrompt(c.stencilsDir, c.paths.RolePath)
-	if err != nil {
-		return startedSession{}, err
-	}
-	spec := c.orchSpec(orchengine.WithPresence(c.paths, reload), time.Now(), remoteControlName)
-	spec.ResumeSessionID = sessionID
-	started, err := c.starter.StartSession(spec)
-	var held *shuttleengine.SessionHeldError
-	if !errors.As(err, &held) {
-		return started, resumeFailure(sessionID, err)
-	}
-	if err := c.endOwnHolder(sessionID, held.PID); err != nil {
-		return startedSession{}, err
-	}
-	started, err = c.starter.StartSession(spec)
-	return started, resumeFailure(sessionID, err)
-}
-
-// endOwnHolder ends pid, the live process holding the orch session sessionID, when it is this worktree's registered orch.
-// Any other holder refuses with the way forward, so the start never launches fresh over a live session.
-func (c *orchCLI) endOwnHolder(sessionID string, pid int) error {
-	registered := false
-	if c.orchRegistered != nil {
-		var err error
-		if registered, err = c.orchRegistered(pid); err != nil {
-			return fmt.Errorf("orch: read whether process %d, which holds the orch session %s, is this worktree's orch: %w; way forward: repair what the error names, then run `lym beam start` again", pid, sessionID, err)
-		}
-	}
-	if !registered {
-		return fmt.Errorf("orch: the orch session %s is held by live process %d, which lym did not register as this worktree's orch, so the start launches nothing; way forward: exit the session of process %d, then run `lym beam start`", sessionID, pid, pid)
-	}
-	ended, err := c.endOrch()
-	if err != nil {
-		return fmt.Errorf("orch: end process %d, this worktree's earlier orch holding session %s: %w; way forward: exit that session, then run `lym beam start`", pid, sessionID, err)
-	}
-	logger.Info("orch: ended this worktree's earlier orch process to resume its session", "pid", pid, "sessionID", sessionID, "ended", len(ended))
-	return nil
-}
-
-// resumeFailure wraps the failed resume of sessionID with the way forward, and is nil for a resume that started.
-func resumeFailure(sessionID string, err error) error {
-	if err == nil {
-		return nil
-	}
-	return fmt.Errorf("orch: the recorded orch session %s could not be resumed: %w; way forward: fix the cause it names, such as a session that still holds it, then run `lym beam start` again", sessionID, err)
-}
-
-// freshLaunchNote says that the orch launched fresh because this machine holds no transcript of the session abandoned.
-// It counts the operator instructions the launch carried over from the session it replaced.
-func freshLaunchNote(abandoned string, carried int) string {
-	return fmt.Sprintf("this machine holds no transcript of the orch session %s, so the orch launched fresh, carrying over %d operator instruction(s) from its earlier session", abandoned, carried)
-}
-
-// registerOrchProcess registers the provider process of the started orch session as this worktree's orch,
-// so a later start that finds it holding the session ends it and resumes.
-// It returns a warning when the process could not be found or registered:
-// the launch stands, and a later start refuses while that process holds the session.
-// A receiver with no registration wired registers nothing.
-func (c *orchCLI) registerOrchProcess(started startedSession) string {
-	if c.registerOrch == nil {
-		return ""
-	}
-	if started.HolderPID == 0 {
-		cause := "the provider names no live process holding it"
-		if started.HolderErr != nil {
-			cause = started.HolderErr.Error()
-		}
-		return fmt.Sprintf("the orch's provider process is not registered as this worktree's orch (%s); a later start refuses while it holds the session", cause)
-	}
-	if err := c.registerOrch(started.HolderPID); err != nil {
-		return fmt.Sprintf("the orch's provider process %d is not registered as this worktree's orch (%v); a later start refuses while it holds the session", started.HolderPID, err)
-	}
-	return ""
 }
 
 // adoptListedStrand binds the persisted state to the live listed orch strand.

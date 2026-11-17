@@ -46,7 +46,7 @@ func TestRender_WritesAtTheAnchorAndLeavesNoUntrackedFile(t *testing.T) {
 				t.Fatalf("EventFor() = %v", err)
 			}
 			report, err := heddleengine.Renderer{}.Render(heddleengine.RenderRequest{
-				Anchor: event.Anchor, Root: event.Root, ScratchDir: event.ScratchDir, BoltDir: event.BoltDir, Excluded: event.Excluded,
+				Anchor: event.Anchor, ScratchDir: event.ScratchDir, BoltDir: event.BoltDir, Excluded: event.Excluded,
 			})
 			if err != nil {
 				t.Fatalf("Render() = %v", err)

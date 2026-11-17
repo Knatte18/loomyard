@@ -189,7 +189,7 @@ func pendingEscalation(runDir string) (round int, cause EscalationCause, briefPa
 // A file without a cause reads as EscalationCircling.
 // A present file that is malformed is an error:
 // the round must match the filename;
-// the decision and the cause must each be one of their values, the five causes for the cause;
+// the decision and the cause must each be one of their values;
 // settled is legal only on an accept.
 func readCirclingDecision(runDir string, round int) (CirclingDecision, EscalationCause, bool, bool, error) {
 	decision, cause, settled, _, exists, err := readCirclingFile(runDir, round)
@@ -227,7 +227,7 @@ func readCirclingFile(runDir string, round int) (decision CirclingDecision, caus
 		cause = EscalationCircling
 	}
 	if !cause.valid() {
-		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision cause must be %q, %q, %q, %q or %q, got %q", EscalationCircling, EscalationBudget, EscalationHardCap, EscalationDecision, EscalationStalemate, parsed.Cause)
+		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision cause must be %q, %q, %q or %q, got %q", EscalationCircling, EscalationBudget, EscalationHardCap, EscalationDecision, parsed.Cause)
 	}
 	if parsed.Settled && decision != CirclingAccept {
 		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision %q cannot be settled; only an accept settles", parsed.Decision)

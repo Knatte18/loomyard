@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gatefixer"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -84,7 +83,7 @@ func archiveOnlyPlan(reason string) ResetPlan {
 
 // noStartToMoveTo returns why the recorded starts name no commit to move to, or "" when they do:
 // no batch recorded a start, or a recorded start is missing from the repository.
-func noStartToMoveTo(geom Geometry, bases runplan.EvidenceBases) string {
+func noStartToMoveTo(geom Geometry, bases evidenceBases) string {
 	if len(bases.Starts) == 0 {
 		return "no batch recorded a start commit"
 	}
@@ -157,7 +156,7 @@ func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 		return ResetPlan{}, err
 	}
 
-	bases, err := runplan.RunEvidenceBases(geom.runPlan(), &deps.State.State)
+	bases, err := runEvidenceBases(geom, deps.State)
 	if err != nil {
 		return ResetPlan{}, err
 	}
@@ -201,7 +200,7 @@ func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 			}
 		}
 		if len(missing) > 0 {
-			return ResetPlan{}, fmt.Errorf("webster: reset --to %s refused: %s", to, runplan.MissingCommitsClause(missing))
+			return ResetPlan{}, fmt.Errorf("webster: reset --to %s refused: %s", to, missingCommitsClause(missing))
 		}
 	}
 
@@ -393,7 +392,7 @@ func reportHeadSHA(geom Geometry, st *State, batch int) (string, error) {
 	}
 	report.HeadSHA = headSHA
 	if !git.SHAExists(geom.WorktreeRoot, report.HeadSHA) {
-		return "", fmt.Errorf("webster: reset --to %s refused: %s", to, runplan.MissingCommitsClause([]string{report.HeadSHA}))
+		return "", fmt.Errorf("webster: reset --to %s refused: %s", to, missingCommitsClause([]string{report.HeadSHA}))
 	}
 	descends := report.HeadSHA == bs.StartSHA
 	if !descends {
@@ -412,7 +411,7 @@ func reportHeadSHA(geom Geometry, st *State, batch int) (string, error) {
 // When no recorded start is the oldest of all, it is the octopus merge-base of the recorded starts.
 // The other targets read their commit from the state.
 // report-head reads it from the batch's report under the geometry's reports directory.
-func resolveResetSHA(geom Geometry, st *State, bases runplan.EvidenceBases, to ResetTarget, batch int) (string, error) {
+func resolveResetSHA(geom Geometry, st *State, bases evidenceBases, to ResetTarget, batch int) (string, error) {
 	switch to {
 	case ResetToPreFix:
 		return st.PreFixHead, nil
@@ -451,7 +450,7 @@ func ownTrackedPaths(deps ResetDeps) ([]string, error) {
 		if !ev.Succeeded {
 			continue
 		}
-		rel, ok, err := runplan.TrackedRel(deps.Geom.git(), deps.Geom.PaneCwd, deps.Geom.WorktreeRoot, ev.Path)
+		rel, ok, err := trackedRel(deps.Geom.git(), deps.Geom.PaneCwd, deps.Geom.WorktreeRoot, ev.Path)
 		if err != nil {
 			return nil, err
 		}

@@ -8,7 +8,6 @@
 package treadleengine
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -29,9 +28,7 @@ const judgeRole = "judge"
 
 // Shuttle is the seam judge.go drives its ephemeral calls through, satisfied by
 // *shuttleengine.Runner in production and fakes in tests.
-// EngineName names the engine a call's model choice resolves to, which the call's prompt is rendered for.
 type Shuttle interface {
-	shuttleengine.EngineNamer
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 }
 
@@ -57,64 +54,25 @@ type judgeInputs struct {
 	ParentName string
 }
 
-// JudgePromptInputs bundles the values a progress-judge prompt is rendered from.
-type JudgePromptInputs struct {
-	// Engine is the name of the engine the prompt is rendered for; its edit directive is that engine's copy.
-	Engine string
-	// StencilsDir is the absolute directory the prompt templates are read from.
-	StencilsDir string
-	// ParentName is the parent name the prompt's directive is rendered for; empty renders the no-parent variant.
-	ParentName          string
-	Round               int
-	HardCap             int
-	PriorReviews        []string
-	VerdictPath         string
-	PreviousHandoffPath string
-	HandoffPath         string
-}
-
-// promptInputs returns the render inputs for these judge inputs, rendered for engine.
-func (in judgeInputs) promptInputs(engine string) JudgePromptInputs {
-	return JudgePromptInputs{
-		Engine:              engine,
-		StencilsDir:         in.StencilsDir,
-		ParentName:          in.ParentName,
-		Round:               in.Round,
-		HardCap:             in.HardCap,
-		PriorReviews:        in.PriorReviews,
-		VerdictPath:         in.VerdictPath,
-		PreviousHandoffPath: in.PreviousHandoffPath,
-		HandoffPath:         in.HandoffPath,
-	}
-}
-
-// RenderCirclingJudgePrompt renders the per-round circling-check judge prompt for in.Engine.
-// It needs only the stencils on disk, so it runs with no shuttle or session.
-// It returns an error when a stencil is unreadable or a marker cannot be filled.
-func RenderCirclingJudgePrompt(in JudgePromptInputs) (string, error) {
-	return renderJudgePrompt("treadle-template-judge-circling", in, map[string]string{})
-}
-
-// RenderMilestoneJudgePrompt renders the milestone continuation-gate judge prompt for in.Engine.
-// It needs only the stencils on disk, so it runs with no shuttle or session.
-// It returns an error when a stencil is unreadable or a marker cannot be filled.
-func RenderMilestoneJudgePrompt(in JudgePromptInputs) (string, error) {
-	return renderJudgePrompt("treadle-template-judge-milestone", in, map[string]string{"hard_cap": strconv.Itoa(in.HardCap)})
-}
-
-// renderJudgePrompt fills the named judge stencil with the markers both judge prompts share plus extra.
-func renderJudgePrompt(stencilName string, in JudgePromptInputs, extra map[string]string) (string, error) {
-	template, err := stencilstore.Read(in.StencilsDir, stencilName)
+// runCircling spawns the per-round circling-check progress judge.
+// Fail-safe: any failure logs a Warn and returns (JudgeProgressing, "", false) instead of an error.
+// That includes a stencilstore.Read failure for the prompt itself.
+// ok is false on every fail-safe path and true only when a real verdict was parsed.
+func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
+	template, err := stencilstore.Read(in.StencilsDir, "treadle-template-judge-circling")
 	if err != nil {
-		return "", fmt.Errorf("template unreadable: %w", err)
+		logger.Warn(name+": circling judge template unreadable, defaulting to "+string(JudgeProgressing), "round", in.Round, "cause", err)
+		return JudgeProgressing, "", false
 	}
 	directive, err := parentdirective.Directive(in.StencilsDir, in.ParentName, false)
 	if err != nil {
-		return "", fmt.Errorf("parent directive unreadable: %w", err)
+		logger.Warn(name+": circling judge parent directive unreadable, defaulting to "+string(JudgeProgressing), "round", in.Round, "cause", err)
+		return JudgeProgressing, "", false
 	}
-	editDirective, err := editdirective.Directive(in.StencilsDir, in.Engine)
+	editDirective, err := editdirective.Directive(in.StencilsDir)
 	if err != nil {
-		return "", fmt.Errorf("edit directive unreadable: %w", err)
+		logger.Warn(name+": circling judge edit directive unreadable, defaulting to "+string(JudgeProgressing), "round", in.Round, "cause", err)
+		return JudgeProgressing, "", false
 	}
 	values := map[string]string{
 		"round":                    strconv.Itoa(in.Round),
@@ -125,41 +83,39 @@ func renderJudgePrompt(stencilName string, in JudgePromptInputs, extra map[strin
 		parentdirective.MarkerName: directive,
 		editdirective.MarkerName:   editDirective,
 	}
-	for marker, value := range extra {
-		values[marker] = value
-	}
-	prompt, err := stencil.Fill(template, values)
-	if err != nil {
-		return "", fmt.Errorf("fill the prompt: %w", err)
-	}
-	return string(prompt), nil
-}
-
-// runCircling spawns the per-round circling-check progress judge.
-// Fail-safe: any failure logs a Warn and returns (JudgeProgressing, "", false) instead of an error.
-// That includes a failure to render the prompt.
-// ok is false on every fail-safe path and true only when a real verdict was parsed.
-func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
-	engine := sh.EngineName(in.Choice)
-	prompt, err := RenderCirclingJudgePrompt(in.promptInputs(engine))
-	if err != nil {
-		logger.Warn(name+": circling judge prompt failed, defaulting to "+string(JudgeProgressing), "round", in.Round, "cause", err)
-		return JudgeProgressing, "", false
-	}
-	return runJudgeCall(sh, name, prompt, engine, in, framingCircling, JudgeProgressing, "circling judge")
+	return runJudgeCall(sh, name, template, values, framingCircling, in.Round, in.Choice, JudgeProgressing, "circling judge")
 }
 
 // runMilestone spawns the milestone continuation-gate progress judge.
 // Fail-safe: any failure logs a Warn and returns (JudgeContinue, "", false) instead of an error.
-// That includes a failure to render the prompt.
+// That includes a stencilstore.Read failure for the prompt itself.
 func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
-	engine := sh.EngineName(in.Choice)
-	prompt, err := RenderMilestoneJudgePrompt(in.promptInputs(engine))
+	template, err := stencilstore.Read(in.StencilsDir, "treadle-template-judge-milestone")
 	if err != nil {
-		logger.Warn(name+": milestone judge prompt failed, defaulting to "+string(JudgeContinue), "round", in.Round, "cause", err)
+		logger.Warn(name+": milestone judge template unreadable, defaulting to "+string(JudgeContinue), "round", in.Round, "cause", err)
 		return JudgeContinue, "", false
 	}
-	return runJudgeCall(sh, name, prompt, engine, in, framingMilestone, JudgeContinue, "milestone judge")
+	directive, err := parentdirective.Directive(in.StencilsDir, in.ParentName, false)
+	if err != nil {
+		logger.Warn(name+": milestone judge parent directive unreadable, defaulting to "+string(JudgeContinue), "round", in.Round, "cause", err)
+		return JudgeContinue, "", false
+	}
+	editDirective, err := editdirective.Directive(in.StencilsDir)
+	if err != nil {
+		logger.Warn(name+": milestone judge edit directive unreadable, defaulting to "+string(JudgeContinue), "round", in.Round, "cause", err)
+		return JudgeContinue, "", false
+	}
+	values := map[string]string{
+		"round":                    strconv.Itoa(in.Round),
+		"hard_cap":                 strconv.Itoa(in.HardCap),
+		"prior_reviews":            strings.Join(in.PriorReviews, "\n"),
+		"verdict_path":             in.VerdictPath,
+		"previous_handoff":         previousHandoffMarker(in.PreviousHandoffPath),
+		"handoff_path":             in.HandoffPath,
+		parentdirective.MarkerName: directive,
+		editdirective.MarkerName:   editDirective,
+	}
+	return runJudgeCall(sh, name, template, values, framingMilestone, in.Round, in.Choice, JudgeContinue, "milestone judge")
 }
 
 // previousHandoffMarker renders the previous_handoff marker value for a judge prompt.
@@ -175,20 +131,24 @@ func previousHandoffMarker(path string) string {
 }
 
 // runJudgeCall runs one judge call.
-// It runs the shuttle spec for the rendered prompt, which was rendered for engine, and parses the verdict file.
+// It composes the prompt, runs the shuttle spec, and parses the verdict file.
 // Every failure degrades to (fallback, "", false) and logs the call's name and cause.
 // ok is true only on the success path.
-func runJudgeCall(sh Shuttle, name, prompt, engine string, in judgeInputs, framing judgeFraming, fallback JudgeVerdict, label string) (JudgeVerdict, string, bool) {
-	round := in.Round
+func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]string, framing judgeFraming, round int, choice shuttleengine.ModelChoice, fallback JudgeVerdict, label string) (JudgeVerdict, string, bool) {
+	prompt, err := stencil.Fill(template, values)
+	if err != nil {
+		logger.Warn(name+": "+label+" failed, defaulting to "+string(fallback), "round", round, "cause", err)
+		return fallback, "", false
+	}
+
 	spec := shuttleengine.Spec{
-		Prompt:       prompt,
-		PromptEngine: engine,
-		OutputFiles:  []string{in.VerdictPath, in.HandoffPath},
-		ModelChoice:  in.Choice,
-		Role:         judgeRole,
-		Segment:      segmentcolor.Review,
-		ConfigRole:   agentconfig.RoleTreadleJudge,
-		Round:        strconv.Itoa(round),
+		Prompt:      string(prompt),
+		OutputFiles: []string{values["verdict_path"], values["handoff_path"]},
+		ModelChoice: choice,
+		Role:        judgeRole,
+		Segment:     segmentcolor.Review,
+		ConfigRole:  agentconfig.RoleTreadleJudge,
+		Round:       strconv.Itoa(round),
 	}
 
 	result, err := sh.Run(spec)
@@ -201,7 +161,7 @@ func runJudgeCall(sh Shuttle, name, prompt, engine string, in judgeInputs, frami
 		return fallback, "", false
 	}
 
-	content, err := os.ReadFile(in.VerdictPath)
+	content, err := os.ReadFile(values["verdict_path"])
 	if err != nil {
 		logger.Warn(name+": "+label+" verdict file unreadable, defaulting to "+string(fallback), "round", round, "cause", err)
 		return fallback, "", false

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -29,7 +28,15 @@ func TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel(t *testin
 	if err := os.Mkdir(worktreeRoot, 0o755); err != nil {
 		t.Fatalf("Mkdir: %v", err)
 	}
-	permkit.Chmod(t, parent, 0o000)
+	if err := os.Chmod(parent, 0o000); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() {
+		// Restore the mode so t.TempDir's own cleanup can traverse and remove parent.
+		if err := os.Chmod(parent, 0o755); err != nil {
+			t.Fatalf("restore parent mode: %v", err)
+		}
+	})
 
 	err := validateToldWorktreeRootLive(Geometry{WorktreeRoot: worktreeRoot})
 	if err == nil {

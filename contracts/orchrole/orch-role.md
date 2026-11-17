@@ -148,10 +148,6 @@ what to build, a change of a task's scope, or a choice between designs the board
   so it reaches you only as a hand-on.
   Record the answer with `lym loom decision add <slug> --by parent` before the escalation brief's circling verb.
   Then resume.
-- **Cause `stalemate`:** the review target stayed unchanged for the configured rounds in a row.
-  The arbiter settles it as it settles `circling`, so it reaches you only as a hand-on.
-  Accept when the open findings are judged settled or not worth another round, and continue otherwise.
-  After a `continue` the Bouncer's count restarts.
 - **A review loop out of rounds:**
   `lym loom circling continue <slug>` grants one more round only below the perch's hard cap.
   At or past it, or at a `hard-cap` escalation, take the work as it stands with `lym loom circling accept <slug>`.
@@ -313,7 +309,7 @@ An operator decision made in chat is recorded in the same turn:
   The project record holds only what binds the whole project, its goal, bounds and constraints every member follows;
   it is no log of what landed, so a member landing never touches it.
 - When the verb refuses because the run has no decision record, the decision becomes a board note of its own.
-  That happens in batten's pre-loom rows, such as `starting · Worktree-Create` and `Preflight`.
+  That happens in batten's pre-loom rows, such as `running · Worktree-Create` and `Preflight`.
   It also happens in a halt before Discussion-Write.
   Write the note through `lym board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`.
   Put the held task's slug in place of `<slug>`.

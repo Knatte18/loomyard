@@ -103,7 +103,7 @@ func newFixerRun(deps Deps, row string, gate verifyGate) fixerRun {
 // An escalate report takes its own turn back.
 func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, cap int, tips [2]string) (fixerOutcome, FixerAttempts, error) {
 	reportPath := filepath.Join(f.deps.ScratchDir, f.row+"-fixer-report.md")
-	attemptsPath := FixerAttemptsPath(f.deps.RecordsDir, f.row)
+	attemptsPath := FixerAttemptsPath(f.deps.ScratchDir, f.row)
 	turnsLeft := cap - rec.Spent
 	turnLimit := time.Duration(f.deps.Config.FixerTimeoutMin) * time.Minute
 

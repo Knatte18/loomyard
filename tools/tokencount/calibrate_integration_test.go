@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -66,11 +65,9 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 
 	// The run's webster record holds its state and one round review file.
 	recordState, err := json.Marshal(websterengine.State{
-		RunGUID: "g",
-		State: runplan.State{
-			Partition: []websterengine.PartitionBatch{{Cards: []string{"01-c1"}, Profile: "fit"}},
-			Batches:   map[int]*websterengine.BatchState{1: {Kind: "fork", Terminal: true, Status: "done", ForkTranscripts: []string{"subagents/agent-1.jsonl"}}},
-		},
+		RunGUID:   "g",
+		Partition: []websterengine.PartitionBatch{{Cards: []string{"01-c1"}, Profile: "fit"}},
+		Batches:   map[int]*websterengine.BatchState{1: {Kind: "fork", Terminal: true, Status: "done", ForkTranscripts: []string{"subagents/agent-1.jsonl"}}},
 	})
 	if err != nil {
 		t.Fatal(err)

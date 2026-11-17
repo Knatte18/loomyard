@@ -12,7 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -45,7 +44,7 @@ func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 			Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)
 		}
 	}{
-		{NameWebster, NewWebsterProducer(NameWebster, configengine.Dirs{Anchor: fx.AnchorPath}, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: fx.AnchorPath})},
+		{NameWebster, NewWebsterProducer(NameWebster, configengine.Dirs{Anchor: fx.AnchorPath}, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil })},
 	}
 
 	for _, tt := range producers {

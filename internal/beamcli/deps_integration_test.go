@@ -26,8 +26,7 @@ import (
 )
 
 // TestHubLandDeps_ReadyReads drives the seams that `ready` judges a beam by over a real hub pair.
-// It reads the parent's pull request mode.
-// It reads whether the beam holds the parent's commits and whether it conflicts with them.
+// It reads the parent's pull request mode and whether the beam holds the parent's commits.
 // It also reads which beam commits a merged pull request lacks and the change description's findings.
 func TestHubLandDeps_ReadyReads(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -73,9 +72,6 @@ func TestHubLandDeps_ReadyReads(t *testing.T) {
 	if unmerged, err := deps.ParentUnmerged("b"); !unmerged || err != nil {
 		t.Errorf("ParentUnmerged(b) = %t, %v after a parent commit; want true", unmerged, err)
 	}
-	if conflicts, err := deps.ParentConflicts("b"); conflicts || err != nil {
-		t.Errorf("ParentConflicts(b) = %t, %v for a parent commit on a file the beam leaves alone; want false", conflicts, err)
-	}
 
 	// With no upstream the parent is judged by its local tip alone.
 	// The unset fails for a parent that tracks nothing, which leaves it as wanted.
@@ -95,12 +91,6 @@ func TestHubLandDeps_ReadyReads(t *testing.T) {
 	lacking, err := deps.MergedLacks("b", mergedHead)
 	if err != nil || len(lacking) != 1 || !strings.Contains(lacking[0], "Add gadgets") {
 		t.Errorf("MergedLacks(b) = %v, %v after a beam commit; want the one commit named", lacking, err)
-	}
-
-	gitkit.CommitFile(t, h.PrimeWorktree(), "shared.txt", "parent\n", "Parent writes shared")
-	gitkit.CommitFile(t, worktree, "shared.txt", "beam\n", "Beam writes shared")
-	if conflicts, err := deps.ParentConflicts("b"); !conflicts || err != nil {
-		t.Errorf("ParentConflicts(b) = %t, %v after both sides wrote shared.txt apart; want true", conflicts, err)
 	}
 
 	descriptionPath := summaryparser.Path(loomengine.LandingDir(beam))

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
@@ -18,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -51,7 +51,7 @@ func hubOwnerSeams(location *lymcwd.Location) ownerSeams {
 	parentOf := func(slug string) (string, error) { return hubgeom.ParentOf(location, slug) }
 	return ownerSeams{
 		Machine:  machinename.Name,
-		Pull:     func() error { return boardengine.PullBolt(boltDir) },
+		Pull:     func() error { return pullBolt(boltDir) },
 		Read:     func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
 		ParentOf: parentOf,
 		Set: func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
@@ -60,6 +60,28 @@ func hubOwnerSeams(location *lymcwd.Location) ownerSeams {
 			}
 			return boardengine.SetOwners(boardDir, req)
 		},
+	}
+}
+
+// pullBolt brings the Bolt at boardDir level with its upstream through a pull-first write of nothing.
+// BOARD_SKIP_GIT and BOARD_SKIP_PUSH skip the pull, as they skip the owner write's.
+func pullBolt(boardDir string) error {
+	skip := boardengine.ApplySkipEnv(boardengine.Config{})
+	if skip.SkipGit || skip.SkipPush {
+		return nil
+	}
+	nothing := fabricengine.BoltWrite{Message: "board: pull", Write: func() ([]string, error) { return nil, nil }}
+	result, err := fabricengine.NewBolt(boardDir).PullThenCommitWritten([]fabricengine.BoltWrite{nothing}, fabricengine.NewMutations(filepath.Dir(boardDir)))
+	if err != nil {
+		return err
+	}
+	switch result.Skipped {
+	case "":
+		return nil
+	case fabricengine.BoltSkipFetchFailed:
+		return fmt.Errorf("%w: %s", boardengine.ErrOwnerOriginUnreachable, result.SkipDetail)
+	default:
+		return fmt.Errorf("the board could not be brought up to date: %s", result.SkipDetail)
 	}
 }
 
@@ -189,8 +211,7 @@ func (c *battenCLI) claimBoardEntry(slug string) error {
 	if err != nil {
 		return err
 	}
-	display := runfsm.TransitionState(shedengine.StateRunning, false, false)
-	claim := boardengine.RunStatus(string(display), battenrecipe.NameWorktreeCreate)
+	claim := boardengine.RunStatus(string(shedengine.StateRunning), battenrecipe.NameWorktreeCreate)
 	write, err := c.owner.Set(boardengine.OwnerRequest{Machine: machine, Slugs: []string{slug}, Claim: claim})
 	if err != nil {
 		return fmt.Errorf("battencli: claim the board entry of %q: %w", slug, err)

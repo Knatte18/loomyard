@@ -6,8 +6,8 @@
 // open_files holds one list per place: the prime, a beam and a task.
 // Each entry is a path relative to the worktree's anchored directory, the folder its window shows.
 // An entry may name the {beam} placeholder, which the opener resolves to the beam's slug.
-// The template opens nothing for any place;
-// a file to open, such as a beam's own docs/{beam}.md, is named by adding an entry.
+// The template opens README.md for a beam and nothing for the prime or a task;
+// a beam's own file, such as docs/{beam}.md, is named by adding an entry.
 // render_markdown, on in the template, makes a markdown file open as VS Code's markdown preview rather than as source.
 // Both keys only change what a window shows, so a worktree's local override may set them.
 //

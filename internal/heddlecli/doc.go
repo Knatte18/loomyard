@@ -46,8 +46,6 @@
 // it renders no worktree.
 //
 // `show <target>` prints what the target renders to now for the current worktree and writes nothing.
-// It refuses the shared targets `agents-file` and `agents-prompt`, which have no text of their own.
-// The refusal names the targets they render into to show instead.
 //
 // `render [<worktree>]` renders every file target into the named worktree of the current hub.
 // The current worktree is the default.

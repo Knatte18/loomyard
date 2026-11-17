@@ -116,7 +116,7 @@ func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 	forks := cfg.PlanLenses != ""
 	leadValues := map[string]string{"self_check": selfCheck}
 	if forks {
-		lensDirective, err := planLensDirective(layout, dirs, stencilsDir, specsDir, cfg.PlanLenses, choice.Engine, fixerOn)
+		lensDirective, err := planLensDirective(layout, dirs, stencilsDir, specsDir, cfg.PlanLenses, fixerOn)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w", err)
 		}

@@ -24,13 +24,11 @@ type driverHandle interface {
 }
 
 // driverStarter starts the loom driver session's shuttle run.
-// It also names the engine a model choice launches on, which the driver's prompt is rendered for.
 type driverStarter interface {
 	// StartDriver returns only once the run's provider is past its startup gates;
 	// shuttle's Start blocks through them before it returns a handle.
 	// A provider that never became ready is returned as an error wrapping shuttleengine.ErrNotStarted.
 	StartDriver(spec shuttleengine.Spec) (driverHandle, error)
-	shuttleengine.EngineNamer
 }
 
 // driverSender types one line into a live driver strand's pane.
@@ -73,11 +71,6 @@ func (s runnerDriverStarter) StartDriver(spec shuttleengine.Spec) (driverHandle,
 		return nil, err
 	}
 	return run, nil
-}
-
-// EngineName implements shuttleengine.EngineNamer through the runner's engine set.
-func (s runnerDriverStarter) EngineName(choice shuttleengine.ModelChoice) string {
-	return s.runner.EngineName(choice)
 }
 
 // SendDriver implements driverSender through the runner's Send.

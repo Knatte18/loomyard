@@ -2,7 +2,6 @@
 // It covers the start guard and Worktree-Create's skip for beams made the two ways.
 // It also covers the unreadable-pair refusal and the promote refusal judged from the board.
 // It also covers a sub-beam under an open beam, and the landing refusal over a beam with members.
-// It also covers a filed run resuming under its family's grouping project.
 
 package battencli
 
@@ -20,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -127,19 +125,6 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 		atTeardown := shedengine.Status{CurrentProducer: battenrecipe.NameWorktreeTeardown}
 		if err := hubStartGuard(h.Location, "promoted").refuse("promoted", "run", atTeardown, true, true); err != nil {
 			t.Errorf("start guard for promoted at Worktree-Teardown = %v; want it passed", err)
-		}
-	})
-
-	t.Run("GroupingProjectWhoseRunFiledItsFamilyResumesOnlyWithTheFilingMark", func(t *testing.T) {
-		err := hubStartGuard(h.Location, "g").refuse("g", "run", runShed, true, true)
-		if err == nil || !strings.Contains(err.Error(), "grouping project") {
-			t.Fatalf("start guard for g before its filing mark = %v; want the grouping project refusal", err)
-		}
-		if err := shedrun.WriteFilingMark(h.Location, "g"); err != nil {
-			t.Fatalf("write the filing mark of g: %v", err)
-		}
-		if err := hubStartGuard(h.Location, "g").refuse("g", "run", runShed, true, true); err != nil {
-			t.Errorf("start guard for g with its filing mark = %v; want it passed", err)
 		}
 	})
 

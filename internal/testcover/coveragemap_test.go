@@ -3,6 +3,7 @@ package testcover_test
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -10,6 +11,64 @@ import (
 	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestWriteExitRecordReadExitRecord(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "testcover")
+	if _, found, err := testcover.ReadExitRecord(dir); err != nil || found {
+		t.Fatalf("ReadExitRecord before any write = found %v, err %v; want not found and no error", found, err)
+	}
+	full := testcover.ExitRecord{
+		PID: 4322, PlannedHead: "c0ffee", Queued: 3,
+		Plan:                testcover.PlanCounts{Current: 4, Affected: 1, Misses: map[testcover.MissReason]int{testcover.MissNoMap: 2}},
+		SelfCheckMismatches: 1, AuditMismatches: 2,
+		Packages: []testcover.PackageMeasure{{Package: "internal/x", BuildSeconds: 1.5, RunSeconds: 0.25, Tests: 2}},
+	}
+	for _, written := range []testcover.ExitRecord{{PID: 4321}, full} {
+		if err := testcover.WriteExitRecord(dir, written); err != nil {
+			t.Fatal(err)
+		}
+		read, found, err := testcover.ReadExitRecord(dir)
+		if err != nil || !found || !reflect.DeepEqual(read, written) {
+			t.Errorf("ReadExitRecord after writing %+v = %+v, found %v, err %v; want the written record", written, read, found, err)
+		}
+	}
+	// A record an earlier writer left with the retired unbuilt count still reads.
+	if err := os.WriteFile(testcover.ExitRecordPath(dir), []byte(`{"pid": 7, "unbuilt": 3}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if read, found, err := testcover.ReadExitRecord(dir); err != nil || !found || !reflect.DeepEqual(read, testcover.ExitRecord{PID: 7}) {
+		t.Errorf("ReadExitRecord of a record holding unbuilt = %+v, found %v, err %v; want pid 7 alone", read, found, err)
+	}
+}
+
+func TestMapFailedAt(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	entry := []testcover.MapTest{{Name: "TestA", Blocks: []int{0}}}
+	tests := []struct {
+		name string
+		m    testcover.Map
+		want bool
+	}{
+		{"FailureOnlyMapAtTheCommit", testcover.Map{Commit: "head", BuildFailure: "failed"}, true},
+		{"FailureOnlyMapAtAnotherCommit", testcover.Map{Commit: "old", BuildFailure: "failed"}, false},
+		{"FailureBesideEntriesAtTheCommit", testcover.Map{Commit: "old", Tests: entry, Failure: &testcover.MapFailure{Commit: "head", Error: "failed"}}, true},
+		{"FailureBesideEntriesAtAnotherCommit", testcover.Map{Commit: "old", Tests: entry, Failure: &testcover.MapFailure{Commit: "older", Error: "failed"}}, false},
+		{"NoFailure", testcover.Map{Commit: "head", Tests: entry}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.m.FailedAt("head"); got != tt.want {
+				t.Errorf("FailedAt(head) = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestWriteMapReadMap(t *testing.T) {
 	tiergate.Require(t, 0)

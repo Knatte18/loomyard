@@ -140,12 +140,6 @@ type RunState struct {
 	// so a crash between the write and the call loses that one notice and never repeats it.
 	// It is kept apart from NotifiedOffset so a held-turn-end notice and a dialog notice never suppress each other.
 	DialogNotifiedOffset int64 `json:"dialogNotifiedOffset,omitempty"`
-	// EditLoopNotifiedOffset is an edit-records-file byte offset.
-	// It lies past the batch of file edits whose edit-loop notice Wait last sent.
-	// Zero means none.
-	// Wait persists it before calling the notifier and counts no edit at or below it,
-	// so a crash between the write and the call loses that notice and a reattach never repeats it.
-	EditLoopNotifiedOffset int64 `json:"editLoopNotifiedOffset,omitempty"`
 	// PromptLine is the deferred prompt, typed once the provider is ready; empty for a prompt on the command line.
 	// It lets a later attach deliver a prompt that a dead step never sent.
 	PromptLine string `json:"promptLine,omitempty"`
@@ -255,7 +249,6 @@ func clearPendingSend(runDir string) error {
 // It also lets a caller confirm the guid names a shuttle run at all.
 // It returns an error if no run.json has a matching StrandGUID.
 // Unreadable or corrupt run.json files along the way are skipped, not fatal.
-// The directory of kept manifest copies holds no run.json and is skipped without counting as unreadable.
 // A partially written or already swept directory must not abort the scan for every other run.
 //
 // The not-found error reports how many directories were skipped, because the two cases need opposite remedies.
@@ -273,7 +266,7 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 
 	unreadable := 0
 	for _, entry := range entries {
-		if !entry.IsDir() || isManifestsDir(entry) {
+		if !entry.IsDir() {
 			continue
 		}
 		runDir := filepath.Join(root, entry.Name())
@@ -325,7 +318,6 @@ func FindRun(cfg Config, anchorPath, guid string) (RunState, string, error) {
 // and their kept diagnosis directories would be swept once past the age guard.
 // A directory whose run.json is missing or unreadable counts as an orphan: no strand can be confirmed live for it.
 // The same age guard applies to it.
-// The directory of kept manifest copies is never removed.
 // now is the clock the caller supplies, so tests can control aging deterministically.
 // It returns the removed directory paths and a joined error naming every directory that could not be removed.
 // The sweep visits every entry, so one undeletable directory costs only that directory.
@@ -341,7 +333,7 @@ func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration
 	var removed []string
 	var removeErrs []error
 	for _, entry := range entries {
-		if !entry.IsDir() || isManifestsDir(entry) {
+		if !entry.IsDir() {
 			continue
 		}
 		runDir := filepath.Join(root, entry.Name())

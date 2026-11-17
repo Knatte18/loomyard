@@ -26,7 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -398,7 +397,10 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 			target := fabricengine.WorktreePath(l, slug)
 			gitkit.CommitFile(t, target, lockedDirName+"/held.txt", "committed\n", "add a file under the directory made read-only")
 			lockedDir := filepath.Join(target, lockedDirName)
-			permkit.Chmod(t, lockedDir, 0o555)
+			if err := os.Chmod(lockedDir, 0o555); err != nil {
+				t.Fatalf("make %s read-only: %v", lockedDir, err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(lockedDir, 0o755) })
 
 			o := outcome{target: target}
 			remove, sleep := tt.setup(lockedDir, &o)
@@ -620,7 +622,10 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 			if err := os.MkdirAll(hub, 0o755); err != nil {
 				t.Fatalf("mkdir hub: %v", err)
 			}
-			permkit.Chmod(t, hub, 0o000)
+			if err := os.Chmod(hub, 0o000); err != nil {
+				t.Fatalf("chmod: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(hub, 0o755) })
 			if fabricengine.LooksLikeHubForTest(hub) {
 				t.Errorf("LooksLikeHubForTest(unreadable) = true; want false, the conservative direction")
 			}

@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -76,9 +75,7 @@ func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 	}
 }
 
-// TestNewCommitStatusSeam_BoardStatus asserts the seam's board status write.
-// The status reads "<FSM state> · <producer>" and is written only when it changed.
-// A running transition at Finalize reads landing, a paused one paused and an awaiting one halted.
+// TestNewCommitStatusSeam_BoardStatus asserts the seam writes "<state> · <producer>" to the board only when it changed.
 // It writes nothing for a finished run.
 // It retries a failed write on the next transition and still commits when the board write fails.
 func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
@@ -118,8 +115,6 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 		{"Plan-Review", "running", true},
 		{"Plan-Review", "running", false},
 		{"PR-Gate", "awaiting", false},
-		{"Finalize", "running", false},
-		{"Finalize", "paused", false},
 		{"Friction-Reflect", "done", false},
 	}
 	for _, st := range steps {
@@ -129,7 +124,7 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 		}
 	}
 
-	want := []string{"running · Plan-Write", "running · Plan-Review", "halted · PR-Gate", "landing · Finalize", "paused · Finalize"}
+	want := []string{"running · Plan-Write", "running · Plan-Review", "awaiting · PR-Gate"}
 	if !reflect.DeepEqual(written, want) {
 		t.Errorf("board writes = %q; want %q", written, want)
 	}
@@ -246,16 +241,7 @@ func TestStatusCommitPathspec(t *testing.T) {
 		wantTackler bool
 		wantSettle  bool
 		wantUsage   bool
-		// wantPullRequest is whether the pull request record joins the pathspec.
-		wantPullRequest bool
 	}{
-		{
-			name: "pull request record",
-			setup: func(t *testing.T, loc *lymcwd.Location) {
-				writeFile(t, shedrun.PullRequestRecord(loc, shedrun.SelfRunID), "{}\n")
-			},
-			wantPullRequest: true,
-		},
 		{
 			name: "usage file",
 			setup: func(t *testing.T, loc *lymcwd.Location) {
@@ -415,9 +401,6 @@ func TestStatusCommitPathspec(t *testing.T) {
 			if tt.wantUsage {
 				want = append(want, shedrun.UsageDirRel())
 			}
-			if tt.wantPullRequest {
-				want = append(want, shedrun.PullRequestRecordRel(location, shedrun.SelfRunID))
-			}
 			got := statusCommitPathspec(location, shedrun.SelfRunID)
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("statusCommitPathspec() = %v; want %v", got, want)
@@ -436,7 +419,7 @@ func reworkRoundSetup(writeFile func(t *testing.T, path, content string), record
 }
 
 // TestPlanCommitPathspec asserts the plan commit always names the plan directory.
-// It adds each implementer's durable directory only when it holds a file.
+// It adds webster's durable directory only when it holds a file.
 // Plan-Write's rotation archiving a run record under the plan also adds it.
 // The moved-from deletions and the archive then land in one commit.
 // An empty or absent directory would make the pathspec match nothing and fail.
@@ -460,9 +443,6 @@ func TestPlanCommitPathspec(t *testing.T) {
 		tracked     bool
 		trackedErr  error
 		wantWebster bool
-		// weaverTracked answers whether git tracks a path under weaver's directory.
-		weaverTracked bool
-		wantWeaver    bool
 		// wantAmendment marks a row whose setup writes the plan amendment record.
 		wantAmendment bool
 	}{
@@ -511,19 +491,6 @@ func TestPlanCommitPathspec(t *testing.T) {
 			trackedErr:  errors.New("git failed"),
 			wantWebster: true,
 		},
-		{
-			name: "weaver directory holding a file",
-			setup: func(t *testing.T, anchorPath string) {
-				writeFile(t, filepath.Join(weaverengine.Dir(anchorPath), "state.json"))
-			},
-			wantWeaver: true,
-		},
-		{
-			name:          "weaver directory tracked and emptied by an archive",
-			setup:         func(t *testing.T, anchorPath string) {},
-			weaverTracked: true,
-			wantWeaver:    true,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -534,19 +501,13 @@ func TestPlanCommitPathspec(t *testing.T) {
 			if tt.wantWebster {
 				want = append(want, websterengine.DirRel())
 			}
-			if tt.wantWeaver {
-				want = append(want, weaverengine.DirRel())
-			}
 			if tt.wantAmendment {
 				want = append(want, loomengine.LoomAmendmentRecordRel())
 			}
-			// The tracked answer is each implementer directory's alone: the amendment record is untracked in every row.
+			// The tracked answer is webster's directory's alone: the amendment record is untracked in every row.
 			tracked := func(rel string) (bool, error) {
-				switch rel {
-				case websterengine.DirRel():
+				if rel == websterengine.DirRel() {
 					return tt.tracked, tt.trackedErr
-				case weaverengine.DirRel():
-					return tt.weaverTracked, nil
 				}
 				return false, nil
 			}

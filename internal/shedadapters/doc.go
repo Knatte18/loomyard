@@ -1,7 +1,6 @@
 // Package shedadapters holds the shedengine.ShedProducer adapters for a Shed-built product's flat producer list.
 // Each adapter lets Shed drive one engine as an ordinary producer.
 // WebsterProducer wraps one websterengine multi-spawn run.
-// WeaverProducer wraps one weaverengine run, which builds every remaining batch of the plan as cold strands.
 // BurlerReviewProducer and BurlerFixProducer each wrap one half of a burlerengine round.
 // The halves are a reviewer strand and a fixer strand.
 // MultiLLMProducer wraps one seatengine table, a chair strand and its advisors' strands, as a single Shed row.
@@ -34,12 +33,6 @@
 //     Any other outcome value reaching Call is an engine-level error.
 //     WebsterProducer is a gate carrier: its done and stuck pointers carry the gate count and spans of the master run.
 //     The spans include the verify gate's entry.
-//   - WeaverProducer: Weaver's "done" outcome maps to Done, and the pointer's path is Weaver's summary path.
-//     Its "stuck" outcome maps to Stuck, and consults the plan-conflict record under the same claim as Webster's.
-//     So do ErrRunBusy and every other fault Weaver's run returns, such as a wiring error or a state read or write error;
-//     their text already names the way forward, which ends in this row's re-entry step.
-//     A cancellation replaces every non-success verdict with the context error.
-//     WeaverProducer carries no gate count: the verify fixer's gates are Weaver's own.
 //   - BurlerReviewProducer and BurlerFixProducer: a finished half maps to Stuck, never Done.
 //     A half is finished when shuttleengine.OutcomeDone is reached within the bounded retry.
 //     The pointer's path is the round's review path.
@@ -140,8 +133,6 @@
 //     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human.
 //     It does so for one of three causes.
 //     A fourth cause, decision, escalates a round of any verdict (see Decision escalation).
-//     A fifth cause, stalemate, escalates a round whose review target stayed unchanged
-//     for BouncerConfig.StalemateRounds rounds.
 //     Soft-cap rule: the soft cap is reached when the BouncerConfig.Bounces seam reports count >= budget.
 //     Shed applies the same comparison.
 //     The rule's window opens on whichever comes first: the soft cap by that count, or the hard cap by the round number.
@@ -158,23 +149,7 @@
 //     otherwise an automatic continue is recorded (cause budget, `automatic: true`).
 //     That last step returns a budget-exempt Stuck.
 //     A CIRCLING verdict below the window escalates with cause circling.
-//     A stalemate below the window escalates with cause stalemate.
-//     The stalemate check runs after the AutoAccept step and ahead of the soft-cap rule.
-//     In a window-open round it yields when the round's ledger holds no design-wrong entry,
-//     so the rule settles the round as it would without the check.
 //     The rule reads only files in the run directory, so a harvest and a replay settle alike.
-//     Stalemate: a Bouncer told BouncerConfig.StalemateRounds above 0 and a BouncerConfig.Snapshot checks each judged round.
-//     It records the review target's id as the round's fix left it in the round's snapshot record, as post_fix_target_id.
-//     It does so first in the settle, so a round that routing decisions take records it too.
-//     A later settle of the round, a replay included, reads the recorded id.
-//     A round is unchanged when the id equals the one the round started with, and a spawned fixer answered every finding.
-//     A round with no record, no post-fix id, a skipped fixer or an incomplete fixer-report counts as changed.
-//     The escalation needs StalemateRounds unchanged rounds in a row ending at the round.
-//     The count stops at the first changed round and at the latest earlier round that escalated with cause stalemate.
-//     A stalemate escalation is Awaiting like circling and never counts against the bounce budget.
-//     It ends no segment without an accept.
-//     A round whose own escalation record holds cause stalemate escalates again on a replay, whatever StalemateRounds now is.
-//     A converged verdict never reaches the check.
 //     The Bouncer renders the bouncer-template-escalation brief and the bouncer-template-parent-notice line.
 //     It writes them, with the Go-owned cause frontmatter, as round-<N>-escalation.md and round-<N>-parent-notice.md.
 //     It returns Awaiting with the ledger path.
@@ -654,44 +629,6 @@
 // A review that changed after acceptance archives the same files and ends with the same way forward.
 // Any other failure archives the fixer report alone.
 // The accepted review and its record stay, so a resume re-spawns the fixer without re-running the reviewer.
-//
-// # The round snapshot record
-//
-// Each round also leaves round-<N>-snapshot.json beside its other files, tracked with the run.
-// The review row writes it when the round's review is first resolved, before any probe or spawn.
-// It keeps an existing one.
-// It holds the fix scope and the target paths.
-// It also holds the target id the review row's TargetSnapshot gave.
-// It also holds one digest per `Added after Discussion` entry of the decision record.
-// A row told no snapshot records no target id, so the round counts as changed.
-// The fix row adds `decisions_routed` before it sends the decision findings, whether it spawns a fixer or skips the fix.
-// Every write goes through internal/state, so a key a newer binary wrote survives.
-// No exit archives the record.
-// A failed read or write is logged and never fails a round.
-//
-// # The target snapshot
-//
-// TargetSnapshot names a review round's target by an id and lists the paths that changed since an earlier id.
-// A segment's review producer and its Bouncer each hold one over the same target.
-// In overlay scope the id is the SHA-256 over the target files' paths and bytes.
-// Take keeps a copy of the files per id.
-// The copies sit in a cache directory the caller tells, which is never tracked, so an absent one reads as empty.
-// In source scope the id is the code checkout's tree id and the changed paths come from the tree difference.
-// An answer that cannot be given is false from ChangedSince, logged at Warn, and never fails a round.
-//
-// # The round context
-//
-// BuildRoundContext returns what a round's review is judged against.
-// The review producer and `lym burler validate-review` both call it.
-// It reads round N-1's review, its snapshot record and its fixer-report from the run directory.
-// A round N-1 that is not complete gives a nil context, and the round is reviewed in full with the prior-rounds text.
-// A complete one gives each earlier finding with the fixer's disposition of it.
-// It also gives the decision record entries added since round N-1's snapshot, and the round's changes file.
-// An amendment generation is never incremental.
-// The review producer writes round-<N>-changes.md at an incremental round's start, one worktree-relative path per line.
-// It lists the target paths changed since round N-1's snapshot, and a round with no answer writes no file.
-// The producer sets the context on the round's profile.
-// It sets the parent seat's report path on the spawned and probed profile.
 //
 // # The Command producer
 //

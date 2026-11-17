@@ -55,7 +55,6 @@ import (
 // Now is the clock a read of a pull request's merge state keeps its retry window by.
 // ParentUnmerged reports whether the parent branch's tip is not an ancestor of the beam's head.
 // It is the local tip, or the upstream tip fetched when the parent has one and the hub's push skip is unset.
-// ParentConflicts reports whether merging either of those tips into the beam's head stops on a conflict.
 // DescriptionFindings lists the findings of the written change description, none when it is valid.
 // MergedLacks lists the beam commits past mergedHead that a landing of the merged pull request would lack.
 // Each is a short object name and subject; the parent merges and records-only commits are left out.
@@ -92,7 +91,6 @@ type landDeps struct {
 	Sleep           func(ctx context.Context, d time.Duration) error
 
 	ParentUnmerged      func(slug string) (bool, error)
-	ParentConflicts     func(slug string) (bool, error)
 	DescriptionFindings func(slug string) ([]string, error)
 	MergedLacks         func(slug, mergedHead string) ([]string, error)
 }

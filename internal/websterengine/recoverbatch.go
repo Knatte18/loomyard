@@ -25,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -48,6 +47,13 @@ type recoveryNeedsFreshError struct{ msg string }
 func (e *recoveryNeedsFreshError) Error() string { return e.msg }
 
 func (e *recoveryNeedsFreshError) Unwrap() error { return ErrRecoveryNeedsFresh }
+
+// Clock abstracts time.Now and time.Sleep, so a bounded wait runs instantly under test.
+// Any type with these two methods satisfies it, so a Clock goes straight into the polling loop without an adapter.
+type Clock interface {
+	Now() time.Time
+	Sleep(time.Duration)
+}
 
 // RecoverDeps carries the seams and state a recovery reads.
 // Geom is the told Geometry every path is read from.
@@ -247,7 +253,7 @@ func rendersNewAmendment(prior *BatchState) bool {
 // The record carries HEAD at the spawn as RecoveryStartSHA.
 // HEAD is read before anything is stopped or started, so a failed read starts nothing and counts nothing.
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
-	number, slug := runplan.BatchIdentity(batch)
+	number, slug := batchIdentity(batch)
 
 	if err := renameToolRefusal(deps.Plan, batch, deps.RenameTools, "recover-batch"); err != nil {
 		return nil, err
@@ -263,7 +269,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: read HEAD before spawning the recovery of batch %02d: %w; way forward: transient, re-run `lym webster recover-batch %d`", number, err, number)
 	}
 
-	cardHashes, err := runplan.BatchCardHashes(batch, deps.Geom.PlanDir)
+	cardHashes, err := batchCardHashes(batch, deps.Geom.PlanDir)
 	if err != nil {
 		return nil, fmt.Errorf("%w; way forward: transient, re-run `lym webster recover-batch %d`", err, number)
 	}
@@ -273,11 +279,11 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}
 
 	// The gate calls render before the first mutation, so a gate list the config lacks refuses with nothing changed.
-	cardGates, err := runplan.RenderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.PaneCwd, deps.Geom.PlanDir), deps.Gate)
+	cardGates, err := renderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.PaneCwd, deps.Geom.PlanDir), deps.Gate)
 	if err != nil {
 		return nil, err
 	}
-	batchGate, err := runplan.RenderBatchGate(batch.Cards, deps.Gate, runplan.IsLastBatch(deps.Batches, batch))
+	batchGate, err := renderBatchGate(batch.Cards, deps.Gate, isLastBatch(deps.Batches, batch))
 	if err != nil {
 		return nil, err
 	}
@@ -309,27 +315,26 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	if err != nil {
 		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lym webster recover-batch %d`", batchName, err, number)
 	}
-	choice, ok := deps.Roles[RoleRecovery]
-	if !ok {
-		return nil, fmt.Errorf("webster: no resolved model-spec for role %q", RoleRecovery)
-	}
-	engine := deps.Engines.EngineName(choice)
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, engine, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName, deps.CardFixer)
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName, deps.CardFixer)
 	if err != nil {
 		return nil, err
 	}
 
+	choice, ok := deps.Roles[RoleRecovery]
+	if !ok {
+		return nil, fmt.Errorf("webster: no resolved model-spec for role %q", RoleRecovery)
+	}
+
 	spec := shuttleengine.Spec{
-		Prompt:       string(prompt),
-		PromptEngine: engine,
-		OutputFiles:  []string{reportPath},
-		ModelChoice:  choice,
-		ConfigRole:   agentconfig.RoleWebster,
-		Skills:       deps.LanguageSkills,
-		Role:         string(RoleRecovery),
-		Segment:      segmentcolor.Webster,
-		Round:        batchName,
-		Timeout:      time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
+		Prompt:      string(prompt),
+		OutputFiles: []string{reportPath},
+		ModelChoice: choice,
+		ConfigRole:  agentconfig.RoleWebster,
+		Skills:      deps.LanguageSkills,
+		Role:        string(RoleRecovery),
+		Segment:     segmentcolor.Webster,
+		Round:       batchName,
+		Timeout:     time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
 	}
 
 	run, err := deps.Starter.Start(spec)
@@ -390,7 +395,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	return &BatchState{
 		Slug:             slug,
-		Cards:            runplan.BatchCardIDs(batch),
+		Cards:            batchCardIDs(batch),
 		CardHashes:       cardHashes,
 		AmendedCards:     amended,
 		StartSHA:         start,
@@ -555,7 +560,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		}
 	}
 
-	referenced, err := runplan.LaterDeleteReferenceReasons(deps.Plan, deps.Batches, &deps.State.State, batch.Cards, deps.Geom.runPlan())
+	referenced, err := laterDeleteReferenceReasons(deps.Plan, deps.Batches, deps.State, batch.Cards, deps.Geom)
 	if err != nil {
 		return nil, false, fmt.Errorf("%w; way forward: transient, re-run `lym webster recover-batch %d`", err, batchNumber)
 	}
@@ -668,7 +673,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	if err != nil {
 		return nil, err
 	}
-	number, slug := runplan.BatchIdentity(batch)
+	number, slug := batchIdentity(batch)
 
 	// A recovery waiting on its parent has not finished,
 	// so the suspect check and the pass wait for the strand that resumes it.
@@ -687,7 +692,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		}
 	}
 
-	suspectReasons, err := recoveredSuspectReasons(deps.Geom, st, bs, number, head)
+	suspectReasons, err := checkRecoveredSuspects(deps.Geom, st, bs, number, head)
 	if err != nil {
 		return nil, err
 	}
@@ -725,7 +730,19 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return nil, err
 	}
 
-	deviations, warnings, err := runplan.PostBatchChecks(postBatchInputs(deps.Geom, deps.Plan, deps.Batches, st, bs, batch.Cards, head, digest.Renames, false))
+	deviations, warnings, err := postBatchChecks(postBatchInputs{
+		Plan:      deps.Plan,
+		State:     st,
+		Batch:     bs,
+		Geom:      deps.Geom,
+		Number:    batchNumber,
+		Cards:     batch.Cards,
+		Completed: completedCards(deps.Batches, st, batchNumber),
+		StartSHA:  bs.StartSHA,
+		HeadSHA:   head,
+		Label:     fmt.Sprintf("%02d-%s", number, slug),
+		Renames:   digest.Renames,
+	})
 	if err != nil {
 		if !errors.Is(err, ErrCardNotDone) {
 			return warnings, err
@@ -769,7 +786,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return warnings, bfe
 	}
 
-	departures, err := runplan.BatchDepartures(deps.Geom.runPlan(), bs.StartSHA, head)
+	departures, err := batchDepartures(deps.Geom, bs.StartSHA, head)
 	if err != nil {
 		return warnings, err
 	}
@@ -797,7 +814,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 // only a done digest also removes the run dir.
 // Cleanup failures are warnings, not fatal errors.
 func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
-	number, slug := runplan.BatchIdentity(batch)
+	number, slug := batchIdentity(batch)
 
 	spawnedAt, err := time.Parse(time.RFC3339, bs.SpawnedAt)
 	if err != nil {

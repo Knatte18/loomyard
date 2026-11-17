@@ -145,21 +145,12 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	// A re-entry keeps the record already there.
 	wroteRunUsage := seedErr == nil && c.writeRunUsage(seedRecipe, slug)
 
-	// Step 2d pins the stencils the run may render on the first seed only,
-	// so a later resume can name each one that changed since the run started.
-	// A re-entry keeps the pins already there.
-	if seedErr == nil {
-		c.writeStencilPins()
-	}
-
 	// Step 3: commit the seed and the provenance record into the fabric on every invocation.
 	// The commit does not depend on whether this invocation wrote the origin record.
 	// The origin record's path is always included.
 	// A prior invocation may have written it to disk and crashed before committing it.
 	// On the next call, resolveParentBranch finds the record present and reports write == false while it is untracked.
 	// The status file and the seed are included on every call for the same reason, since WriteSeed is idempotent.
-	// The stencil pins record is included whenever it is on disk, not only when this call wrote it:
-	// a first seed whose commit failed or died left it untracked, and a re-entry must commit it.
 	// Committing a clean path is a no-op (StageAndCommit reports committed == false), so the ordinary path pays nothing.
 	// The commit must precede any producer call.
 	// The phase machine's first precondition row scans the fabric, including untracked files.
@@ -290,22 +281,17 @@ func loomSeedFor(recipe, parent, driver string) shedrun.Seed {
 	}
 }
 
-// bootstrapCommitPaths returns the anchor-relative paths the bootstrap commits.
-// The status file, the seed and the origin record are always included.
-// The friction directory is included when withFriction is set,
+// bootstrapCommitPaths returns the anchor-relative paths the bootstrap commits:
+// the status file, the seed and the origin record always,
+// and the friction directory when withFriction is set,
 // so a first seed's clear of notes the fabric already tracked is committed with the seed.
-// The stencil pins record is included when it is on disk.
-// Git refuses a commit pathspec that matches nothing.
-// So withFriction must be set only when the directory matches tracked or untracked content,
-// and the pins record is added only when its file exists.
-// It only stats that one file, so a Tier 1 test can pin the pathspec's exact shape without a real fabric behind it.
+// Git refuses a commit pathspec that matches nothing;
+// so withFriction must be set only when the directory matches tracked or untracked content.
+// It is a pure function, so a Tier 1 test can pin the pathspec's exact shape without a real fabric behind it.
 func bootstrapCommitPaths(location *lymcwd.Location, withFriction bool) []string {
 	paths := []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabricengine.OriginRecordRel()}
 	if withFriction {
 		paths = append(paths, loomengine.LoomFrictionDirRel())
-	}
-	if _, err := os.Stat(shedrun.StencilPinsFile(location, shedrun.SelfRunID)); err == nil {
-		paths = append(paths, shedrun.StencilPinsRel(location, shedrun.SelfRunID))
 	}
 	return paths
 }

@@ -81,14 +81,9 @@ func ParentPID(pid int) (int, bool) {
 	return 0, false
 }
 
-// TreeSample reports errors.ErrUnsupported on Windows, which callers read as no CPU watchdog or memory guard applying.
-func TreeSample(root int) ([]ProcessSample, error) {
+// TreeCPU reports errors.ErrUnsupported on Windows, which callers read as no CPU watchdog applying.
+func TreeCPU(root int) ([]ProcessCPU, error) {
 	return nil, errors.ErrUnsupported
-}
-
-// ReadProcess reports false on Windows, where the process links it reads do not exist.
-func ReadProcess(pid int) (Process, bool) {
-	return Process{}, false
 }
 
 // ListProcesses reports errors.ErrUnsupported on Windows, where the process links it reads do not exist.

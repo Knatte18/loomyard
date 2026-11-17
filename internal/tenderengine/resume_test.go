@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -402,55 +401,6 @@ func TestResume(t *testing.T) {
 
 			if err != nil || len(e.pushedPairs) != 0 || len(report.SpawnFailed) != 1 || !strings.Contains(report.SpawnFailed[0].Reason, "board unreadable") {
 				t.Errorf("report %+v, err %v, pushed %v; want no pair push and the owners error listed", report, err, e.pushedPairs)
-			}
-		}},
-		{"a wait verdict refuses with nothing lifted and no intent cleared", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"))
-			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
-			cleared := 0
-			wait := runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonHeld}
-
-			_, err := Resume(e.deps(), ResumeRequest{
-				Slug:    "p1",
-				Verdict: func() (runfsm.Verdict, error) { return wait, nil },
-				Clear:   func() error { cleared++; return nil },
-			})
-
-			if err == nil || !strings.Contains(err.Error(), "an adopt holds the hub") {
-				t.Errorf("err = %v; want the verdict's refusal", err)
-			}
-			if live := e.record().Live; len(live) != 1 || cleared != 0 {
-				t.Errorf("live entries %+v, Clear calls %d; want the entry live and no Clear", live, cleared)
-			}
-		}},
-		{"a landed terminal verdict lifts the slug's entry, with Clear called before the lift", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"))
-			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
-			liveAtClear := -1
-			landed := runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonTerminal, State: runfsm.Landed}
-
-			report, err := Resume(e.deps(), ResumeRequest{
-				Slug:    "p1",
-				Verdict: func() (runfsm.Verdict, error) { return landed, nil },
-				Clear:   func() error { liveAtClear = len(e.record().Live); return nil },
-			})
-
-			if err != nil || !reflect.DeepEqual(report.Resumed, []string{"p1"}) || liveAtClear != 1 {
-				t.Errorf("report %+v, err %v, live entries at Clear %d; want p1 lifted after a Clear that saw it live", report, err, liveAtClear)
-			}
-		}},
-		{"a Clear error refuses with nothing lifted and its way forward", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"))
-			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
-			boom := errors.New("boom")
-
-			_, err := Resume(e.deps(), ResumeRequest{Slug: "p1", Clear: func() error { return boom }})
-
-			if !errors.Is(err, boom) || !strings.Contains(err.Error(), `fix the cause, then run "lym tender resume p1" again`) {
-				t.Errorf("err = %v; want the wrapped error with its way forward", err)
-			}
-			if live := e.record().Live; len(live) != 1 {
-				t.Errorf("live entries = %+v; want the entry still live", live)
 			}
 		}},
 	}

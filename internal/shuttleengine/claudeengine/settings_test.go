@@ -715,7 +715,7 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 	t.Run("LargePrompt_LaunchesWithPointer", func(t *testing.T) {
 		runDir := t.TempDir()
 		prompt := strings.Repeat("p", maxLaunchPromptBytes+1)
-		launch, err := c.Prepare(runDir, shuttleengine.Spec{Prompt: prompt, PromptEngine: engineName}, cfg)
+		launch, err := c.Prepare(runDir, shuttleengine.Spec{Prompt: prompt}, cfg)
 		if err != nil {
 			t.Fatalf("Prepare() with an over-30000-byte prompt error: %v; want nil", err)
 		}
@@ -741,7 +741,7 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 	t.Run("PathologicalRunDir_RejectedBeforeArtifacts", func(t *testing.T) {
 		base := t.TempDir()
 		runDir := filepath.Join(base, strings.Repeat("d", maxLaunchPromptBytes))
-		_, err := c.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName}, cfg)
+		_, err := c.Prepare(runDir, shuttleengine.Spec{Prompt: "p"}, cfg)
 		if err == nil {
 			t.Fatal("Prepare() with an over-limit pointer = nil error; want the launch-limit rejection")
 		}
@@ -758,8 +758,6 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 // TestPrepare_CreelMailHookFollowsTheBoardDirectory pins the creel flag directory Prepare derives from the board.
 // It marks the launch CreelHooks.
 // An engine in no hub writes the activity stamp alone on PostToolUse and marks nothing.
-//
-//testtiming:keep pins the creel flag directory that Prepare derives from the told board directory into the written PostToolUse commands, which the settings-builder test covering it does not drive through Prepare
 func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -787,7 +785,7 @@ func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 			engine := engineWith(t, templateConfig(t))
 			engine.dirs.Board = tt.board
 			runDir := t.TempDir()
-			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName}, shuttleengine.Config{})
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing"}, shuttleengine.Config{})
 			if err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
@@ -829,8 +827,6 @@ func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 
 // TestPrepare_AdvisorReachesSettings pins that a spec's advisor lands in the run's settings.json as advisorModel,
 // and that a spec naming none leaves the key out.
-//
-//testtiming:keep pins advisorModel in settings.json for a spec naming an advisor and its absence for one naming none, which TestPrepare_BatchingNudgeHook does not assert
 func TestPrepare_AdvisorReachesSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -846,7 +842,7 @@ func TestPrepare_AdvisorReachesSettings(t *testing.T) {
 			t.Parallel()
 			runDir := t.TempDir()
 			engine := engineWith(t, templateConfig(t))
-			if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, Advisor: tt.advisor}, shuttleengine.Config{}); err != nil {
+			if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", Advisor: tt.advisor}, shuttleengine.Config{}); err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
 			data, err := os.ReadFile(filepath.Join(runDir, settingsFileName))
@@ -874,7 +870,7 @@ func TestPrepare_AdvisorReachesSettings(t *testing.T) {
 func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	tiergate.Require(t, 0)
 	runDir := t.TempDir()
-	spec := shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Interactive: false}
+	spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: false}
 	claude := templateConfig(t)
 	claude.DenyAskUserQuestion = true
 

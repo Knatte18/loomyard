@@ -48,7 +48,6 @@ type beamPullRequestSide struct {
 // A closed one is reopened, and a merged one is left for Finalize.
 // With none recorded, it pushes the beam branch and finds an open pull request from it.
 // It creates one with the description's text when there is none, and records the pull request with the pushed head.
-// Before it pushes, or reopens a closed one, it refuses a beam whose pull request GitHub could not merge as it stands.
 func prOpen(ctx context.Context, deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam pr open"
 	if err := judgePullRequestVerb(deps, verb, slug); err != nil {
@@ -77,9 +76,6 @@ func prOpen(ctx context.Context, deps landDeps, slug string) (map[string]any, er
 	}
 	if record.PullRequest != nil {
 		return openRecorded(ctx, deps, side, slug, *record.PullRequest)
-	}
-	if err := judgeOpenable(deps, verb, slug, side.ParentBranch); err != nil {
-		return nil, err
 	}
 
 	head, err := deps.PushBeam(slug)
@@ -137,9 +133,6 @@ func openRecorded(ctx context.Context, deps landDeps, side beamPullRequestSide, 
 		}
 		result["already"] = true
 	case pullrequest.StateClosed:
-		if err := judgeOpenable(deps, verb, slug, side.ParentBranch); err != nil {
-			return nil, err
-		}
 		if err := side.API.Reopen(ctx, recorded.Number); err != nil {
 			return nil, rerunRefusal(verb, slug, fmt.Sprintf("reopen pull request #%d", recorded.Number), err)
 		}
@@ -231,29 +224,6 @@ func judgePullRequestVerb(deps landDeps, verb, slug string) error {
 		return err
 	}
 	return judgeNotReady(deps, verb, slug)
-}
-
-// judgeOpenable refuses to open the beam's pull request into parentBranch while GitHub could not merge it as it stands.
-// A merge task of the beam that is not done refuses first, since its landing changes what the pull request holds.
-// The refusal names following that task.
-// A beam whose head conflicts with a tip of the parent branch refuses next, naming `lym beam merge-parent`.
-// A beam only behind its parent passes, since GitHub merges it.
-func judgeOpenable(deps landDeps, verb, slug, parentBranch string) error {
-	tasks, err := deps.Tasks()
-	if err != nil {
-		return rerunRefusal(verb, slug, "read the board", err)
-	}
-	if task, open := openMergeTask(tasks, slug); open {
-		return fmt.Errorf("%s: the merge task %s is under way in the beam %s, and the pull request waits for its landing; way forward: run `lym batten status %s`, let it land into the beam, then run `%s %s` again", verb, task, slug, task, verb, slug)
-	}
-	conflicts, err := deps.ParentConflicts(slug)
-	if err != nil {
-		return rerunRefusal(verb, slug, "read whether the beam conflicts with its parent", err)
-	}
-	if conflicts {
-		return fmt.Errorf("%s: the beam %s conflicts with its parent branch %s, so its pull request could not merge; way forward: run `lym beam merge-parent %s`, let its task settle the conflicts and land into the beam, then run `%s %s` again", verb, slug, parentBranch, slug, verb, slug)
-	}
-	return nil
 }
 
 // requireOrigin refuses a side whose origin lacks a fact a pull request needs, and names the fact.

@@ -80,11 +80,6 @@ Imports only the standard library, `internal/logger`, `internal/stencil` and `in
   Returning a bool instead would make every caller duplicate that logging.
   `internal/friction` already reaches `logger` through `internal/stencilstore`, so the admission widens nothing.
 
-## `internal/claudeimports`
-
-Imports only the standard library.
-It is the one expander of Claude instruction-file imports that `claudeengine`, `heddleengine` and `codexengine` share.
-
 ## `internal/durfmt`
 
 Imports only the standard library.
@@ -148,15 +143,3 @@ It is importable from production code, not a kit.
 Imports only the standard library, `github.com/fsnotify/fsnotify` and `internal/logger`.
 - Every lym process that waits on a file event goes through it, so fsnotify is imported nowhere else.
 - `internal/logger` is admitted because fsnotify's error channel is drained and logged at Debug.
-
-## `internal/secretpath`
-
-Imports only the standard library.
-It holds the secret-file patterns lym ships and the matcher fabric and webster share, and reads no config:
-each caller hands it the patterns a hub adds.
-
-## `internal/runfsm`
-
-Imports only the standard library and `internal/shedengine`, for the record type.
-It derives a run's state and decides whether a verb may act, and reads nothing:
-callers read the tracked records and the machine-local facts and hand them in.

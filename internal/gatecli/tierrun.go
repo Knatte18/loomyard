@@ -13,7 +13,6 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,7 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
@@ -52,9 +50,6 @@ type tierResult struct {
 	crash string
 	// processCapped is set when the process cap killed the run's processes; such a run is never rerun.
 	processCapped bool
-	// memoryStopped is set when the memory guard or the tier's memory cap killed a process of the run;
-	// such a run is never rerun.
-	memoryStopped bool
 	// failures, causes and unparsed feed the failure report: failed tests, lines the verb states, and unparsed output.
 	failures []runFailure
 	causes   []string
@@ -99,7 +94,7 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 		logBuffer.WriteString(line + "\n")
 		printLine(request.stderr, line)
 	}
-	exit, commands, stops, refusal := runInvocations(tierCtx, run, counter, gateslot.WithTestCacheOff(tierEnv), request, notice)
+	exit, commands, capLine, refusal := runInvocations(tierCtx, run, counter, gateslot.WithTestCacheOff(tierEnv), request, notice)
 	if refusal != "" {
 		return tierResult{refusal: refusal}
 	}
@@ -116,29 +111,13 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 		printLine(request.stderr, line)
 		causes = append(causes, line)
 	}
-	if stops.processCap != "" {
+	if capLine != "" {
 		if exit == 0 {
 			exit = 1
 		}
-		logBuffer.WriteString(stops.processCap + "\n")
-		printLine(request.stderr, stops.processCap)
-		causes = append(causes, stops.processCap)
-	}
-	// The memory guard printed each kill's line as it happened; the tier's cap line is printed here.
-	if stops.memoryCap != "" {
-		printLine(request.stderr, stops.memoryCap)
-	}
-	memoryLines := stops.memoryLines()
-	for _, line := range memoryLines {
-		if exit == 0 {
-			exit = 1
-		}
-		logBuffer.WriteString(line + "\n")
-		causes = append(causes, line)
-	}
-	if line := unfinishedTestsLine(counter.Unfinished()); line != "" && len(memoryLines) > 0 {
-		logBuffer.WriteString(line + "\n")
-		causes = append(causes, line)
+		logBuffer.WriteString(capLine + "\n")
+		printLine(request.stderr, capLine)
+		causes = append(causes, capLine)
 	}
 
 	if exit == 0 {
@@ -168,74 +147,7 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	record.Launches = counter.Launches()
 	failures := counter.Failures()
 	record.Failures = testFailures(failures)
-	return tierResult{
-		record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote,
-		processCapped: stops.processCap != "", memoryStopped: len(stops.memoryLines()) > 0,
-		failures: failures, causes: causes, unparsed: counter.Unparsed(),
-	}
-}
-
-// runStops is what the guards over a tier's commands stopped.
-type runStops struct {
-	// processCap is the process cap's line once it killed the run's processes, empty otherwise.
-	processCap string
-	// guardKills holds the memory guard's line for each test binary it killed.
-	guardKills []string
-	// memoryCap is the line of a kill at the tier's memory cap, empty otherwise.
-	memoryCap string
-}
-
-// memoryLines returns the memory guard's lines followed by the tier's memory cap line, when there is one.
-func (s runStops) memoryLines() []string {
-	lines := slices.Clone(s.guardKills)
-	if s.memoryCap != "" {
-		lines = append(lines, s.memoryCap)
-	}
-	return lines
-}
-
-// stopped reports whether any guard stopped part of the run.
-func (s runStops) stopped() bool {
-	return s.processCap != "" || len(s.memoryLines()) > 0
-}
-
-// tierMemoryCapLine is the line a tier run prints and logs once the kernel killed a process of it at its memory_mb.
-func tierMemoryCapLine(tier string, memoryMB int) string {
-	return fmt.Sprintf("gate test: %s held more than its memory_mb of %d MB, its builds and test binaries together, "+
-		"so the kernel killed the largest of them and the run fails; "+
-		"way forward: find the package whose tests hold memory without bound and fix it, then re-run the same command, "+
-		"or raise tiers.%s.memory_mb with \"lym config gate\" from the prime%s", tier, memoryMB, tier, roleClause)
-}
-
-// unfinishedTestsShown caps the tests the line of unfinished tests names per package.
-const unfinishedTestsShown = 10
-
-// unfinishedTestsLine returns the line naming the tests a memory kill left running, or "" when there are none.
-// unfinished maps a package to the tests that started in it and never reported a result, as the counter reads them.
-// Each package names at most unfinishedTestsShown tests.
-func unfinishedTestsLine(unfinished map[string][]string) string {
-	if len(unfinished) == 0 {
-		return ""
-	}
-	var packages []string
-	for _, pkg := range slices.Sorted(maps.Keys(unfinished)) {
-		tests := unfinished[pkg]
-		shown := tests[:min(len(tests), unfinishedTestsShown)]
-		named := pkg + ": " + strings.Join(shown, ", ")
-		if more := len(tests) - len(shown); more > 0 {
-			named += fmt.Sprintf(" and %d more", more)
-		}
-		packages = append(packages, named)
-	}
-	return "gate test: the tests running when the memory kill ended their test binary, which never reported a result: " + strings.Join(packages, "; ")
-}
-
-// tierMemoryCapRefusal is the refusal of a tier whose command did not run under its memory_mb of memoryMB.
-// err wraps proc.ErrMemoryCap and says why: a scope that never ran the command, or a cap that could not be set.
-func tierMemoryCapRefusal(tier string, memoryMB int, dir string, err error) string {
-	return fmt.Sprintf("gate test: the command of %s in %s did not run under its memory_mb of %d MB: %v; "+
-		"way forward: run from a session that reaches the systemd user manager, which must hand the memory controller to its scopes, "+
-		"or remove tiers.%s.memory_mb with \"lym config gate\" from the prime, then re-run the same command%s", tier, dir, memoryMB, err, tier, roleClause)
+	return tierResult{record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote, processCapped: capLine != "", failures: failures, causes: causes, unparsed: counter.Unparsed()}
 }
 
 // testFailures returns the failed tests of failures as the run record carries them.
@@ -273,10 +185,10 @@ func resourceShortage(log []byte) string {
 }
 
 // failedOnShortage returns the resource-shortage marker of a tier run that ran to a failing exit without timing out.
-// It returns "" for any other result, a run the process cap or a memory guard stopped included:
+// It returns "" for any other result, a run the process cap killed included:
 // its shortage is the runaway's own, which a rerun would only repeat.
 func failedOnShortage(result tierResult) string {
-	if result.refusal != "" || result.buildFailed || result.record.ExitCode == 0 || result.record.TimedOut || result.processCapped || result.memoryStopped {
+	if result.refusal != "" || result.buildFailed || result.record.ExitCode == 0 || result.record.TimedOut || result.processCapped {
 		return ""
 	}
 	return resourceShortage(result.log)
@@ -358,23 +270,21 @@ func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Du
 // For a command holding {test_targets} it first narrows each invocation's targets.
 // It keeps the packages holding a test of the tier.
 // An invocation left with no package runs no command, and a line on request.stderr says so.
-// While a command runs, the process cap watches every process carrying env's run marker, when env sets one,
-// and the memory guard watches its test binaries, when the request turns it on.
-// A tier with memory_mb runs each command under that cap, and a command that cannot be started under it is a refusal.
+// While a command runs, the process cap watches every process carrying env's run marker, when env sets one.
 // After each passing invocation it hands notice the line of noTestNotice, when that line is not empty.
-// It returns that exit code, the commands it rendered, what the guards stopped,
+// It returns that exit code, the commands it rendered, the process cap's line when the cap killed the run,
 // and a refusal when a command could not be run at all.
-func runInvocations(ctx context.Context, run tierRun, counter counter, env []string, request testRequest, notice func(string)) (exit int, commands []string, stops runStops, refusal string) {
+func runInvocations(ctx context.Context, run tierRun, counter counter, env []string, request testRequest, notice func(string)) (exit int, commands []string, capLine, refusal string) {
 	if len(run.invocations) == 0 {
-		return 0, nil, runStops{}, ""
+		return 0, nil, "", ""
 	}
 	if run.tier.PrebuiltLym {
 		bin, cleanup, err := prebuildLym(ctx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore, request.pipeWaitDelay, nil)
 		if err != nil {
 			if ctx.Err() != nil {
-				return 1, nil, runStops{}, ""
+				return 1, nil, "", ""
 			}
-			return 0, nil, runStops{}, fmt.Sprintf("gate test: cannot build lym for the tier: %v; way forward: fix the build, then re-run the same command", err)
+			return 0, nil, "", fmt.Sprintf("gate test: cannot build lym for the tier: %v; way forward: fix the build, then re-run the same command", err)
 		}
 		defer cleanup()
 		if bin != "" {
@@ -388,10 +298,6 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 	if capFor == nil {
 		capFor = newProcessCap
 	}
-	guardFor := request.memoryGuardFor
-	if guardFor == nil {
-		guardFor = newMemoryGuard
-	}
 	for _, invocation := range run.invocations {
 		dir := resolveRunDir(request.root, invocation.dir)
 		testTargets := invocation.targets
@@ -404,7 +310,7 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		}
 		command, err := renderTierCommand(run.number, run.tier, invocation.targets, testTargets, invocation.terms, run.args)
 		if err != nil {
-			return 0, commands, runStops{}, err.Error()
+			return 0, commands, "", err.Error()
 		}
 		commands = append(commands, command)
 		discoveredBefore := counter.Counts().discovered
@@ -417,19 +323,12 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		logger.Info("gate test: spawning tier command", "tier", tierName(run.number), "dir", dir, "command", command)
 		watchCtx, stopWatching := context.WithCancel(ctx)
 		var watchdogDone sync.WaitGroup
-		capKilled, runErr := runTiedChild(cmd, request.pipeWaitDelay, run.tier.MemoryLimit(), func(pid int) {
+		runErr := runTiedChild(cmd, request.pipeWaitDelay, func(pid int) {
 			if marker != "" && request.samplePeriod > 0 {
 				watchdogDone.Add(1)
 				go func() {
 					defer watchdogDone.Done()
-					stops.processCap = capFor(marker, request.samplePeriod).run(watchCtx)
-				}()
-			}
-			if request.memoryGuarding {
-				watchdogDone.Add(1)
-				go func() {
-					defer watchdogDone.Done()
-					stops.guardKills = guardFor(request.memoryQuit, request.stderr).run(watchCtx, pid)
+					capLine = capFor(marker, request.samplePeriod).run(watchCtx)
 				}()
 			}
 			if !request.watching {
@@ -443,25 +342,19 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		})
 		stopWatching()
 		watchdogDone.Wait()
-		if capKilled {
-			stops.memoryCap = tierMemoryCapLine(tierName(run.number), run.tier.MemoryMB)
-		}
 		exit = tierExitCodeOf(runErr)
-		logger.Info("gate test: tier command ended", "tier", tierName(run.number), "exit", exit, "error", runErr, "memory_cap_kill", capKilled)
-		if errors.Is(runErr, proc.ErrMemoryCap) && ctx.Err() == nil {
-			return 0, commands, runStops{}, tierMemoryCapRefusal(tierName(run.number), run.tier.MemoryMB, dir, runErr)
-		}
+		logger.Info("gate test: tier command ended", "tier", tierName(run.number), "exit", exit, "error", runErr)
 		if cmd.Process == nil && ctx.Err() == nil {
-			return 0, commands, runStops{}, fmt.Sprintf("gate test: could not start the shell for %s in %s: %v; way forward: make the tier's dir an existing directory and put the platform shell on PATH, then re-run the same command", tierName(run.number), dir, runErr)
+			return 0, commands, "", fmt.Sprintf("gate test: could not start the shell for %s in %s: %v; way forward: make the tier's dir an existing directory and put the platform shell on PATH, then re-run the same command", tierName(run.number), dir, runErr)
 		}
-		if exit != 0 || ctx.Err() != nil || stops.stopped() {
-			return exit, commands, stops, ""
+		if exit != 0 || ctx.Err() != nil || capLine != "" {
+			return exit, commands, capLine, ""
 		}
 		if line := noTestNotice(run, invocation, dir, counter.Counts().discovered-discoveredBefore); line != "" {
 			notice(line)
 		}
 	}
-	return 0, commands, runStops{}, ""
+	return 0, commands, "", ""
 }
 
 // noTestNotice returns the line of a passing `vstest` invocation whose output reported no test, or "" for any other.

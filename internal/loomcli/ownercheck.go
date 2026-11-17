@@ -1,12 +1,10 @@
-// ownercheck.go judges who owns a run and whether the act rule lets it act.
-// It runs before `lym loom start` or `lym loom resume` drives the run.
-// It refuses a run that another machine owns, and a run the act rule waits on.
+// ownercheck.go judges who owns a run before `lym loom start` or `lym loom resume` drives it.
+// It refuses a run that another machine owns.
 
 package loomcli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,9 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // ownerVerdict is who owns a run: Owner is the owning machine and Elsewhere reports whether that machine is another than this one.
@@ -120,71 +116,11 @@ func (c *loomCLI) refuseOwnedElsewhere(ctx context.Context, out io.Writer, retry
 	if !verdict.Elsewhere {
 		return false
 	}
-	writeOwnedElsewhere(ctx, out, slug, verdict.Owner, verdict.AdoptSubject)
-	return true
-}
-
-// writeOwnedElsewhere writes the owned_elsewhere refusal for slug, owned by owner and moved by `lym adopt` of subject.
-// An empty subject names the slug.
-func writeOwnedElsewhere(ctx context.Context, out io.Writer, slug, owner, subject string) {
+	subject := verdict.AdoptSubject
 	if subject == "" {
 		subject = slug
 	}
-	message := fmt.Sprintf("loom: this run is owned by machine %q, so this machine does not resume it; way forward: run `lym adopt %s` from this machine's prime", owner, subject)
-	clihelp.SetExit(ctx, output.ErrFields(out, message, map[string]any{"kind": shedrun.StartOwnedElsewhereKind, "owner": owner}))
-}
-
-// hubRunVerdict judges whether the run of slug may act, over the hub of l.
-// The verdict is judged over the run's tracked records and this machine's inputs.
-// A shed pause is set aside, since the verbs asking resume the child's own shed pause.
-func hubRunVerdict(l *lymcwd.Location, slug string) (runfsm.Verdict, error) {
-	prime, err := primeOfHub(l)
-	if err != nil {
-		return runfsm.Verdict{}, err
-	}
-	records, inputs, err := pairteardown.ReadRun(prime, slug)
-	if err != nil {
-		return runfsm.Verdict{}, err
-	}
-	_, verdict := runfsm.Judge(records, inputs, runfsm.Aside{ShedPause: true})
-	return verdict, nil
-}
-
-// refuseByAct writes the refusal envelope when the act rule does not let this run act or its state cannot be read.
-// It returns true when it wrote a refusal, and false when the run may go on.
-// It asks only for a run whose status file exists.
-// A spawn with no status file is the fresh bootstrap that a start batten already judged.
-// A hand-over is the kind shedrun.StartOwnedElsewhereKind with the owner's name, as the owner refusal writes it.
-// Any other wait carries the rule's refusal, with retry as the quoted command to run again.
-// A read error names its cause and retry, except a record that does not decode, which goes on for the driver to diagnose.
-// A receiver with no runVerdict checks nothing.
-func (c *loomCLI) refuseByAct(ctx context.Context, out io.Writer, retry string) bool {
-	if c.runVerdict == nil {
-		return false
-	}
-	if _, err := os.Stat(c.shedPaths.StatusPath); err != nil {
-		return false
-	}
-	slug := seedSlug(c.location.WorktreeName)
-	verdict, err := c.runVerdict(c.location, slug)
-	if errors.Is(err, state.ErrDecode) {
-		// A record that does not decode is diagnosed by the spawned driver's own read of the status file.
-		// The seed step defers it the same way.
-		// Refusing here would fail before any driver ran.
-		return false
-	}
-	if err != nil {
-		clihelp.SetExit(ctx, output.Err(out, fmt.Sprintf("loom: could not read the state of this run to decide whether it may act: %v; way forward: fix the cause it names, then run %s again", err, retry)))
-		return true
-	}
-	if verdict.Answer == runfsm.AnswerHandOver {
-		writeOwnedElsewhere(ctx, out, slug, verdict.Owner, verdict.AdoptSubject)
-		return true
-	}
-	refusal := verdict.Refusal(slug, retry)
-	if refusal == nil {
-		return false
-	}
-	clihelp.SetExit(ctx, output.Err(out, refusal.Error()))
+	message := fmt.Sprintf("loom: this run is owned by machine %q, so this machine does not resume it; way forward: run `lym adopt %s` from this machine's prime", verdict.Owner, subject)
+	clihelp.SetExit(ctx, output.ErrFields(out, message, map[string]any{"kind": shedrun.StartOwnedElsewhereKind, "owner": verdict.Owner}))
 	return true
 }

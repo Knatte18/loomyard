@@ -12,10 +12,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
-
-	"github.com/Knatte18/loomyard/internal/runplan"
 )
+
+// planBaselineDirName is the directory under `WebsterDir` that holds one file per recorded plan content.
+// Each file is named by the hex SHA-256 of its content.
+const planBaselineDirName = "plan-baseline"
 
 // ErrPlanBaselineMissing reports that a plan file cannot be restored from the store.
 // The stored copy is absent or does not match its recorded hash, or the state recorded no plan hashes at all.
@@ -32,11 +35,16 @@ func planBaselineWayForward(reentry string) string {
 	return resetToStartSteps(reentry)
 }
 
+// planBaselinePath returns the stored copy's path for a content hash.
+func planBaselinePath(websterDir, hash string) string {
+	return filepath.Join(websterDir, planBaselineDirName, hash)
+}
+
 // planBaselineHas reports whether the store holds a copy for hash.
 // An absent file is false with no error;
 // any other stat failure is returned.
 func planBaselineHas(websterDir, hash string) (bool, error) {
-	_, err := os.Stat(runplan.PlanBaselinePath(websterDir, hash))
+	_, err := os.Stat(planBaselinePath(websterDir, hash))
 	if err == nil {
 		return true, nil
 	}
@@ -44,6 +52,70 @@ func planBaselineHas(websterDir, hash string) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("websterengine: stat plan baseline copy %s: %w", hash, err)
+}
+
+// storePlanBaseline writes each plan file's bytes to its hash's file under websterDir when that file is absent.
+// The store is content-addressed, so a repeat write is a no-op.
+// A file whose bytes no longer hash to their recorded value is refused, and nothing is written for it,
+// so no stored copy is ever wrong.
+// An empty websterDir is a wiring error, returned rather than resolved against the working directory.
+func storePlanBaseline(websterDir, planDir string, hashes map[string]string) error {
+	if websterDir == "" {
+		return errors.New("websterengine: store plan baseline: empty webster dir")
+	}
+	dir := filepath.Join(websterDir, planBaselineDirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("websterengine: store plan baseline: %w", err)
+	}
+	names := make([]string, 0, len(hashes))
+	for name := range hashes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		dst := planBaselinePath(websterDir, hashes[name])
+		if _, err := os.Stat(dst); err == nil {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(planDir, name))
+		if err != nil {
+			return fmt.Errorf("websterengine: store plan baseline: read %s: %w", name, err)
+		}
+		if sum := sha256.Sum256(data); hex.EncodeToString(sum[:]) != hashes[name] {
+			return fmt.Errorf("websterengine: store plan baseline: %s changed since its hash was recorded; way forward: transient, re-run the verb once nothing else is editing the plan", name)
+		}
+		if err := writeFileAtomic(dir, dst, data); err != nil {
+			return fmt.Errorf("websterengine: store plan baseline: %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// writeFileAtomic writes data to dst through a temp file in dir and a rename.
+func writeFileAtomic(dir, dst string, data []byte) error {
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, dst); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return nil
 }
 
 // RestorePlan restores every plan file that has changed since the run recorded it.
@@ -56,7 +128,7 @@ func RestorePlan(st *State, geom Geometry) ([]string, error) {
 	if len(st.PlanFileHashes) == 0 {
 		return nil, fmt.Errorf("%w: state.json recorded no plan hashes; %s", ErrPlanBaselineMissing, planBaselineWayForward(stepRun))
 	}
-	changed, err := runplan.ChangedPlanFiles(&st.State, geom.PlanDir)
+	changed, err := changedPlanFiles(st, geom.PlanDir)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +139,7 @@ func RestorePlan(st *State, geom Geometry) ([]string, error) {
 		if !recorded {
 			continue
 		}
-		data, err := os.ReadFile(runplan.PlanBaselinePath(geom.WebsterDir, want))
+		data, err := os.ReadFile(planBaselinePath(geom.WebsterDir, want))
 		if err != nil {
 			missing = append(missing, name)
 			continue
@@ -91,7 +163,7 @@ func RestorePlan(st *State, geom Geometry) ([]string, error) {
 			}
 			continue
 		}
-		if err := runplan.WriteFileAtomic(geom.PlanDir, path, data); err != nil {
+		if err := writeFileAtomic(geom.PlanDir, path, data); err != nil {
 			return nil, fmt.Errorf("websterengine: restore plan: write %s: %w", name, err)
 		}
 	}

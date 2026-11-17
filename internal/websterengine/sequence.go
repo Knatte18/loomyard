@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 )
 
 // ErrBatchOrder is the sentinel that CheckBatchOrder's error wraps when a batch depends on one that runs after it.
@@ -53,8 +52,8 @@ func CheckBatchOrder(batches []batcher.Batch, step string) error {
 // It names both batch numbers and the first card pair and ref that make the dependency.
 // producer is the later batch in the list, consumer the earlier one.
 func backwardEdgeFinding(producer, consumer batcher.Batch) string {
-	producerNumber, _ := runplan.BatchIdentity(producer)
-	consumerNumber, _ := runplan.BatchIdentity(consumer)
+	producerNumber, _ := batchIdentity(producer)
+	consumerNumber, _ := batchIdentity(consumer)
 	for _, a := range producer.Cards {
 		for _, b := range consumer.Cards {
 			if ref := firstSharedRef(a, b, true); ref != "" {

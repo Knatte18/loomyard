@@ -4,8 +4,7 @@
 // # Roles
 //
 // A fixer strand runs under one of two reed roles:
-// RoleGateFixer serves the callers of this package.
-// RoleVerifyFixer serves the cold fixer of an implementer's plan-level verify, Webster's or Weaver's.
+// RoleGateFixer for the callers of this package and RoleVerifyFixer for webster's verify-gate fixer.
 // Roles lists them and IsFixerRole reports whether a role, a numbered form included, is one of them.
 //
 // # Record and store

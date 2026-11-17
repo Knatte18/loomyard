@@ -126,29 +126,26 @@ func PlanReviewSkippable(deps PRReworkDeps) (bool, error) {
 	return planparser.ReviewExempt(working), nil
 }
 
-// ArchivedRunRecordDirs lists each round's archived implementer run-record directories under reworkDir.
-// The order is ascending by round number and, within a round, the webster directory before the weaver directory.
-// A round whose prior-generation holds neither is skipped, and an absent reworkDir lists none.
+// ArchivedWebsterDirs lists each round's archived webster directory under reworkDir, ascending by round number.
+// A round whose prior-generation holds no webster directory is skipped, and an absent reworkDir lists none.
 // Any other read or stat failure is an error, so a prior generation's record is never dropped silently.
-func ArchivedRunRecordDirs(reworkDir string) ([]string, error) {
+func ArchivedWebsterDirs(reworkDir string) ([]string, error) {
 	nums, err := roundNumbers(reworkDir)
 	if err != nil {
-		return nil, fmt.Errorf("loomshed: list archived run records: %w", err)
+		return nil, fmt.Errorf("loomshed: list archived webster run records: %w", err)
 	}
 	sort.Ints(nums)
 	var dirs []string
 	for _, n := range nums {
-		for _, slot := range []string{reworkPriorWebster, ReworkPriorWeaver} {
-			dir := filepath.Join(reworkDir, reworkRoundPrefix+strconv.Itoa(n), reworkPriorDir, slot)
-			info, err := os.Stat(dir)
-			switch {
-			case errors.Is(err, fs.ErrNotExist):
-				// This round archived no run record in this slot.
-			case err != nil:
-				return nil, fmt.Errorf("loomshed: stat archived run record %s: %w", dir, err)
-			case info.IsDir():
-				dirs = append(dirs, dir)
-			}
+		dir := filepath.Join(reworkDir, reworkRoundPrefix+strconv.Itoa(n), reworkPriorDir, reworkPriorWebster)
+		info, err := os.Stat(dir)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			// This round archived no webster run record.
+		case err != nil:
+			return nil, fmt.Errorf("loomshed: stat archived webster run record %s: %w", dir, err)
+		case info.IsDir():
+			dirs = append(dirs, dir)
 		}
 	}
 	return dirs, nil

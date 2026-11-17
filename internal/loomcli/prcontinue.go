@@ -1,7 +1,6 @@
 // prcontinue.go implements the `pr-continue` loom verb.
 // The PR-Review agent runs it to tell the run the operator is satisfied with the review.
 // The verb sets Continue in the run's pull-request record and clears the head whose gate failure was mailed.
-// It then commits the record, so the flag reaches the pair's records.
 // The PR-Review row reads that flag, records the ending and ends the row, leaving the pull request open.
 // A cleared mailed head makes the row gate that head again, so a failure from outside the change is retried.
 // Finalize then merges the pull request on GitHub under its own gate and credit block.
@@ -9,7 +8,6 @@
 package loomcli
 
 import (
-	"bytes"
 	"errors"
 	"io"
 
@@ -77,18 +75,7 @@ Example:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			var verbOut bytes.Buffer
-			code := prContinueVerb(&verbOut, shedrun.PullRequestRecord(c.location, shedrun.SelfRunID), shedrun.PullRequestRecordLock(c.location, shedrun.SelfRunID))
-			if code == 0 {
-				if err := pullRequestRecordCommitter(newPrePushCheck(c.location, shedrun.SelfRunID), c.location)(); err != nil {
-					code = output.Err(cmd.OutOrStdout(), "loom: pr-continue: commit the pull request record: "+err.Error()+"; way forward: run lym loom pr-continue again, and tell the operator when it keeps failing")
-					clihelp.SetExit(cmd.Context(), code)
-					return nil
-				}
-			}
-			if _, err := cmd.OutOrStdout().Write(verbOut.Bytes()); err != nil {
-				return err
-			}
+			code := prContinueVerb(cmd.OutOrStdout(), shedrun.PullRequestRecord(c.location, shedrun.SelfRunID), shedrun.PullRequestRecordLock(c.location, shedrun.SelfRunID))
 			clihelp.SetExit(cmd.Context(), code)
 			return nil
 		},

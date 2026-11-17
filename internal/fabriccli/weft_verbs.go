@@ -187,10 +187,6 @@ in the fabric config) plus whatever the fabric config's optional pathspec adds (
 none). The machine-local scratch directory (.lym) is NEVER staged or committed -- a path
 under it in a commit request is refused, not silently dropped.
 
-A commit that would add a secret file is refused before anything is staged: a
-new file matching a pattern lym ships (such as .env or *.pem) or one the
-fabric config's secret_paths adds. The error names each file and its pattern.
-
 Related commands:
   lym fabric push   — commit then push in the same process
   lym fabric sync   — commit then async-push (detached child process)`,

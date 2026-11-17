@@ -90,9 +90,6 @@
 // The setting's value names one implementer from a closed table in this package.
 // Every other key of the row's Config passes to that implementer's constructor unchanged;
 // the shipped tapestry recipe names `tapestry.implementer`.
-// The table holds two values, `webster` and `weaver`.
-// The `weaver` entry loads `weaver.yaml` under the told config directories.
-// It resolves its model ladder when the row builds.
 // Every implementer builds the same row with the same edges.
 // The choice therefore never skips a row or enters one conditionally.
 // A row without the key, and a setting holding anything but one implementer name, refuse when the recipe builds.

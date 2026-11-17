@@ -19,9 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // formatDiscussionFindings renders findings as one semicolon-separated list.
@@ -239,15 +238,11 @@ func NewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.In
 	})
 }
 
-// ValidatePlan checks plan with index.ValidateFormat.
-// The index is told the done cards from the active implementer's run record under anchorPath.
-// The record is the one the implementer seam names, read with no setting:
-// with neither implementer begun there is no record to freeze whichever implementer the setting names.
-// A run moved back to plan review after the implementer executed batches keeps its run record,
+// ValidatePlan checks plan with index.ValidateFormat, told the done cards from Webster's run record under anchorPath.
+// A run moved back to plan review after Webster executed batches keeps its run record,
 // and a done card's work is already in the tree, so the index skips its tree-dependent checks for those cards.
 // With no run record, every card is checked.
 // A run record that cannot be read is a returned error, never a finding.
-// So is a seam refusal, such as both implementers holding begun batches.
 //
 // A done card whose file no longer hashes to what its batch recorded at begin is one blocking done-card-edited finding.
 // A done card is frozen, so any change to its file is reported.
@@ -256,15 +251,15 @@ func NewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.In
 // The findings of the plan context checks over pc follow.
 // They cover only the cards not recorded done, since a done card's rename already ran.
 func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
-	_, st, err := weaverengine.Active(weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+	st, err := websterengine.LoadState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath))
 	if err != nil {
 		return nil, err
 	}
-	findings, err := index.ValidateFormat(plan, worktreeRoot, runplan.DoneCards(plan, st))
+	findings, err := index.ValidateFormat(plan, worktreeRoot, websterengine.DoneCards(plan, st))
 	if err != nil {
 		return nil, err
 	}
-	edited, err := runplan.EditedDoneCards(plan, st)
+	edited, err := websterengine.EditedDoneCards(plan, st)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +273,7 @@ func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index 
 	}
 
 	done := make(map[int]bool)
-	for _, c := range runplan.DoneCards(plan, st) {
+	for _, c := range websterengine.DoneCards(plan, st) {
 		done[c.Number] = true
 	}
 	var pending []planparser.Card

@@ -30,9 +30,7 @@ var terminatingSignalSet = []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.
 // a zero exit cut short that way returns nil, and a failing exit keeps its own error.
 // What is left of the child's process group is then killed, on Windows through the child's kill-on-close job.
 // A non-nil started is called with the child's pid once it is running, before the wait.
-// A memoryLimit above 0 caps the memory of the child's tree at that many bytes through `proc.RunMemoryCappedVia`.
-// capKilled reports that the kernel killed a process of the tree at the cap.
-func runTiedChild(cmd *exec.Cmd, pipeWaitDelay time.Duration, memoryLimit int64, started func(pid int)) (capKilled bool, err error) {
+func runTiedChild(cmd *exec.Cmd, pipeWaitDelay time.Duration, started func(pid int)) error {
 	cmd.WaitDelay = pipeWaitDelay
 	var tied atomic.Pointer[proc.Tied]
 	cmd.Cancel = func() error {
@@ -49,34 +47,22 @@ func runTiedChild(cmd *exec.Cmd, pipeWaitDelay time.Duration, memoryLimit int64,
 		}
 		return err
 	}
-	start := func(cmd *exec.Cmd) (func() error, error) {
-		handle, err := proc.StartTied(cmd)
-		if err != nil {
-			return nil, err
-		}
-		tied.Store(handle)
-		if started != nil {
-			started(cmd.Process.Pid)
-		}
-		return handle.Wait, nil
+	handle, err := proc.StartTied(cmd)
+	if err != nil {
+		return err
 	}
-	var waitErr error
-	if memoryLimit > 0 {
-		capKilled, waitErr = proc.RunMemoryCappedVia(cmd, memoryLimit, start)
-	} else if wait, startErr := start(cmd); startErr != nil {
-		waitErr = startErr
-	} else {
-		waitErr = wait()
+	tied.Store(handle)
+	if started != nil {
+		started(cmd.Process.Pid)
 	}
-	if handle := tied.Load(); handle != nil {
-		killLeftovers(handle.Record())
-	}
+	waitErr := handle.Wait()
+	killLeftovers(handle.Record())
 	if errors.Is(waitErr, exec.ErrWaitDelay) && cmd.ProcessState != nil {
 		// Wait reports the delay only after a zero exit: a failing exit's own error wins over it.
 		logger.Warn("gate test: a process the shell left behind held its output past the wait delay", "pid", cmd.Process.Pid, "delay", pipeWaitDelay)
-		return capKilled, nil
+		return nil
 	}
-	return capKilled, waitErr
+	return waitErr
 }
 
 // killLeftovers kills what a tied child's shell left in its process group,

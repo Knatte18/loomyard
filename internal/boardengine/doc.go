@@ -138,7 +138,7 @@
 // `internal/runprofile` reads that file.
 // Seed-Child writes the profile's block for the task's recipe under the task's run_settings.
 // A write of an empty string clears it, and the task then takes its recipe's default profile.
-// The README's Recipe cell names only a profile the task carries.
+// The README entry cell names only a profile the task carries.
 // Like run_settings, a profile change is never a scope change.
 //
 // # Owners
@@ -363,8 +363,7 @@
 // A row opens with the entry's handle.
 // A Notes row adds the Prio column after it: H for a high priority, L for a low one and blank for normal.
 // The title cell holds the bold title, with the brief as a `• ` bullet under it.
-// It then holds one `• ` code-span bullet per run field the entry sets: `pull_request: on` and then `on_land: <key>`.
-// One `• ` bullet per run setting follows, sorted, so the fields and settings stack in height and add no column.
+// It then holds one `• ` bullet per run setting, sorted, so the settings stack in height and add no column.
 // A run setting is a code span such as `loom: code_max_bounces 1`, with a nested key as its dotted path.
 // The slug cell links the slug to its design doc when the entry has a body.
 // A `Sketch` link to its decision record file sits under the slug when the entry carries the discussed flag.

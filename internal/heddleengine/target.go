@@ -19,20 +19,6 @@ const (
 // OrchPromptTarget is the prompt target whose passages reach an orch session alone, the home of a repository's orch rules.
 const OrchPromptTarget = "orch-prompt"
 
-// The engine names the target table keys its rows to.
-const (
-	claudeEngine = "claude"
-	codexEngine  = "codex"
-)
-
-// ClaudeLocalInstructionsFile is the anchor-relative file the claude-file target renders into:
-// the local instructions every Claude session started in the worktree loads.
-const ClaudeLocalInstructionsFile = "CLAUDE.local.md"
-
-// CodexOverrideInstructionsFile is the anchor-relative file the codex-file target renders into:
-// the override instructions a Codex session started in the worktree reads before its other instruction files.
-const CodexOverrideInstructionsFile = "AGENTS.override.md"
-
 // ClaudeSettingsFile is the anchor-relative file the claude-settings target renders into:
 // the local Claude Code settings every Claude session started in the worktree loads.
 const ClaudeSettingsFile = ".claude/settings.local.json"
@@ -49,9 +35,6 @@ const (
 	// agentsFileTarget is the shared file target for an instruction every agent family reads.
 	// It renders into the files of claudeFileTarget and codexFileTarget.
 	agentsFileTarget = "agents-file"
-	// agentsPromptTarget is the shared prompt target for a passage every Claude and Codex session's prompt carries.
-	// It renders into the passages of the claude-prompt and codex-prompt targets.
-	agentsPromptTarget = "agents-prompt"
 	// claudeSettingsTarget is the JSON-object file target merged into ClaudeSettingsFile.
 	claudeSettingsTarget = "claude-settings"
 )
@@ -60,12 +43,11 @@ const (
 // File is the anchor-relative path of a file target and empty for a prompt target.
 // ReRender lists the anchor-relative paths whose change re-renders a file target.
 // JSONObject marks a file target whose entries each hold one JSON object, merged into the file in place of joined text.
-// RendersInto names the targets, of either delivery, that a shared target's entries reach.
-// A shared target has no File or ReRender of its own.
+// RendersInto names the file targets whose files carry the entries of a shared file target.
+// A shared file target has no File or ReRender of its own.
 // Engine and Role narrow the sessions a prompt target reaches.
 // Engine must equal the session's engine, and Role must match the session's role or a numbered sibling of it;
 // an empty field narrows nothing.
-// A single-engine file target names its engine too, which keys its entries to that engine; it narrows no prompt.
 type Target struct {
 	Name        string
 	Delivery    string
@@ -79,14 +61,13 @@ type Target struct {
 
 // targetTable holds one row per target; a further target is one new row.
 var targetTable = []Target{
-	{Name: claudeFileTarget, Delivery: DeliveryFile, File: ClaudeLocalInstructionsFile, ReRender: []string{ClaudeLocalInstructionsFile, "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}, Engine: claudeEngine},
-	{Name: codexFileTarget, Delivery: DeliveryFile, File: CodexOverrideInstructionsFile, ReRender: []string{"AGENTS.md", "CLAUDE.md", CodexOverrideInstructionsFile}, Engine: codexEngine},
+	{Name: claudeFileTarget, Delivery: DeliveryFile, File: "CLAUDE.local.md", ReRender: []string{"CLAUDE.local.md", "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}},
+	{Name: codexFileTarget, Delivery: DeliveryFile, File: "AGENTS.override.md", ReRender: []string{"AGENTS.md", "CLAUDE.md", "AGENTS.override.md"}},
 	{Name: agentsFileTarget, Delivery: DeliveryFile, RendersInto: []string{claudeFileTarget, codexFileTarget}},
 	{Name: claudeSettingsTarget, Delivery: DeliveryFile, File: ClaudeSettingsFile, JSONObject: true},
-	{Name: "claude-prompt", Delivery: DeliveryPrompt, Engine: claudeEngine},
-	{Name: "codex-prompt", Delivery: DeliveryPrompt, Engine: codexEngine},
+	{Name: "claude-prompt", Delivery: DeliveryPrompt, Engine: "claude"},
+	{Name: "codex-prompt", Delivery: DeliveryPrompt, Engine: "codex"},
 	{Name: OrchPromptTarget, Delivery: DeliveryPrompt, Role: agentname.RoleOrch},
-	{Name: agentsPromptTarget, Delivery: DeliveryPrompt, RendersInto: []string{"claude-prompt", "codex-prompt"}},
 }
 
 // LookupTarget returns the target named name, and false when the table holds none.
@@ -119,7 +100,7 @@ func TargetFiles(name string) []string {
 	return files
 }
 
-// reachesFileTarget reports whether an entry aimed at targets renders into the file or prompt target named name:
+// reachesFileTarget reports whether an entry aimed at targets renders into the file target named name:
 // the entry names it, or names a shared target that renders into it.
 func reachesFileTarget(name string, targets []string) bool {
 	for _, aimed := range targets {
@@ -165,11 +146,10 @@ func objectTargetCount(names []string) int {
 }
 
 // promptTargetsFor returns the names of the prompt targets that reach a session of engine whose strand role is role.
-// A shared prompt target is left out: its entries reach a session through a target it renders into.
 func promptTargetsFor(engine, role string) []string {
 	var names []string
 	for _, target := range targetTable {
-		if target.Delivery != DeliveryPrompt || len(target.RendersInto) > 0 {
+		if target.Delivery != DeliveryPrompt {
 			continue
 		}
 		if target.Engine != "" && target.Engine != engine {

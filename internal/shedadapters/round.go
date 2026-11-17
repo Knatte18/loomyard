@@ -79,12 +79,6 @@ func decisionSnapshotPath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-decision-snapshot.yaml", round))
 }
 
-// roundSnapshotPath returns the path of round n's snapshot record inside runDir.
-// The record holds the review target's id at the round's start and the facts the round's later checks compare against.
-func roundSnapshotPath(runDir string, n int) string {
-	return filepath.Join(runDir, fmt.Sprintf("round-%d-snapshot.json", n))
-}
-
 // parentNoticePath returns the path of the one-line parent notice file for round inside runDir.
 func parentNoticePath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-parent-notice.md", round))

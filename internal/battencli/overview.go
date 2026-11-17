@@ -26,14 +26,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 )
 
 const (
-	overviewStarting     = string(runfsm.Starting)
+	overviewStarting     = "starting"
 	overviewStatusBroken = "status unreadable"
 	overviewUnknown      = "-"
 	overviewColumnGap    = "  "
@@ -61,8 +60,7 @@ type overviewRun struct {
 
 // RunCells is what a dobby's lines draw of one run between its slug and its pass cell.
 type RunCells struct {
-	// State is the word the board shows for the run, the run FSM's display state of batten's state and row.
-	// It reads `paused <minutes>` while a live pause covers a running, paused or starting run.
+	// State is batten's state, `paused <minutes>` while a live pause covers a running, paused or starting run.
 	State string
 	// Stage is the row the run is in, numbered from its recipe, the child's row while batten runs the child.
 	Stage string
@@ -77,7 +75,6 @@ type RunCells struct {
 // A run with no status shows as `starting` with no stage.
 // While batten is in Run-Shed and the task worktree's status is found, the stage is that worktree's current producer.
 // Otherwise the stage is batten's own current producer.
-// The state is batten's own word; DobbyRunCells.Of turns it into the word the board shows.
 func overviewRunCells(run overviewRun, now time.Time) RunCells {
 	inRunShed := run.Batten.Found && run.Batten.Status.CurrentProducer == battenrecipe.NameRunShed
 	if run.Batten.Unreadable || (inRunShed && run.Child.Unreadable) {
@@ -105,15 +102,6 @@ func overviewRunCells(run overviewRun, now time.Time) RunCells {
 		state = fmt.Sprintf(overviewPausedFormat, overviewSince(run.PausedAt, now))
 	}
 	return RunCells{State: state, Stage: stage, InStage: overviewSince(stageStarted, now)}
-}
-
-// overviewState returns the word the board shows for status: the run FSM's display state of its shed state and row.
-// The run has started once batten is at Run-Shed or later, and is landing at Land or Worktree-Teardown.
-func overviewState(status shedengine.Status) string {
-	row := status.CurrentProducer
-	started := row != "" && !slices.Contains(battenrecipe.RowsBeforeRunShed(), row)
-	landing := row == battenrecipe.NameLand || row == battenrecipe.NameWorktreeTeardown
-	return string(runfsm.TransitionState(status.State, started, landing))
 }
 
 // overviewEntryNumber returns the entry number row has in the named recipe;
@@ -242,11 +230,7 @@ func (r *DobbyRunCells) Of(runs []dobbyengine.ViewRun, now time.Time) map[string
 		if entry, covered := record.Covering(viewRun.Slug); covered {
 			run.PausedAt = entry.PausedAt
 		}
-		runCells := overviewRunCells(run, now)
-		if run.Batten.Found && runCells.State == string(run.Batten.Status.State) {
-			runCells.State = overviewState(run.Batten.Status)
-		}
-		cells[viewRun.Slug] = runCells
+		cells[viewRun.Slug] = overviewRunCells(run, now)
 	}
 	return cells
 }

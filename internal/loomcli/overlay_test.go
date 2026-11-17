@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -152,9 +151,9 @@ func TestValidatePlanCmd_Overlay(t *testing.T) {
 					t.Fatalf("read card file: %v", err)
 				}
 				sum := sha256.Sum256(data)
-				st := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
+				st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
 					1: {Slug: "first-card", Cards: []string{"01-first-card"}, CardHashes: map[string]string{"01-first-card": hex.EncodeToString(sum[:])}, Terminal: true, Status: websterengine.DigestStatusDone},
-				}}}
+				}}
 				if err := websterengine.SaveState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath), st); err != nil {
 					t.Fatalf("SaveState: %v", err)
 				}

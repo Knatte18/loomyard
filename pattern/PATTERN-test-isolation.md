@@ -75,10 +75,6 @@ A test package never reaches the operator's global gitconfig or default tmux soc
   a lingering child's cwd blocking it on Windows is one such failure.
   A binary killed by a panic or timeout skips the removal,
   and the next start's sweep of `internal/lymtemp` removes its directory once the OS has released its lock.
-  The sweep first gives every directory in that tree owner read, write and search permission,
-  so a directory the killed test left read-only or unreadable is removed with the rest.
-- A test that makes a directory read-only or unreadable takes the change from `permkit.Chmod`,
-  which registers the restore that lets the test's temp tree be removed.
 - After the run `Main` sweeps the servers.
   On Linux it then scans `/proc` for any process whose cwd, executable or an argv element references that directory.
   It waits up to two seconds for such a process to exit on its own.
@@ -179,7 +175,6 @@ It is never duplicated per package and never placed under the package it fakes.
   A package an import cycle bars from a kit keeps exactly one local copy,
   and a fixture used by one package stays in that package's `_test.go` files.
 - `internal/testkit/scankit` imports the standard library only, so every package's tests can import it.
-- `internal/testkit/permkit` imports the standard library only.
 
 ### Enforcement
 

@@ -37,9 +37,7 @@ const (
 )
 
 // SettleRecord is one line of the settle-records file.
-// Build is the build identity the action was taken under and Target the row or verb it aimed at.
-// Commits lists the commits the settling agent made on the task branch, each a short SHA and its subject.
-// Each of the three is omitted when empty.
+// Build is the build identity the action was taken under and Target the row or verb it aimed at; each is omitted when empty.
 type SettleRecord struct {
 	StopKey StopKey   `json:"stop_key"`
 	Settler string    `json:"settler"`
@@ -48,7 +46,6 @@ type SettleRecord struct {
 	At      time.Time `json:"at"`
 	Build   string    `json:"build,omitempty"`
 	Target  string    `json:"target,omitempty"`
-	Commits []string  `json:"commits,omitempty"`
 }
 
 // ParseSettleRecords decodes the bytes of a settle-records file into one record per non-blank line, in order.

@@ -136,6 +136,18 @@ type Deps struct {
 	StencilsDir string
 	// NearestOrch returns the name of the nearest live orch the tidy agent's parent directive names; empty means none.
 	NearestOrch func() (string, error)
+	// StartTestMap starts the coverage-map upkeep pass, `lym gate testmap --upkeep`, in the prime worktree.
+	// The pass registers itself for the hub; the channel delivers its exit once.
+	// A nil StartTestMap, as on a beam's dobby, leaves upkeep off; the hub wiring sets it with the other upkeep seams.
+	StartTestMap func() (<-chan PassExit, error)
+	// TestMapRunning reports whether a live upkeep pass is registered for the hub.
+	TestMapRunning func() (bool, error)
+	// TestMapExitRecord reads the exit record the last upkeep pass wrote, and whether one exists.
+	TestMapExitRecord func() (exit TestMapExit, found bool, err error)
+	// PrimeHead reads the prime's HEAD commit.
+	PrimeHead func() (string, error)
+	// GateSlots reads the hub's gate slot count on this machine.
+	GateSlots func() (int, error)
 	// RunNotices are the seams the run notices of the runs this dobby drives read; a nil RunNotices.ReadChild sends none.
 	RunNotices RunNoticeDeps
 	// WaitReminders are the seams the reminders of a child waiting on the operator read; nil WaitReminders.Post sends none.
@@ -349,6 +361,13 @@ type daemon struct {
 	landNoticeFlag logger.Episode
 	// landNoticePosts guards each owed landing notice's post by its slug.
 	landNoticePosts logger.EpisodeSet
+	// testMapFailures is the failure episode of the upkeep step, which never ends the tick.
+	testMapFailures logger.Episode
+	// testMapChild delivers the exit of the upkeep pass this dobby started, nil when none of its passes lives.
+	testMapChild <-chan PassExit
+	// testMapExits is the failure episode of those passes' exits; testMapExitLogged reports whether its log line was written.
+	testMapExits      logger.Episode
+	testMapExitLogged bool
 	// listedRuns is the run listing of the tick's pass step, done runs included.
 	listedRuns []RunView
 	// landed is the slugs whose landing the tick's landing count read, nil while Deps.Landings is nil.
@@ -620,11 +639,12 @@ func (d *daemon) standingMove() string {
 // It records the sleeps the watch saw and fills in the state record's pid when none is set.
 // A sleep the watch sees, and a record found without a pid, owe every run a full pass until a tick returns nil.
 // An anchor-move record of the geometry holds the scheduling.
-// While one exists, a tick spawns no pass, starts no task and runs no tidy step.
+// While one exists, a tick spawns no pass, starts no task and runs no tidy or upkeep step.
 // It still owes what it owed before.
 // That is logged once per episode,
 // and the state record's upkeep and the landing count go on.
 // The adopt hold holds the scheduling the same way, and the beam's landing step too.
+// An upkeep step that fails is logged once per episode and does not end the tick, since upkeep is optional.
 func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	d.sleepWatch.Observe(now, d.deps.Awake())
 	seen := d.sleepWatch.Sleeps()
@@ -678,6 +698,11 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 		d.clearDoneRuns(now)
 		if err := d.tidyStep(ctx, now); err != nil {
 			return err
+		}
+		if err := d.testMapStep(now); err != nil {
+			d.testMapFailures.Fail("dobbyengine: the upkeep step failed; the tick goes on and the step is tried again", "worktree", d.geom.WorktreeName, "error", err)
+		} else {
+			d.testMapFailures.Recover("dobbyengine: the upkeep step works again", "worktree", d.geom.WorktreeName)
 		}
 	}
 	if !d.adoptHolds {

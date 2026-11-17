@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/testcover"
@@ -19,14 +18,6 @@ const (
 	defaultRedundancyTags = "tier0,tier1,tier2"
 	defaultRedundancyOut  = "docs/benchmarks/test-redundancy.md"
 	defaultRedundancyPkg  = "./..."
-)
-
-// The bounds of each test the redundancy mode runs alone, and the wait for the exit and output of one it ended.
-// A test past its time or memory bound is ended and counts as failed.
-const (
-	redundancyTestTimeout = 2 * time.Minute
-	redundancyTestMemory  = 2048 << 20
-	redundancyGrace       = 10 * time.Second
 )
 
 // verdict is the redundancy classification of one test, judged by the blocks of its own package's files.
@@ -305,7 +296,6 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 }
 
 // measurePackage builds the package's coverage binary, runs each top-level test alone and classifies the runs.
-// Each run is bounded in time and memory, and a test past either bound counts as failed.
 // A test the spawn scan does not find counts as unclassifiable.
 // A test named in keeps carries its keep reason on its verdict.
 // env is the environment every command runs under.
@@ -328,10 +318,9 @@ func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string,
 	}
 
 	profile := filepath.Join(tmp, "cover.out")
-	runner := testcover.Toolchain{Env: env, TestTimeout: redundancyTestTimeout, MemoryLimit: redundancyTestMemory, Grace: redundancyGrace}
 	runs := make([]measuredRun, 0, len(names))
 	for _, name := range names {
-		result, err := runner.RunAlone(bin, dir, profile, name)
+		result, err := toolchain.RunAlone(bin, dir, profile, name)
 		if err != nil {
 			return nil, err
 		}

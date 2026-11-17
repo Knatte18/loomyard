@@ -31,7 +31,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -164,11 +163,6 @@ var fakeWebsterRun shedadapters.WebsterRunner = func(websterengine.RunDeps, webs
 	return websterengine.RunResult{}, nil
 }
 
-// fakeWeaverRun is a shedadapters.WeaverRunner func value returning a zero weaverengine.RunResult and a nil error.
-var fakeWeaverRun shedadapters.WeaverRunner = func(weaverengine.RunDeps) (weaverengine.RunResult, error) {
-	return weaverengine.RunResult{}, nil
-}
-
 // placeholderIndex is a non-nil planindex.Index for constructor checks: it panics if a method is called, which no test here does.
 type placeholderIndex struct{ planindex.Index }
 
@@ -284,18 +278,13 @@ func newTestEnv(t *testing.T) Env {
 		Shuttle:            &shedfake.Shuttle{},
 		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},
-		Models: modelspec.Registry{
-			"opus":   {Engine: "claude", Model: "claude-opus-test"},
-			"sonnet": {Engine: "claude", Model: "claude-sonnet-test"},
-		},
-		Segments:        map[string]SegmentSettings{testReviewSegment: {}},
-		WebsterRun:      fakeWebsterRun,
-		WeaverRun:       fakeWeaverRun,
-		WeaverDeps:      shedfake.WeaverSeams(),
-		CommitWebster:   func() error { return nil },
-		ReflectFriction: func() string { return "skipped" },
-		WebsterDeps:     shedfake.WebsterSeams(),
-		PlanIndex:       placeholderIndex{},
+		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
+		Segments:           map[string]SegmentSettings{testReviewSegment: {}},
+		WebsterRun:         fakeWebsterRun,
+		CommitWebster:      func() error { return nil },
+		ReflectFriction:    func() string { return "skipped" },
+		WebsterDeps:        shedfake.WebsterSeams(),
+		PlanIndex:          placeholderIndex{},
 		Drift: driftengine.Deps{
 			Config: func() (driftengine.Config, error) { return driftengine.Config{}, nil },
 			Status: func() (shedengine.Status, error) { return shedengine.Status{}, nil },

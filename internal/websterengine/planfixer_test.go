@@ -35,7 +35,7 @@ func newFixPlanFixture(t *testing.T, findings []string) (*recoverFixture, webste
 	fx.Git.dirtyPaths = []string{"dirty-before.txt"}
 	if len(findings) > 0 {
 		conflict := &websterengine.PlanConflictError{Batch: 2, Cause: websterengine.ConflictCauseTreeMoved, Findings: findings}
-		if err := websterengine.WriteConflictRecord(fx.Deps.Geom.ConflictDir(), conflict); err != nil {
+		if err := websterengine.WriteConflictRecord(fx.Deps.Geom.ScratchDir, conflict); err != nil {
 			t.Fatalf("WriteConflictRecord() = %v", err)
 		}
 	}
@@ -179,9 +179,6 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 		if spec.Role != "plan-fixer" || spec.ModelChoice.Model != "master-model" || !slices.Equal(spec.OutputFiles, []string{replyPath}) {
 			t.Errorf("spec role %q, model %q, output files %v; want plan-fixer, master-model, [%s]", spec.Role, spec.ModelChoice.Model, spec.OutputFiles, replyPath)
 		}
-		if spec.PromptEngine != shuttlefake.EngineName {
-			t.Errorf("spec PromptEngine = %q; want %q, the engine the master choice resolves to", spec.PromptEngine, shuttlefake.EngineName)
-		}
 		wantSkills, err := shuttlefake.Agents(t).Skills(agentconfig.RoleWebster, nil)
 		if err != nil {
 			t.Fatalf("Skills(webster) error = %v", err)
@@ -189,7 +186,7 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 		if spec.ConfigRole != agentconfig.RoleWebster || !slices.Equal(spec.Skills, wantSkills) {
 			t.Errorf("spec config role %q, skills %v; want %q and its agents.yaml skills %v", spec.ConfigRole, spec.Skills, agentconfig.RoleWebster, wantSkills)
 		}
-		for _, want := range []string{websterengine.ConflictRecordPath(deps.Geom.ConflictDir()), replyPath, deps.Geom.SpecsDir + "/loom/loom-plan-spec.md", "ly:orch"} {
+		for _, want := range []string{websterengine.ConflictRecordPath(deps.Geom.ScratchDir), replyPath, deps.Geom.SpecsDir + "/loom/loom-plan-spec.md", "ly:orch"} {
 			if !strings.Contains(fx.Engine.LastPrompt, want) {
 				t.Errorf("prompt lacks %q", want)
 			}

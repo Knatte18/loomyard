@@ -153,8 +153,7 @@ func TestCoveredKeys(t *testing.T) {
 }
 
 // TestCoveredFuncs pins that a profile's covered blocks of the package come back as their functions, sorted, each once.
-// The package's blocks come from ProfileByPackage, which leaves a block of a package nested below to that package.
-// An uncovered block's function is left out,
+// An uncovered block's function and a block of a package nested below are left out,
 // and a second profile read through the same index is named from the same files.
 func TestCoveredFuncs(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -168,19 +167,14 @@ func TestCoveredFuncs(t *testing.T) {
 		return testcover.ProfileBlock{File: file, StartLine: startLine, StartCol: startCol, EndLine: endLine, EndCol: endCol, Statements: 1, Count: count}
 	}
 	index := testcover.NewFuncIndex(dir, "m/p")
-	nested := block("m/p/sub/s.go", 1, 1, 1, 2, 1)
-	groups := testcover.ProfileByPackage([]testcover.ProfileBlock{
+	got, err := index.CoveredFuncs([]testcover.ProfileBlock{
 		block("m/p/p.go", 21, 9, 21, 10, 1),
 		block("m/p/p.go", 15, 7, 17, 3, 1),
 		block("m/p/p.go", 12, 7, 14, 3, 1),
 		block("m/p/p.go", 7, 22, 9, 2, 0),
 		block("m/p/p.go", 3, 21, 5, 2, 1),
-		nested,
+		block("m/p/sub/s.go", 1, 1, 1, 2, 1),
 	})
-	if want := []testcover.ProfileBlock{nested}; !reflect.DeepEqual(groups["m/p/sub"], want) {
-		t.Errorf("ProfileByPackage()[m/p/sub] = %+v; want %+v", groups["m/p/sub"], want)
-	}
-	got, err := index.CoveredFuncs(groups["m/p"])
 	if err != nil {
 		t.Fatal(err)
 	}

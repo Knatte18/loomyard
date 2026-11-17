@@ -29,7 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planglyph"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/indexkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -562,7 +561,7 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 				if err != nil {
 					t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
 				}
-				state := &websterengine.State{RunGUID: "run-guid", State: runplan.State{PlanFingerprint: fingerprint, Batches: map[int]*websterengine.BatchState{}}}
+				state := &websterengine.State{RunGUID: "run-guid", PlanFingerprint: fingerprint, Batches: map[int]*websterengine.BatchState{}}
 				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
 					t.Fatalf("SaveState: %v", err)
 				}
@@ -597,11 +596,9 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 				t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
 			}
 			state := &websterengine.State{
-				RunGUID: "run-guid",
-				State: runplan.State{
-					PlanFingerprint: fingerprint,
-					Batches:         map[int]*websterengine.BatchState{1: tc.batch},
-				},
+				RunGUID:         "run-guid",
+				PlanFingerprint: fingerprint,
+				Batches:         map[int]*websterengine.BatchState{1: tc.batch},
 			}
 			if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
 				t.Fatalf("SaveState: %v", err)
@@ -698,8 +695,8 @@ func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
 	// The recorded fingerprint matches the unedited plan: validate refuses a plan edited since the run recorded it,
 	// so the restamp only ever covers an unedited plan.
 	state := &websterengine.State{
-		RunGUID: "run-guid",
-		State:   runplan.State{PlanFingerprint: realFingerprint},
+		RunGUID:         "run-guid",
+		PlanFingerprint: realFingerprint,
 	}
 	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
 		t.Fatalf("SaveState: %v", err)
@@ -764,7 +761,7 @@ func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 				c.batcher = identity
 				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, &websterengine.State{
 					RunGUID: "run-guid",
-					State:   runplan.State{Batches: map[int]*websterengine.BatchState{}},
+					Batches: map[int]*websterengine.BatchState{},
 				}); err != nil {
 					t.Fatalf("SaveState: %v", err)
 				}
@@ -860,13 +857,11 @@ func TestStatusCmd(t *testing.T) {
 		{
 			name: "lists every batch with its kind, terminality and digest",
 			state: &websterengine.State{
-				RunGUID: "guid-1",
-				State: runplan.State{
-					PlanFingerprint: "fp-1",
-					Batches: map[int]*websterengine.BatchState{
-						1: {Slug: "first", Kind: "fork", Status: "done", Terminal: true, Digest: &fakeDigest},
-						2: {Slug: "second", Kind: "recovery", Status: "", Terminal: false},
-					},
+				RunGUID:         "guid-1",
+				PlanFingerprint: "fp-1",
+				Batches: map[int]*websterengine.BatchState{
+					1: {Slug: "first", Kind: "fork", Status: "done", Terminal: true, Digest: &fakeDigest},
+					2: {Slug: "second", Kind: "recovery", Status: "", Terminal: false},
 				},
 			},
 			wantIn: []string{
@@ -882,9 +877,9 @@ func TestStatusCmd(t *testing.T) {
 			name: "a failed git read under a dead recovery gives recovery_retry false and keeps the count",
 			state: &websterengine.State{
 				RunGUID: "guid-2",
-				State: runplan.State{Batches: map[int]*websterengine.BatchState{
+				Batches: map[int]*websterengine.BatchState{
 					1: {Slug: "only", Kind: "recovery", Status: websterengine.DigestStatusDead, Terminal: true, Recoveries: 1, RecoveryStartSHA: "0123456789abcdef0123456789abcdef01234567"},
-				}},
+				},
 			},
 			wantIn: []string{`"recoveries":1`, `"recovery_retry":false`},
 		},
@@ -892,9 +887,9 @@ func TestStatusCmd(t *testing.T) {
 			name: "a dead recovery a batch-start reset cleared gives recovery_retry true",
 			state: &websterengine.State{
 				RunGUID: "guid-3",
-				State: runplan.State{Batches: map[int]*websterengine.BatchState{
+				Batches: map[int]*websterengine.BatchState{
 					1: {Slug: "only", Kind: "recovery", Status: websterengine.DigestStatusDead, Terminal: true},
-				}},
+				},
 			},
 			wantIn: []string{`"recoveries":0`, `"recovery_retry":true`},
 		},
@@ -1032,7 +1027,7 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 	t.Run("unchanged fingerprint writes nothing", func(t *testing.T) {
 		t.Parallel()
 		geom := newGeom(t)
-		st := &websterengine.State{RunGUID: "g1", State: runplan.State{PlanFingerprint: "same"}}
+		st := &websterengine.State{RunGUID: "g1", PlanFingerprint: "same"}
 
 		if err := persistPlanFingerprintRebaseline(geom, st, "same"); err != nil {
 			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
@@ -1049,10 +1044,10 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 	t.Run("changed fingerprint is persisted", func(t *testing.T) {
 		t.Parallel()
 		geom := newGeom(t)
-		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, &websterengine.State{RunGUID: "g2", State: runplan.State{PlanFingerprint: "before the rewrite"}}); err != nil {
+		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, &websterengine.State{RunGUID: "g2", PlanFingerprint: "before the rewrite"}); err != nil {
 			t.Fatalf("seed SaveState() error = %v", err)
 		}
-		st := &websterengine.State{RunGUID: "g2", State: runplan.State{PlanFingerprint: "after the rewrite"}}
+		st := &websterengine.State{RunGUID: "g2", PlanFingerprint: "after the rewrite"}
 
 		if err := persistPlanFingerprintRebaseline(geom, st, "before the rewrite"); err != nil {
 			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
@@ -1076,18 +1071,16 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 	t.Run("only the fingerprint is persisted, never the caller's other mutations", func(t *testing.T) {
 		t.Parallel()
 		geom := newGeom(t)
-		onDisk := &websterengine.State{RunGUID: "g3", State: runplan.State{PlanFingerprint: "before the rewrite"}}
+		onDisk := &websterengine.State{RunGUID: "g3", PlanFingerprint: "before the rewrite"}
 		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, onDisk); err != nil {
 			t.Fatalf("seed SaveState() error = %v", err)
 		}
 		st := &websterengine.State{
-			RunGUID: "g3",
-			State: runplan.State{
-				PlanFingerprint:       "after the rewrite",
-				PlanFileHashes:        map[string]string{"00-overview.md": "overview-hash"},
-				PlanOverviewFrameHash: "frame-hash",
-			},
-			SeenForkTranscripts: []string{"/transcripts/fork-a.jsonl"},
+			RunGUID:               "g3",
+			PlanFingerprint:       "after the rewrite",
+			PlanFileHashes:        map[string]string{"00-overview.md": "overview-hash"},
+			PlanOverviewFrameHash: "frame-hash",
+			SeenForkTranscripts:   []string{"/transcripts/fork-a.jsonl"},
 		}
 
 		if err := persistPlanFingerprintRebaseline(geom, st, "before the rewrite"); err != nil {
@@ -1211,11 +1204,9 @@ func TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending(t *testi
 	})
 
 	state := &websterengine.State{
-		RunGUID: "run-guid",
-		State: runplan.State{
-			PlanFingerprint: testPlanFingerprint(t, c.geom.PlanDir),
-			Batches:         map[int]*websterengine.BatchState{1: {Slug: "first", Kind: "fork"}},
-		},
+		RunGUID:         "run-guid",
+		PlanFingerprint: testPlanFingerprint(t, c.geom.PlanDir),
+		Batches:         map[int]*websterengine.BatchState{1: {Slug: "first", Kind: "fork"}},
 	}
 	if err := websterengine.RestampPlanBaseline(state, c.geom.PlanDir, c.geom.WebsterDir); err != nil {
 		t.Fatalf("RestampPlanBaseline() error = %v", err)

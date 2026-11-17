@@ -304,21 +304,8 @@ func finalizeEnteredRead(l *lymcwd.Location, slug, how string) (bool, error) {
 	return found && (status.State == "done" || status.names(landRow, worktreeTeardownRow)), nil
 }
 
-// The ref prefixes a branch is read under: the local branch, and origin's remote-tracking branch.
-const (
-	localParentRefPrefix = "refs/heads/"
-	originRefPrefix      = "refs/remotes/" + originRemoteName + "/"
-)
-
 // parentHoldsTaskWork reports whether the pair's local parent branch already holds the work of the pair's task branch.
 func parentHoldsTaskWork(l, pairLocation *lymcwd.Location, slug string) (bool, error) {
-	return parentHoldsTaskWorkAt(l, pairLocation, slug, localParentRefPrefix)
-}
-
-// parentHoldsTaskWorkAt reports whether the pair's parent branch holds the work of the pair's task branch.
-// The parent branch is read under refPrefix.
-// A parent branch with no ref under originRefPrefix reads false.
-func parentHoldsTaskWorkAt(l, pairLocation *lymcwd.Location, slug, refPrefix string) (bool, error) {
 	origin, found, err := ReadOriginFor(l, slug)
 	if err != nil {
 		return false, err
@@ -334,15 +321,7 @@ func parentHoldsTaskWorkAt(l, pairLocation *lymcwd.Location, slug, refPrefix str
 	if err != nil {
 		return false, err
 	}
-	parentRef := refPrefix + origin.ParentBranch
-	if refPrefix == originRefPrefix {
-		if _, err := pair.code.RefSHA(parentRef); errors.Is(err, gitrepo.ErrRefNotFound) {
-			return false, nil
-		} else if err != nil {
-			return false, err
-		}
-	}
-	return pair.HoldsWork(parentRef, taskHead)
+	return pair.HoldsWork("refs/heads/"+origin.ParentBranch, taskHead)
 }
 
 // ParentHoldsTaskWork reports whether the pair's local parent branch already holds the work of the pair's task branch.

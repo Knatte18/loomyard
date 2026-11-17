@@ -1,8 +1,7 @@
 // Package pullrequest holds a run's pull request: its record on disk and the GitHub calls on it.
 //
 // Record is the run's one JSON file about its pull request.
-// It lives in the run's records directory, tracked with the run's other records.
-// So it reaches another machine with the pair's push.
+// It lives in the run's scratch directory, so it is never tracked and goes with the pair.
 // It holds the pull request's number, URL, and base and head branches.
 // It also holds the head the PR-Review row last gated and pushed and the head whose gate failure was mailed.
 // It holds the interactive session's strand and session identity and engine, and the operator's continue flag.

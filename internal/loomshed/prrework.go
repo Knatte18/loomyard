@@ -3,7 +3,7 @@
 //
 // The round layout is declared once here, by the constants below:
 // round-<N>/ holds record.json and prior-generation/,
-// and prior-generation/ holds plan/, webster/, weaver/ and reviews/<run_subdir>/.
+// and prior-generation/ holds plan/, webster/ and reviews/<run_subdir>/.
 
 package loomshed
 
@@ -19,11 +19,9 @@ const (
 	reworkRoundPrefix = "round-"
 	reworkRecordFile  = "record.json"
 
-	// reworkPriorDir holds a round's archived generation: its plan, the implementers' run records and its reviews.
+	// reworkPriorDir holds a round's archived generation: its plan, webster's run record and its reviews.
 	reworkPriorDir     = "prior-generation"
 	reworkPriorWebster = "webster"
-	// ReworkPriorWeaver is the slot of a round's archived weaver run record, beside webster's.
-	ReworkPriorWeaver = "weaver"
 
 	// ReworkClassExempt and ReworkClassRequired are the two values of a round record's class field.
 	ReworkClassExempt   = "exempt"
@@ -31,7 +29,7 @@ const (
 )
 
 // PRReworkDeps carries the paths and seams a PR-Rework round needs to read its earlier rounds.
-// It also carries the seam that archives the implementers' run records.
+// It also carries the seam that archives webster's run record.
 type PRReworkDeps struct {
 	// PlanDir is the absolute plan directory.
 	PlanDir string
@@ -45,8 +43,7 @@ type PRReworkDeps struct {
 	AmendmentPath string
 	// ReadCommitted returns an anchor-relative file as committed at HEAD; found is false when HEAD has no such file.
 	ReadCommitted func(anchorRel string) ([]byte, bool, error)
-	// ArchiveWebster moves webster's durable run record into dest and weaver's into the weaver slot beside it,
-	// so the next run of either implementer starts fresh.
+	// ArchiveWebster moves webster's durable run record into dest, so the next webster run starts fresh.
 	ArchiveWebster func(dest string) error
 }
 

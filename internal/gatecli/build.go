@@ -51,7 +51,7 @@ func (e *execution) runBuild(run tierRun, env []string) (result tierResult, ok b
 	cmd.Stdout = io.MultiWriter(e.out, &logBuffer)
 	cmd.Stderr = io.MultiWriter(e.out, &logBuffer)
 	logger.Info("gate test: spawning the build", "before", tierName(run.number), "dir", dir, "command", step.Command)
-	_, runErr := runTiedChild(cmd, e.request.pipeWaitDelay, 0, nil)
+	runErr := runTiedChild(cmd, e.request.pipeWaitDelay, nil)
 	exit := exitCodeOf(runErr)
 	logger.Info("gate test: the build ended", "before", tierName(run.number), "exit", exit, "error", runErr)
 	if cmd.Process == nil && e.ctx.Err() == nil {

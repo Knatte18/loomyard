@@ -1194,9 +1194,6 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if got, want := fx.Deps.State.Batches[1].RecoveryEngines, map[string]string{"fake-session": shuttlefake.EngineName}; !maps.Equal(got, want) {
 					t.Errorf("recovery BatchState.RecoveryEngines = %v; want %v, the spawned run's engine under its session id", got, want)
 				}
-				if got := fx.Engine.LastSpec.PromptEngine; got != shuttlefake.EngineName {
-					t.Errorf("recovery spec PromptEngine = %q; want %q, the engine the recovery choice resolves to", got, shuttlefake.EngineName)
-				}
 				if got := fx.Engine.LastSpec.Requires; len(got) != 0 {
 					t.Errorf("recovery spec Requires = %v; want none", got)
 				}

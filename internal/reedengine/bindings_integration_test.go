@@ -53,9 +53,8 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 	}
 	recordPath := filepath.Join(t.TempDir(), "recorded-args")
 	scriptPath := filepath.Join(scriptDir, "lym-recorder")
-	// The bar's state jobs also run this script, as `slack bar`, at every redraw.
-	// It records nothing for those.
-	script := "#!/bin/sh\ncase \"$1\" in slack|orch) exit 0;; esac\nprintf '%s\\n' \"$@\" > " + recordPath + "\n"
+	// The bar's Slack state job also runs this script, as `slack bar`, at every redraw; it records nothing for that.
+	script := "#!/bin/sh\n[ \"$1\" = slack ] && exit 0\nprintf '%s\\n' \"$@\" > " + recordPath + "\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write recorder script: %v", err)
 	}
@@ -159,7 +158,7 @@ func (f *bindingsFixture) assertFollow(t *testing.T, want string) {
 func (f *bindingsFixture) awaitRecord(t *testing.T) []string {
 	t.Helper()
 	var args []string
-	waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
+	waitUntil(t, 5*time.Second, "the recorder never finished writing", func() bool {
 		raw, err := os.ReadFile(f.recordPath)
 		args = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 		return err == nil && len(args) == 8
@@ -390,7 +389,7 @@ func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) 
 			return err == nil
 		})
 		var args []string
-		waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
+		waitUntil(t, 5*time.Second, "the recorder never finished writing", func() bool {
 			raw, err := os.ReadFile(f.recordPath)
 			args = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 			return err == nil && len(args) == 9
@@ -459,7 +458,7 @@ func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
 	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
 	f.click(t, 2, "HALT")
 	var lines []string
-	waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
+	waitUntil(t, 5*time.Second, "the recorder never finished writing", func() bool {
 		raw, err := os.ReadFile(recordPath)
 		lines = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 		return err == nil && len(lines) >= 14

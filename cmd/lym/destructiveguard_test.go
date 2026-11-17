@@ -96,8 +96,6 @@ var destructiveGuardAllowlist = []scankit.Entry{
 		"same function created moments earlier"},
 	{Key: "internal/fabricengine/resetsubpathcheck.go", Why: "checkSubpathBeforeReset's os.RemoveAll(stageDir) removes the throwaway staging directory the " +
 		"same function created moments earlier"},
-	{Key: "internal/fabricengine/worktreetree.go", Why: "WorktreeTreeID's os.RemoveAll(dir) removes the throwaway index directory the " +
-		"same function created moments earlier, never operator content"},
 	{Key: "internal/fabricengine/index.go", Why: "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
 		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch"},
 	{Key: "internal/fabricengine/mergestate.go", Why: "deleteMergeState's os.Remove(path) deletes fabric's own merge-state record inside the " +

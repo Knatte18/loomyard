@@ -1,5 +1,4 @@
-// editdirective.go implements Directive.
-// Directive reads the launch engine's copy of the edit directive an opening stencil carries.
+// editdirective.go implements Directive and EngineDirective, which read the edit directive an opening stencil carries.
 
 package editdirective
 
@@ -14,14 +13,27 @@ import (
 // MarkerName is the stencil marker name every opening stencil carries for the rendered directive.
 const MarkerName = "edit_directive"
 
+// directiveStencil is the name of the marker-free stencil that holds the shared edit directive.
+const directiveStencil = "edit-directive"
+
+// Directive returns the edit directive text read from stencilsDir, without its leading banner and trailing newlines.
+// It returns ("", err) when the stencil read fails; the error names the stencil.
+func Directive(stencilsDir string) (string, error) {
+	return read(stencilsDir, directiveStencil)
+}
+
 // EngineBlock is the name of the engine block that states the edit directive in one engine's own tool wording.
+// It is read for a seat that runs on an engine whose tools differ from the shared directive's.
 const EngineBlock = "edit-directive"
 
-// Directive returns engine's copy of the edit directive read from stencilsDir, for a prompt that launches on engine.
+// EngineDirective returns engine's copy of the edit directive read from stencilsDir.
 // The text has no leading banner and no trailing newlines.
 // It returns ("", err) when the engine has no copy or the read fails; the error names the block's stencil.
-func Directive(stencilsDir, engine string) (string, error) {
-	name := stencilstore.EngineBlockName(engine, EngineBlock)
+func EngineDirective(stencilsDir, engine string) (string, error) {
+	return read(stencilsDir, stencilstore.EngineBlockName(engine, EngineBlock))
+}
+
+func read(stencilsDir, name string) (string, error) {
 	content, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {
 		return "", fmt.Errorf("editdirective: %w", err)

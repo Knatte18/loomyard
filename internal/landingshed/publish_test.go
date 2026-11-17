@@ -34,23 +34,10 @@ func (r *recordingResolver) Resolve(ctx context.Context, source, tip string) (me
 	return r.result, r.err
 }
 
-// commitRecorder is a fake CommitRecord seam that counts its calls and fails with err when err is set.
-type commitRecorder struct {
-	calls int
-	err   error
-}
-
-// commit is the CommitRecord seam.
-func (c *commitRecorder) commit() error {
-	c.calls++
-	return c.err
-}
-
 // newTestDeps is the one Deps builder that the Merge-In and Finalize tests share.
 // It lists a base branch that requires a pull request,
 // and it writes a well-formed final-summary artifact at DescriptionPath, which Finalize parses on entry.
-// Its ScratchDir and RecordsDir lie apart under t.TempDir().
-// Its PullRequest.CommitRecord is a recording fake that succeeds.
+// Its ScratchDir lies under t.TempDir().
 // Its parent lock seams are a temporary store and tip reads that match a written merge record,
 // so the lock-taking rows find the parent unmoved.
 // A test that needs a different variant mutates the returned value.
@@ -63,10 +50,6 @@ func newTestDeps(t *testing.T) Deps {
 	if err := WriteMergeRecord(recordPath, MergeRecord{ParentBranch: "main", MergedTip: testParentTip}); err != nil {
 		t.Fatalf("write merge record: %v", err)
 	}
-	recordsDir := filepath.Join(t.TempDir(), "records")
-	if err := os.MkdirAll(recordsDir, 0o755); err != nil {
-		t.Fatalf("create records directory: %v", err)
-	}
 	owner := parentlock.Owner{Slug: "me", Pair: "/p/me", RunID: "r1", PID: 222, StartTime: "t2"}
 	return Deps{
 		GateKey:         "finalize",
@@ -76,7 +59,6 @@ func newTestDeps(t *testing.T) Deps {
 		DescriptionPath: summaryPath,
 		StencilsDir:     t.TempDir(),
 		ScratchDir:      scratchDir,
-		RecordsDir:      recordsDir,
 		Config: Config{
 			DeployBranches:     []string{"main"},
 			Squash:             true,
@@ -99,7 +81,6 @@ func newTestDeps(t *testing.T) Deps {
 		HoldsWork:       func(string, string) (bool, error) { return false, nil },
 		TaskHead:        func() (string, error) { return "task-head", nil },
 		MergeRecordPath: recordPath,
-		PullRequest:     PullRequestDeps{CommitRecord: (&commitRecorder{}).commit},
 	}
 }
 

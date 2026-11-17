@@ -23,7 +23,6 @@ var treeSitterAllowedLinks = []scankit.Entry{
 	{Key: "cmd/lym", Why: "mounts every CLI, including the ones that link planglyph"},
 	{Key: "internal/websterengine", Why: "its tests drive the real index through the seam"},
 	{Key: "internal/loomshed", Why: "its gate tests assert resolve-backed findings through planglyph.NewIndex"},
-	{Key: "internal/shuttleparity", Why: "its producer parity test renders the loom driver prompt through loomcli"},
 	{Key: "internal/failuretrace", Why: "traces a failed verify through planglyph's EncloseAt"},
 }
 

@@ -1,6 +1,6 @@
 // rollout.go reads the rollout that records a Codex session's turns, which every hook payload names in transcript_path.
 // It answers whether a turn was interrupted, which ends a turn with no Stop hook.
-// It answers how many tokens the session's context holds, from the whole rollout or from a tail of it.
+// It answers how many tokens the session's context holds.
 
 package codexengine
 
@@ -52,23 +52,6 @@ func readRolloutEvents(path string) ([]rolloutEvent, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseRolloutEvents(data), nil
-}
-
-// latestContext returns the context size the newest token_count event of events records.
-// That size is the latest model call's total tokens.
-// Events holding no such event read unknown.
-func latestContext(events []rolloutEvent) shuttleengine.ContextReading {
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].kind == eventTokenCount && events[i].hasContext {
-			return shuttleengine.ContextReading{Tokens: events[i].context, Known: true}
-		}
-	}
-	return shuttleengine.ContextReading{}
-}
-
-// parseRolloutEvents returns the event_msg lines of rollout text data, in order, skipping lines it cannot parse.
-func parseRolloutEvents(data []byte) []rolloutEvent {
 	var events []rolloutEvent
 	for _, line := range strings.Split(string(data), "\n") {
 		var parsed struct {
@@ -102,7 +85,7 @@ func parseRolloutEvents(data []byte) []rolloutEvent {
 		}
 		events = append(events, event)
 	}
-	return events
+	return events, nil
 }
 
 // payloadField returns the string at key in the hook payload raw, or "" when raw does not parse or key is not a string.
@@ -162,7 +145,12 @@ func (c *Codex) ContextTokens(turnEnd shuttleengine.Event) shuttleengine.Context
 	if err != nil {
 		return shuttleengine.ContextReading{}
 	}
-	return latestContext(events)
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].kind == eventTokenCount && events[i].hasContext {
+			return shuttleengine.ContextReading{Tokens: events[i].context, Known: true}
+		}
+	}
+	return shuttleengine.ContextReading{}
 }
 
 // CompactedSince finds no compaction boundary: this package reads no Codex compaction from a rollout.

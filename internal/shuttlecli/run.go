@@ -152,17 +152,15 @@ advisor tool; codex refuses it.`,
 				choice = resolved
 			}
 
-			// The text is the operator's own, rendered for no engine, so it is marked hand-written in place of a prompt engine.
 			spec := shuttleengine.Spec{
-				Prompt:            promptText,
-				HandWrittenPrompt: true,
-				OutputFiles:       outputFiles,
-				ModelChoice:       choice,
-				Advisor:           advisor,
-				Interactive:       interactive,
-				Role:              role,
-				Round:             round,
-				Parent:            parent,
+				Prompt:      promptText,
+				OutputFiles: outputFiles,
+				ModelChoice: choice,
+				Advisor:     advisor,
+				Interactive: interactive,
+				Role:        role,
+				Round:       round,
+				Parent:      parent,
 				Display: render.Display{
 					Anchor:     render.Anchor(anchor),
 					Focus:      focus,

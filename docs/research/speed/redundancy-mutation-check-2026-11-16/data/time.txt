@@ -1,7 +1,0 @@
-57.22 s wall, 124.00 user, 23.29 sys, 602780 kB
-loomcli testmap 55.22 s wall, 118.86 user, 21.61 sys, 603016 kB
-hubreconcile 242.27 s wall, 416.12 user, 287.07 sys, 595592 kB
-loomrecipe 22.84 s wall, 78.32 user, 30.68 sys, 450624 kB
-orchcli 11.12 s wall, 22.70 user, 16.85 sys, 585788 kB
-gitkit 3.17 s wall, 3.93 user, 1.29 sys, 591832 kB
-loomcli 517.94 s wall, 190.55 user, 102.82 sys, 586792 kB

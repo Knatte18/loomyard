@@ -37,7 +37,6 @@ The second decision.
 `))
 
 // validProposal returns a proposal of parts that passes every check against the fixture decision record and board.
-// The second part's label mod-b is one the Sketch does not carry.
 func validProposal() Proposal {
 	return Proposal{
 		Sketch:       "sketch-x",
@@ -45,13 +44,13 @@ func validProposal() Proposal {
 		BoardChecked: []BoardCheck{{Slug: "other-open", Revised: "2026-11-01T10:00:00Z"}},
 		Parts: []Part{
 			{
-				Slug: "part-a", Title: "Part A", Type: "feature", Labels: []string{"mod-a"}, Recipe: RecipeTapestry, Profile: "standard",
+				Slug: "part-a", Title: "Part A", Type: "feature", Recipe: RecipeTapestry, Profile: "standard",
 				Decisions: []string{"D1"}, Packages: []Package{{Path: "internal/a", Size: 10}},
 				OpenRisks: []string{"Risk one"}, Criteria: []string{"D1: first holds."}, PatternChanges: []string{"PATTERN-a"},
 				CostLine: "one tapestry part",
 			},
 			{
-				Slug: "part-b", Title: "Part B", Type: "feature", Labels: []string{"mod-b"}, Recipe: RecipeTapestry, Profile: "standard",
+				Slug: "part-b", Title: "Part B", Type: "feature", Recipe: RecipeTapestry, Profile: "standard",
 				Decisions: []string{"D2"}, Packages: []Package{{Path: "internal/b", Size: 10}}, DependsOn: []string{"part-a"},
 				OpenRisks: []string{"Risk two"}, Criteria: []string{"D2: second holds."}, PatternChanges: []string{"PATTERN-b"},
 				CostLine: "one tapestry part",
@@ -72,10 +71,9 @@ func validBoard() BoardContext {
 			{Slug: "sketch-x", Kind: KindTask, Labels: []string{"mod-a", "sketch"}, Open: true, Revised: "2026-11-01T09:00:00Z"},
 			{Slug: "other-open", Kind: KindTask, Labels: []string{"mod-z"}, Open: true, Revised: "2026-11-01T10:00:00Z"},
 		},
-		TypeLabels:      []string{"feature", "fix", "sketch"},
-		LabelVocabulary: []string{"mod-a", "mod-b", "mod-z"},
-		Profiles:        map[string][]string{RecipeTapestry: {"standard"}, RecipeDarn: {"quick"}},
-		LivePattern:     func(id string) bool { return id == "PATTERN-live" },
+		TypeLabels:  []string{"feature", "fix", "sketch"},
+		Profiles:    map[string][]string{RecipeTapestry: {"standard"}, RecipeDarn: {"quick"}},
+		LivePattern: func(id string) bool { return id == "PATTERN-live" },
 	}
 }
 

@@ -1064,8 +1064,8 @@ func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hu
 		t.Fatalf("OpenHub: %v", openErr)
 	}
 	task, found, getErr := board.GetTask(slug)
-	if getErr != nil || !found || task.Status == nil || *task.Status != "starting · Worktree-Create" {
-		t.Errorf("board entry after the refused row = %+v, found %v, err %v; want status %q", task, found, getErr, "starting · Worktree-Create")
+	if getErr != nil || !found || task.Status == nil || *task.Status != "running · Worktree-Create" {
+		t.Errorf("board entry after the refused row = %+v, found %v, err %v; want status %q", task, found, getErr, "running · Worktree-Create")
 	}
 	var precondition *battenshed.PreconditionError
 	if !errors.As(err, &precondition) {

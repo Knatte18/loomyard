@@ -74,8 +74,9 @@ The recipe files are data, in [`contracts/recipes/`](contracts/recipes/).
 - **Mechanical gates.** Tests run in tiers, from fast to slow, and only for the code a change reaches.
   A project with numerical output can add a regression gate that compares against a baseline taken before the change.
   The gates support Go and .NET projects today.
-  For Go, `lym gate test --map` builds per-package coverage maps on command,
-  and `lym gate redundant` lists from them the tests of a package that other tests already cover, confirmed by mutation.
+  For Go, a gate with the coverage scope selects tests from per-package coverage maps, so a change runs the tests that reach it,
+  including those of packages that import the changed code.
+  `lym gate redundant` lists the tests of a package that other tests already cover.
 - **Lens reviews in forks.** Writers and reviewers alike hand each lens, a focus such as missing tests, to a forked subagent.
   A fork inherits its parent's context and prompt cache, so it starts without re-reading what the parent read,
   and a lens costs far less than a new review.

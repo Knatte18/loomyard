@@ -135,9 +135,6 @@ type ArbiterOutcome struct {
 	Verdict string
 	// Role is the role name the stop report's attempt line quotes.
 	Role string
-	// Commits lists the commits the arbiter made on the task branch, each a short SHA and its subject.
-	// It is empty when the arbiter made none.
-	Commits []string
 }
 
 // HandOverSeam hands the run to a fresh driver of a newer build.
@@ -574,7 +571,7 @@ func (d *goDriver) arbitrate(ctx context.Context, stop Stop, caseBriefPath strin
 	if outcome.AttemptDir != before {
 		d.settle(stop, shedrun.SettlerArbiter, shedrun.SettleSpawn, "arbiter spawned", fmt.Sprintf("attempt-%d", outcome.Attempt))
 	}
-	d.attempts = append(d.attempts, driveAttemptNote{Role: outcome.Role, Number: outcome.Attempt, Verdict: outcome.Verdict, Cause: outcome.Cause, VerdictPath: outcome.VerdictPath, Commits: outcome.Commits})
+	d.attempts = append(d.attempts, driveAttemptNote{Role: outcome.Role, Number: outcome.Attempt, Verdict: outcome.Verdict, Cause: outcome.Cause, VerdictPath: outcome.VerdictPath})
 
 	if moved, movedExit, err := d.recheckAfterVerdict(stop, reportPath, "arbiter"); err != nil || movedExit || moved.Key() != stop.Key() || moved.Restep {
 		if err != nil {
@@ -584,10 +581,7 @@ func (d *goDriver) arbitrate(ctx context.Context, stop Stop, caseBriefPath strin
 	}
 
 	if outcome.Resume {
-		d.appendSettle(SettleRecord{
-			StopKey: stop.Key(), Settler: shedrun.SettlerArbiter, Action: shedrun.SettleRestep, Outcome: "arbiter resume",
-			At: d.deps.Now(), Target: outcome.Goto, Commits: outcome.Commits,
-		})
+		d.settle(stop, shedrun.SettlerArbiter, shedrun.SettleRestep, "arbiter resume", outcome.Goto)
 		if stop.Key().State == string(shedengine.StateAwaiting) {
 			d.pendingNotice = &arbiterSettledNotice{stop: stop, verdictPath: outcome.VerdictPath}
 		}
@@ -903,15 +897,11 @@ func (d *goDriver) holdPause(ctx context.Context) error {
 	}
 }
 
-// settle appends one settle record for the action taken at stop.
+// settle appends one settle record for the action taken at stop; a failed append is logged and never stops the driver.
 func (d *goDriver) settle(stop Stop, settler, action, outcome, target string) {
-	d.appendSettle(SettleRecord{StopKey: stop.Key(), Settler: settler, Action: action, Outcome: outcome, At: d.deps.Now(), Target: target})
-}
-
-// appendSettle appends record to the run's settle records; a failed append is logged and never stops the driver.
-func (d *goDriver) appendSettle(record SettleRecord) {
+	record := SettleRecord{StopKey: stop.Key(), Settler: settler, Action: action, Outcome: outcome, At: d.deps.Now(), Target: target}
 	if err := AppendSettleRecord(d.deps.SettlePath, record); err != nil {
-		logger.Warn("sheddriver: drive: appending a settle record failed", "run", d.deps.RunID, "action", record.Action, "error", err)
+		logger.Warn("sheddriver: drive: appending a settle record failed", "run", d.deps.RunID, "action", action, "error", err)
 	}
 }
 

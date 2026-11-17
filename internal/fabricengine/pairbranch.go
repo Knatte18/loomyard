@@ -24,16 +24,10 @@ func pairBranchNames(cfg Config, slug string) []string {
 	return []string{cfg.BranchPrefix + slug, slug}
 }
 
-// slugOfBranch returns the slug a warp branch names.
-// A branch carrying the current prefix has it trimmed.
-// Any other branch has everything through its last "/" trimmed, since a slug holds no "/",
-// so a branch another machine made under its own prefix names the same slug there as here.
-// A branch with neither, such as one a pair made before the prefix was set carries, is returned unchanged.
+// slugOfBranch returns the slug a warp branch names, which is the branch with the current prefix trimmed.
+// A branch without the prefix, such as one a pair made before the prefix was set carries, is returned unchanged.
 func slugOfBranch(cfg Config, branch string) string {
-	if strings.HasPrefix(branch, cfg.BranchPrefix) {
-		return strings.TrimPrefix(branch, cfg.BranchPrefix)
-	}
-	return branch[strings.LastIndex(branch, "/")+1:]
+	return strings.TrimPrefix(branch, cfg.BranchPrefix)
 }
 
 // PairTaskBranch returns the task branch of slug's pair.
@@ -56,9 +50,7 @@ func (t *Topology) PairTaskBranch(l *lymcwd.Location, slug string) (string, erro
 // PairTaskBranchOrOrigin returns the task branch of slug's pair, read locally first.
 // When nothing local names the pair, it returns the first of the pair's names whose task branch origin holds.
 // Failing that, it returns the first whose records branch the weft origin holds.
-// Failing that, it returns the one origin branch another machine's prefix names for the slug.
-// originOtherPrefixBranch says how that branch is read.
-// It returns the current prefix's name when origin holds none.
+// It returns the current prefix's name when origin holds neither.
 // It asks origin only when nothing local names the pair, so a pair the local read names makes no network call.
 // A repository with no origin remote is not asked, and a failed lookup on a configured origin is returned.
 func (t *Topology) PairTaskBranchOrOrigin(l *lymcwd.Location, slug string) (string, error) {
@@ -140,29 +132,18 @@ func worktreeBranchAt(repoDir, target string) (string, error) {
 }
 
 // originTaskBranch returns the first of slug's pair names whose task branch origin holds.
-// Failing that, it returns the branch another machine's prefix names, as originOtherPrefixBranch reads it.
 // It returns "" when origin holds none.
 // A repository with no origin remote gives "", and a failed lookup on a configured origin is returned.
 func (t *Topology) originTaskBranch(l *lymcwd.Location, slug string) (string, error) {
-	found, err := t.originTaskBranchByName(l, slug)
-	if err != nil || found != "" {
-		return found, err
-	}
-	return t.originOtherPrefixBranch(l, slug)
-}
-
-// originTaskBranchByName returns the first of slug's pair names whose task branch origin holds, or "" when none.
-func (t *Topology) originTaskBranchByName(l *lymcwd.Location, slug string) (string, error) {
 	return firstOnOrigin(l.WorktreePath(), pairBranchNames(t.cfg, slug), func(name string) string { return name })
 }
 
 // originPairBranch returns the first of slug's pair names whose task branch origin holds.
 // Failing that, it returns the first name whose records branch the weft origin holds.
-// Failing that, it returns the branch another machine's prefix names, as originOtherPrefixBranch reads it.
-// It returns "" when none holds.
+// It returns "" when neither holds.
 // A repository with no origin remote is not asked, and a failed lookup on a configured origin is returned.
 func (t *Topology) originPairBranch(l *lymcwd.Location, slug string) (string, error) {
-	found, err := t.originTaskBranchByName(l, slug)
+	found, err := t.originTaskBranch(l, slug)
 	if err != nil || found != "" {
 		return found, err
 	}
@@ -170,60 +151,7 @@ func (t *Topology) originPairBranch(l *lymcwd.Location, slug string) (string, er
 	if err != nil {
 		return "", fmt.Errorf("resolve weft repo root: %w", err)
 	}
-	found, err = firstOnOrigin(weftRoot, pairBranchNames(t.cfg, slug), RecordsBranchName)
-	if err != nil || found != "" {
-		return found, err
-	}
-	return t.originOtherPrefixBranch(l, slug)
-}
-
-// originOtherPrefixBranch returns the warp branch of slug's pair that another machine's prefix names.
-// It is the one origin branch named "<prefix><slug>" for a prefix other than the current one.
-// Its records branch must be on the weft origin too, so an unrelated branch ending in the slug is not taken.
-// A slug holds no "/", so the branch ends in "/" and the slug with no ambiguity about where the prefix stops.
-// It returns "" when no branch matches, or when either repository has no origin remote.
-// More than one match is an error naming every candidate.
-func (t *Topology) originOtherPrefixBranch(l *lymcwd.Location, slug string) (string, error) {
-	repoDir := l.WorktreePath()
-	if _, err := gitrepo.New(repoDir).RemoteURL(originRemoteName); err != nil {
-		return "", nil
-	}
-	weftRoot, err := RecordsRepoRoot(l)
-	if err != nil {
-		return "", fmt.Errorf("resolve weft repo root: %w", err)
-	}
-	if _, err := gitrepo.New(weftRoot).RemoteURL(originRemoteName); err != nil {
-		return "", nil
-	}
-	warpTips, err := remoteBranchTips(repoDir)
-	if err != nil {
-		return "", err
-	}
-	var matches []string
-	for branch := range warpTips {
-		if strings.HasSuffix(branch, "/"+slug) {
-			matches = append(matches, branch)
-		}
-	}
-	if len(matches) == 0 {
-		return "", nil
-	}
-	weftTips, err := remoteBranchTips(weftRoot)
-	if err != nil {
-		return "", err
-	}
-	matches = slices.DeleteFunc(matches, func(branch string) bool {
-		_, held := weftTips[RecordsBranchName(branch)]
-		return !held
-	})
-	slices.Sort(matches)
-	switch len(matches) {
-	case 0:
-		return "", nil
-	case 1:
-		return matches[0], nil
-	}
-	return "", fmt.Errorf("origin holds more than one pair of slug %q under other prefixes: %s", slug, strings.Join(matches, ", "))
+	return firstOnOrigin(weftRoot, pairBranchNames(t.cfg, slug), RecordsBranchName)
 }
 
 // firstOnOrigin returns the first of names whose branch, as branchOf maps it, exists on origin.

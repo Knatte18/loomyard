@@ -27,7 +27,7 @@ func resizedUnpinCount() int {
 // With no session-switch command and no follow jump, that is every binding argv but the Alt+z unbind.
 func bindKeyArgvCount() int {
 	count := 0
-	for _, argv := range bindingArgvs("", "", false, false, false, false) {
+	for _, argv := range bindingArgvs("", "", false, false, false) {
 		if argv[0] == "bind-key" {
 			count++
 		}
@@ -36,14 +36,13 @@ func bindKeyArgvCount() int {
 }
 
 // wantButtonRowArgv is the single invocation pinButtonRowLocked issues for target:
-// five set-option commands joined by ";" separators.
-func wantButtonRowArgv(target, plain, agent, specJSON, dirWord, orchDirWord string) []string {
+// four set-option commands joined by ";" separators.
+func wantButtonRowArgv(target, plain, agent, specJSON, dirWord string) []string {
 	return []string{
 		"set-option", "-t", target, buttonRowPlainOption, plain, ";",
 		"set-option", "-t", target, buttonRowAgentOption, agent, ";",
 		"set-option", "-t", target, buttonSpecOption, specJSON, ";",
-		"set-option", "-t", target, buttonDirOption, dirWord, ";",
-		"set-option", "-t", target, orchDirOption, orchDirWord,
+		"set-option", "-t", target, buttonDirOption, dirWord,
 	}
 }
 
@@ -82,14 +81,13 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-t", target, "status", "3"},
 			{"set-option", "-t", target, "status-position", "bottom"},
 			// The fixture's geometry tells no button context, so the row renders empty.
-			wantButtonRowArgv(target, "", "", "", "", ""),
+			wantButtonRowArgv(target, "", "", "", ""),
 			{"set-option", "-w", "-t", target, "window-size", "latest"},
 			// The fixture's tmux binary does not resolve, so the follow jump line is unset.
 			{"set-option", "-gu", "@lym_follow_command"},
 			{"set-option", "-gu", "@lym_button_command"},
 			{"set-option", "-gu", "@lym_slack_toggle_command"},
 			{"set-option", "-gu", "@lym_slack_state_command"},
-			{"set-option", "-gu", "@lym_rc_click_command"},
 			// The test binary carries no VCS stamp, so the bindings' build stamp is unset.
 			{"set-option", "-gu", "@lym_bindings_build"},
 		}
@@ -116,7 +114,6 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-gu", "@lym_button_command"},
 			{"set-option", "-gu", "@lym_slack_toggle_command"},
 			{"set-option", "-gu", "@lym_slack_state_command"},
-			{"set-option", "-gu", "@lym_rc_click_command"},
 			{"set-option", "-gu", "@lym_bindings_build"},
 		}
 		if len(calls) < len(wantTail)+len(wantLast) {
@@ -178,7 +175,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		}
 		// The follow branch lives inside the one click argv, so only the argv itself shows that no jump is bound.
 		var wantClick []string
-		for _, argv := range bindingArgvs("", "", false, false, false, false) {
+		for _, argv := range bindingArgvs("", "", false, false, false) {
 			if argv[2] == "MouseDown1Status" {
 				wantClick = argv
 			}
@@ -275,8 +272,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			wantCalls int
 			wantWarn  string
 		}{
-			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 15, ""},
-			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 16, primeSessionOption},
+			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 14, ""},
+			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 15, primeSessionOption},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -334,8 +331,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
-		if got := fake.Count("set-option"); got != 15 {
-			t.Errorf("set-option calls = %d, want 15 (every pin still attempted)", got)
+		if got := fake.Count("set-option"); got != 14 {
+			t.Errorf("set-option calls = %d, want 14 (every pin still attempted)", got)
 		}
 		if got, want := fake.Count("bind-key"), bindKeyArgvCount(); got != want {
 			t.Errorf("bind-key calls = %d, want all %d still issued", got, want)

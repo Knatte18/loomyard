@@ -24,7 +24,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
-	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -333,100 +332,6 @@ func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
 	got, err := shedrun.ReadLandedCommit(h.Location, "task")
 	if err != nil || got != "abc123" {
 		t.Errorf("ReadLandedCommit(prime, task) = %q, %v; want abc123, nil", got, err)
-	}
-}
-
-// TestPullRequestDeps_CommitsTheRecord asserts the CommitRecord seam commits the run's record on the records side.
-// A record written through the deps' paths is committed, and so is its removal.
-// A clean call commits nothing, and a record found only at its former scratch path is moved and committed.
-// Each commit starts one records push, and the test counts them through a recorder swapped for the spawn.
-//
-// It is serial because it swaps a package variable.
-func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
-	tiergate.Require(t, 1)
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, "task")
-	location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task"))
-	if err != nil {
-		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
-	}
-	records := h.PairRecordsSibling("task")
-
-	spawns := 0
-	originalSpawn := spawnStatusPush
-	spawnStatusPush = func(*lymcwd.Location, string) (fabricengine.SpawnResult, error) {
-		spawns++
-		return fabricengine.SpawnResult{}, nil
-	}
-	t.Cleanup(func() { spawnStatusPush = originalSpawn })
-
-	deps := pullRequestDepsGuardedBy(prePushCheck{slug: "task", skip: func() (bool, error) { return true, nil }}, location, "main", true, nil)
-	rel := filepath.ToSlash(shedrun.PullRequestRecordRel(location, shedrun.SelfRunID))
-	headFiles := func(format string) string {
-		t.Helper()
-		return gitkit.Git(t, records, "show", format, "--format=", "HEAD")
-	}
-
-	if err := os.MkdirAll(filepath.Dir(deps.RecordPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := pullrequest.WriteRecord(deps.RecordPath, deps.RecordLockPath, pullrequest.Record{Number: 7, URL: "https://example.test/pull/7"}); err != nil {
-		t.Fatalf("WriteRecord() error = %v; want nil", err)
-	}
-	if err := deps.CommitRecord(); err != nil {
-		t.Fatalf("CommitRecord() after a write error = %v; want nil", err)
-	}
-	if got := headFiles("--name-status"); got != "A\t"+rel {
-		t.Errorf("records HEAD after a write = %q; want the record added", got)
-	}
-	if spawns != 1 {
-		t.Errorf("push spawns after a write = %d; want 1", spawns)
-	}
-
-	if err := pullrequest.RemoveRecord(deps.RecordPath, deps.RecordLockPath); err != nil {
-		t.Fatalf("RemoveRecord() error = %v; want nil", err)
-	}
-	if err := deps.CommitRecord(); err != nil {
-		t.Fatalf("CommitRecord() after a removal error = %v; want nil", err)
-	}
-	if got := headFiles("--name-status"); got != "D\t"+rel {
-		t.Errorf("records HEAD after a removal = %q; want the record deleted", got)
-	}
-	if spawns != 2 {
-		t.Errorf("push spawns after a removal = %d; want 2", spawns)
-	}
-
-	headBefore := gitkit.RevParse(t, records, "HEAD")
-	if err := deps.CommitRecord(); err != nil {
-		t.Fatalf("CommitRecord() with nothing to commit error = %v; want nil", err)
-	}
-	if got := gitkit.RevParse(t, records, "HEAD"); got != headBefore || spawns != 2 {
-		t.Errorf("records HEAD = %s, spawns = %d with nothing to commit; want HEAD %s and 2 spawns", got, spawns, headBefore)
-	}
-
-	legacy := shedrun.LegacyPullRequestRecord(location, shedrun.SelfRunID)
-	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(legacy, []byte("{\"number\":9}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := deps.CommitRecord(); err != nil {
-		t.Fatalf("CommitRecord() over a scratch record error = %v; want nil", err)
-	}
-	if got := headFiles("--name-only"); got != rel {
-		t.Errorf("records HEAD after the move = %q; want the moved record", got)
-	}
-	moved, found, err := pullrequest.ReadRecord(deps.RecordPath, deps.RecordLockPath)
-	if err != nil || !found || moved.Number != 9 {
-		t.Errorf("ReadRecord() after the move = %+v, found %v, error %v; want number 9", moved, found, err)
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Errorf("the scratch record after the move: stat error = %v; want it gone", err)
-	}
-	if spawns != 3 {
-		t.Errorf("push spawns after the move = %d; want 3", spawns)
 	}
 }
 

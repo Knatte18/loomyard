@@ -79,13 +79,6 @@ type Task struct {
 	Unknown map[string]json.RawMessage `json:"-"`
 }
 
-const (
-	// pullRequestKey is the board.json key of Task.PullRequest.
-	pullRequestKey = "pull_request"
-	// onLandKey is the board.json key of Task.OnLand.
-	onLandKey = "on_land"
-)
-
 // taskKeys is the set of lower-cased JSON keys Task declares; a decoded key outside it is kept in Unknown.
 var taskKeys = jsonKeySet(reflect.TypeFor[Task]())
 

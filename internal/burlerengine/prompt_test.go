@@ -104,7 +104,7 @@ func chairPrompt(t *testing.T, stencilsDir, parentName string, p *Profile, table
 	t.Helper()
 	root := filepath.Dir(p.ReviewPath)
 	rendered, err := seatengine.Prompts(
-		seatengine.Geometry{WorktreeRoot: root, AnchorPath: root, StencilsDir: stencilsDir, DefaultEngine: "claude", ParentName: parentName, Shortname: "tst", Slug: "task"},
+		seatengine.Geometry{WorktreeRoot: root, AnchorPath: root, StencilsDir: stencilsDir, ParentName: parentName, Shortname: "tst", Slug: "task"},
 		table,
 	)
 	if err != nil {
@@ -409,97 +409,6 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 		requireContains(t, got, "OWN findings first")
 		requireContains(t, got, "deferred and disputed items")
 		requireContains(t, got, "why the dispute's evidence does not hold")
-	})
-
-	// The rows assert the values Go fills into the review step, for the engines whose stencil copies differ.
-	t.Run("round context", func(t *testing.T) {
-		stencilsDir := newTestStencilsDir(t)
-		round := func(prior ...PriorFinding) *RoundContext {
-			return &RoundContext{PriorReviewPath: "/runs/round-1-review.md", PriorFixerReportPath: "/runs/round-1-fixer-report.md", Prior: prior}
-		}
-		earlier := func(id string) Finding {
-			return Finding{ID: id, Severity: SeverityMedium, Class: ClassScope, Location: "a.go:3", Summary: "summary of " + id, Fix: "fix of " + id}
-		}
-		withChanges := round(PriorFinding{Finding: earlier("E1")})
-		withChanges.ChangesPath = "/runs/round-2-changes.md"
-		twoAdded := round()
-		twoAdded.AddedTexts = []string{"first added entry text", "second added entry text"}
-
-		tests := []struct {
-			name    string
-			round   *RoundContext
-			want    []string
-			notWant []string
-			// once holds texts the review step must hold exactly one time.
-			once []string
-		}{
-			{name: "NilContextHasNoBlock", notWant: []string{"\n" + priorFindingsHeading + "\n"}},
-			{name: "ContextHasTheBlock", round: round(), want: []string{"\n" + priorFindingsHeading + "\n"}},
-			{
-				name: "ChangesFileNamed", round: withChanges,
-				want: []string{"/runs/round-1-review.md", "/runs/round-1-fixer-report.md", "/runs/round-2-changes.md"},
-			},
-			{
-				name: "NoChangesFileNamed", round: round(PriorFinding{Finding: earlier("E1")}),
-				want: []string{"/runs/round-1-review.md", "/runs/round-1-fixer-report.md"}, notWant: []string{"round-2-changes.md"},
-			},
-			{
-				name: "DisputedFindingShowsItsDispute",
-				round: round(PriorFinding{Finding: earlier("E1"), Disposition: &FindingDisposition{
-					ID: "E1", Disposition: DispositionDisputed, Ground: disputeGroundPremiseFalse, Rebuttal: "the call site is guarded", Evidence: []string{"a.go:9", "b.go:2"},
-				}}),
-				want: []string{"summary of E1", "fix of E1", "premise false", "the call site is guarded", "a.go:9", "b.go:2"},
-			},
-			{
-				name: "FixedDifferentlyFindingShowsItsReason",
-				round: round(PriorFinding{Finding: earlier("E1"), Disposition: &FindingDisposition{
-					ID: "E1", Disposition: DispositionFixedDifferently, Reason: "moved the check into the caller",
-				}}),
-				want: []string{"fixed-differently", "moved the check into the caller"},
-			},
-			{
-				name: "FindingWithNoDisposition", round: round(PriorFinding{Finding: earlier("E1")}),
-				want: []string{"no disposition"},
-			},
-			{
-				name: "HeldFindingWithARulingIsLabelled",
-				round: round(PriorFinding{Held: true, Finding: earlier("E1"), Disposition: &FindingDisposition{
-					ID: "E1", Disposition: DispositionRuling, Reason: "followed the parent's ruling",
-				}}),
-				want: []string{heldByParentMark, rulingReportLabel, "followed the parent's ruling"},
-			},
-			{
-				name: "AddedEntriesAreListedOnce", round: twoAdded, notWant: []string{"No entry was added"},
-				once: []string{"first added entry text", "second added entry text"},
-			},
-			{name: "NoAddedEntryIsSaid", round: round(), want: []string{"No entry was added"}},
-		}
-		for _, engine := range []string{"claude", "codex"} {
-			for _, tt := range tests {
-				t.Run(engine+"_"+tt.name, func(t *testing.T) {
-					p := newComposableProfile(t)
-					p.Round = tt.round
-
-					prompt, err := composeReviewPrompt(stencilsDir, testSpecsDir, engine, &p, "", "", "", testReviewFiles)
-					if err != nil {
-						t.Fatalf("composeReviewPrompt(%s) = %v; want nil error", engine, err)
-					}
-
-					got := prompt.Files[reviewStepFile].Content
-					for _, want := range tt.want {
-						requireContains(t, got, want)
-					}
-					for _, notWant := range tt.notWant {
-						requireNotContains(t, got, notWant)
-					}
-					for _, once := range tt.once {
-						if count := strings.Count(got, once); count != 1 {
-							t.Errorf("%q appears %d times; want once", once, count)
-						}
-					}
-				})
-			}
-		}
 	})
 }
 

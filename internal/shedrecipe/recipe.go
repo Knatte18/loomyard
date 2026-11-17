@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -182,15 +181,6 @@ type Env struct {
 	// ReviewCirclingCheckpoint is the run-wide first round a Bouncer's judge may rule CIRCLING in.
 	// The Bouncer entry requires it positive and passes it to shedadapters.BouncerConfig.CirclingCheckpoint.
 	ReviewCirclingCheckpoint int
-	// ReviewStalemateRounds is the run-wide count of unchanged judged rounds in a row that escalate a stalemate.
-	// The Bouncer entry passes it to shedadapters.BouncerConfig.StalemateRounds; 0 turns the check off.
-	ReviewStalemateRounds int
-	// ReviewTreeID returns the id of the code checkout's current tree, which names a source-scope review target.
-	// The review entries read it; nil is legal and makes a source-scope round count as changed.
-	ReviewTreeID func() (string, error)
-	// ReviewTreeChanges returns the paths that differ between two tree ids of the code checkout.
-	// The review entries read it; nil is legal and leaves a source-scope round with no changes file.
-	ReviewTreeChanges func(fromID, toID string) ([]string, error)
 
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine or a factory over one.
 	// The Bouncer row and the Burler rows' attach probes read it.
@@ -212,14 +202,6 @@ type Env struct {
 	// it also commits the plan directory whose cards the run rewrote;
 	// the Webster entry's producer invokes it once the run reports Done.
 	CommitWebster func() error
-	// WeaverRun is the injected shedadapters.WeaverRunner seam.
-	WeaverRun shedadapters.WeaverRunner
-	// WeaverDeps is the already-resolved weaverengine.RunDeps value; the Weaver entry fills the gate, config and ladder.
-	// Its Batcher stays nil, since the producer resolves it on every Call.
-	WeaverDeps weaverengine.RunDeps
-	// ImplementerSeam is the active-implementer seam's deps, handed to the implementer rows' guard.
-	// The guard refuses a zero AnchorRoot when the row runs.
-	ImplementerSeam weaverengine.ActiveDeps
 	// Landing is a whole-struct passthrough handed unchanged to landingshed.NewPublish and NewFinalize.
 	// It is not flattened into fields, since landingshed.Deps is one value the caller fills as a unit.
 	// The caller of the registry fills it;

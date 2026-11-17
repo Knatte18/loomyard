@@ -126,7 +126,7 @@ func TestEligibility_InterruptedPawlRows(t *testing.T) {
 }
 
 // TestEscalationEligible pins EscalationEligible over fake readers:
-// only a pending hard-cap, circling, decision or stalemate escalation is eligible.
+// only a pending hard-cap, circling or decision escalation is eligible.
 // Every refused row also runs Check over an awaiting status and wants the refusal to end with HandBackWayForward.
 func TestEscalationEligible(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -144,7 +144,6 @@ func TestEscalationEligible(t *testing.T) {
 		{name: "pending circling", cause: shedadapters.EscalationCircling, pending: true, want: true},
 		{name: "pending budget", cause: shedadapters.EscalationBudget, pending: true},
 		{name: "pending decision", cause: shedadapters.EscalationDecision, pending: true, want: true},
-		{name: "pending stalemate", cause: shedadapters.EscalationStalemate, pending: true, want: true},
 		{name: "malformed record", err: fmt.Errorf("record: %w", shedadapters.ErrEscalationMalformed)},
 		{name: "plain read failure", err: errors.New("disk gone")},
 		{name: "nothing pending at a Bouncer"},

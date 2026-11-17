@@ -37,12 +37,7 @@ func (c *websterCLI) beginDeps(plan *planparser.Plan, batches []batcher.Batch, s
 	if err != nil {
 		return websterengine.BeginDeps{}, err
 	}
-	choice, ok := c.roles[websterengine.RoleMaster]
-	if !ok {
-		return websterengine.BeginDeps{}, fmt.Errorf("webster: no resolved model-spec for role %q", websterengine.RoleMaster)
-	}
 	return websterengine.BeginDeps{
-		Engine:      c.engines.EngineName(choice),
 		Plan:        plan,
 		Batches:     batches,
 		State:       st,
@@ -118,7 +113,7 @@ Example:
 			}
 
 			// A record exists only when the latest begin-batch refused with a plan conflict, so every other refusal leaves none.
-			if err := websterengine.RemoveConflictRecord(c.geom.ConflictDir()); err != nil {
+			if err := websterengine.RemoveConflictRecord(c.geom.ScratchDir); err != nil {
 				logger.Warn("webstercli: stale plan-conflict record not removed", "err", err)
 			}
 
@@ -182,7 +177,7 @@ Example:
 				isConflict := errors.As(err, &conflict)
 				// A failed persist prints the combined refusal with no class, so it leaves no record.
 				if saveErr == nil && isConflict {
-					if recordErr := websterengine.WriteConflictRecord(c.geom.ConflictDir(), conflict); recordErr != nil {
+					if recordErr := websterengine.WriteConflictRecord(c.geom.ScratchDir, conflict); recordErr != nil {
 						logger.Warn("webstercli: plan-conflict record not written", "err", recordErr)
 					}
 				}
@@ -216,7 +211,7 @@ Example:
 				return nil
 			}
 			// Once the batch has begun, a conflict routed to plan review is no longer current.
-			if err := websterengine.RemoveRoutedConflict(c.geom.ConflictDir()); err != nil {
+			if err := websterengine.RemoveRoutedConflict(c.geom.ScratchDir); err != nil {
 				logger.Warn("webstercli: routed plan-conflict file not removed", "err", err)
 			}
 			// The state phase is over; release the lease before the fabric push below,

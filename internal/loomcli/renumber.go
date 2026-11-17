@@ -2,7 +2,7 @@
 // They are the sanctioned way for an agent to add or drop one card of a plan and renumber the cards after it.
 // They also undo an interrupted renumber.
 // Each cobra command is a thin shell over a verb function that takes its side effects as renumberDeps.
-// That keeps the refusal table testable without a worktree or a run.
+// That keeps the refusal table testable without a worktree or a webster run.
 
 package loomcli
 
@@ -16,8 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
 
@@ -28,39 +27,14 @@ type renumberDeps struct {
 	journalPath string
 	// ops performs every file operation of the renumber, so tests can substitute a fake.
 	ops planparser.RenumberIO
-	// loadState reads the active implementer's run-plan state, nil when no run has started.
-	loadState func() (*runplan.State, error)
-	// acquireLease takes the active implementer's state-mutation lease and returns its release.
+	// loadState reads webster's run record, nil when no run has started.
+	loadState func() (*websterengine.State, error)
+	// acquireLease takes webster's state-mutation lease and returns its release.
 	acquireLease func() (release func() error, err error)
 }
 
 // errRenumberRawIO marks a failed run-record read or lease acquisition, which joins the raw I/O refusal.
 var errRenumberRawIO = errors.New("raw I/O failed")
-
-// errRenumberSeam marks a refusal of the active-implementer seam, whose own text carries the way forward.
-var errRenumberSeam = errors.New("the run's active implementer cannot be read")
-
-// seamRefusal is a refusal of the active-implementer seam that matches errRenumberSeam.
-// It words itself as the seam's refusal alone, so the message does not repeat the sentinel's text.
-type seamRefusal struct{ cause error }
-
-// Error returns the seam's refusal text.
-func (e seamRefusal) Error() string { return e.cause.Error() }
-
-// Unwrap returns the seam's refusal.
-func (e seamRefusal) Unwrap() error { return e.cause }
-
-// Is reports whether target is errRenumberSeam.
-func (e seamRefusal) Is(target error) bool { return target == errRenumberSeam }
-
-// rawIORefusal words err, a failed run-record read or lease acquisition, as a raw I/O refusal naming what failed.
-// A refusal of the seam stays as it is, since it is not raw I/O.
-func rawIORefusal(what string, err error) error {
-	if errors.Is(err, errRenumberSeam) {
-		return err
-	}
-	return fmt.Errorf("%w: %s: %w", errRenumberRawIO, what, err)
-}
 
 // begunBoundError marks a position at or before the last begun card.
 type begunBoundError struct {
@@ -69,37 +43,23 @@ type begunBoundError struct {
 }
 
 func (e begunBoundError) Error() string {
-	return fmt.Sprintf("position %d is at or before card %d, the last card the implementer has begun", e.position, e.bound)
+	return fmt.Sprintf("position %d is at or before card %d, the last card webster has begun", e.position, e.bound)
 }
 
-// newRenumberDeps builds the real side effects of the card verbs over the anchor and seam the loom CLI resolved.
+// newRenumberDeps builds the real side effects of the card verbs over the anchor the loom CLI resolved.
 func (c *loomCLI) newRenumberDeps() renumberDeps {
-	return renumberDepsFor(c.env.AnchorPath, c.env.ImplementerSeam)
-}
-
-// renumberDepsFor builds the card verbs' side effects over anchor and the active-implementer seam active.
-// The run-plan state and the state-mutation lease are the active implementer's.
-// A renumber and a batch begin of that implementer therefore serialize on one lease.
-// The implementer is resolved before the lease is taken, and a refusal of the seam is a seamRefusal.
-func renumberDepsFor(anchor string, active weaverengine.ActiveDeps) renumberDeps {
+	anchor := c.env.AnchorPath
+	websterDir := websterengine.Dir(anchor)
+	scratchDir := websterengine.ScratchDir(anchor)
 	return renumberDeps{
 		planDir:     planparser.PlanDir(anchor),
 		journalPath: planparser.RenumberJournalPath(anchor),
 		ops:         planparser.OSRenumberIO(),
-		loadState: func() (*runplan.State, error) {
-			_, st, err := weaverengine.Active(active)
-			if err != nil {
-				return nil, seamRefusal{cause: err}
-			}
-			return st, nil
+		loadState: func() (*websterengine.State, error) {
+			return websterengine.LoadState(websterDir, scratchDir)
 		},
 		acquireLease: func() (func() error, error) {
-			implementer, _, err := weaverengine.Active(active)
-			if err != nil {
-				return nil, seamRefusal{cause: err}
-			}
-			_, scratchDir := weaverengine.RunDirs(implementer, anchor)
-			lease, err := runplan.AcquireStateMutation(scratchDir)
+			lease, err := websterengine.AcquireStateMutation(scratchDir)
 			if err != nil {
 				return nil, err
 			}
@@ -128,7 +88,7 @@ func removeCardVerb(out io.Writer, d renumberDeps, position string) int {
 func runCardVerb(out io.Writer, d renumberDeps, verb, position string, renumber func(number int) (*planparser.RenumberResult, error)) int {
 	release, err := d.acquireLease()
 	if err != nil {
-		return output.Err(out, renumberRefusal(verb, rawIORefusal("take the active implementer's state-mutation lease", err)))
+		return output.Err(out, renumberRefusal(verb, fmt.Errorf("%w: take webster's state-mutation lease: %w", errRenumberRawIO, err)))
 	}
 	result, err := func() (*planparser.RenumberResult, error) {
 		number, err := strconv.Atoi(position)
@@ -137,9 +97,9 @@ func runCardVerb(out io.Writer, d renumberDeps, verb, position string, renumber 
 		}
 		st, err := d.loadState()
 		if err != nil {
-			return nil, rawIORefusal("read the active implementer's run record", err)
+			return nil, fmt.Errorf("%w: read webster's run record: %w", errRenumberRawIO, err)
 		}
-		if bound := runplan.LastBegunCard(st); number <= bound {
+		if bound := websterengine.LastBegunCard(st); number <= bound {
 			return nil, begunBoundError{position: number, bound: bound}
 		}
 		return renumber(number)
@@ -159,7 +119,7 @@ func restoreRenumberVerb(out io.Writer, d renumberDeps) int {
 	const verb = "restore-renumber"
 	release, err := d.acquireLease()
 	if err != nil {
-		return output.Err(out, renumberRefusal(verb, rawIORefusal("take the active implementer's state-mutation lease", err)))
+		return output.Err(out, renumberRefusal(verb, fmt.Errorf("%w: take webster's state-mutation lease: %w", errRenumberRawIO, err)))
 	}
 	result, err := planparser.RestoreRenumber(d.ops, d.planDir, d.journalPath)
 	_ = release()
@@ -198,7 +158,6 @@ var renumberWaysForward = []struct {
 	{planparser.ErrRenumberJournalInvalid, "delete the named journal file, then run lym loom validate-plan, whose findings name any card left inconsistent"},
 	{planparser.ErrRenumberRestoreFailed, "transient, re-run lym loom restore-renumber, the journal is kept"},
 	{planparser.ErrRenumberIOFailed, "transient, re-run the refused verb; nothing is mutated"},
-	{errRenumberSeam, "take the way forward the message names, then re-run the verb"},
 	{errRenumberRawIO, "transient, re-run the refused verb; nothing is mutated"},
 }
 
@@ -270,8 +229,8 @@ func (c *loomCLI) insertCardCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `insert-card adds a card numbered N and moves every card from N up by one:
 its file name prefix, its heading number, its explicit Commit: prefix and its
-Card Index number. The new card is a heading-only stub the agent fills in,
-and its Card Index line carries --intent. A card id naming a
+Card Index number. The new card is a heading-only stub the agent fills with
+Edit or Write, and its Card Index line carries --intent. A card id naming a
 moved card, <N>-<slug> or its zero-padded file form, and a bare reference
 naming one, such as "card 4" or "cards 4-6", are rewritten to the new number
 in the overview and every card file and reported under rewritten_refs. Every
@@ -280,7 +239,7 @@ falls inside is left as is and its line reported under prose_mentions, so fix
 each by hand.
 
 N runs from first_card to one past the last card, and must come after the last
-card the active implementer has begun. The call is journaled, and an interrupted one is
+card webster has begun. The call is journaled, and an interrupted one is
 undone by lym loom restore-renumber. It never commits and never approves.
 
 Example:
@@ -314,8 +273,8 @@ under rewritten_refs. Every reference is read as the numbering before the
 call. A bare reference naming card N, or a range card N falls inside, is left
 as is and its line reported under prose_mentions, so fix each by hand.
 
-N runs from first_card to the last card, must come after the last card the
-active implementer has begun, and cannot be the plan's only card. The call is journaled, and an
+N runs from first_card to the last card, must come after the last card webster
+has begun, and cannot be the plan's only card. The call is journaled, and an
 interrupted one is undone by lym loom restore-renumber. It never commits and
 never approves.
 

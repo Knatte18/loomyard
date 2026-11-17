@@ -28,12 +28,7 @@ var loomshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/gateslot",
 	"github.com/Knatte18/loomyard/internal/shedadapters",
 	"github.com/Knatte18/loomyard/internal/websterengine",
-	// internal/weaverengine is the active-implementer seam and Weaver's run deps.
-	// It is told the anchor and resolves no geometry.
-	"github.com/Knatte18/loomyard/internal/weaverengine",
 	"github.com/Knatte18/loomyard/internal/loomengine",
-	// internal/runplan is the shared run state the done-card readers read; it resolves no geometry.
-	"github.com/Knatte18/loomyard/internal/runplan",
 	"github.com/Knatte18/loomyard/internal/planparser",
 	// internal/planindex is the cgo-free seam the plan gates resolve through.
 	// The resolve-backed implementation, internal/planglyph, links tree-sitter and stays out of this package for good.

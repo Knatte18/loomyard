@@ -34,6 +34,7 @@ type BeamDownReport struct {
 // BeamDown takes the worktree at location down.
 // It removes the orch strand, after which the watcher exits on its own,
 // and it ends the worktree's dobby when one is live.
+// For the prime it also ends the coverage-map upkeep pass, whether or not the dobby is live.
 // Each part stops only when live, so a second call stops nothing.
 // It refuses a worktree that is neither the prime nor a beam.
 func BeamDown(location *lymcwd.Location) (BeamDownReport, error) {
@@ -46,6 +47,8 @@ func BeamDown(location *lymcwd.Location) (BeamDownReport, error) {
 
 // beamDown runs the bring-down steps on a receiver that has already been wired.
 // The dobby is ended through the receiver's role-scoped end, so no other process of the beam is signalled.
+// The prime's coverage-map upkeep pass registers itself with its own process group, so the dobby's end leaves it running;
+// it is ended after the dobby, which then starts no pass, and whether or not the dobby was live.
 func (c *orchCLI) beamDown() (BeamDownReport, error) {
 	report := BeamDownReport{Worktree: c.location.WorktreeName}
 	removed, strand, err := c.stopOrch()
@@ -65,6 +68,11 @@ func (c *orchCLI) beamDown() (BeamDownReport, error) {
 			return report, fmt.Errorf("orch: end the dobby of %s: %w", c.location.WorktreeName, err)
 		}
 		report.DobbyEnded = true
+	}
+	if c.endTestMap != nil {
+		if err := c.endTestMap(); err != nil {
+			return report, fmt.Errorf("orch: end the coverage-map upkeep pass of %s: %w", c.location.WorktreeName, err)
+		}
 	}
 	return report, nil
 }

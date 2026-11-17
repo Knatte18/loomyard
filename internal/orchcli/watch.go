@@ -174,7 +174,6 @@ A second watcher finding the first alive reports already_running and exits.`,
 			var buildFailures logger.Episode
 			watcher.WatchOwner(orchengine.OwnerWatch{
 				Read: func() (string, bool, error) { return beamOwnerElsewhere(c.location) },
-				End:  c.endSubject,
 				Stop: c.strands.RemoveStrand,
 				UnderAdopt: func() bool {
 					if underAdopt == nil {

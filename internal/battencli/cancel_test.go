@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -25,7 +24,7 @@ import (
 const cancelSlug = "some-slug"
 
 // destructiveCancelCalls are the seams whose call means the cancel ended, removed, cleared or lifted something.
-var destructiveCancelCalls = []string{"WriteIntent", "CommitRecord", "EndForCancel", "StopTackler", "RemovePair", "DiscardTaskBranch", "FinishCancel", "RemoveRecords", "ClearClaim", "LiftPauses"}
+var destructiveCancelCalls = []string{"EndForCancel", "StopTackler", "RemovePair", "DiscardTaskBranch", "RemoveRecords", "ClearClaim", "LiftPauses"}
 
 // cancelFake is a set of fake substrates for cancelRun that records every call and answers from its knobs.
 // Its zero value has no status, no board entry and no records, and nothing alive.
@@ -47,6 +46,7 @@ type cancelFake struct {
 	reached         bool
 	marker          cancelMarkerReading
 	takeMarkerErr   error
+	markerFresh     bool
 	goos            string
 	recordLists     [][]runproc.Record
 	createdAt       map[int]time.Time
@@ -70,18 +70,6 @@ type cancelFake struct {
 	notifyErr       error
 	ownerHeld       bool
 
-	// verdict answers the act rule; commitResult is whether the record commit made a commit.
-	// intentErr, commitErr and finishErr fail the intent write, the record commit and the finish.
-	// intentRemove and finishRemove record the remove flag each was written with.
-	verdict      runfsm.Verdict
-	verdictErr   error
-	commitResult bool
-	intentErr    error
-	commitErr    error
-	finishErr    error
-	intentRemove bool
-	finishRemove bool
-
 	// beamProject, hubReport, hubReconcileErr, landRefusal, landingHeld, landBlockers and stopBeamErr answer the beam seams;
 	// the zero value is a task.
 	beamProject     bool
@@ -94,7 +82,7 @@ type cancelFake struct {
 
 	endRequest      pairteardown.CancelRequest
 	removeRequest   pairteardown.Request
-	markerReleases  int
+	markerReleases  []bool
 	locksHeld       int
 	lockTakenHeld   bool
 	listCalls       int
@@ -113,10 +101,9 @@ func newCancelFake() *cancelFake {
 		boardStatus:    &running,
 		boardFound:     true,
 		recordsPresent: true,
+		markerFresh:    true,
 		machine:        "this-machine",
 		claimCleared:   true,
-		verdict:        runfsm.Act(runfsm.Inputs{State: runfsm.Running}),
-		commitResult:   true,
 		recordsCommit:  true,
 	}
 }
@@ -152,12 +139,12 @@ func (f *cancelFake) deps() cancelDeps {
 			return f.reached, nil
 		},
 		ReadMarker: func() (cancelMarkerReading, error) { f.call("ReadMarker"); return f.marker, nil },
-		TakeMarker: func() (func() error, error) {
+		TakeMarker: func() (func(bool) error, bool, error) {
 			f.call("TakeMarker")
 			if f.takeMarkerErr != nil {
-				return nil, f.takeMarkerErr
+				return nil, false, f.takeMarkerErr
 			}
-			return func() error { f.markerReleases++; return nil }, nil
+			return func(remove bool) error { f.markerReleases = append(f.markerReleases, remove); return nil }, f.markerFresh, nil
 		},
 		GOOS: f.goos,
 		LiveRecords: func() ([]runproc.Record, error) {
@@ -215,18 +202,6 @@ func (f *cancelFake) deps() cancelDeps {
 		DiscardTaskBranch: func() (fabricengine.DiscardResult, error) {
 			f.call("DiscardTaskBranch")
 			return f.discardResult, f.discardErr
-		},
-		Verdict: func() (runfsm.Verdict, error) { f.call("Verdict"); return f.verdict, f.verdictErr },
-		WriteIntent: func(remove bool) (bool, error) {
-			f.call("WriteIntent")
-			f.intentRemove = remove
-			return f.statusFound && f.intentErr == nil, f.intentErr
-		},
-		CommitRecord: func() (bool, error) { f.call("CommitRecord"); return f.commitResult, f.commitErr },
-		FinishCancel: func(remove bool) (bool, error) {
-			f.call("FinishCancel")
-			f.finishRemove = remove
-			return f.statusFound && f.finishErr == nil, f.finishErr
 		},
 		RemoveRecords: func() (bool, error) { f.call("RemoveRecords"); return f.recordsCommit, f.recordsErr },
 		ClearClaim:    func() (bool, bool, error) { f.call("ClearClaim"); return f.claimCleared, f.boardFound, f.claimErr },
@@ -295,126 +270,23 @@ func TestCancelRun(t *testing.T) {
 		wantCalls []string
 		// noCalls are seams that must not have been called.
 		noCalls []string
-		// marker is "none" when the cancel's lock was never taken.
-		// Any other value says it was taken and released exactly once:
-		// "left" for a cancel that stopped early, "removed" for one that ran to its end.
+		// marker is "none" when no marker was taken, "left" when its lock was released and the file kept.
+		// It is "removed" when the marker was removed.
 		marker string
 		check  func(*testing.T, cancelReport, *cancelFake)
 	}
 
-	keptCancelStatus := shedengine.Status{
-		CurrentProducer: battenrecipe.NameRunShed,
-		State:           shedengine.StateCancelled,
-		Cancel:          &shedengine.CancelIntent{Finish: &shedengine.CancelFinish{}},
-	}
 	rows := []row{
-		{
-			name: "LandedSlugWithNoBattenRecordRefusesWithTheTerminalWording",
-			setup: func(f *cancelFake) {
-				f.statusFound = false
-				f.verdict = runfsm.Act(runfsm.Inputs{State: runfsm.Landed})
-			},
-			wantErr: "the slug has landed",
-			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
-			marker:  "none",
-		},
-		{
-			name: "HandOverVerdictRefuses",
-			setup: func(f *cancelFake) {
-				f.verdict = runfsm.Act(runfsm.Inputs{OwnedElsewhere: true, Owner: "other-machine", AdoptSubject: "some-beam"})
-			},
-			wantErr: "machine other-machine owns the run",
-			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
-			marker:  "none",
-		},
-		{
-			name:    "UnreadableRunStateRefusesNamingTheRerun",
-			setup:   func(f *cancelFake) { f.verdictErr = errors.New("board is gone") },
-			wantErr: `could not read the run's state of some-slug: board is gone; way forward: fix the cause, then run "lym batten cancel some-slug" again`,
-			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
-			marker:  "none",
-		},
-		{
-			name:    "FinishedCancelThatKeptItsPairRefusesWithoutRemove",
-			setup:   func(f *cancelFake) { f.status = keptCancelStatus },
-			wantErr: `some-slug is already cancelled with its pair kept; way forward: run "lym batten cancel some-slug --remove"`,
-			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
-			marker:  "none",
-		},
-		{
-			name:      "FinishedCancelThatKeptItsPairIsFinishedByRemove",
-			remove:    true,
-			setup:     func(f *cancelFake) { f.status = keptCancelStatus },
-			wantCalls: []string{"TakeMarker", "WriteIntent", "CommitRecord", "EndForCancel", "RemovePair", "RemoveRecords"},
-			noCalls:   []string{"FinishCancel"},
-			marker:    "removed",
-		},
-		{
-			name:      "IntentIsWrittenAndCommittedBeforeAnythingEnds",
-			remove:    true,
-			wantCalls: []string{"TakeMarker", "WriteIntent", "CommitRecord", "EndForCancel"},
-			marker:    "removed",
-			check: func(t *testing.T, _ cancelReport, f *cancelFake) {
-				if !f.intentRemove {
-					t.Error("intent written with remove = false; want the cancel's --remove flag")
-				}
-			},
-		},
-		{
-			name:      "FinishIsWrittenKeepingThePairWithoutRemove",
-			wantCalls: []string{"EndForCancel", "FinishCancel", "CommitRecord"},
-			marker:    "removed",
-			check: func(t *testing.T, _ cancelReport, f *cancelFake) {
-				if f.finishRemove || f.intentRemove {
-					t.Errorf("finish remove, intent remove = %v, %v; want both false for a cancel that keeps the pair", f.finishRemove, f.intentRemove)
-				}
-			},
-		},
-		{
-			name:      "SlugWithNoRecordWritesNoIntentAndKeepsNothing",
-			setup:     func(f *cancelFake) { f.statusFound = false },
-			wantCalls: []string{"WriteIntent", "EndForCancel", "FinishCancel", "RemoveRecords"},
-			noCalls:   []string{"CommitRecord"},
-			marker:    "removed",
-			check: func(t *testing.T, r cancelReport, _ *cancelFake) {
-				if r.RecordKept || r.RecordsRemoved {
-					t.Errorf("report = %+v; want no record kept and none removed for a slug with no record", r)
-				}
-			},
-		},
-		{
-			name:    "FailedIntentWriteRefusesWithNothingEnded",
-			setup:   func(f *cancelFake) { f.intentErr = errors.New("disk full") },
-			wantErr: `could not record the cancel of some-slug: disk full; way forward: fix the cause, then run "lym batten cancel some-slug" again`,
-			noCalls: append([]string{"CommitRecord"}, destructiveCancelCalls[2:]...),
-			marker:  "removed",
-		},
-		{
-			name: "FailedIntentCommitRefusesWithNothingEnded",
-			setup: func(f *cancelFake) {
-				f.commitErr = errors.New("a merge is in progress on the prime's records side; conclude or abort that merge there")
-			},
-			wantErr: `could not commit the cancel of some-slug: a merge is in progress on the prime's records side; conclude or abort that merge there; way forward: fix the cause it names, then run "lym batten cancel some-slug" again`,
-			noCalls: destructiveCancelCalls[2:],
-			marker:  "removed",
-		},
-		{
-			name:    "FailedFinishStopsBeforeTheClaim",
-			setup:   func(f *cancelFake) { f.finishErr = errors.New("no intent recorded") },
-			wantErr: `could not finish the cancel of some-slug: no intent recorded; way forward: fix the cause, then run "lym batten cancel some-slug" again`,
-			noCalls: []string{"ClearClaim", "LiftPauses"},
-			marker:  "left",
-		},
 		{
 			name:      "BlockedRunWithNoPair",
 			judging:   "full",
-			wantCalls: []string{"HubPaused", "ExemptGate", "TaskWorktreePresent", "PullBolt", "Owner", "ReadStatus", "Verdict", "TakeMarker", "WriteIntent", "CommitRecord", "EndForCancel", "StopTackler", "FinishCancel", "CommitRecord", "ClearClaim", "Notify"},
-			noCalls:   []string{"Reconcile", "RemovePair", "DiscardTaskBranch", "RemoveRecords"},
+			wantCalls: []string{"HubPaused", "ExemptGate", "TaskWorktreePresent", "PullBolt", "Owner", "ReadStatus", "TakeMarker", "EndForCancel", "StopTackler", "RemoveRecords", "ClearClaim", "SpawnPush", "Notify"},
+			noCalls:   []string{"Reconcile", "RemovePair", "DiscardTaskBranch"},
 			marker:    "removed",
 			setup:     func(f *cancelFake) { f.tackler = "guid-1"; f.lifted = []string{"some-slug"} },
 			check: func(t *testing.T, r cancelReport, f *cancelFake) {
-				if r.TacklerStopped != "guid-1" || r.RecordsRemoved || !r.RecordKept || !r.ClaimCleared || !r.PushSpawned || !r.NoticePosted || r.EndOnly {
-					t.Errorf("report = %+v; want tackler, kept record, claim, push and notice done and no records removed", r)
+				if r.TacklerStopped != "guid-1" || !r.RecordsRemoved || !r.ClaimCleared || !r.PushSpawned || !r.NoticePosted || r.EndOnly {
+					t.Errorf("report = %+v; want tackler, records, claim, push and notice done", r)
 				}
 				if r.State != "blocked" || r.Row != battenrecipe.NameWorktreeCreate {
 					t.Errorf("report state, row = %q, %q; want blocked at Worktree-Create", r.State, r.Row)
@@ -438,8 +310,8 @@ func TestCancelRun(t *testing.T) {
 				f.parts = fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true}
 				f.endResult = pairteardown.CancelResult{Ended: []runproc.Ended{{PID: 7, Role: "batten"}}, StrandsStopped: []string{"agent-1"}}
 			},
-			wantCalls: []string{"Reconcile", "EndForCancel", "StopTackler", "FinishCancel", "CommitRecord", "ClearClaim"},
-			noCalls:   []string{"PullBolt", "RemovePair", "DiscardTaskBranch", "RemoveRecords"},
+			wantCalls: []string{"Reconcile", "EndForCancel", "StopTackler", "RemoveRecords", "ClearClaim"},
+			noCalls:   []string{"PullBolt", "RemovePair", "DiscardTaskBranch"},
 			marker:    "removed",
 			check: func(t *testing.T, r cancelReport, f *cancelFake) {
 				if !f.endRequest.Keep || f.endRequest.Slug != cancelSlug {
@@ -468,8 +340,7 @@ func TestCancelRun(t *testing.T) {
 				f.removeResult = fabricengine.RemoveResult{SnapshotTag: "snapshot/some-slug/1"}
 				f.discardResult = fabricengine.DiscardResult{ArchiveTags: []string{"archive/some-slug/abc"}}
 			},
-			wantCalls: []string{"WriteIntent", "CommitRecord", "EndForCancel", "RemovePair", "DiscardTaskBranch", "RemoveRecords", "ClearClaim"},
-			noCalls:   []string{"FinishCancel"},
+			wantCalls: []string{"EndForCancel", "RemovePair", "DiscardTaskBranch", "RemoveRecords", "ClearClaim"},
 			marker:    "removed",
 			check: func(t *testing.T, r cancelReport, f *cancelFake) {
 				want := pairteardown.Request{Slug: cancelSlug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true, ClearStray: true}
@@ -479,7 +350,7 @@ func TestCancelRun(t *testing.T) {
 				if f.endRequest.Keep {
 					t.Error("EndForCancel request kept the pair; want it released for the removal")
 				}
-				if !r.PairRemoved || r.SnapshotTag != "snapshot/some-slug/1" || !slices.Equal(r.ArchiveTags, []string{"archive/some-slug/abc"}) || !r.ClaimCleared || !r.RecordsRemoved || r.RecordKept {
+				if !r.PairRemoved || r.SnapshotTag != "snapshot/some-slug/1" || !slices.Equal(r.ArchiveTags, []string{"archive/some-slug/abc"}) || !r.ClaimCleared {
 					t.Errorf("report = %+v; want the pair removed with its tags and the claim cleared", r)
 				}
 			},
@@ -674,16 +545,16 @@ func TestCancelRun(t *testing.T) {
 			marker:  "none",
 		},
 		{
-			name:    "WindowsLiveRecordAtFirstListRefusesAndReleasesTheLock",
+			name:    "WindowsLiveRecordAtFirstListRefusesAndRemovesAFreshMarker",
 			setup:   func(f *cancelFake) { f.goos = "windows"; f.recordLists = [][]runproc.Record{nil, {liveRecord}} },
 			wantErr: `pid 4242 (batten): taskkill /PID 4242 /T /F; way forward: end each with its taskkill line, then run "lym batten cancel some-slug" again`,
 			noCalls: destructiveCancelCalls,
 			marker:  "removed",
 		},
 		{
-			name: "WindowsLiveRecordAtFirstListOverAnInterruptedCancelReleasesTheLock",
+			name: "WindowsLiveRecordAtFirstListLeavesATakenOverMarker",
 			setup: func(f *cancelFake) {
-				f.goos = "windows"
+				f.goos, f.markerFresh = "windows", false
 				f.marker = cancelMarkerReading{Present: true}
 				f.recordLists = [][]runproc.Record{nil, {liveRecord}}
 			},
@@ -710,7 +581,7 @@ func TestCancelRun(t *testing.T) {
 				f.recordLists = [][]runproc.Record{{liveRecord}}
 				f.createdAt = map[int]time.Time{4242: liveRecord.RegisteredAt.Add(time.Hour)}
 			},
-			wantCalls: []string{"EndForCancel", "FinishCancel"},
+			wantCalls: []string{"EndForCancel", "RemoveRecords"},
 			marker:    "removed",
 		},
 		{
@@ -765,18 +636,18 @@ func TestCancelRun(t *testing.T) {
 			marker:    "removed",
 		},
 		{
-			name: "LiveCancelRefuses",
+			name: "LiveMarkerWriterRefuses",
 			setup: func(f *cancelFake) {
-				f.marker = cancelMarkerReading{Present: true, WriterAlive: true, Intent: shedengine.CancelIntent{StartedAt: "2026-10-23T08:00:00Z"}}
+				f.marker = cancelMarkerReading{Present: true, WriterAlive: true, Marker: cancelMarker{PID: 99}}
 			},
-			wantErr: "a cancel of some-slug is under way on this machine since 2026-10-23T08:00:00Z",
+			wantErr: "a cancel of some-slug is under way (pid 99",
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
 		{
-			name:      "InterruptedCancelIsTakenOver",
-			setup:     func(f *cancelFake) { f.marker = cancelMarkerReading{Present: true} },
-			wantCalls: []string{"ReadMarker", "TakeMarker", "EndForCancel", "FinishCancel"},
+			name:      "DeadMarkerWriterIsTakenOver",
+			setup:     func(f *cancelFake) { f.marker = cancelMarkerReading{Present: true}; f.markerFresh = false },
+			wantCalls: []string{"ReadMarker", "TakeMarker", "EndForCancel", "RemoveRecords"},
 			marker:    "removed",
 		},
 		{
@@ -859,7 +730,7 @@ func TestCancelRun(t *testing.T) {
 			setup: func(f *cancelFake) {
 				f.lockAnswers = []string{"/hub/run.lock", ""}
 			},
-			wantCalls: []string{"TakeBattenLocks", "TakeBattenLocks", "FinishCancel"},
+			wantCalls: []string{"TakeBattenLocks", "TakeBattenLocks", "RemoveRecords"},
 			marker:    "removed",
 			check: func(t *testing.T, _ cancelReport, f *cancelFake) {
 				if f.lockTakenHeld {
@@ -872,22 +743,21 @@ func TestCancelRun(t *testing.T) {
 			setup:  func(f *cancelFake) { f.notifyErr = errors.New("orch is away") },
 			marker: "removed",
 			check: func(t *testing.T, r cancelReport, _ *cancelFake) {
-				if r.NoticePosted || !r.RecordKept {
+				if r.NoticePosted || !r.RecordsRemoved {
 					t.Errorf("report = %+v; want the cancel done with the notice unposted", r)
 				}
 			},
 		},
 		{
-			name:    "RecordsRemovalFailureWithRemoveStopsBeforeTheClaim",
-			remove:  true,
+			name:    "RecordsRemovalFailureStopsBeforeTheClaim",
 			setup:   func(f *cancelFake) { f.recordsErr = errors.New("commit failed") },
-			wantErr: `could not remove the records of some-slug: commit failed; way forward: fix the cause, then run "lym batten cancel some-slug --remove" again`,
+			wantErr: `could not remove the records of some-slug: commit failed; way forward: fix the cause, then run "lym batten cancel some-slug" again`,
 			noCalls: []string{"ClearClaim", "LiftPauses"},
 			marker:  "left",
 		},
 		{
 			name:      "TaskNeverReachesTheBeamSeams",
-			wantCalls: []string{"BeamProject", "EndForCancel", "FinishCancel"},
+			wantCalls: []string{"BeamProject", "EndForCancel", "RemoveRecords"},
 			noCalls:   []string{"ReconcileHub", "LandRefusal", "LandingHeld", "LandBlockers", "StopBeam"},
 			marker:    "removed",
 		},
@@ -949,7 +819,7 @@ func TestCancelRun(t *testing.T) {
 		{
 			name:      "BeamWithNoMembersEndsAndStopsItsOrchAfterTheEnd",
 			setup:     func(f *cancelFake) { f.beamProject = true },
-			wantCalls: []string{"BeamProject", "ReconcileHub", "LandRefusal", "TakeMarker", "EndForCancel", "StopTackler", "StopBeam", "FinishCancel", "ClearClaim"},
+			wantCalls: []string{"BeamProject", "ReconcileHub", "LandRefusal", "TakeMarker", "EndForCancel", "StopTackler", "StopBeam", "RemoveRecords", "ClearClaim"},
 			noCalls:   []string{"LandBlockers"},
 			marker:    "removed",
 		},
@@ -961,7 +831,7 @@ func TestCancelRun(t *testing.T) {
 			},
 			marker: "removed",
 			check: func(t *testing.T, r cancelReport, _ *cancelFake) {
-				if len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], "orch is busy") || !r.RecordKept || !r.ClaimCleared {
+				if len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], "orch is busy") || !r.RecordsRemoved || !r.ClaimCleared {
 					t.Errorf("report = %+v; want the cancel done with one warning naming the stop failure", r)
 				}
 			},
@@ -982,8 +852,8 @@ func TestCancelRun(t *testing.T) {
 				remove:    remove,
 				judging:   "endonly",
 				setup:     func(f *cancelFake) { unreachable.setup(f); f.parts = fabricengine.PairParts{TaskBranch: true} },
-				wantCalls: []string{"Owner", "WriteIntent", "CommitRecord", "EndForCancel", "StopTackler", "Notify"},
-				noCalls:   []string{"RemovePair", "DiscardTaskBranch", "FinishCancel", "RemoveRecords", "ClearClaim", "LiftPauses", "SpawnPush"},
+				wantCalls: []string{"Owner", "EndForCancel", "StopTackler", "Notify"},
+				noCalls:   []string{"RemovePair", "DiscardTaskBranch", "RemoveRecords", "ClearClaim", "LiftPauses", "SpawnPush"},
 				marker:    "left",
 				check: func(t *testing.T, r cancelReport, f *cancelFake) {
 					if !r.EndOnly || r.RecordsRemoved || r.ClaimCleared {
@@ -1064,114 +934,20 @@ func TestCancelRun(t *testing.T) {
 			}
 			switch tt.marker {
 			case "none":
-				if fake.markerReleases != 0 || fake.called("TakeMarker") {
-					t.Errorf("lock taken, released = %v, %d; want it never taken", fake.called("TakeMarker"), fake.markerReleases)
+				if len(fake.markerReleases) != 0 || fake.called("TakeMarker") {
+					t.Errorf("marker taken, released = %v, %v; want it never taken", fake.called("TakeMarker"), fake.markerReleases)
 				}
-			case "left", "removed":
-				if fake.markerReleases != 1 {
-					t.Errorf("lock releases = %d; want exactly one", fake.markerReleases)
+			case "left":
+				if !slices.Equal(fake.markerReleases, []bool{false}) {
+					t.Errorf("marker releases = %v; want one release that keeps the marker", fake.markerReleases)
+				}
+			case "removed":
+				if !slices.Equal(fake.markerReleases, []bool{true}) {
+					t.Errorf("marker releases = %v; want one release that removes the marker", fake.markerReleases)
 				}
 			}
 			if tt.check != nil {
 				tt.check(t, report, fake)
-			}
-		})
-	}
-}
-
-// TestCancelVerdict pins which runs the act rule refuses a cancel: only a landed run and one another machine owns.
-// A cancel resolves a shed pause, a pause intent, a covering pause, a cancel under way, a hold and an owed push itself.
-func TestCancelVerdict(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	started := func(status shedengine.Status) runfsm.Records {
-		return runfsm.Records{Batten: status, BattenFound: true, BattenStarted: true}
-	}
-	running := runningStatus(battenrecipe.NameRunShed)
-	tests := []struct {
-		name       string
-		records    runfsm.Records
-		inputs     runfsm.Inputs
-		wantAnswer runfsm.Answer
-		wantReason runfsm.Reason
-	}{
-		{name: "RunningRunActs", records: started(running), wantAnswer: runfsm.AnswerAct},
-		{name: "ShedPausedRunActs", records: started(shedengine.Status{CurrentProducer: battenrecipe.NameRunShed, State: shedengine.StatePaused}), wantAnswer: runfsm.AnswerAct},
-		{
-			name:       "PauseIntentAndCoveringPauseAct",
-			records:    started(shedengine.Status{CurrentProducer: battenrecipe.NameRunShed, State: shedengine.StateRunning, PauseIntent: &shedengine.PauseIntent{}}),
-			inputs:     runfsm.Inputs{PauseCovers: true},
-			wantAnswer: runfsm.AnswerAct,
-		},
-		{
-			name:       "CancelUnderWayActs",
-			records:    started(shedengine.Status{CurrentProducer: battenrecipe.NameRunShed, State: shedengine.StateRunning, Cancel: &shedengine.CancelIntent{}}),
-			wantAnswer: runfsm.AnswerAct,
-		},
-		{name: "HeldRunWithAnOwedPushActs", records: started(running), inputs: runfsm.Inputs{Held: true, PushOwedOffline: true}, wantAnswer: runfsm.AnswerAct},
-		{name: "LandedSlugWaitsAsTerminal", records: runfsm.Records{BoardDone: true}, wantAnswer: runfsm.AnswerWait, wantReason: runfsm.ReasonTerminal},
-		{name: "OwnedElsewhereIsHandedOver", records: started(running), inputs: runfsm.Inputs{OwnedElsewhere: true}, wantAnswer: runfsm.AnswerHandOver, wantReason: runfsm.ReasonOwnedElsewhere},
-		{name: "MissingCodeTipWaits", records: started(running), inputs: runfsm.Inputs{CodeTipMissing: true}, wantAnswer: runfsm.AnswerWait, wantReason: runfsm.ReasonCodeTip},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := cancelVerdict(tt.records, tt.inputs)
-
-			if got.Answer != tt.wantAnswer || got.Reason != tt.wantReason {
-				t.Errorf("cancelVerdict() answer, reason = %q, %q; want %q, %q", got.Answer, got.Reason, tt.wantAnswer, tt.wantReason)
-			}
-		})
-	}
-}
-
-// TestCommitCancelRecord asserts the cancel's commit of batten's record:
-// it commits and starts the push, and starts none when nothing was committed.
-// It refuses while the records side is mid-merge.
-// It returns a failed merge-state read or commit.
-// It never returns a push that failed to start.
-func TestCommitCancelRecord(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	boom := errors.New("boom")
-	tests := []struct {
-		name          string
-		mergeActive   bool
-		mergeErr      error
-		committed     bool
-		commitErr     error
-		spawnErr      error
-		wantCommitted bool
-		wantCommits   int
-		wantSpawns    int
-		wantErr       string
-	}{
-		{name: "CommitsAndStartsThePush", committed: true, wantCommitted: true, wantCommits: 1, wantSpawns: 1},
-		{name: "NothingCommittedStartsNoPush", wantCommits: 1},
-		{name: "MidMergeRefusesAndCommitsNothing", mergeActive: true, wantErr: "a merge is in progress on the prime's records side"},
-		{name: "FailedMergeStateReadIsReturned", mergeErr: boom, wantErr: "boom"},
-		{name: "FailedCommitIsReturned", commitErr: boom, wantCommits: 1, wantErr: "boom"},
-		{name: "FailedPushStartIsNotReturned", committed: true, spawnErr: boom, wantCommitted: true, wantCommits: 1, wantSpawns: 1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			var commits, spawns int
-			committed, err := commitCancelRecord(commitStatusDeps{
-				MergeActive: func() (bool, error) { return tt.mergeActive, tt.mergeErr },
-				Commit:      func(string) (bool, error) { commits++; return tt.committed, tt.commitErr },
-				Spawn:       func() error { spawns++; return tt.spawnErr },
-			}, "a-slug")
-
-			if (err == nil) != (tt.wantErr == "") || (err != nil && !strings.Contains(err.Error(), tt.wantErr)) {
-				t.Errorf("commitCancelRecord() error = %v; want it to contain %q", err, tt.wantErr)
-			}
-			if committed != tt.wantCommitted || commits != tt.wantCommits || spawns != tt.wantSpawns {
-				t.Errorf("committed, commits, spawns = %v, %d, %d; want %v, %d, %d", committed, commits, spawns, tt.wantCommitted, tt.wantCommits, tt.wantSpawns)
 			}
 		})
 	}

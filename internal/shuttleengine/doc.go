@@ -19,21 +19,14 @@
 // Every other engine-consulting operation resolves the engine its run's record names.
 // An absent key reads as the default, and an unregistered name is refused with the lookup's error.
 // Stop and teardown resolve no engine, so a record naming an unregistered engine never blocks them.
-// EngineName on the set or the runner gives the name a choice resolves to, so a producer renders its prompt for it.
-// The producer sets that name as Spec.PromptEngine.
-// Every engine's Prepare runs CheckPromptEngine first.
-// It refuses a spec whose prompt engine is another engine's or unset.
-// A spec marked HandWrittenPrompt, which only `lym shuttle run` sets, passes.
 // The verdict/output contract is provider-invariant, which is what makes engines swappable:
 // shuttleengine defines the Engine interface and its value types, and never imports a concrete engine implementation;
 // concrete engines import shuttleengine, not the reverse.
 // Only internal/shuttleengines and an engine's own directory import a concrete engine.
 // seam_enforcement_test.go enforces that rule module-wide.
-// StandingPassages returns the instruction passages heddle's layers hold for a session of an engine and a strand role,
-// and the entries of the engine's instruction file, each keyed by its heddle slug, as a Standing.
+// StandingPassages returns the instruction passages heddle's layers hold for a session of an engine and a strand role.
 // It reads them through the reader InstallPassageReader installs for the process.
-// It returns the zero Standing outside a hub, with no reader installed, or when the reader fails.
-// A reader failure is logged at Warn.
+// It returns none outside a hub, with no reader installed, or when the reader fails, which is logged at Warn.
 // A launch therefore never waits on the store.
 // An engine appends the passages to the system prompt it launches with, and shuttle itself parses no store.
 // The Engine interface is extended by optional capabilities, which an engine can lack:
@@ -83,15 +76,6 @@
 // The orphan sweep never removes that file.
 // Runner.EnginesRun returns the union of that ledger and the engines of the run records still under the root.
 // A caller thus learns which engines a worktree's sessions ran under after their directories are swept.
-// Each engine's Prepare writes a Manifest into the run directory through WriteManifest.
-// It holds one item per thing the session receives, keyed by channel and an engine-neutral key.
-// The omitted items are repeated as its Verdict.
-// Runner.launch keeps a copy as `manifests/<run id>.json` at the run-directory root once the run record is saved.
-// Only a launch whose strand registered keeps one.
-// A copy that cannot be kept is logged at Warn and fails nothing.
-// A done run's cleanup removes the run directory and leaves the copy, and nothing removes the copies.
-// The orphan sweep and the strand lookup skip the `manifests` directory, which holds no run record.
-// MissingItems compares two manifests by channel and key.
 // The cross-run readers ReadAgentActivity, ReadSessionStates and ReadAgentWaits read each run.
 // They use the engine its run record names, the engine set's default for a record naming none.
 // They skip a run whose engine the set does not hold.
@@ -220,26 +204,6 @@
 // The offset is kept apart from RunState.NotifiedOffset, so a hold notice and a dialog notice never suppress each other.
 // The notice is never typed into the pane and changes no outcome.
 //
-// A third notice covers an edit loop: one agent editing one file again and again.
-// It goes out in the same runs and through the same notifier as the dialog notice.
-// An engine's edit hook appends each file edit to the run's edit records file, which EditRecordsFileName names,
-// and the engine's SessionSignalParser reports it with its file.
-// The records go to that file, apart from the events file,
-// so the hook's frequent writes never split a recording hook's line.
-// The signal also names the subagent or fork that made the edit, by its id.
-// Wait counts each agent's edits of each file at the signal's time, or the run clock's when the signal has none.
-// Once Config.EditLoopEdits of them fall within Config.EditLoopWindowS seconds, it sends one notice line.
-// It then restarts that count.
-// The line names the strand, the file, the subagent or fork when one made the edits, the count and the window.
-// It says the session keeps running.
-// An EditLoopEdits of 0 turns the watch off, and an engine then installs no edit hook.
-// While a pause covers the run Wait reads no edits, so the edits made then are counted once it lifts.
-// RunState.EditLoopNotifiedOffset is the edit-records-file offset past the batch of the latest notice.
-// It is persisted before the notifier is called.
-// A Wait counts edits from that offset, so a reattach never repeats a notice.
-// A write of it that fails restores the watch, and the next tick reads the batch again and retries the notice.
-// The notice is never typed into the pane, stops no session and changes no outcome.
-//
 // AwaitAny is the shared wait.
 // It stats the told paths once a second until one exists or the cap elapses, and watches no directory.
 // It is the poll every capped keep-cache-warm wait verb runs on.
@@ -351,9 +315,6 @@
 // The run record reads running until a stop ends it.
 // A resume treats the strand like any other non-live one, since an empty done-when list never drops it as finished.
 // A Spec with ResumeSessionID resumes that session through the engine's resume capability.
-// The capability refuses a session a live process holds with a SessionHeldError naming the process.
-// It refuses a session this machine holds no transcript of with an error wrapping ErrNoTranscript.
-// Run.SessionHolder names the live provider process holding a run's session, through the engine's SessionHolderFinder.
 // Bound: one session per call in the caller's worktree, with no timeout classification, since nothing waits on it;
 // the caller stops it through StopStrand.
 //
@@ -489,8 +450,6 @@
 // Runner.TypeColor sends the same sequence into a live shuttle strand for a caller that colors its own session.
 // It returns a held color's error, wrapping ErrSessionBusy, so the caller may retry.
 // Runner.ClearSession, Runner.CompactSession and Runner.ReloadPlugins send their slash commands through the same path.
-// So does Runner.TurnOnRemoteControl.
-// Remote control is the optional RemoteController capability, and an engine without it types nothing for it.
 // A draft in the box or an active operator holds them with ErrSessionBusy,
 // so a caller's earlier idle probe never lets them type.
 // The idle reading takes a box of whitespace as empty, and a provider takes a command behind whitespace as a prompt,
@@ -938,12 +897,4 @@
 // it is also gone when the events file ends, past its size at the wait's first liveness tick, in a process-ending session end and the registry does not read the id alive.
 // An unproven reading, a session end at or before that first-tick size and a session end beside an alive reading end nothing, so an earlier launch's end never fails a resumed launch.
 // A gone session ends the run died, or done when every output file exists, the way a dead pane does; a startup that finds it fails as died.
-//
-// UserSetupSource is the seam through which one engine hands another the user's Claude setup for a session.
-// A UserSetupRequest names the session's working directory, worktree root, preloaded skills and role.
-// The UserSetup it returns holds the CLAUDE.md files and a listing of the skills the session's scope turns on.
-// It also holds the plugin contexts, the hooks left out, and the warnings the resolution went on despite.
-// A provider other than Claude takes the setup through the seam, so it imports no Claude specifics.
-// Only internal/shuttleengines wires a concrete source to it.
-// HookRunner runs one plugin hook for the source, and a nil runner runs none.
 package shuttleengine

@@ -24,7 +24,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -165,6 +164,16 @@ func snapshot(t *testing.T, root string) map[string]string {
 		t.Fatalf("snapshot %s: %v", root, err)
 	}
 	return files
+}
+
+// makeReadOnly sets dir to mode 0555.
+// Its cleanup restores 0755 before the temporary tree is removed.
+func makeReadOnly(t *testing.T, dir string) {
+	t.Helper()
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatalf("chmod %s: %v", dir, err)
+	}
 }
 
 // writeFile creates a file with its parent directories.
@@ -413,7 +422,7 @@ func TestForkauditRefusals(t *testing.T) {
 			}},
 		{name: "out directory read-only", denial: true, wantExit: 1, wantStderr: []string{"--out"},
 			prepare: func(t *testing.T, d *auditDirs) ([]string, []string) {
-				permkit.Chmod(t, d.outDir, 0o555)
+				makeReadOnly(t, d.outDir)
 				return d.args(since...), nil
 			}},
 		{name: "out directory missing", wantExit: 1, wantStderr: []string{"--out"},
@@ -472,7 +481,7 @@ func TestForkauditRefusals(t *testing.T) {
 		{name: "marked work read-only", denial: true, wantExit: 1, wantStderr: []string{"--work", "not writable"},
 			prepare: func(t *testing.T, d *auditDirs) ([]string, []string) {
 				markedDir(t, d.work)
-				permkit.Chmod(t, d.work, 0o555)
+				makeReadOnly(t, d.work)
 				return d.args(since...), nil
 			}},
 		{name: "unreadable candidate transcript", denial: true, failsAfterWork: true, wantExit: 1, wantStderr: []string{"agent-ffile"},
@@ -495,7 +504,7 @@ func TestForkauditRefusals(t *testing.T) {
 				if err := os.Mkdir(parent, 0o755); err != nil {
 					t.Fatalf("create parent: %v", err)
 				}
-				permkit.Chmod(t, parent, 0o555)
+				makeReadOnly(t, parent)
 				d.work = filepath.Join(parent, "work")
 				return d.args(since...), nil
 			}},

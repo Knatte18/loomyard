@@ -108,7 +108,7 @@ func TestArmAt_StartGuardRefusesBeforeAnyWrite(t *testing.T) {
 		if err != nil {
 			t.Fatalf("takeCancelMarker: %v", err)
 		}
-		t.Cleanup(func() { _ = held.release() })
+		t.Cleanup(func() { _ = held.release(true) })
 		fake := &fakeOwners{machine: "here", owners: owners}
 		c := &battenCLI{owner: fake.seams()}
 

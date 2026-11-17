@@ -12,7 +12,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -20,13 +19,6 @@ import (
 type ResumeRequest struct {
 	// Slug is the pair to resume; empty resumes every live entry.
 	Slug string
-	// Verdict, when set, is asked first for the act rule's answer over the run.
-	// Any answer but act refuses the resume with nothing lifted, a terminal wait aside:
-	// a landed or cancelled run's entry is lifted, since a resume drives nothing.
-	Verdict func() (runfsm.Verdict, error)
-	// Clear, when set, clears the run's pause intent after the verdict and before the lift.
-	// An error refuses the resume with nothing lifted.
-	Clear func() error
 }
 
 // ResumeReport reports what a resume lifted and how each interrupted session was handled.
@@ -116,24 +108,7 @@ type StaleProcess struct {
 // Resume lifts live entries and gives each session they interrupted one line.
 // A slug with no entry of its own that a live hub entry covers is refused, naming `lym tender resume`;
 // resuming nothing succeeds.
-// A request's Verdict and Clear run before the lift, as ResumeRequest describes.
 func Resume(deps Deps, req ResumeRequest) (ResumeReport, error) {
-	retry := fmt.Sprintf("%q", "lym tender resume "+req.Slug)
-	if req.Verdict != nil {
-		verdict, err := req.Verdict()
-		if err != nil {
-			return ResumeReport{}, fmt.Errorf("resume: read the state of %s to decide whether it may resume: %w; way forward: fix the cause, then run %s again", req.Slug, err, retry)
-		}
-		terminal := verdict.Answer == runfsm.AnswerWait && verdict.Reason == runfsm.ReasonTerminal
-		if refusal := verdict.Refusal(req.Slug, retry); refusal != nil && !terminal {
-			return ResumeReport{}, refusal
-		}
-	}
-	if req.Clear != nil {
-		if err := req.Clear(); err != nil {
-			return ResumeReport{}, fmt.Errorf("resume: clear the pause intent of %s: %w; way forward: fix the cause, then run %s again", req.Slug, err, retry)
-		}
-	}
 	return liftEntries(deps, func(record *pauserecord.Record) ([]pauserecord.Entry, error) {
 		var targets, kept []pauserecord.Entry
 		for _, live := range record.Live {

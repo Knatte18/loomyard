@@ -279,10 +279,6 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		{name: "blocked", state: shedengine.StateBlocked, wantOutcome: "done", wantReconcile: 1},
 		{name: "failed", state: shedengine.StateFailed, wantOutcome: "done", wantReconcile: 1},
 		{name: "paused", state: shedengine.StatePaused, wantOutcome: "done", wantReconcile: 1},
-		{
-			name: "cancelled", state: shedengine.StateCancelled,
-			wantErrors: []string{"some-slug was cancelled", `lym batten cancel some-slug --remove`, "which removes its record and any pair"},
-		},
 		{name: "absent_status_file", wantOutcome: "done"},
 		{name: "pause_after_the_first_row", state: shedengine.StateRunning, pauseAfter: battenrecipe.NameWorktreeCreate, wantOutcome: "paused", wantReconcile: 1},
 		{name: "failed_again", state: shedengine.StateFailed, producer: battenrecipe.NameLand, lockErr: errors.New("prime lock unavailable"), wantErrors: []string{"prime lock unavailable"}, wantReconcile: 1},

@@ -7,7 +7,6 @@ package shedarbiter
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
@@ -29,24 +28,12 @@ const AbsentPath = "none"
 // verdictGateAttempts is how many times the verdict gate re-prompts an arbiter whose verdict file does not read.
 const verdictGateAttempts = 2
 
-// The fragments the arbiter stencil's edit_scope marker carries:
-// the one-shot fix an arbiter may make and commit, or the rule that it edits nothing.
-const (
-	fixStencilName   = "loom-fragment-arbiter-fix"
-	noFixStencilName = "loom-fragment-arbiter-no-fix"
-)
-
-// editScopeMarker is the arbiter stencil's marker for the fragment that states what the arbiter may edit.
-const editScopeMarker = "edit_scope"
-
 // PromptInput carries what the arbiter stencil's markers are filled from.
 // Recipe, ReportPath, BriefPath, CaseBriefPath, DecisionRecordPath, SupportLogPath and AmendmentTarget may be empty.
 // Every other field is required.
 // Recipe is the description of the run's recipe, including the repair verbs the arbiter may run.
 // AmendmentTarget is the row a plan amendment routes to.
-// MayEdit lets the arbiter make one fix of its own and commit it in Worktree; false keeps it to a verdict.
 type PromptInput struct {
-	MayEdit            bool
 	Recipe             string
 	RunID              string
 	Slug               string
@@ -61,23 +48,16 @@ type PromptInput struct {
 	AmendmentTarget    string
 }
 
-// Prompt composes the arbiter session's launch prompt for the engine named engine.
-// It reads the arbiter stencil in stencilsDir and fills it with in.
+// Prompt composes the arbiter session's launch prompt from the arbiter stencil in stencilsDir, filled with in.
 // It renders the no-parent directive, since the verdict file is the arbiter's only channel.
-// It also renders the edit directive of engine.
-// Its edit rules are the one-shot fix fragment when in.MayEdit is set, and the no-fix fragment otherwise.
 // An empty recipe description, report, brief, case brief, decision record, support log or amendment target is filled as the literal "none".
 // It returns the read or fill error wrapped with the stencil's name.
-func Prompt(stencilsDir, engine string, in PromptInput) (string, error) {
+func Prompt(stencilsDir string, in PromptInput) (string, error) {
 	directive, err := parentdirective.Directive(stencilsDir, "", false)
 	if err != nil {
 		return "", err
 	}
-	editDirective, err := editdirective.Directive(stencilsDir, engine)
-	if err != nil {
-		return "", err
-	}
-	editScope, err := editScope(stencilsDir, in)
+	editDirective, err := editdirective.Directive(stencilsDir)
 	if err != nil {
 		return "", err
 	}
@@ -100,32 +80,11 @@ func Prompt(stencilsDir, engine string, in PromptInput) (string, error) {
 		"amendment_target":         pathOrNone(in.AmendmentTarget),
 		parentdirective.MarkerName: directive,
 		editdirective.MarkerName:   editDirective,
-		editScopeMarker:            editScope,
 	})
 	if err != nil {
 		return "", fmt.Errorf("loom: arbiter prompt: fill stencil %q: %w", stencilName, err)
 	}
 	return string(filled), nil
-}
-
-// editScope returns the arbiter's edit rules.
-// When in.MayEdit is set, they are the fix fragment filled with in's worktree and run.
-// Otherwise they are the no-fix fragment.
-// It returns the read or fill error wrapped with the fragment's name.
-func editScope(stencilsDir string, in PromptInput) (string, error) {
-	name := noFixStencilName
-	if in.MayEdit {
-		name = fixStencilName
-	}
-	template, err := stencilstore.Read(stencilsDir, name)
-	if err != nil {
-		return "", fmt.Errorf("loom: arbiter prompt: read stencil %q: %w", name, err)
-	}
-	filled, err := stencil.Fill(template, map[string]string{"worktree": in.Worktree, "run_id": in.RunID})
-	if err != nil {
-		return "", fmt.Errorf("loom: arbiter prompt: fill stencil %q: %w", name, err)
-	}
-	return strings.TrimSpace(string(filled)), nil
 }
 
 // pathOrNone returns path, or the literal "none" for an empty one.
@@ -137,10 +96,9 @@ func pathOrNone(path string) string {
 }
 
 // Spec composes the shuttleengine.Spec the arbiter session launches from.
-// It takes a composed prompt, the verdict path, the engine the prompt was rendered for and the resolved arbiter settings.
+// It takes a composed prompt, the verdict path and the resolved arbiter settings.
 //
 // Prompt is the argument verbatim, so the prompt is the arbiter's whole procedure.
-// PromptEngine is engine, which must be the engine settings' model choice resolves to.
 // ConfigRole is the arbiter role, whose skills come from agents.yaml (role `arbiter`).
 // OutputFiles holds verdictPath alone, so the completion check reads the verdict file,
 // and a resumed run drops a finished strand.
@@ -154,10 +112,9 @@ func pathOrNone(path string) string {
 // Display is left at its zero value.
 // APIErrorRetries is sheddriver.SettlerAPIErrorRetries, so a turn the provider's API ended is re-sent;
 // past the re-sends, the run ends and the stop is handed on.
-func Spec(prompt, verdictPath, engine string, settings sheddriver.ArbiterSettings) shuttleengine.Spec {
+func Spec(prompt, verdictPath string, settings sheddriver.ArbiterSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:          prompt,
-		PromptEngine:    engine,
 		ConfigRole:      agentconfig.RoleArbiter,
 		OutputFiles:     []string{verdictPath},
 		ModelChoice:     settings.ModelChoice,

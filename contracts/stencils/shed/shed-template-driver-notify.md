@@ -1,5 +1,5 @@
 <!-- This is the shed driver's parent-notification rule for a run nothing else watches.
-     internal/loomcli's RenderDriverPrompt fills it into shed-template-driver as the parent_notify marker,
+     internal/loomcli's driverPrompt fills it into shed-template-driver as the parent_notify marker,
      under the `## Notifying the parent` heading.
      It declares no marker and must stay marker-free;
      like the driver stencil, it names no recipe and no recipe-owned command. -->

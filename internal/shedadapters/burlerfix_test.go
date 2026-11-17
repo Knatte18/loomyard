@@ -27,7 +27,7 @@ import (
 // It fails the test on a constructor error.
 func newFixProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerFixProducer {
 	t.Helper()
-	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent, DecisionsEscalated: spec.decisionsEscalated, Assist: spec.assist, Parent: spec.parent, Snapshot: spec.snapshot, DecisionRecordPath: spec.decisionRecordPath}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerFixProducer() error = %v; want nil", err)
 	}
@@ -178,13 +178,7 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 		requiresFans   bool
 		wantFixFan     string
 		wantForks      *int
-		// notifier and escalated set the spec's decision routing; wantRouted is the flag the round's snapshot record holds.
-		notifier   bool
-		escalated  bool
-		wantRouted bool
 	}{
-		{name: "a row with a notifier records decisions routed", result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone}, notifier: true, wantRouted: true},
-		{name: "a row with neither notifier nor escalated decisions records them not routed", result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone}},
 		{
 			name: "a spawned fixer",
 			result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Fix: burlerengine.Half{Engine: "claude", StartedAt: started, EndedAt: started.Add(time.Minute)}, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{
@@ -220,10 +214,6 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			}
 			spec := newHalfSpec()
 			spec.requiresFans = tt.requiresFans
-			spec.decisionsEscalated = tt.escalated
-			if tt.notifier {
-				spec.notifyParent = func(string) error { return nil }
-			}
 			spec.opts = burlerengine.RunOpts{Timeout: 3 * time.Minute, Gate: shuttleengine.GateSpec{{Name: "verify", Attempts: 1}}}
 			spec.models = burlerengine.RoundModels{Fix: []shuttleengine.ModelChoice{{Model: "f1"}, {Model: "f2"}}}
 			runner := &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{tt.result}}
@@ -262,10 +252,6 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			}
 			requireArchived(t, runDir, "round-2-review.md", 0)
 			requireArchived(t, runDir, "round-2-acceptance.md", 0)
-			snapshot, found, err := readRoundSnapshot(runDir, 2)
-			if err != nil || !found || snapshot.DecisionsRouted == nil || *snapshot.DecisionsRouted != tt.wantRouted {
-				t.Errorf("round 2 snapshot record = %+v, %v, %v; want decisions_routed %v", snapshot, found, err, tt.wantRouted)
-			}
 		})
 	}
 }

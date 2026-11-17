@@ -168,13 +168,6 @@ func notJudgedReason(r Run) string {
 	return ""
 }
 
-// CoveringTests names the runs of pool that together cover blocks, as a contained verdict names its covering tests.
-// It takes the largest overlap first, then by name, and skips a run that adds no block still uncovered.
-func CoveringTests(blocks BlockSet, pool []Run) []string {
-	runs := append([]Run{{Blocks: blocks}}, pool...)
-	return coveringTests(0, runs, func(int) bool { return true })
-}
-
 // coveringTests names the tests of the pool that together cover runs[self]'s blocks.
 // It takes the largest overlap first and skips a test that adds no block still uncovered.
 func coveringTests(self int, runs []Run, inPool func(int) bool) []string {

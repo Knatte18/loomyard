@@ -146,12 +146,9 @@ func (w *warnLog) String() string {
 // Its sandbox probe reports a sandbox that starts, so no test runs Codex.
 func newEngine(anchor string) (*Codex, *warnLog) {
 	log := &warnLog{}
-	engine := NewFromConfig(
-		shuttleengine.Config{SubmitRedrawSettleMS: defaultSubmitRedrawSettleMS},
-		configengine.Dirs{Anchor: anchor},
-		Seams{SandboxProbe: func(string, string, string) error { return nil }},
-	)
+	engine := NewFromConfig(shuttleengine.Config{SubmitRedrawSettleMS: defaultSubmitRedrawSettleMS}, configengine.Dirs{Anchor: anchor})
 	engine.warn = log.warn
+	engine.sandboxProbe = func(string, string, string) error { return nil }
 	return engine, log
 }
 

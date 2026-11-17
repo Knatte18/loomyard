@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -78,7 +77,7 @@ func loadRunWrites(engines AuditEngines, st *State, paneCwd string) (RunWrites, 
 // A relative write path is resolved against paneCwd.
 // A path outside the worktree is dropped, and the error is a link-resolution failure.
 func writtenWorktreePaths(writes RunWrites, paneCwd, worktree string) ([]string, error) {
-	root, err := runplan.CanonicalPath(worktree)
+	root, err := canonicalPath(worktree)
 	if err != nil {
 		return nil, err
 	}
@@ -87,11 +86,11 @@ func writtenWorktreePaths(writes RunWrites, paneCwd, worktree string) ([]string,
 		if !ev.Succeeded {
 			continue
 		}
-		canon, err := runplan.CanonicalPath(runplan.ResolveWritePath(paneCwd, ev.Path))
+		canon, err := canonicalPath(resolveWritePath(paneCwd, ev.Path))
 		if err != nil {
 			return nil, err
 		}
-		if !runplan.PathWithin(root, canon) {
+		if !pathWithin(root, canon) {
 			continue
 		}
 		rel, err := filepath.Rel(root, canon)

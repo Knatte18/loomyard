@@ -11,7 +11,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -28,10 +27,6 @@ const (
 	registryDirectory = "internal/shuttleengines"
 )
 
-// sharedPackages are the packages under internal/shuttleengine/ that hold no engine:
-// engine-neutral code every engine may import, which the import rule does not bind.
-var sharedPackages = []string{"bashlookup"}
-
 // providerSeamViolations returns the production files under base that import a concrete engine package.
 // Imports from outside that engine's own directory tree count as violations, except from the registry directory.
 // It also returns the count of files scanned.
@@ -47,10 +42,6 @@ func providerSeamViolations(t *testing.T, base string) ([]string, int) {
 		for _, imp := range f.AST(t, parser.ImportsOnly).Imports {
 			imported := strings.Trim(imp.Path.Value, `"`)
 			if !strings.HasPrefix(imported, enginePackagePrefix) {
-				continue
-			}
-			packageName, _, _ := strings.Cut(strings.TrimPrefix(imported, enginePackagePrefix), "/")
-			if slices.Contains(sharedPackages, packageName) {
 				continue
 			}
 			engineDirectory := engineDirectoryPrefix + strings.TrimPrefix(imported, enginePackagePrefix)
@@ -92,7 +83,6 @@ func TestProviderSeamImportRule(t *testing.T) {
 	t.Parallel()
 
 	const importsClaude = "package x\n\nimport _ \"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine\"\n"
-	const importsShared = "package x\n\nimport _ \"github.com/Knatte18/loomyard/internal/shuttleengine/bashlookup\"\n"
 	const callsGate = "package x\n\nfunc f(r interface{ AcceptStartupGate(string) (bool, error) }) { _, _ = r.AcceptStartupGate(\"g\") }\n"
 	tests := []struct {
 		name  string
@@ -104,7 +94,6 @@ func TestProviderSeamImportRule(t *testing.T) {
 		{"ImportFromAnotherPackage", map[string]string{"internal/x/x.go": importsClaude}, []string{"internal/x/x.go"}, nil},
 		{"ImportFromTheEnginesOwnDirectory", map[string]string{"internal/shuttleengine/claudeengine/a.go": importsClaude}, nil, nil},
 		{"ImportFromTheRegistry", map[string]string{"internal/shuttleengines/b.go": importsClaude}, nil, nil},
-		{"ImportOfASharedPackageFromAnEngine", map[string]string{"internal/shuttleengine/codexengine/c.go": importsShared}, nil, nil},
 		{"AcceptStartupGateCalledFromAnotherPackage", map[string]string{"internal/x/x.go": callsGate}, nil, []string{"internal/x/x.go"}},
 		{"AcceptStartupGateCalledInsideTheShuttlePackage", map[string]string{"internal/shuttleengine/y.go": callsGate}, nil, nil},
 	}

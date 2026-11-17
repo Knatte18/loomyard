@@ -77,6 +77,16 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 		t.Errorf("prime PrimeTidyShuttle = %#v; want nil", primeDeps.PrimeTidyShuttle)
 	}
 
+	// Only the prime's dobby takes the upkeep step.
+	upkeepSeams := func(deps dobbyengine.Deps) []bool {
+		return []bool{deps.StartTestMap != nil, deps.TestMapRunning != nil, deps.TestMapExitRecord != nil, deps.PrimeHead != nil, deps.GateSlots != nil}
+	}
+	if got, want := upkeepSeams(primeDeps), []bool{true, true, true, true, true}; !slices.Equal(got, want) {
+		t.Errorf("prime upkeep seams set = %v; want %v", got, want)
+	}
+	if got, want := upkeepSeams(beamDeps), []bool{false, false, false, false, false}; !slices.Equal(got, want) {
+		t.Errorf("beam upkeep seams set = %v; want %v", got, want)
+	}
 	// The watch opens only a directory that exists, and a tick creates it as a side effect.
 	// So the check comes before any tick.
 	if info, err := os.Stat(filepath.Dir(hibernatecli.RequestPath(prime))); err != nil || !info.IsDir() {

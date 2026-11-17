@@ -14,18 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/codexengine"
 )
 
-// LaunchSeams are the collaborators a set built by NewWithSeams runs a launch with, in place of the engines' own.
-// The zero value keeps every engine's own.
-type LaunchSeams struct {
-	// RunHook runs one plugin hook for a Codex launch's user setup; nil runs the Claude engine's own runner.
-	RunHook shuttleengine.HookRunner
-	// SandboxProbe runs executable bin under the Codex home in dir and reports why Codex's sandbox cannot start;
-	// nil runs Codex's own probe.
-	SandboxProbe func(bin, home, dir string) error
-}
-
-// constructor builds one engine from the shuttle config, the Dirs of the location the engine serves and the launch seams.
-type constructor func(cfg shuttleengine.Config, dirs configengine.Dirs, seams LaunchSeams) shuttleengine.Engine
+// constructor builds one engine from the shuttle config and the Dirs of the location the engine serves.
+type constructor func(cfg shuttleengine.Config, dirs configengine.Dirs) shuttleengine.Engine
 
 // ConfigModule is one engine's config module as plain data: a config registry can list it without importing the engine.
 type ConfigModule struct {
@@ -66,7 +56,7 @@ func codexScrub() reedengine.EnvScrub {
 var registry = map[string]entry{
 	"claude": {
 		scrub: claudeScrub(),
-		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs, _ LaunchSeams) shuttleengine.Engine {
+		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs) shuttleengine.Engine {
 			return claudeengine.NewFromConfig(cfg, dirs)
 		},
 		config: ConfigModule{
@@ -88,16 +78,8 @@ var registry = map[string]entry{
 	},
 	"codex": {
 		scrub: codexScrub(),
-		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs, seams LaunchSeams) shuttleengine.Engine {
-			runHook := seams.RunHook
-			if runHook == nil {
-				runHook = claudeengine.RunPluginHook
-			}
-			return codexengine.NewFromConfig(cfg, dirs, codexengine.Seams{
-				UserSetup:    claudeengine.NewUserSetupSource(dirs),
-				RunHook:      runHook,
-				SandboxProbe: seams.SandboxProbe,
-			})
+		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs) shuttleengine.Engine {
+			return codexengine.NewFromConfig(cfg, dirs)
 		},
 		config: ConfigModule{
 			Name:     "codex",
@@ -115,24 +97,11 @@ var registry = map[string]entry{
 // Every engine is handed dirs, the layers of the location it serves.
 // It refuses a cfg.Engine that names no registered engine.
 func New(cfg shuttleengine.Config, dirs configengine.Dirs) (shuttleengine.EngineSet, error) {
-	return build(cfg, dirs, registeredConstructors(), LaunchSeams{})
-}
-
-// NewWithSeams builds the set New builds, with each engine launching under the given seams.
-// It is the one entry point that gives a set a caller's plugin hook runner and sandbox probe.
-// `lym shuttle manifest` and the parity test use it to run each engine's Prepare without running a hook or Codex.
-// A real launch path never calls it.
-func NewWithSeams(cfg shuttleengine.Config, dirs configengine.Dirs, seams LaunchSeams) (shuttleengine.EngineSet, error) {
-	return build(cfg, dirs, registeredConstructors(), seams)
-}
-
-// registeredConstructors returns the constructor of every registered engine, keyed by name.
-func registeredConstructors() map[string]constructor {
 	constructors := make(map[string]constructor, len(registry))
 	for name, registered := range registry {
 		constructors[name] = registered.constructor
 	}
-	return constructors
+	return build(cfg, dirs, constructors)
 }
 
 // ConfigModules returns every registered engine's config module, sorted by name.
@@ -150,11 +119,11 @@ func ConfigModules() []ConfigModule {
 // It refuses, before returning a set, a cfg.Engine that is not one of the entries.
 // It also refuses an engine that declares fork support through shuttleengine.RequirementSupporter.
 // Such an engine must also implement shuttleengine.ForkAuditor.
-func build(cfg shuttleengine.Config, dirs configengine.Dirs, constructors map[string]constructor, seams LaunchSeams) (shuttleengine.EngineSet, error) {
+func build(cfg shuttleengine.Config, dirs configengine.Dirs, constructors map[string]constructor) (shuttleengine.EngineSet, error) {
 	engines := make(map[string]shuttleengine.Engine, len(constructors))
 	names := make([]string, 0, len(constructors))
 	for name, construct := range constructors {
-		engines[name] = construct(cfg, dirs, seams)
+		engines[name] = construct(cfg, dirs)
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -225,7 +194,7 @@ func sortedKeys(set map[string]bool) []string {
 func SessionNamers() map[string]reedengine.SessionNamer {
 	engines := make(map[string]shuttleengine.Engine, len(registry))
 	for name, registered := range registry {
-		engines[name] = registered.constructor(shuttleengine.Config{}, configengine.Dirs{}, LaunchSeams{})
+		engines[name] = registered.constructor(shuttleengine.Config{}, configengine.Dirs{})
 	}
 	namers := namersOf(engines)
 	if claude, ok := namers["claude"]; ok {
@@ -253,7 +222,7 @@ func namersOf(engines map[string]shuttleengine.Engine) map[string]reedengine.Ses
 func RecordReaders() map[string]shuttleengine.RecordReads {
 	engines := make(map[string]shuttleengine.Engine, len(registry))
 	for name, registered := range registry {
-		engines[name] = registered.constructor(shuttleengine.Config{}, configengine.Dirs{}, LaunchSeams{})
+		engines[name] = registered.constructor(shuttleengine.Config{}, configengine.Dirs{})
 	}
 	return readsOf(engines)
 }
@@ -319,7 +288,7 @@ func ToolBoundaryRenderer(name string) (shuttleengine.ToolBoundaryContextRendere
 	if !ok {
 		return nil, false
 	}
-	renderer, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}, LaunchSeams{}).(shuttleengine.ToolBoundaryContextRenderer)
+	renderer, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}).(shuttleengine.ToolBoundaryContextRenderer)
 	return renderer, ok
 }
 
@@ -332,18 +301,6 @@ func BatchingNudger(name string) (shuttleengine.BatchingNudger, bool) {
 	if !ok {
 		return nil, false
 	}
-	nudger, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}, LaunchSeams{}).(shuttleengine.BatchingNudger)
+	nudger, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}).(shuttleengine.BatchingNudger)
 	return nudger, ok
-}
-
-// EditRecorder returns the edit-hook capability of the registered engine named name.
-// It returns false when no engine of that name is registered or the engine has none.
-// The engine is built with a zero shuttle config and no config directories, since recording an edit reads no config.
-func EditRecorder(name string) (shuttleengine.EditRecorder, bool) {
-	registered, ok := registry[name]
-	if !ok {
-		return nil, false
-	}
-	recorder, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}, LaunchSeams{}).(shuttleengine.EditRecorder)
-	return recorder, ok
 }

@@ -165,36 +165,37 @@ func TestPlanReviewSkippable_UncommittedPlanErrors(t *testing.T) {
 	}
 }
 
-// TestArchivedRunRecordDirs covers the listing order, the skipped round, the absent directory,
-// and a rework directory that cannot be listed: an error, never a silently empty list.
-func TestArchivedRunRecordDirs(t *testing.T) {
+func TestArchivedWebsterDirs(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Parallel()
 	reworkDir := t.TempDir()
-	slot := func(round, name string) string {
-		return filepath.Join(reworkDir, round, "prior-generation", name)
-	}
-	for _, dir := range []string{
-		slot("round-10", "weaver"), slot("round-10", "webster"),
-		slot("round-2", "weaver"), slot("round-1", "webster"),
-		slot("round-3", "plan"),
-	} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+	for _, n := range []string{"round-10", "round-2", "round-1"} {
+		if err := os.MkdirAll(filepath.Join(reworkDir, n, "prior-generation", "webster"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	want := []string{slot("round-1", "webster"), slot("round-2", "weaver"), slot("round-10", "webster"), slot("round-10", "weaver")}
-	if got, err := ArchivedRunRecordDirs(reworkDir); err != nil || !slices.Equal(got, want) {
-		t.Errorf("ArchivedRunRecordDirs = %v, %v; want %v, nil", got, err, want)
+	if err := os.MkdirAll(filepath.Join(reworkDir, "round-3", "prior-generation", "plan"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if got, err := ArchivedRunRecordDirs(filepath.Join(reworkDir, "absent")); err != nil || len(got) != 0 {
-		t.Errorf("ArchivedRunRecordDirs over absent dir = %v, %v; want none, nil", got, err)
+	var want []string
+	for _, n := range []string{"round-1", "round-2", "round-10"} {
+		want = append(want, filepath.Join(reworkDir, n, "prior-generation", "webster"))
 	}
+	if got, err := ArchivedWebsterDirs(reworkDir); err != nil || !slices.Equal(got, want) {
+		t.Errorf("ArchivedWebsterDirs = %v, %v; want %v, nil", got, err, want)
+	}
+	if got, err := ArchivedWebsterDirs(filepath.Join(reworkDir, "absent")); err != nil || len(got) != 0 {
+		t.Errorf("ArchivedWebsterDirs over absent dir = %v, %v; want none, nil", got, err)
+	}
+}
+
+// TestArchivedWebsterDirs_UnreadableDirErrors covers a rework directory that cannot be listed: an error, never a silently empty list.
+func TestArchivedWebsterDirs_UnreadableDirErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	notADir := filepath.Join(t.TempDir(), "rework")
 	if err := os.WriteFile(notADir, []byte("not a directory\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := ArchivedRunRecordDirs(notADir); err == nil {
-		t.Errorf("ArchivedRunRecordDirs over a file = %v, nil; want an error", got)
+	if got, err := ArchivedWebsterDirs(notADir); err == nil {
+		t.Errorf("ArchivedWebsterDirs = %v, nil; want an error", got)
 	}
 }

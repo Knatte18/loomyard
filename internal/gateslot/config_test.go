@@ -68,8 +68,8 @@ func TestConfigSpec_SetNestedKeys(t *testing.T) {
 }
 
 var templateDefaults = Config{
-	Slots: 2, BusyQuitSec: 120, MemoryQuitMB: 4096, FixerTimeoutMin: 30,
-	RedundancyBuildTimeoutMin: 10, RedundancyTestTimeoutSec: 120, RedundancyTestMemoryMB: 2048, RedundancyMaxTests: 40, RedundancyBudgetMin: 10,
+	Slots: 2, BusyQuitSec: 120, FixerTimeoutMin: 30,
+	RedundancyBuildTimeoutMin: 10, RedundancyTestTimeoutSec: 120, RedundancyMaxTests: 40, RedundancyBudgetMin: 10,
 	Gates: map[string]GateKey{
 		"card":            {Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}, Fixer: "sonnet[medium]"},
 		"batch":           {Tiers: []int{0}, Scope: "card"},
@@ -77,9 +77,9 @@ var templateDefaults = Config{
 		"parent-align":    {Tiers: []int{0}, Scope: "all", Reports: []string{"redundancy"}},
 		"finalize":        {Tiers: []int{0}, Scope: "all"},
 		"adopt":           {Tiers: []int{0}, Scope: "all"},
-		"webster-fix":     {Tiers: []int{0}, Scope: "diff"},
-		"darn-write":      {Tiers: []int{0}, Scope: "diff", Reports: []string{"redundancy"}},
-		"code-burler-fix": {Tiers: []int{0}, Scope: "diff", Reports: []string{"redundancy"}},
+		"webster-fix":     {Tiers: []int{0}, Scope: "coverage"},
+		"darn-write":      {Tiers: []int{0}, Scope: "coverage", Reports: []string{"redundancy"}},
+		"code-burler-fix": {Tiers: []int{0}, Scope: "coverage", Reports: []string{"redundancy"}},
 		"pr-review":       {Tiers: []int{0}, Scope: "diff"},
 	},
 	Scoper: "none",
@@ -249,9 +249,6 @@ func TestLoadConfig(t *testing.T) {
 		{"a retired guard_tier still loads", "slots: 3\nguard_tier: 1\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"a retired test_map_max_age_days still loads, whatever its value", "slots: 3\ntest_map_max_age_days: 0\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"busy_quit_sec zero turns the watchdog off", "slots: 2\nbusy_quit_sec: 0\n", hubWith(func(c *Config) { c.BusyQuitSec = 0 }), ""},
-		{"memory_quit_mb zero turns the memory guard off", "slots: 2\nmemory_quit_mb: 0\n", hubWith(func(c *Config) { c.MemoryQuitMB = 0 }), ""},
-		{"negative memory_quit_mb", baseKeys + "memory_quit_mb: -1\n", Config{}, `gate config key "memory_quit_mb": -1; want at least 0` + fixIt},
-		{"tier with memory_mb 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, memory_mb: 0}}`, Config{}, `gate config key "tiers.tier0.memory_mb": 0; want at least 1, or no memory_mb for an uncapped tier` + fixIt},
 		{
 			"a tier in flow form reads parallel and slots as 1", baseKeys + tier0Flow,
 			hubWith(func(c *Config) {
@@ -261,11 +258,11 @@ func TestLoadConfig(t *testing.T) {
 		{
 			"a tier with slots all, covers and every key loads", baseKeys + `tiers:
   tier0: {command: "go test", timeout_min: 5, counter: vstest}
-  tier1: {about: integration, command: "go test -tags integration {targets}", all_targets: ./..., dir: sub, env: {GOFLAGS: "-p={parallel}"}, parallel: 3, timeout_min: 30, counter: go-json, covers: [0], slots: all, prebuilt_lym: true, memory_mb: 8192}
+  tier1: {about: integration, command: "go test -tags integration {targets}", all_targets: ./..., dir: sub, env: {GOFLAGS: "-p={parallel}"}, parallel: 3, timeout_min: 30, counter: go-json, covers: [0], slots: all, prebuilt_lym: true}
 `,
 			hubWith(func(c *Config) {
 				c.Tiers["tier0"] = Tier{Command: "go test", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
-				c.Tiers["tier1"] = Tier{About: "integration", Command: "go test -tags integration {targets}", Dir: "sub", Env: map[string]string{"GOFLAGS": "-p={parallel}"}, AllTargets: "./...", Parallel: 3, TimeoutMin: 30, Counter: "go-json", Covers: []int{0}, Slots: 0, PrebuiltLym: true, MemoryMB: 8192}
+				c.Tiers["tier1"] = Tier{About: "integration", Command: "go test -tags integration {targets}", Dir: "sub", Env: map[string]string{"GOFLAGS": "-p={parallel}"}, AllTargets: "./...", Parallel: 3, TimeoutMin: 30, Counter: "go-json", Covers: []int{0}, Slots: 0, PrebuiltLym: true}
 			}), "",
 		},
 		{
@@ -291,7 +288,6 @@ func TestLoadConfig(t *testing.T) {
 		{"fixer_timeout_min zero", baseKeys + "fixer_timeout_min: 0\n", Config{}, `gate config key "fixer_timeout_min": 0; want at least 1` + fixIt},
 		{"redundancy_build_timeout_min zero", baseKeys + "redundancy_build_timeout_min: 0\n", Config{}, `gate config key "redundancy_build_timeout_min": 0; want at least 1` + fixIt},
 		{"redundancy_test_timeout_sec zero", baseKeys + "redundancy_test_timeout_sec: 0\n", Config{}, `gate config key "redundancy_test_timeout_sec": 0; want at least 1` + fixIt},
-		{"redundancy_test_memory_mb zero", baseKeys + "redundancy_test_memory_mb: 0\n", Config{}, `gate config key "redundancy_test_memory_mb": 0; want at least 1` + fixIt},
 		{"redundancy_max_tests zero", baseKeys + "redundancy_max_tests: 0\n", Config{}, `gate config key "redundancy_max_tests": 0; want at least 1` + fixIt},
 		{"redundancy_budget_min zero", baseKeys + "redundancy_budget_min: 0\n", Config{}, `gate config key "redundancy_budget_min": 0; want at least 1` + fixIt},
 		{"an unknown report", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, reports: [speed]}\n", Config{}, `gate config key "gates.webster": report "speed"; want redundancy` + fixIt},
@@ -305,11 +301,7 @@ func TestLoadConfig(t *testing.T) {
 			}), "",
 		},
 		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.parent-align": scope card is only for the card and batch keys` + fixIt},
-		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.parent-align": scope "some"; want card, diff or all` + fixIt},
-		{
-			"the retired scope coverage names the migrating way forward", baseKeys + "gates:\n  webster-fix: {tiers: [0], scope: coverage}\n", Config{},
-			`gate config key "gates.webster-fix": scope coverage is retired, since the gate no longer selects tests from the coverage maps; fix it with "lym fabric reconcile" (or "lym config reconcile --layer default --apply") from the prime, which migrates it to scope diff` + roleClause,
-		},
+		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.parent-align": scope "some"; want card, diff, coverage or all` + fixIt},
 		{"an unknown lint", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [spelling]}\n", Config{}, `gate config key "gates.parent-align": lint "spelling"; want comments or pattern` + fixIt},
 		{
 			"a key's lints load in order", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [pattern, comments]}\n",
@@ -800,12 +792,6 @@ func TestMigrateConfig(t *testing.T) {
 				"guard_tier: retired, removed",
 			},
 			false,
-		},
-		{
-			"the retired scope coverage becomes diff, keeping the other fields and comments",
-			"gates:\n  # fixers\n  webster-fix: {tiers: [0, 1], scope: coverage, reports: [redundancy]}\n  pr-review: {tiers: [0], scope: diff}\n  darn-write: {tiers: [0], scope: coverage}\n",
-			"gates:\n  # fixers\n  webster-fix: {tiers: [0, 1], scope: diff, reports: [redundancy]}\n  pr-review: {tiers: [0], scope: diff}\n  darn-write: {tiers: [0], scope: diff}\n",
-			[]string{"gates.webster-fix: scope coverage retired, migrated to scope diff", "gates.darn-write: scope coverage retired, migrated to scope diff"}, false,
 		},
 		{"a guard_tier alone is pruned", "scoper: go\nguard_tier: 0\n", "scoper: go\n", []string{"guard_tier: retired, removed"}, false},
 		{"a document without publish unchanged", withoutPublish, withoutPublish, nil, false},

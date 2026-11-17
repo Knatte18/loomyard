@@ -45,6 +45,9 @@
 // `BeamDown` removes the orch strand, after which the watcher exits on its own.
 // It ends the worktree's dobby through `runproc.EndRole`, so no other process of the beam is signalled;
 // each part stops only when live.
+// For the prime it then ends the coverage-map upkeep pass, whether or not the dobby is live.
+// The pass is the `runproc.RoleTestMap` record under `runproc.HubOwner`, which the pass registers itself.
+// It has its own record and process group and so outlives the dobby's end.
 // `OrchLive` is the liveness predicate other modules call:
 // the worktree's orch state records a strand that reed tracks and reports live.
 //
@@ -55,7 +58,7 @@
 // Shuttle loads the orch's skills before that pointer on every launch path, a resume included;
 // the skills come from the `orch` role in agents.yaml.
 // `BeamUp` records the orch session's id in orch's state and resumes it after a reboot, a `stop` or a dead strand.
-// When this machine holds no transcript of the session it launches fresh from the last note, else the start stencil;
+// When the resume fails it falls back to the last note, else the start stencil;
 // the internal/orchengine package documentation's `Continuing after a reboot` section has the detail.
 // A context cycle asks the session for an orch note at the path it names, following `.lym/orch/note-template.md`.
 // The note stands in for a general handoff skill.
@@ -63,20 +66,6 @@
 // both write the note first.
 // The role's on-demand files render beside it, and the role carries no command list:
 // it sends the session to `lym help index`.
-//
-// # The orch's provider process
-//
-// After each launch `BeamUp` registers the session's provider process in `internal/runproc` as `runproc.RoleOrch`.
-// The record sits under the beam's slug, or `runproc.HubOwner` for the prime.
-// It outlives the strand's removal and is pruned once the process dies.
-// A resume the provider refuses because a live process holds the session reads that record.
-// When the record names the holder, `BeamUp` ends it through `runproc.EndRole` and resumes the same session.
-// A holder lym has not registered, such as an orch the pre-upgrade lym launched, refuses the start, naming its pid;
-// the way forward is to exit that session and run `lym beam start` again.
-// A resume refused because this machine holds no transcript of the session launches fresh with shuttle's carry-over,
-// and the report's warnings say so.
-// Any other failed resume fails the start, which launches nothing fresh.
-// A provider process the start could not find or register is a warning, and a later start refuses over it.
 //
 // # The cycle request
 //
@@ -103,18 +92,13 @@
 // # The watcher leaves a beam it no longer owns
 //
 // `watch` tells its watcher the owner read `beamOwnerElsewhere` and the strand removal.
-// A beam another machine owns therefore loses its orch strand and its processes on this machine.
+// A beam another machine owns therefore loses its orch strand with its dobby.
 // The read takes the prime's owner for the prime and a beam's effective owner through `hubgeom.ParentOf`.
 // It reads from the hub's local Bolt and compares the owner with this machine's name from `machinename`.
 // The verdict is as fresh as that Bolt.
 // `watch` also tells it the under-adopt accessor `UnderAdoptWatch` builds.
 // The accessor reads the hub's adopt record, its local board and `hubgeom.ParentOf`.
 // While an adopt in flight on this machine covers the worktree, a foreign owner leaves the orch strand up.
-// Before it removes the strand, the watcher ends every process this machine runs for the worktree's subject.
-// `pairteardown.EndSubjectProcesses` first ends the runs whose adopt subject is the beam, or the root for the prime.
-// It then ends the worktree's own records, the orch's provider process among them.
-// It leaves the dobby running, since the dobby's own hand-over pauses the runs and archives the local tips.
-// The watcher removes the strand even when that end failed, so a failing end never keeps the orch up.
 //
 // # Status restarts a dead watcher
 //
@@ -270,31 +254,6 @@
 // It prints the resume pointer as the provider's additional-context JSON and nothing else.
 // It also writes the delivery mark the watcher reads.
 // A failure prints the JSON error envelope and writes no mark, so the watcher types the pointer itself.
-//
-// # Remote control
-//
-// A launch, fresh or resumed, names the remote session on the orch run's spec.
-// It does so only when orch.yaml's `remote_control` is on and the orch's engine has the provider's remote control.
-// A Codex orch gets nothing.
-// The name is formed from the strand name the launch takes:
-// the listed strand's, else the fixed `<shortname>:orch` or `<shortname>:<slug>:orch`.
-// A name that cannot be formed is logged, and the session launches without remote control.
-// A launch with remote control on sets reed's RC mark on the new strand's pane, so the RC button shows it lit.
-// A failed mark is logged and never fails the launch.
-// reed's RC button belongs to the agent of the window's active pane, an orch or any other agent.
-// Every agent but an orch launched with the switch on starts with its button unlit.
-// The hidden verb `lym orch rc-on` is the click.
-// It runs from the clicked session's run directory, the parent's worktree for a task, so the orch wiring accepts it.
-// It reads the clicking client's active pane and queues creel's remote-control command into the agent the pane runs.
-// It signs the command as the REMOTECONTROL program.
-// The name is the one remote_control_name forms for that agent, whatever the switch says.
-// It then marks the pane and redraws the clicking client's bar.
-// A click refuses and sends nothing for a pane that runs no agent and for a pane already marked.
-// Claude Code's answer to a second command in a session with remote control on is unverified.
-// The refusal names `/remote-control` typed by hand in the agent's pane for a session turned off inside Claude Code.
-// A mark that fails after the command is queued leaves the click a success carrying a warning field.
-// lym cannot tell an agent's engine from its pane.
-// So an agent on an engine with no remote control is marked all the same, and its engine types nothing for the command.
 //
 // # Reaching the orch from another module
 //

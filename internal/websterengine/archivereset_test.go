@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -38,11 +37,9 @@ func newResetArchiveFixture(t *testing.T) *resetArchiveFixture {
 		Git:          git,
 	}
 	st := &websterengine.State{
-		RunGUID: "run-1",
-		State: runplan.State{
-			PlanFileHashes: map[string]string{"00-overview.md": "recorded"},
-			Batches:        map[int]*websterengine.BatchState{1: {Slug: "one", Kind: "fork", StartSHA: git.head}},
-		},
+		RunGUID:        "run-1",
+		PlanFileHashes: map[string]string{"00-overview.md": "recorded"},
+		Batches:        map[int]*websterengine.BatchState{1: {Slug: "one", Kind: "fork", StartSHA: git.head}},
 		PendingAuditFindings: []websterengine.PendingAuditFinding{
 			{ID: "sess/parent:write:1", Class: "parent-write", Detail: "master wrote a file"},
 		},

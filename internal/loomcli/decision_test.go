@@ -17,12 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -31,8 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
-	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 const decisionPriorRecord = "# Record\n\n## Decisions\n\n### First\n\nDecision: a.\n"
@@ -99,11 +95,6 @@ type decisionFake struct {
 	// notifyFailAt, when positive, makes the notify call with that 1-based number fail, and notifyCalls counts every call.
 	notifyFailAt int
 	notifyCalls  int
-	// implementerSeam is the active-implementer seam the notice loop reads, over a temp anchor with no run.
-	implementerSeam weaverengine.ActiveDeps
-	// deliveries records every delivery the verb recorded for a Weaver strand, and deliveryErr is what each returns.
-	deliveries  []decisionDelivery
-	deliveryErr error
 
 	// amendmentPath is the plan amendment record the fake's seams write, in a temp dir.
 	amendmentPath string
@@ -197,45 +188,6 @@ type decisionPost struct {
 	receiver, line string
 }
 
-// decisionDelivery is one delivery the verb recorded for a Weaver strand.
-type decisionDelivery struct {
-	strand   string
-	headings []string
-}
-
-// The live strands of a Weaver run the notice tests use: a batch strand and a verify fixer.
-var (
-	weaverBatchStrand = "hub:task-a:" + weaverengine.BatchStrandRole
-	weaverFixerStrand = "hub:task-a:" + gatefixer.RoleVerifyFixer
-)
-
-// weaverSeam returns the active-implementer seam over a temp anchor whose setting names weaver.
-// begun plants a Weaver run holding a begun batch, and corruptWebster plants an unreadable Webster state file.
-func weaverSeam(t *testing.T, begun, corruptWebster bool) weaverengine.ActiveDeps {
-	t.Helper()
-	anchor := t.TempDir()
-	if begun {
-		planted := &weaverengine.State{State: runplan.State{Batches: map[int]*runplan.BatchState{1: {Cards: []string{"01-alpha"}}}}}
-		if err := weaverengine.SaveState(weaverengine.Dir(anchor), weaverengine.ScratchDir(anchor), planted); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if corruptWebster {
-		dir := websterengine.Dir(anchor)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		// Both implementers keep their state under one file name.
-		if err := os.WriteFile(filepath.Join(dir, filepath.Base(weaverengine.StateRel())), []byte("{not json"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return weaverengine.ActiveDeps{
-		AnchorRoot: anchor,
-		Setting:    func() (string, error) { return string(weaverengine.ImplementerWeaver), nil },
-	}
-}
-
 func newDecisionFake(t *testing.T) *decisionFake {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "decision-record.md")
@@ -243,10 +195,9 @@ func newDecisionFake(t *testing.T) *decisionFake {
 		t.Fatal(err)
 	}
 	return &decisionFake{
-		path:            path,
-		clock:           time.Date(2026, 3, 3, 23, 30, 0, 0, time.FixedZone("late", -5*3600)),
-		amendmentPath:   filepath.Join(t.TempDir(), "amendment.yaml"),
-		implementerSeam: weaverengine.ActiveDeps{AnchorRoot: t.TempDir()},
+		path:          path,
+		clock:         time.Date(2026, 3, 3, 23, 30, 0, 0, time.FixedZone("late", -5*3600)),
+		amendmentPath: filepath.Join(t.TempDir(), "amendment.yaml"),
 	}
 }
 
@@ -356,11 +307,6 @@ func (f *decisionFake) deps() decisionDeps {
 			}
 			f.posts = append(f.posts, decisionPost{receiver: receiver, line: line})
 			return nil
-		},
-		implementerSeam: f.implementerSeam,
-		recordDelivery: func(strandName string, headings []string) error {
-			f.deliveries = append(f.deliveries, decisionDelivery{strand: strandName, headings: headings})
-			return f.deliveryErr
 		},
 		amendmentPath: f.amendmentPath,
 		approvedPlan:  func() (bool, error) { return f.planApproved, f.planErr },
@@ -1223,17 +1169,13 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 
 // TestDecisionVerb_NotifiesLiveAgents asserts a committed entry is announced to each live agent of the run.
 // It skips the tackler, the arbiter and the caller.
-// A run that is not running holds the notice back from its Webster Master session and its Weaver strands.
-// The envelope names them.
-// A Weaver run's strands get the notice inline, and each delivery is recorded under the strand's name.
-// It also asserts that a failed listing, post or delivery record is reported on a success envelope.
+// A run that is not running holds the notice back from its Webster Master session and names it on the envelope.
+// It also asserts that a failed listing or post is reported on a success envelope.
 func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	// Two entries whose joined inline notice passes the line cap while each one-entry notice fits.
 	oversizedBatch := fmt.Sprintf(`[{"title": "First", "decision": %q, "rationale": "r"}, {"title": "Second", "decision": %q, "rationale": "r"}]`, strings.Repeat("a", 4500), strings.Repeat("b", 4500))
-	weaverRun := func(t *testing.T) weaverengine.ActiveDeps { return weaverSeam(t, true, false) }
-	corruptWebsterUnderWeaver := func(t *testing.T) weaverengine.ActiveDeps { return weaverSeam(t, false, true) }
 	tests := []struct {
 		name        string
 		strandName  string
@@ -1248,18 +1190,10 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 		want      []string
 		// wantErrors are the strands of the reported failures, "" for a failed listing.
 		wantErrors []string
-		// wantPosted are the receivers of the posts when they differ from want:
-		// a strand whose delivery record failed was posted to but is not notified.
-		wantPosted []string
 		// state is the run's state, empty for a run with no status file.
 		state shedengine.State
 		// wantHeldBack are the strands the envelope names under notice_held_back.
 		wantHeldBack []string
-		// seam, when set, builds the active-implementer seam the notice loop reads.
-		seam func(t *testing.T) weaverengine.ActiveDeps
-		// deliveryErr is what the delivery record returns, and wantDeliveries the strands it was called for.
-		deliveryErr    error
-		wantDeliveries []string
 	}{
 		{
 			name:         "HaltedRun_HoldsBackTheWebsterSession",
@@ -1323,63 +1257,12 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 			wantErrors:  []string{"hub:task-a:webster"},
 			wantPosts:   1,
 		},
-		{
-			name:           "WeaverRun_BatchStrandGetsTheNoticeAndItsDeliveryIsRecorded",
-			state:          shedengine.StateRunning,
-			seam:           weaverRun,
-			liveStrands:    []string{weaverBatchStrand},
-			want:           []string{weaverBatchStrand},
-			wantDeliveries: []string{weaverBatchStrand},
-		},
-		{
-			name:           "WeaverRun_VerifyFixerGetsTheNoticeToo",
-			state:          shedengine.StateRunning,
-			seam:           weaverRun,
-			liveStrands:    []string{weaverFixerStrand},
-			want:           []string{weaverFixerStrand},
-			wantDeliveries: []string{weaverFixerStrand},
-		},
-		{
-			name:        "WebsterRun_VerifyFixerIsNoWeaverStrand",
-			liveStrands: []string{weaverFixerStrand},
-			want:        []string{weaverFixerStrand},
-		},
-		{
-			name:         "HaltedWeaverRun_HoldsBackItsStrandAndRecordsNothing",
-			state:        shedengine.StateBlocked,
-			seam:         weaverRun,
-			liveStrands:  []string{weaverBatchStrand, "hub:task-a:darn"},
-			want:         []string{"hub:task-a:darn"},
-			wantHeldBack: []string{weaverBatchStrand},
-		},
-		{
-			name:           "CorruptWebsterStateUnderAWeaverRun_StillNotifies",
-			state:          shedengine.StateRunning,
-			seam:           corruptWebsterUnderWeaver,
-			liveStrands:    []string{weaverBatchStrand},
-			want:           []string{weaverBatchStrand},
-			wantDeliveries: []string{weaverBatchStrand},
-		},
-		{
-			name:           "DeliveryRecordFails_ReportedAndTheNextStrandStillNotified",
-			seam:           weaverRun,
-			liveStrands:    []string{weaverBatchStrand, "hub:task-a:darn"},
-			deliveryErr:    errors.New("state locked"),
-			want:           []string{"hub:task-a:darn"},
-			wantPosted:     []string{weaverBatchStrand, "hub:task-a:darn"},
-			wantErrors:     []string{weaverBatchStrand},
-			wantDeliveries: []string{weaverBatchStrand},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := newDecisionFake(t)
 			f.strandName = tt.strandName
-			if tt.seam != nil {
-				f.implementerSeam = tt.seam(t)
-			}
-			f.deliveryErr = tt.deliveryErr
 			f.parent = hubgeom.Parent{Name: "hub:orch"}
 			if tt.strandName != "" && !tt.arbiter {
 				f.parent.Name = tt.strandName
@@ -1431,20 +1314,6 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 			if fmt.Sprint(gotHeldBack) != fmt.Sprint(append([]string{}, tt.wantHeldBack...)) {
 				t.Errorf("envelope notice_held_back strands = %v; want %v", gotHeldBack, tt.wantHeldBack)
 			}
-			wantHeadings := make([]string, 0, len(f.lastBatch))
-			for _, d := range f.lastBatch {
-				wantHeadings = append(wantHeadings, addedDecisionHeading(d))
-			}
-			gotDeliveries := []string{}
-			for _, delivery := range f.deliveries {
-				gotDeliveries = append(gotDeliveries, delivery.strand)
-				if fmt.Sprint(delivery.headings) != fmt.Sprint(wantHeadings) {
-					t.Errorf("delivery to %s headings = %v; want %v", delivery.strand, delivery.headings, wantHeadings)
-				}
-			}
-			if fmt.Sprint(gotDeliveries) != fmt.Sprint(append([]string{}, tt.wantDeliveries...)) {
-				t.Errorf("deliveries recorded for %v; want %v", gotDeliveries, tt.wantDeliveries)
-			}
 
 			if tt.from != "" {
 				if len(f.posts) != tt.wantPosts {
@@ -1465,17 +1334,13 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 				}
 				return
 			}
-			wantPosted := tt.want
-			if tt.wantPosted != nil {
-				wantPosted = tt.wantPosted
-			}
-			if len(f.posts) != len(wantPosted) {
-				t.Fatalf("posts = %v; want one to each of %v", f.posts, wantPosted)
+			if len(f.posts) != len(tt.want) {
+				t.Fatalf("posts = %v; want one to each of %v", f.posts, tt.want)
 			}
 			heading := addedDecisionHeading(f.lastAdded)
 			for i, post := range f.posts {
-				if post.receiver != wantPosted[i] {
-					t.Errorf("post %d receiver = %q; want %q", i, post.receiver, wantPosted[i])
+				if post.receiver != tt.want[i] {
+					t.Errorf("post %d receiver = %q; want %q", i, post.receiver, tt.want[i])
 				}
 				if !strings.HasPrefix(post.line, decisionNoticeOpening) {
 					t.Errorf("post line = %q; want it to open with %q", post.line, decisionNoticeOpening)
@@ -1493,14 +1358,13 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 // TestDecisionVerb_FromFileRecordsBatch asserts a --from batch is appended in one write, in file order.
 // It also asserts the batch carries its PATTERN change.
 // The batch is committed once with every title in the amendment record.
-// Each live agent gets one notice: a short one naming every heading.
-// The Webster and Weaver strands' carry every entry's text, and the Weaver strand's delivery is recorded.
+// Each live agent gets one notice: a short one naming every heading, and the webster's carries every entry's text.
 func TestDecisionVerb_FromFileRecordsBatch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	f := newDecisionFake(t)
 	f.planApproved = true
-	f.liveStrands = []string{"hub:task-a:plan", "hub:task-a:webster", weaverBatchStrand}
+	f.liveStrands = []string{"hub:task-a:plan", "hub:task-a:webster"}
 	input := decisionInput{by: "parent", from: writeDecisionBatch(t, decisionBatchJSON), amendsPlan: true}
 
 	var out bytes.Buffer
@@ -1534,11 +1398,8 @@ func TestDecisionVerb_FromFileRecordsBatch(t *testing.T) {
 		t.Errorf("amendment titles = %v, %v; want both titles in order", amendment.Titles, err)
 	}
 
-	if len(f.posts) != 3 {
+	if len(f.posts) != 2 {
 		t.Fatalf("posts = %v; want one to each live agent", f.posts)
-	}
-	if len(f.deliveries) != 1 || f.deliveries[0].strand != weaverBatchStrand || fmt.Sprint(f.deliveries[0].headings) != fmt.Sprint(headings) {
-		t.Errorf("deliveries = %v; want one for the weaver strand naming both headings", f.deliveries)
 	}
 	texts := []string{"Keep it per run.", "A shared cache races.", "Drop --fast.", "Nobody passes it."}
 	for _, post := range f.posts {
@@ -1550,7 +1411,7 @@ func TestDecisionVerb_FromFileRecordsBatch(t *testing.T) {
 				t.Errorf("post line to %s = %q; want heading %q", post.receiver, post.line, heading)
 			}
 		}
-		inline := post.receiver == "hub:task-a:webster" || post.receiver == weaverBatchStrand
+		inline := post.receiver == "hub:task-a:webster"
 		for _, text := range texts {
 			if strings.Contains(post.line, text) != inline {
 				t.Errorf("post line to %s = %q; carrying %q is %v, want %v", post.receiver, post.line, text, !inline, inline)

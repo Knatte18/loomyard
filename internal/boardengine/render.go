@@ -856,8 +856,7 @@ func ageCell(t Task, now time.Time) string {
 }
 
 // entryCell is the bold title, led by a `draft` code span for a draft task.
-// The brief follows as one bullet when there is one.
-// Then come one code-span bullet per run field the entry sets and one per run setting.
+// The brief follows as one bullet when there is one, then one code-span bullet per run setting.
 func entryCell(t Task) string {
 	cell := "**" + cellText(t.Title) + "**"
 	if isDraft(t) {
@@ -866,26 +865,10 @@ func entryCell(t Task) string {
 	if t.Brief != "" {
 		cell += cellBullet + cellText(t.Brief)
 	}
-	for _, line := range append(runFieldLines(t), settingLines(t.RunSettings)...) {
-		cell += cellBullet + codeSpan(cellText(line))
+	for _, setting := range settingLines(t.RunSettings) {
+		cell += cellBullet + codeSpan(cellText(setting))
 	}
 	return cell
-}
-
-// runFieldLines is one `<key>: <value>` line per field of t that changes how its run goes, in a fixed order.
-// It leaves out the run settings and the Recipe cell.
-// pull_request decides whether the landing opens a pull request.
-// on_land names the action that runs once the task lands.
-// A field left empty gives no line.
-func runFieldLines(t Task) []string {
-	var lines []string
-	if t.PullRequest != "" {
-		lines = append(lines, pullRequestKey+": "+t.PullRequest)
-	}
-	if t.OnLand != "" {
-		lines = append(lines, onLandKey+": "+t.OnLand)
-	}
-	return lines
 }
 
 // settingLines is one `<module>: <key path> <value>` line per leaf of a task's run settings.

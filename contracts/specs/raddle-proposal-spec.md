@@ -37,9 +37,6 @@ A part holds:
 
 - `slug` and `title`.
 - `type` — a type label of the board's vocabulary, never `sketch`.
-- `labels` — the module labels of the modules the part's own work changes, at least one, each listed once and each a module label of the board's vocabulary.
-  A label the Sketch does not carry is allowed, since a split can find a module the Sketch's labels missed.
-  Raddle-File files the part with its `type` and these labels, and the project with its `type` and every label its parts carry.
 - `recipe` — `tapestry` or `darn`.
 - `profile` — a profile of `profiles.yaml` that holds a block for that recipe.
 - `decisions` — the Sketch decision ids the part builds, such as `D3`.
@@ -101,9 +98,6 @@ The gate, `raddle-propose` and `raddle-approve` run the checks of the proposal a
 - `recipe-invalid` — a recipe that is neither `tapestry` nor `darn`.
 - `profile-unknown` — a profile that `profiles.yaml` does not hold, or holds without a block for the part's recipe.
 - `type-invalid` — a part's or the project's type that is not in the board's vocabulary, or is `sketch`.
-- `labels-missing` — a part with no module label.
-- `label-unknown` — a part label that is not a module label of the board's vocabulary, a type label included.
-- `label-duplicate` — a part that lists one module label more than once.
 - `slug-taken` — a new slug already on the board or in the raddle store; the run's own entry is exempt, which `slug-sketch` judges.
 - `slug-sketch` — a filed slug equal to the Sketch's; a perch-mode project whose slug is the run's own entry is exempt.
 - `slug-duplicate` — a slug that two filed entries share.
@@ -142,7 +136,6 @@ Auto and perch mode file with no approval match, and `raddle-approve` refuses in
       "slug": "usage-writer",
       "title": "Usage record writer",
       "type": "feature",
-      "labels": ["shed"],
       "recipe": "tapestry",
       "profile": "standard",
       "decisions": ["D1", "D2"],

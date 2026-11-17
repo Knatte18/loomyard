@@ -47,7 +47,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/verifytree"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"gopkg.in/yaml.v3"
 )
@@ -104,13 +103,6 @@ var nilLegal = map[string]bool{
 	"WebsterDeps.Geom.Git":             true,
 	"WebsterDeps.Geom.GateSlots":       true,
 	"WebsterDeps.Geom.GateConfig":      true,
-	"WeaverDeps.Batcher":               true,
-	"WeaverDeps.Verify":                true,
-	"WeaverDeps.Clock":                 true,
-	"WeaverDeps.ParentBranch":          true,
-	"WeaverDeps.Geom.Git":              true,
-	"WeaverDeps.Geom.GateSlots":        true,
-	"WeaverDeps.Geom.GateConfig":       true,
 	"InnerRun.Now":                     true,
 	"InnerRun.Awake":                   true,
 	"InnerRun.Pause":                   true,
@@ -186,8 +178,6 @@ func (noopSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, 
 
 func (noopSessions) StopStrand(string) error { return nil }
 
-func (noopSessions) EngineName(choice shuttleengine.ModelChoice) string { return choice.Engine }
-
 // LandingDeps returns a `landingshed.Deps` with every field the landing constructors require.
 // The fields hold fixed values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {
@@ -200,7 +190,6 @@ func LandingDeps(dir string) landingshed.Deps {
 		StencilsDir:      dir,
 		ParentName:       "fixture-parent-session",
 		ScratchDir:       filepath.Join(dir, "landing-scratch"),
-		RecordsDir:       filepath.Join(dir, "landing-records"),
 		OpenFabric:       nilFabricOpener,
 		OpenParentFabric: nilFabricOpener,
 		Shuttle:          &shedfake.MergeShuttle{},
@@ -235,7 +224,6 @@ func LandingDeps(dir string) landingshed.Deps {
 		PullRequest: landingshed.PullRequestDeps{
 			RecordPath:     filepath.Join(dir, "landing-scratch", "pull-request.json"),
 			RecordLockPath: filepath.Join(dir, "landing-scratch", "pull-request.lock"),
-			CommitRecord:   func() error { return nil },
 			ParentMode:     func() (string, string, error) { return "off", "fixture-parent", nil },
 			EntryField:     func() (string, error) { return "", nil },
 			Origin:         func() (landingshed.Origin, error) { return landingshed.Origin{}, nil },
@@ -435,18 +423,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		WebsterDeps:   shedfake.WebsterSeams(),
 		CommitWebster: func() error { return nil },
-		WeaverRun: func(weaverengine.RunDeps) (weaverengine.RunResult, error) {
-			return weaverengine.RunResult{}, nil
-		},
-		WeaverDeps: shedfake.WeaverSeams(),
-		ImplementerSeam: weaverengine.ActiveDeps{
-			AnchorRoot:   filepath.Join(dir, "anchor"),
-			Setting:      func() (string, error) { return "webster", nil },
-			StateHistory: func() ([]weaverengine.StateVersion, error) { return nil, nil },
-			TaskHead:     func() (string, error) { return "task-head", nil },
-			LiveStrands:  func() ([]string, error) { return nil, nil },
-		},
-		Landing: LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
+		Landing:       LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
@@ -549,8 +526,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		RecordHead:         func() (string, error) { return "record-head", nil },
 		ReviewInput:        func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
 		ReviewBase:         func() (string, error) { return "review-base", nil },
-		ReviewTreeID:       func() (string, error) { return "review-tree", nil },
-		ReviewTreeChanges:  func(string, string) ([]string, error) { return nil, nil },
 		ReflectFriction:    func() string { return "skipped" },
 		Rework:             ReworkDeps(t, dir),
 		DarnVerifyAttempts: 3,

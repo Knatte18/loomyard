@@ -10,8 +10,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/runplan"
 )
 
 // ErrBatchFailed is the sentinel that a batch-failed error unwraps to.
@@ -92,7 +90,7 @@ type failBatchInput struct {
 // The returned error is an I/O failure of the blob probes or of the archive;
 // both run before any mutation, so a failure leaves State untouched.
 func failBatch(in failBatchInput) (*BatchFailedError, error) {
-	blobs, err := runplan.SuspectBlobs(orReal(in.Git), in.PaneCwd, in.WorktreeRoot, in.SuspectPaths)
+	blobs, err := suspectBlobs(orReal(in.Git), in.PaneCwd, in.WorktreeRoot, in.SuspectPaths)
 	if err != nil {
 		return nil, err
 	}

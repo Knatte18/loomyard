@@ -31,20 +31,8 @@ Judge the split's judgement, not its format:
 - **The seams hold.**
   Each part's contract, what it takes, delivers and exports, matches what the parts on its `depends_on` path deliver.
   A part that takes what no part before it delivers is a finding.
-- **The cut runs the most parts at once.**
-  The split adds no part to gain concurrency: its part count is what the work gives.
-  Of the cuts with that part count, it takes the one that lets the most parts run at once:
-  the one with a short `depends_on` chain and the most parts with no `depends_on` path between them.
-  A part added only so parts run at once is a finding,
-  and so is a cut that runs fewer parts at once than another cut with the same part count.
-- **No part guesses at another's interface.**
-  When one part builds what another uses, `depends_on` chains them, or both parts' bodies fix the same interface.
-  Two unchained parts where one uses what the other builds, with no interface fixed in both bodies, is a finding.
 - **The order follows the record.**
   The parts follow the record's stated order, or each departure is listed in `order_departures` with its cost.
-- **Each part's labels name its modules.**
-  A part's `labels` name the module of each package its body names, and no module the part does not change.
-  A label for a module the part never touches is a finding, and so is a named package whose module no label names.
 - **Each part's recipe and profile fit it.**
   A part's recipe and profile fit its size and risk, and each cost line rests on the cells it cites.
 - **The outcome fits the record's scope.**
@@ -67,12 +55,7 @@ When the note above is not `none`, this round reviews an amendment: review only 
 
 Every finding carries one class: `design`, `scope`, `decision` or `consistency`.
 Their generic meanings are in burler's review step; this section does not restate them.
-In this segment, `design` means the split is wrong:
-a decision no part can build, a seam that does not hold,
-a part added only so parts run at once,
-a cut that runs fewer parts at once than another cut with the same part count,
-labels that do not match the packages a part changes,
-or a recipe or profile that does not fit its part.
+In this segment, `design` means the split is wrong: a decision no part can build, a seam that does not hold, or a recipe or profile that does not fit its part.
 In this segment, `decision` means a question only the run's parent can settle:
 two record entries that contradict each other on what the split must build,
 or a landed change or another run that overtakes what the record asks the parts to build.

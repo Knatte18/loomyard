@@ -65,10 +65,6 @@ type counter interface {
 	// Unparsed returns the first non-empty lines of output that no test event carried, at most unparsedLines of them.
 	// Such lines include a `go build` or `go vet` step's errors. It is nil for a counter that does not read events.
 	Unparsed() []string
-	// Unfinished returns, per package, the tests that sent a run event and no pass, fail or skip event, in name order.
-	// A test binary killed in the middle of a test leaves such tests.
-	// It is nil when none is unfinished, and for a counter that does not read tests.
-	Unfinished() map[string][]string
 }
 
 // runFailure is one failure the failure report lists: a failed test, a failed package no failed test of it explains, or one lint finding.
@@ -166,8 +162,6 @@ type goJSONCounter struct {
 	testsRun map[string]int
 	// testLines holds, per test in flight, its first printed lines except go test's status lines, until it ends.
 	testLines map[testKey][]string
-	// running holds each test that sent a run event and has sent no pass, fail or skip event yet.
-	running map[testKey]bool
 	// packageLines and buildLines hold the first lines outside tests and of build output, per package and import path.
 	packageLines map[string][]string
 	buildLines   map[string][]string
@@ -272,32 +266,10 @@ func (c *goJSONCounter) Unparsed() []string {
 	return slices.Clone(c.unparsed)
 }
 
-// Unfinished returns the tests that started and have not ended, by package, each package's tests sorted.
-func (c *goJSONCounter) Unfinished() map[string][]string {
-	c.lines.mu.Lock()
-	defer c.lines.mu.Unlock()
-	var unfinished map[string][]string
-	for key := range c.running {
-		if unfinished == nil {
-			unfinished = map[string][]string{}
-		}
-		unfinished[key.pkg] = append(unfinished[key.pkg], key.test)
-	}
-	for _, tests := range unfinished {
-		slices.Sort(tests)
-	}
-	return unfinished
-}
-
 // observeTest folds a test's event into its first lines and, on its fail event, into the failures.
 func (c *goJSONCounter) observeTest(event goTestEvent) {
 	key := testKey{event.Package, event.Test}
 	switch event.Action {
-	case "run":
-		if c.running == nil {
-			c.running = map[testKey]bool{}
-		}
-		c.running[key] = true
 	case "output":
 		if line := strings.TrimSpace(event.Output); !isStatusLine(line) && len(c.testLines[key]) < failureLines {
 			if c.testLines == nil {
@@ -312,10 +284,8 @@ func (c *goJSONCounter) observeTest(event goTestEvent) {
 		}
 		c.failedPackages[event.Package] = true
 		delete(c.testLines, key)
-		delete(c.running, key)
 	case "pass", "skip":
 		delete(c.testLines, key)
-		delete(c.running, key)
 	}
 }
 
@@ -481,9 +451,6 @@ func (c *vstestCounter) Failures() []runFailure {
 
 // Unparsed returns nil: a VSTest run's output is all text, so the failure report points at its log instead.
 func (c *vstestCounter) Unparsed() []string { return nil }
-
-// Unfinished returns nil: a VSTest run reports no start event of a test.
-func (c *vstestCounter) Unfinished() map[string][]string { return nil }
 
 // handle runs under the line reader's lock.
 func (c *vstestCounter) handle(line []byte, terminated bool) error {

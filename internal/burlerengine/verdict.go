@@ -83,18 +83,13 @@ type Finding struct {
 	// ParentIDs names the ids of the parent's report that a finding kept from that report covers, such as P1.
 	// It is optional and never validated; the parent coverage gate entry reads it.
 	ParentIDs []string `yaml:"parent_ids"`
-	// Carries names the id of the earlier round's finding this finding carries forward, empty for a new finding.
-	// The round checks read it; the shape checks never do.
-	Carries string `yaml:"carries"`
 }
 
 // reviewHeader mirrors the review file's YAML frontmatter shape.
 // The decoder tolerates unknown keys, since agent-written metadata in the header is harmless.
-// Prior holds the review's answer to each finding of the round before it.
 type reviewHeader struct {
-	Verdict  string       `yaml:"verdict"`
-	Prior    []PriorEntry `yaml:"prior"`
-	Findings []Finding    `yaml:"findings"`
+	Verdict  string    `yaml:"verdict"`
+	Findings []Finding `yaml:"findings"`
 }
 
 // ParseReview parses the raw bytes of a review file into a Verdict and Findings.
@@ -156,7 +151,7 @@ var proseFindingHeading = regexp.MustCompile(`(?m)^### \[(BLOCKING|MEDIUM|LOW|NI
 // ParseCurrentReview is the strict parse of the current round's review file.
 // It first runs the base parse, then refuses:
 //   - a finding whose fix is empty or whitespace;
-//   - a top-level frontmatter key other than verdict, findings and prior;
+//   - a top-level frontmatter key other than verdict and findings;
 //   - prose finding blocks whose count per severity differs from the frontmatter's.
 //
 // Each refusal is a burler-prefixed error that ends with what to rewrite.
@@ -184,7 +179,7 @@ func ParseCurrentReview(content []byte) (Verdict, []Finding, error) {
 	return verdict, findings, nil
 }
 
-// checkReviewKeys refuses a frontmatter header holding a top-level key other than verdict, findings and prior.
+// checkReviewKeys refuses a frontmatter header holding a top-level key other than verdict and findings.
 // Findings under a misspelled key would otherwise decode as no findings at all.
 func checkReviewKeys(header string) error {
 	var keys map[string]yaml.Node
@@ -193,7 +188,7 @@ func checkReviewKeys(header string) error {
 	}
 	var stray []string
 	for key := range keys {
-		if key != "verdict" && key != "findings" && key != "prior" {
+		if key != "verdict" && key != "findings" {
 			stray = append(stray, key)
 		}
 	}
@@ -201,7 +196,7 @@ func checkReviewKeys(header string) error {
 		return nil
 	}
 	sort.Strings(stray)
-	return fmt.Errorf("burler: review file frontmatter has the top-level key %q; its only keys are `verdict`, `findings` and `prior`, so rewrite the frontmatter with those three", stray[0])
+	return fmt.Errorf("burler: review file frontmatter has the top-level key %q; its only keys are `verdict` and `findings`, so rewrite the frontmatter with those two", stray[0])
 }
 
 // checkProseBlocks refuses a review body whose `### [SEVERITY]` block count per severity differs from the frontmatter.

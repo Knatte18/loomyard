@@ -7,11 +7,8 @@ package orchengine
 
 import (
 	"fmt"
-	"strings"
 	"time"
-	"unicode"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
@@ -62,20 +59,7 @@ type Config struct {
 	IdleGraceS          int `yaml:"idle_grace_s"`          // Seconds idle after the newest event before acting.
 	HandoffTimeoutS     int `yaml:"handoff_timeout_s"`     // Seconds the session gets to write its handoff.
 	PollIntervalMS      int `yaml:"poll_interval_ms"`      // Watcher tick interval in milliseconds.
-
-	// RemoteControl reports whether every orch session lym launches or resumes starts with the provider's remote control on.
-	RemoteControl bool `yaml:"remote_control"`
-	// RemoteControlName is the template of the remote session's name; read it through RemoteControlSessionName.
-	RemoteControlName string `yaml:"remote_control_name"`
 }
-
-// The placeholders remote_control_name fills.
-const (
-	remoteControlMachinePlaceholder = "{machine}"
-	remoteControlHubPlaceholder     = "{hub}"
-	remoteControlRolePlaceholder    = "{role}"
-	remoteControlNamePlaceholder    = "{name}"
-)
 
 // ConfigSpec returns orch's layered-load spec.
 // It carries the template and the per-key classification that decides which keys a local override may hold.
@@ -94,8 +78,6 @@ func ConfigSpec() configengine.Spec {
 			"idle_grace_s":          configengine.CategoryNone,
 			"handoff_timeout_s":     configengine.CategoryNone,
 			"poll_interval_ms":      configengine.CategoryNone,
-			"remote_control":        configengine.CategoryNone,
-			"remote_control_name":   configengine.CategoryNone,
 		},
 	}
 }
@@ -129,12 +111,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	default:
 		return Config{}, fmt.Errorf("orch config: permission_mode %q is not accepted; set permission_mode: bypass or remove the key", cfg.PermissionMode)
 	}
-	if strings.IndexFunc(cfg.RemoteControlName, unicode.IsControl) >= 0 {
-		return Config{}, fmt.Errorf("orch config: remote_control_name %q holds a control character; set it to one line", cfg.RemoteControlName)
-	}
-	if cfg.RemoteControl && strings.TrimSpace(cfg.RemoteControlName) == "" {
-		return Config{}, fmt.Errorf("orch config: remote_control is on but remote_control_name is empty; set remote_control_name, such as %q, or set remote_control: false", remoteControlMachinePlaceholder+agentname.MachineAddressSeparator+remoteControlNamePlaceholder)
-	}
 
 	if time.Duration(cfg.PollIntervalMS)*time.Millisecond < pollFloor {
 		logger.Warn("orch config: poll_interval_ms is below the floor and is raised to it", "key", "poll_interval_ms", "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
@@ -156,20 +132,6 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 		return rewritten, nil, nil
 	}
 	return rewritten, []string{line}, nil
-}
-
-// RemoteControlSessionName returns the remote session's name of the orch strand named name on machine.
-// It fills remote_control_name in one pass.
-// {machine} takes machine and {hub} the hub's shortname.
-// {role} takes the strand's role and {name} its full name.
-// Other brace text stays literal.
-func (c Config) RemoteControlSessionName(machine string, name agentname.Name) string {
-	return strings.NewReplacer(
-		remoteControlMachinePlaceholder, machine,
-		remoteControlHubPlaceholder, name.Shortname,
-		remoteControlRolePlaceholder, name.Role,
-		remoteControlNamePlaceholder, name.String(),
-	).Replace(c.RemoteControlName)
 }
 
 // Mode returns the cycle mode, resolving an empty value to CycleCompact.

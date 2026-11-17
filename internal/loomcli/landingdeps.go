@@ -8,8 +8,6 @@ package loomcli
 import (
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -109,7 +107,6 @@ func landingDeps(
 		DescriptionPath:     summaryparser.Path(loomengine.LandingDir(l)),
 		StencilsDir:         geom.StencilsDir,
 		ScratchDir:          loomengine.LoomScratchDir(l),
-		RecordsDir:          loomengine.LoomDurableDir(l),
 		PushSkipped:         pushSkipped,
 		EscalateJudgedFirst: recipeIsLoom(recipe),
 		OpenFabric: func() (*fabricengine.Fabric, error) {
@@ -350,7 +347,6 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 	return landingshed.PullRequestDeps{
 		RecordPath:     shedrun.PullRequestRecord(l, shedrun.SelfRunID),
 		RecordLockPath: shedrun.PullRequestRecordLock(l, shedrun.SelfRunID),
-		CommitRecord:   pullRequestRecordCommitter(check, l),
 		ParentMode:     parentPullRequestMode(l),
 		Sessions:       runner,
 		EntryField: func() (string, error) {
@@ -436,76 +432,6 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			return watchFileChanges(shedrun.PullRequestRecord(l, shedrun.SelfRunID), "the PR-Review wait")
 		},
 	}
-}
-
-// pullRequestRecordCommitter returns the seam that commits the run's pull request record to the pair's records.
-// The seam commits the record's removal the same way.
-// A change it commits starts the pair's detached records push, and a failed start only warns.
-// A record found only at its former scratch path is moved to the tracked path first.
-// So a run in flight keeps its pull request.
-// It commits nothing while neither the file nor a tracked copy of it exists.
-// A commit the pre-push check stops leaves the records local and returns nil.
-func pullRequestRecordCommitter(check prePushCheck, l *lymcwd.Location) func() error {
-	rel := shedrun.PullRequestRecordRel(l, shedrun.SelfRunID)
-	commit := check.guardedCommit(func(msg string) (bool, error) {
-		_, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{rel}, msg, fabricengine.EnvSyncOptions())
-		return committed, err
-	})
-	spawn := check.guardedSpawn(func() error {
-		_, err := spawnStatusPush(l, "")
-		return err
-	})
-	return func() error {
-		if err := moveLegacyPullRequestRecord(l); err != nil {
-			return err
-		}
-		hasContent, err := fabricengine.AnchoredPathHasContent(l, rel)
-		if err != nil || !hasContent {
-			return err
-		}
-		committed, err := commit(fmt.Sprintf("loom: pull request record for %s", seedSlug(l.WorktreeName)))
-		if errors.Is(err, errPushStopped) {
-			logger.Info("loomcli: the pull request record's commit was stopped; the records stay as they are", "error", err)
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if committed {
-			if err := spawn(); err != nil {
-				logger.Warn("loomcli: the push of the pull request record could not be started; the commit stays local", "cause", err)
-			}
-		}
-		return nil
-	}
-}
-
-// moveLegacyPullRequestRecord moves the run's pull request record from its former scratch path to the tracked path.
-// It moves nothing when the tracked path holds a record or the scratch path holds none.
-func moveLegacyPullRequestRecord(l *lymcwd.Location) error {
-	current := shedrun.PullRequestRecord(l, shedrun.SelfRunID)
-	if _, err := os.Stat(current); err == nil {
-		return nil
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	legacy := shedrun.LegacyPullRequestRecord(l, shedrun.SelfRunID)
-	data, err := os.ReadFile(legacy)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if err := state.WriteFile(current, shedrun.PullRequestRecordLock(l, shedrun.SelfRunID), data); err != nil {
-		return err
-	}
-	for _, stale := range []string{legacy, legacy + ".lock"} {
-		if err := os.Remove(stale); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-	}
-	return nil
 }
 
 // landingPushRetryPauses are the growing pauses between the attempts of a landing push whose push lock stays held.

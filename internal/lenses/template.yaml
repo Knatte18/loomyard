@@ -306,23 +306,6 @@ lenses:
     find the test row that would fail if it were broken; a behaviour with no
     such row is a finding, a stencil's static prose exempt. Your list: per
     behaviour, the test that pins it, or none.
-  code-scope: |
-    Own the diff's trace to the decisions that ask for it. List the decisions:
-    where a plan is the answer key, each `### D<n> — <title>` heading of the
-    record's `## Decisions` section; where a decision record alone is, each
-    goal point of the board entry under its `## Goal`, never the record's
-    other sections; and in both cases each of the record's
-    `Added after Discussion` entries.
-    Group the diff's hunks into changes, one per purpose, and map each change
-    to the decision it builds, through the plan card that carries the
-    decision where a plan is the answer key. A change that traces to no
-    decision is unrequested scope, a finding of class `scope`, unless it is
-    an edit a traced change forces, such as a caller, a test, a doc or a rule
-    document it makes stale, or a `Pattern-Departure:` trailer explains it. A
-    decision no change builds is a finding of class `scope` too. Apply the
-    rubric's "Scope against the answer key". Your list: per change, the
-    decision it traces to, forced by a traced change, or none; per decision,
-    the changes that build it, or none.
   fix-code-correctness: |
     Own the correctness of the code the fix changed. For each function or
     branch the fix added or changed, take one concrete input, including a
@@ -422,7 +405,6 @@ fans:
     - code-correctness
     - code-affected-set
     - code-tests
-    - code-scope
   fix-code:
     - fix-code-correctness
     - fix-consistency

@@ -2,7 +2,7 @@
 // It runs them as an ordered scenario, end-to-end against one real hubforge pair, through clihelp.ExecuteIn.
 // It checks the JSON envelope at the CLI boundary: exit codes and the sorted "conflicts" array.
 // It checks that "partial" stays false on a conflict envelope, and that a pinned typed error shows its fixed text.
-// It checks the optional "warnings" key, reported on a mid-run parent merge with an implementer's state under the anchor.
+// It checks the optional "warnings" key, reported on a mid-run parent merge with websterengine state under the anchor.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test
@@ -17,10 +17,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -148,30 +146,6 @@ func seedWebsterState(t *testing.T, h *hubforge.Hub, outcome string) {
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "commit", "-q", "-m", "seed webster state")
 }
 
-// seedWeaverState writes a begun Weaver state under the hub's weaver directory,
-// so the seam names Weaver the active implementer.
-// It writes outcome.yaml when outcome is non-empty and removes any earlier one otherwise.
-// It commits the change on the prime weft, so the pair is clean when the weft feature branch is cut.
-func seedWeaverState(t *testing.T, h *hubforge.Hub, outcome string) {
-	t.Helper()
-
-	anchor := h.Location.AnchorPath()
-	begun := &weaverengine.State{State: runplan.State{Batches: map[int]*runplan.BatchState{1: {Slug: "first"}}}}
-	if err := weaverengine.SaveState(weaverengine.Dir(anchor), weaverengine.ScratchDir(anchor), begun); err != nil {
-		t.Fatalf("SaveState(weaver): %v", err)
-	}
-	outcomePath := weaverengine.OutcomePath(weaverengine.Dir(anchor))
-	if outcome == "" {
-		if err := os.Remove(outcomePath); err != nil && !os.IsNotExist(err) {
-			t.Fatalf("Remove(outcome.yaml): %v", err)
-		}
-	} else if err := os.WriteFile(outcomePath, []byte(outcome), 0o644); err != nil {
-		t.Fatalf("WriteFile(outcome.yaml): %v", err)
-	}
-	gitkit.MustRun(t, h.PrimeRecords(), "git", "add", "-A")
-	gitkit.MustRun(t, h.PrimeRecords(), "git", "commit", "-q", "-m", "seed weaver state")
-}
-
 // runMergeIn runs "merge-in branch" from the prime worktree and returns the exit code and decoded envelope.
 func runMergeIn(t *testing.T, h *hubforge.Hub, branch string) (int, envelope.Envelope) {
 	t.Helper()
@@ -183,19 +157,6 @@ func runMergeIn(t *testing.T, h *hubforge.Hub, branch string) (int, envelope.Env
 func assertOneWebsterWarning(t *testing.T, env envelope.Envelope) {
 	t.Helper()
 
-	assertOneWarningContaining(t, env, "Webster is mid-run in this worktree", "lym webster record-batch")
-}
-
-func assertOneWeaverWarning(t *testing.T, env envelope.Envelope) {
-	t.Helper()
-
-	assertOneWarningContaining(t, env, "Weaver is mid-run in this worktree", "post-batch checks")
-}
-
-// assertOneWarningContaining requires exactly one entry under the envelope's warnings key, holding every fragment.
-func assertOneWarningContaining(t *testing.T, env envelope.Envelope, fragments ...string) {
-	t.Helper()
-
 	raw, present := env.Raw["warnings"]
 	if !present {
 		t.Fatalf("envelope has no warnings key: %v", env)
@@ -205,7 +166,7 @@ func assertOneWarningContaining(t *testing.T, env envelope.Envelope, fragments .
 		t.Fatalf("warnings = %v; want exactly one entry", raw)
 	}
 	s, _ := warnings[0].(string)
-	for _, want := range fragments {
+	for _, want := range []string{"Webster is mid-run in this worktree", "lym webster record-batch"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("warnings[0] = %q; want it to contain %q", s, want)
 		}
@@ -223,10 +184,8 @@ func assertNoWarnings(t *testing.T, env envelope.Envelope) {
 // TestCommand_MergeScenario runs every merge-family check over one hub.
 // Each step cuts its own branches and conflict files,
 // and a step that parks a merge aborts it before returning, so steps do not disturb each other.
-// The in-flight warning steps come last and run in the order of the implementer state they need:
-// Webster's none, then a state file alone, then a finished outcome, then a malformed outcome;
-// then Weaver's state alone, a finished outcome, and the setting naming Weaver beside a corrupt Webster state.
-// The state only accumulates.
+// The webster-warning steps come last and run in the order of the webster state they need:
+// none, then a state file alone, then a finished outcome, then a malformed outcome; the state only accumulates.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
 func TestCommand_MergeScenario(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -601,43 +560,6 @@ func TestCommand_MergeScenario(t *testing.T) {
 				t.Errorf("committed = %v; want true", env.Raw["committed"])
 			}
 			assertNoWarnings(t, env)
-		}},
-		{"MergeIn_WarnsWhileWeaverInFlight", func(t *testing.T) {
-			seedWeaverState(t, h, "")
-			divergeCleanly(t, h, "weaver-inflight-feature")
-
-			code, env := runMergeIn(t, h, "weaver-inflight-feature")
-			if code != 0 {
-				t.Fatalf("merge-in = %d; want 0\nenvelope: %v", code, env)
-			}
-			assertOneWeaverWarning(t, env)
-		}},
-		{"MergeIn_NoWarningsWhenWeaverDone", func(t *testing.T) {
-			seedWeaverState(t, h, "outcome: done\nstuck_reason: null\nbatches_done: 3\n")
-			divergeCleanly(t, h, "weaver-done-feature")
-
-			code, env := runMergeIn(t, h, "weaver-done-feature")
-			if code != 0 {
-				t.Fatalf("merge-in = %d; want 0\nenvelope: %v", code, env)
-			}
-			assertNoWarnings(t, env)
-		}},
-		{"MergeIn_SettingWeaverWarnsBesideACorruptWebsterState", func(t *testing.T) {
-			seedWeaverState(t, h, "")
-			websterStatePath := filepath.Join(websterengine.Dir(h.Location.AnchorPath()), "state.json")
-			if err := os.WriteFile(websterStatePath, []byte("{not json"), 0o644); err != nil {
-				t.Fatalf("WriteFile(corrupt webster state.json): %v", err)
-			}
-			gitkit.MustRun(t, h.PrimeRecords(), "git", "add", "-A")
-			gitkit.MustRun(t, h.PrimeRecords(), "git", "commit", "-q", "-m", "corrupt webster state")
-			hubforge.SeedConfig(t, h, map[string]string{"tapestry": "implementer: weaver\n"})
-			divergeCleanly(t, h, "weaver-setting-feature")
-
-			code, env := runMergeIn(t, h, "weaver-setting-feature")
-			if code != 0 {
-				t.Fatalf("merge-in = %d; want 0\nenvelope: %v", code, env)
-			}
-			assertOneWeaverWarning(t, env)
 		}},
 	}
 	for _, step := range steps {

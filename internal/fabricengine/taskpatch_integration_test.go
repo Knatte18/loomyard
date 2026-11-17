@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -281,130 +280,6 @@ func TestFabric_ReadTaskPatch(t *testing.T) {
 		writeTaskPatchFile(t, fx.warpDir, "lib.txt", strings.Replace("line 0\n"+fx.baseFile, "line 3\n", "line 3 changed\n", 1))
 		if moved := readTaskPatch(t, fx, movedBase, nil); moved.FullHash == after.FullHash {
 			t.Errorf("FullHash after the task moved its edit = %q, unchanged; want it changed", moved.FullHash)
-		}
-	})
-}
-
-// TestFabric_WorktreeTreeID covers what the working-tree id follows and what ChangedPathsBetween lists,
-// and that neither verb touches the index or HEAD.
-func TestFabric_WorktreeTreeID(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		// mutate edits the checkout after the first id is read.
-		mutate func(t *testing.T, fx taskPatchFixture)
-		// wantSame is whether the second id equals the first.
-		wantSame bool
-		// wantPaths is what ChangedPathsBetween lists for the two ids.
-		wantPaths []string
-	}{
-		{
-			name:     "UnchangedTree",
-			mutate:   func(t *testing.T, fx taskPatchFixture) {},
-			wantSame: true,
-		},
-		{
-			name: "UncommittedEditToTrackedFile",
-			mutate: func(t *testing.T, fx taskPatchFixture) {
-				writeTaskPatchFile(t, fx.warpDir, "lib.txt", "edited\n")
-			},
-			wantPaths: []string{"lib.txt"},
-		},
-		{
-			name: "UntrackedFile",
-			mutate: func(t *testing.T, fx taskPatchFixture) {
-				writeTaskPatchFile(t, fx.warpDir, "new.txt", "new\n")
-			},
-			wantPaths: []string{"new.txt"},
-		},
-		{
-			name: "UntrackedIgnoredFile",
-			mutate: func(t *testing.T, fx taskPatchFixture) {
-				excludePath := filepath.Join(fx.warpDir, ".git", "info", "exclude")
-				if err := os.WriteFile(excludePath, []byte("ignored.txt\n"), 0o644); err != nil {
-					t.Fatalf("WriteFile %s: %v", excludePath, err)
-				}
-				writeTaskPatchFile(t, fx.warpDir, "ignored.txt", "x\n")
-			},
-			wantSame: true,
-		},
-		{
-			name: "EditToTrackedFileMatchedByExclude",
-			mutate: func(t *testing.T, fx taskPatchFixture) {
-				excludePath := filepath.Join(fx.warpDir, ".git", "info", "exclude")
-				if err := os.WriteFile(excludePath, []byte("lib.txt\n"), 0o644); err != nil {
-					t.Fatalf("WriteFile %s: %v", excludePath, err)
-				}
-				writeTaskPatchFile(t, fx.warpDir, "lib.txt", "edited\n")
-			},
-			wantPaths: []string{"lib.txt"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			fx := newTaskPatchFixture(t)
-			first, err := fx.fabric.WorktreeTreeID()
-			if err != nil {
-				t.Fatalf("WorktreeTreeID() error = %v", err)
-			}
-			head := gitkit.RevParse(t, fx.warpDir, "HEAD")
-			tt.mutate(t, fx)
-			status := gitkit.GitStatusPorcelain(t, fx.warpDir)
-
-			second, err := fx.fabric.WorktreeTreeID()
-			if err != nil {
-				t.Fatalf("WorktreeTreeID() after the edit error = %v", err)
-			}
-			if (first == second) != tt.wantSame {
-				t.Errorf("WorktreeTreeID() before %q, after %q; want equal = %v", first, second, tt.wantSame)
-			}
-			paths, err := fx.fabric.ChangedPathsBetween(first, second)
-			if err != nil {
-				t.Fatalf("ChangedPathsBetween(%q, %q) error = %v", first, second, err)
-			}
-			if !slices.Equal(paths, tt.wantPaths) {
-				t.Errorf("ChangedPathsBetween(%q, %q) = %v; want %v", first, second, paths, tt.wantPaths)
-			}
-			if got := gitkit.GitStatusPorcelain(t, fx.warpDir); got != status {
-				t.Errorf("git status --porcelain after the reads = %q; want it as before, %q", got, status)
-			}
-			if got := gitkit.RevParse(t, fx.warpDir, "HEAD"); got != head {
-				t.Errorf("HEAD after the reads = %q; want %q", got, head)
-			}
-		})
-	}
-
-	t.Run("CommittingTheEditKeepsTheId", func(t *testing.T) {
-		t.Parallel()
-		fx := newTaskPatchFixture(t)
-		writeTaskPatchFile(t, fx.warpDir, "lib.txt", "edited\n")
-		uncommitted, err := fx.fabric.WorktreeTreeID()
-		if err != nil {
-			t.Fatalf("WorktreeTreeID() error = %v", err)
-		}
-		gitkit.CommitFile(t, fx.warpDir, "lib.txt", "edited\n", "commit the edit")
-		committed, err := fx.fabric.WorktreeTreeID()
-		if err != nil {
-			t.Fatalf("WorktreeTreeID() after the commit error = %v", err)
-		}
-		if committed != uncommitted {
-			t.Errorf("WorktreeTreeID() after the commit = %q; want the uncommitted id, %q", committed, uncommitted)
-		}
-	})
-
-	t.Run("UnknownTreeIsAnError", func(t *testing.T) {
-		t.Parallel()
-		fx := newTaskPatchFixture(t)
-		known, err := fx.fabric.WorktreeTreeID()
-		if err != nil {
-			t.Fatalf("WorktreeTreeID() error = %v", err)
-		}
-		unknown := strings.Repeat("0", len(known))
-		if paths, err := fx.fabric.ChangedPathsBetween(known, unknown); err == nil {
-			t.Errorf("ChangedPathsBetween(%q, %q) = %v, nil; want an error", known, unknown, paths)
 		}
 	})
 }

@@ -41,10 +41,8 @@ type MergeSurface interface {
 // The compile-time assertion that *fabricengine.Fabric satisfies MergeSurface.
 var _ MergeSurface = (*fabricengine.Fabric)(nil)
 
-// Shuttle is the seam this package drives to spawn a fresh LLM session over a conflict.
-// EngineName names the engine a model choice runs on, so the prompt is rendered for it.
+// Shuttle is the one-method seam this package drives to spawn a fresh LLM session over a conflict.
 type Shuttle interface {
-	shuttleengine.EngineNamer
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 }
 

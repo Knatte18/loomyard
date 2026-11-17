@@ -30,11 +30,11 @@ func checkFrontPayload(s *Store, fields map[string]any) error {
 		}
 		delete(fields, "front")
 	}
-	if value, carried := fields[onLandKey]; carried {
+	if value, carried := fields["on_land"]; carried {
 		if proposed, isString := value.(string); !isString || proposed != stored.OnLand {
 			return frontPayloadRefusal(slug)
 		}
-		delete(fields, onLandKey)
+		delete(fields, "on_land")
 	}
 	if !stored.Front {
 		return nil
@@ -54,7 +54,7 @@ func checkFrontPayload(s *Store, fields map[string]any) error {
 // Only the front-task package calls it: no board edit can set either field.
 func (b *Board) FileFrontTask(fields map[string]any, onLand string) (Task, error) {
 	slug, _ := fields["slug"].(string)
-	for _, key := range []string{"front", onLandKey} {
+	for _, key := range []string{"front", "on_land"} {
 		if _, carried := fields[key]; carried {
 			return Task{}, frontPayloadRefusal(slug)
 		}

@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -278,7 +277,10 @@ func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 	layoutApprovedGeneration(t, cfg, 1)
 
 	parent := filepath.Dir(cfg.RunDir)
-	permkit.Chmod(t, parent, 0o555)
+	if err := os.Chmod(parent, 0o555); err != nil {
+		t.Fatalf("Chmod(parent) = %v; want nil", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o755) })
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if ptr.Path != "" || ptr.GateAttempts != nil {

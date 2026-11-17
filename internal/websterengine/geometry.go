@@ -11,7 +11,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planindex"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -42,7 +41,7 @@ type Geometry struct {
 	// PromptsDir is the told path to the directory holding webster's rendered fork prompts.
 	PromptsDir string
 	// ScratchDir is the told path to the base directory for webster's never-tracked artifacts.
-	// It holds the rendered fork prompts and every *.lock.
+	// It holds the rendered fork prompts, every *.lock, the plan-conflict record and the last-routed conflict.
 	ScratchDir string
 	// StencilsDir is the told absolute directory the prompt stencils are read from at call time.
 	StencilsDir string
@@ -87,11 +86,6 @@ type Geometry struct {
 	// Nil holds nothing.
 	// The CLI layer sets it; hubgeom and standalonegeom leave it nil.
 	VerifyHold *verifytree.PauseHold
-}
-
-// ConflictDir returns the implementer-neutral directory holding the plan-conflict record and the last-routed conflict.
-func (g Geometry) ConflictDir() string {
-	return runplan.ConflictDir(g.AnchorRoot)
 }
 
 // index returns the geometry's code index, or errNoIndex when none was wired.

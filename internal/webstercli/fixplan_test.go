@@ -58,7 +58,7 @@ func TestFixPlanCmd(t *testing.T) {
 				t.Fatalf("mkdir scratch dir: %v", err)
 			}
 			conflict := &websterengine.PlanConflictError{Batch: 2, Cause: websterengine.ConflictCauseTreeMoved, Findings: []string{"glyph-not-found/02: base.go#Old"}}
-			if err := websterengine.WriteConflictRecord(fx.CLI.geom.ConflictDir(), conflict); err != nil {
+			if err := websterengine.WriteConflictRecord(fx.CLI.geom.ScratchDir, conflict); err != nil {
 				t.Fatalf("WriteConflictRecord() = %v", err)
 			}
 

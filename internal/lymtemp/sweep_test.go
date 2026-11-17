@@ -17,7 +17,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -65,7 +64,6 @@ func TestSweep(t *testing.T) {
 	}{
 		{name: "dead owner past the grace", entry: "rdead", kind: "dir", withLock: true, age: past, wantRemoved: true},
 		{name: "lock-less directory past the grace", entry: "rbare", kind: "dir", age: past, wantRemoved: true},
-		{name: "dead owner holding a read-only and an unreadable directory", entry: "rlocked", kind: "lockedTree", age: past, wantRemoved: true},
 		{name: "live owner at any age", entry: "rlive", kind: "dir", withLock: true, held: true, age: 1000 * time.Hour},
 		{name: "dead owner within the grace", entry: "rfresh", kind: "dir", withLock: true, age: creationGrace - time.Minute},
 		{name: "unprefixed entry", entry: "other", kind: "dir", withLock: true, age: past},
@@ -78,8 +76,6 @@ func TestSweep(t *testing.T) {
 			root := newTestRoot(t)
 			path := filepath.Join(root.Path(), row.entry)
 			var linkTargetMarker string
-			var outsideDirectory string
-			var outsideMode fs.FileMode
 			switch row.kind {
 			case "dir":
 				makeRunDirectory(t, path, row.withLock, row.age)
@@ -89,35 +85,6 @@ func TestSweep(t *testing.T) {
 						t.Fatal(err)
 					}
 					t.Cleanup(func() { held.Release() })
-				}
-			case "lockedTree":
-				makeRunDirectory(t, path, true, row.age)
-				readOnly := filepath.Join(path, "read-only")
-				unreadable := filepath.Join(readOnly, "unreadable")
-				if err := os.MkdirAll(unreadable, 0o700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(unreadable, "left.txt"), nil, 0o600); err != nil {
-					t.Fatal(err)
-				}
-				permkit.Chmod(t, unreadable, 0o000)
-				permkit.Chmod(t, readOnly, 0o555)
-				outsideDirectory = filepath.Join(t.TempDir(), "outside")
-				if err := os.Mkdir(outsideDirectory, 0o700); err != nil {
-					t.Fatal(err)
-				}
-				permkit.Chmod(t, outsideDirectory, 0o555)
-				outsideInfo, err := os.Stat(outsideDirectory)
-				if err != nil {
-					t.Fatal(err)
-				}
-				outsideMode = outsideInfo.Mode().Perm()
-				if err := fslink.CreateDirLink(filepath.Join(path, "escape"), outsideDirectory); err != nil {
-					t.Fatalf("create link: %v", err)
-				}
-				modified := fixedClock().Add(-row.age)
-				if err := os.Chtimes(path, modified, modified); err != nil {
-					t.Fatal(err)
 				}
 			case "file":
 				if err := os.WriteFile(path, nil, 0o600); err != nil {
@@ -157,29 +124,8 @@ func TestSweep(t *testing.T) {
 					t.Errorf("link target was touched: %v", err)
 				}
 			}
-			if outsideDirectory != "" {
-				info, err := os.Stat(outsideDirectory)
-				if err != nil {
-					t.Fatalf("directory behind a link inside the run directory is gone: %v", err)
-				}
-				if got := info.Mode().Perm(); got != outsideMode {
-					t.Errorf("directory behind a link inside the run directory has mode %v, want %v", got, outsideMode)
-				}
-			}
 		})
 	}
-
-	t.Run("a failed permission pass leaves the result to the removal", func(t *testing.T) {
-		t.Parallel()
-		path := filepath.Join(t.TempDir(), "file", "child")
-		if err := os.WriteFile(filepath.Dir(path), nil, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		want := os.RemoveAll(path)
-		if got := removeTreeMakingWritable(path); fmt.Sprint(got) != fmt.Sprint(want) {
-			t.Errorf("removeTreeMakingWritable(%s) = %v, want the outcome of os.RemoveAll, %v", path, got, want)
-		}
-	})
 
 	t.Run("two concurrent sweeps both succeed", func(t *testing.T) {
 		t.Parallel()

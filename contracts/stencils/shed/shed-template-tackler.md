@@ -1,6 +1,6 @@
 <!-- This is the shed tackler's launch prompt:
      the whole procedure of the cold session that settles one stop of a run the shed driver's rules could not settle.
-     It is filled via internal/stencil.Fill (RenderTacklerPrompt in internal/sheddriver)
+     It is filled via internal/stencil.Fill (tacklerPrompt in internal/sheddriver)
      and typed into the tackler session as its entire instruction set.
      Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
      {{.run_id}} is the run whose stop is judged, {{.slug}} the task it belongs to,
@@ -13,7 +13,7 @@
      {{.trace_dir}} the directory of the child traces, {{.driver_log}} the shed driver's own log,
      {{.verdict_path}} the file the tackler always writes, {{.case_brief_path}} the file it writes on an escalate,
      {{.parent_directive}} the no-parent variant of the shared parent directive rendered by internal/parentdirective,
-     and {{.edit_directive}} the edit directive of the engine the prompt launches on, rendered by internal/editdirective.
+     and {{.edit_directive}} the shared edit directive rendered by internal/editdirective.
      The body is recipe-blind:
      the recipe and the rows a `goto` may name arrive only through {{.recipe}} and {{.goto_rows}},
      and everything else through the stop envelope and the files it points at. -->

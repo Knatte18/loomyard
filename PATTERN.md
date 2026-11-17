@@ -7,7 +7,7 @@
 ## Paths and geometry
 
 - `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `lymcwd`, from the worktree's weft-root `.lym-anchor`; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
-- `PATTERN-lym-files` — Placing a file, temp dir, lock or link: tracked under `_lym`, never-tracked under `.lym` as a cache a fresh machine rebuilds or starts without; named only by `lymdirs`; temp under `lymtemp`, lock paths via `lock`, links via `fslink`. (test) — [background](pattern/PATTERN-lym-files.md)
+- `PATTERN-lym-files` — Placing a file, temp dir, lock or link: tracked under `_lym`, never-tracked under `.lym`, named only by `lymdirs`; temp under `lymtemp`, lock paths via `lock`, links via `fslink`. (test) — [background](pattern/PATTERN-lym-files.md)
 - `PATTERN-leaf-packages` — Importing into a leaf package: only closed import set. — [background](pattern/PATTERN-leaf-packages.md)
 
 ## CLI and config
@@ -37,12 +37,11 @@
 
 ## Agents and prompts
 
-- `PATTERN-stencil-ownership` — Reading or writing a prompt, spec or stencil: read at call time via `stencilstore`; one engine's wording only in its engine blocks, rendered for the launch's engine; a spawned role's stencil renders the parent and edit directives. (test) — [background](pattern/PATTERN-stencil-ownership.md)
+- `PATTERN-stencil-ownership` — Reading or writing a prompt, spec or stencil: read at call time via `stencilstore`; engine text in engine blocks; a spawned role's stencil renders the parent and edit directives. (test) — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-heddle-instructions` — Rendering or writing agent instructions: heddle entries only via `heddleengine`; lym's own instructions in its code, stencils, specs or heddle's shipped layer. — [background](pattern/PATTERN-heddle-instructions.md)
 - `PATTERN-reed-panes` — Spawning an agent or touching its pane: an interactive tmux session through reed, never headless; text typed only via guarded paths; the wait mark is display only. (test) — [background](pattern/PATTERN-reed-panes.md)
 - `PATTERN-agent-addressing` — Naming or messaging an agent: names only via `internal/agentname`; messages only through creel; across hubs daemon to daemon with the sender confirmed, authority only for a trusted hub's orch. (test) — [background](pattern/PATTERN-agent-addressing.md)
-- `PATTERN-shuttle-provider-seam` — Touching a provider or shuttle run: specifics only under `internal/shuttleengine/<engine>`, model-specs via `NewModelChoice`, a spec's prompt rendered for its launch's engine, a strand stopped via the stop verb, a negative finish after `allOutputFilesExist`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
-- `PATTERN-engine-parity` — Launching a role on an engine: the session gets every skill, standing passage, instruction file, guard, hook and directive a session of that role gets on another engine, through its own channel; each engine's launch manifest is compared by test. (test) — [background](pattern/PATTERN-engine-parity.md)
+- `PATTERN-shuttle-provider-seam` — Touching a provider or shuttle run: specifics only under `internal/shuttleengine/<engine>`, model-specs via `NewModelChoice`, a strand stopped via the stop verb, a negative finish after `allOutputFilesExist`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-shell-guard-table` — Guarding a shell command or building a pane-shell string: only `internal/shellguard`'s table, every engine rendering every row, and `internal/shell`, importing only stdlib.
 
 ## Processes and waits
@@ -53,5 +52,5 @@
 ## Testing
 
 - `PATTERN-test-speed` — Writing or running a test: via `lym gate test` by gate key; one `tiergate.Require` tier, lowest that fits; it pins behavior no other test covers, which the gate's redundancy report checks; skips, clocks, `t.Parallel`, `//lym:seam` and `//lym:watch` per the background. (test) — [background](pattern/PATTERN-test-speed.md)
-- `PATTERN-test-isolation` — Testing package: hermetic git and `tmuxkit.Main`; shared support in one `internal/testkit/<kit>/`; a read-only or unreadable directory via `permkit.Chmod`; hub fixtures via `hubforge`. (test) — [background](pattern/PATTERN-test-isolation.md)
+- `PATTERN-test-isolation` — Testing package: hermetic git and `tmuxkit.Main`; shared support in one `internal/testkit/<kit>/`; hub fixtures via `hubforge`. (test) — [background](pattern/PATTERN-test-isolation.md)
 - `PATTERN-test-only-code` — Writing a function only tests call: it lives in a `_test.go` file or a test-support package (`internal/testkit`, `gitkit`, `hubforge`), never a production file; every other function is reachable from a `main` package. (test) — [background](pattern/PATTERN-test-only-code.md)

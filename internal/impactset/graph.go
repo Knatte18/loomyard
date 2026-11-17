@@ -4,6 +4,7 @@ package impactset
 
 import (
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -142,6 +143,35 @@ func (g moduleGraph) addBinaryBuildingTests(set map[string]bool) []string {
 	}
 	sort.Strings(dirs)
 	return dirs
+}
+
+// splitUnchanged sorts the packages of set that changed holds none of into importers and binary builders.
+// A binary builder is a package of binaryTests, the directories whose tests build the `lym` binary.
+// It counts only when changed holds the `cmd/lym` package; every other unchanged package is an importer.
+func (g moduleGraph) splitUnchanged(set, changed map[string]bool, binaryTests []string) (importers, builders map[string]bool) {
+	commandChanged := false
+	if command, ok := g.byDir[commandDir]; ok {
+		commandChanged = changed[command.ImportPath]
+	}
+	importers, builders = map[string]bool{}, map[string]bool{}
+	for importPath := range set {
+		switch {
+		case changed[importPath]:
+		case commandChanged && slices.Contains(binaryTests, g.byImportPath[importPath].Dir):
+			builders[importPath] = true
+		default:
+			importers[importPath] = true
+		}
+	}
+	return importers, builders
+}
+
+// packageArgsOf returns the import paths as sorted package arguments, or nil for none.
+func (g moduleGraph) packageArgsOf(importPaths map[string]bool) []string {
+	if len(importPaths) == 0 {
+		return nil
+	}
+	return packageArgs(g.packageDirs(importPaths))
 }
 
 // packageDirs returns the directories of the import paths, sorted.

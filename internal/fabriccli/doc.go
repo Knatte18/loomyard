@@ -162,10 +162,11 @@
 //
 // The engine then adds its own refusals, and an equal anchor is reported as a no-op with nothing ended.
 // A move waits, printing what it waits on to stderr, until no dobby it will end has a pass in flight.
+// The prime's coverage-map upkeep pass, registered as `runproc.RoleTestMap`, is no such pass and is not waited for;
+// the end of the prime's hub-owner processes below ends it.
 // It takes the parent lock of the worktree's branch.
 // It ends the worktree's dobby when it is a beam.
-// For the prime it ends every dobby of the machine.
-// Every such end spares the push, sync and orch roles, so the worktree's orch outlives the move.
+// For the prime it ends every dobby of the machine, sparing the push and sync roles.
 // It moves the trace sink to the weft's lock directory while the move record stands and calls `Apply`.
 // It then reopens the sink at the anchor `Apply` left.
 //
@@ -218,10 +219,8 @@
 // it may run `merge-in`, `merge-stage`, `merge --continue` and `merge --abort` in its own worktree.
 // `merge <branch>` stays refused.
 //
-// The in-flight warning on `merge-in` names the active implementer's run, Webster's or Weaver's.
-// Webster's exists because of what `lym webster record-batch` accepts.
+// The Webster warning on `merge-in` exists because of what `lym webster record-batch` accepts.
 // It tolerates a clean parent merge commit after a fork's commit.
 // It refuses a fast-forward past it and a merge whose conflicts were resolved by hand.
-// Weaver's says a batch strand's commits sit on the task branch and its post-batch checks run against them.
 // An already-up-to-date `merge-in` and a hard failure carry no `warnings` key.
 package fabriccli

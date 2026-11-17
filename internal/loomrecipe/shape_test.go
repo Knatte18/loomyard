@@ -26,7 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedcheckkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -98,7 +97,7 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePlanBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NameDriftAwait, "DriftAwait", driftAwaitType},
 	{loomshed.NameDriftExpect, "DriftExpect", driftExpectType},
-	{loomshed.NameWebster, "Implementer", reflect.TypeOf(loomshed.NewWebsterProducer("", configengine.Dirs{}, nil, websterengine.RunDeps{}, nil, weaverengine.ActiveDeps{}))},
+	{loomshed.NameWebster, "Implementer", reflect.TypeOf(loomshed.NewWebsterProducer("", configengine.Dirs{}, nil, websterengine.RunDeps{}, nil))},
 	{loomshed.NameParentAlign, "ParentAlign", reflect.TypeOf(&landingshed.ParentAlign{})},
 	{loomshed.NameDriftVerify, "DriftVerify", driftVerifyType},
 	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},

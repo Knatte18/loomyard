@@ -123,7 +123,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 	forks := cfg.DiscussionLenses != ""
 	leadValues := map[string]string{"self_check": selfCheck}
 	if forks {
-		lensDirective, err := discussionLensDirective(layout, dirs, stencilsDir, specsDir, cfg.DiscussionLenses, chairChoice.Engine, fixerOn)
+		lensDirective, err := discussionLensDirective(layout, dirs, stencilsDir, specsDir, cfg.DiscussionLenses, fixerOn)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %w", err)
 		}

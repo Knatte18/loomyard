@@ -497,7 +497,7 @@ type MergeStatusUpdate struct {
 // and an upsert naming it is refused as an unknown field.
 // "record_body_sha256" is output only in the same way: a write that stores the entry's decision record stamps it.
 func UpsertPayloadKeys() (required, optional []string) {
-	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", pullRequestKey, "notify_on_land", "owner_machine", "project", "order", "beam", "front", onLandKey, "discussed"}
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "pull_request", "notify_on_land", "owner_machine", "project", "order", "beam", "front", "on_land", "discussed"}
 }
 
 // upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.

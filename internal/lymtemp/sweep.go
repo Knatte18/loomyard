@@ -105,39 +105,6 @@ func removeRunDirectory(r *Root, path string, deadline *time.Time) error {
 	}
 }
 
-// removeTreeMakingWritable removes the tree at path.
-// It first gives every directory in the tree owner read, write and search permission.
-// A test binary killed before its cleanups ran can leave a directory it made read-only or unreadable.
-// Such a directory bars the removal of its entries.
-// The permission pass is best-effort: its failures are ignored, so the result is the one the removal itself gives.
-// A path already gone counts as removed.
-func removeTreeMakingWritable(path string) error {
-	makeTreeOwnerWritable(path)
-	return os.RemoveAll(path)
-}
-
-// makeTreeOwnerWritable adds owner read, write and search permission to path and to every directory below it.
-// It sets a directory's bits before it lists the directory, so an unreadable directory is opened too.
-// Files and links keep their bits, since removing one needs only its parent's write permission;
-// a link is never followed.
-// The pass is best-effort: a directory it cannot change or list is skipped, and the walk goes on with the rest.
-func makeTreeOwnerWritable(path string) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.IsDir() {
-		return
-	}
-	if perm := info.Mode().Perm(); perm&0o700 != 0o700 {
-		_ = os.Chmod(path, perm|0o700)
-	}
-	// ReadDir returns the entries it read before a failure, so they are walked either way.
-	entries, _ := os.ReadDir(path)
-	for _, entry := range entries {
-		if entry.IsDir() {
-			makeTreeOwnerWritable(filepath.Join(path, entry.Name()))
-		}
-	}
-}
-
 // isRemovalSymptom reports whether err is the directory-not-empty failure of removing path itself.
 // A peer's lock probe recreating the lock file is what causes this failure.
 // The POSIX rmdir errors for a non-empty directory, and Windows' directory-not-empty error, satisfy fs.ErrExist.

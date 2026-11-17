@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gatefixer"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
@@ -26,12 +25,12 @@ func contractFilePaths(geom Geometry) []string {
 // contractCanon returns path's canonical spelling and whether it resolves to one of the run's contract files.
 // The error is a link-resolution failure.
 func contractCanon(geom Geometry, path string) (canon string, contract bool, err error) {
-	canon, err = runplan.CanonicalPath(runplan.ResolveWritePath(geom.PaneCwd, path))
+	canon, err = canonicalPath(resolveWritePath(geom.PaneCwd, path))
 	if err != nil {
 		return "", false, err
 	}
 	for _, c := range contractFilePaths(geom) {
-		want, err := runplan.CanonicalPath(c)
+		want, err := canonicalPath(c)
 		if err != nil {
 			return "", false, err
 		}
@@ -75,7 +74,7 @@ func contractFileStatus(geom Geometry, writes RunWrites, path string) (contract,
 		events []shuttleengine.WriteEvent
 	}{{writerFork, writes.Forks}, {writerRecovery, writes.Recoveries}} {
 		for _, ev := range source.events {
-			evCanon, err := runplan.CanonicalPath(runplan.ResolveWritePath(geom.PaneCwd, ev.Path))
+			evCanon, err := canonicalPath(resolveWritePath(geom.PaneCwd, ev.Path))
 			if err != nil {
 				return false, false, "", err
 			}
@@ -99,7 +98,7 @@ func latestSucceededWrite(geom Geometry, events []shuttleengine.WriteEvent, cano
 		if !ev.Succeeded {
 			continue
 		}
-		evCanon, err := runplan.CanonicalPath(runplan.ResolveWritePath(geom.PaneCwd, ev.Path))
+		evCanon, err := canonicalPath(resolveWritePath(geom.PaneCwd, ev.Path))
 		if err != nil || evCanon != canon {
 			continue
 		}

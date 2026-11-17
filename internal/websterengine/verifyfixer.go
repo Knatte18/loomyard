@@ -194,9 +194,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 	if err != nil {
 		return nil, false, err
 	}
-	engine := deps.Engines.EngineName(choice)
 	prompt, err := gatefixer.RenderPrompt(gatefixer.PromptInputs{
-		Engine:         engine,
 		StencilsDir:    deps.Geom.StencilsDir,
 		BodyStencil:    verifyFixBodyStencil,
 		BodyValues:     bodyValues,
@@ -225,15 +223,14 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 		Clock:      clk,
 		Register:   deps.Register,
 	}, &verifyFixerStore{st: st}, gatefixer.Spec{
-		Prompt:       prompt,
-		PromptEngine: engine,
-		ReportPath:   reportPath,
-		ReplyPath:    replyPath,
-		Role:         gatefixer.RoleVerifyFixer,
-		ModelChoice:  choice,
-		Skills:       deps.LanguageSkills,
-		Segment:      segmentcolor.Webster,
-		Timeout:      time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
+		Prompt:      prompt,
+		ReportPath:  reportPath,
+		ReplyPath:   replyPath,
+		Role:        gatefixer.RoleVerifyFixer,
+		ModelChoice: choice,
+		Skills:      deps.LanguageSkills,
+		Segment:     segmentcolor.Webster,
+		Timeout:     time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("webster: spawn the cold verify-gate fixer: %w; way forward: transient, re-run `%s`", shuttleengine.ModelKey{Module: "webster", Key: string(RoleRecovery)}.Wrap(err), fixVerifyCommand)

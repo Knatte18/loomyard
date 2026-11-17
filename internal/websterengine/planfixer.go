@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -101,7 +100,7 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 		return st.PlanFixers[n-1], false, nil
 	}
 
-	record, err := ReadConflictRecord(deps.Geom.ConflictDir())
+	record, err := ReadConflictRecord(deps.Geom.ScratchDir)
 	if err != nil {
 		return nil, false, fmt.Errorf("%w; way forward: transient, re-run `%s`", err, fixPlanCommand)
 	}
@@ -110,7 +109,7 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 	}
 	fixersForBatch := 0
 	for _, earlier := range st.PlanFixers {
-		if runplan.SameFindingSet(earlier.Findings, record.Findings) {
+		if sameFindingSet(earlier.Findings, record.Findings) {
 			return nil, false, fmt.Errorf("webster: a plan fixer was already given these plan-conflict findings and did not clear them; %s", planFixRefusalWayForward)
 		}
 		if earlier.Batch == record.Batch {
@@ -142,13 +141,12 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 	if err != nil {
 		return nil, false, fmt.Errorf("webster: resolve plan fixer reply path: %w", err)
 	}
-	recordPath, err := filepath.Abs(ConflictRecordPath(deps.Geom.ConflictDir()))
+	recordPath, err := filepath.Abs(ConflictRecordPath(deps.Geom.ScratchDir))
 	if err != nil {
 		return nil, false, fmt.Errorf("webster: resolve plan-conflict record path: %w", err)
 	}
 	notePath := friction.NotePath(deps.FrictionDir, "webster-plan-fix")
-	engine := deps.Engines.EngineName(choice)
-	prompt, err := RenderPlanFixPrompt(recordPath, replyPath, deps.Geom.PaneCwd, deps.Geom.PlanDir, deps.Geom.StencilsDir, engine, deps.Geom.SpecsDir, notePath, deps.Geom.ParentName)
+	prompt, err := RenderPlanFixPrompt(recordPath, replyPath, deps.Geom.PaneCwd, deps.Geom.PlanDir, deps.Geom.StencilsDir, deps.Geom.SpecsDir, notePath, deps.Geom.ParentName)
 	if err != nil {
 		return nil, false, err
 	}
@@ -158,14 +156,13 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 	}
 
 	spec := shuttleengine.Spec{
-		Prompt:       string(prompt),
-		PromptEngine: engine,
-		OutputFiles:  []string{replyPath},
-		ModelChoice:  choice,
-		ConfigRole:   agentconfig.RoleWebster,
-		Role:         planFixerStrandRole,
-		Segment:      segmentcolor.Webster,
-		Timeout:      time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
+		Prompt:      string(prompt),
+		OutputFiles: []string{replyPath},
+		ModelChoice: choice,
+		ConfigRole:  agentconfig.RoleWebster,
+		Role:        planFixerStrandRole,
+		Segment:     segmentcolor.Webster,
+		Timeout:     time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
 	}
 	run, err := deps.Starter.Start(spec)
 	if err != nil {

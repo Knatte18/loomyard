@@ -104,11 +104,9 @@ func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
 		WorktreeRoot: h.Location.WorktreePath(),
 		AnchorPath:   h.Location.AnchorPath(),
 		StencilsDir:  stencilsDir,
-		// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
-		DefaultEngine: "claude",
-		ParentName:    reedGeom.ParentName,
-		Shortname:     reedGeom.NameShortname,
-		Slug:          reedGeom.NameSlug,
+		ParentName:   reedGeom.ParentName,
+		Shortname:    reedGeom.NameShortname,
+		Slug:         reedGeom.NameSlug,
 	})
 
 	root := h.PrimeWorktree()

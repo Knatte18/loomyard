@@ -40,7 +40,7 @@ const (
 	circlingGroup        = "circling"
 	circlingWayNoRun     = `way forward: "lym loom start" in the task worktree begins the run; an escalation exists only once a review segment's Bouncer has escalated a round`
 	circlingWayNotAtHalt = `way forward: "lym loom status <slug>" shows where the run is; the verbs apply only while the run is awaiting at a review segment's Bouncer row after an escalation, and accept also while the run is halted at Finalize after its fix reviews ran out of rounds`
-	circlingWayNot       = `way forward: "lym loom status <slug>" shows the run's state; the verbs apply only to a round the Bouncer escalated (a circling, hard-cap, budget, decision or stalemate escalation), and a plain CONTINUE round below the budget needs no decision`
+	circlingWayNot       = `way forward: "lym loom status <slug>" shows the run's state; the verbs apply only to a round the Bouncer escalated (a circling, hard-cap, budget or decision escalation), and a plain CONTINUE round below the budget needs no decision`
 	circlingWayHardCap   = `way forward: fix the file or key the message names, then re-run "lym loom circling continue %s" in place of any "lym loom resume" it names`
 	circlingWayMalformed = `way forward: fix or delete the named escalation file, then run "lym loom start", which re-escalates the round, and re-run the verb`
 	circlingWayDecided   = `way forward: the decision for this round is recorded and stays; run "lym loom resume" in the task worktree to resume the run`
@@ -70,7 +70,7 @@ type circlingDeps struct {
 // circlingVerb records decision for the escalated round of the run, or refuses with a way forward.
 // `accept` ends the review loop on the current round and lets the run proceed; `continue` runs another round.
 // It refuses unless the run awaits at a Bouncer row and the latest round carries an escalation the Bouncer wrote.
-// The escalation is one of the circling, hard-cap, budget, decision or stalemate kinds, and a round takes one decision.
+// The escalation is one of the circling, hard-cap, budget or decision kinds, and a round takes one decision.
 // `continue` also refuses a round at or past its perch's hard cap, whoever asks; `accept` is never refused by the cap.
 // It checks no caller identity:
 // any shell that addresses the run can record a decision, an agent's tmux session in the task worktree included.
@@ -233,7 +233,7 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 				}
 				return f.HeadSHA()
 			}
-			if err := landingshed.AcceptFixReview(loomengine.LoomDurableDir(target), entry, summaryparser.Path(loomengine.LandingDir(target)), taskHead); err != nil {
+			if err := landingshed.AcceptFixReview(loomengine.LoomScratchDir(target), entry, summaryparser.Path(loomengine.LandingDir(target)), taskHead); err != nil {
 				return err
 			}
 			description := filepath.Join(loomengine.LandingDirRel(), summaryparser.FileName)
@@ -307,9 +307,7 @@ that escalated a round, because its judge found the rounds circling (a circling
 escalation), because a design-wrong finding is still open at the perch's hard
 cap (a hard-cap escalation), or because the review budget was spent and the
 soft-cap rule could not settle the round (a budget escalation), or because a
-review finding the review cannot settle itself is open (a decision escalation),
-or because the review target stayed unchanged for the configured number of
-rounds in a row (a stalemate escalation).
+review finding the review cannot settle itself is open (a decision escalation).
 
 Each verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. A verb records the
@@ -343,7 +341,7 @@ Example:
 	}
 
 	accept := verb(shedadapters.CirclingAccept, "accept the escalated review loop as it stands and let the run proceed", `accept records the operator's acceptance of the round the Bouncer escalated,
-whether a circling, hard-cap, budget, decision or stalemate escalation. On resume the Bouncer
+whether a circling, hard-cap, budget or decision escalation. On resume the Bouncer
 settles the segment as approved and the run proceeds to the next row. The
 perch's hard cap never refuses it. It resumes nothing itself: run
 "lym loom resume" in the task worktree.
@@ -356,8 +354,8 @@ Example:
   lym loom circling accept <slug>`)
 
 	cont := verb(shedadapters.CirclingContinue, "run another review round after an escalation", `continue records the operator's decision to keep reviewing after the Bouncer
-escalated a round, whether a circling, hard-cap, budget, decision or stalemate
-escalation. On resume the Bouncer sends the segment back for another round. It runs one more
+escalated a round, whether a circling, hard-cap, budget or decision escalation. On
+resume the Bouncer sends the segment back for another round. It runs one more
 round only below the perch's hard cap and is refused at or past it, where
 "accept" or raising the hard cap is the way forward. It resumes nothing
 itself: run "lym loom resume" in the task worktree.

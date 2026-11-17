@@ -1,4 +1,4 @@
-// trace.go matches the located failures of a verify log to the live plan's cards and their implementer batches.
+// trace.go matches the located failures of a verify log to the live plan's cards and their Webster batches.
 // It also builds the tracer a landing producer is told.
 
 package failuretrace
@@ -13,9 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/verifytree"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/Knatte18/quarry/quarry"
 	"golang.org/x/mod/modfile"
@@ -31,8 +29,8 @@ type Input struct {
 	Placement Placement
 	// Plan is the parsed live plan.
 	Plan *planparser.Plan
-	// State is the active implementer's run-plan state.
-	State *runplan.State
+	// State is Webster's run state.
+	State *websterengine.State
 	// Enclose answers path:line targets against the files committed at rev.
 	Enclose func(rev string, targets []string) ([]quarry.EncloseResult, error)
 	// Resolve resolves glyph targets against the verified tree.
@@ -51,7 +49,7 @@ func Trace(in Input) (verifytree.FailureTrace, error) {
 		return verifytree.FailureTrace{}, errors.New("failuretrace: no plan to trace against")
 	}
 	if in.State == nil {
-		return verifytree.FailureTrace{}, errors.New("failuretrace: no implementer state to trace against")
+		return verifytree.FailureTrace{}, errors.New("failuretrace: no webster state to trace against")
 	}
 	placed, untraced := Locations(websterengine.ParseVerifyFailures(in.Log), in.Placement)
 	var answers []quarry.EncloseResult
@@ -256,7 +254,7 @@ func (m *matcher) targetGlyph(target string) (string, bool) {
 	return parsed.String(), true
 }
 
-// batchNumber returns the implementer batch that ran card, read by the card id `%02d-%s` begin-batch records.
+// batchNumber returns the Webster batch that ran card, read by the card id `%02d-%s` begin-batch records.
 // A batch record without Cards reads as the single card of its own number and slug.
 func (m *matcher) batchNumber(card planparser.Card) (int, bool) {
 	if m.batchOf == nil {
@@ -305,7 +303,7 @@ func (m *matcher) result(untraced []string) verifytree.FailureTrace {
 }
 
 // lastCardSHA returns the last commit of batch's card trail, and false when the trail is empty.
-func lastCardSHA(batch *runplan.BatchState) (string, bool) {
+func lastCardSHA(batch *websterengine.BatchState) (string, bool) {
 	if len(batch.CardSHAs) == 0 {
 		return "", false
 	}
@@ -321,19 +319,19 @@ func commitRange(from, to string) verifytree.CommitRange {
 }
 
 // NewTracer returns a function that traces a failed verify log at head over the worktree at worktreeRoot.
-// Each call parses the plan under anchorPath and reads the active implementer's state over the anchor with no setting.
+// Each call parses the plan under anchorPath and loads the websterengine state from the anchor's directories.
 // It also reads the module path from the worktree's go.mod.
 // The worktree is the clean tree the verify ran on at head, so a path exists at head when it exists there.
-// A missing plan or state is an error, and so is a refusal to name the active implementer.
+// A missing plan or state is an error.
 func NewTracer(worktreeRoot, anchorPath string) func(log, head string) (verifytree.FailureTrace, error) {
 	return func(log, head string) (verifytree.FailureTrace, error) {
 		plan, err := planparser.ParsePlan(planparser.PlanDir(anchorPath))
 		if err != nil {
 			return verifytree.FailureTrace{}, fmt.Errorf("failuretrace: read the plan: %w", err)
 		}
-		_, state, err := weaverengine.Active(weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+		state, err := websterengine.LoadState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath))
 		if err != nil {
-			return verifytree.FailureTrace{}, fmt.Errorf("failuretrace: read the implementer state: %w", err)
+			return verifytree.FailureTrace{}, fmt.Errorf("failuretrace: load webster state: %w", err)
 		}
 		goMod, _ := os.ReadFile(filepath.Join(worktreeRoot, "go.mod"))
 		return Trace(Input{

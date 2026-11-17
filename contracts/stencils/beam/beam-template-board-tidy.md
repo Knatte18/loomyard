@@ -3,7 +3,7 @@
      Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
      {{.landed}} is the bulleted list of task slugs landed since the last tidy, {{.report_path}} the one file the agent writes,
      {{.parent_directive}} the parent directive rendered by internal/parentdirective, naming the nearest live orch when there is one,
-     and {{.edit_directive}} the edit directive of the engine the prompt launches on, rendered by internal/editdirective. -->
+     and {{.edit_directive}} the shared edit directive rendered by internal/editdirective. -->
 
 # Board tidy
 

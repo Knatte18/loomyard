@@ -58,8 +58,6 @@ The entry binds lym's own code only.
 - Every weft-commit caller passes a positive-only file list via `fabricengine.ScopedPathspec`.
 - `structuralNeverCommittedDirs` paths route to a third bucket in `classifyPaths`,
   and `Commit` hard-errors on a non-empty third bucket.
-- `Commit` refuses, before any lock, a commit that would add a new path `internal/secretpath` matches,
-  over lym's shipped patterns and the ones `fabric.yaml`'s `secret_paths` adds.
 
 ### Excludes
 

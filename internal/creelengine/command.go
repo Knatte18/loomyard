@@ -25,8 +25,6 @@ const (
 	CommandColor CommandName = "color"
 	// CommandLoadSkills loads the skills its space-separated argument lists into the receiver's session.
 	CommandLoadSkills CommandName = "load-skills"
-	// CommandRemoteControl turns on remote control in the receiver's session, under the session name its argument holds.
-	CommandRemoteControl CommandName = "remote-control"
 )
 
 // Command is one command inject: a name from the closed set and the argument that name takes.
@@ -53,12 +51,8 @@ func (c Command) validate() error {
 		if c.Argument == "" {
 			return fmt.Errorf("creel: the %s command needs an argument", c.Name)
 		}
-	case CommandRemoteControl:
-		if c.Argument == "" || strings.IndexFunc(c.Argument, unicode.IsControl) >= 0 {
-			return errors.New("creel: the remote-control command takes a session name without control characters")
-		}
 	default:
-		return fmt.Errorf("creel: unknown command %q; the commands are clear, compact, reload-plugins, color, load-skills and remote-control", c.Name)
+		return fmt.Errorf("creel: unknown command %q; the commands are clear, compact, reload-plugins, color and load-skills", c.Name)
 	}
 	return nil
 }

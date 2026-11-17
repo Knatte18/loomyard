@@ -409,8 +409,6 @@ type Run struct {
 	apiErrors apiErrorWatch
 	// dialog is the pending-dialog latch of one Wait, in memory.
 	dialog dialogLatch
-	// editLoops is the edit-loop watch of one Wait, in memory.
-	editLoops editLoopWatch
 
 	// gate is the GateSpec this run was told; the zero value makes the run ungated.
 	gate GateSpec
@@ -492,11 +490,6 @@ const (
 // An engine's hooks touch it whenever the session works.
 // So the session reads as active even when its waiter or its events file does not show it.
 const ActivityStampFileName = "activity-stamp"
-
-// EditRecordsFileName is the file in a run directory that an engine's edit hook appends its file-edit records to.
-// It is apart from the events file.
-// The edit hook's frequent writes so never land between the payload append and the newline append of a recording hook.
-const EditRecordsFileName = "edit-records.jsonl"
 
 // Start prepares one run described by spec, registers it with reed, and returns a handle only once
 // the run's provider is past its startup gates.
@@ -736,11 +729,6 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		}
 		_ = os.RemoveAll(runDir)
 		return nil, Result{}, fmt.Errorf("shuttle: save run state: %w", err)
-	}
-
-	// The run directory's record stands when the copy cannot be kept, so a failure here never fails the launch.
-	if err := copyManifest(root, runID, runDir); err != nil {
-		logger.Warn("shuttle: keep the launch manifest copy failed (non-fatal)", "runDir", runDir, "error", err)
 	}
 
 	logger.Info("shuttle: run started", "runDir", runDir, "strandGUID", strand.GUID, "sessionID", launch.SessionID, "role", spec.Role, "round", spec.Round, "forkSubagents", spec.ForkSubagents, "engine", engineName)
@@ -992,21 +980,6 @@ func (r *Runner) checkResume(spec Spec, engine Engine) (string, error) {
 // It is empty when the check confirmed the session, or when the run resumes nothing.
 func (run *Run) ResumeWarning() string {
 	return run.resumeWarning
-}
-
-// SessionHolder returns the pid of the live provider process holding the run's session, and whether one was found.
-// It finds none for a run whose launch named no session or whose engine cannot name a holder.
-func (run *Run) SessionHolder() (pid int, found bool, err error) {
-	finder, ok := run.engine.(SessionHolderFinder)
-	if !ok || run.state.SessionID == "" {
-		return 0, false, nil
-	}
-	return finder.SessionHolder(run.state.SessionID)
-}
-
-// CarriedInstructions returns the operator instructions the run's prompt carried over from an unfinished predecessor.
-func (run *Run) CarriedInstructions() []string {
-	return run.state.CarriedInstructions
 }
 
 // RunDir returns the directory holding this run's artifacts (prompt.md, settings.json, the events file).

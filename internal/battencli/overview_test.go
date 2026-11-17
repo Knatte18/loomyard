@@ -444,29 +444,6 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	if diff := cmp.Diff(wantSeedless, cells2.Of(viewRuns("run-c", "run-d"), overviewNow)); diff != "" {
 		t.Errorf("seedless child read mismatch (-want +got):\n%s", diff)
 	}
-
-	// The state cell is the word the board shows: the run FSM's display state of batten's state and row.
-	prime3 := locationkit.Location(t.TempDir(), "prime", ".")
-	words := map[string]struct {
-		status shedengine.Status
-		want   string
-	}{
-		"run-e": {shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Plan"}, "halted"},
-		"run-f": {shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.NameLand}, "landing"},
-		"run-g": {shedengine.Status{State: shedengine.StatePaused, CurrentProducer: "Plan"}, "paused"},
-		"run-h": {shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.RowsBeforeRunShed()[0]}, "starting"},
-	}
-	var slugs []string
-	for slug, row := range words {
-		slugs = append(slugs, slug)
-		writeOverviewStatus(t, shedrun.StatusFile(prime3, slug), row.status, minutesAgo(100))
-	}
-	gotWords := NewDobbyRunCells(prime3, pauseRecordPath).Of(viewRuns(slugs...), overviewNow)
-	for slug, row := range words {
-		if gotWords[slug].State != row.want {
-			t.Errorf("state cell of %s = %q; want %q", slug, gotWords[slug].State, row.want)
-		}
-	}
 }
 
 func TestDobbyRunCells_ResolvesTheChildPairAgainInEachRunShedSpell(t *testing.T) {

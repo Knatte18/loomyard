@@ -27,7 +27,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -470,7 +469,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			name: "DoneCardEdited",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				c := planFixture(t, anchorPath, worktreeRoot, true)
-				st := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
+				st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
 					1: {
 						Slug:       "validate-fixture",
 						Cards:      []string{"01-validate-fixture"},
@@ -478,7 +477,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 						Status:     websterengine.DigestStatusDone,
 						CardHashes: map[string]string{"01-validate-fixture": "hash-of-an-earlier-card-file"},
 					},
-				}}}
+				}}
 				if err := websterengine.SaveState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath), st); err != nil {
 					t.Fatalf("SaveState: %v", err)
 				}

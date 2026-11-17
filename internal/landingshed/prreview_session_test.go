@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -52,13 +51,6 @@ func newFakePRSessions() *fakePRSessions {
 		result: shuttleengine.OpenResult{StrandGUID: "guid-1", StrandName: "pr-strand", SessionID: "sess-1", Engine: "claude"},
 		live:   map[string]bool{},
 	}
-}
-
-func (f *fakePRSessions) EngineName(choice shuttleengine.ModelChoice) string {
-	if choice.Engine == "" {
-		return "claude"
-	}
-	return choice.Engine
 }
 
 func (f *fakePRSessions) StartSession(spec shuttleengine.Spec) (shuttleengine.OpenResult, error) {
@@ -183,10 +175,6 @@ func TestPRReview_Session(t *testing.T) {
 				if spec.Role != prReviewerRole || spec.Segment != segmentcolor.Landing || spec.Engine != "claude" || spec.Model != "fixture-model" || spec.ResumeSessionID != "" {
 					t.Errorf("spec role %q, segment %q, engine %q, model %q, resume %q; want the pr-reviewer role, the landing segment, the pr_reviewer model and no resume", spec.Role, spec.Segment, spec.Engine, spec.Model, spec.ResumeSessionID)
 				}
-				if spec.PromptEngine != "claude" {
-					t.Errorf("spec PromptEngine = %q; want %q, the engine the pr_reviewer choice resolves to", spec.PromptEngine, "claude")
-				}
-				stencilkit.RequireEditDirectiveOf(t, fx.deps.StencilsDir, spec.Prompt, "claude", "codex")
 				if spec.ConfigRole != agentconfig.RolePRReviewer {
 					t.Errorf("spec ConfigRole = %q; want %q", spec.ConfigRole, agentconfig.RolePRReviewer)
 				}
@@ -211,20 +199,6 @@ func TestPRReview_Session(t *testing.T) {
 				if got.StrandGUID != "guid-1" || got.StrandName != "pr-strand" || got.SessionID != "sess-1" || got.Engine != "claude" {
 					t.Errorf("record session = %q, %q, %q, %q; want the started session's identity", got.StrandGUID, got.StrandName, got.SessionID, got.Engine)
 				}
-			},
-		},
-		{
-			name: "ReviewerOnCodexRendersItsPromptWithTheCodexEditDirective", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
-			setup: func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
-				fx.deps.Config.PRReviewer = "codex:fixture-model"
-			},
-			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
-			check: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
-				spec := s.starts[0]
-				if spec.PromptEngine != "codex" {
-					t.Errorf("spec PromptEngine = %q; want %q, the engine the pr_reviewer choice resolves to", spec.PromptEngine, "codex")
-				}
-				stencilkit.RequireEditDirectiveOf(t, fx.deps.StencilsDir, spec.Prompt, "codex", "claude")
 			},
 		},
 		{

@@ -59,15 +59,6 @@ type Config struct {
 	// Leave it off for a hub whose work needs Python.
 	DenyPython bool `yaml:"deny_python"`
 
-	// EditLoopEdits is how many edits of one file by one agent within EditLoopWindowS make an edit loop.
-	// An autonomous run's Wait reports the loop to its parent.
-	// 0 turns the watch off, and an engine then installs no edit hook.
-	// A negative value is rejected when the config loads.
-	EditLoopEdits int `yaml:"edit_loop_edits"`
-	// EditLoopWindowS is the window, in seconds, the edits of an edit loop fall within.
-	// LoadConfig refuses a non-positive value while EditLoopEdits is above 0.
-	EditLoopWindowS int `yaml:"edit_loop_window_s"`
-
 	// RefuseRaw lists the command prefixes the shell guard refuses to run raw, from the hub's gate config.
 	// No config file sets it: an engine fills it on its own copy of the config, so it has no yaml key.
 	RefuseRaw []string `yaml:"-"`
@@ -107,8 +98,6 @@ func ConfigSpec() configengine.Spec {
 			"submit_redraw_settle_ms":   configengine.CategoryNone,
 			"engine":                    configengine.CategoryNone,
 			"deny_python":               configengine.CategoryGuard,
-			"edit_loop_edits":           configengine.CategoryNone,
-			"edit_loop_window_s":        configengine.CategoryNone,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"claude":                        configengine.CategoryExecutable,
@@ -173,14 +162,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if cfg.SubmitConfirmTimeoutS <= 0 {
 		return Config{}, fmt.Errorf("shuttle config: submit_confirm_timeout_s must be positive, got %d", cfg.SubmitConfirmTimeoutS)
-	}
-
-	if cfg.EditLoopEdits < 0 {
-		return Config{}, fmt.Errorf("shuttle config: edit_loop_edits must not be negative, got %d; way forward: set it to 0 to turn the edit-loop watch off, or above 0, with lym config shuttle", cfg.EditLoopEdits)
-	}
-
-	if cfg.EditLoopEdits > 0 && cfg.EditLoopWindowS <= 0 {
-		return Config{}, fmt.Errorf("shuttle config: edit_loop_window_s must be positive while edit_loop_edits is above 0, got %d; way forward: set it above 0 with lym config shuttle", cfg.EditLoopWindowS)
 	}
 
 	agents, err := agentconfig.Load(dirs)

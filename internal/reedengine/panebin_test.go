@@ -391,8 +391,6 @@ func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
 // The pinned tokens are quoted once and have every # doubled.
 // #{q:client_name} or #{q:session_name} stays an unquoted word; an unresolvable executable pins nothing.
 // It captures the process-global logger, so it does not run in parallel.
-//
-//testtiming:keep pins the exact composed shell lines per dialect and the named warning of each unresolvable executable
 func TestComposeSwitchCommand(t *testing.T) {
 	tiergate.Require(t, 0)
 	const (
@@ -504,29 +502,13 @@ func TestComposeSwitchCommand(t *testing.T) {
 			"slack state/posix",
 			shell.Posix(),
 			composeSlackStateCommand,
-			`'/opt/it'\''s##here/lym' slack bar --dir #{@lym_orch_dir}`,
+			`'/opt/it'\''s##here/lym' slack bar --dir #{@lym_button_dir}`,
 		},
 		{
 			"slack state/pwsh",
 			shell.Pwsh(),
 			composeSlackStateCommand,
-			`& '/opt/it''s##here/lym' slack bar --dir #{@lym_orch_dir}`,
-		},
-		{
-			"rc click/posix",
-			shell.Posix(),
-			func(sh shell.Shell, executablePath func() (string, error)) (string, bool) {
-				return composeRemoteControlClickCommand(sh, executablePath, socketPath, tmuxPath)
-			},
-			`cd #{@lym_button_dir} >/dev/null 2>&1; '/opt/it'\''s##here/lym' orch rc-on --socket '/tmp/tmux-1000/it'\''s##socket' --tmux '/usr/local/it'\''s##bin/tmux' --client #{q:client_name} >/dev/null 2>&1; exit 0`,
-		},
-		{
-			"rc click/pwsh",
-			shell.Pwsh(),
-			func(sh shell.Shell, executablePath func() (string, error)) (string, bool) {
-				return composeRemoteControlClickCommand(sh, executablePath, socketPath, tmuxPath)
-			},
-			`Set-Location -LiteralPath #{@lym_button_dir} *> $null; & '/opt/it''s##here/lym' orch rc-on --socket '/tmp/tmux-1000/it''s##socket' --tmux '/usr/local/it''s##bin/tmux' --client #{q:client_name} *> $null; exit 0`,
+			`& '/opt/it''s##here/lym' slack bar --dir #{@lym_button_dir}`,
 		},
 	}
 	for _, tt := range slackTests {
@@ -559,13 +541,6 @@ func TestComposeSwitchCommand(t *testing.T) {
 				return composeSlackStateCommand(shell.Posix(), executablePath)
 			},
 			"pinning no Slack state line",
-		},
-		{
-			"rc click",
-			func(executablePath func() (string, error)) (string, bool) {
-				return composeRemoteControlClickCommand(shell.Posix(), executablePath, socketPath, tmuxPath)
-			},
-			"pinning no RC click",
 		},
 	}
 	for _, tt := range slackUnresolvable {

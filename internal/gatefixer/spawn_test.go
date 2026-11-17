@@ -53,8 +53,8 @@ func TestSpawnOrAttach(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Skills(gate-fixer) error = %v", err)
 		}
-		if spec.Role != RoleGateFixer || spec.ModelChoice.Model != "fixer-model" || !slices.Equal(spec.OutputFiles, []string{fx.replyPath}) || spec.ConfigRole != agentconfig.RoleGateFixer || !slices.Equal(spec.Skills, wantSkills) || spec.PromptEngine != shuttlefake.EngineName {
-			t.Errorf("started spec = role %q, model %q, output files %v, config role %q, skills %v, prompt engine %q; want the fixer's role, model, the reply as only output file, the gate-fixer config role, its skills and the spec's prompt engine", spec.Role, spec.ModelChoice.Model, spec.OutputFiles, spec.ConfigRole, spec.Skills, spec.PromptEngine)
+		if spec.Role != RoleGateFixer || spec.ModelChoice.Model != "fixer-model" || !slices.Equal(spec.OutputFiles, []string{fx.replyPath}) || spec.ConfigRole != agentconfig.RoleGateFixer || !slices.Equal(spec.Skills, wantSkills) {
+			t.Errorf("started spec = role %q, model %q, output files %v, config role %q, skills %v; want the fixer's role, model, the reply as only output file, the gate-fixer config role and its skills", spec.Role, spec.ModelChoice.Model, spec.OutputFiles, spec.ConfigRole, spec.Skills)
 		}
 		if fx.engine.LastPrompt != "fix the failures" {
 			t.Errorf("started prompt = %q; want the spec's prompt", fx.engine.LastPrompt)

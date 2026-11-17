@@ -138,7 +138,8 @@ type adoptHoldRun struct {
 	h                    *loopHarness
 	spawns, pauses       []string
 	tidyAgents, archives int
-	landReads, landings  int
+	refreshes, landReads int
+	landings             int
 }
 
 // runAnAdoptHold runs a beam dobby of a beam another machine owns, under an adopt for its first two ticks.
@@ -159,7 +160,7 @@ func runAnAdoptHold(t *testing.T, ownerAfterLift string, stopAt int) adoptHoldRu
 	underAdopt, lifted := true, false
 	var spawns, pauses []string
 	shuttle := &tidyShuttleFake{}
-	archives, landReads, landings, landingReads := 0, 0, 0, 0
+	archives, refreshes, landReads, landings, landingReads := 0, 0, 0, 0, 0
 	h.deps.Owner = func() (string, error) {
 		if lifted {
 			return ownerAfterLift, nil
@@ -186,7 +187,13 @@ func runAnAdoptHold(t *testing.T, ownerAfterLift string, stopAt int) adoptHoldRu
 		return []TaskView{{Slug: "fresh", Kind: boardengine.KindTask, Parent: h.geom.WorktreeName}}, nil
 	}
 	h.deps.LoadConfig = func() (Config, error) {
-		return Config{MaxRuns: 5, BoardTidyEvery: 1, BoardTidyTimeoutMin: 30}, nil
+		return Config{MaxRuns: 5, BoardTidyEvery: 1, BoardTidyTimeoutMin: 30, TestMapUpkeep: true}, nil
+	}
+	h.deps.TestMapRunning = func() (bool, error) { return false, nil }
+	h.deps.TestMapExitRecord = func() (TestMapExit, bool, error) { return TestMapExit{}, false, nil }
+	h.deps.StartTestMap = func() (<-chan PassExit, error) {
+		refreshes++
+		return make(chan PassExit), nil
 	}
 	h.deps.Landings = func() ([]string, error) {
 		landingReads++
@@ -215,9 +222,9 @@ func runAnAdoptHold(t *testing.T, ownerAfterLift string, stopAt int) adoptHoldRu
 		if n > 2 {
 			return nil
 		}
-		if len(spawns) != 0 || len(shuttle.started) != 0 || landReads != 0 || landings != 0 {
-			t.Errorf("after tick %d under the hold, passes = %v, tidy agents = %d, landing reads = %d, landings = %d; want none",
-				n, spawns, len(shuttle.started), landReads, landings)
+		if len(spawns) != 0 || len(shuttle.started) != 0 || refreshes != 0 || landReads != 0 || landings != 0 {
+			t.Errorf("after tick %d under the hold, passes = %v, tidy agents = %d, refreshes = %d, landing reads = %d, landings = %d; want none",
+				n, spawns, len(shuttle.started), refreshes, landReads, landings)
 		}
 		if n == 2 {
 			underAdopt, lifted = false, true
@@ -230,7 +237,7 @@ func runAnAdoptHold(t *testing.T, ownerAfterLift string, stopAt int) adoptHoldRu
 	}
 	return adoptHoldRun{
 		h: h, spawns: spawns, pauses: pauses, tidyAgents: len(shuttle.started),
-		archives: archives, landReads: landReads, landings: landings,
+		archives: archives, refreshes: refreshes, landReads: landReads, landings: landings,
 	}
 }
 
@@ -267,9 +274,9 @@ func TestRun_ABeamTheHoldReleasedSchedulesAgain(t *testing.T) {
 	if len(got.h.ticks) != 5 || got.archives != 0 {
 		t.Errorf("ticks = %d, archives = %d; want all five ticks and no archive", len(got.h.ticks), got.archives)
 	}
-	if len(got.spawns) == 0 || got.tidyAgents == 0 || got.landReads == 0 {
-		t.Errorf("after the hold, passes = %v, tidy agents = %d, landing reads = %d; want each step to have run",
-			got.spawns, got.tidyAgents, got.landReads)
+	if len(got.spawns) == 0 || got.tidyAgents == 0 || got.refreshes == 0 || got.landReads == 0 {
+		t.Errorf("after the hold, passes = %v, tidy agents = %d, refreshes = %d, landing reads = %d; want each step to have run",
+			got.spawns, got.tidyAgents, got.refreshes, got.landReads)
 	}
 	if !got.h.loggedContaining("adopt hold ended") {
 		t.Errorf("log = %v; want a line containing %q", got.h.logged(), "adopt hold ended")

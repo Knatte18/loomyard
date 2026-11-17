@@ -1,7 +1,6 @@
 // commit_integration_test.go covers Fabric.Commit's two-sided commit.
 // It tests warp-first ordering and CommitResult fields;
-// it also covers the spawnDetachedPushFn push seam, the empty-commit rule, CommitWeft's inherited contract,
-// and the never-committed and secret-file refusals.
+// it also covers the spawnDetachedPushFn push seam, the empty-commit rule, and CommitWeft's inherited contract.
 // It is package fabricengine_test and reaches the unexported seams through export_test.go's ForTest shims.
 
 package fabricengine_test
@@ -13,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -420,76 +418,5 @@ func TestCommit_DotLymPath_HardErrorsAndCommitsNothing(t *testing.T) {
 	}
 	if got := fabricengine.CurrentSHAForTest(t, weftPath); got != weftSHABefore {
 		t.Errorf("weft HEAD moved from %s to %s; want it unchanged by a rejected call", weftSHABefore, got)
-	}
-}
-
-// TestCommit_SecretPath_RefusedAndCommitsNothing asserts that adding a secret file on either side fails Fabric.Commit.
-// The error names the path with the shipped pattern it matched and the way forward.
-// Nothing lands on either side.
-func TestCommit_SecretPath_RefusedAndCommitsNothing(t *testing.T) {
-	tiergate.Require(t, 1)
-	// Serial: it swaps the package-level `spawnDetachedPushFn` hook, so it must not run in parallel.
-	tests := []struct {
-		name    string
-		path    string
-		pattern string
-		weft    bool
-		// hubFabricKeys is appended to the hub's fabric.yaml before the call.
-		hubFabricKeys string
-	}{
-		{"Warp", "id_rsa", "id_rsa", false, ""},
-		{"Weft", "_lym/.env", ".env", true, ""},
-		{"HubPattern", "tls/server.key", "*.key", false, "secret_paths: \"*.key\"\n"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
-			fabricengine.SwapPushRecorderForTest(t)
-			if tt.hubFabricKeys != "" {
-				fabricConfig := configengine.ConfigFile(fabricengine.BoardDir(filepath.Dir(warpPath)), "fabric")
-				content := "branch_prefix: \"\"\npathspec: _lym _extra\n" + tt.hubFabricKeys
-				if err := os.WriteFile(fabricConfig, []byte(content), 0o644); err != nil {
-					t.Fatalf("write %s: %v", fabricConfig, err)
-				}
-			}
-
-			root := warpPath
-			if tt.weft {
-				root = weftPath
-			}
-			secretFile := filepath.Join(root, filepath.FromSlash(tt.path))
-			if err := os.MkdirAll(filepath.Dir(secretFile), 0o755); err != nil {
-				t.Fatalf("create the directory of %s: %v", secretFile, err)
-			}
-			if err := os.WriteFile(secretFile, []byte("TOKEN=secret\n"), 0o644); err != nil {
-				t.Fatalf("write %s: %v", secretFile, err)
-			}
-			warpSHABefore := fabricengine.CurrentSHAForTest(t, warpPath)
-			weftSHABefore := fabricengine.CurrentSHAForTest(t, weftPath)
-
-			result, err := f.Commit([]string{tt.path}, "should never land", nil, fabricengine.SyncOptions{})
-			if err == nil {
-				t.Fatalf("Commit(%q) error = nil; want the secret-file refusal", tt.path)
-			}
-			for _, want := range []string{tt.path + " (pattern " + tt.pattern + ")", "way forward: delete each named file"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("Commit(%q) error = %q; want it to contain %q", tt.path, err.Error(), want)
-				}
-			}
-			if result.WarpCommitted || result.WeftCommitted {
-				t.Errorf("Commit(%q) = %+v; want nothing committed on either side", tt.path, result)
-			}
-			if got := fabricengine.CurrentSHAForTest(t, warpPath); got != warpSHABefore {
-				t.Errorf("warp HEAD moved from %s to %s; want it unchanged by a refused call", warpSHABefore, got)
-			}
-			if got := fabricengine.CurrentSHAForTest(t, weftPath); got != weftSHABefore {
-				t.Errorf("weft HEAD moved from %s to %s; want it unchanged by a refused call", weftSHABefore, got)
-			}
-			for side, checkout := range map[string]string{"warp": warpPath, "weft": weftPath} {
-				if staged := strings.TrimSpace(gitkit.Git(t, checkout, "diff", "--cached", "--name-only")); staged != "" {
-					t.Errorf("%s index holds %q after a refused call; want nothing staged", side, staged)
-				}
-			}
-		})
 	}
 }

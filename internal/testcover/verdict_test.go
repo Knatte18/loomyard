@@ -122,16 +122,6 @@ func TestJudgeMap_KeptAndUnmeasuredEntriesNeitherJudgedNorCovering(t *testing.T)
 	}
 }
 
-func TestCoveringTests_TakesTheLargestOverlapFirstAndSkipsARunAddingNothing(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	pool := []testcover.Run{passRun("Small", 1, "b1"), passRun("Wide", 1, "b1", "b2"), passRun("Tail", 1, "b3"), passRun("Other", 1, "b9")}
-	if got, want := testcover.CoveringTests(blockSet("b1", "b2", "b3"), pool), []string{"Wide", "Tail"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("CoveringTests = %v; want %v", got, want)
-	}
-}
-
 func TestJudgeAgainst_KeptRunsCoverButAreNeverJudged(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

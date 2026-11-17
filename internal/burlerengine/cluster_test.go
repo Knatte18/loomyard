@@ -149,7 +149,7 @@ func TestAuditClusterRound(t *testing.T) {
 			},
 			wantN:     2,
 			wantErr:   true,
-			errSubstr: "nested spawn call",
+			errSubstr: "Agent tool call",
 		},
 		{
 			name: "write call in fork",

@@ -6,7 +6,6 @@ package shedadapters
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -92,59 +91,29 @@ func requireReasonContains(t *testing.T, reason string, wants ...string) {
 func TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
-		name string
-		slug string
-		// hardCap is the HardCap the Bouncer is told; 0 tells none.
-		hardCap   int
+		name      string
+		slug      string
 		wantReasn []string
-		// wantNotice and absentNotice are what the parent notice must and must not name.
-		wantNotice   []string
-		absentNotice []string
 	}{
 		{
-			name:       "a slug is named in both verbs",
-			slug:       "my-task",
-			wantReasn:  []string{"round 2", "lym loom circling accept my-task", "lym loom circling continue my-task", "lym loom resume"},
-			wantNotice: []string{"lym loom circling accept my-task", "lym loom circling continue my-task"},
+			name:      "a slug is named in both verbs",
+			slug:      "my-task",
+			wantReasn: []string{"round 2", "lym loom circling accept my-task", "lym loom circling continue my-task", "lym loom resume"},
 		},
 		{
 			name:      "an empty slug omits the argument",
 			wantReasn: []string{"`lym loom circling accept`", "`lym loom circling continue`"},
 		},
-		{
-			name:         "at the hard cap only the accept verb is named",
-			slug:         "my-task",
-			hardCap:      2,
-			wantReasn:    []string{"round 2", "lym loom circling accept my-task"},
-			wantNotice:   []string{"lym loom circling accept my-task"},
-			absentNotice: []string{"lym loom circling continue"},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b, cfg, shuttle := circlingBouncer(t, func(c *BouncerConfig) {
-				c.Slug, c.HardCap = tt.slug, tt.hardCap
-				if tt.slug != "" {
-					c.WorktreeRoot = t.TempDir()
-					c.DecisionRecordPath = filepath.Join(t.TempDir(), "decision-record.md")
-				}
-			})
+			b, cfg, shuttle := circlingBouncer(t, func(c *BouncerConfig) { c.Slug = tt.slug })
 
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
 			if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
 				t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
 			}
 			requireReasonContains(t, ptr.Reason, tt.wantReasn...)
-			for _, want := range tt.wantNotice {
-				if !strings.Contains(ptr.ParentNotice, want) {
-					t.Errorf("ParentNotice = %q; want it to contain %q", ptr.ParentNotice, want)
-				}
-			}
-			for _, absent := range tt.absentNotice {
-				if strings.Contains(ptr.ParentNotice, absent) {
-					t.Errorf("ParentNotice = %q; want it without %q", ptr.ParentNotice, absent)
-				}
-			}
 			if shuttle.Called {
 				t.Error("Call() spawned a run; want none")
 			}

@@ -67,18 +67,8 @@ func TestRecipeKeyedWiring(t *testing.T) {
 				t.Errorf("fixerPlanDir(%s) = %q; want %q", tt.recipe, got, wantPlanDir)
 			}
 
-			const implementerNote = "The implementer is a stand-in."
-			description := arbiterRecipeDescription(tt.recipe, implementerNote)
-			if !strings.Contains(description, tt.wantFragment) {
-				t.Errorf("arbiterRecipeDescription(%s) = %q; want it to contain %q", tt.recipe, description, tt.wantFragment)
-			}
-			// Only a recipe with a Plan-Write row carries the note, and it stands before the repair verbs.
-			note, verbs := strings.Index(description, implementerNote), strings.Index(description, arbiterRepairVerbs)
-			if tt.hasPlan && (note < 0 || note > verbs) {
-				t.Errorf("arbiterRecipeDescription(%s) = %q; want the note before the repair verbs", tt.recipe, description)
-			}
-			if !tt.hasPlan && note >= 0 {
-				t.Errorf("arbiterRecipeDescription(%s) = %q; want no implementer note for a recipe with no Plan-Write row", tt.recipe, description)
+			if got := arbiterRecipeDescription(tt.recipe); !strings.Contains(got, tt.wantFragment) {
+				t.Errorf("arbiterRecipeDescription(%s) = %q; want it to contain %q", tt.recipe, got, tt.wantFragment)
 			}
 
 			if got := finishesAsSketch(tt.recipe); got != tt.wantSketch {

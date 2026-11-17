@@ -70,9 +70,6 @@ type cleanupDeps struct {
 	Spawn func() error
 	// Now reads the clock the orphan age is measured against.
 	Now func() time.Time
-	// PairStands reports whether the slug's pair is on this machine, and whether its task branch is on origin.
-	// A cancelled run keeps its record while its pair stands on either.
-	PairStands func(slug string) (local, onOrigin bool, err error)
 }
 
 // fabricCleanupDeps builds the cleanupDeps that drive the real records side of location's hub.
@@ -90,21 +87,6 @@ func fabricCleanupDeps(location *lymcwd.Location) cleanupDeps {
 			return err
 		},
 		Now: time.Now,
-		PairStands: func(slug string) (bool, bool, error) {
-			topology, err := hubTopology(location)
-			if err != nil {
-				return false, false, err
-			}
-			parts, err := topology.PairParts(location, slug)
-			if err != nil {
-				return false, false, err
-			}
-			onOrigin, err := topology.TaskBranchOnOrigin(location, slug)
-			if err != nil {
-				return false, false, err
-			}
-			return parts.TaskWorktree || parts.RecordsWorktree, onOrigin, nil
-		},
 	}
 }
 
@@ -237,7 +219,7 @@ func clearDoneRun(location *lymcwd.Location, slug string, deps cleanupDeps, admi
 	if err != nil {
 		return false, fmt.Errorf("battencli: read the status of %s: %w", slug, err)
 	}
-	if done, _, _, _ := judgeStatus(data, "", slug); !done {
+	if done, _, _ := judgeStatus(data, "", slug); !done {
 		return false, nil
 	}
 	recipe, err := shedrun.ReadChildRecipe(location, slug)
@@ -520,8 +502,6 @@ func removeRunRecords(location *lymcwd.Location, slug, msg string, deps cleanupD
 // judgeRunDirectory classifies slug by its records run directory, or by the records HEAD when the directory is gone.
 // candidate is true for a done run.
 // tracked is true when the run directory is already gone from disk, so only the records commit is outstanding.
-// A cancelled run is a candidate once neither its pair nor its task branch on origin stands.
-// It is a skip while either does.
 // A non-empty reason skips the slug.
 // A slug with no candidate and no reason is an orphan.
 func judgeRunDirectory(location *lymcwd.Location, slug string, deps cleanupDeps) (candidate, tracked bool, reason string) {
@@ -532,7 +512,7 @@ func judgeRunDirectory(location *lymcwd.Location, slug string, deps cleanupDeps)
 		if err != nil {
 			return false, false, "read status: " + err.Error()
 		}
-		return judgeRecord(slug, data, "", deps)
+		return judgeStatus(data, "", slug)
 	case !errors.Is(statErr, fs.ErrNotExist):
 		return false, false, "stat run directory: " + statErr.Error()
 	}
@@ -542,7 +522,7 @@ func judgeRunDirectory(location *lymcwd.Location, slug string, deps cleanupDeps)
 		return false, false, "read committed status: " + err.Error()
 	}
 	if found {
-		return judgeRecord(slug, data, "committed ", deps)
+		return judgeStatus(data, "committed ", slug)
 	}
 	_, seedFound, err := deps.Committed(shedrun.SeedRel(location, slug))
 	if err != nil {
@@ -554,45 +534,20 @@ func judgeRunDirectory(location *lymcwd.Location, slug string, deps cleanupDeps)
 	return false, false, ""
 }
 
-// judgeRecord judges the status data of slug's run, read from the disk or, with a prefix, from the records HEAD.
-// A cancelled run asks whether its pair stands.
-// With neither the pair here nor its task branch on origin, it is a candidate.
-// A pair that stands, or a probe that fails, skips the run with a reason naming the step that goes on.
-func judgeRecord(slug string, data []byte, prefix string, deps cleanupDeps) (candidate, tracked bool, reason string) {
-	candidate, tracked, cancelled, reason := judgeStatus(data, prefix, slug)
-	if !cancelled {
-		return candidate, tracked, reason
-	}
-	local, onOrigin, err := deps.PairStands(slug)
-	switch {
-	case err != nil:
-		return false, false, prefix + "run is cancelled and whether its pair stands cannot be read: " + err.Error()
-	case local:
-		return false, false, fmt.Sprintf("%srun is cancelled and its pair stands; way forward: \"lym fabric remove %s\" removes the pair and the record", prefix, slug)
-	case onOrigin:
-		return false, false, fmt.Sprintf("%srun is cancelled and its pair stands on another machine; way forward: \"lym batten cancel %s --remove\" on the machine that owns it removes the pair, its task branch and the record", prefix, slug)
-	}
-	return true, prefix != "", ""
-}
-
-// judgeStatus decodes a status file and reports whether the run is done or cancelled.
-// A done run is a candidate.
-// A cancelled run is neither a candidate nor a skip: cancelled is set, and the caller judges its pair.
-// Every other state and an undecodable status is a skip reason, worded with the given prefix.
+// judgeStatus decodes a status file and reports whether the run is done.
+// A done run is a candidate;
+// every other state and an undecodable status is a skip reason, worded with the given prefix.
 // A run that is not done is skipped with the cancel of slug as its way forward.
 // tracked is set when the prefix is non-empty, which marks a status read from the records HEAD rather than the disk.
-func judgeStatus(data []byte, prefix, slug string) (candidate, tracked, cancelled bool, reason string) {
+func judgeStatus(data []byte, prefix, slug string) (candidate, tracked bool, reason string) {
 	var st shedengine.Status
 	if err := json.Unmarshal(data, &st); err != nil {
-		return false, false, false, "decode " + prefix + "status: " + err.Error()
+		return false, false, "decode " + prefix + "status: " + err.Error()
 	}
-	switch st.State {
-	case shedengine.StateDone:
-		return true, prefix != "", false, ""
-	case shedengine.StateCancelled:
-		return false, false, true, ""
+	if st.State != shedengine.StateDone {
+		return false, false, fmt.Sprintf("%srun is %s; way forward: \"lym batten cancel %s\" ends it, and a later cleanup removes it", prefix, st.State, slug)
 	}
-	return false, false, false, fmt.Sprintf("%srun is %s; way forward: \"lym batten cancel %s\" ends it, and a later cleanup removes it", prefix, st.State, slug)
+	return true, prefix != "", ""
 }
 
 // takeLock takes the lock at path through acquire.
@@ -674,9 +629,7 @@ func (c *battenCLI) cleanupCmd() *cobra.Command {
 With --apply it removes the records run directory of every done run and commits the removal
 on the records side, empties that run's scratch beside its lock files, empties the scratch of
 any orphan (a scratch directory with no records run directory, untouched for a day), and then
-spawns the push of the records. A cancelled run is removed the same way once its pair is gone,
-here and on origin; while its pair stands it is skipped, naming the step that removes the pair.
-A run that is running, paused, blocked, awaiting or failed, or whose run
+spawns the push of the records. A run that is running, paused, blocked, awaiting or failed, or whose run
 lock is held, is skipped and reported with its reason. It never touches a pair, a branch, a
 lock file or another run. The dobby of a run's parent worktree removes a done run
 itself once it has counted its landing and decided its landing notice; a done

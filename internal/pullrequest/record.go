@@ -11,9 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// Record is the state a run keeps about its pull request, one JSON file tracked with the run's records.
-// It reaches another machine with the pair's push.
-// Its session ids hold only on the machine that wrote them, and a session whose transcript is absent starts fresh.
+// Record is the state a run keeps about its pull request, one JSON file in the run's scratch directory.
 type Record struct {
 	// Number is the pull request's number and the one field always written.
 	Number int `json:"number"`

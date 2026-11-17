@@ -48,7 +48,7 @@ func (fx *mergeInFixture) scriptGate(results ...verifytree.Result) {
 // seedAttempts writes rec as the entry's attempt record.
 func (fx *mergeInFixture) seedAttempts(t *testing.T, rec FixerAttempts) {
 	t.Helper()
-	if err := WriteFixerAttempts(FixerAttemptsPath(fx.m.deps.RecordsDir, parentAlignName), rec); err != nil {
+	if err := WriteFixerAttempts(FixerAttemptsPath(fx.m.deps.ScratchDir, parentAlignName), rec); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -56,7 +56,7 @@ func (fx *mergeInFixture) seedAttempts(t *testing.T, rec FixerAttempts) {
 // attemptsOnDisk returns the attempt record for the fixture's entry and whether the file exists.
 func (fx *mergeInFixture) attemptsOnDisk(t *testing.T) (FixerAttempts, bool) {
 	t.Helper()
-	path := FixerAttemptsPath(fx.m.deps.RecordsDir, parentAlignName)
+	path := FixerAttemptsPath(fx.m.deps.ScratchDir, parentAlignName)
 	if _, err := os.Stat(path); err != nil {
 		return FixerAttempts{}, false
 	}
@@ -538,34 +538,10 @@ func TestMergeIn_Fixer(t *testing.T) {
 		}
 	})
 
-	t.Run("an attempt record found only under the scratch directory is moved to the records directory with its spent count", func(t *testing.T) {
-		t.Parallel()
-		fx := newMergeInFixture(t)
-		writeVerifyLog(t, fx.gate, "FAIL")
-		fx.scriptGate(failing)
-		scratchPath := FixerAttemptsPath(fx.m.deps.ScratchDir, parentAlignName)
-		if err := WriteFixerAttempts(scratchPath, spentEntry); err != nil {
-			t.Fatal(err)
-		}
-
-		outcome, ptr := fx.call(t)
-
-		requireHalt(t, outcome, ptr, "spent every attempt")
-		if rec, found := fx.attemptsOnDisk(t); !found || rec.Spent != 2 {
-			t.Errorf("attempt record under the records directory = %+v, %v; want the 2 spent turns kept", rec, found)
-		}
-		if _, err := os.Stat(scratchPath); !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("stat of the scratch attempt record = %v; want it gone", err)
-		}
-		if len(fx.seats.tables) != 0 {
-			t.Errorf("fixer sessions = %d; want none over the spent attempts the scratch record carried", len(fx.seats.tables))
-		}
-	})
-
 	t.Run("an undecodable attempt record halts naming the file and how to remove it", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		path := FixerAttemptsPath(fx.m.deps.RecordsDir, parentAlignName)
+		path := FixerAttemptsPath(fx.m.deps.ScratchDir, parentAlignName)
 		if err := os.WriteFile(path, []byte("{nope"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -579,7 +555,7 @@ func TestMergeIn_Fixer(t *testing.T) {
 	})
 
 	retiredAttemptsPath := func(fx *mergeInFixture) string {
-		return FixerAttemptsPath(fx.m.deps.RecordsDir, retiredMergeInName)
+		return FixerAttemptsPath(fx.m.deps.ScratchDir, retiredMergeInName)
 	}
 	seedRetiredAttempts := func(t *testing.T, fx *mergeInFixture, rec FixerAttempts) {
 		t.Helper()

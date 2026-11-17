@@ -62,6 +62,11 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "step_idle_timeout_min: 1\n"},
 		},
 		{
+			name:     "a retired test_map_every of 0 becomes test_map_upkeep false by beam's Migrate",
+			settings: map[string]any{"beam": map[string]any{"test_map_every": float64(0)}},
+			wantDocs: map[string]string{"beam": "test_map_upkeep: false\n"},
+		},
+		{
 			name:     "models alias the template lacks passes",
 			settings: map[string]any{"models": map[string]any{"zephyr": map[string]any{"engine": "claude", "model": "claude-zephyr-1"}}},
 			wantDocs: map[string]string{"models": "zephyr:\n    engine: claude\n    model: claude-zephyr-1\n"},

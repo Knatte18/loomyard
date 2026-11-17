@@ -383,18 +383,7 @@ func (fz *Finalize) dropRecordedPullRequest(ctx context.Context, origin Origin, 
 	if err := pullrequest.RemoveRecord(pr.RecordPath, pr.RecordLockPath); err != nil {
 		return ended(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: %w", finalizeName, err)))
 	}
-	if err := fz.commitRecord(); err != nil {
-		return ended(fz.errorStop(ctx, err))
-	}
 	return prLanding{}, "", shedengine.OutputPointer{}, nil, false
-}
-
-// commitRecord commits and pushes the pull request record's last change through the told seam.
-func (fz *Finalize) commitRecord() error {
-	if err := fz.deps.PullRequest.CommitRecord(); err != nil {
-		return fmt.Errorf("landingshed: %s: commit the pull request record: %w", finalizeName, err)
-	}
-	return nil
 }
 
 // pullRequestCommitTitle is the commit title of a pull request's merge: the title followed by ` (#<number>)`.
@@ -515,9 +504,6 @@ func (fz *Finalize) openAtOnce(ctx context.Context, api pullrequest.API, head, t
 	pr := fz.deps.PullRequest
 	if err := pullrequest.WriteRecord(pr.RecordPath, pr.RecordLockPath, rec); err != nil {
 		return failed(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: record the pull request: %w", finalizeName, err)))
-	}
-	if err := fz.commitRecord(); err != nil {
-		return failed(fz.errorStop(ctx, err))
 	}
 	return rec, "", shedengine.OutputPointer{}, nil, false
 }

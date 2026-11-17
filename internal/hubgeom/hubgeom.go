@@ -56,6 +56,20 @@ func IsPrime(l *lymcwd.Location) (bool, error) {
 	return isPrimeWorktree(l.WorktreePath())
 }
 
+// PrimeWorktreePath returns the root of the prime worktree of l's hub.
+// The error reports a hub whose prime worktree cannot be found.
+func PrimeWorktreePath(l *lymcwd.Location) (string, error) {
+	name, err := fabricengine.PrimeName(l)
+	if err != nil {
+		return "", err
+	}
+	prime, err := lymcwd.NamedWorktree(l.HubPath, name)
+	if err != nil {
+		return "", err
+	}
+	return prime.WorktreePath(), nil
+}
+
 // gitEntryName is the entry at every git worktree's root.
 const gitEntryName = ".git"
 

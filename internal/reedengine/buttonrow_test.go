@@ -29,8 +29,7 @@ func rowFragment(index int, label string) string {
 // buttonRowSpecSlot is the index of the spec JSON within a button row invocation.
 const buttonRowSpecSlot = 16
 
-// TestPinButtonRowLocked pins the five options one render sets, for each shape of button context.
-// The orch directory is the session's anchor for a prime or a beam and empty for a task.
+// TestPinButtonRowLocked pins the four options one render sets, for each shape of button context.
 // It reads Warns through logcapture, whose output is process-global, so it does not call t.Parallel.
 func TestPinButtonRowLocked(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -264,22 +263,17 @@ func TestPinButtonRowLocked(t *testing.T) {
 			e.pinButtonRowLocked(target)
 
 			wantSpec := buttonSpec{}
-			wantSpecJSON, wantDirWord, wantOrchDirWord := "", "", ""
+			wantSpecJSON, wantDirWord := "", ""
 			if len(tt.wantEntries) > 0 {
 				dir := tt.wantDir
 				if dir == "ANCHOR" {
 					dir = e.geom.AnchorPath
 				}
-				orchDir := e.geom.AnchorPath
-				if tt.place == ButtonPlaceTask {
-					orchDir = ""
-				}
-				wantOrchDirWord = posix.Quote(orchDir)
 				wantSpec = buttonSpec{Shell: shPath, Flag: posix.CommandFlag(), Dir: dir, Entries: tt.wantEntries}
 				wantSpecJSON = "decoded below"
 				wantDirWord = posix.Quote(dir)
 			}
-			want := wantButtonRowArgv(target, tt.wantPlain, tt.wantAgent, wantSpecJSON, wantDirWord, wantOrchDirWord)
+			want := wantButtonRowArgv(target, tt.wantPlain, tt.wantAgent, wantSpecJSON, wantDirWord)
 
 			calls := fake.ArgvFor("set-option")
 			if len(calls) != 1 {

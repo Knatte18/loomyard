@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testcover"
 )
 
 // siteLabelPrefix starts every holder and wait record this verb writes.
@@ -42,12 +43,6 @@ const siteLabelPrefix = "lym gate test"
 func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := flagShapeRefusal(request); refusal != "" {
 		return output.Err(out, refusal)
-	}
-	if request.mapMode {
-		return runTestMap(ctx, out, testMapRequest{
-			scope: request, goBinary: request.goBinary, environ: os.Environ(), secondUnit: request.secondUnit,
-			minuteUnit: request.timeoutUnit, grace: request.pipeWaitDelay, cappedParallel: memoryCappedParallel, stderr: request.stderr,
-		})
 	}
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -83,8 +78,10 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	cfg = cfg.WithDefaultDir(location.AnchorRel)
 	request.root = buildRoot(location, dir)
 	request.busyQuit = cfg.Limits().BusyQuit
-	request.memoryQuit = cfg.MemoryQuit()
 	request.hubEnv = hubEnv
+	if inHub {
+		request.coverageMaps = testcover.Dir(fabricengine.BoltDir(location.HubPath))
+	}
 
 	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
 	sc, err := computeScope(preCtx, cfg, location, request.root, request, green)
@@ -144,9 +141,6 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	watching, reason := watchdogApplies(request.busyQuit, request.args, os.Getenv(enclosingGateEnv), proc.IsAncestor)
 	logger.Info("gate test: CPU watchdog decision", "applies", watching, "reason", reason)
 	exe.request.watching = watching
-	guarding, guardReason := memoryGuardApplies(request.memoryQuit, os.Getenv(enclosingGateEnv), proc.IsAncestor)
-	logger.Info("gate test: memory guard decision", "applies", guarding, "reason", guardReason)
-	exe.request.memoryGuarding = guarding
 	// A nested `lym gate test` reads the variable to learn this run's watchdog already sees its test binaries.
 	exe.env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), enclosingGateEnv+"="+strconv.Itoa(os.Getpid()))
 
@@ -219,11 +213,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		}
 		// The report steps run last and never change the code.
 		if slices.Contains(cfg.Gates[request.gate].Reports, gateslot.ReportRedundancy) {
-			stopGuard, guardKilled := startMemoryGuard(runCtx, newMemoryGuard(request.memoryQuit, request.stderr), os.Getpid(), exe.request.memoryGuarding)
-			step := exe.redundancyStep()
-			step.guardKilled = guardKilled
-			step.run(red, inHub)
-			stopGuard()
+			exe.redundancyStep().run(red, inHub)
 		}
 	}
 	exe.printReport(inHub)
@@ -344,20 +334,6 @@ func runLabel(run tierRun) string {
 // flagShapeRefusal returns the refusal for a malformed combination of flags, or "" when the call is well-formed.
 // It needs no config and runs before hub resolution.
 func flagShapeRefusal(request testRequest) string {
-	if request.mapMode {
-		for _, other := range []struct {
-			flag  string
-			given bool
-		}{
-			{"--tier", len(request.tiers) > 0}, {"--upto", request.uptoGiven}, {"--gate", request.gate != ""},
-			{"--guards", request.guards}, {"--" + gateslot.StopOnFailFlag, request.stopOnFail},
-			{"-C", request.dir != ""}, {"words after --", len(request.args) > 0},
-		} {
-			if other.given {
-				return fmt.Sprintf("gate test: --map measures tier0 and tier1 over its scope, so it goes with none of --tier, --upto, --gate, --guards, --%s, -C and words after --; way forward: drop %s and run lym gate test --map with targets or a scope flag", gateslot.StopOnFailFlag, other.flag)
-			}
-		}
-	}
 	if request.tags != "" {
 		return fmt.Sprintf("gate test: --tags %q is refused, since a tier's own command sets its build tags; way forward: name the tier that compiles them with --tier, for example --tier 1, and re-run the same command", request.tags)
 	}
@@ -461,6 +437,7 @@ func preTierExpiry(preCtx, runCtx context.Context, request testRequest, step str
 }
 
 // tierNumbers returns the tier numbers of the listed runs of plan, each once, leaving out the vet and guard steps.
+// A tier's selected-tests run counts as that tier.
 func tierNumbers(plan []tierRun) []int {
 	var numbers []int
 	for _, run := range plan {

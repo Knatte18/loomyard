@@ -40,19 +40,6 @@ type fakeJudgeShuttle struct {
 	err            error
 }
 
-// testEngineName returns the engine choice names, or "claude" when it names none.
-func testEngineName(choice shuttleengine.ModelChoice) string {
-	if choice.Engine == "" {
-		return "claude"
-	}
-	return choice.Engine
-}
-
-// EngineName implements shuttleengine.EngineNamer.
-func (f *fakeJudgeShuttle) EngineName(choice shuttleengine.ModelChoice) string {
-	return testEngineName(choice)
-}
-
 func (f *fakeJudgeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 	f.called = true
 	f.spec = spec
@@ -76,15 +63,15 @@ func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 	const noParentLine = "No parent is recorded for this run."
 	dir := t.TempDir()
 
-	calls := map[string]func(sh *fakeJudgeShuttle, stencilsDir, parent string, choice shuttleengine.ModelChoice){
-		"circling judge": func(sh *fakeJudgeShuttle, stencilsDir, parent string, choice shuttleengine.ModelChoice) {
-			runCircling(sh, "gate", judgeInputs{Round: 2, PriorReviews: []string{"/run/round-1-review.md"}, VerdictPath: filepath.Join(dir, "cv.md"), HandoffPath: filepath.Join(dir, "ch.md"), StencilsDir: stencilsDir, ParentName: parent, Choice: choice})
+	calls := map[string]func(sh *fakeJudgeShuttle, stencilsDir, parent string){
+		"circling judge": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
+			runCircling(sh, "gate", judgeInputs{Round: 2, PriorReviews: []string{"/run/round-1-review.md"}, VerdictPath: filepath.Join(dir, "cv.md"), HandoffPath: filepath.Join(dir, "ch.md"), StencilsDir: stencilsDir, ParentName: parent})
 		},
-		"milestone judge": func(sh *fakeJudgeShuttle, stencilsDir, parent string, choice shuttleengine.ModelChoice) {
-			runMilestone(sh, "gate", judgeInputs{Round: 5, HardCap: 10, PriorReviews: []string{"/run/round-4-review.md"}, VerdictPath: filepath.Join(dir, "mv.md"), HandoffPath: filepath.Join(dir, "mh.md"), StencilsDir: stencilsDir, ParentName: parent, Choice: choice})
+		"milestone judge": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
+			runMilestone(sh, "gate", judgeInputs{Round: 5, HardCap: 10, PriorReviews: []string{"/run/round-4-review.md"}, VerdictPath: filepath.Join(dir, "mv.md"), HandoffPath: filepath.Join(dir, "mh.md"), StencilsDir: stencilsDir, ParentName: parent})
 		},
-		"targeting": func(sh *fakeJudgeShuttle, stencilsDir, parent string, choice shuttleengine.ModelChoice) {
-			runTargeting(stencilsDir, parent, sh, "gate", 3, "", filepath.Join(dir, "seed.md"), choice)
+		"targeting": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
+			runTargeting(stencilsDir, parent, sh, "gate", 3, "", filepath.Join(dir, "seed.md"), shuttleengine.ModelChoice{})
 		},
 	}
 
@@ -92,18 +79,13 @@ func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 		for _, tc := range []struct {
 			label, parent string
 			wantParent    bool
-			choice        shuttleengine.ModelChoice
-			engine        string
-			otherEngine   string
 		}{
-			{"with a parent", parentName, true, shuttleengine.ModelChoice{}, "claude", "codex"},
-			{"without a parent", "", false, shuttleengine.ModelChoice{}, "claude", "codex"},
-			{"on a codex choice", parentName, true, shuttleengine.ModelChoice{Engine: "codex"}, "codex", "claude"},
+			{"with a parent", parentName, true},
+			{"without a parent", "", false},
 		} {
 			t.Run(name+" "+tc.label, func(t *testing.T) {
 				sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}
-				stencilsDir := newTestStencilsDir(t)
-				call(sh, stencilsDir, tc.parent, tc.choice)
+				call(sh, newTestStencilsDir(t), tc.parent)
 
 				if !sh.called {
 					t.Fatal("the call never reached the shuttle")
@@ -121,7 +103,9 @@ func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 				if len(sh.spec.Requires) != 0 {
 					t.Errorf("spec.Requires = %v; want none", sh.spec.Requires)
 				}
-				stencilkit.RequireEditDirectiveOf(t, stencilsDir, sh.spec.Prompt, tc.engine, tc.otherEngine)
+				if !strings.Contains(sh.spec.Prompt, "Edit or Write") {
+					t.Error("prompt lacks the edit directive's \"Edit or Write\" sentence")
+				}
 				if strings.Contains(sh.spec.Prompt, parentName) != tc.wantParent {
 					t.Errorf("prompt names the parent = %v; want %v", !tc.wantParent, tc.wantParent)
 				}
@@ -150,15 +134,14 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 		}
 
 		handoffPath := filepath.Join(dir, "round-3-handoff.md")
-		stencilsDir := newTestStencilsDir(t)
 		in := judgeInputs{
 			Round:               3,
 			PriorReviews:        []string{"/run/round-1-review.md", "/run/round-2-review.md"},
 			VerdictPath:         verdictPath,
 			PreviousHandoffPath: "/run/round-2-handoff.md",
 			HandoffPath:         handoffPath,
-			Choice:              shuttleengine.ModelChoice{Engine: "codex", Model: "haiku", Effort: "low"},
-			StencilsDir:         stencilsDir,
+			Choice:              shuttleengine.ModelChoice{Engine: "b", Model: "haiku", Effort: "low"},
+			StencilsDir:         newTestStencilsDir(t),
 		}
 		verdict, rationale, ok := runCircling(sh, "gate", in)
 
@@ -177,13 +160,9 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 		if sh.spec.Role != "judge" {
 			t.Errorf("runCircling() spec.Role = %q; want %q", sh.spec.Role, "judge")
 		}
-		if sh.spec.Engine != "codex" {
-			t.Errorf("runCircling() spec.Engine = %q; want %q", sh.spec.Engine, "codex")
+		if sh.spec.Engine != "b" {
+			t.Errorf("runCircling() spec.Engine = %q; want %q", sh.spec.Engine, "b")
 		}
-		if sh.spec.PromptEngine != "codex" {
-			t.Errorf("runCircling() spec.PromptEngine = %q; want %q", sh.spec.PromptEngine, "codex")
-		}
-		stencilkit.RequireEditDirectiveOf(t, stencilsDir, sh.spec.Prompt, "codex", "claude")
 		if len(sh.spec.Requires) != 0 {
 			t.Errorf("runCircling() spec.Requires = %v; want none", sh.spec.Requires)
 		}
@@ -319,7 +298,6 @@ rationale: the same two findings oscillate every round
 		}
 
 		handoffPath := filepath.Join(dir, "round-5-handoff.md")
-		stencilsDir := newTestStencilsDir(t)
 		in := judgeInputs{
 			Round:               5,
 			HardCap:             10,
@@ -327,8 +305,8 @@ rationale: the same two findings oscillate every round
 			VerdictPath:         verdictPath,
 			PreviousHandoffPath: "/run/round-1-handoff.md",
 			HandoffPath:         handoffPath,
-			StencilsDir:         stencilsDir,
-			Choice:              shuttleengine.ModelChoice{Engine: "codex", Model: "haiku", Effort: "low"},
+			StencilsDir:         newTestStencilsDir(t),
+			Choice:              shuttleengine.ModelChoice{Engine: "b", Model: "haiku", Effort: "low"},
 		}
 		verdict, rationale, ok := runMilestone(sh, "gate", in)
 
@@ -344,13 +322,9 @@ rationale: the same two findings oscillate every round
 		if sh.spec.Role != "judge" {
 			t.Errorf("runMilestone() spec.Role = %q; want %q", sh.spec.Role, "judge")
 		}
-		if sh.spec.Engine != "codex" {
-			t.Errorf("runMilestone() spec.Engine = %q; want %q", sh.spec.Engine, "codex")
+		if sh.spec.Engine != "b" {
+			t.Errorf("runMilestone() spec.Engine = %q; want %q", sh.spec.Engine, "b")
 		}
-		if sh.spec.PromptEngine != "codex" {
-			t.Errorf("runMilestone() spec.PromptEngine = %q; want %q", sh.spec.PromptEngine, "codex")
-		}
-		stencilkit.RequireEditDirectiveOf(t, stencilsDir, sh.spec.Prompt, "codex", "claude")
 		if sh.spec.Model != "haiku" {
 			t.Errorf("runMilestone() spec.Model = %q; want %q", sh.spec.Model, "haiku")
 		}

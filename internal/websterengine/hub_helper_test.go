@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
-	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -36,9 +35,7 @@ func testGateConfig() gateslot.Config {
 // The render functions derive that location internally before they read through stencilstore.Read.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
-	stencilsDir := fabricengine.StencilsDir(hub)
-	stencilkit.SeedInto(t, stencilsDir)
-	stencilkit.SeedEngineBlockCopies(t, stencilsDir, shuttlefake.EngineName)
+	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
 }
 
 // seedPlanDir creates a t.TempDir() seeded with a two-card plan, so the fingerprint gate has something real to hash.

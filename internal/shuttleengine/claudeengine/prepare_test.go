@@ -151,7 +151,6 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 
 			runDir := t.TempDir()
 			tt.spec.Prompt = "do the thing"
-			tt.spec.PromptEngine = engineName
 			var engine *Claude
 			if tt.invalidConfig {
 				engine = engineWithInvalidConfig(t)
@@ -183,46 +182,6 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 				if _, statErr := os.Stat(filepath.Join(runDir, name)); !os.IsNotExist(statErr) {
 					t.Errorf("%s exists after a rejected Prepare (stat err=%v); want no artifacts written", name, statErr)
 				}
-			}
-		})
-	}
-}
-
-// TestPrepare_PromptEngine proves Prepare launches only a prompt rendered for claude, or a hand-written one.
-// A prompt rendered for another engine, or for none, is refused before anything is written to the run directory.
-func TestPrepare_PromptEngine(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		spec shuttleengine.Spec
-		// wantErr is a text the refusal must hold; empty means the spec launches.
-		wantErr string
-	}{
-		{name: "RenderedForClaude", spec: shuttleengine.Spec{PromptEngine: "claude"}},
-		{name: "RenderedForAnotherEngine", spec: shuttleengine.Spec{PromptEngine: "codex"}, wantErr: `rendered for engine "codex"`},
-		{name: "RenderedForNoEngine", spec: shuttleengine.Spec{}, wantErr: "names no prompt engine"},
-		{name: "HandWritten", spec: shuttleengine.Spec{HandWrittenPrompt: true}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			runDir := t.TempDir()
-			tt.spec.Prompt = "do the thing"
-			_, err := engineWith(t, templateConfig(t)).Prepare(runDir, tt.spec, shuttleengine.Config{})
-			if tt.wantErr == "" {
-				if err != nil {
-					t.Errorf("Prepare() error = %v; want nil", err)
-				}
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("Prepare() error = %v; want a refusal containing %q", err, tt.wantErr)
-			}
-			if entries, readErr := os.ReadDir(runDir); readErr != nil || len(entries) != 0 {
-				t.Errorf("ReadDir(%s) = %d entries, err=%v; want nothing written after a refusal", runDir, len(entries), readErr)
 			}
 		})
 	}
@@ -404,7 +363,6 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 			t.Parallel()
 
 			tt.spec.Prompt = "do the thing"
-			tt.spec.PromptEngine = engineName
 			launch, err := engineWith(t, tt.claude).Prepare(t.TempDir(), tt.spec, shuttleengine.Config{})
 			if err != nil {
 				t.Fatalf("Prepare() error: %v; want nil", err)
@@ -431,7 +389,7 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 					claude := templateConfig(t)
 					claude.DenyAskUserQuestion = denyAsk
 					cfg := shuttleengine.Config{DenyPython: denyPython}
-					spec := shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Interactive: interactive, ForkSubagents: fork}
+					spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: interactive, ForkSubagents: fork}
 					notice := buildDenyNotice(interactive, cfg, claude, fork, false)
 
 					runDir := t.TempDir()
@@ -474,7 +432,6 @@ func TestPrepare_ResumeSessionID(t *testing.T) {
 	const id = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 	spec := shuttleengine.Spec{
 		Prompt:          "adopt",
-		PromptEngine:    engineName,
 		ResumeSessionID: id,
 		PermissionMode:  "bypass",
 		Interactive:     true,
@@ -510,7 +467,7 @@ func TestPrepare_SkillsDeferPromptPointer(t *testing.T) {
 	const id = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 	for _, resume := range []bool{false, true} {
 		for _, skills := range [][]string{nil, {"scribe:prose"}} {
-			spec := shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Skills: skills}
+			spec := shuttleengine.Spec{Prompt: "do the thing", Skills: skills}
 			if resume {
 				spec.ResumeSessionID = id
 			}
@@ -546,7 +503,7 @@ func TestPrepare_SkillsDeferPromptPointer(t *testing.T) {
 
 	runDir := t.TempDir()
 	longSkill := strings.Repeat("s", maxLaunchPromptBytes)
-	_, err := engineWith(t, templateConfig(t)).Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Skills: []string{longSkill}}, shuttleengine.Config{})
+	_, err := engineWith(t, templateConfig(t)).Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing", Skills: []string{longSkill}}, shuttleengine.Config{})
 	if err == nil || !strings.Contains(err.Error(), "skill-load message is") || !strings.Contains(err.Error(), "launch limit") {
 		t.Errorf("Prepare(over-limit skill-load message) error = %v; want one naming the message length and the launch limit", err)
 	}
@@ -557,13 +514,11 @@ func TestPrepare_SkillsDeferPromptPointer(t *testing.T) {
 
 // TestPrepare_LogsResolvedPromptCacheTTL proves Prepare logs the role and the TTL it resolved for it.
 // It does not run in parallel: the logger it captures is process-global.
-//
-//testtiming:keep pins the role and the TTL in the log line, which TestPrepare_BatchingNudgeHook does not assert
 func TestPrepare_LogsResolvedPromptCacheTTL(t *testing.T) {
 	tiergate.Require(t, 0)
 	logs := logcapture.CaptureVerbose(t)
 
-	if _, err := engineWith(t, templateConfig(t)).Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, Role: "driver"}, shuttleengine.Config{}); err != nil {
+	if _, err := engineWith(t, templateConfig(t)).Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p", Role: "driver"}, shuttleengine.Config{}); err != nil {
 		t.Fatalf("Prepare() error: %v", err)
 	}
 
@@ -581,8 +536,6 @@ func TestPrepare_LogsResolvedPromptCacheTTL(t *testing.T) {
 // With no reader installed, or outside a hub, the file holds lym's sentences only and the reader is never called;
 // a reader error leaves the launch successful, with lym's sentences only, and logs the way to inspect the store.
 // It installs the process-wide passage reader and captures the logger, so it does not run in parallel.
-//
-//testtiming:keep pins the passages appended to append-system-prompt.txt and the reader-error log, which its covering tests do not assert
 func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	tiergate.Require(t, 0)
 	sentences := shuttleengine.CreelTrustSentence
@@ -601,11 +554,8 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 		{
 			name:  "two_passages",
 			board: "bolt",
-			reader: func(string, string, string) (shuttleengine.Standing, error) {
-				return shuttleengine.Standing{Passages: []shuttleengine.Passage{
-					{Slug: "first", Text: "first passage"},
-					{Slug: "second", Text: "second\nspans lines"},
-				}}, nil
+			reader: func(string, string, string) ([]string, error) {
+				return []string{"first passage", "second\nspans lines"}, nil
 			},
 			want: sentences + "\n\nfirst passage\n\nsecond\nspans lines",
 		},
@@ -613,8 +563,8 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 			name:  "role_reaches_reader",
 			board: "bolt",
 			role:  "orch",
-			reader: func(_, engine, role string) (shuttleengine.Standing, error) {
-				return shuttleengine.Standing{Passages: []shuttleengine.Passage{{Slug: "asked", Text: engine + " " + role}}}, nil
+			reader: func(_, engine, role string) ([]string, error) {
+				return []string{engine + " " + role}, nil
 			},
 			want: sentences + "\n\nclaude orch",
 		},
@@ -622,8 +572,8 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 		{
 			name:  "outside_hub",
 			board: "",
-			reader: func(string, string, string) (shuttleengine.Standing, error) {
-				return shuttleengine.Standing{Passages: []shuttleengine.Passage{{Slug: "never-read", Text: "never read"}}}, nil
+			reader: func(string, string, string) ([]string, error) {
+				return []string{"never read"}, nil
 			},
 			want:        sentences,
 			wantNoCalls: true,
@@ -631,8 +581,8 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 		{
 			name:  "reader_error",
 			board: "bolt",
-			reader: func(string, string, string) (shuttleengine.Standing, error) {
-				return shuttleengine.Standing{}, errors.New("heddle.json does not decode")
+			reader: func(string, string, string) ([]string, error) {
+				return nil, errors.New("heddle.json does not decode")
 			},
 			want:       sentences,
 			wantLogged: "lym heddle list",
@@ -644,7 +594,7 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 			calls := 0
 			if tt.reader != nil {
 				reader := tt.reader
-				t.Cleanup(shuttleengine.InstallPassageReader(func(boltDir, engine, role string) (shuttleengine.Standing, error) {
+				t.Cleanup(shuttleengine.InstallPassageReader(func(boltDir, engine, role string) ([]string, error) {
 					calls++
 					return reader(boltDir, engine, role)
 				}))
@@ -655,7 +605,7 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 			}
 			runDir := t.TempDir()
 			claude := templateConfig(t)
-			spec := shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Role: tt.role}
+			spec := shuttleengine.Spec{Prompt: "do the thing", Role: tt.role}
 			notice := buildDenyNotice(spec.Interactive, shuttleengine.Config{}, claude, false, false)
 			if _, err := engine.Prepare(runDir, spec, shuttleengine.Config{}); err != nil {
 				t.Fatalf("Prepare() error: %v; want nil", err)

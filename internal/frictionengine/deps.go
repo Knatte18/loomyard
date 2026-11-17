@@ -13,7 +13,6 @@ import (
 // Shuttle is the seam this package drives.
 // Run spawns the reflection agent, and Attach finds one that a killed driving process left alive.
 type Shuttle interface {
-	shuttleengine.EngineNamer
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 	Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error)
 }

@@ -12,92 +12,62 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/proc"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
-
-// actVerdict is the act rule's answer for a run that may be driven.
-var actVerdict = runfsm.Verdict{Answer: runfsm.AnswerAct}
-
-// waitVerdict is the act rule's wait for reason.
-func waitVerdict(reason runfsm.Reason) runfsm.Verdict {
-	return runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: reason}
-}
 
 func TestPlanPass(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	exited := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
-	running := RunView{Slug: "task", State: runStateRunning, Run: runfsm.Running, Verdict: actVerdict, Producer: producerRunShed, StatusModified: exited}
+	running := RunView{Slug: "task", State: runStateRunning, Producer: producerRunShed, StatusModified: exited}
 	probe := passTrigger{ProbeTick: true}
 
 	tests := []struct {
 		name    string
 		mutate  func(run *RunView, rs *RunState)
 		trigger passTrigger
+		covered bool
 		want    passKind
 	}{
-		{"RunningAtRunShedGivesContinue", nil, probe, passContinue},
-		{"OwedGivesFull", func(_ *RunView, rs *RunState) { rs.FullPassOwed = true }, probe, passFull},
-		{"OriginOwedGivesFullWithNoReopen", func(run *RunView, _ *RunState) { run.OriginOwed = true }, probe, passFullNoReopen},
-		{"AnotherProducerGivesFull", func(run *RunView, _ *RunState) { run.Producer = "Land" }, probe, passFull},
-		{"HaltedGivesNone", func(run *RunView, _ *RunState) { run.State = "blocked" }, probe, passNone},
-		{"FailedGivesNone", func(run *RunView, _ *RunState) { run.State = "failed" }, probe, passNone},
-		{"PausedGivesNone", func(run *RunView, _ *RunState) { run.State = runStatePaused }, probe, passNone},
-		{"HaltedReachedParentGivesNone", func(run *RunView, _ *RunState) { run.State = "blocked"; run.ReachedParent = true }, probe, passNone},
-		{"PausedReachedParentGivesNone", func(run *RunView, _ *RunState) { run.State = runStatePaused; run.ReachedParent = true }, probe, passNone},
-		{"PausedReachedParentLiftGivesNone", func(run *RunView, _ *RunState) { run.State = runStatePaused; run.ReachedParent = true }, passTrigger{Lift: true}, passNone},
-		{"InFlightGivesNone", nil, passTrigger{ProbeTick: true, InFlight: true}, passNone},
-		{"HeldDriverLockReadsAsInFlight", func(run *RunView, _ *RunState) { run.DriverLockHeld = true }, probe, passNone},
-		{"OwnedElsewhereProbeGivesFull", func(_ *RunView, rs *RunState) { rs.OwnedElsewhere = true }, probe, passFull},
-		{"OwnedElsewhereStartGivesNone", func(_ *RunView, rs *RunState) { rs.OwnedElsewhere = true }, passTrigger{Start: true}, passNone},
-		{"OwnedElsewhereLiftGivesFull", func(_ *RunView, rs *RunState) { rs.OwnedElsewhere = true }, passTrigger{Lift: true}, passFull},
-		{"NoTriggerGivesNone", nil, passTrigger{}, passNone},
-		{"BattenWriteNoLaterThanTheLastExitGivesNone", func(_ *RunView, rs *RunState) { rs.LastPassExit = exited }, passTrigger{}, passNone},
-		{"BattenWriteLaterThanTheLastExitGivesContinue", func(_ *RunView, rs *RunState) { rs.LastPassExit = exited.Add(-time.Second) }, passTrigger{}, passContinue},
-		{"LiftGivesFull", nil, passTrigger{Lift: true}, passFull},
-		{"LiftWithOriginOwedGivesFullWithNoReopen", func(run *RunView, _ *RunState) { run.OriginOwed = true }, passTrigger{Lift: true}, passFullNoReopen},
-	}
-
-	// A run whose verdict does not act, and a run with a cancel under way beside an act verdict, get none on every trigger.
-	triggers := map[string]passTrigger{
-		"Probe": probe, "ChildWrite": {ChildWrite: true}, "Start": {Start: true}, "Lift": {Lift: true}, "BattenWrite": {},
-	}
-	verdicts := map[string]runfsm.Verdict{
-		"PauseCovers": waitVerdict(runfsm.ReasonPauseCovers),
-		"Held":        waitVerdict(runfsm.ReasonHeld),
-		"Cancelling":  waitVerdict(runfsm.ReasonCancelling),
-		"HandOver":    {Answer: runfsm.AnswerHandOver, Reason: runfsm.ReasonOwnedElsewhere},
-	}
-	for triggerName, trigger := range triggers {
-		for verdictName, verdict := range verdicts {
-			tests = append(tests, struct {
-				name    string
-				mutate  func(run *RunView, rs *RunState)
-				trigger passTrigger
-				want    passKind
-			}{
-				"Verdict" + verdictName + triggerName + "GivesNone",
-				func(run *RunView, rs *RunState) {
-					run.Verdict = verdict
-					rs.LastPassExit = exited.Add(-time.Second)
-				},
-				trigger, passNone,
-			})
-		}
-		tests = append(tests, struct {
-			name    string
-			mutate  func(run *RunView, rs *RunState)
-			trigger passTrigger
-			want    passKind
-		}{
-			"CancelMarkedWithActVerdict" + triggerName + "GivesNone",
-			func(run *RunView, rs *RunState) {
-				run.CancelMarker = true
-				rs.LastPassExit = exited.Add(-time.Second)
-			},
-			trigger, passNone,
-		})
+		{"RunningAtRunShedGivesContinue", nil, probe, false, passContinue},
+		{"OwedGivesFull", func(_ *RunView, rs *RunState) { rs.FullPassOwed = true }, probe, false, passFull},
+		{"OriginOwedGivesFullWithNoReopen", func(run *RunView, _ *RunState) { run.OriginOwed = true }, probe, false, passFullNoReopen},
+		{"AnotherProducerGivesFull", func(run *RunView, _ *RunState) { run.Producer = "Land" }, probe, false, passFull},
+		{"HaltedGivesNone", func(run *RunView, _ *RunState) { run.State = "blocked" }, probe, false, passNone},
+		{"FailedGivesNone", func(run *RunView, _ *RunState) { run.State = "failed" }, probe, false, passNone},
+		{"PausedGivesNone", func(run *RunView, _ *RunState) { run.State = runStatePaused }, probe, false, passNone},
+		{"HaltedReachedParentGivesNone", func(run *RunView, _ *RunState) { run.State = "blocked"; run.ReachedParent = true }, probe, false, passNone},
+		{"PausedReachedParentGivesFull", func(run *RunView, _ *RunState) { run.State = runStatePaused; run.ReachedParent = true }, probe, false, passFull},
+		{"PausedReachedParentOwnedElsewhereProbeGivesFull", func(run *RunView, rs *RunState) {
+			run.State = runStatePaused
+			run.ReachedParent = true
+			rs.OwnedElsewhere = true
+		}, probe, false, passFull},
+		{"PausedReachedParentHeldGivesNone", func(run *RunView, _ *RunState) {
+			run.State = runStatePaused
+			run.ReachedParent = true
+			run.Held = true
+		}, passTrigger{Lift: true}, true, passNone},
+		{"PausedReachedParentCoveredGivesNone", func(run *RunView, _ *RunState) { run.State = runStatePaused; run.ReachedParent = true }, probe, true, passNone},
+		{"PausedReachedParentCoveredLiftGivesFull", func(run *RunView, _ *RunState) { run.State = runStatePaused; run.ReachedParent = true }, passTrigger{Lift: true}, true, passFull},
+		{"CancelMarkedGivesNone", func(run *RunView, _ *RunState) { run.CancelMarker = true }, probe, false, passNone},
+		{"InFlightGivesNone", nil, passTrigger{ProbeTick: true, InFlight: true}, false, passNone},
+		{"HeldDriverLockReadsAsInFlight", func(run *RunView, _ *RunState) { run.DriverLockHeld = true }, probe, false, passNone},
+		{"OwnedElsewhereUncoveredProbeGivesFull", func(_ *RunView, rs *RunState) { rs.OwnedElsewhere = true }, probe, false, passFull},
+		{"OwnedElsewhereCoveredProbeGivesNone", func(_ *RunView, rs *RunState) { rs.OwnedElsewhere = true }, probe, true, passNone},
+		{"OwnedElsewhereCoveredStartGivesNone", func(_ *RunView, rs *RunState) { rs.OwnedElsewhere = true }, passTrigger{Start: true}, true, passNone},
+		{"OwnedElsewhereCoveredLiftGivesFull", func(_ *RunView, rs *RunState) { rs.OwnedElsewhere = true }, passTrigger{Lift: true}, true, passFull},
+		{"NoTriggerGivesNone", nil, passTrigger{}, false, passNone},
+		{"BattenWriteNoLaterThanTheLastExitGivesNone", func(_ *RunView, rs *RunState) { rs.LastPassExit = exited }, passTrigger{}, false, passNone},
+		{"BattenWriteLaterThanTheLastExitGivesContinue", func(_ *RunView, rs *RunState) { rs.LastPassExit = exited.Add(-time.Second) }, passTrigger{}, false, passContinue},
+		{"CoveredProbeGivesContinue", nil, probe, true, passContinue},
+		{"CoveredOwedFullWaits", func(_ *RunView, rs *RunState) { rs.FullPassOwed = true }, probe, true, passNone},
+		{"CoveredLiftGivesFull", func(_ *RunView, rs *RunState) { rs.FullPassOwed = true }, passTrigger{Lift: true}, true, passFull},
+		{"HeldChildWriteGivesNone", func(run *RunView, _ *RunState) { run.Held = true }, passTrigger{ChildWrite: true}, true, passNone},
+		{"HeldLiftTriggerStillCoveredGivesNone", func(run *RunView, _ *RunState) { run.Held = true }, passTrigger{Lift: true}, true, passNone},
+		{"HeldOwnedElsewhereLiftTriggerGivesNone", func(run *RunView, rs *RunState) { run.Held = true; rs.OwnedElsewhere = true }, passTrigger{Lift: true}, true, passNone},
+		{"LiftGivesFull", nil, passTrigger{Lift: true}, false, passFull},
+		{"LiftWithOriginOwedGivesFullWithNoReopen", func(run *RunView, _ *RunState) { run.OriginOwed = true }, passTrigger{Lift: true}, false, passFullNoReopen},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -106,7 +76,7 @@ func TestPlanPass(t *testing.T) {
 			if tt.mutate != nil {
 				tt.mutate(&run, &rs)
 			}
-			if got := planPass(run, rs, tt.trigger); got != tt.want {
+			if got := planPass(run, rs, tt.trigger, tt.covered); got != tt.want {
 				t.Errorf("planPass() = %v; want %v", got, tt.want)
 			}
 		})
@@ -147,17 +117,6 @@ type passFake struct {
 	taskHeadroom int
 	limit        proc.TaskLimit
 	limitFound   bool
-}
-
-// listed returns the runs as the listing reads them: a covered run's verdict waits on the pause, as the act rule has it.
-func (f *passFake) listed() []RunView {
-	runs := append([]RunView(nil), f.runs...)
-	for i := range runs {
-		if runs[i].Covered {
-			runs[i].Verdict = waitVerdict(runfsm.ReasonPauseCovers)
-		}
-	}
-	return runs
 }
 
 type spawnedPass struct {
@@ -209,7 +168,7 @@ func newPassHarness(t *testing.T, runs ...RunView) *passHarness {
 		geom: Geometry{StatePath: filepath.Join(t.TempDir(), StateFileName), WorktreeName: "prime"},
 		deps: Deps{
 			Now: clock.now, Awake: clock.awake, Sleep: clock.sleep,
-			Runs:      func() ([]RunView, error) { return fake.listed(), nil },
+			Runs:      func() ([]RunView, error) { return append([]RunView(nil), fake.runs...), nil },
 			SpawnPass: fake.spawn,
 			Notice: func(_ context.Context, line string) error {
 				fake.notices = append(fake.notices, line)
@@ -295,7 +254,6 @@ func (h *passHarness) recordLog() *[]string {
 	return &lines
 }
 
-//testtiming:keep pins the changes-only log lines of the pass loop, which the covering tests never assert
 func TestLog_ChangesOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -328,10 +286,10 @@ func TestLog_ChangesOnly(t *testing.T) {
 			t.Fatalf("log lines after two unchanged ticks = %q; want %q", *lines, want)
 		}
 
-		h.fake.runs[0].State, h.fake.runs[0].Run, h.fake.runs[0].Producer = "blocked", runfsm.Halted, "Plan"
+		h.fake.runs[0].State, h.fake.runs[0].Producer = "blocked", "Plan"
 		h.tick(false)
 		h.tick(false)
-		if want := []string{"run task: running", "run task: running -> halted at Plan"}; !slices.Equal(*lines, want) {
+		if want := []string{"run task: running", "run task: running -> blocked at Plan"}; !slices.Equal(*lines, want) {
 			t.Errorf("log lines after the change = %q; want %q", *lines, want)
 		}
 	})
@@ -368,7 +326,7 @@ func TestLog_ChangesOnly(t *testing.T) {
 }
 
 func runningRun(slug string) RunView {
-	return RunView{Slug: slug, State: runStateRunning, Run: runfsm.Running, Verdict: actVerdict, Producer: producerRunShed}
+	return RunView{Slug: slug, State: runStateRunning, Producer: producerRunShed}
 }
 
 func TestDrivePasses_ExitHandling(t *testing.T) {
@@ -578,36 +536,25 @@ func TestDrivePasses_ExitHandling(t *testing.T) {
 		}
 	})
 
-	t.Run("a lift seen while the verdict waits gives no pass once it acts again", func(t *testing.T) {
-		t.Parallel()
-		h := newPassHarness(t, runningRun("task"))
-		h.tick(true)
-		h.fake.runs[0].Covered = true
-		h.tick(false)
-		h.fake.runs[0].Covered = false
-		h.fake.runs[0].Verdict = waitVerdict(runfsm.ReasonCancelling)
-		h.tick(false)
-		h.fake.runs[0].Verdict = actVerdict
-		h.tick(true)
-		spawned := h.fake.spawnsOf("task")
-		if len(spawned) != 2 || !spawned[1].continuePass {
-			t.Errorf("passes = %+v; want a continue pass at the first probe tick and a continue pass once the verdict acts", spawned)
-		}
-	})
-
-	t.Run("a lift seen by a paused run whose work reached its parent gives no pass", func(t *testing.T) {
+	t.Run("a lift seen by a paused run whose work reached its parent is kept while its driver lock is held", func(t *testing.T) {
 		t.Parallel()
 		run := runningRun("task")
-		run.State, run.Run, run.ReachedParent = runStatePaused, runfsm.Paused, true
-		run.Verdict = waitVerdict(runfsm.ReasonPaused)
+		run.State, run.ReachedParent = runStatePaused, true
 		h := newPassHarness(t, run)
 		h.fake.runs[0].Covered = true
 		h.tick(false)
 		h.fake.runs[0].Covered = false
+		h.fake.runs[0].DriverLockHeld = true
 		h.tick(false)
-		h.tick(true)
 		if got := len(h.fake.spawned); got != 0 {
-			t.Errorf("passes after the lift = %d; want 0", got)
+			t.Fatalf("passes with the driver lock held = %d; want 0", got)
+		}
+
+		h.fake.runs[0].DriverLockHeld = false
+		h.tick(false)
+		spawned := h.fake.spawnsOf("task")
+		if len(spawned) != 1 || spawned[0].continuePass {
+			t.Errorf("passes after the driver lock was released = %+v; want the lift's full pass", spawned)
 		}
 	})
 }

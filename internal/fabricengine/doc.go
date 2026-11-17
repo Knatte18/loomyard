@@ -238,12 +238,6 @@
 // `_lym` arrives from `structuralCommittedDirs`, not from `pathspec`.
 // Any tracked `_lym` content is therefore committed without a pathspec entry.
 //
-// `Fabric.Commit` refuses, before any lock, a commit that would add a secret file on either side.
-// A secret file is a new path, untracked or staged as added, that `internal/secretpath` matches:
-// a pattern lym ships, or one `fabric.yaml`'s `secret_paths` key adds.
-// A tracked file is never refused.
-// `LoadSecretPathMatcher` hands the same matcher to a module that checks its own commits.
-//
 // `configsync.ReconcileAll` -> `yamlengine.Reconcile` never rewrites a `pathspec:` key present in a `fabric.yaml`.
 // It only adds the key when it is absent entirely.
 // A worktree whose `fabric.yaml` records `pathspec: _pattern` keeps it until its repo is re-cloned.
@@ -523,8 +517,6 @@
 // `InstallWorktreeSeam` stores one process-wide `WorktreeSeam`, and with none installed no event fires.
 // "Made" fires through `NotifyWorktreeMade` once a worktree is fully set up:
 // wired, with its exclude lines seeded and the Bolt checkout present.
-// `NotifyWorktreeMadeAt` fires it for the worktree at a path and resolves the worktree itself.
-// It serves a caller that holds a path and may not import the working-directory resolver.
 // It fires last in `Topology.add`.
 // In the clone's wiring sequence it fires once the prime's per-worktree module configs are committed, before the walk.
 // The render reads only the Bolt checkout's heddle store and the shipped layer, so it needs nothing the walk writes.
@@ -770,13 +762,8 @@
 // A records worktree whose repository cannot be resolved is skipped, so a half-torn pair stays readable.
 // `Topology.PairTaskBranchOrOrigin` reads the same for a caller that runs after the pair's local parts are gone.
 // A pair no local worktree or branch names is named by the first of its names origin holds.
-// Failing that, it is named by the one origin branch ending in `/<slug>` whose records branch the weft origin holds.
-// That is how a pair made under another machine's prefix is found.
-// Two such branches are an error.
 // A pair's names are the current `branch_prefix` plus slug and the bare slug of a pair made before the prefix was set.
 // So `branch_prefix` names only the branches of pairs made after it changes, and it can be set while pairs are live.
-// It is a machine key: a machine's override file may set it over the hub file,
-// so each machine names its new pairs its own way.
 // Every step that starts while a pair's worktree stands reads its branches this way;
 // the remote teardown job carries the names read when the teardown started;
 // and every step going from a branch to its slug accepts a branch with the current prefix and one without.
@@ -937,11 +924,6 @@
 // A Merge-In is a merge commit whose second parent is an ancestor of `parentTip`;
 // a commit that is itself such an ancestor also counts, as a fast-forward Merge-In leaves it.
 // `RecordsHeadSHA` returns the commit the weft checkout's HEAD stands at.
-// `WorktreeTreeID()` (worktreetree.go) returns the id of the git tree `git add -A` would stage from the code checkout.
-// Uncommitted edits are included, and excluded or ignored untracked paths are left out.
-// It builds the tree in a throwaway index, so the real index, HEAD and refs stay as they were.
-// `ChangedPathsBetween(fromTree, toTree)` returns the sorted, checkout-relative paths that differ between two tree ids.
-// A tree id git no longer holds is an error.
 //
 // `ValidatePairSlug` is the one pair slug rule, the one `Add` and `Remove` apply.
 // It is exported so the board applies it through its seam.

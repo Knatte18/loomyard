@@ -61,7 +61,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/verifytree"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -795,35 +794,11 @@ func gateProcessLive(taskLocation *lymcwd.Location, now time.Time) (bool, error)
 }
 
 // fixerTimeout returns how long a fixer under role may run:
-// for a verify fixer the active implementer's bound, weaver.yaml's fixer timeout or webster's recovery timeout,
-// and the gate config's fixer timeout for any other.
-// The active implementer is read through the advisory form of the implementer seam,
-// so a seam refusal falls back to the `tapestry.implementer` setting and is logged.
+// webster's recovery timeout for a verify fixer, the gate config's fixer timeout for any other.
 // It reports bounded == false when the gate config is absent, which leaves a gate fixer with no known bound.
 func fixerTimeout(taskLocation *lymcwd.Location, role string) (timeout time.Duration, bounded bool, err error) {
 	dirs := fabricengine.ConfigDirs(taskLocation)
 	if agentname.MatchesRole(role, gatefixer.RoleVerifyFixer) {
-		lookup := configreg.SettingLookup(dirs)
-		implementer, _, fallbackReason := weaverengine.ActiveOrSetting(weaverengine.ActiveDeps{
-			AnchorRoot: taskLocation.AnchorPath(),
-			Setting: func() (string, error) {
-				value, err := lookup("tapestry", "implementer")
-				if err != nil {
-					return "", err
-				}
-				return fmt.Sprint(value), nil
-			},
-		})
-		if fallbackReason != "" {
-			logger.Warn("battencli: active implementer unreadable, bounding the verify fixer by the setting's implementer", "reason", fallbackReason)
-		}
-		if implementer == weaverengine.ImplementerWeaver {
-			cfg, err := weaverengine.LoadConfig(dirs, "weaver")
-			if err != nil {
-				return 0, false, err
-			}
-			return time.Duration(cfg.FixerTimeoutMin) * time.Minute, true, nil
-		}
 		cfg, err := websterengine.LoadConfig(dirs, "webster")
 		if err != nil {
 			return 0, false, err
@@ -1101,21 +1076,6 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		Slug:       slug,
 		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
-		// The tree closures open the fabric on each call, since wire() also runs for status and pause.
-		ReviewTreeID: func() (string, error) {
-			handle, err := fabricengine.Open(location)
-			if err != nil {
-				return "", err
-			}
-			return handle.WorktreeTreeID()
-		},
-		ReviewTreeChanges: func(fromID, toID string) ([]string, error) {
-			handle, err := fabricengine.Open(location)
-			if err != nil {
-				return nil, err
-			}
-			return handle.ChangedPathsBetween(fromID, toID)
-		},
 		// The closure takes holdPrime only for the fork-point read, the registry write and a held pair's removal.
 		// Claim, reconcile and push run outside it, and origin probes start before it; a waiting create holds up no other run.
 		CreateWorktree: func(ctx context.Context, holdPrime battenshed.HoldPrimeLock) error {

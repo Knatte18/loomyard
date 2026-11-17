@@ -223,21 +223,20 @@ slug lym ships is refused: shipped entries change only with a lym release.
 
 ` + fileTargetHelp() + `
 claude-file reaches Claude sessions alone, codex-file Codex sessions alone, and
-agents-file both. agents-prompt is the prompt target both engines share. An
-entry aimed at claude-settings holds one JSON object and no other target; every
-render merges it into that file.
+agents-file both. An entry aimed at claude-settings holds one JSON object and
+no other target; every render merges it into that file.
 
 The change is saved under the Bolt write lock with HEDDLE.md, the overview of
 every entry, rendered beside it. Every file target is then rendered into every
 live worktree of the hub, the prime, beams and task pairs, and the worktrees
 rendered and failed are printed, with render_warnings beside them for the
 warnings of the rendered ones or a failure to list the worktrees; a session
-there takes the change at its next compaction. The board's detached Bolt sync
-then commits and pushes HEDDLE.md and the store. A refused change saves and
-renders nothing.
+there takes the change at its next compaction. The board's detached Bolt sync then commits and pushes
+HEDDLE.md and the store. A refused change saves and renders nothing.
 
 Examples:
   lym heddle set house-rules --text-file rules.md --order 10 --targets agents-file,claude-prompt
+  lym heddle set house-deny --text-file deny.json --order 20 --targets claude-settings
   lym heddle set lym-batching --layer lym --text-file tuned.md`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -350,9 +349,8 @@ func (c *heddleCLI) showCmd() *cobra.Command {
 		Short:       "print what a target renders to now for the current worktree",
 		Annotations: operatorAnnotation,
 		Long: `Prints the text the named target renders to now for the current worktree and
-writes nothing. agents-file and agents-prompt are refused, since their entries
-render into other targets: claude-file and codex-file, or claude-prompt and
-codex-prompt; show one of those instead.
+writes nothing. agents-file is refused, since its entries render into the files
+of claude-file and codex-file; show one of those instead.
 
 Example:
   lym heddle show claude-file`,
@@ -554,7 +552,6 @@ func (c *heddleCLI) renderInto(location *lymcwd.Location) (heddleengine.Report, 
 	}
 	return c.renderer.Render(heddleengine.RenderRequest{
 		Anchor:     event.Anchor,
-		Root:       event.Root,
 		ScratchDir: event.ScratchDir,
 		BoltDir:    event.BoltDir,
 		Excluded:   event.Excluded,

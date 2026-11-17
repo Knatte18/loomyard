@@ -28,11 +28,8 @@ import (
 // startGuard carries the local reads the pre-run's guard refuses on, as function values.
 // A nil field checks nothing, which only a hand-populated receiver has.
 type startGuard struct {
-	// Marker reads the slug's cancel intent in batten's record and the liveness of its writer.
+	// Marker reads the slug's cancel marker and the liveness of its writer.
 	Marker func() (cancelMarkerReading, error)
-	// Lock reads only the cancel's local lock.
-	// The pre-drive check reads it under batten's status lock, where a read of the record would wait on itself.
-	Lock func() (cancelMarkerReading, error)
 	// SourceDirty lists the tracked uncommitted paths of the source worktree.
 	SourceDirty func() ([]string, error)
 	// PairParts reads which parts of the slug's pair are present locally.
@@ -51,9 +48,6 @@ type startGuard struct {
 	// Project reads whether the slug's board entry is a project, and whether its beam flag is set.
 	// A nil Project reads every entry as a task.
 	Project func() (project, beam bool, err error)
-	// FilingMarked reports whether the slug's run filed a family, which turned the slug's entry into that family's project.
-	// A nil FilingMarked reads every run as one that filed nothing.
-	FilingMarked func() (bool, error)
 	// PairMark reads the origin record of the slug's local pair.
 	// found is false when the pair has no readable record; marked says whether it carries the beam mark.
 	PairMark func() (marked, found bool, err error)
@@ -86,12 +80,11 @@ type raddleRefusal struct {
 func (r raddleRefusal) Error() string { return r.message }
 
 // hubStartGuard builds the startGuard over the hub of location:
-// the cancel's intent and lock, the prime's tracked dirty paths, the slug's pair parts and its beam.
+// the cancel marker, the prime's tracked dirty paths, the slug's pair parts and its beam.
 // All these are local reads with no network call.
 func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 	return startGuard{
 		Marker:      func() (cancelMarkerReading, error) { return readCancelMarker(location, slug) },
-		Lock:        func() (cancelMarkerReading, error) { return readCancelLock(location, slug) },
 		SourceDirty: func() ([]string, error) { return fabricengine.SourceDirtyPaths(location) },
 		ParentBeam: func() (string, error) {
 			tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
@@ -122,7 +115,6 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			entry := owners.Entries[slug]
 			return entry.IsProject, entry.Beam, nil
 		},
-		FilingMarked: func() (bool, error) { return shedrun.FilingMarked(location, slug) },
 		PairMark: func() (bool, bool, error) {
 			origin, found, err := fabricengine.ReadOriginFor(location, slug)
 			if err != nil {
@@ -259,7 +251,7 @@ func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boarden
 }
 
 // refuse judges verb's start or resume of slug, in order.
-// An unfinished cancel intent in batten's record, or a held cancel lock, refuses run, step and goto.
+// A present cancel marker refuses run, step and goto.
 // A run or step of a task whose pair carries the beam mark refuses, with or without a status file.
 // Only a stopped promote leaves the mark behind.
 // A run whose work reached its parent passes that check, since a cancel refuses it and only the run finishes it.
@@ -268,7 +260,6 @@ func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boarden
 // A task that forks from a beam skips that check:
 // its pair forks from the beam's last commit, not from the source worktree.
 // A run or step of a project entry is judged by the project check.
-// A resume of a run that filed a family is judged as a task's, since the filing made its entry a grouping project.
 // A resume past Worktree-Create passes over all the checks.
 // A marked beam pair passes over the dirty-source and left-pair checks.
 // A beam project with no marked pair here is left to the checks of a task.
@@ -288,7 +279,7 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 	if (verb == "run" || verb == "step" || verb == "goto") && g.Marker != nil {
 		reading, err := g.Marker()
 		if err != nil {
-			return probeRefusal("the cancel intent", slug, rerun, err)
+			return probeRefusal("the cancel marker", slug, rerun, err)
 		}
 		if reading.Present {
 			return cancelMarkerRefusal(slug, reading)
@@ -379,9 +370,7 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 // beam reports whether the entry is a beam project.
 // judged is false for an entry that is not a project, which the task checks then judge.
 // It is also false for a beam project with no marked pair here, which they judge as a fresh start.
-// It is false too for a grouping project whose run is on record and filed its family:
-// the filing made the run's own entry that family's project, and the run still has its landing and teardown to drive.
-// Any other grouping project is refused naming the create that makes it a beam.
+// A grouping project is refused naming the create that makes it a beam.
 // A resume past Worktree-Create passes.
 // A beam pair here with no readable origin record is refused.
 // A marked one passes the dirty-source and left-pair checks, as the legacy beam's or the resumed run's own pair.
@@ -394,15 +383,6 @@ func (g startGuard) refuseProject(slug, rerun string, status shedengine.Status, 
 		return false, false, nil
 	}
 	if !beamFlag {
-		if found && g.FilingMarked != nil {
-			filed, err := g.FilingMarked()
-			if err != nil {
-				return false, true, probeRefusal("the run's filing mark", slug, rerun, err)
-			}
-			if filed {
-				return false, false, nil
-			}
-		}
 		return false, true, fmt.Errorf("%s is a grouping project, and only a beam project runs; way forward: run \"lym beam create %s\" to make it a beam, then %s", slug, slug, rerun)
 	}
 	if found && status.CurrentProducer != battenrecipe.NameWorktreeCreate {
@@ -467,39 +447,20 @@ func releaseCommand(slug string) string {
 	return `"` + releaseCommandText(slug) + `"`
 }
 
-// cancelledRunRefusal words the refusal of a start, step or resume over a cancelled batten record.
-// The cancel with --remove deletes the record and any pair, and the slug is released and run again after it.
-func cancelledRunRefusal(slug string) error {
-	return fmt.Errorf("%s was cancelled; way forward: run \"lym batten cancel %s --remove\", which removes its record and any pair, then %s and \"lym batten run %s\"", slug, slug, releaseCommandText(slug), slug)
-}
-
 // probeRefusal words the refusal of a guard probe that failed with err, naming the probe and the step to run again.
 func probeRefusal(probe, slug, rerun string, err error) error {
 	return fmt.Errorf("battencli: could not read %s of %s: %w; way forward: fix the cause, then run %s again", probe, slug, err, rerun)
 }
 
 // refuseCancelMarker refuses when a cancel of the slug is under way or was interrupted.
-// It reads the intent in batten's record and the cancel's lock.
 // A receiver with no guard seam checks nothing.
 func (c *battenCLI) refuseCancelMarker() error {
-	return c.refuseCancelReading(c.guard.Marker)
-}
-
-// refuseCancelLock refuses when a cancel of the slug holds its lock.
-// It reads no record, so it is safe under batten's status lock.
-// A receiver with no guard seam checks nothing.
-func (c *battenCLI) refuseCancelLock() error {
-	return c.refuseCancelReading(c.guard.Lock)
-}
-
-// refuseCancelReading refuses with the cancel refusal when read reports a cancel present; a nil read checks nothing.
-func (c *battenCLI) refuseCancelReading(read func() (cancelMarkerReading, error)) error {
-	if read == nil {
+	if c.guard.Marker == nil {
 		return nil
 	}
-	reading, err := read()
+	reading, err := c.guard.Marker()
 	if err != nil {
-		return probeRefusal("the cancel intent", c.slug, "the verb", err)
+		return probeRefusal("the cancel marker", c.slug, "the verb", err)
 	}
 	if reading.Present {
 		return cancelMarkerRefusal(c.slug, reading)

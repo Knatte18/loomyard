@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -36,9 +35,6 @@ func TestRaddleBoardContext(t *testing.T) {
 		`{"id":3,"slug":"done-one","title":"Done","kind":"task","labels":["bug"],"status":"done"}]}`
 	if err := os.WriteFile(filepath.Join(hub.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(hub.BoardDir(), "board"), []byte("labels:\n  mod-a: Module A\n"), 0o644); err != nil {
-		t.Fatalf("write the board config: %v", err)
 	}
 	storeDir := filepath.Join(hub.BoardDir(), "raddle", "old-sketch")
 	if err := os.MkdirAll(storeDir, 0o755); err != nil {
@@ -99,9 +95,6 @@ func TestRaddleBoardContext(t *testing.T) {
 		if !slices.Contains(got.TypeLabels, label) {
 			t.Errorf("TypeLabels = %v; want it to hold %q", got.TypeLabels, label)
 		}
-	}
-	if want := []string{"mod-a"}; !slices.Equal(got.LabelVocabulary, want) {
-		t.Errorf("LabelVocabulary = %v; want %v, the board config's module labels", got.LabelVocabulary, want)
 	}
 	for _, recipe := range []string{raddleparser.RecipeTapestry, raddleparser.RecipeDarn} {
 		if len(got.Profiles[recipe]) == 0 {

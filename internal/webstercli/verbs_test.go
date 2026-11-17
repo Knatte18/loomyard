@@ -37,7 +37,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -50,12 +49,9 @@ import (
 // seedHubStencils populates hub's fabricengine.StencilsDir(hub) with every shipped stencil.
 // webster's prompts are read from disk at call time.
 // A fixture hub that is never seeded therefore fails every verb that renders one.
-// It also gives the fake engine its edit directive copy, since the fixture launches on that engine.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
-	stencilsDir := fabricengine.StencilsDir(hub)
-	stencilkit.SeedInto(t, stencilsDir)
-	stencilkit.SeedEngineBlockCopies(t, stencilsDir, shuttlefake.EngineName)
+	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
 }
 
 func newScratchRepo(t *testing.T) string {
@@ -312,37 +308,6 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 }
 
-// TestBeginBatchCmd_PromptFollowsMasterEngine proves begin-batch words the fork prompt for Master's engine.
-// Master's engine is the one its model choice resolves to.
-// Recovery stays on the default engine, whose copies carry the Claude wording,
-// so a prompt worded for Recovery's engine or the default one fails it.
-func TestBeginBatchCmd_PromptFollowsMasterEngine(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	fx.CLI.roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Engine: "codex", Model: "master-model"}
-	fx.initState(t)
-
-	var out strings.Builder
-	if exitCode := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); exitCode != 0 {
-		t.Fatalf("begin-batch 1 = %d; want 0, output: %s", exitCode, out.String())
-	}
-	var envelope struct {
-		PromptPath string `json:"prompt_path"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &envelope); err != nil {
-		t.Fatalf("decode begin-batch envelope %q: %v", out.String(), err)
-	}
-	prompt, err := os.ReadFile(envelope.PromptPath)
-	if err != nil {
-		t.Fatalf("read the fork prompt %q: %v", envelope.PromptPath, err)
-	}
-
-	if !strings.Contains(string(prompt), "your developer instructions") || strings.Contains(string(prompt), "your system prompt") {
-		t.Errorf("fork prompt = %q; want Master's engine wording (your developer instructions) and not the other engine's (your system prompt)", prompt)
-	}
-}
-
 // TestBeginBatchCmd_ReportOnDisk proves begin-batch archives a report with no begin-batch record.
 // It names the archive as archived_report.
 // A report over a recorded batch is refused, with the record's state and its one remedy named.
@@ -567,9 +532,9 @@ func TestBeginBatchCmd_PlanConflict(t *testing.T) {
 				tt.shapePlan(t, fx)
 			}
 			fx.initState(t)
-			scratch := fx.CLI.geom.ConflictDir()
+			scratch := fx.CLI.geom.ScratchDir
 			if err := os.MkdirAll(scratch, 0o755); err != nil {
-				t.Fatalf("mkdir conflict dir: %v", err)
+				t.Fatalf("mkdir scratch dir: %v", err)
 			}
 			stale := &websterengine.PlanConflictError{Batch: 9, Cause: websterengine.ConflictCauseTreeMoved, Findings: []string{"stale-finding"}}
 			recordPath, routedPath := websterengine.ConflictRecordPath(scratch), websterengine.RoutedConflictPath(scratch)
@@ -1605,7 +1570,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 	t.Run("rebaseline with a bad profile leaves state untouched", func(t *testing.T) {
 		seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), "fork_messages: 4", "fork_messages: -1", 1))
 		geom := hubgeom.WebsterGeometry(h.Location)
-		st := &websterengine.State{State: runplan.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}}
+		st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
 		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st); err != nil {
 			t.Fatalf("SaveState() error = %v", err)
 		}
@@ -1635,7 +1600,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 
 	t.Run("config load refusals carry config_invalid only for broken content", func(t *testing.T) {
 		geom := hubgeom.WebsterGeometry(h.Location)
-		st := &websterengine.State{State: runplan.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}}
+		st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
 		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st); err != nil {
 			t.Fatalf("SaveState() error = %v", err)
 		}
@@ -1830,7 +1795,7 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "")
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := hubgeom.WebsterGeometry(h.Location)
-	st := &websterengine.State{State: runplan.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}}
+	st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
 	if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}

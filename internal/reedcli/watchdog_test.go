@@ -25,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -375,7 +374,14 @@ func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
 				if err := os.Mkdir(target, 0o755); err != nil {
 					t.Fatalf("Mkdir: %v", err)
 				}
-				permkit.Chmod(t, parent, 0o000)
+				if err := os.Chmod(parent, 0o000); err != nil {
+					t.Fatalf("Chmod: %v", err)
+				}
+				t.Cleanup(func() {
+					if err := os.Chmod(parent, 0o755); err != nil {
+						t.Errorf("Chmod restore: %v", err)
+					}
+				})
 				if _, err := os.Stat(target); err == nil {
 					t.Skip("stat of target succeeded despite the denied parent mode; cannot exercise the EACCES shape here")
 				}
@@ -618,7 +624,10 @@ func TestConsumeDiscoverSignal(t *testing.T) {
 				if err := os.WriteFile(path, []byte(reedengine.DiscoverStopMarker), 0o644); err != nil {
 					t.Fatalf("write signal: %v", err)
 				}
-				permkit.Chmod(t, locked, 0o555)
+				if err := os.Chmod(locked, 0o555); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 				return path
 			},
 			wantErr: true,

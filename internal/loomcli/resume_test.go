@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -48,8 +47,6 @@ type resumeEnvelope struct {
 	Message    string    `json:"message"`
 	StopReport string    `json:"stop_report"`
 	Conflicts  *[]string `json:"conflicts"`
-	// StencilsChanged lists the stencils changed since the run started.
-	StencilsChanged []string `json:"stencils_changed"`
 }
 
 // newResumeVerbReceiver builds a receiver for the resume verb over the shared temp-directory fixture.
@@ -206,12 +203,6 @@ func TestResumeVerb(t *testing.T) {
 		// sendErr makes every send fail;
 		// the line is then attempted but never lands.
 		sendErr error
-		// verdict is the act rule's answer a fake runVerdict gives, and verdictErr fails the read;
-		// with neither set the seam stays nil and checks nothing.
-		verdict    *runfsm.Verdict
-		verdictErr error
-		// refusedByAct is true when the act rule refuses before the bootstrap lock is taken.
-		refusedByAct bool
 	}{
 		{name: "no status file", wantIn: []string{`"lym loom start"`, "task worktree"}},
 		{name: "done is a no-op success", runState: shedengine.StateDone, directory: noDriver, wantOK: true, wantIn: []string{"done"}},
@@ -247,19 +238,6 @@ func TestResumeVerb(t *testing.T) {
 		{name: "a go-seeded run under an unfinished merge is refused with no spawn", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverGo, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lym fabric merge"}},
 		{name: "an llm-seeded blocked run with no strand keeps the no-driver-strand refusal", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverLLM, wantIn: []string{"no driver strand", `"lym loom start"`}},
 		{name: "a go-seeded running run with no driver keeps the no-live-driver refusal", runState: shedengine.StateRunning, directory: noDriver, seedDriver: shedrun.DriverGo, wantIn: []string{"no live driver", `"lym loom start"`}},
-		{name: "a cancelling run is refused naming the cancel", runState: shedengine.StateRunning, directory: liveDriver, refusedByAct: true,
-			verdict: &runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonCancelling, State: runfsm.Cancelling, CancelMachine: "there"},
-			wantIn:  []string{"a cancel started on machine there has not finished", "lym batten cancel pair"}},
-		{name: "a cancelled run is refused naming the removing cancel", runState: shedengine.StateRunning, directory: liveDriver, refusedByAct: true,
-			verdict: &runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonTerminal, State: runfsm.Cancelled},
-			wantIn:  []string{"was cancelled", "lym batten cancel pair --remove"}},
-		{name: "a failed state read is refused naming the cause and the re-run", runState: shedengine.StateRunning, directory: liveDriver, refusedByAct: true,
-			verdictErr: errors.New("origin read exploded"),
-			wantIn:     []string{"origin read exploded", `run "lym loom resume" again`}},
-		{name: "a record that does not decode goes on for the driver to diagnose", runState: shedengine.StateDone, directory: noDriver,
-			verdictErr: fmt.Errorf("read the child run record of pair: %w", state.ErrDecode), wantOK: true, wantIn: []string{"done"}},
-		{name: "an act verdict goes on to the state read", runState: shedengine.StateDone, directory: noDriver,
-			verdict: &runfsm.Verdict{Answer: runfsm.AnswerAct}, wantOK: true, wantIn: []string{"done"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -316,14 +294,6 @@ func TestResumeVerb(t *testing.T) {
 			if tt.covered {
 				coverRun(t, c)
 			}
-			if tt.verdict != nil || tt.verdictErr != nil {
-				c.runVerdict = func(*lymcwd.Location, string) (runfsm.Verdict, error) {
-					if tt.verdict == nil {
-						return runfsm.Verdict{}, tt.verdictErr
-					}
-					return *tt.verdict, tt.verdictErr
-				}
-			}
 
 			env, code := runResume(t, c)
 
@@ -368,9 +338,8 @@ func TestResumeVerb(t *testing.T) {
 					t.Errorf("park marker removed by a refused resume: %v", err)
 				}
 			}
-			// A covered run and a run the act rule refuses are refused before the bootstrap lock is taken,
-			// so there is no lock to release.
-			if !tt.covered && !tt.refusedByAct {
+			// A covered run is refused before the bootstrap lock is taken, so there is no lock to release.
+			if !tt.covered {
 				assertBootstrapLockReleased(t, loomengine.LoomBootstrapLock(c.location))
 			}
 		})

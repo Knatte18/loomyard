@@ -126,12 +126,10 @@ type sessionCommands interface {
 	ReloadPlugins(guid string) error
 	TypeColor(guid string, color segmentcolor.Color) error
 	LoadSkills(guid string, skills []string) error
-	TurnOnRemoteControl(guid, name string) error
 }
 
 // runSessionCommand runs command through ops.
-// compact takes its argument as the focus, color as the segment color, and load-skills as a space-separated skill list;
-// remote-control takes it as the remote session's name.
+// compact takes its argument as the focus, color as the segment color, and load-skills as a space-separated skill list.
 // A command outside the closed set is refused.
 func runSessionCommand(ops sessionCommands, guid string, command creelengine.Command) error {
 	switch command.Name {
@@ -145,8 +143,6 @@ func runSessionCommand(ops sessionCommands, guid string, command creelengine.Com
 		return ops.TypeColor(guid, segmentcolor.Color(command.Argument))
 	case creelengine.CommandLoadSkills:
 		return ops.LoadSkills(guid, strings.Fields(command.Argument))
-	case creelengine.CommandRemoteControl:
-		return ops.TurnOnRemoteControl(guid, command.Argument)
 	default:
 		return fmt.Errorf("creel: unknown command %q", command.Name)
 	}

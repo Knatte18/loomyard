@@ -86,12 +86,7 @@ It runs anywhere in the hub and refuses, each naming its way forward:
   - a beam with no change description recorded, "lym beam describe <slug>" records it
   - a beam with no commits beyond its parent
   - an origin that is not on GitHub, or a parent branch with no upstream, or a push skip
-  - a beam whose merge task is not done, "lym batten status <task>" follows the task
-  - a beam that conflicts with its parent branch, "lym beam merge-parent <slug>" settles it
   - a failed push or GitHub call, which names its cause
-
-Both the merge task and the conflict are checked before a push or a reopen,
-and a beam only behind its parent still opens.
 
 Example:
   lym beam pr open payments`,

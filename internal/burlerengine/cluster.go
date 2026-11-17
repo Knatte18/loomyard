@@ -501,12 +501,12 @@ func auditClusterRound(audit *shuttleengine.ForkAudit, wantN int) ([]string, err
 }
 
 // forkViolation returns the first violation of audit, or nil when the forks are clean.
-// The checks run in this order: a nested spawn call, a write or edit call, a git-mutating command, and a named spawn.
+// The checks run in this order: an Agent tool call, a write or edit call, a git-mutating command, and a named spawn.
 // The error carries no burler prefix, so each caller adds its own.
 func forkViolation(audit *shuttleengine.ForkAudit) error {
 	for _, fork := range audit.Forks {
 		if fork.AgentCalls > 0 {
-			return fmt.Errorf("fork %q attempted %d nested spawn call(s) — forks cannot nest and must never spawn a fork or subagent, even when the attempt was denied", fork.TranscriptPath, fork.AgentCalls)
+			return fmt.Errorf("fork %q attempted %d Agent tool call(s) — forks cannot nest and must never call the Agent tool, even when the attempt was denied", fork.TranscriptPath, fork.AgentCalls)
 		}
 	}
 	for _, fork := range audit.Forks {

@@ -1,4 +1,4 @@
-// pausehold_test.go pins that `lym batten run` asks the act rule before it seeds a status file.
+// pausehold_test.go pins that `lym batten run` refuses a slug a live pause entry covers before it seeds a status file.
 
 package battencli
 
@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,71 +18,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBattenRun_RefusesWhileAPauseCoversTheSlug runs the run verb's driveRun with the act rule's verdict set.
-// A live pause entry that covers the slug refuses the run through the rule, naming `lym tender resume <slug>`.
-// The refusal leaves nothing seeded and exits with the covered code.
+// TestBattenRun_RefusesWhileAPauseCoversTheSlug runs the run verb's driveRun over a prime whose record holds a live entry:
+// a covering entry refuses the run, naming `lym tender resume <slug>`, with nothing seeded and the covered exit code.
 // An entry for another slug seeds as before.
-// A fake verdict covers the other answers:
-// act goes on, and a hand-over exits with the owned-elsewhere code.
-// A terminal wait refuses plain.
-// A landed run with a done record gets the done-slug refusal, and a failed read names the re-run.
 func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	verdictOf := func(in runfsm.Inputs) *runfsm.Verdict {
-		verdict := runfsm.Act(in)
-		return &verdict
-	}
 	tests := []struct {
-		name string
-		// scope is the scope of the pause entry the prime's record holds; empty writes none.
-		scope string
-		// verdict and verdictErr replace the verdict read over the pause record when either is set.
-		verdict    *runfsm.Verdict
-		verdictErr error
-		// doneRecord writes a done status file before the run.
-		doneRecord bool
-		wantExit   int
-		wantOutput []string
-		// wantStatusFile is whether the status file stands after the run.
-		wantStatusFile bool
+		name      string
+		scope     string
+		wantCover bool
 	}{
-		{name: "an entry for the slug refuses", scope: "some-slug", wantExit: dobbyengine.PassExitCovered, wantOutput: []string{"lym tender resume"}},
-		{name: "a hub-wide entry refuses", scope: pauserecord.ScopeHub, wantExit: dobbyengine.PassExitCovered, wantOutput: []string{"lym tender resume"}},
-		{name: "an entry for another slug seeds as today", scope: "other-slug", wantStatusFile: true},
-		{name: "an act verdict goes on to the status check", verdict: verdictOf(runfsm.Inputs{State: runfsm.Running}), wantStatusFile: true},
-		{
-			name:       "a hand-over verdict exits with the owned-elsewhere code naming the owner",
-			verdict:    verdictOf(runfsm.Inputs{OwnedElsewhere: true, Owner: "there", AdoptSubject: "some-beam"}),
-			wantExit:   dobbyengine.PassExitOwnedElsewhere,
-			wantOutput: []string{"machine there owns the run", "lym adopt some-beam"},
-		},
-		{
-			name:       "a terminal cancelled wait names the removal",
-			verdict:    verdictOf(runfsm.Inputs{State: runfsm.Cancelled}),
-			wantExit:   1,
-			wantOutput: []string{"was cancelled", "--remove"},
-		},
-		{
-			name:           "a terminal landed wait over a done record gives the done-slug refusal",
-			verdict:        verdictOf(runfsm.Inputs{State: runfsm.Landed}),
-			doneRecord:     true,
-			wantExit:       1,
-			wantOutput:     []string{"has already completed", "lym batten cleanup --apply"},
-			wantStatusFile: true,
-		},
-		{
-			name:       "a failed read refuses naming the re-run",
-			verdictErr: errors.New("board is gone"),
-			wantExit:   1,
-			wantOutput: []string{"board is gone", "lym batten run some-slug"},
-		},
+		{"an entry for the slug refuses", "some-slug", true},
+		{"a hub-wide entry refuses", pauserecord.ScopeHub, true},
+		{"an entry for another slug seeds as today", "other-slug", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -97,31 +50,12 @@ func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 			if err != nil {
 				t.Fatalf("hubgeom.PauseGeometry: %v", err)
 			}
-			if tt.scope != "" {
-				now := time.Now()
-				if _, err := pauserecord.Update(geometry.RecordPath, now, func(record *pauserecord.Record) error {
-					record.Live = append(record.Live, pauserecord.Entry{Scope: tt.scope, PausedAt: now, Caller: "EXTERNAL"})
-					return nil
-				}); err != nil {
-					t.Fatalf("pauserecord.Update: %v", err)
-				}
-			}
-			if tt.doneRecord {
-				writeStatus(t, c, shedengine.Status{CurrentProducer: battenrecipe.NameWorktreeTeardown, State: shedengine.StateDone})
-			}
-			c.runVerdict = func() (runfsm.Verdict, error) {
-				if tt.verdictErr != nil {
-					return runfsm.Verdict{}, tt.verdictErr
-				}
-				if tt.verdict != nil {
-					return *tt.verdict, nil
-				}
-				coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, c.slug, time.Now())
-				if err != nil {
-					return runfsm.Verdict{}, err
-				}
-				_, verdict := runfsm.Judge(runfsm.Records{}, runfsm.Inputs{PauseCovers: coverage.Covered}, runfsm.Aside{ShedPause: true})
-				return verdict, nil
+			now := time.Now()
+			if _, err := pauserecord.Update(geometry.RecordPath, now, func(record *pauserecord.Record) error {
+				record.Live = append(record.Live, pauserecord.Entry{Scope: tt.scope, PausedAt: now, Caller: "EXTERNAL"})
+				return nil
+			}); err != nil {
+				t.Fatalf("pauserecord.Update: %v", err)
 			}
 			// A run past the pre-run yields at once.
 			c.untilStop = func(context.Context, string) ([]byte, error) {
@@ -130,16 +64,18 @@ func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 			var driveOut bytes.Buffer
 			driveExit := clihelp.Execute(runCommand(c), &driveOut, []string{c.slug})
 
-			if driveExit != tt.wantExit {
-				t.Errorf("run exit = %d, output %q; want exit %d", driveExit, driveOut.String(), tt.wantExit)
-			}
-			for _, want := range tt.wantOutput {
-				if !strings.Contains(driveOut.String(), want) {
-					t.Errorf("run output %q; want it to name %q", driveOut.String(), want)
+			_, statErr := os.Stat(c.shedPaths.StatusPath)
+			if !tt.wantCover {
+				if driveExit != 0 || statErr != nil {
+					t.Fatalf("run exit = %d, output %q, status file stat = %v; want a normal run", driveExit, driveOut.String(), statErr)
 				}
+				return
 			}
-			if _, statErr := os.Stat(c.shedPaths.StatusPath); (statErr == nil) != tt.wantStatusFile {
-				t.Errorf("status file stat = %v; want it present: %v", statErr, tt.wantStatusFile)
+			if driveExit != dobbyengine.PassExitCovered || !strings.Contains(driveOut.String(), "lym tender resume") {
+				t.Errorf("run exit = %d, output %q; want exit %d and a refusal naming %q", driveExit, driveOut.String(), dobbyengine.PassExitCovered, "lym tender resume")
+			}
+			if !os.IsNotExist(statErr) {
+				t.Errorf("status file stat = %v; want it absent, nothing seeded", statErr)
 			}
 		})
 	}

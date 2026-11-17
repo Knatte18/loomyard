@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -55,10 +54,6 @@ type cleanupStubs struct {
 	// discards lists the slugs the discardTaskBranch stub was asked to remove, and discardErr is what it fails with.
 	discards   []string
 	discardErr error
-	// pairLocal and pairOnOrigin are what the PairStands stub reports; pairErr fails it.
-	pairLocal    bool
-	pairOnOrigin bool
-	pairErr      error
 }
 
 // discardTaskBranch stands in for the task branch removal of a done run.
@@ -93,9 +88,6 @@ func (s *cleanupStubs) deps() cleanupDeps {
 			return s.spawnErr
 		},
 		Now: func() time.Time { return cleanupNow },
-		PairStands: func(string) (bool, bool, error) {
-			return s.pairLocal, s.pairOnOrigin, s.pairErr
-		},
 	}
 }
 
@@ -176,12 +168,8 @@ func TestCleanup(t *testing.T) {
 		holdRunLock  string
 		denyRunsRoot bool
 		// legacySelf adds a done run under a directory named "self", which no slug-addressed path reaches.
-		legacySelf bool
-		spawnErr   error
-		// pairLocal, pairOnOrigin and pairErr script what the pair probe of a cancelled run reads.
-		pairLocal    bool
-		pairOnOrigin bool
-		pairErr      error
+		legacySelf   bool
+		spawnErr     error
 		wantRemoved  []string
 		wantEmptied  []string
 		wantSkipped  map[string]string
@@ -268,31 +256,6 @@ func TestCleanup(t *testing.T) {
 			wantSkipped:  map[string]string{"locked": "stat run directory"},
 		},
 		{
-			name:        "cancelled run with no pair here and no task branch on origin is removed, committed and its scratch emptied",
-			fixtures:    []cleanupFixture{{slug: "kept", runState: "cancelled", scratchAge: time.Hour}},
-			wantRemoved: []string{"kept"},
-			wantEmptied: []string{"kept"},
-			wantCommits: []string{"kept"},
-		},
-		{
-			name:        "cancelled run whose pair stands here is skipped naming the fabric removal",
-			fixtures:    []cleanupFixture{{slug: "kept", runState: "cancelled", scratchAge: time.Hour}},
-			pairLocal:   true,
-			wantSkipped: map[string]string{"kept": `run is cancelled and its pair stands; way forward: "lym fabric remove kept" removes the pair and the record`},
-		},
-		{
-			name:         "cancelled run with only its task branch on origin is skipped naming the cancel on its owner",
-			fixtures:     []cleanupFixture{{slug: "kept", runState: "cancelled", scratchAge: time.Hour}},
-			pairOnOrigin: true,
-			wantSkipped:  map[string]string{"kept": `run is cancelled and its pair stands on another machine; way forward: "lym batten cancel kept --remove" on the machine that owns it removes the pair, its task branch and the record`},
-		},
-		{
-			name:        "cancelled run whose pair probe fails is skipped naming the error",
-			fixtures:    []cleanupFixture{{slug: "kept", runState: "cancelled", scratchAge: time.Hour}},
-			pairErr:     errors.New("origin refused the branch listing"),
-			wantSkipped: map[string]string{"kept": "origin refused the branch listing"},
-		},
-		{
 			name:         "spawn failure is reported with the commit made",
 			fixtures:     []cleanupFixture{{slug: "alpha", runState: "done", scratchAge: time.Hour}},
 			spawnErr:     errors.New("remote refused"),
@@ -317,7 +280,6 @@ func TestCleanup(t *testing.T) {
 			location := newCleanupLocation(t)
 			stubs := newCleanupStubs()
 			stubs.spawnErr = tt.spawnErr
-			stubs.pairLocal, stubs.pairOnOrigin, stubs.pairErr = tt.pairLocal, tt.pairOnOrigin, tt.pairErr
 			for _, fixture := range tt.fixtures {
 				buildCleanupFixture(t, location, stubs, fixture)
 			}
@@ -333,7 +295,10 @@ func TestCleanup(t *testing.T) {
 			}
 			if tt.denyRunsRoot {
 				root := shedrun.RunsRoot(location)
-				permkit.Chmod(t, root, 0o444)
+				if err := os.Chmod(root, 0o444); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(root, 0o755) })
 			}
 
 			report, err := cleanup(location, true, stubs.deps())
@@ -634,7 +599,6 @@ func TestClearDoneRun_RemovesADoneRunTheRecipeFilterAdmits(t *testing.T) {
 		{name: "AnyRecipe_TaskBranchRemovalFailureReturnsTheErrorAndKeepsTheRun", anyRecipe: true, runState: "done", childRecipe: shedrun.RecipeDarn, discardErr: errors.New("task branch delete refused")},
 		{name: "AnyRecipe_RecordsCommitFailureReturnsTheErrorAndKeepsTheRun", anyRecipe: true, runState: "done", commitErr: errors.New("records commit refused")},
 		{name: "AnyRecipe_RunningDarnRunStays", anyRecipe: true, runState: "running", childRecipe: shedrun.RecipeDarn},
-		{name: "AnyRecipe_CancelledRunStaysWithItsBranch", anyRecipe: true, runState: "cancelled", childRecipe: shedrun.RecipeDarn},
 		{name: "AnyRecipe_DoneDarnRunWhoseRunLockIsHeldStays", anyRecipe: true, runState: "done", childRecipe: shedrun.RecipeDarn, holdRunLock: true},
 	}
 	for _, tt := range tests {
@@ -662,7 +626,10 @@ func TestClearDoneRun_RemovesADoneRunTheRecipeFilterAdmits(t *testing.T) {
 			if tt.blockScratch {
 				blocked := filepath.Join(shedrun.ScratchDir(location, slug), "steps")
 				writeCleanupFile(t, filepath.Join(blocked, "record.json"), []byte("x"))
-				permkit.Chmod(t, blocked, 0o000)
+				if err := os.Chmod(blocked, 0o000); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(blocked, 0o755) })
 			}
 			if tt.childRecipe != "" {
 				if err := shedrun.WriteChildRecipe(location, slug, tt.childRecipe); err != nil {

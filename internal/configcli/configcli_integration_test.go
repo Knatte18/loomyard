@@ -27,7 +27,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runprofile"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -392,11 +391,11 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		baseFile := configengine.TemplateBaseFile(boardDir, "profiles")
 		baseOriginal, baseErr := os.ReadFile(baseFile)
-		const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[medium]\"}\n"
-		const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[medium]\"}\n"
-		const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3, code_reviewer_model: \"opus[medium]\"}\n"
-		const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 4, code_reviewer_model: \"opus[medium]\"}\n"
-		const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4, code_reviewer_model: \"opus[medium]\"}\n"
+		const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[high]\"}\n"
+		const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[high]\"}\n"
+		const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3, code_reviewer_model: \"opus[high]\"}\n"
+		const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 4, code_reviewer_model: \"opus[high]\"}\n"
+		const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4, code_reviewer_model: \"opus[high]\"}\n"
 		const formerPair = "paired:\n  loom:\n    loom: {code_max_bounces: 1}\n  tapestry:\n    loom: {code_max_bounces: 2}\n"
 		olderTemplate := strings.Replace(runprofile.ConfigTemplate(), lightDarn, lightDarnSolo, 1)
 		basePlanted := strings.Replace(olderTemplate, solidDarn, solidDarnBase, 1)
@@ -486,7 +485,10 @@ func TestConfigOverRealHub(t *testing.T) {
 					t.Skip("file mode bits do not bind root")
 				}
 				configDir := configengine.ConfigDir(boardDir)
-				permkit.Chmod(t, configDir, 0o555)
+				if err := os.Chmod(configDir, 0o555); err != nil {
+					t.Fatalf("make the board config dir read-only: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(configDir, 0o755) })
 				headBefore := boardHead(t, boardDir)
 
 				var out bytes.Buffer

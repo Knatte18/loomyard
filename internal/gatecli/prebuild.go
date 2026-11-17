@@ -1,5 +1,5 @@
-// prebuild.go builds `lym` once for a tagged `lym gate test` run.
-// Every package of that run shares the one binary.
+// prebuild.go builds `lym` once for a tagged `lym gate test` run or a `lym gate testmap` call.
+// Every package of that run or call shares the one binary.
 // Every package reaches it through gateslot.PrebuiltLymEnv.
 // Inside a hub, the binary is kept in the hub's content-addressed store.
 

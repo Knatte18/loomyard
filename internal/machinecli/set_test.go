@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/machinename"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -511,7 +510,10 @@ func TestName_Set(t *testing.T) {
 		if err := os.WriteFile(path+".lock", nil, 0o644); err != nil {
 			t.Fatalf("write the lock file: %v", err)
 		}
-		permkit.Chmod(t, dir, 0o555)
+		if err := os.Chmod(dir, 0o555); err != nil {
+			t.Fatalf("make %s read-only: %v", dir, err)
+		}
+		t.Cleanup(func() { os.Chmod(dir, 0o755) })
 
 		code, envelope := runName(t, seams{path: path, host: "box"}.deps(f), t.TempDir(), "osl46")
 

@@ -22,12 +22,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [lens-fan-lab-phase0.md](burler/lens-fan/lens-fan-lab-phase0.md) — what the fan's forks read, and variants of the master's instructions.
 - [lens-fan-lab-phase1.md](burler/lens-fan/lens-fan-lab-phase1.md) — measured runs of the master-instruction variants.
 
-## claude — Claude Code features
-
-- [code-mode-bench-2026-11-16](claude/code-mode-bench-2026-11-16/report.md) — Code Mode and shell pipelines on the Plan writer, one sample per arm.
-- [code-mode-darn-bench-2026-11-17](claude/code-mode-darn-bench-2026-11-17/report.md) — Code Mode on a darn writer repeating one edit across packages, one sample per arm, and a check that the shell guard holds in a script.
-- [code-mode-web-research-2026-11-16](claude/code-mode-web-research-2026-11-16/report.md) — how Anthropic and users say to use Code Mode, each tip judged for lym's writers, and a correction to the bench's reading of `Poll`.
-
 ## codex — the Codex engine
 
 - [codex-feasibility.md](codex/codex-feasibility.md) — which Claude couplings stand between lym and the Codex CLI.
@@ -111,8 +105,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 
 - [lym-state-map-2026-11-15.md](loom/lym-state-map-2026-11-15.md) — every piece of state lym keeps, where it lives and whether git holds it, the steps of `lym adopt`, the adopt failures on record and a first-draft state machine of a run.
 
-- [adopt-build-revision-2026-11-16](loom/adopt-build-revision-2026-11-16/report.md) — what the remaining members of the beam `adopt-build` take, deliver and depend on after the run FSM and the orch's own-session resume landed, with revised bodies and decision records.
-
 ### plan-split — splitting a plan into parts
 
 - [plan-split-bench-2026-11-01](loom/plan-split/plan-split-bench-2026-11-01/report.md) — Parts-Write and Parts-Plan-Write against Plan-Write.
@@ -132,10 +124,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [psmux-tui-behavior.md](reed/psmux-tui-behavior.md) — the claude TUI under psmux on Windows.
 - [reed-hooks-exploration.md](reed/reed-hooks-exploration.md) — Claude Code hooks and `claude agents --json`.
 
-## retro — audits of landed runs
-
-- [retro-20261116-115411](retro/retro-20261116-115411/report.md) — ten runs landed up to 2026-11-16T11:54:11Z, audited from their transcripts, with four proposals to the agent environment, most severe first.
-
 ## speed — test and start time
 
 - [batten-start-2026-10-18](speed/batten-start-2026-10-18/report.md) — the time of a batten start before the fast-start plan.
@@ -147,8 +135,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [tier1-test-revision-2026-11-06](speed/tier1-test-revision-2026-11-06/report.md) — where a tier 1 pass goes, which levers of the fabricengine survey still stand, which tests can fold, and the changes that would cut a pass, ranked.
 - [testmap-upkeep-2026-11-11](speed/testmap-upkeep-2026-11-11/report.md) — three independent proposals, two by Fable and one by Opus, for keeping the per-test coverage maps fresh, compared side by side.
 - [coverage-map-pilot-2026-11-12](speed/coverage-map-pilot-2026-11-12/report.md) — a pilot of the coverage map on `internal/adoptcli`: what building it costs, and whether its redundancy candidates hold up as deletable tests.
-- [testmap-smart-build-2026-11-15](speed/testmap-smart-build-2026-11-15/report.md) — five ways to build and keep the per-test coverage maps more cheaply, weighed by three probes on `internal/loomcli`, with one recommended design.
-- [map-tooling-trial-2026-11-17](speed/map-tooling-trial-2026-11-17/report.md) — `lym gate test --map` and `lym gate redundant` run on `internal/durfmt` and `internal/boardengine`: cost, map agreement with single-test runs, leftovers, and the defects found.
 
 ## tokens — token use, cost and models
 

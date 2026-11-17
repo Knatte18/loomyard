@@ -31,7 +31,6 @@ func filledCriticalJudge() *CriticalJudge {
 // filledValues returns a Values with every field set but WriterFork and CriticalJudge.
 func filledValues() Values {
 	return Values{
-		Engine:                "claude",
 		ReviewedFiles:         "`/abs/one.md` and `/abs/two.md`",
 		SpawnPoint:            "SPAWN-POINT-SENTENCE",
 		RejectionRule:         "REJECTION-RULE-SENTENCE",
@@ -64,8 +63,6 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 	gatedWriterFork.Gated = true
 	gatedWriterFork.SelfCheckCommand = ""
 	gatedWriterFork.FinalSelfCheckCommand = ""
-	onCodex := filledValues()
-	onCodex.Engine = "codex"
 	tests := []struct {
 		name   string
 		values Values
@@ -82,7 +79,7 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"lym check --now",
 				"STEP-CHECK",
 				"STEP-FORMAT",
-				"died before its lens spawn call",
+				"died before its Agent call",
 				"REJECTION-RULE-SENTENCE",
 				"the PLACE section",
 				"finishes writing RELAUNCH-FILES per",
@@ -90,12 +87,6 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"were written and passed the self-check before you were spawned",
 			},
 			wantNots: []string{"fork0", "GOVERNING-INPUT", "DISPUTE-EVIDENCE", "run no validator"},
-		},
-		{
-			name:     "on a codex launch the fork wording is Codex's",
-			values:   onCodex,
-			wants:    []string{"`spawn_agent`", "`wait_agent`"},
-			wantNots: []string{`subagent_type: "fork"`, "lym shuttle await-forks"},
 		},
 		{
 			name:   "with a writer fork",
@@ -112,7 +103,7 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"lym check --now",
 				"were written and passed the self-check before you were spawned",
 			},
-			wantNots: []string{"died before its lens spawn call", "REJECTION-RULE-SENTENCE", "RELAUNCH-FILES", "run no validator"},
+			wantNots: []string{"died before its Agent call", "REJECTION-RULE-SENTENCE", "RELAUNCH-FILES", "run no validator"},
 			inOrder:  []string{"SPAWN-POINT-SENTENCE", "Spawn one fork, fork0"},
 		},
 		{
@@ -128,7 +119,7 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"were written before you were spawned",
 				"6. End your turn: the reviewed files are checked once it ends, so run no validator.",
 			},
-			wantNots: []string{"lym check --final", "lym check --now", "passed the self-check", "died before its lens spawn call", "RELAUNCH-FILES"},
+			wantNots: []string{"lym check --final", "lym check --now", "passed the self-check", "died before its Agent call", "RELAUNCH-FILES"},
 			inOrder:  []string{"SPAWN-POINT-SENTENCE", "Spawn one fork, fork0"},
 		},
 	}

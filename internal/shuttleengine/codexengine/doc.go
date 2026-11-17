@@ -59,23 +59,8 @@
 //
 // Hooks given by `-c` append to the run's events file a stamp line and the payload of these events:
 // SessionStart, UserPromptSubmit, Stop and PermissionRequest.
-// A PostToolUse hook touches the activity stamp; the batching nudge and creel's mail hook join its setting.
-// The standing items ride the launch line as the `developer_instructions` setting, a single-line TOML string,
-// and the prompt file holds the spec's prompt alone.
-// The items are the deny notice with the creel trust sentence, then each standing passage.
-// The setting is one argument of the `codex` command, which Linux caps at 128 KiB counting its terminating NUL;
-// a launch whose setting reaches the cap is refused before anything is written.
-// The refusal names the setting's size, the largest item and the step that shrinks it.
-// The launch line also carries two `agents` settings.
-// `agents.default_subagent_reasoning_effort` is the effort agents.yaml gives the spec's role on a model it does not list.
-// It is the counterpart of the effort a Claude session's subagents fall back to.
-// An effort codex.yaml's efforts does not list is left off with a warning, so the subagents take Codex's default.
-// `agents.max_concurrent_threads_per_session` is codex.yaml's max_subagent_threads.
-// It raises Codex's default cap of three.
-// With an effort, the developer instructions gain a subagent passage after the creel trust sentence.
-// It tells the session to set that `reasoning_effort` on every fresh `spawn_agent` call and leave `model` unset.
-// For a spec with skills, it also tells the session to name the fitting ones in each child's brief.
-// A `fork_turns: "all"` fork shares the session's effort and sets none.
+// A PostToolUse hook touches the activity stamp.
+// The prompt file holds the deny notice, then the creel trust sentence.
 // Codex reads a hook's block reason as a failed tool call unless its instructions say `[creel]` lines are mail.
 // A Stop is the turn end and carries the reply;
 // an interrupt fires no Stop, so a newest turn_aborted in the rollout the payloads name marks the turn interrupted.
@@ -98,50 +83,8 @@
 //
 // Every installed row of the shell guard table rides the launch line as a PreToolUse hook matching Bash.
 // The hook prints Codex's deny decision with the row's Codex steer,
-// and the developer instructions open with the rows' Codex notices;
+// and the prompt file opens with the rows' Codex notices;
 // a hook that fails to run fails open in Codex, so a guard is a guardrail and not a barrier.
-// An autonomous launch also denies Codex's question tools, the counterpart of Claude's AskUserQuestion deny.
-// The entry opens the same PreToolUse setting, since a second `-c` of the key replaces the first.
-// It matches every tool and denies a payload whose tool name ends in `request_user_input` or `request_user_input_async`,
-// so a name Codex prefixes with its namespace, as it prefixes `spawn_agent`, still matches;
-// its notice opens the deny notice.
-//
-// The batching nudge (BatchingNudger) is a PostToolUse hook that adds one line to the calling thread's context.
-// It does so when the thread's recent calls break lym's batching rules, and it never denies a call:
-// a block after a tool call would make Codex read the call as failed.
-// `codex.yaml`'s `batching_nudge` block has claude.yaml's keys and defaults.
-// LoadConfig refuses a threshold below its least while the nudge is on.
-// With `enabled` on, Prepare copies the block into `batching-nudge.json` in the run directory,
-// and the PostToolUse setting runs `lym shuttle hook-batching codex <state file>` on every tool, after the activity hook.
-// The entry prints the empty hook output when the verb prints nothing.
-// Codex runs a model call's tools as an `exec` cell.
-// An `exec` cell is a `custom_tool_call` whose JavaScript runs nested `exec_command` and `apply_patch` calls.
-// PostToolUse fires once per nested call, as `Bash` with the command or `apply_patch` with the patch.
-// It never fires for the cell.
-// The payload's `tool_use_id` is the id of the call's `item_completed` item in the rollout.
-// The judgment reads a `batchingTailBytes` tail of the rollout the payload's `transcript_path` names.
-// It lists the tail's top-level calls.
-// An `exec` cell holds the `CommandExecution` and `FileChange` items that complete between its call and its output.
-// Each other call, such as a `collaboration` `function_call`, holds none.
-// The payload's call belongs to the latest `exec` cell, whose output is not written yet.
-// One top-level call counts as one message does on Claude, and Claude's rules judge it.
-// The read-only lookup check is that of `internal/shuttleengine/bashlookup`, which both engines import.
-// A run of `lookup_run` cells each holding one lookup fires the nudge.
-// So does a run of `edit_run` cells holding only `apply_patch` calls.
-// So does a line-range read of a file under `slice_lines` lines.
-// So does a line-range read of a file an earlier cell's `parsed_cmd` read and unchanged since.
-// Every other top-level call ends a chain.
-// A path is resolved against its own call's `CommandExecution` `cwd`, a `file://` URL,
-// so a line-range read waits a bounded time for its own item and gets no read-slice nudge when it is still missing.
-// The judgment is silent for a payload whose tool is neither `Bash` nor `apply_patch`.
-// It is silent for a `Bash` call that is no read-only lookup.
-// Both leave the rollout and the state file unread.
-// It is silent too below `context_tokens`, by the tail's newest token_count.
-// It is also silent past `max_nudges`.
-// It is also silent for a cell it already nudged.
-// A Codex payload carries no agent id, and a child's carries its parent's session id,
-// so each thread's count and cap are keyed by the payload's `transcript_path`, its own rollout.
-// The output carries the line as `additionalContext` with a `systemMessage`.
 //
 // A skill `<plugin>:<name>` is a file the model reads:
 // the load line names the newest version's skills/<name>/SKILL.md under codex.yaml's skill_roots by absolute path.
@@ -174,49 +117,13 @@
 // A failed queue leaves the mail unread, and creel's bell, typed into the pane, wakes the session instead.
 // An engine told no board directory, a standalone run, keeps the plain Stop recording and adds no creel hook.
 //
-// NewFromConfig takes Seams: the user-setup source, the plugin hook runner and the sandbox probe.
-// A nil source adds no user setup, a nil probe runs Codex's own, and a nil runner lists each plugin hook as not run.
-// The registry wires the Claude engine's source and hook runner.
-// That is the one route from the user's Claude setup to this engine.
-// After the sandbox settles, Prepare resolves the setup for the run and appends its items to the developer instructions:
-// the instruction files, the skill listing, then the plugin contexts.
-// Each item keeps the name and way forward the source gave, so the argument-cap refusal names the largest one.
-// The source's warnings, and each plugin hook it left out with its cause, reach the launch's warnings.
-// A source error refuses the launch before the prompt file is written.
-// codex.yaml's `plugin_hook_timeout` bounds each plugin hook that sets no timeout of its own.
-//
-// Codex reads one instruction file in each directory from the checkout root down to the engine's anchor:
-// the first of AGENTS.override.md, AGENTS.md and CLAUDE.md there.
-// The launch line sets `project_doc_max_bytes` to the sum of their sizes, never below Codex's default of 32 KiB.
-// Codex then reads every one of them whole.
-// A file that cannot be examined refuses the launch, naming it.
-// The developer instructions also name the CLAUDE.md files of the worktree that Codex does not read itself.
-// They sit between the user's instruction files and the skill listing, with the rule to read each in full first.
-// Those are the files below the anchor, the ones beside an AGENTS.md, and a CLAUDE.md on the path that imports files.
-// A CLAUDE.md beside the anchor's AGENTS.override.md that opens with heddle's marker is not named.
-// Heddle's render carries it in that file.
-// The walk follows no link.
-// It skips `.git` and the dependency directories `node_modules` and `vendor`.
-// It never skips the checkout root or a directory that holds the anchor.
-// A directory it cannot read is skipped with a warning.
-//
-// Prepare also writes the launch manifest into the run directory through shuttleengine.WriteManifest.
-// It does so after the prompt file and the batching state and before it returns the launch.
-// The manifest is read back from the launch line: each delivery lists the exact text or hook command it puts there,
-// and an item is kept only when the line holds it in the TOML string form the settings write.
-// So a delivery dropped anywhere in Prepare drops its item.
-// A heddle file entry is kept only when the anchor's AGENTS.override.md opens with heddle's marker and holds its text,
-// and a plugin hook the setup lists unrun is an omitted plugin-context item that logs no warning.
-// The settings items name the sandbox mode and the developer instructions' size, and are recorded and never compared.
-//
 // OpenLaunch opens a named interactive session with no prompt, for `lym shuttle open`:
 // it validates the model choice and readies the lym home as Prepare does,
 // and its line runs Codex with no hooks and no first turn,
 // so the session carries no shell guard and waits at its composer.
 // The line keeps the sandbox mode and, under workspace-write, the network access, so an opened session reaches creel too.
 // It appends no exit record, since an opened session has no events file.
-// An opened session carries no creel hooks either.
-// It has no developer instructions to hold the creel trust sentence.
+// An opened session carries no creel hooks either, since it has no prompt file to hold the creel trust sentence.
 // It is a pane-mail strand.
 // Its resume line is empty, so a revive starts no Codex and Runner.Open's chain ends the strand.
 //

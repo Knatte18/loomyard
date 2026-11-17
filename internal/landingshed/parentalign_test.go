@@ -125,10 +125,6 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 	}
 	fx.resolver.lockHeld = lockHeld
 
-	recordsDir := filepath.Join(dir, "records")
-	if err := os.MkdirAll(recordsDir, 0o755); err != nil {
-		t.Fatalf("create records directory: %v", err)
-	}
 	stencilsDir := t.TempDir()
 	stencilkit.SeedInto(t, stencilsDir)
 	deps := Deps{
@@ -137,7 +133,6 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 		TaskBranch:         "task-branch",
 		Slug:               "my-slug",
 		ScratchDir:         dir,
-		RecordsDir:         recordsDir,
 		StencilsDir:        stencilsDir,
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		MergeRecordPath:    MergeRecordPath(dir),

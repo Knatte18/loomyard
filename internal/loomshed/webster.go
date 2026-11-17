@@ -12,7 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -36,74 +35,46 @@ type websterProducer struct {
 	run    shedadapters.WebsterRunner
 	deps   websterengine.RunDeps
 	commit func() error
-	active weaverengine.ActiveDeps
 }
 
 var _ shedengine.ShedProducer = (*websterProducer)(nil)
 
 // NewWebsterProducer returns a producer identified as name.
-// On every Call it runs the implementer guard over active and resolves the active batchifier from dirs.
+// On every Call it resolves the active batchifier from dirs.
 // It then drives run with a copy of deps that carries the resolved value; the caller leaves deps.Batcher nil,
 // and every Call overwrites it.
 // The commit function commits webster's durable run directory and is invoked once the run reports Done.
 // The result is typed as shedengine.ShedProducer, the seam interface,
 // so a registry in another package can call this constructor while the concrete type stays unexported.
-func NewWebsterProducer(name string, dirs configengine.Dirs, run shedadapters.WebsterRunner, deps websterengine.RunDeps, commit func() error, active weaverengine.ActiveDeps) shedengine.ShedProducer {
-	return &websterProducer{name: name, dirs: dirs, run: run, deps: deps, commit: commit, active: active}
+func NewWebsterProducer(name string, dirs configengine.Dirs, run shedadapters.WebsterRunner, deps websterengine.RunDeps, commit func() error) shedengine.ShedProducer {
+	return &websterProducer{name: name, dirs: dirs, run: run, deps: deps, commit: commit}
 }
 
-// resolveActiveBatchifier resolves batcher.Active(dirs) for the row named name.
-// A batcher.Active error maps to a non-empty stuckReason, never to a returned error, so the run blocks for a human.
-// Stuck with an empty OnStuck persists the run as blocked and returns RunBlocked;
-// a human resumes the run after fixing the config.
-// Returning the error would instead persist the run as failed and abort it.
-// The only returned error is a cancellation, which replaces the verdict.
-func resolveActiveBatchifier(ctx context.Context, name string, dirs configengine.Dirs) (batcher.Batcher, string, error) {
-	active, err := batcher.Active(dirs)
-	if err == nil {
-		return active, "", nil
-	}
-	if cerr := cancelErr(ctx, name); cerr != nil {
-		return nil, "", cerr
-	}
-	// The fault is surfaced rather than discarded.
-	// Neither implementer row carries an OnStuck, so its Stuck halts the run for a human.
-	// The fault reaches the row only when the config changed after an earlier check passed,
-	// and an operator would not guess that without being told.
-	// The cause is returned as the row's reason, which reaches the persisted error and activity.wait, and also logged.
-	logger.Warn("loomshed: active batchifier did not resolve", "producer", name, "anchorPath", dirs.Anchor, "cause", err)
-	return nil, batchifierReasonPrefix + err.Error() + batchifierWayForward, nil
-}
-
-// Call implements shedengine.ShedProducer: it runs the implementer guard, resolves the active batchifier itself, fills
+// Call implements shedengine.ShedProducer: it resolves batcher.Active(w.dirs) itself, fills
 // the resolved value into a copy of w.deps, constructs a shedadapters.WebsterProducer over the
 // result, and delegates to that producer's own Call.
 //
-// A guard refusal and a batcher.Active error each map to shedengine.Stuck, never to a returned error,
-// so the run blocks for a human and nothing is spawned.
-// A guard wiring fault is a returned error.
+// A batcher.Active error maps to shedengine.Stuck, never to a returned error, so the run blocks for a human.
+// Stuck with an empty OnStuck persists the run as blocked and returns RunBlocked;
+// a human resumes the run after fixing the config.
+// Returning the error would instead persist the run as failed and abort it.
 func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, w.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	reason, refused, err := implementerGuard(weaverengine.ImplementerWebster, w.active)
+	active, err := batcher.Active(w.dirs)
 	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if refused {
 		if cerr := cancelErr(ctx, w.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
-	}
-
-	active, stuckReason, err := resolveActiveBatchifier(ctx, w.name, w.dirs)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if stuckReason != "" {
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: stuckReason}, nil
+		// The fault is surfaced rather than discarded.
+		// This row carries no OnStuck, so its Stuck halts the run for a human.
+		// The fault reaches this row only when the config changed after an earlier check passed,
+		// and an operator would not guess that without being told.
+		// The cause is returned as the row's reason, which reaches the persisted error and activity.wait, and also logged.
+		logger.Warn("loomshed: active batchifier did not resolve", "producer", w.name, "anchorPath", w.dirs.Anchor, "cause", err)
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: batchifierReasonPrefix + err.Error() + batchifierWayForward}, nil
 	}
 
 	deps := w.deps

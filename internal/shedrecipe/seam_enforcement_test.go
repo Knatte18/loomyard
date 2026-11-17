@@ -29,9 +29,6 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/discussionparser",
 	"github.com/Knatte18/loomyard/internal/shedadapters",
 	"github.com/Knatte18/loomyard/internal/loomshed",
-	// internal/lymdirs is imported for the directory names of the review snapshot cache;
-	// it is a stdlib-free leaf and resolves no geometry.
-	"github.com/Knatte18/loomyard/internal/lymdirs",
 	// internal/loomengine is imported for the RaddleMode type of RaddleWriteEnv.Table; it resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/loomengine",
 	"github.com/Knatte18/loomyard/internal/modelspec",
@@ -41,8 +38,6 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/planindex",
 	"github.com/Knatte18/loomyard/internal/battenshed",
 	"github.com/Knatte18/loomyard/internal/preflightshed",
-	// internal/weaverengine is imported for the told ActiveDeps type of Env.ImplementerSeam; it resolves no geometry.
-	"github.com/Knatte18/loomyard/internal/weaverengine",
 	"github.com/Knatte18/loomyard/internal/websterengine",
 	"github.com/Knatte18/loomyard/internal/burlerengine",
 	// internal/configengine is imported for the told Dirs type the batcher-backed rows load through; it resolves no geometry.

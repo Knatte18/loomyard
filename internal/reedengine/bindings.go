@@ -3,7 +3,7 @@
 // Alt+Up and Alt+Down step across windows in index order,
 // and a left click on the shell button returns to the strands' window.
 // The click dispatches on the shell, window and session ranges.
-// It also dispatches on the follow button, the Slack toggles, the RC button and the button ranges.
+// It also dispatches on the follow button, the Slack toggles and the button ranges.
 // The builder is pure.
 // pinBindingsLocked issues its argvs, each non-fatal.
 // Its caller is the geometry pin path that boot and the attach pre-flight run.
@@ -57,10 +57,6 @@ const slackToggleCommandOption = "@lym_slack_toggle_command"
 
 // slackToggleCondition is true for a click on either Slack toggle.
 const slackToggleCondition = "#{||:#{==:#{mouse_status_range}," + slackToggleRange + "},#{==:#{mouse_status_range}," + awayToggleRange + "}}"
-
-// remoteControlClickCommandOption is the server-global user option holding the shell line a click on the RC button runs.
-// The click reads it through `#{E:...}` inside run-shell, like followCommandOption.
-const remoteControlClickCommandOption = "@lym_rc_click_command"
 
 // bindingsBuildOption is the server-global user option naming the build whose bindings the server holds.
 // Its value is the build's VCS commit time in RFC 3339 UTC, a space, then its revision label.
@@ -148,9 +144,8 @@ func followClickCommand(followJump bool) string {
 // When buttonClick holds, a click on a range named by buttonRangePrefix runs the button branch.
 // That branch runs the line pinned in buttonCommandOption, resolved through the session's own options.
 // When slackClick holds, a click on a Slack toggle then runs the line pinned in slackToggleCommandOption the same way.
-// When remoteControlClick holds, a click on the RC button then runs the line pinned in remoteControlClickCommandOption.
 // Each reports that its line is pinned; when false its branch is not bound.
-func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick, slackClick, remoteControlClick bool) [][]string {
+func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick, slackClick bool) [][]string {
 	argvs := [][]string{
 		{"unbind-key", "-n", "M-z"},
 		{"bind-key", "-n", "M-Up", "set-option", followSessionOption, "off", `\;`, "previous-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, selectStrandsWindowCommand},
@@ -176,9 +171,6 @@ func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick, slackC
 	}
 	if slackClick {
 		click = append(click, `\;`, "if-shell", "-F", slackToggleCondition, `run-shell -b "#{E:`+slackToggleCommandOption+`}"`)
-	}
-	if remoteControlClick {
-		click = append(click, `\;`, "if-shell", "-F", "#{==:#{mouse_status_range},"+remoteControlRange+"}", `run-shell -b "#{E:`+remoteControlClickCommandOption+`}"`)
 	}
 	return append(argvs, click)
 }
@@ -208,18 +200,16 @@ func (e *Engine) pinGlobalLineLocked(option, line, what string) {
 // so a stale line never outlives the binary that pinned it.
 // The button click line is set in buttonCommandOption and unset the same way.
 // The Slack toggle click line in slackToggleCommandOption is set and unset the same way.
-// The Slack state line in slackStateCommandOption is set and unset the same way.
-// The RC click line in remoteControlClickCommandOption is too, and the RC button is not drawn while it is unset.
+// So is the Slack state line in slackStateCommandOption.
 // This binary's build stamp is then set in bindingsBuildOption, ahead of the bindings themselves.
 // It is unset for a binary with no VCS stamp.
 // Assumes the op lock is already held.
 func (e *Engine) pinBindingsLocked() {
-	lines := e.bindingLinesLocked()
-	e.pinGlobalLineLocked(followCommandOption, lines.follow, "the follow jump line")
-	e.pinGlobalLineLocked(buttonCommandOption, lines.button, "the button click line")
-	e.pinGlobalLineLocked(slackToggleCommandOption, lines.slackToggle, "the Slack toggle click line")
-	e.pinGlobalLineLocked(slackStateCommandOption, lines.slackState, "the Slack state line")
-	e.pinGlobalLineLocked(remoteControlClickCommandOption, lines.remoteControlClick, "the RC click line")
+	switchPrev, switchNext, follow, button, slackToggle, slackState := e.switchBindingCommandsLocked()
+	e.pinGlobalLineLocked(followCommandOption, follow, "the follow jump line")
+	e.pinGlobalLineLocked(buttonCommandOption, button, "the button click line")
+	e.pinGlobalLineLocked(slackToggleCommandOption, slackToggle, "the Slack toggle click line")
+	e.pinGlobalLineLocked(slackStateCommandOption, slackState, "the Slack state line")
 	if stamp := bindingsBuildStamp(e.build); stamp != "" {
 		if err := e.tmux.run("set-option", "-g", bindingsBuildOption, stamp); err != nil {
 			logger.Warn("reed: failed to stamp the bindings' build", "socket", e.Socket(), "session", e.SessionName(), "err", err)
@@ -227,7 +217,7 @@ func (e *Engine) pinBindingsLocked() {
 	} else if err := e.tmux.run("set-option", "-gu", bindingsBuildOption); err != nil {
 		logger.Warn("reed: failed to unset the bindings' build stamp", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 	}
-	for _, argv := range bindingArgvs(lines.switchPrev, lines.switchNext, lines.follow != "", lines.button != "", lines.slackToggle != "", lines.remoteControlClick != "") {
+	for _, argv := range bindingArgvs(switchPrev, switchNext, follow != "", button != "", slackToggle != "") {
 		if err := e.tmux.run(argv...); err != nil {
 			logger.Warn("reed: failed to pin a key binding", "socket", e.Socket(), "session", e.SessionName(), "binding", argv[2], "err", err)
 		}
@@ -260,29 +250,18 @@ func (e *Engine) repinStaleBindingsLocked() {
 	e.pinBindingsLocked()
 }
 
-// bindingLines holds the shell lines the bindings run and the Slack toggles' state job reads; an empty one is not pinned.
-type bindingLines struct {
-	// switchPrev and switchNext are the lines of M-Left and M-Right, and follow the follow button's jump.
-	switchPrev, switchNext, follow string
-	// button is the line of a click on a button range.
-	button string
-	// slackToggle is the line of a click on a Slack toggle, and slackState the Slack toggles' state job.
-	slackToggle, slackState string
-	// remoteControlClick is the line of a click on the RC button.
-	remoteControlClick string
-}
-
-// bindingLinesLocked returns the shell lines the bindings run and the Slack toggles' state job reads.
-// Every line is empty when the socket path or the tmux path cannot be resolved.
-// The switch, follow and button lines are empty together when this binary cannot be resolved.
+// switchBindingCommandsLocked returns the shell lines for M-Left, M-Right and the follow button's jump.
+// It also returns the lines of a button click, a Slack toggle click and the Slack toggles' state job.
+// All six are empty when the socket path or the tmux path cannot be resolved.
+// The first four are empty together when this binary cannot be resolved.
 // The two Slack lines are empty together when either cannot be composed, as under a test binary,
-// and the RC line is empty then too; the other lines are still returned then.
-func (e *Engine) bindingLinesLocked() bindingLines {
+// and the other four are still returned then.
+func (e *Engine) switchBindingCommandsLocked() (prev, next, follow, button, slackToggle, slackState string) {
 	socketPath, err := e.tmux.output("display-message", "-p", "#{socket_path}")
 	socketPath = strings.TrimSpace(socketPath)
 	if err != nil || socketPath == "" {
 		logger.Warn("reed: could not read the server's socket path, pinning no session-switch binding", "socket", e.Socket(), "err", err)
-		return bindingLines{}
+		return "", "", "", "", "", ""
 	}
 	tmuxPath, err := exec.LookPath(e.cfg.Tmux)
 	if err == nil {
@@ -290,24 +269,20 @@ func (e *Engine) bindingLinesLocked() bindingLines {
 	}
 	if err != nil {
 		logger.Warn("reed: could not resolve the tmux binary, pinning no session-switch binding", "tmux", e.cfg.Tmux, "err", err)
-		return bindingLines{}
+		return "", "", "", "", "", ""
 	}
 	sh := shell.ForGOOS()
-	var lines bindingLines
 	slackToggle, slackToggleOK := composeSlackToggleCommand(sh, e.executablePath, socketPath, tmuxPath)
 	slackState, slackStateOK := composeSlackStateCommand(sh, e.executablePath)
-	if slackToggleOK && slackStateOK {
-		lines.slackToggle, lines.slackState = slackToggle, slackState
-	}
-	if remoteControlClick, ok := composeRemoteControlClickCommand(sh, e.executablePath, socketPath, tmuxPath); ok {
-		lines.remoteControlClick = remoteControlClick
+	if !slackToggleOK || !slackStateOK {
+		slackToggle, slackState = "", ""
 	}
 	prev, prevOK := composeSwitchCommand(sh, e.executablePath, false, socketPath, tmuxPath)
 	next, nextOK := composeSwitchCommand(sh, e.executablePath, true, socketPath, tmuxPath)
 	follow, followOK := composeFollowCommand(sh, e.executablePath, socketPath, tmuxPath)
 	button, buttonOK := composeButtonCommand(sh, e.executablePath, socketPath, tmuxPath)
-	if prevOK && nextOK && followOK && buttonOK {
-		lines.switchPrev, lines.switchNext, lines.follow, lines.button = prev, next, follow, button
+	if !prevOK || !nextOK || !followOK || !buttonOK {
+		return "", "", "", "", slackToggle, slackState
 	}
-	return lines
+	return prev, next, follow, button, slackToggle, slackState
 }

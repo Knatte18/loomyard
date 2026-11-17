@@ -11,7 +11,6 @@ const LymDirName = "_lym"
 
 // DotLymDirName is the ephemeral, machine-bound directory in a worktree that git never tracks.
 // Every never-tracked file lives under it, at the subpath that mirrors the `_lym` content it relates to.
-// What lives under it is a cache a fresh machine rebuilds or starts without; an absent cache reads as empty.
 const DotLymDirName = ".lym"
 
 // BoltDirName is the name of the Bolt checkout inside a hub.
@@ -52,10 +51,13 @@ const FrontTaskDirName = "fronttask"
 // Each task's snapshot of its checkouts is taken before the drift judge runs.
 const DriftJudgeDirName = "drift-judge"
 
-// TestCoverDirName is the directory under a `.lym` that holds per-package coverage maps.
-// Under the hub's board-level `.lym` it holds the maps every worktree of the hub on the machine shares;
-// under a worktree's `.lym` it holds the maps that worktree builds for itself.
+// TestCoverDirName is the directory under the hub's board-level `.lym` that holds the per-package coverage maps.
+// Every worktree of the hub on the machine shares them.
 const TestCoverDirName = "testcover"
+
+// TestMapExitFileName is the file under TestCoverDirName that a `lym gate testmap --upkeep` pass writes as it exits.
+// It holds the call's process ID, the HEAD it planned at, the queued work it left and its plan and mismatch counts.
+const TestMapExitFileName = "testmap-exit.json"
 
 // BeamDirName is the directory under a worktree's `.lym` that holds dobby's lock, state record and markers.
 const BeamDirName = "beam"
@@ -67,17 +69,8 @@ const CreelFlagDirName = "flags"
 // It holds the ask record and the parent orch's report for each answered ask.
 const ParentReviewDirName = "parent-review"
 
-// ImplementerDirName is the directory under a worktree's `.lym` that holds what both implementers share.
-// It holds the plan-conflict record and the last-routed conflict.
-const ImplementerDirName = "implementer"
-
 // HeddleDirName is the directory under a worktree's `.lym` that holds heddle's render lock.
 const HeddleDirName = "heddle"
-
-// ReviewSnapshotDirName is the directory under a worktree's `.lym` that holds the review target snapshots.
-// It holds one copy of the overlay target files per snapshot id.
-// It is a never-tracked cache, and an absent one reads as empty.
-const ReviewSnapshotDirName = "review-snapshot"
 
 // UsageDirName is the directory under a worktree's `_lym` that holds a run's usage records.
 // It holds one file per agent session, plus the run's identity and its landed diff size.
@@ -87,10 +80,6 @@ const UsageDirName = "usage"
 // the proposals, the approval, the run's state, the staged store and the part records.
 // internal/lymdirs is the only place `raddle` is named under `_lym`.
 const RaddleDirName = "raddle"
-
-// WeaverDirName is the directory under a worktree's `_lym` and `.lym` that holds Weaver's run:
-// the durable state, reports, journal and outcome under `_lym`, and the prompts and locks under `.lym`.
-const WeaverDirName = "weaver"
 
 // LocksDirName is the directory under a checkout's `.lym` that holds the lock files for the checkout's tracked files.
 const LocksDirName = "locks"

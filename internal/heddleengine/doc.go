@@ -10,9 +10,7 @@
 // The claude-file target renders into CLAUDE.local.md, which a Claude session reads.
 // The codex-file target renders into AGENTS.override.md, which a Codex session reads.
 // The agents-file target is shared: it has no file of its own, and its entries render into both files.
-// The codex-file target carries the anchor's AGENTS.md and its CLAUDE.md both, with CLAUDE.md's imports expanded.
-// Its render records the imported files that lie inside the worktree in the scratch directory's heddle directory,
-// so a take-in of one of them re-renders the file.
+// The codex-file target opens with the anchor's AGENTS.md, else its CLAUDE.md.
 // heddle.json carries a format version.
 // A store without one was written while claude-file rendered into both files,
 // so a read takes its claude-file targets as agents-file, and the next save writes the version.
@@ -38,24 +36,16 @@
 // A setting that differs per session or role stays in the settings document a session is launched with.
 //
 // RenderOverview writes HEDDLE.md at the Bolt checkout's root, beside heddle.json.
-// It opens with a table of every entry, shipped, derived and the hub's, by the file or prompt it lands in.
-// A section per file or prompt follows, leaving out one no entry reaches; a shared target's entries show under each file.
-// A text section shows the hub's texts in full and lym's own unchanged ones folded under a summary.
-// A JSON-object section shows the object its entries fold to, each key marked with the entries that set it.
+// It holds every entry, shipped, derived and the hub's, grouped by target in render order.
+// Each shows its source, order, targets and text, a JSON-object entry's object as a json block.
 // The `lym heddle` write path renders it under the Bolt write lock after each save,
 // and the Bolt replayer claims it and renders it afresh after each replay, so it holds no state of its own.
 // The hub config reconcile a new lym build runs renders it too, so a missing file or one a release made stale is renewed.
 //
 // A prompt target is read as passages appended to a session's system prompt, the shipped ones first.
 // A prompt target reaches the sessions its row names by engine, by strand role, or both:
-// `claude-prompt` reaches every Claude session, `codex-prompt` every Codex session and `orch-prompt` every orch session.
-// The shared `agents-prompt` target has no engine or role of its own:
-// its entries reach every session `claude-prompt` or `codex-prompt` reaches, the Claude orch included.
-// An engine whose launch appends no passages delivers none of them.
-// Each passage a session receives carries its entry's slug.
-// Renderer.FileEntries returns the entries of the engine's file target the same way.
-// A passage's Engine is empty when its entry reaches the session through a shared or engine-neutral target,
-// so a comparison across engines asks for it, and names the engine when only a target aimed at that engine reaches it.
+// `claude-prompt` reaches every Claude session and `orch-prompt` every orch session,
+// and an engine whose launch appends no passages delivers neither.
 // A hub whose heddle.yaml sets lym_override renders a shipped entry with the text of its override.
 // The override lives in heddle-lym-override.json beside heddle.json, so lym's own text is tuned there with no build.
 // With the setting off every override is ignored.

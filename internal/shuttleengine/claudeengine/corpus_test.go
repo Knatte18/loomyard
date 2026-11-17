@@ -268,7 +268,7 @@ func replayCorpusCase(t *testing.T, name string) {
 			Attempts: 1,
 		}}
 	}
-	spec := shuttleengine.Spec{Prompt: "replay", PromptEngine: "claude", OutputFiles: []string{replay.outputFile}, Role: "replay", Timeout: replay.runTimeout, Skills: c.Skills}
+	spec := shuttleengine.Spec{Prompt: "replay", OutputFiles: []string{replay.outputFile}, Role: "replay", Timeout: replay.runTimeout, Skills: c.Skills}
 	run, err := runner.StartGated(spec, gate)
 	if err != nil {
 		t.Fatalf("%s: start: %v", name, err)

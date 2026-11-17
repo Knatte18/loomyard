@@ -935,10 +935,6 @@ func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, i
 			signal.ModelRejected = true
 		case trimmed == "ASK":
 			signal.Kind = SessionSignalAsk
-		case strings.HasPrefix(trimmed, "EDIT:"):
-			// EDIT:<agent id>:<file path>, with an empty agent id for the session's own edit.
-			signal.Kind = SessionSignalFileEdit
-			signal.AgentID, signal.FilePath, _ = strings.Cut(strings.TrimPrefix(trimmed, "EDIT:"), ":")
 		case strings.HasPrefix(trimmed, "SESSIONSTART"):
 			signal.Kind = SessionSignalSessionStart
 			signal.Source = SessionStartSource(strings.TrimPrefix(strings.TrimPrefix(trimmed, "SESSIONSTART"), ":"))

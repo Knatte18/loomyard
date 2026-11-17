@@ -15,8 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/pattern"
-	"github.com/Knatte18/loomyard/internal/runplan"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // merriamFixedContext is the context, in tokens, of Merriam's system prompt, tools and the skills loaded at launch.
@@ -64,8 +62,7 @@ func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, e
 		texts = append(texts, string(data))
 	}
 
-	// Read raw, with the engine blocks unresolved: the count needs no engine, and each include line counts as one line.
-	template, err := stencilstore.Read(geom.StencilsDir, "webster-template-master")
+	template, err := MasterTemplate(geom.StencilsDir)
 	if err != nil {
 		return batcher.StartBase{}, merriamBaseError("webster-template-master", err)
 	}
@@ -78,9 +75,9 @@ func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, e
 	if err != nil {
 		return batcher.StartBase{}, merriamBaseError("PATTERN.md", err)
 	}
-	overview, err := os.ReadFile(filepath.Join(geom.PlanDir, runplan.PlanOverviewFile))
+	overview, err := os.ReadFile(filepath.Join(geom.PlanDir, planOverviewFile))
 	if err != nil {
-		return batcher.StartBase{}, merriamBaseError(runplan.PlanOverviewFile, err)
+		return batcher.StartBase{}, merriamBaseError(planOverviewFile, err)
 	}
 	texts = append(texts, string(template), directive, string(overview))
 

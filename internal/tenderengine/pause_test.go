@@ -910,56 +910,6 @@ func TestPause(t *testing.T) {
 				}
 			}
 		}},
-		{"a run another machine owns is refused naming it, with no entry written and no intent recorded", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"))
-			recordCalls := 0
-
-			_, err := Pause(e.deps(), PauseRequest{
-				Slug:   "p1",
-				Owner:  func() (string, string, error) { return "other", "beam", nil },
-				Record: func() error { recordCalls++; return nil },
-			})
-
-			if err == nil || !strings.Contains(err.Error(), "machine other") || !strings.Contains(err.Error(), `"lym adopt beam"`) {
-				t.Errorf("err = %v; want a refusal naming the owner and lym adopt", err)
-			}
-			if live := e.record().Live; len(live) != 0 || recordCalls != 0 {
-				t.Errorf("live entries %+v, Record calls %d; want none of either", live, recordCalls)
-			}
-		}},
-		{"Record is called once the entry is on disk, for an already-paused scope too", func(t *testing.T) {
-			e := newEnv(t, newPair("p1"))
-			var liveAtCall []int
-			record := func() error {
-				liveAtCall = append(liveAtCall, len(e.record().Live))
-				return nil
-			}
-
-			for range 2 {
-				if _, err := Pause(e.deps(), PauseRequest{Slug: "p1", Record: record}); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			if !reflect.DeepEqual(liveAtCall, []int{1, 1}) {
-				t.Errorf("live entries at each Record call = %v; want the entry on disk both times", liveAtCall)
-			}
-		}},
-		{"a Record error ends the pause before any Esc with its way forward and leaves the entry live", func(t *testing.T) {
-			p := newPair("p1", "a")
-			p.busy["g-a"] = []bool{true}
-			e := newEnv(t, p)
-			boom := errors.New("boom")
-
-			_, err := Pause(e.deps(), PauseRequest{Slug: "p1", Record: func() error { return boom }})
-
-			if !errors.Is(err, boom) || !strings.Contains(err.Error(), `fix the cause, then run "lym tender pause p1" again`) {
-				t.Errorf("err = %v; want the wrapped error with its way forward", err)
-			}
-			if live := e.record().Live; len(live) != 1 || len(p.interrupts) != 0 {
-				t.Errorf("live entries %+v, interrupts %v; want the entry live and no Esc", live, p.interrupts)
-			}
-		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, tt.run)

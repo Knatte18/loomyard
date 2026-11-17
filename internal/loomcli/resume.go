@@ -50,12 +50,6 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		_ = bootstrapLock.Release()
 		output.Ok(out, fields)
 	}
-	// succeedAfterWake reports a run whose driver this call put to work.
-	// It releases the bootstrap lock before the stencil check, so the notice's post never runs under the lock.
-	succeedAfterWake := func(fields map[string]any) {
-		_ = bootstrapLock.Release()
-		output.Ok(out, withChangedStencils(fields, c.warnChangedStencils()))
-	}
 
 	// The status lock lives in the ephemeral scratch directory.
 	// A pair re-created from its branch lacks that directory while the status file is there.
@@ -138,7 +132,7 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 					refuse(resumeRefusal{message: err.Error()})
 					return
 				}
-				succeedAfterWake(map[string]any{"run_id": runID, "state": string(status.State), "message": "a Go driver was spawned", "pid": pid})
+				succeed(map[string]any{"run_id": runID, "state": string(status.State), "message": "a Go driver was spawned", "pid": pid})
 				return
 			}
 		}
@@ -167,7 +161,7 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		refuse(resumeRefusal{message: err.Error()})
 		return
 	}
-	succeedAfterWake(map[string]any{"run_id": runID, "state": string(status.State), "message": "the parked driver was woken", "stop_report": reportPath})
+	succeed(map[string]any{"run_id": runID, "state": string(status.State), "message": "the parked driver was woken", "stop_report": reportPath})
 }
 
 // awaitingResumability decides whether a run awaiting at row may take the halted path.
@@ -254,10 +248,7 @@ Reach for it in the task worktree after "lym loom circling accept" or
 "lym loom circling continue", or whenever a run halted at a hand-back should
 carry on with the driver it already has. A done run, and a running run whose
 driver is live, are a no-op success; a resumed run's envelope names the
-stop-report path. A run that spawns or wakes a driver lists under
-"stencils_changed" each stencil whose installed copy changed since the run
-started, and the parent orch is told to inspect each with "lym stencil diff",
-which compares it with its shipped default and its board copy.
+stop-report path.
 
 Each refusal names its way forward: "lym loom start" when no run or no usable
 driver strand exists, the circling verbs at a review segment awaiting a
@@ -267,7 +258,6 @@ finishes its post-run work or a Go driver is still settling the stop. An
 unfinished merge in the worktree is refused with the kind "merge_in_progress",
 and a run another machine owns with the kind "owned_elsewhere".
 While a pause covers this task it refuses and names "lym tender resume".
-A run the act rule waits on, such as a cancelling or cancelled one, is refused with its way forward.
 
 Example:
   lym loom resume`,
@@ -284,9 +274,6 @@ Example:
 				return nil
 			}
 			if c.refuseOwnedElsewhere(ctx, out, `run "lym loom resume" again`) {
-				return nil
-			}
-			if c.refuseByAct(ctx, out, `"lym loom resume"`) {
 				return nil
 			}
 

@@ -3,22 +3,17 @@
 // Seeded files carry the hash stamp production's files do.
 // Seed seeds a fresh temp directory.
 // SeedInto seeds a caller-given directory, such as a fixture hub's stencils directory.
-// SeedEngineBlockCopies adds the engine block copies, the edit directive's among them, that a fake engine name lacks.
-// RequireEditDirectiveOf asserts which engine's edit directive copy a rendered prompt carries.
 // Remove deletes named stencils for deliberate-absence tests.
-// Its other assertions are `t.Fatalf` on its own setup.
+// Its only assertions are `t.Fatalf` on its own setup.
 package stencilkit
 
 import (
 	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
-	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
@@ -35,54 +30,6 @@ func SeedInto(t testing.TB, dir string) {
 	t.Helper()
 	if _, err := stencilstore.Reconcile(dir, stencils.Registry(), stencilstore.ModeProduction, stencilstore.Source{}); err != nil {
 		t.Fatalf("stencilkit: seed %s: %v", dir, err)
-	}
-}
-
-// SeedEngineBlockCopies gives each named engine a copy of every engine block in dir, taken from the seeded Claude copies.
-// The edit directive is one of them.
-// A test whose fake engine name has no shipped copies calls it so the prompt render finds the engine's blocks.
-func SeedEngineBlockCopies(t testing.TB, dir string, engines ...string) {
-	t.Helper()
-	claudeBlocks := stencilstore.EngineBlockName("claude", "") + "/"
-	for _, name := range stencils.Registry().Names() {
-		block, isClaudeBlock := strings.CutPrefix(name, claudeBlocks)
-		if !isClaudeBlock {
-			continue
-		}
-		content, err := stencilstore.Read(dir, name)
-		if err != nil {
-			t.Fatalf("stencilkit: read the claude engine block %q from %s: %v", block, dir, err)
-		}
-		for _, engine := range engines {
-			path := stencilstore.Path(dir, stencilstore.EngineBlockName(engine, block))
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				t.Fatalf("stencilkit: create the directory of %s: %v", path, err)
-			}
-			if err := os.WriteFile(path, content, 0o644); err != nil {
-				t.Fatalf("stencilkit: write engine %q's copy of engine block %q: %v", engine, block, err)
-			}
-		}
-	}
-}
-
-// RequireEditDirectiveOf fails the test unless prompt carries engine's edit directive copy from stencilsDir.
-// It also fails the test when prompt carries otherEngine's copy.
-// It pins which engine's copy a producer renders, since Go chooses that fragment and the stencil prose does not.
-func RequireEditDirectiveOf(t testing.TB, stencilsDir, prompt, engine, otherEngine string) {
-	t.Helper()
-	want, err := editdirective.Directive(stencilsDir, engine)
-	if err != nil {
-		t.Fatalf("stencilkit: read the %s edit directive from %s: %v", engine, stencilsDir, err)
-	}
-	unwanted, err := editdirective.Directive(stencilsDir, otherEngine)
-	if err != nil {
-		t.Fatalf("stencilkit: read the %s edit directive from %s: %v", otherEngine, stencilsDir, err)
-	}
-	if !strings.Contains(prompt, want) {
-		t.Errorf("prompt lacks the %s edit directive %q", engine, want)
-	}
-	if strings.Contains(prompt, unwanted) {
-		t.Errorf("prompt carries the %s edit directive %q; want the %s copy only", otherEngine, unwanted, engine)
 	}
 }
 

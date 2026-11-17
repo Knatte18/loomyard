@@ -158,12 +158,6 @@
 // It refuses a beam with no commit beyond its parent.
 // The refusal names landing a member into the beam first, or `lym beam ready <slug>` to land without a pull request.
 // It refuses an origin that `landingshed.OriginMissing` finds a fact missing from.
-// Before it pushes for a pull request none records, or reopens a recorded one GitHub reports closed,
-// `judgeOpenable` refuses a beam whose pull request GitHub could not merge as it stands:
-//   - a beam with a merge task not done, naming `lym batten status` of the task, since its landing changes the beam;
-//   - a beam whose head conflicts with its parent, naming `lym beam merge-parent <slug>`.
-//
-// A beam only behind its parent opens, since GitHub merges it.
 // A recorded pull request that GitHub reports open answers `already` and commits the landing directory.
 // One reported closed is reopened and answered `reopened`.
 // One reported merged changes nothing and names `lym beam ready <slug>`, after which Finalize lands it.
@@ -207,8 +201,6 @@
 // It also carries whether GitHub's rules for the parent branch require a pull request.
 // `parentRuleRequired` reads that only when the origin allows a pull request,
 // and it reads no rule when the token is unusable or the call fails for a reason that is not transient.
-// `ParentConflicts` reads the parent tips `ParentUnmerged` reads.
-// It merges each into the beam's head in memory through `fabricengine`'s `ConflictsWith`.
 //
 // # land
 //
@@ -333,6 +325,8 @@
 //
 // `stop [slug]` resolves its target as `start` does and calls `orchcli.BeamDown`.
 // That removes the orch strand and ends the beam's dobby through `runproc.EndRole`, each only when live.
+// For the prime it then ends the registered coverage-map upkeep pass, whether or not the dobby was live.
+// It does so through `runproc.EndRole` with `runproc.RoleTestMap`.
 // It prints what it stopped and takes no `--all`.
 //
 // # status
@@ -380,6 +374,15 @@
 // `ArchiveOwner` is through `archiveOwnerTips`.
 // `archiveOwnerTips` archives the worktree's own pair, named `root` for the prime.
 // It also archives the pair of each run `battencli.DobbyRuns` lists under it, through `fabricengine.ArchiveOwnerTips`.
+// For the prime, `hubDobbyDeps` also fills the coverage-map upkeep seams.
+// `startTestMap` starts `lym gate testmap --upkeep` with the binary `selfexec.LymBinary` names.
+// The process runs in the prime's anchor and its own process group.
+// It registers itself under `runproc.HubOwner` as `runproc.RoleTestMap`; the dobby registers nothing.
+// Its exit, with the error text its output carries, is delivered once.
+// `testMapRunning` reads whether a live `runproc.RoleTestMap` record stands under `runproc.HubOwner`.
+// The pass's exit record is read through `testcover.ReadExitRecord`.
+// The prime's HEAD is read through `fabricengine.Fabric.HeadSHA`.
+// The slot count is read through `gateslot.LoadConfig` over the prime's layers.
 // It prints `already_running` when the lock stays held past the lock wait, with nothing registered.
 //
 // `runDobbyWith` takes the wiring and the notice as seams, and each exit it takes before `Run` leaves a trace:

@@ -30,12 +30,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -59,7 +57,7 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 			fake := &fakeWebsterRun{}
 			anchorPath := t.TempDir()
 			writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
-			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, c, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, c)
 		}},
 	} {
 		t.Run("CommitSeam"+tt.name, func(t *testing.T) {
@@ -148,7 +146,7 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 		make func(anchorPath string) shedengine.ShedProducer
 	}{
 		{"Webster", func(a string) shedengine.ShedProducer {
-			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: a}, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: a})
+			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: a}, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil })
 		}},
 	} {
 		t.Run("BrokenBatcherConfig"+tt.name, func(t *testing.T) {
@@ -568,9 +566,9 @@ func TestNewPlanGate(t *testing.T) {
 	// The cards that the Webster run record holds as done are history:
 	// a run moved back to the plan review after Webster built card 1 must not wedge on card 1's own landed Create.
 	builtRepo := map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"}
-	doneBatchOne := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
+	doneBatchOne := &websterengine.State{Batches: map[int]*websterengine.BatchState{
 		1: {Slug: "first-card", Cards: []string{"01-first-card"}, Terminal: true, Status: websterengine.DigestStatusDone},
-	}}}
+	}}
 	saveState := func(t *testing.T, anchorPath string, st *websterengine.State) {
 		t.Helper()
 		if err := websterengine.SaveState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath), st); err != nil {
@@ -659,9 +657,9 @@ func TestNewPlanGate(t *testing.T) {
 		}
 	}
 	batchOne := func(terminal bool, status string, hashes map[string]string) *websterengine.State {
-		return &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
+		return &websterengine.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "first-card", Cards: []string{"01-first-card"}, Terminal: terminal, Status: status, CardHashes: hashes},
-		}}}
+		}}
 	}
 
 	for _, tt := range []struct {
@@ -709,43 +707,6 @@ func TestNewPlanGate(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("WeaversEditedDoneCardFails", func(t *testing.T) {
-		t.Parallel()
-		anchorPath := t.TempDir()
-		seedPlanFormatFixture(t, anchorPath, true)
-		st := &weaverengine.State{State: runplan.State{Batches: map[int]*runplan.BatchState{
-			1: {Slug: "first-card", Cards: []string{"01-first-card"}, Terminal: true, Status: runplan.DigestStatusDone, CardHashes: map[string]string{"01-first-card": cardHash(t, anchorPath)}},
-		}}}
-		if err := weaverengine.SaveState(weaverengine.Dir(anchorPath), weaverengine.ScratchDir(anchorPath), st); err != nil {
-			t.Fatalf("SaveState: %v", err)
-		}
-		appendToCard(t, anchorPath)
-
-		result, err := NewPlanGate(anchorPath, t.TempDir(), "", planglyph.NewIndex(fabricengine.NewReferenceRule()), PlanContext{})()
-		if err != nil {
-			t.Fatalf("gate() error = %v; want nil", err)
-		}
-		if result.Passed || !strings.Contains(result.Findings, "done-card-edited/01-first-card") {
-			t.Errorf("gate() = %+v; want a done-card-edited failure on card 1 from Weaver's record", result)
-		}
-	})
-
-	t.Run("BothImplementersBegunIsAReturnedError", func(t *testing.T) {
-		t.Parallel()
-		anchorPath := t.TempDir()
-		seedPlanFormatFixture(t, anchorPath, true)
-		plantWebsterBegun(t, anchorPath)
-		plantWeaverBegun(t, anchorPath)
-
-		result, err := NewPlanGate(anchorPath, t.TempDir(), "", planglyph.NewIndex(fabricengine.NewReferenceRule()), PlanContext{})()
-		if err == nil || !errors.Is(err, weaverengine.ErrImplementerConflict) {
-			t.Errorf("gate() error = %v; want one wrapping ErrImplementerConflict", err)
-		}
-		if result.Passed || result.Findings != "" {
-			t.Errorf("gate() result = %+v; want the zero GateResult alongside a returned error", result)
-		}
-	})
 
 	t.Run("UnreadableDoneCardIsAReturnedError", func(t *testing.T) {
 		t.Parallel()
@@ -1206,9 +1167,9 @@ func TestValidatePlan_CardChecks(t *testing.T) {
 		dropClause     = "drop untagged or the tier"
 	)
 	tierTags := []string{"tier0", "tier1", "tier2", "tier3"}
-	doneBatchOne := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
+	doneBatchOne := &websterengine.State{Batches: map[int]*websterengine.BatchState{
 		1: {Slug: "first-card", Cards: []string{"01-first-card"}, Terminal: true, Status: websterengine.DigestStatusDone},
-	}}}
+	}}
 
 	type cardCheckCase struct {
 		name     string

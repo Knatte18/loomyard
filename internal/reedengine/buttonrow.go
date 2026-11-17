@@ -21,12 +21,6 @@ const (
 	// The pinned click line reads it to change into the directory before the click verb starts.
 	buttonDirOption = "@lym_button_dir"
 
-	// orchDirOption is the session user option holding the directory whose orch the session's Slack toggle switches.
-	// The directory is one word quoted in reed's shell dialect.
-	// It is the session's own anchor for the prime and a beam, and the empty word for a task, whose session has no toggle.
-	// Like the bar's other options it is display only, and no Go decision reads it.
-	orchDirOption = "@lym_orch_dir"
-
 	// buttonRangePrefix starts the user range name of every drawn button, followed by the button's index in the spec.
 	// With a two-digit index the name stays within tmux's 15-byte limit for range=user|X.
 	buttonRangePrefix = "lymbtn"
@@ -68,35 +62,31 @@ func buttonRangeFormat(index int, label string) string {
 }
 
 // composeButtonRowLocked renders the session's buttons: the plain row, the agent row and the spec a click reads.
-// It also returns the orch directory: the session's own anchor for the prime and a beam, and empty for a task.
 // The plain row is drawn in a window whose active pane is no strand pane; the agent row is drawn in every window.
 // A standalone geometry, a failed button context, an unresolvable shell or a failed beam lookup yields empty rows.
 // In each case the spec is zero, and line 3 shows follow alone.
 // Reed's entries come before the machine's, each valid entry numbered in that order.
 // An entry using {beam} is left out, with a Warn, when the beam's directory is absent on this machine.
 // An entry whose filled ask text holds a ',' is left out, with a Warn, since tmux splits a prompt at its commas.
-func (e *Engine) composeButtonRowLocked() (plain, agent string, spec buttonSpec, orchDir string) {
+func (e *Engine) composeButtonRowLocked() (plain, agent string, spec buttonSpec) {
 	if e.geom.Buttons == nil {
-		return "", "", buttonSpec{}, ""
+		return "", "", buttonSpec{}
 	}
 	ctx, err := e.geom.Buttons()
 	if err != nil {
 		logger.Warn("reed: could not read the button context, rendering no buttons", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		return "", "", buttonSpec{}, ""
+		return "", "", buttonSpec{}
 	}
 	shellPath, err := resolveShellPath(e.cfg.Shell)
 	if err != nil {
 		logger.Warn("reed: the shell does not resolve, rendering no buttons", "socket", e.Socket(), "session", e.SessionName(), "shell", e.cfg.Shell, "err", err)
-		return "", "", buttonSpec{}, ""
+		return "", "", buttonSpec{}
 	}
 
 	entries := placeButtons(e.cfg.Buttons, ctx.Place, "reed.yaml (the hub base or the worktree file)")
 	entries = append(entries, placeButtons(ctx.MachineButtons, ctx.Place, "desktop.machine.yaml")...)
 	if len(entries) == 0 {
-		return "", "", buttonSpec{}, ""
-	}
-	if ctx.Place != ButtonPlaceTask {
-		orchDir = e.geom.AnchorPath
+		return "", "", buttonSpec{}
 	}
 
 	values := map[string]string{"slug": ctx.Slug, "worktree": ctx.Worktree, "session": ctx.Session}
@@ -106,7 +96,7 @@ func (e *Engine) composeButtonRowLocked() (plain, agent string, spec buttonSpec,
 		beam, err = ctx.Beam()
 		if err != nil {
 			logger.Warn("reed: could not resolve the beam, rendering no buttons", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-			return "", "", buttonSpec{}, ""
+			return "", "", buttonSpec{}
 		}
 		if beam.Anchor != "" {
 			values["beam"] = beam.Anchor
@@ -150,9 +140,9 @@ func (e *Engine) composeButtonRowLocked() (plain, agent string, spec buttonSpec,
 		}
 	}
 	if len(spec.Entries) == 0 {
-		return "", "", buttonSpec{}, ""
+		return "", "", buttonSpec{}
 	}
-	return plain, agent, spec, orchDir
+	return plain, agent, spec
 }
 
 // usesBeamPlaceholder reports whether any entry's run, confirm or ask text names {beam}.
@@ -165,29 +155,25 @@ func usesBeamPlaceholder(entries []buttonEntry) bool {
 	return false
 }
 
-// pinButtonRowLocked sets the session's five button options on target.
-// They are the two row options, the spec option, the run directory option and the orch directory option.
+// pinButtonRowLocked sets the two row options, the spec option and the run directory option on target.
 // It sets them in one tmux invocation, so no click sees a row and a spec from different renders.
-// An empty render sets all five to the empty string.
+// An empty render sets all four to the empty string.
 // A failure is logged at Warn and ignored, like every status pin.
 // Assumes the op lock is already held.
 func (e *Engine) pinButtonRowLocked(target string) {
-	plain, agent, spec, orchDir := e.composeButtonRowLocked()
-	var specJSON, dirWord, orchDirWord string
+	plain, agent, spec := e.composeButtonRowLocked()
+	var specJSON, dirWord string
 	if len(spec.Entries) > 0 {
 		// A struct of strings, numbers and bools cannot fail to marshal.
 		encoded, _ := json.Marshal(spec)
 		specJSON = string(encoded)
-		sh := shell.ForGOOS()
-		dirWord = sh.Quote(spec.Dir)
-		orchDirWord = sh.Quote(orchDir)
+		dirWord = shell.ForGOOS().Quote(spec.Dir)
 	}
 	argv := []string{
 		"set-option", "-t", target, buttonRowPlainOption, plain, ";",
 		"set-option", "-t", target, buttonRowAgentOption, agent, ";",
 		"set-option", "-t", target, buttonSpecOption, specJSON, ";",
-		"set-option", "-t", target, buttonDirOption, dirWord, ";",
-		"set-option", "-t", target, orchDirOption, orchDirWord,
+		"set-option", "-t", target, buttonDirOption, dirWord,
 	}
 	if err := e.tmux.run(argv...); err != nil {
 		logger.Warn("reed: failed to pin the button row", "socket", e.Socket(), "session", e.SessionName(), "err", err)

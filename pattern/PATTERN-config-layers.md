@@ -25,9 +25,7 @@ Machine alone opens a key to the machine layer.
   and the perch's rounds, rubric and whole-diff read are unchanged.
 - **Machine**: the key's value is a property of the machine.
   It is a bound on a resource every worktree of the hub on that machine shares, or a fact of the machine.
-  It may also be a convention of the person working on that machine.
-  Examples are the command run after lym opens a window, an `env.yaml` variable naming a path on its disk,
-  and fabric's `branch_prefix`.
+  Examples are the command run after lym opens a window and an `env.yaml` variable naming a path on its disk.
   It opens the key to the machine layer and keeps it closed to the local layer.
 
 The test asks what a key's value can do to a guard, not what kind of key it is.
@@ -89,7 +87,7 @@ and the newer binary's next walk adds the key back, since the older one wrote it
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to the embedded template);
 a caller adopts exactly one, except `runprofile`.
 
-- Degrading callers: `{shuttleengine, claudeengine, reedengine, websterengine, weaverengine, batcher, orchengine, loggerconfig, battenshed, languageconfig, agentconfig, lenses, desktophook, heddleengine, hibernateconfig, ideconfig, envconfig, reportconfig, creelconfig, slackengine}`.
+- Degrading callers: `{shuttleengine, claudeengine, reedengine, websterengine, batcher, orchengine, loggerconfig, battenshed, languageconfig, agentconfig, lenses, desktophook, heddleengine, hibernateconfig, ideconfig, envconfig, reportconfig, creelconfig, slackengine}`.
 - Strict callers: `{fabricengine, boardengine, loomengine, landingshed, gateslot, configcli, configreg}`.
   `configcli` loads strictly only to validate a hub-wide module's file before committing it.
   `configreg` loads strictly only to answer a recipe row's setting.

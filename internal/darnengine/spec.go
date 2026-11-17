@@ -62,8 +62,7 @@ type DarnInputs struct {
 	// LanguageSkills are the hub's language skills the writer loads after the darn role's agents.yaml skills.
 	// Empty means none.
 	LanguageSkills []string
-	// SubagentModel is the model the writer on Claude gives the fresh subagents it hands work to.
-	// A writer on Codex runs them on its own model.
+	// SubagentModel is the model name the writer passes to the Agent tool for the fresh subagents it hands work to.
 	SubagentModel string
 	// GateFixed reports that a cold fixer clears the writer's verify gate,
 	// so the writer and its subagents run no gate and the writer asks its parent for a reported failure's single run.
@@ -118,7 +117,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		logger.Warn("darn: friction directive failed, continuing without one", "role", darnRole, "stencil", darnStencilName, "error", err)
 		frictionDirective = ""
 	}
-	makeChange, err := makeChangeList(in.StencilsDir, shuttleengine.NewModelChoice(resolved).Engine, in.GateFixed, in.SubagentModel)
+	makeChange, err := makeChangeList(in.StencilsDir, in.GateFixed, in.SubagentModel)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: Step 4 list: %w", err)
 	}
@@ -150,16 +149,15 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 	}, nil
 }
 
-// makeChangeList returns the writer prompt's Step 4 list, worded for engine, the engine the writer launches on.
-// It reads the list at call time from stencilsDir and fills subagentModel into it;
-// only the Claude wording names that model.
+// makeChangeList returns the writer prompt's Step 4 list.
+// It reads the list at call time from stencilsDir and fills subagentModel into it.
 // It uses the gated fragment when gateFixed is set, and the ungated one otherwise.
-func makeChangeList(stencilsDir, engine string, gateFixed bool, subagentModel string) (string, error) {
+func makeChangeList(stencilsDir string, gateFixed bool, subagentModel string) (string, error) {
 	name := makeChangeStencil
 	if gateFixed {
 		name = makeChangeGatedStencil
 	}
-	content, err := stencilstore.ReadForEngine(stencilsDir, engine, name)
+	content, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {
 		return "", err
 	}

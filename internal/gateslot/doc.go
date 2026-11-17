@@ -34,6 +34,12 @@
 // It fills each Holder's slot number from its record's file name, which the record itself never carries.
 // Pool.Draining reports whether the drain lock is held, and creates no file in a pool that never had one.
 //
+// Pool.TryAcquire takes a free slot at once or none, and takes none while the drain lock is held.
+// Pool.TryAcquireSpare takes one only while at least two are free and the drain lock is not held.
+// One thus stays free after the take, and a pool of fewer than two slots gives none.
+// Pool.Contended reports whether every slot but a lease's own is held, or the drain lock is held:
+// the state in which a spare holder gives its slot back.
+//
 // # Inheritance
 //
 // A slot's environment is Lease.InheritEnv for a tier run and HolderEnv for a non-tier holder.
@@ -62,9 +68,10 @@
 // The non-tier holders hold one slot and set their own Go flags through HolderEnv.
 // Each passes the `-p` value it reads from the pool's Limits at its acquire,
 // so a hub that declares `tier0` bounds them by its parallel and a hub that declares none adds no `-p`.
-// The redundancy report step of `lym gate test` is one: it takes one slot after the call's tiers released theirs.
-// `lym gate redundant` is another.
-// It waits for its slot once it has a candidate to check by mutation, and holds it to its end.
+// `lym gate testmap` is one.
+// A call naming packages waits for its slot and holds it from its first build to its end.
+// A pass takes its slot through Pool.TryAcquireSpare and gives it back once Pool.Contended reports true.
+// The redundancy report step of `lym gate test` is another: it takes one slot after the call's tiers released theirs.
 //
 // # Prebuilt store
 //
@@ -81,15 +88,13 @@
 // The override is never reconciled and is read at every acquire; every other key stays hub-file only.
 // `cli_wait_sec`, `go_parallel`, `guard_tier` and `test_map_max_age_days` are retired keys:
 // every load drops them, in the hub and machine layers alike, and reconcile prunes them.
-// `lym gate test --map` rebuilds each map whole whatever its age, so `test_map_max_age_days` bounds nothing.
+// `lym gate testmap` rebuilds no map for its age, so `test_map_max_age_days` bounds nothing.
 // The slot wait of a call that runs in this process has no cap,
 // and a capped call's front is bounded by the caller role's keep-warm cap.
 // `tier_parallel` replaces `go_parallel`.
 // The guard step runs each guard test under the tier its file belongs to, so no key names one tier for them all.
 // LoadConfig reads the file strictly and refuses any value below 1 naming its key.
-// `busy_quit_sec` and `memory_quit_mb` are the exceptions:
-// each accepts 0, which turns its guard off, and is refused below it.
-// Config.MemoryQuit returns `memory_quit_mb` in bytes.
+// `busy_quit_sec` is the exception: it accepts 0 and is refused below it.
 // Config.Limits converts the config to the Limits a Pool reads.
 // An absent hub file is ErrConfigAbsent with the way forward `lym fabric reconcile`.
 // Outside every hub, where the dirs tell no board, the file is the worktree's own.
@@ -100,11 +105,12 @@
 // A tier is written whole with one `lym config gate --set 'tiers.tierN={...}'` flow mapping.
 // It may also be written one key at a time, as `--set tiers.tier0.env.LYM_TEST_TIER=0` or `--set build.timeout_min=10`.
 // A key no tier or build step holds is refused.
-// `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`,
+// `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|coverage|all}`,
 // so a hub file that sets one key keeps the template's value for every other.
-// The template gives `webster-fix`, `darn-write`, `code-burler-fix` and `pr-review` the `diff` scope.
-// The scope `coverage` is retired, since the gate always runs whole packages and selects no test from a coverage map.
-// MigrateConfig rewrites it to `diff`, and the load refuses it with that way forward.
+// ScopeCoverage is the `diff` scope with each importing package narrowed to the tests its coverage map selects.
+// The template gives it to `webster-fix`, `darn-write` and `code-burler-fix`, and keeps `pr-review` on `diff`.
+// It is a new value, so a hub file holding `diff` keeps its meaning,
+// and a binary that predates the value refuses a hub file holding it until it updates.
 // `tier_parallel` is an open map from a tier name to this machine's parallel for it.
 // A GateKey may also hold `lints`, the lint steps its call runs after its tiers, each LintComments or LintPattern.
 // The template's `card` key lists both.
@@ -147,15 +153,13 @@
 // A machine layer holding part of `tiers` would therefore replace all of the hub's tiers.
 // A tier's `manual: true` keeps it out of a `lym gate test --upto` range, so it runs only when named by number.
 // A declared tier's effective Parallel is its `tier_parallel` entry from whichever layer sets one, else 1.
-// A tier's `memory_mb` caps the memory its command holds with every process it starts;
-// Tier.MemoryLimit returns it in bytes, and a tier without one runs uncapped.
 // A standalone worktree has no machine layer and sets the key in its own file.
 //
 // LoadConfig refuses at load, naming the key and `lym config gate`:
 // a tier lacking `command`, `timeout_min` or `counter`;
 // a tier lacking `all_targets` when its command holds `{targets}` or `{test_targets}`;
 // `manual: true` on `tier0`, the tier a call with no tier flag runs;
-// `parallel`, `timeout_min` or `memory_mb` below 1, `slots` neither `all` nor at least 1;
+// `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1;
 // a counter other than `go-json` or `vstest`, a scoper other than `go`, `none` or `dotnet`;
 // a tier `filter` whose command holds no `{filter}`;
 // a `test_timeout_min` below 1 or on a command that holds no `{test_timeout}`;
@@ -164,26 +168,17 @@
 // a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`;
 // a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces;
 // a `tier_parallel` entry that is no integer of at least 1;
-// a gate key whose scope is not `card`, `diff` or `all`, and the retired `coverage`, which names `lym fabric reconcile`;
+// a gate key whose scope is not `card`, `diff`, `coverage` or `all`;
 // a `card` scope on any key but `card` and `batch`; a lint other than `comments` or `pattern`;
 // a report other than ReportRedundancy, `redundancy`.
 // A GateKey may also hold `fixer`, a model-spec naming the cold fixer an agent's red call hands its failures to.
 // Only the `card` key may hold one; the template sets `sonnet[medium]` there, and an empty value turns the fixer off.
 // `fixer_timeout_min` bounds how long the callers of a cold gate fixer wait for it.
 // LoadConfig refuses a value below 1, and Config.FixerTimeout returns it as a duration.
-// `lym gate test --map` builds coverage maps under three bounds.
+// `lym gate testmap` builds coverage maps under two bounds.
 // `redundancy_build_timeout_min` bounds each build in minutes.
 // `redundancy_test_timeout_sec` bounds each test in seconds.
-// `redundancy_test_memory_mb` caps the memory of each test and of every process it starts, in megabytes.
-// Config.RedundancyTestMemory returns it in bytes.
-// The redundancy report step of `lym gate test` and the mutation check of `lym gate redundant` take the three bounds too.
-// A mutant run past the test bound or the memory cap counts as a kill in `lym gate redundant`.
-// `lym gate test --map` and `lym gate redundant` run fewer tests side by side when memory is short.
-// That is when the limit they sit under leaves less than the caps of those tests together.
-// A map call runs each mapped tier's tests up to that tier's parallel.
-// A tier that sets `memory_mb` fits no more tests than its memory divides into `redundancy_test_memory_mb` caps.
-// It holds the larger of tier0's and tier1's slot asks, where `slots: all` ranks above any count.
-// The report step has two bounds of its own.
+// The redundancy report step of `lym gate test` takes the two redundancy bounds too, and two of its own.
 // `redundancy_max_tests` caps the tests it judges in one call.
 // `redundancy_budget_min` bounds, in minutes, its builds and tests once it holds its slot.
 // They are cross-pair keys, since every worktree of the hub reads the maps, and LoadConfig refuses a value below 1.
@@ -215,8 +210,7 @@
 // `landing` becomes `parent-align` and `finalize` with scope `all`;
 // it also becomes `darn-write` and `code-burler-fix` with scope `diff`;
 // `final` becomes `webster` with scope `all`; `round` becomes `webster-fix` with scope `diff`;
-// a `card` or `batch` list becomes a mapping with scope `card`;
-// a gates entry with the retired scope `coverage` takes scope `diff`.
+// a `card` or `batch` list becomes a mapping with scope `card`.
 // A `merge-in` key is renamed to `parent-align` with its value, and dropped beside an existing `parent-align`.
 // A key the file already holds in the new shape keeps its value, and a second pass changes nothing.
 // SeedAdoptGate runs over the hub base file alone, through the registry's hub-base step.
@@ -235,17 +229,14 @@
 //	Recipe                         Row                                         Key              Scope
 //	loom                           Webster, per card                           card             card
 //	loom                           Webster, per batch                          batch            card
-//	tapestry                       Weaver, per card                            card             card
-//	tapestry                       Weaver, per batch                           batch            card
-//	loom                           Webster, verify fixers                      webster-fix      diff
+//	loom                           Webster, verify fixers                      webster-fix      coverage
 //	loom                           Webster, end gate                           webster          all
-//	tapestry                       Weaver, end gate                            webster          all
 //	loom                           Parent-Align                                parent-align     all
-//	tapestry, darn, sampler        Code-Burler-Fix                             code-burler-fix  diff
+//	tapestry, darn, sampler        Code-Burler-Fix                             code-burler-fix  coverage
 //	tapestry, darn, pawl, sampler  PR-Review                                   pr-review        diff
 //	tapestry, darn, sampler        Finalize                                    finalize         all
 //	adopt                          lym adopt check <subject>, in its worktree  adopt            all
-//	darn                           Darn-Write                                  darn-write       diff
+//	darn                           Darn-Write                                  darn-write       coverage
 //	darn                           Darn-Write, Code-Burler-Fix, Finalize       the row's key    the touched trees' targets
 //
 // The last line holds for a diff wholly under darn's `tree_scope`:

@@ -1,5 +1,0 @@
-{"slug":"decision-record-replace","session":"2c77f780-6db3-488f-8582-b5a21ede3ac9","kind":"main","turn":21,"tool":"Bash","refusal":"rm on a computed path, one built from a variable or a command substitution, is refused here because "}
-{"slug":"decision-record-replace","session":"91782c57-a930-4a5b-bad6-c3aa647c3a73","kind":"main","turn":20,"tool":"Bash","refusal":"sed -i, perl -i, and a heredoc, redirect or tee into a source file are refused here; change a file b"}
-{"slug":"decision-record-replace","session":"e44fb294-d2a8-47c2-be3e-54d81bbcadd7","kind":"main","turn":14,"tool":"Bash","refusal":"sed -i, perl -i, and a heredoc, redirect or tee into a source file are refused here; change a file b"}
-{"slug":"test-only-functions-in-prod","session":"agent-ae723f78b66143f69","kind":"fork","turn":7,"tool":"Bash","refusal":"sed -i, perl -i, and a heredoc, redirect or tee into a source file are refused here; change a file b"}
-{"slug":"codex-same-as-claude","session":"agent-acbe71dc368ac38f8","kind":"fork","turn":3,"tool":"Bash","refusal":"python and python3 are refused in every lym session, a version check included, so never probe for Py"}

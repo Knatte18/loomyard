@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -23,7 +22,10 @@ func TestReflect_UnwritableRecord_FailedNoSpawn(t *testing.T) {
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
 	writeNote(t, deps, "note-1", "x")
-	permkit.Chmod(t, deps.FrictionDir, 0o555)
+	if err := os.Chmod(deps.FrictionDir, 0o555); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(deps.FrictionDir, 0o755) })
 
 	report, err := Reflect(deps)
 	if err != nil {

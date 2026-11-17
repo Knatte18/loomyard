@@ -39,14 +39,15 @@ type TacklerPromptInput struct {
 	CaseBriefPath string
 }
 
-// RenderTacklerPrompt composes the tackler session's launch prompt for the engine named engine.
+// tacklerPrompt composes the tackler session's launch prompt.
 // It reads the tackler stencil from stencilsDir through stencilstore.Read.
-// It fills the stencil with the input, the no-parent directive and the edit directive of engine.
+// It fills the stencil with the input and two directives:
+// parentdirective.Directive(stencilsDir, "", false) and editdirective.Directive(stencilsDir).
 // The no-parent directive is rendered because the verdict file is the tackler's only channel.
 // An empty report path is filled as the literal "none".
 // An empty Recipe or GotoRows is a wiring fault and is refused, naming the marker.
 // A read or fill error is returned wrapped with the stencil's name.
-func RenderTacklerPrompt(stencilsDir, engine string, in TacklerPromptInput) (string, error) {
+func tacklerPrompt(stencilsDir string, in TacklerPromptInput) (string, error) {
 	for _, required := range []struct{ marker, value string }{{"recipe", in.Recipe}, {"goto_rows", in.GotoRows}} {
 		if required.value == "" {
 			return "", fmt.Errorf("sheddriver: tackler prompt: the %s marker is empty", required.marker)
@@ -56,7 +57,7 @@ func RenderTacklerPrompt(stencilsDir, engine string, in TacklerPromptInput) (str
 	if err != nil {
 		return "", err
 	}
-	editDirective, err := editdirective.Directive(stencilsDir, engine)
+	editDirective, err := editdirective.Directive(stencilsDir)
 	if err != nil {
 		return "", err
 	}
@@ -96,11 +97,9 @@ func pathOrNone(path string) string {
 }
 
 // tacklerSpec composes the shuttleengine.Spec the tackler session launches from.
-// It takes the composed prompt and the verdict and case-brief paths.
-// It also takes the engine the prompt was rendered for and the resolved tackler settings.
+// It takes the composed prompt, the verdict and case-brief paths and the resolved tackler settings.
 //
 // The prompt is the tackler's whole procedure.
-// PromptEngine is engine, which must be the engine settings' model choice resolves to.
 // ConfigRole is the tackler role, whose skills come from agents.yaml (role `tackler`).
 // OutputFiles holds only verdictPath, so shuttle's completion check reads the verdict through allOutputFilesExist;
 // reed drops a finished strand on resume.
@@ -115,10 +114,9 @@ func pathOrNone(path string) string {
 // ForkSubagents is false and Parent is empty: the tackler spawns nothing and has no session to message.
 // APIErrorRetries is SettlerAPIErrorRetries.
 // A turn the provider's API ended is re-sent; past the re-sends the run ends and the stop is handed back.
-func tacklerSpec(prompt, verdictPath, caseBriefPath, engine string, settings TacklerSettings) shuttleengine.Spec {
+func tacklerSpec(prompt, verdictPath, caseBriefPath string, settings TacklerSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:          prompt,
-		PromptEngine:    engine,
 		ConfigRole:      agentconfig.RoleTackler,
 		OutputFiles:     []string{verdictPath},
 		ModelChoice:     settings.ModelChoice,

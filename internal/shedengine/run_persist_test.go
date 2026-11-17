@@ -79,8 +79,6 @@ func TestRun_ExternalWriteSurvivesPersist(t *testing.T) {
 			cur["pause_requested"] = true
 			cur["product"] = replacedProduct
 			cur["external_key"] = "kept"
-			cur["cancel"] = map[string]any{"started_at": "2026-11-15T10:00:00Z", "machine": "neve", "remove": false}
-			cur["pause_intent"] = map[string]any{"by": "orch", "at": "2026-11-15T09:00:00Z"}
 		})
 		return Done, OutputPointer{}, nil
 	}
@@ -106,14 +104,6 @@ func TestRun_ExternalWriteSurvivesPersist(t *testing.T) {
 	got := readStatus(t, statusPath, statusLockPath)
 	if got.State != StatePaused {
 		t.Errorf("persisted State = %q; want %q", got.State, StatePaused)
-	}
-	wantCancel := &CancelIntent{StartedAt: "2026-11-15T10:00:00Z", Machine: "neve"}
-	if !reflect.DeepEqual(got.Cancel, wantCancel) {
-		t.Errorf("persisted Cancel = %+v; want %+v", got.Cancel, wantCancel)
-	}
-	wantPauseIntent := &PauseIntent{By: "orch", At: "2026-11-15T09:00:00Z"}
-	if !reflect.DeepEqual(got.PauseIntent, wantPauseIntent) {
-		t.Errorf("persisted PauseIntent = %+v; want %+v", got.PauseIntent, wantPauseIntent)
 	}
 	var gotProduct, wantProduct any
 	if err := json.Unmarshal(got.Product, &gotProduct); err != nil {

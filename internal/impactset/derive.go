@@ -72,23 +72,23 @@ func listPackages(ctx context.Context, worktree string) ([]pkg, error) {
 	return parseGoList(string(output), absolute), nil
 }
 
-// impactedFor returns the impacted set of the changed paths over the graph.
-// When the diff cannot be narrowed to packages, it returns a nil set and the reason as fallback.
-func impactedFor(graph moduleGraph, changedPaths []string) (set map[string]bool, fallback string) {
-	changed := map[string]bool{}
+// impactedFor returns the impacted set of the changed paths over the graph, and the packages the paths touch.
+// When the diff cannot be narrowed to packages, it returns nil sets and the reason as fallback.
+func impactedFor(graph moduleGraph, changedPaths []string) (set, changed map[string]bool, fallback string) {
+	changed = map[string]bool{}
 	for _, changedPath := range changedPaths {
 		if changedPath == "go.mod" || changedPath == "go.sum" {
-			return nil, changedPath + " changed"
+			return nil, nil, changedPath + " changed"
 		}
 		importPath, mapped, ok := packageOfPath(graph, changedPath)
 		if !ok {
-			return nil, fmt.Sprintf("%s is neither a Markdown file nor under a Go package directory", changedPath)
+			return nil, nil, fmt.Sprintf("%s is neither a Markdown file nor under a Go package directory", changedPath)
 		}
 		if mapped {
 			changed[importPath] = true
 		}
 	}
-	return graph.impactedSet(changed), ""
+	return graph.impactedSet(changed), changed, ""
 }
 
 // packageOfPath maps one changed path to the import path of the package it belongs to.

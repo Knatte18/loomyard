@@ -14,7 +14,6 @@ The cause is `{{.cause}}`:
 - `budget`: the soft-cap rule could not read its inputs: the round's review, its ledger or the previous round's ledger.
 - `hard-cap`: the round is at or past the perch's hard cap with a design-wrong finding still open, or a continue was recorded there.
 - `decision`: the round's review holds a finding the review cannot settle itself.
-- `stalemate`: the review target stayed unchanged for the configured number of rounds in a row.
 
 {{.cause_detail}}
 

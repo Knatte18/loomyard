@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -251,8 +250,6 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 		"unlanded":   `{"state":"done","current_producer":"Worktree-Teardown"}`,
 		"unreadable": `{"state":"done","current_producer":"Worktree-Teardown","history":[{"producer":"Land","outcome":"done","output":"","at":"2026-10-31T10:00:00Z"}]}`,
 		"pairless":   `{"state":"done","current_producer":"Worktree-Teardown"}`,
-		"cancelling": `{"state":"running","current_producer":"Run-Shed","cancel":{"started_at":"2026-11-15T09:00:00Z","machine":"other-machine","remove":false}}`,
-		"paused":     `{"state":"paused","current_producer":"Run-Shed"}`,
 	}
 	for slug, status := range statuses {
 		hubforge.AddPair(t, h, slug)
@@ -269,14 +266,11 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 		t.Fatalf("remove the pair of pairless: %v", err)
 	}
 
-	// "ahead", "unreadable", "cancelling" and "paused" stay open on the board.
-	// "landed" is done, and the others are gone from it.
+	// "ahead" and "unreadable" stay open on the board, "landed" is done, and the others are gone from it.
 	board := `{"version":1,"entries":[` +
 		`{"id":1,"slug":"ahead","title":"Ahead","kind":"task","labels":["bug"]},` +
 		`{"id":2,"slug":"landed","title":"Landed","kind":"task","labels":["bug"],"status":"done"},` +
-		`{"id":3,"slug":"unreadable","title":"Unreadable","kind":"task","labels":["bug"]},` +
-		`{"id":4,"slug":"cancelling","title":"Cancelling","kind":"task","labels":["bug"]},` +
-		`{"id":5,"slug":"paused","title":"Paused","kind":"task","labels":["bug"]}]}`
+		`{"id":3,"slug":"unreadable","title":"Unreadable","kind":"task","labels":["bug"]}]}`
 	if err := os.WriteFile(filepath.Join(h.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
 	}
@@ -298,34 +292,14 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 		pastLand, landed        bool
 		commit                  string
 		entryEnded, pairPresent bool
-		cancelMarker            bool
-	}
-	type judged struct {
-		run    runfsm.State
-		answer runfsm.Answer
-		reason runfsm.Reason
 	}
 	got := map[string]landing{}
-	gotJudged := map[string]judged{}
 	for _, view := range views {
-		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit, view.EntryEnded, view.PairPresent, view.CancelMarker}
-		gotJudged[view.Slug] = judged{view.Run, view.Verdict.Answer, view.Verdict.Reason}
-	}
-	wantJudged := map[string]judged{
-		"ahead":      {runfsm.Running, runfsm.AnswerAct, ""},
-		"paused":     {runfsm.Paused, runfsm.AnswerWait, runfsm.ReasonPaused},
-		"cancelling": {runfsm.Cancelling, runfsm.AnswerWait, runfsm.ReasonCancelling},
-	}
-	for slug, want := range wantJudged {
-		if gotJudged[slug] != want {
-			t.Errorf("DobbyRuns() %s Run, Verdict = %+v; want %+v", slug, gotJudged[slug], want)
-		}
+		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit, view.EntryEnded, view.PairPresent}
 	}
 	want := map[string]landing{
 		"ahead":      {pairPresent: true},
-		"paused":     {pairPresent: true},
-		"cancelling": {pairPresent: true, cancelMarker: true},
-		"landed":     {pastLand: true, landed: true, commit: "abc123", entryEnded: true, pairPresent: true},
+		"landed":     {true, true, "abc123", true, true},
 		"unlanded":   {pastLand: true, entryEnded: true, pairPresent: true},
 		"unreadable": {pastLand: true, landed: true, pairPresent: true},
 		"pairless":   {pastLand: true, entryEnded: true},

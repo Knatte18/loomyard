@@ -5,7 +5,6 @@
 package shuttleengine
 
 import (
-	"errors"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -307,21 +306,6 @@ type BatchingNudger interface {
 	BatchingNudge(statePath string, payload []byte) ([]byte, error)
 }
 
-// EditHookVerb is the name of the hidden `lym shuttle` verb an engine's after-edit hook runs.
-// It records the edited file in the run's edit records file, which EditRecordsFileName names.
-const EditHookVerb = "hook-edit"
-
-// EditRecorder is an optional capability of an engine:
-// the after-edit hook that records each file edit in the run's edit records file.
-// It records the edits of the session's subagents and forks too.
-// The engine's SessionSignalParser reads each such record back as a SessionSignalFileEdit.
-// An engine without it installs no such hook, so its runs get no edit-loop notice.
-type EditRecorder interface {
-	// RecordEdit appends the file edit the hook input payload describes to the edit records file at recordsPath.
-	// A payload that names no edited file appends nothing.
-	RecordEdit(recordsPath string, payload []byte) error
-}
-
 // InstructionFileLister is an optional capability of an engine:
 // the names of the files the provider loads as project instructions.
 // An engine without it has no project instruction files.
@@ -348,41 +332,8 @@ type SessionResumer interface {
 	// CheckResume answers whether a new run may resume the provider session sessionID.
 	// The session is recorded under the pane cwd workdir.
 	// A non-nil error refuses the resume.
-	// A refusal because a live process holds the session is a *SessionHeldError.
-	// A refusal because this machine holds no transcript of the session wraps ErrNoTranscript.
 	// A non-empty warning means the check could not confirm something, and the resume proceeds.
 	CheckResume(sessionID, workdir string) (warning string, err error)
-}
-
-// ErrNoTranscript marks a resume a SessionResumer refused because this machine holds no transcript of the session.
-// A caller that may start the session's work over tells this refusal from every other by errors.Is.
-var ErrNoTranscript = errors.New("shuttle: this machine holds no transcript of the session")
-
-// SessionHeldError is a SessionResumer's refusal of a resume because a live process on this machine holds the session.
-// It names the holder, so a caller that launched that process itself can end it and resume again.
-type SessionHeldError struct {
-	// SessionID is the session the resume asked for.
-	SessionID string
-	// PID is the live process that holds it.
-	PID int
-	// Err is the engine's refusal in its own words.
-	Err error
-}
-
-// Error returns the engine's refusal.
-func (e *SessionHeldError) Error() string { return e.Err.Error() }
-
-// Unwrap returns the engine's refusal.
-func (e *SessionHeldError) Unwrap() error { return e.Err }
-
-// SessionHolderFinder is an optional capability of an engine:
-// the live process on this machine that holds a provider session.
-// A caller reads it to register the provider process of a session it launched,
-// so a later start knows that process as its own.
-// An engine without it names no holder.
-type SessionHolderFinder interface {
-	// SessionHolder returns the pid of the live process holding sessionID, and whether one was found.
-	SessionHolder(sessionID string) (pid int, found bool, err error)
 }
 
 // OpenSpec describes one named session that runs with no prompt:
@@ -636,14 +587,4 @@ type SessionCycler interface {
 	// ReloadPluginsSequence returns the key choreography that makes a live session re-read its installed plugins and skills.
 	// The sequence starts no turn.
 	ReloadPluginsSequence() []PaneInput
-}
-
-// RemoteController is an optional engine capability:
-// the provider's command that turns on remote control in a live session.
-// An engine without it has no remote control, so a request to turn it on types nothing.
-type RemoteController interface {
-	// RemoteControlSequence returns the key choreography that turns on remote control in a live session under name.
-	// The caller guarantees name is a single line.
-	// The sequence starts no turn.
-	RemoteControlSequence(name string) []PaneInput
 }

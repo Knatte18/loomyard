@@ -570,10 +570,6 @@ func (e *slashPasteEngine) ReloadPluginsSequence() []PaneInput {
 	return []PaneInput{{Text: "/reload-plugins", Submit: true}}
 }
 
-func (e *slashPasteEngine) RemoteControlSequence(name string) []PaneInput {
-	return []PaneInput{{Text: "/remote-control " + name, Submit: true}}
-}
-
 func (e *slashPasteEngine) CompactSessionSequence(focus string) []PaneInput {
 	return []PaneInput{{Text: "/compact " + focus, Submit: true}}
 }
@@ -587,14 +583,13 @@ func (e *slashPasteEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
 
 // parserlessPasteEngine is a paste-path engine with no SessionSignalParser:
 // it exposes only the capabilities of the engine it wraps that the paste path reads.
-// Those are Engine, TextPaster, InputBoxReader, InputBoxClearer, SessionCycler and RemoteController.
+// Those are Engine, TextPaster, InputBoxReader, InputBoxClearer and SessionCycler.
 type parserlessPasteEngine struct {
 	Engine
 	TextPaster
 	InputBoxReader
 	InputBoxClearer
 	SessionCycler
-	RemoteController
 }
 
 // clearlessPasteEngine is a paste-path engine with no InputBoxClearer.
@@ -603,7 +598,6 @@ type clearlessPasteEngine struct {
 	TextPaster
 	InputBoxReader
 	SessionCycler
-	RemoteController
 }
 
 // pasteEngineShape names which capabilities of the slash paste engine a test hides from the runner.
@@ -646,9 +640,9 @@ func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool
 	var engine Engine = slash
 	switch shape {
 	case parserlessPasteShape:
-		engine = parserlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, InputBoxClearer: slash, SessionCycler: slash, RemoteController: slash}
+		engine = parserlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, InputBoxClearer: slash, SessionCycler: slash}
 	case clearlessPasteShape:
-		engine = clearlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, SessionCycler: slash, RemoteController: slash}
+		engine = clearlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, SessionCycler: slash}
 	}
 	cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
 	fx := newFixture(t, appending, engine, withConfig(cfg), withStrand("strand-1"), withClock(clock))
@@ -933,57 +927,6 @@ func TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut(t *testing.T) {
 	if len(refusedReed.CallLog) != 0 {
 		t.Errorf("reed touched: %v", refusedReed.CallLog)
 	}
-}
-
-// TestRunner_TurnOnRemoteControl_PastesTheNamedCommandThroughTheGuardedSend sends the remote-control command.
-// It goes into a live strand.
-// A pasted `/remote-control <name>` goes through the guarded send path.
-// A name spanning several lines is refused with nothing typed.
-// An engine without the capability types nothing and returns nil.
-// A runner with unusable told paths returns that error before reed is touched.
-func TestRunner_TurnOnRemoteControl_PastesTheNamedCommandThroughTheGuardedSend(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const name = "neve::tst:orch"
-	checkPastedSessionCommand(t, "/remote-control "+name, func(r *Runner) error { return r.TurnOnRemoteControl("strand-1", name) })
-
-	t.Run("a name spanning several lines is refused and nothing is typed", func(t *testing.T) {
-		t.Parallel()
-		for _, multiLine := range []string{"a\nb", "a\r\nb"} {
-			runner, reed, _ := newSlashPasteRunner(t, "", false, false)
-			if err := runner.TurnOnRemoteControl("strand-1", multiLine); err == nil {
-				t.Errorf("TurnOnRemoteControl(%q) = nil error", multiLine)
-			}
-			if len(reed.PasteSubmitCalls) != 0 || len(sentCalls(reed)) != 0 {
-				t.Errorf("typed despite refusal of %q: pastes %+v, sent %v", multiLine, reed.PasteSubmitCalls, sentCalls(reed))
-			}
-		}
-	})
-
-	t.Run("an engine without the capability types nothing", func(t *testing.T) {
-		t.Parallel()
-		reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
-		runner := newFixture(t, reed, readyCyclerEngine(), withStrand("strand-1")).Runner
-		if err := runner.TurnOnRemoteControl("strand-1", name); err != nil {
-			t.Errorf("TurnOnRemoteControl() = %v, want nil", err)
-		}
-		if len(reed.PasteSubmitCalls) != 0 || len(sentCalls(reed)) != 0 {
-			t.Errorf("typed without the capability: pastes %+v, sent %v", reed.PasteSubmitCalls, sentCalls(reed))
-		}
-	})
-
-	t.Run("unusable told paths are returned before reed is touched", func(t *testing.T) {
-		t.Parallel()
-		reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-		runner := NewRunner(reed, singleEngineSet(&fakeEngine{}), "", t.TempDir(), Config{RunTimeoutMin: 5})
-		if err := runner.TurnOnRemoteControl("strand-1", name); err == nil || !strings.Contains(err.Error(), "empty path") {
-			t.Errorf("TurnOnRemoteControl() = %v, want an error naming the empty path", err)
-		}
-		if len(reed.CallLog) != 0 {
-			t.Errorf("reed touched: %v", reed.CallLog)
-		}
-	})
 }
 
 func TestRunner_CompactSession_PlaysSequenceForFocus(t *testing.T) {

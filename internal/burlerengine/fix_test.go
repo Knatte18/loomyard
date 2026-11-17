@@ -128,7 +128,7 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 	shuttle := &fakeShuttle{fix: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: "nothing fixed"}}
 	stencilsDir := newTestStencilsDir(t)
 	specsDir := filepath.Join(root, "specs")
-	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", SpecsDir: specsDir, DefaultEngine: "claude"}, cfg, stencilsDir, "", []string{"scribe:golang-testing"})
+	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", SpecsDir: specsDir}, cfg, stencilsDir, "", []string{"scribe:golang-testing"})
 
 	var gateCalls int
 	opts := RunOpts{
@@ -180,11 +180,8 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 		t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
 	}
 	gate := shuttle.gates[fixRole]
-	if len(gate) != 2 || gate[0].Name != "build" {
-		t.Fatalf("gate = %+v; want the opts' one entry, then the fixer-report entry", gate)
-	}
-	if last := gate[len(gate)-1]; last.Name != "fixer-report" || last.Attempts != 3 || !last.PassOnCap {
-		t.Errorf("last gate entry = %+v; want fixer-report with 3 attempts and PassOnCap", last)
+	if len(gate) != 1 || gate[0].Name != "build" {
+		t.Fatalf("gate = %+v; want the opts' one entry", gate)
 	}
 	failed, err := gate[0].Gate()
 	if err != nil || !strings.Contains(failed.Findings, "build broke") || !strings.Contains(failed.Findings, filepath.Join(root, "fixer-report.md")) {
@@ -279,13 +276,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 		// routed sets RunOpts.DecisionsRouted, and wantWork is text the spawned fixer's fix step must hold.
 		routed   bool
 		wantWork string
-		// wantReportFailures is how many evaluations of the fixer-report entry failed.
-		// It is checked only when checkReportFailures is set.
-		wantReportFailures  int
-		checkReportFailures bool
 	}{
-		{name: "a fixer whose report misses a disposition on every attempt is let through, not failed", review: blockingReview, script: halfScript{result: done, writes: "---\ndispositions: []\n---\nfixed"}, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, checkReportFailures: true, wantReportFailures: 4},
-		{name: "a fixer whose report is fixed by a re-prompt rewrite passes", review: blockingReview, script: halfScript{result: done, writes: "fixed", rewrites: []string{"---\ndispositions:\n  - id: F1\n    disposition: fixed\n---\nfixed"}}, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, checkReportFailures: true, wantReportFailures: 1},
 		{name: "a routed review holding only decision findings over passing gates is skipped with the routed report", review: decisionReview, routed: true, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSkipped: true},
 		{name: "an unrouted review holding only decision findings spawns the fixer", review: decisionReview, script: halfScript{result: done, writes: "fixed"}, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, wantWork: "Fix every finding of the review at"},
 		{name: "a routed review with other findings tells the fixer the decision class is not its own", review: mixedReview, routed: true, script: halfScript{result: done, writes: "fixed"}, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, wantWork: routedDecisionsLine},
@@ -366,17 +357,6 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 					t.Errorf("fixer report = %q, %v; want %q", report, readErr, want)
 				}
 			}
-			if tt.checkReportFailures {
-				failures := 0
-				for _, findings := range shuttle.gateFindings {
-					if strings.Contains(findings, "way forward: rewrite the frontmatter of the fixer-report") {
-						failures++
-					}
-				}
-				if failures != tt.wantReportFailures {
-					t.Errorf("fixer-report entry failed %d time(s); want %d", failures, tt.wantReportFailures)
-				}
-			}
 			if tt.wantWork != "" {
 				if fixStep := fixInstructionFiles(t, root)["instruction-fix.md"]; !strings.Contains(fixStep, tt.wantWork) {
 					t.Errorf("instruction-fix.md = %q; want it to hold %q", fixStep, tt.wantWork)
@@ -408,7 +388,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 			fixFan: "standard",
 			opts:   RunOpts{FixKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion_fixer_model"}, FixFanKey: "discussion_fixer_fan"},
 			wantContains: []string{
-				"burler: the twill fixer's fan from discussion_fixer_fan needs forks, which the engine of discussion_fixer_model in loom.yaml cannot run",
+				"burler: the twill fixer's fan from discussion_fixer_fan needs fork subagents, which the engine of discussion_fixer_model in loom.yaml cannot run",
 				"move discussion_fixer_model in loom.yaml to an engine with forks, then resume",
 			},
 		},
@@ -429,7 +409,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 			p.FixFan = tt.fixFan
 			reed := &shuttlefake.Reed{}
 			runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
-			e := New(seatengine.RunnerShuttle(runner), Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", DefaultEngine: "claude"}, testClusterFanConfig(), newTestStencilsDir(t), "", nil)
+			e := New(seatengine.RunnerShuttle(runner), Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, testClusterFanConfig(), newTestStencilsDir(t), "", nil)
 
 			_, err := e.Fix(p, tt.opts, digest)
 

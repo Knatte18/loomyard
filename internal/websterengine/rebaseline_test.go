@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -138,7 +137,7 @@ func rebaselineDeps(t *testing.T, planCards []planparser.Card, partition []webst
 	return websterengine.RebaselineDeps{
 		Plan:   &planparser.Plan{Dir: planDir, Format: 5, Cards: planCards},
 		Active: active,
-		State:  &websterengine.State{State: runplan.State{PlanFingerprint: "old-fingerprint", Batches: recs, Partition: slices.Clone(partition)}},
+		State:  &websterengine.State{PlanFingerprint: "old-fingerprint", Batches: recs, Partition: slices.Clone(partition)},
 		Geom:   websterengine.Geometry{WorktreeRoot: worktree, PaneCwd: worktree, WebsterDir: t.TempDir(), Git: git},
 	}
 }

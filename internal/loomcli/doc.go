@@ -63,8 +63,7 @@
 // They report a failed copy as `record_store_error` and never fail the verb.
 // `decision store` makes the same copy by hand on the same runs.
 // It admits the unnamed shell, the run's arbiter and its parent orch.
-// Each status transition writes `<FSM state> · <producer>` on the run's board entry, the run's start write included.
-// The FSM state is the run FSM's display word for the transition, such as running, landing, paused or halted.
+// Each status transition writes `<state> · <producer>` on the run's board entry, the run's start write included.
 // The entry thus names the first row while it runs.
 // A finished run of a recipe with a Finalize row writes nothing, its landing having marked the entry done.
 // A finished run of a recipe with a RaddleFile row, a raddle or arras run, writes nothing either.
@@ -122,7 +121,7 @@
 // so a run moved off a retired row gets the landing's side effects,
 // and it sets `ShedPaths.RetiredWayForward` to `lym loom resume` for every loom run:
 // `pawlRetiredMove` ends the PR-Review session through the run's `RoleSession` records.
-// It reads the recorded pull request's state through the pair's origin, and commits the removal of its record.
+// It reads the scratch pull request's state through the pair's origin.
 // It commits the landing directory in the beam's worktree.
 // The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record.
 // It is restarted through `orchcli.BeamUpWorktree` naming the beam, which brings the beam's orch up with it.
@@ -191,9 +190,6 @@
 // A first seed clears the friction directory first, so the clear is committed with the seed.
 // Notes the fabric carried in, such as a beam pawl run's halt note, never reach the task's reflection.
 // They do not leave Preflight a dirty worktree.
-// A first seed also pins the stencils the run may render:
-// the run's `shedrun.StencilPins` record holds the body hash of every installed registry stencil.
-// The record is committed with the seed, and a re-entry keeps it.
 // An unseeded run is seeded with the driver `shed.yaml`'s `driver_kind` and its layers resolve to, `llm` by default;
 // a seeded run keeps its recorded driver whatever the key says later.
 // It brings up the worktree's tmux session;
@@ -317,13 +313,6 @@
 //     otherwise refused naming `lym batten run <slug>` from the prime and then resume for a dead strand,
 //     and `lym loom start` for a retiring strand or none.
 //
-// A start or a resume that spawns or wakes a driver compares the run's stencil pins with the installed stencils.
-// A start that finds a driver already working resumes nothing and compares nothing.
-// One notice to the run's parent orch names each pinned stencil whose board copy changed or is gone.
-// The notice names `lym stencil diff` as the way to inspect each one against its shipped default and its board copy.
-// The envelope lists the same stencils under `stencils_changed`.
-// A run with no pins warns of nothing, and a failed read, compare or post is logged and never fails the verb.
-//
 // The driver strand is read from reed's directory, which still lists a session that died with the machine.
 // It is never read from the run's seed;
 // the seed is read only to tell a go-seeded run that has no driver, which gets a Go driver.
@@ -351,10 +340,9 @@
 // The agent fixes them by hand.
 // `restore-renumber` reports `plan_dir`, `journal`, `restored` and `removed`.
 //
-// Each verb takes the active implementer's state-mutation lease first and releases it before it prints,
+// Each verb takes webster's state-mutation lease first and releases it before it prints,
 // so no begin-batch records a batch between the bound check and the renumber.
-// The active implementer is the one `weaverengine.Active` names, and a refusal of that seam is the verb's own.
-// `insert-card` and `remove-card` refuse a position at or before the last card of any batch the implementer has begun.
+// `insert-card` and `remove-card` refuse a position at or before the last card of any batch webster has begun.
 // A batch counts whether it is terminal or not, since a begun card is frozen.
 // They touch only the current generation's card files and the Card Index of the overview.
 // They never touch an archive, a prior generation, the overview's frontmatter or any other section.
@@ -468,7 +456,7 @@
 // an error stop of kind `producer` or `bootstrap`;
 // an `interrupted` stop under the `reinvoke` policy or with a transient class;
 // a halted `blocked` stop other than a Parent-Align or Publish verify halt whose own failure record names a target;
-// a halted `awaiting` stop whose pending Bouncer escalation is `hard-cap`, `circling`, `decision` or `stalemate`.
+// a halted `awaiting` stop whose Bouncer row has a pending escalation of cause `hard-cap`, `circling` or `decision`.
 // A `budget` escalation therefore goes to the run's parent.
 // The rule lives in `internal/arbiterstop`, which batten's hold shares.
 // Every other stop is refused with the hand-back to the run's parent as the way forward.
@@ -479,10 +467,6 @@
 // so the attempt counts against `arbiter_max_spawns` whatever happens next.
 // The budget is counted from those records, so a restart never resets it.
 // The directory also holds `prompt.md`, the agent's `verdict.yaml` and the verb's validated `envelope.json`.
-// The verb wires `Deps.Worktree` through fabric's read-only reads,
-// so the arbiter may make one fix of its own, committed on the task branch.
-// `attempt.json` records the worktree snapshot and the uncommitted paths taken at spawn.
-// `envelope.json` and the verb's output list the arbiter's commits.
 // Once the re-launch consumed a `resume`, it also holds the `applied` mark.
 // While an arbiter may be live an ephemeral marker names the attempt, its strand and its deadline.
 // The status commit stages the arbiter directory with the run records.
@@ -574,7 +558,7 @@
 // It settles a re-step of an interrupted step under the `reinvoke` policy, up to a cap of two per stop key.
 // It settles the one verify goto to the Publish failure record's target;
 // it asks the tackler at a stop no rule settles;
-// it asks the arbiter at an awaiting stop with a pending hard-cap, circling, decision or stalemate escalation only;
+// it asks the arbiter at an awaiting stop with a pending hard-cap, circling or decision escalation only;
 // it asks the arbiter after a tackler `escalate`;
 // it asks the arbiter when an applied tackler `resume` returns to the same stop;
 // and it hands over at a binary-eligible stop whose last step ran another build than the `lym` on disk.
@@ -593,7 +577,6 @@
 // `lym loom pr-continue` is the PR-Review agent's verb for the operator's ending of a review:
 // it sets the continue flag in the run's pull-request record and clears the head whose gate failure the row mailed,
 // so the row gates that head again.
-// It commits the record, which every write of the PR-Review and Finalize rows does too.
 // It writes nothing else, and it is refused until the PR-Review row has opened the pull request.
 //
 // `lym loom sampler-done` ends a sampler run's build:
@@ -734,9 +717,7 @@
 // It may also have `pattern_entry`, `pattern_action` and `pattern_text`.
 // `--by` and `--amends-plan` apply to every entry, and all entries land in one write and one commit, or none does.
 // Each live agent gets one notice naming the headings (`headings`).
-// A Webster Master session and a Weaver strand get every entry's text inline.
-// The verb records each notice a Weaver strand got in Weaver's state, so a resumed run sends it only what it lacks.
-// A run that is not running wakes no Webster Master session or Weaver strand left live from its last run:
+// A run that is not running wakes no Webster Master session left live from its last run:
 // the envelope names each such strand and why under `notice_held_back`.
 // Two entries may not share a title or a PATTERN entry.
 // A `pattern_action` of `withdraws`, like `--pattern-action withdraws`, strikes a declared `## PATTERN changes` bullet.

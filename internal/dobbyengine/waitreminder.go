@@ -63,8 +63,7 @@ func (d *daemon) waitReminders(ctx context.Context, now time.Time) {
 	d.remindOfWaits(ctx, now, waits)
 }
 
-// readWaits returns the wait of each run whose batten state is running with no cancel under way, by slug.
-// A cancel under way is an unfinished cancel intent, or a cancel lock another process holds.
+// readWaits returns the wait of each run whose batten state is running with no cancel marker, by slug.
 // It also returns the slugs whose reading failed, which stand as recorded and get no reminder.
 // A run in no wait has no key in the waits.
 func (d *daemon) readWaits(now time.Time, recorded map[string]RunState) (waits map[string]OperatorWaitState, unread map[string]bool) {

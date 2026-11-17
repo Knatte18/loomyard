@@ -155,19 +155,27 @@ func NewFuncIndex(dir, importPath string) *FuncIndex {
 	return &FuncIndex{dir: dir, importPath: importPath, files: map[string]*sourceFile{}}
 }
 
-// CoveredFuncs returns the functions of the package holding a block of blocks counted as covered, sorted, each once.
-// blocks are the package's own blocks of one profile, as ProfileByPackage groups them,
-// so a profile is read once however many packages it names.
+// CoveredFuncs returns the functions of the package holding a block that profile counts as covered, sorted, each once.
+// It ignores every block of another package.
 // A file that does not parse, or a position outside its file, is an error.
-func (x *FuncIndex) CoveredFuncs(blocks []ProfileBlock) ([]FuncKey, error) {
-	return x.funcsHolding(blocks)
+func (x *FuncIndex) CoveredFuncs(profile []ProfileBlock) ([]FuncKey, error) {
+	return x.funcsHolding(profile, true)
 }
 
-// funcsHolding returns the functions of the package holding one of blocks counted as covered, sorted, each once.
-func (x *FuncIndex) funcsHolding(blocks []ProfileBlock) ([]FuncKey, error) {
+// ProfiledFuncs returns the functions of the package holding any block of profile, covered or not, sorted, each once.
+// They are every function a coverage build instruments in the package.
+// It ignores every block of another package.
+// A file that does not parse, or a position outside its file, is an error.
+func (x *FuncIndex) ProfiledFuncs(profile []ProfileBlock) ([]FuncKey, error) {
+	return x.funcsHolding(profile, false)
+}
+
+// funcsHolding returns the functions of the package holding a block of profile, sorted, each once.
+// coveredOnly leaves out a block the profile counts as not covered.
+func (x *FuncIndex) funcsHolding(profile []ProfileBlock, coveredOnly bool) ([]FuncKey, error) {
 	covered := map[FuncKey]struct{}{}
-	for _, b := range blocks {
-		if b.Count == 0 {
+	for _, b := range PackageBlocks(profile, x.importPath) {
+		if coveredOnly && b.Count == 0 {
 			continue
 		}
 		name := path.Base(b.File)

@@ -20,7 +20,7 @@
      self_check is a required marker: the body of Step 6 up to its closing two lines.
      DiscussionTable fills it with the fragment that has the writer run the validator or,
      when the gate has a cold fixer, the one that has it run none.
-     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.yaml's subagent_model.
+     subagent_model is a required marker, filled from loom.yaml's subagent_model.
      The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax;
      only `{{` begins a template action. -->
 
@@ -69,7 +69,8 @@ You MUST NOT gather exact signatures, `file:line` citations, interface shapes, o
 
 Start the exploration with explore subagents, before you read code in this session.
 Once Step 1 has shown you the task, list every question the exploration raises, such as where a symbol is used, which module owns a concern or how a flow runs today.
-{{template "engine-subagent-lookups"}}
+Send the independent ones as one batch to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`, all launched together in one message.
+Give each Agent call the `effort` that the subagent passage of your system prompt names.
 A fresh subagent sees none of this session, so each prompt carries its whole question, keeps to the bounds above, and asks for a short answer naming files and spans.
 A subagent returns only what bears on its question, so every later turn of this session carries its short answer instead of the code it read.
 Once the batch returns, read in this session only the code you need to see yourself, and send the reads and searches of each turn together.
@@ -132,9 +133,9 @@ That spec is authoritative, and this prompt restates none of it.
 The gate also runs the decision-id, acceptance and citation checks that the decision record section of `{{.specs_dir}}/loom/loom-discussion-spec.md` states.
 A design change in that turn may update `{{.relevant_path}}` in the same turn.
 
-## Never use {{template "engine-question-tool"}}
+## Never use `AskUserQuestion`
 
-Never call the {{template "engine-question-tool"}} tool at any point in this session, in either mode — see Step 4 above for the correct channel to ask questions through.
+Never call the `AskUserQuestion` tool at any point in this session, in either mode — see Step 4 above for the correct channel to ask questions through.
 
 ## What you may write
 

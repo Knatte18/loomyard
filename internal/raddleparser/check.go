@@ -36,9 +36,6 @@ const (
 	CheckRecipeInvalid          = "recipe-invalid"
 	CheckProfileUnknown         = "profile-unknown"
 	CheckTypeInvalid            = "type-invalid"
-	CheckLabelsMissing          = "labels-missing"
-	CheckLabelUnknown           = "label-unknown"
-	CheckLabelDuplicate         = "label-duplicate"
 	CheckSlugTaken              = "slug-taken"
 	CheckSlugSketch             = "slug-sketch"
 	CheckSlugDuplicate          = "slug-duplicate"
@@ -88,24 +85,22 @@ type BoardEntry struct {
 // ModuleLabels are the Sketch's labels that are not type labels.
 // Store holds the slugs the raddle store keeps, each as a Sketch slug or a filed slug.
 // TypeLabels are the board's type labels.
-// LabelVocabulary holds the board's module labels, the configured labels that are not type labels.
 // Profiles maps each part recipe to the profiles of `profiles.yaml` that hold a block for it.
 // Filing is true at Raddle-File's run, where a dependency on an entry gone from the board is dropped.
 // Perch is true in a perch-mode run, whose split perch approves the proposal in place of the operator:
 // the checks then allow only one task, or one project whose slug is the run's own entry.
 // LivePattern reports whether the run's PATTERN.md holds the entry id.
 type BoardContext struct {
-	Sketch          string
-	Entry           string
-	ModuleLabels    []string
-	Entries         []BoardEntry
-	Store           []string
-	TypeLabels      []string
-	LabelVocabulary []string
-	Profiles        map[string][]string
-	Filing          bool
-	Perch           bool
-	LivePattern     func(id string) bool
+	Sketch       string
+	Entry        string
+	ModuleLabels []string
+	Entries      []BoardEntry
+	Store        []string
+	TypeLabels   []string
+	Profiles     map[string][]string
+	Filing       bool
+	Perch        bool
+	LivePattern  func(id string) bool
 }
 
 // decisionIDPattern matches a decision id as a whole word;
@@ -416,10 +411,6 @@ func validType(label string, board BoardContext) bool {
 // vocabulary reports a part whose recipe is neither tapestry nor darn.
 // It also reports a part whose profile holds no block for its recipe.
 // It also reports a part or project whose type is not a type label of the board other than the Sketch.
-// It also reports a part that names no module label, and a part label that is no module label of the board;
-// a module label the Sketch does not carry passes, since a split can find a module the Sketch's labels missed.
-// It also reports a part label that the part's labels list more than once, once per repeated label.
-// The board refuses an entry that carries a label twice.
 func (c *checker) vocabulary() []Finding {
 	var findings []Finding
 	for _, part := range c.proposal.Parts {
@@ -430,20 +421,6 @@ func (c *checker) vocabulary() []Finding {
 		}
 		if !validType(part.Type, c.board) {
 			findings = append(findings, Finding{Check: CheckTypeInvalid, Part: part.Slug, Detail: fmt.Sprintf("type %q is not a type label of the board other than %s", part.Type, TypeSketch)})
-		}
-		if len(part.Labels) == 0 {
-			findings = append(findings, Finding{Check: CheckLabelsMissing, Part: part.Slug, Detail: "the part names no module label; way forward: list in labels the module label of each module the part's work changes"})
-		}
-		var seenLabels, repeatedLabels []string
-		for _, label := range part.Labels {
-			if slices.Contains(seenLabels, label) && !slices.Contains(repeatedLabels, label) {
-				repeatedLabels = append(repeatedLabels, label)
-				findings = append(findings, Finding{Check: CheckLabelDuplicate, Part: part.Slug, Detail: fmt.Sprintf("the label %q is listed more than once; way forward: list each module label once in labels", label)})
-			}
-			seenLabels = append(seenLabels, label)
-			if !slices.Contains(c.board.LabelVocabulary, label) {
-				findings = append(findings, Finding{Check: CheckLabelUnknown, Part: part.Slug, Detail: fmt.Sprintf("the label %q is no module label of the board; way forward: name a label that lym board labels lists under labels, or have the operator add the module's label to the board config", label)})
-			}
 		}
 	}
 	if project := c.proposal.Project; project != nil && !validType(project.Type, c.board) {

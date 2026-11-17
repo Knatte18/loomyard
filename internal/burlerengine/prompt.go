@@ -360,26 +360,10 @@ func toolUseRules(toolUse bool) string {
 	return "Read-only analysis in the explore and review steps: read files, run nothing."
 }
 
-// priorFindingsHeading is the heading line that opens the prior-findings block of a round with a round context.
-// No other prior-rounds text holds it as a line of its own.
-const priorFindingsHeading = "### Prior findings"
-
-// heldByParentMark marks a prior finding that the run's parent rules on, not the fixer.
-const heldByParentMark = "held by the parent: the run's parent rules on this finding"
-
-// rulingReportLabel labels a `ruling` disposition.
-// It is the fixer's report of a ruling that reached it, never the parent's answer.
-const rulingReportLabel = "the fixer's report of a ruling that reached it, never the parent's answer"
-
-// priorRoundsBlock returns the prior-rounds value of the review step.
-// A profile with a round context gets the prior-findings block.
-// A profile with no prior-round files gets the first-round fallback.
-// A profile with prior-round files gets a bullet list of the prior review and fixer-report paths.
-// That list is followed by the clean-room rule.
+// priorRoundsBlock returns the clean-room hydration prose.
+// When p carries no prior-round files, it returns the first-round fallback.
+// Otherwise, it returns a bullet list of the prior review and fixer-report paths, plus the clean-room rule.
 func priorRoundsBlock(p *Profile) string {
-	if p.Round != nil {
-		return priorFindingsBlock(p.Round)
-	}
 	if len(p.PriorReviews) == 0 && len(p.PriorFixerReports) == 0 {
 		return "This is the first round — no prior round files exist."
 	}
@@ -403,71 +387,6 @@ func priorRoundsBlock(p *Profile) string {
 		"**Issue:** why the dispute's evidence does not hold, amending the matching " +
 		"finding in your saved review before you end your turn.")
 	return b.String()
-}
-
-// priorFindingsBlock renders round as the prior-findings block.
-// The block names the files of the round before and says whether this round is incremental.
-// It lists each prior finding with the fixer's disposition of it, and the decision-record entries added since.
-func priorFindingsBlock(round *RoundContext) string {
-	var b strings.Builder
-	b.WriteString(priorFindingsHeading)
-	b.WriteString("\n\n")
-	fmt.Fprintf(&b, "The previous round's review is `%s` and its fixer-report is `%s`.", round.PriorReviewPath, round.PriorFixerReportPath)
-	if round.ChangesPath != "" {
-		fmt.Fprintf(&b, " The files the fixes changed are listed in `%s`.", round.ChangesPath)
-	}
-	b.WriteString("\n")
-	if round.Incremental {
-		b.WriteString("This round is incremental.\n")
-	} else {
-		b.WriteString("This round is a full round.\n")
-	}
-	b.WriteString("\n")
-	for _, prior := range round.Prior {
-		writePriorFinding(&b, prior)
-	}
-	b.WriteString("\n")
-	if len(round.AddedTexts) == 0 {
-		b.WriteString("No entry was added to the decision record since the previous round.")
-		return b.String()
-	}
-	b.WriteString("Entries added to the decision record since the previous round:\n\n")
-	for _, text := range round.AddedTexts {
-		b.WriteString("- ")
-		b.WriteString(strings.ReplaceAll(strings.TrimRight(text, "\n"), "\n", "\n  "))
-		b.WriteString("\n")
-	}
-	return strings.TrimRight(b.String(), "\n")
-}
-
-// writePriorFinding writes one prior finding and the fixer's disposition of it as a bullet with sub-bullets.
-func writePriorFinding(b *strings.Builder, prior PriorFinding) {
-	finding := prior.Finding
-	fmt.Fprintf(b, "- `%s` — %s, %s, `%s`\n", finding.ID, finding.Severity, finding.Class, finding.Location)
-	fmt.Fprintf(b, "  - summary: %s\n", finding.Summary)
-	fmt.Fprintf(b, "  - fix: %s\n", finding.Fix)
-	if prior.Held {
-		fmt.Fprintf(b, "  - %s\n", heldByParentMark)
-	}
-	disposition := prior.Disposition
-	switch {
-	case disposition == nil:
-		b.WriteString("  - fixer disposition: no disposition\n")
-	case disposition.Disposition == DispositionDisputed:
-		fmt.Fprintf(b, "  - fixer disposition: disputed on the ground %q\n", disposition.Ground)
-		fmt.Fprintf(b, "    - rebuttal: %s\n", disposition.Rebuttal)
-		for _, item := range disposition.Evidence {
-			fmt.Fprintf(b, "    - evidence: %s\n", item)
-		}
-	case disposition.Disposition == DispositionRuling:
-		fmt.Fprintf(b, "  - fixer disposition: ruling, %s\n", rulingReportLabel)
-		fmt.Fprintf(b, "    - reason: %s\n", disposition.Reason)
-	default:
-		fmt.Fprintf(b, "  - fixer disposition: %s\n", disposition.Disposition)
-		if disposition.Reason != "" {
-			fmt.Fprintf(b, "    - reason: %s\n", disposition.Reason)
-		}
-	}
 }
 
 // clusterRulesBlock renders the review step's cluster-rules value for engine from the cluster stencils.

@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -52,7 +51,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 		writeBatcherConfig(t, anchorPath, "active: [not valid yaml\n")
 
 		fake := &fakeWebsterRun{}
-		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil })
 		pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if !strings.HasPrefix(pointer.Reason, batchifierReasonPrefix) {
 			t.Errorf("Call() Reason = %q; want the batchifier prefix", pointer.Reason)
@@ -67,7 +66,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 		fake := &fakeWebsterRun{}
-		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil })
 		shedfake.RequireOutcome(t, p, shedengine.Done)
 		if len(fake.receivedDeps) != 1 {
 			t.Fatalf("fake runner was called %d time(s); want 1", len(fake.receivedDeps))
@@ -85,7 +84,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 		fake := &fakeWebsterRun{}
-		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil })
 
 		shedfake.RequireOutcome(t, p, shedengine.Done)
 
@@ -100,22 +99,6 @@ func TestWebsterProducer_Call(t *testing.T) {
 		}
 	})
 
-	t.Run("WeaversBegunBatchesStopTheRowBeforeTheRunner", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
-		plantWeaverBegun(t, anchorPath)
-
-		fake := &fakeWebsterRun{}
-		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
-		pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-		if !strings.Contains(pointer.Reason, "`lym weaver reset`") {
-			t.Errorf("Call() Reason = %q; want it to name `lym weaver reset`", pointer.Reason)
-		}
-		if len(fake.receivedDeps) != 0 {
-			t.Errorf("fake runner was called %d time(s); want 0", len(fake.receivedDeps))
-		}
-	})
-
 	t.Run("CancelledContextReturnsErrorNotVerdict", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
@@ -124,7 +107,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 		cancel()
 
 		fake := &fakeWebsterRun{}
-		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+		p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, func() error { return nil })
 		outcome, _, err := p.Call(ctx)
 		if err == nil {
 			t.Fatalf("Call(cancelled) error = nil; want non-nil error")
@@ -171,7 +154,7 @@ func TestWebsterProducer_CommitsTheRunRecordOnDoneOnly(t *testing.T) {
 			}
 			fake := &fakeWebsterRun{outcome: tt.outcome}
 			deps := websterengine.RunDeps{Geom: websterengine.Geometry{ScratchDir: t.TempDir()}}
-			p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, deps, commit, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+			p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, deps, commit)
 			outcome, _, err := p.Call(context.Background())
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Call() error = %v; want error %v", err, tt.wantErr)
@@ -201,7 +184,7 @@ func TestWebsterProducer_PassesStuckReasonThrough(t *testing.T) {
 		return websterengine.RunResult{Outcome: "stuck", StuckReason: "batch 03 exhausted recovery"}, nil
 	}
 	deps := websterengine.RunDeps{Geom: websterengine.Geometry{ScratchDir: t.TempDir()}}
-	p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, run, deps, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+	p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, run, deps, func() error { return nil })
 	pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if pointer.Reason != "batch 03 exhausted recovery" {
 		t.Errorf("Call() Reason = %q; want the run's StuckReason", pointer.Reason)

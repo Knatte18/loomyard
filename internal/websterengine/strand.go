@@ -1,12 +1,22 @@
-// strand.go implements webster's orchestrator spawn seam and its leftover-strand reclaim.
+// strand.go implements webster's strand spawn seam, which calls shuttleengine directly.
 // The seam interfaces are exported so webstercli can pass a real *shuttleengine.Runner into them.
+// It satisfies Starter and StrandStopper structurally, so no adapter is needed.
 
 package websterengine
 
 import (
-	"github.com/Knatte18/loomyard/internal/runplan"
+	"fmt"
+	"sort"
+
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// Starter is the seam a batch's implementer or recovery strand spawns through.
+// Start blocks until the spawned provider is past its startup gates, which shuttle guarantees.
+// It returns an error when the provider never becomes ready, and it never waits for the run to finish.
+type Starter interface {
+	Start(shuttleengine.Spec) (*shuttleengine.Run, error)
+}
 
 // OrchestratorHandle is the started-but-not-yet-finished orchestrator-role spawn a caller blocks on.
 // StrandGUID identifies the reed strand.
@@ -22,6 +32,25 @@ type OrchestratorStarter interface {
 	StartOrchestrator(shuttleengine.Spec) (OrchestratorHandle, error)
 }
 
+// RecoveryStrandRemoveError is a recovery strand that could not be removed, with its guid and the cause.
+type RecoveryStrandRemoveError struct {
+	GUID string
+	Err  error
+}
+
+func (e *RecoveryStrandRemoveError) Error() string {
+	return fmt.Sprintf("could not remove recovery strand %s: %v", e.GUID, e.Err)
+}
+
+func (e *RecoveryStrandRemoveError) Unwrap() error { return e.Err }
+
+// StrandStopper is the seam a leftover strand is stopped through, by guid.
+// StopStrand records the stop on the strand's run.
+// It ends a live strand, logging that kill at Warn, and does nothing for a strand that is not live.
+type StrandStopper interface {
+	StopStrand(guid string) error
+}
+
 // RemoveRecoveryStrands stops every recovery strand the state records.
 // It stops the recovery strands in batch-number order.
 // Then it stops the verify-gate fixer strands and the plan fixer strands, each in spawn order.
@@ -32,8 +61,19 @@ func RemoveRecoveryStrands(stopper StrandStopper, st *State) error {
 	if st == nil {
 		return nil
 	}
-	if err := runplan.StopRecoveryStrands(stopper, st.Batches); err != nil {
-		return err
+	numbers := make([]int, 0, len(st.Batches))
+	for number := range st.Batches {
+		numbers = append(numbers, number)
+	}
+	sort.Ints(numbers)
+	for _, number := range numbers {
+		bs := st.Batches[number]
+		if bs == nil || bs.Kind != "recovery" || bs.StrandGUID == "" {
+			continue
+		}
+		if err := stopper.StopStrand(bs.StrandGUID); err != nil {
+			return &RecoveryStrandRemoveError{GUID: bs.StrandGUID, Err: err}
+		}
 	}
 	for _, rec := range st.VerifyFixers {
 		if err := stopper.StopStrand(rec.StrandGUID); err != nil {

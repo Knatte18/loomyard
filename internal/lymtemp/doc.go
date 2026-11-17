@@ -27,12 +27,6 @@
 // The OS releases a dead owner's lock, so the next start's sweep removes a killed process's run directory.
 // With apply false the sweep removes nothing and lists the same candidates.
 //
-// The sweep first gives every directory in a dead run directory's tree owner read, write and search permission.
-// A test binary killed before its cleanups ran can leave a directory it made read-only or unreadable,
-// and that directory's entries could not be removed otherwise.
-// Files and links keep their bits, and a link is never followed.
-// The pass is best-effort: a failure in it is ignored, and the removal's own result is what the sweep reports.
-//
 // A removal that fails because the directory is not empty is retried until the sweep's one shared budget runs out;
 // one still failing then is reported as a failure.
 // The not-empty symptom is a concurrent sweeper's lock probe recreating the lock file.

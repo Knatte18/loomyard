@@ -188,8 +188,7 @@ func (c *TacklerCall) attachAndConclude(attempt TacklerAttempt, guid string, rem
 
 // attach waits on a live tackler of attempt for at most remaining.
 func (c *TacklerCall) attach(attempt TacklerAttempt, remaining time.Duration) (shuttleengine.Result, bool, error) {
-	engine := c.deps.Shuttle.EngineName(c.deps.Settings.ModelChoice)
-	spec := tacklerSpec("", TacklerVerdictPath(attempt.Dir), TacklerCaseBriefPath(attempt.Dir), engine, c.deps.Settings)
+	spec := tacklerSpec("", TacklerVerdictPath(attempt.Dir), TacklerCaseBriefPath(attempt.Dir), c.deps.Settings)
 	spec.Timeout = remaining
 	return c.deps.Shuttle.AttachIfLive(spec, nil)
 }
@@ -244,8 +243,7 @@ func (c *TacklerCall) settleFresh(attempts []TacklerAttempt) (TacklerEnvelope, e
 	promptInput.StderrPath = c.in.StderrPath
 	promptInput.VerdictPath = TacklerVerdictPath(dir)
 	promptInput.CaseBriefPath = TacklerCaseBriefPath(dir)
-	engine := c.deps.Shuttle.EngineName(settings.ModelChoice)
-	prompt, err := RenderTacklerPrompt(c.deps.StencilsDir, engine, promptInput)
+	prompt, err := tacklerPrompt(c.deps.StencilsDir, promptInput)
 	if err != nil {
 		return TacklerEnvelope{}, err
 	}
@@ -254,7 +252,7 @@ func (c *TacklerCall) settleFresh(attempts []TacklerAttempt) (TacklerEnvelope, e
 	}
 
 	logger.Info("sheddriver: tackler spawn", "run", c.in.RunID, "attempt", number, "producer", c.status.CurrentProducer, "deadline", attempt.Deadline)
-	run, err := c.deps.Shuttle.Start(tacklerSpec(prompt, promptInput.VerdictPath, promptInput.CaseBriefPath, engine, settings), nil)
+	run, err := c.deps.Shuttle.Start(tacklerSpec(prompt, promptInput.VerdictPath, promptInput.CaseBriefPath, settings), nil)
 	if err != nil {
 		return c.handBack(attempt, CauseDied, fmt.Sprintf("starting the tackler failed: %v", err))
 	}

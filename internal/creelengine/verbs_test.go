@@ -1228,8 +1228,6 @@ func TestStore_InjectAndHold(t *testing.T) {
 				{creelengine.Command{Name: creelengine.CommandLoadSkills}, "needs an argument"},
 				{creelengine.Command{Name: creelengine.CommandClear, Argument: "x"}, "takes no argument"},
 				{creelengine.Command{Name: creelengine.CommandReloadPlugins, Argument: "x"}, "takes no argument"},
-				{creelengine.Command{Name: creelengine.CommandRemoteControl}, "remote-control"},
-				{creelengine.Command{Name: creelengine.CommandRemoteControl, Argument: "neve::ly:orch\nx"}, "remote-control"},
 			} {
 				_, err := e.store.InjectCommand(program(batten), orch, tt.command, 0)
 				wantErr(t, err, tt.want)

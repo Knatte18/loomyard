@@ -50,7 +50,7 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			geometry, err := PrimeGeometry(location)
+			geometry, err := primeGeometry(location)
 			if err != nil {
 				return fail(err)
 			}

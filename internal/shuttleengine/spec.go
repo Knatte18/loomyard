@@ -38,15 +38,6 @@ type Spec struct {
 	Unawaited bool
 	// ModelChoice is the engine and the model, effort and version the run uses.
 	ModelChoice
-	// PromptEngine names the engine Prompt was rendered for.
-	// The producer sets it from the same model choice it launches with.
-	// A prompt worded for one engine therefore never reaches another.
-	// An engine's Prepare refuses a spec whose PromptEngine is not its own name,
-	// and an empty one unless HandWrittenPrompt is set.
-	PromptEngine string
-	// HandWrittenPrompt marks Prompt as text a person wrote, rendered for no engine, in place of a PromptEngine.
-	// Only `lym shuttle run` sets it, for a prompt given inline or from a file.
-	HandWrittenPrompt bool
 	// ForkSubagents, when true, authorizes this run to spawn in-session fork subagents.
 	// The engine must realize the authorization or refuse the run, through whatever its provider needs.
 	// ForkSubagents is engine vocabulary, and validation does not inspect it.
@@ -168,10 +159,6 @@ type Spec struct {
 	// Its output and exit status are discarded, so it never steers the session.
 	// An engine that installs no hook for it ignores it.
 	TurnHookCommand string
-	// RemoteControlName, when non-empty, starts the session with the provider's remote control on, under this session name.
-	// The launch and the resume line both carry it, so a revived session comes back with it on.
-	// An engine whose provider has no remote control ignores it.
-	RemoteControlName string
 	// Requires lists what the run requires of its engine, from the closed set of Requirement constants.
 	// Start refuses an unknown entry and an engine that does not meet every entry.
 	// Attach checks the engine the run's record names in the same way.

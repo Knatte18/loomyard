@@ -70,7 +70,7 @@ func (e *Engine) Probe(table Table) (LiveTable, error) {
 // holdDeferral is the chair's held-turn deferral, which an attached chair needs in its spec as a fresh one has it;
 // an advisor is probed with none.
 func (e *Engine) probeSeat(table Table, seat Seat, holdDeferral func() bool) (Handle, bool, error) {
-	spec := seatSpec(table, seat, "", seat.stencilEngine(e.geom.DefaultEngine))
+	spec := seatSpec(table, seat, "")
 	spec.HoldDeferral = holdDeferral
 	handle, found, err := e.shuttle.ProbeGated(spec, seatGate(table, seat))
 	if err != nil {

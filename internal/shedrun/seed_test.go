@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -328,7 +327,12 @@ func TestList(t *testing.T) {
 	if err := os.WriteFile(unreadableSeed, []byte(`{"recipe":"tapestry"}`), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	permkit.Chmod(t, unreadableSeed, 0o000)
+	if err := os.Chmod(unreadableSeed, 0o000); err != nil {
+		t.Fatalf("Chmod() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(unreadableSeed, 0o644)
+	})
 
 	got, err := List(l)
 	if err != nil {

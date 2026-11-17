@@ -7,12 +7,6 @@
 // New hands every engine those Dirs, so an engine loads its own config module lazily where it reads it.
 // It refuses a config whose engine: key names no registered engine, whichever config layer set it.
 // Names lists the registered names, which equal modelspec's closed set of engine names.
-// The codex entry builds its engine with the claude engine's user-setup source and plugin hook runner.
-// That is the one route from the user's Claude setup to a Codex launch.
-//
-// NewWithSeams builds the same set with a caller's plugin hook runner and sandbox probe, held in LaunchSeams.
-// It is the one entry point that does, for `lym shuttle manifest` and the parity test;
-// New and every other builder pass the zero seams, so a real launch is unchanged.
 //
 // Each registry entry carries its engine's config module as plain data.
 // ConfigModules lists them sorted by name for the config registry.
@@ -37,8 +31,6 @@
 // the hook-input parse, the hook output and the wake output the creel hook verbs render.
 // BatchingNudger returns one registered engine's batching-nudge capability by name, built the same way.
 // The shuttle hook verb that judges a session's tool call uses it.
-// EditRecorder returns one registered engine's edit-hook capability by name, built the same way.
-// The shuttle hook verb that records a session's file edit uses it.
 // KeepWarm is the one keep-warm resolver.
 // It answers a strand's keep-warm cap, the long cap and shuttle.yaml's break-even.
 // It reads them through the default engine's KeepWarmCaps.

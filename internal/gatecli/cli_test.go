@@ -36,13 +36,6 @@ func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
 		{name: "a negative --upto names no tier", args: []string{"test", "--upto", "-1"}, wantError: "--upto -1 names no tier"},
 		{name: "--main-packages without --card names --card", args: []string{"test", "--main-packages"}, wantError: "--card <id>"},
 		{name: "-C directory does not exist", args: []string{"test", "-C", missingDir, "./pkg"}, wantError: "does not exist"},
-		{name: "--map with --tier names lym gate test --map", args: []string{"test", "--map", "--tier", "0"}, wantError: "lym gate test --map"},
-		{name: "--map with --upto names lym gate test --map", args: []string{"test", "--map", "--upto", "1"}, wantError: "lym gate test --map"},
-		{name: "--map with --gate names lym gate test --map", args: []string{"test", "--map", "--gate", "card"}, wantError: "lym gate test --map"},
-		{name: "--map with --guards names lym gate test --map", args: []string{"test", "--map", "--guards"}, wantError: "lym gate test --map"},
-		{name: "--map with --stop-on-fail names lym gate test --map", args: []string{"test", "--map", "--stop-on-fail"}, wantError: "lym gate test --map"},
-		{name: "--map with -C names lym gate test --map", args: []string{"test", "--map", "-C", "sub", "./pkg"}, wantError: "lym gate test --map"},
-		{name: "--map with words after -- names lym gate test --map", args: []string{"test", "--map", "./pkg", "--", "-run", "X"}, wantError: "lym gate test --map"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

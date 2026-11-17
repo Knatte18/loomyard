@@ -27,7 +27,7 @@
 // A `speed` sampler run and a sampler run naming no profile skip the Code-Review perch.
 // `docs` and `speed`'s tapestry block run the Code-Review round solo through `loom.code_reviewer_fan: ""`.
 // `light`, `solid`, `wide` and the rest take the hub's fan.
-// Every darn block, `docs`'s included, sets `loom.code_reviewer_model` to `opus[medium]`.
+// Every darn block, `docs`'s included, sets `loom.code_reviewer_model` to `opus[high]`.
 // A darn run has no Discussion or Plan review,
 // so its Code-Review reviewer also judges whether the run did what the entry asks.
 // The pawl and sampler blocks and the tapestry blocks take the hub's Code-Review model.

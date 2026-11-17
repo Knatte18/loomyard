@@ -5,15 +5,12 @@
 package websterengine
 
 import (
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// Git is every question webster's bracket verbs and run-level checks put to a worktree's git repository:
-// the shared run-plan machinery's questions and webster's own.
+// Git is every question webster's bracket verbs and run-level checks put to a worktree's git repository.
 // Each method takes the worktree to ask about, so one Git serves a run and its linked worktrees alike.
 type Git interface {
-	runplan.Git
 	// HeadSHA returns the worktree's current HEAD commit SHA.
 	HeadSHA(worktree string) (string, error)
 	// Dirty reports whether the worktree has any uncommitted or untracked changes.
@@ -27,16 +24,47 @@ type Git interface {
 	// MergeRejection returns why the merge commit is not a clean merge of the run's parent branch, or "" when it is.
 	// parents lists the commit's parent SHAs; a parentBranch that cannot be resolved is itself a rejection.
 	MergeRejection(worktree, commit string, parents []string, parentBranch ParentBranchFunc) string
+	// SHAExists reports whether sha names a commit in the worktree's repository.
+	SHAExists(worktree, sha string) bool
 	// CommitsNamedBy returns, sorted, the full SHA of every commit whose object name starts with prefix, empty when none does.
 	CommitsNamedBy(worktree, prefix string) ([]string, error)
+	// IsAncestor reports whether sha is an ancestor of ref.
+	IsAncestor(worktree, sha, ref string) (bool, error)
 	// NonMergeCommitsBetween reports whether the first-parent range base..head holds a commit that is not a merge;
 	// a base the repository does not hold is an error.
 	NonMergeCommitsBetween(worktree, base, head string) (bool, error)
+	// IgnoredPath reports whether git ignores path in the worktree.
+	IgnoredPath(worktree, path string) (bool, error)
 	// OtherWorktrees returns the canonical root of every worktree of the repository except the given one.
 	OtherWorktrees(worktree string) ([]string, error)
-	// AddedPaths returns, sorted, the repository-relative paths that a commit in base..head adds over its first parent.
-	// A path a later commit in the range deletes still counts.
-	AddedPaths(worktree, base, head string) ([]string, error)
+	// PathDiffers reports whether path differs from base in the worktree: a changed tracked file or an untracked new one.
+	PathDiffers(worktree, base, path string) (bool, error)
+	// WorktreeBlob returns the blob id of path's content in the worktree, or "" when the file is absent.
+	WorktreeBlob(worktree, path string) (string, error)
+	// CommitBlob returns the blob id of path at commit, or "" when the commit does not hold the path.
+	CommitBlob(worktree, commit, path string) (string, error)
+	// TreePathsWithBlob returns, sorted, every path in commit's tree whose object id is blob.
+	TreePathsWithBlob(worktree, commit, blob string) ([]string, error)
+	// CommitLog returns, oldest first, the non-merge commits on head's first-parent line after base, both full SHAs.
+	// A base that is not on that line, or a SHA the repository does not hold, is an error.
+	CommitLog(worktree, base, head string) ([]CommitLogEntry, error)
+}
+
+// CommitLogEntry is one commit in a commit log, with the departures its message declares.
+type CommitLogEntry struct {
+	SHA     string
+	Subject string
+	// Departures holds the value of each `Pattern-Departure:` trailer line of the commit message, in order and verbatim.
+	Departures []string
+}
+
+// DepartureLines renders each departure as "<subject>: <value>", in order.
+func (e CommitLogEntry) DepartureLines() []string {
+	lines := make([]string, 0, len(e.Departures))
+	for _, departure := range e.Departures {
+		lines = append(lines, e.Subject+": "+departure)
+	}
+	return lines
 }
 
 // realGit implements Git over the repository on disk;
@@ -79,10 +107,6 @@ func (realGit) IgnoredPath(worktree, path string) (bool, error) { return ignored
 
 func (realGit) OtherWorktrees(worktree string) ([]string, error) { return otherWorktrees(worktree) }
 
-func (realGit) AddedPaths(worktree, base, head string) ([]string, error) {
-	return addedPaths(worktree, base, head)
-}
-
 func (realGit) PathDiffers(worktree, base, path string) (bool, error) {
 	return worktreePathDiffers(worktree, base, path)
 }
@@ -101,12 +125,6 @@ func (realGit) TreePathsWithBlob(worktree, commit, blob string) ([]string, error
 
 func (realGit) CommitLog(worktree, base, head string) ([]CommitLogEntry, error) {
 	return commitLog(worktree, base, head)
-}
-
-// NewGit returns the Git over the repository on disk.
-// It serves a caller outside the package that reads a worktree the way webster does.
-func NewGit() Git {
-	return realGit{}
 }
 
 // git returns the Git the geometry carries, or realGit when it carries none.

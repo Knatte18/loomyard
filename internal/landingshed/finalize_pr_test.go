@@ -117,10 +117,6 @@ func TestFinalize_PullRequest(t *testing.T) {
 		wantNoRecord    bool
 		// wantRecordKept asserts the record's file is still there.
 		wantRecordKept bool
-		// commitErr is what the CommitRecord seam fails with.
-		commitErr error
-		// wantCommits is how many times the landing commits the record.
-		wantCommits int
 	}{
 		{
 			name: "UnreadableParentModeHaltsNamingTheWorktreeBehindTheLandingPrefix", parentErr: errors.New("bad yaml"),
@@ -131,7 +127,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"lym loom resume"},
 		},
 		{
-			name: "NoClosesAnOpenRecordedPullRequestRemovesTheRecordAndMergesLocally", parentMode: "off", record: recorded(), scripts: statusScript(open), wantCommits: 1,
+			name: "NoClosesAnOpenRecordedPullRequestRemovesTheRecordAndMergesLocally", parentMode: "off", record: recorded(), scripts: statusScript(open),
 			wantOutcome: shedengine.Done, wantMerges: 1, wantNoRecord: true, wantOrder: "merge,mark,push",
 			wantCalls: []string{"RequiresPullRequest main", "Status 7", "Close 7 lym closed this pull request: pull request off: the parent's beam.yaml pull_request is off and the entry's pull_request is empty"},
 		},
@@ -162,14 +158,14 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"has no pull request recorded", "lym loom goto PR-Review"},
 		},
 		{
-			name: "AMergeParentWithNoRecordOpensThePullRequestAndSquashMergesItWhateverTheSquashSetting", parentMode: "merge", squashOff: true, wantCommits: 1,
+			name: "AMergeParentWithNoRecordOpensThePullRequestAndSquashMergesItWhateverTheSquashSetting", parentMode: "merge", squashOff: true,
 			scripts:     map[string][]scriptedCall{"Create": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}}}, "Merge": {{}}},
 			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,fast-forward,merge,mark,push", wantRecordKept: true,
 			wantSquashedMerges: true, wantRecord: openedRecord,
 			wantCalls: []string{"FindOpen task-branch main", wantCreate, wantGitHubMerge},
 		},
 		{
-			name: "AMergeParentFindsTheOpenPullRequestOnTheTaskBranchSetsItsTextAndMergesIt", parentMode: "merge", wantCommits: 1,
+			name: "AMergeParentFindsTheOpenPullRequestOnTheTaskBranchSetsItsTextAndMergesIt", parentMode: "merge",
 			scripts:     map[string][]scriptedCall{"FindOpen": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}, found: true}}, "Merge": {{}}},
 			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,fast-forward,merge,mark,push", wantRecordKept: true, wantRecord: openedRecord,
 			wantCalls: []string{"FindOpen task-branch main", "Edit 7|A landing title|A landing body.\n\n" + wantCredit, wantGitHubMerge},
@@ -324,7 +320,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "merge,mark,push",
 		},
 		{
-			name: "AnEmptyTaskBranchClosesAnOpenRecordedPullRequestAndLandsLocally", parentMode: "on", taskEmpty: true, record: recorded(), scripts: statusScript(open), wantCommits: 1,
+			name: "AnEmptyTaskBranchClosesAnOpenRecordedPullRequestAndLandsLocally", parentMode: "on", taskEmpty: true, record: recorded(), scripts: statusScript(open),
 			wantOutcome: shedengine.Done, wantMerges: 1, wantNoRecord: true, wantOrder: "merge,mark,push",
 			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: " + emptyBranchReason},
 		},
@@ -353,7 +349,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Done, wantMerges: 1, wantSquashedMerges: true, wantOrder: "commits-missing,merge,mark,push,drop-record", wantCalls: []string{"Status 7"},
 		},
 		{
-			name: "AMergeAtAnotherHeadLackingATaskCommitUnderRequiredOpensANewPullRequestMergesItAndDropsTheRecord", parentMode: "required", wantCommits: 1,
+			name: "AMergeAtAnotherHeadLackingATaskCommitUnderRequiredOpensANewPullRequestMergesItAndDropsTheRecord", parentMode: "required",
 			beam: true, beamPR: recordedBeam, commitsMissing: []string{"abc1234 a late commit"},
 			scripts:     map[string][]scriptedCall{"Status": {mergedAt("older-head")}, "Create": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}}}, "Merge": {{}}},
 			wantOutcome: shedengine.Done, wantMerges: 1, wantRecordKept: true, wantRecord: openedRecord,
@@ -403,7 +399,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantCalls: []string{"Status 7", wantGitHubMerge},
 		},
 		{
-			name: "ABeamWithNoRecordedPullRequestUnderOffDropsAClosedOneInTheRunsRecordAndLandsLocallyWithNoReopen", parentMode: "off", record: recorded(), wantCommits: 1,
+			name: "ABeamWithNoRecordedPullRequestUnderOffDropsAClosedOneInTheRunsRecordAndLandsLocallyWithNoReopen", parentMode: "off", record: recorded(),
 			beam: true, scripts: statusScript(closed),
 			wantOutcome: shedengine.Done, wantMerges: 1, wantNoRecord: true, wantOrder: "merge,mark,push",
 			wantCalls: []string{"Status 7", "RequiresPullRequest main", "Status 7"},
@@ -421,14 +417,14 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantCalls: []string{"Status 7", "Status 7"},
 		},
 		{
-			name: "ABeamWithNoRecordedPullRequestUnderRequiredFindsTheOpenOneAndMergesItWithNoEdit", parentMode: "required", wantCommits: 1,
+			name: "ABeamWithNoRecordedPullRequestUnderRequiredFindsTheOpenOneAndMergesItWithNoEdit", parentMode: "required",
 			beam:        true,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}, found: true}}, "Merge": {{}}},
 			wantOutcome: shedengine.Done, wantMerges: 1, wantRecordKept: true, wantRecord: openedRecord, wantOrder: "task-push,fast-forward,merge,mark,push",
 			wantCalls: []string{"FindOpen task-branch main", wantGitHubMerge},
 		},
 		{
-			name: "ABeamWithNoRecordedPullRequestUnderRequiredOpensOneFromTheDescriptionAndMergesIt", parentMode: "required", wantCommits: 1,
+			name: "ABeamWithNoRecordedPullRequestUnderRequiredOpensOneFromTheDescriptionAndMergesIt", parentMode: "required",
 			beam:        true,
 			scripts:     map[string][]scriptedCall{"Create": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}}}, "Merge": {{}}},
 			wantOutcome: shedengine.Done, wantMerges: 1, wantRecordKept: true, wantRecord: openedRecord, wantOrder: "task-push,fast-forward,merge,mark,push",
@@ -438,19 +434,6 @@ func TestFinalize_PullRequest(t *testing.T) {
 			name: "ABeamWithNoRecordedPullRequestUnderOnLandsLocallyWithNoGitHubCall", parentMode: "on", origin: &Origin{URL: "/srv/hub.git", Upstream: true},
 			beam:        true,
 			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "merge,mark,push",
-		},
-		{
-			name: "AFailingCommitOfTheRecordRemovalIsAnErrorStopWithNoMerge", parentMode: "off", record: recorded(), scripts: statusScript(open),
-			commitErr: errors.New("push stopped"),
-			wantErr:   true, wantErrText: "commit the pull request record", wantCommits: 1,
-			wantCalls: []string{"RequiresPullRequest main", "Status 7", "Close 7 lym closed this pull request: pull request off: the parent's beam.yaml pull_request is off and the entry's pull_request is empty"},
-		},
-		{
-			name: "AFailingCommitOfTheOpenedRecordIsAnErrorStopWithNoGitHubMerge", parentMode: "merge",
-			scripts:   map[string][]scriptedCall{"Create": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}}}},
-			commitErr: errors.New("push stopped"),
-			wantErr:   true, wantErrText: "commit the pull request record", wantCommits: 1,
-			wantCalls: []string{"FindOpen task-branch main", wantCreate},
 		},
 	}
 	for _, tt := range tests {
@@ -485,11 +468,9 @@ func TestFinalize_PullRequest(t *testing.T) {
 			}
 			lockHeldAtMode := false
 			entryFieldCalls := 0
-			commits := &commitRecorder{err: tt.commitErr}
 			deps.PullRequest = PullRequestDeps{
 				RecordPath:     filepath.Join(dir, "pull-request.json"),
 				RecordLockPath: filepath.Join(dir, "pull-request.lock"),
-				CommitRecord:   commits.commit,
 				ParentMode: func() (string, string, error) {
 					rec, found, _ := deps.Lock.Store.Read("main")
 					lockHeldAtMode = found && rec.Owner.Slug == "me"
@@ -581,9 +562,6 @@ func TestFinalize_PullRequest(t *testing.T) {
 			}
 			if len(merger.calls) != tt.wantMerges {
 				t.Errorf("parent-side merges = %d; want %d", len(merger.calls), tt.wantMerges)
-			}
-			if commits.calls != tt.wantCommits {
-				t.Errorf("record commits = %d; want %d", commits.calls, tt.wantCommits)
 			}
 			for i, call := range merger.calls {
 				if tt.wantSquashedMerges && !call.opts.Squash {

@@ -19,7 +19,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -28,8 +27,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runproc"
-	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -210,77 +207,6 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 	nothing, _ := verb(t, Command(), prime, "resume")
 	if items, _ := report(t, nothing, "resume")["resumed"].([]any); !nothing.OK || len(items) != 0 {
 		t.Errorf("second resume = %v; want nothing resumed", nothing.Raw)
-	}
-
-	// A slug with no batten record: the pause writes and commits no intent.
-	recordsHead := func() string { return strings.TrimSpace(gitkit.Git(t, h.PrimeRecords(), "rev-parse", "HEAD")) }
-	headBefore := recordsHead()
-	if noRecord, code := verb(t, Command(), prime, "pause", pairSlug); !noRecord.OK || code != 0 {
-		t.Fatalf("pause of a slug with no batten record: ok=%v error=%q", noRecord.OK, noRecord.Error)
-	}
-	if headAfter := recordsHead(); headAfter != headBefore {
-		t.Errorf("records HEAD after pausing a slug with no batten record = %s; want %s unchanged", headAfter, headBefore)
-	}
-	if lifted, _ := verb(t, Command(), prime, "resume", pairSlug); !lifted.OK {
-		t.Fatalf("resume of a slug with no batten record: %q", lifted.Error)
-	}
-
-	// A slug the Bolt records as owned by another machine, with no pair here, is refused naming that machine.
-	board, err := boardengine.OpenHub(h.Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := board.UpsertTask(map[string]any{"slug": "away", "kind": "project", "labels": []string{"bug"}, "recipe": boardengine.ProjectRecipe}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := boardengine.SetOwners(h.BoardDir(), boardengine.OwnerRequest{Machine: "other-box", Slugs: []string{"away"}, Beam: true}); err != nil {
-		t.Fatal(err)
-	}
-	away, code := verb(t, Command(), prime, "pause", "away")
-	if away.OK || code == 0 || !strings.Contains(away.Error, "machine other-box") || !strings.Contains(away.Error, "lym adopt away") {
-		t.Errorf("pause of a run another machine owns: ok=%v error=%q; want a refusal naming the machine", away.OK, away.Error)
-	}
-	if live, _ := liveEntries(t, h); len(live) != 0 {
-		t.Errorf("live entries after the refused pause = %+v; want none", live)
-	}
-	awayResume, code := verb(t, Command(), prime, "resume", "away")
-	if awayResume.OK || code == 0 || !strings.Contains(awayResume.Error, "machine other-box") || !strings.Contains(awayResume.Error, "lym adopt away") {
-		t.Errorf("resume of a run another machine owns: ok=%v error=%q; want a refusal naming the machine and the adopt", awayResume.OK, awayResume.Error)
-	}
-
-	// A batten-paused run: the pause commits the intent on the prime's records side, and the resume commits it cleared.
-	statusPath := shedrun.StatusFile(h.Location, pairSlug)
-	if err := os.MkdirAll(filepath.Dir(statusPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(statusPath, []byte(`{"state":"paused","current_producer":"Run-Shed"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	committedIntent := func() *shedengine.PauseIntent {
-		data, found, err := fabricengine.CommittedAnchoredFile(h.Location, shedrun.StatusRel(h.Location, pairSlug))
-		if err != nil || !found {
-			t.Fatalf("CommittedAnchoredFile() = found %v, %v; want the committed batten record", found, err)
-		}
-		status, err := shedengine.ParseStatusTolerant(data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return status.PauseIntent
-	}
-	if paused, code := verb(t, Command(), prime, "pause", pairSlug); !paused.OK || code != 0 {
-		t.Fatalf("pause of a run with a batten record: ok=%v error=%q", paused.OK, paused.Error)
-	}
-	if intent := committedIntent(); intent == nil || intent.By != agentname.External {
-		t.Errorf("committed pause intent = %+v; want one by the external caller", intent)
-	}
-	if resumedRun, code := verb(t, Command(), prime, "resume", pairSlug); !resumedRun.OK || code != 0 {
-		t.Fatalf("resume of a batten-paused run: ok=%v error=%q", resumedRun.OK, resumedRun.Error)
-	}
-	if intent := committedIntent(); intent != nil {
-		t.Errorf("committed pause intent after the resume = %+v; want it cleared", intent)
-	}
-	if live, _ := liveEntries(t, h); len(live) != 0 {
-		t.Errorf("live entries after the resume = %+v; want the slug's entry lifted", live)
 	}
 }
 

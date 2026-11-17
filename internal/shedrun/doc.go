@@ -48,11 +48,11 @@
 // WriteLandedCommit writes it and ReadLandedCommit reads it, empty when none is recorded.
 // ParentNoticeFile is an ephemeral file under ScratchDir.
 // It holds the key of the parent-branch notice a run's pre-push check last posted.
-// The intent writers own the batten record's `cancel` and `pause_intent` keys.
-// CancelMarkerLock is the lock a cancel under way on this machine holds, whose holder is its live writer.
-// It sits directly under ScratchRoot beside the per-slug scratch directories, never inside RunDir or ScratchDir.
-// A slug's records removal therefore leaves it.
-// Batten's verbs read the cancel's intent in the record and this lock.
+// CancelMarker is the ephemeral marker `lym batten cancel` writes.
+// CancelMarkerLock is the lock whose holder is its live writer.
+// Both sit directly under ScratchRoot beside the per-slug scratch directories, never inside RunDir or ScratchDir.
+// A slug's records removal therefore leaves them.
+// Batten's verbs read the marker.
 // SettleRecords is the Go driver's settle-record file under a run's directory, beside its drive reports.
 // The settle-record format is declared here too: SettleRecord, StopKey, and the settler and action names.
 // ParseSettleRecords is the tolerant decoder; it skips a line that does not decode and reports it by line number.
@@ -62,10 +62,6 @@
 // BattenWatchedContent renders the pid on the first line.
 // When known, the prime's batten scratch directory and the Run-Shed row's name follow on the next two.
 // ParseBattenWatched reads it back, and a one-line marker parses with an empty scratch directory and row.
-//
-// StencilPinsFile is the durable record under RunDir of the stencils a run may render, as installed at its first seed.
-// It maps each stencil's name to its body hash then; WriteStencilPins writes it and ReadStencilPins reads it.
-// StencilPinsRel is its anchor-relative form, which the seed's commit takes.
 //
 // WakeRecord is the ephemeral wake record under ScratchDir.
 // WriteWakeStamp writes it after a row completes a wake.

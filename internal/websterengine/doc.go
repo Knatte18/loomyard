@@ -73,9 +73,7 @@
 //
 // # Fork-return contract: OK/FAILED and a head SHA
 //
-// A fork's whole return contract is the minimal report shape internal/runplan implements.
-// The shape is Report, ParseReport and WriteReport.
-// The report's optional `journal` is left empty by webster's forks.
+// A fork's whole return contract is the minimal report shape report.go implements (Report/ParseReport/WriteReport).
 // It carries `status: OK`, `status: FAILED` or `status: NEEDS_PARENT` with its `need`.
 // It also carries the `head_sha` the fork left the worktree at.
 // The plan's glyph names are the fork's contract.
@@ -153,7 +151,7 @@
 //
 // A batch reaches terminal down one of two paths:
 // record-batch after an ordinary in-session fork, or recover-batch after a cold recovery strand.
-// Both run the identical post-batch mechanical pass (runplan.PostBatchChecks):
+// Both run the identical post-batch mechanical pass (postBatchChecks):
 // the card done-checks, the re-sign rebind, one shared delta and handle binding.
 // It also runs the informational glyph scope guard and drift detection with its exact-tier auto-repair.
 // Each rewrite among them also requires the plan-staleness re-baseline.
@@ -223,10 +221,10 @@
 // A forthcoming target that never lands keeps the run from outcome done.
 // The run-exit check requires a terminal done record for every batch.
 //
-// loom's plan gate takes a narrower scope from runplan's DoneCards:
+// loom's plan gate takes a narrower scope from DoneCards:
 // only the cards of a batch recorded terminal with status done, read from the batch records alone, with no batchifier.
 // A run moved back to the plan review keeps its run record, and those cards are history whose work is in the tree.
-// The gate reads runplan's EditedDoneCards beside DoneCards:
+// The gate reads EditedDoneCards beside DoneCards:
 // the ids of those cards whose file no longer hashes to the CardHashes entry their batch recorded at begin.
 // It reads the batch records and the card bytes alone.
 //
@@ -406,15 +404,6 @@
 // A correctness finding fails the batch on its merits instead of wedging it.
 // The batch goes terminal with digest status failed and its reasons.
 // The report is archived, and record-batch returns *BatchFailedError naming `lym webster recover-batch`.
-// A batch whose commits add a secret file fails the same way, whatever its report says.
-// A secret file is a path that RecordDeps.SecretPaths matches.
-// Some commit from the batch's start commit to its head must add it, whether or not a later commit deletes it.
-// A batch that also trips a correctness finding fails on the secret file instead, so the way forward names the file.
-// The file sits in the branch's history, and recover-batch would build on the commits that hold it.
-// Master therefore stops with outcome stuck on this failure.
-// The run's parent then resets the batch to its start.
-// The reset drops the commits and the files they added.
-// The parent then recovers the batch.
 // recover-batch proceeds from a failed batch and hands its strand the failure digest.
 // The exception is a batch failed on a correctness finding the recovery check cannot verify.
 // Such a finding has no path or a path outside the tracked tree and the plan directory.
@@ -528,7 +517,7 @@
 // An uncleared path is one a fork, recovery or verify-fixer session wrote last, and the refusal names which.
 // A Master write whose result failed is not evidence, and an acknowledgement never clears it.
 // Every other path under `_lym`, `.lym` or the scratch directory stays uncheckable.
-// These sites consult contractFileStatus before runplan.CheckSuspectPaths:
+// These sites consult contractFileStatus before checkSuspectPaths:
 // AcceptPendingAudit, RecoverSpawnOrAttach, pendingPathsWayForward and `run --fresh`.
 // A cleared contract path is resolved, so at run exit `lym webster accept-audit` clears the finding directly;
 // an uncleared one refuses with `rm <path>` as the first step, then the verb to re-run.
@@ -654,7 +643,7 @@
 // `lym webster reset --to start` likewise stops every recovery strand the state records before it resets,
 // so no recovery agent keeps writing into the tree the reset moves;
 // `--to pre-fix` removes none.
-// Merriam runs the call as the Master stencil's background-command block says, and acts on its result.
+// Merriam runs the call as a backgrounded Bash command, ends its turn and acts on the completion notification.
 // Only an operator's shorter --wait can return a running snapshot.
 // A recovery strand's turn end with no report classifies dead/asking only when it is the strand's newest turn signal.
 // Nothing may keep the strand waiting (gatefixer's TurnEndedAfter).
@@ -672,8 +661,6 @@
 // BatchState.RecoveryEngines, keyed by session id, sits beside RecoverySessions.
 // State without these keys reads them as empty.
 // Webster is told an AuditEngines lookup, which the engine set satisfies.
-// Each launch renders its prompt's edit directive for the engine its model choice resolves to, named by EngineName.
-// The same name rides on the spec as PromptEngine.
 // It reads each session through the engine its own entry records.
 // A change to shuttle.yaml's engine therefore never alters how a recorded session is read.
 // The run-write history and the reset's own paths audit each recorded session through its engine.
@@ -834,8 +821,8 @@
 //
 // # The plan-conflict record
 //
-// begin-batch leaves two never-tracked files in the implementer-neutral conflict directory (`.lym/implementer/`).
-// They are never under `_lym`, so no sync carries them:
+// begin-batch leaves two never-tracked files in the scratch directory (`.lym/webster/`), never under `_lym`,
+// so no sync carries them:
 // the conflict record `plan-conflict.md`, naming the batch, the cause and each blocking finding;
 // the last-routed conflict `plan-conflict-routed.md`, holding the findings of the conflict last routed to plan review.
 // Their paths are ConflictRecordPath and RoutedConflictPath.
@@ -866,7 +853,7 @@
 // Merriam then ends its turn.
 // On the fork's notification it rewrites its outcome and summary files, which re-arrives at the gate.
 // The gate's re-prompt line and its findings both open with the way forward to the routed fixer.
-// It names the fixer-fork step and the prompt file's path, or the `lym webster fix-verify` call,
+// It names the fixer-fork step and the prompt file's path, or the backgrounded `lym webster fix-verify` call,
 // so the rule stands where Merriam reads the failure.
 // The waiting turn end in between is no arrival.
 // Both fixers' prompts share one body, webster-body-verify-fix, behind a prefix of their own.
@@ -885,9 +872,10 @@
 //
 // # The cold verify-gate fixer
 //
-// For a cold failure, Merriam runs `lym webster fix-verify` as the Master stencil's background-command block says.
+// For a cold failure, Merriam runs `lym webster fix-verify` as a backgrounded Bash command.
 // Master's spawn declares that command an awaited shell prefix beside recover-batch.
-// Whatever its exit, once the command ends it rewrites its outcome and summary files as after a fork.
+// Merriam ends its turn.
+// Whatever its exit, on the command's completion notification it rewrites its outcome and summary files as after a fork.
 // internal/gatefixer owns the cold fixer's spawn, wait and runproc registration.
 // Webster adapts it through a store over State.VerifyFixers.
 // FixVerifySpawnOrAttach spawns the cold fixer as its own strand through it, with role `verify-fixer`.
@@ -927,7 +915,7 @@
 // Master ends stuck only after it.
 // A refusal with the cause `plan_order` goes to no fixer, since moving a delete reshapes cards.
 // Master ends stuck at once quoting the refusal.
-// For the fixer, Merriam runs `lym webster fix-plan` as the Master stencil's background-command block says.
+// For the fixer, Merriam runs `lym webster fix-plan` backgrounded and ends its turn.
 // On the verb's completion it calls begin-batch again for the same batch on verdict `fixed`.
 // Otherwise it writes `outcome: stuck` quoting the begin-batch refusal,
 // so a tapestry run still reroutes to plan review through the conflict record.
@@ -1203,7 +1191,7 @@
 // It quotes the output tail of a failure that named no test.
 // It also carries the commits the fixer made since the pre-fix head and a hint:
 // the cards, in trail order, whose commits changed a file directly in a failing package's directory.
-// runplan.CardHint computes it over accumulatedCardSHAs.
+// cardHint computes it over accumulatedCardSHAs.
 // The hint claims only that a card touched a failing package;
 // Merriam judges it with the plan in hand.
 // The gate runs no bisect, no baseline run and no detached checkout of the live worktree.
@@ -1236,16 +1224,14 @@
 // A test that drives the real resolve pass sets planglyph.NewIndex.
 // A test that steers the batch delta sets a fake planindex.Delta.
 //
-// # Only the run-plan machinery is shared with other batch-implementation loops
+// # No shared substrate or parser with any other batch-implementation loop
 //
 // websterengine imports no other batch-implementation module's plan parser, report schema, or digest contract.
-// It shares only internal/runplan's run-plan machinery with other batch-implementation loops.
+// Only planparser and this package's own Report and Digest types are in play.
 // It reuses the provider-invariant orchestration substrate that every `lym` module built on shuttle shares:
 // internal/reedengine, internal/shuttleengine and its claudeengine, and internal/gitrepo.
-// Webster reaches the shared batch machinery through internal/runplan.
-// State embeds runplan.State, and runplan.go keeps webster's names for what moved.
-// Every shared refusal names webster's way forward through the text webster passes.
 // It owns the rest of its mechanism, with no cross-module import.
+// The plan-fingerprint hash is in fingerprint.go.
 // The git-query helpers built on gitrepo are in gitwrap.go and are reached through the Git seam.
 // The archive-never-refuse primitives are in archive.go, and the recovery classification is in classify.go.
 //

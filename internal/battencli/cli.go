@@ -20,19 +20,17 @@
 // It refuses first, with nothing ended:
 // a hub pause; work that reached the parent; an owner on another machine; a stopped origin entry;
 // a cancel already under way; and a slug with nothing left.
-// It then takes the cancel's local lock, which its writer holds until the cancel ends.
-// It records the cancel intent in batten's record.
-// Every driving verb refuses on an unfinished intent or a held lock.
-// A second cancel reads them to finish an interrupted one.
+// It then takes the cancel marker: a record whose writer's liveness is a lock it holds.
+// Every driving verb refuses on it, and a second cancel reads it to finish an interrupted one.
 // The order is: end the registered processes; take batten's locks; stop the pair's strands and the tackler;
 // remove the pair and its task branches with --remove; remove the records; leave the claim draft;
-// lift the slug's own pauses; push and notify; and release the cancel's lock last.
+// lift the slug's own pauses; push and notify; and remove the marker last.
 // Without --remove, the pair is kept.
 // The cancel names "lym batten cancel <slug> --remove" as the step before the slug runs again.
 // Records already removed and untracked at the records HEAD count as removed.
 // No records commit is made, so "--remove" after a plain cancel succeeds.
 // An unreachable origin ends only the processes and strands.
-// It leaves the intent in the record and posts a notice naming the cancel to run once origin answers.
+// It leaves the marker and posts a notice naming the cancel to run once origin answers.
 // The cancel of a beam project first runs the hub's origin reconcile.
 // It refuses while the beam has members, and names the way out for each one:
 // to land or cancel first, or, once the beam's pawl run holds its entry, to cancel and move off the beam.
@@ -100,9 +98,8 @@
 // It never brings up the dobby alone.
 // `StartFirstPass` is the in-process start of a first pass.
 // It serves the verbs that take a run over, or start a beam project's.
-// It runs the act rule, the status check and the owner pre-flight of a plain run.
-// Before starting anything it refuses a slug the act rule makes wait or hand over.
-// It also refuses a done slug and one another machine owns.
+// It runs the status check, the pause refusal and the owner pre-flight of a plain run.
+// It refuses a done slug, a covered one, or one another machine owns before starting anything.
 // Then it starts the pass detached.
 // Its `FirstPassOptions.Anchor` is recorded as the seed's `anchor` param on the first pass only.
 // So it rides in the run record, and a resume keeps it.
@@ -119,7 +116,7 @@
 // A beam's own landing run, whose entry its Land pruned, resumes its Worktree-Teardown over the mark its Beam-Up wrote.
 // The promote refusal never names a cancel that refuses back.
 //
-// The Worktree-Create row opens by claiming the slug's board entry with "starting · Worktree-Create".
+// The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create".
 // The claim comes before the pair exists, so the board's run lock starts at the claim.
 // The claim is one Bolt commit that also records this machine as the entry's owner.
 // An absent or done entry is skipped.
@@ -179,7 +176,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -283,14 +279,9 @@ type battenCLI struct {
 	beamHold func(beam string) (status string, held bool, err error)
 	// firstPassAnchor is the anchor the first pass records as the seed's anchor param; empty records none.
 	firstPassAnchor string
-	// preDrive re-reads the cancel's lock and the seed when an absent status is seeded, under the shed's run lock.
+	// preDrive re-reads the cancel marker and the seed when an absent status is seeded, under the shed's run lock.
 	// Nil checks nothing, which only a hand-populated receiver has.
 	preDrive func() error
-	// runVerdict reads the act rule's verdict for the slug's run, with a shed pause set aside:
-	// batten's own verbs resume that pause themselves.
-	// The arm fills it over the run's records.
-	// Nil checks nothing, which only a hand-populated receiver has.
-	runVerdict func() (runfsm.Verdict, error)
 	// clientAttached reports whether any client is attached to the task worktree's reed session.
 	// Nil reads as no reopening, which only a hand-populated receiver has.
 	clientAttached func() (bool, error)
@@ -319,25 +310,26 @@ silently from the persisted current producer -- there is no re-seed flag,
 because every operator-fixable refusal this task raises lands as blocked,
 which is the everyday resume path. The dobby of the run's parent worktree
 removes a done run's record once it has counted its landing and decided its
-landing notice. Before it drives anything it asks whether the run may act:
-a covering pause, a paused run, a cancel under way and another machine's
-ownership each refuse it, naming the way forward. A slug whose done record still stands refuses,
-naming "lym batten cleanup --apply" and the leftover branches to delete,
-unless it is the done motif run of a task whose recipe the board resolves to raddle, which the start removes.
+landing notice. A slug whose done record still stands refuses on the
+envelope, naming "lym batten cleanup --apply" and the leftover branches to
+delete to run it again, unless it is the done motif run of a task whose recipe the board resolves to
+raddle, which the start removes.
 
 The Go driver meets an unexpected stop with its rule table and a cold tackler
 agent before the orch sees it; a second run for the slug is refused while the
 first holds the driver lock.
 
-An omitted run-id refuses by name rather than defaulting to "self".
+The run-id is required in practice: an omitted run-id refuses by name
+rather than defaulting to "self".
 
 The Open-Window, Seed-IDE and Open-IDE rows are Command rows: each runs its
 batten.yaml command (open_window_command, seed_ide_command, open_ide_command)
 only when its entry gate (the open_window, seed_ide or open_ide setting) is on.
 Open-Window's default command opens one desktop terminal window attached to the
 task worktree's reed session; Seed-IDE's writes the worktree's VS Code config,
-and Open-IDE's opens VS Code. A run resumed past that row opens a window again
-when no client is attached to that session and open_window is on.
+and Open-IDE's opens VS Code. A run resumed past that row opens a
+window again when no client is attached to the task worktree's reed session and
+open_window is on, through the same command.
 
 Example:
   lym batten run some-slug`,
@@ -379,8 +371,9 @@ in the persist that records the paused state.
 strand name, beside the request. The label is recorded in the paused run's
 pause_reason; shed is reserved for lym's own automatic steps and refused.
 
-A paused run stays held until "lym batten run <slug>" resumes it: the dobby
-gives it no pass, even when its work already reached its parent.
+A paused run whose work already reached its parent is not held: dobby
+finishes it through Land and Worktree-Teardown. Hold such a run with
+lym tender pause <slug>.
 
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted
@@ -420,8 +413,9 @@ run's pause reason. A bounce-budget-exhausted halt is lifted only by
 and never re-opens a finished run. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
 Worktree-Teardown is reachable only once the child run is done.
 
-A paused run stays held until "lym batten run <slug>" resumes it: the dobby
-gives it no pass, even when its work already reached its parent.
+A paused run whose work already reached its parent is not held: dobby
+finishes it through Land and Worktree-Teardown. Hold such a run with
+lym tender pause <slug>.
 
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted
@@ -452,8 +446,8 @@ current state; "pause" requests a pause at the run's next producer boundary;
 records and scratch of every done run, and the scratch of aged orphans.
 
 "cancel" ends one slug's run for good, whatever its state: it ends the run's
-processes and strands, leaves its board claim draft and keeps its record with the cancel's
-finish, and with --remove also removes its pair and task branches and deletes its record.
+processes and strands, leaves its board claim draft and removes its records, and with
+--remove also its pair and task branches.
 
 Every verb runs from the hub's prime worktree and from any beam: they refuse when
 invoked from a task worktree that is not a beam, from the pair's fabric sibling, or
@@ -551,8 +545,7 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 // It makes sure the parent worktree's dobby is live.
 // A slug whose status is done, undecodable or in an unrecognized state is refused before anything starts.
 // That refusal is the one a plain run gives.
-// A slug the act rule makes wait, such as one a pause covers, is refused too.
-// So is one another machine owns, naming the owner and `lym adopt <slug>`.
+// A slug a pause covers, or one another machine owns, is refused too, naming the owner and `lym adopt <slug>`.
 // Seeding a fresh status stays inside the started pass.
 // The envelope names the started pass's pid and the parent worktree whose dobby drives the run.
 // It never names a started batten: a second batten for the slug is refused by the run's own lock inside the pass.
@@ -564,7 +557,7 @@ func (c *battenCLI) startFirstPass(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
-	if err := c.refuseByAct(); err != nil {
+	if err := c.refuseCovered(); err != nil {
 		clihelp.SetExit(ctx, output.Err(out, err.Error()))
 		return nil
 	}

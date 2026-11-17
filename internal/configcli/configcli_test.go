@@ -1684,10 +1684,10 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
-			name: "machine layer of a hub-wide module with no machine key is refused naming its hub file verb", module: "slack", layer: "machine",
-			setFlags: []string{"remind_after_min=5"}, wantCode: 1, wantErr: "lym config slack",
+			name: "machine layer of a hub-wide module with no machine key is refused naming its hub file verb", module: "fabric", layer: "machine",
+			setFlags: []string{"remote=origin"}, wantCode: 1, wantErr: "lym config fabric",
 			check: func(t *testing.T, fx hubFixture, out string) {
-				assertFile(t, configengine.MachineFile(fx.board, "slack"), "", true)
+				assertFile(t, configengine.MachineFile(fx.board, "fabric"), "", true)
 			},
 		},
 		{

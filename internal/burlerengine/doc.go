@@ -63,7 +63,7 @@
 // The reviewer explores the target, judges it against the fasit and writes the review file;
 // its write surface is the review file alone, in every fix scope, and it never edits, creates or deletes a target file.
 // Its spec declares the review file as its only output file.
-// Its gate is the review-parse entry (ReviewGateEntry), then the round-check entry (RoundCheckGateEntry).
+// Its gate is the review-parse entry (ReviewGateEntry) alone.
 // It sets ForkSubagents exactly when the profile names a cluster fan.
 // The review half's files are the explore step, the review step and the review-file format.
 // They are written to a fresh directory under the anchor's .lym.
@@ -130,7 +130,7 @@
 // The chair waits with `lym loom parent-review await`, then keeps every finding of a done report.
 // Each is tagged `origin: parent` (ParentOrigin) and lists the report ids it covers in `parent_ids` (Finding.ParentIDs).
 // On any other ending it writes one line saying the parent review did not arrive and why.
-// The review table's gate gains ParentCoverageGateEntry after the round-check entry, in a probed table too.
+// The review table's gate gains ParentCoverageGateEntry after the review-parse entry, in a probed table too.
 // It first sets an ask still pending-post or open timeout, so a late answer is refused once the chair is done.
 // For a done ask with findings it fails naming each report id no parent finding covers, and it never passes on its cap.
 // A done chair whose gate failed with no reason fails the review with the failing entry's findings.
@@ -144,8 +144,7 @@
 // The same check runs again after a done fixer.
 // A review with findings of any severity, a NIT included, spawns the fixer.
 // A review with none runs the round's gates once through checkGates.
-// When they pass, Fix writes a fixer report saying nothing was fixed.
-// That report opens with the frontmatter `spawned: false` and empty `dispositions`.
+// When they pass, Fix writes a normal fixer report saying nothing was fixed.
 // It returns a skipped OutcomeDone with no session.
 // When one fails, the fixer is spawned with the failing gates' findings in a gate-findings file as its work.
 // A gate exhausted in a round leaves its gate-failed edits in the target.
@@ -164,18 +163,6 @@
 // The fixer reads the review, validates each finding against the code, and fixes it.
 // Its spec declares the fixer-report as its only output file.
 // Its gate is RunOpts.Gate with every entry wrapped by repairReportBeforeGate.
-// The fixer-report entry follows.
-//
-// The fixer-report opens with `---`-delimited YAML frontmatter over its prose.
-// `dispositions` holds one entry per finding the fixer owns.
-// Each has a disposition of fixed, fixed-differently, disputed, deferred or ruling and the keys that disposition needs.
-// ParseFixerReport is the sole parser of that frontmatter.
-// It refuses any top-level key but `dispositions` and `spawned`.
-// Only the engine writes `spawned`, on the report it writes itself when no fixer is spawned.
-// CheckFixerReport judges a fixer-written report against the accepted review's findings.
-// FixerReportGateEntry runs that check with 3 attempts and lets the round through on its cap,
-// so a slip in the frontmatter never fails the fix half, archives a round or spends a bounce.
-//
 // The fixer's files hold the review-file format and the fix step.
 // It carries no rubric, fasit, PATTERN directive, focus file, prior rounds or explore step,
 // so `premise false` means false against the code it reads.
@@ -559,8 +546,7 @@
 //
 // # The review-parse gate
 //
-// The reviewer's gate spec is the review entry (ReviewGateEntry) and the round-check entry (RoundCheckGateEntry),
-// and the caller's own entries gate the fixer.
+// The reviewer's gate spec is the review entry (ReviewGateEntry) alone, and the caller's own entries gate the fixer.
 // The entry re-prompts the reviewer in its own session while the round's review file does not parse.
 // The prompt carries the parse error, its quoting hint and the file to rewrite.
 // It re-prompts at most reviewGateAttempts times and then lets the run through,
@@ -568,21 +554,9 @@
 // The gate (through CheckReviewFile) and that parse both reach ParseCurrentReview.
 // It is the strict parse of the current round's review:
 // ParseReview plus a non-empty `fix` on every finding;
-// `verdict`, `findings` and `prior` as the frontmatter's only top-level keys;
+// `verdict` and `findings` as the frontmatter's only top-level keys;
 // and one `### [SEVERITY]` prose block per finding, matching the frontmatter's count per severity.
 // ParseReview tolerates a missing `fix`, so an older round's review still hydrates and still feeds a Bouncer's evidence.
 // `lym burler validate-review <review-file>` is the gate's self-check verb:
-// it runs CheckReviewFile read-only.
-// It resolves the worktree from the seam cwd and runs the round checks on a review in a run directory.
-//
-// # The round checks
-//
-// A review after the first round answers the findings of the round before it.
-// RoundContext holds those findings, each with the fixer's disposition, and the files the round's fixes changed.
-// The review's `prior` frontmatter list gives each earlier finding a status: resolved, open, outdated or withdrawn.
-// A finding of the review links the earlier one it carries forward with `carries`.
-// CheckReviewRound judges the review against the context alone, so the package reads no format of its caller.
-// RoundCheckGateEntry runs it with 3 attempts after the review-parse entry and lets the round through on its cap.
-// A review that passes on the cap keeps its out-of-bound findings, and the fixer works them.
-// ParseCurrentReview keeps the shape checks alone, so the strict parse after the gate accepts such a review.
+// it runs CheckReviewFile read-only and needs no hub, mode or git repository.
 package burlerengine

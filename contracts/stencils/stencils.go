@@ -185,16 +185,6 @@ var LoomTemplatePartsChair []byte
 //go:embed loom/loom-template-arbiter.md
 var LoomTemplateArbiter []byte
 
-// LoomFragmentArbiterFix is the arbiter's edit rules when its driver lets it make and commit one fix of its own.
-//
-//go:embed loom/loom-fragment-arbiter-fix.md
-var LoomFragmentArbiterFix []byte
-
-// LoomFragmentArbiterNoFix is the arbiter's edit rules when its driver keeps it to a verdict.
-//
-//go:embed loom/loom-fragment-arbiter-no-fix.md
-var LoomFragmentArbiterNoFix []byte
-
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by every row of the Discussion-Review perch.
 //
 //go:embed loom/loom-rubric-discussion-review.md
@@ -399,18 +389,6 @@ var WebsterFragmentCardFixer []byte
 //go:embed webster/webster-body-implementer.md
 var WebsterBodyImplementer []byte
 
-// WeaverTemplateBatch is weaver's shipped-default batch attempt prompt:
-// the whole instruction set of the cold strand that builds one batch of the plan.
-//
-//go:embed weaver/weaver-template-batch.md
-var WeaverTemplateBatch []byte
-
-// WeaverBodyVerifyFix is weaver's shipped-default plan-level verify fixer body.
-// The shared gate-fixer cold frame is joined ahead of it to compose the fixer prompt.
-//
-//go:embed weaver/weaver-body-verify-fix.md
-var WeaverBodyVerifyFix []byte
-
 // OrchTemplateStart is orch's shipped-default fresh-launch prompt.
 //
 //go:embed orch/orch-template-start.md
@@ -553,6 +531,12 @@ var ParentDirectiveOperatorBan []byte
 //go:embed parent/parent-directive-none.md
 var ParentDirectiveNone []byte
 
+// EditDirective is the shared edit directive's shipped default:
+// the edit rule every spawned role's opening stencil carries.
+//
+//go:embed edit/edit-directive.md
+var EditDirective []byte
+
 // TwillDirective is the twill directive's shipped default:
 // the host-neutral procedure that has a writer review its finished record through fork lenses.
 //
@@ -595,12 +579,6 @@ var TwillJudgePlain []byte
 //
 //go:embed beam/beam-template-board-tidy.md
 var BeamTemplateBoardTidy []byte
-
-// RetroTemplateTask is the retro task's shipped-default board body.
-// It is the goal of the darn task `lym retro` files: the scripts to run, the reading cap, the questions and the report.
-//
-//go:embed retro/retro-template-task.md
-var RetroTemplateTask []byte
 
 // SeatDirectiveChair is the chair seat block's shipped default:
 // the channel rules a multi-seat step's chair works under, pulled into a seat stencil as an include.
@@ -707,137 +685,16 @@ var EngineClaudeAssistReading []byte
 //go:embed engine/codex/assist-reading.md
 var EngineCodexAssistReading []byte
 
-// EngineClaudeEditDirective is the Claude engine's copy of the edit directive:
-// the edit rule every spawned role's opening stencil carries when its prompt launches on Claude.
+// EngineClaudeEditDirective is the Claude engine's copy of the edit directive, rendered for an assistant seat on Claude.
 //
 //go:embed engine/claude/edit-directive.md
 var EngineClaudeEditDirective []byte
 
 // EngineCodexEditDirective is the Codex engine's copy of the edit directive:
-// the same rule in Codex's tool wording, carried when a prompt launches on Codex.
+// it uses Codex's tool wording and is rendered for an assistant seat on Codex.
 //
 //go:embed engine/codex/edit-directive.md
 var EngineCodexEditDirective []byte
-
-// EngineClaudeForkSpawn is the Claude engine's fork-spawn block:
-// the phrase saying how a session on Claude spawns a fork that inherits its whole context.
-//
-//go:embed engine/claude/fork-spawn.md
-var EngineClaudeForkSpawn []byte
-
-// EngineCodexForkSpawn is the Codex engine's fork-spawn block:
-// the phrase saying how a session on Codex spawns a fork that inherits its whole context.
-//
-//go:embed engine/codex/fork-spawn.md
-var EngineCodexForkSpawn []byte
-
-// EngineClaudeForkWait is the Claude engine's fork-wait block:
-// how a session on Claude waits for every fork it spawned.
-//
-//go:embed engine/claude/fork-wait.md
-var EngineClaudeForkWait []byte
-
-// EngineCodexForkWait is the Codex engine's fork-wait block:
-// how a session on Codex waits for every fork it spawned.
-//
-//go:embed engine/codex/fork-wait.md
-var EngineCodexForkWait []byte
-
-// EngineClaudeForkMessage is the Claude engine's fork-message block:
-// the phrase saying how a session on Claude sends a message to a fork it spawned.
-//
-//go:embed engine/claude/fork-message.md
-var EngineClaudeForkMessage []byte
-
-// EngineCodexForkMessage is the Codex engine's fork-message block:
-// the phrase saying how a session on Codex sends a message to a fork it spawned.
-//
-//go:embed engine/codex/fork-message.md
-var EngineCodexForkMessage []byte
-
-// EngineClaudeBackgroundCommand is the Claude engine's background-command block:
-// the phrase saying how a session on Claude runs a long lym command and learns that it ended.
-//
-//go:embed engine/claude/background-command.md
-var EngineClaudeBackgroundCommand []byte
-
-// EngineCodexBackgroundCommand is the Codex engine's background-command block:
-// the phrase saying how a session on Codex runs a long lym command and learns that it ended.
-//
-//go:embed engine/codex/background-command.md
-var EngineCodexBackgroundCommand []byte
-
-// EngineClaudeForegroundTimeout is the Claude engine's foreground-timeout block:
-// the phrase that gives a long foreground wait command on Claude a timeout of an hour.
-//
-//go:embed engine/claude/foreground-timeout.md
-var EngineClaudeForegroundTimeout []byte
-
-// EngineCodexForegroundTimeout is the Codex engine's foreground-timeout block:
-// the phrase that gives a long foreground wait command on Codex a timeout of an hour.
-//
-//go:embed engine/codex/foreground-timeout.md
-var EngineCodexForegroundTimeout []byte
-
-// EngineClaudeStandingInstructions is the Claude engine's standing-instructions block:
-// the phrase naming where a session on Claude finds its standing rules.
-//
-//go:embed engine/claude/standing-instructions.md
-var EngineClaudeStandingInstructions []byte
-
-// EngineCodexStandingInstructions is the Codex engine's standing-instructions block:
-// the phrase naming where a session on Codex finds its standing rules.
-//
-//go:embed engine/codex/standing-instructions.md
-var EngineCodexStandingInstructions []byte
-
-// EngineClaudeAbsolutePaths is the Claude engine's absolute-paths block:
-// the line that keeps the paths a session on Claude passes to its file tools absolute.
-//
-//go:embed engine/claude/absolute-paths.md
-var EngineClaudeAbsolutePaths []byte
-
-// EngineCodexAbsolutePaths is the Codex engine's absolute-paths block:
-// the line that keeps the paths a session on Codex passes to its file tools absolute.
-//
-//go:embed engine/codex/absolute-paths.md
-var EngineCodexAbsolutePaths []byte
-
-// EngineClaudeSubagentLookups is the Claude engine's subagent-lookups block:
-// how a writer on Claude sends its independent lookups to fresh subagents in one batch.
-//
-//go:embed engine/claude/subagent-lookups.md
-var EngineClaudeSubagentLookups []byte
-
-// EngineCodexSubagentLookups is the Codex engine's subagent-lookups block:
-// how a writer on Codex sends its independent lookups to fresh subagents in one batch.
-//
-//go:embed engine/codex/subagent-lookups.md
-var EngineCodexSubagentLookups []byte
-
-// EngineClaudeDarnSubagents is the Claude engine's darn-subagents block:
-// how the darn writer on Claude hands lookups and per-package work to fresh subagents.
-//
-//go:embed engine/claude/darn-subagents.md
-var EngineClaudeDarnSubagents []byte
-
-// EngineCodexDarnSubagents is the Codex engine's darn-subagents block:
-// how the darn writer on Codex hands lookups and per-package work to fresh subagents.
-//
-//go:embed engine/codex/darn-subagents.md
-var EngineCodexDarnSubagents []byte
-
-// EngineClaudeQuestionTool is the Claude engine's question-tool block:
-// the name of the Claude tool that puts a question to the operator in a dialog.
-//
-//go:embed engine/claude/question-tool.md
-var EngineClaudeQuestionTool []byte
-
-// EngineCodexQuestionTool is the Codex engine's question-tool block:
-// the name of the Codex tool that puts a question to the operator in a dialog.
-//
-//go:embed engine/codex/question-tool.md
-var EngineCodexQuestionTool []byte
 
 // GatefixFrameCold is the shared cold frame every gate fixer's prompt opens with:
 // it is joined ahead of one caller body stencil.
@@ -907,8 +764,6 @@ var entries = []registryEntry{
 	{"loom-template-part-writer", &LoomTemplatePartWriter},
 	{"loom-template-parts-chair", &LoomTemplatePartsChair},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
-	{"loom-fragment-arbiter-fix", &LoomFragmentArbiterFix},
-	{"loom-fragment-arbiter-no-fix", &LoomFragmentArbiterNoFix},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-raddle-review", &LoomRubricRaddleReview},
@@ -950,8 +805,6 @@ var entries = []registryEntry{
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},
 	{"webster-fragment-card-fixer", &WebsterFragmentCardFixer},
-	{"weaver-template-batch", &WeaverTemplateBatch},
-	{"weaver-body-verify-fix", &WeaverBodyVerifyFix},
 	{"orch-template-start", &OrchTemplateStart},
 	{"orch-template-handoff", &OrchTemplateHandoff},
 	{"orch-template-resume", &OrchTemplateResume},
@@ -979,6 +832,7 @@ var entries = []registryEntry{
 	{"parent-directive-parent", &ParentDirectiveParent},
 	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
 	{"parent-directive-none", &ParentDirectiveNone},
+	{"edit-directive", &EditDirective},
 	{"twill-directive", &TwillDirective},
 	{"twill-writer-fork", &TwillWriterFork},
 	{"twill-writer-fork-gated", &TwillWriterForkGated},
@@ -998,28 +852,7 @@ var entries = []registryEntry{
 	{"engine/codex/assist-reading", &EngineCodexAssistReading},
 	{"engine/claude/edit-directive", &EngineClaudeEditDirective},
 	{"engine/codex/edit-directive", &EngineCodexEditDirective},
-	{"engine/claude/fork-spawn", &EngineClaudeForkSpawn},
-	{"engine/codex/fork-spawn", &EngineCodexForkSpawn},
-	{"engine/claude/fork-wait", &EngineClaudeForkWait},
-	{"engine/codex/fork-wait", &EngineCodexForkWait},
-	{"engine/claude/fork-message", &EngineClaudeForkMessage},
-	{"engine/codex/fork-message", &EngineCodexForkMessage},
-	{"engine/claude/background-command", &EngineClaudeBackgroundCommand},
-	{"engine/codex/background-command", &EngineCodexBackgroundCommand},
-	{"engine/claude/foreground-timeout", &EngineClaudeForegroundTimeout},
-	{"engine/codex/foreground-timeout", &EngineCodexForegroundTimeout},
-	{"engine/claude/standing-instructions", &EngineClaudeStandingInstructions},
-	{"engine/codex/standing-instructions", &EngineCodexStandingInstructions},
-	{"engine/claude/absolute-paths", &EngineClaudeAbsolutePaths},
-	{"engine/codex/absolute-paths", &EngineCodexAbsolutePaths},
-	{"engine/claude/subagent-lookups", &EngineClaudeSubagentLookups},
-	{"engine/codex/subagent-lookups", &EngineCodexSubagentLookups},
-	{"engine/claude/darn-subagents", &EngineClaudeDarnSubagents},
-	{"engine/codex/darn-subagents", &EngineCodexDarnSubagents},
-	{"engine/claude/question-tool", &EngineClaudeQuestionTool},
-	{"engine/codex/question-tool", &EngineCodexQuestionTool},
 	{"beam-template-board-tidy", &BeamTemplateBoardTidy},
-	{"retro-template-task", &RetroTemplateTask},
 	{"gatefix-frame-cold", &GatefixFrameCold},
 	{"gatefix-body-darn", &GatefixBodyDarn},
 	{"gatefix-body-plan", &GatefixBodyPlan},
@@ -1039,7 +872,6 @@ var roleOpeningStencils = map[string][]string{
 	"discussion-advisor":   {"loom-template-discussion-advisor"},
 	"plan":                 {"loom-template-plan"},
 	"webster-master":       {"webster-template-master"},
-	"weaver":               {"weaver-template-batch"},
 	"webster-recovery":     {"webster-prefix-recovery"},
 	"verify-fixer":         {"gatefix-frame-cold"},
 	"plan-fixer":           {"webster-template-plan-fix"},

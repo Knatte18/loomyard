@@ -491,8 +491,7 @@ type Config struct {
 	// DiscussionGateFixer is the model-spec of the cold fixer of Discussion-Write's discussion gate; empty turns the fixer off.
 	DiscussionGateFixer string `yaml:"discussion_gate_fixer"`
 
-	// SubagentModel is the model the writers on Claude give the fresh subagents they hand lookups to.
-	// A writer on Codex runs them on its own model.
+	// SubagentModel is the model name the writers pass to the Agent tool for the fresh subagents they hand lookups to.
 	SubagentModel string `yaml:"subagent_model"`
 
 	// PlanLenses names the lenses.yaml fan whose lenses the Plan-Write lead forks itself for.
@@ -515,8 +514,6 @@ type Config struct {
 	// ReviewAmendMaxBounces is the review rounds an amendment generation gets after a settled segment's subject changed.
 	// It is clamped to the perch's own budget; 0 settles every amendment approved with no review round.
 	ReviewAmendMaxBounces int `yaml:"review_amend_max_bounces"`
-	// ReviewStalemateRounds is how many unchanged review rounds in a row escalate a stalemate; 0 turns the check off.
-	ReviewStalemateRounds int `yaml:"review_stalemate_rounds"`
 
 	// Each perch's bounce budget, hard cap and auto-accept flag.
 	// A nil budget takes ReviewMaxBounces, and a budget of 0 runs no review round for the perch.
@@ -669,7 +666,6 @@ func ConfigSpec() configengine.Spec {
 			"driver":                           none,
 			"step_idle_timeout_min":            none,
 			"review_circling_checkpoint":       none,
-			"review_stalemate_rounds":          none,
 			"pr_review_ask_parent":             none,
 
 			"discussion_review_ask_parent":         none,
@@ -1392,15 +1388,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	// A checkpoint above the budget is accepted: such a run never rules CIRCLING and reaches the soft-cap rule instead.
 	if cfg.ReviewCirclingCheckpoint < 1 {
 		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", "review_circling_checkpoint", cfg.ReviewCirclingCheckpoint)
-	}
-
-	// The stalemate check only moves an escalation earlier or later, so 0 is legal and turns it off.
-	if cfg.ReviewStalemateRounds < 0 {
-		route, err := reviewbudget.Route(dirs, ConfigSpec(), "review_stalemate_rounds")
-		if err != nil {
-			return Config{}, err
-		}
-		return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 to turn the check off or to a positive integer; way forward: %s", "review_stalemate_rounds", cfg.ReviewStalemateRounds, route)
 	}
 
 	if cfg.DiscussionReviewParentTimeoutMin < 1 {

@@ -73,9 +73,6 @@ type Profile struct {
 	// assistant marks the copy of a profile that the review half's assistant seat reviews under.
 	// The copy's fanned cluster rules spawn through its own engine's subagents.
 	assistant bool
-	// Round is what the review is judged against when an earlier round is complete, and what the prior-findings block lists.
-	// Nil is a full round: the prior-rounds text and the round checks of a round with no earlier findings.
-	Round *RoundContext
 }
 
 // rolePrefix returns base led by the profile's RolePrefix, or base alone when there is none.
@@ -145,14 +142,8 @@ type RunOpts struct {
 }
 
 // validateReview normalizes p in place and reports a fail-loud error if the review half is not runnable.
-// A non-nil Round is replaced by a copy rooted at worktreeRoot, so review, probe and resume judge locations alike.
 // Checks run in fixed order; the first failure is returned.
 func (p *Profile) validateReview(worktreeRoot string, cfg lenses.Config) error {
-	if p.Round != nil {
-		round := *p.Round
-		round.WorktreeRoot = worktreeRoot
-		p.Round = &round
-	}
 	p.Target.Paths = resolvePaths(worktreeRoot, p.Target.Paths)
 	p.Fasit.Paths = resolvePaths(worktreeRoot, p.Fasit.Paths)
 	p.PriorReviews = resolvePaths(worktreeRoot, p.PriorReviews)

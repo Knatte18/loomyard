@@ -27,7 +27,7 @@ const driverGuideStencilName = "shed-template-driver-guide"
 const driverGuideMarker = "guide_path"
 
 // driverNotifyStencilName and driverNotifyWatchedStencilName are the registered names of the parent-notification rules.
-// RenderDriverPrompt fills the driver stencil's parent_notify marker with the watched rule when a batten watches the run.
+// driverPrompt fills the driver stencil's parent_notify marker with the watched rule when a batten watches the run.
 // Otherwise it fills the plain rule.
 const (
 	driverNotifyStencilName        = "shed-template-driver-notify"
@@ -37,10 +37,9 @@ const (
 // driverNotifyMarker is the driver stencil's marker for the parent-notification rule.
 const driverNotifyMarker = "parent_notify"
 
-// RenderDriverPrompt composes the driver session's launch prompt from the shed driver stencil, read from stencilsDir.
+// driverPrompt composes the driver session's launch prompt from the shed driver stencil, read from stencilsDir.
 // The stencil takes the run-id and the report path the session writes at every stop.
 // It also takes the park, arbiter and teardown commands and the parent and edit directives.
-// The edit directive is the copy of engine, the engine the driver launches on.
 // The parent-notification marker takes the watched rule when watched is true, and the plain rule otherwise.
 // The guide marker takes the deployed path of the repair guide stencil.
 // The fork a driver spawns at a failure stop reads that copy.
@@ -55,12 +54,12 @@ const driverNotifyMarker = "parent_notify"
 // It returns the read or fill error when the stencil or the directive cannot be rendered.
 // This file composes prompt text only and names no provider flag.
 // The Shuttle Provider-Seam Invariant keeps provider specifics in the claudeengine package.
-func RenderDriverPrompt(stencilsDir, parentName, runID, reportPath string, watched bool, engine string) (string, error) {
+func driverPrompt(stencilsDir, parentName, runID, reportPath string, watched bool) (string, error) {
 	directive, err := parentdirective.Directive(stencilsDir, parentName, false)
 	if err != nil {
 		return "", err
 	}
-	editDirective, err := editdirective.Directive(stencilsDir, engine)
+	editDirective, err := editdirective.Directive(stencilsDir)
 	if err != nil {
 		return "", err
 	}

@@ -251,7 +251,7 @@ func TestHeddleCLI(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v; want a set to render it beside heddle.json", heddleengine.OverviewFileName, err)
 		}
-		for _, want := range []string{"| `rules` |", "| `intro` |", "rules from a file"} {
+		for _, want := range []string{"### `rules`\n", "### `intro`\n", "rules from a file"} {
 			if !strings.Contains(string(overview), want) {
 				t.Errorf("%s after two sets lacks %q", heddleengine.OverviewFileName, want)
 			}
@@ -777,29 +777,6 @@ func TestHeddleCLI(t *testing.T) {
 		run := runVerb(c, cwd, "", "show", "codex-file")
 		if run.code != 0 || !strings.Contains(run.out, "agents text at the anchor") {
 			t.Errorf("show codex-file: exit %d, output %q; want the AGENTS.md at the anchor in the rendered text", run.code, run.out)
-		}
-	})
-
-	t.Run("RenderRecordsTheImportsInsideTheWorktreeRoot", func(t *testing.T) {
-		t.Parallel()
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		cwd := primeCwd(h)
-		seedStore(t, h, map[string][]string{"rules": {"codex-file"}})
-		writeFile(t, filepath.Join(h.PrimeWorktree(), "CLAUDE.md"), "@docs/imported.md\n")
-		if err := os.MkdirAll(filepath.Join(h.PrimeWorktree(), "docs"), 0o755); err != nil {
-			t.Fatalf("MkdirAll: %v", err)
-		}
-		writeFile(t, filepath.Join(h.PrimeWorktree(), "docs", "imported.md"), "imported text\n")
-
-		requireOK(t, runVerb((&recorder{}).cli(), cwd, "", "render"))
-
-		event, err := fabricengine.EventFor(h.Location, nil)
-		if err != nil {
-			t.Fatalf("EventFor: %v", err)
-		}
-		record, err := os.ReadFile(filepath.Join(event.ScratchDir, "heddle", "codex-file-imports.json"))
-		if err != nil || !strings.Contains(string(record), `"docs/imported.md"`) {
-			t.Errorf("import record = %q, %v; want it to list docs/imported.md, which only a render given the worktree root records", record, err)
 		}
 	})
 

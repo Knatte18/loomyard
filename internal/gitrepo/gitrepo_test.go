@@ -1,5 +1,5 @@
-// gitrepo_test.go covers the read and commit primitives of Repo against real git repositories built under t.TempDir().
-// The primitives are the commit verbs, the changed, added and new path reads, SHAExists and CurrentBranch.
+// gitrepo_test.go covers the read and commit primitives of Repo against real git repositories built under t.TempDir():
+// CurrentSHA, StageAndCommit, StageAllAndCommit, ChangedFilesSince, SHAExists and CurrentBranch.
 // Every test spawns real git, so this file requires the hermetic TestMain in testmain_test.go.
 
 package gitrepo_test
@@ -8,7 +8,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -341,86 +340,6 @@ func TestCommitAndReadPrimitives(t *testing.T) {
 				t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
 			}
 			requireSameFiles(t, "ChangedFilesSince()", got, "old.txt", "renamed.txt")
-		}},
-		// Leaves a clean tree.
-		{"AddedFilesInCommits lists the paths each commit in the range adds, even one a later commit deletes", func(t *testing.T) {
-			base := requireCurrentSHA(t, repo)
-			writeFile(t, dir, "a.txt", "modified for the added-files step")
-			writeFile(t, dir, "added.txt", "new")
-			commitAll(t, dir, "add one file, modify another")
-			head := requireCurrentSHA(t, repo)
-
-			got, err := repo.AddedFilesInCommits(base, head)
-			if err != nil {
-				t.Fatalf("AddedFilesInCommits() error = %v; want nil", err)
-			}
-			if want := []string{"added.txt"}; !slices.Equal(got, want) {
-				t.Errorf("AddedFilesInCommits(base, head) = %v; want %v", got, want)
-			}
-			reversed, err := repo.AddedFilesInCommits(head, base)
-			if err != nil {
-				t.Fatalf("AddedFilesInCommits(head, base) error = %v; want nil", err)
-			}
-			if len(reversed) != 0 {
-				t.Errorf("AddedFilesInCommits(head, base) = %v; want empty (base is an ancestor of head, so no commit is in head's range)", reversed)
-			}
-
-			writeFile(t, dir, "transient.txt", "added, then deleted")
-			commitAll(t, dir, "add transient.txt")
-			gitkit.MustRun(t, dir, "git", "rm", "-q", "transient.txt")
-			gitkit.MustRun(t, dir, "git", "commit", "-m", "delete transient.txt")
-			tip := requireCurrentSHA(t, repo)
-
-			spanning, err := repo.AddedFilesInCommits(head, tip)
-			if err != nil {
-				t.Fatalf("AddedFilesInCommits(head, tip) error = %v; want nil", err)
-			}
-			if want := []string{"transient.txt"}; !slices.Equal(spanning, want) {
-				t.Errorf("AddedFilesInCommits(head, tip) = %v; want %v (the net tree delta is empty, the history is not)", spanning, want)
-			}
-		}},
-		// Leaves a clean tree: the step unstages, removes and restores what it made.
-		{"NewPathsIn lists the untracked and staged-added paths a commit of the pathspec would add", func(t *testing.T) {
-			infoDir := filepath.Join(dir, ".git", "info")
-			if err := os.MkdirAll(infoDir, 0o755); err != nil {
-				t.Fatalf("create %s: %v", infoDir, err)
-			}
-			writeFile(t, infoDir, "exclude", "ignored.txt\n")
-			writeFile(t, dir, "a.txt", "tracked edit")
-			writeFile(t, dir, "fresh.txt", "untracked")
-			writeFile(t, dir, "ignored.txt", "ignored")
-			writeFile(t, dir, "staged.txt", "staged")
-			gitkit.MustRun(t, dir, "git", "add", "staged.txt")
-
-			got, err := repo.NewPathsIn([]string{"."})
-			if err != nil {
-				t.Fatalf("NewPathsIn(.) error = %v; want nil", err)
-			}
-			if want := []string{"fresh.txt", "staged.txt"}; !slices.Equal(got, want) {
-				t.Errorf("NewPathsIn(.) = %v; want %v (never the tracked edit or the ignored file)", got, want)
-			}
-			scoped, err := repo.NewPathsIn([]string{"fresh.txt", "absent.txt"})
-			if err != nil {
-				t.Fatalf("NewPathsIn(fresh.txt, absent.txt) error = %v; want nil", err)
-			}
-			if want := []string{"fresh.txt"}; !slices.Equal(scoped, want) {
-				t.Errorf("NewPathsIn(fresh.txt, absent.txt) = %v; want %v", scoped, want)
-			}
-			none, err := repo.NewPathsIn(nil)
-			if err != nil {
-				t.Fatalf("NewPathsIn(nil) error = %v; want nil", err)
-			}
-			if len(none) != 0 {
-				t.Errorf("NewPathsIn(nil) = %v; want none (an empty pathspec must not list the whole checkout)", none)
-			}
-
-			gitkit.MustRun(t, dir, "git", "rm", "--cached", "-q", "staged.txt")
-			gitkit.MustRun(t, dir, "git", "checkout", "--", "a.txt")
-			for _, name := range []string{"fresh.txt", "ignored.txt", "staged.txt"} {
-				if err := os.Remove(filepath.Join(dir, name)); err != nil {
-					t.Fatalf("remove %s: %v", name, err)
-				}
-			}
 		}},
 		{"ChangedFilesSince errors on a fabricated sha", func(t *testing.T) {
 			if _, err := repo.ChangedFilesSince("0123456789abcdef0123456789abcdef01234567"); err == nil {

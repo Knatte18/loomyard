@@ -326,9 +326,8 @@ func envFileContentFor(goos string) string {
 // It names the session with --name as a reference to LYM_STRAND_NAME, not a value.
 // Shuttle builds this line before reed forms the strand's name,
 // so the pane shell expands the reference from the export that reed's launch script makes.
-// A non-empty remoteControlName adds --remote-control naming it, so the session starts with remote control on.
 // It wraps the finished line in the envFileKey assignment naming envFilePath, so that assignment leads the line.
-func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, resume, skipPermissions, forkSubagents bool) string {
+func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL string, resume, skipPermissions, forkSubagents bool) string {
 	sessionFlag := " --session-id "
 	if resume {
 		sessionFlag = " --resume "
@@ -350,9 +349,6 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 	}
 	if appendPromptPath != "" {
 		cmd += " --append-system-prompt-file " + sh.Quote(appendPromptPath)
-	}
-	if remoteControlName != "" {
-		cmd += " --remote-control " + sh.Quote(remoteControlName)
 	}
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
@@ -541,15 +537,13 @@ var _ shuttleengine.SessionOpener = (*Claude)(nil)
 // It carries --name as a reference to agentname.StrandNameEnv, not a value:
 // the strand's name is formed after the line is built, so the pane shell expands the variable at run time.
 // A session rebuild replays this string verbatim, so a line without --name would bring Claude back unnamed.
-// A non-empty remoteControlName adds --remote-control naming it, as the launch line does,
-// so a rebuilt session comes back with remote control on.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
 // It carries the promptCacheTTLEnvKey assignment too, since the resumed claude inherits nothing from the launch:
 // without it the session falls back to Claude Code's default TTL.
 // It carries the bashMaxTimeoutEnvKey assignment too, for the same reason.
 // It leads with the envFileKey assignment naming envFilePath:
 // a resumed session keeps the default stdin of its Bash tool.
-func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, skipPermissions, forkSubagents bool) string {
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL string, skipPermissions, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
@@ -563,9 +557,6 @@ func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort,
 	}
 	if appendPromptPath != "" {
 		cmd += " --append-system-prompt-file " + sh.Quote(appendPromptPath)
-	}
-	if remoteControlName != "" {
-		cmd += " --remote-control " + sh.Quote(remoteControlName)
 	}
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)

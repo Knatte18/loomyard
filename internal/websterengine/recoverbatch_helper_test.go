@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -102,7 +101,7 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 	// so the state records this one.
 	planDir := seedPlanDir(t)
 	websterDir := t.TempDir()
-	state := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{}}}
+	state := &websterengine.State{Batches: map[int]*websterengine.BatchState{}}
 	if err := websterengine.RestampPlanBaseline(state, planDir, websterDir); err != nil {
 		t.Fatalf("RestampPlanBaseline() error = %v", err)
 	}

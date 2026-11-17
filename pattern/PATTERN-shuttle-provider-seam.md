@@ -7,8 +7,6 @@ and only `internal/shuttleengines` constructs or imports a concrete engine.
   and `shuttleengine` never imports a concrete engine.
 - Only `internal/shuttleengines` imports or constructs a concrete engine;
   the scan in `internal/shuttleengine`'s `seam_enforcement_test.go` covers production files.
-- A package under `internal/shuttleengine/` that holds no engine, such as `bashlookup`, is shared engine-neutral code every engine may import;
-  the scan's `sharedPackages` names each one.
 - An engine's config module reaches `configreg` only through `internal/shuttleengines`.
   That package lists each registered engine's module for it.
 - An engine's name is not a provider specific and may appear outside its directory.
@@ -20,10 +18,6 @@ and only `internal/shuttleengines` constructs or imports a concrete engine.
   An engine's session namer reaches reed's watchdog only through `shuttleengines.SessionNamers()`, keyed by that tag.
 - An engine's record-reading capabilities reach a reader outside the engines through `shuttleengines.RecordReaders()`.
   They arrive as adapters that expose reading alone.
-- Claude's user setup reaches `codexengine` only through `shuttleengine.UserSetupSource`, wired in `internal/shuttleengines`.
-  The Codex engine takes that source, the plugin hook runner and the sandbox probe as `codexengine.Seams`.
-  `shuttleengines.NewWithSeams` is the one entry point that builds the set with a caller's hook runner and sandbox probe,
-  for `lym shuttle manifest` and the parity test.
 - A `*Run` issued by `Start` or `StartGated` has already resolved its provider's startup probe.
   No caller outside `internal/shuttleengine` probes provider readiness or plays startup-gate keys.
 
@@ -51,27 +45,6 @@ or when it is the value of a range over a map or slice of it.
 
 The scan is syntactic, so it is a tripwire and not a proof.
 It cannot see a `Resolved` reached through a struct field or a call chain; review covers those.
-
-## Prompt engine
-
-A prompt rendered for one engine never launches on another.
-
-- A producer names the engine its launch resolves to with `EngineName` on the engine set or runner,
-  which gives a choice naming no engine the set's default.
-  It renders its prompt for that engine and sets it as the spec's `PromptEngine`.
-- Each engine's `Prepare` refuses, through `shuttleengine.CheckPromptEngine`,
-  a spec whose prompt engine is another engine's or unset.
-- Only `lym shuttle run` marks a spec `HandWrittenPrompt` in place of a prompt engine,
-  for a prompt the operator wrote inline or in a file.
-- The orch spec names the Claude engine and prompt engine explicitly, so a Codex default engine never takes the orch role.
-
-### Enforcement
-
-`TestPromptEngineRule` in `internal/shuttleengine/promptengine_enforcement_test.go` scans every production `shuttleengine.Spec` literal.
-It fails on one that sets `Prompt` but neither `PromptEngine` nor `HandWrittenPrompt`,
-and on one that sets `HandWrittenPrompt` outside `internal/shuttlecli`.
-A literal that sets no `Prompt`, such as an attach probe's, is skipped.
-A spec filled field by field is outside its sight; `Prepare`'s refusal covers it at launch.
 
 ## Shuttle stop
 

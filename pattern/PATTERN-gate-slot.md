@@ -9,11 +9,9 @@ Rule: Running gate build, test or verify: in held `internal/gateslot` slots, ver
 Running a gate build or test holds `internal/gateslot` slots,
 so the hub never runs more at once than its configured count.
 
-- A gate build or test runs only holding `internal/gateslot` slots, in one of three places.
+- A gate build or test runs only holding `internal/gateslot` slots, in one of two places.
 - Inside a `lym gate test` tier run, holding the slots its tier asks for;
   the tier's config sets its parallelism and environment.
-- Inside the map run of `lym gate test --map`, holding the larger of tier0's and tier1's slot asks,
-  where a tier asking for every slot ranks above any count.
 - In one of the non-tier holders `internal/gateslot`'s doc lists, holding one slot;
   the holder sets its own `-trimpath` Go flag, plus `-p` from `tier0`'s parallel when the hub declares `tier0`.
 - Every Go gate build keeps `-trimpath`,
@@ -92,9 +90,6 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
 - The record is written only by `Verify`, and only after a pass; no prompt names its path.
 - The sites are the webster gate, the Webster-Burler-Fix gate and `lym webster verify`.
   They also include the Code-Burler-Fix, Darn-Write and Drift-Verify gates, Parent-Align and Finalize.
-- Weaver's plan-level verify, `runVerify`, is a site too: it runs the hub's `webster` call through `verifytree.Verify` under the geometry's pause hold.
-- Weaver's batch strand gates are sites too:
-  the `card` and `batch` entries of `batchGateSpec` each run their call through `verifytree.Verify` under the geometry's pause hold.
 - The `round` gate's sites are Webster's verify-gate fixers:
   the fixer fork and the cold fixer `lym webster fix-verify` spawns.
   They share one prompt body.

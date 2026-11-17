@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
-	"github.com/Knatte18/loomyard/internal/runplan"
 )
 
 const (
@@ -94,50 +93,50 @@ func uncheckableReason(geom Geometry, st *State, path string) (reason string, un
 	if _, pathless := pathlessEntryClass(path); path == "" || pathless {
 		return reasonNoPath, true, nil
 	}
-	lexical := runplan.ResolveWritePath(geom.PaneCwd, path)
-	canon, err := runplan.CanonicalPath(lexical)
+	lexical := resolveWritePath(geom.PaneCwd, path)
+	canon, err := canonicalPath(lexical)
 	if err != nil {
 		return "", false, err
 	}
-	planDir, err := runplan.CanonicalPath(geom.PlanDir)
+	planDir, err := canonicalPath(geom.PlanDir)
 	if err != nil {
 		return "", false, err
 	}
-	if runplan.PathWithin(planDir, canon) {
+	if pathWithin(planDir, canon) {
 		if len(st.PlanFileHashes) == 0 {
 			return reasonNoPlanCopy, true, nil
 		}
 		return "", false, nil
 	}
-	scratch, err := runplan.CanonicalPath(geom.ScratchDir)
+	scratch, err := canonicalPath(geom.ScratchDir)
 	if err != nil {
 		return "", false, err
 	}
-	if runplan.PathWithin(scratch, canon) {
+	if pathWithin(scratch, canon) {
 		return reasonScratch, true, nil
 	}
-	if _, ok, err := runplan.TrackedRel(geom.git(), geom.PaneCwd, geom.WorktreeRoot, path); err != nil || ok {
+	if _, ok, err := trackedRel(geom.git(), geom.PaneCwd, geom.WorktreeRoot, path); err != nil || ok {
 		return "", false, err
 	}
-	root, err := runplan.CanonicalPath(geom.WorktreeRoot)
+	root, err := canonicalPath(geom.WorktreeRoot)
 	if err != nil {
 		return "", false, err
 	}
 	lymLink := filepath.Join(geom.PaneCwd, lymdirs.LymDirName)
-	lymReal, err := runplan.CanonicalPath(lymLink)
+	lymReal, err := canonicalPath(lymLink)
 	if err != nil {
 		return "", false, err
 	}
-	dotLym, err := runplan.CanonicalPath(filepath.Join(geom.PaneCwd, lymdirs.DotLymDirName))
+	dotLym, err := canonicalPath(filepath.Join(geom.PaneCwd, lymdirs.DotLymDirName))
 	if err != nil {
 		return "", false, err
 	}
 	switch {
-	case !runplan.PathWithin(root, canon):
+	case !pathWithin(root, canon):
 		return reasonOutsideWorktree, true, nil
-	case runplan.PathWithin(lymReal, canon), runplan.PathWithin(lymLink, lexical):
+	case pathWithin(lymReal, canon), pathWithin(lymLink, lexical):
 		return fmt.Sprintf("under `%s`, outside the task worktree's tracked tree", lymdirs.LymDirName), true, nil
-	case runplan.PathWithin(dotLym, canon):
+	case pathWithin(dotLym, canon):
 		return fmt.Sprintf("under `%s`", lymdirs.DotLymDirName), true, nil
 	default:
 		return reasonIgnored, true, nil

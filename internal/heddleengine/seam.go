@@ -41,7 +41,6 @@ func (s Seam) Made(ev fabricengine.WorktreeEvent) error {
 
 // TookIn renders the file targets whose re-render paths match one of the event's root-relative paths.
 // Each re-render path is taken under the event's anchor.
-// The codex-file target is also rendered when a changed path is one its last render imported into the file.
 // With none selected it renders nothing and takes no lock.
 func (s Seam) TookIn(ev fabricengine.WorktreeEvent) error {
 	anchorRel, err := filepath.Rel(ev.Root, ev.Anchor)
@@ -49,15 +48,12 @@ func (s Seam) TookIn(ev fabricengine.WorktreeEvent) error {
 		return fmt.Errorf("place the anchor %s within the worktree %s: %w", ev.Anchor, ev.Root, err)
 	}
 	anchorPrefix := filepath.ToSlash(anchorRel)
-	imported := recordedImports(ev.ScratchDir)
 	var selected []string
 	for _, target := range targetTable {
 		if target.Delivery != DeliveryFile {
 			continue
 		}
-		rebuiltFromPath := slices.ContainsFunc(target.ReRender, func(rel string) bool { return slices.Contains(ev.Paths, path.Join(anchorPrefix, rel)) })
-		rebuiltFromImport := target.Name == codexFileTarget && slices.ContainsFunc(ev.Paths, func(changed string) bool { return slices.Contains(imported, changed) })
-		if rebuiltFromPath || rebuiltFromImport {
+		if slices.ContainsFunc(target.ReRender, func(rel string) bool { return slices.Contains(ev.Paths, path.Join(anchorPrefix, rel)) }) {
 			selected = append(selected, target.Name)
 		}
 	}
@@ -78,8 +74,8 @@ func (s Seam) render(req RenderRequest) (Report, error) {
 	return report, err
 }
 
-// requestOf copies the event's root, anchor, scratch directory, Bolt checkout and exclude list into a render request.
+// requestOf copies the event's anchor, scratch directory, Bolt checkout and exclude list into a render request.
 // The only list names the targets to render, and nil renders every target.
 func requestOf(ev fabricengine.WorktreeEvent, only []string) RenderRequest {
-	return RenderRequest{Anchor: ev.Anchor, Root: ev.Root, ScratchDir: ev.ScratchDir, BoltDir: ev.BoltDir, Excluded: ev.Excluded, Only: only}
+	return RenderRequest{Anchor: ev.Anchor, ScratchDir: ev.ScratchDir, BoltDir: ev.BoltDir, Excluded: ev.Excluded, Only: only}
 }

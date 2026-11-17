@@ -90,8 +90,6 @@
 // @lym_button_dir holds the run directory as one word quoted in reed's shell dialect.
 // The run directory is the beam's anchor for a task, else the prime's anchor when the beam is not on this machine;
 // for the prime and a beam it is the session's own anchor.
-// @lym_orch_dir holds, quoted the same way, the directory whose orch the Slack toggle switches:
-// the session's own anchor for the prime and a beam, and the empty word for a task.
 // A standalone geometry, a failed context, an unresolvable shell and a failed beam lookup render empty options;
 // line 3 then shows follow alone.
 //
@@ -167,14 +165,9 @@
 // The options are display only but @lym_strand_name:
 // the status bar and the key bindings read them and no Go decision does.
 // Selvage never gets @strand or @strand_color.
-// A button click fills {strand} from @lym_strand_name, and a click on RC reads it to name the agent it acts on.
-// A click on RC sets the RC mark @lym_rc (remoteControlPaneOption) on an agent's pane.
-// So does MarkRemoteControlOn after a launch with remote control on.
-// The mark dies with the pane.
-// A click on RC reads it to refuse a pane already marked;
-// @lym_strand_name and @lym_rc are the only pane options a Go decision reads.
+// @lym_strand_name is the one pane option a Go decision reads: a button click fills {strand} from it.
 // The session options @lym_follow, @lym_button_spec, @lym_button_dir and @lym_button_answer are decision-bearing;
-// @strand, @strand_color, @lym_unseen, @lym_orch_dir, the wait marks and the two action row options stay display only.
+// @strand, @strand_color, @lym_unseen, the wait marks and the two action row options stay display only.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment.
 // Reed reads it only to look up the segment's color.
 // The strand that an add or replace returns, and Status, carry that color as Color.
@@ -195,24 +188,17 @@
 // It renders as the plain window-button style.
 // A window carrying @lym_hidden gets no button, and no Go decision reads @strand_color or @lym_unseen.
 // Line 2 lists the sessions, then, right-aligned, the check mark and the time.
-// Line 3 starts with the follow button, then the slack toggle, the RC button and the away toggle, then the action row.
+// Line 3 starts with the follow button, then the slack and away toggles, then the action row.
 // The follow button is a range=user|follow button labelled follow.
 // It is lit green while the current session's @lym_follow is not off and unlit while it is.
 // The toggles are range=user|slack and range=user|away buttons, each lit green while its state is on.
-// They read the Slack state from a `#()` job:
+// They read the machine's Slack state, which is no session's, from a `#()` job:
 // the line `lym slack bar` that the server-global option @lym_slack_state_command holds, pinned with the bindings.
-// The line names the session's @lym_orch_dir, so only the prime's and a beam's sessions draw slack;
-// every session draws away, since the presence is the machine's.
 // slack is lit while the state line holds SlackToggleLit, and away while it holds AwayToggleLit.
 // tmux runs the job again at each redraw a second or more after its last run.
 // The geometry pins set the redraw interval (status-interval) to five seconds.
 // So a change made by any route, a Slack text or a hook included, shows within that interval.
 // A toggle's click redraws its client's bar at once.
-// The RC button is a range=user|rc button labelled RC, and it belongs to the agent of the window's active pane.
-// It is drawn while that pane carries @lym_strand_name and the RC click line is pinned.
-// It also needs the session to carry @lym_button_dir.
-// It is lit green while the pane carries @lym_rc.
-// It runs no state job: the mark on the pane is its whole state.
 //
 // The navigation bindings (bindings.go) are root-table bindings on the hub's reed server.
 // pinBindingsLocked issues them at the end of the geometry pins, so boot and every attach pre-flight pin them.
@@ -247,15 +233,12 @@
 // a session button switches the client to that session;
 // the follow button toggles the follow state;
 // a button range named by buttonRangePrefix runs `lym reed button`;
-// a Slack toggle runs `lym slack toggle slack|away` from the session's run directory;
-// and the RC button runs `lym orch rc-on` from there for the agent of the clicking client's active pane.
-// The Slack line (panebin.go's composeSlackToggleCommand) rides the server-global option @lym_slack_toggle_command.
+// and a Slack toggle runs `lym slack toggle slack|away` from the session's run directory.
+// That line (panebin.go's composeSlackToggleCommand) rides the server-global option @lym_slack_toggle_command.
 // It is pinned and unset together with the Slack state line, apart from the other lines.
-// The RC line (panebin.go's composeRemoteControlClickCommand) rides @lym_rc_click_command, pinned and unset on its own.
-// Each toggle line carries the socket, tmux and client the verb redraws through ShowToggleOutcome;
-// the RC verb also reads the clicked pane through ClientAgentPane and marks it through MarkPaneRemoteControlOn.
-// Neither the Slack nor the RC lines are pinned when the resolved binary is a running test binary.
-// tmux runs the Slack state job at every redraw.
+// It carries the socket, tmux and client the verb redraws through ShowToggleOutcome.
+// Neither Slack line is pinned when the resolved binary is a running test binary.
+// tmux runs the state job at every redraw.
 // A test binary given `slack bar` runs its whole suite, whose sessions would pin the same job again.
 // The button line (panebin.go's composeButtonCommand) rides the server-global option @lym_button_command.
 // The option is set when the line resolves and unset otherwise,

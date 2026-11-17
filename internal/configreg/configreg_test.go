@@ -150,7 +150,6 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"loom":     {"code_auto_accept", "code_fixer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "split_auto_accept", "split_fixer_fan", "split_reviewer_fan"},
 		"tapestry": {"plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan"},
 		"lenses":   {"fans", "lens_set", "lenses", "remove"},
-		"weaver":   {"verify_gate"},
 	}
 	for _, m := range Modules() {
 		t.Run(m.Name, func(t *testing.T) {
@@ -192,9 +191,6 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 			}
 			if m.Name == "codex" {
 				wantMachineKeys = []string{"sandbox_mode"}
-			}
-			if m.Name == "fabric" {
-				wantMachineKeys = []string{"branch_prefix"}
 			}
 			if got := configengine.MachineKeys(spec); !slices.Equal(got, wantMachineKeys) {
 				t.Errorf("%s MachineKeys = %v; want %v, so no stray machine file is read by a registered loader; %s", m.Name, got, wantMachineKeys, keyListWayForward(fmt.Sprintf("the wantMachineKeys of %s", m.Name), got, wantMachineKeys))

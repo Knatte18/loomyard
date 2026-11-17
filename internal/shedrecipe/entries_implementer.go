@@ -20,7 +20,6 @@ const implementerSettingKey = "implementer_setting"
 // Every implementer builds the same row with the same edges, so a choice never skips a row or enters one conditionally.
 var implementers = map[string]Constructor{
 	"webster": websterEntry,
-	"weaver":  weaverEntry,
 }
 
 // implementerEntry is the Constructor for the "Implementer" registry row.

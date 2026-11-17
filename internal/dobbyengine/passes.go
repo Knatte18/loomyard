@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 )
 
 const (
@@ -37,13 +36,8 @@ type RunView struct {
 	// StatusModified is the modification time of batten's own status file and ChildStatusModified that of the child's status file.
 	StatusModified      time.Time
 	ChildStatusModified time.Time
-	// CancelMarker reports whether a cancel of the slug is under way:
-	// an unfinished cancel intent in the batten record, or a cancel lock another process holds.
+	// CancelMarker reports whether the slug's cancel marker exists.
 	CancelMarker bool
-	// Run is the run's state derived from its tracked records.
-	Run runfsm.State
-	// Verdict is the act rule's answer for the run, with nothing set aside.
-	Verdict runfsm.Verdict
 	// DriverLockHeld reports whether the run's driver lock is held, which a pass in flight does.
 	DriverLockHeld bool
 	// OriginOwed reports whether the run's origin-owed marker stands.
@@ -72,9 +66,10 @@ type RunView struct {
 	ReachedParent bool
 }
 
-// drivable reports whether batten's state lets dobby give run a pass: running.
+// drivable reports whether batten's state lets dobby give run a pass: running, or paused with its work already on its parent.
+// Such a paused run has nothing left to decide, and only its landing and teardown finish it.
 func drivable(run RunView) bool {
-	return run.State == runStateRunning
+	return run.State == runStateRunning || (run.State == runStatePaused && run.ReachedParent)
 }
 
 // PassExit is how a `lym batten run` pass ended: its exit code and its last error text.
@@ -112,23 +107,24 @@ type passTrigger struct {
 }
 
 // planPass decides, for one run and trigger, none, a continue pass or a full pass.
-// There is none unless batten's state is running and the act rule's verdict is act.
-// The rule waits a paused, covered or cancelling run, an adopt-held one included.
-// It hands over a run another machine owns.
-// None of them gets a pass until the verdict acts again.
-// There is also none while a cancel is under way: an unfinished cancel intent or a cancel lock another process holds.
-// Nor is there one while a pass is in flight; a held driver lock reads as in flight.
+// There is none unless batten's state is running, or paused with the run's work already on its parent.
+// There is also none while the cancel marker exists or a pass is in flight; a held driver lock reads as in flight.
+// Such a paused run gets only full passes, and none while a pause covers it, except at the lift.
 // A write of batten's own status file triggers only when it is later than the run's last pass exit,
 // so a pass's own writes never trigger the next.
-// The lift of a pause that covered the run gives the full pass, and an owed full pass is given with it.
+// A run an adopt pause covers, the legacy `adopt-hold` entry included, gets none either, an owned-elsewhere run included;
+// the lift of that pause, by hand only, gives it the full pass.
+// While a pause covers the run, only a continue pass runs, and the full pass at the lift.
+// An owed full pass waits for the lift.
 // A continue pass needs the run at Run-Shed, with no full pass owed and no lift to answer.
 // Every other pass is full, and while the origin-owed marker stands it leaves the origin reconcile owed.
-// A run recorded owned elsewhere gets a full pass at the lift and on each probe tick; no other trigger gives it one.
-func planPass(run RunView, rs RunState, trigger passTrigger) passKind {
+// A run recorded owned elsewhere gets a full pass at the lift of its covering pause.
+// While no pause covers it, it gets a full pass on each probe tick; no other trigger gives it one.
+func planPass(run RunView, rs RunState, trigger passTrigger, covered bool) passKind {
 	if !drivable(run) || run.CancelMarker || trigger.InFlight || run.DriverLockHeld {
 		return passNone
 	}
-	if run.Verdict.Answer != runfsm.AnswerAct {
+	if run.Held {
 		return passNone
 	}
 	full := passFull
@@ -136,7 +132,7 @@ func planPass(run RunView, rs RunState, trigger passTrigger) passKind {
 		full = passFullNoReopen
 	}
 	if rs.OwnedElsewhere {
-		if trigger.Lift || trigger.ProbeTick {
+		if trigger.Lift || (trigger.ProbeTick && !covered) {
 			return full
 		}
 		return passNone
@@ -145,7 +141,16 @@ func planPass(run RunView, rs RunState, trigger passTrigger) passKind {
 	if !(trigger.ProbeTick || trigger.ChildWrite || trigger.Start || trigger.Lift || battenWrite) {
 		return passNone
 	}
-	if rs.FullPassOwed || run.Producer != producerRunShed || run.OriginOwed || trigger.Lift {
+	if covered {
+		switch {
+		case trigger.Lift:
+			return full
+		case rs.FullPassOwed || run.Producer != producerRunShed || run.State != runStateRunning:
+			return passNone
+		}
+		return passContinue
+	}
+	if rs.FullPassOwed || run.Producer != producerRunShed || run.State != runStateRunning || run.OriginOwed || trigger.Lift {
 		return full
 	}
 	return passContinue
@@ -192,14 +197,10 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 		rs := current.Runs[run.Slug]
 		if d.probeDue && rs.OwnedElsewhere && !rs.OwnerPauseFailed && !run.Held {
 			d.recheckOwnerPause(ctx, run.Slug)
-			if d.liftPending[run.Slug] && run.Verdict.Reason == runfsm.ReasonPauseCovers {
-				// The lift removed the pause the listed verdict waited on.
-				run.Covered, run.Verdict = false, runfsm.Verdict{Answer: runfsm.AnswerAct}
-			}
 		}
 		trigger := d.triggerFor(run)
-		kind := planPass(run, rs, trigger)
-		if !trigger.InFlight && (!drivable(run) || run.CancelMarker || run.Verdict.Answer != runfsm.AnswerAct) {
+		kind := planPass(run, rs, trigger, run.Covered)
+		if !trigger.InFlight && (!drivable(run) || run.CancelMarker) {
 			// No pass answers the lift while the run cannot be given one, and a later pass must not inherit it.
 			delete(d.liftPending, run.Slug)
 		}
@@ -209,7 +210,7 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 		case kind != passNone:
 			d.busy = true
 			d.spawn(run.Slug, kind, now)
-		case planPass(run, rs, passTrigger{ProbeTick: true}) != passNone:
+		case planPass(run, rs, passTrigger{ProbeTick: true}, run.Covered) != passNone:
 			d.busy = true
 		}
 	}
@@ -225,13 +226,12 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-// runLabel is the state a run's log lines name: the run's FSM state.
-// A state other than running and landed also names the producer.
+// runLabel is the state a run's log lines name: batten's state, with the producer for a state other than running and done.
 func runLabel(run RunView) string {
-	if run.Run == runfsm.Running || run.Run == runfsm.Landed {
-		return string(run.Run)
+	if run.State == runStateRunning || run.State == runStateDone {
+		return run.State
 	}
-	return string(run.Run) + " at " + run.Producer
+	return run.State + " at " + run.Producer
 }
 
 // logRunChanges logs each listed run whose label differs from the one last logged.
@@ -276,7 +276,7 @@ func (d *daemon) primeLoggedRuns(runs []RunView) {
 	}
 }
 
-// heartbeat logs one line naming every run still driven with its FSM state and producer, or that there are none.
+// heartbeat logs one line naming every run still driven with its state and producer, or that there are none.
 // It records now as the last heartbeat.
 // It reads the runs from Deps.Runs when runs is nil, and a failed read is logged in the line's place.
 // The first heartbeat that reads the runs also records every listed run's label as logged,
@@ -301,7 +301,7 @@ func (d *daemon) heartbeat(now time.Time, runs []RunView) {
 		if _, inFlight := d.flights[run.Slug]; run.State == runStateDone && !inFlight {
 			continue
 		}
-		items = append(items, run.Slug+" "+string(run.Run)+" "+run.Producer)
+		items = append(items, run.Slug+" "+run.State+" "+run.Producer)
 	}
 	if len(items) == 0 {
 		d.logLine(now, "heartbeat: no runs")

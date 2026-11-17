@@ -40,7 +40,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/quarrycli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reportcli"
-	"github.com/Knatte18/loomyard/internal/retrocli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shedcli"
 	"github.com/Knatte18/loomyard/internal/shortcutcli"
@@ -49,7 +48,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/slackcli"
 	"github.com/Knatte18/loomyard/internal/stencilcli"
 	"github.com/Knatte18/loomyard/internal/tendercli"
-	"github.com/Knatte18/loomyard/internal/weavercli"
 	"github.com/Knatte18/loomyard/internal/webstercli"
 )
 
@@ -144,7 +142,7 @@ envelope: what it did, each error and warning, and each way forward, with long
 lists collapsed to a count. --envelope prints the full envelope instead; any
 output that is no terminal, as an agent's or a script's, gets the envelope.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, weaver, stencil, loom, quarry, batten, shed, orch, cleanup, adopt, beam, report, retro, tender, hibernate, drift, gate, creel, slack, heddle, machine, help.
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, quarry, batten, shed, orch, cleanup, adopt, beam, report, tender, hibernate, drift, gate, creel, slack, heddle, machine, help.
 Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lym --help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -177,7 +175,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				// That replayer also claims HEDDLE.md and renders it afresh after each replay.
 				fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})
 				// Every Claude session launched in a hub appends the passages heddle stores for its engine and role, an orch session's orch-prompt ones included.
-				shuttleengine.InstallPassageReader(readHeddleStanding)
+				shuttleengine.InstallPassageReader(heddleengine.Renderer{}.Passages)
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)
@@ -204,7 +202,6 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		burlercli.Command(),
 		stencilcli.Command(),
 		webstercli.Command(),
-		weavercli.Command(),
 		loomcli.Command(),
 		battencli.Command(),
 		shedcli.Command(),
@@ -213,7 +210,6 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		adoptcli.Command(),
 		beamcli.Command(),
 		reportcli.Command(),
-		retrocli.Command(),
 		tendercli.Command(),
 		hibernatecli.Command(),
 		driftcli.Command(),

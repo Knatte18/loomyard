@@ -301,16 +301,6 @@
 // so a strand is marked only when its settings carry the PostToolUse, Stop and waiter hooks.
 // On Windows the flag directory takes the same git-bash POSIX conversion as the events path.
 //
-// The edit hook (EditRecorder) is a PostToolUse entry matching `Edit|Write`.
-// The settings carry it for a run that is not interactive while shuttle.yaml's `edit_loop_edits` is above 0.
-// It runs `lym shuttle hook-edit claude <edit records file>; true`.
-// The edit records file is shuttleengine.EditRecordsFileName beside the events file.
-// RecordEdit appends a stamp line and a slim PostToolUse line to the edit records file.
-// Its writes so never land inside a recording hook's line in the events file.
-// The slim line keeps only the session id, the agent id, the tool name and `tool_input.file_path`.
-// Claude Code's full payload carries the edit's text and the file's content.
-// ParseSessionSignals reads that line as a SessionSignalFileEdit, which shuttle's edit-loop watch counts.
-//
 // The batching nudge (BatchingNudger) is a PostToolUse hook that adds one line to the calling chain's context.
 // It does so when the chain's recent calls break lym's batching rules, and it never denies a call.
 // `claude.yaml`'s `batching_nudge` block holds `enabled`, the breach switches and the thresholds.
@@ -411,13 +401,10 @@
 // the time bound keeps a limit an earlier turn already met from counting again.
 // A session with no previous turn end counts every fork, and every failure reads as no limit.
 //
-// The resume check refuses a session whose registry entry names a live pid, with a `shuttleengine.SessionHeldError`.
+// The resume check refuses a session whose registry entry names a live pid.
 // It does not refuse when the live process's start time differs from the entry's `procStart`;
 // that difference proves the pid was reused.
 // An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
-// A session with no transcript in the pane cwd's project directory refuses with `shuttleengine.ErrNoTranscript` wrapped.
-// SessionHolder names the live pid holding a session by the same rule.
-// A caller reads it to register the provider process of a session it launched.
 //
 // The session prober (SessionProber) reads process liveness from the same registry.
 // A session is alive when an entry names it and the live pid's start time equals `procStart`.
@@ -516,8 +503,6 @@
 // The settings set `CLAUDE_CODE_SUBAGENT_EFFORT` to the role's effort on a model the efforts table does not name,
 // so a subagent whose call names no effort still gets the role's effort instead of Claude Code's default.
 // A launch whose model-spec names no effort takes `--effort` from the same table, by config role and model alias.
-// A spec that names a remote-control session adds `--remote-control` with that name to the launch and resume lines.
-// RemoteControlSequence types `/remote-control` with a name into a live session.
 // The standing passages heddle's layers hold for the claude engine follow it, each after a blank line and in order.
 // They are read through the process-wide passage reader that shuttleengine installs a seam for.
 // The one-line rule applies to lym's own sentences alone, since passages may span lines,
@@ -691,45 +676,4 @@
 // so a new case joins without a code change.
 // A failing llm-tier live scenario keeps its events file and transcript in a directory it prints;
 // so promoting it to a case is a copy, a trim and a case.yaml.
-//
-// UserSetupSource resolves what a Claude session loads from the user's Claude setup.
-// It serves another provider's session through shuttleengine's seam.
-// It returns the user's global CLAUDE.md from Claude Code's config directory.
-// It then returns each CLAUDE.md in a directory above the worktree root, outermost first.
-// Each file has its `@` imports expanded.
-// A CLAUDE.md inside the root is left to the provider, which reads the worktree's own files.
-// It also returns a listing of the skills the session's scope turns on.
-// The listing holds each skill of a plugin the scope turns on, named `<plugin>:<skill>`, with its SKILL.md path.
-// It holds the user's skills and the project's the same way.
-// A plugin counts for the worktree when it has a user-scope install or a project-scope install for that worktree's root.
-// The config directory is CLAUDE_CONFIG_DIR, else `.claude` under the home directory.
-// When it cannot be resolved, the source leaves out the parts that need it and warns.
-// It keeps the project skills and the CLAUDE.md files above the root.
-// An unreadable global file is the one error.
-// An unreadable CLAUDE.md above the root, plugins file or SKILL.md is left out with a warning.
-//
-// The source also runs the `SessionStart` command hooks of each plugin the scope turns on, as Claude Code runs them.
-// A plugin's hooks come from its `hooks/hooks.json`.
-// A hook counts when its entry's matcher is empty, `*` or matches `startup`.
-// Each hook runs through the request's runner with the session's working directory as its directory.
-// Its environment holds `CLAUDE_PLUGIN_ROOT`, the plugin's directory, and `CLAUDE_PROJECT_DIR`, the working directory.
-// It reads Claude Code's `SessionStart` input on standard input.
-// Its timeout is its own, else the request's.
-// A JSON object on its standard output gives its `hookSpecificOutput.additionalContext` as the context,
-// and any other output is the context as plain text.
-// A hook that errors or times out is left out and listed as omitted, as is a hooks file that cannot be read.
-// A nil runner runs nothing and lists every hook as not run.
-// RunPluginHook is the runner: `sh -c` under a context bounded by the timeout, with the spawn and its end logged.
-// On Unix the hook starts in its own process group and a timeout kills the group,
-// so a child its shell forked cannot hold the output pipes open;
-// a wait delay of two seconds bounds the wait for them on every system.
-// A hook run is short-lived and waited on in Prepare, so it registers no run process record.
-// Bound: a hook left by a Prepare killed mid-run runs to its own end with no owner to end it.
-//
-// Prepare writes the launch manifest into the run directory once the launch line is built.
-// Each item is a candidate whose delivery puts a text or hook command into an artifact:
-// the settings document, the appended system prompt, the launch line or the anchor's marked CLAUDE.local.md.
-// The manifest keeps a candidate only when the artifact as written holds it, so a dropped delivery drops its item.
-// The instruction files, listed skills and session-start hooks the provider loads itself are listed as native.
-// They come from the user-setup resolution run with no hook runner.
 package claudeengine

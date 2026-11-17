@@ -31,8 +31,6 @@ const frictionRole = "friction"
 // The prompt is read from deps.StencilsDir with stencilstore.Read and filled with stencil.Fill.
 // It is never composed from a Go string literal.
 //
-// The prompt is rendered for the engine deps.Shuttle resolves the model choice to.
-//
 // Interactive is false because lym loom start is by definition the unattended path,
 // and an interactive spec would hang waiting for a human who is not there.
 // ForkSubagents is false because the reflection agent has nothing to fan out over.
@@ -49,18 +47,35 @@ func buildReflectionSpec(deps Deps, notes []string, reportPath string) (shuttlee
 		return shuttleengine.Spec{}, fmt.Errorf("frictionengine: buildReflectionSpec: friction model-spec: %w", err)
 	}
 
-	choice := shuttleengine.NewModelChoice(resolved)
-	engine := deps.Shuttle.EngineName(choice)
-	prompt, err := RenderReflectionPrompt(deps, notes, reportPath, engine)
+	template, err := stencilstore.Read(deps.StencilsDir, reflectionStencilName)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("frictionengine: buildReflectionSpec: %w", err)
 	}
+	directive, err := parentdirective.Directive(deps.StencilsDir, deps.ParentName, false)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("frictionengine: buildReflectionSpec: %w", err)
+	}
+	editDirective, err := editdirective.Directive(deps.StencilsDir)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("frictionengine: buildReflectionSpec: %w", err)
+	}
+	values := map[string]string{
+		"friction_dir":             deps.FrictionDir,
+		"report_path":              reportPath,
+		"note_list":                renderNoteList(notes),
+		"task_slug":                deps.TaskSlug,
+		parentdirective.MarkerName: directive,
+		editdirective.MarkerName:   editDirective,
+	}
+	prompt, err := stencil.Fill(template, values)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("frictionengine: buildReflectionSpec: fill reflection prompt: %w", err)
+	}
 
 	return shuttleengine.Spec{
-		Prompt:        prompt,
-		PromptEngine:  engine,
+		Prompt:        string(prompt),
 		OutputFiles:   []string{reportPath},
-		ModelChoice:   choice,
+		ModelChoice:   shuttleengine.NewModelChoice(resolved),
 		Interactive:   false,
 		ForkSubagents: false,
 		Role:          frictionRole,
@@ -68,36 +83,6 @@ func buildReflectionSpec(deps Deps, notes []string, reportPath string) (shuttlee
 		ConfigRole:    agentconfig.RoleFriction,
 		Timeout:       deps.Timeout,
 	}, nil
-}
-
-// RenderReflectionPrompt renders the reflection agent's prompt over the friction notes, which are file names.
-// The edit directive in it is the copy for the named engine, so the prompt suits the engine the agent runs on.
-// It reads the stencils from deps.StencilsDir and needs no shuttle.
-func RenderReflectionPrompt(deps Deps, notes []string, reportPath, engine string) (string, error) {
-	template, err := stencilstore.Read(deps.StencilsDir, reflectionStencilName)
-	if err != nil {
-		return "", err
-	}
-	directive, err := parentdirective.Directive(deps.StencilsDir, deps.ParentName, false)
-	if err != nil {
-		return "", err
-	}
-	editDirective, err := editdirective.Directive(deps.StencilsDir, engine)
-	if err != nil {
-		return "", err
-	}
-	prompt, err := stencil.Fill(template, map[string]string{
-		"friction_dir":             deps.FrictionDir,
-		"report_path":              reportPath,
-		"note_list":                renderNoteList(notes),
-		"task_slug":                deps.TaskSlug,
-		parentdirective.MarkerName: directive,
-		editdirective.MarkerName:   editDirective,
-	})
-	if err != nil {
-		return "", fmt.Errorf("fill reflection prompt: %w", err)
-	}
-	return string(prompt), nil
 }
 
 // renderNoteList renders notes as a markdown bullet list, one file name per line, in the order given.

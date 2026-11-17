@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
@@ -314,9 +313,9 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 	state := &websterengine.State{
 		MasterSessionID: mintSessionID(t),
 		CurrentBatch:    1,
-		State: runplan.State{Batches: map[int]*websterengine.BatchState{
+		Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "alpha", StartSHA: startSHA, Kind: "fork", SessionID: crashedSession},
-		}},
+		},
 	}
 	// Only WorktreeRoot and ReportsDir are read on this path.
 	// They serve the head-SHA capture, the dirty-worktree check, the fork audit's workdir, and the batch-report join.

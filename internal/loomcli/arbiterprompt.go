@@ -31,12 +31,9 @@ const arbiterRepairVerbs = "Its repair verbs, run with `<slug>` the task named a
 // The record's parts become board entries the operator approves, and the run lands no code.
 // The `RaddleFile` cases are checked before the no-Finalize case, which they would otherwise match.
 // A recipe with a `PlanWrite` row is described as a task driven from discussion to landing, labelled with its name.
-// Its description carries implementerNote before the repair verbs.
-// The note is the sentence naming the active implementer's run files.
-// Any other recipe ignores implementerNote.
 // A recipe with no `Finalize` row is described as a task's Discussion that lands no code.
 // Any other recipe is described as a task's code change driven from its decision record through one build session.
-func arbiterRecipeDescription(recipe, implementerNote string) string {
+func arbiterRecipeDescription(recipe string) string {
 	if recipe == shedrun.RecipePawl {
 		return "This is a pawl run, a beam's life driven through the loom engine. " + arbiterRepairVerbs
 	}
@@ -45,7 +42,7 @@ func arbiterRecipeDescription(recipe, implementerNote string) string {
 	}
 	if recipeHasEngine(recipe, planWriteEngine) {
 		label := recipeLabel(recipe)
-		return "This is " + indefiniteArticle(label) + " " + label + " run, a task driven from discussion to landing. " + implementerNote + " " + arbiterRepairVerbs
+		return "This is " + indefiniteArticle(label) + " " + label + " run, a task driven from discussion to landing. " + arbiterRepairVerbs
 	}
 	if recipeHasEngine(recipe, raddleFileEngine) && recipeHasEngine(recipe, discussionWriteEngine) {
 		label := recipeLabel(recipe)

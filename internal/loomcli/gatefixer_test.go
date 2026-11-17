@@ -22,17 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// choiceEngineNamer is a gatefixer.Engines fake that names the engine a choice carries.
-// Only EngineName is implemented; a call to any other method panics.
-type choiceEngineNamer struct {
-	gatefixer.Engines
-}
-
-// EngineName returns the engine choice names.
-func (choiceEngineNamer) EngineName(choice shuttleengine.ModelChoice) string { return choice.Engine }
-
 // testGateFixerInputs returns the inputs of a pair run over a gate config declaring tier0 and the darn-write key.
-// The registry holds one alias, the stencils directory is seeded, and the engines name each choice's own engine.
+// The registry holds one alias, and the stencils directory is seeded.
 func testGateFixerInputs(t *testing.T) gateFixerInputs {
 	t.Helper()
 	gate := gateslot.Config{
@@ -44,7 +35,6 @@ func testGateFixerInputs(t *testing.T) gateFixerInputs {
 	return gateFixerInputs{
 		pairSlug:           "pair",
 		registry:           modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
-		engines:            choiceEngineNamer{},
 		gate:               gate,
 		stencilsDir:        stencilkit.Seed(t),
 		scratchDir:         filepath.Join(dir, "scratch"),
@@ -241,9 +231,6 @@ func TestFixerSpec(t *testing.T) {
 			if spec.Role != gatefixer.RoleGateFixer || spec.Timeout != in.gate.FixerTimeout() || spec.ModelChoice != choice || spec.Segment != tt.segment {
 				t.Errorf("spec = role %q, timeout %v, choice %+v, segment %q; want role %q, timeout %v, choice %+v, segment %q",
 					spec.Role, spec.Timeout, spec.ModelChoice, spec.Segment, gatefixer.RoleGateFixer, in.gate.FixerTimeout(), choice, tt.segment)
-			}
-			if want := in.engines.EngineName(choice); spec.PromptEngine != want {
-				t.Errorf("spec.PromptEngine = %q; want %q, the engine the fixer's model choice resolves to", spec.PromptEngine, want)
 			}
 			if spec.ReportPath != "/lym/report.md" || spec.ReplyPath != "/lym/reply.md" {
 				t.Errorf("spec paths = %q, %q; want the told report and reply", spec.ReportPath, spec.ReplyPath)

@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -39,8 +38,6 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 		statusExists bool
 		verdict      ownerVerdict
 		verdictErr   error
-		// act is the act rule's answer a fake runVerdict gives, and nil leaves the seam unset.
-		act *runfsm.Verdict
 		// ownerPause records the live pause entry that holds a run owned elsewhere.
 		ownerPause bool
 		wantCalls  int
@@ -93,13 +90,6 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 			wantCalls:    1,
 		},
 		{
-			name:         "OwnedHereButCancellingRefusesWithTheCancelsWayForward",
-			statusExists: true,
-			act:          &runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonCancelling, State: runfsm.Cancelling, CancelMachine: "there"},
-			wantCalls:    1,
-			wantMessage:  []string{"a cancel started on machine there has not finished", "lym batten cancel pair"},
-		},
-		{
 			name: "AbsentStatusFileNeverCallsTheSeam",
 		},
 	}
@@ -117,9 +107,6 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 				c.ownerOf = func(*lymcwd.Location, string) (ownerVerdict, error) {
 					calls++
 					return tt.verdict, tt.verdictErr
-				}
-				if tt.act != nil {
-					c.runVerdict = func(*lymcwd.Location, string) (runfsm.Verdict, error) { return *tt.act, nil }
 				}
 				if tt.ownerPause {
 					coverRunBy(t, c, "", pauserecord.OwnerCaller)

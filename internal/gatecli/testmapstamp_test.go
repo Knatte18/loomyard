@@ -1,5 +1,4 @@
-// testmapstamp_test.go covers the environment stamp a coverage map build computes.
-// It also covers the side-by-side count and slot ask of the map run.
+// testmapstamp_test.go covers the environment stamp a coverage map build and a coverage scope both compute.
 
 package gatecli
 
@@ -63,66 +62,6 @@ func TestStampEnvironment(t *testing.T) {
 			}
 			if got.GoVersion != toolchain.GoVersion || got.GOOS != toolchain.GOOS || got.GOARCH != toolchain.GOARCH {
 				t.Errorf("stampEnvironment() = %+v; want the toolchain's version and platform kept", got)
-			}
-		})
-	}
-}
-
-func TestMapSideBySide(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const testMemory = 128 << 20
-	tests := []struct {
-		name string
-		tier gateslot.Tier
-		// cappedTo is the most runs the stub memory clamp admits; 0 admits every run.
-		cappedTo int
-		want     int
-	}{
-		{"NoMemoryMBGivesTheCappedParallel", gateslot.Tier{Parallel: 4}, 3, 3},
-		{"MemoryMBOfTwiceTheTestCapGivesTwo", gateslot.Tier{Parallel: 4, MemoryMB: 256}, 0, 2},
-		{"MemoryMBEqualToTheTestCapGivesOne", gateslot.Tier{Parallel: 4, MemoryMB: 128}, 0, 1},
-		{"ACappedCountBelowTheMemoryQuotientWins", gateslot.Tier{Parallel: 4, MemoryMB: 1024}, 3, 3},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			capped := func(parallel int, limit int64) int {
-				if limit != testMemory {
-					t.Errorf("capped limit = %d; want the test memory %d", limit, int64(testMemory))
-				}
-				if tt.cappedTo > 0 {
-					return min(parallel, tt.cappedTo)
-				}
-				return parallel
-			}
-			if got := mapSideBySide(tt.tier, testMemory, capped); got != tt.want {
-				t.Errorf("mapSideBySide(%+v) = %d; want %d", tt.tier, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestMapSlotAsk(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		tiers map[int]gateslot.Tier
-		want  int
-	}{
-		{"Tier0Alone", map[int]gateslot.Tier{0: {Slots: 2}}, 2},
-		{"TheLargerOfTwoCounts", map[int]gateslot.Tier{0: {Slots: 1}, 1: {Slots: 2}}, 2},
-		{"Tier1AskingEverySlot", map[int]gateslot.Tier{0: {Slots: 1}, 1: {Slots: 0}}, 0},
-		{"Tier0AskingEverySlotBesideACount", map[int]gateslot.Tier{0: {Slots: 0}, 1: {Slots: 3}}, 0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := mapSlotAsk(tt.tiers); got != tt.want {
-				t.Errorf("mapSlotAsk(%+v) = %d; want %d", tt.tiers, got, tt.want)
 			}
 		})
 	}

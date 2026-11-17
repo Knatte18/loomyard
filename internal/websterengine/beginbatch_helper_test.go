@@ -12,7 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -106,10 +105,9 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	seedHubStencils(t, hubPath)
 
 	deps := websterengine.BeginDeps{
-		Engine:  "claude",
 		Plan:    plan,
 		Batches: batches,
-		State:   &websterengine.State{State: runplan.State{PlanFingerprint: fp}, MasterStrand: "master-strand-1"},
+		State:   &websterengine.State{PlanFingerprint: fp, MasterStrand: "master-strand-1"},
 		Config:  websterengine.Config{SelfFixCap: 2},
 		Stopper: stopper,
 		Gate:    testGateConfig(),

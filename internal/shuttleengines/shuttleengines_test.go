@@ -111,7 +111,7 @@ func assertBadClaudeConfigRefusesOnlyARunStart(t *testing.T, set shuttleengine.E
 		}
 	}
 
-	spec := shuttleengine.Spec{Prompt: "p", PromptEngine: runner.EngineName(shuttleengine.ModelChoice{}), OutputFiles: []string{filepath.Join(dirs.Anchor, "out.md")}}
+	spec := shuttleengine.Spec{Prompt: "p", OutputFiles: []string{filepath.Join(dirs.Anchor, "out.md")}}
 	_, err := runner.Start(spec)
 	if err == nil {
 		t.Fatal("Start accepted a run over an invalid claude.yaml")
@@ -134,9 +134,7 @@ func TestNew(t *testing.T) {
 	}
 
 	forksWithoutAudit := map[string]constructor{
-		"nofork": func(shuttleengine.Config, configengine.Dirs, LaunchSeams) shuttleengine.Engine {
-			return forksWithoutAuditEngine{}
-		},
+		"nofork": func(shuttleengine.Config, configengine.Dirs) shuttleengine.Engine { return forksWithoutAuditEngine{} },
 	}
 	unregistered := []string{"bogus", "registered engines: claude", "engine: in shuttle.yaml"}
 	invalidClaudeCfg, invalidClaudeDirs := invalidClaudeConfigFixture(t)
@@ -163,7 +161,7 @@ func TestNew(t *testing.T) {
 			var set shuttleengine.EngineSet
 			var err error
 			if tt.constructors != nil {
-				set, err = build(tt.cfg, tt.dirs, tt.constructors, LaunchSeams{})
+				set, err = build(tt.cfg, tt.dirs, tt.constructors)
 			} else {
 				set, err = New(tt.cfg, tt.dirs)
 			}
@@ -369,22 +367,20 @@ func TestToolBoundaryRenderer(t *testing.T) {
 	}
 }
 
-// TestBatchingNudger pins that the claude and codex entries have the batching nudge, silent for a run with no state file,
+// TestBatchingNudger pins that the claude entry has the batching nudge, silent for a run with no state file,
 // and that an unknown name has none.
 func TestBatchingNudger(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	for _, name := range []string{"claude", "codex"} {
-		nudger, ok := BatchingNudger(name)
-		if !ok {
-			t.Fatalf("BatchingNudger(%s) found none", name)
-		}
-		statePath := t.TempDir() + "/absent.json"
-		got, err := nudger.BatchingNudge(statePath, []byte(`{"transcript_path":"/absent.jsonl","tool_use_id":"call-1","tool_name":"Bash","tool_input":{"command":"ls"}}`))
-		if err != nil || got != nil {
-			t.Errorf("BatchingNudger(%s).BatchingNudge(no state file) = %s, %v; want no output and no error", name, got, err)
-		}
+	nudger, ok := BatchingNudger("claude")
+	if !ok {
+		t.Fatal("BatchingNudger(claude) found none")
+	}
+	statePath := t.TempDir() + "/absent.json"
+	got, err := nudger.BatchingNudge(statePath, []byte(`{"transcript_path":"/absent.jsonl","tool_use_id":"call-1"}`))
+	if err != nil || got != nil {
+		t.Errorf("BatchingNudge(no state file) = %s, %v; want no output and no error", got, err)
 	}
 	if _, ok := BatchingNudger("nope"); ok {
 		t.Error("BatchingNudger(nope) found one; want none")

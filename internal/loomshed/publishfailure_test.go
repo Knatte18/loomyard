@@ -8,9 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -30,7 +28,7 @@ func TestWebsterRecordNote(t *testing.T) {
 	t.Parallel()
 
 	followUpRule := "A done card is frozen: its work has landed, and the plan gate refuses an edit to it.\nA finding against a done card lands as a follow-up card after the last begun batch, with its Card Index line in `00-overview.md`."
-	unreadable := "The implementer's run record could not be read, so which cards are frozen is unknown; the plan gate reports the read error."
+	unreadable := "Webster's run record could not be read, so which cards are frozen is unknown; the plan gate reports the read error."
 	tests := []struct {
 		name  string
 		write func(t *testing.T, anchorPath string)
@@ -40,28 +38,15 @@ func TestWebsterRecordNote(t *testing.T) {
 		{
 			name: "begun batches, done cards and the follow-up rule",
 			write: func(t *testing.T, anchorPath string) {
-				st := &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
+				st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
 					2: {Slug: "second", Cards: []string{"02-second", "03-third"}},
 					1: {Slug: "first", Cards: []string{"01-first"}, Terminal: true, Status: websterengine.DigestStatusDone},
-				}}}
+				}}
 				if err := websterengine.SaveState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath), st); err != nil {
 					t.Fatal(err)
 				}
 			},
 			want: "Webster has begun these batches:\n\n- batch 1 (done): 01-first\n- batch 2 (in flight): 02-second, 03-third\n\nDone cards: 01-first\n\n" + followUpRule,
-		},
-		{
-			name: "weavers begun batches render under its own name",
-			write: func(t *testing.T, anchorPath string) {
-				st := &weaverengine.State{State: runplan.State{Batches: map[int]*runplan.BatchState{
-					1: {Slug: "first", Cards: []string{"01-first"}, Terminal: true, Status: runplan.DigestStatusDone},
-					2: {Slug: "second", Cards: []string{"02-second"}},
-				}}}
-				if err := weaverengine.SaveState(weaverengine.Dir(anchorPath), weaverengine.ScratchDir(anchorPath), st); err != nil {
-					t.Fatal(err)
-				}
-			},
-			want: "Weaver has begun these batches:\n\n- batch 1 (done): 01-first\n- batch 2 (in flight): 02-second\n\nDone cards: 01-first\n\n" + followUpRule,
 		},
 		{
 			name: "unreadable record renders the fixed note",

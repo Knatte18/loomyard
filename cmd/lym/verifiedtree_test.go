@@ -21,8 +21,6 @@ var planVerifySites = []string{
 	"internal/loomshed/verifygate.go",
 	"internal/webstercli/verify.go",
 	"internal/landingshed/verifygate.go",
-	"internal/weaverengine/strand.go",
-	"internal/weaverengine/verify.go",
 }
 
 // verifyRunAllowed names the files outside internal/verifytree that may call verifyrun.Run, each with its reason.

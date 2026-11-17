@@ -571,7 +571,6 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	env.DecisionRecordPath = decisionRecordPath
 	env.SupportLogPath = supportLogPath
 	env.WebsterRun = (&fakeWebsterRun{}).run
-	env.ImplementerSeam.AnchorRoot = dir
 	env.Landing = landing
 	env.Shuttle = newLoomShuttle(planDir, true)
 	env.RunRoot = runRoot

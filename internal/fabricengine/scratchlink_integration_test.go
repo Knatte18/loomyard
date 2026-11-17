@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -212,6 +211,15 @@ func skipAsRoot(t *testing.T) {
 	}
 }
 
+// makeReadOnly makes dir read-only and registers a cleanup restoring its mode so the temp directory can be removed.
+func makeReadOnly(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatalf("chmod %s: %v", dir, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+}
+
 // scratchShapeCase is one shape the scratch step leaves as found.
 type scratchShapeCase struct {
 	name string
@@ -295,7 +303,7 @@ var scratchShapeCases = []scratchShapeCase{
 			root, target := scratchPaths(l, slug)
 			replaceLinkWithRealDirectory(t, root)
 			removeTarget(t, target)
-			permkit.Chmod(t, filepath.Dir(target), 0o555)
+			makeReadOnly(t, filepath.Dir(target))
 		},
 		leaves: true,
 		phrase: "whose move to",
@@ -313,7 +321,7 @@ var scratchShapeCases = []scratchShapeCase{
 			if _, err := os.Stat(filepath.Join(infoDir, "exclude.lym.lock")); err != nil {
 				t.Fatalf("exclude lock file missing before the chmod: %v", err)
 			}
-			permkit.Chmod(t, infoDir, 0o555)
+			makeReadOnly(t, infoDir)
 		},
 		leaves: true,
 		phrase: "scratch exclude not written",

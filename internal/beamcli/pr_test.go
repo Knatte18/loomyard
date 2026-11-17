@@ -2,7 +2,6 @@
 // It covers a pull request opened, found or recorded.
 // A pull request a landing record names is settled by where GitHub reports it.
 // It also covers the update and each refusal with its way forward.
-// A beam that conflicts with its parent or holds an open merge task is among those refusals.
 
 package beamcli
 
@@ -40,10 +39,6 @@ func TestPROpen(t *testing.T) {
 		setup func(w *landWorld)
 		// wantErr is empty for a verb that answers, else every substring the refusal names.
 		wantErr []string
-		// wantNoErr holds every substring the refusal must not name.
-		wantNoErr []string
-		// wantUntouched asserts a refusal that pushed, wrote and changed nothing on GitHub.
-		wantUntouched bool
 		// check judges the answer and the world of a verb that answers.
 		check func(t *testing.T, w *landWorld, got map[string]any)
 	}{
@@ -126,64 +121,6 @@ func TestPROpen(t *testing.T) {
 					t.Errorf("answer = %v; want it to name `lym beam ready b`", got)
 				}
 			},
-		},
-		{
-			name: "OpenMergeTaskRefusedNamingItsStatus",
-			setup: func(w *landWorld) {
-				w.tasks = append(w.tasks, boardengine.Task{Slug: "b-merge-in", Kind: boardengine.KindTask, Project: "b"})
-			},
-			wantErr:       []string{"lym beam pr open:", "merge task b-merge-in", "lym batten status b-merge-in", "lym beam pr open b"},
-			wantUntouched: true,
-		},
-		{
-			name:          "ConflictWithTheParentRefusedNamingMergeParent",
-			setup:         func(w *landWorld) { w.parentConflicts = true },
-			wantErr:       []string{"conflicts with its parent branch main", "lym beam merge-parent b", "lym beam pr open b"},
-			wantUntouched: true,
-		},
-		{
-			name: "OpenMergeTaskRefusesBeforeTheConflict",
-			setup: func(w *landWorld) {
-				w.tasks = append(w.tasks, boardengine.Task{Slug: "b-merge-in", Kind: boardengine.KindTask, Project: "b"})
-				w.parentConflicts = true
-			},
-			wantErr:       []string{"lym batten status b-merge-in"},
-			wantNoErr:     []string{"lym beam merge-parent"},
-			wantUntouched: true,
-		},
-		{
-			name: "BeamOnlyBehindItsParentStillOpens",
-			setup: func(w *landWorld) {
-				w.parentUnmerged = true
-				w.api.Script(prkit.MethodCreate, prkit.Answer{Ref: pullrequest.Ref{Number: 7, URL: prURL}})
-			},
-			check: func(t *testing.T, w *landWorld, got map[string]any) {
-				if w.landing["b"].PullRequest == nil || w.landing["b"].PullRequest.Number != 7 || got["created"] != true {
-					t.Errorf("recorded %+v, answer %v; want pull request 7 created and recorded", w.landing["b"].PullRequest, got)
-				}
-			},
-		},
-		{
-			name:          "FailingBoardReadRefusedNamingTheRerun",
-			setup:         func(w *landWorld) { w.tasksErr = errors.New("the board is unreadable") },
-			wantErr:       []string{"read the board", "the board is unreadable", "lym beam pr open b"},
-			wantUntouched: true,
-		},
-		{
-			name:          "FailingParentConflictReadRefusedNamingTheRerun",
-			setup:         func(w *landWorld) { w.parentConflictsErr = errors.New("the fetch failed") },
-			wantErr:       []string{"read whether the beam conflicts with its parent", "the fetch failed", "lym beam pr open b"},
-			wantUntouched: true,
-		},
-		{
-			name: "RecordedClosedConflictingWithTheParentRefusedAndNotReopened",
-			setup: func(w *landWorld) {
-				w.landing["b"] = pawlengine.LandingRecord{Slug: "b", DescribedAt: landNow, PullRequest: recordedPullRequest}
-				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: pullrequest.Status{State: pullrequest.StateClosed}})
-				w.parentConflicts = true
-			},
-			wantErr:       []string{"lym beam merge-parent b"},
-			wantUntouched: true,
 		},
 		{
 			name: "FailingRecordWriteAfterACreatedPullRequestNamesItsURL",
@@ -288,22 +225,6 @@ func TestPROpen(t *testing.T) {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("prOpen() error = %q; want it to name %q", err.Error(), want)
 					}
-				}
-				for _, unwanted := range tt.wantNoErr {
-					if strings.Contains(err.Error(), unwanted) {
-						t.Errorf("prOpen() error = %q; want it not to name %q", err.Error(), unwanted)
-					}
-				}
-				if !tt.wantUntouched {
-					return
-				}
-				for _, method := range []string{prkit.MethodCreate, prkit.MethodReopen, prkit.MethodSetDraft, prkit.MethodEdit} {
-					if calls := w.api.Calls(method); len(calls) != 0 {
-						t.Errorf("%s calls = %v; want none on this refusal", method, calls)
-					}
-				}
-				if w.pushed != 0 || w.writes != 0 {
-					t.Errorf("%d pushes and %d writes; want none on this refusal", w.pushed, w.writes)
 				}
 				return
 			}

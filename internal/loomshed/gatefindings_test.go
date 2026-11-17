@@ -26,7 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -140,7 +139,7 @@ func TestBatcherRows_StuckSurfacesTheBatcherError(t *testing.T) {
 		new  func(anchorPath string) shedengine.ShedProducer
 	}{
 		{"Webster", func(anchorPath string) shedengine.ShedProducer {
-			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, nil, websterengine.RunDeps{}, func() error { return nil }, weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, nil, websterengine.RunDeps{}, func() error { return nil })
 		}},
 	}
 	for _, tt := range tests {

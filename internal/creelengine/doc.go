@@ -413,14 +413,13 @@
 // inject --interrupt first sends the guarded interrupt and queues the line at the head.
 //
 // A command inject carries a Command instead of a line: a neutral name and the argument that name takes.
-// The name comes from the closed set clear, compact, reload-plugins, color, load-skills and remote-control.
+// The name comes from the closed set clear, compact, reload-plugins, color and load-skills.
 // The engine knows no slash spelling or key name;
 // the Delivery seam's Command operation maps the name onto the provider.
 // It has the same ErrBusy and ErrNotLanded contract as the typing of a line.
 // A command the provider took as a prompt fails as a plain send error.
 // Creel then requeues the inject and types it again once the session is idle.
-// compact takes a one-line focus, color a segment color, and load-skills a space-separated skill list;
-// remote-control takes the one-line session name the remote session shows.
+// compact takes a one-line focus, color a segment color, and load-skills a space-separated skill list.
 // clear and reload-plugins take no argument.
 // Store.InjectCommand queues one under every rule of a text inject:
 // TTL, hold, pause, queue order and dormant receivers.

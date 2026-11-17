@@ -173,25 +173,6 @@ func fixReviewTable(in fixReviewInputs, cfg Config, reg modelspec.Registry) (sea
 	}, nil
 }
 
-// FixReviewSeatTable builds the seatengine.Table of the fix review session over stand-in values for a run's own inputs.
-// The stand-in paths, refs and slug fill the prompt's markers, and no file is read or written there.
-// The table runs on cfg's fixer model-spec and carries languageSkills after the role's own, as a run's does.
-// stencilsDir is the directory the fix review's stencil is read from.
-func FixReviewSeatTable(stencilsDir string, languageSkills []string, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
-	return fixReviewTable(fixReviewInputs{
-		StencilsDir:        stencilsDir,
-		DecisionRecordPath: filepath.Join(stencilsDir, "decision-record.md"),
-		Baseline:           "baseline",
-		Head:               "head",
-		CapReason:          "the change is over the caps",
-		ReportPath:         filepath.Join(stencilsDir, "fix-review.md"),
-		TaskBranch:         "task",
-		ParentBranch:       "parent",
-		Slug:               "stand-in",
-		LanguageSkills:     languageSkills,
-	}, cfg, reg)
-}
-
 // fixReviewEnd names how one fix review session ended.
 type fixReviewEnd string
 

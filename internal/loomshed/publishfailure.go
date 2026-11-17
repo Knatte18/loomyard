@@ -1,4 +1,4 @@
-// publishfailure.go renders the active implementer's run record as the Plan-Review rubric's note.
+// publishfailure.go renders webster's run record as the Plan-Review rubric's note.
 
 package loomshed
 
@@ -8,23 +8,20 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/runplan"
-	"github.com/Knatte18/loomyard/internal/weaverengine"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// WebsterRecordNote renders the active implementer's run record under anchorPath as markdown for the Plan-Review rubric.
-// The implementer is the one the seam names with no setting, and the note opens with its name.
+// WebsterRecordNote renders webster's run record under anchorPath as markdown for the Plan-Review rubric.
 // It returns `none` when there is no record or it holds no begun batch.
 // The note names each begun batch with its status and card ids.
 // It also lists the done cards and states that a done card is frozen.
-// A record that cannot be read, or a seam refusal, is logged at Warn.
-// It then renders a fixed note that the frozen cards are unknown,
+// A record that cannot be read is logged at Warn and renders a fixed note that the frozen cards are unknown;
 // so the reviewer is never told that nothing is frozen, and a rubric read never fails on it.
 func WebsterRecordNote(anchorPath string) string {
-	implementer, st, err := weaverengine.Active(weaverengine.ActiveDeps{AnchorRoot: anchorPath})
+	st, err := websterengine.LoadState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath))
 	if err != nil {
-		logger.Warn("loomshed: the implementer's run record could not be read for the plan review", "anchorPath", anchorPath, "error", err)
-		return "The implementer's run record could not be read, so which cards are frozen is unknown; the plan gate reports the read error."
+		logger.Warn("loomshed: webster's run record could not be read for the plan review", "anchorPath", anchorPath, "error", err)
+		return "Webster's run record could not be read, so which cards are frozen is unknown; the plan gate reports the read error."
 	}
 	if st == nil || len(st.Batches) == 0 {
 		return "none"
@@ -50,14 +47,13 @@ func WebsterRecordNote(anchorPath string) string {
 			status = batch.Status
 		}
 		begun = append(begun, fmt.Sprintf("- batch %d (%s): %s", number, status, strings.Join(cards, ", ")))
-		if batch.Terminal && batch.Status == runplan.DigestStatusDone {
+		if batch.Terminal && batch.Status == websterengine.DigestStatusDone {
 			done = append(done, cards...)
 		}
 	}
 
 	var b strings.Builder
-	name := string(implementer)
-	b.WriteString(strings.ToUpper(name[:1]) + name[1:] + " has begun these batches:\n\n")
+	b.WriteString("Webster has begun these batches:\n\n")
 	b.WriteString(strings.Join(begun, "\n"))
 	if len(done) > 0 {
 		fmt.Fprintf(&b, "\n\nDone cards: %s", strings.Join(done, ", "))

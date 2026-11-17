@@ -16,11 +16,6 @@ Every implementer builds the same row with the same edges, so which implementer 
 | Value | Implementer |
 | --- | --- |
 | `webster` | One long-lived Merriam session forking one implementer per execution batch ([webster-spec.md](webster-spec.md)). |
-| `weaver` | One Go row that forms each batch from the remaining cards and runs it as one cold strand per attempt, climbing `weaver.yaml`'s model ladder, with a journal. |
-
-A run never switches implementer with work half built.
-Once either implementer holds a begun batch, it is the run's active implementer, whatever the setting says.
-A run whose two implementers both hold begun batches is refused, and the refusal names how to end the run you do not mean to keep.
 
 ## In
 
@@ -29,7 +24,7 @@ A run whose two implementers both hold begun batches is refused, and the refusal
 - The task branch, checked out in the task's worktree, with the plan committed on it.
 
 How the cards are grouped into units of work is the implementer's own call, configured by the implementer's own config:
-webster batches through `batcher.yaml`, and weaver forms each batch from the cards that remain.
+webster batches through `batcher.yaml`.
 The plan writer writes a flat plan and never groups its cards.
 
 ## Out
@@ -37,19 +32,15 @@ The plan writer writes a flat plan and never groups its cards.
 - **Commits on the task branch** that build the plan, leaving a clean tree.
   The implementer never pushes: the landing rows push the branch.
 - **A durable run directory** of the implementer's own under `_lym/`, holding its state file and run record.
-  An implementer may commit its run directory and the plan directory during the run, and still never pushes.
-  Go commits the directory once the row reports Done.
+  Go commits it once the row reports Done.
   Webster's is `_lym/webster/`, holding `state.json`, `outcome.yaml` and `summary.md`.
-  Weaver's is `_lym/weaver/`, holding `state.json`, `journal.md`, `summary.md` and `outcome.yaml`.
-- **The plan-conflict record** at `.lym/implementer/plan-conflict.md`, a path both implementers write.
-  It belongs to no implementer, so a reroute to plan review finds a conflict whichever implementer refused.
 - **An outcome**, returned as the row's shed outcome:
 
 | Outcome | Meaning | Route |
 | --- | --- | --- |
 | Done | The plan is built and the plan-level verify passed. | `on_done` to `Parent-Align`. |
 | Stuck with a reroute | The implementer refused the approved plan with a new plan-conflict record for plan review. | `on_reroute` to `Plan-Burler-Review`, within shed's reroute cap. |
-| Stuck | Any other fault, its reason naming the way forward. | Shed's stop chain: rule table, tackler, arbiter, then parent. |
+| Stuck | Any other fault, its reason naming the way forward. | The row has no `on_stuck`, so the run halts for a human. |
 
 A Stuck reason follows [refusal-spec.md](refusal-spec.md).
 A fault in the implementer's own config is a Stuck the operator fixes before re-stepping the row.

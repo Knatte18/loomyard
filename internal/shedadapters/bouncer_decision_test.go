@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -229,11 +228,6 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 						t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
 					}
 					requireReasonContains(t, ptr.Reason, "round 2", "cause: decision", "lym loom decision add my-task", "lym loom circling accept my-task", "lym loom circling continue my-task", "lym loom resume")
-					for _, want := range []string{"lym loom decision add", "one entry per answered finding"} {
-						if !strings.Contains(ptr.ParentNotice, want) {
-							t.Errorf("ParentNotice = %q; want it to contain %q", ptr.ParentNotice, want)
-						}
-					}
 					brief := requireDecisionEscalation(t, cfg)
 					for _, want := range []string{"D1", "lym loom decision add my-task", "lym loom circling continue my-task", "lym loom resume"} {
 						if !strings.Contains(brief, want) {
@@ -262,40 +256,6 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 					}
 				})
 			}
-		}
-	})
-
-	t.Run("ADecisionRoundRecordsItsPostFixTargetID", func(t *testing.T) {
-		t.Parallel()
-		b, cfg, _ := decisionBouncerFor(t, "CONVERGED", decisionReviewContent(lowDecision), bouncerLedgerContent(2), func(c *BouncerConfig) {
-			c.Snapshot = &TargetSnapshot{Scope: burlerengine.FixScopeSource, SourceTreeID: func() (string, error) { return "tree-after-fix", nil }}
-		})
-		routed := false
-		if err := updateRoundSnapshot(cfg.RunDir, 2, func(rec *roundSnapshot, _ bool) {
-			*rec = roundSnapshot{FixScope: string(burlerengine.FixScopeSource), TargetID: "tree-at-start", DecisionsRouted: &routed}
-		}); err != nil {
-			t.Fatalf("updateRoundSnapshot() = %v; want nil", err)
-		}
-
-		shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-		requireDecisionEscalation(t, cfg)
-
-		if rec, found, err := readRoundSnapshot(cfg.RunDir, 2); err != nil || !found || rec.PostFixTargetID != "tree-after-fix" {
-			t.Errorf("round 2's record = %+v, %v, %v; want the post-fix target id tree-after-fix", rec, found, err)
-		}
-	})
-
-	t.Run("AHeldFindingCarriedByTheReviewIsTheOnlyOneTheDetailNames", func(t *testing.T) {
-		t.Parallel()
-		review := "---\nverdict: APPROVED\nprior:\n  - id: H1\n    status: resolved\n    answer: settled by the added entry\n  - id: H2\n    status: open\n" +
-			"findings:\n  - id: D2\n    severity: LOW\n    class: decision\n    location: plan.md:4\n    summary: question is still open\n    fix: settle it\n    carries: H2\n---\nreview prose\n"
-		b, cfg, _ := decisionBouncerFor(t, "CONVERGED", review, bouncerLedgerContent(2), nil)
-
-		shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-		brief := requireDecisionEscalation(t, cfg)
-
-		if !strings.Contains(brief, "D2") || strings.Contains(brief, "H1") {
-			t.Errorf("escalation brief = %q; want it to name D2 and not the resolved finding H1", brief)
 		}
 	})
 

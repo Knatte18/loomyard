@@ -57,11 +57,9 @@ func leadPrompt(t *testing.T, in DarnInputs, parentName string, table seatengine
 		WorktreeRoot: in.WorktreeRoot,
 		AnchorPath:   in.WorktreeRoot,
 		StencilsDir:  in.StencilsDir,
-		// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
-		DefaultEngine: "claude",
-		ParentName:    parentName,
-		Shortname:     "ly",
-		Slug:          in.Slug,
+		ParentName:   parentName,
+		Shortname:    "ly",
+		Slug:         in.Slug,
 	}, table)
 	if err != nil {
 		t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
@@ -74,7 +72,7 @@ func leadPrompt(t *testing.T, in DarnInputs, parentName string, table seatengine
 // and the no-gate step has it on.
 const (
 	ungatedTestStep     = "3. Test with `lym gate test` after the last edit of each commit"
-	ungatedSubagentGate = "the gate rule from your system prompt with the timeout it names, for the subagent to run on its own package"
+	ungatedSubagentGate = "the gate rule from your system prompt with its Bash tool timeout, for the subagent to run on its own package"
 	gatedNoGateStep     = "3. Run no `lym gate test` yourself."
 )
 
@@ -208,33 +206,6 @@ func TestDarnSpec(t *testing.T) {
 				t.Errorf("lead prompt names the parent = %v; want %v", got, !tt.wantNoParent)
 			}
 		})
-	}
-}
-
-// TestDarnSpec_PromptFollowsWriterEngine covers the Step 4 subagent wording:
-// a writer whose model-spec resolves to Codex gets the Codex copy and no Claude subagent model.
-func TestDarnSpec_PromptFollowsWriterEngine(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	in := newSpecInputs(t)
-	reg := newTestRegistry(t)
-	table, err := DarnTable(in, Config{Writer: "sol", WriterTimeoutMin: 45}, reg)
-	if err != nil {
-		t.Fatalf("DarnTable() = _, %v; want nil error", err)
-	}
-	if got := table.Chair().Engine; got != "codex" {
-		t.Fatalf("lead engine = %q; want codex", got)
-	}
-
-	prompt := leadPrompt(t, in, "", table)
-	if !strings.Contains(prompt, "`spawn_agent`") {
-		t.Errorf("lead prompt lacks the Codex subagent wording `spawn_agent`")
-	}
-	for _, unwanted := range []string{"Agent tool", `model: "haiku"`} {
-		if strings.Contains(prompt, unwanted) {
-			t.Errorf("lead prompt contains %q; want the Codex copy only", unwanted)
-		}
 	}
 }
 

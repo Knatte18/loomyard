@@ -356,7 +356,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 
 	cfg := loadTemplateConfig(t)
 
-	const wantLenses = 38
+	const wantLenses = 37
 	if len(cfg.Lenses) != wantLenses {
 		t.Errorf("seeded template has %d lenses; want %d", len(cfg.Lenses), wantLenses)
 	}
@@ -371,7 +371,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			}
 		}
 	}
-	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 6, "twill-plan": 5, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 4, "fix-code": 4} {
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 6, "twill-plan": 5, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 3, "fix-code": 4} {
 		entries, ok := cfg.Fans[fanName]
 		if !ok {
 			t.Errorf("seeded template is missing fan %q", fanName)
@@ -389,7 +389,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		"review-plan":       {"affected-set", "guard-reach", "repo-invariants"},
 		"fix-discussion":    {"fix-consistency", "fix-claims", "fix-proposal", "fix-way-forward"},
 		"fix-plan":          {"fix-consistency", "fix-claims", "fix-proposal", "fix-affected-set"},
-		"review-code":       {"code-correctness", "code-affected-set", "code-tests", "code-scope"},
+		"review-code":       {"code-correctness", "code-affected-set", "code-tests"},
 		"fix-code":          {"fix-code-correctness", "fix-consistency", "fix-proposal", "fix-affected-set"},
 	}
 	procedureLenses := map[string]bool{}
@@ -710,7 +710,7 @@ func TestCheckLoad(t *testing.T) {
 	t.Run("a remove emptying a fan passes the check and the fan is refused at resolution", func(t *testing.T) {
 		t.Parallel()
 		anchor := t.TempDir()
-		writeLensesYAML(t, anchor, "remove: [code-correctness, code-affected-set, code-tests, code-scope]\n")
+		writeLensesYAML(t, anchor, "remove: [code-correctness, code-affected-set, code-tests]\n")
 		dirs := configengine.Dirs{Anchor: anchor}
 
 		if err := CheckLoad(dirs); err != nil {

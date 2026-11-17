@@ -32,9 +32,6 @@ const (
 
 // TidyShuttle is the part of shuttle the board-tidy agent runs through.
 type TidyShuttle interface {
-	// EngineName names the engine a launch with choice resolves to, which the prompt is rendered for.
-	// It returns an error when the shuttle behind the launch cannot be built, so no prompt is rendered for it.
-	EngineName(choice shuttleengine.ModelChoice) (string, error)
 	// Start launches spec in a fresh window and returns the new strand's GUID once the agent is running.
 	Start(spec shuttleengine.Spec) (strandGUID string, err error)
 	// StopStrand ends the strand guid names through shuttle's stop verb.
@@ -51,16 +48,16 @@ type TidyPromptInput struct {
 	Parent string
 }
 
-// TidyPrompt composes the board-tidy agent's launch prompt for the engine named engine.
+// TidyPrompt composes the board-tidy agent's launch prompt.
 // It reads the board-tidy stencil from stencilsDir at call time and fills its markers from in.
-// The parent directive names in.Parent, and the edit directive is the one of engine.
+// The parent directive names in.Parent, and the edit directive is filled in too.
 // A stencil read or fill error is returned wrapped with the stencil's name.
-func TidyPrompt(stencilsDir, engine string, in TidyPromptInput) (string, error) {
+func TidyPrompt(stencilsDir string, in TidyPromptInput) (string, error) {
 	directive, err := parentdirective.Directive(stencilsDir, in.Parent, false)
 	if err != nil {
 		return "", err
 	}
-	editDirective, err := editdirective.Directive(stencilsDir, engine)
+	editDirective, err := editdirective.Directive(stencilsDir)
 	if err != nil {
 		return "", err
 	}
@@ -85,21 +82,19 @@ func TidyPrompt(stencilsDir, engine string, in TidyPromptInput) (string, error) 
 }
 
 // TidySpec composes the shuttle spec the board-tidy agent launches from.
-// PromptEngine is engine, the engine the prompt was rendered for, which must be the one model resolves to.
 // OutputFiles holds reportPath alone.
 // ConfigRole is the board-tidy role, whose skills come from agents.yaml (role `board-tidy`).
 // Segment is the coordinator, since the agent acts for the beam's driver,
 // and the agent is autonomous with no parent session to message.
-func TidySpec(prompt, reportPath, engine string, model shuttleengine.ModelChoice, timeout time.Duration) shuttleengine.Spec {
+func TidySpec(prompt, reportPath string, model shuttleengine.ModelChoice, timeout time.Duration) shuttleengine.Spec {
 	return shuttleengine.Spec{
-		Prompt:       prompt,
-		PromptEngine: engine,
-		ConfigRole:   agentconfig.RoleBoardTidy,
-		OutputFiles:  []string{reportPath},
-		ModelChoice:  model,
-		Timeout:      timeout,
-		Role:         BoardTidyRole,
-		Segment:      segmentcolor.Coordinator,
+		Prompt:      prompt,
+		ConfigRole:  agentconfig.RoleBoardTidy,
+		OutputFiles: []string{reportPath},
+		ModelChoice: model,
+		Timeout:     timeout,
+		Role:        BoardTidyRole,
+		Segment:     segmentcolor.Coordinator,
 	}
 }
 
@@ -188,16 +183,12 @@ func (d *daemon) spawnTidy(now time.Time, cfg Config, landed []string) error {
 		return err
 	}
 	reportPath := filepath.Join(d.geom.TidyDir, now.UTC().Format("20060102T150405Z")+".md")
-	engine, err := d.deps.TidyShuttle.EngineName(d.deps.TidyModel)
-	if err != nil {
-		return fmt.Errorf("resolve the board-tidy agent's engine: %w", err)
-	}
-	prompt, err := TidyPrompt(d.deps.StencilsDir, engine, TidyPromptInput{Landed: landed, ReportPath: reportPath, Parent: orch})
+	prompt, err := TidyPrompt(d.deps.StencilsDir, TidyPromptInput{Landed: landed, ReportPath: reportPath, Parent: orch})
 	if err != nil {
 		return err
 	}
 	timeout := time.Duration(cfg.BoardTidyTimeoutMin) * time.Minute
-	guid, err := d.deps.TidyShuttle.Start(TidySpec(prompt, reportPath, engine, d.deps.TidyModel, timeout))
+	guid, err := d.deps.TidyShuttle.Start(TidySpec(prompt, reportPath, d.deps.TidyModel, timeout))
 	if err != nil {
 		return fmt.Errorf("start the board-tidy agent: %w", err)
 	}

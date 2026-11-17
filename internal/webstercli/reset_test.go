@@ -24,7 +24,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -98,7 +97,7 @@ func (fx *resetFixture) saveState(t *testing.T, st *websterengine.State) {
 func startedAt(sha string) *websterengine.State {
 	return &websterengine.State{
 		MasterSessionID: "master-session",
-		State:           runplan.State{Batches: map[int]*websterengine.BatchState{1: {Slug: "only", StartSHA: sha}}},
+		Batches:         map[int]*websterengine.BatchState{1: {Slug: "only", StartSHA: sha}},
 	}
 }
 
@@ -490,10 +489,10 @@ func TestResetCmd(t *testing.T) {
 		gitkit.Git(t, fx.checkout, "checkout", fx.branch)
 		fx.saveState(t, &websterengine.State{
 			MasterSessionID: "master-session",
-			State: runplan.State{Batches: map[int]*websterengine.BatchState{
+			Batches: map[int]*websterengine.BatchState{
 				1: {Slug: "one", StartSHA: s1},
 				2: {Slug: "two", StartSHA: s2},
-			}},
+			},
 		})
 
 		code, envelope := fx.reset(t, "--to", "start")
@@ -629,7 +628,7 @@ func TestResetCmd(t *testing.T) {
 		{
 			name: "no recorded target",
 			arrange: func(t *testing.T, fx *resetFixture) {
-				fx.saveState(t, &websterengine.State{MasterSessionID: "master-session", State: runplan.State{Batches: map[int]*websterengine.BatchState{}}})
+				fx.saveState(t, &websterengine.State{MasterSessionID: "master-session", Batches: map[int]*websterengine.BatchState{}})
 			},
 			attempts: []refusalAttempt{
 				{[]string{"--to", "pre-fix"}, []string{"no pre-fix head", "run `lym webster run`"}},

@@ -68,7 +68,7 @@ func TestPrepareRunSettings(t *testing.T) {
 		{
 			name:     "no profiles file takes the template's default for the recipe",
 			settings: battenshed.RunSettings{Recipe: "darn"},
-			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\ncode_reviewer_model: opus[medium]\n"},
+			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\ncode_reviewer_model: opus[high]\n"},
 		},
 		{
 			name:     "a sampler task naming the template's light profile writes its loom values and the review on",

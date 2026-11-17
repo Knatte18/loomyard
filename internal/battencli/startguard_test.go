@@ -31,8 +31,8 @@ func TestStartGuard_Refuse(t *testing.T) {
 	t.Parallel()
 
 	const slug = "some-slug"
-	markerAlive := &cancelMarkerReading{Present: true, WriterAlive: true, Intent: shedengine.CancelIntent{StartedAt: "2026-10-23T08:00:00Z"}}
-	markerGone := &cancelMarkerReading{Present: true, Intent: shedengine.CancelIntent{Machine: "other-machine"}}
+	markerAlive := &cancelMarkerReading{Present: true, WriterAlive: true, Marker: cancelMarker{PID: 4242, StartedAt: "2026-10-23T08:00:00Z"}}
+	markerGone := &cancelMarkerReading{Present: true}
 	tests := []struct {
 		name  string
 		verbs []string
@@ -59,9 +59,6 @@ func TestStartGuard_Refuse(t *testing.T) {
 		// project and beam feed the Project seam; marked and unreadable feed the PairMark seam.
 		project, beam, marked, unreadable bool
 		projectErr                        error
-		// filed is what the FilingMarked seam reads: the run filed a family.
-		filed    bool
-		filedErr error
 		// unreleased is the board status of a task no run starts; it is empty for a released entry.
 		unreleased    string
 		unreleasedErr error
@@ -80,7 +77,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			marker:     markerAlive,
 			found:      true,
 			producer:   battenrecipe.NameRunShed,
-			wantErrors: []string{"a cancel of some-slug is under way", "since 2026-10-23T08:00:00Z", "way forward: wait for it to end"},
+			wantErrors: []string{"a cancel of some-slug is under way", "way forward: wait for the cancel (pid 4242)", `"ps -p 4242"`},
 		},
 		{
 			name:       "MarkerWithTheWriterGoneRefusesTheDrivingVerbs",
@@ -88,7 +85,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			marker:     markerGone,
 			found:      true,
 			producer:   battenrecipe.NameRunShed,
-			wantErrors: []string{"a cancel of some-slug was interrupted", `way forward: run "lym batten cancel some-slug"`, "machine other-machine"},
+			wantErrors: []string{"a cancel of some-slug was interrupted", `way forward: run "lym batten cancel some-slug"`},
 		},
 		{
 			name:     "MarkerPassesTheVerbsThatDoNotDrive",
@@ -222,7 +219,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:       "MarkerProbeErrorRefusesNamingTheProbeAndTheRerun",
 			verbs:      []string{"run", "step", "goto"},
 			markerErr:  errors.New("marker unreadable"),
-			wantErrors: []string{"the cancel intent", "marker unreadable", `run "lym batten {verb} some-slug" again`},
+			wantErrors: []string{"the cancel marker", "marker unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:       "DirtyProbeErrorRefusesNamingTheProbeAndTheRerun",
@@ -283,40 +280,6 @@ func TestStartGuard_Refuse(t *testing.T) {
 			verbs:      []string{"run", "step"},
 			project:    true,
 			wantErrors: []string{"grouping project", `run "lym beam create some-slug"`},
-		},
-		{
-			name:       "GroupingProjectWithAFilingMarkButNoRunIsRefused",
-			verbs:      []string{"run", "step"},
-			project:    true,
-			filed:      true,
-			wantErrors: []string{"grouping project", `run "lym beam create some-slug"`},
-		},
-		{
-			name:     "FiledRunUnderItsFamilysProjectResumes",
-			verbs:    []string{"run", "step"},
-			project:  true,
-			filed:    true,
-			found:    true,
-			producer: battenrecipe.NameRunShed,
-			dirty:    []string{"a.txt"},
-			parts:    fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true},
-		},
-		{
-			name:       "UnfiledRunOfAGroupingProjectIsRefused",
-			verbs:      []string{"run", "step"},
-			project:    true,
-			found:      true,
-			producer:   battenrecipe.NameRunShed,
-			wantErrors: []string{"grouping project", `run "lym beam create some-slug"`},
-		},
-		{
-			name:       "FilingMarkProbeErrorRefusesNamingTheProbeAndTheRerun",
-			verbs:      []string{"run", "step"},
-			project:    true,
-			filedErr:   errors.New("run dir unreadable"),
-			found:      true,
-			producer:   battenrecipe.NameRunShed,
-			wantErrors: []string{"the run's filing mark", "run dir unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:    "FreshBeamProjectWithNoPairPassesOverACleanPrime",
@@ -442,11 +405,10 @@ func TestStartGuard_Refuse(t *testing.T) {
 						ReachedParent: func(shedengine.Status, bool) (bool, error) {
 							return tt.reached, tt.reachedErr
 						},
-						Project:      func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
-						FilingMarked: func() (bool, error) { return tt.filed, tt.filedErr },
-						PairMark:     func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
-						Unreleased:   func() (string, error) { return tt.unreleased, tt.unreleasedErr },
-						Raddle:       tt.raddle,
+						Project:    func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
+						PairMark:   func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
+						Unreleased: func() (string, error) { return tt.unreleased, tt.unreleasedErr },
+						Raddle:     tt.raddle,
 					}
 				}
 
@@ -835,7 +797,7 @@ func TestArmSeed_CancelMarkerRefusesTheWrite(t *testing.T) {
 		wantErr    string
 		wantSeeded bool
 	}{
-		{name: "PresentMarkerRefusesAndWritesNoSeed", marker: cancelMarkerReading{Present: true, WriterAlive: true}, wantErr: "a cancel of some-slug is under way"},
+		{name: "PresentMarkerRefusesAndWritesNoSeed", marker: cancelMarkerReading{Present: true, WriterAlive: true, Marker: cancelMarker{PID: 4242}}, wantErr: "a cancel of some-slug is under way"},
 		{name: "AbsentMarkerSeedsAsBefore", wantSeeded: true},
 	}
 	for _, tt := range tests {

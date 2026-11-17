@@ -52,11 +52,9 @@ func discussionTableGeometry(layout *lymcwd.Location, stencilsDir string) seaten
 		WorktreeRoot: layout.WorktreePath(),
 		AnchorPath:   layout.AnchorPath(),
 		StencilsDir:  stencilsDir,
-		// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
-		DefaultEngine: "claude",
-		ParentName:    "ly:orch",
-		Shortname:     "ly",
-		Slug:          discussionTableSlug,
+		ParentName:   "ly:orch",
+		Shortname:    "ly",
+		Slug:         discussionTableSlug,
 	}
 }
 
@@ -101,22 +99,6 @@ func unboundedAskOperator(prompt string) bool {
 		}
 	}
 	return false
-}
-
-// requireCodexForkWording fails the test unless the lens-fork wording of prompt is Codex's:
-// it spawns and waits through spawn_agent and wait_agent, and names no Claude fork spawn or fork wait.
-func requireCodexForkWording(t *testing.T, prompt string) {
-	t.Helper()
-	for _, want := range []string{"spawn_agent", "wait_agent"} {
-		if !strings.Contains(prompt, want) {
-			t.Errorf("codex lead prompt lacks %q; want the twill directive worded for the lead's engine", want)
-		}
-	}
-	for _, unwanted := range []string{`subagent_type: "fork"`, "lym shuttle await-forks"} {
-		if strings.Contains(prompt, unwanted) {
-			t.Errorf("codex lead prompt carries %q; want the Claude fork wording left out", unwanted)
-		}
-	}
 }
 
 // TestDiscussionTable verifies the table DiscussionTable builds for zero, one and two advisors in both modes.
@@ -412,26 +394,6 @@ func TestDiscussionTable(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("a codex chair gets the twill directive worded for codex", func(t *testing.T) {
-		t.Parallel()
-		layout := discussionTableLayout(t)
-		stencilsDir := newTestStencilsDir(t)
-		// The advisors stay on Claude, so a producer that passed an advisor's engine would fail the row.
-		cfg := discussionTableConfig(2, false)
-		cfg.Discussion = "sol"
-		cfg.DiscussionLenses = "twill-discussion"
-
-		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
-		if err != nil {
-			t.Fatalf("DiscussionTable(Discussion=%q) = _, %v; want nil error", cfg.Discussion, err)
-		}
-		prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
-		if err != nil {
-			t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
-		}
-		requireCodexForkWording(t, prompts[""])
-	})
 
 	// A fixer clearing the discussion gate drops the validator loop from the lead's prompt.
 	// That covers the chair's prompt too, since the chair template wraps the discussion template:

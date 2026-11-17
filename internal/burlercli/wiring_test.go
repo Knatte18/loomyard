@@ -667,7 +667,7 @@ fixer-report-path: reviews/fixer-report.md
 			t.Fatalf("write profile: %v", err)
 		}
 		shuttle = &halfShuttle{review: review}
-		engine := burlerengine.New(shuttle, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", DefaultEngine: "claude"}, cfg, stencilkit.Seed(t), "", nil)
+		engine := burlerengine.New(shuttle, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, cfg, stencilkit.Seed(t), "", nil)
 		c = &burlerCLI{cwd: root, engine: engine, mode: "standalone"}
 		return c, shuttle, profilePath, root
 	}
@@ -840,7 +840,7 @@ fixer-report-path: reviews/fixer-report.md
 		}
 		reed := &shuttlefake.Reed{}
 		runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30, Agents: shuttlefake.Agents(t)})
-		engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", DefaultEngine: "claude"}, lenses.Config{
+		engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, lenses.Config{
 			Lenses: map[string]string{"style": "style prose"},
 			Fans:   map[string][]string{"standard": {"style"}},
 		}, stencilkit.Seed(t), "", nil)

@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -305,8 +304,6 @@ func TestSweep_GrammarScope(t *testing.T) {
 }
 
 // TestSweep_DeleteFailureTolerance verifies delete failures are silently tolerated.
-//
-//testtiming:keep pins that Sweep returns nil and keeps the stale file when its unlink fails.
 func TestSweep_DeleteFailureTolerance(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -317,7 +314,10 @@ func TestSweep_DeleteFailureTolerance(t *testing.T) {
 	dir := t.TempDir()
 	stale := writeTraceTestFile(t, dir, time.Now().Add(-15*24*time.Hour), hexID(1), deadTestPID)
 
-	permkit.Chmod(t, dir, 0o555)
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatalf("Chmod(%s) = %v", dir, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	if err := Sweep(dir, testBounds); err != nil {
 		t.Fatalf("Sweep(%s) = %v; want nil even when a delete fails", dir, err)

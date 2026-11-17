@@ -109,10 +109,6 @@ orchestrator is interrupted by its own watcher at the grace end, not by pause.
 
 --grace sets the grace in seconds, 0 to 60.
 
-With a slug, the pause is also recorded as the run's pause intent in its batten
-record, which is committed and pushed with the run's other records. A run another
-machine owns is refused, naming that machine.
-
 Lift it with "lym tender resume", which gives each interrupted session one
 line to carry on.
 
@@ -152,26 +148,10 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			request := tenderengine.PauseRequest{Slug: slug, Grace: time.Duration(grace) * time.Second}
-			if slug != "" {
-				intents, err := hubRunIntents(location, slug)
-				if err != nil {
-					return fail(err)
-				}
-				if !slices.Contains(slugs, slug) {
-					// A run another machine owns has no pair here, and is refused naming that machine.
-					owner, subject, err := intents.Owner()
-					if err != nil {
-						return fail(err)
-					}
-					if owner != "" {
-						return fail(tenderengine.OwnerRefusal(slug, owner, subject))
-					}
-					return fail(fmt.Errorf("pause: %q has no pair in this hub; way forward: name one of the pairs: %s", slug, strings.Join(slugs, ", ")))
-				}
-				request.Owner, request.Record = intents.Owner, intents.Record
+			if slug != "" && !slices.Contains(slugs, slug) {
+				return fail(fmt.Errorf("pause: %q has no pair in this hub; way forward: name one of the pairs: %s", slug, strings.Join(slugs, ", ")))
 			}
-			report, err := tenderengine.Pause(deps, request)
+			report, err := tenderengine.Pause(deps, tenderengine.PauseRequest{Slug: slug, Grace: time.Duration(grace) * time.Second})
 			if err != nil {
 				return fail(err)
 			}
@@ -193,10 +173,6 @@ func resumeCmd() *cobra.Command {
 slug it lifts that pair's own entry. A slug covered only by a hub-wide pause is
 refused: run "lym tender resume" to lift the hub pause. Resuming nothing is a
 no-op.
-
-With a slug, a resume also clears the run's pause intent from its batten record,
-and commits and pushes it. A run another machine owns is refused, naming that
-machine.
 
 Each session the pause interrupted gets one line to carry on, unless its strand
 is not live or its guarded send is refused, as for a running turn, a draft, a
@@ -243,15 +219,7 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			request := tenderengine.ResumeRequest{Slug: slug}
-			if slug != "" {
-				intents, err := hubRunIntents(location, slug)
-				if err != nil {
-					return fail(err)
-				}
-				request.Verdict, request.Clear = intents.Verdict, intents.Clear
-			}
-			report, err := tenderengine.Resume(deps, request)
+			report, err := tenderengine.Resume(deps, tenderengine.ResumeRequest{Slug: slug})
 			if err != nil {
 				return fail(err)
 			}

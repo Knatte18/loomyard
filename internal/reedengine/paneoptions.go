@@ -1,9 +1,8 @@
 // paneoptions.go sets the tmux user options that identify strands:
 // @strand, @strand_color and @lym_strand_name on each strand pane, and @lym_strands on the strand window.
 // It also names @lym_console, the marker of the operator console pane that the key bindings read.
-// No Go decision reads them back but two clicks read @lym_strand_name.
-// The button click reads it for {strand}, and the RC click reads it to name the agent it acts on.
-// The status bar and the key bindings read the rest.
+// No Go decision reads them back but the button click, which reads @lym_strand_name for {strand};
+// the status bar and the key bindings read the rest.
 
 package reedengine
 
@@ -26,8 +25,7 @@ func strandLabel(name string) string {
 	return parsed.Role
 }
 
-// strandNamePaneOption is the pane option holding a strand's full name.
-// A button click reads it to fill {strand}, and the RC click reads it to name the agent it acts on;
+// strandNamePaneOption is the pane option holding a strand's full name, which a button click reads to fill {strand};
 // @strand holds only the role.
 const strandNamePaneOption = "@lym_strand_name"
 

@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/dotgit"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/runplan"
 )
 
 // headSHA returns the SHA of worktree's HEAD commit.
@@ -324,7 +323,7 @@ func commitChangedPaths(worktree, commit string) ([]string, error) {
 // otherWorktrees returns the canonical root of every worktree of worktree's repository except worktree itself.
 // It reads the repository's own worktree list, so websterengine derives no hub path.
 func otherWorktrees(worktree string) ([]string, error) {
-	self, err := runplan.CanonicalPath(worktree)
+	self, err := canonicalPath(worktree)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +333,7 @@ func otherWorktrees(worktree string) ([]string, error) {
 	}
 	var others []string
 	for _, root := range roots {
-		canon, err := runplan.CanonicalPath(root)
+		canon, err := canonicalPath(root)
 		if err != nil {
 			return nil, err
 		}
@@ -442,15 +441,6 @@ func treePathsWithBlob(worktree, commit, blob string) ([]string, error) {
 		}
 	}
 	sort.Strings(paths)
-	return paths, nil
-}
-
-// addedPaths returns, sorted, the repository-relative paths that a commit in base..head adds over its first parent.
-func addedPaths(worktree, base, head string) ([]string, error) {
-	paths, err := gitrepo.New(worktree).AddedFilesInCommits(base, head)
-	if err != nil {
-		return nil, fmt.Errorf("websterengine: paths added between %s and %s in %s: %w", base, head, worktree, err)
-	}
 	return paths, nil
 }
 

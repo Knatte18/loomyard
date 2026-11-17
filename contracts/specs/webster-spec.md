@@ -34,12 +34,6 @@ They live at the mirrored subpath under `.lym/webster/`, outside the fabric-comm
 `internal/websterengine`'s `ScratchDir` and `PromptsDir` helpers resolve it.
 No other module writes into either directory.
 
-## The plan-conflict record
-
-When a dispatch refuses the plan because it contradicts the tree, webster writes the conflict record for plan review.
-The record is `.lym/implementer/plan-conflict.md`, a path shared with every other implementer.
-It sits under no implementer's own directory, so a reroute to plan review finds it whichever implementer refused.
-
 ## `outcome.yaml`
 
 Master's final-action file:

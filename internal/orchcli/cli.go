@@ -17,10 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
@@ -123,24 +121,10 @@ type orchCLI struct {
 	dobbyLive func() (bool, error)
 	// endDobby ends this worktree's dobby and the processes below it, and no other process of the beam.
 	endDobby func() error
-	// registerOrch registers pid as this worktree's orch provider process; nil registers none.
-	registerOrch func(pid int) error
-	// orchRegistered reports whether pid is registered as this worktree's orch; nil reads every pid as unregistered.
-	orchRegistered func(pid int) (bool, error)
-	// endOrch ends this worktree's registered orch provider process and the processes below it.
-	endOrch func() ([]runproc.Ended, error)
-	// endSubject ends every process this machine runs for the worktree's subject but its dobby.
-	// The dobby hands the subject over itself.
-	// The watcher calls it once another machine owns the worktree.
-	endSubject func() error
+	// endTestMap ends the prime's coverage-map upkeep pass, and no other process; nil, as for a beam, ends none.
+	endTestMap func() error
 	// reapInherited waits on the children a re-exec'd watcher inherited, which `watch` calls before it starts anything.
 	reapInherited func()
-	// machineName answers this machine's name, which the remote session's name carries.
-	machineName func() (string, error)
-	// injectRemoteControl queues creel's remote-control command with name into the strand receiver.
-	injectRemoteControl func(receiver, name string) error
-	// markRemoteControl sets the RC mark on the live pane of the strand guid in this worktree's session; nil marks none.
-	markRemoteControl func(guid string) error
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -188,8 +172,7 @@ Every verb runs from the hub's prime worktree or from a beam.`,
 		},
 	}
 
-	parent.AddCommand(c.statusCmd(), c.refreshCmd(), c.distillCmd(), c.withdrawCmd(), c.stopCmd(), c.rulesCmd(), c.watchCmd(), c.resumeContextCmd(),
-		c.remoteControlOnCmd())
+	parent.AddCommand(c.statusCmd(), c.refreshCmd(), c.distillCmd(), c.withdrawCmd(), c.stopCmd(), c.rulesCmd(), c.watchCmd(), c.resumeContextCmd())
 	return parent
 }
 
@@ -263,11 +246,6 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 		}
 		return creelSeam{client: client}, nil
 	}
-	c.machineName = machinename.Name
-	c.injectRemoteControl = func(receiver, name string) error {
-		return injectRemoteControlCommand(location, receiver, name)
-	}
-	c.markRemoteControl = reed.MarkRemoteControlOn
 	c.spawnWatcher = c.spawnWatcherProcess
 	c.startLockWait = stopStartLockWait
 	c.sleep = time.Sleep
@@ -300,17 +278,11 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 		_, err := runproc.EndRole(runProcDir, owner, runproc.RoleDobby, os.Getpid())
 		return err
 	}
-	c.registerOrch = func(pid int) error { return runproc.RegisterOrch(runProcDir, owner, pid) }
-	c.orchRegistered = func(pid int) (bool, error) { return runproc.IsRegistered(runProcDir, owner, runproc.RoleOrch, pid) }
-	c.endOrch = func() ([]runproc.Ended, error) {
-		return runproc.EndRole(runProcDir, owner, runproc.RoleOrch, os.Getpid())
-	}
-	c.endSubject = func() error {
-		prime, err := resolvePrime(location)
-		if err != nil {
+	if !beam {
+		c.endTestMap = func() error {
+			_, err := runproc.EndRole(runProcDir, runproc.HubOwner, runproc.RoleTestMap, os.Getpid())
 			return err
 		}
-		return pairteardown.EndSubjectProcesses(prime, owner, false)
 	}
 	return nil
 }

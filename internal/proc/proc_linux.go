@@ -89,57 +89,48 @@ func statFieldsAfterName(pid int) ([]string, bool) {
 // userHZ is the kernel's fixed tick rate for the CPU times in /proc/<pid>/stat, in ticks per second.
 const userHZ = 100
 
-// TreeSample returns root and every descendant of it.
-// Each entry carries the parent and the executable path.
-// It also carries the user plus system CPU time the process has used and the memory it holds resident.
+// TreeCPU returns root and every descendant of it.
+// Each entry carries the executable path and the user plus system CPU time the process has used.
 // A process that ends between the /proc listing and its reads is skipped; an unreadable /proc is an error.
-func TreeSample(root int) ([]ProcessSample, error) {
+func TreeCPU(root int) ([]ProcessCPU, error) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil, fmt.Errorf("proc: list /proc: %w", err)
 	}
 
-	pageSize := int64(os.Getpagesize())
 	children := map[int][]int{}
-	samples := map[int]ProcessSample{}
+	cpu := map[int]time.Duration{}
 	for _, entry := range entries {
 		pid, err := strconv.Atoi(entry.Name())
 		if err != nil {
 			continue
 		}
 		fields, ok := statFieldsAfterName(pid)
-		if !ok || len(fields) < 22 {
+		if !ok {
 			continue
 		}
 		// The remainder starts at field 3, so field 4 (parent pid) is entry 1.
-		// Fields 14 and 15 (user and system ticks) are entries 11 and 12, and field 24 (resident pages) is entry 21.
+		// Fields 14 and 15 (user and system ticks) are entries 11 and 12.
 		parent, parentErr := strconv.Atoi(fields[1])
 		userTicks, userErr := strconv.ParseInt(fields[11], 10, 64)
 		systemTicks, systemErr := strconv.ParseInt(fields[12], 10, 64)
-		residentPages, residentErr := strconv.ParseInt(fields[21], 10, 64)
-		if parentErr != nil || userErr != nil || systemErr != nil || residentErr != nil {
+		if parentErr != nil || userErr != nil || systemErr != nil {
 			continue
 		}
 		children[parent] = append(children[parent], pid)
-		samples[pid] = ProcessSample{
-			PID:    pid,
-			Parent: parent,
-			CPU:    time.Duration(userTicks+systemTicks) * time.Second / userHZ,
-			RSS:    residentPages * pageSize,
-		}
+		cpu[pid] = time.Duration(userTicks+systemTicks) * time.Second / userHZ
 	}
 
-	var tree []ProcessSample
+	var tree []ProcessCPU
 	pending := []int{root}
 	for len(pending) > 0 {
 		pid := pending[0]
 		pending = pending[1:]
-		sample, found := samples[pid]
+		used, found := cpu[pid]
 		if !found {
 			continue
 		}
-		sample.Path = executablePath(pid)
-		tree = append(tree, sample)
+		tree = append(tree, ProcessCPU{PID: pid, Path: executablePath(pid), CPU: used})
 		pending = append(pending, children[pid]...)
 	}
 	return tree, nil
@@ -176,32 +167,24 @@ func ListProcesses() ([]Process, error) {
 		if err != nil {
 			continue
 		}
-		if process, ok := ReadProcess(pid); ok {
-			processes = append(processes, process)
+		startTime, ok := StartTime(pid)
+		if !ok {
+			continue
 		}
+		base := "/proc/" + strconv.Itoa(pid)
+		exe, exeErr := os.Readlink(base + "/exe")
+		cwd, cwdErr := os.Readlink(base + "/cwd")
+		cmdline, cmdlineErr := os.ReadFile(base + "/cmdline")
+		if exeErr != nil || cwdErr != nil || cmdlineErr != nil {
+			continue
+		}
+		var argv []string
+		if len(cmdline) > 0 {
+			argv = strings.Split(strings.TrimSuffix(string(cmdline), "\x00"), "\x00")
+		}
+		processes = append(processes, Process{PID: pid, StartTime: startTime, Exe: exe, Cwd: cwd, Argv: argv})
 	}
 	return processes, nil
-}
-
-// ReadProcess returns the process pid with its start time, exe link, cwd link and command line.
-// It reports false for a process that is gone or whose links the caller may not read.
-func ReadProcess(pid int) (Process, bool) {
-	startTime, ok := StartTime(pid)
-	if !ok {
-		return Process{}, false
-	}
-	base := "/proc/" + strconv.Itoa(pid)
-	exe, exeErr := os.Readlink(base + "/exe")
-	cwd, cwdErr := os.Readlink(base + "/cwd")
-	cmdline, cmdlineErr := os.ReadFile(base + "/cmdline")
-	if exeErr != nil || cwdErr != nil || cmdlineErr != nil {
-		return Process{}, false
-	}
-	var argv []string
-	if len(cmdline) > 0 {
-		argv = strings.Split(strings.TrimSuffix(string(cmdline), "\x00"), "\x00")
-	}
-	return Process{PID: pid, StartTime: startTime, Exe: exe, Cwd: cwd, Argv: argv}, true
 }
 
 // ListStats returns every process in /proc with its parent, group, start time and zombie state, read from its stat alone.

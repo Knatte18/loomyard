@@ -5,12 +5,9 @@ package pairteardown
 
 import (
 	"fmt"
-	"os"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -18,13 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// The batten row names the follow-up wording and ReadRun read.
+// The batten row names the follow-up wording reads.
 // They are held here, not imported: batten's recipe package reaches a package whose tests import this one.
 // Importing it would make an import cycle in those tests.
-// TestReadRun pins runShedRow against the recipe package's value.
-// It pins the rows ReadRun counts as started against the recipe too.
+// TestBattenFollowUp pins both against the recipe package's values.
 const (
-	runShedRow          = "Run-Shed"
 	landRow             = "Land"
 	worktreeTeardownRow = "Worktree-Teardown"
 )
@@ -61,65 +56,6 @@ func OwnerPauseHeld(prime *lymcwd.Location, slug string) (bool, error) {
 		return false, err
 	}
 	return coverage.OwnerHeld, nil
-}
-
-// removeCancelledRunRecord deletes slug's batten run record on the hub's prime when its state is cancelled.
-// It reports whether it deleted the record.
-// A cancelled run keeps its record while its pair stands, and nothing reads it once the pair is gone.
-// The deletion is committed on the prime's records side when the records HEAD tracks the run, and its push is spawned.
-// A push that fails to start is logged, since the next push carries the commit.
-// A record in any other state, or none, is left alone.
-func (t *Teardown) removeCancelledRunRecord(slug string) (bool, error) {
-	record, found, err := ReadBattenRecord(t.prime, slug)
-	if err != nil {
-		return false, fmt.Errorf("read the batten run record of %s: %w", slug, err)
-	}
-	if !found || record.State != shedengine.StateCancelled {
-		return false, nil
-	}
-
-	statusLock, err := lock.AcquireWriteLock(shedrun.StatusLock(t.prime, slug))
-	if err != nil {
-		return false, fmt.Errorf("take the status lock of %s: %w", slug, err)
-	}
-	defer func() {
-		if err := statusLock.Release(); err != nil {
-			logger.Warn("pairteardown: could not release the status lock after deleting a cancelled run record", "slug", slug, "cause", err)
-		}
-	}()
-
-	if err := os.RemoveAll(shedrun.RunDir(t.prime, slug)); err != nil {
-		return false, fmt.Errorf("remove the run directory of %s: %w", slug, err)
-	}
-	tracked, err := recordsTrackRun(t.prime, slug)
-	if err != nil {
-		return false, fmt.Errorf("read whether the records HEAD tracks the run of %s: %w", slug, err)
-	}
-	if !tracked {
-		return true, nil
-	}
-	_, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), t.prime, []string{shedrun.RunDirRel(t.prime, slug)},
-		"fabric remove: remove the cancelled run record of "+slug, fabricengine.EnvSyncOptions())
-	if err != nil {
-		return false, fmt.Errorf("commit the removal of the run record of %s: %w", slug, err)
-	}
-	if committed {
-		if _, err := fabricengine.SpawnStatusPush(t.prime, ""); err != nil {
-			logger.Warn("pairteardown: the push of a cancelled run record's removal did not start; the next records push carries it", "slug", slug, "cause", err)
-		}
-	}
-	return true, nil
-}
-
-// recordsTrackRun reports whether the prime's records HEAD holds the status or the seed of slug's run.
-func recordsTrackRun(prime *lymcwd.Location, slug string) (bool, error) {
-	for _, rel := range []string{shedrun.StatusRel(prime, slug), shedrun.SeedRel(prime, slug)} {
-		_, tracked, err := fabricengine.CommittedAnchoredFile(prime, rel)
-		if err != nil || tracked {
-			return tracked, err
-		}
-	}
-	return false, nil
 }
 
 // FollowUpFor words the step that settles slug's batten run record on the hub's prime.
