@@ -3,7 +3,8 @@
 // config -> reed config -> reed engine -> claude engine -> shuttleengine.Runner exactly once per
 // invocation, into a receiver every verb (run.go, open.go, state.go) closes over, so no
 // subcommand re-resolves geometry, config, or engine construction itself.
-// The verbs are run, open and the read-only state, which lists the session state of each running run.
+// The verbs are run, open, manifest and the read-only state, which lists the session state of each running run.
+// The read-only manifest, which prints what each engine gives one seat's session, is implemented in manifest.go.
 // The read-only await, the capped wait on one or more files, is implemented in await.go.
 // The read-only await-forks, the capped wait until the calling session's forks have finished, is implemented in awaitforks.go.
 // await-forks resolves its geometry from anywhere under the anchored directory or in the records sibling.
@@ -25,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/shuttleparity"
 	"github.com/spf13/cobra"
 )
 
@@ -45,6 +47,9 @@ type shuttleCLI struct {
 	engines    shuttleengine.EngineSet
 	// configDirs are the config layers both configs load from, set by PersistentPreRunE; open resolves its model registry through them.
 	configDirs configengine.Dirs
+	// manifestReport prepares the named seat on each engine for the current worktree and compares the manifests.
+	// PersistentPreRunE sets it.
+	manifestReport func(name string) (shuttleparity.ManifestReport, error)
 }
 
 // Command returns the cobra command tree for the shuttle module.
@@ -52,6 +57,7 @@ type shuttleCLI struct {
 // resolution when the group command itself is invoked (no git repo required).
 // The await verb skips it too and needs no hub, reading only the keep-warm config inside a git worktree.
 // So do the hidden hook-batching and hook-edit verbs.
+// The manifest verb takes the strict cwd gate like run and open.
 func Command() *cobra.Command {
 	c := &shuttleCLI{}
 
@@ -138,11 +144,14 @@ provider specifics.`,
 			}
 			c.runner.SetPause(pauseGeom)
 			c.configDirs = fabricengine.ConfigDirs(layout)
+			c.manifestReport = func(name string) (shuttleparity.ManifestReport, error) {
+				return manifestReportOf(layout, c.cfg, c.configDirs, name)
+			}
 			return nil
 		},
 	}
 
-	parent.AddCommand(c.runCmd(), c.openCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd(), hookEditCmd())
+	parent.AddCommand(c.runCmd(), c.openCmd(), c.manifestCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd(), hookEditCmd())
 
 	return parent
 }

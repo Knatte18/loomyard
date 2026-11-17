@@ -42,6 +42,7 @@
 - `PATTERN-reed-panes` — Spawning an agent or touching its pane: an interactive tmux session through reed, never headless; text typed only via guarded paths; the wait mark is display only. (test) — [background](pattern/PATTERN-reed-panes.md)
 - `PATTERN-agent-addressing` — Naming or messaging an agent: names only via `internal/agentname`; messages only through creel; across hubs daemon to daemon with the sender confirmed, authority only for a trusted hub's orch. (test) — [background](pattern/PATTERN-agent-addressing.md)
 - `PATTERN-shuttle-provider-seam` — Touching a provider or shuttle run: specifics only under `internal/shuttleengine/<engine>`, model-specs via `NewModelChoice`, a spec's prompt rendered for its launch's engine, a strand stopped via the stop verb, a negative finish after `allOutputFilesExist`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
+- `PATTERN-engine-parity` — Launching a role on an engine: the session gets every skill, standing passage, instruction file, guard, hook and directive a session of that role gets on another engine, through its own channel; each engine's launch manifest is compared by test. (test) — [background](pattern/PATTERN-engine-parity.md)
 - `PATTERN-shell-guard-table` — Guarding a shell command or building a pane-shell string: only `internal/shellguard`'s table, every engine rendering every row, and `internal/shell`, importing only stdlib.
 
 ## Processes and waits

@@ -5,6 +5,7 @@ package shuttleengines
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -63,6 +64,57 @@ func newCodexLaunchFixture(t *testing.T) (engine shuttleengine.Engine, anchor, c
 		t.Fatalf("Lookup(codex) error: %v", err)
 	}
 	return engine, anchor, configDir
+}
+
+// TestNewWithSeams_CodexTakesTheGivenSeams pins that a set built with seams runs the given hook runner and sandbox probe.
+// Codex's Prepare calls the probe once under sandbox_mode auto, and the runner once for the installed plugin's hook.
+// The runner's context rides the launch line.
+// The nil-seam fallbacks run `sh` and `codex`, so no tier0 test reaches them.
+// It sets CLAUDE_CONFIG_DIR and HOME, so it does not run in parallel.
+func TestNewWithSeams_CodexTakesTheGivenSeams(t *testing.T) {
+	tiergate.Require(t, 0)
+
+	_, anchor, configDir := newCodexLaunchFixture(t)
+	pluginRoot := filepath.Join(configDir, "plugins", "p")
+	writeFixtureFiles(t, map[string]string{
+		configengine.ConfigFile(anchor, "codex"):                      "sandbox_mode: auto\nwritable_roots: []\n",
+		configengine.ConfigFile(anchor, "claude"):                     "session_scope:\n  enabled: false\n",
+		filepath.Join(configDir, "plugins", "installed_plugins.json"): `{"plugins":{"p@m":[{"scope":"user","installPath":"` + pluginRoot + `"}]}}`,
+		filepath.Join(pluginRoot, "hooks", "hooks.json"):              `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"emit"}]}]}}`,
+	})
+	var hookCommands, probeDirs []string
+	seams := LaunchSeams{
+		RunHook: func(run shuttleengine.HookRun) ([]byte, error) {
+			hookCommands = append(hookCommands, run.Command)
+			return []byte("seam-context-marker"), nil
+		},
+		SandboxProbe: func(_, _, dir string) error {
+			probeDirs = append(probeDirs, dir)
+			return nil
+		},
+	}
+	set, err := NewWithSeams(shuttleengine.Config{Engine: "claude"}, configengine.Dirs{Anchor: anchor}, seams)
+	if err != nil {
+		t.Fatalf("NewWithSeams() error: %v", err)
+	}
+	engine, err := set.Lookup("codex")
+	if err != nil {
+		t.Fatalf("Lookup(codex) error: %v", err)
+	}
+
+	launch, err := engine.Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p", PromptEngine: "codex"}, shuttleengine.Config{})
+	if err != nil {
+		t.Fatalf("Prepare() error: %v", err)
+	}
+	if !reflect.DeepEqual(hookCommands, []string{"emit"}) {
+		t.Errorf("hook runner commands = %v; want the plugin's one hook", hookCommands)
+	}
+	if !reflect.DeepEqual(probeDirs, []string{anchor}) {
+		t.Errorf("sandbox probe dirs = %v; want one probe in %q", probeDirs, anchor)
+	}
+	if !strings.Contains(launch.Cmd, "seam-context-marker") {
+		t.Errorf("Prepare() launch line = %q; want it to carry the runner's context", launch.Cmd)
+	}
 }
 
 // TestNew_CodexLaunchCarriesTheClaudeUserSetup pins the wiring in the registry's codex entry.

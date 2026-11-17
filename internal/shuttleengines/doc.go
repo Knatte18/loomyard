@@ -10,6 +10,10 @@
 // The codex entry builds its engine with the claude engine's user-setup source and plugin hook runner.
 // That is the one route from the user's Claude setup to a Codex launch.
 //
+// NewWithSeams builds the same set with a caller's plugin hook runner and sandbox probe, held in LaunchSeams.
+// It is the one entry point that does, for `lym shuttle manifest` and the parity test;
+// New and every other builder pass the zero seams, so a real launch is unchanged.
+//
 // Each registry entry carries its engine's config module as plain data.
 // ConfigModules lists them sorted by name for the config registry.
 // An engine's config module therefore reaches that registry through this package alone.

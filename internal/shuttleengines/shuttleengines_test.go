@@ -134,7 +134,9 @@ func TestNew(t *testing.T) {
 	}
 
 	forksWithoutAudit := map[string]constructor{
-		"nofork": func(shuttleengine.Config, configengine.Dirs) shuttleengine.Engine { return forksWithoutAuditEngine{} },
+		"nofork": func(shuttleengine.Config, configengine.Dirs, LaunchSeams) shuttleengine.Engine {
+			return forksWithoutAuditEngine{}
+		},
 	}
 	unregistered := []string{"bogus", "registered engines: claude", "engine: in shuttle.yaml"}
 	invalidClaudeCfg, invalidClaudeDirs := invalidClaudeConfigFixture(t)
@@ -161,7 +163,7 @@ func TestNew(t *testing.T) {
 			var set shuttleengine.EngineSet
 			var err error
 			if tt.constructors != nil {
-				set, err = build(tt.cfg, tt.dirs, tt.constructors)
+				set, err = build(tt.cfg, tt.dirs, tt.constructors, LaunchSeams{})
 			} else {
 				set, err = New(tt.cfg, tt.dirs)
 			}

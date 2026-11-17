@@ -200,6 +200,15 @@
 // It never skips the checkout root or a directory that holds the anchor.
 // A directory it cannot read is skipped with a warning.
 //
+// Prepare also writes the launch manifest into the run directory through shuttleengine.WriteManifest.
+// It does so after the prompt file and the batching state and before it returns the launch.
+// The manifest is read back from the launch line: each delivery lists the exact text or hook command it puts there,
+// and an item is kept only when the line holds it in the TOML string form the settings write.
+// So a delivery dropped anywhere in Prepare drops its item.
+// A heddle file entry is kept only when the anchor's AGENTS.override.md opens with heddle's marker and holds its text,
+// and a plugin hook the setup lists unrun is an omitted plugin-context item that logs no warning.
+// The settings items name the sandbox mode and the developer instructions' size, and are recorded and never compared.
+//
 // OpenLaunch opens a named interactive session with no prompt, for `lym shuttle open`:
 // it validates the model choice and readies the lym home as Prepare does,
 // and its line runs Codex with no hooks and no first turn,

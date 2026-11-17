@@ -22,6 +22,8 @@ and only `internal/shuttleengines` constructs or imports a concrete engine.
   They arrive as adapters that expose reading alone.
 - Claude's user setup reaches `codexengine` only through `shuttleengine.UserSetupSource`, wired in `internal/shuttleengines`.
   The Codex engine takes that source, the plugin hook runner and the sandbox probe as `codexengine.Seams`.
+  `shuttleengines.NewWithSeams` is the one entry point that builds the set with a caller's hook runner and sandbox probe,
+  for `lym shuttle manifest` and the parity test.
 - A `*Run` issued by `Start` or `StartGated` has already resolved its provider's startup probe.
   No caller outside `internal/shuttleengine` probes provider readiness or plays startup-gate keys.
 

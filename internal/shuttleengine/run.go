@@ -738,6 +738,11 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		return nil, Result{}, fmt.Errorf("shuttle: save run state: %w", err)
 	}
 
+	// The run directory's record stands when the copy cannot be kept, so a failure here never fails the launch.
+	if err := copyManifest(root, runID, runDir); err != nil {
+		logger.Warn("shuttle: keep the launch manifest copy failed (non-fatal)", "runDir", runDir, "error", err)
+	}
+
 	logger.Info("shuttle: run started", "runDir", runDir, "strandGUID", strand.GUID, "sessionID", launch.SessionID, "role", spec.Role, "round", spec.Round, "forkSubagents", spec.ForkSubagents, "engine", engineName)
 
 	clk := r.clock

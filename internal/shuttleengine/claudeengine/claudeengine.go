@@ -123,6 +123,8 @@ func validateSessionID(id string) error {
 // The settings set the effort a subagent of the role falls back to,
 // and the appended system prompt tells the session the effort and skills to give each subagent it spawns.
 // It first refuses a spec whose prompt was not rendered for Claude, unless the prompt is marked hand-written.
+// Last it writes the launch manifest, read back from the artifacts above and the launch line.
+// It refuses the launch when that write fails.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	if err := shuttleengine.CheckPromptEngine(spec, engineName); err != nil {
 		return shuttleengine.Launch{}, err
@@ -259,9 +261,14 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish)
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
-	passages := shuttleengine.StandingPassages(c.dirs.Board, "claude", spec.Role)
-	if passage := subagentPassage(cfg.Agents, spec.ConfigRole, spec.Skills); passage != "" {
-		passages = append([]string{passage}, passages...)
+	standing := shuttleengine.StandingPassages(c.dirs.Board, "claude", spec.Role)
+	var passages []string
+	for _, passage := range standing.Passages {
+		passages = append(passages, passage.Text)
+	}
+	subagentRule := subagentPassage(cfg.Agents, spec.ConfigRole, spec.Skills)
+	if subagentRule != "" {
+		passages = append([]string{subagentRule}, passages...)
 	}
 	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText(notice, passages)), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write append system prompt: %w", err)
@@ -275,8 +282,24 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	if len(spec.Skills) > 0 {
 		launchArg, promptLine = skillLoadMessage, pointer
 	}
+	launchLine := buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, resume, skipPermissions, spec.ForkSubagents)
+	err = c.writeLaunchManifest(runDir, launchArtifacts{
+		spec:             spec,
+		cfg:              cfg,
+		sessionID:        sessionID,
+		settingsPath:     settingsPath,
+		appendPromptPath: appendPromptPath,
+		launchLine:       launchLine,
+		eventsPathPosix:  eventsPathForHook,
+		notice:           notice,
+		subagentPassage:  subagentRule,
+		standing:         standing,
+	})
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
 	return shuttleengine.Launch{
-		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, resume, skipPermissions, spec.ForkSubagents),
+		Cmd:        launchLine,
 		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, skipPermissions, spec.ForkSubagents),
 		SessionID:  sessionID,
 		PromptLine: promptLine,

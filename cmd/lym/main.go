@@ -177,7 +177,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				// That replayer also claims HEDDLE.md and renders it afresh after each replay.
 				fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})
 				// Every Claude session launched in a hub appends the passages heddle stores for its engine and role, an orch session's orch-prompt ones included.
-				shuttleengine.InstallPassageReader(heddleengine.Renderer{}.Passages)
+				shuttleengine.InstallPassageReader(readHeddleStanding)
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)

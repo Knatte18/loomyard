@@ -158,6 +158,17 @@ func (e *Engine) probeTable(p *Profile, opts RunOpts) seatengine.Table {
 	return e.withParentCoverage(withAssistant(p.reviewTable(opts, reviewSeatValues(p, files), e.seatSkills(p)), assist), p, opts)
 }
 
+// SeatTables returns the tables a round of p under opts runs: the review table, then the fix table.
+// The review table holds the assistant seat when opts names one, and the parent coverage entry when opts names an ask.
+// The fix table is the one ProbeFix builds.
+// It composes no prompt and reads or writes nothing, and it runs no validation of p.
+func (e *Engine) SeatTables(p *Profile, opts RunOpts) []seatengine.Table {
+	return []seatengine.Table{
+		e.probeTable(p, opts),
+		p.fixTable(opts, fixSeatValues(p, fixFilesIn(e.probeDirOf())), e.seatSkills(p)),
+	}
+}
+
 // instructionDir creates a fresh instruction directory named from prefix under the anchor's ephemeral burler directory.
 // It returns its path.
 func (e *Engine) instructionDir(prefix string) (string, error) {

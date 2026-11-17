@@ -369,8 +369,8 @@ func TestUserSetup_SkillListing(t *testing.T) {
 				t.Fatalf("UserSetup() error: %v", err)
 			}
 			if len(wantLines) == 0 {
-				if setup.SkillListing != "" {
-					t.Errorf("SkillListing = %q; want it empty", setup.SkillListing)
+				if setup.SkillListing != "" || len(setup.ListedSkills) != 0 {
+					t.Errorf("SkillListing = %q, ListedSkills = %q; want both empty", setup.SkillListing, setup.ListedSkills)
 				}
 			} else {
 				var gotLines []string
@@ -381,6 +381,15 @@ func TestUserSetup_SkillListing(t *testing.T) {
 				}
 				if fmt.Sprint(gotLines) != fmt.Sprint(wantLines) {
 					t.Errorf("SkillListing lines = %q; want %q", gotLines, wantLines)
+				}
+				if len(setup.ListedSkills) != len(gotLines) {
+					t.Errorf("ListedSkills = %q; want one name per listing line %q", setup.ListedSkills, gotLines)
+				} else {
+					for i, name := range setup.ListedSkills {
+						if !strings.HasPrefix(gotLines[i], "- "+name+": ") {
+							t.Errorf("ListedSkills[%d] = %q; want the name of listing line %q", i, name, gotLines[i])
+						}
+					}
 				}
 				if !strings.HasPrefix(setup.SkillListing, skillListingRule+"\n") {
 					t.Errorf("SkillListing = %q; want it to open with the rule for using a skill", setup.SkillListing)
@@ -512,6 +521,9 @@ func TestUserSetup_PluginSessionStartContexts(t *testing.T) {
 				if item.Name != hookName || !strings.Contains(item.WayForward, "session scope") {
 					t.Errorf("plugin context item = %+v; want name %q and a way forward naming the session scope", item, hookName)
 				}
+				if item.Plugin != "scribe@market" || item.Hook != "emit" {
+					t.Errorf("plugin context item = %+v; want plugin scribe@market and hook emit", item)
+				}
 			}
 			if !reflect.DeepEqual(gotTexts, tt.wantTexts) {
 				t.Errorf("PluginContexts texts = %q; want %q", gotTexts, tt.wantTexts)
@@ -523,6 +535,16 @@ func TestUserSetup_PluginSessionStartContexts(t *testing.T) {
 			} else if len(setup.Omitted) != 1 || !strings.Contains(setup.Omitted[0].Name, tt.wantOmittedName) ||
 				!strings.Contains(setup.Omitted[0].Reason, tt.wantOmittedReason) {
 				t.Errorf("Omitted = %+v; want one with name holding %q and reason holding %q", setup.Omitted, tt.wantOmittedName, tt.wantOmittedReason)
+			}
+			if len(setup.Omitted) == 1 {
+				// A hook names its plugin and command; a hooks file that could not be read names neither.
+				wantPlugin, wantHook := "", ""
+				if strings.HasPrefix(setup.Omitted[0].Name, hookName) {
+					wantPlugin, wantHook = "scribe@market", "emit"
+				}
+				if setup.Omitted[0].Plugin != wantPlugin || setup.Omitted[0].Hook != wantHook {
+					t.Errorf("Omitted = %+v; want plugin %q and hook %q", setup.Omitted[0], wantPlugin, wantHook)
+				}
 			}
 			if len(runs) == 0 {
 				return

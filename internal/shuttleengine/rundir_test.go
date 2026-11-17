@@ -160,6 +160,19 @@ func TestFindRunByStrand(t *testing.T) {
 			wantErrNotIn: "could not be read",
 		},
 		{
+			// The directory of kept manifest copies holds no run.json, so it is skipped and never counted as unreadable.
+			name: "a root holding only the manifests directory is a clean miss",
+			seed: func(t *testing.T, root string) string {
+				if err := os.MkdirAll(filepath.Join(root, manifestsDirName), 0o755); err != nil {
+					t.Fatalf("mkdir manifests dir: %v", err)
+				}
+				return ""
+			},
+			strandGUID:   "does-not-exist",
+			wantErrIn:    []string{"does-not-exist"},
+			wantErrNotIn: "could not be read",
+		},
+		{
 			// A truncated run.json is skipped so one damaged dir cannot abort the scan.
 			// The resulting miss must say the scan was incomplete.
 			// Runner.Interrupt and Runner.Send wrap this error as "%q is not a shuttle strand".
@@ -255,6 +268,13 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	liveDir := seedRun(t, root, "live-run", "strand-live")
 	setDirMTime(t, liveDir, now, 10*time.Minute)
 
+	// The directory of kept manifest copies holds no run.json and is old, yet it is no orphan.
+	manifestsDir := filepath.Join(root, manifestsDirName)
+	if err := os.MkdirAll(manifestsDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	setDirMTime(t, manifestsDir, now, 10*time.Minute)
+
 	strandGUIDs := map[string]bool{"strand-live": true}
 	removed, err := sweepOrphans(root, strandGUIDs, minAge, now)
 	if err != nil {
@@ -276,6 +296,9 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	}
 	if _, err := os.Stat(youngNoState); err != nil {
 		t.Errorf("young no-state dir was removed, want kept: %v", err)
+	}
+	if _, err := os.Stat(manifestsDir); err != nil {
+		t.Errorf("manifests dir was removed, want kept: %v", err)
 	}
 }
 

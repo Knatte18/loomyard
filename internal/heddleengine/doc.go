@@ -52,6 +52,10 @@
 // The shared `agents-prompt` target has no engine or role of its own:
 // its entries reach every session `claude-prompt` or `codex-prompt` reaches, the Claude orch included.
 // An engine whose launch appends no passages delivers none of them.
+// Each passage a session receives carries its entry's slug.
+// Renderer.FileEntries returns the entries of the engine's file target the same way.
+// A passage's Engine is empty when its entry reaches the session through a shared or engine-neutral target,
+// so a comparison across engines asks for it, and names the engine when only a target aimed at that engine reaches it.
 // A hub whose heddle.yaml sets lym_override renders a shipped entry with the text of its override.
 // The override lives in heddle-lym-override.json beside heddle.json, so lym's own text is tuned there with no build.
 // With the setting off every override is ignored.

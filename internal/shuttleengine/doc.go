@@ -29,9 +29,11 @@
 // concrete engines import shuttleengine, not the reverse.
 // Only internal/shuttleengines and an engine's own directory import a concrete engine.
 // seam_enforcement_test.go enforces that rule module-wide.
-// StandingPassages returns the instruction passages heddle's layers hold for a session of an engine and a strand role.
+// StandingPassages returns the instruction passages heddle's layers hold for a session of an engine and a strand role,
+// and the entries of the engine's instruction file, each keyed by its heddle slug, as a Standing.
 // It reads them through the reader InstallPassageReader installs for the process.
-// It returns none outside a hub, with no reader installed, or when the reader fails, which is logged at Warn.
+// It returns the zero Standing outside a hub, with no reader installed, or when the reader fails.
+// A reader failure is logged at Warn.
 // A launch therefore never waits on the store.
 // An engine appends the passages to the system prompt it launches with, and shuttle itself parses no store.
 // The Engine interface is extended by optional capabilities, which an engine can lack:
@@ -81,6 +83,15 @@
 // The orphan sweep never removes that file.
 // Runner.EnginesRun returns the union of that ledger and the engines of the run records still under the root.
 // A caller thus learns which engines a worktree's sessions ran under after their directories are swept.
+// Each engine's Prepare writes a Manifest into the run directory through WriteManifest.
+// It holds one item per thing the session receives, keyed by channel and an engine-neutral key.
+// The omitted items are repeated as its Verdict.
+// Runner.launch keeps a copy as `manifests/<run id>.json` at the run-directory root once the run record is saved.
+// Only a launch whose strand registered keeps one.
+// A copy that cannot be kept is logged at Warn and fails nothing.
+// A done run's cleanup removes the run directory and leaves the copy, and nothing removes the copies.
+// The orphan sweep and the strand lookup skip the `manifests` directory, which holds no run record.
+// MissingItems compares two manifests by channel and key.
 // The cross-run readers ReadAgentActivity, ReadSessionStates and ReadAgentWaits read each run.
 // They use the engine its run record names, the engine set's default for a record naming none.
 // They skip a run whose engine the set does not hold.

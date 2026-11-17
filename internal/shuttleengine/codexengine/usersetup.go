@@ -23,6 +23,7 @@ const (
 // resolveUserSetup resolves the user's Claude setup for the launch req describes.
 // An engine told no source resolves an empty setup.
 // Each warning of the setup, and each plugin hook it leaves out, is logged through c.warn.
+// A hook left out only because it is listed unrun is no hook to fix, so it logs nothing.
 // A source error refuses the launch and keeps the file and way forward the source names.
 func (c *Codex) resolveUserSetup(req shuttleengine.UserSetupRequest) (shuttleengine.UserSetup, error) {
 	if c.userSetup == nil {
@@ -36,6 +37,9 @@ func (c *Codex) resolveUserSetup(req shuttleengine.UserSetupRequest) (shuttleeng
 		c.warn(warning)
 	}
 	for _, hook := range setup.Omitted {
+		if hook.Reason == shuttleengine.ErrHookUnrun.Error() {
+			continue
+		}
 		c.warn(fmt.Sprintf("codexengine: %s is left out: %s; way forward: fix the hook or its hooks file, or %s", hook.Name, hook.Reason, pluginScopeWayForward))
 	}
 	return setup, nil

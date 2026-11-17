@@ -322,6 +322,7 @@ github.com/Knatte18/loomyard/
 ├── internal/selfreportcli/       the selfreport CLI command
 ├── internal/selfreportengine/    the selfreport domain kernel, filing LoomYard bugs to LoomYard's own repository only
 ├── internal/shuttleengines/      the engine registry: the named engines a shuttle config builds into a set, and the only production importer of a concrete engine
+├── internal/shuttleparity/       the per-seat comparison of the engines' launch manifests: the seat catalog, the manifest report behind `lym shuttle manifest`, and the parity tests over every seat and launch-spec producer
 ├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedtransient/       the one translation from lower-level failure classifications into the shed engine's transient mark
@@ -636,7 +637,9 @@ User-facing modules each get one `lym <module>` namespace:
   Every other reed verb still refuses on a cold worktree.
   ✅ Implemented.
   See the `internal/reedengine` package documentation.
-- **shuttle** — run **one** LLM agent as an interactive tmux strand over the file contract (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttleengine/codexengine` + `internal/shuttleengine/bashlookup` + `internal/shuttleengines` + `internal/shuttlecli`; `lym shuttle run|open|state|await|await-forks`).
+- **shuttle** — run **one** LLM agent as an interactive tmux strand over the file contract (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttleengine/codexengine` + `internal/shuttleengine/bashlookup` + `internal/shuttleengines` + `internal/shuttlecli` + `internal/shuttleparity`; `lym shuttle run|open|manifest|state|await|await-forks`).
+  `lym shuttle manifest <seat>` prints the launch manifest each engine writes for one seat of the seat catalog and exits non-zero when the Codex manifest lacks a compared item of Claude's;
+  it starts no session, runs no plugin hook or sandbox probe, and keeps no manifest copy.
   `lym shuttle open` starts a named session with no turn in its own window, which closes when the session exits,
   and each repeatable `--skill` is loaded in its one first turn;
   in a hub an opened Claude session carries creel's hook delivery and the creel trust sentence as a run session does,
@@ -1976,7 +1979,7 @@ See [PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) for the rule.
   the reed view takes the foreground.
   A `.lym/lymrun.cmd` launcher makes it one click.
 - `reed`, `shuttle`, and `loom` each get a user-facing `lym <module>` CLI.
-  `lym shuttle run|open|state|await` lets an operator or another process drive one agent standalone.
+  `lym shuttle run|open|manifest|state|await` lets an operator or another process drive one agent standalone.
   `burler` is composed by loom's own review segments (`lym burler run` is a debug-only wrapper, not a product verb),
   and `proc` alone stays an internal library with no CLI of its own.
 

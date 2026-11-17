@@ -41,13 +41,13 @@ func creelHeadItem(notice string) instructionItem {
 	}
 }
 
-// passageItems returns one item per standing passage, named by its position among the passages.
-func passageItems(passages []string) []instructionItem {
+// passageItems returns one item per standing passage, named by its heddle slug.
+func passageItems(passages []shuttleengine.Passage) []instructionItem {
 	items := make([]instructionItem, len(passages))
 	for i, passage := range passages {
 		items[i] = instructionItem{
-			name:       fmt.Sprintf("heddle passage %d", i+1),
-			text:       passage,
+			name:       "heddle passage " + passage.Slug,
+			text:       passage.Text,
 			wayForward: "find the entry with lym heddle show codex-prompt and shorten it with lym heddle set, or with lym heddle set --layer lym for a shipped entry",
 		}
 	}

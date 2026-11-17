@@ -110,6 +110,41 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 	}
 }
 
+// TestSpecs_MatchTheStartedSpecs pins that Specs returns, for each seat, the spec the engine starts the seat with.
+// The lead's held-turn deferral is the one field Specs leaves unset.
+func TestSpecs_MatchTheStartedSpecs(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	shuttle := newFakeShuttle(t)
+	engine, geom := engineFixture(t, shuttle)
+	table := engineTable(geom.WorktreeRoot, 2)
+
+	ended := runAsync(engine, table)
+	shuttle.awaitStarts(len(table.Seats))
+	shuttle.handle(role("")).release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+	await(t, ended)
+
+	specs, err := Specs(geom, table)
+	if err != nil {
+		t.Fatalf("Specs() error: %v", err)
+	}
+	if len(specs) != len(table.Seats) {
+		t.Errorf("Specs() returned %d specs; want one per seat (%d)", len(specs), len(table.Seats))
+	}
+	for _, seat := range table.Seats {
+		started := shuttle.spec(role(seat.Name))
+		if seat.Name == leadName && started.HoldDeferral == nil {
+			t.Error("the started lead's HoldDeferral = nil; want the deferral the engine sets")
+		}
+		started.HoldDeferral = nil
+		got := specs[seat.Name]
+		got.HoldDeferral = nil
+		if !reflect.DeepEqual(got, started) {
+			t.Errorf("Specs()[%q] = %+v; want the started spec %+v", seat.Name, got, started)
+		}
+	}
+}
+
 func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

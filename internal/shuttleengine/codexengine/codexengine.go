@@ -141,6 +141,7 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // Once Codex exits, the launch appends the exit record to the run's events file.
 // A board directory adds creel's hook delivery and marks the launch CreelHooks.
 // A spec with skills starts with the skill load as its first turn.
+// Last, it writes the launch manifest into runDir, read back from the launch line it built.
 // It returns the prompt pointer as Launch.PromptLine, for shuttle to send once the skills load.
 // The launch records session starts and names no session id, since Codex mints its own at the first turn.
 func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
@@ -164,17 +165,19 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		questionDeny: !spec.Interactive,
 	}
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
-	passages := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
-	items := []instructionItem{creelHeadItem(denyNotice(tools.questionDeny, tools.guards))}
+	standing := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
+	notice := denyNotice(tools.questionDeny, tools.guards)
+	items := []instructionItem{creelHeadItem(notice)}
 	subagentEffort := c.subagentEffort(cfg.Agents, spec.ConfigRole, codex)
-	if passage := subagentPassage(subagentEffort, spec.Skills); passage != "" {
+	passage := subagentPassage(subagentEffort, spec.Skills)
+	if passage != "" {
 		items = append(items, instructionItem{
 			name:       "the subagent passage",
 			text:       passage,
 			wayForward: "shorten the role's skills in agents.yaml with lym config agents, since the passage lists them",
 		})
 	}
-	items = append(items, passageItems(passages)...)
+	items = append(items, passageItems(standing.Passages)...)
 	home, writableRoots, found, err := c.readyHome(codex)
 	if err != nil {
 		return shuttleengine.Launch{}, err
@@ -211,9 +214,10 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		return shuttleengine.Launch{}, err
 	}
 	items = append(items, instructionItemsOf(setup.InstructionFiles)...)
+	unread := c.unreadClaudeFiles(found, workDir)
 	items = append(items, instructionItem{
 		name:       instructionPointersItemName,
-		text:       instructionPointers(c.unreadClaudeFiles(found, workDir)),
+		text:       instructionPointers(unread),
 		wayForward: instructionPointersWayForward,
 	})
 	items = append(items, instructionItem{name: skillListingItemName, text: setup.SkillListing, wayForward: skillListingWayForward})
@@ -233,9 +237,10 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		}
 	}
 	firstTurn, promptLine := launchPointer(promptPath), ""
+	// The roots come from the codex.yaml this launch already loaded, so one load serves the whole launch.
+	skillRoots := c.expandSkillRoots(codex)
 	if len(spec.Skills) > 0 {
-		// The roots come from the codex.yaml this launch already loaded, so one load serves the whole launch.
-		firstTurn, promptLine = skillLoadOver(spec.Skills, c.expandSkillRoots(codex)), firstTurn
+		firstTurn, promptLine = skillLoadOver(spec.Skills, skillRoots), firstTurn
 	}
 
 	sh := shell.ForGOOS()
@@ -244,22 +249,44 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	if c.dirs.Board != "" {
 		creel = creelDelivery{flagDir: shuttleengine.CreelFlagDir(c.dirs.Board), home: home, bin: codexBinary(codex)}
 	}
+	launchCmd := buildLaunchCmd(sh, launchLine{
+		bin:                   codexBinary(codex),
+		home:                  home,
+		sandboxMode:           sandboxMode,
+		writableRoots:         writableRoots,
+		model:                 spec.Model,
+		effort:                spec.Effort,
+		developerInstructions: instructions,
+		subagentEffort:        subagentEffort,
+		maxSubagentThreads:    codex.MaxSubagentThreads,
+		projectDocMaxBytes:    docMaxBytes,
+		hooks:                 hookSettings(eventsPath, tools, creel),
+		firstTurn:             firstTurn,
+		eventsPath:            eventsPath,
+	})
+	err = writeLaunchManifest(launchFacts{
+		spec:            spec,
+		codex:           codex,
+		refuseRaw:       gate.RefuseRaw,
+		setup:           setup,
+		standing:        standing,
+		denyNotice:      notice,
+		subagentPassage: passage,
+		instructions:    instructions,
+		unread:          unread,
+		found:           found,
+		workDir:         workDir,
+		skillRoots:      skillRoots,
+		runDir:          absRunDir,
+		sandboxMode:     sandboxMode,
+		shell:           sh,
+		launchLine:      launchCmd,
+	})
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
 	return shuttleengine.Launch{
-		Cmd: buildLaunchCmd(sh, launchLine{
-			bin:                   codexBinary(codex),
-			home:                  home,
-			sandboxMode:           sandboxMode,
-			writableRoots:         writableRoots,
-			model:                 spec.Model,
-			effort:                spec.Effort,
-			developerInstructions: instructions,
-			subagentEffort:        subagentEffort,
-			maxSubagentThreads:    codex.MaxSubagentThreads,
-			projectDocMaxBytes:    docMaxBytes,
-			hooks:                 hookSettings(eventsPath, tools, creel),
-			firstTurn:             firstTurn,
-			eventsPath:            eventsPath,
-		}),
+		Cmd:                  launchCmd,
 		ResumeCmd:            buildResumeCmd(sh),
 		PromptLine:           promptLine,
 		RecordsSessionStarts: true,

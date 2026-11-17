@@ -725,4 +725,11 @@
 // a wait delay of two seconds bounds the wait for them on every system.
 // A hook run is short-lived and waited on in Prepare, so it registers no run process record.
 // Bound: a hook left by a Prepare killed mid-run runs to its own end with no owner to end it.
+//
+// Prepare writes the launch manifest into the run directory once the launch line is built.
+// Each item is a candidate whose delivery puts a text or hook command into an artifact:
+// the settings document, the appended system prompt, the launch line or the anchor's marked CLAUDE.local.md.
+// The manifest keeps a candidate only when the artifact as written holds it, so a dropped delivery drops its item.
+// The instruction files, listed skills and session-start hooks the provider loads itself are listed as native.
+// They come from the user-setup resolution run with no hook runner.
 package claudeengine

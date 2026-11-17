@@ -69,7 +69,9 @@ func TestKeepWarm(t *testing.T) {
 		t.Parallel()
 
 		constructors := map[string]constructor{
-			"claude": func(shuttleengine.Config, configengine.Dirs) shuttleengine.Engine { return &shuttlefake.Engine{} },
+			"claude": func(shuttleengine.Config, configengine.Dirs, LaunchSeams) shuttleengine.Engine {
+				return &shuttlefake.Engine{}
+			},
 		}
 		got := keepWarmWith(configengine.Dirs{Anchor: t.TempDir()}, "sh:slug:implementer", constructors)
 		if got.Fallback != nil || got.Cap != 0 {
