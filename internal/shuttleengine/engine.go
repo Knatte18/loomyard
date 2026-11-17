@@ -319,7 +319,7 @@ const EditHookVerb = "hook-edit"
 // An edit recorded with no hash never counts toward an edit loop.
 // An engine without it installs no such hook, so its runs get no edit-loop notice.
 type EditRecorder interface {
-	// RecordEdit appends the file edit the hook input payload describes to the edit records file at recordsPath.
+	// RecordEdit appends each file edit the hook input payload describes to the edit records file at recordsPath.
 	// The record carries the hash of the file's content right after the edit.
 	// A payload that names no edited file appends nothing.
 	RecordEdit(recordsPath string, payload []byte) error

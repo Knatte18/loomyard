@@ -64,7 +64,8 @@ func TestBuildLaunchCmd(t *testing.T) {
 
 // TestHookSettings pins one setting per recorded hook, in order.
 // A PreToolUse setting follows when the launch has a deny: the question-tool deny on every tool, then every guard entry.
-// Then comes the activity hook on every tool, and the batching hook after it when the launch names a state file.
+// Then comes the activity hook on every tool, the edit hook on apply_patch when the launch names an edit records file,
+// and the batching hook when the launch names a state file.
 // Each runs the command for the run's events file.
 // A creel delivery swaps the Stop setting for the merged creel Stop command and the async idle waiter.
 // It adds the creel mail hook last.
@@ -86,6 +87,8 @@ func TestHookSettings(t *testing.T) {
 	waiter := asyncHookEntry(creelWaitHookCommand(creel), creelWaitTimeoutSeconds)
 	const statePath = "/run/batching-nudge.json"
 	batching := hookEntry("*", batchingNudgeHookCommand(statePath))
+	const recordsPath = "/run/edit-records.jsonl"
+	editHook := hookEntry("apply_patch", editRecordHookCommand(recordsPath))
 	tests := []struct {
 		name  string
 		tools toolHooks
@@ -97,6 +100,7 @@ func TestHookSettings(t *testing.T) {
 		{"QuestionDenyBeforeTheGuards", toolHooks{guards: guards, questionDeny: true}, creelDelivery{}, append(append([]string{}, recorded...),
 			hookSetting(hookEventPreToolUse, append([]string{hookEntry("*", questionDenyCommand())}, guardEntries(guards)...)...), activity)},
 		{"BatchingAfterTheActivityHook", toolHooks{batchingStatePath: statePath}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPostToolUse, activityEntry, batching))},
+		{"EditHookBeforeTheBatchingHook", toolHooks{batchingStatePath: statePath, editRecordsPath: recordsPath}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPostToolUse, activityEntry, editHook, batching))},
 		{"CreelMailAfterTheBatchingHook", toolHooks{batchingStatePath: statePath}, creel, []string{
 			sessionStart,
 			promptSubmit,
@@ -130,6 +134,9 @@ func TestHookSettings(t *testing.T) {
 	}
 	if got, want := batchingNudgeHookCommand(statePath), `out=$(lym shuttle hook-batching codex '/run/batching-nudge.json'); [ -n "$out" ] && printf '%s\n' "$out" || printf '{}\n'`; got != want {
 		t.Errorf("batchingNudgeHookCommand() = %s; want %s", got, want)
+	}
+	if got, want := editRecordHookCommand(recordsPath), `lym shuttle hook-edit codex '/run/edit-records.jsonl'; printf '{}\n'`; got != want {
+		t.Errorf("editRecordHookCommand() = %s; want %s", got, want)
 	}
 	if want := `{hooks=[{type="command",command="CODEX_HOME='/h' LYM_CODEX_BINARY='codex' lym creel hook-wait codex",async=true,timeout=86400}]}`; waiter != want {
 		t.Errorf("idle waiter entry = %s; want %s", waiter, want)

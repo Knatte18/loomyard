@@ -25,7 +25,7 @@ func hookEditCmd() *cobra.Command {
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `hook-edit reads the engine's after-edit hook input from standard input and
-appends one record of the edited file and a hash of its content to the run's edit
+appends a record of each edited file and a hash of its content to the run's edit
 records file. The run's wait counts the edits that return a file to content it held
 earlier, to tell its parent about an agent that undoes or repeats its own edits.
 It needs no hub and reads no config. A failure goes to standard error, and the

@@ -5,12 +5,9 @@
 package claudeengine
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -64,7 +61,7 @@ func (c *Claude) RecordEdit(recordsPath string, payload []byte) error {
 		return nil
 	}
 	record.HookEventName = hookEventPostToolUse
-	record.ContentHash = fileContentHash(record.ToolInput.FilePath)
+	record.ContentHash = shuttleengine.FileContentHash(record.ToolInput.FilePath)
 	line, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("claudeengine: marshal the edit record: %w", err)
@@ -82,19 +79,4 @@ func (c *Claude) RecordEdit(recordsPath string, payload []byte) error {
 		return fmt.Errorf("claudeengine: append the edit record to %s: %w", recordsPath, err)
 	}
 	return nil
-}
-
-// fileContentHash returns the hex SHA-256 of the content of the file at filePath, or "" when it cannot be read.
-// An unreadable file only costs the edit-loop watch this one edit, so the hook records the edit without a hash.
-func fileContentHash(filePath string) string {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return ""
-	}
-	defer file.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return ""
-	}
-	return hex.EncodeToString(hash.Sum(nil))
 }

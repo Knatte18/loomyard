@@ -256,13 +256,16 @@ type toolHooks struct {
 	questionDeny bool
 	// batchingStatePath is the run's batching nudge state file; empty installs no batching hook.
 	batchingStatePath string
+	// editRecordsPath is the run's edit records file; empty installs no edit hook.
+	editRecordsPath string
 }
 
 // hookSettings returns the `-c` hook settings of a run whose events file is eventsPath.
 // Each recorded event gets a recording hook.
 // A PreToolUse setting holds the question-tool deny, on every tool, then one entry per guard row, when tools has either.
 // The activity hook runs after every tool call.
-// When tools names a state file, the batching hook runs after it, on every tool.
+// When tools names an edit records file, the edit hook runs after it, on apply_patch calls alone.
+// When tools names a state file, the batching hook runs next, on every tool.
 // With a creel flag directory, the Stop setting runs the merged creel Stop command, then the async idle waiter.
 // The PostToolUse setting also runs the creel mail hook, last.
 // Entries of one event share one setting, since a second `-c` of the same key replaces the first.
@@ -284,6 +287,9 @@ func hookSettings(eventsPath string, tools toolHooks, creel creelDelivery) []str
 		settings = append(settings, hookSetting(hookEventPreToolUse, preToolUse...))
 	}
 	postToolUse := []string{hookEntry(toolMatcherAll, activityCommand(eventsPath))}
+	if tools.editRecordsPath != "" {
+		postToolUse = append(postToolUse, hookEntry(toolNameApplyPatch, editRecordHookCommand(tools.editRecordsPath)))
+	}
 	if tools.batchingStatePath != "" {
 		postToolUse = append(postToolUse, hookEntry(toolMatcherAll, batchingNudgeHookCommand(tools.batchingStatePath)))
 	}

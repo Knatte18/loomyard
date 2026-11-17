@@ -1,18 +1,39 @@
 // editloop.go holds the edit-loop watch of an autonomous run's wait loop.
 // From the run's file-edit signals it counts each agent's edits that return a file to content it held earlier,
 // and it notifies the parent when one file's such edits reach the configured count within the configured window.
+// It also holds the content hash an engine's edit hook records with each edit.
 
 package shuttleengine
 
 import (
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 )
+
+// FileContentHash returns the hex SHA-256 of the content of the file at filePath, or "" when it cannot be read.
+// An engine's edit hook records it with each edit, so the edit-loop watch can tell an edit that restores earlier content.
+// An unreadable file only costs the watch that one edit, so the hook records the edit without a hash.
+func FileContentHash(filePath string) string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
 
 // editLoopKey names one file as edited by one agent.
 // The agent is the session itself for an empty agent id, else one of its subagents or forks.

@@ -59,7 +59,8 @@
 //
 // Hooks given by `-c` append to the run's events file a stamp line and the payload of these events:
 // SessionStart, UserPromptSubmit, Stop and PermissionRequest.
-// A PostToolUse hook touches the activity stamp; the batching nudge and creel's mail hook join its setting.
+// A PostToolUse hook touches the activity stamp;
+// the edit hook, the batching nudge and creel's mail hook join its setting.
 // The standing items ride the launch line as the `developer_instructions` setting, a single-line TOML string,
 // and the prompt file holds the spec's prompt alone.
 // The items are the deny notice with the creel trust sentence, then each standing passage.
@@ -142,6 +143,21 @@
 // A Codex payload carries no agent id, and a child's carries its parent's session id,
 // so each thread's count and cap are keyed by the payload's `transcript_path`, its own rollout.
 // The output carries the line as `additionalContext` with a `systemMessage`.
+//
+// The edit hook (EditRecorder) is a PostToolUse entry matching `apply_patch`, after the activity hook.
+// The line carries it for a run that is not interactive while shuttle.yaml's `edit_loop_edits` is above 0.
+// It runs `lym shuttle hook-edit codex <edit records file>`, then prints the empty hook output.
+// The edit records file is shuttleengine.EditRecordsFileName in the run directory.
+// RecordEdit reads the file headers of the patch text in the payload's `tool_input.command`.
+// It records each file once: the one an add, update or delete header names, or the file a move header moves an update to.
+// A relative path is resolved against the payload's `cwd`.
+// Per file it appends a stamp line and a slim PostToolUse line, all in one write.
+// The slim line keeps only the session id, the agent id, the tool name and `tool_input.file_path`.
+// It adds lym's own `content_hash`, the SHA-256 of the file's content as the hook reads it after the patch.
+// The agent id names a child thread.
+// Its payload carries the parent's session id, but its rollout's name ends in its own id.
+// ParseSessionSignals reads that line as a SessionSignalFileEdit with its content hash.
+// So shuttle's edit-loop watch covers Codex runs as it covers Claude runs.
 //
 // A skill `<plugin>:<name>` is a file the model reads:
 // the load line names the newest version's skills/<name>/SKILL.md under codex.yaml's skill_roots by absolute path.

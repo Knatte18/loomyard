@@ -504,12 +504,14 @@ func TestPrepare_CreelHooksInAHub(t *testing.T) {
 	}
 }
 
-// TestPrepare_QuestionDenyAndBatchingHook pins the two tool hooks a launch's spec and codex.yaml switch.
+// TestPrepare_SwitchedToolHooks pins the three tool hooks a launch's spec, codex.yaml and shuttle.yaml switch.
 // An autonomous spec carries the question-tool deny and its notice, and an interactive one carries neither.
 // With the batching nudge on, Prepare seeds the state file with codex.yaml's block.
 // The line then runs the batching hook over it.
 // With the nudge off, Prepare writes no state file and the line carries no batching hook.
-func TestPrepare_QuestionDenyAndBatchingHook(t *testing.T) {
+// An autonomous spec carries the edit hook over the run's edit records file while the edit-loop watch is on.
+// An interactive spec, or a watch that is off, carries none.
+func TestPrepare_SwitchedToolHooks(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -517,12 +519,15 @@ func TestPrepare_QuestionDenyAndBatchingHook(t *testing.T) {
 		name         string
 		interactive  bool
 		batchingOff  bool
+		editLoopOff  bool
 		wantDeny     bool
 		wantBatching bool
+		wantEditHook bool
 	}{
-		{name: "Autonomous", wantDeny: true, wantBatching: true},
+		{name: "Autonomous", wantDeny: true, wantBatching: true, wantEditHook: true},
 		{name: "Interactive", interactive: true, wantBatching: true},
-		{name: "BatchingOff", batchingOff: true, wantDeny: true},
+		{name: "BatchingOff", batchingOff: true, wantDeny: true, wantEditHook: true},
+		{name: "EditLoopOff", editLoopOff: true, wantDeny: true, wantBatching: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -535,7 +540,11 @@ func TestPrepare_QuestionDenyAndBatchingHook(t *testing.T) {
 			engine, _ := newEngine(anchor)
 			runDir := t.TempDir()
 
-			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, Interactive: tt.interactive}, shuttleengine.Config{})
+			cfg := shuttleengine.Config{EditLoopEdits: 4, EditLoopWindowS: 300}
+			if tt.editLoopOff {
+				cfg.EditLoopEdits = 0
+			}
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, Interactive: tt.interactive}, cfg)
 			if err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
@@ -544,6 +553,9 @@ func TestPrepare_QuestionDenyAndBatchingHook(t *testing.T) {
 			statePath := filepath.Join(runDir, batchingNudgeStateFileName)
 			if tt.wantBatching {
 				tools.batchingStatePath = statePath
+			}
+			if tt.wantEditHook {
+				tools.editRecordsPath = filepath.Join(runDir, shuttleengine.EditRecordsFileName)
 			}
 			for _, setting := range hookSettings(filepath.Join(runDir, "events.jsonl"), tools, creelDelivery{}) {
 				if quoted := shell.ForGOOS().Quote(setting); !strings.Contains(launch.Cmd, quoted) {

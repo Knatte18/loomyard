@@ -708,7 +708,7 @@ User-facing modules each get one `lym <module>` namespace:
   While `claude.yaml`'s `batching_nudge` block is on, a `PostToolUse` hook after each `Read`, `Grep`, `Glob`, `Bash`, `Edit` or `Write` call runs the hidden `lym shuttle hook-batching`, which adds one line naming the breach and quoting the rule to a session above the block's context threshold whose recent messages make a chain of single lookups (a Bash call with a read-only lookup command such as `grep`, `find` or a git read counting as one), a sliced read of a short or already-read file, or a chain of edit-only messages;
   a subagent's or fork's call is judged against that agent's own transcript, context and nudge count;
   it never denies a call, and the block's switches and thresholds are config.
-  While `shuttle.yaml`'s `edit_loop_edits` is above 0, an autonomous claude run's `Edit` and `Write` calls run the hidden `lym shuttle hook-edit`, which records the edited file and a hash of its content for the edit-loop notice.
+  While `shuttle.yaml`'s `edit_loop_edits` is above 0, an autonomous run's file edits, `Edit` and `Write` on claude and `apply_patch` on codex, run the hidden `lym shuttle hook-edit`, which records each edited file and a hash of its content for the edit-loop notice.
   The provider is swappable behind an **engine** seam;
   the engine is picked from the registry by `shuttle.yaml`'s `engine:` key, or per run by a model-spec naming it.
   The registered engines are `claude` and `codex`.
@@ -717,6 +717,7 @@ User-facing modules each get one `lym <module>` namespace:
   an autonomous Codex launch also denies `request_user_input` and `request_user_input_async` through a `*`-matcher `PreToolUse` entry,
   and while `codex.yaml`'s `batching_nudge` block is on, a `*`-matcher `PostToolUse` hook runs `lym shuttle hook-batching codex`,
   which judges the thread's exec cells by Claude's rules, keys its counts by the payload's `transcript_path` and hands the line over as additional context, never a block;
+  while `edit_loop_edits` is above 0 an autonomous Codex launch also carries an `apply_patch`-matcher `PostToolUse` hook running `lym shuttle hook-edit codex`, which records each file a patch touches;
   a Codex run in a hub carries creel's hook delivery, the mail handed over as a hook block after a tool call and at a turn end, an idle session woken by its async waiter hook through `codex queue`, and the creel trust sentence in its developer instructions, while an opened Codex session stays a pane-mail strand;
   the launch line carries the standing items as `developer_instructions`: the deny notice with the creel trust sentence, the subagent passage, the heddle passages, the user's Claude instruction files, the instruction-file pointers, the skill listing and the plugin contexts, in that order, and a launch whose setting reaches the 128 KiB argument cap is refused naming the largest item;
   the subagent passage and `agents.default_subagent_reasoning_effort` carry the effort `agents.yaml` gives the role when `codex.yaml`'s efforts lists it, and `agents.max_concurrent_threads_per_session` carries `codex.yaml`'s `max_subagent_threads`;

@@ -48,6 +48,8 @@ type Codex struct {
 	runHook shuttleengine.HookRunner
 	// rolloutWait bounds the batching nudge's wait for the call it judges to reach the rollout.
 	rolloutWait batchingRolloutWait
+	// now stamps the edit hook's records; tests replace it to pin the stamp.
+	now func() time.Time
 }
 
 // Seams are the collaborators a Codex engine takes from its wiring, so a test can fake each of them.
@@ -82,6 +84,7 @@ func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs, seams Seams
 		userSetup:            seams.UserSetup,
 		runHook:              seams.RunHook,
 		rolloutWait:          defaultBatchingRolloutWait(),
+		now:                  time.Now,
 	}
 }
 
@@ -136,6 +139,8 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // An autonomous spec's question-tool deny comes before them, and the deny notice announces both.
 // With codex.yaml's batching nudge on, Prepare seeds the nudge's state file in runDir.
 // The line then carries the nudge's PostToolUse hook.
+// While cfg's EditLoopEdits is above 0, an autonomous spec's line carries the edit hook.
+// The hook writes to the edit records file in runDir.
 // It runs the settled sandbox mode, and under workspace-write it turns on the sandbox's network access,
 // so the session reaches the creel daemon's socket.
 // Once Codex exits, the launch appends the exit record to the run's events file.
@@ -235,6 +240,9 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		if err := writeBatchingNudgeState(tools.batchingStatePath, codex.BatchingNudge); err != nil {
 			return shuttleengine.Launch{}, fmt.Errorf("codexengine: write the batching nudge state: %w", err)
 		}
+	}
+	if cfg.EditLoopEdits > 0 && !spec.Interactive {
+		tools.editRecordsPath = filepath.Join(absRunDir, shuttleengine.EditRecordsFileName)
 	}
 	firstTurn, promptLine := launchPointer(promptPath), ""
 	// The roots come from the codex.yaml this launch already loaded, so one load serves the whole launch.

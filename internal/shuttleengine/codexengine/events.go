@@ -51,6 +51,7 @@ type pendingStamp struct {
 // ParseSessionSignals parses events file bytes into session signals, in file order.
 // SessionStart reads as a session start, UserPromptSubmit as a turn start, and Stop as a turn end.
 // PermissionRequest reads as an ask, and the launch line's exit record reads as a session end that ends the process.
+// A PostToolUse line the edit hook recorded reads as a file edit with its agent id and content hash.
 // A payload line takes its time from the nearest preceding untaken stamp naming its hook.
 // A payload line with no such stamp, or whose stamp time is empty or malformed, reads a zero time.
 // The returned count is the number of bytes consumed, up to the last newline-terminated line.
@@ -140,8 +141,23 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalSessionStart, Source: sessionStartSource(source)}, true
 	case exitRecordEvent:
 		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalSessionEnd, Reason: exitRecordReason, EndsProcess: true}, true
+	case hookEventPostToolUse:
+		return fileEditSignal(fields)
 	}
 	return shuttleengine.SessionSignal{}, false
+}
+
+// fileEditSignal reads a PostToolUse line the edit hook recorded as a file edit, with the file's content hash.
+// It reports false for a line naming no file.
+func fileEditSignal(fields map[string]any) (shuttleengine.SessionSignal, bool) {
+	toolInput, _ := fields["tool_input"].(map[string]any)
+	filePath, _ := toolInput["file_path"].(string)
+	if filePath == "" {
+		return shuttleengine.SessionSignal{}, false
+	}
+	agentID, _ := fields["agent_id"].(string)
+	contentHash, _ := fields[contentHashKey].(string)
+	return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalFileEdit, FilePath: filePath, AgentID: agentID, ContentHash: contentHash}, true
 }
 
 // typedInstruction returns a UserPromptSubmit prompt as a typed instruction, or "" for a slash command.
