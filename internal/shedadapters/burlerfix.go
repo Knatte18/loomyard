@@ -216,6 +216,12 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		return "", shedengine.OutputPointer{}, unrecorded
 	}
 
+	routed := p.opts.DecisionsRouted
+	err = updateRoundSnapshot(p.runDir, round, func(rec *roundSnapshot, _ bool) { rec.DecisionsRouted = &routed })
+	if err != nil {
+		logger.Warn("shedadapters: burler fix could not record whether decisions were routed in the round's snapshot record", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "error", err)
+	}
+
 	p.sendDecisionFindings(round, reviewPath)
 
 	var priorResult burlerengine.FixResult

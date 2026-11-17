@@ -44,6 +44,12 @@ type halfProducerSpec struct {
 	assist AssistSettings
 	// parent is the deps' parent seat; nil asks the parent nothing.
 	parent *ParentReviewSeat
+	// decisionsEscalated is the deps' flag that the segment's Bouncer escalates decision-class findings itself.
+	decisionsEscalated bool
+	// snapshot is the deps' target snapshot; nil records no target id.
+	snapshot *TargetSnapshot
+	// decisionRecordPath is the deps' decision record; empty records no added entries.
+	decisionRecordPath string
 }
 
 // newHalfSpec returns a spec over the minimal profile and a fixed clock.
@@ -54,7 +60,7 @@ func newHalfSpec() halfProducerSpec {
 // newReviewProducer builds a BurlerReviewProducer over runDir, failing the test on constructor error.
 func newReviewProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerReviewProducer {
 	t.Helper()
-	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, Assist: spec.assist, Parent: spec.parent}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent, DecisionsEscalated: spec.decisionsEscalated, Assist: spec.assist, Parent: spec.parent, Snapshot: spec.snapshot, DecisionRecordPath: spec.decisionRecordPath}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerReviewProducer() error = %v; want nil", err)
 	}
@@ -420,6 +426,110 @@ func TestBurlerReviewProducer_Call_ProfileAndOpts(t *testing.T) {
 
 		if got := runner.GotReviewProfiles[0].ClusterExclude; len(got) != 0 {
 			t.Errorf("ClusterExclude = %v; want none, since round 2's record does not say its names were recorded", got)
+		}
+	})
+
+	t.Run("round 1 has no round context", func(t *testing.T) {
+		t.Parallel()
+		runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
+		p := newReviewProducer(t, filepath.Join(t.TempDir(), "run"), runner, newHalfSpec())
+
+		shedfake.CallOK(t, p)
+
+		if got := runner.GotReviewProfiles[0].Round; got != nil {
+			t.Errorf("round 1's Round = %+v; want nil", got)
+		}
+	})
+
+	// Each row lays round 1 out as complete and judged.
+	// It takes a snapshot of the target before round 1's record is written.
+	// The target file is edited after the snapshot, so round 2 starts over a changed target.
+	roundTwoRows := []struct {
+		name string
+		// withTargetID writes the snapshot's id into round 1's record.
+		withTargetID bool
+		prepare      func(t *testing.T, runDir string, snapshot TargetSnapshot)
+		// wantIncremental is the round context's Incremental; wantChanged is the changes file's lines, nil for no changes file.
+		wantIncremental bool
+		wantChanged     []string
+	}{
+		{name: "round 2 gets an incremental round and a changes file of the edited target files", withTargetID: true, wantIncremental: true, wantChanged: []string{"target.txt"}},
+		{name: "a round 1 record with no target id gets no changes file", wantIncremental: true},
+		{
+			name: "a deleted cache copy gets no changes file", withTargetID: true, wantIncremental: true,
+			prepare: func(t *testing.T, _ string, snapshot TargetSnapshot) {
+				if err := os.RemoveAll(snapshot.CacheDir); err != nil {
+					t.Fatalf("RemoveAll(cache) = %v; want nil", err)
+				}
+			},
+		},
+		{
+			name: "an amendment generation is not incremental and gets no changes file", withTargetID: true,
+			prepare: func(t *testing.T, runDir string, _ TargetSnapshot) {
+				if err := writeGenerationRecord(runDir, generationRecord{Number: 2, Amendment: true}); err != nil {
+					t.Fatalf("writeGenerationRecord() = %v; want nil", err)
+				}
+			},
+		},
+	}
+	for _, tt := range roundTwoRows {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeSnapshotFile(t, root, "target.txt", "one\n")
+			writeSnapshotFile(t, root, "other.txt", "other\n")
+			snapshot := TargetSnapshot{Scope: burlerengine.FixScopeOverlay, WorktreeRoot: root, Paths: []string{"target.txt", "other.txt"}, CacheDir: filepath.Join(root, "cache")}
+			runDir := filepath.Join(root, "run")
+			writeJudgedRound(t, runDir, 1)
+			writeCompleteRound(t, runDir, 1, false)
+			id, err := snapshot.Take()
+			if err != nil {
+				t.Fatalf("Take() = %v; want nil", err)
+			}
+			if tt.withTargetID {
+				if err := updateRoundSnapshot(runDir, 1, func(rec *roundSnapshot, _ bool) { rec.TargetID = id }); err != nil {
+					t.Fatalf("updateRoundSnapshot() = %v; want nil", err)
+				}
+			}
+			writeSnapshotFile(t, root, "target.txt", "edited\n")
+			if tt.prepare != nil {
+				tt.prepare(t, runDir, snapshot)
+			}
+			spec := newHalfSpec()
+			spec.profile.Target = burlerengine.FileSet{Paths: []string{"target.txt", "other.txt"}}
+			spec.snapshot = &snapshot
+			runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
+
+			shedfake.CallOK(t, newReviewProducer(t, runDir, runner, spec))
+
+			got := runner.GotReviewProfiles[0].Round
+			if got == nil || got.Incremental != tt.wantIncremental {
+				t.Fatalf("round 2's Round = %+v; want a context with Incremental %v", got, tt.wantIncremental)
+			}
+			changed, hasChanges, err := readRoundChanges(runDir, 2)
+			if err != nil || hasChanges != (tt.wantChanged != nil) || !stringSlicesEqual(changed, tt.wantChanged) {
+				t.Errorf("changes file = %v, %v, %v; want %v", changed, hasChanges, err, tt.wantChanged)
+			}
+			if got.HasChanges != hasChanges || !stringSlicesEqual(got.Changed, changed) {
+				t.Errorf("Round changes = %v, %v; want the changes file's %v, %v", got.HasChanges, got.Changed, hasChanges, changed)
+			}
+		})
+	}
+
+	t.Run("a parent seat's ask reaches the spawned and the probed profile", func(t *testing.T) {
+		t.Parallel()
+		f := newParentFixture(t)
+		f.judgeRounds(t, 1)
+		writeCompleteRound(t, f.runDir, 1, false)
+		f.recordAsk(t, priorAsk{ask: burlerengine.ParentAsk{Round: 2, State: burlerengine.ParentAskDone}})
+		runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
+
+		shedfake.CallOK(t, f.producer(t, runner))
+
+		want := f.files.ReportPath(1)
+		spawned, probed := runner.GotReviewProfiles[0].Round, runner.GotProbeReviewProfiles[0].Round
+		if spawned == nil || probed == nil || spawned.ParentReportPath != want || probed.ParentReportPath != want {
+			t.Errorf("ParentReportPath on the spawned and probed rounds = %+v, %+v; want %q on both", spawned, probed, want)
 		}
 	})
 }

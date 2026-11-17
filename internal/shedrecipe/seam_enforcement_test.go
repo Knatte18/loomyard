@@ -29,6 +29,9 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/discussionparser",
 	"github.com/Knatte18/loomyard/internal/shedadapters",
 	"github.com/Knatte18/loomyard/internal/loomshed",
+	// internal/lymdirs is imported for the directory names of the review snapshot cache;
+	// it is a stdlib-free leaf and resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/lymdirs",
 	// internal/loomengine is imported for the RaddleMode type of RaddleWriteEnv.Table; it resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/loomengine",
 	"github.com/Knatte18/loomyard/internal/modelspec",

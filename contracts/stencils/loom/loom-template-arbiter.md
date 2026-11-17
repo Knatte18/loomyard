@@ -103,6 +103,8 @@ Before you hand on, record every call of the stop you could settle, so the paren
     When the board entry and the record settle the returned finding, record the ruling as a decision, then continue below the hard cap.
     At the hard cap accept only when the finding is wrong or the fix in place already answers it.
     In every other case hand on.
+  - `stalemate`: the review target stayed unchanged for the configured rounds in a row, so the open findings are circling.
+    Rule it as `circling`: accept when the open findings are judged settled or not worth another round, continue otherwise.
   - `decision`: each decision finding the brief lists is a question the review could not settle.
     Before choosing accept, read the brief's Refusal section;
     when a refusal is named, a held accept meets the same refusal again, so record the answers and continue below the hard cap, and hand on at or past it.

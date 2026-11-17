@@ -182,6 +182,15 @@ type Env struct {
 	// ReviewCirclingCheckpoint is the run-wide first round a Bouncer's judge may rule CIRCLING in.
 	// The Bouncer entry requires it positive and passes it to shedadapters.BouncerConfig.CirclingCheckpoint.
 	ReviewCirclingCheckpoint int
+	// ReviewStalemateRounds is the run-wide count of unchanged judged rounds in a row that escalate a stalemate.
+	// The Bouncer entry passes it to shedadapters.BouncerConfig.StalemateRounds; 0 turns the check off.
+	ReviewStalemateRounds int
+	// ReviewTreeID returns the id of the code checkout's current tree, which names a source-scope review target.
+	// The review entries read it; nil is legal and makes a source-scope round count as changed.
+	ReviewTreeID func() (string, error)
+	// ReviewTreeChanges returns the paths that differ between two tree ids of the code checkout.
+	// The review entries read it; nil is legal and leaves a source-scope round with no changes file.
+	ReviewTreeChanges func(fromID, toID string) ([]string, error)
 
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine or a factory over one.
 	// The Bouncer row and the Burler rows' attach probes read it.

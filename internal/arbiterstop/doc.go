@@ -9,7 +9,8 @@
 // It is not in the loom CLI package because batten must call it,
 // and the batten CLI cannot import the loom CLI without linking tree-sitter into its test binary.
 //
-// An awaiting stop is eligible only with a pending review escalation of cause `hard-cap`, `circling` or `decision`.
+// An awaiting stop is eligible only with a pending review escalation.
+// The cause must be `hard-cap`, `circling`, `decision` or `stalemate`.
 // Each of those causes is a judgment call the arbiter settles before the run's parent hears of it.
 // A `budget` escalation, an unknown cause and an unreadable record all go to the run's parent.
 // A blocked stop that is a landing halt is refused too, since only the run's parent lifts it;

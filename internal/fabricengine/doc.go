@@ -937,6 +937,11 @@
 // A Merge-In is a merge commit whose second parent is an ancestor of `parentTip`;
 // a commit that is itself such an ancestor also counts, as a fast-forward Merge-In leaves it.
 // `RecordsHeadSHA` returns the commit the weft checkout's HEAD stands at.
+// `WorktreeTreeID()` (worktreetree.go) returns the id of the git tree `git add -A` would stage from the code checkout.
+// Uncommitted edits are included, and excluded or ignored untracked paths are left out.
+// It builds the tree in a throwaway index, so the real index, HEAD and refs stay as they were.
+// `ChangedPathsBetween(fromTree, toTree)` returns the sorted, checkout-relative paths that differ between two tree ids.
+// A tree id git no longer holds is an error.
 //
 // `ValidatePairSlug` is the one pair slug rule, the one `Add` and `Remove` apply.
 // It is exported so the board applies it through its seam.

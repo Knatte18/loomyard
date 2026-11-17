@@ -74,6 +74,11 @@ const ImplementerDirName = "implementer"
 // HeddleDirName is the directory under a worktree's `.lym` that holds heddle's render lock.
 const HeddleDirName = "heddle"
 
+// ReviewSnapshotDirName is the directory under a worktree's `.lym` that holds the review target snapshots.
+// It holds one copy of the overlay target files per snapshot id.
+// It is a never-tracked cache, and an absent one reads as empty.
+const ReviewSnapshotDirName = "review-snapshot"
+
 // UsageDirName is the directory under a worktree's `_lym` that holds a run's usage records.
 // It holds one file per agent session, plus the run's identity and its landed diff size.
 const UsageDirName = "usage"

@@ -128,6 +128,7 @@ var templateDefaults = map[string]any{
 	"Driver":                        "haiku[medium]",
 	"StepIdleTimeoutMin":            60,
 	"ReviewCirclingCheckpoint":      3,
+	"ReviewStalemateRounds":         2,
 	"ReviewMaxBounces":              3,
 	"ReviewHardMaxBounces":          4,
 	"ReviewAmendMaxBounces":         1,
@@ -430,6 +431,11 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.ReviewCirclingCheckpoint, c.ReviewMaxBounces = 9, 2 },
 		},
 		{
+			name:   "zero review_stalemate_rounds turns the check off",
+			values: map[string]string{"review_stalemate_rounds": "0"},
+			mutate: func(c *Config) { c.ReviewStalemateRounds = 0 },
+		},
+		{
 			name:     "keys absent from a seeded file take template defaults",
 			contents: legacyContents,
 			mutate: func(c *Config) {
@@ -705,6 +711,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
 		{"zero review_circling_checkpoint", "review_circling_checkpoint", "0", []string{positiveIntegerForward}, ""},
 		{"negative review_circling_checkpoint", "review_circling_checkpoint", "-1", []string{positiveIntegerForward}, ""},
+		{"negative review_stalemate_rounds", "review_stalemate_rounds", "-1", []string{"must not be negative", "set it to 0 to turn the check off", "lym config loom --set review_stalemate_rounds=<n>", "in the task worktree"}, ""},
 		{"zero discussion_review_parent_timeout_min", "discussion_review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
 		{"negative discussion_review_parent_timeout_min", "discussion_review_parent_timeout_min", "-1", []string{"must be at least 1", positiveIntegerForward}, ""},
 		{"negative review_max_bounces", "review_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, or to a positive integer"}, ""},

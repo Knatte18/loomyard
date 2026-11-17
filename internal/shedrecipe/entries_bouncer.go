@@ -277,6 +277,9 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		bounces = func() (int, int, bool, error) { return env.SegmentBounces(row.Name) }
 	}
 
+	// The Bouncer takes each round's scope and paths from the round's snapshot record, so the snapshot sets neither.
+	snapshot := reviewTargetSnapshot(env, runSubdir)
+
 	bouncerCfg := shedadapters.BouncerConfig{
 		Name:          row.Name,
 		RunDir:        runDir,
@@ -326,6 +329,8 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		DecisionRecordPath: env.DecisionRecordPath,
 
 		CirclingCheckpoint: env.ReviewCirclingCheckpoint,
+		StalemateRounds:    env.ReviewStalemateRounds,
+		Snapshot:           &snapshot,
 	}
 
 	// NewBouncer probes the rubric stencil eagerly, at construction.

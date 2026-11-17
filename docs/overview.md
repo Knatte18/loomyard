@@ -1286,7 +1286,8 @@ User-facing modules each get one `lym <module>` namespace:
   the run's Friction-Reflect row runs the reflection over every note.
   A review segment settles a spent bounce budget by the soft-cap rule.
   The rule reads the judge's per-finding `mechanical` or `design-wrong` fix tags.
-  It escalates to the run's parent, also `awaiting`, for a circling design-wrong finding or at the hard cap.
+  It escalates to the run's parent, also `awaiting`, for a circling design-wrong finding, a stalemate or at the hard cap.
+  A stalemate is a review target that the configured number of judged rounds in a row left unchanged.
   It escalates likewise when the rule cannot read its inputs.
   The Bouncer writes a brief and a one-line parent notice into its run directory.
   It returns the notice as `parent_notice`;
@@ -1451,6 +1452,7 @@ User-facing modules each get one `lym <module>` namespace:
   Empty turns the forks off, and the key is closed to the local layer.
   `subagent_model` names the model of the fresh subagents that Plan, Discussion-Write and darn writers hand lookups to.
   `review_circling_checkpoint` and `review_max_bounces` are review budget keys too.
+  `review_stalemate_rounds` is the number of unchanged review rounds in a row that escalate a stalemate; 0 turns the check off.
   `review_amend_max_bounces` is the amendment allowance a review segment re-entered over a changed subject runs under.
   The per-perch `discussion_max_bounces`/`code_max_bounces` take `review_max_bounces` when null.
   A value of 0 runs no review round.

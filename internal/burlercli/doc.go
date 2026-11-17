@@ -14,7 +14,8 @@
 // the engine writes the fixer report itself, and the envelope reports `fixSkipped`.
 // A reviewer that died or timed out is the envelope's outcome, and runs no fixer.
 // `lym burler validate-review <review-file>` is the review gate's read-only self-check.
-// It needs no hub, mode or git repository.
+// It runs the parse, and the round checks on a review that sits in a run directory.
+// It needs no hub or mode, and resolves the worktree from the seam cwd.
 //
 // # Wiring
 //

@@ -65,14 +65,15 @@ type ReviewResult struct {
 // ErrReviewChanged reports that the review file no longer holds the bytes the review half accepted, so the fix half refuses to act on it.
 var ErrReviewChanged = errors.New("burler: the review file changed after it was accepted")
 
-// reviewTable builds the review half's one-seat table for p under opts: the reviewer as the chair, gated by the review-parse entry alone.
+// reviewTable builds the review half's one-seat table for p under opts:
+// the reviewer as the chair, gated by the review-parse entry and then the round-check entry.
 // The reviewer writes the review file alone and may fork exactly when p names a cluster fan.
 // values carries the marker values the seat's stencil is filled from, and skills names the skills the seat loads.
 func (p *Profile) reviewTable(opts RunOpts, values map[string]string, skills []string) seatengine.Table {
 	return seatengine.Table{
 		RolePrefix: ReviewChairRole(p.RolePrefix),
 		Segment:    p.segment(),
-		Gate:       shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath)},
+		Gate:       shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath), RoundCheckGateEntry(p.ReviewPath, p.Round)},
 		Round:      opts.Round,
 		Timeout:    opts.Timeout,
 		Seats: []seatengine.Seat{

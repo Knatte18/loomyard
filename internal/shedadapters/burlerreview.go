@@ -71,6 +71,11 @@ type BurlerHalfDeps struct {
 	Assist AssistSettings
 	// Parent is the segment's parent seat, read by the review producer; nil asks the parent nothing.
 	Parent *ParentReviewSeat
+	// Snapshot names the round's review target by an id, read by the review producer.
+	// Nil records no target id, so every round counts as changed and no changes file is built.
+	Snapshot *TargetSnapshot
+	// DecisionRecordPath is the decision record whose added entries the round's start records; empty records none.
+	DecisionRecordPath string
 }
 
 // AssistSettings is one review segment's assistant reviewer seat: the per-round model and fan lists, the keys they came from and the assistant's run bound.
@@ -136,6 +141,10 @@ type BurlerReviewProducer struct {
 	fans   *RoundFans
 	assist AssistSettings
 	parent *ParentReviewSeat
+	// snapshot, when non-nil, names the target recorded at each round's start.
+	snapshot *TargetSnapshot
+	// decisionRecordPath, when non-empty, is the decision record whose added entries each round's start records.
+	decisionRecordPath string
 	// gateFindingsPath, when non-empty, is the file cleared once the review's gate has passed.
 	gateFindingsPath string
 	profile          burlerengine.Profile
@@ -161,7 +170,46 @@ func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlereng
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, snapshot: deps.Snapshot, decisionRecordPath: deps.DecisionRecordPath, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+}
+
+// recordRoundStart writes round's snapshot record when none exists yet.
+// It fills the fix scope and target paths from the stored profile.
+// It fills the target id from the snapshot, and the added decisions' digests from the decision record.
+// A record already there is kept.
+// A retried attempt, a resumed reviewer or a half run again therefore never moves the round's start.
+// The start stays before a dead fixer's partial edits.
+// A failed id or digest read leaves that field empty and a failed write is logged;
+// neither fails the round, since a round with no record or no target id only counts as changed.
+// It also writes the round's changes file when the round's start allows one.
+func (p *BurlerReviewProducer) recordRoundStart(round int) {
+	p.recordRoundChanges(round)
+	_, found, err := readRoundSnapshot(p.runDir, round)
+	if err != nil {
+		logger.Warn("shedadapters: burler review could not read the round's snapshot record; none written", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
+		return
+	}
+	if found {
+		return
+	}
+
+	start := roundSnapshot{FixScope: string(p.profile.FixScope), TargetPaths: p.profile.Target.Paths}
+	if p.snapshot != nil {
+		if start.TargetID, err = p.snapshot.Take(); err != nil {
+			logger.Warn("shedadapters: burler review could not take the target snapshot; the round records no target id", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
+		}
+	}
+	if start.AddedDecisions, err = addedDecisionDigests(p.decisionRecordPath); err != nil {
+		logger.Warn("shedadapters: burler review could not digest the decision record's added entries; the round records none", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
+	}
+	err = updateRoundSnapshot(p.runDir, round, func(rec *roundSnapshot, exists bool) {
+		if !exists {
+			*rec = start
+		}
+	})
+	if err != nil {
+		logger.Warn("shedadapters: burler review could not write the round's snapshot record", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
+	}
 }
 
 // attemptOpts returns the run options one review attempt of round runs under:
@@ -179,6 +227,7 @@ func (p *BurlerReviewProducer) attemptOpts(round int, attempt roundAttempt, pare
 // roundProfile returns a fresh per-round copy of the stored template profile for round running under fan.
 // It fills in the fan, the round's own review and fixer-report paths, and the focus directive.
 // It also hydrates earlier complete rounds and, from round 2 on, sets the cluster exclusions.
+// A complete round before it gives the profile its round context; a failed build is logged and leaves the round full.
 // The stored template itself is never mutated; every slice field set is a freshly allocated slice.
 func (p *BurlerReviewProducer) roundProfile(round int, fan string) burlerengine.Profile {
 	focus := readRoundFocus(p.name, p.runDir, round)
@@ -193,6 +242,11 @@ func (p *BurlerReviewProducer) roundProfile(round int, fan string) burlerengine.
 	profile.PriorFixerReports = append(append([]string{}, p.profile.PriorFixerReports...), priorFixerReports...)
 	profile.ClusterExclude = nil
 	profile.ClusterExcludeHeld = nil
+	roundContext, err := BuildRoundContext(p.runDir, round, p.decisionRecordPath, "")
+	if err != nil {
+		logger.Warn("shedadapters: burler review could not build the round context; the round is reviewed in full", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
+	}
+	profile.Round = roundContext
 	switch {
 	case fan != "" && round >= 2:
 		var dropped []string
@@ -266,6 +320,8 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		return p.handOn(ctx, reviewPath, fmt.Sprintf("round %d review is accepted; handing on to the fixer", round))
 	}
 
+	p.recordRoundStart(round)
+
 	fan, fixFan := p.profile.ClusterFan, ""
 	probeFan := fan
 	if p.fans != nil {
@@ -296,6 +352,10 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 	}
 
 	parentAsk := p.roundParentAsk(round)
+	if parentAsk != 0 {
+		withParentReportPath(&profile, p.parent.Files.ReportPath(parentAsk))
+		withParentReportPath(&probeProfile, p.parent.Files.ReportPath(parentAsk))
+	}
 	if outcome, ptr, exitErr, handled := p.probeLiveReview(ctx, round, probeProfile, parentAsk, archiveRound); handled {
 		return outcome, ptr, exitErr
 	}

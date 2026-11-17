@@ -549,6 +549,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		RecordHead:         func() (string, error) { return "record-head", nil },
 		ReviewInput:        func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
 		ReviewBase:         func() (string, error) { return "review-base", nil },
+		ReviewTreeID:       func() (string, error) { return "review-tree", nil },
+		ReviewTreeChanges:  func(string, string) ([]string, error) { return nil, nil },
 		ReflectFriction:    func() string { return "skipped" },
 		Rework:             ReworkDeps(t, dir),
 		DarnVerifyAttempts: 3,

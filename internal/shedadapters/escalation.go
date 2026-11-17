@@ -1,6 +1,6 @@
 // escalation.go defines the escalation record a Bouncer leaves when it hands a round to the run's parent.
 // The record is a brief file with Go-owned frontmatter over the rendered brief, and a one-line parent notice file.
-// The `circling` verbs read the cause to settle an escalation of any of the four causes.
+// The `circling` verbs read the cause to settle an escalation of any of the five causes.
 
 package shedadapters
 
@@ -17,24 +17,26 @@ import (
 // `hard-cap` is a round at or past its perch's hard cap with a design-wrong finding open, or a recorded continue there.
 // `decision` is a round whose accepted review holds a finding the review cannot settle itself.
 // It needs a call from the arbiter and, when the arbiter hands it on, from the run's parent.
+// `stalemate` is a round whose review target stayed unchanged for the configured number of rounds in a row.
 type EscalationCause string
 
-// The four legal EscalationCause spellings.
+// The five legal EscalationCause spellings.
 const (
-	EscalationCircling EscalationCause = "circling"
-	EscalationBudget   EscalationCause = "budget"
-	EscalationHardCap  EscalationCause = "hard-cap"
-	EscalationDecision EscalationCause = "decision"
+	EscalationCircling  EscalationCause = "circling"
+	EscalationBudget    EscalationCause = "budget"
+	EscalationHardCap   EscalationCause = "hard-cap"
+	EscalationDecision  EscalationCause = "decision"
+	EscalationStalemate EscalationCause = "stalemate"
 )
 
-// valid reports whether c is one of the four legal EscalationCause spellings.
+// valid reports whether c is one of the five legal EscalationCause spellings.
 func (c EscalationCause) valid() bool {
-	return c == EscalationCircling || c == EscalationBudget || c == EscalationHardCap || c == EscalationDecision
+	return c == EscalationCircling || c == EscalationBudget || c == EscalationHardCap || c == EscalationDecision || c == EscalationStalemate
 }
 
 // ErrEscalationMalformed reports that a round's escalation record is present but unreadable as a record.
 // Its frontmatter is missing or invalid, or its round disagrees with its filename,
-// or its cause is not one of the four values.
+// or its cause is not one of the five values.
 // A failure to read the file at all is a plain I/O error and never wraps it.
 var ErrEscalationMalformed = errors.New("shedadapters: escalation record is malformed")
 
@@ -49,7 +51,7 @@ type escalationHeader struct {
 // so a failed render still leaves the record the `circling` verbs read.
 func writeEscalation(runDir string, round int, cause EscalationCause, brief, notice string) error {
 	if !cause.valid() {
-		return fmt.Errorf("shedadapters: escalation cause must be %q, %q, %q or %q, got %q", EscalationCircling, EscalationBudget, EscalationHardCap, EscalationDecision, cause)
+		return fmt.Errorf("shedadapters: escalation cause must be %q, %q, %q, %q or %q, got %q", EscalationCircling, EscalationBudget, EscalationHardCap, EscalationDecision, EscalationStalemate, cause)
 	}
 	headerBytes, err := yaml.Marshal(escalationHeader{Round: round, Cause: string(cause)})
 	if err != nil {
@@ -76,7 +78,7 @@ func writeEscalation(runDir string, round int, cause EscalationCause, brief, not
 // readEscalation reads round's escalation record, returning the cause, the notice text, and whether a record exists.
 // The notice is empty when its file is absent.
 // A present record that is malformed is an error:
-// the round must match the filename and the cause must be one of the four values.
+// the round must match the filename and the cause must be one of the five values.
 func readEscalation(runDir string, round int) (EscalationCause, string, bool, error) {
 	path := escalationPath(runDir, round)
 	raw, err := os.ReadFile(path)
@@ -100,7 +102,7 @@ func readEscalation(runDir string, round int) (EscalationCause, string, bool, er
 	}
 	cause := EscalationCause(parsed.Cause)
 	if !cause.valid() {
-		return "", "", true, malformed(fmt.Errorf("bouncer: escalation cause must be %q, %q, %q or %q, got %q", EscalationCircling, EscalationBudget, EscalationHardCap, EscalationDecision, parsed.Cause))
+		return "", "", true, malformed(fmt.Errorf("bouncer: escalation cause must be %q, %q, %q, %q or %q, got %q", EscalationCircling, EscalationBudget, EscalationHardCap, EscalationDecision, EscalationStalemate, parsed.Cause))
 	}
 
 	noticePath := parentNoticePath(runDir, round)

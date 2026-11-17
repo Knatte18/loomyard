@@ -148,6 +148,10 @@ what to build, a change of a task's scope, or a choice between designs the board
   so it reaches you only as a hand-on.
   Record the answer with `lym loom decision add <slug> --by parent` before the escalation brief's circling verb.
   Then resume.
+- **Cause `stalemate`:** the review target stayed unchanged for the configured rounds in a row.
+  The arbiter settles it as it settles `circling`, so it reaches you only as a hand-on.
+  Accept when the open findings are judged settled or not worth another round, and continue otherwise.
+  After a `continue` the Bouncer's count restarts.
 - **A review loop out of rounds:**
   `lym loom circling continue <slug>` grants one more round only below the perch's hard cap.
   At or past it, or at a `hard-cap` escalation, take the work as it stands with `lym loom circling accept <slug>`.

@@ -1195,7 +1195,23 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		Resume:       "lym loom resume",
 
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
+		ReviewStalemateRounds:    loomCfg.ReviewStalemateRounds,
 		ReviewTimeout:            reviewSettings.Timeout,
+		// The tree closures open the fabric on each call, since wire() also runs for status and pause.
+		ReviewTreeID: func() (string, error) {
+			handle, err := fabricengine.Open(location)
+			if err != nil {
+				return "", err
+			}
+			return handle.WorktreeTreeID()
+		},
+		ReviewTreeChanges: func(fromID, toID string) ([]string, error) {
+			handle, err := fabricengine.Open(location)
+			if err != nil {
+				return nil, err
+			}
+			return handle.ChangedPathsBetween(fromID, toID)
+		},
 
 		// Landing is left unfilled here: wireLanding fills Env.Landing separately.
 		// NewPublish and NewFinalize open their fabric pair eagerly at construction.

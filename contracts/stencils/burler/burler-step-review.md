@@ -34,3 +34,21 @@ Read the actual files before you describe or judge them — every claim in your 
 ## Prior rounds
 
 {{.prior_rounds}}
+
+### Rules for the prior findings
+
+These rules apply only when the section above holds a heading line reading `Prior findings`;
+a section without that heading has none of them.
+
+- Give every listed finding one `prior` entry in the review's frontmatter, with the status `resolved`, `open`, `outdated` or `withdrawn`.
+  Withdraw only a finding whose fixer disposition is `disputed` and whose rebuttal you accept.
+  Keep a disputed finding `open` only when you answer the rebuttal in the entry's `answer`.
+- Resolve a finding marked as held by the parent only by quoting, in the entry's `answer`, the title of a listed added entry that settles it.
+  Otherwise mark it `open` and carry it.
+- Carry every `open` finding as one finding with `carries` set to its id.
+  Keep its class.
+  Keep or lower its severity.
+  Keep its location path, or move it to a file the changes file lists.
+  When there is no changes file, name the moved site in the `summary` and the `fix`.
+- In an incremental round, raise a new finding only at `BLOCKING`, and only on a changed hunk.
+  Locate a regression a fix caused in an untouched file at the changed line that causes it, and name the broken site in its `summary`.

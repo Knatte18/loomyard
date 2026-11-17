@@ -4,6 +4,7 @@ package shedrecipe
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -150,6 +152,50 @@ func TestBurlerReviewEntry_ProfileMapping(t *testing.T) {
 	if len(opts.Gate) != 0 {
 		t.Errorf("opts.Gate = %+v; want none, the review row's only gate is the engine's review parse", opts.Gate)
 	}
+
+	t.Run("OverlayTargetRecordsTheRoundSnapshot", func(t *testing.T) {
+		env := newTestEnv(t)
+		if err := os.WriteFile(filepath.Join(env.WorktreeRoot, "target.md"), []byte("one\n"), 0o644); err != nil {
+			t.Fatalf("write the target: %v", err)
+		}
+		const entry = "### Added after Discussion (parent, 2026-11-17): First call\n\nDecision: cache per run.\n"
+		if err := os.WriteFile(env.DecisionRecordPath, []byte("# Record\n\n## Decisions\n\n"+entry), 0o644); err != nil {
+			t.Fatalf("write the decision record: %v", err)
+		}
+		overlay := shedadapters.TargetSnapshot{Scope: burlerengine.FixScopeOverlay, WorktreeRoot: env.WorktreeRoot, Paths: []string{"target.md"}}
+		wantID, err := overlay.ID()
+		if err != nil {
+			t.Fatalf("ID() error = %v; want nil", err)
+		}
+		cfg := minimalReviewConfig()
+		cfg["profile"] = map[string]any{
+			"rubric":    "a rubric",
+			"fix-scope": "overlay",
+			"target":    map[string]any{"paths": []string{"target.md"}},
+		}
+
+		captureReview(t, "review-row", cfg, env)
+
+		raw, err := os.ReadFile(filepath.Join(env.RunRoot, "review-segment", "round-1-snapshot.json"))
+		if err != nil {
+			t.Fatalf("read the round-1 snapshot record: %v", err)
+		}
+		var record struct {
+			TargetID       string `json:"target_id"`
+			AddedDecisions []struct {
+				Title string `json:"title"`
+			} `json:"added_decisions"`
+		}
+		if err := json.Unmarshal(raw, &record); err != nil {
+			t.Fatalf("parse the round-1 snapshot record %q: %v", raw, err)
+		}
+		if record.TargetID != wantID {
+			t.Errorf("round-1 target_id = %q; want %q", record.TargetID, wantID)
+		}
+		if len(record.AddedDecisions) != 1 || record.AddedDecisions[0].Title != "First call" {
+			t.Errorf("round-1 added_decisions = %+v; want the one entry titled %q", record.AddedDecisions, "First call")
+		}
+	})
 }
 
 // TestBurlerReviewEntry_RubricStencil covers the profile.rubric_stencil key:

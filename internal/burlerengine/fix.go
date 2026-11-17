@@ -27,7 +27,8 @@ const fixRolePrefix = "burler-fix"
 
 // skippedFixerReport is the fixer report written when the fix half is skipped.
 // It says nothing was fixed, because the review held no findings and the round's gates passed.
-var skippedFixerReport = "# Fixer report\n\n" +
+var skippedFixerReport = "---\nspawned: false\ndispositions: []\n---\n\n" +
+	"# Fixer report\n\n" +
 	"## Changes\n\n" +
 	"Nothing fixed: the review held no findings and the round's gates passed, so no fixer was spawned.\n\n" +
 	"## Disputed\n\n" +
@@ -37,7 +38,8 @@ var skippedFixerReport = "# Fixer report\n\n" +
 
 // skippedRoutedFixerReport is the fixer report written when the fix half is skipped.
 // It applies when the review's only findings are decision-class ones its caller sent to the run's parent.
-var skippedRoutedFixerReport = "# Fixer report\n\n" +
+var skippedRoutedFixerReport = "---\nspawned: false\ndispositions: []\n---\n\n" +
+	"# Fixer report\n\n" +
 	"## Changes\n\n" +
 	"Nothing fixed: the review held only decision findings, which went to the run's parent, and the round's gates passed, so no fixer was spawned.\n\n" +
 	"## Disputed\n\n" +
@@ -68,17 +70,19 @@ type FixResult struct {
 
 // fixTable builds the fix half's one-seat table for p under opts: the fixer as the chair.
 // It gates the table by opts.Gate, with every entry wrapped by repairReportBeforeGate.
+// The fixer-report entry follows, unwrapped, so a spawned, probed and resumed fixer are gated alike.
 // The fixer reads the review file, writes the fixer-report and forks exactly when the profile names a fixer fan.
 // The seat's model key stays zero in every round; opts.FixKey is read only to name the key in an engine refusal.
 // values carries the marker values the seat's stencil is filled from; skills lists the skills the seat loads.
 func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []string) seatengine.Table {
 	// A fresh copy, so the caller's slice is never mutated;
 	// off entries are wrapped too, since they never run and the wrap is harmless there.
-	fixGate := make(shuttleengine.GateSpec, 0, len(opts.Gate))
+	fixGate := make(shuttleengine.GateSpec, 0, len(opts.Gate)+1)
 	for _, entry := range opts.Gate {
 		entry.Gate = repairReportBeforeGate(entry.Gate, p.FixerReportPath)
 		fixGate = append(fixGate, entry)
 	}
+	fixGate = append(fixGate, FixerReportGateEntry(p.FixerReportPath, p.ReviewPath, opts.DecisionsRouted))
 	return seatengine.Table{
 		RolePrefix: p.rolePrefix(fixRolePrefix),
 		Segment:    p.segment(),

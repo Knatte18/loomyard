@@ -162,6 +162,12 @@ type BouncerConfig struct {
 	// and an earlier CIRCLING is read as CONTINUE.
 	// It must be positive.
 	CirclingCheckpoint int
+	// StalemateRounds is how many unchanged-target rounds in a row escalate with cause stalemate.
+	// 0, which is also the zero value, turns the check off.
+	StalemateRounds int
+	// Snapshot names the review target by an id, so each judged round records the target as its fix left it.
+	// Nil records none, so every round counts as changed and the stalemate check never escalates.
+	Snapshot *TargetSnapshot
 	// Segment is the review segment's name the carry-over entry is filed under, for example Discussion-Review.
 	// It is distinct from the log identity.
 	// It must be non-empty when CarryOver is set.
@@ -1032,9 +1038,11 @@ func (b *Bouncer) retireLegacyVerdict(ctx context.Context, round int) (shedengin
 }
 
 // settleUnlessRefused settles round's judgment unless the judgment is refused, in which case the round is re-judged.
+// It first records the round's post-fix target id, so a round that routing decisions take records it too.
 // A round that routing decisions take is settled there instead, ahead of the refusal check.
 // verdict and ledger are round's judgment as the verdict reader parsed them.
 func (b *Bouncer) settleUnlessRefused(ctx context.Context, round int, verdict bouncerVerdict, ledger ledgerFile, spawned bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	b.recordPostFixTargetID(round)
 	if outcome, ptr, err, handled := b.routeDecisions(ctx, round, verdict, ledger, spawned); handled {
 		return outcome, ptr, err
 	}
@@ -1339,10 +1347,12 @@ func (b *Bouncer) acceptRound(round int, ptr shedengine.OutputPointer) (shedengi
 // first, with the soft cap reached, AutoAccept set, a harvest (spawned) and no escalation record:
 // a round that BlockingEscalates does not send to the rule records an automatic accept and passes through acceptRound;
 // BlockingEscalates sends a round whose ledger holds an open BLOCKING entry, or cannot be read, to the rule instead.
-// Second, an open window or a CIRCLING verdict over a round whose escalation record exists or cannot be read escalates:
+// Second, a stalemate escalates with cause stalemate, which the round's own stalemate record always answers again.
+// In an open window a stalemate yields to softCapRule when its ledger holds no design-wrong entry.
+// Third, an open window or a CIRCLING verdict over a round whose escalation record exists or cannot be read escalates:
 // the escalation returns the recorded Awaiting, or the unreadable-record Stuck.
-// Third, an open window runs softCapRule.
-// Fourth, a CIRCLING verdict escalates with cause circling,
+// Fourth, an open window runs softCapRule.
+// Fifth, a CIRCLING verdict escalates with cause circling,
 // and a CONTINUE calls ensureFocus(round + 1) and returns Stuck.
 //
 // Bound: the rule accepts fixes no reviewer saw only when no open BLOCKING or MEDIUM entry is tagged design-wrong.
@@ -1357,6 +1367,9 @@ func (b *Bouncer) settleUndecided(round int, verdict bouncerVerdict, spawned boo
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): record automatic accept: %w", b.cfg.Name, bouncerEngineLabel, err)
 		}
 		return b.acceptRound(round, ptr)
+	}
+	if b.stalemated(round, windowOpen) {
+		return b.escalate(round, EscalationStalemate, ptr)
 	}
 	if (windowOpen || verdict == verdictCircling) && (escalated || readErr != nil) {
 		return b.escalate(round, EscalationBudget, ptr)
@@ -1535,7 +1548,7 @@ func (b *Bouncer) escalateWith(round int, cause EscalationCause, detail string, 
 // renderEscalation renders round's escalation brief and parent notice stencils.
 // The brief's decide step is the capped fragment at or past the hard cap and the open one otherwise.
 // The brief's cause_detail marker carries detail and renders as nothing when detail is empty.
-// The notice interpolates only the slug and the brief path.
+// The notice interpolates the slug and the brief path, then ends with the cause's way forward on the same line.
 func (b *Bouncer) renderEscalation(round int, cause EscalationCause, detail string) (brief, notice string, err error) {
 	briefTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-escalation")
 	if err != nil {
@@ -1581,7 +1594,21 @@ func (b *Bouncer) renderEscalation(round int, cause EscalationCause, detail stri
 	if err != nil {
 		return "", "", fmt.Errorf("fill parent notice stencil: %w", err)
 	}
-	return string(briefBytes), strings.TrimSpace(string(noticeBytes)), nil
+	return string(briefBytes), strings.TrimSpace(string(noticeBytes)) + " " + b.noticeWayForward(round, cause), nil
+}
+
+// noticeWayForward returns the clause of the parent notice that names how to settle round's escalation of cause.
+// A cause decision opens with recording each answer through `lym loom decision add`.
+// Every cause then names the accept and continue verbs, and at or past the hard cap the accept verb alone.
+func (b *Bouncer) noticeWayForward(round int, cause EscalationCause) string {
+	decide := fmt.Sprintf(`"lym loom circling accept %s" or "lym loom circling continue %s"`, b.cfg.Slug, b.cfg.Slug)
+	if b.atHardCap(round) {
+		decide = fmt.Sprintf(`"lym loom circling accept %s"`, b.cfg.Slug)
+	}
+	if cause == EscalationDecision {
+		return fmt.Sprintf(`Way forward: record each answer with "lym loom decision add %s --by parent", one entry per answered finding, then decide with %s.`, b.cfg.Slug, decide)
+	}
+	return fmt.Sprintf("Way forward: decide with %s.", decide)
 }
 
 // escalationReason is the Awaiting Reason of an escalated round.

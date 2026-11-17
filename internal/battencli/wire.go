@@ -1101,6 +1101,21 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		Slug:       slug,
 		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
+		// The tree closures open the fabric on each call, since wire() also runs for status and pause.
+		ReviewTreeID: func() (string, error) {
+			handle, err := fabricengine.Open(location)
+			if err != nil {
+				return "", err
+			}
+			return handle.WorktreeTreeID()
+		},
+		ReviewTreeChanges: func(fromID, toID string) ([]string, error) {
+			handle, err := fabricengine.Open(location)
+			if err != nil {
+				return nil, err
+			}
+			return handle.ChangedPathsBetween(fromID, toID)
+		},
 		// The closure takes holdPrime only for the fork-point read, the registry write and a held pair's removal.
 		// Claim, reconcile and push run outside it, and origin probes start before it; a waiting create holds up no other run.
 		CreateWorktree: func(ctx context.Context, holdPrime battenshed.HoldPrimeLock) error {

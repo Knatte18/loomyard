@@ -468,7 +468,7 @@
 // an error stop of kind `producer` or `bootstrap`;
 // an `interrupted` stop under the `reinvoke` policy or with a transient class;
 // a halted `blocked` stop other than a Parent-Align or Publish verify halt whose own failure record names a target;
-// a halted `awaiting` stop whose Bouncer row has a pending escalation of cause `hard-cap`, `circling` or `decision`.
+// a halted `awaiting` stop whose pending Bouncer escalation is `hard-cap`, `circling`, `decision` or `stalemate`.
 // A `budget` escalation therefore goes to the run's parent.
 // The rule lives in `internal/arbiterstop`, which batten's hold shares.
 // Every other stop is refused with the hand-back to the run's parent as the way forward.
@@ -574,7 +574,7 @@
 // It settles a re-step of an interrupted step under the `reinvoke` policy, up to a cap of two per stop key.
 // It settles the one verify goto to the Publish failure record's target;
 // it asks the tackler at a stop no rule settles;
-// it asks the arbiter at an awaiting stop with a pending hard-cap, circling or decision escalation only;
+// it asks the arbiter at an awaiting stop with a pending hard-cap, circling, decision or stalemate escalation only;
 // it asks the arbiter after a tackler `escalate`;
 // it asks the arbiter when an applied tackler `resume` returns to the same stop;
 // and it hands over at a binary-eligible stop whose last step ran another build than the `lym` on disk.

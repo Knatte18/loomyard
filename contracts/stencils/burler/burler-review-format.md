@@ -25,7 +25,7 @@ findings:
 
 Frontmatter rules, all strict:
 
-- The frontmatter's top-level keys are `verdict` and `findings` only.
+- The frontmatter's top-level keys are `verdict`, `findings` and `prior` only.
 - `verdict` is exactly `APPROVED` or `BLOCKING` — no other spelling.
 - `findings` is a list;
   every entry has a non-empty `id`, `severity`, `class`, `location`, `summary`, and `fix`.
@@ -50,6 +50,17 @@ Frontmatter rules, all strict:
 - In a cluster round, each finding also carries an `origin:` key — `lens:<name>` for a finding kept from a named fork, or `handler` for one you found yourself.
 - A finding kept from the parent orch's report carries `origin: parent` and an optional `parent_ids` list naming the report ids it covers, such as `parent_ids: [P1, P3]`.
   No other finding carries `parent_ids`.
+- A finding's `location` opens with the file's path, followed by `:<line>` or `#<symbol>`.
+- `prior` is a list, written only when the review step's prior-rounds section lists prior findings.
+  It holds one entry per listed finding, each with its `id`, a `status` and an optional `answer`.
+  `status` is exactly one of `resolved`, `open`, `outdated`, `withdrawn`.
+  `withdrawn` is for a finding the fixer disputed and you accept.
+  An `open` entry for a disputed finding carries an `answer` to the rebuttal.
+  A held `decision`-class finding takes `resolved` or `open` only, and `resolved` needs an `answer` quoting the title of a listed added entry.
+- `carries` is an optional key of a finding: the `id` of the `open` prior finding it carries forward.
+  Every `open` entry is carried by exactly one finding, and a finding with no `carries` is new.
+  A carried finding keeps its `class`, keeps or lowers its `severity`, and keeps its location path or moves to a file the changes file lists.
+- In an incremental round a new finding is `BLOCKING` and sits on a changed hunk, in a file the changes file lists.
 
 Below the closing `---`, write prose: exactly one `### [SEVERITY] <title>` block per finding, each carrying `**Location:**` and `**Issue:**` lines.
 The change lives in the finding's `fix` key; no prose `**Fix:**` line restates it.

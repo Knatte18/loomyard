@@ -26,6 +26,7 @@ func TestEscalation_RoundTrip(t *testing.T) {
 		{"circling", EscalationCircling, "the brief body\n", "parent: read the brief", "the brief body"},
 		{"budget", EscalationBudget, "the brief body\n", "parent: read the brief", "the brief body"},
 		{"hard-cap", EscalationHardCap, "the brief body\n", "parent: read the brief", "the brief body"},
+		{"stalemate", EscalationStalemate, "the brief body\n", "parent: read the brief", "the brief body"},
 		{"empty brief stays readable", EscalationBudget, "", "notice", ""},
 		{"empty notice writes no notice file", EscalationCircling, "brief", "", "brief"},
 	}

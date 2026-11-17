@@ -570,6 +570,11 @@ func TestParseCurrentReview(t *testing.T) {
 			errSubstr: "1 `### [MEDIUM]` prose block(s) but 0 MEDIUM finding(s)",
 		},
 		{
+			name:         "prior and carries pass the shape checks",
+			content:      "---\nverdict: APPROVED\nprior:\n  - id: E1\n    status: open\n    answer: still there\nfindings:\n" + finding + "    carries: E1\n---\n### [MEDIUM] unchecked error\n",
+			wantFindings: 1,
+		},
+		{
 			name:      "prose and frontmatter disagree on severity",
 			content:   "---\nverdict: APPROVED\nfindings:\n" + finding + "---\n### [LOW] wrong severity\n",
 			errSubstr: "0 `### [MEDIUM]` prose block(s) but 1 MEDIUM finding(s)",

@@ -6,9 +6,11 @@ package shedrecipe
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -43,8 +45,22 @@ func burlerRowTimeout(timeoutS int, env Env) time.Duration {
 	return time.Duration(timeoutS) * time.Second
 }
 
+// reviewTargetSnapshot returns the target snapshot a review segment's rows read the review target through.
+// Its scope and paths are unset.
+// Its overlay copies live in the anchor's `.lym`, one directory per run_subdir.
+// Its source reads come from the Env tree closures.
+func reviewTargetSnapshot(env Env, runSubdir string) shedadapters.TargetSnapshot {
+	return shedadapters.TargetSnapshot{
+		WorktreeRoot:  env.WorktreeRoot,
+		CacheDir:      filepath.Join(env.AnchorPath, lymdirs.DotLymDirName, lymdirs.ReviewSnapshotDirName, runSubdir),
+		SourceTreeID:  env.ReviewTreeID,
+		SourceChanges: env.ReviewTreeChanges,
+	}
+}
+
 // burlerReviewEntry is the Constructor for the "BurlerReview" registry row.
 // It takes no "gates" key: its only gate is the engine's review-parse entry.
+// Its producer records each round's target id, through a snapshot over the profile's fix scope and target paths.
 // Its models, review key, assistant and parent seat come from its segment's settings.
 // The fan lists come from the settings named by reviewer_fan_setting and fixer_fan_setting.
 // Without such a setting, they come from the recipe profile's cluster-fan and fix-fan.
@@ -126,8 +142,10 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 		profile.ClusterFan, profile.FixFan = "", ""
 	}
 
+	snapshot := reviewTargetSnapshot(env, runSubdir)
+	snapshot.Scope, snapshot.Paths = profile.FixScope, profile.Target.Paths
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: segment.ReviewKey}
-	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name)}, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name), Snapshot: &snapshot, DecisionRecordPath: env.DecisionRecordPath}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}

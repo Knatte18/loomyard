@@ -1293,6 +1293,77 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 			t.Errorf("Reason = %q; want the circling cause without the seam", reason)
 		}
 	})
+
+	t.Run("UnchangedRoundsEscalateAsStalemateOnlyWhenEnabled", func(t *testing.T) {
+		outcome, reason := callStalemateBouncer(t, 2)
+		if outcome != shedengine.Awaiting || !strings.Contains(reason, "cause: stalemate") {
+			t.Errorf("Call() with ReviewStalemateRounds 2 = %v, Reason %q; want Awaiting with the stalemate cause", outcome, reason)
+		}
+		outcome, reason = callStalemateBouncer(t, 0)
+		if outcome == shedengine.Awaiting || strings.Contains(reason, "cause: stalemate") {
+			t.Errorf("Call() with ReviewStalemateRounds 0 = %v, Reason %q; want no stalemate escalation", outcome, reason)
+		}
+	})
+}
+
+// callStalemateBouncer builds a Bouncer over an Env whose tree id never changes and drives one Call.
+// Round 1 was judged CONTINUE and round 2 is the round the call judges CONTINUE.
+// Each round has a fixer-report answering the review's one finding.
+// Each round also has a snapshot record whose target id equals the tree id, so both rounds left the target unchanged.
+// It returns the call's outcome and Awaiting Reason.
+func callStalemateBouncer(t *testing.T, stalemateRounds int) (shedengine.Outcome, string) {
+	t.Helper()
+	env := newTestEnv(t)
+	env.ReviewCirclingCheckpoint = 3
+	env.ReviewStalemateRounds = stalemateRounds
+	env.ReviewTreeID = func() (string, error) { return "T0", nil }
+	env.Shuttle = &shedfake.Shuttle{
+		RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+			if len(spec.OutputFiles) == 3 {
+				_ = os.WriteFile(spec.OutputFiles[0], []byte("---\nverdict: CONTINUE\nrationale: \"findings remain\"\n---\n"), 0o644)
+				_ = os.WriteFile(spec.OutputFiles[1], []byte("---\nround: 2\nledger: []\n---\nno open findings\n"), 0o644)
+			}
+			return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+		},
+	}
+	writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+	cfg := minimalBouncerConfig(t, env)
+
+	runDir := filepath.Join(env.RunRoot, "review-segment")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", runDir, err)
+	}
+	const (
+		review    = "---\nverdict: APPROVED\nfindings:\n  - id: F1\n    severity: MEDIUM\n    class: design\n    location: plan.md:4\n    summary: question F1 is open\n    fix: settle F1\n---\nreview prose\n"
+		report    = "---\ndispositions:\n  - id: F1\n    disposition: fixed\n---\n"
+		judgedOne = "{\"fix_scope\":\"source\",\"target_id\":\"T0\",\"post_fix_target_id\":\"T0\",\"decisions_routed\":false}"
+		judgedTwo = "{\"fix_scope\":\"source\",\"target_id\":\"T0\",\"decisions_routed\":false}"
+	)
+	files := map[string]string{
+		"round-1-review.md":          review,
+		"round-1-fixer-report.md":    report,
+		"round-1-snapshot.json":      judgedOne,
+		"round-1-bouncer-verdict.md": "---\nverdict: CONTINUE\nrationale: \"findings remain\"\n---\n",
+		"round-1-bouncer-ledger.md":  "---\nround: 1\nledger: []\n---\nno open findings\n",
+		"round-2-review.md":          review,
+		"round-2-fixer-report.md":    report,
+		"round-2-snapshot.json":      judgedTwo,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+	if err != nil {
+		t.Fatalf("bouncerEntry() error = %v; want nil", err)
+	}
+	outcome, ptr, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	return outcome, ptr.Reason
 }
 
 // TestBouncerEntry_BlockingEscalatesAndColorSegment covers the two optional keys the Merge-Review perch's Bouncer row carries.
