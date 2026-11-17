@@ -13,14 +13,17 @@
 // The check mark is read from the session user options @lym_check, @lym_check_state and @lym_check_start.
 // Line 3 is the follow button, then the slack toggle, the RC button and the away toggle, then the action row.
 // The slack toggle is the button of the orch whose session it is, drawn only in a prime's or a beam's session.
-// The toggles read the Slack state from a `#()` job, which the session's run directory names the orch to.
+// The toggles read the Slack state from a `#()` job, which the session option @lym_orch_dir names the orch to.
+// A task's session holds an empty @lym_orch_dir, so its job names no orch and the bar draws the away toggle alone.
 // The server-global @lym_slack_state_command holds the job's line.
-// The RC button shows the remote control of that orch, drawn only while the session's worktree records an orch strand.
-// It reads its state from a `#()` job of its own, whose line the server-global @lym_rc_state_command holds.
+// The RC button belongs to the agent of the window's active pane.
+// It is drawn only while that pane carries @lym_strand_name and the session carries @lym_button_dir.
+// It is lit while that pane carries @lym_rc, the mark a click on RC or a launch with remote control sets.
 // The action row is read from the session user options @lym_buttons_plain and @lym_buttons_agent.
 // No Go decision reads @strand_color, @lym_unseen or @lym_prime_session.
 // Neither does one read a check mark's options or the action row's options.
 // @lym_follow is the exception: the follow button shows it, and followingLocked reads it.
+// So is @lym_rc: a click on RC reads it to refuse a pane already marked.
 // The decision-bearing @lym_button_spec, @lym_button_dir and @lym_button_answer are not read here.
 // A button click reads them to decide what to run and where.
 
@@ -37,21 +40,8 @@ const (
 	AwayToggleLit    = "away-on"
 )
 
-// The words of the remote-control state line the RC button reads.
-// RemoteControlLit draws the RC button lit and RemoteControlUnlit draws it unlit.
-// A line with neither draws no RC button.
-// The state line is what the command in @lym_rc_state_command prints.
-const (
-	RemoteControlLit   = "rc-on"
-	RemoteControlUnlit = "rc-off"
-)
-
-// The names of the two hidden `orch` verbs behind the RC button.
-// RemoteControlBarVerb prints the state line the button reads, and RemoteControlOnVerb is what a click runs.
-const (
-	RemoteControlBarVerb = "rc-bar"
-	RemoteControlOnVerb  = "rc-on"
-)
+// RemoteControlOnVerb is the name of the hidden `orch` verb a click on the RC button runs.
+const RemoteControlOnVerb = "rc-on"
 
 const (
 	// strandColorFormat expands to a strand pane's @strand_color, or white when the pane has none.
@@ -164,7 +154,7 @@ const (
 	slackStateJob = "#(#{E:" + slackStateCommandOption + "})"
 
 	// slackToggleShownCondition is true while the state line holds SlackToggleLit or SlackToggleUnlit:
-	// the session runs an orch that has a slack button.
+	// the session is the prime's or a beam's, whose orch has a slack button.
 	slackToggleShownCondition = "#{||:#{m:*" + SlackToggleLit + "*," + slackStateJob + "},#{m:*" + SlackToggleUnlit + "*," + slackStateJob + "}}"
 
 	// slackButtonFormat is the drawn slack toggle: a user range labelled slack.
@@ -178,31 +168,24 @@ const (
 	// awayToggleFormat is the away toggle: a user range labelled away, lit green while the state line holds AwayToggleLit.
 	awayToggleFormat = "#[range=user|" + awayToggleRange + " #{?#{m:*" + AwayToggleLit + "*," + slackStateJob + "},bg=green fg=black bold," + unlitButtonStyle + "}] " + awayToggleRange + " #[norange list=on default] "
 
-	// remoteControlStateCommandOption is the server-global user option holding the shell line the RC button's state job runs.
-	// Like the bar's other options it is display only, and no Go decision reads it.
-	remoteControlStateCommandOption = "@lym_rc_state_command"
-
 	// remoteControlRange names the user range of the RC button, which a click dispatches on.
 	remoteControlRange = "rc"
 
 	// remoteControlLabel is the text drawn on the RC button.
 	remoteControlLabel = "RC"
 
-	// remoteControlStateJob is the `#()` job the RC button reads: the line remoteControlStateCommandOption holds.
-	// tmux expands the option's value as a format, so the session's options in the line resolve per session.
-	// It runs the job again at a redraw a second or more after its last run.
-	// Its output is only matched, never drawn, so an unset option or a job not yet run draws no RC button.
-	remoteControlStateJob = "#(#{E:" + remoteControlStateCommandOption + "})"
-
-	// remoteControlShownCondition is true while the state line holds RemoteControlLit or RemoteControlUnlit:
-	// the session's worktree records an orch strand.
-	remoteControlShownCondition = "#{||:#{m:*" + RemoteControlLit + "*," + remoteControlStateJob + "},#{m:*" + RemoteControlUnlit + "*," + remoteControlStateJob + "}}"
+	// remoteControlShownCondition is true while three things hold.
+	// The window's active pane carries strandNamePaneOption, so it is an agent's pane.
+	// The RC click line is pinned.
+	// The session carries buttonDirOption, the directory the click runs from.
+	// So a button that no click could serve is never drawn.
+	remoteControlShownCondition = "#{&&:#{" + strandNamePaneOption + "},#{&&:#{" + remoteControlClickCommandOption + "},#{" + buttonDirOption + "}}}"
 
 	// remoteControlButtonFormat is the drawn RC button: a user range labelled RC.
-	// It is lit green while the state line holds RemoteControlLit.
-	remoteControlButtonFormat = "#[range=user|" + remoteControlRange + " #{?#{m:*" + RemoteControlLit + "*," + remoteControlStateJob + "},bg=green fg=black bold," + unlitButtonStyle + "}] " + remoteControlLabel + " #[norange list=on default] "
+	// It is lit green while the window's active pane carries remoteControlPaneOption.
+	remoteControlButtonFormat = "#[range=user|" + remoteControlRange + " #{?#{" + remoteControlPaneOption + "},bg=green fg=black bold," + unlitButtonStyle + "}] " + remoteControlLabel + " #[norange list=on default] "
 
-	// remoteControlToggleFormat is the RC button of the session's orch.
+	// remoteControlToggleFormat is the RC button of the agent in the window's active pane.
 	// It is drawn only while remoteControlShownCondition holds.
 	remoteControlToggleFormat = "#{?" + remoteControlShownCondition + "," + remoteControlButtonFormat + ",}"
 
@@ -214,6 +197,6 @@ const (
 	statusFormatActions = listPrologueFormat + followButtonFormat + slackToggleFormat + remoteControlToggleFormat + awayToggleFormat + "#{?#{@strand},#{E:" + buttonRowAgentOption + "},#{E:" + buttonRowPlainOption + "}}"
 
 	// statusIntervalSeconds is the bar's redraw interval in seconds.
-	// The toggles' state jobs run again at each redraw, so a change made by any route shows within it.
+	// The Slack toggles' state job runs again at each redraw, so a change made by any route shows within it.
 	statusIntervalSeconds = "5"
 )

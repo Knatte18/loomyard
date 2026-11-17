@@ -49,7 +49,7 @@ status bar runs it at each redraw.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&dir, "dir", "", "run directory of the session whose bar is drawn")
+	cmd.Flags().StringVar(&dir, "dir", "", "directory of the orch whose slack button the bar shows, empty for a session with no such orch")
 	return cmd
 }
 

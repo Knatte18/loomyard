@@ -650,23 +650,11 @@ func TestStart_LiveStrand(t *testing.T) {
 		wantStrandAtCalls []string
 		// withdrawErr fails the first withdraw: start then binds nothing and reports creel's error.
 		withdrawErr error
-		// seedRecord, when set, is the remote-control record written before start runs.
-		seedRecord *orchengine.RemoteControlRecord
-		// wantLit expects a lit RC button once start has run.
-		// Every other row expects an unlit one, since a live strand the record does not name is recorded off.
-		wantLit bool
 	}{
 		{
 			name: "with a watcher does nothing", watcher: true, wantAction: actionAlreadyRunning,
 			wantCreelCalls:    []string{"withdraw:orch", "release:orch", "withdraw:orch", "release:orch"},
 			wantStrandAtCalls: []string{"", "", "g1", "g1"},
-		},
-		{
-			name: "an already-running strand the record names keeps its recorded remote control", watcher: true, wantAction: actionAlreadyRunning,
-			seedRecord:        &orchengine.RemoteControlRecord{Strand: "g1", On: true},
-			wantCreelCalls:    []string{"withdraw:orch", "release:orch", "withdraw:orch", "release:orch"},
-			wantStrandAtCalls: []string{"", "", "g1", "g1"},
-			wantLit:           true,
 		},
 		{
 			name: "without a watcher spawns the watcher only", wantAction: actionSpawnedWatcher, wantSpawns: 1,
@@ -688,42 +676,23 @@ func TestStart_LiveStrand(t *testing.T) {
 			seed:        &orchengine.State{Phase: orchengine.PhaseIdle, Strand: "old", SessionID: "old-id"},
 			withdrawErr: errors.New("creel: the daemon did not start"),
 		},
-		{
-			name:              "a live strand other than the recorded one does not take over the recorded one's remote control",
-			seed:              &orchengine.State{Phase: orchengine.PhaseIdle, Strand: "old", SessionID: "old-id"},
-			seedRecord:        &orchengine.RemoteControlRecord{Strand: "old", On: true},
-			wantAction:        actionSpawnedWatcher,
-			wantSpawns:        1,
-			wantCreelCalls:    []string{"withdraw:orch", "release:orch", "withdraw:orch", "release:orch"},
-			wantStrandAtCalls: []string{"old", "old", "g1", "g1"},
-		},
-		{
-			name:              "a live strand the record already names keeps its recorded remote control",
-			seed:              &orchengine.State{Phase: orchengine.PhaseIdle, Strand: "old", SessionID: "old-id"},
-			seedRecord:        &orchengine.RemoteControlRecord{Strand: "g1", On: true},
-			wantAction:        actionSpawnedWatcher,
-			wantSpawns:        1,
-			wantCreelCalls:    []string{"withdraw:orch", "release:orch", "withdraw:orch", "release:orch"},
-			wantStrandAtCalls: []string{"old", "old", "g1", "g1"},
-			wantLit:           true,
-		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
 			h := newStartHarness(t, reedengine.StrandStatus{GUID: "g1", Name: "orch", Live: true})
+			var marked []string
+			h.cli.markRemoteControl = func(guid string) error {
+				marked = append(marked, guid)
+				return nil
+			}
 			seed := c.seed
 			if c.stopping {
 				seed = &orchengine.State{Phase: orchengine.PhaseIdle, Strand: "g1", SessionID: "g1-id", WatcherStopping: true}
 			}
 			if seed != nil {
 				if err := orchengine.SaveState(h.cli.paths, *seed); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if c.seedRecord != nil {
-				if err := orchengine.WriteRemoteControl(h.cli.paths, *c.seedRecord); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -789,12 +758,8 @@ func TestStart_LiveStrand(t *testing.T) {
 					t.Errorf("state strand = %q, session id = %q; want the adopted g1 and %q", st.Strand, st.SessionID, c.wantSessionID)
 				}
 			}
-			wantWord := reedengine.RemoteControlUnlit
-			if c.wantLit {
-				wantWord = reedengine.RemoteControlLit
-			}
-			if got := remoteControlBarWordAt(h.cli.paths); got != wantWord {
-				t.Errorf("remoteControlBarWordAt() = %q; want %q", got, wantWord)
+			if len(marked) != 0 {
+				t.Errorf("marked strands = %v; want none for a strand already running", marked)
 			}
 		})
 	}

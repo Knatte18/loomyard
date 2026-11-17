@@ -117,9 +117,7 @@
 // Config.RemoteControlSessionName fills {machine}, {hub}, {role} and {name} from the machine and the orch strand's name;
 // the template's `{machine}::{name}` is the cross-machine address creel uses.
 // LoadConfig refuses a name holding a control character, and an empty name while the switch is on.
-// RemoteControlRecord holds what lym last set for the orch strand, which the status bar's RC button shows.
-// Claude Code gives lym no reading of the state,
-// so a session whose remote control the operator turned off inside Claude Code still reads on.
+// orchengine records no remote-control state: the status bar's RC button reads a mark on the strand's pane.
 //
 // # The watcher
 //

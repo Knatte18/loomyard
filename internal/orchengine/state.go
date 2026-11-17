@@ -41,11 +41,6 @@ type Paths struct {
 
 	// SlackPresencePath is the machine's presence record, which every rendered pointer reads; empty means no presence line.
 	SlackPresencePath string
-
-	// RemoteControlPath is the record of the remote control lym last set for the orch strand.
-	RemoteControlPath string
-	// RemoteControlLockPath is the advisory lock guarding RemoteControlPath.
-	RemoteControlLockPath string
 }
 
 // PendingStep is one post or inject the watcher persisted before sending it to creel.

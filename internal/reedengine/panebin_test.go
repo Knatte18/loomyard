@@ -504,13 +504,13 @@ func TestComposeSwitchCommand(t *testing.T) {
 			"slack state/posix",
 			shell.Posix(),
 			composeSlackStateCommand,
-			`'/opt/it'\''s##here/lym' slack bar --dir #{@lym_button_dir}`,
+			`'/opt/it'\''s##here/lym' slack bar --dir #{@lym_orch_dir}`,
 		},
 		{
 			"slack state/pwsh",
 			shell.Pwsh(),
 			composeSlackStateCommand,
-			`& '/opt/it''s##here/lym' slack bar --dir #{@lym_button_dir}`,
+			`& '/opt/it''s##here/lym' slack bar --dir #{@lym_orch_dir}`,
 		},
 		{
 			"rc click/posix",
@@ -527,18 +527,6 @@ func TestComposeSwitchCommand(t *testing.T) {
 				return composeRemoteControlClickCommand(sh, executablePath, socketPath, tmuxPath)
 			},
 			`Set-Location -LiteralPath #{@lym_button_dir} *> $null; & '/opt/it''s##here/lym' orch rc-on --socket '/tmp/tmux-1000/it''s##socket' --tmux '/usr/local/it''s##bin/tmux' --client #{q:client_name} *> $null; exit 0`,
-		},
-		{
-			"rc state/posix",
-			shell.Posix(),
-			composeRemoteControlStateCommand,
-			`'/opt/it'\''s##here/lym' orch rc-bar --dir #{@lym_button_dir}`,
-		},
-		{
-			"rc state/pwsh",
-			shell.Pwsh(),
-			composeRemoteControlStateCommand,
-			`& '/opt/it''s##here/lym' orch rc-bar --dir #{@lym_button_dir}`,
 		},
 	}
 	for _, tt := range slackTests {
@@ -578,13 +566,6 @@ func TestComposeSwitchCommand(t *testing.T) {
 				return composeRemoteControlClickCommand(shell.Posix(), executablePath, socketPath, tmuxPath)
 			},
 			"pinning no RC click",
-		},
-		{
-			"rc state",
-			func(executablePath func() (string, error)) (string, bool) {
-				return composeRemoteControlStateCommand(shell.Posix(), executablePath)
-			},
-			"pinning no RC state line",
 		},
 	}
 	for _, tt := range slackUnresolvable {

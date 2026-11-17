@@ -676,7 +676,9 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 		if err != nil {
 			return report, err
 		}
-		c.recordRemoteControl(started.GUID, remoteControlName != "")
+		if remoteControlName != "" {
+			c.markLaunchedRemoteControl(started.GUID)
+		}
 		report.Strand = started.GUID
 		if started.Warning != "" {
 			report.Warnings = append(report.Warnings, started.Warning)
@@ -704,7 +706,6 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 		if err := c.adoptListedStrand(st, strand); err != nil {
 			return report, err
 		}
-		c.recordUnrecordedRemoteControl(strand.GUID)
 		logger.Info("orch: restarted a dead watcher", "strandGUID", strand.GUID, "previousExit", st.WatcherExit)
 		if err := c.spawnWatcher(); err != nil {
 			return report, err
@@ -714,7 +715,6 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 		if err := c.adoptListedStrand(st, strand); err != nil {
 			return report, err
 		}
-		c.recordUnrecordedRemoteControl(strand.GUID)
 		report.Action = actionAlreadyRunning
 	}
 	if watcherLive && st.WatcherStopping {

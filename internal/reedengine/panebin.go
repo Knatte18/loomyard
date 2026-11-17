@@ -248,9 +248,10 @@ func composeSlackToggleCommand(sh shell.Shell, executablePath func() (string, er
 }
 
 // composeSlackStateCommand returns the shell line the Slack toggles' state job runs, on sh's dialect:
-// the absolute path of this binary with `slack bar --dir` and the session's run directory.
+// the absolute path of this binary with `slack bar --dir` and the session's orch directory.
 // It prints the state of the slack button of the orch that runs there and the machine's presence.
-// The job's format expands the line once more, so the run directory's session option is left for that expansion,
+// A task's session holds the empty word there, so its line prints the presence alone.
+// The job's format expands the line once more, so the orch directory's session option is left for that expansion,
 // and the pinned path has each # doubled.
 // An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
 // It then returns false, so no slack toggle is drawn and away stays unlit.
@@ -260,13 +261,14 @@ func composeSlackStateCommand(sh shell.Shell, executablePath func() (string, err
 		logger.Warn("reed: could not resolve this binary, pinning no Slack state line", "err", err)
 		return "", false
 	}
-	return strings.ReplaceAll(sh.Invoke(exe), "#", "##") + " slack bar --dir #{" + buttonDirOption + "}", true
+	return strings.ReplaceAll(sh.Invoke(exe), "#", "##") + " slack bar --dir #{" + orchDirOption + "}", true
 }
 
 // composeRemoteControlClickCommand returns the shell line the click binding runs for the RC button, on sh's dialect.
 // It changes into the session's run directory, as composeButtonCommand's line does.
 // Then it runs the absolute path of this binary with `orch rc-on`.
-// The line also carries the told socket and tmux paths and the clicking client, so the verb can redraw its bar.
+// That verb turns remote control on for the agent of the clicking client's active pane.
+// The line also carries the told socket and tmux paths and the clicking client, so the verb can find the pane and redraw.
 // Every pinned token is quoted once and then has each # doubled, since the click format-expands the line.
 // #{q:client_name} is left for that expansion as its own word.
 // The output of both steps is discarded and the line ends with status zero, so tmux opens no view mode.
@@ -286,22 +288,6 @@ func composeRemoteControlClickCommand(sh shell.Shell, executablePath func() (str
 		"--client", "#{q:client_name}",
 	}
 	return sh.Chain(sh.DiscardOutput(sh.ChangeDirToWord("#{"+buttonDirOption+"}")), sh.DiscardOutput(strings.Join(words, " ")), sh.ExitSuccess()), true
-}
-
-// composeRemoteControlStateCommand returns the shell line the RC button's state job runs, on sh's dialect:
-// the absolute path of this binary with `orch rc-bar --dir` and the session's run directory.
-// It prints the remote control lym last set for the orch strand that the worktree there records.
-// The job's format expands the line once more, so the run directory's session option is left for that expansion,
-// and the pinned path has each # doubled.
-// An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
-// It then returns false, so no RC button is drawn.
-func composeRemoteControlStateCommand(sh shell.Shell, executablePath func() (string, error)) (string, bool) {
-	exe, err := selfexec.ResolveLymBinary(executablePath)
-	if err != nil {
-		logger.Warn("reed: could not resolve this binary, pinning no RC state line", "err", err)
-		return "", false
-	}
-	return strings.ReplaceAll(sh.Invoke(exe), "#", "##") + " orch " + RemoteControlBarVerb + " --dir #{" + buttonDirOption + "}", true
 }
 
 // The flags a button's prompt re-enters the click verb with.

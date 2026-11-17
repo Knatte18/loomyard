@@ -209,8 +209,7 @@ func (e *Engine) pinGlobalLineLocked(option, line, what string) {
 // The button click line is set in buttonCommandOption and unset the same way.
 // The Slack toggle click line in slackToggleCommandOption is set and unset the same way.
 // The Slack state line in slackStateCommandOption is set and unset the same way.
-// The RC click line in remoteControlClickCommandOption is too.
-// So is the RC state line in remoteControlStateCommandOption.
+// The RC click line in remoteControlClickCommandOption is too, and the RC button is not drawn while it is unset.
 // This binary's build stamp is then set in bindingsBuildOption, ahead of the bindings themselves.
 // It is unset for a binary with no VCS stamp.
 // Assumes the op lock is already held.
@@ -221,7 +220,6 @@ func (e *Engine) pinBindingsLocked() {
 	e.pinGlobalLineLocked(slackToggleCommandOption, lines.slackToggle, "the Slack toggle click line")
 	e.pinGlobalLineLocked(slackStateCommandOption, lines.slackState, "the Slack state line")
 	e.pinGlobalLineLocked(remoteControlClickCommandOption, lines.remoteControlClick, "the RC click line")
-	e.pinGlobalLineLocked(remoteControlStateCommandOption, lines.remoteControlState, "the RC state line")
 	if stamp := bindingsBuildStamp(e.build); stamp != "" {
 		if err := e.tmux.run("set-option", "-g", bindingsBuildOption, stamp); err != nil {
 			logger.Warn("reed: failed to stamp the bindings' build", "socket", e.Socket(), "session", e.SessionName(), "err", err)
@@ -262,7 +260,7 @@ func (e *Engine) repinStaleBindingsLocked() {
 	e.pinBindingsLocked()
 }
 
-// bindingLines holds the shell lines the bindings run and the toggles' state jobs read; an empty one is not pinned.
+// bindingLines holds the shell lines the bindings run and the Slack toggles' state job reads; an empty one is not pinned.
 type bindingLines struct {
 	// switchPrev and switchNext are the lines of M-Left and M-Right, and follow the follow button's jump.
 	switchPrev, switchNext, follow string
@@ -270,15 +268,15 @@ type bindingLines struct {
 	button string
 	// slackToggle is the line of a click on a Slack toggle, and slackState the Slack toggles' state job.
 	slackToggle, slackState string
-	// remoteControlClick is the line of a click on the RC button, and remoteControlState the RC button's state job.
-	remoteControlClick, remoteControlState string
+	// remoteControlClick is the line of a click on the RC button.
+	remoteControlClick string
 }
 
-// bindingLinesLocked returns the shell lines the bindings run and the toggles' state jobs read.
+// bindingLinesLocked returns the shell lines the bindings run and the Slack toggles' state job reads.
 // Every line is empty when the socket path or the tmux path cannot be resolved.
 // The switch, follow and button lines are empty together when this binary cannot be resolved.
 // The two Slack lines are empty together when either cannot be composed, as under a test binary,
-// and so are the two RC lines; the other lines are still returned then.
+// and the RC line is empty then too; the other lines are still returned then.
 func (e *Engine) bindingLinesLocked() bindingLines {
 	socketPath, err := e.tmux.output("display-message", "-p", "#{socket_path}")
 	socketPath = strings.TrimSpace(socketPath)
@@ -301,10 +299,8 @@ func (e *Engine) bindingLinesLocked() bindingLines {
 	if slackToggleOK && slackStateOK {
 		lines.slackToggle, lines.slackState = slackToggle, slackState
 	}
-	remoteControlClick, remoteControlClickOK := composeRemoteControlClickCommand(sh, e.executablePath, socketPath, tmuxPath)
-	remoteControlState, remoteControlStateOK := composeRemoteControlStateCommand(sh, e.executablePath)
-	if remoteControlClickOK && remoteControlStateOK {
-		lines.remoteControlClick, lines.remoteControlState = remoteControlClick, remoteControlState
+	if remoteControlClick, ok := composeRemoteControlClickCommand(sh, e.executablePath, socketPath, tmuxPath); ok {
+		lines.remoteControlClick = remoteControlClick
 	}
 	prev, prevOK := composeSwitchCommand(sh, e.executablePath, false, socketPath, tmuxPath)
 	next, nextOK := composeSwitchCommand(sh, e.executablePath, true, socketPath, tmuxPath)

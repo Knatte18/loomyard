@@ -36,13 +36,14 @@ func bindKeyArgvCount() int {
 }
 
 // wantButtonRowArgv is the single invocation pinButtonRowLocked issues for target:
-// four set-option commands joined by ";" separators.
-func wantButtonRowArgv(target, plain, agent, specJSON, dirWord string) []string {
+// five set-option commands joined by ";" separators.
+func wantButtonRowArgv(target, plain, agent, specJSON, dirWord, orchDirWord string) []string {
 	return []string{
 		"set-option", "-t", target, buttonRowPlainOption, plain, ";",
 		"set-option", "-t", target, buttonRowAgentOption, agent, ";",
 		"set-option", "-t", target, buttonSpecOption, specJSON, ";",
-		"set-option", "-t", target, buttonDirOption, dirWord,
+		"set-option", "-t", target, buttonDirOption, dirWord, ";",
+		"set-option", "-t", target, orchDirOption, orchDirWord,
 	}
 }
 
@@ -81,7 +82,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-t", target, "status", "3"},
 			{"set-option", "-t", target, "status-position", "bottom"},
 			// The fixture's geometry tells no button context, so the row renders empty.
-			wantButtonRowArgv(target, "", "", "", ""),
+			wantButtonRowArgv(target, "", "", "", "", ""),
 			{"set-option", "-w", "-t", target, "window-size", "latest"},
 			// The fixture's tmux binary does not resolve, so the follow jump line is unset.
 			{"set-option", "-gu", "@lym_follow_command"},
@@ -89,7 +90,6 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-gu", "@lym_slack_toggle_command"},
 			{"set-option", "-gu", "@lym_slack_state_command"},
 			{"set-option", "-gu", "@lym_rc_click_command"},
-			{"set-option", "-gu", "@lym_rc_state_command"},
 			// The test binary carries no VCS stamp, so the bindings' build stamp is unset.
 			{"set-option", "-gu", "@lym_bindings_build"},
 		}
@@ -117,7 +117,6 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-gu", "@lym_slack_toggle_command"},
 			{"set-option", "-gu", "@lym_slack_state_command"},
 			{"set-option", "-gu", "@lym_rc_click_command"},
-			{"set-option", "-gu", "@lym_rc_state_command"},
 			{"set-option", "-gu", "@lym_bindings_build"},
 		}
 		if len(calls) < len(wantTail)+len(wantLast) {
@@ -276,8 +275,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			wantCalls int
 			wantWarn  string
 		}{
-			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 16, ""},
-			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 17, primeSessionOption},
+			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 15, ""},
+			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 16, primeSessionOption},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -335,8 +334,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
-		if got := fake.Count("set-option"); got != 16 {
-			t.Errorf("set-option calls = %d, want 16 (every pin still attempted)", got)
+		if got := fake.Count("set-option"); got != 15 {
+			t.Errorf("set-option calls = %d, want 15 (every pin still attempted)", got)
 		}
 		if got, want := fake.Count("bind-key"), bindKeyArgvCount(); got != want {
 			t.Errorf("bind-key calls = %d, want all %d still issued", got, want)

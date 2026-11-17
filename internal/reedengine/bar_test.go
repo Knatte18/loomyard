@@ -40,18 +40,22 @@ func sessionLoopTwoFormats(format string, loopStart int) int {
 
 // TestStatusFormatActions_TogglesFollowTheFollowButton pins line 3's slack toggle, RC button and away toggle.
 // They come after the follow button and before the action row.
-// Each is a user range with its own label, and each lights green only on its own word of its state job's output.
-// The slack toggle is drawn only while the Slack state line holds slack-on or slack-off,
-// and the RC button only while its own state line holds rc-on or rc-off.
+// Each is a user range with its own label.
+// The slack and away toggles light green only on their own word of the Slack state job's output.
+// The slack toggle is drawn only while the Slack state line holds slack-on or slack-off.
 // A line with neither word, such as a bare away-on, draws no slack toggle.
+// The RC button runs no state job.
+// It is drawn while the active pane carries a strand name and the click line is pinned.
+// It also needs the session to carry the button directory.
+// It lights green while the active pane carries the RC pane option.
 // The away toggle is always drawn.
 func TestStatusFormatActions_TogglesFollowTheFollowButton(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const slackJob = "#(#{E:@lym_slack_state_command})"
-	const rcJob = "#(#{E:@lym_rc_state_command})"
-	rcShownWhen := "#{?#{||:#{m:*rc-on*," + rcJob + "},#{m:*rc-off*," + rcJob + "}},"
+	const litStyle = "bg=green fg=black bold,"
+	const rcShownWhen = "#{?#{&&:#{@lym_strand_name},#{&&:#{@lym_rc_click_command},#{@lym_button_dir}}},"
 	markers := []string{"#[range=user|follow ", "#[range=user|slack ", rcShownWhen, "#[range=user|rc ", "#[range=user|away ", "#{?#{@strand},"}
 	at := make([]int, len(markers))
 	for i, marker := range markers {
@@ -67,19 +71,18 @@ func TestStatusFormatActions_TogglesFollowTheFollowButton(t *testing.T) {
 	tests := []struct {
 		name      string
 		segment   string
-		stateJob  string
 		label     string
-		litWord   string
+		lit       string
 		unlitWord string
 		shownWhen string
 		tail      string
 	}{
 		{
-			"Slack", statusFormatActions[at[1]:at[2]], slackJob, "slack", "slack-on", "away-on",
+			"Slack", statusFormatActions[at[1]:at[2]], "slack", "#{?#{m:*slack-on*," + slackJob + "}," + litStyle, "away-on",
 			"#{?#{||:#{m:*slack-on*," + slackJob + "},#{m:*slack-off*," + slackJob + "}},", ",}",
 		},
-		{"RC", statusFormatActions[at[3]:at[4]], rcJob, "RC", "rc-on", "slack-on", rcShownWhen, ",}"},
-		{"Away", statusFormatActions[at[4]:at[5]], slackJob, "away", "away-on", "slack-on", "", ""},
+		{"RC", statusFormatActions[at[3]:at[4]], "RC", "#{?#{@lym_rc}," + litStyle, "slack-", rcShownWhen, ",}"},
+		{"Away", statusFormatActions[at[4]:at[5]], "away", "#{?#{m:*away-on*," + slackJob + "}," + litStyle, "slack-on", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -87,9 +90,8 @@ func TestStatusFormatActions_TogglesFollowTheFollowButton(t *testing.T) {
 			if !strings.Contains(statusFormatActions, tt.shownWhen+tt.segment) {
 				t.Errorf("%s toggle = %q, want it directly after the condition %q", tt.name, tt.segment, tt.shownWhen)
 			}
-			wantLit := "#{?#{m:*" + tt.litWord + "*," + tt.stateJob + "},bg=green fg=black bold,"
-			if !strings.Contains(tt.segment, wantLit) {
-				t.Errorf("%s toggle = %q, want it lit by %q", tt.name, tt.segment, wantLit)
+			if !strings.Contains(tt.segment, tt.lit) {
+				t.Errorf("%s toggle = %q, want it lit by %q", tt.name, tt.segment, tt.lit)
 			}
 			if strings.Contains(tt.segment, tt.unlitWord) {
 				t.Errorf("%s toggle = %q, want it free of the other toggle's word %q", tt.name, tt.segment, tt.unlitWord)

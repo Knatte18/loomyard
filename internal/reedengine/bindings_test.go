@@ -240,9 +240,9 @@ func TestPinGlobalLineLocked(t *testing.T) {
 	}
 }
 
-// TestPinBindingsLocked_PinsTheToggleLinesOnlyWhenEverythingResolves pins the two Slack options and the two RC options.
+// TestPinBindingsLocked_PinsTheToggleLinesOnlyWhenEverythingResolves pins the two Slack options and the RC click option.
 // It also pins the click's toggle branches.
-// A resolved socket, tmux binary and executable pin each toggle's click line and state line and bind its branch.
+// A resolved socket, tmux binary and executable pin each toggle's lines and bind its branch.
 // Any one failing to resolve unsets every toggle line and binds no toggle branch.
 // An executable that resolves to this test binary unsets them too and pins no button line.
 func TestPinBindingsLocked_PinsTheToggleLinesOnlyWhenEverythingResolves(t *testing.T) {
@@ -284,12 +284,10 @@ func TestPinBindingsLocked_PinsTheToggleLinesOnlyWhenEverythingResolves(t *testi
 			wantToggle, _ := composeSlackToggleCommand(sh, tt.executable, socketPath, tmuxPath)
 			wantState, _ := composeSlackStateCommand(sh, tt.executable)
 			wantRCClick, _ := composeRemoteControlClickCommand(sh, tt.executable, socketPath, tmuxPath)
-			wantRCState, _ := composeRemoteControlStateCommand(sh, tt.executable)
 			lines := []struct{ option, line string }{
 				{slackToggleCommandOption, wantToggle},
 				{slackStateCommandOption, wantState},
 				{remoteControlClickCommandOption, wantRCClick},
-				{remoteControlStateCommandOption, wantRCState},
 			}
 			var wantCalls [][]string
 			for _, line := range lines {

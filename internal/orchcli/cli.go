@@ -137,8 +137,10 @@ type orchCLI struct {
 	reapInherited func()
 	// machineName answers this machine's name, which the remote session's name carries.
 	machineName func() (string, error)
-	// injectRemoteControl queues creel's remote-control command with name into the orch strand receiver.
+	// injectRemoteControl queues creel's remote-control command with name into the strand receiver.
 	injectRemoteControl func(receiver, name string) error
+	// markRemoteControl sets the RC mark on the live pane of the strand guid in this worktree's session; nil marks none.
+	markRemoteControl func(guid string) error
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -156,12 +158,11 @@ strand of the hub's prime worktree or of a beam's. A detached watcher reads each
 turn's context usage and, past a threshold and while the session is idle, has the
 session write a handoff, clears it and resumes it from that handoff.
 "lym beam start" brings the orchestrator up and "lym beam stop" takes it down.
-Every verb but the hidden rc-bar runs from the hub's prime worktree or from a beam.`,
+Every verb runs from the hub's prime worktree or from a beam.`,
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// The bare group and its unknown-subcommand path need no repository,
-			// and the RC button's state verb resolves its own directory.
-			if cmd.Name() == "orch" || cmd.Name() == remoteControlBarVerb {
+			// The bare group and its unknown-subcommand path need no repository.
+			if cmd.Name() == "orch" {
 				return nil
 			}
 			ctx := cmd.Context()
@@ -188,7 +189,7 @@ Every verb but the hidden rc-bar runs from the hub's prime worktree or from a be
 	}
 
 	parent.AddCommand(c.statusCmd(), c.refreshCmd(), c.distillCmd(), c.withdrawCmd(), c.stopCmd(), c.rulesCmd(), c.watchCmd(), c.resumeContextCmd(),
-		remoteControlBarCmd(), c.remoteControlOnCmd())
+		c.remoteControlOnCmd())
 	return parent
 }
 
@@ -266,6 +267,7 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.injectRemoteControl = func(receiver, name string) error {
 		return injectRemoteControlCommand(location, receiver, name)
 	}
+	c.markRemoteControl = reed.MarkRemoteControlOn
 	c.spawnWatcher = c.spawnWatcherProcess
 	c.startLockWait = stopStartLockWait
 	c.sleep = time.Sleep

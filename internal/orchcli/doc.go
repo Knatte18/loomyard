@@ -279,24 +279,22 @@
 // The name is formed from the strand name the launch takes:
 // the listed strand's, else the fixed `<shortname>:orch` or `<shortname>:<slug>:orch`.
 // A name that cannot be formed is logged, and the session launches without remote control.
-// The launch records the new strand's remote control, on or off, for reed's RC button.
-// An orch on an engine with no remote control records nothing, so the button is not drawn for it.
-// A start that finds a live orch strand already running records it off when the record does not name it,
-// so the button is drawn and a click can turn remote control on.
-// Two hidden verbs serve the button.
-// `lym orch rc-bar --dir <dir>` prints rc-on or rc-off for the strand the orch state at dir records.
-// It does so only while the remote-control record names that strand, and it prints nothing otherwise.
-// It skips the orch wiring, which would refuse a task pair's session.
-// `lym orch rc-on` is the click.
-// It queues creel's remote-control command into the worktree's live orch strand.
+// A launch with remote control on sets reed's RC mark on the new strand's pane, so the RC button shows it lit.
+// A failed mark is logged and never fails the launch.
+// reed's RC button belongs to the agent of the window's active pane, an orch or any other agent.
+// Every agent but an orch launched with the switch on starts with its button unlit.
+// The hidden verb `lym orch rc-on` is the click.
+// It runs from the clicked session's run directory, the parent's worktree for a task, so the orch wiring accepts it.
+// It reads the clicking client's active pane and queues creel's remote-control command into the agent the pane runs.
 // It signs the command as the REMOTECONTROL program.
-// The name is the one a launch would pass, whatever the switch says.
-// It then records the strand's remote control on and redraws the clicking client's bar.
-// A click refuses and sends nothing when the record already reads on.
+// The name is the one remote_control_name forms for that agent, whatever the switch says.
+// It then marks the pane and redraws the clicking client's bar.
+// A click refuses and sends nothing for a pane that runs no agent and for a pane already marked.
 // Claude Code's answer to a second command in a session with remote control on is unverified.
-// The refusal names `/remote-control` typed by hand in the orch pane for a session turned off inside Claude Code.
-// A record write that fails after the command is queued leaves the click a success carrying a warning field.
-// A worktree with several orch strands refuses too, naming them and `lym reed remove`.
+// The refusal names `/remote-control` typed by hand in the agent's pane for a session turned off inside Claude Code.
+// A mark that fails after the command is queued leaves the click a success carrying a warning field.
+// lym cannot tell an agent's engine from its pane.
+// So an agent on an engine with no remote control is marked all the same, and its engine types nothing for the command.
 //
 // # Reaching the orch from another module
 //

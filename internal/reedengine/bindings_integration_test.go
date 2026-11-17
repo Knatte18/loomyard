@@ -53,7 +53,7 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 	}
 	recordPath := filepath.Join(t.TempDir(), "recorded-args")
 	scriptPath := filepath.Join(scriptDir, "lym-recorder")
-	// The bar's state jobs also run this script, as `slack bar` and `orch rc-bar`, at every redraw.
+	// The bar's state jobs also run this script, as `slack bar`, at every redraw.
 	// It records nothing for those.
 	script := "#!/bin/sh\ncase \"$1\" in slack|orch) exit 0;; esac\nprintf '%s\\n' \"$@\" > " + recordPath + "\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
