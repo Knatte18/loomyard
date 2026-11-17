@@ -249,9 +249,8 @@ func dirSpellings(dir string) ([]string, error) {
 	return dirs, nil
 }
 
-// resolveWritePath canonicalizes a transcript-recorded write path: cleaned,
-// and — when relative — resolved against workdir. This prevents false matches
-// when agents mix absolute and relative spellings for the same file.
+// resolveWritePath canonicalizes a transcript-recorded write path: cleaned, and resolved against workdir when relative.
+// This prevents false matches when agents mix absolute and relative spellings for the same file.
 func resolveWritePath(workdir, path string) string {
 	cleaned := filepath.Clean(path)
 	if isTranscriptPathAbsolute(path) {

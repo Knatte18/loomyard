@@ -211,8 +211,9 @@ func TestFingerprint(t *testing.T) {
 	}
 }
 
-// TestMoveBegunCardHashes proves a begun card's recorded hash moves only when it equals the pre-rewrite file hash,
-// a mismatching one keeps its old hash, a file absent from either map is left alone, and empty PlanFileHashes is a no-op.
+// TestMoveBegunCardHashes proves a begun card's recorded hash moves only when it equals the pre-rewrite file hash.
+// A mismatching one keeps its old hash, a file absent from either map is left alone,
+// and empty PlanFileHashes is a no-op.
 func TestMoveBegunCardHashes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

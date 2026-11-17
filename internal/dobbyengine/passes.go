@@ -66,7 +66,8 @@ type RunView struct {
 	ReachedParent bool
 }
 
-// drivable reports whether batten's state lets dobby give run a pass: running, or paused with its work already on its parent.
+// drivable reports whether batten's state lets dobby give run a pass.
+// A run is drivable when running, or when paused with its work already on its parent.
 // Such a paused run has nothing left to decide, and only its landing and teardown finish it.
 func drivable(run RunView) bool {
 	return run.State == runStateRunning || (run.State == runStatePaused && run.ReachedParent)
@@ -226,7 +227,8 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-// runLabel is the state a run's log lines name: batten's state, with the producer for a state other than running and done.
+// runLabel is the state a run's log lines name: batten's state.
+// A state other than running and done also names the producer.
 func runLabel(run RunView) string {
 	if run.State == runStateRunning || run.State == runStateDone {
 		return run.State

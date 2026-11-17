@@ -110,7 +110,8 @@ func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 	return strings.Join(bullets, "\n")
 }
 
-// cardPointerPath returns c's card file path re-rooted onto planDirDisplay: the path its pointer bullet and its card gate bullet both spell.
+// cardPointerPath returns c's card file path re-rooted onto planDirDisplay.
+// It is the path its pointer bullet and its card gate bullet both spell.
 func cardPointerPath(c planparser.Card, planDirDisplay string) string {
 	return planDirDisplay + "/" + filepath.Base(c.SourcePath)
 }

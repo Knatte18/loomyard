@@ -36,7 +36,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// fakeStarter records the specs it is asked to start and answers a fixed guid and warning, and the resumed session id or else sessionID.
+// fakeStarter records the specs it is asked to start and answers a fixed guid and warning.
+// It answers the resumed session id, or else sessionID.
 type fakeStarter struct {
 	specs     []shuttleengine.Spec
 	guid      string

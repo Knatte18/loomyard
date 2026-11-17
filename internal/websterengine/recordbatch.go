@@ -1004,16 +1004,16 @@ func rereadCards(plan *planparser.Plan, cards []planparser.Card) []planparser.Ca
 // They are informational and never join the warnings.
 // When the delta cannot be computed, there are no deviations, and the could-not-run warning is returned instead.
 //
-// It is one function rather than two because a batch that reached done through recover-batch is
-// exactly as done as one that reached it through record-batch:
+// It is one function rather than two because a batch that reached done through recover-batch is exactly as done
+// as one that reached it through record-batch:
 // its Create targets have to resolve, its plan: handles have to bind,
 // and the drift its work caused has to be repaired or reported.
 // Skipping this pass for a recovered batch would leave its plan: handles unbound.
 // Every later card would then reference an unbound handle.
 // Drift detection would not see those references, since its reference index keys on the ref as the card spells it.
 //
-// Findings about the batch's own cards (done-checks, blocking bind findings) are returned as an
-// ErrCardNotDone-wrapped error.
+// Findings about the batch's own cards (done-checks, blocking bind findings)
+// are returned as an ErrCardNotDone-wrapped error.
 // Drift findings concern later cards, so they become `later card:` warnings recorded once on in.Batch.
 // Informational findings ride out on warnings too.
 // Warnings come back alongside any error, so a caller never loses them.
@@ -1156,8 +1156,8 @@ func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err err
 		sort.Strings(deviations)
 	}
 
-	// Drift detection runs after binding and before the digest is persisted, on the delta's own
-	// deleted-symbols-still-referenced signal.
+	// Drift detection runs after binding and before the digest is persisted,
+	// on the delta's own deleted-symbols-still-referenced signal.
 	// HeadSHA is the triggering SHA that every exact-tier repair's own amendment records.
 	// Drift runs against the remaining plan:
 	// the delta's deleted symbols intersected with what the plan still has to do.

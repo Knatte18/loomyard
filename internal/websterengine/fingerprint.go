@@ -82,7 +82,8 @@ func planFileHashes(planDir string) (map[string]string, error) {
 
 // overviewFrameHash returns the hex SHA-256 of planDir's 00-overview.md with its Card Index section cut out.
 // It is the frame that State.PlanOverviewFrameHash records.
-// A plan directory without an overview has no frame and hashes to "", the value that makes Rebaseline refuse any overview change.
+// A plan directory without an overview has no frame and hashes to "".
+// That value makes Rebaseline refuse any overview change.
 func overviewFrameHash(planDir string) (string, error) {
 	data, err := os.ReadFile(filepath.Join(planDir, planOverviewFile))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -109,7 +110,8 @@ func overviewFrameHashOf(overview []byte) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// changedPlanFiles returns the plan file names whose current hash differs from st.PlanFileHashes, plus files added or removed since, sorted.
+// changedPlanFiles returns the plan file names whose current hash differs from st.PlanFileHashes,
+// plus files added or removed since, sorted.
 func changedPlanFiles(st *State, planDir string) ([]string, error) {
 	now, err := planFileHashes(planDir)
 	if err != nil {
@@ -130,7 +132,8 @@ func changedPlanFiles(st *State, planDir string) ([]string, error) {
 	return changed, nil
 }
 
-// PlanEditError returns nil when the plan on disk fingerprints to st.PlanFingerprint, and otherwise the ErrFingerprintMismatch wrap naming the way forward.
+// PlanEditError returns nil when the plan on disk fingerprints to st.PlanFingerprint.
+// Otherwise it returns the ErrFingerprintMismatch wrap naming the way forward.
 // Callers that rewrite the plan call it before their own rewrites,
 // so any difference it sees is someone else's edit rather than webster's own.
 func PlanEditError(st *State, planDir, websterDir string) error {
@@ -144,7 +147,8 @@ func PlanEditError(st *State, planDir, websterDir string) error {
 	return nil
 }
 
-// batchCardEditError returns nil when every card of b still hashes to the content bs recorded at begin-batch, or when bs recorded none.
+// batchCardEditError returns nil when every card of b still hashes to the content bs recorded at begin-batch,
+// or when bs recorded none.
 // Otherwise it returns an ErrFingerprintMismatch wrap naming each card that changed since its batch was begun.
 func batchCardEditError(st *State, bs *BatchState, b batcher.Batch, planDir, websterDir string) error {
 	if len(bs.CardHashes) == 0 {
@@ -205,7 +209,8 @@ func restampFingerprint(st *State, planDir, websterDir string) error {
 	return nil
 }
 
-// restampBaseline records planDir's fingerprint, per-file hashes, overview frame hash and stored baseline into st, and touches no batch record.
+// restampBaseline records planDir's fingerprint, per-file hashes, overview frame hash and stored baseline into st.
+// It touches no batch record.
 func restampBaseline(st *State, planDir, websterDir string) error {
 	fp, err := fingerprint(planDir)
 	if err != nil {
@@ -251,7 +256,8 @@ func moveBegunCardHashes(st *State, before, after map[string]string) {
 	}
 }
 
-// RestampPlanBaseline re-baselines the plan fingerprint for a caller that has rewritten the plan and must record the new baseline.
+// RestampPlanBaseline re-baselines the plan fingerprint
+// for a caller that has rewritten the plan and must record the new baseline.
 func RestampPlanBaseline(st *State, planDir, websterDir string) error {
 	return restampFingerprint(st, planDir, websterDir)
 }

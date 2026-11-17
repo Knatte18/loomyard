@@ -188,7 +188,8 @@ func TestArchivedWebsterDirs(t *testing.T) {
 	}
 }
 
-// TestArchivedWebsterDirs_UnreadableDirErrors covers a rework directory that cannot be listed: an error, never a silently empty list.
+// TestArchivedWebsterDirs_UnreadableDirErrors covers a rework directory that cannot be listed.
+// It yields an error, never a silently empty list.
 func TestArchivedWebsterDirs_UnreadableDirErrors(t *testing.T) {
 	tiergate.Require(t, 0)
 	notADir := filepath.Join(t.TempDir(), "rework")

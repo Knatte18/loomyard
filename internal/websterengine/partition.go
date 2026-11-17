@@ -132,7 +132,8 @@ func mapPartition(plan *planparser.Plan, partition []PartitionBatch) ([]batcher.
 		ErrPartitionMismatch, strings.Join(problems, "; "))
 }
 
-// RecordPartition writes the batches' card ids, profiles, estimates and estimate breakdowns into st.Partition, replacing any partition it held.
+// RecordPartition writes the batches' card ids, profiles, estimates and estimate breakdowns into st.Partition.
+// It replaces any partition st held.
 func RecordPartition(st *State, batches []batcher.Batch) {
 	partition := make([]PartitionBatch, len(batches))
 	for i, b := range batches {

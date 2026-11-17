@@ -121,7 +121,8 @@ func pickByAncestry(git Git, worktree string, shas []string, oldest bool) (strin
 	return "", nil
 }
 
-// missingCommitsClause names the recorded commits absent from the repository and the way forward, or "" for an empty list.
+// missingCommitsClause names the recorded commits absent from the repository and the way forward.
+// It returns "" for an empty list.
 func missingCommitsClause(missing []string) string {
 	if len(missing) == 0 {
 		return ""

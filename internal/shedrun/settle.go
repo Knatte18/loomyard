@@ -37,7 +37,8 @@ const (
 )
 
 // SettleRecord is one line of the settle-records file.
-// Build is the build identity the action was taken under and Target the row or verb it aimed at; each is omitted when empty.
+// Build is the build identity the action was taken under and Target the row or verb it aimed at.
+// Each is omitted when empty.
 type SettleRecord struct {
 	StopKey StopKey   `json:"stop_key"`
 	Settler string    `json:"settler"`

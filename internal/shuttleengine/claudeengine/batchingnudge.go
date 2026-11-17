@@ -336,7 +336,8 @@ func (c *Claude) awaitCallInTranscript(transcriptPath, toolUseID string, sidecha
 	}
 }
 
-// readTranscriptTail returns the complete lines of the last budget bytes of the transcript at transcriptPath, the whole file when it is smaller.
+// readTranscriptTail returns the complete lines of the last budget bytes of the transcript at transcriptPath.
+// It returns the whole file when the file is smaller.
 // The window's first line is dropped unless the window starts the file, since it may be cut.
 func readTranscriptTail(transcriptPath string, budget int64) ([]byte, error) {
 	f, err := os.Open(transcriptPath)
@@ -549,7 +550,8 @@ func sliceBreach(settings BatchingNudgeConfig, messages []tailMessage, current i
 	return ""
 }
 
-// countLinesUpTo counts the lines of the file at filePath, stopping once the count reaches limit; a last line without its newline counts.
+// countLinesUpTo counts the lines of the file at filePath, stopping once the count reaches limit.
+// A last line without its newline counts.
 func countLinesUpTo(filePath string, limit int) (int, error) {
 	f, err := os.Open(filePath)
 	if err != nil {

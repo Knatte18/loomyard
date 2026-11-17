@@ -60,7 +60,8 @@ type VerifyGateReport struct {
 	FixCommits []string `yaml:"fix_commits,omitempty"`
 	// Fixer names the fixer this failure goes to, FixerFork or FixerCold.
 	Fixer string `yaml:"fixer,omitempty"`
-	// Entry names the run-level gate entry other than the verify entry whose failure this report records, and is empty for a verify failure.
+	// Entry names the run-level gate entry other than the verify entry whose failure this report records.
+	// It is empty for a verify failure.
 	Entry string `yaml:"entry,omitempty"`
 	// Findings is the failed Entry's own findings text, and is empty for a verify failure.
 	Findings string `yaml:"findings,omitempty"`

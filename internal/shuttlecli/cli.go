@@ -48,7 +48,8 @@ type shuttleCLI struct {
 // Command returns the cobra command tree for the shuttle module.
 // The parent command carries a PersistentPreRunE that resolves geometry and engines, skipping
 // resolution when the group command itself is invoked (no git repo required).
-// The await verb skips it too and needs no hub, reading only the keep-warm config inside a git worktree, and so does the hidden hook-batching verb.
+// The await verb skips it too and needs no hub, reading only the keep-warm config inside a git worktree.
+// So does the hidden hook-batching verb.
 func Command() *cobra.Command {
 	c := &shuttleCLI{}
 

@@ -22,8 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBattenRun_RefusesWhileAPauseCoversTheSlug runs the run verb's driveRun over a prime whose record holds a live entry:
-// a covering entry refuses the run, naming `lym tender resume <slug>`, with nothing seeded and the covered exit code.
+// TestBattenRun_RefusesWhileAPauseCoversTheSlug runs the run verb's driveRun over a prime whose record holds a live entry.
+// A covering entry refuses the run, naming `lym tender resume <slug>`, with nothing seeded and the covered exit code.
 // An entry for another slug seeds as before.
 func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 	tiergate.Require(t, 0)
