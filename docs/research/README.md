@@ -25,6 +25,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 ## claude — Claude Code features
 
 - [code-mode-bench-2026-11-16](claude/code-mode-bench-2026-11-16/report.md) — Code Mode and shell pipelines on the Plan writer, one sample per arm.
+- [code-mode-darn-bench-2026-11-17](claude/code-mode-darn-bench-2026-11-17/report.md) — Code Mode on a darn writer repeating one edit across packages, one sample per arm, and a check that the shell guard holds in a script.
 - [code-mode-web-research-2026-11-16](claude/code-mode-web-research-2026-11-16/report.md) — how Anthropic and users say to use Code Mode, each tip judged for lym's writers, and a correction to the bench's reading of `Poll`.
 
 ## codex — the Codex engine
