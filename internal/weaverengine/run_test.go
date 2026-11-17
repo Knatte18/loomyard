@@ -19,6 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
@@ -84,8 +86,8 @@ func TestRun(t *testing.T) {
 			t.Fatalf("strands started = %d; want 2", got)
 		}
 		for i, spec := range fx.runner.specs {
-			if spec.Model != "model-a" || spec.Role != weaverengine.BatchStrandRole {
-				t.Errorf("strand %d = model %q role %q; want the first rung under role %q", i, spec.Model, spec.Role, weaverengine.BatchStrandRole)
+			if spec.Model != "model-a" || spec.Role != weaverengine.BatchStrandRole || spec.PromptEngine != "claude" {
+				t.Errorf("strand %d = model %q role %q prompt engine %q; want the first rung under role %q rendered for claude", i, spec.Model, spec.Role, spec.PromptEngine, weaverengine.BatchStrandRole)
 			}
 		}
 		if got, want := fx.runner.gateNames(0), []string{"card 1-one", "card 2-two", "batch", "drift"}; !slices.Equal(got, want) {
@@ -252,6 +254,8 @@ func TestRun(t *testing.T) {
 		t.Run("FailedAttemptClimbs_"+tt.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newRunFixture(t, 1, "one")
+			fx.deps.Ladder[1].Engine = shuttlefake.EngineName
+			stencilkit.SeedEditDirectiveCopies(t, fx.deps.Geom.StencilsDir, shuttlefake.EngineName)
 			fx.runner.scripts = []attemptScript{tt.first, {}}
 			if tt.setup != nil {
 				tt.setup(fx)
@@ -264,6 +268,9 @@ func TestRun(t *testing.T) {
 			}
 			if fx.runner.specs[0].Model != "model-a" || fx.runner.specs[1].Model != "model-b" {
 				t.Errorf("models = %q then %q; want the next rung's model for the second attempt", fx.runner.specs[0].Model, fx.runner.specs[1].Model)
+			}
+			if fx.runner.specs[0].PromptEngine != "claude" || fx.runner.specs[1].PromptEngine != shuttlefake.EngineName {
+				t.Errorf("prompt engines = %q then %q; want %q then %q, each rung's own engine", fx.runner.specs[0].PromptEngine, fx.runner.specs[1].PromptEngine, "claude", shuttlefake.EngineName)
 			}
 			st := fx.loadState()
 			first, second := st.Attempts[0], st.Attempts[1]
@@ -582,9 +589,9 @@ func TestRun(t *testing.T) {
 			t.Fatalf("fixers spawned = %d; want 1", len(fx.fixer.specs))
 		}
 		spec := fx.fixer.specs[0]
-		if spec.Timeout != 7*time.Minute || spec.ModelChoice.Model != "model-a" || len(spec.Prompt) == 0 || !strings.Contains(string(spec.Prompt), "TestBroken") {
-			t.Errorf("fixer spec = timeout %v, model %q, prompt names the failure %v; want fixer_timeout_min, the first rung and the findings",
-				spec.Timeout, spec.ModelChoice.Model, strings.Contains(string(spec.Prompt), "TestBroken"))
+		if spec.Timeout != 7*time.Minute || spec.ModelChoice.Model != "model-a" || spec.PromptEngine != "claude" || len(spec.Prompt) == 0 || !strings.Contains(string(spec.Prompt), "TestBroken") {
+			t.Errorf("fixer spec = timeout %v, model %q, prompt engine %q, prompt names the failure %v; want fixer_timeout_min, the first rung, claude and the findings",
+				spec.Timeout, spec.ModelChoice.Model, spec.PromptEngine, strings.Contains(string(spec.Prompt), "TestBroken"))
 		}
 		if len(fx.verify.calls) != 3 {
 			t.Errorf("verify calls = %d; want the run, its rerun and the run after the fixer", len(fx.verify.calls))
@@ -652,6 +659,8 @@ func TestRun(t *testing.T) {
 	t.Run("FixerLadderClimbsAndAFailureAfterTheLastRungStops", func(t *testing.T) {
 		t.Parallel()
 		fx := newRunFixture(t, 1, "one")
+		fx.deps.Ladder[1].Engine = shuttlefake.EngineName
+		stencilkit.SeedEditDirectiveCopies(t, fx.deps.Geom.StencilsDir, shuttlefake.EngineName)
 		for range 8 {
 			fx.verify.scripts = append(fx.verify.scripts, verifyScript{failing: "TestBroken"})
 		}
@@ -659,12 +668,16 @@ func TestRun(t *testing.T) {
 		result := mustRun(t, fx)
 
 		requireStuck(t, result, "plan-level verify", "TestBroken")
-		var models []string
+		var models, promptEngines []string
 		for _, spec := range fx.fixer.specs {
 			models = append(models, spec.ModelChoice.Model)
+			promptEngines = append(promptEngines, spec.PromptEngine)
 		}
 		if want := []string{"model-a", "model-b", "model-c"}; !slices.Equal(models, want) {
 			t.Errorf("fixer models = %v; want one fixer per rung %v", models, want)
+		}
+		if want := []string{"claude", shuttlefake.EngineName, "claude"}; !slices.Equal(promptEngines, want) {
+			t.Errorf("fixer prompt engines = %v; want each rung's own engine %v", promptEngines, want)
 		}
 		if st := fx.loadState(); st.Stop == nil || st.Stop.Kind != "verify" {
 			t.Errorf("Stop = %+v; want a verify stop", st.Stop)

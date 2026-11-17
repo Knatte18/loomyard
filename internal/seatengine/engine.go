@@ -360,7 +360,7 @@ func (e *Engine) startSeat(table Table, seat Seat, names map[string]string, work
 	if err != nil {
 		return nil, err
 	}
-	spec := seatSpec(table, seat, amendLeadPrompt(table, seat, prompt))
+	spec := seatSpec(table, seat, amendLeadPrompt(table, seat, prompt), seat.stencilEngine(e.geom.DefaultEngine))
 	if seat.Name == leadName {
 		spec.HoldDeferral = work.outstanding
 	}

@@ -26,6 +26,7 @@ func templateAgentsConfig(t *testing.T) shuttleengine.Config {
 	return shuttleengine.Config{Agents: agents}
 }
 
+//testtiming:keep pins the --effort value that the agents config resolves per model alias and full model ID, on the launch and resume lines, which no covering test loads an agents config to assert
 func TestPrepare_EffortFromAgentsConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -43,6 +44,7 @@ func TestPrepare_EffortFromAgentsConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tt.spec.Prompt = "do the thing"
+			tt.spec.PromptEngine = engineName
 			launch, err := engineWith(t, templateConfig(t)).Prepare(t.TempDir(), tt.spec, templateAgentsConfig(t))
 			if err != nil {
 				t.Fatalf("Prepare() error = %v", err)
@@ -80,7 +82,7 @@ func TestPrepare_TellsTheSessionWhatItsSubagentsGet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			runDir := t.TempDir()
-			spec := shuttleengine.Spec{Prompt: "do the thing", ConfigRole: agentconfig.RoleDarn, Skills: tt.skills}
+			spec := shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, ConfigRole: agentconfig.RoleDarn, Skills: tt.skills}
 			if _, err := engineWith(t, templateConfig(t)).Prepare(runDir, spec, templateAgentsConfig(t)); err != nil {
 				t.Fatalf("Prepare() error = %v", err)
 			}
@@ -107,11 +109,12 @@ func TestPrepare_TellsTheSessionWhatItsSubagentsGet(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that settings.json carries no subagent effort env when no agents config is given, which its covering tests do not read back
 func TestPrepare_NoAgentsConfigWritesNoSubagentRule(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	runDir := t.TempDir()
-	spec := shuttleengine.Spec{Prompt: "do the thing", Skills: []string{"scribe:prose"}}
+	spec := shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Skills: []string{"scribe:prose"}}
 	launch, err := engineWith(t, templateConfig(t)).Prepare(runDir, spec, shuttleengine.Config{})
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)

@@ -14,7 +14,8 @@ import (
 const driverRole = "driver"
 
 // driverSpec composes the shuttleengine.Spec that the loom driver session launches from.
-// It takes the composed prompt, the composed report path, and the resolved driver-role model choice.
+// It takes the composed prompt and the engine it was rendered for.
+// It also takes the composed report path and the resolved driver-role model choice.
 //
 // OutputFiles holds only the report path, since the driver run has exactly one output file.
 // ModelChoice is the resolved engine, model, effort and version, never a raw config alias.
@@ -49,9 +50,10 @@ const driverRole = "driver"
 // The startup window is startup_timeout_s.
 // The session is never waited on to completion, so no other timeout covers it.
 // KeepPane is read only when the session is waited on, so zero says nothing about pane retention.
-func driverSpec(prompt string, reportPath string, choice shuttleengine.ModelChoice) shuttleengine.Spec {
+func driverSpec(prompt, promptEngine, reportPath string, choice shuttleengine.ModelChoice) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:        prompt,
+		PromptEngine:  promptEngine,
 		ConfigRole:    agentconfig.RoleDriver,
 		OutputFiles:   []string{reportPath},
 		ModelChoice:   choice,

@@ -553,12 +553,6 @@ var ParentDirectiveOperatorBan []byte
 //go:embed parent/parent-directive-none.md
 var ParentDirectiveNone []byte
 
-// EditDirective is the shared edit directive's shipped default:
-// the edit rule every spawned role's opening stencil carries.
-//
-//go:embed edit/edit-directive.md
-var EditDirective []byte
-
 // TwillDirective is the twill directive's shipped default:
 // the host-neutral procedure that has a writer review its finished record through fork lenses.
 //
@@ -713,13 +707,14 @@ var EngineClaudeAssistReading []byte
 //go:embed engine/codex/assist-reading.md
 var EngineCodexAssistReading []byte
 
-// EngineClaudeEditDirective is the Claude engine's copy of the edit directive, rendered for an assistant seat on Claude.
+// EngineClaudeEditDirective is the Claude engine's copy of the edit directive:
+// the edit rule every spawned role's opening stencil carries when its prompt launches on Claude.
 //
 //go:embed engine/claude/edit-directive.md
 var EngineClaudeEditDirective []byte
 
 // EngineCodexEditDirective is the Codex engine's copy of the edit directive:
-// it uses Codex's tool wording and is rendered for an assistant seat on Codex.
+// the same rule in Codex's tool wording, carried when a prompt launches on Codex.
 //
 //go:embed engine/codex/edit-directive.md
 var EngineCodexEditDirective []byte
@@ -864,7 +859,6 @@ var entries = []registryEntry{
 	{"parent-directive-parent", &ParentDirectiveParent},
 	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
 	{"parent-directive-none", &ParentDirectiveNone},
-	{"edit-directive", &EditDirective},
 	{"twill-directive", &TwillDirective},
 	{"twill-writer-fork", &TwillWriterFork},
 	{"twill-writer-fork-gated", &TwillWriterForkGated},

@@ -64,9 +64,11 @@ func describeLeadPrompt(t *testing.T, stencilsDir, parentName string, table seat
 		WorktreeRoot: "/x/worktree",
 		AnchorPath:   "/x/worktree",
 		StencilsDir:  stencilsDir,
-		ParentName:   parentName,
-		Shortname:    "ab",
-		Slug:         "my-slug",
+		// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
+		DefaultEngine: "claude",
+		ParentName:    parentName,
+		Shortname:     "ab",
+		Slug:          "my-slug",
 	}, table)
 	if err != nil {
 		t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)

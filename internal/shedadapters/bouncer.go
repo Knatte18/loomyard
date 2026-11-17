@@ -1684,55 +1684,22 @@ func (b *Bouncer) rubricNotes() RubricNotes {
 // Shuttle's Wait polls for bare existence at that path.
 // Archiving first would therefore make an attached seed unable to ever classify done.
 func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
-	seedTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-seed")
+	engine := b.cfg.Shuttle.EngineName(b.cfg.Models.Seed)
+	prompt, err := b.RenderSeedPrompt(engine, focusPathValue)
 	if err != nil {
-		logger.Warn("shedadapters: bouncer seed template unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
-		return nil
-	}
-
-	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.rubricNotes())
-	if err != nil {
-		logger.Warn("shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
-		return nil
-	}
-
-	parentDirective, err := parentdirective.Directive(b.cfg.StencilsDir, b.cfg.ParentName, false)
-	if err != nil {
-		logger.Warn("shedadapters: bouncer parent directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
-		return nil
-	}
-
-	editDirective, err := editdirective.Directive(b.cfg.StencilsDir)
-	if err != nil {
-		logger.Warn("shedadapters: bouncer edit directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
-		return nil
-	}
-
-	seedValues := map[string]string{
-		"rubric":                   rubric,
-		"artifacts":                strings.Join(b.cfg.ArtifactPaths, "\n"),
-		"round":                    "1",
-		"focus_path":               focusPathValue,
-		parentdirective.MarkerName: parentDirective,
-		editdirective.MarkerName:   editDirective,
-	}
-	// The seed judges no round, so there is nothing settled for it to exclude;
-	// only the judge call is asked for exclude_lenses.
-	maps.Copy(seedValues, focusSchemaMarkers(false))
-	prompt, err := stencil.Fill(seedTemplate, seedValues)
-	if err != nil {
-		logger.Warn("shedadapters: bouncer seed prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
+		logger.Warn(renderFailureReason(err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", renderFailureCause(err))
 		return nil
 	}
 
 	spec := shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{focusPathValue},
-		ModelChoice: b.cfg.Models.Seed,
-		Role:        b.role(bouncerSeedRole),
-		Segment:     b.colorSegment(),
-		Round:       "1",
-		ConfigRole:  agentconfig.RoleBouncerSeed,
+		Prompt:       prompt,
+		PromptEngine: engine,
+		OutputFiles:  []string{focusPathValue},
+		ModelChoice:  b.cfg.Models.Seed,
+		Role:         b.role(bouncerSeedRole),
+		Segment:      b.colorSegment(),
+		Round:        "1",
+		ConfigRole:   agentconfig.RoleBouncerSeed,
 	}
 
 	result, attached, err := b.cfg.Shuttle.Attach(spec)
@@ -1760,6 +1727,77 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 	return nil
 }
 
+// promptRenderError is a prompt render failure carrying the degrade reason its caller logs.
+type promptRenderError struct {
+	reason string
+	err    error
+}
+
+func (e *promptRenderError) Error() string { return e.reason + ": " + e.err.Error() }
+
+func (e *promptRenderError) Unwrap() error { return e.err }
+
+// renderFailureReason returns the degrade reason of a prompt render error, or its text when it carries none.
+func renderFailureReason(err error) string {
+	var failure *promptRenderError
+	if errors.As(err, &failure) {
+		return failure.reason
+	}
+	return err.Error()
+}
+
+// renderFailureCause returns the underlying error of a prompt render error, or err itself when it carries none.
+func renderFailureCause(err error) error {
+	var failure *promptRenderError
+	if errors.As(err, &failure) {
+		return failure.err
+	}
+	return err
+}
+
+// RenderSeedPrompt fills the seed pass's prompt for the named engine.
+// The prompt names focusPath as the file the seed writes and carries the rubric, the artifacts and the directives.
+// The edit directive is the engine's own copy.
+// It fails when the template, rubric or a directive cannot be read or filled.
+func (b *Bouncer) RenderSeedPrompt(engine, focusPath string) (string, error) {
+	seedTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-seed")
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer seed template unreadable", err}
+	}
+
+	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.rubricNotes())
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer rubric unreadable", err}
+	}
+
+	parentDirective, err := parentdirective.Directive(b.cfg.StencilsDir, b.cfg.ParentName, false)
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer parent directive unreadable", err}
+	}
+
+	editDirective, err := editdirective.Directive(b.cfg.StencilsDir, engine)
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer edit directive unreadable", err}
+	}
+
+	seedValues := map[string]string{
+		"rubric":                   rubric,
+		"artifacts":                strings.Join(b.cfg.ArtifactPaths, "\n"),
+		"round":                    "1",
+		"focus_path":               focusPath,
+		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
+	}
+	// The seed judges no round, so there is nothing settled for it to exclude;
+	// only the judge call is asked for exclude_lenses.
+	maps.Copy(seedValues, focusSchemaMarkers(false))
+	prompt, err := stencil.Fill(seedTemplate, seedValues)
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer seed prompt fill failed", err}
+	}
+	return string(prompt), nil
+}
+
 // excludesLenses reports whether round's judge asks for exclude_lenses.
 // It also returns a note naming why the usage record could not answer, empty when it could.
 // A Bouncer told no ClusterFans answers with ClusterExcludes.
@@ -1775,6 +1813,95 @@ func (b *Bouncer) excludesLenses(round int) (bool, string) {
 		return false, err.Error()
 	}
 	return fan != "" && fan == roundFan(b.cfg.ClusterFans, round+1), ""
+}
+
+// RenderJudgePrompt fills the judge pass's prompt for round for the named engine.
+// The prompt carries the rubric, the round's facts file, the previous ledger when it parses, and the directives.
+// The edit directive is the engine's own copy.
+// It writes the round's facts file, which the prompt names, and so fails when that file cannot be written.
+// It also fails when the template, rubric, a directive or the declared PATTERN changes cannot be read or filled.
+func (b *Bouncer) RenderJudgePrompt(engine string, round int) (string, error) {
+	reportPath := filepath.Join(b.cfg.RunDir, b.cfg.ReportName(round))
+
+	// Use the literal "(none)", not an empty string: stencil.Fill errors on any marker resolving to empty.
+	// A malformed previous ledger degrades to running the judge with no prior ledger rather than to Stuck.
+	previousLedger := "(none)"
+	if round >= 2 {
+		prevPath := ledgerPath(b.cfg.RunDir, round-1)
+		prevRaw, err := os.ReadFile(prevPath)
+		switch {
+		case err != nil:
+			logger.Warn("shedadapters: bouncer previous ledger unreadable, falling back to (none)", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+		default:
+			if _, perr := parseLedger(prevRaw); perr != nil {
+				logger.Warn("shedadapters: bouncer previous ledger unparseable, falling back to (none)", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", perr)
+			} else {
+				previousLedger = prevPath
+			}
+		}
+	}
+
+	judgeTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-judge")
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer judge template unreadable", err}
+	}
+	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.rubricNotes())
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer rubric unreadable", err}
+	}
+	declaredChanges, err := discussionparser.DeclaredPatternChanges(b.cfg.PatternRecordPath)
+	if err != nil {
+		return "", &promptRenderError{fmt.Sprintf("shedadapters: bouncer declared PATTERN changes unreadable: %v run `lym loom start` to re-step the row", err), err}
+	}
+	patternDirective, err := pattern.Directive(b.cfg.WorktreeRoot, b.cfg.StencilsDir, pattern.RoleJudge, declaredChanges)
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer pattern directive unreadable", err}
+	}
+
+	parentDirective, err := parentdirective.Directive(b.cfg.StencilsDir, b.cfg.ParentName, false)
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer parent directive unreadable", err}
+	}
+
+	editDirective, err := editdirective.Directive(b.cfg.StencilsDir, engine)
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer edit directive unreadable", err}
+	}
+
+	outputs := judgeOutputs(b.cfg.RunDir, round)
+
+	// The facts file is regenerated on every judge call, even one that attaches to a live judge.
+	// The render is deterministic, so regenerating it on an attached call is harmless.
+	// A write failure fails like an unreadable template, because the prompt would name a file that does not exist.
+	excludesLenses, usageNote := b.excludesLenses(round)
+	if err := writeRoundFacts(b.cfg.Name, b.cfg.RunDir, round, b.cfg.ReportName, excludesLenses, usageNote); err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer facts file unwritable", err}
+	}
+
+	judgeValues := map[string]string{
+		"rubric":          rubric,
+		"facts_path":      factsPath(b.cfg.RunDir, round),
+		"round":           strconv.Itoa(round),
+		"next_round":      strconv.Itoa(round + 1),
+		"decision_rule":   decisionRuleMarker(round, b.cfg.CirclingCheckpoint),
+		"report_path":     reportPath,
+		"previous_ledger": previousLedger,
+		"verdict_path":    outputs[0],
+		"ledger_path":     outputs[1],
+		"focus_path":      outputs[2],
+
+		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
+	}
+	if patternDirective != "" {
+		judgeValues["pattern_directive"] = patternDirective
+	}
+	maps.Copy(judgeValues, focusSchemaMarkers(excludesLenses))
+	prompt, err := stencil.FillOptional(judgeTemplate, judgeValues, []string{"pattern_directive"})
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer judge prompt fill failed", err}
+	}
+	return string(prompt), nil
 }
 
 // judgeCall runs the Bouncer's per-round judge pass for round n.
@@ -1796,49 +1923,10 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		return b.degrade(ctx, "shedadapters: bouncer report file is empty", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "path", reportPath)
 	}
 
-	// Use the literal "(none)", not an empty string: stencil.Fill errors on any marker resolving to empty.
-	// A malformed previous ledger degrades to running the judge with no prior ledger rather than to Stuck.
-	previousLedger := "(none)"
-	if n >= 2 {
-		prevPath := ledgerPath(b.cfg.RunDir, n-1)
-		prevRaw, err := os.ReadFile(prevPath)
-		switch {
-		case err != nil:
-			logger.Warn("shedadapters: bouncer previous ledger unreadable, falling back to (none)", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
-		default:
-			if _, perr := parseLedger(prevRaw); perr != nil {
-				logger.Warn("shedadapters: bouncer previous ledger unparseable, falling back to (none)", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", perr)
-			} else {
-				previousLedger = prevPath
-			}
-		}
-	}
-
-	judgeTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-judge")
+	engine := b.cfg.Shuttle.EngineName(b.cfg.Models.Judge)
+	prompt, err := b.RenderJudgePrompt(engine, n)
 	if err != nil {
-		return b.degrade(ctx, "shedadapters: bouncer judge template unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
-	}
-	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.rubricNotes())
-	if err != nil {
-		return b.degrade(ctx, "shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
-	}
-	declaredChanges, err := discussionparser.DeclaredPatternChanges(b.cfg.PatternRecordPath)
-	if err != nil {
-		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer declared PATTERN changes unreadable: %v run `lym loom start` to re-step the row", err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
-	}
-	patternDirective, err := pattern.Directive(b.cfg.WorktreeRoot, b.cfg.StencilsDir, pattern.RoleJudge, declaredChanges)
-	if err != nil {
-		return b.degrade(ctx, "shedadapters: bouncer pattern directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
-	}
-
-	parentDirective, err := parentdirective.Directive(b.cfg.StencilsDir, b.cfg.ParentName, false)
-	if err != nil {
-		return b.degrade(ctx, "shedadapters: bouncer parent directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
-	}
-
-	editDirective, err := editdirective.Directive(b.cfg.StencilsDir)
-	if err != nil {
-		return b.degrade(ctx, "shedadapters: bouncer edit directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+		return b.degrade(ctx, renderFailureReason(err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", renderFailureCause(err))
 	}
 
 	// The output list is never conditional on the verdict:
@@ -1847,46 +1935,15 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	// That leaves shedengine.Done unreachable.
 	outputs := judgeOutputs(b.cfg.RunDir, n)
 
-	// The facts file is regenerated on every judge call, even one that attaches to a live judge.
-	// The render is deterministic, so regenerating it on an attached call is harmless.
-	// A write failure degrades like an unreadable template, because the prompt would name a file that does not exist.
-	excludesLenses, usageNote := b.excludesLenses(n)
-	if err := writeRoundFacts(b.cfg.Name, b.cfg.RunDir, n, b.cfg.ReportName, excludesLenses, usageNote); err != nil {
-		return b.degrade(ctx, "shedadapters: bouncer facts file unwritable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
-	}
-
-	judgeValues := map[string]string{
-		"rubric":          rubric,
-		"facts_path":      factsPath(b.cfg.RunDir, n),
-		"round":           strconv.Itoa(n),
-		"next_round":      strconv.Itoa(n + 1),
-		"decision_rule":   decisionRuleMarker(n, b.cfg.CirclingCheckpoint),
-		"report_path":     reportPath,
-		"previous_ledger": previousLedger,
-		"verdict_path":    outputs[0],
-		"ledger_path":     outputs[1],
-		"focus_path":      outputs[2],
-
-		parentdirective.MarkerName: parentDirective,
-		editdirective.MarkerName:   editDirective,
-	}
-	if patternDirective != "" {
-		judgeValues["pattern_directive"] = patternDirective
-	}
-	maps.Copy(judgeValues, focusSchemaMarkers(excludesLenses))
-	prompt, err := stencil.FillOptional(judgeTemplate, judgeValues, []string{"pattern_directive"})
-	if err != nil {
-		return b.degrade(ctx, "shedadapters: bouncer judge prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
-	}
-
 	spec := shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: outputs,
-		ModelChoice: b.cfg.Models.Judge,
-		Role:        b.role(bouncerJudgeRole),
-		Segment:     b.colorSegment(),
-		Round:       strconv.Itoa(n),
-		ConfigRole:  agentconfig.RoleBouncerJudge,
+		Prompt:       prompt,
+		PromptEngine: engine,
+		OutputFiles:  outputs,
+		ModelChoice:  b.cfg.Models.Judge,
+		Role:         b.role(bouncerJudgeRole),
+		Segment:      b.colorSegment(),
+		Round:        strconv.Itoa(n),
+		ConfigRole:   agentconfig.RoleBouncerJudge,
 	}
 
 	if err := b.recordJudgeSubject(); err != nil {

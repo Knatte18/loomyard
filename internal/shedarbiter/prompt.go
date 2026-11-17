@@ -61,17 +61,19 @@ type PromptInput struct {
 	AmendmentTarget    string
 }
 
-// Prompt composes the arbiter session's launch prompt from the arbiter stencil in stencilsDir, filled with in.
+// Prompt composes the arbiter session's launch prompt for the engine named engine.
+// It reads the arbiter stencil in stencilsDir and fills it with in.
 // It renders the no-parent directive, since the verdict file is the arbiter's only channel.
+// It also renders the edit directive of engine.
 // Its edit rules are the one-shot fix fragment when in.MayEdit is set, and the no-fix fragment otherwise.
 // An empty recipe description, report, brief, case brief, decision record, support log or amendment target is filled as the literal "none".
 // It returns the read or fill error wrapped with the stencil's name.
-func Prompt(stencilsDir string, in PromptInput) (string, error) {
+func Prompt(stencilsDir, engine string, in PromptInput) (string, error) {
 	directive, err := parentdirective.Directive(stencilsDir, "", false)
 	if err != nil {
 		return "", err
 	}
-	editDirective, err := editdirective.Directive(stencilsDir)
+	editDirective, err := editdirective.Directive(stencilsDir, engine)
 	if err != nil {
 		return "", err
 	}
@@ -135,9 +137,10 @@ func pathOrNone(path string) string {
 }
 
 // Spec composes the shuttleengine.Spec the arbiter session launches from.
-// It takes a composed prompt, the verdict path and the resolved arbiter settings.
+// It takes a composed prompt, the verdict path, the engine the prompt was rendered for and the resolved arbiter settings.
 //
 // Prompt is the argument verbatim, so the prompt is the arbiter's whole procedure.
+// PromptEngine is engine, which must be the engine settings' model choice resolves to.
 // ConfigRole is the arbiter role, whose skills come from agents.yaml (role `arbiter`).
 // OutputFiles holds verdictPath alone, so the completion check reads the verdict file,
 // and a resumed run drops a finished strand.
@@ -151,9 +154,10 @@ func pathOrNone(path string) string {
 // Display is left at its zero value.
 // APIErrorRetries is sheddriver.SettlerAPIErrorRetries, so a turn the provider's API ended is re-sent;
 // past the re-sends, the run ends and the stop is handed on.
-func Spec(prompt, verdictPath string, settings sheddriver.ArbiterSettings) shuttleengine.Spec {
+func Spec(prompt, verdictPath, engine string, settings sheddriver.ArbiterSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:          prompt,
+		PromptEngine:    engine,
 		ConfigRole:      agentconfig.RoleArbiter,
 		OutputFiles:     []string{verdictPath},
 		ModelChoice:     settings.ModelChoice,

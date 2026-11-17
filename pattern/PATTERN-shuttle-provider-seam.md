@@ -46,6 +46,27 @@ or when it is the value of a range over a map or slice of it.
 The scan is syntactic, so it is a tripwire and not a proof.
 It cannot see a `Resolved` reached through a struct field or a call chain; review covers those.
 
+## Prompt engine
+
+A prompt rendered for one engine never launches on another.
+
+- A producer names the engine its launch resolves to with `EngineName` on the engine set or runner,
+  which gives a choice naming no engine the set's default.
+  It renders its prompt for that engine and sets it as the spec's `PromptEngine`.
+- Each engine's `Prepare` refuses, through `shuttleengine.CheckPromptEngine`,
+  a spec whose prompt engine is another engine's or unset.
+- Only `lym shuttle run` marks a spec `HandWrittenPrompt` in place of a prompt engine,
+  for a prompt the operator wrote inline or in a file.
+- The orch spec names the Claude engine and prompt engine explicitly, so a Codex default engine never takes the orch role.
+
+### Enforcement
+
+`TestPromptEngineRule` in `internal/shuttleengine/promptengine_enforcement_test.go` scans every production `shuttleengine.Spec` literal.
+It fails on one that sets `Prompt` but neither `PromptEngine` nor `HandWrittenPrompt`,
+and on one that sets `HandWrittenPrompt` outside `internal/shuttlecli`.
+A literal that sets no `Prompt`, such as an attach probe's, is skipped.
+A spec filled field by field is outside its sight; `Prepare`'s refusal covers it at launch.
+
 ## Shuttle stop
 
 A shuttle run's strand is stopped from Go only through shuttle's stop verb, which settles the run's record first.

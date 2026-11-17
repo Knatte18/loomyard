@@ -139,9 +139,6 @@ func creelStopHookCommand(quotedFlagDir, quotedEventsPath, turnHookCommand strin
 	return command + creelStopDelivery(quotedFlagDir) + `; ` + recordHeldStop(quotedEventsPath, "")
 }
 
-// turnHookEngineName is the registry name a turn hook command is given as its last argument.
-const turnHookEngineName = "claude"
-
 // recordHeldStop returns the step that appends the Stop stamp and the hook input held in $in to the events file.
 // It keeps the append's status as the command's, as the recording command does.
 // A non-empty turnHookCommand then gets the same input through turnHookStep, and the command exits with the kept status.
@@ -157,7 +154,7 @@ func recordHeldStop(quotedEventsPath, turnHookCommand string) string {
 // It runs in a subshell from the session's project directory, with its output and errors discarded,
 // so it prints nothing a hook's standard output would hand the session, and it leaves the calling shell where it was.
 func turnHookStep(turnHookCommand string) string {
-	return `printf '%s' "$in" | (cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + turnHookCommand + ` ` + turnHookEngineName + `) >/dev/null 2>&1`
+	return `printf '%s' "$in" | (cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + turnHookCommand + ` ` + engineName + `) >/dev/null 2>&1`
 }
 
 // creelOpenStopHookCommand returns the Stop hook command of a session with no events file:

@@ -3,7 +3,8 @@
      An advisor never forks, whatever discussion_lenses holds.
      internal/seatengine is its only filler, through stencil.FillWith, from the advisor's value map.
      It declares seven top-level markers.
-     {{.parent_directive}}, {{.edit_directive}} and {{.pattern_directive}} are the shared directives.
+     {{.parent_directive}} and {{.pattern_directive}} are the shared directives,
+     and {{.edit_directive}} is the edit directive of the engine the advisor launches on.
      {{.slug}} is the task, and {{.decision_record_path}} and {{.support_log_path}} are its records.
      {{.output_files}} is the advisor's notes file.
      pattern_directive is optional and renders as nothing when the PATTERN tier is inactive.

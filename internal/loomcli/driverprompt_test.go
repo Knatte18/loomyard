@@ -38,6 +38,8 @@ func TestDriverPrompt(t *testing.T) {
 		parent         string
 		removeStencil  bool
 		wantStaticText map[string]string
+		// codex renders the prompt for a launch on the codex engine instead of claude.
+		codex bool
 	}{
 		{
 			name:   "carries every marker value",
@@ -56,6 +58,7 @@ func TestDriverPrompt(t *testing.T) {
 			},
 		},
 		{name: "no parent renders the no-parent variant", parent: ""},
+		{name: "a codex launch carries the codex edit directive", parent: "", codex: true},
 		{name: "unreadable stencil is an error", removeStencil: true},
 	}
 	for _, tc := range cases {
@@ -64,33 +67,38 @@ func TestDriverPrompt(t *testing.T) {
 			dir := seededStencils(t)
 			if tc.removeStencil {
 				stencilkit.Remove(t, dir, driverStencilName)
-				if _, err := driverPrompt(dir, tc.parent, runID, reportPath, false); err == nil {
-					t.Fatalf("driverPrompt() with %s missing from %s error = nil; want an error", driverStencilName, stencilstore.Path(dir, driverStencilName))
+				if _, err := RenderDriverPrompt(dir, tc.parent, runID, reportPath, false, "claude"); err == nil {
+					t.Fatalf("RenderDriverPrompt() with %s missing from %s error = nil; want an error", driverStencilName, stencilstore.Path(dir, driverStencilName))
 				}
 				return
 			}
 
-			got, err := driverPrompt(dir, tc.parent, runID, reportPath, false)
+			engine, otherEngine := "claude", "codex"
+			if tc.codex {
+				engine, otherEngine = "codex", "claude"
+			}
+			got, err := RenderDriverPrompt(dir, tc.parent, runID, reportPath, false, engine)
 			if err != nil {
-				t.Fatalf("driverPrompt() error = %v; want nil", err)
+				t.Fatalf("RenderDriverPrompt() error = %v; want nil", err)
 			}
 			directive, err := parentdirective.Directive(dir, tc.parent, false)
 			if err != nil {
 				t.Fatalf("parentdirective.Directive: %v", err)
 			}
 			if !strings.Contains(got, directive) {
-				t.Errorf("driverPrompt() does not carry the parent directive %q", directive)
+				t.Errorf("RenderDriverPrompt() does not carry the parent directive %q", directive)
 			}
 			for name, want := range tc.wantStaticText {
 				if !strings.Contains(got, want) {
-					t.Errorf("driverPrompt() does not carry the %s %q", name, want)
+					t.Errorf("RenderDriverPrompt() does not carry the %s %q", name, want)
 				}
 			}
+			stencilkit.RequireEditDirectiveOf(t, dir, got, engine, otherEngine)
 			if guide := stencilstore.Path(dir, driverGuideStencilName); !strings.Contains(got, guide) {
-				t.Errorf("driverPrompt() does not carry the deployed guide path %q", guide)
+				t.Errorf("RenderDriverPrompt() does not carry the deployed guide path %q", guide)
 			}
 			if strings.Contains(got, "{{") {
-				t.Errorf("driverPrompt() left a marker unfilled")
+				t.Errorf("RenderDriverPrompt() left a marker unfilled")
 			}
 		})
 	}
@@ -126,22 +134,22 @@ func TestDriverPrompt_ParentNotifyRuleFollowsWatched(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := driverPrompt(seededStencils(t), "hub:orch", "operator-surface", "/hub/wt/report.md", tc.watched)
+			got, err := RenderDriverPrompt(seededStencils(t), "hub:orch", "operator-surface", "/hub/wt/report.md", tc.watched, "claude")
 			if err != nil {
-				t.Fatalf("driverPrompt() error = %v; want nil", err)
+				t.Fatalf("RenderDriverPrompt() error = %v; want nil", err)
 			}
 			for _, want := range tc.want {
 				if !strings.Contains(got, want) {
-					t.Errorf("driverPrompt() does not carry %q", want)
+					t.Errorf("RenderDriverPrompt() does not carry %q", want)
 				}
 			}
 			for _, unwanted := range tc.wantNot {
 				if strings.Contains(got, unwanted) {
-					t.Errorf("driverPrompt() carries %q", unwanted)
+					t.Errorf("RenderDriverPrompt() carries %q", unwanted)
 				}
 			}
 			if strings.Contains(got, "{{") {
-				t.Errorf("driverPrompt() left a marker unfilled")
+				t.Errorf("RenderDriverPrompt() left a marker unfilled")
 			}
 		})
 	}

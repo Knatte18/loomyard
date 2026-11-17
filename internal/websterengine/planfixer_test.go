@@ -179,6 +179,9 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 		if spec.Role != "plan-fixer" || spec.ModelChoice.Model != "master-model" || !slices.Equal(spec.OutputFiles, []string{replyPath}) {
 			t.Errorf("spec role %q, model %q, output files %v; want plan-fixer, master-model, [%s]", spec.Role, spec.ModelChoice.Model, spec.OutputFiles, replyPath)
 		}
+		if spec.PromptEngine != shuttlefake.EngineName {
+			t.Errorf("spec PromptEngine = %q; want %q, the engine the master choice resolves to", spec.PromptEngine, shuttlefake.EngineName)
+		}
 		wantSkills, err := shuttlefake.Agents(t).Skills(agentconfig.RoleWebster, nil)
 		if err != nil {
 			t.Fatalf("Skills(webster) error = %v", err)

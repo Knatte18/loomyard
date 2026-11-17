@@ -40,12 +40,14 @@ type PromptInputs struct {
 	ParentName string
 	// NotePath is the friction note path, empty when friction capture is off.
 	NotePath string
+	// Engine names the engine the fixer launches on; the edit directive is that engine's copy.
+	Engine string
 }
 
 // RenderPrompt reads FrameStencil and in.BodyStencil from in.StencilsDir, joins them frame first and fills the result.
 // The report and reply paths and every body value are filled,
 // and the frame's own paths win over a body value of the same key.
-// The PATTERN, parent, edit and friction directives are filled alongside them.
+// The PATTERN, parent, edit and friction directives are filled alongside them, the edit directive in.Engine's copy.
 // It refuses an empty ReportPath or ReplyPath.
 // It returns an error for a stencil that cannot be read or a directive that cannot be rendered.
 // A friction directive that cannot be rendered is logged and left out.
@@ -75,7 +77,7 @@ func RenderPrompt(in PromptInputs) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gatefixer: the %s prompt's parent directive: %w", in.BodyStencil, err)
 	}
-	editDirective, err := editdirective.Directive(in.StencilsDir)
+	editDirective, err := editdirective.Directive(in.StencilsDir, in.Engine)
 	if err != nil {
 		return nil, fmt.Errorf("gatefixer: the %s prompt's edit directive: %w", in.BodyStencil, err)
 	}

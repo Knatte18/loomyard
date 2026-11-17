@@ -19,9 +19,11 @@ type AuditEngine interface {
 
 // AuditEngines is the engine lookup webster reads its sessions through.
 // An empty name resolves the default engine, and DefaultName names that engine.
+// EngineName names the engine a model choice launches on, which each launch renders its prompt for.
 type AuditEngines interface {
 	Lookup(name string) (shuttleengine.Engine, error)
 	DefaultName() string
+	shuttleengine.EngineNamer
 }
 
 // roleAuditEngine checks that the engine a role's choice resolves to can audit forks.

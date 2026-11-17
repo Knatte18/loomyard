@@ -602,7 +602,7 @@ func TestPrepare_BatchingNudgeHook(t *testing.T) {
 				tt.mutate(&claude.BatchingNudge)
 			}
 			runDir := t.TempDir()
-			_, err := engineWith(t, claude).Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing"}, shuttleengine.Config{})
+			_, err := engineWith(t, claude).Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName}, shuttleengine.Config{})
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.Contains(err.Error(), "lym config claude") {
 					t.Errorf("Prepare() error = %v; want a refusal naming %s and lym config claude", err, tt.wantErr)

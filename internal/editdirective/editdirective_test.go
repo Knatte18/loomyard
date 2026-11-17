@@ -1,44 +1,20 @@
 // Every test here is in tier 0: it reads a seeded temporary stencils directory and spawns nothing.
 
-package editdirective
+package editdirective_test
 
 import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDirective_RendersTheRuleWithoutBannerOrMarkers covers the seeded stencil:
-// the rule's anchor phrase is present, with no marker and no leading comment.
-func TestDirective_RendersTheRuleWithoutBannerOrMarkers(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	dir := stencilkit.Seed(t)
-
-	got, err := Directive(dir)
-	if err != nil {
-		t.Fatalf("Directive = _, %v; want nil error", err)
-	}
-	if !strings.Contains(got, "Edit or Write") {
-		t.Errorf("Directive = %q; want it to contain %q", got, "Edit or Write")
-	}
-	if strings.Contains(got, "{{") {
-		t.Errorf("Directive = %q; want no marker", got)
-	}
-	if strings.HasPrefix(got, "<!--") {
-		t.Errorf("Directive = %q; want no leading comment", got)
-	}
-	if strings.HasSuffix(got, "\n") {
-		t.Errorf("Directive = %q; want no trailing newline", got)
-	}
-}
-
-// TestEngineDirective_ReadsTheEnginesCopyWithoutBanner covers each shipped engine copy:
+// TestDirective_ReadsTheEnginesCopyWithoutBanner covers each shipped engine copy:
 // its own tool wording is present, with no marker, leading comment or trailing newline.
-func TestEngineDirective_ReadsTheEnginesCopyWithoutBanner(t *testing.T) {
+func TestDirective_ReadsTheEnginesCopyWithoutBanner(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
@@ -53,54 +29,56 @@ func TestEngineDirective_ReadsTheEnginesCopyWithoutBanner(t *testing.T) {
 			t.Parallel()
 			dir := stencilkit.Seed(t)
 
-			got, err := EngineDirective(dir, tt.engine)
+			got, err := editdirective.Directive(dir, tt.engine)
 			if err != nil {
-				t.Fatalf("EngineDirective(dir, %q) = _, %v; want nil error", tt.engine, err)
+				t.Fatalf("Directive(dir, %q) = _, %v; want nil error", tt.engine, err)
 			}
 			if !strings.Contains(got, tt.want) {
-				t.Errorf("EngineDirective(dir, %q) = %q; want it to contain %q", tt.engine, got, tt.want)
+				t.Errorf("Directive(dir, %q) = %q; want it to contain %q", tt.engine, got, tt.want)
 			}
 			if strings.Contains(got, "{{") {
-				t.Errorf("EngineDirective(dir, %q) = %q; want no marker", tt.engine, got)
+				t.Errorf("Directive(dir, %q) = %q; want no marker", tt.engine, got)
 			}
 			if strings.HasPrefix(got, "<!--") {
-				t.Errorf("EngineDirective(dir, %q) = %q; want no leading comment", tt.engine, got)
+				t.Errorf("Directive(dir, %q) = %q; want no leading comment", tt.engine, got)
 			}
 			if strings.HasSuffix(got, "\n") {
-				t.Errorf("EngineDirective(dir, %q) = %q; want no trailing newline", tt.engine, got)
+				t.Errorf("Directive(dir, %q) = %q; want no trailing newline", tt.engine, got)
 			}
 		})
 	}
 }
 
-// TestEngineDirective_EngineWithoutACopyNamesTheStencil covers an engine that ships no copy:
-// the error names the engine's stencil.
-func TestEngineDirective_EngineWithoutACopyNamesTheStencil(t *testing.T) {
+// TestDirective_EngineWithoutACopyNamesTheStencil covers an engine that ships no copy.
+// It also covers a copy removed from the directory.
+// The error names the engine's stencil.
+func TestDirective_EngineWithoutACopyNamesTheStencil(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	dir := stencilkit.Seed(t)
-
-	got, err := EngineDirective(dir, "noengine")
-	if err == nil {
-		t.Fatalf("EngineDirective(dir, %q) = %q, nil; want an error", "noengine", got)
+	tests := []struct {
+		name    string
+		engine  string
+		removed bool
+	}{
+		{"NoCopyShipped", "noengine", false},
+		{"CopyRemoved", "claude", true},
 	}
-	if want := stencilstore.EngineBlockName("noengine", EngineBlock); !strings.Contains(err.Error(), want) {
-		t.Errorf("error = %q; want it to name %q", err, want)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := stencilkit.Seed(t)
+			want := stencilstore.EngineBlockName(tt.engine, editdirective.EngineBlock)
+			if tt.removed {
+				stencilkit.Remove(t, dir, want)
+			}
 
-// TestDirective_MissingStencilNamesIt covers a stencil removed from the directory: the error names it.
-func TestDirective_MissingStencilNamesIt(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	dir := stencilkit.Seed(t)
-	stencilkit.Remove(t, dir, directiveStencil)
-
-	got, err := Directive(dir)
-	if err == nil {
-		t.Fatalf("Directive = %q, nil; want an error", got)
-	}
-	if !strings.Contains(err.Error(), directiveStencil) {
-		t.Errorf("error = %q; want it to name %q", err, directiveStencil)
+			got, err := editdirective.Directive(dir, tt.engine)
+			if err == nil {
+				t.Fatalf("Directive(dir, %q) = %q, nil; want an error", tt.engine, got)
+			}
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error = %q; want it to name %q", err, want)
+			}
+		})
 	}
 }

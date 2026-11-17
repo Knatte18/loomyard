@@ -134,14 +134,15 @@ func newFixture(t *testing.T) *fixture {
 		},
 	}
 	fx.spec = Spec{
-		Prompt:      []byte("fix the failures"),
-		ReportPath:  "/lym/report.md",
-		ReplyPath:   fx.replyPath,
-		Role:        RoleGateFixer,
-		ModelChoice: shuttleengine.ModelChoice{Model: "fixer-model"},
-		Skills:      []string{"scribe:prose"},
-		Segment:     segmentcolor.Webster,
-		Timeout:     30 * time.Minute,
+		Prompt:       []byte("fix the failures"),
+		PromptEngine: shuttlefake.EngineName,
+		ReportPath:   "/lym/report.md",
+		ReplyPath:    fx.replyPath,
+		Role:         RoleGateFixer,
+		ModelChoice:  shuttleengine.ModelChoice{Model: "fixer-model"},
+		Skills:       []string{"scribe:prose"},
+		Segment:      segmentcolor.Webster,
+		Timeout:      30 * time.Minute,
 	}
 	return fx
 }

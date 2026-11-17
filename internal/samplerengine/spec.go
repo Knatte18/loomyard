@@ -3,6 +3,7 @@
 package samplerengine
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
@@ -38,13 +39,15 @@ type SessionInputs struct {
 	WorktreeRoot string
 	// DecisionRecordPath is the decision record the agent reads as the task's brief.
 	DecisionRecordPath string
+	// Engines names the engine the agent's model choice resolves to, which the prompt is rendered for.
+	Engines shuttleengine.EngineNamer
 }
 
 // SessionSpec builds the spec the sampler agent's interactive session starts under.
-// It refuses an empty StencilsDir, Slug, WorktreeRoot or DecisionRecordPath by name.
+// It refuses an empty StencilsDir, Slug, WorktreeRoot or DecisionRecordPath, or a nil Engines, by name.
 // It also refuses an agent model-spec that does not resolve against reg.
-// The prompt carries paths only, never file content, bar the PATTERN overview.
-// The implementer directive renders that overview from WorktreeRoot, since the agent writes and commits code.
+// The prompt is rendered for the engine in.Engines names for the resolved model choice,
+// and the spec's PromptEngine carries that engine.
 func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	required := []struct{ field, value string }{
 		{"StencilsDir", in.StencilsDir},
@@ -57,6 +60,9 @@ func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttlee
 			return shuttleengine.Spec{}, fmt.Errorf("sampler: SessionSpec: %s must not be empty", r.field)
 		}
 	}
+	if in.Engines == nil {
+		return shuttleengine.Spec{}, errors.New("sampler: SessionSpec: Engines must not be nil")
+	}
 
 	parsed, err := modelspec.Parse(cfg.Agent)
 	if err != nil {
@@ -67,21 +73,47 @@ func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttlee
 		return shuttleengine.Spec{}, fmt.Errorf("sampler: SessionSpec: agent model-spec: %w", err)
 	}
 
-	template, err := stencilstore.Read(in.StencilsDir, stencilName)
+	choice := shuttleengine.NewModelChoice(resolved)
+	engine := in.Engines.EngineName(choice)
+	prompt, err := RenderSessionPrompt(in, engine)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("sampler: SessionSpec: %w", err)
+	}
+
+	return shuttleengine.Spec{
+		Prompt:       prompt,
+		PromptEngine: engine,
+		ModelChoice:  choice,
+		Interactive:  true,
+		Unawaited:    true,
+		DenyPublish:  true,
+		Role:         Role,
+		Segment:      segmentcolor.Darn,
+		ConfigRole:   agentconfig.RoleSampler,
+	}, nil
+}
+
+// RenderSessionPrompt renders the sampler agent's opening prompt for engine.
+// It needs only the stencils and the worktree on disk, so it runs with no shuttle or session; in.Engines is unused.
+// The prompt carries paths only, never file content, bar the PATTERN overview.
+// The implementer directive renders that overview from WorktreeRoot, since the agent writes and commits code.
+// It returns an error when a stencil or directive cannot be rendered.
+func RenderSessionPrompt(in SessionInputs, engine string) (string, error) {
+	template, err := stencilstore.Read(in.StencilsDir, stencilName)
+	if err != nil {
+		return "", err
 	}
 	parentDirective, err := parentdirective.Directive(in.StencilsDir, in.ParentName, true)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("sampler: SessionSpec: %w", err)
+		return "", err
 	}
-	editDirective, err := editdirective.Directive(in.StencilsDir)
+	editDirective, err := editdirective.Directive(in.StencilsDir, engine)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("sampler: SessionSpec: %w", err)
+		return "", err
 	}
 	patternDirective, err := pattern.Directive(in.WorktreeRoot, in.StencilsDir, pattern.RoleImplementer, nil)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("sampler: SessionSpec: %w", err)
+		return "", err
 	}
 	prompt, err := stencil.FillOptional(template, map[string]string{
 		"slug":                     in.Slug,
@@ -92,17 +124,7 @@ func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttlee
 		patternDirectiveMarker:     patternDirective,
 	}, []string{patternDirectiveMarker})
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("sampler: SessionSpec: fill the sampler prompt: %w", err)
+		return "", fmt.Errorf("fill the sampler prompt: %w", err)
 	}
-
-	return shuttleengine.Spec{
-		Prompt:      string(prompt),
-		ModelChoice: shuttleengine.NewModelChoice(resolved),
-		Interactive: true,
-		Unawaited:   true,
-		DenyPublish: true,
-		Role:        Role,
-		Segment:     segmentcolor.Darn,
-		ConfigRole:  agentconfig.RoleSampler,
-	}, nil
+	return string(prompt), nil
 }

@@ -128,7 +128,7 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 	shuttle := &fakeShuttle{fix: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: "nothing fixed"}}
 	stencilsDir := newTestStencilsDir(t)
 	specsDir := filepath.Join(root, "specs")
-	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", SpecsDir: specsDir}, cfg, stencilsDir, "", []string{"scribe:golang-testing"})
+	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", SpecsDir: specsDir, DefaultEngine: "claude"}, cfg, stencilsDir, "", []string{"scribe:golang-testing"})
 
 	var gateCalls int
 	opts := RunOpts{
@@ -409,7 +409,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 			p.FixFan = tt.fixFan
 			reed := &shuttlefake.Reed{}
 			runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
-			e := New(seatengine.RunnerShuttle(runner), Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, testClusterFanConfig(), newTestStencilsDir(t), "", nil)
+			e := New(seatengine.RunnerShuttle(runner), Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", DefaultEngine: "claude"}, testClusterFanConfig(), newTestStencilsDir(t), "", nil)
 
 			_, err := e.Fix(p, tt.opts, digest)
 

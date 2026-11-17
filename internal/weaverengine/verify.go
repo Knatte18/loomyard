@@ -292,8 +292,10 @@ func fixerSpec(deps RunDeps, st *State, fixer *FixerState, findings string) (gat
 	if err != nil {
 		return gatefixer.Spec{}, fmt.Errorf("weaver: read the declared PATTERN changes for fixer %d: %w", fixer.Number, err)
 	}
+	engine := deps.Runner.EngineName(deps.Ladder[fixer.Rung])
 	prompt, err := gatefixer.RenderPrompt(gatefixer.PromptInputs{
 		StencilsDir: deps.Geom.StencilsDir,
+		Engine:      engine,
 		BodyStencil: verifyFixBodyStencil,
 		BodyValues: map[string]string{
 			"findings":      findings,
@@ -312,14 +314,15 @@ func fixerSpec(deps RunDeps, st *State, fixer *FixerState, findings string) (gat
 		return gatefixer.Spec{}, err
 	}
 	return gatefixer.Spec{
-		Prompt:      prompt,
-		ReportPath:  reportPath,
-		ReplyPath:   replyPath,
-		Role:        gatefixer.RoleVerifyFixer,
-		ModelChoice: deps.Ladder[fixer.Rung],
-		Skills:      deps.LanguageSkills,
-		Segment:     segmentcolor.Webster,
-		Timeout:     time.Duration(deps.Config.FixerTimeoutMin) * time.Minute,
+		Prompt:       prompt,
+		PromptEngine: engine,
+		ReportPath:   reportPath,
+		ReplyPath:    replyPath,
+		Role:         gatefixer.RoleVerifyFixer,
+		ModelChoice:  deps.Ladder[fixer.Rung],
+		Skills:       deps.LanguageSkills,
+		Segment:      segmentcolor.Webster,
+		Timeout:      time.Duration(deps.Config.FixerTimeoutMin) * time.Minute,
 	}, nil
 }
 

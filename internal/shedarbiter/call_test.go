@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -43,6 +44,23 @@ type fakeShuttle struct {
 	attachErr    error
 	attachResult shuttleengine.Result
 	onAttach     func(spec shuttleengine.Spec)
+}
+
+// EngineName names the choice's own engine, and claude for a choice naming none.
+func (f *fakeShuttle) EngineName(choice shuttleengine.ModelChoice) string {
+	if choice.Engine != "" {
+		return choice.Engine
+	}
+	return "claude"
+}
+
+// wantEngines returns the engine the fixture's settings resolve to.
+// It also returns the engine whose edit directive copy a prompt must lack.
+func (f *callFixture) wantEngines() (engine, otherEngine string) {
+	if f.settings.ModelChoice.Engine != "" {
+		return f.settings.ModelChoice.Engine, "claude"
+	}
+	return "claude", "codex"
 }
 
 func (f *fakeShuttle) Start(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (sheddriver.AgentRun, error) {
@@ -325,6 +343,10 @@ func TestCall_SpawnPath(t *testing.T) {
 		{name: "transient failure that failed twice", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"busy","transient":"network"}`},
 		{name: "blocked stop", producer: "Plan-Write", state: shedengine.StateBlocked},
 		{
+			name: "a codex model choice spawns for the codex engine", producer: "Plan-Write", state: shedengine.StateBlocked,
+			setup: func(f *callFixture) { f.settings.ModelChoice.Engine = "codex" },
+		},
+		{
 			// The target answers only once the attempt record exists, so a prompt naming it pins the read at the spawn.
 			// settleFresh writes that record first.
 			name: "amendment target read at the spawn", producer: "Plan-Write", state: shedengine.StateBlocked,
@@ -498,6 +520,11 @@ func TestCall_SpawnPath(t *testing.T) {
 			if spec.Role != loomengine.ArbiterRole || !reflect.DeepEqual(spec.OutputFiles, []string{verdictPath}) || spec.Model != "claude-resolved" || spec.Timeout != 30*time.Minute {
 				t.Errorf("spec = role %q, outputs %v, model %q, timeout %v; want the arbiter role over %q, the resolved model and 30m", spec.Role, spec.OutputFiles, spec.Model, spec.Timeout, verdictPath)
 			}
+			wantEngine, otherEngine := f.wantEngines()
+			if spec.PromptEngine != wantEngine {
+				t.Errorf("spec.PromptEngine = %q; want %q, the engine the model choice resolves to", spec.PromptEngine, wantEngine)
+			}
+			stencilkit.RequireEditDirectiveOf(t, seededStencils(t), spec.Prompt, wantEngine, otherEngine)
 			if captured.prompt != spec.Prompt || !strings.Contains(spec.Prompt, verdictPath) || !strings.Contains(spec.Prompt, f.envelopePath) {
 				t.Errorf("prompt.md does not equal the spec prompt, or the prompt lacks the verdict and envelope paths")
 			}
@@ -603,6 +630,15 @@ func TestCall_Rerun(t *testing.T) {
 			wantAttaches: 1, wantAttachAfter: 5 * time.Minute, wantVerdict: loomengine.ArbiterVerdictHandOn,
 		},
 		{
+			name: "a live attempt is attached under the codex engine", deadlineIn: 5 * time.Minute,
+			setup: func(f *callFixture, attempt loomengine.ArbiterAttempt) {
+				f.settings.ModelChoice.Engine = "codex"
+				f.fake.attachFound = true
+				f.fake.onAttach = func(shuttleengine.Spec) { writeVerdictFile(t, attempt.Dir, handOnVerdict) }
+			},
+			wantAttaches: 1, wantAttachAfter: 5 * time.Minute, wantVerdict: loomengine.ArbiterVerdictHandOn,
+		},
+		{
 			name: "an attempt with no marker, no live strand and no verdict reads missing", deadlineIn: 5 * time.Minute,
 			setup:        func(f *callFixture, attempt loomengine.ArbiterAttempt) {},
 			wantAttaches: 1, wantAttachAfter: 5 * time.Minute, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseMissing,
@@ -670,6 +706,9 @@ func TestCall_Rerun(t *testing.T) {
 			}
 			if tt.wantAttaches > 0 && f.fake.attaches[0].Timeout != tt.wantAttachAfter {
 				t.Errorf("attach timeout = %v; want the time left to the deadline, %v", f.fake.attaches[0].Timeout, tt.wantAttachAfter)
+			}
+			if wantEngine, _ := f.wantEngines(); tt.wantAttaches > 0 && f.fake.attaches[0].PromptEngine != wantEngine {
+				t.Errorf("attach PromptEngine = %q; want %q, the engine the model choice resolves to", f.fake.attaches[0].PromptEngine, wantEngine)
 			}
 			if !reflect.DeepEqual(f.fake.stoppedGUIDs, tt.wantStopped) {
 				t.Errorf("stopped strands = %v; want %v", f.fake.stoppedGUIDs, tt.wantStopped)

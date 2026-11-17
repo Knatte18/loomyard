@@ -203,6 +203,7 @@ func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (startedSess
 }
 
 // orchSpec builds the orchestrator run's spec as an interactive, focused run that awaits the operator.
+// It names the Claude engine and its prompt engine explicitly, so a Codex default engine never takes the orch role.
 // Its one output file is a sentinel that is never written, so the run never finishes on its own.
 // It carries the configured permission mode verbatim and authorizes forks,
 // so the hosted hub can spawn forks beside typed subagents.
@@ -217,6 +218,7 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time, remoteControlName strin
 		Prompt:         prompt,
 		OutputFiles:    []string{sentinel},
 		ModelChoice:    c.orchModelChoice(),
+		PromptEngine:   orchEngine,
 		Interactive:    true,
 		PermissionMode: c.cfg.PermissionMode,
 		ForkSubagents:  true,

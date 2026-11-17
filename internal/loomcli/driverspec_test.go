@@ -25,7 +25,7 @@ func TestDriverSpec(t *testing.T) {
 		Version: "v9",
 	}
 
-	got := driverSpec(prompt, reportPath, settings)
+	got := driverSpec(prompt, "b", reportPath, settings)
 
 	t.Run("Prompt", func(t *testing.T) {
 		if got.Prompt != prompt {
@@ -63,6 +63,11 @@ func TestDriverSpec(t *testing.T) {
 	t.Run("Engine_ResolvedFromSettings", func(t *testing.T) {
 		if got.Engine != settings.Engine {
 			t.Errorf("driverSpec().Engine = %q; want %q", got.Engine, settings.Engine)
+		}
+	})
+	t.Run("PromptEngine", func(t *testing.T) {
+		if got.PromptEngine != "b" {
+			t.Errorf("driverSpec().PromptEngine = %q; want %q, the engine the prompt was rendered for", got.PromptEngine, "b")
 		}
 	})
 	t.Run("NameOverride", func(t *testing.T) {

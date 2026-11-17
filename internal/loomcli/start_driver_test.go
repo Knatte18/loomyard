@@ -71,6 +71,14 @@ type fakeDriverStarter struct {
 	startErr error
 }
 
+// EngineName names the choice's own engine, and claude for a choice naming none.
+func (f *fakeDriverStarter) EngineName(choice shuttleengine.ModelChoice) string {
+	if choice.Engine == "" {
+		return "claude"
+	}
+	return choice.Engine
+}
+
 func (f *fakeDriverStarter) StartDriver(spec shuttleengine.Spec) (driverHandle, error) {
 	f.called = true
 	f.gotSpec = spec
@@ -111,6 +119,7 @@ func newTestLLMArmReceiver(t *testing.T, starter driverStarter, probe driverPane
 	dir := t.TempDir()
 	stencilsDir := filepath.Join(dir, "stencils")
 	stencilkit.SeedInto(t, stencilsDir)
+	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, "fake")
 	return &loomCLI{
 		location:        &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
@@ -165,6 +174,22 @@ func TestStartLLMDriverArm(t *testing.T) {
 		if !strings.Contains(prompt, "lym reed remove --name driver --detach") {
 			t.Errorf("prompt = %q; want the teardown command", prompt)
 		}
+	})
+
+	// The prompt and the spec follow the engine the starter resolves the choice to.
+	t.Run("a codex choice renders the codex prompt and names the codex engine", func(t *testing.T) {
+		starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
+		c := newTestLLMArmReceiver(t, starter, &fakeDriverPaneProbeForArm{})
+		c.cfg.Driver = "codex-driver"
+		c.registry = modelspec.Registry{"codex-driver": {Engine: "codex", Model: "gpt-5"}}
+
+		if _, err := c.startLLMDriverArm(driverStrandNone, "", shedrun.SelfRunID); err != nil {
+			t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
+		}
+		if starter.gotSpec.PromptEngine != "codex" {
+			t.Errorf("started spec.PromptEngine = %q; want %q", starter.gotSpec.PromptEngine, "codex")
+		}
+		stencilkit.RequireEditDirectiveOf(t, c.runDeps.Geom.StencilsDir, starter.gotSpec.Prompt, "codex", "claude")
 	})
 
 	// A relaunch that started first and removed second would leave two strands under one name.
@@ -243,6 +268,10 @@ type orderingStarter struct {
 	order   *[]string
 }
 
+func (o orderingStarter) EngineName(choice shuttleengine.ModelChoice) string {
+	return o.starter.EngineName(choice)
+}
+
 func (o orderingStarter) StartDriver(spec shuttleengine.Spec) (driverHandle, error) {
 	*o.order = append(*o.order, "start")
 	return o.starter.StartDriver(spec)
@@ -291,6 +320,7 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 	}
 	stencilsDir := filepath.Join(dir, "stencils")
 	stencilkit.SeedInto(t, stencilsDir)
+	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, "fake")
 	c := &loomCLI{
 		location:        &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},

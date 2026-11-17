@@ -171,7 +171,7 @@ func (c *Call) settleExisting(attempt loomengine.ArbiterAttempt) (loomengine.Arb
 // absentCause is the cause of the hand-on when no arbiter is live and none left a verdict.
 func (c *Call) attachAndConclude(attempt loomengine.ArbiterAttempt, guid string, remaining time.Duration, absentCause string) (loomengine.ArbiterEnvelope, error) {
 	verdictPath := loomengine.ArbiterVerdictPath(attempt.Dir)
-	spec := Spec("", verdictPath, c.deps.Settings)
+	spec := Spec("", verdictPath, c.deps.Shuttle.EngineName(c.deps.Settings.ModelChoice), c.deps.Settings)
 	spec.Timeout = remaining
 	result, found, err := c.deps.Shuttle.AttachIfLive(spec, VerdictGate(verdictPath))
 	if err == nil && !found {
@@ -244,7 +244,8 @@ func (c *Call) settleFresh(attempts []loomengine.ArbiterAttempt) (loomengine.Arb
 	promptInput.VerdictPath = loomengine.ArbiterVerdictPath(dir)
 	promptInput.AmendmentTarget = c.deps.AmendmentTarget()
 	promptInput.MayEdit = c.deps.Worktree != nil
-	prompt, err := Prompt(c.deps.StencilsDir, promptInput)
+	engine := c.deps.Shuttle.EngineName(settings.ModelChoice)
+	prompt, err := Prompt(c.deps.StencilsDir, engine, promptInput)
 	if err != nil {
 		return loomengine.ArbiterEnvelope{}, err
 	}
@@ -253,7 +254,7 @@ func (c *Call) settleFresh(attempts []loomengine.ArbiterAttempt) (loomengine.Arb
 	}
 
 	logger.Info("loom: arbiter spawn", "run", c.in.RunID, "attempt", number, "producer", c.status.CurrentProducer, "state", string(c.status.State), "deadline", attempt.Deadline)
-	run, err := c.deps.Shuttle.Start(Spec(prompt, promptInput.VerdictPath, settings), VerdictGate(promptInput.VerdictPath))
+	run, err := c.deps.Shuttle.Start(Spec(prompt, promptInput.VerdictPath, engine, settings), VerdictGate(promptInput.VerdictPath))
 	if err != nil {
 		return loomengine.ArbiterEnvelope{}, fmt.Errorf("arbiter: start the arbiter agent: %w; %s", err, wayForward(c.deps))
 	}

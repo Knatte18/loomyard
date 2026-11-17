@@ -36,9 +36,11 @@ func seatPrompt(t *testing.T, stencilsDir, worktreeRoot, slug string, table seat
 		WorktreeRoot: worktreeRoot,
 		AnchorPath:   worktreeRoot,
 		StencilsDir:  stencilsDir,
-		ParentName:   "the-parent",
-		Shortname:    "ly",
-		Slug:         slug,
+		// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
+		DefaultEngine: "claude",
+		ParentName:    "the-parent",
+		Shortname:     "ly",
+		Slug:          slug,
 	}, table)
 	if err != nil {
 		t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)

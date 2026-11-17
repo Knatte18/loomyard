@@ -34,6 +34,7 @@ const reportNamePrefix = "conflict-resolution-r"
 // paths are the worktree-relative conflicted paths the session is told to resolve.
 //
 // The prompt comes from a stencil, never a Go string literal, per the Stencil Ownership Invariant.
+// It is rendered for the engine deps.Shuttle resolves the model choice to.
 //
 // OutputFiles names exactly one fresh, absolute path: the resolution report at
 // <ScratchDir>/<reportNamePrefix><attempt>.md.
@@ -68,40 +69,54 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 
 	reportPath := filepath.Join(deps.ScratchDir, fmt.Sprintf("%s%d.md", reportNamePrefix, attempt))
 
-	template, err := stencilstore.Read(deps.StencilsDir, conflictStencilName)
+	choice := shuttleengine.NewModelChoice(resolved)
+	engine := deps.Shuttle.EngineName(choice)
+	prompt, err := RenderConflictPrompt(deps, paths, reportPath, engine)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("mergeresolve: buildConflictSpec: %w", err)
+	}
+
+	return shuttleengine.Spec{
+		Prompt:       prompt,
+		PromptEngine: engine,
+		OutputFiles:  []string{reportPath},
+		ModelChoice:  choice,
+		Interactive:  false,
+		Role:         ConflictRole,
+		Segment:      segmentcolor.Landing,
+		ConfigRole:   agentconfig.RoleConflictResolver,
+		Skills:       deps.LanguageSkills,
+		Timeout:      deps.Timeout,
+	}, nil
+}
+
+// RenderConflictPrompt renders the conflict-resolution prompt for the worktree-relative conflicted paths.
+// The session writes its resolution report to reportPath.
+// The edit directive in it is the copy for the named engine, so the prompt suits the engine the session runs on.
+// It reads the stencils from deps.StencilsDir and needs no shuttle.
+func RenderConflictPrompt(deps Deps, paths []string, reportPath, engine string) (string, error) {
+	template, err := stencilstore.Read(deps.StencilsDir, conflictStencilName)
+	if err != nil {
+		return "", err
 	}
 	directive, err := parentdirective.Directive(deps.StencilsDir, deps.ParentName, false)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("mergeresolve: buildConflictSpec: %w", err)
+		return "", err
 	}
-	editDirective, err := editdirective.Directive(deps.StencilsDir)
+	editDirective, err := editdirective.Directive(deps.StencilsDir, engine)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("mergeresolve: buildConflictSpec: %w", err)
+		return "", err
 	}
-	values := map[string]string{
+	prompt, err := stencil.Fill(template, map[string]string{
 		"conflicted_paths":         renderConflictedPaths(paths),
 		"report_path":              reportPath,
 		parentdirective.MarkerName: directive,
 		editdirective.MarkerName:   editDirective,
-	}
-	prompt, err := stencil.Fill(template, values)
+	})
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("mergeresolve: buildConflictSpec: fill conflict prompt: %w", err)
+		return "", fmt.Errorf("fill conflict prompt: %w", err)
 	}
-
-	return shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{reportPath},
-		ModelChoice: shuttleengine.NewModelChoice(resolved),
-		Interactive: false,
-		Role:        ConflictRole,
-		Segment:     segmentcolor.Landing,
-		ConfigRole:  agentconfig.RoleConflictResolver,
-		Skills:      deps.LanguageSkills,
-		Timeout:     deps.Timeout,
-	}, nil
+	return string(prompt), nil
 }
 
 // renderConflictedPaths renders paths as a markdown bullet list, one path per line.

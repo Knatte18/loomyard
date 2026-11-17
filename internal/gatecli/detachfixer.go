@@ -267,19 +267,21 @@ func cardFixerSpec(kit cardFixerKit, request detachRequest, reportPath, replyPat
 		ReportPath: reportPath,
 		ReplyPath:  replyPath,
 		RepoRoot:   kit.worktreeRoot,
+		Engine:     kit.engine,
 	})
 	if err != nil {
 		return gatefixer.Spec{}, err
 	}
 	return gatefixer.Spec{
-		Prompt:      prompt,
-		ReportPath:  reportPath,
-		ReplyPath:   replyPath,
-		Role:        gatefixer.RoleGateFixer,
-		ModelChoice: kit.model,
-		Skills:      kit.skills,
-		Segment:     segmentcolor.Webster,
-		Timeout:     kit.timeout,
+		Prompt:       prompt,
+		PromptEngine: kit.engine,
+		ReportPath:   reportPath,
+		ReplyPath:    replyPath,
+		Role:         gatefixer.RoleGateFixer,
+		ModelChoice:  kit.model,
+		Skills:       kit.skills,
+		Segment:      segmentcolor.Webster,
+		Timeout:      kit.timeout,
 	}, nil
 }
 

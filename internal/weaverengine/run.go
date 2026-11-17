@@ -444,8 +444,10 @@ func runBatch(deps RunDeps, st *State, plan *planparser.Plan, batch batcher.Batc
 			return batchEnd{}, err
 		}
 
+		engine := deps.Runner.EngineName(deps.Ladder[rung])
 		prompt, err := RenderBatchPrompt(BatchPromptInputs{
 			StencilsDir:        geom.StencilsDir,
+			Engine:             engine,
 			PromptsDir:         geom.PromptsDir,
 			Label:              label,
 			Attempt:            attemptNumber,
@@ -471,7 +473,7 @@ func runBatch(deps RunDeps, st *State, plan *planparser.Plan, batch batcher.Batc
 		if err != nil {
 			return batchEnd{}, err
 		}
-		spec := attemptSpec(attemptLaunch{Prompt: prompt, ReportPath: attempt.ReportPath, Choice: deps.Ladder[rung], Label: label, Skills: deps.LanguageSkills})
+		spec := attemptSpec(attemptLaunch{Prompt: prompt, Engine: engine, ReportPath: attempt.ReportPath, Choice: deps.Ladder[rung], Label: label, Skills: deps.LanguageSkills})
 
 		var verdict attemptVerdict
 		run, startErr := deps.Runner.StartGated(spec, gateSpec)

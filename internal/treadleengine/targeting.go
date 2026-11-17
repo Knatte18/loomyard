@@ -8,6 +8,7 @@
 package treadleengine
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -26,48 +27,58 @@ import (
 // The spawn runs in the review segment.
 const targetingRole = "targeting"
 
-// runTargeting spawns the pre-round targeting call, which reads a handoff and writes a prose seed brief.
-// Any failure, including reading the prompt template, logs a Warn and returns ("", false),
-// so the round runs without a seed.
+// RenderTargetingPrompt renders the pre-round targeting prompt for engine.
+// It needs only the stencils on disk, so it runs with no shuttle or session.
 // stencilsDir is the absolute stencils directory the prompt is read from.
-func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round int, previousHandoffPath, seedPath string, choice shuttleengine.ModelChoice) (string, bool) {
+// parentName is the parent name the prompt's directive is rendered for; empty renders the no-parent variant.
+// It returns an error when a stencil is unreadable or a marker cannot be filled.
+func RenderTargetingPrompt(stencilsDir, parentName, engine string, round int, previousHandoffPath, seedPath string) (string, error) {
 	targetingTemplate, err := stencilstore.Read(stencilsDir, "treadle-template-targeting")
 	if err != nil {
-		logger.Warn(name+": targeting judge template unreadable, round runs without a seed", "round", round, "cause", err)
-		return "", false
+		return "", fmt.Errorf("template unreadable: %w", err)
 	}
 	directive, err := parentdirective.Directive(stencilsDir, parentName, false)
 	if err != nil {
-		logger.Warn(name+": targeting judge parent directive unreadable, round runs without a seed", "round", round, "cause", err)
-		return "", false
+		return "", fmt.Errorf("parent directive unreadable: %w", err)
 	}
-	editDirective, err := editdirective.Directive(stencilsDir)
+	editDirective, err := editdirective.Directive(stencilsDir, engine)
 	if err != nil {
-		logger.Warn(name+": targeting judge edit directive unreadable, round runs without a seed", "round", round, "cause", err)
-		return "", false
+		return "", fmt.Errorf("edit directive unreadable: %w", err)
 	}
-	values := map[string]string{
+	prompt, err := stencil.Fill(targetingTemplate, map[string]string{
 		"round":                    strconv.Itoa(round),
 		"previous_handoff":         previousHandoffMarker(previousHandoffPath),
 		"seed_path":                seedPath,
 		parentdirective.MarkerName: directive,
 		editdirective.MarkerName:   editDirective,
-	}
-
-	prompt, err := stencil.Fill(targetingTemplate, values)
+	})
 	if err != nil {
-		logger.Warn(name+": targeting judge failed, round runs without a seed", "round", round, "cause", err)
+		return "", fmt.Errorf("fill the prompt: %w", err)
+	}
+	return string(prompt), nil
+}
+
+// runTargeting spawns the pre-round targeting call, which reads a handoff and writes a prose seed brief.
+// Any failure, including rendering the prompt, logs a Warn and returns ("", false),
+// so the round runs without a seed.
+// stencilsDir is the absolute stencils directory the prompt is read from.
+func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round int, previousHandoffPath, seedPath string, choice shuttleengine.ModelChoice) (string, bool) {
+	engine := sh.EngineName(choice)
+	prompt, err := RenderTargetingPrompt(stencilsDir, parentName, engine, round, previousHandoffPath, seedPath)
+	if err != nil {
+		logger.Warn(name+": targeting judge prompt failed, round runs without a seed", "round", round, "cause", err)
 		return "", false
 	}
 
 	spec := shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{seedPath},
-		ModelChoice: choice,
-		Role:        targetingRole,
-		Segment:     segmentcolor.Review,
-		ConfigRole:  agentconfig.RoleTreadleTargeting,
-		Round:       strconv.Itoa(round),
+		Prompt:       prompt,
+		PromptEngine: engine,
+		OutputFiles:  []string{seedPath},
+		ModelChoice:  choice,
+		Role:         targetingRole,
+		Segment:      segmentcolor.Review,
+		ConfigRole:   agentconfig.RoleTreadleTargeting,
+		Round:        strconv.Itoa(round),
 	}
 
 	result, err := sh.Run(spec)

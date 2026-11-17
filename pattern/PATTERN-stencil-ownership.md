@@ -58,9 +58,11 @@ the agent asks its parent.
 
 ### Edit directive
 
-A spawned role's opening stencil renders the edit directive through `internal/editdirective`.
+A spawned role's opening stencil renders the edit directive through `internal/editdirective`,
+in the copy of the engine its launch resolves to.
 
-- The `edit-directive` stencil is the only statement of the edit directive's rules.
+- The engine copies, `engine/<engine>/edit-directive`, are the directive's only statement;
+  each carries every rule in its engine's tool wording, and no shared copy exists.
 - The orch stencils are exempt.
 - A test enforces the edit rule.
 

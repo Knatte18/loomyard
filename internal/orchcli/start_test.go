@@ -486,6 +486,9 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if !spec.ForkSubagents {
 		t.Errorf("ForkSubagents = false; want true")
 	}
+	if spec.ModelChoice.Engine != "claude" || spec.PromptEngine != "claude" {
+		t.Errorf("engine/PromptEngine = %q/%q; want claude/claude, whatever shuttle's default engine is", spec.ModelChoice.Engine, spec.PromptEngine)
+	}
 	if !spec.Interactive || spec.NameOverride != "orch" || spec.Role != "orch" || !spec.Display.Focus {
 		t.Errorf("spec = %+v; want interactive, focused, named orch", spec)
 	}

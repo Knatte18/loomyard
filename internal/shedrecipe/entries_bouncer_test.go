@@ -14,12 +14,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -53,7 +55,7 @@ func minimalBouncerConfig(t *testing.T, env Env) Config {
 	t.Helper()
 	writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
 	writeStencil(t, env.StencilsDir, "parent-directive-none", "no parent\n")
-	writeStencil(t, env.StencilsDir, "edit-directive", "edit directive\n")
+	writeStencil(t, env.StencilsDir, stencilstore.EngineBlockName("claude", editdirective.EngineBlock), "edit directive\n")
 	return Config{
 		"run_subdir":     "review-segment",
 		"artifact_paths": []string{"artifact.md"},
@@ -242,6 +244,8 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 // different package, so the triples are asserted through behaviour instead: one Call is
 // driven against the entry's producer with the shedfake.Shuttle already on newTestEnv's Env, and the
 // recorded shuttleengine.Spec's Model, Effort, and Version are asserted.
+//
+//testtiming:keep pins each spawn's model triple and role and the attach probe's role, which TestBouncerEntry_ApproveSeam, TestBouncerEntry_ConstructionFailures and TestBurlerHalfEntries_ColorSegment do not assert
 func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 	tiergate.Require(t, 0)
 	seed := shuttleengine.ModelChoice{Engine: "seed-engine", Model: "seed-model", Effort: "seed-effort", Version: "seed-version"}
@@ -253,6 +257,8 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 		t.Helper()
 		env := newTestEnv(t)
 		env.Segments[testReviewSegment] = SegmentSettings{Bouncer: shedadapters.BouncerModels{Seed: seed, Judge: judge}}
+		stencilkit.SeedInto(t, env.StencilsDir)
+		stencilkit.SeedEditDirectiveCopies(t, env.StencilsDir, seed.Engine, judge.Engine)
 		writeStencil(t, env.StencilsDir, "bouncer-template-seed", "seed template, no markers\n")
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 

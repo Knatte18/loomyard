@@ -5,6 +5,7 @@ package dobbyengine
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,6 +26,20 @@ type tidyShuttleFake struct {
 	stopped []string
 	// stopErr is what StopStrand returns after recording the guid.
 	stopErr error
+	// engineErr is what EngineName returns in place of an engine name.
+	engineErr error
+	// engines maps a choice's Engine to the engine it resolves to; a choice absent from it resolves to claude.
+	engines map[string]string
+}
+
+func (f *tidyShuttleFake) EngineName(choice shuttleengine.ModelChoice) (string, error) {
+	if f.engineErr != nil {
+		return "", f.engineErr
+	}
+	if engine, ok := f.engines[choice.Engine]; ok {
+		return engine, nil
+	}
+	return "claude", nil
 }
 
 func (f *tidyShuttleFake) Start(spec shuttleengine.Spec) (string, error) {
@@ -165,6 +180,42 @@ func TestCountLandingsAndTidy(t *testing.T) {
 		if want := "board tidy started over 5 landings: " + wantReport; !slices.Equal(h.logged, []string{want}) {
 			t.Errorf("log lines = %q; want the one %q", h.logged, want)
 		}
+	})
+
+	t.Run("an engine that cannot be resolved starts no agent and reports its error", func(t *testing.T) {
+		t.Parallel()
+		h := newTidyHarness(t, 5)
+		h.step()
+		h.landed = five
+		h.shuttle.engineErr = errors.New("the runner did not build")
+		if err := h.d.countLandings(h.now); err != nil {
+			t.Fatalf("countLandings() = %v; want nil", err)
+		}
+		err := h.d.tidyStep(context.Background(), h.now)
+		if !errors.Is(err, h.shuttle.engineErr) {
+			t.Errorf("tidyStep() = %v; want the engine error", err)
+		}
+		if len(h.shuttle.started) != 0 || h.state().Tidy != nil {
+			t.Errorf("agents started, state Tidy = %d, %+v; want none started and none recorded", len(h.shuttle.started), h.state().Tidy)
+		}
+	})
+
+	t.Run("a codex model choice starts the agent for the codex engine", func(t *testing.T) {
+		t.Parallel()
+		h := newTidyHarness(t, 5)
+		h.shuttle.engines = map[string]string{"codex-choice": "codex"}
+		h.d.deps.TidyModel.Engine = "codex-choice"
+		h.step()
+		h.landed = five
+		h.step()
+		if len(h.shuttle.started) != 1 {
+			t.Fatalf("agents started = %d; want 1", len(h.shuttle.started))
+		}
+		started := h.shuttle.started[0]
+		if started.PromptEngine != "codex" {
+			t.Errorf("started spec.PromptEngine = %q; want %q, the engine the model choice resolves to", started.PromptEngine, "codex")
+		}
+		stencilkit.RequireEditDirectiveOf(t, h.d.deps.StencilsDir, started.Prompt, "codex", "claude")
 	})
 
 	t.Run("a restart with the same records spawns none and counts none twice", func(t *testing.T) {
@@ -324,10 +375,17 @@ func TestTidyPrompt(t *testing.T) {
 	stencils := filepath.Join(t.TempDir(), "stencils")
 	stencilkit.SeedInto(t, stencils)
 
-	prompt, err := TidyPrompt(stencils, TidyPromptInput{Landed: []string{"alpha", "beta"}, ReportPath: "/hub/prime/.lym/beam/tidy/20261026T151739Z.md", Parent: "ly:orch"})
+	input := TidyPromptInput{Landed: []string{"alpha", "beta"}, ReportPath: "/hub/prime/.lym/beam/tidy/20261026T151739Z.md", Parent: "ly:orch"}
+	prompt, err := TidyPrompt(stencils, "claude", input)
 	if err != nil {
 		t.Fatalf("TidyPrompt() = _, %v; want nil", err)
 	}
+	stencilkit.RequireEditDirectiveOf(t, stencils, prompt, "claude", "codex")
+	codexPrompt, err := TidyPrompt(stencils, "codex", input)
+	if err != nil {
+		t.Fatalf("TidyPrompt(codex) = _, %v; want nil", err)
+	}
+	stencilkit.RequireEditDirectiveOf(t, stencils, codexPrompt, "codex", "claude")
 	for _, want := range []string{"`alpha`", "`beta`", "/hub/prime/.lym/beam/tidy/20261026T151739Z.md", "ly:orch"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("TidyPrompt() lacks %q", want)
@@ -337,7 +395,10 @@ func TestTidyPrompt(t *testing.T) {
 		t.Errorf("TidyPrompt() holds an unfilled marker")
 	}
 
-	spec := TidySpec(prompt, "/report.md", shuttleengine.ModelChoice{Engine: "b", Model: "sonnet"}, 30*time.Minute)
+	spec := TidySpec(prompt, "/report.md", "claude", shuttleengine.ModelChoice{Engine: "b", Model: "sonnet"}, 30*time.Minute)
+	if spec.PromptEngine != "claude" {
+		t.Errorf("TidySpec().PromptEngine = %q; want %q", spec.PromptEngine, "claude")
+	}
 	if spec.Segment != segmentcolor.Coordinator {
 		t.Errorf("TidySpec().Segment = %v; want %v", spec.Segment, segmentcolor.Coordinator)
 	}

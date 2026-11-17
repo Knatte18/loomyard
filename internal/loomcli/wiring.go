@@ -1296,6 +1296,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 				Slug:               seedSlug(location.WorktreeName),
 				WorktreeRoot:       location.WorktreePath(),
 				DecisionRecordPath: record.path,
+				Engines:            engines,
 			}, samplerCfg, registry)
 		})
 	}

@@ -144,15 +144,23 @@ func TestBuildReflectionSpec_SkillsAndParentDirective(t *testing.T) {
 		name       string
 		parentName string
 		want       string
+		// frictionSpec replaces the deps' friction model when set.
+		frictionSpec string
+		engine       string
+		otherEngine  string
 	}{
-		{"with parent", "ab:cd:webster", "ab:cd:webster"},
-		{"no parent", "", "No parent is recorded"},
+		{"with parent", "ab:cd:webster", "ab:cd:webster", "", "claude", "codex"},
+		{"no parent", "", "No parent is recorded", "", "claude", "codex"},
+		{"on codex", "", "No parent is recorded", "codex:sonnet[effort=high]", "codex", "claude"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			deps := newTestDeps(t, doneShuttle(), fixedClock())
 			deps.ParentName = tt.parentName
+			if tt.frictionSpec != "" {
+				deps.FrictionSpec = tt.frictionSpec
+			}
 
 			spec, err := buildReflectionSpec(deps, []string{"note-1.md"}, "/x/report.md")
 			if err != nil {
@@ -161,8 +169,9 @@ func TestBuildReflectionSpec_SkillsAndParentDirective(t *testing.T) {
 			if !strings.Contains(spec.Prompt, tt.want) {
 				t.Errorf("Prompt = %q; want it to contain %q", spec.Prompt, tt.want)
 			}
-			if !strings.Contains(spec.Prompt, "Edit or Write") {
-				t.Errorf("Prompt = %q; want it to contain the edit directive's \"Edit or Write\" sentence", spec.Prompt)
+			stencilkit.RequireEditDirectiveOf(t, deps.StencilsDir, spec.Prompt, tt.engine, tt.otherEngine)
+			if spec.PromptEngine != tt.engine {
+				t.Errorf("PromptEngine = %q; want %q, the engine the friction choice resolves to", spec.PromptEngine, tt.engine)
 			}
 			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
 				t.Errorf("Prompt = %q; want the no-parent variant", spec.Prompt)

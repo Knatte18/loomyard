@@ -33,6 +33,13 @@ func (n noAuditEngines) Lookup(string) (shuttleengine.Engine, error) {
 
 func (noAuditEngines) DefaultName() string { return shuttlefake.EngineName }
 
+func (noAuditEngines) EngineName(choice shuttleengine.ModelChoice) string {
+	if choice.Engine == "" {
+		return shuttlefake.EngineName
+	}
+	return choice.Engine
+}
+
 // newFixVerifyFixture returns the recover-batch fixture with a scratch dir, and the FixVerifyDeps over its seams.
 // When withReport is set, it also writes a verify-gate report routed to the cold fixer.
 func newFixVerifyFixture(t *testing.T, withReport bool) (*recoverFixture, websterengine.FixVerifyDeps) {
@@ -193,6 +200,9 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 		}
 		if spec.Role != gatefixer.RoleVerifyFixer || spec.ModelChoice.Model != "recovery-model" || !slices.Equal(spec.OutputFiles, []string{replyPath}) {
 			t.Errorf("spec role %q, model %q, output files %v; want verify-fixer, recovery-model, [%s]", spec.Role, spec.ModelChoice.Model, spec.OutputFiles, replyPath)
+		}
+		if spec.PromptEngine != shuttlefake.EngineName {
+			t.Errorf("spec PromptEngine = %q; want %q, the engine the recovery choice resolves to", spec.PromptEngine, shuttlefake.EngineName)
 		}
 		wantSkills, err := shuttlefake.Agents(t).Skills(agentconfig.RoleGateFixer, nil)
 		if err != nil {

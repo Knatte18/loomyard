@@ -104,7 +104,7 @@ func chairPrompt(t *testing.T, stencilsDir, parentName string, p *Profile, table
 	t.Helper()
 	root := filepath.Dir(p.ReviewPath)
 	rendered, err := seatengine.Prompts(
-		seatengine.Geometry{WorktreeRoot: root, AnchorPath: root, StencilsDir: stencilsDir, ParentName: parentName, Shortname: "tst", Slug: "task"},
+		seatengine.Geometry{WorktreeRoot: root, AnchorPath: root, StencilsDir: stencilsDir, DefaultEngine: "claude", ParentName: parentName, Shortname: "tst", Slug: "task"},
 		table,
 	)
 	if err != nil {

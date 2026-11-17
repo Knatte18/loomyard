@@ -75,6 +75,11 @@ func TestRenderBatchPrompt(t *testing.T) {
 			},
 		},
 		{
+			name: "CodexLaunchCarriesTheCodexEditDirective",
+			edit: func(in *weaverengine.BatchPromptInputs) { in.Engine = "codex" },
+			want: []string{"`/run/journal.md`"},
+		},
+		{
 			name: "LastBatchRendersTheMainPackages",
 			edit: func(in *weaverengine.BatchPromptInputs) { in.LastBatch = true },
 			want: []string{"- `lym gate test --gate batch --card 1-one --card 2-two --main-packages`"},
@@ -87,6 +92,7 @@ func TestRenderBatchPrompt(t *testing.T) {
 			promptsDir := t.TempDir()
 			in := weaverengine.BatchPromptInputs{
 				StencilsDir:        stencilsDir,
+				Engine:             "claude",
 				PromptsDir:         promptsDir,
 				Label:              "01-one",
 				Attempt:            1,
@@ -105,6 +111,11 @@ func TestRenderBatchPrompt(t *testing.T) {
 				t.Fatalf("RenderBatchPrompt() error = %v; want nil", err)
 			}
 			text := string(got)
+			otherEngine := "codex"
+			if in.Engine == "codex" {
+				otherEngine = "claude"
+			}
+			stencilkit.RequireEditDirectiveOf(t, stencilsDir, text, in.Engine, otherEngine)
 			for _, want := range tt.want {
 				if !strings.Contains(text, want) {
 					t.Errorf("RenderBatchPrompt() lacks %q", want)
@@ -132,7 +143,7 @@ func TestRenderBatchPrompt(t *testing.T) {
 		gate := batchTestGate()
 		delete(gate.Gates, "batch")
 		_, err := weaverengine.RenderBatchPrompt(weaverengine.BatchPromptInputs{
-			StencilsDir: stencilsDir, PromptsDir: t.TempDir(), Label: "01-one", Attempt: 1,
+			StencilsDir: stencilsDir, Engine: "claude", PromptsDir: t.TempDir(), Label: "01-one", Attempt: 1,
 			Cards: batchTestCards(), PlanDirDisplay: "_lym/plan", Gate: gate, RepoRoot: t.TempDir(),
 		})
 		if err == nil || !strings.Contains(err.Error(), `gates holds no key "batch"`) {

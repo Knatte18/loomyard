@@ -687,6 +687,16 @@ func (s *runnerTidyShuttle) Start(spec shuttleengine.Spec) (string, error) {
 	return run.StrandGUID(), nil
 }
 
+// EngineName names the engine choice launches on under the runner's engine set.
+// A runner that cannot be built returns the build's error, so the tidy reports it instead of rendering a prompt.
+func (s *runnerTidyShuttle) EngineName(choice shuttleengine.ModelChoice) (string, error) {
+	s.once.Do(func() { s.runner, s.err = battencli.ShuttleRunner(s.worktree) })
+	if s.err != nil {
+		return "", s.err
+	}
+	return s.runner.EngineName(choice), nil
+}
+
 // StopStrand ends the strand guid names through shuttle's stop verb.
 func (s *runnerTidyShuttle) StopStrand(guid string) error {
 	s.once.Do(func() { s.runner, s.err = battencli.ShuttleRunner(s.worktree) })

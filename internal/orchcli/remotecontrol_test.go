@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -34,6 +35,8 @@ func TestStart_LaunchPassesAndMarksRemoteControl(t *testing.T) {
 		switchOn bool
 		// noRemoteControl runs the orch on an engine set whose default has no remote control.
 		noRemoteControl bool
+		// codexDefault runs the orch on an engine set whose default engine is codex and that also holds claude.
+		codexDefault bool
 		// unlisted launches with no listed orch strand, so the name forms from the worktree's fixed strand name.
 		// The harness hub is no git repository, so that name cannot be formed and the launch goes without remote control.
 		unlisted bool
@@ -49,6 +52,7 @@ func TestStart_LaunchPassesAndMarksRemoteControl(t *testing.T) {
 		{name: "FailedMarkStillLaunches", switchOn: true, markErr: errors.New("tmux is gone"), wantName: "neve::tst:orch"},
 		{name: "SwitchOff"},
 		{name: "EngineWithoutRemoteControl", switchOn: true, noRemoteControl: true},
+		{name: "CodexDefaultEngineStillTakesTheOrchsPinnedEngine", switchOn: true, codexDefault: true, wantName: "neve::tst:orch"},
 		{name: "NoListedStrandWithoutAFixedName", switchOn: true, unlisted: true},
 		{name: "MachineNameFails", switchOn: true, machineErr: errors.New("no hostname")},
 		{name: "ResumedSession", switchOn: true, recordedSession: "sess-1", wantName: "neve::tst:orch"},
@@ -70,6 +74,9 @@ func TestStart_LaunchPassesAndMarksRemoteControl(t *testing.T) {
 			}
 			if tt.noRemoteControl {
 				h.cli.engines = shuttleengine.NewEngineSet("none", nil)
+			}
+			if tt.codexDefault {
+				h.cli.engines = shuttleengine.NewEngineSet("codex", map[string]shuttleengine.Engine{"claude": claudeengine.New()})
 			}
 			if tt.recordedSession != "" {
 				saveSeedState(t, h, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "old-guid", SessionID: tt.recordedSession})

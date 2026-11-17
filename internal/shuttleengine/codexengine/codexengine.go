@@ -19,7 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// engineName is the name the engine registers under, which the standing passages are keyed by.
+// engineName is the name the engine registers under.
+// The standing passages are keyed by it, and a spec's prompt engine must name it.
 const engineName = "codex"
 
 // defaultSubmitRedrawSettleMS is the redraw settle of an engine built without config.
@@ -84,6 +85,7 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 }
 
 // Prepare readies a Codex launch for the run in runDir and returns it.
+// It first refuses a spec whose prompt was not rendered for Codex, unless the prompt is marked hand-written.
 // Before anything is written, it validates the spec and loads the hub's gate config.
 // A gate config that fails to load refuses the launch, and so does a checkout that Codex rules refuse.
 // It readies the lym home, settles the sandbox and writes prompt.md into runDir.
@@ -98,6 +100,9 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // It returns the prompt pointer as Launch.PromptLine, for shuttle to send once the skills load.
 // The launch records session starts and names no session id, since Codex mints its own at the first turn.
 func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+	if err := shuttleengine.CheckPromptEngine(spec, engineName); err != nil {
+		return shuttleengine.Launch{}, err
+	}
 	codex, err := loadConfigOrRefuse(c.dirs)
 	if err != nil {
 		return shuttleengine.Launch{}, err

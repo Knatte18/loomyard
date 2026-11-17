@@ -69,6 +69,19 @@ type Shuttle struct {
 	GateReason string
 }
 
+// EngineName names the choice's own engine, and claude for a choice naming none.
+func (f *Shuttle) EngineName(choice shuttleengine.ModelChoice) string {
+	return engineName(choice)
+}
+
+// engineName names the choice's own engine, and claude, the engine every seeded stencil set has a copy for, for none.
+func engineName(choice shuttleengine.ModelChoice) string {
+	if choice.Engine == "" {
+		return "claude"
+	}
+	return choice.Engine
+}
+
 // Run records spec and answers RunFn, else Result and Err.
 func (f *Shuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 	f.mu.Lock()
@@ -424,6 +437,11 @@ type MergeShuttle struct {
 
 	// Specs holds every Spec handed to Run, in order.
 	Specs []shuttleengine.Spec
+}
+
+// EngineName names the choice's own engine, and claude for a choice naming none.
+func (f *MergeShuttle) EngineName(choice shuttleengine.ModelChoice) string {
+	return engineName(choice)
 }
 
 // Run records spec, runs DuringRun, then answers RunFn, else the scripted entry for this call.

@@ -22,6 +22,7 @@
 // the card pointers with their card gates, the batch gate, the decision record, the run journal and the report path.
 // It also carries the failure digest and uncommitted paths of a retry.
 // The PATTERN, parent, edit and friction directives close it.
+// The edit directive is the copy for the engine the rung's model choice launches on, as is the verify fixer's.
 // The plan-level verify fixer's body is the `weaver-body-verify-fix` stencil.
 // Gatefixer joins that body behind its cold frame.
 //

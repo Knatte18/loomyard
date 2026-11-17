@@ -111,7 +111,7 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			p.RolePrefix = tt.rolePrefix
 			shuttle := doneReview(approvedReview)
 			specsDir := filepath.Join(root, "specs")
-			geom := Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", SpecsDir: specsDir}
+			geom := Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", SpecsDir: specsDir, DefaultEngine: "claude"}
 			if tt.declaredBullet != "" {
 				geom.RepoRoot = root
 				geom.PatternRecordPath = writeDeclaredPatternRecord(t, root, tt.declaredBullet)

@@ -111,7 +111,7 @@ func assertBadClaudeConfigRefusesOnlyARunStart(t *testing.T, set shuttleengine.E
 		}
 	}
 
-	spec := shuttleengine.Spec{Prompt: "p", OutputFiles: []string{filepath.Join(dirs.Anchor, "out.md")}}
+	spec := shuttleengine.Spec{Prompt: "p", PromptEngine: runner.EngineName(shuttleengine.ModelChoice{}), OutputFiles: []string{filepath.Join(dirs.Anchor, "out.md")}}
 	_, err := runner.Start(spec)
 	if err == nil {
 		t.Fatal("Start accepted a run over an invalid claude.yaml")

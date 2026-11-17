@@ -269,8 +269,10 @@ func newLeadSeatProducer(t *testing.T, reedGeom reedengine.Geometry, runner *shu
 		WorktreeRoot: reedGeom.WorktreeRoot,
 		AnchorPath:   reedGeom.AnchorPath,
 		StencilsDir:  stencilsDir,
-		Shortname:    reedGeom.NameShortname,
-		Slug:         reedGeom.NameSlug,
+		// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
+		DefaultEngine: "claude",
+		Shortname:     reedGeom.NameShortname,
+		Slug:          reedGeom.NameSlug,
 	})
 	return shedadapters.NewMultiLLMProducerSourced("Discussion-Write", func() (seatengine.Table, error) { return table, nil }, seats, nil, nil)
 }

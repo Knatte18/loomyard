@@ -30,9 +30,11 @@ type Stopper interface {
 
 // Engines is the engine lookup a fixer's recorded engine name is resolved through.
 // An empty name resolves the default engine, and DefaultName names that engine.
+// EngineName names the engine a model choice launches on, which a caller renders the fixer's prompt for.
 type Engines interface {
 	Lookup(name string) (shuttleengine.Engine, error)
 	DefaultName() string
+	shuttleengine.EngineNamer
 }
 
 // Clock is the time source the wait polls on, so a test advances it without waiting.
@@ -60,6 +62,8 @@ type Deps struct {
 type Spec struct {
 	// Prompt is the rendered prompt the strand starts with.
 	Prompt []byte
+	// PromptEngine names the engine Prompt was rendered for, the one ModelChoice launches on.
+	PromptEngine string
 	// ReportPath is the report the fixer reads, kept on the record.
 	ReportPath string
 	// ReplyPath is the reply file the fixer writes as its final action, and the strand's only output file.
@@ -98,14 +102,15 @@ func SpawnOrAttach(deps Deps, store Store, spec Spec) (*Record, bool, error) {
 	}
 
 	run, err := deps.Starter.Start(shuttleengine.Spec{
-		Prompt:      string(spec.Prompt),
-		OutputFiles: []string{spec.ReplyPath},
-		ModelChoice: spec.ModelChoice,
-		ConfigRole:  agentconfig.RoleGateFixer,
-		Skills:      spec.Skills,
-		Role:        spec.Role,
-		Segment:     spec.Segment,
-		Timeout:     spec.Timeout,
+		Prompt:       string(spec.Prompt),
+		PromptEngine: spec.PromptEngine,
+		OutputFiles:  []string{spec.ReplyPath},
+		ModelChoice:  spec.ModelChoice,
+		ConfigRole:   agentconfig.RoleGateFixer,
+		Skills:       spec.Skills,
+		Role:         spec.Role,
+		Segment:      spec.Segment,
+		Timeout:      spec.Timeout,
 	})
 	if err != nil {
 		return nil, false, markTransient(fmt.Errorf("gatefixer: start the %s: %w", spec.Role, err))

@@ -31,6 +31,7 @@ const prReviewStencilName = "landing-template-pr-review"
 
 // prSessions is the seam the PR-Review row starts and stops its interactive session through.
 type prSessions interface {
+	shuttleengine.EngineNamer
 	// StartSession starts one unawaited session and returns once its provider is past startup.
 	StartSession(spec shuttleengine.Spec) (shuttleengine.OpenResult, error)
 	// StopStrand ends the strand guid names and records the stop.
@@ -101,8 +102,49 @@ func (p *PRReview) ensureSession(ctx context.Context, rec pullrequest.Record) (p
 	return rec, err
 }
 
-// sessionSpec builds the spec the PR-Review session starts under for the pull request rec records.
+// RenderPRReviewPrompt renders the PR-Review session's opening prompt for the pull request at prURL.
+// The edit directive in it is the copy for the named engine, so the prompt suits the engine the session runs on.
 // The prompt carries paths only, never file content, except the drift verdict, which no file holds.
+func RenderPRReviewPrompt(deps Deps, prURL, engine string) (string, error) {
+	template, err := stencilstore.Read(deps.StencilsDir, prReviewStencilName)
+	if err != nil {
+		return "", err
+	}
+	directive, err := parentdirective.Directive(deps.StencilsDir, deps.ParentName, true)
+	if err != nil {
+		return "", err
+	}
+	editDirective, err := editdirective.Directive(deps.StencilsDir, engine)
+	if err != nil {
+		return "", err
+	}
+	verdict, err := deps.driftVerdict()
+	if err != nil {
+		return "", err
+	}
+	if verdict == "" {
+		verdict = noDriftVerdict
+	}
+	prompt, err := stencil.Fill(template, map[string]string{
+		"drift_verdict":            verdict,
+		"slug":                     deps.Slug,
+		"pr_url":                   prURL,
+		"task_worktree":            deps.WorktreeRoot,
+		"task_branch":              deps.TaskBranch,
+		"parent_branch":            deps.ParentBranch,
+		"description_path":         deps.DescriptionPath,
+		"run_material":             deps.runMaterial(),
+		parentdirective.MarkerName: directive,
+		editdirective.MarkerName:   editDirective,
+	})
+	if err != nil {
+		return "", fmt.Errorf("fill the PR-Review prompt: %w", err)
+	}
+	return string(prompt), nil
+}
+
+// sessionSpec builds the spec the PR-Review session starts under for the pull request rec records.
+// The prompt is rendered for the engine the session's model choice resolves to.
 func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, error) {
 	parsed, err := modelspec.Parse(p.deps.Config.PRReviewer)
 	if err != nil {
@@ -112,60 +154,33 @@ func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, erro
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: pr_reviewer model-spec: %w", p.name, err)
 	}
+	choice := shuttleengine.NewModelChoice(resolved)
+	engine := p.deps.PullRequest.Sessions.EngineName(choice)
 
-	template, err := stencilstore.Read(p.deps.StencilsDir, prReviewStencilName)
+	prompt, err := RenderPRReviewPrompt(p.deps, rec.URL, engine)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
-	}
-	directive, err := parentdirective.Directive(p.deps.StencilsDir, p.deps.ParentName, true)
-	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
-	}
-	editDirective, err := editdirective.Directive(p.deps.StencilsDir)
-	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
-	}
-	verdict, err := p.deps.driftVerdict()
-	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
-	}
-	if verdict == "" {
-		verdict = noDriftVerdict
-	}
-	prompt, err := stencil.Fill(template, map[string]string{
-		"drift_verdict":            verdict,
-		"slug":                     p.deps.Slug,
-		"pr_url":                   rec.URL,
-		"task_worktree":            p.deps.WorktreeRoot,
-		"task_branch":              p.deps.TaskBranch,
-		"parent_branch":            p.deps.ParentBranch,
-		"description_path":         p.deps.DescriptionPath,
-		"run_material":             p.runMaterial(),
-		parentdirective.MarkerName: directive,
-		editdirective.MarkerName:   editDirective,
-	})
-	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: fill the PR-Review prompt: %w", p.name, err)
 	}
 
 	return shuttleengine.Spec{
-		Prompt:      string(prompt),
-		ModelChoice: shuttleengine.NewModelChoice(resolved),
-		Interactive: true,
-		Unawaited:   true,
-		DenyPublish: true,
-		Role:        prReviewerRole,
-		Segment:     segmentcolor.Landing,
-		ConfigRole:  agentconfig.RolePRReviewer,
-		Skills:      p.deps.LanguageSkills,
+		Prompt:       prompt,
+		PromptEngine: engine,
+		ModelChoice:  choice,
+		Interactive:  true,
+		Unawaited:    true,
+		DenyPublish:  true,
+		Role:         prReviewerRole,
+		Segment:      segmentcolor.Landing,
+		ConfigRole:   agentconfig.RolePRReviewer,
+		Skills:       p.deps.LanguageSkills,
 	}, nil
 }
 
 // runMaterial lists, one path per line, the decision record and plan directory the run has on disk.
 // The stencil needs a non-empty value, so a run with none of them lists that instead.
-func (p *PRReview) runMaterial() string {
+func (d Deps) runMaterial() string {
 	var lines []string
-	for _, path := range []string{p.deps.DecisionRecordPath, p.deps.PlanDir} {
+	for _, path := range []string{d.DecisionRecordPath, d.PlanDir} {
 		if path == "" {
 			continue
 		}

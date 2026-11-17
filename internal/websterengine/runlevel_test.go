@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -1543,6 +1544,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 					shuttlefake.EngineName: fake,
 					"master-engine":        fake,
 				})
+				stencilkit.SeedEditDirectiveCopies(t, fx.Deps.Geom.StencilsDir, "master-engine")
 			},
 			check: func(t *testing.T, fx *runFixture) {
 				spec := fx.Starter.startCalls[0]
@@ -1557,6 +1559,9 @@ func TestRun_MasterSpawn(t *testing.T) {
 				}
 				if want := fx.Deps.Roles[websterengine.RoleMaster].Engine; spec.Engine != want {
 					t.Errorf("Spec.Engine = %q; want %q (RoleMaster's engine)", spec.Engine, want)
+				}
+				if want := fx.Deps.Roles[websterengine.RoleMaster].Engine; spec.PromptEngine != want {
+					t.Errorf("Spec.PromptEngine = %q; want %q (the engine RoleMaster resolves to)", spec.PromptEngine, want)
 				}
 				if spec.ConfigRole != agentconfig.RoleWebster {
 					t.Errorf("Spec.ConfigRole = %q; want %q", spec.ConfigRole, agentconfig.RoleWebster)
@@ -1582,6 +1587,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 				})
 				fx.Deps.Roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Model: "m", Engine: "a"}
 				fx.Deps.Roles[websterengine.RoleRecovery] = shuttleengine.ModelChoice{Model: "r", Engine: "a"}
+				stencilkit.SeedEditDirectiveCopies(t, fx.Deps.Geom.StencilsDir, "a")
 			},
 			check: func(t *testing.T, fx *runFixture) {
 				if got := fx.Starter.startCalls[0].Engine; got != "a" {

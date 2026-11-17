@@ -21,9 +21,15 @@
 // It names the tools a role edits with and the worktree it edits in, never what the role may write.
 // It has no inactive case: the text renders in a repo without a `PATTERN.md` as in one with it.
 //
+// # One copy per engine
+//
+// Each engine states the directive in its own engine block, in its own tool wording,
+// and each copy carries every rule above.
+// No shared copy exists: a prompt carries the copy of the engine it launches on.
+//
 // # Who renders it
 //
-// Each spawning module's renderer calls Directive once per prompt.
+// Each spawning module's renderer calls Directive once per prompt, with the engine its launch resolves to.
 // It passes the text as the value of the MarkerName marker its opening stencil carries.
 // The marker is required, so a renderer that forgets it fails at composition.
 // No prompt ships without the rule.
@@ -32,6 +38,6 @@
 //
 // The package imports only the standard library, `stencil` and `stencilstore`.
 // It derives no path:
-// the stencil is read at call time from the told stencils directory through `stencilstore.Read`.
+// the engine's copy is read at call time from the told stencils directory through `stencilstore.Read`.
 // It is never read from embedded bytes.
 package editdirective

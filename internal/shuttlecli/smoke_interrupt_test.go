@@ -88,10 +88,11 @@ func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, engine 
 	)
 
 	run, err := runner.Start(shuttleengine.Spec{
-		Prompt:      prompt,
-		OutputFiles: []string{outputPath},
-		ModelChoice: shuttleengine.ModelChoice{Model: smokeClaudeModel},
-		Timeout:     5 * time.Minute,
+		PromptEngine: "claude",
+		Prompt:       prompt,
+		OutputFiles:  []string{outputPath},
+		ModelChoice:  shuttleengine.ModelChoice{Model: smokeClaudeModel},
+		Timeout:      5 * time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("runner.Start: %v", err)

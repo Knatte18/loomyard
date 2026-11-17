@@ -309,26 +309,27 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	if err != nil {
 		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lym webster recover-batch %d`", batchName, err, number)
 	}
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName, deps.CardFixer)
-	if err != nil {
-		return nil, err
-	}
-
 	choice, ok := deps.Roles[RoleRecovery]
 	if !ok {
 		return nil, fmt.Errorf("webster: no resolved model-spec for role %q", RoleRecovery)
 	}
+	engine := deps.Engines.EngineName(choice)
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, engine, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName, deps.CardFixer)
+	if err != nil {
+		return nil, err
+	}
 
 	spec := shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{reportPath},
-		ModelChoice: choice,
-		ConfigRole:  agentconfig.RoleWebster,
-		Skills:      deps.LanguageSkills,
-		Role:        string(RoleRecovery),
-		Segment:     segmentcolor.Webster,
-		Round:       batchName,
-		Timeout:     time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
+		Prompt:       string(prompt),
+		PromptEngine: engine,
+		OutputFiles:  []string{reportPath},
+		ModelChoice:  choice,
+		ConfigRole:   agentconfig.RoleWebster,
+		Skills:       deps.LanguageSkills,
+		Role:         string(RoleRecovery),
+		Segment:      segmentcolor.Webster,
+		Round:        batchName,
+		Timeout:      time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
 	}
 
 	run, err := deps.Starter.Start(spec)

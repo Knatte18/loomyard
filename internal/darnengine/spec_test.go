@@ -57,9 +57,11 @@ func leadPrompt(t *testing.T, in DarnInputs, parentName string, table seatengine
 		WorktreeRoot: in.WorktreeRoot,
 		AnchorPath:   in.WorktreeRoot,
 		StencilsDir:  in.StencilsDir,
-		ParentName:   parentName,
-		Shortname:    "ly",
-		Slug:         in.Slug,
+		// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
+		DefaultEngine: "claude",
+		ParentName:    parentName,
+		Shortname:     "ly",
+		Slug:          in.Slug,
 	}, table)
 	if err != nil {
 		t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)

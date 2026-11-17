@@ -29,9 +29,13 @@ const (
 	remoteControlProgram = "REMOTECONTROL"
 )
 
+// orchEngine is the engine the orch session runs on, whatever shuttle.yaml's default engine is:
+// the orch role is worded for it.
+const orchEngine = "claude"
+
 // orchModelChoice returns the engine, model and effort the orch session runs on.
 func (c *orchCLI) orchModelChoice() shuttleengine.ModelChoice {
-	return shuttleengine.ModelChoice{Model: c.cfg.Model, Effort: c.cfg.Effort}
+	return shuttleengine.ModelChoice{Engine: orchEngine, Model: c.cfg.Model, Effort: c.cfg.Effort}
 }
 
 // orchHasRemoteControl reports whether the engine the orch session runs on has the provider's remote control.

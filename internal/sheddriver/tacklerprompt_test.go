@@ -53,6 +53,8 @@ func TestTacklerPrompt(t *testing.T) {
 		wantAbsent []string
 		// wantErr is the text the refusal names; empty rows expect a prompt.
 		wantErr string
+		// codex renders the prompt for a launch on the codex engine instead of claude.
+		codex bool
 	}{
 		{
 			name: "every marker value",
@@ -80,6 +82,7 @@ func TestTacklerPrompt(t *testing.T) {
 			in:   routedFrom,
 			want: []string{"the only rows it may name are `Plan-Bouncer` or `Plan-Write`."},
 		},
+		{name: "a codex launch carries the codex edit directive", in: in, want: []string{in.RunID}, codex: true},
 		{name: "an empty recipe is refused naming its marker", in: noRecipe, wantErr: "recipe"},
 		{name: "empty goto rows are refused naming their marker", in: noGotoRows, wantErr: "goto_rows"},
 	}
@@ -88,24 +91,28 @@ func TestTacklerPrompt(t *testing.T) {
 			t.Parallel()
 			dir := filepath.Join(t.TempDir(), "stencils")
 			stencilkit.SeedInto(t, dir)
-			got, err := tacklerPrompt(dir, tc.in)
+			engine, otherEngine := "claude", "codex"
+			if tc.codex {
+				engine, otherEngine = "codex", "claude"
+			}
+			got, err := RenderTacklerPrompt(dir, engine, tc.in)
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("tacklerPrompt() error = %v; want it to name %q", err, tc.wantErr)
+					t.Fatalf("RenderTacklerPrompt() error = %v; want it to name %q", err, tc.wantErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("tacklerPrompt() error = %v; want nil", err)
+				t.Fatalf("RenderTacklerPrompt() error = %v; want nil", err)
 			}
 			for _, want := range tc.want {
 				if !strings.Contains(got, want) {
-					t.Errorf("tacklerPrompt() does not carry %q", want)
+					t.Errorf("RenderTacklerPrompt() does not carry %q", want)
 				}
 			}
 			for _, absent := range tc.wantAbsent {
 				if strings.Contains(got, absent) {
-					t.Errorf("tacklerPrompt() carries %q; want it absent", absent)
+					t.Errorf("RenderTacklerPrompt() carries %q; want it absent", absent)
 				}
 			}
 			directive, err := parentdirective.Directive(dir, "", false)
@@ -113,13 +120,11 @@ func TestTacklerPrompt(t *testing.T) {
 				t.Fatalf("parentdirective.Directive: %v", err)
 			}
 			if !strings.Contains(got, directive) {
-				t.Errorf("tacklerPrompt() does not carry the no-parent directive %q", directive)
+				t.Errorf("RenderTacklerPrompt() does not carry the no-parent directive %q", directive)
 			}
-			if !strings.Contains(got, "Edit or Write") {
-				t.Error("tacklerPrompt() does not carry the edit directive")
-			}
+			stencilkit.RequireEditDirectiveOf(t, dir, got, engine, otherEngine)
 			if strings.Contains(got, "{{.") {
-				t.Error("tacklerPrompt() left a marker unfilled")
+				t.Error("RenderTacklerPrompt() left a marker unfilled")
 			}
 		})
 	}
@@ -137,10 +142,13 @@ func TestTacklerSpec(t *testing.T) {
 	const caseBriefPath = "/hub/wt/_lym/shed/run/tackler/attempt-1/case-brief.md"
 	settings := TacklerSettings{ModelChoice: shuttleengine.ModelChoice{Engine: "b", Model: "claude-resolved-model-id", Effort: "low", Version: "v9"}, Timeout: 10 * time.Minute, MaxSpawns: 4}
 
-	got := tacklerSpec(prompt, verdictPath, caseBriefPath, settings)
+	got := tacklerSpec(prompt, verdictPath, caseBriefPath, "claude", settings)
 
 	if got.Prompt != prompt {
 		t.Errorf("tacklerSpec().Prompt = %q; want %q", got.Prompt, prompt)
+	}
+	if got.PromptEngine != "claude" {
+		t.Errorf("tacklerSpec().PromptEngine = %q; want %q", got.PromptEngine, "claude")
 	}
 	if len(got.OutputFiles) != 1 || got.OutputFiles[0] != verdictPath {
 		t.Errorf("tacklerSpec().OutputFiles = %v; want [%q]", got.OutputFiles, verdictPath)

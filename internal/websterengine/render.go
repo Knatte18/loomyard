@@ -205,7 +205,8 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // it fills the optional uncommitted_paths marker, rendered as "none" when empty.
 // cardFixer says a failed card gate call goes through a cold fixer first;
 // it renders the card-gate fixer paragraph after the card gates, and false leaves the text unchanged.
-func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string, cardFixer bool) ([]byte, error) {
+// engine names the engine the strand launches on; the edit directive is that engine's copy.
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, engine, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string, cardFixer bool) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -229,7 +230,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		return nil, fmt.Errorf("webster: recovery prompt parent directive: %w", err)
 	}
 
-	editDirective, err := editdirective.Directive(stencilsDir)
+	editDirective, err := editdirective.Directive(stencilsDir, engine)
 	if err != nil {
 		return nil, fmt.Errorf("webster: recovery prompt edit directive: %w", err)
 	}
@@ -360,7 +361,8 @@ func RenderVerifyFixPrompt(reportPath, worktreeRoot, planDir, stencilsDir, outco
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleImplementer when Tier 2 is on;
 // a friction.Directive error is logged as a warning rather than returned.
-func RenderPlanFixPrompt(recordPath, replyPath, worktreeRoot, planDir, stencilsDir, specsDir, notePath, parentName string) ([]byte, error) {
+// engine names the engine the fixer launches on; the edit directive is that engine's copy.
+func RenderPlanFixPrompt(recordPath, replyPath, worktreeRoot, planDir, stencilsDir, engine, specsDir, notePath, parentName string) ([]byte, error) {
 	const stencilName = "webster-template-plan-fix"
 	if strings.TrimSpace(recordPath) == "" || strings.TrimSpace(replyPath) == "" {
 		return nil, fmt.Errorf("webster: render %s prompt: record path %q or reply path %q is empty", stencilName, recordPath, replyPath)
@@ -375,7 +377,7 @@ func RenderPlanFixPrompt(recordPath, replyPath, worktreeRoot, planDir, stencilsD
 	if err != nil {
 		return nil, fmt.Errorf("webster: plan fixer prompt parent directive: %w", err)
 	}
-	editDirective, err := editdirective.Directive(stencilsDir)
+	editDirective, err := editdirective.Directive(stencilsDir, engine)
 	if err != nil {
 		return nil, fmt.Errorf("webster: plan fixer prompt edit directive: %w", err)
 	}
@@ -438,7 +440,8 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleOrchestrator when Tier 2 is on;
 // a friction.Directive error is logged as a warning rather than returned.
-func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, repoRoot, stencilsDir string, patternChanges, parentDecisions []string, notePath, parentName string) ([]byte, error) {
+// engine names the engine Master launches on; the edit directive is that engine's copy.
+func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, repoRoot, stencilsDir, engine string, patternChanges, parentDecisions []string, notePath, parentName string) ([]byte, error) {
 	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleOrchestrator, patternChanges)
 	if err != nil {
 		return nil, fmt.Errorf("webster: master prompt directive: %w", err)
@@ -449,7 +452,7 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 		return nil, fmt.Errorf("webster: master prompt parent directive: %w", err)
 	}
 
-	editDirective, err := editdirective.Directive(stencilsDir)
+	editDirective, err := editdirective.Directive(stencilsDir, engine)
 	if err != nil {
 		return nil, fmt.Errorf("webster: master prompt edit directive: %w", err)
 	}

@@ -516,6 +516,10 @@ func startupPending(string) shuttleengine.StartupState { return shuttleengine.St
 func TestRunCmd_FocusFlag(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
+	promptFile := filepath.Join(t.TempDir(), "task.md")
+	if err := os.WriteFile(promptFile, []byte("do the thing"), 0o644); err != nil {
+		t.Fatalf("write prompt file: %v", err)
+	}
 	tests := []struct {
 		name           string
 		args           []string
@@ -525,6 +529,11 @@ func TestRunCmd_FocusFlag(t *testing.T) {
 		{
 			name:      "FocusFlagOmitted",
 			args:      []string{"--prompt", "do the thing", "--output-file", "out.md"},
+			wantFocus: true,
+		},
+		{
+			name:      "PromptFile",
+			args:      []string{"--prompt-file", promptFile, "--output-file", "out.md"},
 			wantFocus: true,
 		},
 		{
@@ -562,6 +571,9 @@ func TestRunCmd_FocusFlag(t *testing.T) {
 
 			if engine.LastSpec.Prompt == "" {
 				t.Fatalf("Engine.Prepare was never called; want it invoked with the built Spec; output: %s", out.String())
+			}
+			if !engine.LastSpec.HandWrittenPrompt {
+				t.Error("Spec.HandWrittenPrompt = false; want true for a prompt the operator wrote")
 			}
 			if display := engine.LastSpec.Display; display.Focus != tt.wantFocus || display.KeepViewer != tt.wantKeepViewer {
 				t.Errorf("Spec.Display = %+v; want Focus %v and KeepViewer %v", display, tt.wantFocus, tt.wantKeepViewer)

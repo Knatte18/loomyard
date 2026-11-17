@@ -16,6 +16,8 @@ import (
 // RunGated and AttachGated are separate methods rather than a widened Run and Attach.
 // A widened signature would make every caller with no gate pass a zero GateSpec that means nothing to it.
 type Shuttle interface {
+	// EngineNamer names the engine a model choice resolves to, so a prompt is rendered for the engine that runs it.
+	shuttleengine.EngineNamer
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 	Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error)
 	// AttachIfLive probes for a live run matching the Spec and waits on it if found, without removing superseded strands.

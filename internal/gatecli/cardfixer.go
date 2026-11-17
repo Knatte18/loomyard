@@ -45,6 +45,8 @@ type cardFixerKit struct {
 	// model is the model the fixer runs on, and skills are the language skills it loads.
 	model  shuttleengine.ModelChoice
 	skills []string
+	// engine is the engine model launches on, which the fixer's prompt is rendered for.
+	engine string
 }
 
 // wallClock is the real time source of a fixer's wait.
@@ -186,13 +188,15 @@ func newCardFixer(request detachRequest) (cardFixerKit, bool, error) {
 		Clock:      wallClock{},
 		Register:   gatefixer.Registrar(rig.reed, fabricengine.RunProcDir(location.HubPath), slug, gatefixer.RoleGateFixer),
 	})
+	model := shuttleengine.NewModelChoice(resolved)
 	return cardFixerKit{
 		fixer:        fixer,
 		timeout:      cfg.FixerTimeout(),
 		worktreeRoot: location.WorktreePath(),
 		stencilsDir:  fabricengine.StencilsDir(location.HubPath),
-		model:        shuttleengine.NewModelChoice(resolved),
+		model:        model,
 		skills:       language.Skills,
+		engine:       rig.engines.EngineName(model),
 	}, true, nil
 }
 

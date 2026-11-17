@@ -109,6 +109,8 @@ func TestSmokeBurlerReviewCodexAssistant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("burler geometry: %v", err)
 	}
+	// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
+	burlerGeom.DefaultEngine = "claude"
 	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, lenses.Config{}, fabricengine.StencilsDir(h.Location.HubPath), "", nil)
 
 	opts := burlerengine.RunOpts{

@@ -49,7 +49,9 @@ const (
 
 // StrandRunner is the part of *shuttleengine.Runner that Weaver drives:
 // starting a gated strand, probing for a live one, and stopping one by guid.
+// EngineName names the engine a rung's model choice launches on, which the attempt's prompt is rendered for.
 type StrandRunner interface {
+	shuttleengine.EngineNamer
 	// StartGated starts spec with gate and returns once the strand is past its provider's startup gates.
 	StartGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (*shuttleengine.Run, error)
 	// ProbeGated finds the live run matching spec's output files and reports whether one exists, without waiting on it.
@@ -64,6 +66,8 @@ var _ StrandRunner = (*shuttleengine.Runner)(nil)
 type attemptLaunch struct {
 	// Prompt is the rendered batch prompt.
 	Prompt []byte
+	// Engine names the engine Prompt was rendered for, the one Choice launches on.
+	Engine string
 	// ReportPath is the attempt's report file, the strand's only output file.
 	ReportPath string
 	// Choice is the model choice of the attempt's ladder rung.
@@ -78,14 +82,15 @@ type attemptLaunch struct {
 // The attempt runs autonomously under the implementer role's skills, in a pane with no operator.
 func attemptSpec(in attemptLaunch) shuttleengine.Spec {
 	return shuttleengine.Spec{
-		Prompt:      string(in.Prompt),
-		OutputFiles: []string{in.ReportPath},
-		ModelChoice: in.Choice,
-		ConfigRole:  agentconfig.RoleWebster,
-		Skills:      in.Skills,
-		Role:        BatchStrandRole,
-		Segment:     segmentcolor.Webster,
-		Round:       in.Label,
+		Prompt:       string(in.Prompt),
+		PromptEngine: in.Engine,
+		OutputFiles:  []string{in.ReportPath},
+		ModelChoice:  in.Choice,
+		ConfigRole:   agentconfig.RoleWebster,
+		Skills:       in.Skills,
+		Role:         BatchStrandRole,
+		Segment:      segmentcolor.Webster,
+		Round:        in.Label,
 	}
 }
 

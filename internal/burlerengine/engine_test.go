@@ -25,7 +25,9 @@ import (
 // newTestStencilsDir seeds a hermetic stencils directory through stencilkit and returns its path.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
-	return stencilkit.Seed(t)
+	dir := stencilkit.Seed(t)
+	stencilkit.SeedEditDirectiveCopies(t, dir, "b")
+	return dir
 }
 
 // seedEngineWords adds an include of the test-words engine block to each stencil in shipped, under stencilsDir.
@@ -484,8 +486,13 @@ func newEngineForTest(t *testing.T, root string, shuttle *fakeShuttle) *Engine {
 
 // newEngineWith wires an Engine to shuttle over geom and cfg.
 // A geometry without a shortname is given the fake strand prefix as its shortname.
+// A geometry without a default engine is given "claude":
+// every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
 func newEngineWith(t *testing.T, geom Geometry, cfg lenses.Config, shuttle *fakeShuttle) *Engine {
 	t.Helper()
+	if geom.DefaultEngine == "" {
+		geom.DefaultEngine = "claude"
+	}
 	if geom.Shortname == "" {
 		geom.Shortname, geom.Slug = "tst", "slug"
 	}

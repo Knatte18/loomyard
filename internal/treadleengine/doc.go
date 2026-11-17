@@ -119,6 +119,7 @@
 // Each opening stencil carries `{{.parent_directive}}` and `{{.edit_directive}}` near its top.
 // `{{.parent_directive}}` is filled with `parentdirective.Directive` from the told Options.ParentName.
 // `{{.edit_directive}}` is filled with `editdirective.Directive`.
+// It is rendered for the engine the call's model choice resolves to.
 // An empty ParentName renders the no-parent variant;
 // a directive that cannot be rendered takes the same fail-safe path as an unreadable stencil.
 //

@@ -64,6 +64,8 @@ func TestPrompt(t *testing.T) {
 		absent []string
 		// wantNot lists text the prompt must not carry.
 		wantNot []string
+		// codex renders the prompt for a launch on the codex engine instead of claude.
+		codex bool
 	}{
 		{
 			name: "every marker value, with the fix rules naming the worktree and the run's commit trailer",
@@ -89,12 +91,22 @@ func TestPrompt(t *testing.T) {
 				"decision record `none`", "support log `none`",
 			},
 		},
+		{
+			name:  "a codex launch carries the codex edit directive",
+			in:    in,
+			want:  []string{in.RunID},
+			codex: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			dir := seededStencils(t)
-			got, err := Prompt(dir, tc.in)
+			engine, otherEngine := "claude", "codex"
+			if tc.codex {
+				engine, otherEngine = "codex", "claude"
+			}
+			got, err := Prompt(dir, engine, tc.in)
 			if err != nil {
 				t.Fatalf("Prompt() error = %v; want nil", err)
 			}
@@ -115,9 +127,7 @@ func TestPrompt(t *testing.T) {
 			if !strings.Contains(got, directive) {
 				t.Errorf("Prompt() does not carry the no-parent directive %q", directive)
 			}
-			if !strings.Contains(got, "Edit or Write") {
-				t.Error("Prompt() does not carry the edit directive")
-			}
+			stencilkit.RequireEditDirectiveOf(t, dir, got, engine, otherEngine)
 			if strings.Contains(got, "{{") {
 				t.Error("Prompt() left a marker unfilled")
 			}
@@ -148,10 +158,13 @@ func TestSpec(t *testing.T) {
 	const verdictPath = "/hub/wt/.lym/arbiter/attempt-1/verdict.yaml"
 	settings := sheddriver.ArbiterSettings{ModelChoice: shuttleengine.ModelChoice{Engine: "b", Model: "claude-resolved-model-id", Effort: "high", Version: "v9"}, Timeout: 20 * time.Minute, MaxSpawns: 3}
 
-	got := Spec(prompt, verdictPath, settings)
+	got := Spec(prompt, verdictPath, "claude", settings)
 
 	if got.Prompt != prompt {
 		t.Errorf("Spec().Prompt = %q; want %q", got.Prompt, prompt)
+	}
+	if got.PromptEngine != "claude" {
+		t.Errorf("Spec().PromptEngine = %q; want %q", got.PromptEngine, "claude")
 	}
 	if len(got.OutputFiles) != 1 || got.OutputFiles[0] != verdictPath {
 		t.Errorf("Spec().OutputFiles = %v; want [%q]", got.OutputFiles, verdictPath)

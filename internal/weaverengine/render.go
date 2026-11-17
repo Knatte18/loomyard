@@ -36,6 +36,8 @@ const noText = "none"
 type BatchPromptInputs struct {
 	// StencilsDir is the told directory the template and the directive stencils are read from.
 	StencilsDir string
+	// Engine names the engine the attempt launches on, whose copy of the edit directive the prompt carries.
+	Engine string
 	// PromptsDir is the directory the rendered prompt is written into.
 	PromptsDir string
 	// Label names the batch as NN-<slug>, and Attempt is the attempt number; together they name the prompt file.
@@ -69,6 +71,7 @@ type BatchPromptInputs struct {
 }
 
 // RenderBatchPrompt fills the batch template for one attempt, writes it under in.PromptsDir and returns its bytes.
+// The edit directive it carries is the copy for in.Engine, the engine the attempt launches on.
 // The card pointers carry their card gates, and the batch gate carries the main packages for the last batch.
 // A gate config that lacks the `card` or `batch` list refuses with the config's way forward.
 // A friction directive that cannot be rendered is logged and left out.
@@ -93,7 +96,7 @@ func RenderBatchPrompt(in BatchPromptInputs) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("weaver: batch prompt parent directive: %w", err)
 	}
-	editDirective, err := editdirective.Directive(in.StencilsDir)
+	editDirective, err := editdirective.Directive(in.StencilsDir, in.Engine)
 	if err != nil {
 		return nil, fmt.Errorf("weaver: batch prompt edit directive: %w", err)
 	}

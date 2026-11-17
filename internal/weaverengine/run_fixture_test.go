@@ -301,6 +301,14 @@ type scriptedRunner struct {
 
 var _ weaverengine.StrandRunner = (*scriptedRunner)(nil)
 
+// EngineName returns the engine the choice names, else "claude", which the seeded stencils ship a directive for.
+func (r *scriptedRunner) EngineName(choice shuttleengine.ModelChoice) string {
+	if choice.Engine != "" {
+		return choice.Engine
+	}
+	return "claude"
+}
+
 func (r *scriptedRunner) StartGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (*shuttleengine.Run, error) {
 	r.reed.StatusErr = nil
 	r.mu.Lock()

@@ -418,9 +418,11 @@ func TestWire_DefaultConfig(t *testing.T) {
 			WorktreeRoot: loc.WorktreePath(),
 			AnchorPath:   loc.AnchorPath(),
 			StencilsDir:  fabricengine.StencilsDir(loc.HubPath),
-			ParentName:   "hub:orch",
-			Shortname:    "hub",
-			Slug:         "pair",
+			// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
+			DefaultEngine: "claude",
+			ParentName:    "hub:orch",
+			Shortname:     "hub",
+			Slug:          "pair",
 		}, table)
 		if err != nil {
 			t.Fatalf("seatengine.Prompts() = %v; want nil", err)
@@ -607,9 +609,11 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 				WorktreeRoot: loc.WorktreePath(),
 				AnchorPath:   loc.AnchorPath(),
 				StencilsDir:  fabricengine.StencilsDir(loc.HubPath),
-				ParentName:   parentName,
-				Shortname:    "hub",
-				Slug:         "pair",
+				// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
+				DefaultEngine: "claude",
+				ParentName:    parentName,
+				Shortname:     "hub",
+				Slug:          "pair",
 			}, table)
 			if err != nil {
 				t.Fatalf("seatengine.Prompts() = %v; want nil", err)

@@ -295,7 +295,7 @@ func TestPrepare_SkillsLoadFirst(t *testing.T) {
 	engine := skillEngine(t, root)
 	runDir := t.TempDir()
 
-	launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", Skills: []string{"scribe:prose"}}, shuttleengine.Config{})
+	launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, Skills: []string{"scribe:prose"}}, shuttleengine.Config{})
 	if err != nil {
 		t.Fatalf("Prepare() error: %v", err)
 	}

@@ -211,7 +211,7 @@
 // Its marker then reads not started with the reason, a Warn names it, and the step goes on.
 // Validate and CheckMarkers pass such a missing block over for an assistant alone.
 // Its parent directive is the no-parent variant.
-// Its edit directive is its engine's own copy, read through editdirective.EngineDirective.
+// Its edit directive is its engine's own copy, as every seat's is.
 // An assistant is never required and never ends the step:
 // its held turn end stays quiet, and the chair's hold deferral counts an unended one that reads mid-turn.
 // The engine stops every assistant when the chair ends, marking a stopped one stopped.

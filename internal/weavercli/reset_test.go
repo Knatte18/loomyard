@@ -39,6 +39,8 @@ func (stubRunner) ProbeGated(shuttleengine.Spec, shuttleengine.GateSpec) (*shutt
 
 func (stubRunner) StopStrand(string) error { return nil }
 
+func (stubRunner) EngineName(choice shuttleengine.ModelChoice) string { return choice.Engine }
+
 // resetDeps returns ResetDeps over temp directories.
 // When begun is set, its run has recorded a begun batch starting at start.
 func resetDeps(t *testing.T, begun bool) weaverengine.ResetDeps {

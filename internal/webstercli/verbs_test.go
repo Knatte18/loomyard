@@ -50,9 +50,12 @@ import (
 // seedHubStencils populates hub's fabricengine.StencilsDir(hub) with every shipped stencil.
 // webster's prompts are read from disk at call time.
 // A fixture hub that is never seeded therefore fails every verb that renders one.
+// It also gives the fake engine its edit directive copy, since the fixture launches on that engine.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
-	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
+	stencilsDir := fabricengine.StencilsDir(hub)
+	stencilkit.SeedInto(t, stencilsDir)
+	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, shuttlefake.EngineName)
 }
 
 func newScratchRepo(t *testing.T) string {

@@ -105,7 +105,7 @@ func TestPrepare_Launch(t *testing.T) {
 			}
 			runDir := t.TempDir()
 
-			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "review the plan", DenyPublish: true, ModelChoice: shuttleengine.ModelChoice{Engine: "codex", Model: "gpt-6-astra", Effort: "medium"}}, shuttleengine.Config{DenyPython: true})
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "review the plan", PromptEngine: engineName, DenyPublish: true, ModelChoice: shuttleengine.ModelChoice{Engine: "codex", Model: "gpt-6-astra", Effort: "medium"}}, shuttleengine.Config{DenyPython: true})
 			if err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
@@ -199,7 +199,7 @@ func TestPrepare_SandboxMode(t *testing.T) {
 			runDir := t.TempDir()
 			promptPath := filepath.Join(runDir, "prompt.md")
 
-			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{})
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName}, shuttleengine.Config{})
 
 			var wantProbed []string
 			if tt.wantProbe {
@@ -261,7 +261,7 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 	engine, _ := newEngine(anchor)
 	runDir := t.TempDir()
 
-	launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{})
+	launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName}, shuttleengine.Config{})
 	if err != nil {
 		t.Fatalf("Prepare() error: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 			engine, _ := newEngine(anchor)
 			runDir := t.TempDir()
 
-			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", DenyPublish: tt.denyPublish}, shuttleengine.Config{DenyPython: tt.denyPython})
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, DenyPublish: tt.denyPublish}, shuttleengine.Config{DenyPython: tt.denyPython})
 			promptPath := filepath.Join(runDir, "prompt.md")
 			if tt.wantErr {
 				if err == nil || !strings.HasPrefix(err.Error(), "codexengine:") {
@@ -357,6 +357,8 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 // its base layer names the fixture's homes.
 // The test also checks that the launch readied the fixture's lym home, so it never reaches the operator's.
 // It installs the process-wide passage reader, so it does not run in parallel.
+//
+//testtiming:keep pins the prompt.md passages, the reader's engine and role arguments and the fixture lym home's trust roots, which TestPrepare_CreelHooksInAHub and TestCheckAfterStartup do not assert
 func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	tiergate.Require(t, 0)
 
@@ -374,7 +376,7 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	t.Cleanup(restore)
 
 	runDir := t.TempDir()
-	if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "the prompt", Role: "code-review-assist"}, shuttleengine.Config{}); err != nil {
+	if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "the prompt", PromptEngine: engineName, Role: "code-review-assist"}, shuttleengine.Config{}); err != nil {
 		t.Fatalf("Prepare() error: %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(runDir, "prompt.md"))
@@ -404,7 +406,7 @@ func TestPrepare_CreelHooksInAHub(t *testing.T) {
 	engine.dirs.Board = board
 	runDir := t.TempDir()
 
-	launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{})
+	launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName}, shuttleengine.Config{})
 	if err != nil {
 		t.Fatalf("Prepare() error: %v", err)
 	}
@@ -460,7 +462,7 @@ func TestPrepare_ReadiesHome(t *testing.T) {
 			writeFile(t, filepath.Join(repo.lymHome, trustRecordFileName), `{"roots":["`+vanished+`"],"kept_key":1}`)
 			engine, _ := newEngine(anchor)
 
-			if _, err := engine.Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{}); err != nil {
+			if _, err := engine.Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p", PromptEngine: engineName}, shuttleengine.Config{}); err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
 
@@ -520,7 +522,7 @@ func TestPrepare_ConcurrentLaunchesLoseNoRoot(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			engine, _ := newEngine(anchor)
-			_, err := engine.Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{})
+			_, err := engine.Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p", PromptEngine: engineName}, shuttleengine.Config{})
 			errs <- err
 		}()
 	}
@@ -612,6 +614,7 @@ func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 			runDir := t.TempDir()
 			spec := tt.spec
 			spec.Prompt = "p"
+			spec.PromptEngine = engineName
 
 			_, err := engine.Prepare(runDir, spec, shuttleengine.Config{})
 			if err == nil {
@@ -630,6 +633,54 @@ func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 			}
 			if got := warnings.String(); tt.wantWarn == "" && got != "" || !strings.Contains(got, tt.wantWarn) {
 				t.Errorf("warnings = %q; want %q", got, tt.wantWarn)
+			}
+		})
+	}
+}
+
+// TestPrepare_PromptEngine pins that Prepare launches only a prompt rendered for codex, or a hand-written one.
+// A prompt rendered for another engine, or for none, is refused before anything is written to the run directory.
+func TestPrepare_PromptEngine(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		spec shuttleengine.Spec
+		// wantErr is a text the refusal must hold; empty means the spec launches.
+		wantErr string
+	}{
+		{name: "RenderedForCodex", spec: shuttleengine.Spec{PromptEngine: "codex"}},
+		{name: "RenderedForAnotherEngine", spec: shuttleengine.Spec{PromptEngine: "claude"}, wantErr: `rendered for engine "claude"`},
+		{name: "RenderedForNoEngine", spec: shuttleengine.Spec{}, wantErr: "names no prompt engine"},
+		{name: "HandWritten", spec: shuttleengine.Spec{HandWrittenPrompt: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := newRepoFixture(t)
+			anchor, _ := repo.addWorktree(t, "wt")
+			repo.writeCodexLayer(t, anchor, "")
+			engine, _ := newEngine(anchor)
+			runDir := t.TempDir()
+			spec := tt.spec
+			spec.Prompt = "p"
+
+			_, err := engine.Prepare(runDir, spec, shuttleengine.Config{})
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("Prepare() error = %v; want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Prepare() error = %v; want a refusal containing %q", err, tt.wantErr)
+			}
+			if entries, readErr := os.ReadDir(runDir); readErr != nil || len(entries) != 0 {
+				t.Errorf("ReadDir(%s) = %d entries, err=%v; want nothing written after a refusal", runDir, len(entries), readErr)
+			}
+			if _, statErr := os.Lstat(repo.lymHome); !errors.Is(statErr, os.ErrNotExist) {
+				t.Errorf("lym home stat error = %v; want the home unmade", statErr)
 			}
 		})
 	}
@@ -695,7 +746,7 @@ func TestPrepare_Warnings(t *testing.T) {
 			wants := tt.setup(t, repo, anchor)
 			engine, warnings := newEngine(anchor)
 
-			if _, err := engine.Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{}); err != nil {
+			if _, err := engine.Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p", PromptEngine: engineName}, shuttleengine.Config{}); err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
 			for _, want := range wants {
@@ -716,7 +767,7 @@ func TestCheckAfterStartup(t *testing.T) {
 	repo := newRepoFixture(t)
 	anchor, _ := repo.addWorktree(t, "wt")
 	engine, warnings := newEngine(anchor)
-	if _, err := engine.Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{}); err != nil {
+	if _, err := engine.Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p", PromptEngine: engineName}, shuttleengine.Config{}); err != nil {
 		t.Fatalf("Prepare() error: %v", err)
 	}
 

@@ -49,8 +49,7 @@ func joinLines(items []string) string {
 // A chair's parent directive names the run's parent.
 // An advisor's names the chair and is never interactive.
 // An assistant's is the no-parent variant, since it sends no message.
-// An assistant's edit directive is its engine's own copy, in that engine's tool wording.
-// Every other seat's is the shared one.
+// Every seat's edit directive is its engine's own copy, in that engine's tool wording.
 func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) (map[string]string, error) {
 	values := make(map[string]string, len(table.Values)+len(seat.Values)+len(reservedMarkers))
 	maps.Copy(values, table.Values)
@@ -68,12 +67,7 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) 
 	if err != nil {
 		return nil, fmt.Errorf("seatengine: seat %q: %w", label, err)
 	}
-	var edit string
-	if seat.Assistant {
-		edit, err = editdirective.EngineDirective(geom.StencilsDir, seat.stencilEngine(geom.DefaultEngine))
-	} else {
-		edit, err = editdirective.Directive(geom.StencilsDir)
-	}
+	edit, err := editdirective.Directive(geom.StencilsDir, seat.stencilEngine(geom.DefaultEngine))
 	if err != nil {
 		return nil, fmt.Errorf("seatengine: seat %q: %w", label, err)
 	}
@@ -216,13 +210,13 @@ func composeSeatPrompt(geom Geometry, table Table, seat Seat, values map[string]
 	return string(filled), nil
 }
 
-// seatSpec returns the shuttle spec that runs seat with prompt.
+// seatSpec returns the shuttle spec that runs seat with prompt, rendered for promptEngine.
 // Only the chair is interactive.
 // Every seat after the lead keeps its pane and holds its turn end quietly unless it is a required advisor.
 // A seat's own Timeout, when non-zero, bounds its run in place of the table's.
 // Every seat of a table declares the own-window anchor with the table's window group and seat count.
 // The seat's gate rides the start call, not the spec.
-func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
+func seatSpec(table Table, seat Seat, prompt, promptEngine string) shuttleengine.Spec {
 	isChair := seat.Name == leadName
 	timeout := table.Timeout
 	if seat.Timeout != 0 {
@@ -230,6 +224,7 @@ func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 	}
 	return shuttleengine.Spec{
 		Prompt:        prompt,
+		PromptEngine:  promptEngine,
 		OutputFiles:   slices.Clone(seat.Outputs),
 		ModelChoice:   seat.ModelChoice,
 		ForkSubagents: seat.ForkSubagents,

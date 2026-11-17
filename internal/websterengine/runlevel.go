@@ -745,17 +745,19 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("%w %s", err, deps.reentryStep())
 	}
 	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.PaneCwd, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, patternChanges, parentDecisions, masterNotePath, deps.Geom.ParentName)
-	if err != nil {
-		return RunResult{}, err
-	}
 	choice, ok := deps.Roles[RoleMaster]
 	if !ok {
 		return RunResult{}, fmt.Errorf("webster: no resolved model-spec for role %q", RoleMaster)
 	}
+	engine := deps.Engines.EngineName(choice)
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.PaneCwd, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, engine, patternChanges, parentDecisions, masterNotePath, deps.Geom.ParentName)
+	if err != nil {
+		return RunResult{}, err
+	}
 
 	spec := shuttleengine.Spec{
-		Prompt: string(prompt),
+		Prompt:       string(prompt),
+		PromptEngine: engine,
 		// Both output files are required:
 		// shuttle classifies this run done only once both land,
 		// so a Master that writes outcome.yaml but never reaches its summary.md final action never falsely reads as finished.

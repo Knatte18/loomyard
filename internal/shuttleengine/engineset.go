@@ -67,11 +67,27 @@ func (r *Runner) engineFor(rs RunState) (Engine, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	name := rs.Engine
-	if name == "" {
-		name = r.engines.DefaultName()
+	return engine, r.engines.EngineName(ModelChoice{Engine: rs.Engine}), nil
+}
+
+// EngineNamer resolves the name of the engine a model choice launches on.
+// A producer renders its prompt for that name and sets it as its spec's PromptEngine.
+type EngineNamer interface {
+	EngineName(choice ModelChoice) string
+}
+
+// EngineName returns the name of the engine choice launches on: the engine it names, or the set's default for none.
+// It does not check that the name is registered; Start refuses an unregistered one.
+func (s EngineSet) EngineName(choice ModelChoice) string {
+	if choice.Engine == "" {
+		return s.defaultName
 	}
-	return engine, name, nil
+	return choice.Engine
+}
+
+// EngineName returns the name of the engine choice launches on under this runner's engine set.
+func (r *Runner) EngineName(choice ModelChoice) string {
+	return r.engines.EngineName(choice)
 }
 
 // Names returns the registered engine names, sorted.

@@ -147,7 +147,8 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 		return nil, false, fmt.Errorf("webster: resolve plan-conflict record path: %w", err)
 	}
 	notePath := friction.NotePath(deps.FrictionDir, "webster-plan-fix")
-	prompt, err := RenderPlanFixPrompt(recordPath, replyPath, deps.Geom.PaneCwd, deps.Geom.PlanDir, deps.Geom.StencilsDir, deps.Geom.SpecsDir, notePath, deps.Geom.ParentName)
+	engine := deps.Engines.EngineName(choice)
+	prompt, err := RenderPlanFixPrompt(recordPath, replyPath, deps.Geom.PaneCwd, deps.Geom.PlanDir, deps.Geom.StencilsDir, engine, deps.Geom.SpecsDir, notePath, deps.Geom.ParentName)
 	if err != nil {
 		return nil, false, err
 	}
@@ -157,13 +158,14 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 	}
 
 	spec := shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{replyPath},
-		ModelChoice: choice,
-		ConfigRole:  agentconfig.RoleWebster,
-		Role:        planFixerStrandRole,
-		Segment:     segmentcolor.Webster,
-		Timeout:     time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
+		Prompt:       string(prompt),
+		PromptEngine: engine,
+		OutputFiles:  []string{replyPath},
+		ModelChoice:  choice,
+		ConfigRole:   agentconfig.RoleWebster,
+		Role:         planFixerStrandRole,
+		Segment:      segmentcolor.Webster,
+		Timeout:      time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
 	}
 	run, err := deps.Starter.Start(spec)
 	if err != nil {

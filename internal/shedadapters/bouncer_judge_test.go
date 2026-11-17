@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -123,19 +124,24 @@ func TestBouncer_PromptComposition(t *testing.T) {
 		// colorSegment is the config's ColorSegment; empty keeps the review segment.
 		colorSegment segmentcolor.Segment
 		wantPrompt   string
+		// engine, when set, puts both models on that engine, whose edit directive copy the prompt must carry.
+		engine string
 	}{
 		{name: "with a parent", parentName: "hub:parent", wantPrompt: "`hub:parent`"},
 		{name: "with no parent", wantPrompt: "No parent is recorded"},
 		{name: "with a told specs directory", withSpecs: true, wantPrompt: specsDir},
 		{name: "with the merge color segment", colorSegment: segmentcolor.Merge, wantPrompt: "No parent is recorded"},
+		{name: "with codex models", engine: "codex", wantPrompt: "No parent is recorded"},
 	}
 	for _, role := range []string{"seed", "judge"} {
 		for _, tt := range tests {
 			t.Run(role+" "+tt.name, func(t *testing.T) {
 				var shuttle *shedfake.Shuttle
 				wantConfigRole := agentconfig.RoleBouncerSeed
+				wantChoice := func(cfg BouncerConfig) shuttleengine.ModelChoice { return cfg.Models.Seed }
 				if role == "judge" {
 					wantConfigRole = agentconfig.RoleBouncerJudge
+					wantChoice = func(cfg BouncerConfig) shuttleengine.ModelChoice { return cfg.Models.Judge }
 					shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 				} else {
 					shuttle = &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -154,6 +160,9 @@ func TestBouncer_PromptComposition(t *testing.T) {
 				fx := newBouncerFixture(t, opts...)
 				fx.Config.ParentName = tt.parentName
 				fx.Config.ColorSegment = tt.colorSegment
+				if tt.engine != "" {
+					fx.Config.Models.Seed.Engine, fx.Config.Models.Judge.Engine = tt.engine, tt.engine
+				}
 				b, cfg := fx.Build()
 				if role == "judge" {
 					layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
@@ -169,14 +178,20 @@ func TestBouncer_PromptComposition(t *testing.T) {
 				if !strings.Contains(prompt, tt.wantPrompt) {
 					t.Errorf("%s prompt does not contain %q", role, tt.wantPrompt)
 				}
-				if !strings.Contains(prompt, "Edit or Write") {
+				if tt.engine == "" && !strings.Contains(prompt, "Edit or Write") {
 					t.Errorf("%s prompt lacks the edit directive's \"Edit or Write\" sentence", role)
+				}
+				if tt.engine != "" {
+					stencilkit.RequireEditDirectiveOf(t, fx.StencilsDir, prompt, tt.engine, "claude")
 				}
 				if strings.Contains(prompt, "{{.specs_dir}}") {
 					t.Errorf("%s prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered", role)
 				}
 				if shuttle.GotSpec.Segment != wantSegment {
 					t.Errorf("%s spec.Segment = %q; want %q", role, shuttle.GotSpec.Segment, wantSegment)
+				}
+				if wantEngine := shuttle.EngineName(wantChoice(cfg)); shuttle.GotSpec.PromptEngine != wantEngine {
+					t.Errorf("%s spec.PromptEngine = %q; want %q", role, shuttle.GotSpec.PromptEngine, wantEngine)
 				}
 				if shuttle.GotSpec.ConfigRole != wantConfigRole || len(shuttle.GotSpec.Skills) != 0 {
 					t.Errorf("%s spec.ConfigRole, Skills = %q, %v; want %q and no skills", role, shuttle.GotSpec.ConfigRole, shuttle.GotSpec.Skills, wantConfigRole)

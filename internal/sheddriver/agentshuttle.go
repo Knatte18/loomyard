@@ -48,6 +48,8 @@ type AgentRun interface {
 
 // AgentShuttle is the part of shuttle a judge call drives.
 type AgentShuttle interface {
+	// EngineName names the engine a launch with choice resolves to, which the prompt is rendered for.
+	shuttleengine.EngineNamer
 	// Start launches spec gated by gate and returns its handle; an empty gate runs ungated.
 	Start(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (AgentRun, error)
 	// AttachIfLive waits, gated by gate, on a live run matching spec's output files, and reports false when none is live.
@@ -59,6 +61,11 @@ type AgentShuttle interface {
 // RunnerShuttle implements the shuttle seam by delegating each operation to a shuttle runner.
 type RunnerShuttle struct {
 	Runner *shuttleengine.Runner
+}
+
+// EngineName names the engine the runner launches choice on.
+func (s RunnerShuttle) EngineName(choice shuttleengine.ModelChoice) string {
+	return s.Runner.EngineName(choice)
 }
 
 // Start launches spec gated by gate through the runner and returns the started run.

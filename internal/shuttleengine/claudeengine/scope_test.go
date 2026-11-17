@@ -214,7 +214,7 @@ func TestSessionScope_ReachesWrittenSettings(t *testing.T) {
 		engine, _ := engineWithAnchor(t)
 		engine.claudeDir = writeInstalledPlugins(t, installed)
 		runDir := t.TempDir()
-		if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing", Skills: []string{"scribe:prose"}}, shuttleengine.Config{}); err != nil {
+		if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Skills: []string{"scribe:prose"}}, shuttleengine.Config{}); err != nil {
 			t.Fatalf("Prepare() error: %v", err)
 		}
 		data, err := os.ReadFile(filepath.Join(runDir, settingsFileName))
@@ -235,7 +235,7 @@ func TestSessionScope_ReachesWrittenSettings(t *testing.T) {
 		engine, _ := engineWithAnchor(t)
 		engine.claudeDir = writeMalformedPlugins(t)
 		runDir := t.TempDir()
-		if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing", Skills: []string{"scribe:prose"}}, shuttleengine.Config{}); err != nil {
+		if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Skills: []string{"scribe:prose"}}, shuttleengine.Config{}); err != nil {
 			t.Fatalf("Prepare() error: %v", err)
 		}
 		data, err := os.ReadFile(filepath.Join(runDir, settingsFileName))

@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -147,10 +148,11 @@ func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 	}
 }
 
-// TestStencils_NoEditRuleRestatement fails when a stencil besides edit-directive restates the edit rule in a sentence.
+// TestStencils_NoEditRuleRestatement fails when a stencil restates the edit rule in a sentence.
+// An engine's edit-directive copy is exempt.
 // A narrowed gate runs it only when a stencil, the orch role or a package it reads changes; a whole gate always runs it.
 //
-//testtiming:keep pins the rule that only the edit-directive stencil states the edit rule, a guard that fires which no other test asserts
+//testtiming:keep pins the rule that only the engines' edit-directive copies state the edit rule, a guard that fires which no other test asserts
 //lym:guard
 //lym:watch contracts/stencils/*.go contracts/stencils/*.md contracts/stencils/*/*.md contracts/stencils/*/*/*.md
 //lym:watch contracts/stencils/*/*/*/*.md contracts/orchrole/* internal/stencil/*.go internal/stencilstore/*.go
@@ -160,11 +162,11 @@ func TestStencils_NoEditRuleRestatement(t *testing.T) {
 
 	for name, body := range registeredBodies(t) {
 		// An engine's own copy of the edit directive states the rule in that engine's tool wording.
-		if path.Base(name) == "edit-directive" {
+		if name == stencilstore.EngineBlockName(path.Base(path.Dir(name)), editdirective.EngineBlock) {
 			continue
 		}
 		for _, sentence := range editRuleSentences(body) {
-			t.Errorf("stencil %q: %q restates the edit rule; only the edit-directive stencil states it", name, sentence)
+			t.Errorf("stencil %q: %q restates the edit rule; only an engine's edit-directive copy states it", name, sentence)
 		}
 	}
 }

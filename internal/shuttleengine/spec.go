@@ -38,6 +38,15 @@ type Spec struct {
 	Unawaited bool
 	// ModelChoice is the engine and the model, effort and version the run uses.
 	ModelChoice
+	// PromptEngine names the engine Prompt was rendered for.
+	// The producer sets it from the same model choice it launches with.
+	// A prompt worded for one engine therefore never reaches another.
+	// An engine's Prepare refuses a spec whose PromptEngine is not its own name,
+	// and an empty one unless HandWrittenPrompt is set.
+	PromptEngine string
+	// HandWrittenPrompt marks Prompt as text a person wrote, rendered for no engine, in place of a PromptEngine.
+	// Only `lym shuttle run` sets it, for a prompt given inline or from a file.
+	HandWrittenPrompt bool
 	// ForkSubagents, when true, authorizes this run to spawn in-session fork subagents.
 	// The engine must realize the authorization or refuse the run, through whatever its provider needs.
 	// ForkSubagents is engine vocabulary, and validation does not inspect it.

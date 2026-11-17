@@ -38,6 +38,23 @@ type agentFake struct {
 	onAttach     func(spec shuttleengine.Spec)
 }
 
+// EngineName names the choice's own engine, and claude for a choice naming none.
+func (f *agentFake) EngineName(choice shuttleengine.ModelChoice) string {
+	if choice.Engine != "" {
+		return choice.Engine
+	}
+	return "claude"
+}
+
+// wantEngines returns the engine the fixture's settings resolve to.
+// It also returns the engine whose edit directive copy a prompt must lack.
+func (f *tacklerFixture) wantEngines() (engine, otherEngine string) {
+	if f.settings.ModelChoice.Engine != "" {
+		return f.settings.ModelChoice.Engine, "claude"
+	}
+	return "claude", "codex"
+}
+
 func (f *agentFake) Start(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (AgentRun, error) {
 	if f.startErr != nil {
 		return nil, f.startErr
@@ -271,6 +288,21 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			wantVerdict: TacklerVerdictResume, wantStarts: 1,
 		},
 		{
+			name:        "a codex model choice spawns for the codex engine",
+			setup:       func(f *tacklerFixture) { f.settings.ModelChoice.Engine = "codex" },
+			wantVerdict: TacklerVerdictResume, wantStarts: 1,
+		},
+		{
+			name: "a codex model choice re-attaches for the codex engine",
+			setup: func(f *tacklerFixture) {
+				f.settings.ModelChoice.Engine = "codex"
+				f.paused = 5 * time.Minute
+				f.fake.waitResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}
+				f.fake.attachFound = true
+			},
+			wantVerdict: TacklerVerdictResume, wantStarts: 1, wantAttach: 1,
+		},
+		{
 			name:      "start error reads hand-back died",
 			setup:     func(f *tacklerFixture) { f.fake.startErr = errors.New("no pane") },
 			wantCause: CauseDied, wantVerdict: TacklerVerdictHandBack,
@@ -375,6 +407,11 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			if spec.Role != TacklerRole || !reflect.DeepEqual(spec.OutputFiles, []string{verdictPath}) || spec.Model != "claude-resolved" || spec.Timeout != 10*time.Minute {
 				t.Errorf("spec = role %q, outputs %v, model %q, timeout %v; want the tackler role over %q, the resolved model and 10m", spec.Role, spec.OutputFiles, spec.Model, spec.Timeout, verdictPath)
 			}
+			wantEngine, otherEngine := f.wantEngines()
+			if spec.PromptEngine != wantEngine {
+				t.Errorf("spec.PromptEngine = %q; want %q, the engine the model choice resolves to", spec.PromptEngine, wantEngine)
+			}
+			stencilkit.RequireEditDirectiveOf(t, stencilkit.Seed(t), spec.Prompt, wantEngine, otherEngine)
 			wantSnapshot := f.snapshot
 			if f.noSnapshot {
 				wantSnapshot = WorktreeSnapshot{}
@@ -393,6 +430,9 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 				t.Error("prompt.md does not equal the spec prompt, or the prompt lacks the verdict and envelope paths")
 			}
 			if tt.wantAttach == 1 {
+				if attachSpec.PromptEngine != wantEngine {
+					t.Errorf("re-attach PromptEngine = %q; want %q, the engine the model choice resolves to", attachSpec.PromptEngine, wantEngine)
+				}
 				wantDeadline := f.now.Add(10*time.Minute + f.paused)
 				if attachSpec.Timeout != wantDeadline.Sub(f.now) {
 					t.Errorf("re-attach timeout = %v; want %v, the deadline moved out by the paused time", attachSpec.Timeout, wantDeadline.Sub(f.now))

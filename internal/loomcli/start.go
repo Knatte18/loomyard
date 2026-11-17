@@ -99,11 +99,12 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 	}
 
 	watched := driverWatched(shedrun.BattenWatchedMarker(c.location, resolvedRunID), proc.IsAlive)
-	prompt, err := driverPrompt(c.runDeps.Geom.StencilsDir, c.parentName, resolvedRunID, reportPath, watched)
+	engine := c.driverStarter.EngineName(choice)
+	prompt, err := RenderDriverPrompt(c.runDeps.Geom.StencilsDir, c.parentName, resolvedRunID, reportPath, watched, engine)
 	if err != nil {
 		return nil, err
 	}
-	spec := driverSpec(prompt, reportPath, choice)
+	spec := driverSpec(prompt, engine, reportPath, choice)
 
 	run, err := c.driverStarter.StartDriver(spec)
 	if err != nil {

@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -35,7 +36,9 @@ import (
 
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
-	return stencilkit.Seed(t)
+	dir := stencilkit.Seed(t)
+	stencilkit.SeedEditDirectiveCopies(t, dir, shuttlefake.EngineName)
+	return dir
 }
 
 // testCardGates is a placeholder per-card gate list for the card-gates input of the rendered fork and recovery prompts.
@@ -346,14 +349,14 @@ func renderRecovery(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, spec
 // renderRecoveryWithUncommitted renders the recovery prompt for batch.
 // It takes the caller-rendered uncommitted-paths block, the hub's verify tiers and the declared PATTERN changes.
 func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, uncommittedPaths, notePath, parent, gateTiers string, renameTools, patternChanges []string) (string, error) {
-	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), anchorRoot, stencilsDir, specsDir, gateTiers, renameTools, patternChanges, 2, notePath, parent, false)
+	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), anchorRoot, stencilsDir, "claude", specsDir, gateTiers, renameTools, patternChanges, 2, notePath, parent, false)
 	return string(got), err
 }
 
 // renderRecoveryWithCardFixer renders the recovery prompt for batch.
 // Its card gate goes through a cold fixer.
 func renderRecoveryWithCardFixer(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir string) (string, error) {
-	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", "", "", "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), anchorRoot, stencilsDir, specsDir, "none", nil, nil, 2, "", "", true)
+	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", "", "", "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), anchorRoot, stencilsDir, "claude", specsDir, "none", nil, nil, 2, "", "", true)
 	return string(got), err
 }
 
@@ -365,7 +368,7 @@ func renderMaster(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, no
 
 // renderMasterWithDecisions renders the master prompt with the parent's added decisions.
 func renderMasterWithDecisions(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, notePath, parent string, patternChanges, parentDecisions []string) (string, error) {
-	got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, filepath.Join(anchorRoot, "_lym", "plan"), 2, anchorRoot, repoRoot, stencilsDir, patternChanges, parentDecisions, notePath, parent)
+	got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, filepath.Join(anchorRoot, "_lym", "plan"), 2, anchorRoot, repoRoot, stencilsDir, "claude", patternChanges, parentDecisions, notePath, parent)
 	return string(got), err
 }
 
@@ -383,6 +386,7 @@ const testReplyPath = "/lym/webster/verify-fix-reply.md"
 // It fills in the shared placeholder paths, testReplyPath, testFixGate and the `webster-body-verify-fix` stencil.
 func coldFixerInputs(reportPath, repoRoot, anchorRoot, stencilsDir, notePath, parent string, patternChanges []string) gatefixer.PromptInputs {
 	return gatefixer.PromptInputs{
+		Engine:      "claude",
 		StencilsDir: stencilsDir,
 		BodyStencil: "webster-body-verify-fix",
 		BodyValues: map[string]string{
@@ -904,6 +908,21 @@ func TestRenderPrompts(t *testing.T) {
 			}
 			return promptCheck{text: text, notContains: []string{"{{.parent_decisions}}"}}
 		}},
+		{"master and recovery for a codex launch carry the codex edit directive", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			planDir := filepath.Join(root, "_lym", "plan")
+			master, err := websterengine.RenderMasterPrompt(seamBatches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, planDir, 2, root, root, stencilsDir, "codex", nil, nil, "", "")
+			if err != nil {
+				return promptCheck{err: err}
+			}
+			stencilkit.RequireEditDirectiveOf(t, stencilsDir, string(master), "codex", "claude")
+			recovery, err := websterengine.RenderRecoveryPrompt(alpha, testCardGates, testBatchGate, "", "", "", "/reports/01-alpha.yaml", root, planDir, root, stencilsDir, "codex", newTestSpecsDir(t), "none", nil, nil, 2, "", "", false)
+			if err != nil {
+				return promptCheck{err: err}
+			}
+			stencilkit.RequireEditDirectiveOf(t, stencilsDir, string(recovery), "codex", "claude")
+			return promptCheck{text: string(recovery), notContains: []string{"{{"}}
+		}},
 		{"master names the fixer prompt", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "", nil)
@@ -1025,7 +1044,7 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 			return renderColdFixer("/reports/verify-gate.yaml", anchorRoot, anchorRoot, stencilsDir, notePath, "", nil)
 		}},
 		{"plan-fix", "webster-template-plan-fix", "webster-plan-fix.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
-			got, err := websterengine.RenderPlanFixPrompt("/lym/webster/plan-conflict.md", testReplyPath, anchorRoot, filepath.Join(anchorRoot, "_lym", "plan"), stencilsDir, filepath.Join(anchorRoot, "specs"), notePath, "")
+			got, err := websterengine.RenderPlanFixPrompt("/lym/webster/plan-conflict.md", testReplyPath, anchorRoot, filepath.Join(anchorRoot, "_lym", "plan"), stencilsDir, "claude", filepath.Join(anchorRoot, "specs"), notePath, "")
 			return string(got), err
 		}},
 	}

@@ -43,7 +43,7 @@ import (
 // integrationWriteStubDriverScript writes a POSIX shell script standing in for the claude binary.
 // The driver spec names no skill, so the claude engine's launch line passes the prompt pointer as an argument.
 // The script takes the prompt.md path from that argument;
-// it extracts the drive report path that driverPrompt quoted into the file.
+// it extracts the drive report path that RenderDriverPrompt quoted into the file.
 // It records a session start through stubRecordSessionStart.
 // It prints claudeengine's idle-input-box fixture at start and again after the one line it reads.
 // Shuttle's startup step blocks Start until it sees a ready marker, and the color step waits for a ready pane;

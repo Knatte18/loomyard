@@ -19,6 +19,11 @@
 // Every other engine-consulting operation resolves the engine its run's record names.
 // An absent key reads as the default, and an unregistered name is refused with the lookup's error.
 // Stop and teardown resolve no engine, so a record naming an unregistered engine never blocks them.
+// EngineName on the set or the runner gives the name a choice resolves to, so a producer renders its prompt for it.
+// The producer sets that name as Spec.PromptEngine.
+// Every engine's Prepare runs CheckPromptEngine first.
+// It refuses a spec whose prompt engine is another engine's or unset.
+// A spec marked HandWrittenPrompt, which only `lym shuttle run` sets, passes.
 // The verdict/output contract is provider-invariant, which is what makes engines swappable:
 // shuttleengine defines the Engine interface and its value types, and never imports a concrete engine implementation;
 // concrete engines import shuttleengine, not the reverse.

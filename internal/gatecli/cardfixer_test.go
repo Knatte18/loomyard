@@ -147,6 +147,8 @@ type fixerRig struct {
 	// on and kitErr are what the cardFixer seam answers.
 	on     bool
 	kitErr error
+	// engine is the engine the kit names.
+	engine string
 	// codes are the exit codes of the gate calls in order; the last repeats.
 	codes []int
 	calls atomic.Int32
@@ -176,7 +178,7 @@ func newFixerRig(t *testing.T, codes ...int) *fixerRig {
 		t.Fatal(err)
 	}
 	writeLiveLease(t, run)
-	return &fixerRig{t: t, run: run, keyDir: keyDir, store: keyFixerStore{dir: keyDir}, fixer: &fakeCardFixer{run: run, result: gatefixer.Result{Status: gatefixer.StatusDone, Reply: "FIXER REPLY"}}, stencil: stencilkit.Seed(t), on: true, codes: codes}
+	return &fixerRig{t: t, run: run, keyDir: keyDir, store: keyFixerStore{dir: keyDir}, fixer: &fakeCardFixer{run: run, result: gatefixer.Result{Status: gatefixer.StatusDone, Reply: "FIXER REPLY"}}, stencil: stencilkit.Seed(t), on: true, engine: "claude", codes: codes}
 }
 
 func (r *fixerRig) gateTree() *cobra.Command {
@@ -210,7 +212,7 @@ func (r *fixerRig) seams() detachSeams {
 			if r.kitErr != nil || !r.on {
 				return cardFixerKit{}, false, r.kitErr
 			}
-			return cardFixerKit{fixer: r.fixer, timeout: time.Minute, worktreeRoot: "/work", stencilsDir: r.stencil}, true, nil
+			return cardFixerKit{fixer: r.fixer, timeout: time.Minute, worktreeRoot: "/work", stencilsDir: r.stencil, engine: r.engine}, true, nil
 		},
 		fixerStopper: func(detachRequest) (func(string) error, error) {
 			return func(guid string) error {
@@ -293,6 +295,9 @@ func TestRunWithFixer(t *testing.T) {
 		if spec.Role != gatefixer.RoleGateFixer || spec.ReplyPath != rig.run.path(fixerReplyFile) || spec.Timeout != time.Minute {
 			t.Errorf("spec = role %q, reply %q, timeout %v; want the gate fixer role, the run's reply file and the kit's timeout", spec.Role, spec.ReplyPath, spec.Timeout)
 		}
+		if spec.PromptEngine != "claude" {
+			t.Errorf("spec.PromptEngine = %q; want %q, the engine the kit names", spec.PromptEngine, "claude")
+		}
 		report, err := os.ReadFile(rig.run.path(fixerReportFile))
 		if err != nil || string(report) != "failure report 1\n" {
 			t.Errorf("fixer report = %q, %v; want the first run's stderr", report, err)
@@ -314,6 +319,21 @@ func TestRunWithFixer(t *testing.T) {
 		if len(rig.recordStatusAtCall) != 2 || rig.recordStatusAtCall[1] != "" {
 			t.Errorf("fixer record status at each gate call = %q; want it still live at the re-run", rig.recordStatusAtCall)
 		}
+	})
+
+	t.Run("CodexKitRendersTheCodexPrompt", func(t *testing.T) {
+		t.Parallel()
+		rig := newFixerRig(t, 1, 0)
+		rig.engine = "codex"
+		rig.runRequest(request)
+		if len(rig.fixer.specs) != 1 {
+			t.Fatalf("spawned %d fixers; want one", len(rig.fixer.specs))
+		}
+		spec := rig.fixer.specs[0]
+		if spec.PromptEngine != "codex" {
+			t.Errorf("spec.PromptEngine = %q; want %q, the engine the kit names", spec.PromptEngine, "codex")
+		}
+		stencilkit.RequireEditDirectiveOf(t, rig.stencil, string(spec.Prompt), "codex", "claude")
 	})
 
 	t.Run("NonZeroExitWithNoStderrSpawnsNone", func(t *testing.T) {

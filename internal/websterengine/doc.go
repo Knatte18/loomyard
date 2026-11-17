@@ -663,6 +663,8 @@
 // BatchState.RecoveryEngines, keyed by session id, sits beside RecoverySessions.
 // State without these keys reads them as empty.
 // Webster is told an AuditEngines lookup, which the engine set satisfies.
+// Each launch renders its prompt's edit directive for the engine its model choice resolves to, named by EngineName.
+// The same name rides on the spec as PromptEngine.
 // It reads each session through the engine its own entry records.
 // A change to shuttle.yaml's engine therefore never alters how a recorded session is read.
 // The run-write history and the reset's own paths audit each recorded session through its engine.

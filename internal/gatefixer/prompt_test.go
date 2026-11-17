@@ -27,6 +27,7 @@ func seededInputs(t *testing.T) PromptInputs {
 	}
 	return PromptInputs{
 		StencilsDir: dir,
+		Engine:      "claude",
 		BodyStencil: testBodyStencil,
 		BodyValues:  map[string]string{"body_marker": "BODYVALUE"},
 		ReportPath:  "/lym/report.md",
@@ -53,6 +54,20 @@ func TestRenderPrompt(t *testing.T) {
 		}
 		if strings.Contains(string(text), "{{") {
 			t.Errorf("RenderPrompt() holds an unfilled marker")
+		}
+	})
+
+	t.Run("EditDirectiveFollowsTheLaunchEngine", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct{ engine, otherEngine string }{{"claude", "codex"}, {"codex", "claude"}}
+		for _, tt := range tests {
+			in := seededInputs(t)
+			in.Engine = tt.engine
+			text, err := RenderPrompt(in)
+			if err != nil {
+				t.Fatalf("RenderPrompt(%s) error = %v; want nil", tt.engine, err)
+			}
+			stencilkit.RequireEditDirectiveOf(t, in.StencilsDir, string(text), tt.engine, tt.otherEngine)
 		}
 	})
 

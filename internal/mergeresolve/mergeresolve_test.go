@@ -693,10 +693,15 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 		want       string
 		language   []string
 		wantSkills string
+		// conflictSpec replaces the deps' conflict model when set.
+		conflictSpec string
+		engine       string
+		otherEngine  string
 	}{
-		{"with parent", "ab:cd:webster", "ab:cd:webster", nil, ""},
-		{"no parent", "", "No parent is recorded", nil, ""},
-		{"language skills only", "", "No parent is recorded", []string{"scribe:golang-testing", "scribe:code-quality"}, "scribe:golang-testing,scribe:code-quality"},
+		{"with parent", "ab:cd:webster", "ab:cd:webster", nil, "", "", "claude", "codex"},
+		{"no parent", "", "No parent is recorded", nil, "", "", "claude", "codex"},
+		{"language skills only", "", "No parent is recorded", []string{"scribe:golang-testing", "scribe:code-quality"}, "scribe:golang-testing,scribe:code-quality", "", "claude", "codex"},
+		{"on codex", "", "No parent is recorded", nil, "", "codex:sonnet", "codex", "claude"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -704,6 +709,9 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 			deps := newTestDeps(t, &fakeMergeSurface{}, &shedfake.MergeShuttle{})
 			deps.ParentName = tt.parentName
 			deps.LanguageSkills = tt.language
+			if tt.conflictSpec != "" {
+				deps.ConflictSpec = tt.conflictSpec
+			}
 
 			spec, err := buildConflictSpec(deps, []string{"a.txt"}, 1)
 			if err != nil {
@@ -712,8 +720,9 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 			if !strings.Contains(spec.Prompt, tt.want) {
 				t.Errorf("Prompt = %q; want it to contain %q", spec.Prompt, tt.want)
 			}
-			if !strings.Contains(spec.Prompt, "Edit or Write") {
-				t.Errorf("Prompt = %q; want it to contain the edit directive's \"Edit or Write\" sentence", spec.Prompt)
+			stencilkit.RequireEditDirectiveOf(t, deps.StencilsDir, spec.Prompt, tt.engine, tt.otherEngine)
+			if spec.PromptEngine != tt.engine {
+				t.Errorf("PromptEngine = %q; want %q, the engine the conflict choice resolves to", spec.PromptEngine, tt.engine)
 			}
 			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
 				t.Errorf("Prompt = %q; want the no-parent variant", spec.Prompt)
@@ -727,8 +736,8 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 			if spec.Segment != segmentcolor.Landing {
 				t.Errorf("Segment = %q; want %q", spec.Segment, segmentcolor.Landing)
 			}
-			if spec.Engine != "claude" {
-				t.Errorf("Engine = %q; want %q, the conflict alias's engine", spec.Engine, "claude")
+			if spec.Engine != tt.engine {
+				t.Errorf("Engine = %q; want %q, the conflict alias's engine", spec.Engine, tt.engine)
 			}
 			if len(spec.Requires) != 0 {
 				t.Errorf("Requires = %v; want none, merge-resolve declares nothing", spec.Requires)

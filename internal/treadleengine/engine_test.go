@@ -86,6 +86,11 @@ type queuedShuttle struct {
 	queue []queuedShuttleEntry
 }
 
+// EngineName implements shuttleengine.EngineNamer.
+func (q *queuedShuttle) EngineName(choice shuttleengine.ModelChoice) string {
+	return testEngineName(choice)
+}
+
 func (q *queuedShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 	q.specs = append(q.specs, spec)
 	if len(q.queue) == 0 {
@@ -1200,6 +1205,11 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 type fixedShuttle struct {
 	result shuttleengine.Result
 	err    error
+}
+
+// EngineName implements shuttleengine.EngineNamer.
+func (f *fixedShuttle) EngineName(choice shuttleengine.ModelChoice) string {
+	return testEngineName(choice)
 }
 
 // Run implements Shuttle by returning the scripted result unconditionally.

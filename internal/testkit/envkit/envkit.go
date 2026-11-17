@@ -186,6 +186,8 @@ func (noopSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, 
 
 func (noopSessions) StopStrand(string) error { return nil }
 
+func (noopSessions) EngineName(choice shuttleengine.ModelChoice) string { return choice.Engine }
+
 // LandingDeps returns a `landingshed.Deps` with every field the landing constructors require.
 // The fields hold fixed values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {

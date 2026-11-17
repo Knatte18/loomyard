@@ -52,9 +52,11 @@ func discussionTableGeometry(layout *lymcwd.Location, stencilsDir string) seaten
 		WorktreeRoot: layout.WorktreePath(),
 		AnchorPath:   layout.AnchorPath(),
 		StencilsDir:  stencilsDir,
-		ParentName:   "ly:orch",
-		Shortname:    "ly",
-		Slug:         discussionTableSlug,
+		// Every seat's edit directive is its engine's copy, so a seat naming no engine needs a default.
+		DefaultEngine: "claude",
+		ParentName:    "ly:orch",
+		Shortname:     "ly",
+		Slug:          discussionTableSlug,
 	}
 }
 
