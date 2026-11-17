@@ -301,6 +301,16 @@
 // so a strand is marked only when its settings carry the PostToolUse, Stop and waiter hooks.
 // On Windows the flag directory takes the same git-bash POSIX conversion as the events path.
 //
+// The edit hook (EditRecorder) is a PostToolUse entry matching `Edit|Write`.
+// The settings carry it for a run that is not interactive while shuttle.yaml's `edit_loop_edits` is above 0.
+// It runs `lym shuttle hook-edit claude <edit records file>; true`.
+// The edit records file is shuttleengine.EditRecordsFileName beside the events file.
+// RecordEdit appends a stamp line and a slim PostToolUse line to the edit records file.
+// Its writes so never land inside a recording hook's line in the events file.
+// The slim line keeps only the session id, the agent id, the tool name and `tool_input.file_path`.
+// Claude Code's full payload carries the edit's text and the file's content.
+// ParseSessionSignals reads that line as a SessionSignalFileEdit, which shuttle's edit-loop watch counts.
+//
 // The batching nudge (BatchingNudger) is a PostToolUse hook that adds one line to the calling chain's context.
 // It does so when the chain's recent calls break lym's batching rules, and it never denies a call.
 // `claude.yaml`'s `batching_nudge` block holds `enabled`, the breach switches and the thresholds.

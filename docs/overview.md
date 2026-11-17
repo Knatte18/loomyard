@@ -662,6 +662,7 @@ User-facing modules each get one `lym <module>` namespace:
   `Wait` holds it and keeps polling the same agent until the outputs exist, the pane dies or the deadline passes, whatever the agent's reason (a question, a status report, a live `AskUserQuestion` call).
   An autonomous run notifies its parent once per held turn end as creel mail to the orch,
   and once per permission or input dialog its pane shows past 60 s,
+  and once per edit loop, one file edited `edit_loop_edits` times within `edit_loop_window_s`,
   and an interactive run is answered in its pane;
   a line typed into a run's pane goes through `lym creel post`, `lym creel inject` or `lym creel interrupt`, never a shuttle verb.
   Background work is read off the Stop payload's `background_tasks` first, with the transcript as the fallback when the payload carries no list;
@@ -704,6 +705,7 @@ User-facing modules each get one `lym <module>` namespace:
   While `claude.yaml`'s `batching_nudge` block is on, a `PostToolUse` hook after each `Read`, `Grep`, `Glob`, `Bash`, `Edit` or `Write` call runs the hidden `lym shuttle hook-batching`, which adds one line naming the breach and quoting the rule to a session above the block's context threshold whose recent messages make a chain of single lookups (a Bash call with a read-only lookup command such as `grep`, `find` or a git read counting as one), a sliced read of a short or already-read file, or a chain of edit-only messages;
   a subagent's or fork's call is judged against that agent's own transcript, context and nudge count;
   it never denies a call, and the block's switches and thresholds are config.
+  While `shuttle.yaml`'s `edit_loop_edits` is above 0, an autonomous claude run's `Edit` and `Write` calls run the hidden `lym shuttle hook-edit`, which records the edited file for the edit-loop notice.
   The provider is swappable behind an **engine** seam;
   the engine is picked from the registry by `shuttle.yaml`'s `engine:` key, or per run by a model-spec naming it.
   The registered engines are `claude` and `codex`.

@@ -55,7 +55,8 @@ type hookEntry struct {
 // settingsHooks is the "hooks" object of a Claude Code settings.json document.
 // Every event but PreToolUse and PostToolUse is a recording hook installed for every session.
 // PostToolUse, PreCompact and PostCompact touch the activity stamp.
-// PostToolUse also carries the batching hook while it is on and the creel mail hook in a hub.
+// PostToolUse also carries the batching hook while it is on.
+// It carries the edit hook while shuttle's edit-loop watch is on, and the creel mail hook in a hub.
 // In a hub, Stop carries two entries: the recording merged with creel's turn-end delivery, and creel's idle waiter;
 // in no hub it carries the recording alone.
 // PreToolUse is omitted when an autonomous run has every deny off;
@@ -419,6 +420,9 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // and the SessionStart recording adds nothing to the session's context.
 // claude's batching nudge, when on, adds a PostToolUse entry matched to the tools a breach is made of,
 // and it names the state file beside the events file.
+// A cfg whose EditLoopEdits is above 0 adds a PostToolUse entry matched to Edit and Write.
+// It adds the entry only for a run that is not interactive.
+// It records each edited file in the edit records file beside the events file.
 // A non-empty creelFlagDirPosix is a git-bash POSIX path like eventsPathPosix.
 // It adds the creel mail hook to PostToolUse,
 // and the hook tests the strand's flag in that directory.
@@ -497,6 +501,14 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		doc.Hooks.PostToolUse = append(doc.Hooks.PostToolUse, hookEntry{
 			Matcher: batchingNudgeMatcher,
 			Hooks:   []hookCommand{{Type: "command", Command: batchingNudgeHookCommand(shQuote(statePath))}},
+		})
+	}
+	// Only an autonomous run's wait notifies a parent of an edit loop, so an interactive session records no edits.
+	if cfg.EditLoopEdits > 0 && !interactive {
+		recordsPath := path.Join(path.Dir(eventsPathPosix), shuttleengine.EditRecordsFileName)
+		doc.Hooks.PostToolUse = append(doc.Hooks.PostToolUse, hookEntry{
+			Matcher: editRecordMatcher,
+			Hooks:   []hookCommand{{Type: "command", Command: editRecordHookCommand(shQuote(recordsPath))}},
 		})
 	}
 	if creelFlagDirPosix != "" {

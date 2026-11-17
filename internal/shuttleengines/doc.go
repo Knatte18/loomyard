@@ -31,6 +31,8 @@
 // the hook-input parse, the hook output and the wake output the creel hook verbs render.
 // BatchingNudger returns one registered engine's batching-nudge capability by name, built the same way.
 // The shuttle hook verb that judges a session's tool call uses it.
+// EditRecorder returns one registered engine's edit-hook capability by name, built the same way.
+// The shuttle hook verb that records a session's file edit uses it.
 // KeepWarm is the one keep-warm resolver.
 // It answers a strand's keep-warm cap, the long cap and shuttle.yaml's break-even.
 // It reads them through the default engine's KeepWarmCaps.

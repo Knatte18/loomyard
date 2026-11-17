@@ -184,6 +184,60 @@ func TestLoadConfig_KeepWarmMaxReruns(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_EditLoop pins the template's edit-loop count and window.
+// It pins that a count of 0 turns the watch off whatever the window.
+// It also pins that a negative count is refused with its way forward.
+// So is a non-positive window while the count is above 0.
+func TestLoadConfig_EditLoop(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// local is the local layer's content; empty writes no local layer.
+		local       string
+		wantEdits   int
+		wantWindowS int
+		// wantErr is the key the refusal names; empty wants no refusal.
+		wantErr string
+	}{
+		{name: "TemplateValues", wantEdits: 4, wantWindowS: 300},
+		{name: "ZeroCountTurnsTheWatchOffWhateverTheWindow", local: "edit_loop_edits: 0\nedit_loop_window_s: 0\n"},
+		{name: "NegativeCountIsRefused", local: "edit_loop_edits: -1\n", wantErr: "edit_loop_edits"},
+		{name: "NonPositiveWindowWhileOnIsRefused", local: "edit_loop_window_s: 0\n", wantErr: "edit_loop_window_s"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			anchor := t.TempDir()
+			if tt.local != "" {
+				localFile := configengine.LocalFile(anchor, "shuttle")
+				if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+					t.Fatalf("mkdir local dir: %v", err)
+				}
+				if err := os.WriteFile(localFile, []byte(tt.local), 0o644); err != nil {
+					t.Fatalf("write local file: %v", err)
+				}
+			}
+
+			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "shuttle")
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.Contains(err.Error(), "lym config shuttle") {
+					t.Fatalf("LoadConfig err = %v, want it to name %s and lym config shuttle", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			if cfg.EditLoopEdits != tt.wantEdits || cfg.EditLoopWindowS != tt.wantWindowS {
+				t.Errorf("EditLoopEdits, EditLoopWindowS = %d, %d, want %d, %d", cfg.EditLoopEdits, cfg.EditLoopWindowS, tt.wantEdits, tt.wantWindowS)
+			}
+		})
+	}
+}
+
 // TestLoadConfig_AgentsYAML pins that LoadConfig fills Config.Agents from the hub's agents.yaml.
 // It also pins that an unusable agents.yaml fails the call.
 func TestLoadConfig_AgentsYAML(t *testing.T) {

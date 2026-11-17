@@ -304,3 +304,15 @@ func BatchingNudger(name string) (shuttleengine.BatchingNudger, bool) {
 	nudger, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}).(shuttleengine.BatchingNudger)
 	return nudger, ok
 }
+
+// EditRecorder returns the edit-hook capability of the registered engine named name.
+// It returns false when no engine of that name is registered or the engine has none.
+// The engine is built with a zero shuttle config and no config directories, since recording an edit reads no config.
+func EditRecorder(name string) (shuttleengine.EditRecorder, bool) {
+	registered, ok := registry[name]
+	if !ok {
+		return nil, false
+	}
+	recorder, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}).(shuttleengine.EditRecorder)
+	return recorder, ok
+}

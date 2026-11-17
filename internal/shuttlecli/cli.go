@@ -10,6 +10,8 @@
 // A session's harness can move its cwd there; every other verb takes the strict cwd gate.
 // await is the verb that skips the resolution and needs no hub; it reads only the keep-warm config, and only inside a git worktree.
 // The hidden hook-batching, which a session's after-tool-call hook runs, is implemented in hookbatching.go; it skips the resolution too and reads only its hook input and the state file it is told.
+// The hidden hook-edit, which a session's after-edit hook runs, is implemented in hookedit.go.
+// It skips the resolution too and writes only the edit records file it is told.
 
 package shuttlecli
 
@@ -48,7 +50,8 @@ type shuttleCLI struct {
 // Command returns the cobra command tree for the shuttle module.
 // The parent command carries a PersistentPreRunE that resolves geometry and engines, skipping
 // resolution when the group command itself is invoked (no git repo required).
-// The await verb skips it too and needs no hub, reading only the keep-warm config inside a git worktree, and so does the hidden hook-batching verb.
+// The await verb skips it too and needs no hub, reading only the keep-warm config inside a git worktree.
+// So do the hidden hook-batching and hook-edit verbs.
 func Command() *cobra.Command {
 	c := &shuttleCLI{}
 
@@ -67,7 +70,7 @@ provider specifics.`,
 			// listing or unknown-subcommand error path via GroupRunE), skip
 			// cwd/layout/config/engine resolution so that neither path
 			// requires a git repository to be present.
-			if cmd.Name() == "shuttle" || cmd.Name() == awaitVerb || cmd.Name() == shuttleengine.BatchingHookVerb {
+			if cmd.Name() == "shuttle" || cmd.Name() == awaitVerb || cmd.Name() == shuttleengine.BatchingHookVerb || cmd.Name() == shuttleengine.EditHookVerb {
 				return nil
 			}
 
@@ -139,7 +142,7 @@ provider specifics.`,
 		},
 	}
 
-	parent.AddCommand(c.runCmd(), c.openCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd())
+	parent.AddCommand(c.runCmd(), c.openCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd(), hookEditCmd())
 
 	return parent
 }

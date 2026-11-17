@@ -28,6 +28,9 @@ const (
 	// A session fold reads a resume, a clear and a startup beside no running turn as an idle session with an empty context.
 	// On any other source it leaves the state alone.
 	SessionSignalSessionStart SessionSignalKind = "session_start"
+	// SessionSignalFileEdit: the session, or one of its subagents or forks, edited a file.
+	// A session fold reads no state from it.
+	SessionSignalFileEdit SessionSignalKind = "file_edit"
 )
 
 // SessionStartSource is why a provider started a session's context.
@@ -71,6 +74,11 @@ type SessionSignal struct {
 	// Instruction is a turn start's prompt text when it is an instruction typed into the session;
 	// empty for a prompt the provider injects itself, for a command to the provider's own interface and on every other kind.
 	Instruction string
+	// FilePath is a file edit's file, as the provider's tool call named it; empty on every other kind.
+	FilePath string
+	// AgentID is the id of the subagent or fork that made a file edit;
+	// empty for an edit of the session itself and on every other kind.
+	AgentID string
 	// Event is true when the same line also yields an event.
 	Event bool
 	// Raw is the exact hook payload line the signal was read from.

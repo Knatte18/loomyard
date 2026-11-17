@@ -209,6 +209,26 @@
 // The offset is kept apart from RunState.NotifiedOffset, so a hold notice and a dialog notice never suppress each other.
 // The notice is never typed into the pane and changes no outcome.
 //
+// A third notice covers an edit loop: one agent editing one file again and again.
+// It goes out in the same runs and through the same notifier as the dialog notice.
+// An engine's edit hook appends each file edit to the run's edit records file, which EditRecordsFileName names,
+// and the engine's SessionSignalParser reports it with its file.
+// The records go to that file, apart from the events file,
+// so the hook's frequent writes never split a recording hook's line.
+// The signal also names the subagent or fork that made the edit, by its id.
+// Wait counts each agent's edits of each file at the signal's time, or the run clock's when the signal has none.
+// Once Config.EditLoopEdits of them fall within Config.EditLoopWindowS seconds, it sends one notice line.
+// It then restarts that count.
+// The line names the strand, the file, the subagent or fork when one made the edits, the count and the window.
+// It says the session keeps running.
+// An EditLoopEdits of 0 turns the watch off, and an engine then installs no edit hook.
+// While a pause covers the run Wait reads no edits, so the edits made then are counted once it lifts.
+// RunState.EditLoopNotifiedOffset is the edit-records-file offset past the batch of the latest notice.
+// It is persisted before the notifier is called.
+// A Wait counts edits from that offset, so a reattach never repeats a notice.
+// A write of it that fails restores the watch, and the next tick reads the batch again and retries the notice.
+// The notice is never typed into the pane, stops no session and changes no outcome.
+//
 // AwaitAny is the shared wait.
 // It stats the told paths once a second until one exists or the cap elapses, and watches no directory.
 // It is the poll every capped keep-cache-warm wait verb runs on.

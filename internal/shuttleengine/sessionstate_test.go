@@ -249,6 +249,12 @@ func TestSessionFold(t *testing.T) {
 			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionUnknown, SessionCauseContradiction, at(2))},
 		},
 		{
+			name:        "a file edit between a turn start and an idle notice leaves the contradiction",
+			steps:       []step{{[]SessionSignal{turnStart(1), {Kind: SessionSignalFileEdit, At: at(2), FilePath: "a.go"}, idleNotice(3)}, factsWith()}},
+			wantState:   state(SessionUnknown, SessionCauseContradiction, at(3)),
+			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionUnknown, SessionCauseContradiction, at(3))},
+		},
+		{
 			name:  "an interrupt marker turns the busy turn into idle-stalled, stamped with the marker's time",
 			steps: []step{{[]SessionSignal{turnStart(0)}, factsWith(func(f *SessionFacts) { f.Interrupted, f.InterruptAt = true, at(50) })}},
 			// The turn start has no time here, and its later or missing At changes nothing.

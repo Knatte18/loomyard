@@ -140,6 +140,12 @@ type RunState struct {
 	// so a crash between the write and the call loses that one notice and never repeats it.
 	// It is kept apart from NotifiedOffset so a held-turn-end notice and a dialog notice never suppress each other.
 	DialogNotifiedOffset int64 `json:"dialogNotifiedOffset,omitempty"`
+	// EditLoopNotifiedOffset is an edit-records-file byte offset.
+	// It lies past the batch of file edits whose edit-loop notice Wait last sent.
+	// Zero means none.
+	// Wait persists it before calling the notifier and counts no edit at or below it,
+	// so a crash between the write and the call loses that notice and a reattach never repeats it.
+	EditLoopNotifiedOffset int64 `json:"editLoopNotifiedOffset,omitempty"`
 	// PromptLine is the deferred prompt, typed once the provider is ready; empty for a prompt on the command line.
 	// It lets a later attach deliver a prompt that a dead step never sent.
 	PromptLine string `json:"promptLine,omitempty"`

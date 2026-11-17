@@ -409,6 +409,8 @@ type Run struct {
 	apiErrors apiErrorWatch
 	// dialog is the pending-dialog latch of one Wait, in memory.
 	dialog dialogLatch
+	// editLoops is the edit-loop watch of one Wait, in memory.
+	editLoops editLoopWatch
 
 	// gate is the GateSpec this run was told; the zero value makes the run ungated.
 	gate GateSpec
@@ -490,6 +492,11 @@ const (
 // An engine's hooks touch it whenever the session works.
 // So the session reads as active even when its waiter or its events file does not show it.
 const ActivityStampFileName = "activity-stamp"
+
+// EditRecordsFileName is the file in a run directory that an engine's edit hook appends its file-edit records to.
+// It is apart from the events file.
+// The edit hook's frequent writes so never land between the payload append and the newline append of a recording hook.
+const EditRecordsFileName = "edit-records.jsonl"
 
 // Start prepares one run described by spec, registers it with reed, and returns a handle only once
 // the run's provider is past its startup gates.
