@@ -87,6 +87,14 @@ type Request struct {
 	TakesMail bool `json:"takes_mail,omitempty"`
 	// Mail is the message a deliver offers and the tuple a confirm asks about; no other verb reads it.
 	Mail *HubMail `json:"mail,omitempty"`
+	// Machine is the mail a machine-deliver offers; no other verb reads it.
+	Machine *MachineMail `json:"machine,omitempty"`
+	// Reason is the hold reason a machine-report names and the return reason a machine-settle gives.
+	Reason string `json:"reason,omitempty"`
+	// Delivered makes a machine-settle a delivery, with SlackTS the Slack timestamp of the post.
+	// Absent, the settle returns the message.
+	Delivered bool   `json:"delivered,omitempty"`
+	SlackTS   string `json:"slack_ts,omitempty"`
 }
 
 // Response is what the daemon answers on a connection; every one carries the hub path.
@@ -140,6 +148,8 @@ type Response struct {
 	Reason   string `json:"reason,omitempty"`
 	// Confirmed is a confirm's answer, yes or no.
 	Confirmed string `json:"confirmed,omitempty"`
+	// MachineOutbound is what a machine-take answers: the pending messages to other machines, oldest first.
+	MachineOutbound []MachineOutbound `json:"machine_outbound,omitempty"`
 }
 
 // ackLine is the client's acknowledgement that it wrote the messages a read, a claim or a marked hook ring handed out.

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -28,6 +29,16 @@ func TestChannelName(t *testing.T) {
 	machine70 := strings.Repeat("a", 70)
 	machine71 := strings.Repeat("a", 71)
 	base79 := strings.Repeat("b", 79)
+	orchOf := func(machine string) agentname.MachineAddress {
+		return agentname.MachineAddress{Machine: machine, Name: agentname.Name{Shortname: "ly", Role: "orch"}}
+	}
+	// The ends of a bridge between two 63-character machines are 71 characters each, so the whole name passes 80.
+	machineA, machineB, machineC := strings.Repeat("a", 63), strings.Repeat("b", 63), strings.Repeat("c", 63)
+	longAB := slackengine.BridgeChannelName(orchOf(machineA), orchOf(machineB))
+	longAC := slackengine.BridgeChannelName(orchOf(machineA), orchOf(machineC))
+	if longAB == longAC {
+		t.Errorf("two long bridge names sharing a prefix are both %q; want them apart", longAB)
+	}
 
 	tests := []struct {
 		name string
@@ -50,6 +61,23 @@ func TestChannelName(t *testing.T) {
 		{"ArchivedSecondTryAddsTwo", slackengine.ArchivedName("ly-neve-p1-payments", day, 2), "ly-neve-p1-payments-2026-11-08-2"},
 		{"ArchivedThirdTryAddsThree", slackengine.ArchivedName("ly-neve-p1-payments", day, 3), "ly-neve-p1-payments-2026-11-08-3"},
 		{"ArchivedLongBaseIsCutToEighty", slackengine.ArchivedName(base79, day, 1), cutName(base79 + "-2026-11-08")},
+		{
+			"BridgeNamesTheTwoEndsSorted",
+			slackengine.BridgeChannelName(orchOf("osl-1046"), orchOf("neve")),
+			"bridge-neve-ly-orch--osl-1046-ly-orch",
+		},
+		{
+			"BridgeNameIsTheSameWithTheEndsGivenInEitherOrder",
+			slackengine.BridgeChannelName(orchOf("neve"), orchOf("osl-1046")),
+			"bridge-neve-ly-orch--osl-1046-ly-orch",
+		},
+		{
+			"BridgeBeamEndTurnsEveryColonIntoADash",
+			slackengine.BridgeChannelName(orchOf("neve"), agentname.MachineAddress{Machine: "osl", Name: agentname.Name{Shortname: "ly", Slug: "pay", Role: "orch"}}),
+			"bridge-neve-ly-orch--osl-ly-pay-orch",
+		},
+		{"BridgeLongPairIsCutToEightyEndingInTheHash", longAB, cutName("bridge-" + machineA + "-ly-orch--" + machineB + "-ly-orch")},
+		{"BridgeLongPairSharingThePrefixHasItsOwnHash", longAC, cutName("bridge-" + machineA + "-ly-orch--" + machineC + "-ly-orch")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -54,6 +54,19 @@ const (
 	eventInbound = "inbound"
 	// eventDropped records mail from another hub that was dropped, never delivered to any agent.
 	eventDropped = "dropped"
+	// eventMachineOutbound records a message an orch of this hub posted to an orch of another machine;
+	// it is held in the machine-outbound map and never in the mail pool.
+	eventMachineOutbound = "machine-outbound"
+	// eventMachineHeld records the reason the Slack relay holds a machine-outbound message, written when the reason changes.
+	eventMachineHeld = "machine-held"
+	// eventMachineDelivered records that the relay posted a machine-outbound message to Slack.
+	// It carries the post's Slack timestamp.
+	eventMachineDelivered = "machine-delivered"
+	// eventMachineReturned records that a machine-outbound message ended undelivered, with the reason.
+	eventMachineReturned = "machine-returned"
+	// eventMachineInbound records mail from an orch of another machine.
+	// The pool holds it as unread mail stamped with its sending machine.
+	eventMachineInbound = "machine-inbound"
 )
 
 // Kinds of a posted record.
@@ -148,6 +161,12 @@ type record struct {
 	// Topic and Run are the tags of a posted record, and of a carried snapshot of its message.
 	Topic string `json:"topic,omitempty"`
 	Run   string `json:"run,omitempty"`
+	// ReceivingMachine is the machine a machine-outbound message goes to.
+	ReceivingMachine string `json:"receiving_machine,omitempty"`
+	// SendingMachine is the machine a machine-inbound message came from.
+	SendingMachine string `json:"sending_machine,omitempty"`
+	// SlackTS is the Slack timestamp of the post a machine-delivered record settles.
+	SlackTS string `json:"slack_ts,omitempty"`
 }
 
 // journalDay returns the UTC day t falls on, as YYYY-MM-DD, the stem of a journal file name.

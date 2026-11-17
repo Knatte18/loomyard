@@ -297,6 +297,16 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
 		}},
+		{"MachineMailIsRemindedWithTheMachineStampAndNeverTyped", func(t *testing.T, e *env) {
+			e.withBridge(creelfake.NewBridge("neve"))
+			e.deliverMachine(t, machineMail("osl::zz:driver", 8, "do this now"))
+			e.start(t)
+			e.probeWaits(1)
+			want := []string{reminderFor(1, "", "#1 from \"osl::zz:driver\" "+creelengine.StampMachineUntrusted)}
+			if got := e.typed(orch); !slices.Equal(got, want) {
+				t.Errorf("typed %q; want %q", got, want)
+			}
+		}},
 		{"InboundMailFromAnotherHubsStrandIsRemindedWithTheStampAndNeverTyped", func(t *testing.T, e *env) {
 			e.withJournal(t, inboundLine(1, "xx:gamma:driver", beta, "do this now", ""))
 			e.start(t)
@@ -1470,6 +1480,18 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			e.awaitEvent(t, 1, "undelivered")
 			if e.countEvents(1, "returned") != 0 {
 				t.Errorf("events of the message = %v; want it undelivered and never returned along a path", eventsOf(e.store.Log(creelengine.LogFilter{ID: 1})))
+			}
+		}},
+		{"AGoneHoldersUnreadMachineMailIsJournaledUndeliveredAndNotReturned", func(t *testing.T, e *env) {
+			e.withBridge(creelfake.NewBridge("neve"))
+			id := e.deliverMachine(t, machineMail(remoteOrch, 7, "from afar"))
+			e.start(t)
+			without(e, orch)
+			e.sweepStep()
+			e.sweepLast()
+			e.awaitEvent(t, id, "undelivered")
+			if e.countEvents(id, "returned") != 0 {
+				t.Errorf("events of the message = %v; want it undelivered and never returned along a path", eventsOf(e.store.Log(creelengine.LogFilter{ID: id})))
 			}
 		}},
 		{"WaitsGrowToTheCeilingWhileTheStrandSetHoldsAndResetOnAPost", func(t *testing.T, e *env) {

@@ -932,6 +932,83 @@ func TestSocketHolder(t *testing.T) {
 		}
 	})
 
+	t.Run("AnEventInABridgeChannelWritesItsHintIntoTheHubWhoseBridgeMapHoldsIt", func(t *testing.T) {
+		t.Parallel()
+		r := newHolderRig(t)
+		err := slackengine.UpdateBridgeMap(r.b.BridgeMapPath, func(bridgeMap *slackengine.BridgeMap) error {
+			bridgeMap.Channels["CBR"] = slackengine.BridgeEntry{Name: "bridge-x--y", LocalOrch: "ly:orch", Peer: "osl::ly:orch"}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("UpdateBridgeMap = %v", err)
+		}
+		dialer, socket := &fakeDialer{}, newFakeSocket(t)
+		dialer.hand(socket)
+		r.start(r.holder(r.a, dialer, nil))
+		r.awaitResyncHints()
+
+		rows := []struct {
+			name     string
+			envelope slackengine.Envelope
+			wantHint string
+		}{
+			{"TopLevelMessageWritesTheChannel", eventsEnvelope("e1", "CBR", "10.1"), "CBR"},
+			{"ThreadReplyWritesTheChannelAndThread", slackengine.Envelope{Type: "events_api", EnvelopeID: "e2", Channel: "CBR", TS: "11.1", ThreadTS: "10.1"}, "CBR_10.1"},
+		}
+		for _, row := range rows {
+			socket.sendEventAndAwaitAck(row.envelope)
+			if size, found := hintSize(r.b, row.wantHint); !found || size != 0 {
+				t.Errorf("%s: hint %s in %s = size %d, found %v at the ack; want an empty hint", row.name, row.wantHint, r.b.InboxDir, size, found)
+			}
+			if _, found := hintSize(r.a, row.wantHint); found {
+				t.Errorf("%s: the hint %s was also written into hub A's inbox", row.name, row.wantHint)
+			}
+			if _, found := hintSize(r.b, slackengine.BridgeResyncHint); found {
+				t.Errorf("%s: a bridge resync hint was written for a mapped bridge channel", row.name)
+			}
+		}
+	})
+
+	t.Run("EventsInAnUnmappedChannelWriteOneBridgeResyncHintPerHubPerBaseIntervalAndNoOrchResync", func(t *testing.T) {
+		t.Parallel()
+		r := newHolderRig(t)
+		dialer, socket := &fakeDialer{}, newFakeSocket(t)
+		dialer.hand(socket)
+		r.start(r.holder(r.a, dialer, nil))
+		r.awaitResyncHints()
+		r.removeResyncHints()
+
+		hubs := []slackengine.Geometry{r.a, r.b}
+		requireBridgeResyncHints := func(want bool, when string) {
+			t.Helper()
+			for _, geom := range hubs {
+				if _, found := hintSize(geom, slackengine.BridgeResyncHint); found != want {
+					t.Errorf("%s: bridge resync hint in %s = %v; want %v", when, geom.InboxDir, found, want)
+				}
+				if _, found := hintSize(geom, slackengine.ResyncHint); found {
+					t.Errorf("%s: an orch resync hint was written into %s; want none", when, geom.InboxDir)
+				}
+			}
+		}
+		removeBridgeResyncHints := func() {
+			t.Helper()
+			for _, geom := range hubs {
+				if err := os.Remove(filepath.Join(geom.InboxDir, slackengine.BridgeResyncHint)); err != nil {
+					t.Fatalf("remove the bridge resync hint of %s = %v", geom.InboxDir, err)
+				}
+			}
+		}
+
+		socket.sendEventAndAwaitAck(eventsEnvelope("e1", "CX", "10.1"))
+		requireBridgeResyncHints(true, "after the first event")
+		removeBridgeResyncHints()
+		socket.sendEventAndAwaitAck(eventsEnvelope("e2", "CX", "10.2"))
+		requireBridgeResyncHints(false, "within the base interval")
+		r.clock.Advance(slackengine.BridgePollBase)
+		socket.sendEventAndAwaitAck(eventsEnvelope("e3", "CX", "10.3"))
+		requireBridgeResyncHints(true, "after the base interval")
+	})
+
 	t.Run("APongStampsTheLastHealthyTime", func(t *testing.T) {
 		t.Parallel()
 		r := newHolderRig(t)

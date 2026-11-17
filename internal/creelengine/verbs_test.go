@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -69,6 +70,12 @@ func (e *env) withHubs() *creelfake.Hubs {
 	hubs.Add("zz", creelengine.Geometry{HubPath: zzHub, Shortname: "zz"})
 	e.store.SetHubs(hubs, "linux")
 	return hubs
+}
+
+// withBridge tells the env's store the fake bridge to the Slack relay's machine, and returns the env.
+func (e *env) withBridge(bridge *creelfake.Bridge) *env {
+	e.store.SetMachineBridge(bridge)
+	return e
 }
 
 func strand(name string) creelengine.Sender { return creelengine.StrandSender(name) }
@@ -374,6 +381,112 @@ func TestStore_Mail(t *testing.T) {
 			}
 			_, err := e.store.WaitReply(strand(beta), 5)
 			wantErr(t, err, "not one you posted")
+		}},
+		{"Post_ToAnOrchOfAnotherMachineIsJournaledMachineOutboundAndWaitsOpen", func(t *testing.T, e *env) {
+			e.withBridge(creelfake.NewBridge("neve"))
+			id, waiter, err := e.store.PostWait(strand(orch), "osl::zz:orch", "hello across")
+			if err != nil || id <= 0 || waiter == nil {
+				t.Fatalf("PostWait to osl::zz:orch = (%d, %v, %v); want an id and a waiter", id, waiter, err)
+			}
+			entries := e.store.Log(creelengine.LogFilter{ID: id})
+			if len(entries) != 1 || entries[0].Event != "machine-outbound" || entries[0].ReceivingMachine != "osl" || entries[0].To != "osl::zz:orch" || !entries[0].ExpectReply {
+				t.Errorf("log of the post = %+v; want one marked machine-outbound entry for osl::zz:orch with the receiving machine", entries)
+			}
+			if inbox, err := e.store.Inbox(strand(orch)); err != nil || len(inbox.Senders) != 0 {
+				t.Errorf("the sender's inbox = %+v, %v; want nothing, since a machine-outbound message is held by no local strand", inbox, err)
+			}
+			again, err := e.store.WaitReply(strand(orch), id)
+			if err != nil {
+				t.Fatalf("WaitReply on the machine-outbound message by its poster: %v", err)
+			}
+			for _, w := range []*creelengine.Waiter{waiter, again} {
+				select {
+				case outcome := <-w.C:
+					t.Errorf("a wait on a pending machine-outbound message ended with %+v; want it open", outcome)
+				default:
+				}
+			}
+			_, err = e.store.WaitReply(strand(beta), id)
+			wantErr(t, err, "not one you posted")
+		}},
+		{"Post_ToAnotherMachineIsRefusedWithItsWayForwardAndJournalsNothing", func(t *testing.T, e *env) {
+			const (
+				address = "osl::zz:orch"
+				budget  = 8 << 10
+			)
+			_, err := e.store.Post(strand(orch), address, "hi")
+			wantErr(t, err, "started without the Slack bridge", address, "way forward")
+			widest := len(creelengine.MessageLine(creelengine.Message{
+				ID: math.MaxInt64, From: agentname.FormatMachineAddress(strings.Repeat("m", 63), orch), ExpectReply: true,
+			})) + len(" "+creelengine.StampMachineUntrusted) + creelengine.MachineEnvelopeWidth(orch, "zz:orch")
+			tests := []struct {
+				name     string
+				sender   creelengine.Sender
+				receiver string
+				body     string
+				refuse   map[string]error
+				namesErr error
+				want     []string
+			}{
+				{name: "ANamesError", sender: strand(orch), receiver: address, body: "hi", namesErr: errors.New("the machine file is unreadable"), want: []string{"the machine file is unreadable"}},
+				{name: "ThisMachinesCurrentName", sender: strand(orch), receiver: "neve::zz:orch", body: "hi", want: []string{"names this machine (neve)", "way forward"}},
+				{name: "AFormerNameThatFailsTheNameRule", sender: strand(orch), receiver: "Old_Box::zz:orch", body: "hi", want: []string{"names this machine (Old_Box)", "way forward"}},
+				{name: "ABadMachinePart", sender: strand(orch), receiver: "Bad_Name::zz:orch", body: "hi", want: []string{"is invalid", "way forward"}},
+				{name: "ANamePartThatDoesNotParse", sender: strand(orch), receiver: "osl::zz", body: "hi", want: []string{"is invalid", "way forward: name a strand of that machine"}},
+				{name: "AProgramSender", sender: program(batten), receiver: address, body: "hi", want: []string{"only an orch strand posts to another machine", batten, "way forward"}},
+				{name: "AnExternalSender", sender: external(), receiver: address, body: "hi", want: []string{"only an orch strand posts to another machine", "way forward"}},
+				{name: "ANonOrchStrandSender", sender: strand(alpha), receiver: address, body: "hi", want: []string{"only an orch strand posts to another machine", alpha, "way forward"}},
+				{name: "ANonOrchReceiver", sender: strand(orch), receiver: "osl::zz:driver", body: "hi", want: []string{"only an orch of another machine", "osl::<shortname>:orch"}},
+				{name: "ASendReadyRefusal", sender: strand(orch), receiver: address, body: "hi", refuse: map[string]error{orch: errors.New("the slack button is off; way forward: turn it on")}, want: []string{"the slack button is off; way forward: turn it on"}},
+				{name: "ALineThatFitsLocallyButNotWithTheEnvelopeAndStamp", sender: strand(orch), receiver: address, body: strings.Repeat("x", budget-widest+1), want: []string{"with the bridge envelope and stamp", "shorten the message or split it"}},
+				{name: "AnEmptyBody", sender: strand(orch), receiver: address, body: "  ", want: []string{"empty"}},
+			}
+			for _, tt := range tests {
+				bridge := creelfake.NewBridge("neve", "Old_Box")
+				bridge.FailNames(tt.namesErr)
+				for who, refusal := range tt.refuse {
+					bridge.Refuse(who, refusal)
+				}
+				e.withBridge(bridge)
+				_, err := e.store.Post(tt.sender, tt.receiver, tt.body)
+				if err == nil {
+					t.Errorf("%s: Post to %s returned nil; want a refusal", tt.name, tt.receiver)
+					continue
+				}
+				for _, want := range tt.want {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("%s: refusal %q lacks %q", tt.name, err, want)
+					}
+				}
+			}
+			if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 0 {
+				t.Errorf("the refused posts journaled %v; want nothing", eventsOf(entries))
+			}
+			e.withBridge(creelfake.NewBridge("neve"))
+			if _, err := e.store.Post(strand(orch), address, strings.Repeat("x", budget-widest)); err != nil {
+				t.Errorf("Post of a line at the budget once the envelope and stamp are counted: %v; want it accepted", err)
+			}
+		}},
+		{"AMachineOutboundMessageIsNeverDeliveredToAHubAndStaysPendingWithinItsHour", func(t *testing.T, e *env) {
+			hubs := e.withHubs()
+			e.withBridge(creelfake.NewBridge("neve"))
+			before := e.post(t, strand(orch), "osl::zz:orch", "posted before the start")
+			e.start(t)
+			after := e.post(t, strand(orch), "osl::zz:orch", "posted after the start")
+			e.clock.Advance(30 * time.Minute)
+			if spawns := hubs.Spawns(zzHub); spawns != 0 {
+				t.Errorf("the hub %s was started %d times; want none for machine mail", zzHub, spawns)
+			}
+			for _, id := range []int64{before, after} {
+				if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: id})); !slices.Equal(got, []string{"machine-outbound"}) {
+					t.Errorf("events of #%d = %v; want only machine-outbound, with no remote-delivered or outbound-returned", id, got)
+				}
+			}
+		}},
+		{"Forward_ToAnotherMachineIsRefusedNamingPost", func(t *testing.T, e *env) {
+			id := e.post(t, strand(alpha), beta, "to forward")
+			err := e.store.Forward(strand(beta), id, "osl::zz:orch")
+			wantErr(t, err, "another machine", "lym creel post osl::zz:orch")
 		}},
 		{"Post_RefusesExternalReceiver", func(t *testing.T, e *env) {
 			_, err := e.store.Post(strand(alpha), "ly:EXTERNAL", "hi")
@@ -883,17 +996,18 @@ func TestStore_InjectAndHold(t *testing.T) {
 			}
 		}},
 		{"AnotherHubsNameIsRefusedByEveryVerbThatStaysInsideOneHub", func(t *testing.T, e *env) {
-			const other = "zz:orch"
-			_, injectErr := e.store.Inject(program(batten), other, "/clear", 0, false)
-			_, interruptErr := e.store.Interrupt(program(batten), other)
-			_, holdErr := e.store.Hold(program(batten), other, time.Minute)
-			_, releaseErr := e.store.Release(program(batten), other)
-			_, _, _, postInterruptErr := e.store.PostInterrupt(strand(alpha), other, "stop", false)
-			for name, err := range map[string]error{"inject": injectErr, "interrupt": interruptErr, "hold": holdErr, "release": releaseErr, "post --interrupt": postInterruptErr} {
-				wantErr(t, err, other, "another hub", name, "lym creel post "+other)
-			}
-			if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 0 || len(e.store.Queued(other)) != 0 || len(e.del.Interrupts()) != 0 {
-				t.Errorf("the refusals left the log %v, the queue %v and the interrupts %v; want nothing", eventsOf(entries), e.store.Queued(other), e.del.Interrupts())
+			for _, other := range []struct{ name, kind string }{{"zz:orch", "another hub"}, {"osl::zz:orch", "another machine"}} {
+				_, injectErr := e.store.Inject(program(batten), other.name, "/clear", 0, false)
+				_, interruptErr := e.store.Interrupt(program(batten), other.name)
+				_, holdErr := e.store.Hold(program(batten), other.name, time.Minute)
+				_, releaseErr := e.store.Release(program(batten), other.name)
+				_, _, _, postInterruptErr := e.store.PostInterrupt(strand(alpha), other.name, "stop", false)
+				for name, err := range map[string]error{"inject": injectErr, "interrupt": interruptErr, "hold": holdErr, "release": releaseErr, "post --interrupt": postInterruptErr} {
+					wantErr(t, err, other.name, other.kind, name, "lym creel post "+other.name)
+				}
+				if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 0 || len(e.store.Queued(other.name)) != 0 || len(e.del.Interrupts()) != 0 {
+					t.Errorf("the refusals of %s left the log %v, the queue %v and the interrupts %v; want nothing", other.name, eventsOf(entries), e.store.Queued(other.name), e.del.Interrupts())
+				}
 			}
 		}},
 		{"Inject_NonPrivilegedNeedsPost", func(t *testing.T, e *env) {
@@ -1592,6 +1706,21 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 				"[creel] #2 from \"xx:gamma:driver\" " + creelengine.StampUntrusted + ": plain",
 				"[creel] #3 from \"xx:gamma:driver\" " + creelengine.StampUntrusted + ", expects a reply (lym creel post --reply 3 \"<text>\"): question",
 				"[creel] #4 from \"" + alpha + "\": local",
+			}
+			if !slices.Equal(lines, want) {
+				t.Errorf("claimed %q; want %q", lines, want)
+			}
+		}},
+		{"ClaimedLineOfMachineMailCarriesTheMachineStampAfterTheSenderAndALocalLineIsUnchanged", func(t *testing.T, e *env) {
+			e.withBridge(creelfake.NewBridge("neve"))
+			e.deliverMachine(t, machineMail(remoteOrch, 7, "hello"))
+			e.deliverMachine(t, machineMail("osl::zz:driver", 8, "plain"))
+			e.post(t, strand(alpha), orch, "local")
+			_, lines := claimLines(t, e, orch)
+			want := []string{
+				"[creel] #1 from \"osl::zz:orch\" " + creelengine.StampMachineTrusted + ": hello",
+				"[creel] #2 from \"osl::zz:driver\" " + creelengine.StampMachineUntrusted + ": plain",
+				"[creel] #3 from \"" + alpha + "\": local",
 			}
 			if !slices.Equal(lines, want) {
 				t.Errorf("claimed %q; want %q", lines, want)

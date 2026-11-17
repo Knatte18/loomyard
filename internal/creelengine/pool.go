@@ -70,6 +70,12 @@ type Store struct {
 	// outboundHook takes a hub path when a message to that hub is queued; outboundWakes holds paths until it runs.
 	outboundHook  func(hubPath string)
 	outboundWakes []string
+	// bridge tells the store this machine's names and whether an orch may post to another machine.
+	// It is nil without the Slack bridge.
+	bridge MachineBridge
+	// machineHook is called when a message to another machine was journaled; machineWake holds that signal until it runs.
+	machineHook func()
+	machineWake bool
 }
 
 // paneLock returns the one mutex of receiver's pane.
@@ -170,6 +176,7 @@ func (s *Store) SetWakeHook(hook func(receiver string)) {
 // do runs fn under the mutex.
 // Once the mutex is free, it calls the wake hook for each receiver fn signalled.
 // It then calls the outbound hook for each receiving hub.
+// It calls the machine hook when fn journaled a message to another machine.
 // When fn journaled a record, the strands' mail flags follow the pool before the mutex is freed.
 // This holds even when fn failed after it journaled.
 func (s *Store) do(fn func() error) error {
@@ -181,7 +188,8 @@ func (s *Store) do(fn func() error) error {
 	}
 	wakes, hook := s.wakes, s.wakeHook
 	outboundWakes, outboundHook := s.outboundWakes, s.outboundHook
-	s.wakes, s.outboundWakes = nil, nil
+	machineWake, machineHook := s.machineWake, s.machineHook
+	s.wakes, s.outboundWakes, s.machineWake = nil, nil, false
 	s.mu.Unlock()
 	if hook != nil {
 		seen := map[string]bool{}
@@ -200,6 +208,9 @@ func (s *Store) do(fn func() error) error {
 				outboundHook(hubPath)
 			}
 		}
+	}
+	if machineWake && machineHook != nil {
+		machineHook()
 	}
 	return err
 }
@@ -454,6 +465,21 @@ func (s *Store) settledOutcomeLocked(key waitKey) (Outcome, bool, error) {
 	switch key.kind {
 	case waitReply:
 		if sent := s.state.outbound[key.id]; sent != nil {
+			var oldest *Message
+			for _, msg := range s.state.messages {
+				if msg.Kind == kindReply && msg.ReplyTo == key.id && (oldest == nil || msg.ID < oldest.ID) {
+					oldest = msg
+				}
+			}
+			switch {
+			case oldest != nil:
+				return Outcome{Kind: OutcomeReply, Message: *oldest}, true, nil
+			case sent.State == outboundReturned:
+				return Outcome{Kind: OutcomeReturned, Message: sent.message()}, true, nil
+			}
+			return Outcome{}, false, nil
+		}
+		if sent := s.state.machineOutbound[key.id]; sent != nil {
 			var oldest *Message
 			for _, msg := range s.state.messages {
 				if msg.Kind == kindReply && msg.ReplyTo == key.id && (oldest == nil || msg.ID < oldest.ID) {

@@ -23,9 +23,13 @@ func (s *Store) otherHub(name string) (string, bool) {
 	return "", false
 }
 
-// refuseOtherHub refuses verb for a receiver that is a name of another hub, and answers nil for every other name.
+// refuseOtherHub refuses verb for a receiver that names another hub or another machine.
+// It answers nil for every other name.
 // It needs no lookup of other hubs, so it holds for a daemon that serves no other hub too.
 func (s *Store) refuseOtherHub(receiver, verb string) error {
+	if err := refuseMachineAddress(receiver, verb); err != nil {
+		return err
+	}
 	if _, other := s.otherHub(receiver); !other {
 		return nil
 	}

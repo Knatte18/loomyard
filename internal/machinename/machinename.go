@@ -21,8 +21,8 @@ const fileName = "machine.json"
 // lockName is the name of the lock the machine file's writer holds, beside the file.
 const lockName = "machine.lock"
 
-// maxNameLength is the longest name the name rule accepts, a DNS label's length.
-const maxNameLength = 63
+// MaxNameLength is the longest name the name rule accepts, a DNS label's length.
+const MaxNameLength = 63
 
 // setNameWayForward is the way forward of a machine file that does not yield a name.
 const setNameWayForward = "run `lym machine name <name>`, which rewrites the file, or remove the file"
@@ -88,14 +88,14 @@ func Names() (current string, former []string, err error) {
 // lower-case letters, digits and hyphens, starting and ending with a letter or digit, at most 63 characters.
 // The rule keeps the name from reading as a domain or a hub-qualified name in an owner, an address or a channel name.
 func CheckName(name string) error {
-	valid := name != "" && len(name) <= maxNameLength && name[0] != '-' && name[len(name)-1] != '-'
+	valid := name != "" && len(name) <= MaxNameLength && name[0] != '-' && name[len(name)-1] != '-'
 	for _, r := range name {
 		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
 			valid = false
 		}
 	}
 	if !valid {
-		return fmt.Errorf("the machine name %q is invalid: a name is lower-case letters, digits and hyphens, starts and ends with a letter or digit, and is at most %d characters; way forward: choose a name of that form", name, maxNameLength)
+		return fmt.Errorf("the machine name %q is invalid: a name is lower-case letters, digits and hyphens, starts and ends with a letter or digit, and is at most %d characters; way forward: choose a name of that form", name, MaxNameLength)
 	}
 	return nil
 }

@@ -140,6 +140,15 @@
 // ReadAll reads every unread message without waiting and hands them to its handler.
 // The client acknowledges them after the handler returns, so a handler error leaves them unread.
 // Log answers the journal entries matching a filter.
+// TakeMachine, ReportMachine, SettleMachineDelivered, SettleMachineReturned and DeliverMachine send the machine verbs.
+// They serve the Slack relay's program client and have no CLI verb.
+// A daemon's refusal of one matches `creelengine.IsDaemonRefusal`.
+// The daemon is told a bridge over the hub's Slack files:
+// this machine's names, and whether an orch may post to another machine.
+// Only the hub's own orch and a beam's orch may, while their slack button is on and the machine and hub are set up.
+// Each call of the bridge reads its files afresh.
+// The read envelope of a message from another machine carries `trust`, `sending_id` and `sending_machine`.
+// A `log` entry of mail across machines adds `receiving_machine`, `sending_machine` and `slack_ts` where set.
 // ReadWait blocks until the caller has unread mail and hands it to its handler.
 // It acknowledges the mail only when the handler returns nil.
 // It returns nil once the daemon confirmed the acknowledgement.

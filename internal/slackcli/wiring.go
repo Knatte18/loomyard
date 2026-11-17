@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -288,6 +289,51 @@ func (m *programMailbox) ReadWait(timeout time.Duration, handle func([]creelengi
 	return client.ReadWait(timeout, handle)
 }
 
+// TakeMachine answers the pending messages to orchs of other machines, oldest first.
+func (m *programMailbox) TakeMachine() ([]creelengine.MachineOutbound, error) {
+	client, err := m.resolve()
+	if err != nil {
+		return nil, err
+	}
+	return client.TakeMachine()
+}
+
+// ReportMachine tells creel the relay holds message id for reason.
+func (m *programMailbox) ReportMachine(id int64, reason string) error {
+	client, err := m.resolve()
+	if err != nil {
+		return err
+	}
+	return client.ReportMachine(id, reason)
+}
+
+// SettleMachineDelivered settles message id as posted to Slack at slackTS.
+func (m *programMailbox) SettleMachineDelivered(id int64, slackTS string) error {
+	client, err := m.resolve()
+	if err != nil {
+		return err
+	}
+	return client.SettleMachineDelivered(id, slackTS)
+}
+
+// SettleMachineReturned settles message id as returned to its sender for reason.
+func (m *programMailbox) SettleMachineReturned(id int64, reason string) error {
+	client, err := m.resolve()
+	if err != nil {
+		return err
+	}
+	return client.SettleMachineReturned(id, reason)
+}
+
+// DeliverMachine offers creel one message from an orch of another machine and answers the id it has here.
+func (m *programMailbox) DeliverMachine(mail creelengine.MachineMail) (int64, error) {
+	client, err := m.resolve()
+	if err != nil {
+		return 0, err
+	}
+	return client.DeliverMachine(mail)
+}
+
 // spawnIntermediate is the double fork's intermediate step for the hub at hubPath.
 func spawnIntermediate(hubPath, primeName string) error {
 	geom, err := hubgeom.SlackGeometry(hubPath)
@@ -331,6 +377,8 @@ func runRelay(ctx context.Context, hubPath, primeName string) error {
 			Beams:   func() ([]string, error) { return beamSlugs(prime) },
 			Paused:  func(receiver string) (bool, error) { return receiverPaused(hubPath, prime, receiver) },
 			Project: func(slug string) (string, string, error) { return orchProject(hubPath, slug) },
+
+			MachineNames: machinename.Names,
 		},
 		LiveHubs:       liveHubGeometries,
 		Clock:          slackengine.SystemClock{},

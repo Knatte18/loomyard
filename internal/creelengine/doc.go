@@ -766,4 +766,76 @@
 // The sending hub's repository name, when it had one, leads the stamp.
 // A line then reads, for example, `"ly:orch" Knatte18/loomyard (other hub, trusted orch)`.
 // The stamp is Message.HubStamp, and a local message has none, so its line is unchanged.
+//
+// # Mail across machines
+//
+// The journal has five events for mail between orchs of two machines, and the fold gives each its place.
+// `machine-outbound` records a message an orch of this hub posted to an orch of another machine.
+// It records the receiving machine.
+// `machine-held` records the reason the Slack relay holds it, and the latest reason stands.
+// `machine-delivered` settles it with the Slack timestamp of the post, from pending or from returned.
+// `machine-returned` settles a pending one with the reason it came back.
+// It changes nothing once the message is delivered.
+// A machine-outbound message lives in its own map, apart from the mail pool and from mail across hubs.
+// So no per-hub worker, flag, reminder, sweep, chase or settle acts on it.
+// A machine-outbound reply to a local message that expects one marks that message replied, so its chase stops.
+// `machine-inbound` records mail from an orch of another machine as unread mail in the pool.
+// It records the sending machine and the id that machine gave the message.
+// It records whether the sender is the orch of an approved machine.
+// It records when the message was posted there and the receiver the delivery named.
+// A machine-inbound reply marks the machine-outbound message it answers as replied.
+// Retention carries a pending machine-outbound message with its receiving machine and last hold reason.
+// That message is written with `of` `machine-outbound`.
+// An unread machine-inbound message is carried with `of` `machine-inbound`.
+// A delivered or returned machine-outbound message is not carried.
+// A binary that does not know these events or `of` values reads each such message as an id alone.
+//
+// A post to a `<machine>::<name>` address is journaled as a machine-outbound message under a new id,
+// and it answers that id at once.
+// Only an orch strand posts to another machine, and only to an orch of it.
+// The Slack relay alone carries the message.
+// A waiting post registers its wait on that id, and a `wait-reply` on it from its sender resumes the wait.
+// The engine learns this machine's names and whether an orch may send through the told MachineBridge.
+// The daemon fills that seam from the Slack engine.
+// A daemon with a nil MachineBridge refuses such a post.
+// Each refusal carries its own way forward and journals nothing.
+// A post is refused in a daemon without the bridge or after a name lookup that fails.
+// It is refused for an address that does not parse or names this machine.
+// It is refused for a sender that is no orch strand and for a receiver that is no orch.
+// It is refused for an orch the bridge finds not ready to send.
+// It is refused for an empty body.
+// It is refused for a line over the cap once the bridge envelope and the machine stamp are counted.
+// `inject`, `interrupt`, `hold`, `release`, `forward` and `post --interrupt` refuse such a name, naming `lym creel post`.
+//
+// Only the relay, the program `<shortname>:SLACK`, takes, reports on and settles a machine-outbound message.
+// `machine-take` answers the pending messages oldest first.
+// `machine-report` journals why the relay holds one, only when the reason changed.
+// `machine-settle` settles one as delivered, with the Slack timestamp, or as returned with the relay's reason.
+// A settle delivered for a message creel returned journals it delivered and tells its sender in a late notice.
+// A scoped `<shortname>:<slug>:SLACK`, an orch strand, another program and EXTERNAL are refused with `lym creel post`.
+// Bound: on Linux a program claim through the Go client is accepted from an orch strand's pane.
+// It is also accepted from a process in no pane, and off Linux from any process.
+// So any of them can make the `SLACK` claim and take, settle or deliver bridge mail.
+// This is the bound a program claim has for every program.
+//
+// A message unsettled an hour after its post is returned by a scheduler timer that runs whether or not the relay runs.
+// A post to another machine and the scheduler's start arm the timer.
+// It wakes at the earliest pending hour and never within a second.
+// The return carries the relay's last reported hold reason, or `bridge-unsettled` when it reported none,
+// and its notice to the sender names what clears the reason.
+// A take after the hour returns the message and never hands it out.
+//
+// `machine-deliver` takes one message from an orch of another machine, from the relay's program alone.
+// The sender address must parse and must not name this machine, and the receiver must be an orch of this hub.
+// A delivery whose sender address and sending id creel already stored is answered with the id it gave and stores nothing.
+// The dedupe holds within the journal's retention, which MachineInboundRetention names.
+// A reply-to must name a machine-outbound message this hub sent from the receiver to the sender address.
+// A stored reply ends the wait on that message and still reaches the receiver as mail.
+// The mail is stamped trusted when its sender is an orch, and `Message.HubStamp` answers the machine stamp for it.
+// A reply to it is journaled as a machine-outbound message to the sender.
+// The checks a post to another machine runs come first.
+// It is never a per-hub outbound message.
+// Bound: this verb is the one edge through which mail reaches an orch stamped `(other machine, trusted orch)`.
+// A message from another machine is forwarded only to a strand of this hub.
+// Unread machine mail whose holder is gone is journaled undelivered and returned to no machine.
 package creelengine

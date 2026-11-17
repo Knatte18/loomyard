@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -85,12 +86,37 @@ func holdRelayLock(t *testing.T, geom slackengine.Geometry) *lock.FileLock {
 	return held
 }
 
+// bridgePollClock is the clock RunRelay gets: the bridge poll's waits go to a manual clock no row advances,
+// so they never mix with the outbound read's and the wake loop's waits, which go to the main one.
+// A wait is the bridge poll's when a bridgePoll method is on the calling stack.
+type bridgePollClock struct {
+	main, bridge *manualClock
+}
+
+func (c bridgePollClock) Now() time.Time { return c.main.Now() }
+
+func (c bridgePollClock) After(d time.Duration) <-chan time.Time {
+	pcs := make([]uintptr, 32)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
+	for {
+		frame, more := frames.Next()
+		if strings.Contains(frame.Function, "(*bridgePoll).") {
+			return c.bridge.After(d)
+		}
+		if !more {
+			return c.main.After(d)
+		}
+	}
+}
+
 // relayRun is a relay over a configured harness, run in a goroutine of the test until the test stops it.
 // Its clock is a manual one: each loop of the relay blocks at its wait until a row advances the time.
 type relayRun struct {
 	*harness
 	// clock shadows the harness's clock, which only the harness's own inbound read and keeper use.
 	clock *manualClock
+	// bridgeClock holds the waits of the bridge poll, which only a row that drives the poll advances.
+	bridgeClock *manualClock
 	// dialer is the relay's Socket Mode dial; with no scripted step a dial blocks until the relay ends.
 	dialer       *fakeDialer
 	deps         slackengine.RelayDeps
@@ -110,7 +136,7 @@ func newRelayRun(t *testing.T) *relayRun {
 	t.Helper()
 	h := newHarness(t)
 	h.hub.set(func(hub *fakeHub) { hub.beams = []string{"payments"} })
-	r := &relayRun{harness: h, clock: newManualClock(), dialer: &fakeDialer{}}
+	r := &relayRun{harness: h, clock: newManualClock(), bridgeClock: newManualClock(), dialer: &fakeDialer{}}
 	hub := h.hub.hub()
 	r.deps = slackengine.RelayDeps{
 		Mailbox: h.mailbox,
@@ -123,9 +149,11 @@ func newRelayRun(t *testing.T) *relayRun {
 			},
 			Paused:  hub.Paused,
 			Project: hub.Project,
+
+			MachineNames: hub.MachineNames,
 		},
 		LiveHubs:      func() ([]slackengine.Geometry, error) { return []slackengine.Geometry{h.geom}, nil },
-		Clock:         r.clock,
+		Clock:         bridgePollClock{main: r.clock, bridge: r.bridgeClock},
 		PID:           func() int { return fakePID },
 		CheckBinary:   func(func(), func(error)) { r.binaryChecks.Add(1) },
 		ReapInherited: func() error { return nil },

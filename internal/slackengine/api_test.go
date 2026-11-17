@@ -278,6 +278,129 @@ func TestAPI(t *testing.T) {
 		}
 	})
 
+	t.Run("BotUsersNamedPagesUsersListKeepsLiveBotsOfThatNameAndReadsEachAppID", func(t *testing.T) {
+		t.Parallel()
+		fake := newFakeSlackAPI(t, func(request recordedRequest, w http.ResponseWriter) {
+			switch {
+			case request.path == "/users.list" && request.form.Get("cursor") == "page2":
+				answerJSON(w, `{"ok":true,"members":[{"id":"U4","name":"lym-neve","is_bot":true}],"response_metadata":{"next_cursor":""}}`)
+			case request.path == "/users.list":
+				answerJSON(w, `{"ok":true,"members":[`+
+					`{"id":"U0","name":"lym-neve","is_bot":false},`+
+					`{"id":"U1","name":"lym-neve","is_bot":true},`+
+					`{"id":"U2","name":"lym-neve","is_bot":true,"deleted":true},`+
+					`{"id":"U3","name":"lym-osl","is_bot":true}],"response_metadata":{"next_cursor":"page2"}}`)
+			default:
+				apps := map[string]string{"U1": "A1", "U3": "A3", "U4": "A4"}
+				answerJSON(w, `{"ok":true,"user":{"id":"`+request.form.Get("user")+`","profile":{"api_app_id":"`+apps[request.form.Get("user")]+`"}}}`)
+			}
+		})
+		api := fake.api()
+		named, err := api.BotUsersNamed(ctx, "lym-neve")
+		if want := []slackengine.BotUser{{UserID: "U1", AppID: "A1"}, {UserID: "U4", AppID: "A4"}}; err != nil || !cmp.Equal(named, want) {
+			t.Errorf("BotUsersNamed(lym-neve) = %+v, %v; want %+v", named, err, want)
+		}
+		var paths []string
+		for _, request := range fake.recorded() {
+			paths = append(paths, request.path+" "+request.form.Get("user"))
+		}
+		if want := []string{"/users.list ", "/users.list ", "/users.info U1", "/users.info U4"}; !cmp.Equal(paths, want) {
+			t.Errorf("BotUsersNamed(lym-neve) sent %v; want the two list pages, then one users.info per match", paths)
+		}
+		every, err := api.BotUsersNamed(ctx, "")
+		if want := []slackengine.BotUser{{UserID: "U1", AppID: "A1"}, {UserID: "U3", AppID: "A3"}, {UserID: "U4", AppID: "A4"}}; err != nil || !cmp.Equal(every, want) {
+			t.Errorf("BotUsersNamed(empty) = %+v, %v; want every live bot %+v", every, err, want)
+		}
+	})
+
+	t.Run("UserAppIDAnswersTheProfilesAppAndNothingForAHuman", func(t *testing.T) {
+		t.Parallel()
+		fake := newFakeSlackAPI(t, func(request recordedRequest, w http.ResponseWriter) {
+			if request.form.Get("user") == "UBOT" {
+				answerJSON(w, `{"ok":true,"user":{"id":"UBOT","is_bot":true,"profile":{"api_app_id":"A9","bot_id":"B9"}}}`)
+				return
+			}
+			answerJSON(w, `{"ok":true,"user":{"id":"UHUMAN","profile":{"real_name":"Egon"}}}`)
+		})
+		api := fake.api()
+		if appID, err := api.UserAppID(ctx, "UBOT"); err != nil || appID != "A9" {
+			t.Errorf("UserAppID(UBOT) = %q, %v; want A9", appID, err)
+		}
+		if appID, err := api.UserAppID(ctx, "UHUMAN"); err != nil || appID != "" {
+			t.Errorf("UserAppID(UHUMAN) = %q, %v; want empty", appID, err)
+		}
+	})
+
+	t.Run("MemberChannelsPagesUsersConversationsWithoutArchivedChannelsAndAnswersTheCreator", func(t *testing.T) {
+		t.Parallel()
+		fake := newFakeSlackAPI(t, func(request recordedRequest, w http.ResponseWriter) {
+			if request.form.Get("cursor") == "page2" {
+				answerJSON(w, `{"ok":true,"channels":[{"id":"C2","name":"two","creator":"U2"}],"response_metadata":{"next_cursor":""}}`)
+				return
+			}
+			answerJSON(w, `{"ok":true,"channels":[{"id":"C1","name":"one","creator":"U1","is_member":true}],"response_metadata":{"next_cursor":"page2"}}`)
+		})
+		channels, err := fake.api().MemberChannels(ctx)
+		want := []slackengine.ChannelInfo{{ID: "C1", Name: "one", Creator: "U1", IsMember: true}, {ID: "C2", Name: "two", Creator: "U2"}}
+		if err != nil || !cmp.Equal(channels, want) {
+			t.Errorf("MemberChannels = %+v, %v; want %+v", channels, err, want)
+		}
+		requests := fake.recorded()
+		if len(requests) != 2 || requests[0].path != "/users.conversations" || requests[0].form.Get("types") != "public_channel" ||
+			requests[0].form.Get("exclude_archived") != "true" || requests[1].form.Get("cursor") != "page2" {
+			t.Errorf("MemberChannels sent %+v; want two public-channel requests leaving archived ones out, the second carrying page2", requests)
+		}
+	})
+
+	t.Run("PostTimestampedAnswersTheTimestampAndPostThreadReplySendsTheThread", func(t *testing.T) {
+		t.Parallel()
+		fake := newFakeSlackAPI(t, func(request recordedRequest, w http.ResponseWriter) {
+			answerJSON(w, documentedAnswers["/chat.postMessage"])
+		})
+		api := fake.api()
+		timestamp, err := api.PostTimestamped(ctx, "C1", "hello", slackengine.Sender{Username: "ly-orch"})
+		if err != nil || timestamp != "1503435956.000247" {
+			t.Errorf("PostTimestamped = %q, %v; want 1503435956.000247", timestamp, err)
+		}
+		if err := api.PostThreadReply(ctx, "C1", "1503435956.000247", "in the thread"); err != nil {
+			t.Fatalf("PostThreadReply = %v", err)
+		}
+		want := []url.Values{
+			{"channel": {"C1"}, "text": {"hello"}, "username": {"ly-orch"}},
+			{"channel": {"C1"}, "text": {"in the thread"}, "thread_ts": {"1503435956.000247"}},
+		}
+		requests := fake.recorded()
+		if len(requests) != len(want) {
+			t.Fatalf("recorded %d requests; want %d", len(requests), len(want))
+		}
+		for i := range want {
+			if requests[i].path != "/chat.postMessage" || !cmp.Equal(requests[i].form, want[i]) {
+				t.Errorf("request %d = %s %v; want /chat.postMessage %v", i, requests[i].path, requests[i].form, want[i])
+			}
+		}
+	})
+
+	t.Run("TheBridgeCallsAnswerASlackRefusalAsAnAPIError", func(t *testing.T) {
+		t.Parallel()
+		fake := newFakeSlackAPI(t, func(request recordedRequest, w http.ResponseWriter) {
+			answerJSON(w, `{"ok":false,"error":"missing_scope"}`)
+		})
+		api := fake.api()
+		calls := map[string]func() error{
+			"BotUsersNamed":   func() error { _, err := api.BotUsersNamed(ctx, ""); return err },
+			"UserAppID":       func() error { _, err := api.UserAppID(ctx, "U1"); return err },
+			"MemberChannels":  func() error { _, err := api.MemberChannels(ctx); return err },
+			"PostTimestamped": func() error { _, err := api.PostTimestamped(ctx, "C1", "x", slackengine.Sender{}); return err },
+			"PostThreadReply": func() error { return api.PostThreadReply(ctx, "C1", "1.0", "x") },
+		}
+		for name, call := range calls {
+			var apiErr *slackengine.APIError
+			if err := call(); !errors.As(err, &apiErr) || apiErr.Code != "missing_scope" {
+				t.Errorf("%s = %v; want an *APIError with the code missing_scope", name, err)
+			}
+		}
+	})
+
 	t.Run("HistoryFollowsThePagesAndReturnsOldestFirst", func(t *testing.T) {
 		t.Parallel()
 		fake := newFakeSlackAPI(t, func(request recordedRequest, w http.ResponseWriter) {

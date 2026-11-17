@@ -52,11 +52,13 @@ var unboundedWaitFiles = []string{
 	"internal/statuspane/pane.go",
 	"internal/creelengine/deliver.go",
 	"internal/creelengine/sweep.go",
+	"internal/creelengine/machinemail.go",
 	"internal/creelengine/chase.go",
 	"internal/creelengine/outbound.go",
 	"internal/creelengine/server.go",
 	"internal/creelengine/client.go",
 	"internal/slackengine/relay.go",
+	"internal/slackengine/bridgepoll.go",
 	"internal/slackengine/holder.go",
 }
 

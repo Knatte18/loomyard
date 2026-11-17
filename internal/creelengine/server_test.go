@@ -881,6 +881,34 @@ func TestDaemon_Protocol(t *testing.T) {
 				t.Errorf("an unrelated refusal = %+v; want no code", resp)
 			}
 		})},
+		{"MachineVerbsAreServedToTheBridgeProgramAndEveryRefusalMatchesIsDaemonRefusal", false, func(t *testing.T, r *rig) {
+			r.start()
+			relay := r.client(programClaim("ly:SLACK"), nil, creelfake.NewClock(epoch))
+			if resp := mustCall(t, relay, creelengine.Request{Verb: creelengine.VerbMachineTake}); len(resp.MachineOutbound) != 0 {
+				t.Errorf("take answered %+v; want nothing pending", resp.MachineOutbound)
+			}
+			for _, req := range []creelengine.Request{
+				{Verb: creelengine.VerbMachineReport, ID: 9, Reason: "peer-unapproved"},
+				{Verb: creelengine.VerbMachineSettle, ID: 9, Delivered: true, SlackTS: "1.1"},
+				{Verb: creelengine.VerbMachineSettle, ID: 9, Reason: "channel_not_found"},
+			} {
+				_, err := relay.Call(req, 0, nil)
+				if !creelengine.IsDaemonRefusal(err) || !strings.Contains(err.Error(), "#9") {
+					t.Errorf("%s of an unknown id: %v; want a daemon refusal naming #9", req.Verb, err)
+				}
+			}
+			other := r.client(programClaim(batten), nil, creelfake.NewClock(epoch))
+			_, err := other.Call(creelengine.Request{Verb: creelengine.VerbMachineTake}, 0, nil)
+			if !creelengine.IsDaemonRefusal(err) || !strings.Contains(err.Error(), "lym creel post") {
+				t.Errorf("take by another program: %v; want a daemon refusal naming lym creel post", err)
+			}
+			lostGeom := r.geom
+			lostGeom.SocketPath += ".none"
+			lost := creelengine.NewClient(lostGeom, programClaim("ly:SLACK"), nil, creelfake.NewClock(epoch))
+			if _, err := lost.Call(creelengine.Request{Verb: creelengine.VerbMachineTake}, 0, nil); err == nil || creelengine.IsDaemonRefusal(err) {
+				t.Errorf("take with no daemon: %v; want a lost-connection error that is no daemon refusal", err)
+			}
+		}},
 		{"NonWaitingCallToAListenerThatNeverAnswersTimesOut", false, func(t *testing.T, r *rig) {
 			listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: r.geom.SocketPath, Net: "unix"})
 			if err != nil {

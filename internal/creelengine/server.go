@@ -45,6 +45,9 @@ type Options struct {
 	Replaced func() bool
 	// Hubs reaches the other hubs of the machine and records this one; nil means a daemon that serves no other hub.
 	Hubs HubDirectory
+	// Bridge tells the daemon this machine's names and whether an orch may post to another machine;
+	// nil means a daemon started without the Slack bridge, which refuses such a post.
+	Bridge MachineBridge
 	// Ready, when set, is called once the daemon listens on its socket.
 	Ready func()
 	// beforeOutcomeWait is a test seam, nil in production.
@@ -91,6 +94,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	defer func() { _ = store.Close() }()
 	store.SetHubs(opts.Hubs, opts.GOOS)
+	store.SetMachineBridge(opts.Bridge)
 	srv.store = store
 	if err := store.ReconcileFlags(); err != nil {
 		logger.Warn("creel daemon: could not reconcile the strands' mail flags", "error", err)
@@ -413,6 +417,35 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 			return err
 		}
 		ok.Dropped = dropped
+	case VerbMachineTake:
+		taken, err := store.TakeMachineOutbound(sender)
+		if err != nil {
+			return err
+		}
+		ok.MachineOutbound = taken
+	case VerbMachineReport:
+		if err := store.ReportMachineHold(sender, req.ID, req.Reason); err != nil {
+			return err
+		}
+	case VerbMachineSettle:
+		var err error
+		if req.Delivered {
+			err = store.SettleMachineDelivered(sender, req.ID, req.SlackTS)
+		} else {
+			err = store.SettleMachineReturned(sender, req.ID, req.Reason)
+		}
+		if err != nil {
+			return err
+		}
+	case VerbMachineDeliver:
+		if req.Machine == nil {
+			return fmt.Errorf("creel: a %s request carries no mail", req.Verb)
+		}
+		id, err := store.DeliverMachine(sender, *req.Machine)
+		if err != nil {
+			return err
+		}
+		ok.ID = id
 	default:
 		return fmt.Errorf("creel: unknown verb %q", req.Verb)
 	}

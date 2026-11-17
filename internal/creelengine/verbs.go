@@ -109,7 +109,7 @@ type PostOptions struct {
 	Tags PostTags
 }
 
-// PostTags are what a notice is about, set only through the Go client; a post to another hub drops them.
+// PostTags are what a notice is about, set only through the Go client; a post to another hub or machine drops them.
 type PostTags struct {
 	// Topic names what the notice reports on.
 	// A post with a topic returns undelivered its sender's unread, unreserved mail to the same receiver under the same topic,
@@ -128,7 +128,7 @@ type PostResult struct {
 	// Waiter is the wait for the reply the options registered, nil without Wait.
 	Waiter *Waiter
 	// ReceiverLive reports whether the receiver had a live pane when the post was stored.
-	// It is nil when creel cannot tell: for a program and for a strand of another hub.
+	// It is nil when creel cannot tell: for a program and for a strand of another hub or machine.
 	ReceiverLive *bool
 	// Warning names a receiver that is not live and the command that starts it, and is empty for every other post.
 	Warning string
@@ -177,6 +177,10 @@ func (s *Store) post(sender Sender, receiver, body string, opts PostOptions) (Po
 		if err := s.refuseOtherHub(receiver, "post --interrupt"); err != nil {
 			return PostResult{}, err
 		}
+	}
+	if agentname.IsMachineAddress(receiver) {
+		id, waiter, err := s.postMachine(sender, receiver, body, opts)
+		return PostResult{ID: id, Waiter: waiter}, err
 	}
 	if shortname, other := s.otherHub(receiver); other && s.hubs != nil {
 		id, waiter, err := s.postOtherHub(sender, receiver, shortname, body, opts)
@@ -304,6 +308,8 @@ func notLiveWarning(receiver, worktree string) string {
 // A reply to a chase answers the message the chase chases, and only from that message's holder.
 // A reply to a message from another hub posts nothing here;
 // it is journaled as an outbound message to the sending strand.
+// A reply to a message from another machine runs the checks of a post to another machine first.
+// It is journaled as a machine-outbound message to the sending orch.
 // The line is validated with the longer stamped length, and the original message is marked replied.
 // A sender notice from creel takes no reply, since creel holds no mailbox.
 func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
@@ -342,6 +348,11 @@ func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
 			replyID = answerID
 			s.wakeOutboundLocked(original.SendingHub)
 			return nil
+		}
+		if original.SendingMachine != "" {
+			var err error
+			replyID, err = s.replyAcrossMachinesLocked(sender, original, id, text)
+			return err
 		}
 		validate := validateBody
 		if !isExternalName(original.From) {
@@ -906,11 +917,14 @@ func (r *Reading) Release() {
 
 // WaitReply registers a wait for the reply to message id, which the caller posted.
 // A reply that already came while no wait was registered is handed over at once and journaled delivered.
+// The message may be one posted to another hub or to another machine.
 func (s *Store) WaitReply(sender Sender, id int64) (*Waiter, error) {
 	var waiter *Waiter
 	err := s.do(func() error {
 		from := ""
 		if sent := s.state.outbound[id]; sent != nil {
+			from = sent.From
+		} else if sent := s.state.machineOutbound[id]; sent != nil {
 			from = sent.From
 		} else if msg := s.state.messages[id]; msg != nil {
 			from = msg.From
@@ -989,8 +1003,12 @@ func (s *Store) Inbox(sender Sender) (InboxResult, error) {
 
 // Forward moves an unread message the caller holds to receiver.
 // The holder changes, From stays, and the caller joins the message's path.
-// A message from another hub is forwarded only to a strand of this hub.
+// A message from another hub or machine is forwarded only to a strand of this hub.
+// A receiver that is a name of another machine is refused.
 func (s *Store) Forward(sender Sender, id int64, receiver string) error {
+	if err := refuseMachineAddress(receiver, "forward"); err != nil {
+		return err
+	}
 	strands, err := s.readStrands()
 	if err != nil {
 		return err
@@ -1009,9 +1027,13 @@ func (s *Store) Forward(sender Sender, id int64, receiver string) error {
 		case receiver == sender.Name:
 			return fmt.Errorf("creel: message #%d cannot be forwarded to yourself", id)
 		}
-		if msg.SendingHub != "" {
+		if msg.SendingHub != "" || msg.SendingMachine != "" {
 			if _, other := s.otherHub(receiver); other || !isStrandName(receiver) {
-				return fmt.Errorf("creel: message #%d came from another hub and is forwarded only to a strand of this hub; way forward: post it anew with lym creel post %s \"<text>\"", id, receiver)
+				origin := "another hub"
+				if msg.SendingMachine != "" {
+					origin = "another machine"
+				}
+				return fmt.Errorf("creel: message #%d came from %s and is forwarded only to a strand of this hub; way forward: post it anew with lym creel post %s \"<text>\"", id, origin, receiver)
 			}
 		}
 		if err := s.checkReceiverLocked(strands, receiver); err != nil {

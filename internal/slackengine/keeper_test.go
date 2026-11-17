@@ -111,6 +111,28 @@ func writeUndecodableMap(t *testing.T, geom slackengine.Geometry) {
 	}
 }
 
+// seedBridge records entry as the bridge channel id in the hub's bridge map.
+func (k *keeperHarness) seedBridge(id string, entry slackengine.BridgeEntry) {
+	k.t.Helper()
+	err := slackengine.UpdateBridgeMap(k.geom.BridgeMapPath, func(bridgeMap *slackengine.BridgeMap) error {
+		bridgeMap.Channels[id] = entry
+		return nil
+	})
+	if err != nil {
+		k.t.Fatalf("UpdateBridgeMap = %v", err)
+	}
+}
+
+// bridgeEntry returns the entry of the bridge channel id in the hub's bridge map.
+func (k *keeperHarness) bridgeEntry(id string) slackengine.BridgeEntry {
+	k.t.Helper()
+	bridgeMap, err := slackengine.ReadBridgeMap(k.geom.BridgeMapPath)
+	if err != nil {
+		k.t.Fatalf("ReadBridgeMap = %v", err)
+	}
+	return bridgeMap.Channels[id]
+}
+
 // TestChannelKeeper covers ensuring, adopting, joining, inviting and retiring the channels of a hub's orchs.
 func TestChannelKeeper(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -471,6 +493,69 @@ func TestChannelKeeper(t *testing.T) {
 		}
 	})
 
+	t.Run("AnOperatorChangeInvitesTheNewOperatorIntoEveryBridgeEntryThatRecordsAnotherOrNone", func(t *testing.T) {
+		t.Parallel()
+		k := newKeeperHarness(t)
+		pair := slackengine.BridgeEntry{Name: "bridge-a", LocalOrch: primeOrch, Peer: "osl::ly:orch"}
+		for id, change := range map[string]func(*slackengine.BridgeEntry){
+			"C10": func(entry *slackengine.BridgeEntry) { entry.Operator = "U0" },
+			"C11": func(entry *slackengine.BridgeEntry) {},
+			"C12": func(entry *slackengine.BridgeEntry) { entry.Operator = testOperator },
+			"C13": func(entry *slackengine.BridgeEntry) { entry.Operator, entry.Archived = "U0", true },
+		} {
+			entry := pair
+			change(&entry)
+			k.seedBridge(id, entry)
+		}
+		if err := k.keeper.InviteOperators(ctx); err != nil {
+			t.Fatalf("InviteOperators = %v", err)
+		}
+		for _, id := range []string{"C10", "C11"} {
+			if diff := cmp.Diff([]string{testOperator}, invitedTo(k.slack, id)); diff != "" {
+				t.Errorf("users invited into %s mismatch (-want +got):\n%s", id, diff)
+			}
+			if got := k.bridgeEntry(id).Operator; got != testOperator {
+				t.Errorf("operator recorded for %s = %q; want %s", id, got, testOperator)
+			}
+		}
+		for _, id := range []string{"C12", "C13"} {
+			if invited := invitedTo(k.slack, id); len(invited) != 0 {
+				t.Errorf("users invited into %s = %v; want none", id, invited)
+			}
+		}
+		if got := k.bridgeEntry("C13").Operator; got != "U0" {
+			t.Errorf("operator recorded for the archived C13 = %q; want U0 left as it was", got)
+		}
+	})
+
+	t.Run("ARefusedOperatorInviteIntoABridgeChannelMailsOneNoticePerEpisodeAndJoinsTheErrors", func(t *testing.T) {
+		t.Parallel()
+		k := newKeeperHarness(t)
+		k.seedBridge("C10", slackengine.BridgeEntry{Name: "bridge-a", LocalOrch: primeOrch, Peer: "osl::ly:orch", Operator: "U0"})
+		refused := &slackengine.APIError{Method: "conversations.invite", Code: "user_not_found"}
+		k.slack.failNext("Invite", refused, refused)
+
+		for call := 1; call <= 2; call++ {
+			if err := k.keeper.InviteOperators(ctx); !errors.Is(err, refused) {
+				t.Errorf("InviteOperators #%d = %v; want the refusal", call, err)
+			}
+		}
+		k.requireOneNoticeNaming("user_not_found", "lym slack setup --operator <user-id>")
+		if got := k.bridgeEntry("C10").Operator; got != "U0" {
+			t.Errorf("operator after refused invites = %q; want U0", got)
+		}
+
+		if err := k.keeper.InviteOperators(ctx); err != nil {
+			t.Fatalf("InviteOperators #3 = %v", err)
+		}
+		if got := k.bridgeEntry("C10").Operator; got != testOperator {
+			t.Errorf("operator after the invite stood = %q; want %s", got, testOperator)
+		}
+		if got := len(k.notices()); got != 1 {
+			t.Errorf("notices after the invite stood = %d; want the one of the episode", got)
+		}
+	})
+
 	t.Run("Retire", func(t *testing.T) {
 		t.Parallel()
 		const baseName = paymentsChannelName
@@ -644,6 +729,67 @@ func TestChannelKeeper(t *testing.T) {
 			}
 			if archives := len(k.slack.logged("Archive")); archives != 1 {
 				t.Errorf("Archive calls = %d; want the one before the failed drop", archives)
+			}
+		})
+
+		const paymentsBridgeName = "bridge-neve-ly-payments-orch--osl-ly-orch"
+		const primeBridgeName = "bridge-neve-ly-orch--osl-ly-orch"
+
+		t.Run("ARetiredBeamsBridgeChannelsAreRenamedWithTheDateAndArchivedAndAnotherOrchsStayOpen", func(t *testing.T) {
+			t.Parallel()
+			k := newRetireHarness(t)
+			k.slack.seedChannel(slackengine.ChannelInfo{ID: "C20", Name: paymentsBridgeName, Creator: "UBOT", IsMember: true})
+			k.slack.seedChannel(slackengine.ChannelInfo{ID: "C21", Name: primeBridgeName, Creator: "UBOT", IsMember: true})
+			k.seedBridge("C20", slackengine.BridgeEntry{Name: paymentsBridgeName, LocalOrch: paymentsOrch, Peer: "osl::ly:orch"})
+			k.seedBridge("C21", slackengine.BridgeEntry{Name: primeBridgeName, LocalOrch: primeOrch, Peer: "osl::ly:orch"})
+			if err := k.keeper.Retire(ctx, nil, false); err != nil {
+				t.Fatalf("Retire = %v", err)
+			}
+			const datedBridgeName = paymentsBridgeName + "-2026-11-05"
+			info, found, err := k.slack.FindChannel(ctx, datedBridgeName)
+			if err != nil || !found || !info.IsArchived || info.ID != "C20" {
+				t.Errorf("FindChannel(%s) = %+v, %v, %v; want the archived channel C20", datedBridgeName, info, found, err)
+			}
+			if got := k.bridgeEntry("C20"); got.Name != datedBridgeName || !got.Archived || !got.Renamed {
+				t.Errorf("bridge entry of the retired beam = %+v; want it archived and marked renamed under %s", got, datedBridgeName)
+			}
+			if got := k.bridgeEntry("C21"); got.Name != primeBridgeName || got.Archived || got.Renamed {
+				t.Errorf("bridge entry of the prime = %+v; want it left open", got)
+			}
+			for _, call := range k.slack.logged("Rename") {
+				if call.Channel == "C21" {
+					t.Errorf("Rename of the prime's bridge channel was called")
+				}
+			}
+		})
+
+		t.Run("ARefusedBridgeArchiveLeavesTheEntryOpenUntilARetryEvenWhenTheOrchsOwnChannelStoodArchived", func(t *testing.T) {
+			t.Parallel()
+			k := newRetireHarness(t)
+			k.slack.seedChannel(slackengine.ChannelInfo{ID: "C20", Name: paymentsBridgeName, Creator: "UBOT", IsMember: true})
+			k.seedEntry(k.geom, paymentsOrch, slackengine.ChannelEntry{ID: "C2", Name: datedName, Renamed: true, Archived: true})
+			k.setButton(paymentsOrch, false)
+			k.seedBridge("C20", slackengine.BridgeEntry{Name: paymentsBridgeName, LocalOrch: paymentsOrch, Peer: "osl::ly:orch"})
+			k.slack.failNext("Archive", errors.New("slack is down"))
+
+			if err := k.keeper.Retire(ctx, nil, false); err == nil {
+				t.Fatalf("Retire = nil; want the archive's error")
+			}
+			if got := k.bridgeEntry("C20"); got.Archived || !got.Renamed || got.Name != paymentsBridgeName+"-2026-11-05" {
+				t.Errorf("bridge entry after the refused archive = %+v; want it open under its dated name", got)
+			}
+			callsBefore := k.slack.callCount()
+			if err := k.keeper.Retire(ctx, nil, false); err != nil || k.slack.callCount() != callsBefore {
+				t.Errorf("Retire without retryRefused = %v after %d new Slack calls; want none", err, k.slack.callCount()-callsBefore)
+			}
+			if err := k.keeper.Retire(ctx, nil, true); err != nil {
+				t.Fatalf("Retire with retryRefused = %v", err)
+			}
+			if got := k.bridgeEntry("C20"); !got.Archived {
+				t.Errorf("bridge entry after the retry = %+v; want it archived", got)
+			}
+			if renames := len(k.slack.logged("Rename")); renames != 1 {
+				t.Errorf("Rename calls = %d; want the one before the refused archive", renames)
 			}
 		})
 

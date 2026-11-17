@@ -49,3 +49,16 @@ The app-level token's scope is not part of a manifest; it is chosen when the tok
 
 `lym slack login` refuses a token of any other prefix, and tokens of two different apps.
 Replacing a stored token ends the relay of each live hub of the machine; run `lym slack start` in each to bring it back.
+
+## Pairing two machines
+
+Two machines exchange mail only when each has approved the other's app.
+Both apps, `lym-<machine>` for each machine, live in one workspace.
+
+1. Type `status` in an orch channel of each machine; the answer names that machine's app id.
+2. On each machine, type `approve <machine>` in an orch channel of that machine, naming the other machine.
+   When the other machine's bot is not named `lym-<machine>`, or two bots carry that name, type `approve <machine> <app id>` with the app id read from the other machine's `status`.
+3. Type `revoke <machine>` in an orch channel to remove an approval.
+
+An orch channel refuses `approve` and `revoke` for the machine it belongs to; type the command in a channel of the other machine.
+The manifest above stays as it is.

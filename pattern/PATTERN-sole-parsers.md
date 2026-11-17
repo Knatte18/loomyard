@@ -14,6 +14,7 @@ Each on-disk format has one parser; consumers read only its model.
 - The raddle proposal: `internal/raddleparser`.
 - The lens report's outcome: `internal/lensreport`.
 - The burler review file and the fixer-report frontmatter: `internal/burlerengine`.
+- Bridge envelope: `internal/slackengine`.
 
 A format another task adds joins this list with its sole parser.
 
@@ -115,6 +116,12 @@ Parent-Align and Finalize read only the `FixerReport` it returns.
 `internal/burlerengine`'s `ParseFixerReport` is the sole parser of the fixer-report's frontmatter.
 Every consumer, the round gates, the producers and the judges among them, reads only the `Verdict`, `Finding` and `FixerReport` models they return.
 The fixer-report is agent-written, so `ParseFixerReport` is strict and refuses an unknown top-level key.
+
+## Bridge envelope (`internal/slackengine`)
+
+`internal/slackengine`'s `FormatBridgeMessage` is the sole writer, and `ParseBridgeMessage` the sole parser,
+of the envelope line that opens a bridge message between two machines' orchs.
+Consumers read only the `BridgeEnvelope` it returns.
 
 ## Fix review report format (`internal/landingshed`)
 

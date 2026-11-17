@@ -181,6 +181,41 @@ func (c *GoClient) Release(receiver string) (bool, error) {
 	return resp.Released, err
 }
 
+// TakeMachine answers the pending messages to other machines, oldest first.
+// Only the relay's program client may take.
+func (c *GoClient) TakeMachine() ([]creelengine.MachineOutbound, error) {
+	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbMachineTake}, goCallTimeout, nil)
+	return resp.MachineOutbound, err
+}
+
+// ReportMachine tells creel the relay holds message id for reason.
+// Only the relay's program client may report.
+func (c *GoClient) ReportMachine(id int64, reason string) error {
+	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbMachineReport, ID: id, Reason: reason}, goCallTimeout, nil)
+	return err
+}
+
+// SettleMachineDelivered settles message id as posted to Slack at slackTS.
+// Only the relay's program client may settle.
+func (c *GoClient) SettleMachineDelivered(id int64, slackTS string) error {
+	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbMachineSettle, ID: id, Delivered: true, SlackTS: slackTS}, goCallTimeout, nil)
+	return err
+}
+
+// SettleMachineReturned settles message id as returned to its sender for reason.
+// Only the relay's program client may settle.
+func (c *GoClient) SettleMachineReturned(id int64, reason string) error {
+	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbMachineSettle, ID: id, Reason: reason}, goCallTimeout, nil)
+	return err
+}
+
+// DeliverMachine offers creel one message from an orch of another machine and answers the id it has here.
+// Only the relay's program client may deliver.
+func (c *GoClient) DeliverMachine(mail creelengine.MachineMail) (int64, error) {
+	resp, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbMachineDeliver, Machine: &mail}, goCallTimeout, nil)
+	return resp.ID, err
+}
+
 // Withdraw removes the caller's own queued injects to receiver and its own unread mail held by receiver;
 // it answers what it removed.
 func (c *GoClient) Withdraw(receiver string) (creelengine.WithdrawResult, error) {

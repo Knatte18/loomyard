@@ -81,6 +81,9 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   each retries a transient answer from a one-second base, doubling to a one-minute ceiling,
   and the wait is capped at what is left of the message's hour;
   the worker ends at that hour, and a wake changes nothing during the wait,
+- creel's machine hour loop in `internal/creelengine/machinemail.go`:
+  it wakes at the earliest pending hour of a message to another machine, one hour from its post, and never within a second;
+  with none pending it waits for a wake, and a failed pass is retried from one second, doubling to a minute,
 - creel's daemon poll in `internal/creelengine/server.go`:
   it asks once a second whether its binary was replaced and whether the UTC day changed,
 - creel's waiting verbs in `internal/creelengine/client.go` and `server.go`:
@@ -93,6 +96,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   an agent session's keep-warm cap bounds it, and a plain shell follows until the worker ends,
 - the Slack relay's loops:
   the outbound read in `internal/slackengine/relay.go`, with the binary check and the retried work after it, from five seconds doubling to sixty;
+  the bridge poll in `internal/slackengine/bridgepoll.go`, from five seconds doubling to sixty and never within a second of the previous round's start;
   the holder in `internal/slackengine/holder.go`, its lock wait blocking without waking, its 30-second ping spawning nothing and its reconnect from one second doubling to sixty;
   and the inbox and forwarding-file watch in `internal/slackengine/relay.go`, never within a second of the previous wake's start, with its on-disk fallback from one second to sixty.
 

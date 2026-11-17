@@ -147,31 +147,43 @@ func (s *Store) settleReturned(id int64, reason string) error {
 			return err
 		}
 		s.answerLocked(waitKey{kind: waitReply, id: id}, Outcome{Kind: OutcomeReturned, Message: sent.message()})
-		if err := s.noticeReturnedLocked(sent, reason, listing); err != nil {
+		if err := s.noticeReturnedLocked(sent.ID, sent.From, sent.To, "", reason, listing); err != nil {
 			logger.Warn("creel outbound: could not post the notice of a returned message", "id", id, "sender", sent.From, "error", err)
 		}
 		return nil
 	})
 }
 
-// noticeReturnedLocked posts sent's sender a notice naming the receiver and the reason the message came back.
-func (s *Store) noticeReturnedLocked(sent *outboundEntry, reason string, listing strandListing) error {
+// noticeReturnedLocked posts the sender of the message id a notice naming the receiver to and the reason it came back.
+// receivingMachine is the machine of a message to another machine, and empty for a message inside one machine.
+// A message to another machine also gets what clears the reason in its way forward.
+func (s *Store) noticeReturnedLocked(id int64, from, to, receivingMachine, reason string, listing strandListing) error {
+	body := fmt.Sprintf("Message #%d to %s came back undelivered, reason: %s; way forward: lym creel log --id %d shows its path, then post it again or decide without the answer", id, to, reason, id)
+	if receivingMachine != "" {
+		body = fmt.Sprintf("Message #%d to %s came back undelivered, reason: %s; way forward: %s, then post it again or decide without the answer; lym creel log --id %d shows its path",
+			id, to, reason, machineHoldWayForward(reason, receivingMachine), id)
+	}
+	return s.postNoticeLocked(from, body, listing)
+}
+
+// postNoticeLocked posts body as a CREEL notice to receiver while the listing shows receiver as a strand.
+// A listing that failed returns its error, and a receiver no longer listed gets no notice.
+func (s *Store) postNoticeLocked(receiver, body string, listing strandListing) error {
 	if listing.err != nil {
 		return listing.err
 	}
-	if _, listed := findStrand(listing.strands, sent.From); !listed {
+	if _, listed := findStrand(listing.strands, receiver); !listed {
 		return nil
 	}
 	sender, err := s.chaserSender()
 	if err != nil {
 		return err
 	}
-	body := fmt.Sprintf("Message #%d to %s came back undelivered, reason: %s; way forward: lym creel log --id %d shows its path, then post it again or decide without the answer", sent.ID, sent.To, reason, sent.ID)
-	id, err := s.appendPostedLocked(sender, record{To: sent.From, Kind: kindMail, Body: body})
+	id, err := s.appendPostedLocked(sender, record{To: receiver, Kind: kindMail, Body: body})
 	if err != nil {
 		return err
 	}
-	return s.deliverMailLocked(id, sent.From)
+	return s.deliverMailLocked(id, receiver)
 }
 
 // wakeOutbound starts the worker of the hub at hubPath when the hub has a pending outbound message and no worker runs.

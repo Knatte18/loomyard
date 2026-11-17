@@ -104,6 +104,14 @@ type ChannelInfo struct {
 	IsArchived bool `json:"is_archived"`
 }
 
+// BotUser is a bot user of the workspace and the Slack app it belongs to.
+type BotUser struct {
+	// UserID is the bot's Slack user id.
+	UserID string
+	// AppID is the id of the Slack app the bot belongs to.
+	AppID string
+}
+
 // APIError is a call Slack answered with ok false and an error code.
 // Codes include `msg_too_long`, `invalid_auth` and `channel_not_found`.
 type APIError struct {
@@ -160,6 +168,31 @@ type botInfoAnswer struct {
 type channelListAnswer struct {
 	Channels         []ChannelInfo  `json:"channels"`
 	ResponseMetadata responseCursor `json:"response_metadata"`
+}
+
+// userListAnswer is the part of a users.list answer the client reads: one page and the cursor of the next.
+type userListAnswer struct {
+	Members []struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Deleted bool   `json:"deleted"`
+		IsBot   bool   `json:"is_bot"`
+	} `json:"members"`
+	ResponseMetadata responseCursor `json:"response_metadata"`
+}
+
+// userInfoAnswer is the part of a users.info answer the client reads: the app a bot user belongs to.
+type userInfoAnswer struct {
+	User struct {
+		Profile struct {
+			APIAppID string `json:"api_app_id"`
+		} `json:"profile"`
+	} `json:"user"`
+}
+
+// postAnswer is the part of a chat.postMessage answer the client reads.
+type postAnswer struct {
+	TS string `json:"ts"`
 }
 
 // openConnectionAnswer is the part of an apps.connections.open answer the client reads.
@@ -422,6 +455,34 @@ func (a *API) Latest(ctx context.Context, channel string) (string, bool, error) 
 // It returns nil once Slack accepted the post and reads nothing more of the answer,
 // so a post Slack accepted never reads as a failure that would post it again.
 func (a *API) PostAs(ctx context.Context, channel, text string, sender Sender) error {
+	_, err := a.call(ctx, "chat.postMessage", postForm(channel, text, sender))
+	return err
+}
+
+// PostTimestamped posts text to the channel as PostAs does and returns the timestamp Slack gave the posted message.
+func (a *API) PostTimestamped(ctx context.Context, channel, text string, sender Sender) (string, error) {
+	const method = "chat.postMessage"
+	body, err := a.call(ctx, method, postForm(channel, text, sender))
+	if err != nil {
+		return "", err
+	}
+	answer, err := decodeAnswer[postAnswer](method, body)
+	if err != nil {
+		return "", err
+	}
+	return answer.TS, nil
+}
+
+// PostThreadReply posts text to the channel as a reply in the thread started at thread, under the bot's default name.
+func (a *API) PostThreadReply(ctx context.Context, channel, thread, text string) error {
+	form := postForm(channel, text, Sender{})
+	form.Set("thread_ts", thread)
+	_, err := a.call(ctx, "chat.postMessage", form)
+	return err
+}
+
+// postForm returns the chat.postMessage form for a post of text to channel; a Sender field left empty is not sent.
+func postForm(channel, text string, sender Sender) url.Values {
 	form := url.Values{"channel": {channel}, "text": {text}}
 	if sender.Username != "" {
 		form.Set("username", sender.Username)
@@ -429,8 +490,96 @@ func (a *API) PostAs(ctx context.Context, channel, text string, sender Sender) e
 	if sender.IconEmoji != "" {
 		form.Set("icon_emoji", sender.IconEmoji)
 	}
-	_, err := a.call(ctx, "chat.postMessage", form)
-	return err
+	return form
+}
+
+// BotUsersNamed pages users.list and returns the bot users that are not deleted and are named name.
+// They come in listing order, and an empty name keeps every such bot user.
+// It reads each one's app id with UserAppID.
+// The call needs the bot scope users:read.
+func (a *API) BotUsersNamed(ctx context.Context, name string) ([]BotUser, error) {
+	const method = "users.list"
+	var userIDs []string
+	cursor := ""
+	for {
+		form := url.Values{"limit": {strconv.Itoa(historyPageLimit)}}
+		if cursor != "" {
+			form.Set("cursor", cursor)
+		}
+		body, err := a.call(ctx, method, form)
+		if err != nil {
+			return nil, err
+		}
+		page, err := decodeAnswer[userListAnswer](method, body)
+		if err != nil {
+			return nil, err
+		}
+		for _, member := range page.Members {
+			if member.IsBot && !member.Deleted && (name == "" || member.Name == name) {
+				userIDs = append(userIDs, member.ID)
+			}
+		}
+		cursor = page.ResponseMetadata.NextCursor
+		if cursor == "" {
+			break
+		}
+	}
+	bots := make([]BotUser, 0, len(userIDs))
+	for _, userID := range userIDs {
+		appID, err := a.UserAppID(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		bots = append(bots, BotUser{UserID: userID, AppID: appID})
+	}
+	return bots, nil
+}
+
+// UserAppID reads with users.info the id of the Slack app the user's profile names, empty for a human user.
+// The call needs the bot scope users:read.
+func (a *API) UserAppID(ctx context.Context, userID string) (string, error) {
+	const method = "users.info"
+	body, err := a.call(ctx, method, url.Values{"user": {userID}})
+	if err != nil {
+		return "", err
+	}
+	answer, err := decodeAnswer[userInfoAnswer](method, body)
+	if err != nil {
+		return "", err
+	}
+	return answer.User.Profile.APIAppID, nil
+}
+
+// MemberChannels pages users.conversations and returns the public channels the bot is a member of.
+// Archived channels are left out.
+// Each answer carries the channel's creator.
+func (a *API) MemberChannels(ctx context.Context) ([]ChannelInfo, error) {
+	const method = "users.conversations"
+	var channels []ChannelInfo
+	cursor := ""
+	for {
+		form := url.Values{
+			"types":            {"public_channel"},
+			"exclude_archived": {"true"},
+			"limit":            {strconv.Itoa(historyPageLimit)},
+		}
+		if cursor != "" {
+			form.Set("cursor", cursor)
+		}
+		body, err := a.call(ctx, method, form)
+		if err != nil {
+			return nil, err
+		}
+		page, err := decodeAnswer[channelListAnswer](method, body)
+		if err != nil {
+			return nil, err
+		}
+		channels = append(channels, page.Channels...)
+		cursor = page.ResponseMetadata.NextCursor
+		if cursor == "" {
+			return channels, nil
+		}
+	}
 }
 
 // compareTS orders two Slack timestamps, which read `<seconds>.<micros>`, oldest first.

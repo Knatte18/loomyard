@@ -77,6 +77,8 @@ type socketHolder struct {
 	upkeepRunning bool
 	upkeepWanted  bool
 	resyncWanted  bool
+	// lastBridgeResync holds, per hub path, when a bridge resync hint was last written into the hub's inbox.
+	lastBridgeResync map[string]time.Time
 }
 
 // newSocketHolder returns a holder over the seams.
@@ -92,6 +94,8 @@ func newSocketHolder(geom Geometry, dial Dialer, liveHubs LiveHubs, mailbox Mail
 		owed:     map[string]Geometry{},
 		routed:   map[string]Geometry{},
 		noticed:  map[string]bool{},
+
+		lastBridgeResync: map[string]time.Time{},
 	}
 }
 
@@ -321,11 +325,12 @@ func (h *socketHolder) handleEnvelope(ctx context.Context, socket Socket, envelo
 }
 
 // route writes the hint of an `events_api` envelope into the inbox of a hub.
-// That hub is the one whose channel map holds the event's channel.
+// That hub is the one whose channel map or bridge map holds the event's channel.
 // It reports whether the event may be acknowledged.
 // A failed hint write acknowledges the event and owes the hub a resync hint.
-// An event no map holds is acknowledged and dropped while every live map reads;
-// while any live map cannot be read, or the live-hub list fails, it is left unacknowledged for Slack's retry.
+// An event no map holds is acknowledged while every live map reads.
+// A bridge resync hint is first written into the inbox of each live hub that has had none within bridgePollBase.
+// While any live map cannot be read, or the live-hub list fails, the event is left unacknowledged for Slack's retry.
 func (h *socketHolder) route(envelope Envelope) bool {
 	live, ok := h.readLive(h.ctx)
 	if !ok {
@@ -333,13 +338,24 @@ func (h *socketHolder) route(envelope Envelope) bool {
 	}
 	unreadable := false
 	for _, geom := range live {
+		held := false
 		channelMap, err := ReadChannelMap(geom.ChannelMapPath)
 		if err != nil {
 			unreadable = true
 			logger.Debug("slackengine: could not read a hub's channel map to route an event", "path", geom.ChannelMapPath, "error", err)
-			continue
+		} else {
+			_, held = channelMap.OrchOf(envelope.Channel)
 		}
-		if _, held := channelMap.OrchOf(envelope.Channel); !held {
+		if !held {
+			bridgeMap, err := ReadBridgeMap(geom.BridgeMapPath)
+			if err != nil {
+				unreadable = true
+				logger.Debug("slackengine: could not read a hub's bridge map to route an event", "path", geom.BridgeMapPath, "error", err)
+			} else {
+				_, held = bridgeMap.Channels[envelope.Channel]
+			}
+		}
+		if !held {
 			continue
 		}
 		h.mu.Lock()
@@ -351,8 +367,26 @@ func (h *socketHolder) route(envelope Envelope) bool {
 	if unreadable {
 		return false
 	}
-	logger.Debug("slackengine: dropped an event no hub's channel map holds", "channel", envelope.Channel)
+	h.hintBridgeResync(live)
 	return true
+}
+
+// hintBridgeResync writes the bridge resync hint into the inbox of each hub that has had none within bridgePollBase.
+// An event in a channel no map holds may be a bridge channel the hubs lack, which the relay's resync finds.
+func (h *socketHolder) hintBridgeResync(live []Geometry) {
+	now := h.clock.Now()
+	for _, geom := range live {
+		h.mu.Lock()
+		last, hinted := h.lastBridgeResync[geom.HubPath]
+		due := !hinted || now.Sub(last) >= bridgePollBase
+		if due {
+			h.lastBridgeResync[geom.HubPath] = now
+		}
+		h.mu.Unlock()
+		if due {
+			h.hint(geom, bridgeResyncHint)
+		}
+	}
 }
 
 // forgetRoute drops the hub a finished route recorded for the envelope id.

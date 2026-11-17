@@ -43,6 +43,54 @@ func NewOutbound(geom Geometry, mailbox Mailbox, slack SlackClient, clock Clock,
 // Read runs one outbound read and returns the wait before the next.
 func (out *outbound) Read(ctx context.Context) (time.Duration, error) { return out.read(ctx) }
 
+// BridgeSender is the unexported sender of machine mail to the bridge channels.
+type BridgeSender = bridgeSender
+
+// NewBridgeSender builds a bridge sender over the seams.
+func NewBridgeSender(geom Geometry, mailbox Mailbox, slack SlackClient, clock Clock, keeper *ChannelKeeper) *BridgeSender {
+	return newBridgeSender(geom, mailbox, slack, clock, keeper)
+}
+
+// Send takes the machine mail creel holds and posts it, and reports whether it posted.
+func (s *BridgeSender) Send(ctx context.Context) (bool, error) { return s.send(ctx) }
+
+// SettleAccepted settles delivered the messages the post record holds as accepted.
+func (s *BridgeSender) SettleAccepted() error { return s.settleAccepted() }
+
+// BridgePoll is the unexported bridge poll.
+type BridgePoll = bridgePoll
+
+// NewBridgePoll builds a bridge poll that waits on clock.
+func NewBridgePoll(clock Clock) *BridgePoll { return newBridgePoll(clock) }
+
+// Run runs round in a loop until ctx ends.
+func (p *BridgePoll) Run(ctx context.Context, round func(ctx context.Context) bool) {
+	p.run(ctx, round)
+}
+
+// Wake ends the poll's current wait at once.
+func (p *BridgePoll) Wake() { p.wake() }
+
+// BridgePollBase is the wait of the bridge poll after a round that posted or delivered something new.
+const BridgePollBase = bridgePollBase
+
+// BridgeResyncHint is the name of the hint that asks a relay to look for bridge channels its bridge map lacks.
+const BridgeResyncHint = bridgeResyncHint
+
+// BridgeReader is the unexported reader of the bridge channels.
+type BridgeReader = bridgeReader
+
+// NewBridgeReader builds a bridge reader over the seams.
+func NewBridgeReader(geom Geometry, mailbox Mailbox, slack SlackClient, hub Hub, liveHubs LiveHubs, clock Clock, keeper *ChannelKeeper, in *Inbound) *BridgeReader {
+	return newBridgeReader(geom, mailbox, slack, hub, liveHubs, clock, keeper, in)
+}
+
+// Read reads the bridge channels of the bridge map and reports whether it delivered or handled anything.
+func (r *BridgeReader) Read(ctx context.Context) (bool, error) { return r.read(ctx) }
+
+// Resync finds the bridge channels the bridge map lacks.
+func (r *BridgeReader) Resync(ctx context.Context) error { return r.resync(ctx) }
+
 // Starter is the unexported starter of the relay.
 type Starter = starter
 
