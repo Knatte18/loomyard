@@ -948,10 +948,14 @@ User-facing modules each get one `lym <module>` namespace:
   a candidate stays listed only when its covering tests kill every mutant it kills,
   and one that kills a mutant they miss is listed as refuted.
   Each listed candidate comes with its seconds, its covering tests and whether it is in the removable set.
+  Every test run is capped at `redundancy_test_memory_mb` of memory, in a transient systemd scope where the user manager caps one,
+  so a mutant that keeps memory for ever is killed alone;
+  a run that ends at the cap or at its time bound kills its mutant and is listed.
   `lym gate testmap [--max <n>] [<package>...]` builds the stale per-package coverage maps of `internal/testcover` at the HEAD of the worktree it runs in, only on command,
   the hub's shared maps from the prime and a worktree's own, under its `.lym`, from any other worktree:
   each tier0 and tier1 test runs alone in its own process, up to the tier0 parallel side by side inside one gate slot,
-  bounded by `redundancy_build_timeout_min` and `redundancy_test_timeout_sec`,
+  fewer when memory is short,
+  bounded by `redundancy_build_timeout_min` and `redundancy_test_timeout_sec` and capped at `redundancy_test_memory_mb`,
   under a coverage binary over every in-module package its test binary links; the gate selects no test from the maps.
   A package with a modified or untracked Go file, or whose map another call is building, is skipped,
   and so is one whose linked packages hold a modified or untracked file just before its build or after its tests.

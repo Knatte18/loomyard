@@ -71,6 +71,7 @@
 // A package that fails to list or build keeps its old section,
 // and the run exits 1 after writing the others.
 // For each package it runs every top-level test alone through internal/testcover's runner.
+// Each such run is bounded in time and memory, and a test past either bound is listed as failed.
 // The one coverage binary per package is instrumented over the whole module.
 // It judges each test by the blocks of its package's own files:
 // per package it writes the tests whose covered blocks other tests of the package already cover.

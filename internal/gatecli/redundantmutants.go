@@ -7,6 +7,7 @@
 package gatecli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -16,12 +17,15 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testcover"
 )
 
@@ -37,7 +41,7 @@ const mutantBuildRounds = 5
 // A mutant that makes a loop endless is then killed long before the test's own bound.
 const (
 	mutantTimeoutFactor = 10
-	mutantTimeoutFloor  = 10
+	mutantTimeoutFloor  = 2
 )
 
 // mutationStats is what one call's mutation check built and ran.
@@ -50,6 +54,24 @@ type mutationStats struct {
 	RunSeconds   float64 `json:"run_seconds"`
 	// Runs counts the test processes the check started.
 	Runs int `json:"runs"`
+	// TimedOut and MemoryCapped list the runs with a mutant on that ended at their time bound or at the memory cap.
+	// Each killed its mutant.
+	TimedOut     []mutantStop `json:"timed_out"`
+	MemoryCapped []mutantStop `json:"memory_capped"`
+}
+
+// mutantStop is one run of a test with a mutant on that the check ended before the test did, with the mutant's site.
+type mutantStop struct {
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+	Operator string `json:"operator"`
+	Test     string `json:"test"`
+}
+
+// mutantRun names one run of a test with a mutant on.
+type mutantRun struct {
+	mutant int
+	test   string
 }
 
 // mutationCheck is one `lym gate redundant` call's mutation check of one package.
@@ -64,6 +86,8 @@ type mutationCheck struct {
 	pkgDir, importPath, moduleDir string
 	// buildTimeout bounds each build, and testTimeout each test.
 	buildTimeout, testTimeout time.Duration
+	// testMemory caps the bytes each test run may hold.
+	testMemory int64
 	// env is the environment the check's children start from, before the slot's Go flags.
 	env []string
 
@@ -71,9 +95,13 @@ type mutationCheck struct {
 
 	// lease is the held slot; it stays nil inside an enclosing gate run's slot.
 	lease *gateslot.Lease
-	// holderEnv is env with the slot's Go flags, and parallel the most tests run side by side.
+	// holderEnv is env with the slot's Go flags, and parallel the `-p` of the `lym` build.
 	holderEnv []string
 	parallel  int
+	// sideBySide is the most tests run side by side: parallel, or fewer when memory is short.
+	sideBySide int
+	// mutants holds the mutants the binary was built with, by ID.
+	mutants map[int]testcover.Mutant
 	// tmp holds the binaries, profiles and overlays.
 	tmp string
 	// lymBin is the `lym` built for a tier with prebuilt_lym, empty when none was needed.
@@ -123,8 +151,10 @@ func (c *mutationCheck) run(m testcover.Map, contained []testcover.Verdict, cove
 		}
 		c.stats.Unbuildable = len(dropped)
 	}
+	c.mutants = mutants
 	c.stats.Mutants = len(mutants)
 	c.stats.BuildSeconds = time.Since(started).Seconds()
+	c.stats.TimedOut, c.stats.MemoryCapped = []mutantStop{}, []mutantStop{}
 
 	candidates := make([]testcover.MutantCandidate, len(contained))
 	coverings := make([][]string, len(contained))
@@ -151,7 +181,7 @@ func (c *mutationCheck) run(m testcover.Map, contained []testcover.Verdict, cove
 		return testcover.JudgeMutants(candidates, nil), coverings, mutants, nil
 	}
 	started = time.Now()
-	kills, err := c.runMutants(bin, m, entries, candidates, mutants)
+	kills, err := c.runMutants(bin, m, entries, candidates)
 	c.stats.RunSeconds = time.Since(started).Seconds()
 	if err != nil {
 		return nil, nil, nil, err
@@ -167,7 +197,8 @@ func (c *mutationCheck) run(m testcover.Map, contained []testcover.Verdict, cove
 // Only a covering test whose entry covers the mutant's block runs.
 // A covering test that kills beside other tests runs once more alone, and that run stands.
 // That holds for a covering test that is itself a candidate, whose kill from the candidate runs is replaced by that run.
-func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[string]testcover.MapTest, candidates []testcover.MutantCandidate, mutants map[int]testcover.Mutant) (testcover.Kills, error) {
+// A run that ends at its time bound or at the memory cap kills its mutant too, and the check's stats list it.
+func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[string]testcover.MapTest, candidates []testcover.MutantCandidate) (testcover.Kills, error) {
 	var involved []string
 	for _, candidate := range candidates {
 		involved = append(involved, candidate.Name)
@@ -198,13 +229,22 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 	}
 
 	kills := testcover.Kills{}
+	timedOut, capped := map[mutantRun]bool{}, map[mutantRun]bool{}
 	record := func(jobs []mutantJob, results []testcover.RunResult) {
 		for i, result := range results {
-			if result.Action == testcover.ActionFail {
-				if kills[jobs[i].mutant] == nil {
-					kills[jobs[i].mutant] = map[string]bool{}
-				}
-				kills[jobs[i].mutant][jobs[i].test.Name] = true
+			if result.Action != testcover.ActionFail {
+				continue
+			}
+			run := mutantRun{mutant: jobs[i].mutant, test: jobs[i].test.Name}
+			if kills[run.mutant] == nil {
+				kills[run.mutant] = map[string]bool{}
+			}
+			kills[run.mutant][run.test] = true
+			switch {
+			case result.MemoryCapped:
+				capped[run] = true
+			case result.TimedOut:
+				timedOut[run] = true
 			}
 		}
 	}
@@ -229,11 +269,7 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 	record(jobs, results)
 
 	jobs = nil
-	type coverRun struct {
-		mutant int
-		name   string
-	}
-	queued := map[coverRun]bool{}
+	queued := map[mutantRun]bool{}
 	for _, id := range slices.Sorted(maps.Keys(kills)) {
 		for _, candidate := range candidates {
 			if !kills[id][candidate.Name] {
@@ -241,25 +277,42 @@ func (c *mutationCheck) runMutants(bin string, m testcover.Map, entries map[stri
 			}
 			for _, name := range candidate.Covering {
 				_, passes := timeouts[name]
-				_, covers := blocks[name][mutants[id].Block]
+				_, covers := blocks[name][c.mutants[id].Block]
 				// A covering test that ran the mutant as a candidate and did not kill it has its answer already.
-				if !passes || !covers || queued[coverRun{id, name}] || (ran[id][name] && !kills[id][name]) {
+				if !passes || !covers || queued[mutantRun{id, name}] || (ran[id][name] && !kills[id][name]) {
 					continue
 				}
-				queued[coverRun{id, name}] = true
+				queued[mutantRun{id, name}] = true
 				jobs = append(jobs, mutantJob{test: entries[name], mutant: id, timeout: timeouts[name]})
 			}
 		}
 	}
 	// The rerun decides these kills, so a kill made beside other runs is cleared once every job is chosen.
 	for _, job := range jobs {
-		delete(kills[job.mutant], job.test.Name)
+		run := mutantRun{mutant: job.mutant, test: job.test.Name}
+		delete(kills[run.mutant], run.test)
+		delete(timedOut, run)
+		delete(capped, run)
 	}
 	if results, err = c.runJobs(bin, jobs, true); err != nil {
 		return nil, err
 	}
 	record(jobs, results)
+	c.stats.TimedOut, c.stats.MemoryCapped = c.stopsOf(timedOut), c.stopsOf(capped)
 	return kills, nil
+}
+
+// stopsOf returns the runs of ended, each with its mutant's site, ordered by mutant and then by test.
+func (c *mutationCheck) stopsOf(ended map[mutantRun]bool) []mutantStop {
+	runs := slices.SortedFunc(maps.Keys(ended), func(a, b mutantRun) int {
+		return cmp.Or(cmp.Compare(a.mutant, b.mutant), strings.Compare(a.test, b.test))
+	})
+	stops := make([]mutantStop, len(runs))
+	for i, run := range runs {
+		mutant := c.mutants[run.mutant]
+		stops[i] = mutantStop{File: mutant.File, Line: mutant.Line, Operator: mutant.Operator, Test: run.test}
+	}
+	return stops
 }
 
 // mutantTimeout returns the bound of a run with a mutant on of a test that passed unmutated in elapsed seconds.
@@ -279,7 +332,10 @@ func (c *mutationCheck) planMutants(targets testcover.BlockSet) (*testcover.Muta
 		return nil, fmt.Errorf("coverage build: %w", err)
 	}
 	lowest := c.tiers[slices.Min(slices.Collect(maps.Keys(c.tiers)))]
-	runner := testcover.Toolchain{Env: slices.Concat(c.holderEnv, renderTierEnv(lowest)), Ctx: c.ctx, TestTimeout: c.testTimeout, Grace: c.request.grace}
+	runner := testcover.Toolchain{
+		Env: slices.Concat(c.holderEnv, renderTierEnv(lowest)), Ctx: c.ctx,
+		TestTimeout: c.testTimeout, MemoryLimit: c.testMemory, Grace: c.request.grace,
+	}
 	profile, err := runner.ProfileBlocks(bin, c.pkgDir, filepath.Join(c.tmp, "blocks.out"))
 	if err != nil {
 		return nil, err
@@ -327,17 +383,18 @@ func (c *mutationCheck) toolchain() testcover.Toolchain {
 	}
 }
 
-// runJobs runs each of jobs alone in its own process, up to the check's parallel side by side.
+// runJobs runs each of jobs alone in its own process, up to the check's sideBySide at once.
 // It returns the runs in the order of jobs.
 // With rerunFailed, a job that failed beside other jobs runs once more alone, and that run stands.
+// A job the memory cap ended is not run again: its cap is its own, so it reaches it alone too.
 // The error reports a test binary that did not start, or the context's error once the call is cancelled.
 func (c *mutationCheck) runJobs(bin string, jobs []mutantJob, rerunFailed bool) ([]testcover.RunResult, error) {
 	results, err := c.runSideBySide(bin, jobs)
-	if err != nil || !rerunFailed || len(jobs) < 2 || c.parallel < 2 {
+	if err != nil || !rerunFailed || len(jobs) < 2 || c.sideBySide < 2 {
 		return results, err
 	}
 	for i, result := range results {
-		if result.Action != testcover.ActionFail {
+		if result.Action != testcover.ActionFail || result.MemoryCapped {
 			continue
 		}
 		alone, err := c.runSideBySide(bin, jobs[i:i+1])
@@ -349,7 +406,7 @@ func (c *mutationCheck) runJobs(bin string, jobs []mutantJob, rerunFailed bool) 
 	return results, nil
 }
 
-// runSideBySide runs each of jobs alone in its own process, at most the check's parallel at once.
+// runSideBySide runs each of jobs alone in its own process, at most the check's sideBySide at once.
 // It returns the runs in the order of jobs.
 // The error is the first run's that did not start, or the context's once the call is cancelled.
 func (c *mutationCheck) runSideBySide(bin string, jobs []mutantJob) ([]testcover.RunResult, error) {
@@ -357,7 +414,7 @@ func (c *mutationCheck) runSideBySide(bin string, jobs []mutantJob) ([]testcover
 	errs := make([]error, len(jobs))
 	indexes := make(chan int)
 	var workers sync.WaitGroup
-	for range min(c.parallel, len(jobs)) {
+	for range min(c.sideBySide, len(jobs)) {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
@@ -379,14 +436,20 @@ func (c *mutationCheck) runSideBySide(bin string, jobs []mutantJob) ([]testcover
 }
 
 // runJob runs the job's test alone under bin in the package directory, with its tier's env and its mutant on.
-// A run past its timeout comes back failed and TimedOut, which counts as a kill.
+// A run past its timeout comes back failed and TimedOut, and one past the memory cap failed and MemoryCapped.
+// Either counts as a kill.
+// It logs the mutant before the run starts, so the log names the mutant of a run that never reports back.
 func (c *mutationCheck) runJob(bin string, job mutantJob) (testcover.RunResult, error) {
 	tier := c.tiers[job.test.Tier]
 	env := slices.Concat(c.holderEnv, renderTierEnv(tier), []string{testcover.MutantEnv + "=" + strconv.Itoa(job.mutant)})
 	if tier.PrebuiltLym && c.lymBin != "" {
 		env = append(env, gateslot.PrebuiltLymEnv+"="+c.lymBin)
 	}
-	runner := testcover.Toolchain{Env: env, Ctx: c.ctx, TestTimeout: job.timeout, Grace: c.request.grace}
+	if mutant, on := c.mutants[job.mutant]; on {
+		logger.Info("gate redundant: running a test with a mutant on",
+			"test", job.test.Name, "mutant", mutant.ID, "file", mutant.File, "line", mutant.Line, "operator", mutant.Operator)
+	}
+	runner := testcover.Toolchain{Env: env, Ctx: c.ctx, TestTimeout: job.timeout, MemoryLimit: c.testMemory, Grace: c.request.grace}
 	result, err := runner.RunAlone(bin, c.pkgDir, "", job.test.Name)
 	if err != nil {
 		return testcover.RunResult{}, fmt.Errorf("run %s with mutant %d: %w", job.test.Name, job.mutant, err)
@@ -434,8 +497,35 @@ func (c *mutationCheck) holdSlot() error {
 	if c.parallel < 1 {
 		c.parallel = runtime.NumCPU()
 	}
+	c.sideBySide = c.request.cappedParallel(c.parallel, c.testMemory)
 	c.holderEnv = gateslot.HolderEnv(c.env, c.lease, limits.Tier0Parallel)
 	return nil
+}
+
+// memoryCappedParallel returns how many of parallel test runs, each capped at limit bytes, go side by side on this host.
+// It reads how far a memory cap reaches here and the memory the process's cgroup ancestry leaves, and logs what it found.
+func memoryCappedParallel(parallel int, limit int64) int {
+	coversTree := proc.MemoryCapCoversTree()
+	left, limited := proc.ReadMemoryLimit()
+	sideBySide := clampParallelToMemory(parallel, limit, coversTree, left.Headroom(), limited)
+	logger.Info("gate: test runs side by side under the memory cap",
+		"parallel", parallel, "side_by_side", sideBySide, "cap_covers_tree", coversTree,
+		"memory_limited", limited, "cgroup", left.Cgroup, "headroom", left.Headroom())
+	return sideBySide
+}
+
+// clampParallelToMemory returns how many of parallel runs, each capped at limit bytes, fit side by side.
+// A cap that bounds each process alone, coversTree false, lets one run go at a time.
+// Otherwise the caps of the runs together stay within headroom, the memory a limit leaves, when limited is set.
+// One run always goes.
+func clampParallelToMemory(parallel int, limit int64, coversTree bool, headroom int64, limited bool) int {
+	switch {
+	case !coversTree:
+		return 1
+	case !limited:
+		return parallel
+	}
+	return max(1, min(parallel, int(headroom/limit)))
 }
 
 // close releases the check's slot and removes its temporary directory.

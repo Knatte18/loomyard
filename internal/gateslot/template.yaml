@@ -3,6 +3,7 @@ busy_quit_sec: 120  # seconds a Go test binary under lym gate test may keep a CP
 fixer_timeout_min: 30  # minutes a cold gate fixer may run before the call that spawned it stops waiting; it bounds the card gate's fixer and the row gate fixers, and webster's fix-verify keeps its own recovery_timeout_min
 redundancy_build_timeout_min: 10  # minutes each coverage, mutant and lym build of a coverage map run, the redundancy report step or lym gate redundant may take before its process group is killed and the build counts as failed
 redundancy_test_timeout_sec: 120  # seconds each test of those runs alone may take before its process group is killed; the test is left out, except a mutant run in lym gate redundant, which then counts as a kill
+redundancy_test_memory_mb: 2048  # megabytes each test of those runs alone may hold, with every process it starts, before the kernel ends it or fails its allocation; the test is left out, recorded as failed by lym gate testmap, and a mutant run in lym gate redundant counts as a kill; lym gate redundant and lym gate testmap run fewer tests side by side when the memory limit they sit under leaves less than their caps together
 redundancy_max_tests: 40  # the most new and changed tests the redundancy report step judges in one call, taken in file then name order; the rest are listed as not judged
 redundancy_budget_min: 10  # minutes the redundancy report step may spend on its builds and tests once it holds its gate slot; past it the step starts no further build or test
 

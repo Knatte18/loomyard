@@ -62,6 +62,12 @@ var spawnObservabilityAllowedSpawners = []scankit.Entry{
 			"close an import cycle; the callers of StartTied log the spawn and the teardown",
 	},
 	{
+		Key: "internal/proc/memorycap_linux.go",
+		Why: "structurally barred: internal/logger imports internal/proc, so importing logger here would " +
+			"close an import cycle; the callers of RunMemoryCapped log the command and its end, " +
+			"and the one-time probe's systemd-run spawn goes unlogged, since a caller sees only its outcome",
+	},
+	{
 		Key: "internal/hubforge/hub.go",
 		Why: "not governed: a test-fixture builder, not a code path reachable from a lym command",
 	},

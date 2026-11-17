@@ -38,6 +38,8 @@ type Config struct {
 	RedundancyBuildTimeoutMin int `yaml:"redundancy_build_timeout_min"`
 	// RedundancyTestTimeoutSec is the seconds each test a coverage map run or the redundancy report step runs alone may take.
 	RedundancyTestTimeoutSec int `yaml:"redundancy_test_timeout_sec"`
+	// RedundancyTestMemoryMB is the megabytes each such test, with every process it starts, may hold.
+	RedundancyTestMemoryMB int `yaml:"redundancy_test_memory_mb"`
 	// RedundancyMaxTests caps the tests the redundancy report step judges in one call.
 	RedundancyMaxTests int `yaml:"redundancy_max_tests"`
 	// RedundancyBudgetMin is the minutes the redundancy report step may spend on builds and tests once it holds its slot.
@@ -90,6 +92,7 @@ type configFile struct {
 	FixerTimeoutMin           int                  `yaml:"fixer_timeout_min"`
 	RedundancyBuildTimeoutMin int                  `yaml:"redundancy_build_timeout_min"`
 	RedundancyTestTimeoutSec  int                  `yaml:"redundancy_test_timeout_sec"`
+	RedundancyTestMemoryMB    int                  `yaml:"redundancy_test_memory_mb"`
 	RedundancyMaxTests        int                  `yaml:"redundancy_max_tests"`
 	RedundancyBudgetMin       int                  `yaml:"redundancy_budget_min"`
 	Tiers                     map[string]tierFile  `yaml:"tiers"`
@@ -148,6 +151,7 @@ func ConfigSpec() configengine.Spec {
 			"fixer_timeout_min":            configengine.CategoryCrossPair,
 			"redundancy_build_timeout_min": configengine.CategoryCrossPair,
 			"redundancy_test_timeout_sec":  configengine.CategoryCrossPair,
+			"redundancy_test_memory_mb":    configengine.CategoryCrossPair,
 			"redundancy_max_tests":         configengine.CategoryCrossPair,
 			"redundancy_budget_min":        configengine.CategoryCrossPair,
 			"tiers":                        configengine.CategoryExecutable,
@@ -279,6 +283,7 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		{"fixer_timeout_min", file.FixerTimeoutMin},
 		{"redundancy_build_timeout_min", file.RedundancyBuildTimeoutMin},
 		{"redundancy_test_timeout_sec", file.RedundancyTestTimeoutSec},
+		{"redundancy_test_memory_mb", file.RedundancyTestMemoryMB},
 		{"redundancy_max_tests", file.RedundancyMaxTests},
 		{"redundancy_budget_min", file.RedundancyBudgetMin},
 	} {
@@ -319,6 +324,7 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		FixerTimeoutMin:           file.FixerTimeoutMin,
 		RedundancyBuildTimeoutMin: file.RedundancyBuildTimeoutMin,
 		RedundancyTestTimeoutSec:  file.RedundancyTestTimeoutSec,
+		RedundancyTestMemoryMB:    file.RedundancyTestMemoryMB,
 		RedundancyMaxTests:        file.RedundancyMaxTests,
 		RedundancyBudgetMin:       file.RedundancyBudgetMin,
 		Tiers:                     tiers,
@@ -460,6 +466,11 @@ func refuseRetiredGateLists(hubFile string) error {
 // FixerTimeout returns the bound on a cold gate fixer's run as a duration.
 func (c Config) FixerTimeout() time.Duration {
 	return time.Duration(c.FixerTimeoutMin) * time.Minute
+}
+
+// RedundancyTestMemory returns the memory cap `redundancy_test_memory_mb` sets, in bytes.
+func (c Config) RedundancyTestMemory() int64 {
+	return int64(c.RedundancyTestMemoryMB) << 20
 }
 
 // decodeGates decodes the gates entries into keys and validates each key's scope, lints, reports and fixer.

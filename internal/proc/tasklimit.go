@@ -4,12 +4,17 @@
 package proc
 
 import (
-	"bufio"
 	"os"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
+)
+
+// The calling process's cgroup listing, and the mount the cgroup v2 levels are read under.
+const (
+	selfCgroupFile = "/proc/self/cgroup"
+	cgroupMount    = "/sys/fs/cgroup"
 )
 
 // TaskLimit is one cgroup's task count and its limit, as `pids.current` and `pids.max` read.
@@ -32,7 +37,7 @@ func (l TaskLimit) Headroom() int {
 // found is false when the process's cgroup v2 path is unreadable, as on Windows or a cgroup v1 host.
 // It is also false when no level sets a numeric limit.
 func ReadTaskLimit() (limit TaskLimit, found bool) {
-	return readTaskLimitAt("/proc/self/cgroup", "/sys/fs/cgroup")
+	return readTaskLimitAt(selfCgroupFile, cgroupMount)
 }
 
 // readTaskLimitAt reads the task limit closest to being reached for the process whose cgroup file is selfCgroup.
@@ -57,14 +62,17 @@ func readTaskLimitAt(selfCgroup, mount string) (TaskLimit, bool) {
 
 // readCgroupV2Path returns the cgroup v2 path the `0::` line of the cgroup file at selfCgroup names.
 func readCgroupV2Path(selfCgroup string) (string, bool) {
-	file, err := os.Open(selfCgroup)
+	listing, err := os.ReadFile(selfCgroup)
 	if err != nil {
 		return "", false
 	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		if cgroup, ok := strings.CutPrefix(scanner.Text(), "0::"); ok && strings.HasPrefix(cgroup, "/") {
+	return cgroupV2Path(string(listing))
+}
+
+// cgroupV2Path returns the cgroup v2 path the `0::` line of a process's cgroup listing names.
+func cgroupV2Path(listing string) (string, bool) {
+	for _, line := range strings.Split(listing, "\n") {
+		if cgroup, ok := strings.CutPrefix(line, "0::"); ok && strings.HasPrefix(cgroup, "/") {
 			return path.Clean(cgroup), true
 		}
 	}

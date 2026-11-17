@@ -13,6 +13,12 @@
 // A bounded command runs in its own process group, which the bound kills whole.
 // The wait for its exit and output then lasts at most Grace, so a descendant holding the output pipe cannot stall it.
 // A test past its bound comes back marked TimedOut, never as an error.
+// A Toolchain with a MemoryLimit runs each test binary through `proc.RunMemoryCapped`.
+// That caps the memory of the test and of every process it starts; the go commands are never capped.
+// A test the cap ends comes back marked MemoryCapped, never as an error.
+// That is a test the kernel killed.
+// It is also a test whose run failed with the Go runtime's out-of-memory error in its output.
+// That error is how the cap shows where the host fails the allocation instead.
 // ScanTestFuncs reads a package's top-level Test functions.
 // Each comes with its file, the tier its `tiergate.Require` names and the hash of its source text.
 // ParseTestFuncs reads them from one test file's source, such as the file as a commit stores it.

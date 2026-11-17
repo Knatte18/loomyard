@@ -78,6 +78,8 @@ type redundantRequest struct {
 	secondUnit, minuteUnit time.Duration
 	// grace bounds the wait for a killed build's or test's exit and output.
 	grace time.Duration
+	// cappedParallel returns how many of parallel test runs, each capped at limit bytes of memory, go side by side.
+	cappedParallel func(parallel int, limit int64) int
 }
 
 // redundantCmd builds `lym gate redundant`.
@@ -97,9 +99,10 @@ A candidate stays listed only when a covering test kills every mutant it kills; 
 One that kills no mutant, holds none in its blocks or does not pass unmutated is listed as not judged.
 Each listed candidate comes with its standalone seconds, the tests that cover it and the mutants it killed; removable marks the set a greedy pass, slowest first, can delete together while every block stays covered and every mutant killed.
 A test marked //testtiming:keep is neither a candidate nor a cover, and nor is a test the spawn scan marks or one whose entry records no passing run.
-It reads the map as the last lym gate testmap call from this worktree left it: the hub's shared maps from the prime, this worktree's own elsewhere.
+It reads the map as the last lym gate testmap call from this worktree left it.
 It refuses a map built from other Go files of the package than this worktree holds.
 It reads the keep markers from this worktree, and runs its builds and tests inside one gate slot, bounded by redundancy_build_timeout_min and redundancy_test_timeout_sec.
+Each test run is capped at redundancy_test_memory_mb of memory; a mutant run past the cap or its time bound is a kill.
 It prints the map's commit and build time, map_build_failure when a later coverage build failed, the candidates, the refuted tests, the kept tests with their reasons, the tests not judged with why, and what the mutation check cost.
 
 Examples:
@@ -112,6 +115,7 @@ Examples:
 			}
 			clihelp.SetExit(cmd.Context(), runRedundant(cmd.Context(), cmd.OutOrStdout(), redundantRequest{
 				pkg: args[0], goBinary: goBinary, environ: os.Environ(), secondUnit: time.Second, minuteUnit: minuteUnit, grace: grace,
+				cappedParallel: memoryCappedParallel,
 			}))
 			return nil
 		},
@@ -230,6 +234,7 @@ func runRedundant(ctx context.Context, out io.Writer, request redundantRequest) 
 		pkgDir: pkgDir, importPath: module.importPath(pkg), moduleDir: module.dir,
 		buildTimeout: time.Duration(cfg.RedundancyBuildTimeoutMin) * request.minuteUnit,
 		testTimeout:  time.Duration(cfg.RedundancyTestTimeoutSec) * request.secondUnit,
+		testMemory:   cfg.RedundancyTestMemory(),
 		env:          gateEnv(request.environ, hubEnv),
 	}
 	defer check.close()

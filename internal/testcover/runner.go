@@ -43,6 +43,8 @@ type Toolchain struct {
 	BuildTimeout time.Duration
 	// TestTimeout bounds each test run alone; zero leaves it unbounded.
 	TestTimeout time.Duration
+	// MemoryLimit caps the bytes each test binary's run may hold, with every process it starts; zero leaves it uncapped.
+	MemoryLimit int64
 	// Grace bounds the wait for a bounded command's exit and output once it ended or was killed; zero waits for both.
 	Grace time.Duration
 }
@@ -58,6 +60,8 @@ type RunResult struct {
 	Profile []ProfileBlock
 	// TimedOut marks a run killed at TestTimeout; its Action is ActionFail.
 	TimedOut bool
+	// MemoryCapped marks a run ended for passing MemoryLimit; its Action is ActionFail.
+	MemoryCapped bool
 }
 
 // BuildBinary builds the coverage test binary of the package at importPath into out.
@@ -146,11 +150,17 @@ func (tc Toolchain) ListTests(importPath, tags string) ([]string, error) {
 
 var testResultLine = regexp.MustCompile(`(?m)^--- (PASS|FAIL|SKIP): (\S+) \(([0-9.]+)s\)$`)
 
+// outOfMemoryLine matches the Go runtime's fatal error for memory the host refused it.
+// A test binary prints it where a memory cap fails the allocation instead of killing the process.
+var outOfMemoryLine = regexp.MustCompile(`(?m)^fatal error: .*(out of memory|cannot allocate memory)`)
+
 // RunAlone runs the top-level test name alone under the test binary bin in dir, writing its profile to profile.
 // It reads the test's outcome and elapsed time from the binary's verbose output,
 // and the profile's blocks for a test that passed, or skipped after writing one.
 // A profile of "" runs the test with no coverage profile, as a binary built without coverage needs, and reads none.
 // A failing test is returned as such, never as an error, and so is a test killed at TestTimeout, marked TimedOut.
+// So is a test ended for passing MemoryLimit, marked MemoryCapped:
+// the kernel killed it, or the run failed with the Go runtime's out-of-memory error in its output.
 // The error reports a binary that did not start, or a passing test whose profile is missing or malformed.
 func (tc Toolchain) RunAlone(bin, dir, profile, name string) (RunResult, error) {
 	if profile != "" {
@@ -164,11 +174,15 @@ func (tc Toolchain) RunAlone(bin, dir, profile, name string) (RunResult, error) 
 	cmd.Env = tc.Env
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
-	logger.Info("testcover: spawning a coverage binary for one test", "binary", bin, "test", name)
-	err := cmd.Run()
-	logger.Info("testcover: coverage binary ended", "test", name, "error", err)
+	logger.Info("testcover: spawning a coverage binary for one test", "binary", bin, "test", name, "memory_limit", tc.MemoryLimit)
+	killed, err := tc.runTestBinary(cmd)
+	capped := tc.MemoryLimit > 0 && err != nil && (killed || outOfMemoryLine.Match(out.Bytes()))
+	logger.Info("testcover: coverage binary ended", "test", name, "error", err, "memory_capped", capped)
 	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return RunResult{Name: name, Action: ActionFail, TimedOut: true}, nil
+	}
+	if capped {
+		return RunResult{Name: name, Action: ActionFail, MemoryCapped: true}, nil
 	}
 	if errors.Is(err, exec.ErrWaitDelay) {
 		err = nil
@@ -218,7 +232,8 @@ func runAloneArgs(name, profile string) []string {
 // ProfileBlocks runs the coverage binary bin in dir with no test, writing its profile to profile.
 // It returns the profile's blocks.
 // The profile lists every block the binary counts, none of them covered.
-// The error reports a binary that did not start, failed or outlasted TestTimeout, or a profile missing or malformed.
+// The error reports a binary that did not start, failed, passed MemoryLimit or outlasted TestTimeout,
+// or a profile missing or malformed.
 func (tc Toolchain) ProfileBlocks(bin, dir, profile string) ([]ProfileBlock, error) {
 	cmd, ctx, cancel := tc.command(tc.TestTimeout, bin, "-test.run=^$", "-test.coverprofile="+profile)
 	defer cancel()
@@ -226,8 +241,8 @@ func (tc Toolchain) ProfileBlocks(bin, dir, profile string) ([]ProfileBlock, err
 	cmd.Env = tc.Env
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
-	logger.Info("testcover: spawning a coverage binary for its block table", "binary", bin)
-	err := cmd.Run()
+	logger.Info("testcover: spawning a coverage binary for its block table", "binary", bin, "memory_limit", tc.MemoryLimit)
+	_, err := tc.runTestBinary(cmd)
 	logger.Info("testcover: coverage binary ended", "binary", bin, "error", err)
 	if errors.Is(err, exec.ErrWaitDelay) {
 		err = nil
@@ -244,6 +259,16 @@ func (tc Toolchain) ProfileBlocks(bin, dir, profile string) ([]ProfileBlock, err
 	}
 	defer f.Close()
 	return ParseProfile(f)
+}
+
+// runTestBinary runs cmd, the command of a test binary, as cmd.Run does, under MemoryLimit when the toolchain sets one.
+// killed reports a run the kernel killed for passing the limit.
+// The go commands never run through it, since a build's memory is not a test's.
+func (tc Toolchain) runTestBinary(cmd *exec.Cmd) (killed bool, err error) {
+	if tc.MemoryLimit <= 0 {
+		return false, cmd.Run()
+	}
+	return proc.RunMemoryCapped(cmd, tc.MemoryLimit)
 }
 
 // compileErrorLine matches a compiler error line, capturing its file and line.

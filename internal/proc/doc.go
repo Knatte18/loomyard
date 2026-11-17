@@ -43,6 +43,27 @@
 // A caller uses it to hold back new work before every fork fails.
 // It finds none on Windows or a cgroup v1 host.
 //
+// ReadMemoryLimit reads `memory.high`, `memory.max` and `memory.current` over the same ancestry.
+// It returns the cgroup v2 memory limit with the least memory left, the file cache not counted as used.
+// A caller uses it to start no more memory-capped work than the limit leaves room for.
+// It finds none on Windows or a cgroup v1 host.
+//
+// RunMemoryCapped runs a command with the memory of its process tree capped.
+// On Linux the command runs in a transient scope of the systemd user manager, started through `systemd-run`.
+// The scope's `MemoryMax` is the cap and it has no swap, so the kernel kills the command alone.
+// The call reports that kill.
+// The command keeps its pid and process group, so a group kill still reaches it.
+// One probe per process tells whether the user manager can cap a scope's memory.
+// Where it cannot, `RLIMIT_DATA` limits each process's data segment instead, set once the command started.
+// An allocation past that limit fails in the process, and the call reports no kill.
+// On Windows the command runs in a kill-on-close job object with a job memory limit.
+// That limit fails an allocation the same way.
+// A cancel there ends the whole job, and the job ends with the command.
+// MemoryCapCoversTree reports whether the cap bounds a command's whole tree as one.
+// Only the data segment limit does not.
+// proc cannot log, so the caller logs the command it hands over and its end.
+// The one-time probe's `systemd-run` spawn goes unlogged; a caller sees only its outcome, through MemoryCapCoversTree.
+//
 // IsSpawnAgain reports whether a start failed on a temporary resource shortage, EAGAIN from fork or exec.
 // NoteSpawnAgain records the time of each such refusal process-wide, and LastSpawnAgain reads it back,
 // so a caller that sees a later failure can judge whether a host resource shortage preceded it.

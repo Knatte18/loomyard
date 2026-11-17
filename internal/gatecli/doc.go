@@ -587,6 +587,8 @@
 // It runs each test alone under its tier's env, as `lym gate testmap` does.
 // It builds `lym` once for a tier with `prebuilt_lym`.
 // Each build is bounded by `redundancy_build_timeout_min` and each test by `redundancy_test_timeout_sec`.
+// Each test is also capped at `redundancy_test_memory_mb` of memory.
+// One the cap ends is not judged, with the cap as its reason.
 // A skipped, failed, timed-out or block-free test is not judged.
 // A map entry covers each judged test when it passes and its test still exists with the same function hash.
 // The map entries for the judged tests themselves are left out.
@@ -1053,6 +1055,7 @@
 // The skip cause names the file, and the package does not count against `--max`.
 // It runs each test alone in its own process with its own profile, in the package directory under its tier's env.
 // It runs them through `testcover.Toolchain.RunAlone`, up to the slot's tier0 parallel side by side.
+// Fewer go side by side when memory is short, as in `lym gate redundant`.
 // That holds whether or not a test calls `t.Parallel`:
 // each test runs in its own process with its own environment and profile, all in the package directory,
 // so a test that writes a fixed path there can disturb another.
@@ -1064,6 +1067,7 @@
 // The call writes the map once, after the package's tests ran.
 // A tier with `prebuilt_lym` gets the `lym` the call builds once into the pool's prebuilt store, as a tier run does.
 // Each build is bounded by `redundancy_build_timeout_min` and each test by `redundancy_test_timeout_sec`.
+// Each test is also capped at `redundancy_test_memory_mb` of memory, and one the cap ends is recorded as failed.
 // Past its bound the process group is killed.
 // The wait for its exit and output then lasts at most the pipe wait the gate already uses.
 // A failed or timed-out build is listed as failed.
@@ -1142,13 +1146,21 @@
 // A test that does not pass then runs with no mutant.
 // Each other test gets a bound of `mutantTimeoutFactor` times its seconds, and at least `mutantTimeoutFloor` seconds.
 // The bound stays within `redundancy_test_timeout_sec`, so a mutant that makes a loop endless ends early.
+// Every test run is capped at `redundancy_test_memory_mb` of memory, and so is the run that reads the block table.
+// A mutant that makes a loop keep memory for ever therefore ends at the cap,
+// and the rest of the machine keeps its memory.
 // Each contained test then runs with each mutant of its blocks on.
+// The call logs each such run's mutant, with its file, line and operator, before the run starts.
 // A test that killed a mutant has its covering tests run with that mutant on.
 // Only a covering test whose entry covers the mutant's block runs.
-// A run that fails or times out kills its mutant.
+// A run that fails, times out or ends at the memory cap kills its mutant.
 // Up to the slot's tier0 parallel runs go side by side, each alone in its process under its test's tier env.
+// Fewer go side by side when memory is short.
+// The caps of the runs together stay within the memory `proc.ReadMemoryLimit` finds left.
+// Where `proc.MemoryCapCoversTree` says the cap bounds each process alone, one run goes at a time.
 // A tier with `prebuilt_lym` gets the `lym` the call builds once into the pool's prebuilt store.
 // A covering test that kills beside other runs runs once more alone, and that run stands.
+// A run the memory cap ended is not run again, since it reaches the cap alone too.
 // That holds for a covering test that is also a contained test.
 // `testcover.JudgeMutants` judges each contained test from the kills.
 // Bound: a contained test's own kill from its candidate runs is not rerun alone,
@@ -1165,6 +1177,9 @@
 // Each carries those mutants' file, line and operator.
 // It prints `kept`, each keep-marked test with its reason, and `not_judged`, each other unjudged test with why.
 // When it checked a test it prints `mutation`: the mutants built and dropped, the build and run seconds and the runs.
+// `mutation` also holds `timed_out` and `memory_capped`.
+// They list the runs with a mutant on that ended at their time bound or at the memory cap.
+// Each carries its mutant's file, line and operator and its test.
 // It refuses outside a hub.
 // It refuses for a package whose map is missing, unreadable, holds only a failed build or records other Go files.
 // It refuses for a failed keep or source scan, and for a mutation check whose slot, build or run fails.

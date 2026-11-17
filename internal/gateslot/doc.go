@@ -170,11 +170,15 @@
 // Only the `card` key may hold one; the template sets `sonnet[medium]` there, and an empty value turns the fixer off.
 // `fixer_timeout_min` bounds how long the callers of a cold gate fixer wait for it.
 // LoadConfig refuses a value below 1, and Config.FixerTimeout returns it as a duration.
-// `lym gate testmap` builds coverage maps under two bounds.
+// `lym gate testmap` builds coverage maps under three bounds.
 // `redundancy_build_timeout_min` bounds each build in minutes.
 // `redundancy_test_timeout_sec` bounds each test in seconds.
-// The redundancy report step of `lym gate test` and the mutation check of `lym gate redundant` take the two bounds too.
-// A mutant run past the test bound counts as a kill in `lym gate redundant`.
+// `redundancy_test_memory_mb` caps the memory of each test and of every process it starts, in megabytes.
+// Config.RedundancyTestMemory returns it in bytes.
+// The redundancy report step of `lym gate test` and the mutation check of `lym gate redundant` take the three bounds too.
+// A mutant run past the test bound or the memory cap counts as a kill in `lym gate redundant`.
+// `lym gate testmap` and `lym gate redundant` run fewer tests side by side when memory is short.
+// That is when the limit they sit under leaves less than the caps of those tests together.
 // The report step has two bounds of its own.
 // `redundancy_max_tests` caps the tests it judges in one call.
 // `redundancy_budget_min` bounds, in minutes, its builds and tests once it holds its slot.

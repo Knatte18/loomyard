@@ -20,7 +20,8 @@ var procOpenJobObject = windows.NewLazySystemDLL("kernel32.dll").NewProc("OpenJo
 // The processes in the job all end when its last handle closes.
 // The job admits a CREATE_BREAKAWAY_FROM_JOB start, so only a process started with that flag outlives it;
 // without the limit Windows refuses such a start with ERROR_ACCESS_DENIED.
-func createKillOnCloseJob(name *uint16) (windows.Handle, error) {
+// A memoryLimit above zero caps the memory the job's processes commit together, in bytes.
+func createKillOnCloseJob(name *uint16, memoryLimit uintptr) (windows.Handle, error) {
 	job, err := windows.CreateJobObject(nil, name)
 	// A named job that already exists comes back with its handle and ERROR_ALREADY_EXISTS.
 	if err != nil && !(job != 0 && errors.Is(err, windows.ERROR_ALREADY_EXISTS)) {
@@ -29,9 +30,13 @@ func createKillOnCloseJob(name *uint16) (windows.Handle, error) {
 	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{
 		BasicLimitInformation: windows.JOBOBJECT_BASIC_LIMIT_INFORMATION{LimitFlags: windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | windows.JOB_OBJECT_LIMIT_BREAKAWAY_OK},
 	}
+	if memoryLimit > 0 {
+		info.BasicLimitInformation.LimitFlags |= windows.JOB_OBJECT_LIMIT_JOB_MEMORY
+		info.JobMemoryLimit = memoryLimit
+	}
 	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {
 		_ = windows.CloseHandle(job)
-		return 0, fmt.Errorf("set job object kill-on-close: %w", err)
+		return 0, fmt.Errorf("set job object limits: %w", err)
 	}
 	return job, nil
 }
@@ -55,7 +60,7 @@ func holdNamedJobPlatform(name string) (func() error, error) {
 	if err != nil {
 		return nil, fmt.Errorf("job object name %q: %w", name, err)
 	}
-	job, err := createKillOnCloseJob(namePointer)
+	job, err := createKillOnCloseJob(namePointer, 0)
 	if err != nil {
 		return nil, err
 	}

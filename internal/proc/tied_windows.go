@@ -12,7 +12,7 @@ import (
 
 // startPlatform creates the child's unnamed kill-on-close job, starts the child and assigns it to that job.
 func (t *Tied) startPlatform() error {
-	job, err := createKillOnCloseJob(nil)
+	job, err := createKillOnCloseJob(nil, 0)
 	if err != nil {
 		return err
 	}

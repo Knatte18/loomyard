@@ -32,6 +32,9 @@ import (
 // TestDoubleUnchecked checks nothing.
 // TestSourceScan checks what the module's scan kit reads, and TestGuarded carries a //lym:guard marker.
 // TestTallyChecked and TestTallyCheckedAgain check the same loop, whose dropped decrement makes it endless.
+// TestHoardChecked and TestHoardCheckedAgain check a loop that keeps a megabyte a pass.
+// Its negated condition makes it endless.
+// Hoard panics at hoardStop megabytes, so a memory cap that does not hold fails the test and never the machine.
 // TestAll and TestDoubleChecked also call Timeout, whose constant does not compile behind the mutant helper.
 // The module stands in its own tiergate, at the import path a coverage map reads tiers from, so it builds alone.
 var redundantModuleFiles = map[string]string{
@@ -64,6 +67,23 @@ func Tally(n int) int {
 		steps += 1
 	}
 	return steps
+}
+
+const hoardStop = 384
+
+func Hoard(n int) int {
+	var kept [][]byte
+	for i := 1; i <= n; i++ {
+		if len(kept) == hoardStop {
+			panic("Hoard kept hoardStop megabytes: no memory cap ended the run")
+		}
+		block := make([]byte, 1<<20)
+		for at := range block {
+			block[at] = 1
+		}
+		kept = append(kept, block)
+	}
+	return len(kept)
 }
 `,
 	"cov/cov_test.go": `package cov
@@ -144,6 +164,20 @@ func TestTallyCheckedAgain(t *testing.T) {
 		t.Fatal("Tally(3) != 3")
 	}
 }
+
+func TestHoardChecked(t *testing.T) {
+	tiergate.Require(t, 0)
+	if Hoard(0) != 0 {
+		t.Fatal("Hoard(0) != 0")
+	}
+}
+
+func TestHoardCheckedAgain(t *testing.T) {
+	tiergate.Require(t, 0)
+	if Hoard(0) != 0 {
+		t.Fatal("Hoard(0) != 0")
+	}
+}
 `,
 	"lacking/lacking.go":   "package lacking\n\nfunc One() int { return 1 }\n",
 	"stale/stale.go":       "package stale\n\nfunc One() int { return 1 }\n",
@@ -151,7 +185,7 @@ func TestTallyCheckedAgain(t *testing.T) {
 }
 
 // redundantTestSecond is the length of one `redundancy_test_timeout_sec` second in TestGateRedundant.
-const redundantTestSecond = 400 * time.Millisecond
+const redundantTestSecond = 2 * time.Second
 
 // TestGateRedundant confirms a built map's candidates by mutation and refuses where no map can be judged.
 func TestGateRedundant(t *testing.T) {
@@ -164,7 +198,9 @@ func TestGateRedundant(t *testing.T) {
 	// It is far above a healthy fixture test's whole process run.
 	// The test bound, redundancy_test_timeout_sec × redundantTestSecond, lies above that floor.
 	// So the mutant making a loop endless ends at the floor and not at the test bound.
-	gate := "slots: 1\nredundancy_test_timeout_sec: 20\ntiers:\n  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n"
+	// The memory cap lies far above a healthy fixture test's memory and far below hoardStop megabytes.
+	// So the mutant making a loop keep memory for ever ends at the cap, long before the floor.
+	gate := "slots: 1\nredundancy_test_timeout_sec: 20\nredundancy_test_memory_mb: 128\ntiers:\n  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n"
 	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gate), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +252,8 @@ func TestGateRedundant(t *testing.T) {
 		code := runRedundant(lymcwd.WithCwd(context.Background(), prime), &out, redundantRequest{
 			pkg: "./cov", goBinary: defaultGoBinary, environ: os.Environ(),
 			secondUnit: redundantTestSecond, minuteUnit: time.Minute, grace: defaultPipeWaitDelay,
+			// Two runs go side by side whatever memory the machine has left, so a covering run that fails runs again alone.
+			cappedParallel: func(int, int64) int { return 2 },
 		})
 		type answer struct {
 			OK         bool                  `json:"ok"`
@@ -244,22 +282,48 @@ func TestGateRedundant(t *testing.T) {
 			got.Refuted[i].Seconds = 0
 		}
 		// Each pair of candidates kills the same mutants, so the greedy pass never drops both of a pair.
-		if removable > 2 {
-			t.Errorf("redundant ./cov lists %d removable candidates; want at most 2, one of each pair", removable)
+		if removable > 3 {
+			t.Errorf("redundant ./cov lists %d removable candidates; want at most 3, one of each pair", removable)
 		}
 		// Timeout's constant is the one mutant that does not compile.
-		if got.Mutation.Mutants != 12 || got.Mutation.Unbuildable != 1 || got.Mutation.Runs == 0 {
-			t.Errorf("redundant ./cov mutation = %+v; want 12 buildable mutants, 1 unbuildable, and runs", got.Mutation)
+		if got.Mutation.Mutants != 14 || got.Mutation.Unbuildable != 1 {
+			t.Errorf("redundant ./cov mutation = %+v; want 14 buildable mutants and 1 unbuildable", got.Mutation)
+		}
+		// Each involved test runs once with no mutant on, and each contained test once with each mutant of its blocks.
+		// Each covering test then runs with each mutant a contained test killed and it covers, unless it left that mutant alive.
+		// Every one of those covering runs kills, and one that kills beside another run runs once more alone.
+		// The two the memory cap ended do not.
+		const unmutatedRuns, containedRuns, coveringRuns, cappedCoveringRuns = 8, 29, 18, 2
+		if want := unmutatedRuns + containedRuns + 2*coveringRuns - cappedCoveringRuns; got.Mutation.Runs != want {
+			t.Errorf("redundant ./cov started %d runs; want %d, with no second run of one the memory cap ended", got.Mutation.Runs, want)
+		}
+		hoardLoop := mutantStop{File: "cov.go", Line: 33, Operator: testcover.OperatorNegateCondition}
+		tallyStep := mutantStop{File: "cov.go", Line: 23, Operator: testcover.OperatorDropStatement}
+		stops := func(site mutantStop, tests ...string) []mutantStop {
+			var listed []mutantStop
+			for _, test := range tests {
+				site.Test = test
+				listed = append(listed, site)
+			}
+			return listed
+		}
+		if diff := cmp.Diff(stops(hoardLoop, "TestHoardChecked", "TestHoardCheckedAgain"), got.Mutation.MemoryCapped); diff != "" {
+			t.Errorf("redundant ./cov memory_capped mismatch (-want +got):\n%s", diff)
+		}
+		if diff := cmp.Diff(stops(tallyStep, "TestTallyChecked", "TestTallyCheckedAgain"), got.Mutation.TimedOut); diff != "" {
+			t.Errorf("redundant ./cov timed_out mismatch (-want +got):\n%s", diff)
 		}
 		got.Mutation = mutationStats{}
 		// The covering lists are the pick among every judged test but the source checks.
 		// TestSourceScan sorts before the Tally tests and overlaps them fully, yet neither it nor TestGuarded is named.
 		want := answer{
-			OK: true, Package: "cov", Tests: 10,
+			OK: true, Package: "cov", Tests: 12,
 			Failure: &testcover.MapFailure{Commit: "deadbeef", Error: "later build broke"},
 			Candidates: []redundantCandidate{
 				{Name: "TestAll", Covering: []string{"TestClassifyChecked", "TestDoubleChecked"}, MutantsKilled: 1},
 				{Name: "TestDoubleChecked", Covering: []string{"TestAll"}, MutantsKilled: 1},
+				{Name: "TestHoardChecked", Covering: []string{"TestHoardCheckedAgain"}, MutantsKilled: 1},
+				{Name: "TestHoardCheckedAgain", Covering: []string{"TestHoardChecked"}, MutantsKilled: 1},
 				{Name: "TestTallyChecked", Covering: []string{"TestTallyCheckedAgain"}, MutantsKilled: 7},
 				{Name: "TestTallyCheckedAgain", Covering: []string{"TestTallyChecked"}, MutantsKilled: 7},
 			},

@@ -241,6 +241,7 @@ func testMapTestFile(pkg string, tiers map[string]int) string {
 // It fails if another test recorded itself there meanwhile, so it passes only apart from another.
 // One ending in Overlaps, when testMapOverlapEnv names a package, passes only beside that package's coverage build.
 // It fails unless the file testMapCoverBuildsEnv names records that build within testMapMeetWait.
+// One ending in Hoards keeps testMapHoardMegabytes megabytes, writing each one, and then passes.
 // A test run without LYM_TEST_TIER fails, so a map entry proves its tier's env reached it.
 // A run records the prebuilt `lym` path it was given in the file testMapLymSeenEnv names.
 func runTestMapStandIn() int {
@@ -329,6 +330,8 @@ func runTestMapStandIn() int {
 			fmt.Printf("--- FAIL: %s (0.00s)\n", name)
 			return 1
 		}
+	case strings.HasSuffix(name, "Hoards"):
+		runtime.KeepAlive(hoardMegabytes(testMapHoardMegabytes))
 	}
 	first, second := 1, 0
 	if strings.HasSuffix(name, "Two") {
@@ -353,6 +356,19 @@ func runTestMapStandIn() int {
 	}
 	fmt.Printf("--- PASS: %s (0.01s)\n", name)
 	return 0
+}
+
+// hoardMegabytes keeps megabytes megabytes, writing each one so the host counts it, and returns them.
+func hoardMegabytes(megabytes int) [][]byte {
+	kept := make([][]byte, 0, megabytes)
+	for range megabytes {
+		block := make([]byte, 1<<20)
+		for at := range block {
+			block[at] = 1
+		}
+		kept = append(kept, block)
+	}
+	return kept
 }
 
 // meetsAnother appends name to the file meet and reports whether the file holds a second line within testMapMeetWait.
@@ -571,12 +587,19 @@ func runTestMapIn(prime, goBinary string, env []string, minuteUnit time.Duration
 	return runTestMapRequest(prime, testMapRequest{
 		goBinary: goBinary, maxPackages: maxPackages, packages: packages, environ: env,
 		secondUnit: 150 * time.Millisecond, minuteUnit: minuteUnit, grace: time.Second,
-		waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait,
+		cappedParallel: unclampedParallel, waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait,
 	})
 }
 
 // testMapTestWait is the first pause of a test call's waits.
 const testMapTestWait = 10 * time.Millisecond
+
+// unclampedParallel keeps every test run of a call side by side, whatever memory the machine has left.
+func unclampedParallel(parallel int, _ int64) int { return parallel }
+
+// testMapHoardMegabytes is the memory a test ending in Hoards keeps before it passes.
+// It stops there, so a memory cap that does not hold fails the test and never the machine.
+const testMapHoardMegabytes = 384
 
 // runTestMapRequest runs `lym gate testmap` over the prime worktree prime as request asks.
 // It returns the call's exit code and output.
@@ -802,7 +825,7 @@ func TestGateTestMap(t *testing.T) {
 		return testMapRequest{
 			goBinary: standIn, maxPackages: 10, packages: packages, environ: env,
 			secondUnit: secondUnit, minuteUnit: time.Minute, grace: time.Second,
-			waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait,
+			cappedParallel: unclampedParallel, waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait,
 		}
 	}
 	// wantOutcome compares an outcome but its failures, which wantBrokenFailed checks.
@@ -1282,6 +1305,24 @@ func TestGateTestMap(t *testing.T) {
 		}
 		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{{Package: "amoves", Cause: "files changed under its tests: amoves.go"}}, Queued: 2})
 	})
+
+	t.Run("ATestPastTheMemoryCapIsRecordedAsFailed", func(t *testing.T) {
+		// The fixture test keeps testMapHoardMegabytes and passes unless the cap ends it first; the cap lies far below that.
+		writeGate(t, "redundancy_test_memory_mb: 128\n"+gateYAML("parallel: 2, "))
+		t.Cleanup(func() { writeGate(t, gateYAML("parallel: 2, ")) })
+		plankit.WriteTree(t, prime, map[string]string{
+			"capped/capped.go":      testMapSource("capped"),
+			"capped/capped_test.go": testMapTestFile("capped", map[string]int{"TestCappedHoards": 0}),
+		})
+		gitkit.Git(t, prime, "add", "capped")
+		gitkit.Git(t, prime, "commit", "-q", "-m", "add a package whose test keeps memory past the cap")
+		got := callWith(t, environ, time.Minute, 10, "capped")
+		wantOutcome(t, got, testMapOutcome{Built: []string{"capped"}})
+		want := []testcover.MapTest{{Name: "TestCappedHoards", Outcome: testcover.OutcomeFailed}}
+		if diff := cmp.Diff(want, readMap(t, "capped").Tests, cmpopts.EquateEmpty(), ignoreRunFields); diff != "" {
+			t.Errorf("capped map tests mismatch (-want +got):\n%s", diff)
+		}
+	})
 }
 
 // TestGateTestMapLinkedPackages runs `lym gate testmap` calls in order over one hub.
@@ -1383,7 +1424,7 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		code, out := runTestMapRequest(prime, testMapRequest{
 			goBinary: standIn, maxPackages: maxPackages, environ: environ, auditTests: 1,
 			secondUnit: 150 * time.Millisecond, minuteUnit: time.Minute, grace: time.Second,
-			waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait,
+			cappedParallel: unclampedParallel, waitBase: testMapTestWait, waitCeiling: 5 * testMapTestWait,
 		})
 		return decodeTestMap(t, code, out)
 	}

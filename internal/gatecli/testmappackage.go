@@ -1,6 +1,6 @@
 // testmappackage.go measures one queued package for `lym gate testmap`, inside the call's slot.
 // It runs the package's tests under a coverage binary over every in-module package the test binary links.
-// Each test runs alone in its own process, up to the slot's tier0 parallel side by side.
+// Each test runs alone in its own process, up to the slot's tier0 parallel side by side, fewer when memory is short.
 // It reads each run's profile once.
 // It keys the blocks covered of the package's own files and names the functions covered of the others.
 // It merges the runs into the package's map and writes it once.
@@ -339,7 +339,7 @@ func (r *testMapRun) addMeasure(m testMapMeasure) {
 }
 
 // runBatch runs each test of queue alone in its own process and returns their runs.
-// Up to the call's parallel of them run side by side.
+// Up to the call's side-by-side count of them run at once.
 // The runs come back in the order of queue.
 // A test that failed or timed out beside other tests runs once more alone, and that run stands.
 // A timed-out test is listed on the call's report.
@@ -349,7 +349,7 @@ func (r *testMapRun) runBatch(p *packageRun, queue []testcover.TestFunc) ([]mapp
 	if err != nil {
 		return nil, err
 	}
-	if len(queue) > 1 && r.parallel > 1 {
+	if len(queue) > 1 && r.sideBySide > 1 {
 		for i, run := range runs {
 			if run.outcome != testcover.OutcomeFailed && run.outcome != testcover.OutcomeTimedOut {
 				continue
@@ -369,7 +369,8 @@ func (r *testMapRun) runBatch(p *packageRun, queue []testcover.TestFunc) ([]mapp
 	return runs, nil
 }
 
-// runSideBySide runs each of tests alone in its own process with its own profile, at most the call's parallel at once.
+// runSideBySide runs each of tests alone in its own process with its own profile.
+// At most the call's side-by-side count of them run at once.
 // It reduces each run as the run ends, so it holds no more profiles at once than runs side by side.
 // The runs come back in the order of tests.
 // The error is the call context's after a terminating signal, since a run it ended records nothing.
@@ -382,7 +383,7 @@ func (r *testMapRun) runSideBySide(p *packageRun, tests []testcover.TestFunc) ([
 	indexes := make(chan int)
 	ended := make(chan int)
 	var workers sync.WaitGroup
-	for worker := range min(r.parallel, len(tests)) {
+	for worker := range min(r.sideBySide, len(tests)) {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
@@ -604,6 +605,7 @@ func (r *testMapRun) takeSlot(acquire func(gateslot.Holder) (*gateslot.Lease, er
 	if r.parallel < 1 {
 		r.parallel = runtime.NumCPU()
 	}
+	r.sideBySide = r.request.cappedParallel(r.parallel, r.testMemory)
 	r.holderEnv = gateslot.HolderEnv(r.env, r.lease, limits.Tier0Parallel)
 	return true, nil
 }
@@ -669,7 +671,7 @@ func (r *testMapRun) runTest(p *packageRun, fn testcover.TestFunc, profile strin
 	if tier.PrebuiltLym && r.lymBin != "" {
 		env = append(env, gateslot.PrebuiltLymEnv+"="+r.lymBin)
 	}
-	runner := testcover.Toolchain{Env: env, Ctx: r.ctx, TestTimeout: r.testTimeout, Grace: r.request.grace}
+	runner := testcover.Toolchain{Env: env, Ctx: r.ctx, TestTimeout: r.testTimeout, MemoryLimit: r.testMemory, Grace: r.request.grace}
 	result, err := runner.RunAlone(p.bin, p.pkgDir, profile, fn.Name)
 	run := mappedRun{fn: fn, result: result}
 	switch {

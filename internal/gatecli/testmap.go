@@ -64,6 +64,8 @@ type testMapRequest struct {
 	grace time.Duration
 	// auditTests is how many passing entries the closing audit round re-measures: testMapAuditTests in production.
 	auditTests int
+	// cappedParallel returns how many of parallel test runs, each capped at limit bytes of memory, go side by side.
+	cappedParallel func(parallel int, limit int64) int
 	// waitBase is the first pause of a named call's build lock wait; waitCeiling is the pause it doubles up to.
 	waitBase, waitCeiling time.Duration
 }
@@ -80,7 +82,7 @@ func testMapCmd(goBinary string, minuteUnit, grace time.Duration) *cobra.Command
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `testmap builds the coverage map of every package at this worktree's HEAD, or rebuilds each named package's map whole.
 It runs in any worktree of the hub: from the prime it writes the hub's shared maps, from any other its own under .lym.
-Nothing else builds the maps: run it before lym gate redundant, which reads the same worktree's maps.
+Run it before lym gate redundant, which reads the same worktree's maps.
 A map records, for each tier0 and tier1 test run alone under coverage, the blocks it covers of the package's own files and the functions it covers of linked packages.
 With no package named, it first plans every package at HEAD, building nothing, by comparing each map with HEAD through the coverage selector.
 A map moves to HEAD keeping every entry but those of affected tests and of tests no longer declared; the affected ones are queued.
@@ -88,7 +90,7 @@ A map the selector misses for stays as it is, and its package is queued for a wh
 It then measures the queued packages, all of them unless --max caps the count: first those the gate's run records show costliest, then the rest in import path order.
 It holds one gate slot to its end, and ends once HEAD moves.
 Named packages wait for each map build lock and are rebuilt whole.
-Each test runs alone in its own process, up to the slot's tier0 parallel side by side; a test that fails beside others runs once more alone.
+Each test runs alone in its own process, up to the slot's tier0 parallel side by side, fewer when memory is short; a test that fails beside others runs once more alone.
 A test that fails, times out, skips or covers nothing gets an entry naming that outcome; a test the spawn scan marks is never run.
 Once nothing is left queued, it re-measures the oldest passing entries if a gate slot is free at once, counting each difference as an audit mismatch.
 A package with a modified or untracked Go file, its own or a linked package's, is skipped; one whose map another call is building is skipped and counted as queued.
@@ -111,7 +113,7 @@ Examples:
 			clihelp.SetExit(cmd.Context(), runTestMap(cmd.Context(), cmd.OutOrStdout(), testMapRequest{
 				goBinary: goBinary, maxPackages: limit, packages: args, environ: os.Environ(),
 				secondUnit: time.Second, minuteUnit: minuteUnit, grace: grace, auditTests: testMapAuditTests,
-				waitBase: testMapWaitBase, waitCeiling: testMapWaitCeiling,
+				cappedParallel: memoryCappedParallel, waitBase: testMapWaitBase, waitCeiling: testMapWaitCeiling,
 			}))
 			return nil
 		},
@@ -173,6 +175,8 @@ type testMapRun struct {
 	moduleDir, moduleRel, modulePath string
 	// buildTimeout bounds each build, and testTimeout each test.
 	buildTimeout, testTimeout time.Duration
+	// testMemory caps the bytes each test run may hold.
+	testMemory int64
 	// env is the environment the call's children start from, before the slot's Go flags.
 	env []string
 	// hubEnv is the hub's env.yaml variables, which env holds.
@@ -194,8 +198,11 @@ type testMapRun struct {
 	lease *gateslot.Lease
 	// holderEnv is env with the slot's Go flags, nil until the call holds its slot.
 	holderEnv []string
-	// parallel is the `-p` of the `lym` build and the most tests run side by side, read with the slot.
+	// parallel is the `-p` of the `lym` build, read with the slot.
 	parallel int
+	// sideBySide is the most tests run at once.
+	// It is parallel, or fewer when the memory limit leaves less than their caps together.
+	sideBySide int
 	// tmp holds the coverage binaries and profiles, empty until the call holds its slot.
 	tmp string
 	// next is the job the walk measures after the current one, whose binary the current job builds ahead;
@@ -338,6 +345,7 @@ func (r *testMapRun) prepare() string {
 	r.moduleRel = filepath.ToSlash(rel)
 	r.buildTimeout = time.Duration(cfg.RedundancyBuildTimeoutMin) * r.request.minuteUnit
 	r.testTimeout = time.Duration(cfg.RedundancyTestTimeoutSec) * r.request.secondUnit
+	r.testMemory = cfg.RedundancyTestMemory()
 	r.env = gateEnv(r.request.environ, hubEnv)
 	r.hubEnv = hubEnv
 	r.inert = cfg.Inert

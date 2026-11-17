@@ -59,7 +59,7 @@ func TestRedundancyStep(t *testing.T) {
 	// tier1 is the line of a tier1 the hub declares beside tier0 and tier2, or empty for a hub with no tier1.
 	writeGate := func(t *testing.T, budgetMin int, tier1 string) {
 		t.Helper()
-		content := "slots: 1\nscoper: go\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\nredundancy_max_tests: 9\n" +
+		content := "slots: 1\nscoper: go\nredundancy_build_timeout_min: 1\nredundancy_test_timeout_sec: 20\nredundancy_max_tests: 10\nredundancy_test_memory_mb: 128\n" +
 			fmt.Sprintf("redundancy_budget_min: %d\ntiers:\n", budgetMin) +
 			"  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n" +
 			"  tier2: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"2\"}}\n" + tier1
@@ -69,7 +69,7 @@ func TestRedundancyStep(t *testing.T) {
 	}
 	writeGate(t, 9, "")
 
-	packages := []string{"alpha", "beta", "broken", "drops", "gone", "moved", "nomap", "stale", "zcapped"}
+	packages := []string{"alpha", "beta", "broken", "capped", "drops", "gone", "moved", "nomap", "stale", "zcapped"}
 	seeded := map[string]string{"go.mod": "module " + module + "\n\ngo 1.21\n"}
 	for _, pkg := range packages {
 		seeded[pkg+"/"+pkg+".go"] = testMapSource(pkg)
@@ -77,6 +77,7 @@ func TestRedundancyStep(t *testing.T) {
 	seeded["alpha/alpha_test.go"] = judgedTestFile("alpha", tieredTest("TestAlphaBase", 0, ""))
 	seeded["beta/beta_test.go"] = judgedTestFile("beta", tieredTest("TestBetaOne", 0, ""))
 	seeded["broken/broken_test.go"] = judgedTestFile("broken", tieredTest("TestBrokenOne", 0, ""))
+	seeded["capped/capped_test.go"] = judgedTestFile("capped", tieredTest("TestCappedBase", 0, ""))
 	seeded["drops/drops_test.go"] = judgedTestFile("drops", tieredTest("TestDropsOne", 0, ""), tieredTest("TestDropsPlain", 0, ""))
 	seeded["gone/gone_test.go"] = judgedTestFile("gone", tieredTest("TestGoneOne", 0, ""))
 	seeded["moved/a_test.go"] = judgedTestFile("moved", tieredTest("TestMovedOne", 0, ""))
@@ -101,6 +102,8 @@ func TestRedundancyStep(t *testing.T) {
 		"beta/beta_test.go":     judgedTestFile("beta", tieredTest("TestBetaNewOne", 0, ""), tieredTest("TestBetaOne", 0, "\tt.Log(\"edited\")\n")),
 		"broken/broken_test.go": judgedTestFile("broken", tieredTest("TestBrokenOne", 0, ""), tieredTest("TestBrokenNew", 0, "")),
 		"drops/drops_test.go":   dropsTestFile,
+		// TestCappedHoards keeps more memory than the gate's cap of 128 MB lets a test hold, and passes unless the cap ends it.
+		"capped/capped_test.go": judgedTestFile("capped", tieredTest("TestCappedBase", 0, ""), tieredTest("TestCappedHoards", 0, "")),
 		// A test in a file built under a tier tag that runs the go command is marked out of process.
 		"drops/spawn_tier1_test.go": "//go:build tier1\n\npackage drops\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestDropsSpawns(t *testing.T) {\n\t_, _ = os.Executable()\n}\n",
 		"moved/b_test.go":           seeded["moved/a_test.go"],
@@ -196,6 +199,7 @@ func TestRedundancyStep(t *testing.T) {
 	broken := mapOf(t, "broken")
 	broken.Blocks, broken.BuildFailure = nil, "the coverage build failed"
 	writeMap(t, "broken", broken)
+	writeMap(t, "capped", mapOf(t, "capped", mapTest(t, "capped", "TestCappedBase")))
 	// The map's entry for TestStaleOld records a function text the package no longer holds, so the map test is not counted.
 	staleOld := mapTest(t, "stale", "TestStaleOld")
 	staleOld.FuncHash = "the text of an earlier TestStaleOld"
@@ -270,6 +274,7 @@ func TestRedundancyStep(t *testing.T) {
 			{Package: "beta", Name: "TestBetaNewOne", File: "beta/beta_test.go", Verdict: RedundancyContained, Covering: []string{"TestBetaOne"}},
 			{Package: "beta", Name: "TestBetaOne", File: "beta/beta_test.go", Verdict: RedundancyUnique},
 			notJudged("broken", "TestBrokenNew", reasonMapFailure),
+			notJudged("capped", "TestCappedHoards", "ended at the memory cap of 128 MB"),
 			notJudged("drops", "TestDropsHangs", "timed out after 3s"),
 			notJudged("drops", "TestDropsKept", "kept: pins the slow path on purpose"),
 			{Package: "drops", Name: "TestDropsLate", File: "drops/drops_test.go", Verdict: RedundancyUnique},
@@ -279,7 +284,7 @@ func TestRedundancyStep(t *testing.T) {
 			{Package: "drops", Name: "TestDropsSpawns", File: "drops/spawn_tier1_test.go", Verdict: RedundancyNotJudged, Reason: testcover.ReasonOutOfProcess},
 			notJudged("nomap", "TestNomapNew", reasonNoMap),
 			{Package: "stale", Name: "TestStaleNew", File: "stale/stale_test.go", Verdict: RedundancyUnique},
-			notJudged("zcapped", "TestZcappedNew", "past redundancy_max_tests (9)"),
+			notJudged("zcapped", "TestZcappedNew", "past redundancy_max_tests (10)"),
 		}
 		if diff := cmp.Diff(wantTests, first.Tests, cmpopts.EquateEmpty()); diff != "" {
 			t.Errorf("report tests mismatch (-want +got):\n%s", diff)
@@ -288,6 +293,7 @@ func TestRedundancyStep(t *testing.T) {
 			{Package: "alpha", Judged: true, MapCommit: "c0ffee", Drift: []string{"alpha_test.go"}},
 			{Package: "beta", Judged: true, MapCommit: "c0ffee"},
 			{Package: "broken", Reason: "its coverage map records a build failure: the coverage build failed"},
+			{Package: "capped", Judged: true, MapCommit: "c0ffee"},
 			{Package: "drops", Judged: true, MapCommit: "c0ffee"},
 			{Package: "nomap", Reason: "it has no coverage map"},
 			{Package: "stale", Judged: true, MapCommit: "c0ffee"},
@@ -300,7 +306,7 @@ func TestRedundancyStep(t *testing.T) {
 		}
 		wantTaken := map[string][]string{
 			"alpha": {"TestAlphaNewOne", "TestAlphaNewTwo"}, "beta": {"TestBetaNewOne", "TestBetaOne"}, "broken": {"TestBrokenNew"},
-			"drops": {"TestDropsHangs", "TestDropsKept", "TestDropsLate", "TestDropsSpawns", "TestDropsTier1", "TestDropsTier1Again", "TestDropsTier2"},
+			"capped": {"TestCappedHoards"}, "drops": {"TestDropsHangs", "TestDropsKept", "TestDropsLate", "TestDropsSpawns", "TestDropsTier1", "TestDropsTier1Again", "TestDropsTier2"},
 			"nomap": {"TestNomapNew"}, "stale": {"TestStaleNew"}, "zcapped": {"TestZcappedNew"},
 		}
 		gotTaken := map[string][]string{}
@@ -310,8 +316,8 @@ func TestRedundancyStep(t *testing.T) {
 		if diff := cmp.Diff(wantTaken, gotTaken); diff != "" {
 			t.Errorf("report test hashes mismatch (-want +got):\n%s; want no test of the moved file or the deleted one", diff)
 		}
-		if got := slices.Sorted(maps.Keys(first.FileHashes)); !slices.Equal(got, []string{"alpha", "beta", "drops", "stale"}) {
-			t.Errorf("report file hashes name %v; want the judged packages alpha, beta, drops and stale", got)
+		if got := slices.Sorted(maps.Keys(first.FileHashes)); !slices.Equal(got, []string{"alpha", "beta", "capped", "drops", "stale"}) {
+			t.Errorf("report file hashes name %v; want the judged packages alpha, beta, capped, drops and stale", got)
 		}
 		if len(first.Errors) != 0 || first.Note != "" || first.GateKey != "darn-write" {
 			t.Errorf("report = errors %q, note %q, gate key %q; want no error, no note and darn-write", first.Errors, first.Note, first.GateKey)

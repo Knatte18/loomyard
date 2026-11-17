@@ -200,6 +200,8 @@ func TestRunAlone(t *testing.T) {
 		timeout time.Duration
 		// within, when above zero, is the longest the run may take.
 		within time.Duration
+		// memory is the run's MemoryLimit; zero leaves it uncapped.
+		memory int64
 		// noProfile runs the test with no profile flag, as a binary built without coverage.
 		noProfile bool
 		want      testcover.RunResult
@@ -238,6 +240,23 @@ func TestRunAlone(t *testing.T) {
 			want: testcover.RunResult{Name: standInHang, Action: testcover.ActionFail, TimedOut: true},
 		},
 		{
+			name: "PassUnderTheMemoryLimit", test: standInPass, memory: 128 << 20,
+			want: testcover.RunResult{Name: standInPass, Elapsed: 0.25, Action: testcover.ActionPass, Profile: []testcover.ProfileBlock{
+				{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1, Count: 1},
+			}},
+		},
+		{
+			// The stand-in passes by itself once it holds three times the limit, so a cap that does not hold fails the row.
+			name: "MemoryCapped", test: standInHoards, memory: 128 << 20,
+			want: testcover.RunResult{Name: standInHoards, Action: testcover.ActionFail, MemoryCapped: true},
+		},
+		{
+			// The stand-in fails as a test does whose allocation the cap refused.
+			// So the row pins the runtime-error branch on any host.
+			name: "MemoryCappedByTheRuntimesOutOfMemoryLine", test: standInOutOfMemory, memory: 128 << 20,
+			want: testcover.RunResult{Name: standInOutOfMemory, Action: testcover.ActionFail, MemoryCapped: true},
+		},
+		{
 			// The test passes and exits, but a child it left holds the output pipe past the grace.
 			// The child outlasts the minute the row allows, so a run that waits on it fails however loaded the machine.
 			name: "ReturnsWithinTheGraceWhileADescendantHoldsTheOutput", test: standInHoldsPipe, timeout: time.Minute, within: time.Minute,
@@ -250,7 +269,7 @@ func TestRunAlone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tc, record := standIn(t)
-			tc.TestTimeout, tc.Grace = tt.timeout, time.Second
+			tc.TestTimeout, tc.MemoryLimit, tc.Grace = tt.timeout, tt.memory, time.Second
 			profile := filepath.Join(t.TempDir(), "cover.out")
 			if tt.noProfile {
 				profile = ""

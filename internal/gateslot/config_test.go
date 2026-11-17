@@ -69,7 +69,7 @@ func TestConfigSpec_SetNestedKeys(t *testing.T) {
 
 var templateDefaults = Config{
 	Slots: 2, BusyQuitSec: 120, FixerTimeoutMin: 30,
-	RedundancyBuildTimeoutMin: 10, RedundancyTestTimeoutSec: 120, RedundancyMaxTests: 40, RedundancyBudgetMin: 10,
+	RedundancyBuildTimeoutMin: 10, RedundancyTestTimeoutSec: 120, RedundancyTestMemoryMB: 2048, RedundancyMaxTests: 40, RedundancyBudgetMin: 10,
 	Gates: map[string]GateKey{
 		"card":            {Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}, Fixer: "sonnet[medium]"},
 		"batch":           {Tiers: []int{0}, Scope: "card"},
@@ -288,6 +288,7 @@ func TestLoadConfig(t *testing.T) {
 		{"fixer_timeout_min zero", baseKeys + "fixer_timeout_min: 0\n", Config{}, `gate config key "fixer_timeout_min": 0; want at least 1` + fixIt},
 		{"redundancy_build_timeout_min zero", baseKeys + "redundancy_build_timeout_min: 0\n", Config{}, `gate config key "redundancy_build_timeout_min": 0; want at least 1` + fixIt},
 		{"redundancy_test_timeout_sec zero", baseKeys + "redundancy_test_timeout_sec: 0\n", Config{}, `gate config key "redundancy_test_timeout_sec": 0; want at least 1` + fixIt},
+		{"redundancy_test_memory_mb zero", baseKeys + "redundancy_test_memory_mb: 0\n", Config{}, `gate config key "redundancy_test_memory_mb": 0; want at least 1` + fixIt},
 		{"redundancy_max_tests zero", baseKeys + "redundancy_max_tests: 0\n", Config{}, `gate config key "redundancy_max_tests": 0; want at least 1` + fixIt},
 		{"redundancy_budget_min zero", baseKeys + "redundancy_budget_min: 0\n", Config{}, `gate config key "redundancy_budget_min": 0; want at least 1` + fixIt},
 		{"an unknown report", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, reports: [speed]}\n", Config{}, `gate config key "gates.webster": report "speed"; want redundancy` + fixIt},
