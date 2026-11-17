@@ -21,32 +21,25 @@ func readOverview(t *testing.T, bolt string) string {
 	return string(data)
 }
 
-// overviewSection returns the part of text under the heading of target, up to the next target's heading.
-func overviewSection(t *testing.T, text, target string) string {
-	t.Helper()
-	_, rest, found := strings.Cut(text, "\n## `"+target+"`\n")
-	if !found {
-		t.Fatalf("overview holds no section for %s: %q", target, text)
-	}
-	section, _, _ := strings.Cut(rest, "\n## `")
-	return section
-}
-
-// TestRenderOverview pins the overview's sections, source lines and fenced blocks.
-// It uses a store holding a text entry and a JSON-object entry.
-// The store also holds a text entry with a backtick run and a claude-settings entry whose text is no object.
-// It pins the widened fence of the backtick run and the non-object text shown as written.
-// It also pins that a target no entry names says so, and that a second call changes nothing.
+// TestRenderOverview pins the overview's table and its sections by the place entries land in.
+// The store holds text entries aimed at claude-file, at the shared agents-file and at orch-prompt.
+// It also holds a claude-settings entry and one whose text is no object.
+// It pins a table row per entry and place, the repository's texts in full, and lym's own folded under a summary.
+// It pins a shared entry under each file it renders into, the widened fence of a backtick run and an escaped table pipe.
+// It pins the settings object with its setters marked, a note for the entry that holds no object,
+// a place no entry reaches left out, and a second call changing nothing.
 func TestRenderOverview(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
+	shipped := shippedStore.Ordered()[0]
 	bolt := t.TempDir()
 	saveStore(t, bolt, Store{Entries: []Entry{
 		entryFor("house-rules", "Be kind.", 10, "claude-file"),
 		entryFor("shared-rules", "Be brief.", 15, "agents-file"),
 		entryFor("my-settings", `{"model": "opus"}`, 20, "claude-settings"),
-		entryFor("fenced-rules", "Use ```go fences.", 30, "claude-file"),
+		entryFor("fenced-rules", "Use ```go fences | always.", 30, "claude-file"),
 		entryFor("loose-settings", "not json", 40, "claude-settings"),
+		entryFor("orch-notes", "# Orch notes\n\nStay calm.", 50, OrchPromptTarget),
 	}})
 
 	changed, err := RenderOverview(bolt)
@@ -58,38 +51,33 @@ func TestRenderOverview(t *testing.T) {
 	if !strings.HasPrefix(text, "# Heddle\n") {
 		t.Errorf("overview opens with %q; want the # Heddle title", text[:min(len(text), 20)])
 	}
-	claudeFile := overviewSection(t, text, "claude-file")
 	for _, want := range []string{
-		"\nRendered into `CLAUDE.local.md` at every worktree's anchor. It also carries every entry aimed at `agents-file`.\n",
-		"````markdown\nUse ```go fences.\n````\n",
-		"### `house-rules`\n\n- From: the hub's heddle.json\n- Order: 10\n- Targets: `claude-file`\n\n```markdown\nBe kind.\n```\n",
+		"| `CLAUDE.local.md` | **repo** | `house-rules` | Be kind. |\n",
+		"| `CLAUDE.local.md` | **repo** | `shared-rules` | Be brief. |\n",
+		"| `AGENTS.override.md` | **repo** | `shared-rules` | Be brief. |\n",
+		"| `CLAUDE.local.md` | **repo** | `fenced-rules` | Use ```go fences \\| always. |\n",
+		"| `.claude/settings.local.json` | **repo** | `my-settings` | `model` |\n",
+		"| `.claude/settings.local.json` | **repo** | `loose-settings` | holds no JSON object |\n",
+		"| `.claude/settings.local.json` | derived | `" + AgentDefaultsSlug + "` | `effortLevel`, `env` |\n",
+		"| System prompt of every orch session | **repo** | `orch-notes` | Orch notes |\n",
+		"## `CLAUDE.local.md`\n\nRendered at every worktree's anchor.\n\n### From this repository\n\n" +
+			"#### `house-rules`\n\n```markdown\nBe kind.\n```\n\n" +
+			"#### `shared-rules`\n\n```markdown\nBe brief.\n```\n\n" +
+			"#### `fenced-rules`\n\n````markdown\nUse ```go fences | always.\n````\n\n### From lym\n",
+		"\n<details>\n<summary><code>" + shipped.Slug + "</code> — ",
+		"## `AGENTS.override.md`\n\nRendered at every worktree's anchor.\n\n### From this repository\n\n" +
+			"#### `shared-rules`\n\n```markdown\nBe brief.\n```\n\n### From lym\n",
+		"\nNote: the text of entry \"loose-settings\" holds no JSON object",
+		"\n\n  // my-settings (repo)\n  \"model\": \"opus\"\n}\n```\n",
+		"## System prompt of every orch session\n\nAppended to the system prompt of every orch session at its launch.\n\n" +
+			"### From this repository\n\n#### `orch-notes`\n\n```markdown\n# Orch notes\n\nStay calm.\n```\n",
 	} {
-		if !strings.Contains(claudeFile, want) {
-			t.Errorf("claude-file section lacks %q: %q", want, claudeFile)
+		if !strings.Contains(text, want) {
+			t.Errorf("overview lacks %q:\n%s", want, text)
 		}
 	}
-	agentsFile := overviewSection(t, text, "agents-file")
-	for _, want := range []string{
-		"\nRendered into `CLAUDE.local.md`, `AGENTS.override.md` at every worktree's anchor.\n",
-		"- From: shipped with lym\n",
-		"### `shared-rules`\n\n- From: the hub's heddle.json\n- Order: 15\n- Targets: `agents-file`\n\n```markdown\nBe brief.\n```\n",
-	} {
-		if !strings.Contains(agentsFile, want) {
-			t.Errorf("agents-file section lacks %q: %q", want, agentsFile)
-		}
-	}
-	settings := overviewSection(t, text, "claude-settings")
-	for _, want := range []string{
-		"- From: derived from the hub's agents.yaml\n",
-		"```json\nnot json\n```\n",
-		"### `my-settings`\n\n- From: the hub's heddle.json\n- Order: 20\n- Targets: `claude-settings`\n\n```json\n{\n  \"model\": \"opus\"\n}\n```\n",
-	} {
-		if !strings.Contains(settings, want) {
-			t.Errorf("claude-settings section lacks %q: %q", want, settings)
-		}
-	}
-	if section := overviewSection(t, text, "orch-prompt"); !strings.HasSuffix(section, "\nNo entry.\n") {
-		t.Errorf("orch-prompt section = %q; want it to end with No entry.", section)
+	if strings.Contains(text, "System prompt of every claude session") {
+		t.Errorf("overview shows the claude-prompt place, which no entry reaches:\n%s", text)
 	}
 
 	if changed, err := RenderOverview(bolt); err != nil || changed {
@@ -98,7 +86,7 @@ func TestRenderOverview(t *testing.T) {
 }
 
 // TestRenderOverviewSaysWhenTheEffortDefaultsAreLeftOut pins the overview of a hub whose agents.yaml fails to load.
-// The render succeeds, the claude-settings section notes the omission, and no derived entry shows.
+// The render succeeds, a note says the effort defaults are left out, and no derived entry shows.
 func TestRenderOverviewSaysWhenTheEffortDefaultsAreLeftOut(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -108,17 +96,17 @@ func TestRenderOverviewSaysWhenTheEffortDefaultsAreLeftOut(t *testing.T) {
 	if _, err := RenderOverview(bolt); err != nil {
 		t.Fatalf("RenderOverview() = %v", err)
 	}
-	settings := overviewSection(t, readOverview(t, bolt), "claude-settings")
-	if !strings.Contains(settings, "\nNote: the effort defaults are left out of "+ClaudeSettingsFile+": ") {
-		t.Errorf("claude-settings section lacks the left-out note: %q", settings)
+	text := readOverview(t, bolt)
+	if !strings.Contains(text, "\nNote: the effort defaults are left out of "+ClaudeSettingsFile+": ") {
+		t.Errorf("overview lacks the left-out note:\n%s", text)
 	}
-	if strings.Contains(settings, "### `"+AgentDefaultsSlug+"`") {
-		t.Errorf("claude-settings section shows %s; want it left out: %q", AgentDefaultsSlug, settings)
+	if strings.Contains(text, "`"+AgentDefaultsSlug+"`") {
+		t.Errorf("overview shows %s; want it left out:\n%s", AgentDefaultsSlug, text)
 	}
 }
 
 // TestRenderOverviewNamesAnOverriddenShippedEntry pins the overview of a shipped entry the hub overrides.
-// It shows the override's text and says so in its source line.
+// Its row says so in bold, and its section shows the override's text in full under its own group.
 func TestRenderOverviewNamesAnOverriddenShippedEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -136,9 +124,13 @@ func TestRenderOverviewNamesAnOverriddenShippedEntry(t *testing.T) {
 	if _, err := RenderOverview(bolt); err != nil {
 		t.Fatalf("RenderOverview() = %v", err)
 	}
-	want := "### `" + shipped.Slug + "`\n\n- From: shipped with lym, its text overridden by the hub\n"
 	text := readOverview(t, bolt)
-	if !strings.Contains(text, want) || !strings.Contains(text, "```markdown\ntuned text\n```\n") {
-		t.Errorf("overview = %q; want %q and the override's text", text, want)
+	for _, want := range []string{
+		"| **lym, overridden** | `" + shipped.Slug + "` | tuned text |\n",
+		"\n### From lym, overridden by this hub\n\n#### `" + shipped.Slug + "`\n\n```markdown\ntuned text\n```\n",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("overview lacks %q:\n%s", want, text)
+		}
 	}
 }

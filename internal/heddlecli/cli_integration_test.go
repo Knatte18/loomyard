@@ -251,7 +251,7 @@ func TestHeddleCLI(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v; want a set to render it beside heddle.json", heddleengine.OverviewFileName, err)
 		}
-		for _, want := range []string{"### `rules`\n", "### `intro`\n", "rules from a file"} {
+		for _, want := range []string{"| `rules` |", "| `intro` |", "rules from a file"} {
 			if !strings.Contains(string(overview), want) {
 				t.Errorf("%s after two sets lacks %q", heddleengine.OverviewFileName, want)
 			}

@@ -211,7 +211,7 @@ func TestReplayer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(data), "### `c`\n") {
+		if !strings.Contains(string(data), "| `c` |") {
 			t.Errorf("%s = %q; want it to name the entry the commit added", OverviewFileName, data)
 		}
 	})

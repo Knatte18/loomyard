@@ -36,8 +36,10 @@
 // A setting that differs per session or role stays in the settings document a session is launched with.
 //
 // RenderOverview writes HEDDLE.md at the Bolt checkout's root, beside heddle.json.
-// It holds every entry, shipped, derived and the hub's, grouped by target in render order.
-// Each shows its source, order, targets and text, a JSON-object entry's object as a json block.
+// It opens with a table of every entry, shipped, derived and the hub's, by the file or prompt it lands in.
+// A section per file or prompt follows, leaving out one no entry reaches; a shared target's entries show under each file.
+// A text section shows the hub's texts in full and lym's own unchanged ones folded under a summary.
+// A JSON-object section shows the object its entries fold to, each key marked with the entries that set it.
 // The `lym heddle` write path renders it under the Bolt write lock after each save,
 // and the Bolt replayer claims it and renders it afresh after each replay, so it holds no state of its own.
 // The hub config reconcile a new lym build runs renders it too, so a missing file or one a release made stale is renewed.
