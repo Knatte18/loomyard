@@ -46,6 +46,8 @@ type Codex struct {
 	userSetup shuttleengine.UserSetupSource
 	// runHook runs a plugin hook for the user setup; nil lists each hook as not run.
 	runHook shuttleengine.HookRunner
+	// rolloutWait bounds the batching nudge's wait for the call it judges to reach the rollout.
+	rolloutWait batchingRolloutWait
 }
 
 // Seams are the collaborators a Codex engine takes from its wiring, so a test can fake each of them.
@@ -79,6 +81,7 @@ func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs, seams Seams
 		sandboxProbe:         probe,
 		userSetup:            seams.UserSetup,
 		runHook:              seams.RunHook,
+		rolloutWait:          defaultBatchingRolloutWait(),
 	}
 }
 
@@ -130,6 +133,9 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // The launch line also carries the effort its subagents take and the cap on their concurrent threads.
 // Items whose setting reaches the argument cap refuse the launch before anything is written.
 // The launch line carries a PreToolUse hook per installed shell guard.
+// An autonomous spec's question-tool deny comes before them, and the deny notice announces both.
+// With codex.yaml's batching nudge on, Prepare seeds the nudge's state file in runDir.
+// The line then carries the nudge's PostToolUse hook.
 // It runs the settled sandbox mode, and under workspace-write it turns on the sandbox's network access,
 // so the session reaches the creel daemon's socket.
 // Once Codex exits, the launch appends the exit record to the run's events file.
@@ -153,10 +159,13 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	if err != nil && !errors.Is(err, gateslot.ErrConfigAbsent) {
 		return shuttleengine.Launch{}, fmt.Errorf("codexengine: %w", err)
 	}
-	guards := installedGuards(gate.RefuseRaw, guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish})
+	tools := toolHooks{
+		guards:       installedGuards(gate.RefuseRaw, guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish}),
+		questionDeny: !spec.Interactive,
+	}
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
 	passages := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
-	items := []instructionItem{creelHeadItem(denyNotice(guards))}
+	items := []instructionItem{creelHeadItem(denyNotice(tools.questionDeny, tools.guards))}
 	subagentEffort := c.subagentEffort(cfg.Agents, spec.ConfigRole, codex)
 	if passage := subagentPassage(subagentEffort, spec.Skills); passage != "" {
 		items = append(items, instructionItem{
@@ -217,6 +226,12 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	if err := os.WriteFile(promptPath, []byte(spec.Prompt), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("codexengine: write prompt: %w", err)
 	}
+	if codex.BatchingNudge.Enabled {
+		tools.batchingStatePath = filepath.Join(absRunDir, batchingNudgeStateFileName)
+		if err := writeBatchingNudgeState(tools.batchingStatePath, codex.BatchingNudge); err != nil {
+			return shuttleengine.Launch{}, fmt.Errorf("codexengine: write the batching nudge state: %w", err)
+		}
+	}
 	firstTurn, promptLine := launchPointer(promptPath), ""
 	if len(spec.Skills) > 0 {
 		// The roots come from the codex.yaml this launch already loaded, so one load serves the whole launch.
@@ -241,7 +256,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 			subagentEffort:        subagentEffort,
 			maxSubagentThreads:    codex.MaxSubagentThreads,
 			projectDocMaxBytes:    docMaxBytes,
-			hooks:                 hookSettings(eventsPath, guards, creel),
+			hooks:                 hookSettings(eventsPath, tools, creel),
 			firstTurn:             firstTurn,
 			eventsPath:            eventsPath,
 		}),

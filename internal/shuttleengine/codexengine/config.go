@@ -48,6 +48,8 @@ type Config struct {
 	MaxSubagentThreads int `yaml:"max_subagent_threads"`
 	// PluginHookTimeout bounds each plugin session-start hook that sets no timeout of its own; a positive Go duration.
 	PluginHookTimeout string `yaml:"plugin_hook_timeout"`
+	// BatchingNudge switches and tunes the after-tool-call hook that nudges a session back to batching its calls.
+	BatchingNudge BatchingNudgeConfig `yaml:"batching_nudge"`
 }
 
 // The modes codex.yaml's sandbox_mode may name.
@@ -86,6 +88,7 @@ func ConfigSpec() configengine.Spec {
 
 			"max_subagent_threads": configengine.CategoryNone,
 			"plugin_hook_timeout":  configengine.CategoryNone,
+			batchingNudgeKey:       configengine.CategoryNone,
 		},
 	}
 }
@@ -93,7 +96,10 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig resolves codex.yaml from the layer stack under dirs.
 // An absent file in every layer resolves the template; a layer file that exists but is invalid is an error.
 // A sandbox_mode other than auto, workspace-write or danger-full-access is invalid.
-// So is a max_subagent_threads below 1, and a plugin_hook_timeout that is not a positive Go duration.
+// So is a max_subagent_threads below 1.
+// So is a plugin_hook_timeout that is not a positive Go duration.
+// While the batching nudge is on, a negative batching_nudge.context_tokens is invalid.
+// So is any other threshold of the block below 1.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {
@@ -111,6 +117,9 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	}
 	if timeout, err := time.ParseDuration(cfg.PluginHookTimeout); err != nil || timeout <= 0 {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("codex.yaml's plugin_hook_timeout %q is not a positive Go duration such as 10s", cfg.PluginHookTimeout))
+	}
+	if err := validateBatchingNudge(cfg.BatchingNudge); err != nil {
+		return Config{}, configengine.MarkInvalid(err)
 	}
 	return cfg, nil
 }

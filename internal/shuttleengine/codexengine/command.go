@@ -248,14 +248,25 @@ func creelWaitHookCommand(creel creelDelivery) string {
 	return codexHomeEnvKey + "=" + posix.Quote(creel.home) + " " + codexBinaryEnvKey + "=" + posix.Quote(creel.bin) + " " + creelWaitCommand
 }
 
+// toolHooks are the tool-call hooks a launch installs beside its recording hooks; the zero value installs none of them.
+type toolHooks struct {
+	// guards are the installed shell guard rows.
+	guards []shellguard.Row
+	// questionDeny installs the question-tool deny, for an autonomous launch.
+	questionDeny bool
+	// batchingStatePath is the run's batching nudge state file; empty installs no batching hook.
+	batchingStatePath string
+}
+
 // hookSettings returns the `-c` hook settings of a run whose events file is eventsPath.
 // Each recorded event gets a recording hook.
-// When guards is non-empty, a PreToolUse setting holds one entry per guard row.
+// A PreToolUse setting holds the question-tool deny, on every tool, then one entry per guard row, when tools has either.
 // The activity hook runs after every tool call.
+// When tools names a state file, the batching hook runs after it, on every tool.
 // With a creel flag directory, the Stop setting runs the merged creel Stop command, then the async idle waiter.
-// The PostToolUse setting also runs the creel mail hook, after the activity hook.
+// The PostToolUse setting also runs the creel mail hook, last.
 // Entries of one event share one setting, since a second `-c` of the same key replaces the first.
-func hookSettings(eventsPath string, guards []shellguard.Row, creel creelDelivery) []string {
+func hookSettings(eventsPath string, tools toolHooks, creel creelDelivery) []string {
 	settings := make([]string, 0, len(recordedHookEvents)+2)
 	for _, event := range recordedHookEvents {
 		if event == hookEventStop && creel.flagDir != "" {
@@ -264,10 +275,18 @@ func hookSettings(eventsPath string, guards []shellguard.Row, creel creelDeliver
 		}
 		settings = append(settings, hookSetting(event, hookEntry("", recordingCommand(event, eventsPath))))
 	}
-	if len(guards) > 0 {
-		settings = append(settings, hookSetting(hookEventPreToolUse, guardEntries(guards)...))
+	var preToolUse []string
+	if tools.questionDeny {
+		preToolUse = append(preToolUse, hookEntry(toolMatcherAll, questionDenyCommand()))
+	}
+	preToolUse = append(preToolUse, guardEntries(tools.guards)...)
+	if len(preToolUse) > 0 {
+		settings = append(settings, hookSetting(hookEventPreToolUse, preToolUse...))
 	}
 	postToolUse := []string{hookEntry(toolMatcherAll, activityCommand(eventsPath))}
+	if tools.batchingStatePath != "" {
+		postToolUse = append(postToolUse, hookEntry(toolMatcherAll, batchingNudgeHookCommand(tools.batchingStatePath)))
+	}
 	if creel.flagDir != "" {
 		postToolUse = append(postToolUse, hookEntry(toolMatcherAll, creelMailHookCommand(creel.flagDir)))
 	}

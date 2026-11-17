@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/bashlookup"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -246,7 +246,7 @@ func (c *Claude) BatchingNudge(statePath string, payload []byte) ([]byte, error)
 		return nil, nil
 	}
 	// A Bash call that is no lookup makes a message that is neither a lookup nor edits, so no breach can fire and the transcript is left unread.
-	if input.ToolName == toolBash && !isReadOnlyLookup(input.ToolInput.Command) {
+	if input.ToolName == toolBash && !bashlookup.IsReadOnlyLookup(input.ToolInput.Command) {
 		return nil, nil
 	}
 	transcript, ok := input.chainTranscript()
@@ -316,7 +316,7 @@ func (c *Claude) awaitCallInTranscript(transcriptPath, toolUseID string, sidecha
 		}
 		if info.Size() != readSize {
 			readSize = info.Size()
-			tail, err := readTranscriptTail(transcriptPath, batchingTailBytes)
+			tail, err := shuttleengine.ReadFileTail(transcriptPath, batchingTailBytes)
 			if err != nil {
 				return nil, false
 			}
@@ -334,36 +334,6 @@ func (c *Claude) awaitCallInTranscript(transcriptPath, toolUseID string, sidecha
 		}
 		wait.sleep(wait.tick)
 	}
-}
-
-// readTranscriptTail returns the complete lines of the last budget bytes of the transcript at transcriptPath, the whole file when it is smaller.
-// The window's first line is dropped unless the window starts the file, since it may be cut.
-func readTranscriptTail(transcriptPath string, budget int64) ([]byte, error) {
-	f, err := os.Open(transcriptPath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	start := info.Size() - budget
-	if start < 0 {
-		start = 0
-	}
-	tail := make([]byte, info.Size()-start)
-	if _, err := f.ReadAt(tail, start); err != nil && err != io.EOF {
-		return nil, err
-	}
-	if start > 0 {
-		nl := bytes.IndexByte(tail, '\n')
-		if nl < 0 {
-			return nil, nil
-		}
-		tail = tail[nl+1:]
-	}
-	return tail, nil
 }
 
 // tailMessage is one assistant message of a transcript tail's chain: its id, the time of its first line and its tool calls in order.
@@ -387,7 +357,7 @@ func (call tailCall) lookup() bool {
 	case toolRead, toolGrep, toolGlob:
 		return true
 	case toolBash:
-		return isReadOnlyLookup(call.command)
+		return bashlookup.IsReadOnlyLookup(call.command)
 	}
 	return false
 }
@@ -524,7 +494,7 @@ func judgeBatching(settings BatchingNudgeConfig, messages []tailMessage, current
 // the file holds fewer than the settings' slice lines, or the latest earlier message that read it is not older than the file's last modification.
 // A file that cannot be read or statted is no breach.
 func sliceBreach(settings BatchingNudgeConfig, messages []tailMessage, current int, filePath string) string {
-	lines, err := countLinesUpTo(filePath, settings.SliceLines)
+	lines, err := shuttleengine.CountLinesUpTo(filePath, settings.SliceLines)
 	if err != nil {
 		return ""
 	}
@@ -547,32 +517,4 @@ func sliceBreach(settings BatchingNudgeConfig, messages []tailMessage, current i
 		}
 	}
 	return ""
-}
-
-// countLinesUpTo counts the lines of the file at filePath, stopping once the count reaches limit; a last line without its newline counts.
-func countLinesUpTo(filePath string, limit int) (int, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-	buf := make([]byte, 32*1024)
-	lines, unterminated := 0, false
-	for lines < limit {
-		n, err := f.Read(buf)
-		lines += bytes.Count(buf[:n], []byte{'\n'})
-		if n > 0 {
-			unterminated = buf[n-1] != '\n'
-		}
-		if err == io.EOF {
-			if unterminated {
-				lines++
-			}
-			return lines, nil
-		}
-		if err != nil {
-			return 0, err
-		}
-	}
-	return lines, nil
 }

@@ -7,6 +7,8 @@ and only `internal/shuttleengines` constructs or imports a concrete engine.
   and `shuttleengine` never imports a concrete engine.
 - Only `internal/shuttleengines` imports or constructs a concrete engine;
   the scan in `internal/shuttleengine`'s `seam_enforcement_test.go` covers production files.
+- A package under `internal/shuttleengine/` that holds no engine, such as `bashlookup`, is shared engine-neutral code every engine may import;
+  the scan's `sharedPackages` names each one.
 - An engine's config module reaches `configreg` only through `internal/shuttleengines`.
   That package lists each registered engine's module for it.
 - An engine's name is not a provider specific and may appear outside its directory.

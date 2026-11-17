@@ -367,20 +367,22 @@ func TestToolBoundaryRenderer(t *testing.T) {
 	}
 }
 
-// TestBatchingNudger pins that the claude entry has the batching nudge, silent for a run with no state file,
+// TestBatchingNudger pins that the claude and codex entries have the batching nudge, silent for a run with no state file,
 // and that an unknown name has none.
 func TestBatchingNudger(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	nudger, ok := BatchingNudger("claude")
-	if !ok {
-		t.Fatal("BatchingNudger(claude) found none")
-	}
-	statePath := t.TempDir() + "/absent.json"
-	got, err := nudger.BatchingNudge(statePath, []byte(`{"transcript_path":"/absent.jsonl","tool_use_id":"call-1"}`))
-	if err != nil || got != nil {
-		t.Errorf("BatchingNudge(no state file) = %s, %v; want no output and no error", got, err)
+	for _, name := range []string{"claude", "codex"} {
+		nudger, ok := BatchingNudger(name)
+		if !ok {
+			t.Fatalf("BatchingNudger(%s) found none", name)
+		}
+		statePath := t.TempDir() + "/absent.json"
+		got, err := nudger.BatchingNudge(statePath, []byte(`{"transcript_path":"/absent.jsonl","tool_use_id":"call-1","tool_name":"Bash","tool_input":{"command":"ls"}}`))
+		if err != nil || got != nil {
+			t.Errorf("BatchingNudger(%s).BatchingNudge(no state file) = %s, %v; want no output and no error", name, got, err)
+		}
 	}
 	if _, ok := BatchingNudger("nope"); ok {
 		t.Error("BatchingNudger(nope) found one; want none")

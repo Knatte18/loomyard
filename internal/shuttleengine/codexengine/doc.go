@@ -59,7 +59,7 @@
 //
 // Hooks given by `-c` append to the run's events file a stamp line and the payload of these events:
 // SessionStart, UserPromptSubmit, Stop and PermissionRequest.
-// A PostToolUse hook touches the activity stamp.
+// A PostToolUse hook touches the activity stamp; the batching nudge and creel's mail hook join its setting.
 // The standing items ride the launch line as the `developer_instructions` setting, a single-line TOML string,
 // and the prompt file holds the spec's prompt alone.
 // The items are the deny notice with the creel trust sentence, then each standing passage.
@@ -100,6 +100,48 @@
 // The hook prints Codex's deny decision with the row's Codex steer,
 // and the developer instructions open with the rows' Codex notices;
 // a hook that fails to run fails open in Codex, so a guard is a guardrail and not a barrier.
+// An autonomous launch also denies Codex's question tools, the counterpart of Claude's AskUserQuestion deny.
+// The entry opens the same PreToolUse setting, since a second `-c` of the key replaces the first.
+// It matches every tool and denies a payload whose tool name ends in `request_user_input` or `request_user_input_async`,
+// so a name Codex prefixes with its namespace, as it prefixes `spawn_agent`, still matches;
+// its notice opens the deny notice.
+//
+// The batching nudge (BatchingNudger) is a PostToolUse hook that adds one line to the calling thread's context.
+// It does so when the thread's recent calls break lym's batching rules, and it never denies a call:
+// a block after a tool call would make Codex read the call as failed.
+// `codex.yaml`'s `batching_nudge` block has claude.yaml's keys and defaults.
+// LoadConfig refuses a threshold below its least while the nudge is on.
+// With `enabled` on, Prepare copies the block into `batching-nudge.json` in the run directory,
+// and the PostToolUse setting runs `lym shuttle hook-batching codex <state file>` on every tool, after the activity hook.
+// The entry prints the empty hook output when the verb prints nothing.
+// Codex runs a model call's tools as an `exec` cell.
+// An `exec` cell is a `custom_tool_call` whose JavaScript runs nested `exec_command` and `apply_patch` calls.
+// PostToolUse fires once per nested call, as `Bash` with the command or `apply_patch` with the patch.
+// It never fires for the cell.
+// The payload's `tool_use_id` is the id of the call's `item_completed` item in the rollout.
+// The judgment reads a `batchingTailBytes` tail of the rollout the payload's `transcript_path` names.
+// It lists the tail's top-level calls.
+// An `exec` cell holds the `CommandExecution` and `FileChange` items that complete between its call and its output.
+// Each other call, such as a `collaboration` `function_call`, holds none.
+// The payload's call belongs to the latest `exec` cell, whose output is not written yet.
+// One top-level call counts as one message does on Claude, and Claude's rules judge it.
+// The read-only lookup check is that of `internal/shuttleengine/bashlookup`, which both engines import.
+// A run of `lookup_run` cells each holding one lookup fires the nudge.
+// So does a run of `edit_run` cells holding only `apply_patch` calls.
+// So does a line-range read of a file under `slice_lines` lines.
+// So does a line-range read of a file an earlier cell's `parsed_cmd` read and unchanged since.
+// Every other top-level call ends a chain.
+// A path is resolved against its own call's `CommandExecution` `cwd`, a `file://` URL,
+// so a line-range read waits a bounded time for its own item and gets no read-slice nudge when it is still missing.
+// The judgment is silent for a payload whose tool is neither `Bash` nor `apply_patch`.
+// It is silent for a `Bash` call that is no read-only lookup.
+// Both leave the rollout and the state file unread.
+// It is silent too below `context_tokens`, by the tail's newest token_count.
+// It is also silent past `max_nudges`.
+// It is also silent for a cell it already nudged.
+// A Codex payload carries no agent id, and a child's carries its parent's session id,
+// so each thread's count and cap are keyed by the payload's `transcript_path`, its own rollout.
+// The output carries the line as `additionalContext` with a `systemMessage`.
 //
 // A skill `<plugin>:<name>` is a file the model reads:
 // the load line names the newest version's skills/<name>/SKILL.md under codex.yaml's skill_roots by absolute path.

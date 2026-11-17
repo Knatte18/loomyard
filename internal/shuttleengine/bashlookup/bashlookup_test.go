@@ -1,10 +1,11 @@
-// bashlookup_test.go pins which Bash commands the batching nudge counts as a read-only lookup.
+// bashlookup_test.go pins which shell commands count as a read-only lookup and which print a line range of one file.
 
-package claudeengine
+package bashlookup_test
 
 import (
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shuttleengine/bashlookup"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -96,8 +97,53 @@ func TestIsReadOnlyLookup(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := isReadOnlyLookup(tt.command); got != tt.want {
-				t.Errorf("isReadOnlyLookup(%q) = %t; want %t", tt.command, got, tt.want)
+			if got := bashlookup.IsReadOnlyLookup(tt.command); got != tt.want {
+				t.Errorf("IsReadOnlyLookup(%q) = %t; want %t", tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLineRangeFile pins which commands print a line range of one file, and the file each names as written.
+func TestLineRangeFile(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name    string
+		command string
+		want    string
+		wantOK  bool
+	}{
+		{"SedRange", "sed -n '10,20p' a.go", "a.go", true},
+		{"SedOneLine", "sed -n 5p a.go", "a.go", true},
+		{"SedRangeToTheEnd", "sed -n '10,$p' a.go", "a.go", true},
+		{"SedQuietLongOption", "sed --quiet 1,2p dir/a.go", "dir/a.go", true},
+		{"HeadDashCount", "head -50 a.go", "a.go", true},
+		{"HeadCountOption", "head -n 50 a.go", "a.go", true},
+		{"HeadBundledCount", "head -n50 a.go", "a.go", true},
+		{"HeadLongCount", "head --lines=50 a.go", "a.go", true},
+		{"HeadLongCountSeparate", "head --lines 50 a.go", "a.go", true},
+		{"TailFromALine", "tail -n +20 a.go", "a.go", true},
+		{"SedWithoutQuiet", "sed 1,2p a.go", "", false},
+		{"SedSubstitution", "sed -n 's/a/b/p' a.go", "", false},
+		{"SedTwoFiles", "sed -n 1,2p a.go b.go", "", false},
+		{"HeadWithoutCount", "head a.go", "", false},
+		{"HeadByteCount", "head -c 50 a.go", "", false},
+		{"TailFollow", "tail -f -n 20 a.go", "", false},
+		{"HeadOfTwoFiles", "head -n 5 a.go b.go", "", false},
+		{"HeadOfStandardInput", "head -n 5", "", false},
+		{"PipeIntoHead", "grep x a.go | head -n 5", "", false},
+		{"ChainOfTwoRanges", "sed -n 1,2p a.go; sed -n 3,4p a.go", "", false},
+		{"Cat", "cat a.go", "", false},
+		{"EmptyCommand", "", "", false},
+		{"UnterminatedQuote", "sed -n '1,2p a.go", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := bashlookup.LineRangeFile(tt.command)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("LineRangeFile(%q) = %q, %t; want %q, %t", tt.command, got, ok, tt.want, tt.wantOK)
 			}
 		})
 	}

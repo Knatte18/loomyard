@@ -26,10 +26,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// wantCreelHead returns the developer instructions of a launch that installs guards and finds no standing passage:
-// the deny notice of the rows, then the creel trust sentence.
+// wantCreelHead returns the developer instructions of an autonomous launch with guards and no standing passage.
+// They are the deny notice of the question-tool deny and the rows, then the creel trust sentence.
 func wantCreelHead(guards []shellguard.Row) string {
-	return denyNotice(guards) + " " + shuttleengine.CreelTrustSentence
+	return denyNotice(true, guards) + " " + shuttleengine.CreelTrustSentence
+}
+
+// autonomousHooks returns the tool hooks of an autonomous launch in runDir.
+// The launch installs guards, under the template's batching nudge.
+func autonomousHooks(runDir string, guards []shellguard.Row) toolHooks {
+	return toolHooks{guards: guards, questionDeny: true, batchingStatePath: filepath.Join(runDir, batchingNudgeStateFileName)}
 }
 
 func readRecord(t *testing.T, home string) trustRecord {
@@ -134,7 +140,7 @@ func TestPrepare_Launch(t *testing.T) {
 					developerInstructions: wantCreelHead(guards),
 					maxSubagentThreads:    16,
 					projectDocMaxBytes:    defaultProjectDocMaxBytes,
-					hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), guards, creelDelivery{}),
+					hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, guards), creelDelivery{}),
 					firstTurn:             launchPointer(promptPath),
 					eventsPath:            filepath.Join(runDir, "events.jsonl"),
 				}),
@@ -247,7 +253,7 @@ func TestPrepare_SandboxMode(t *testing.T) {
 				developerInstructions: wantCreelHead(installedGuards(nil, guardInputs{})),
 				maxSubagentThreads:    16,
 				projectDocMaxBytes:    defaultProjectDocMaxBytes,
-				hooks:                 hookSettings(eventsPath, installedGuards(nil, guardInputs{}), creelDelivery{}),
+				hooks:                 hookSettings(eventsPath, autonomousHooks(runDir, installedGuards(nil, guardInputs{})), creelDelivery{}),
 				firstTurn:             launchPointer(promptPath),
 				eventsPath:            eventsPath,
 			})
@@ -293,7 +299,7 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 		developerInstructions: wantCreelHead(installedGuards(nil, guardInputs{})),
 		maxSubagentThreads:    16,
 		projectDocMaxBytes:    defaultProjectDocMaxBytes,
-		hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), installedGuards(nil, guardInputs{}), creelDelivery{}),
+		hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, installedGuards(nil, guardInputs{})), creelDelivery{}),
 		firstTurn:             launchPointer(promptPath),
 		eventsPath:            filepath.Join(runDir, "events.jsonl"),
 	})
@@ -361,7 +367,7 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 				developerInstructions: wantCreelHead(guards),
 				maxSubagentThreads:    16,
 				projectDocMaxBytes:    defaultProjectDocMaxBytes,
-				hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), guards, creelDelivery{}),
+				hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, guards), creelDelivery{}),
 				firstTurn:             launchPointer(promptPath),
 				eventsPath:            filepath.Join(runDir, "events.jsonl"),
 			})
@@ -484,13 +490,81 @@ func TestPrepare_CreelHooksInAHub(t *testing.T) {
 		t.Error("Prepare() CreelHooks = false; want true for an engine told a board")
 	}
 	creel := creelDelivery{flagDir: shuttleengine.CreelFlagDir(board), home: repo.lymHome, bin: "/opt/codex/bin/codex-custom"}
-	settings := hookSettings(filepath.Join(runDir, "events.jsonl"), installedGuards(nil, guardInputs{}), creel)
+	settings := hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, installedGuards(nil, guardInputs{})), creel)
 	for _, setting := range settings {
 		if strings.HasPrefix(setting, "hooks."+hookEventStop+"=") || strings.HasPrefix(setting, "hooks."+hookEventPostToolUse+"=") {
 			if quoted := shell.ForGOOS().Quote(setting); !strings.Contains(launch.Cmd, quoted) {
 				t.Errorf("Prepare() launch line = %q; want it to hold the creel setting %s", launch.Cmd, quoted)
 			}
 		}
+	}
+}
+
+// TestPrepare_QuestionDenyAndBatchingHook pins the two tool hooks a launch's spec and codex.yaml switch.
+// An autonomous spec carries the question-tool deny and its notice, and an interactive one carries neither.
+// With the batching nudge on, Prepare seeds the state file with codex.yaml's block.
+// The line then runs the batching hook over it.
+// With the nudge off, Prepare writes no state file and the line carries no batching hook.
+func TestPrepare_QuestionDenyAndBatchingHook(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		interactive  bool
+		batchingOff  bool
+		wantDeny     bool
+		wantBatching bool
+	}{
+		{name: "Autonomous", wantDeny: true, wantBatching: true},
+		{name: "Interactive", interactive: true, wantBatching: true},
+		{name: "BatchingOff", batchingOff: true, wantDeny: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := newRepoFixture(t)
+			anchor, _ := repo.addWorktree(t, "wt")
+			if tt.batchingOff {
+				repo.writeCodexLayer(t, anchor, "batching_nudge:\n  enabled: false\n")
+			}
+			engine, _ := newEngine(anchor)
+			runDir := t.TempDir()
+
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, Interactive: tt.interactive}, shuttleengine.Config{})
+			if err != nil {
+				t.Fatalf("Prepare() error: %v", err)
+			}
+			guards := installedGuards(nil, guardInputs{})
+			tools := toolHooks{guards: guards, questionDeny: tt.wantDeny}
+			statePath := filepath.Join(runDir, batchingNudgeStateFileName)
+			if tt.wantBatching {
+				tools.batchingStatePath = statePath
+			}
+			for _, setting := range hookSettings(filepath.Join(runDir, "events.jsonl"), tools, creelDelivery{}) {
+				if quoted := shell.ForGOOS().Quote(setting); !strings.Contains(launch.Cmd, quoted) {
+					t.Errorf("Prepare() launch line = %q; want it to hold the setting %s", launch.Cmd, quoted)
+				}
+			}
+			notice := shell.ForGOOS().Quote(developerInstructionsKey + "=" + tomlString(denyNotice(tt.wantDeny, guards)+" "+shuttleengine.CreelTrustSentence))
+			if !strings.Contains(launch.Cmd, notice) {
+				t.Errorf("Prepare() launch line = %q; want developer instructions opening %s", launch.Cmd, notice)
+			}
+			data, err := os.ReadFile(statePath)
+			if !tt.wantBatching {
+				if !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("state file read error = %v; want no state file", err)
+				}
+				return
+			}
+			var seeded batchingNudgeState
+			if err != nil || json.Unmarshal(data, &seeded) != nil {
+				t.Fatalf("state file = %s, %v; want the seeded state", data, err)
+			}
+			if template, _ := LoadConfig(configengine.Dirs{Anchor: t.TempDir()}); !reflect.DeepEqual(seeded, batchingNudgeState{Settings: template.BatchingNudge}) {
+				t.Errorf("seeded state = %+v; want the template's block and no counts", seeded)
+			}
+		})
 	}
 }
 
@@ -866,7 +940,10 @@ func TestLoadConfig_Template(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error: %v", err)
 	}
-	want := Config{Home: "~/.lym/codex", OperatorHome: "~/.codex", Efforts: []string{"low", "medium", "high"}, SkillRoots: []string{"~/.claude/plugins/cache"}, SandboxMode: sandboxAuto, WritableRoots: []string{"~/.cache/go-build"}, MaxSubagentThreads: 16, PluginHookTimeout: "10s"}
+	want := Config{
+		Home: "~/.lym/codex", OperatorHome: "~/.codex", Efforts: []string{"low", "medium", "high"}, SkillRoots: []string{"~/.claude/plugins/cache"}, SandboxMode: sandboxAuto, WritableRoots: []string{"~/.cache/go-build"}, MaxSubagentThreads: 16, PluginHookTimeout: "10s",
+		BatchingNudge: BatchingNudgeConfig{Enabled: true, LookupChain: true, ReadSlice: true, EditChain: true, ContextTokens: 150000, LookupRun: 3, EditRun: 2, SliceLines: 2000, MaxNudges: 5},
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("LoadConfig() = %+v; want %+v", got, want)
 	}
@@ -947,6 +1024,11 @@ func TestLoadConfig_RefusesInvalidValues(t *testing.T) {
 		{name: "MaxSubagentThreadsNegative", layer: "max_subagent_threads: -2\n", wantKey: "max_subagent_threads"},
 		{name: "PluginHookTimeoutNotADuration", layer: "plugin_hook_timeout: soon\n", wantKey: "plugin_hook_timeout"},
 		{name: "PluginHookTimeoutZero", layer: "plugin_hook_timeout: 0s\n", wantKey: "plugin_hook_timeout"},
+		{name: "BatchingContextTokensNegative", layer: "batching_nudge:\n  context_tokens: -1\n", wantKey: "batching_nudge.context_tokens"},
+		{name: "BatchingLookupRunZero", layer: "batching_nudge:\n  lookup_run: 0\n", wantKey: "batching_nudge.lookup_run"},
+		{name: "BatchingEditRunZero", layer: "batching_nudge:\n  edit_run: 0\n", wantKey: "batching_nudge.edit_run"},
+		{name: "BatchingSliceLinesZero", layer: "batching_nudge:\n  slice_lines: 0\n", wantKey: "batching_nudge.slice_lines"},
+		{name: "BatchingMaxNudgesZero", layer: "batching_nudge:\n  max_nudges: 0\n", wantKey: "batching_nudge.max_nudges"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -959,6 +1041,44 @@ func TestLoadConfig_RefusesInvalidValues(t *testing.T) {
 			_, err := LoadConfig(dirs)
 			if !errors.Is(err, configengine.ErrInvalid) || !strings.Contains(err.Error(), tt.wantKey) {
 				t.Errorf("LoadConfig() error = %v; want an invalid-content refusal naming %s", err, tt.wantKey)
+			}
+		})
+	}
+}
+
+// TestLoadConfig_AcceptsBatchingNudgeEdges pins the batching_nudge values the validation lets through:
+// an off block is not validated, and a context_tokens of 0 is allowed while the block is on.
+func TestLoadConfig_AcceptsBatchingNudgeEdges(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	template := BatchingNudgeConfig{Enabled: true, LookupChain: true, ReadSlice: true, EditChain: true, ContextTokens: 150000, LookupRun: 3, EditRun: 2, SliceLines: 2000, MaxNudges: 5}
+	offBlock := template
+	offBlock.Enabled, offBlock.LookupRun = false, 0
+	zeroContext := template
+	zeroContext.ContextTokens = 0
+	tests := []struct {
+		name  string
+		layer string
+		want  BatchingNudgeConfig
+	}{
+		{name: "OffBlockIsNotValidated", layer: "batching_nudge:\n  enabled: false\n  lookup_run: 0\n", want: offBlock},
+		{name: "ContextTokensZeroWithTheBlockOn", layer: "batching_nudge:\n  context_tokens: 0\n", want: zeroContext},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dirs := configengine.Dirs{Anchor: t.TempDir()}
+			path := configengine.LocalFile(dirs.Anchor, "codex")
+			mkdirAll(t, filepath.Dir(path))
+			writeFile(t, path, tt.layer)
+
+			got, err := LoadConfig(dirs)
+			if err != nil {
+				t.Fatalf("LoadConfig() error: %v", err)
+			}
+			if !reflect.DeepEqual(got.BatchingNudge, tt.want) {
+				t.Errorf("LoadConfig().BatchingNudge = %+v; want %+v", got.BatchingNudge, tt.want)
 			}
 		})
 	}

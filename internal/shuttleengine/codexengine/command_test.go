@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shell"
-	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -64,10 +63,13 @@ func TestBuildLaunchCmd(t *testing.T) {
 }
 
 // TestHookSettings pins one setting per recorded hook, in order.
-// A PreToolUse setting holding every guard entry follows when guards are given, then the activity hook on every tool.
+// A PreToolUse setting follows when the launch has a deny: the question-tool deny on every tool, then every guard entry.
+// Then comes the activity hook on every tool, and the batching hook after it when the launch names a state file.
 // Each runs the command for the run's events file.
 // A creel delivery swaps the Stop setting for the merged creel Stop command and the async idle waiter.
-// It adds the creel mail hook after the activity hook.
+// It adds the creel mail hook last.
+//
+//testtiming:keep pins the exact hook setting strings and their order and the literal batching hook command, which TestPrepare_CreelHooksInAHub derives from hookSettings itself
 func TestHookSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -82,26 +84,31 @@ func TestHookSettings(t *testing.T) {
 	guards := installedGuards(nil, guardInputs{})
 	creel := creelDelivery{flagDir: "/hub/flags", home: "/h", bin: "codex"}
 	waiter := asyncHookEntry(creelWaitHookCommand(creel), creelWaitTimeoutSeconds)
+	const statePath = "/run/batching-nudge.json"
+	batching := hookEntry("*", batchingNudgeHookCommand(statePath))
 	tests := []struct {
-		name   string
-		guards []shellguard.Row
-		creel  creelDelivery
-		want   []string
+		name  string
+		tools toolHooks
+		creel creelDelivery
+		want  []string
 	}{
-		{"NoGuards", nil, creelDelivery{}, append(append([]string{}, recorded...), activity)},
-		{"Guards", guards, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPreToolUse, guardEntries(guards)...), activity)},
-		{"Creel", nil, creel, []string{
+		{"NoToolHooks", toolHooks{}, creelDelivery{}, append(append([]string{}, recorded...), activity)},
+		{"Guards", toolHooks{guards: guards}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPreToolUse, guardEntries(guards)...), activity)},
+		{"QuestionDenyBeforeTheGuards", toolHooks{guards: guards, questionDeny: true}, creelDelivery{}, append(append([]string{}, recorded...),
+			hookSetting(hookEventPreToolUse, append([]string{hookEntry("*", questionDenyCommand())}, guardEntries(guards)...)...), activity)},
+		{"BatchingAfterTheActivityHook", toolHooks{batchingStatePath: statePath}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPostToolUse, activityEntry, batching))},
+		{"CreelMailAfterTheBatchingHook", toolHooks{batchingStatePath: statePath}, creel, []string{
 			sessionStart,
 			promptSubmit,
 			hookSetting(hookEventStop, hookEntry("", creelStopHookCommand(creel.flagDir, events)), waiter),
 			permission,
-			hookSetting(hookEventPostToolUse, activityEntry, hookEntry("*", creelMailHookCommand(creel.flagDir))),
+			hookSetting(hookEventPostToolUse, activityEntry, batching, hookEntry("*", creelMailHookCommand(creel.flagDir))),
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := hookSettings(events, tt.guards, tt.creel)
+			got := hookSettings(events, tt.tools, tt.creel)
 			if len(got) != len(tt.want) {
 				t.Fatalf("hookSettings() = %d settings; want %d", len(got), len(tt.want))
 			}
@@ -120,6 +127,9 @@ func TestHookSettings(t *testing.T) {
 	}
 	if got, want := activityCommand(events), `touch '/run/activity-stamp'; printf '{}\n'`; got != want {
 		t.Errorf("activityCommand() = %s; want %s", got, want)
+	}
+	if got, want := batchingNudgeHookCommand(statePath), `out=$(lym shuttle hook-batching codex '/run/batching-nudge.json'); [ -n "$out" ] && printf '%s\n' "$out" || printf '{}\n'`; got != want {
+		t.Errorf("batchingNudgeHookCommand() = %s; want %s", got, want)
 	}
 	if want := `{hooks=[{type="command",command="CODEX_HOME='/h' LYM_CODEX_BINARY='codex' lym creel hook-wait codex",async=true,timeout=86400}]}`; waiter != want {
 		t.Errorf("idle waiter entry = %s; want %s", waiter, want)

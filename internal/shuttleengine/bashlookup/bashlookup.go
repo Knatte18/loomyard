@@ -1,9 +1,12 @@
-// bashlookup.go classes a Bash tool call's command as a read-only lookup or not, for the batching nudge's single-lookup chain:
-// a quote-aware scan splits the command into its pipe and chain segments, and a table keyed by command name judges each segment.
-
-package claudeengine
+// Package bashlookup classes a shell command for an engine's batching nudge:
+// whether it is a read-only lookup, and which file it prints a line range of.
+// A quote-aware scan splits the command into its pipe and chain segments,
+// and a table keyed by command name judges each segment.
+// Every engine whose nudge judges shell calls imports it, so the engines class a command alike.
+package bashlookup
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -31,11 +34,11 @@ var gitReadSubcommands = []string{"log", "show", "diff", "status", "blame", "gre
 // discardTarget is the one file a lookup's output redirect may name.
 const discardTarget = "/dev/null"
 
-// isReadOnlyLookup reports whether command is a read-only lookup:
+// IsReadOnlyLookup reports whether command is a read-only lookup:
 // one or more segments joined by a pipe, `;`, `&&`, `||` or a newline, each running a command of lookupCommands with arguments its check accepts.
 // A command substitution, a process substitution, a subshell, a heredoc, a background `&`, an output redirect to any file but /dev/null, an unterminated quote and an empty command are no lookup.
 // The scan reads static text and is a heuristic: an argument a listed command treats as a program, such as rg's --pre, passes, while a git read with an option that writes a file or runs a program is no lookup.
-func isReadOnlyLookup(command string) bool {
+func IsReadOnlyLookup(command string) bool {
 	segments, ok := splitShellSegments(command)
 	if !ok {
 		return false
@@ -52,6 +55,102 @@ func isReadOnlyLookup(command string) bool {
 		found = true
 	}
 	return found
+}
+
+// LineRangeFile returns the file command prints a line range of, and reports whether command is such a read.
+// The command is one segment over exactly one file, and the file is returned as the command wrote it.
+// A sed call qualifies with automatic printing off and one print script of a line or a line range.
+// An example is `sed -n '10,20p' a.go`.
+// A head or tail call qualifies with a line count, such as `head -50 a.go` or `tail -n 20 a.go`.
+func LineRangeFile(command string) (string, bool) {
+	segments, ok := splitShellSegments(command)
+	if !ok {
+		return "", false
+	}
+	var words []string
+	for _, segment := range segments {
+		if len(segment) == 0 {
+			continue
+		}
+		if words != nil {
+			return "", false
+		}
+		words = segment
+	}
+	if len(words) == 0 {
+		return "", false
+	}
+	switch words[0] {
+	case "sed":
+		return sedRangeFile(words[1:])
+	case "head", "tail":
+		return countedLinesFile(words[1:])
+	}
+	return "", false
+}
+
+// sedRangeScript matches a sed script that prints one line or one line range, such as 5p, 10,20p or 10,$p.
+var sedRangeScript = regexp.MustCompile(`^[0-9]+(,([0-9]+|\$))?p$`)
+
+// sedRangeFile returns the one file a sed call's args print a line range of.
+// It reports false unless automatic printing is off and the args, past their options, are one range script and one file.
+func sedRangeFile(args []string) (string, bool) {
+	if !sedPrintsOnly(args) {
+		return "", false
+	}
+	var operands []string
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			operands = append(operands, arg)
+		}
+	}
+	if len(operands) != 2 || !sedRangeScript.MatchString(operands[0]) {
+		return "", false
+	}
+	return operands[1], true
+}
+
+// lineCount matches the line count a head or tail option takes, such as 20, -20 or tail's +20.
+var lineCount = regexp.MustCompile(`^[+-]?[0-9]+$`)
+
+// countedLinesFile returns the one file a head or tail call's args print a counted run of lines of.
+// It reports false unless the args give a line count, as -n N, -nN, --lines=N, --lines N or -N.
+// It also reports false unless the args name exactly one file.
+// Any other option, such as a byte count or follow, is no line range.
+func countedLinesFile(args []string) (string, bool) {
+	counted := false
+	var files []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-n" || arg == "--lines":
+			if i+1 >= len(args) || !lineCount.MatchString(args[i+1]) {
+				return "", false
+			}
+			counted = true
+			i++
+		case strings.HasPrefix(arg, "--lines="):
+			if !lineCount.MatchString(strings.TrimPrefix(arg, "--lines=")) {
+				return "", false
+			}
+			counted = true
+		case strings.HasPrefix(arg, "-n"):
+			if !lineCount.MatchString(arg[2:]) {
+				return "", false
+			}
+			counted = true
+		case strings.HasPrefix(arg, "-") && lineCount.MatchString(arg):
+			counted = true
+		case strings.HasPrefix(arg, "-"):
+			return "", false
+		default:
+			files = append(files, arg)
+		}
+	}
+	if !counted || len(files) != 1 {
+		return "", false
+	}
+	return files[0], true
 }
 
 // anyArgs accepts every argument list.
@@ -118,7 +217,7 @@ func gitWritingOption(arg string) bool {
 }
 
 // splitShellSegments splits command into its segments, each its list of words with quotes removed and redirects to /dev/null dropped.
-// It reports false for a construct isReadOnlyLookup refuses outright.
+// It reports false for a construct IsReadOnlyLookup refuses outright.
 func splitShellSegments(command string) ([][]string, bool) {
 	runes := []rune(command)
 	var segments [][]string
