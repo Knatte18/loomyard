@@ -204,6 +204,7 @@ fans:
     - code-correctness
     - code-affected-set
     - code-tests
+    - code-scope
     - models-rules
 ```
 
