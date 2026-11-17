@@ -25,8 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// ErrFingerprintMismatch is the sentinel BeginBatch returns when the on-disk plan's recomputed fingerprint
-// disagrees with State.PlanFingerprint.
+// ErrFingerprintMismatch reports that the on-disk plan differs from the recorded fingerprint.
 // It guards a crashed or resumed run against a plan edited since the run recorded its fingerprint.
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 

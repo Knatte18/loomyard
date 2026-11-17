@@ -1,4 +1,4 @@
-// bashlookup.go classes a Bash tool call's command as a read-only lookup or not, for the batching nudge's single-lookup chain.
+// bashlookup.go classifies Bash commands for the batching nudge's read-only lookup chain.
 // A quote-aware scan splits the command into its pipe and chain segments.
 // A table keyed by command name judges each segment.
 

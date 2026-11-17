@@ -1259,7 +1259,7 @@ func TestLoopTeardown_LockMarkAndRunLockWait(t *testing.T) {
 	})
 }
 
-// TestRegisteredBattenAlive_ReadsADobbyDrivenRun pins that the gap between two batten passes reads as a live lifecycle owner.
+// TestRegisteredBattenAlive_ReadsADobbyDrivenRun covers ownership between batten passes.
 // It does so only while a dobby of the run's parent stands and batten's status reads running with no cancel marker.
 func TestRegisteredBattenAlive_ReadsADobbyDrivenRun(t *testing.T) {
 	tiergate.Require(t, 0)
