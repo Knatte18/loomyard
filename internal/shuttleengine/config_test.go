@@ -201,7 +201,7 @@ func TestLoadConfig_EditLoop(t *testing.T) {
 		// wantErr is the key the refusal names; empty wants no refusal.
 		wantErr string
 	}{
-		{name: "TemplateValues", wantEdits: 4, wantWindowS: 300},
+		{name: "TemplateValues", wantEdits: 3, wantWindowS: 300},
 		{name: "ZeroCountTurnsTheWatchOffWhateverTheWindow", local: "edit_loop_edits: 0\nedit_loop_window_s: 0\n"},
 		{name: "NegativeCountIsRefused", local: "edit_loop_edits: -1\n", wantErr: "edit_loop_edits"},
 		{name: "NonPositiveWindowWhileOnIsRefused", local: "edit_loop_window_s: 0\n", wantErr: "edit_loop_window_s"},

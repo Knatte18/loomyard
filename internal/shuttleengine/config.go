@@ -59,7 +59,9 @@ type Config struct {
 	// Leave it off for a hub whose work needs Python.
 	DenyPython bool `yaml:"deny_python"`
 
-	// EditLoopEdits is how many edits of one file by one agent within EditLoopWindowS make an edit loop.
+	// EditLoopEdits is how many repeat edits of one file by one agent within EditLoopWindowS make an edit loop.
+	// A repeat is an edit that leaves the file with content an earlier edit of it in the window left.
+	// An agent that makes progress leaves new content with each edit, however often it edits the file.
 	// An autonomous run's Wait reports the loop to its parent.
 	// 0 turns the watch off, and an engine then installs no edit hook.
 	// A negative value is rejected when the config loads.

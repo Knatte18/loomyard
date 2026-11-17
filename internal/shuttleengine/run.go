@@ -496,6 +496,7 @@ const ActivityStampFileName = "activity-stamp"
 // EditRecordsFileName is the file in a run directory that an engine's edit hook appends its file-edit records to.
 // It is apart from the events file.
 // The edit hook's frequent writes so never land between the payload append and the newline append of a recording hook.
+// Each record carries a hash of the edited file's content right after the edit.
 const EditRecordsFileName = "edit-records.jsonl"
 
 // Start prepares one run described by spec, registers it with reed, and returns a handle only once

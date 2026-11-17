@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
@@ -48,17 +49,31 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_CreelRegistersTheTrustedHubsReinterpretation pins that the creel module carries the change of trusted_hubs.
-// The change goes from shortnames to repository names and rewrites a hub's creel.yaml with no hand step.
-func TestModules_CreelRegistersTheTrustedHubsReinterpretation(t *testing.T) {
+// TestModules_RegisterTheirReinterpretation pins that a module carries the change a binary made to one of its values,
+// so the hub-wide reconcile rewrites a hub's file with no hand step.
+// creel carries the change of trusted_hubs from shortnames to repository names.
+// shuttle carries the change of edit_loop_edits from every edit to the edits that return a file to earlier content.
+func TestModules_RegisterTheirReinterpretation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	module, ok := Lookup("creel")
-	if !ok {
-		t.Fatal(`Lookup("creel") found no module`)
+	tests := []struct {
+		module string
+		wantID string
+	}{
+		{module: "creel", wantID: creelconfig.TrustedHubsRepositoryReinterpretation},
+		{module: "shuttle", wantID: shuttleengine.EditLoopRepeatsReinterpretation},
 	}
-	if len(module.Reinterpretations) != 1 || module.Reinterpretations[0].ID != creelconfig.TrustedHubsRepositoryReinterpretation || module.Reinterpretations[0].Rewrite == nil {
-		t.Errorf("creel Reinterpretations = %+v; want one with ID %q and a rewrite", module.Reinterpretations, creelconfig.TrustedHubsRepositoryReinterpretation)
+	for _, tt := range tests {
+		t.Run(tt.module, func(t *testing.T) {
+			t.Parallel()
+			module, ok := Lookup(tt.module)
+			if !ok {
+				t.Fatalf("Lookup(%q) found no module", tt.module)
+			}
+			if len(module.Reinterpretations) != 1 || module.Reinterpretations[0].ID != tt.wantID || module.Reinterpretations[0].Rewrite == nil {
+				t.Errorf("%s Reinterpretations = %+v; want one with ID %q and a rewrite", tt.module, module.Reinterpretations, tt.wantID)
+			}
+		})
 	}
 }
 

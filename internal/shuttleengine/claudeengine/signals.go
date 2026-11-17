@@ -200,7 +200,7 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 	return shuttleengine.SessionSignal{}, false
 }
 
-// fileEditSignal reads a PostToolUse line the edit hook recorded as a file edit.
+// fileEditSignal reads a PostToolUse line the edit hook recorded as a file edit, with the file's content hash.
 // It reports false for a line naming no file.
 func fileEditSignal(fields map[string]any) (shuttleengine.SessionSignal, bool) {
 	toolInput, _ := fields["tool_input"].(map[string]any)
@@ -209,7 +209,8 @@ func fileEditSignal(fields map[string]any) (shuttleengine.SessionSignal, bool) {
 		return shuttleengine.SessionSignal{}, false
 	}
 	agentID, _ := fields["agent_id"].(string)
-	return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalFileEdit, FilePath: filePath, AgentID: agentID}, true
+	contentHash, _ := fields[contentHashKey].(string)
+	return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalFileEdit, FilePath: filePath, AgentID: agentID, ContentHash: contentHash}, true
 }
 
 // taskNotificationPrefix opens the prompt Claude Code submits by itself when a background task or fork finishes.

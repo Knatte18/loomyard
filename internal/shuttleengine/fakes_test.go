@@ -936,9 +936,13 @@ func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, i
 		case trimmed == "ASK":
 			signal.Kind = SessionSignalAsk
 		case strings.HasPrefix(trimmed, "EDIT:"):
-			// EDIT:<agent id>:<file path>, with an empty agent id for the session's own edit.
+			// EDIT:<agent id>:<file path>:<content hash>.
+			// The agent id is empty for the session's own edit.
+			// The content hash is empty for an edit whose file the hook could not read.
 			signal.Kind = SessionSignalFileEdit
-			signal.AgentID, signal.FilePath, _ = strings.Cut(strings.TrimPrefix(trimmed, "EDIT:"), ":")
+			var rest string
+			signal.AgentID, rest, _ = strings.Cut(strings.TrimPrefix(trimmed, "EDIT:"), ":")
+			signal.FilePath, signal.ContentHash, _ = strings.Cut(rest, ":")
 		case strings.HasPrefix(trimmed, "SESSIONSTART"):
 			signal.Kind = SessionSignalSessionStart
 			signal.Source = SessionStartSource(strings.TrimPrefix(strings.TrimPrefix(trimmed, "SESSIONSTART"), ":"))

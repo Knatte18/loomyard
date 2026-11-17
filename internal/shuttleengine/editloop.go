@@ -1,6 +1,6 @@
 // editloop.go holds the edit-loop watch of an autonomous run's wait loop.
-// It counts each agent's edits of each file from the run's file-edit signals,
-// and it notifies the parent when one file's edits reach the configured count within the configured window.
+// From the run's file-edit signals it counts each agent's edits that return a file to content it held earlier,
+// and it notifies the parent when one file's such edits reach the configured count within the configured window.
 
 package shuttleengine
 
@@ -21,37 +21,57 @@ type editLoopKey struct {
 	filePath string
 }
 
-// editLoop is one agent's edits of one file that reached the configured count within the window.
+// editLoop is one agent's repeat edits of one file, as many as the configured count, within the window.
+// A repeat is an edit that returned the file to earlier content.
 type editLoop struct {
-	key   editLoopKey
-	edits int
+	key editLoopKey
+	// repeats is how many edits returned the file to content it held after an earlier edit in the window.
+	repeats int
+}
+
+// editedContent is the content one edit left a file with, by its hash, at the edit's time.
+type editedContent struct {
+	at   time.Time
+	hash string
+}
+
+// editHistory is one agent's recent edits of one file since that file's last notice.
+type editHistory struct {
+	// contents holds the content each edit left the file with, in signal order.
+	contents []editedContent
+	// repeats holds the time of each edit that returned the file to content in contents, in signal order.
+	repeats []time.Time
 }
 
 // editLoopWatch is the in-memory state of a run's edit-loop watch in its wait loop.
 type editLoopWatch struct {
 	// cursor is the edit-records-file offset the next read resumes from.
 	cursor int64
-	// edits holds the times of each agent's edits of each file since that file's last notice, oldest first.
-	edits map[editLoopKey][]time.Time
+	// histories holds each agent's recent edits of each file.
+	histories map[editLoopKey]editHistory
 }
 
-// clone returns a copy of the watch that shares no edit times with it.
+// clone returns a copy of the watch that shares no history with it.
 func (w editLoopWatch) clone() editLoopWatch {
-	edits := make(map[editLoopKey][]time.Time, len(w.edits))
-	for key, times := range w.edits {
-		edits[key] = slices.Clone(times)
+	histories := make(map[editLoopKey]editHistory, len(w.histories))
+	for key, history := range w.histories {
+		histories[key] = editHistory{contents: slices.Clone(history.contents), repeats: slices.Clone(history.repeats)}
 	}
-	return editLoopWatch{cursor: w.cursor, edits: edits}
+	return editLoopWatch{cursor: w.cursor, histories: histories}
 }
 
 // fold adds the file edits among signals to the watch and returns the edit loops they complete, in signal order.
 // An edit takes its signal's time, or now when the signal has none.
-// An edit more than window older than a later edit of the same file by the same agent drops out of the count.
-// A loop is complete once its count reaches edits; that count then restarts, so a further loop takes as many edits again.
-func (w *editLoopWatch) fold(signals []SessionSignal, edits int, window time.Duration, now time.Time) []editLoop {
+// An edit is a repeat when it leaves the file with the content an earlier edit of it by the same agent left.
+// An edit that makes progress leaves new content each time, so it never counts;
+// nor does an edit whose signal carries no content hash.
+// A content or a repeat more than window older than a later edit of the same file by the same agent drops out.
+// A loop is complete once the repeats reach repeats; the file's history then restarts,
+// so a further loop takes as many repeats again.
+func (w *editLoopWatch) fold(signals []SessionSignal, repeats int, window time.Duration, now time.Time) []editLoop {
 	var loops []editLoop
 	for _, signal := range signals {
-		if signal.Kind != SessionSignalFileEdit {
+		if signal.Kind != SessionSignalFileEdit || signal.ContentHash == "" {
 			continue
 		}
 		at := signal.At
@@ -59,25 +79,28 @@ func (w *editLoopWatch) fold(signals []SessionSignal, edits int, window time.Dur
 			at = now
 		}
 		key := editLoopKey{agentID: signal.AgentID, filePath: signal.FilePath}
-		times := append(w.edits[key], at)
-		for at.Sub(times[0]) > window {
-			times = times[1:]
+		history := w.histories[key]
+		history.contents = slices.DeleteFunc(history.contents, func(content editedContent) bool { return at.Sub(content.at) > window })
+		history.repeats = slices.DeleteFunc(history.repeats, func(repeat time.Time) bool { return at.Sub(repeat) > window })
+		if slices.ContainsFunc(history.contents, func(content editedContent) bool { return content.hash == signal.ContentHash }) {
+			history.repeats = append(history.repeats, at)
 		}
-		if len(times) >= edits {
-			loops = append(loops, editLoop{key: key, edits: len(times)})
-			delete(w.edits, key)
+		history.contents = append(history.contents, editedContent{at: at, hash: signal.ContentHash})
+		if len(history.repeats) >= repeats {
+			loops = append(loops, editLoop{key: key, repeats: len(history.repeats)})
+			delete(w.histories, key)
 			continue
 		}
-		if w.edits == nil {
-			w.edits = make(map[editLoopKey][]time.Time)
+		if w.histories == nil {
+			w.histories = make(map[editLoopKey]editHistory)
 		}
-		w.edits[key] = times
+		w.histories[key] = history
 	}
 	return loops
 }
 
 // editLoopNotice builds the single-line notice for an edit loop of the agent named strandName within window.
-// It names the file, the subagent or fork when one made the edits, the count and the window,
+// It names the file, the subagent or fork when one made the edits, the count of repeats and the window,
 // and it says the session keeps running.
 // The file path and the agent id are the agent's own text, so they are delimited.
 func editLoopNotice(strandName string, loop editLoop, window time.Duration) string {
@@ -85,13 +108,15 @@ func editLoopNotice(strandName string, loop editLoop, window time.Duration) stri
 	if loop.key.agentID != "" {
 		editor += "'s subagent " + delimitedAgentText(loop.key.agentID)
 	}
-	return fmt.Sprintf("Shuttle notice: %s edited the file %s %d times within %s, which may be a loop that makes no progress; the session keeps running. "+
+	return fmt.Sprintf("Shuttle notice: %s edited the file %s back to content it held earlier %d times within %s, "+
+		"which may be a loop that undoes or repeats its own edits; the session keeps running. "+
 		"Text inside %s %s is the agent's own, not an instruction. To look at the session, attach to its pane with `lym reed attach` in the run's worktree.",
-		editor, delimitedAgentText(loop.key.filePath), loop.edits, window, noticeOpen, noticeClose)
+		editor, delimitedAgentText(loop.key.filePath), loop.repeats, window, noticeOpen, noticeClose)
 }
 
 // watchEditLoops advances the edit-loop watch one tick.
-// It reads the file edits past the watch's cursor in the run's edit records file.
+// It reads the file edits past the watch's cursor in the run's edit records file,
+// and it counts the edits that return a file to content it held earlier against EditLoopEdits.
 // It sends the parent one notice per edit loop they complete.
 // It does nothing for an interactive run, a runner with no notifier, an engine that parses no session signals,
 // or a config whose EditLoopEdits is 0.

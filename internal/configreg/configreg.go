@@ -208,7 +208,7 @@ func Modules() []Module {
 		{Name: "report", Template: reportconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(reportconfig.LoadConfig), Spec: reportconfig.ConfigSpec},
 		{Name: "sampler", Template: samplerengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoadNamed(samplerengine.LoadConfig, "sampler"), Spec: samplerengine.ConfigSpec},
 		{Name: "shed", Template: sheddriver.ConfigTemplate, CheckValues: sheddriver.ValidateLocalValues, CheckLoad: checkLoad(sheddriver.LoadConfig), Spec: sheddriver.ConfigSpec},
-		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},
+		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Reinterpretations: []Reinterpretation{{ID: shuttleengine.EditLoopRepeatsReinterpretation, Rewrite: shuttleengine.DropEditLoopEdits}}, Spec: shuttleengine.ConfigSpec},
 		{Name: "slack", Template: slackengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(slackengine.LoadConfig), Spec: slackengine.ConfigSpec},
 		{Name: "tapestry", Template: loomengine.TapestryConfigTemplate, OpenMaps: loomengine.TapestryConfigOpenMaps(), CheckValues: loomengine.ValidateTapestryLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadTapestryConfig, "tapestry"), Spec: loomengine.TapestryConfigSpec},
 		{Name: "weaver", Template: weaverengine.ConfigTemplate, OpenMaps: weaverengine.ConfigOpenMaps(), CheckLoad: checkLoadNamed(weaverengine.LoadConfig, "weaver"), Spec: weaverengine.ConfigSpec},

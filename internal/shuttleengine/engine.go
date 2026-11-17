@@ -314,10 +314,13 @@ const EditHookVerb = "hook-edit"
 // EditRecorder is an optional capability of an engine:
 // the after-edit hook that records each file edit in the run's edit records file.
 // It records the edits of the session's subagents and forks too.
-// The engine's SessionSignalParser reads each such record back as a SessionSignalFileEdit.
+// Each record carries a hash of the edited file's content right after the edit.
+// The engine's SessionSignalParser reads each such record back as a SessionSignalFileEdit with that hash.
+// An edit recorded with no hash never counts toward an edit loop.
 // An engine without it installs no such hook, so its runs get no edit-loop notice.
 type EditRecorder interface {
 	// RecordEdit appends the file edit the hook input payload describes to the edit records file at recordsPath.
+	// The record carries the hash of the file's content right after the edit.
 	// A payload that names no edited file appends nothing.
 	RecordEdit(recordsPath string, payload []byte) error
 }

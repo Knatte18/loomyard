@@ -308,8 +308,10 @@
 // RecordEdit appends a stamp line and a slim PostToolUse line to the edit records file.
 // Its writes so never land inside a recording hook's line in the events file.
 // The slim line keeps only the session id, the agent id, the tool name and `tool_input.file_path`.
+// It adds lym's own `content_hash`, the SHA-256 of the file's content as the hook reads it after the edit.
 // Claude Code's full payload carries the edit's text and the file's content.
-// ParseSessionSignals reads that line as a SessionSignalFileEdit, which shuttle's edit-loop watch counts.
+// ParseSessionSignals reads that line as a SessionSignalFileEdit with its content hash.
+// Shuttle's edit-loop watch compares those hashes to tell an edit that returns the file to earlier content.
 //
 // The batching nudge (BatchingNudger) is a PostToolUse hook that adds one line to the calling chain's context.
 // It does so when the chain's recent calls break lym's batching rules, and it never denies a call.

@@ -220,19 +220,27 @@
 // The offset is kept apart from RunState.NotifiedOffset, so a hold notice and a dialog notice never suppress each other.
 // The notice is never typed into the pane and changes no outcome.
 //
-// A third notice covers an edit loop: one agent editing one file again and again.
+// A third notice covers an edit loop: one agent undoing or repeating its own edits of one file.
 // It goes out in the same runs and through the same notifier as the dialog notice.
-// An engine's edit hook appends each file edit to the run's edit records file, which EditRecordsFileName names,
-// and the engine's SessionSignalParser reports it with its file.
+// An engine's edit hook appends each file edit to the run's edit records file, which EditRecordsFileName names.
+// Each record carries a hash of the file's content right after the edit,
+// and the engine's SessionSignalParser reports it with its file and that hash.
 // The records go to that file, apart from the events file,
 // so the hook's frequent writes never split a recording hook's line.
 // The signal also names the subagent or fork that made the edit, by its id.
-// Wait counts each agent's edits of each file at the signal's time, or the run clock's when the signal has none.
-// Once Config.EditLoopEdits of them fall within Config.EditLoopWindowS seconds, it sends one notice line.
-// It then restarts that count.
+// Wait keeps each agent's edits of each file at the signal's time, or the run clock's when the signal has none.
+// It counts as a repeat only an edit that leaves the file with the content an earlier edit of it left.
+// A fixer applying several findings to one file leaves new content with each edit and so draws no notice.
+// So does a writer whose output is one document.
+// Once Config.EditLoopEdits repeats fall within Config.EditLoopWindowS seconds, it sends one notice line.
+// It then restarts that file's count.
 // The line names the strand, the file, the subagent or fork when one made the edits, the count and the window.
 // It says the session keeps running.
 // An EditLoopEdits of 0 turns the watch off, and an engine then installs no edit hook.
+// The key once counted every edit.
+// DropEditLoopEdits, the module's reinterpretation EditLoopRepeatsReinterpretation, drops a hub's 0 or null value once,
+// and the template's count then applies.
+// It leaves any other count in the file and flags it with the way to set a count of repeats.
 // While a pause covers the run Wait reads no edits, so the edits made then are counted once it lifts.
 // RunState.EditLoopNotifiedOffset is the edit-records-file offset past the batch of the latest notice.
 // It is persisted before the notifier is called.
