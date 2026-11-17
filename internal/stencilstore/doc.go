@@ -27,6 +27,9 @@
 // Reconcile runs once per process, so each of those lines appears once per process.
 // The caller tells the drift warning its build-ancestry input through Source, because stencilstore runs no git.
 //
+// Pins hashes each installed board copy's body, so a caller can record what a run may render when it starts.
+// ChangedPins reports the pinned stencils whose board copy changed or is gone since.
+//
 // # Engine blocks
 //
 // An engine block is an include whose text differs by the engine a stencil is rendered for.

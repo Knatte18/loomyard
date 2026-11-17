@@ -50,6 +50,12 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		_ = bootstrapLock.Release()
 		output.Ok(out, fields)
 	}
+	// succeedAfterWake reports a run whose driver this call put to work.
+	// It releases the bootstrap lock before the stencil check, so the notice's post never runs under the lock.
+	succeedAfterWake := func(fields map[string]any) {
+		_ = bootstrapLock.Release()
+		output.Ok(out, withChangedStencils(fields, c.warnChangedStencils()))
+	}
 
 	// The status lock lives in the ephemeral scratch directory.
 	// A pair re-created from its branch lacks that directory while the status file is there.
@@ -132,7 +138,7 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 					refuse(resumeRefusal{message: err.Error()})
 					return
 				}
-				succeed(map[string]any{"run_id": runID, "state": string(status.State), "message": "a Go driver was spawned", "pid": pid})
+				succeedAfterWake(map[string]any{"run_id": runID, "state": string(status.State), "message": "a Go driver was spawned", "pid": pid})
 				return
 			}
 		}
@@ -161,7 +167,7 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		refuse(resumeRefusal{message: err.Error()})
 		return
 	}
-	succeed(map[string]any{"run_id": runID, "state": string(status.State), "message": "the parked driver was woken", "stop_report": reportPath})
+	succeedAfterWake(map[string]any{"run_id": runID, "state": string(status.State), "message": "the parked driver was woken", "stop_report": reportPath})
 }
 
 // awaitingResumability decides whether a run awaiting at row may take the halted path.
@@ -248,7 +254,10 @@ Reach for it in the task worktree after "lym loom circling accept" or
 "lym loom circling continue", or whenever a run halted at a hand-back should
 carry on with the driver it already has. A done run, and a running run whose
 driver is live, are a no-op success; a resumed run's envelope names the
-stop-report path.
+stop-report path. A run that spawns or wakes a driver lists under
+"stencils_changed" each stencil whose installed copy changed since the run
+started, and the parent orch is told to inspect each with "lym stencil diff",
+which compares it with its shipped default and its board copy.
 
 Each refusal names its way forward: "lym loom start" when no run or no usable
 driver strand exists, the circling verbs at a review segment awaiting a

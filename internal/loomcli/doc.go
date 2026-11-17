@@ -191,6 +191,9 @@
 // A first seed clears the friction directory first, so the clear is committed with the seed.
 // Notes the fabric carried in, such as a beam pawl run's halt note, never reach the task's reflection.
 // They do not leave Preflight a dirty worktree.
+// A first seed also pins the stencils the run may render:
+// the run's `shedrun.StencilPins` record holds the body hash of every installed registry stencil.
+// The record is committed with the seed, and a re-entry keeps it.
 // An unseeded run is seeded with the driver `shed.yaml`'s `driver_kind` and its layers resolve to, `llm` by default;
 // a seeded run keeps its recorded driver whatever the key says later.
 // It brings up the worktree's tmux session;
@@ -313,6 +316,13 @@
 //     refused over an unfinished merge with `merge_in_progress`;
 //     otherwise refused naming `lym batten run <slug>` from the prime and then resume for a dead strand,
 //     and `lym loom start` for a retiring strand or none.
+//
+// A start or a resume that spawns or wakes a driver compares the run's stencil pins with the installed stencils.
+// A start that finds a driver already working resumes nothing and compares nothing.
+// One notice to the run's parent orch names each pinned stencil whose board copy changed or is gone.
+// The notice names `lym stencil diff` as the way to inspect each one against its shipped default and its board copy.
+// The envelope lists the same stencils under `stencils_changed`.
+// A run with no pins warns of nothing, and a failed read, compare or post is logged and never fails the verb.
 //
 // The driver strand is read from reed's directory, which still lists a session that died with the machine.
 // It is never read from the run's seed;

@@ -48,6 +48,8 @@ type resumeEnvelope struct {
 	Message    string    `json:"message"`
 	StopReport string    `json:"stop_report"`
 	Conflicts  *[]string `json:"conflicts"`
+	// StencilsChanged lists the stencils changed since the run started.
+	StencilsChanged []string `json:"stencils_changed"`
 }
 
 // newResumeVerbReceiver builds a receiver for the resume verb over the shared temp-directory fixture.

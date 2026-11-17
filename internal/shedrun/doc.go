@@ -63,6 +63,10 @@
 // When known, the prime's batten scratch directory and the Run-Shed row's name follow on the next two.
 // ParseBattenWatched reads it back, and a one-line marker parses with an empty scratch directory and row.
 //
+// StencilPinsFile is the durable record under RunDir of the stencils a run may render, as installed at its first seed.
+// It maps each stencil's name to its body hash then; WriteStencilPins writes it and ReadStencilPins reads it.
+// StencilPinsRel is its anchor-relative form, which the seed's commit takes.
+//
 // WakeRecord is the ephemeral wake record under ScratchDir.
 // WriteWakeStamp writes it after a row completes a wake.
 // ReadWakeStamp reads it back by row, found only for the row that wrote it.

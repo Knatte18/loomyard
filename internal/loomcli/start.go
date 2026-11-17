@@ -314,16 +314,18 @@ func (c *loomCLI) vouchForSpawnedResume() {
 // lockHeld is the go arm's handshake seam, built by the caller over the real driver lock in production.
 // A test substitutes a counting fake to prove the handshake is never consulted on an llm-seeded bootstrap.
 //
-// Every failure return releases bootstrapLock before it reports on out's envelope, and returns false;
+// Every failure return releases bootstrapLock before it reports on out's envelope, and returns false, false;
 // the caller then returns at once, without a second release.
 // On success it returns true and leaves bootstrapLock held for the caller to release.
-func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driver string, bootstrapLock *lock.FileLock, lockHeld func() (bool, error)) bool {
+// Its second result reports whether this invocation put a driver to work, by a spawn or by waking a parked driver.
+// It is false for a working driver left alone.
+func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driver string, bootstrapLock *lock.FileLock, lockHeld func() (bool, error)) (bool, bool) {
 	runLockPath := c.shedPaths.LockPath
 	probe, runLockFree, err := lock.TryAcquireWriteLock(runLockPath)
 	if err != nil {
 		_ = bootstrapLock.Release()
 		clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
-		return false
+		return false, false
 	}
 	if runLockFree {
 		_ = probe.Release()
@@ -333,7 +335,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	if err != nil {
 		_ = bootstrapLock.Release()
 		clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
-		return false
+		return false, false
 	}
 
 	// The strand table is read once here, through the driverPaneProbe.Strands() seam.
@@ -342,7 +344,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	if err != nil {
 		_ = bootstrapLock.Release()
 		clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
-		return false
+		return false, false
 	}
 	driverAction, driverGUID := resolveDriverStrandAction(strands)
 	if driverAction == driverStrandRetiring {
@@ -350,7 +352,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		if err := c.driverPaneProbe.RemoveDriverStrand(driverGUID); err != nil {
 			_ = bootstrapLock.Release()
 			clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
-			return false
+			return false, false
 		}
 		driverAction, driverGUID = driverStrandNone, ""
 	}
@@ -371,10 +373,10 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		if err != nil {
 			_ = bootstrapLock.Release()
 			clihelp.SetExit(ctx, output.Err(out, statusReadFailedMessage(err)))
-			return false
+			return false, false
 		}
 		if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock, retryStart, producer) {
-			return false
+			return false, false
 		}
 	}
 	if mustSpawn {
@@ -382,7 +384,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			if err := os.Remove(stale); err != nil && !errors.Is(err, os.ErrNotExist) {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
-				return false
+				return false, false
 			}
 		}
 		c.vouchForSpawnedResume()
@@ -392,10 +394,10 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 				_ = bootstrapLock.Release()
 				if errors.Is(err, shuttleengine.ErrSessionBusy) {
 					clihelp.SetExit(ctx, output.ErrFields(out, driverBusyMessage(err, retryStart), map[string]any{"kind": shedrun.StartDriverBusyKind}))
-					return false
+					return false, false
 				}
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return false
+				return false, false
 			}
 		} else {
 			// No marker: a running run's driver is working, so there is nothing to do.
@@ -405,12 +407,12 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			if err != nil {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, statusReadFailedMessage(err)))
-				return false
+				return false, false
 			}
 			if handBack != "" {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.ErrFields(out, driverNotParkedMessage(handBack, retryStart), map[string]any{"kind": shedrun.StartNotParkedKind}))
-				return false
+				return false, false
 			}
 		}
 	}
@@ -421,7 +423,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		if err != nil {
 			_ = bootstrapLock.Release()
 			clihelp.SetExit(ctx, output.Err(out, err.Error()))
-			return false
+			return false, false
 		}
 	} else if mustSpawn {
 		// The seam reaps the child in the background.
@@ -431,7 +433,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		if err != nil {
 			_ = bootstrapLock.Release()
 			clihelp.SetExit(ctx, output.Err(out, err.Error()))
-			return false
+			return false, false
 		}
 		childPID = pid
 	}
@@ -460,13 +462,13 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		if err != nil {
 			_ = bootstrapLock.Release()
 			clihelp.SetExit(ctx, output.Err(out, err.Error()))
-			return false
+			return false, false
 		}
 		driverLogPath := loomengine.LoomDriverLog(c.location)
 		if dispositionForHandshake(result) == handshakeRefuse {
 			_ = bootstrapLock.Release()
 			clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take its driver lock; see "+driverLogPath+" for why the driver exited; way forward: lym loom start"))
-			return false
+			return false, false
 		}
 		if result == awaitRunLockChildDied {
 			// Not a failure: the driver ran to completion and exited before the handshake's first poll.
@@ -483,7 +485,19 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		}
 	}
 
-	return true
+	return true, mustSpawn || parkedLive
+}
+
+// startSuccessFields returns the fields of `start`'s success envelope.
+// When this start put a driver to work, it warns the parent orch of the stencils changed since the run started.
+// It lists them in the envelope too.
+// A start that resumed nothing warns of nothing, so the parent gets no duplicate notice.
+func (c *loomCLI) startSuccessFields(driver, slug string, putDriverToWork bool) map[string]any {
+	fields := startEnvelopeFields(driver, slug, shedrun.ResolveRunID(c.location, c.runID), c.shedPaths.StatusPath)
+	if !putDriverToWork {
+		return fields
+	}
+	return withChangedStencils(fields, c.warnChangedStencils())
 }
 
 // startCmd builds the `start` subcommand: the session bootstrap.
@@ -509,7 +523,11 @@ hand-back that waits on start to carry the run on.
 
 It returns once the driver is up and never attaches to the session; watch it
 with "lym reed attach". The envelope carries the run's driver, slug, run id
-and status file.
+and status file. A run's first start pins the installed stencils; a later
+start that spawns or wakes a driver lists under "stencils_changed" each one
+that changed since, and the parent orch is told to inspect each with
+"lym stencil diff", which compares it with its shipped default and its board
+copy.
 
 It refuses with the kind "merge_in_progress" while the worktree holds an
 unfinished merge, naming the conflicted paths and the remedy, and with the
@@ -613,7 +631,8 @@ Example:
 			// The go arm's handshake seam is the real driver lock, which `lym loom drive` takes first and holds for life.
 			// The lock-held check is a parameter so a test can substitute a counting fake.
 			// The fake proves the handshake is never consulted on an llm-seeded bootstrap.
-			if !c.runDriverSpawnAndWait(ctx, out, driver, bootstrapLock, c.driverLockHeld) {
+			proceeded, putDriverToWork := c.runDriverSpawnAndWait(ctx, out, driver, bootstrapLock, c.driverLockHeld)
+			if !proceeded {
 				return nil
 			}
 
@@ -622,8 +641,7 @@ Example:
 			// attaching is `lym reed attach`.
 			_ = bootstrapLock.Release()
 
-			runID := shedrun.ResolveRunID(c.location, c.runID)
-			output.Ok(out, startEnvelopeFields(driver, slug, runID, c.shedPaths.StatusPath))
+			output.Ok(out, c.startSuccessFields(driver, slug, putDriverToWork))
 			return nil
 		},
 	}

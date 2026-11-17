@@ -189,7 +189,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 
 			var out bytes.Buffer
 			bl := acquireTestBootstrapLock(t, lockPath)
-			ok := c.runDriverSpawnAndWait(context.Background(), &out, tc.driver, bl, noopLockHeld)
+			ok, _ := c.runDriverSpawnAndWait(context.Background(), &out, tc.driver, bl, noopLockHeld)
 
 			if ok {
 				t.Fatalf("runDriverSpawnAndWait() = true; want a refusal")
@@ -231,7 +231,7 @@ func TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed(t *testing.T)
 		c.midMerge = fake.probe
 
 		bl := acquireTestBootstrapLock(t, lockPath)
-		ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bl, noopLockHeld)
+		ok, _ := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bl, noopLockHeld)
 
 		if !ok {
 			t.Fatal("runDriverSpawnAndWait() = false; want true")
@@ -250,7 +250,7 @@ func TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed(t *testing.T)
 
 		var out bytes.Buffer
 		bl := acquireTestBootstrapLock(t, lockPath)
-		ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bl, noopLockHeld)
+		ok, _ := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bl, noopLockHeld)
 
 		if ok {
 			t.Fatal("runDriverSpawnAndWait() = true; want a refusal")
@@ -304,7 +304,7 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 
 			var out bytes.Buffer
 			bl := acquireTestBootstrapLock(t, lockPath)
-			ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bl, noopLockHeld)
+			ok, _ := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bl, noopLockHeld)
 
 			if ok {
 				t.Fatal("runDriverSpawnAndWait() = true; want a refusal")
