@@ -238,6 +238,12 @@
 // `_lym` arrives from `structuralCommittedDirs`, not from `pathspec`.
 // Any tracked `_lym` content is therefore committed without a pathspec entry.
 //
+// `Fabric.Commit` refuses, before any lock, a commit that would add a secret file on either side.
+// A secret file is a new path, untracked or staged as added, that `internal/secretpath` matches:
+// a pattern lym ships, or one `fabric.yaml`'s `secret_paths` key adds.
+// A tracked file is never refused.
+// `LoadSecretPathMatcher` hands the same matcher to a module that checks its own commits.
+//
 // `configsync.ReconcileAll` -> `yamlengine.Reconcile` never rewrites a `pathspec:` key present in a `fabric.yaml`.
 // It only adds the key when it is absent entirely.
 // A worktree whose `fabric.yaml` records `pathspec: _pattern` keeps it until its repo is re-cloned.

@@ -1,6 +1,6 @@
 // template_test.go — tests for the fabric ConfigTemplate generator.
 //
-// Covers: ConfigTemplate returns valid YAML with its three expected keys.
+// Covers: ConfigTemplate returns valid YAML with its expected keys.
 // It also resolves to the correct defaults when the environment is empty.
 
 package fabricengine
@@ -16,8 +16,8 @@ import (
 )
 
 // TestConfigTemplate covers the generated template, resolved against an empty environment:
-// it is valid YAML carrying the branch_prefix, pathspec and warp_exclude keys;
-// branch_prefix resolves to an empty string;
+// it is valid YAML carrying the branch_prefix, pathspec, warp_exclude and secret_paths keys;
+// branch_prefix and secret_paths resolve to an empty string;
 // pathspec resolves to an empty set, whatever the environment.
 // _lym and .lym are structural and injected in code, so the key never supplies them;
 // an empty default leaves pathspec free to name only the optional per-repo directories the operator adds.
@@ -25,7 +25,7 @@ import (
 // warp_exclude resolves to exactly CLAUDE.local.md, AGENTS.override.md, .heddle and .claude/settings.local.json;
 // and an empty pathspec leaves the routing set and the wired-name set at their structural sets alone.
 //
-//testtiming:keep the config template being valid YAML with its three keys, resolving to an empty branch prefix, an empty pathspec and the default warp exclude paths, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep the config template being valid YAML with its keys, resolving to an empty branch prefix, an empty pathspec, no added secret-file pattern and the default warp exclude paths, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
 func TestConfigTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -36,7 +36,7 @@ func TestConfigTemplate(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(got), &template); err != nil {
 		t.Fatalf("ConfigTemplate() is not valid YAML: %v", err)
 	}
-	for _, key := range []string{"branch_prefix", "pathspec", "warp_exclude"} {
+	for _, key := range []string{"branch_prefix", "pathspec", "warp_exclude", "secret_paths"} {
 		if _, ok := template[key]; !ok {
 			t.Errorf("ConfigTemplate() missing expected key: %s", key)
 		}
@@ -79,6 +79,9 @@ func TestConfigTemplate(t *testing.T) {
 
 	if got, want := cfg.WarpExcludePaths(), []string{"CLAUDE.local.md", "AGENTS.override.md", ".heddle", ".claude/settings.local.json"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("cfg.WarpExcludePaths() = %v; want %v", got, want)
+	}
+	if cfg.SecretPaths != "" {
+		t.Errorf("cfg.SecretPaths = %q; want empty", cfg.SecretPaths)
 	}
 
 	if len(cfg.Dirs()) != 0 {

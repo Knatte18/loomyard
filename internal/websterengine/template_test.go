@@ -485,6 +485,15 @@ func TestMasterTemplate_QuotesBulletLists(t *testing.T) {
 	}
 }
 
+// TestMasterTemplate_QuotesSecretFileFailureReason asserts the secret-file rung quotes the failure's reason text.
+// Rewording the reason in code then breaks the rung's match.
+func TestMasterTemplate_QuotesSecretFileFailureReason(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
+	requireContains(t, text, "`"+websterengine.SecretFileFailureReason+"`")
+}
+
 // TestTemplates_FillRequiresEveryRequiredMarker asserts that every template fills when all markers are supplied.
 // It also asserts that a fill missing any one required marker fails, naming that marker.
 // The optional markers are excluded from the deletion sweep: deleting one must not error.

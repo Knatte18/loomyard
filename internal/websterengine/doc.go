@@ -406,6 +406,15 @@
 // A correctness finding fails the batch on its merits instead of wedging it.
 // The batch goes terminal with digest status failed and its reasons.
 // The report is archived, and record-batch returns *BatchFailedError naming `lym webster recover-batch`.
+// A batch whose commits add a secret file fails the same way, whatever its report says.
+// A secret file is a path that RecordDeps.SecretPaths matches.
+// Some commit from the batch's start commit to its head must add it, whether or not a later commit deletes it.
+// A batch that also trips a correctness finding fails on the secret file instead, so the way forward names the file.
+// The file sits in the branch's history, and recover-batch would build on the commits that hold it.
+// Master therefore stops with outcome stuck on this failure.
+// The run's parent then resets the batch to its start.
+// The reset drops the commits and the files they added.
+// The parent then recovers the batch.
 // recover-batch proceeds from a failed batch and hands its strand the failure digest.
 // The exception is a batch failed on a correctness finding the recovery check cannot verify.
 // Such a finding has no path or a path outside the tracked tree and the plan directory.

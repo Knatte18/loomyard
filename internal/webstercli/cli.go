@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/secretpath"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -111,6 +112,10 @@ type websterCLI struct {
 	// parentBranch lazily reads the pair's recorded parent branch from fabric's origin record.
 	// The clean-parent-merge rule needs it; standalone leaves it nil, since no merge commit is accepted.
 	parentBranch websterengine.ParentBranchFunc
+	// secretPaths lazily loads the secret-file matcher record-batch checks a batch's commits against.
+	// wireHub sets it to read fabric.yaml, so no other verb loads it;
+	// standalone leaves it nil, and record-batch then checks lym's shipped patterns alone.
+	secretPaths func() (secretpath.Matcher, error)
 	// runProcDir is the hub-level directory holding the owner records of a run's processes; wireHub sets it.
 	// pairSlugRead lazily reads the worktree's pair slug from fabric's origin record; it stays nil in standalone.
 	runProcDir   string

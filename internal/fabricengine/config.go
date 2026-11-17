@@ -1,5 +1,6 @@
 // config.go holds fabric's configuration: the Config type, its layered-load spec and LoadConfig.
-// Config carries the warp branch prefix, the weft-sync pathspec and the warp exclude list, all in fabric.yaml.
+// Config carries the keys of fabric.yaml.
+// They are the warp branch prefix, the weft-sync pathspec, the warp exclude list and the hub's secret-file patterns.
 // LoadConfig resolves the fabric config file strictly through internal/configengine.Load and ConfigTemplate().
 // The fabric module never reads config files or knows their layout itself.
 
@@ -10,17 +11,44 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/secretpath"
 	"gopkg.in/yaml.v3"
 )
 
 // ExcludeListKey is fabric.yaml's key holding the warp exclude list.
 const ExcludeListKey = "warp_exclude"
 
-// Config holds the settings every pair shares: the warp branch prefix, the weft-sync pathspec and the warp exclude list.
+// SecretPathsKey is fabric.yaml's key holding the secret-file patterns a hub adds to the ones lym ships.
+const SecretPathsKey = "secret_paths"
+
+// Config holds the settings every pair shares:
+// the warp branch prefix, the weft-sync pathspec, the warp exclude list and the hub's secret-file patterns.
 type Config struct {
 	BranchPrefix string `yaml:"branch_prefix"`
 	Pathspec     string `yaml:"pathspec"`
 	WarpExclude  string `yaml:"warp_exclude"`
+	SecretPaths  string `yaml:"secret_paths"`
+}
+
+// SecretPathMatcher returns the matcher over lym's shipped secret-file patterns and the ones SecretPaths adds.
+// SecretPaths is split on whitespace.
+// A malformed added pattern is an error wrapping configengine.ErrInvalid that names the key.
+func (c Config) SecretPathMatcher() (secretpath.Matcher, error) {
+	m, err := secretpath.New(strings.Fields(c.SecretPaths))
+	if err != nil {
+		return secretpath.Matcher{}, fmt.Errorf("%w: fabric.yaml's %s: %w", configengine.ErrInvalid, SecretPathsKey, err)
+	}
+	return m, nil
+}
+
+// LoadSecretPathMatcher loads fabric configuration under dirs and returns its SecretPathMatcher.
+// It serves a module that refuses a secret file in commits fabric does not make.
+func LoadSecretPathMatcher(dirs configengine.Dirs) (secretpath.Matcher, error) {
+	cfg, err := LoadConfig(dirs)
+	if err != nil {
+		return secretpath.Matcher{}, err
+	}
+	return cfg.SecretPathMatcher()
 }
 
 // Dirs returns the pathspec as a slice of directory names, split on whitespace.
@@ -35,7 +63,8 @@ func (c Config) WarpExcludePaths() []string {
 }
 
 // ConfigSpec returns fabric's layered-load spec.
-// Each key either shapes a pair at creation or reaches every worktree through the repository-wide exclude file.
+// A key shapes a pair at creation, or it reaches every worktree through the repository-wide exclude file.
+// The secret-file key configures the guard on every commit.
 // Every pair converges to the same value for each key, so none may be set in the local layer.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
@@ -46,6 +75,7 @@ func ConfigSpec() configengine.Spec {
 			"branch_prefix": configengine.CategoryCrossPair,
 			"pathspec":      configengine.CategoryCrossPair,
 			ExcludeListKey:  configengine.CategoryCrossPair,
+			SecretPathsKey:  configengine.CategoryGuard,
 		},
 	}
 }

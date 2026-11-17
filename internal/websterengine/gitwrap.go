@@ -445,6 +445,15 @@ func treePathsWithBlob(worktree, commit, blob string) ([]string, error) {
 	return paths, nil
 }
 
+// addedPaths returns, sorted, the repository-relative paths that a commit in base..head adds over its first parent.
+func addedPaths(worktree, base, head string) ([]string, error) {
+	paths, err := gitrepo.New(worktree).AddedFilesInCommits(base, head)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: paths added between %s and %s in %s: %w", base, head, worktree, err)
+	}
+	return paths, nil
+}
+
 // shaExists reports whether sha names a commit in worktree's repository.
 func shaExists(worktree, sha string) bool {
 	return gitrepo.New(worktree).SHAExists(sha)

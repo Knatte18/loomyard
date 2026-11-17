@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/secretpath"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
@@ -225,6 +226,9 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 			return "", fmt.Errorf("the pair has no fabric origin record")
 		}
 		return origin.ParentBranch, nil
+	}
+	c.secretPaths = func() (secretpath.Matcher, error) {
+		return fabricengine.LoadSecretPathMatcher(fabricengine.ConfigDirs(loc))
 	}
 	c.runProcDir = fabricengine.RunProcDir(loc.HubPath)
 	c.pairSlugRead = func() string { return originPairSlug(loc) }

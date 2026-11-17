@@ -1,7 +1,7 @@
 // config_test.go — unit tests for fabricengine.LoadConfig.
 //
 // Covers: happy-path with template keys present, branch_prefix/pathspec parsing, and environment variable resolution;
-// and the not-initialized error path.
+// the not-initialized error path; and the secret-file matcher a hub's secret_paths yields.
 
 package fabricengine_test
 
@@ -114,6 +114,7 @@ func TestLoadConfig(t *testing.T) {
 	for _, tt := range []struct{ key, line string }{
 		{"pathspec", "pathspec: docs\n"},
 		{"warp_exclude", "warp_exclude: x\n"},
+		{"secret_paths", "secret_paths: x\n"},
 	} {
 		t.Run("a local "+tt.key+" is refused naming the local file and the key", func(t *testing.T) {
 			board, anchor := t.TempDir(), t.TempDir()
@@ -138,6 +139,54 @@ func TestLoadConfig(t *testing.T) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 				}
+			}
+		})
+	}
+}
+
+// TestLoadSecretPathMatcher covers the matcher a hub's fabric.yaml yields:
+// each pattern secret_paths adds refuses its paths, the shipped patterns still apply beside them,
+// and a malformed added pattern fails as invalid config naming the key.
+func TestLoadSecretPathMatcher(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name        string
+		content     string
+		path        string
+		wantPattern string
+		wantErr     bool
+	}{
+		{name: "AddedBaseNamePattern", content: "secret_paths: \"*.key vault/*\"\n", path: "tls/server.key", wantPattern: "*.key"},
+		{name: "AddedSlashPattern", content: "secret_paths: \"*.key vault/*\"\n", path: "vault/token", wantPattern: "vault/*"},
+		{name: "ShippedPatternStillApplies", content: "secret_paths: \"*.key\"\n", path: "config/.env", wantPattern: ".env"},
+		{name: "EmptyKeyMatchesNoOrdinaryFile", content: "secret_paths: \"\"\n", path: "tls/server.key"},
+		{name: "MalformedPattern", content: "secret_paths: \"[unclosed\"\n", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			board := t.TempDir()
+			if err := os.MkdirAll(configengine.ConfigDir(board), 0o755); err != nil {
+				t.Fatalf("failed to create _lym/config: %v", err)
+			}
+			if err := os.WriteFile(configengine.ConfigFile(board, "fabric"), []byte(tt.content), 0o644); err != nil {
+				t.Fatalf("failed to write config: %v", err)
+			}
+
+			m, err := fabricengine.LoadSecretPathMatcher(configengine.Dirs{Board: board})
+			if tt.wantErr {
+				if !errors.Is(err, configengine.ErrInvalid) || !strings.Contains(err.Error(), fabricengine.SecretPathsKey) {
+					t.Fatalf("LoadSecretPathMatcher() error = %v; want ErrInvalid naming %s", err, fabricengine.SecretPathsKey)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadSecretPathMatcher() error = %v", err)
+			}
+			pattern, matched := m.Match(tt.path)
+			if pattern != tt.wantPattern || matched != (tt.wantPattern != "") {
+				t.Errorf("Match(%q) = (%q, %v); want (%q, %v)", tt.path, pattern, matched, tt.wantPattern, tt.wantPattern != "")
 			}
 		})
 	}

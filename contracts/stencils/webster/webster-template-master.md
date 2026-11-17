@@ -176,6 +176,10 @@ You message your parent only on the `waiting` rung below and under "A parent dec
   Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.
 - `record-batch` refuses with `{"batch_failed": true}` → the batch is already terminal-failed and its report archived: run `lym webster recover-batch <NN>` backgrounded, then follow the recover-batch rungs above.
   When the refusal's message names a plan edit as its way forward (a later card still references a symbol the batch deletes), that edit is not Master's to make: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop without calling `recover-batch`.
+- `record-batch` refuses with `{"batch_failed": true}` and a message containing `the batch's commits add a secret file` → the batch's commits hold a secret file that now sits in the branch's history, and `recover-batch` would build on those commits.
+  Only the run's parent can reset the batch, since the reset refuses while the run holds its lock.
+  Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop without calling `recover-batch`.
+  This rung takes precedence over the `batch_failed` rung above.
 - `record-batch <NN>` or `recover-batch <NN>` refuses with a head mismatch whose way forward names `lym webster reset --to report-head --batch <NN>` → run that reset, then re-run the refused verb once.
   A refusal of the reset, a second head mismatch, or a way forward that also needs a parent merge-in redone ends the run: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop, since a merge-in is not Master's to redo.
   Run `reset --to report-head` for a batch at most once, and no other reset.

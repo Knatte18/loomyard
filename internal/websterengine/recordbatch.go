@@ -5,6 +5,7 @@
 // It always advances the transcript attribution.
 // It checks that the batch report is present and parses it.
 // It cross-checks the report's head SHA against the fork's self-reported head_sha.
+// It fails a batch whose commits add a secret file.
 // It persists the distilled digest.
 // RecordBatch never touches the fabric repo.
 // The caller fabric-commits state.json and the batch report once RecordBatch returns successfully.
@@ -25,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/cardverify"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/runplan"
+	"github.com/Knatte18/loomyard/internal/secretpath"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -35,6 +37,11 @@ var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-ba
 
 // ErrReportArchived marks a batch report that was archived because record-batch could not attribute it to a fork.
 var ErrReportArchived = errors.New("webster: report archived")
+
+// SecretFileFailureReason opens the reason of a batch that failed because its commits add a secret file.
+// The commits sit in the branch's history, and recover-batch would build on them.
+// Master therefore stops on a failure carrying this text and leaves the reset to the run's parent.
+const SecretFileFailureReason = "the batch's commits add a secret file"
 
 // ReportArchivedError reports a batch report that record-batch could not attribute to a fork of its bracket.
 // The report is archived, and begin-batch re-drives the batch.
@@ -223,6 +230,9 @@ type RecordDeps struct {
 	// VerifyTimeout bounds each card verify command the policy-warning evidence re-run executes;
 	// zero means cardverify.DefaultTimeout.
 	VerifyTimeout time.Duration
+	// SecretPaths matches the secret files a batch's commits must not add;
+	// the zero Matcher holds lym's shipped patterns alone.
+	SecretPaths secretpath.Matcher
 }
 
 // RecordResult is what a successful record-batch call returns.
@@ -268,6 +278,9 @@ func archiveUnattributable(deps RecordDeps, number int, slug string, cause error
 // A correctness finding, or a policy finding whose evidence re-run fails, fails the batch.
 // Such a failure returns a *BatchFailedError naming `lym webster recover-batch`.
 // It comes with a RecordResult carrying the failed digest.
+// A batch whose commits add a secret file fails the same way, whatever its report says.
+// That failure comes ahead of any correctness finding.
+// Its way forward is the run's parent's, since recover-batch would build on the commits that hold the file.
 // A NEEDS_PARENT report records the batch as waiting with its need and archives the report.
 // A call on a waiting batch refuses, naming the resume step.
 // An OK report returns *LaterTargetRemovedError once per bracket:
@@ -437,6 +450,17 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 				return nil, rerr
 			}
 		}
+		// A secret file in the batch's commits outranks the finding:
+		// the plain recover-batch way forward would keep the file in the branch's history.
+		if headSHA != "" {
+			bfe, serr := failOnSecretPaths(deps, bs, number, slug, headSHA, all, newPaths)
+			if serr != nil {
+				return nil, serr
+			}
+			if bfe != nil {
+				return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
+			}
+		}
 		return failOnCorrectness(deps, bs, number, slug, headSHA, all, correctness, newPaths, warnings)
 	}
 
@@ -505,6 +529,14 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	}
 	if moved != "" {
 		warnings = append(warnings, moved)
+	}
+
+	// A secret file the batch committed sits in the branch's history whatever the report says,
+	// so the batch fails before any evidence re-run or post-batch pass.
+	if bfe, err := failOnSecretPaths(deps, bs, number, slug, report.HeadSHA, nil, nil); err != nil {
+		return nil, err
+	} else if bfe != nil {
+		return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
 	}
 
 	// An OK report with policy findings, or a batch with earlier warnings, needs its cards' verify commands to pass:
@@ -600,6 +632,54 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	deps.State.CurrentBatch = 0
 
 	return &RecordResult{Digest: &digest, Warnings: warnings}, nil
+}
+
+// failOnSecretPaths fails the batch when a commit from its start commit to headSHA adds a path deps.SecretPaths matches.
+// It returns nil and nil when none does.
+// findings are audit findings the batch also tripped: each joins the reasons and is marked failed.
+// newTranscripts are the transcripts the failure consumes.
+// The commits sit in the branch's history, and recover-batch builds on them.
+// So the way forward is the run's parent's, once the run has stopped:
+// the reset drops the commits and the files they added, and recover-batch then re-drives the batch.
+func failOnSecretPaths(deps RecordDeps, bs *BatchState, number int, slug, headSHA string, findings []classifiedFinding, newTranscripts []string) (*BatchFailedError, error) {
+	added, err := deps.Geom.git().AddedPaths(deps.Geom.WorktreeRoot, bs.StartSHA, headSHA)
+	if err != nil {
+		return nil, err
+	}
+	hits := deps.SecretPaths.Hits(added)
+	if len(hits) == 0 {
+		return nil, nil
+	}
+	steps := wayForwardSteps(
+		resetVerb(ResetToBatchStart, number),
+		fmt.Sprintf("lym webster recover-batch %02d", number),
+	)
+	reasons := []string{SecretFileFailureReason + ": " + secretpath.Describe(hits)}
+	for _, cf := range findings {
+		reasons = append(reasons, cf.Violation.Error())
+	}
+	bfe, err := failBatch(failBatchInput{
+		State:          deps.State,
+		Batch:          bs,
+		Number:         number,
+		Slug:           slug,
+		ReportsDir:     deps.Geom.ReportsDir,
+		PaneCwd:        deps.Geom.PaneCwd,
+		WorktreeRoot:   deps.Geom.WorktreeRoot,
+		Git:            deps.Geom.Git,
+		HeadSHA:        headSHA,
+		Reasons:        reasons,
+		NewTranscripts: newTranscripts,
+		WayForward:     "for the run's parent, once the run has stopped: " + strings.TrimPrefix(steps, "way forward: "),
+		Now:            time.Now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, cf := range findings {
+		recordFailedFinding(deps.State, cf.ID)
+	}
+	return bfe, nil
 }
 
 // failOnCorrectness fails the batch on its audit findings, naming the correctness findings' paths as suspects.

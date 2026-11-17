@@ -34,6 +34,9 @@ type Git interface {
 	NonMergeCommitsBetween(worktree, base, head string) (bool, error)
 	// OtherWorktrees returns the canonical root of every worktree of the repository except the given one.
 	OtherWorktrees(worktree string) ([]string, error)
+	// AddedPaths returns, sorted, the repository-relative paths that a commit in base..head adds over its first parent.
+	// A path a later commit in the range deletes still counts.
+	AddedPaths(worktree, base, head string) ([]string, error)
 }
 
 // realGit implements Git over the repository on disk;
@@ -75,6 +78,10 @@ func (realGit) NonMergeCommitsBetween(worktree, base, head string) (bool, error)
 func (realGit) IgnoredPath(worktree, path string) (bool, error) { return ignoredPath(worktree, path) }
 
 func (realGit) OtherWorktrees(worktree string) ([]string, error) { return otherWorktrees(worktree) }
+
+func (realGit) AddedPaths(worktree, base, head string) ([]string, error) {
+	return addedPaths(worktree, base, head)
+}
 
 func (realGit) PathDiffers(worktree, base, path string) (bool, error) {
 	return worktreePathDiffers(worktree, base, path)

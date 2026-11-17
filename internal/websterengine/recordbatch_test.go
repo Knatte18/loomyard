@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/runplan"
+	"github.com/Knatte18/loomyard/internal/secretpath"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -1448,6 +1449,81 @@ func TestRecordBatch_NeedsParentWaits(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("RecordBatch() on a waiting batch error = %q; want it to contain %q", err.Error(), want)
 		}
+	}
+}
+
+// TestRecordBatch_SecretFileFailsBatch proves a batch whose commits add a secret file fails.
+// It fails whatever its report says, and ahead of a correctness finding the batch also tripped.
+// The failure names each path with its pattern and the run's parent's reset to the batch's start before the recovery.
+// A hub's added pattern refuses the same way, and a batch adding no secret file is recorded.
+func TestRecordBatch_SecretFileFailsBatch(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name          string
+		added         []string
+		hubPatterns   []string
+		needsParent   bool
+		contractWrite bool
+		wantHit       string
+	}{
+		{"ShippedPattern", []string{"internal/foo/impl.go", "config/.env"}, nil, false, false, "config/.env (pattern .env)"},
+		{"HubPattern", []string{"tls/server.key"}, []string{"*.key"}, false, false, "tls/server.key (pattern *.key)"},
+		{"NeedsParentReport", []string{"config/.env"}, nil, true, false, "config/.env (pattern .env)"},
+		{"CorrectnessFindingToo", []string{"config/.env"}, nil, false, true, "config/.env (pattern .env)"},
+		{"NoSecretFile", []string{"internal/foo/impl.go", ".env.example"}, nil, false, false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+				{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+			})
+			if tt.contractWrite {
+				fx.Audit.scripted[0].Forks[0].WritePaths = []string{fx.Deps.OutcomePath}
+			}
+			fx.Git.added = map[addedRange][]string{{base: fx.StartSHA, head: fx.HeadSHA}: tt.added}
+			matcher, err := secretpath.New(tt.hubPatterns)
+			if err != nil {
+				t.Fatalf("secretpath.New(%q) error = %v", tt.hubPatterns, err)
+			}
+			fx.Deps.SecretPaths = matcher
+			report := validReport(fx.HeadSHA)
+			if tt.needsParent {
+				report = "status: NEEDS_PARENT\nhead_sha: " + fx.HeadSHA + "\nneed: raise the tier 2 timeout\n"
+			}
+			writeReport(t, fx.ReportsDir, report)
+
+			result, err := websterengine.RecordBatch(fx.Deps, 1)
+			if tt.wantHit == "" {
+				if err != nil {
+					t.Fatalf("RecordBatch() error = %v; want nil", err)
+				}
+				if result.Failed {
+					t.Errorf("RecordBatch() result.Failed = true; want the batch recorded")
+				}
+				return
+			}
+			if !errors.Is(err, websterengine.ErrBatchFailed) {
+				t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+			}
+			for _, want := range []string{
+				tt.wantHit,
+				websterengine.SecretFileFailureReason,
+				"way forward: for the run's parent, once the run has stopped: 1) lym webster reset --to batch-start --batch 01",
+				"2) lym webster recover-batch 01",
+			} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), want)
+				}
+			}
+			if result == nil || !result.Failed {
+				t.Errorf("RecordBatch() result = %+v; want Failed", result)
+			}
+			if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != websterengine.DigestStatusFailed {
+				t.Errorf("Batches[1] Terminal, Status = %v, %q; want true, %q", bs.Terminal, bs.Status, websterengine.DigestStatusFailed)
+			}
+		})
 	}
 }
 

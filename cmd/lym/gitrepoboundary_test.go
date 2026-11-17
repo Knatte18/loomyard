@@ -57,6 +57,8 @@ var gitrepoPinnedRunBoundMethods = []string{
 	"MergeFFOnly",
 	"StageResolved",
 	"StageTrackedChanges",
+	"NewPathsIn",
+	"AddedFilesInCommits",
 }
 
 // gitrepoBoundaryMinScannedFiles is the vacuous-scan floor for this guard's single-directory walk of internal/gitrepo.

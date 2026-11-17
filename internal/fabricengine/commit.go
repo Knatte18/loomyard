@@ -1,4 +1,4 @@
-// commit.go holds CommitResult, PartialCommitError, and Fabric.Commit.
+// commit.go holds CommitResult, PartialCommitError, and Fabric.Commit with its secret-file refusal.
 // Fabric.Commit splits a mixed file list into a warp-side plain-git commit;
 // the weft side is a commit that carries trailers.
 // Both sides commit under one combined write lock whenever anything is committed,
@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/secretpath"
 )
 
 // CommitResult reports what Fabric.Commit did on each side: the SHA that landed and whether a commit was made.
@@ -75,6 +76,11 @@ var spawnDetachedPushFn = SpawnDetachedPush
 // dropping the path would hide it, and committing it would break the never-committed contract.
 // Because the check precedes the lock, a rejected call mutates nothing and spawns no push.
 //
+// Commit also refuses, before any lock, a call that would add a secret file on either side.
+// A secret file is a new path the side's file list reaches, untracked or staged as added.
+// It matches a pattern lym ships or one fabric.yaml's secret_paths adds.
+// The error names every such path with its pattern; a tracked file is never refused.
+//
 // The weft side is taken when there are weft files or snapshot tags, unless opts.SkipGit is set.
 // Snapshot tags force a weft commit: an empty one carries the tags when there is nothing else to commit.
 // Commit(nil, msg, tags, opts) is a supported call: it records a baseline under those tags without weft content.
@@ -132,6 +138,14 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	}
 	weftSide := (len(weftFiles) > 0 || len(snapshotTags) > 0) && !opts.SkipGit
 
+	secretPaths, err := cfg.SecretPathMatcher()
+	if err != nil {
+		return CommitResult{}, err
+	}
+	if err := f.refuseSecretPaths(secretPaths, warpFiles, weftFiles, weftSide); err != nil {
+		return CommitResult{}, err
+	}
+
 	result, partialErr, err := f.commitBothSides(warpFiles, weftFiles, weftSide, msg, snapshotTags, opts)
 	if err != nil {
 		return result, err
@@ -156,6 +170,29 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 		return result, partialErr
 	}
 	return result, nil
+}
+
+// refuseSecretPaths returns an error naming every new path that secretPaths matches.
+// The paths are those committing warpFiles would add, and weftFiles too when weftSide is set.
+// It stages nothing, so a refused Commit leaves both indexes as it found them.
+func (f *Fabric) refuseSecretPaths(secretPaths secretpath.Matcher, warpFiles, weftFiles []string, weftSide bool) error {
+	added, err := f.code.NewPathsIn(warpFiles)
+	if err != nil {
+		return fmt.Errorf("fabricengine: list the paths the warp commit would add: %w", err)
+	}
+	if weftSide {
+		weftAdded, err := f.records.NewPathsIn(weftFiles)
+		if err != nil {
+			return fmt.Errorf("fabricengine: list the paths the weft commit would add: %w", err)
+		}
+		added = append(added, weftAdded...)
+	}
+
+	hits := secretPaths.Hits(added)
+	if len(hits) == 0 {
+		return nil
+	}
+	return fmt.Errorf("fabricengine: refusing to commit %s: each matches a secret-file pattern lym ships or fabric.yaml's %s adds; way forward: delete each named file or move it out of the repository, then commit again", secretpath.Describe(hits), SecretPathsKey)
 }
 
 // commitBothSides runs the locked section that Commit dispatches to: it commits warp first, then weft.

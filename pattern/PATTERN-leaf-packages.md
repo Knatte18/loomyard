@@ -144,6 +144,12 @@ Imports only the standard library, `github.com/fsnotify/fsnotify` and `internal/
 - Every lym process that waits on a file event goes through it, so fsnotify is imported nowhere else.
 - `internal/logger` is admitted because fsnotify's error channel is drained and logged at Debug.
 
+## `internal/secretpath`
+
+Imports only the standard library.
+It holds the secret-file patterns lym ships and the matcher fabric and webster share, and reads no config:
+each caller hands it the patterns a hub adds.
+
 ## `internal/runfsm`
 
 Imports only the standard library and `internal/shedengine`, for the record type.

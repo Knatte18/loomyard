@@ -58,10 +58,18 @@ type fakeGit struct {
 	treeBlobPaths map[string][]string
 	// logs maps a registered commit to the entry CommitLog returns for it; a commit not listed has an empty subject and no departures.
 	logs map[string]websterengine.CommitLogEntry
+	// added maps a base and head commit pair to the paths AddedPaths reports for that range.
+	// A pair not listed adds none.
+	added map[addedRange][]string
 	// commitLogCalls counts the CommitLog calls.
 	commitLogCalls int
 	// registered counts the SHAs minted so far.
 	registered int
+}
+
+// addedRange is the base and head commit of one AddedPaths call.
+type addedRange struct {
+	base, head string
 }
 
 // fakeIndex is the real planindex.Index except Delta, which answers from fields a test sets and records the commit range of every call.
@@ -340,6 +348,10 @@ func (g *fakeGit) CommitLog(_, base, head string) ([]websterengine.CommitLogEntr
 func (g *fakeGit) IgnoredPath(_, path string) (bool, error) { return g.ignored[path], nil }
 
 func (g *fakeGit) OtherWorktrees(string) ([]string, error) { return g.others, nil }
+
+func (g *fakeGit) AddedPaths(_, base, head string) ([]string, error) {
+	return g.added[addedRange{base: base, head: head}], nil
+}
 
 func (g *fakeGit) PathDiffers(_, _, path string) (bool, error) { return g.differing[path], nil }
 

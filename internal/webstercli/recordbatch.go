@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/secretpath"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -76,7 +77,9 @@ and no recovery is spent. A call on a waiting batch refuses, naming
 A batch rejected on its merits exits non-zero with {"batch_failed": true,
 "batch": "NN-<slug>", "warnings": [...]} after its terminal failed state
 and archived report are saved and committed; the error names
-"lym webster recover-batch NN". The envelope also carries "card_amended": true
+"lym webster recover-batch NN". A batch whose commits add a secret file
+fails the same way; its error names the run's parent's way forward.
+The envelope also carries "card_amended": true
 when a card of the batch was amended after its attempt began, which forces the
 batch failed whatever its report says. A report that cannot be attributed to a
 fork of this bracket is archived and committed, and the call exits non-zero
@@ -107,6 +110,13 @@ Example:
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
+			}
+			var secretPaths secretpath.Matcher
+			if c.secretPaths != nil {
+				if secretPaths, err = c.secretPaths(); err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, configLoadError("fabric.yaml", err).Error()))
+					return nil
+				}
 			}
 			mutateLock, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
 			if err != nil {
@@ -149,6 +159,7 @@ Example:
 				Sleeper:      realSleeper{},
 				Plan:         plan,
 				ParentBranch: c.parentBranch,
+				SecretPaths:  secretPaths,
 			}
 
 			fingerprintBefore := st.PlanFingerprint

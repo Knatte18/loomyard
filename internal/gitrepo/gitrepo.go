@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -164,6 +165,31 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 		return "", false, err
 	}
 	return sha, true, nil
+}
+
+// NewPathsIn returns, sorted, every path under pathspec that staging and committing it would add as a new file:
+// an untracked file git does not ignore, and a path already staged as added.
+// Paths are relative to the checkout root, and a pathspec that matches nothing yields none.
+func (r *Repo) NewPathsIn(pathspec []string) ([]string, error) {
+	if len(pathspec) == 0 {
+		return nil, nil
+	}
+	untracked, err := r.runChecked(append([]string{"ls-files", "--others", "--exclude-standard", "-z", "--"}, pathspec...)...)
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: git ls-files --others: %w", err)
+	}
+	staged, err := r.runChecked(append([]string{"diff", "--cached", "--name-only", "--no-renames", "--diff-filter=A", "-z", "--"}, pathspec...)...)
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: git diff --cached --diff-filter=A: %w", err)
+	}
+	var paths []string
+	for _, p := range strings.Split(untracked+"\x00"+staged, "\x00") {
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	slices.Sort(paths)
+	return slices.Compact(paths), nil
 }
 
 // CommitEmpty records an empty commit whose tree is identical to its parent's.
@@ -339,6 +365,31 @@ func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 		}
 		return files, nil
 	})
+}
+
+// AddedFilesInCommits returns, sorted and without duplicates, every repo-relative path that a commit in base..head adds.
+// The range is the commits reachable from head and not from base.
+// A commit adds the paths its tree holds over its first parent's, and a root commit adds every path it holds.
+// A path a later commit in the range deletes still counts, because the commit that added it keeps it in history.
+// A path a commit renames counts as added under its new name, and a merge commit adds none.
+// It returns ErrInvalidSHA if either SHA is invalid.
+func (r *Repo) AddedFilesInCommits(base, head string) ([]string, error) {
+	if !validSHA(base) || !validSHA(head) {
+		return nil, ErrInvalidSHA
+	}
+
+	out, err := r.runChecked("log", "--no-renames", "--diff-filter=A", "--name-only", "--format=", "-z", base+".."+head, "--")
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: git log %s..%s: %w", base, head, err)
+	}
+	var paths []string
+	for _, p := range strings.Split(out, "\x00") {
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	slices.Sort(paths)
+	return slices.Compact(paths), nil
 }
 
 // treeForRev resolves rev to its commit's tree.
