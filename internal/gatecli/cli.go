@@ -63,7 +63,7 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 	var tiers []int
 	var upto int
 	var cards []string
-	var all, guards, wait, mainPackages, stopOnFail bool
+	var all, guards, wait, mainPackages, stopOnFail, mapMode bool
 	testCmd := &cobra.Command{
 		Use:         "test [<targets>...]",
 		Short:       "run the hub's test tiers once their gate slots are free",
@@ -79,19 +79,18 @@ Without --wait, an agent strand's call runs in a detached runner it starts or jo
 run the same command again in a turn that does nothing else, so the prompt cache stays warm; it prints the result once the run ended.
 With --wait, and with no strand, the tiers run in this process.
 Inside a slot already held by an enclosing gate run it runs without acquiring another.
-Each tier prints a summary line to stderr and writes its record and log under the gate directory.
 The exit code is the first failing run's own, or 0.
 Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
 --guards, and a narrower scope under the go scoper, also run the //lym:guard tests outside the scope.
+--map builds the tier0 and tier1 coverage maps of the scope's packages, and refuses the flags that pick tiers or steps.
 
 Examples:
 
   lym gate test --wait ./internal/foo
+  lym gate test --wait --map internal/foo
   lym gate test --tier 0 --tier 1 --all
-  lym gate test --wait --gate finalize
   lym gate test --wait --gate card --card 3
-  lym gate test --upto 2
   lym gate test --base main
   lym gate test ./... -- -run TestSomething -count=1`,
 		Args: cobra.ArbitraryArgs,
@@ -102,7 +101,7 @@ Examples:
 			request := testRequest{
 				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, secondUnit: time.Second, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
 				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, mainPackages: mainPackages, base: base, all: all, guards: guards, targets: args,
-				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail,
+				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail, mapMode: mapMode,
 				phase: phaseFrom(cmd.Context()),
 			}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
@@ -127,12 +126,12 @@ Examples:
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
 	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers, run every //lym:guard test of the module under the tier its file belongs to")
 	testCmd.Flags().BoolVar(&stopOnFail, gateslot.StopOnFailFlag, false, "end the call at its first failed run, so no later tier, vet or guard run starts")
+	testCmd.Flags().BoolVar(&mapMode, mapFlag, false, "build the per-package coverage maps of tier0 and tier1 over the scope's packages instead of running the tiers")
 	testCmd.Flags().BoolVar(&wait, "wait", false, "run the tiers in this process and block until they end, instead of in the detached runner an agent call starts or joins")
 	cmd.AddCommand(testCmd)
 	cmd.AddCommand(statusCmd())
 	cmd.AddCommand(reportCmd())
 	cmd.AddCommand(cardVerifyCmd(seams))
-	cmd.AddCommand(testMapCmd(goBinary, timeoutUnit, pipeWaitDelay))
 	cmd.AddCommand(redundantCmd(goBinary, timeoutUnit, pipeWaitDelay))
 	cmd.AddCommand(runnerCmd(func() *cobra.Command {
 		return newCommand(goBinary, samplePeriod, preTierCeiling, timeoutUnit, rerunDelay, pipeWaitDelay, seams)
@@ -182,6 +181,8 @@ type testRequest struct {
 	guards bool
 	// stopOnFail is the --stop-on-fail flag: the call ends at its first failed run, bar a crashed test runner.
 	stopOnFail bool
+	// mapMode is the --map flag: the call builds the coverage maps over its scope instead of running the tiers.
+	mapMode bool
 	// targets are the arguments before `--`.
 	targets []string
 	// args are the arguments after `--`, which fill each tier's {args}.

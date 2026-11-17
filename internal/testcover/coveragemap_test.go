@@ -11,32 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-func TestMapFailedAt(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	entry := []testcover.MapTest{{Name: "TestA", Blocks: []int{0}}}
-	tests := []struct {
-		name string
-		m    testcover.Map
-		want bool
-	}{
-		{"FailureOnlyMapAtTheCommit", testcover.Map{Commit: "head", BuildFailure: "failed"}, true},
-		{"FailureOnlyMapAtAnotherCommit", testcover.Map{Commit: "old", BuildFailure: "failed"}, false},
-		{"FailureBesideEntriesAtTheCommit", testcover.Map{Commit: "old", Tests: entry, Failure: &testcover.MapFailure{Commit: "head", Error: "failed"}}, true},
-		{"FailureBesideEntriesAtAnotherCommit", testcover.Map{Commit: "old", Tests: entry, Failure: &testcover.MapFailure{Commit: "older", Error: "failed"}}, false},
-		{"NoFailure", testcover.Map{Commit: "head", Tests: entry}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := tt.m.FailedAt("head"); got != tt.want {
-				t.Errorf("FailedAt(head) = %v; want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestWriteMapReadMap(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

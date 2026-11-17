@@ -300,7 +300,7 @@ github.com/Knatte18/loomyard/
 ├── internal/cleanupcli/          the cleanup CLI command (`lym cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
-├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate testmap`, the per-package coverage maps built on command at the HEAD of the worktree it runs in; `lym gate redundant`, one package's redundancy candidates read from its coverage map and confirmed by mutation)
+├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate test --map`, the per-package coverage maps built on command at the HEAD of the worktree it runs in; `lym gate redundant`, one package's redundancy candidates read from its coverage map and confirmed by mutation)
 ├── internal/helpcli/             the help CLI command (`lym help [<command>...]`, `lym help index`)
 ├── internal/shortcutcli/         the top-level operator shortcuts (`lym a`, `lym s`, `lym p`, `lym r`) from one embedded file
 ├── internal/idecli/              the ide CLI command
@@ -839,7 +839,7 @@ User-facing modules each get one `lym <module>` namespace:
   Status prints, once, the dobby section a beam's window draws, for the prime and for each local beam:
   alive or not, the runs it drives with their state, stage, time in stage and last pass, and each released task it has not started with what the task waits on, and the beam's orch: strand live, watcher live and the recorded session, then one adopt check item per subject, shown only when the hub holds a record of it: the subject, its state, the tier in flight, the tiers done and the paths of its log and output.
   Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends the nearest live orch its own notices and the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents), and spawns the board-tidy agent every few landings.
-  No dobby builds the coverage maps: the operator builds them on command with `lym gate testmap`.
+  No dobby builds the coverage maps: the operator builds them on command with `lym gate test --map`.
   It logs to its `dobby.log` the changes it sees, such as a task start, a run changing state and a failing pass episode, plus a heartbeat line every ten minutes.
   A front task, filed through `internal/fronttask`, is the one open task of its worktree that dobby starts first, past `max_runs`, while no other task of that worktree starts.
   Its `on_land` action runs once it lands or its entry is removed by hand with `lym board remove`, from a closed action table and on the subject's owner machine only.
@@ -964,23 +964,30 @@ User-facing modules each get one `lym <module>` namespace:
   Every test run is capped at `redundancy_test_memory_mb` of memory, in a transient systemd scope where the user manager caps one,
   so a mutant that keeps memory for ever is killed alone;
   a run that ends at the cap or at its time bound kills its mutant and is listed.
-  `lym gate testmap [--max <n>] [<package>...]` builds the stale per-package coverage maps of `internal/testcover` at the HEAD of the worktree it runs in, only on command,
+  `lym gate test --map [<targets>...]` builds the per-package coverage maps of `internal/testcover` over its scope's packages at the HEAD of the worktree it runs in, only on command,
   the hub's shared maps from the prime and a worktree's own, under its `.lym`, from any other worktree:
-  each tier0 and tier1 test runs alone in its own process, up to the tier0 parallel side by side inside one gate slot,
-  fewer when memory is short,
+  each tier0 and tier1 test runs alone in its own process, a package's tier0 tests before its tier1 tests,
+  each tier's tests up to its `parallel` side by side and fewer when memory is short or the tier's `memory_mb` divides into fewer caps,
+  inside the larger of the two tiers' gate-slot asks, where `slots: all` ranks above any count,
+  with no `lym` built for them,
   bounded by `redundancy_build_timeout_min` and `redundancy_test_timeout_sec` and capped at `redundancy_test_memory_mb`,
   under a coverage binary over every in-module package its test binary links; the gate selects no test from the maps.
-  A package with a modified or untracked Go file, or whose map another call is building, is skipped,
-  and so is one whose linked packages hold a modified or untracked file just before its build or after its tests.
+  A test that fails beside others runs again alone, and one that then passes is listed as `passed_alone`.
+  The call exits 1 when a build failed, a package was left unmeasured or an entry it wrote records a failed or timed-out test, after writing every map and listing the tests as `failed_tests`.
+  A map is written only when HEAD is still the commit the call read at its start and no file the package or a linked package owns is modified or untracked,
+  checked once its build ended and again before the write, over every path that writes a map, a failed build's included.
+  A package that fails a check is listed as `unmeasured` with its reason, and a moved HEAD ends the walk and lists every package not yet measured.
+  An edit made between a package's checks and reverted before the next goes unseen,
+  and a gitignored Go file the build compiles enters the map under HEAD's hashes.
   A run inside a slot an enclosing gate run holds takes no second one,
   and a git worktree outside every hub runs unslotted under its own `gate.yaml`.
   A Go test binary that keeps a core busy past `busy_quit_sec` gets one SIGQUIT,
   so its goroutine stacks reach the log long before the tier's own timeout.
   A memory guard kills a Go test binary whose process tree holds more than `memory_quit_mb`,
   or the largest one once the memory limit lym sits under runs short, and names its package,
-  under `lym gate test` (its redundancy report step included), `lym gate redundant` and `lym gate testmap` alike,
+  under `lym gate test` (its redundancy report step included), `lym gate redundant` and `lym gate test --map` alike,
   and a test run it kills is listed as not judged under the redundancy paths, never as a mutant kill,
-  and recorded as failed by `lym gate testmap`;
+  and recorded as failed by `lym gate test --map`;
   a tier's `memory_mb` runs its whole command under the kernel cap `lym gate redundant` uses.
   The `dotnet` scoper narrows a C# hub's computed, `--base` and `--card` scopes to the test projects and classes that name a changed type, rendered into the tier's `{filter}` placeholder (`internal/dotnetimpact`),
   and a hub's `build` step runs once per call inside the slots of the first tier that sets `shared_build`, with its own summary line and run record.

@@ -236,12 +236,13 @@ func TestGateRedundant(t *testing.T) {
 	t.Run("ListsTheCandidatesMutationConfirmsAndSetsApartTheRefutedKeptAndUnjudgedOnes", func(t *testing.T) {
 		t.Parallel()
 		var built bytes.Buffer
-		if code := clihelp.ExecuteIn(Command(), prime, &built, []string{"testmap", "cov"}); code != 0 {
-			t.Fatalf("testmap cov = %d, %s; want exit 0", code, built.Bytes())
+		// cov's TestFails fails, so the call exits 1 after it wrote the map.
+		if code := clihelp.ExecuteIn(Command(), prime, &built, []string{"test", "--wait", "--map", "cov"}); code != 1 {
+			t.Fatalf("test --wait --map cov = %d, %s; want exit 1", code, built.Bytes())
 		}
 		m, found, err := testcover.ReadMap(mapsDir, "cov")
 		if err != nil || !found {
-			t.Fatalf("ReadMap(cov) = found %v, %v; want the map testmap built", found, err)
+			t.Fatalf("ReadMap(cov) = found %v, %v; want the map test --map built", found, err)
 		}
 		m.Failure = &testcover.MapFailure{Commit: "deadbeef", Error: "later build broke"}
 		if err := testcover.WriteMap(mapsDir, "cov", m); err != nil {
@@ -353,14 +354,22 @@ func TestGateRedundant(t *testing.T) {
 		cwd       string
 		pkg       string
 		wantError string
+		// wantWayForward holds each text the error's way forward must name.
+		wantWayForward []string
 	}{
-		{name: "OutsideEveryHub", cwd: t.TempDir(), pkg: "cov", wantError: "is in no hub"},
-		{name: "APackageWithNoMap", cwd: prime, pkg: "nomap", wantError: "nomap has no coverage map"},
-		{name: "AMapHoldingOnlyAFailedBuild", cwd: prime, pkg: "broken", wantError: "records only a failed build: boom"},
-		{name: "AMapNamingABlockOutsideItsTable", cwd: prime, pkg: "badindex", wantError: "is unreadable"},
-		{name: "AFailedKeepScan", cwd: prime, pkg: "badkeep", wantError: "the keep scan of"},
-		{name: "AMapBuiltFromOtherFiles", cwd: prime, pkg: "stale", wantError: "was built from other Go files than this worktree holds: stale.go"},
-		{name: "AMapWithAFileOnOneSideOnly", cwd: prime, pkg: "lacking", wantError: "was built from other Go files than this worktree holds: gone.go, lacking.go"},
+		{name: "OutsideEveryHub", cwd: t.TempDir(), pkg: "cov", wantError: "is in no hub", wantWayForward: []string{"run lym gate redundant from a worktree of the hub"}},
+		{name: "APackageWithNoMap", cwd: prime, pkg: "nomap", wantError: "nomap has no coverage map", wantWayForward: []string{"lym gate test --map nomap"}},
+		{name: "AMapHoldingOnlyAFailedBuild", cwd: prime, pkg: "broken", wantError: "records only a failed build: boom", wantWayForward: []string{"lym gate test --map broken"}},
+		{name: "AMapNamingABlockOutsideItsTable", cwd: prime, pkg: "badindex", wantError: "is unreadable", wantWayForward: []string{"lym gate test --map badindex"}},
+		{name: "AFailedKeepScan", cwd: prime, pkg: "badkeep", wantError: "the keep scan of", wantWayForward: []string{"fix the //testtiming:keep line it names"}},
+		{
+			name: "AMapBuiltFromOtherFiles", cwd: prime, pkg: "stale", wantError: "was built from other Go files than this worktree holds: stale.go",
+			wantWayForward: []string{"commit or revert", "lym gate test --map stale"},
+		},
+		{
+			name: "AMapWithAFileOnOneSideOnly", cwd: prime, pkg: "lacking", wantError: "was built from other Go files than this worktree holds: gone.go, lacking.go",
+			wantWayForward: []string{"commit or revert", "lym gate test --map lacking"},
+		},
 	}
 	for _, tt := range refusals {
 		t.Run("Refuses"+tt.name, func(t *testing.T) {
@@ -374,8 +383,14 @@ func TestGateRedundant(t *testing.T) {
 			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 				t.Fatalf("output %q is not a JSON envelope: %v", out.String(), err)
 			}
+			_, wayForward, _ := strings.Cut(envelope.Error, "way forward")
 			if code != 1 || envelope.OK || !strings.Contains(envelope.Error, tt.wantError) || !strings.Contains(envelope.Error, "way forward") {
 				t.Errorf("redundant %s = %d, %+v; want exit 1, ok false and an error holding %q and a way forward", tt.pkg, code, envelope, tt.wantError)
+			}
+			for _, want := range tt.wantWayForward {
+				if !strings.Contains(wayForward, want) {
+					t.Errorf("redundant %s way forward = %q; want it to name %q", tt.pkg, wayForward, want)
+				}
 			}
 		})
 	}

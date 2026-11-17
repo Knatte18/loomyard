@@ -1,5 +1,5 @@
-// testmaptree.go reads, for `lym gate testmap`, the files a package owns at a commit by the path-to-package rule.
-// It hashes them, finds the uncommitted and untracked ones, and tells which of them changed between two commits.
+// testmaptree.go reads, for `lym gate test --map`, the files a package owns at a commit by the path-to-package rule.
+// It hashes them and finds the uncommitted and untracked ones.
 
 package gatecli
 
@@ -76,16 +76,17 @@ func (p packageTree) otherFiles() map[string]string {
 
 // dirtyOwnedFile reads the worktree's uncommitted and untracked files afresh.
 // It returns the first in path order that a package of trees owns, or "" for none.
+// Only the code side counts: the records side holds no file of a package.
 func (r *testMapRun) dirtyOwnedFile(trees map[string]packageTree) (string, error) {
-	entries, err := r.fabric.Status()
+	paths, err := r.fabric.CodeWorktreeChanges()
 	if err != nil {
 		return "", fmt.Errorf("read the worktree status: %w", err)
 	}
 	var dirty []string
-	for _, entry := range entries {
+	for _, changed := range paths {
 		for _, tree := range trees {
-			if tree.owns(entry.Path) {
-				dirty = append(dirty, entry.Path)
+			if tree.owns(changed) {
+				dirty = append(dirty, changed)
 				break
 			}
 		}
@@ -96,44 +97,22 @@ func (r *testMapRun) dirtyOwnedFile(trees map[string]packageTree) (string, error
 	return slices.Min(dirty), nil
 }
 
-// changedFiles returns the files of trees, read at the commit head, whose hash at the current HEAD differs, sorted.
-// A file added or removed since counts as changed.
-// It names a file of the package at importPath by its path relative to the package directory,
-// and a file of any other package by its path relative to the worktree.
-func (r *testMapRun) changedFiles(head, importPath string, trees map[string]packageTree) ([]string, error) {
-	current, err := r.fabric.HeadSHA()
+// dirtyModuleFile reads the worktree's uncommitted and untracked files afresh.
+// It returns the first in path order that lies under the module root, or "" for none.
+// Only the code side counts: the records side holds no file of the module.
+func (r *testMapRun) dirtyModuleFile() (string, error) {
+	paths, err := r.fabric.CodeWorktreeChanges()
 	if err != nil {
-		return nil, fmt.Errorf("read HEAD: %w", err)
+		return "", fmt.Errorf("read the worktree status: %w", err)
 	}
-	if current == head {
-		return nil, nil
-	}
-	var changed []string
-	for linked, before := range trees {
-		after, err := r.readPackageTree(current, before.dir)
-		if err != nil {
-			return nil, err
-		}
-		for rel := range before.hashes {
-			if after.hashes[rel] != before.hashes[rel] {
-				changed = append(changed, changedName(linked, importPath, before.dir, rel))
-			}
-		}
-		for rel := range after.hashes {
-			if _, found := before.hashes[rel]; !found {
-				changed = append(changed, changedName(linked, importPath, before.dir, rel))
-			}
+	var dirty []string
+	for _, changed := range paths {
+		if _, inModule := r.moduleRelative(changed); inModule {
+			dirty = append(dirty, changed)
 		}
 	}
-	slices.Sort(changed)
-	return changed, nil
-}
-
-// changedName names the file rel of the package linked in a skip cause of the package at importPath.
-// The package linked has the directory dir.
-func changedName(linked, importPath, dir, rel string) string {
-	if linked == importPath {
-		return rel
+	if len(dirty) == 0 {
+		return "", nil
 	}
-	return path.Join(dir, rel)
+	return slices.Min(dirty), nil
 }

@@ -101,7 +101,7 @@ A candidate stays listed only when a covering test kills every mutant it kills; 
 One that kills no mutant, holds none in its blocks or does not pass unmutated is listed as not judged.
 Each listed candidate comes with its standalone seconds, the tests that cover it and the mutants it killed; removable marks the set a greedy pass, slowest first, can delete together while every block stays covered and every mutant killed.
 A test marked //testtiming:keep is neither a candidate nor a cover, nor is a test the spawn scan marks or one whose entry records no passing run.
-It reads the map as the last lym gate testmap call from this worktree left it.
+It reads the map as the last lym gate test --map call from this worktree left it.
 It refuses a map built from other Go files of the package than this worktree holds.
 It reads the keep markers from this worktree, and runs its builds and tests in one gate slot, bounded by redundancy_build_timeout_min and redundancy_test_timeout_sec.
 Each test run is capped at redundancy_test_memory_mb of memory; a mutant run past the cap or its time bound is a kill.
@@ -126,7 +126,7 @@ Examples:
 }
 
 // runRedundant writes the redundancy candidates of the package the request names, confirmed by mutation.
-// It reads them from the package's coverage map where `lym gate testmap` from the worktree of the seam cwd writes it.
+// It reads them from the package's coverage map where `lym gate test --map` from the worktree of the seam cwd writes it.
 // It returns the verb's exit code: 128 plus the signal number after a terminating signal.
 func runRedundant(ctx context.Context, out io.Writer, request redundantRequest) int {
 	cwd, err := lymcwd.CwdFrom(ctx)
@@ -159,7 +159,7 @@ func runRedundant(ctx context.Context, out io.Writer, request redundantRequest) 
 	}
 
 	pkg := path.Clean(filepath.ToSlash(request.pkg))
-	rebuild := fmt.Sprintf("way forward: build it with lym gate testmap %s from this worktree, then re-run the same command", pkg)
+	rebuild := fmt.Sprintf("way forward: build it with lym gate test --map %s from this worktree, then re-run the same command", pkg)
 	m, found, err := testcover.ReadMap(mapsDir, pkg)
 	if err == nil && found {
 		err = checkMapBlocks(m)
@@ -225,7 +225,7 @@ func runRedundant(ctx context.Context, out io.Writer, request redundantRequest) 
 		return output.Err(out, fmt.Sprintf("gate redundant: cannot hash the Go files of %s: %v; way forward: re-run the same command", pkg, err))
 	}
 	if changed := changedGoFiles(m.Files, current); len(changed) > 0 {
-		return output.Err(out, fmt.Sprintf("gate redundant: the coverage map of %s was built from other Go files than this worktree holds: %s; %s", pkg, strings.Join(changed, ", "), rebuild))
+		return output.Err(out, fmt.Sprintf("gate redundant: the coverage map of %s was built from other Go files than this worktree holds: %s; way forward: commit or revert the worktree's edits to the package, since a map run measures no package with a modified file, then build it with lym gate test --map %s from this worktree and re-run the same command", pkg, strings.Join(changed, ", "), pkg))
 	}
 	hubEnv, err := envconfig.LoadConfig(dirs)
 	if err != nil {

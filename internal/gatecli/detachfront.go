@@ -370,6 +370,9 @@ func (r testRequest) words() []string {
 	if r.guards {
 		words = append(words, "--guards")
 	}
+	if r.mapMode {
+		words = append(words, "--"+mapFlag)
+	}
 	words = append(words, r.targets...)
 	if len(r.args) > 0 {
 		words = append(words, "--")
