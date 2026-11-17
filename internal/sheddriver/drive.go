@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
@@ -146,8 +145,6 @@ type HandOverSeam struct {
 	OnDiskBuild func() (buildvcs.Identity, error)
 	// BuildChanged reports whether the last step ran a known build other than onDisk.
 	BuildChanged func(onDisk buildvcs.Identity) bool
-	// DirtyPaths lists the task pair's uncommitted or untracked paths outside the run's own records directories.
-	DirtyPaths func() ([]string, error)
 	// ReleaseLock releases the driver lock.
 	ReleaseLock func() error
 	// Executable is the on-disk lym path resolved when the driver was wired, before any deploy replaced it.
@@ -347,22 +344,18 @@ func handedOver(records []SettleRecord, key StopKey, build string) bool {
 
 // handOver hands the run to a fresh driver of the on-disk build at a binary-eligible stop.
 // It holds any pause first and runs only when the last step ran another build.
-// A tree with uncommitted paths outside the run's records hands back with them in the stop report and spawns nothing.
-// Otherwise it records the hand-over and leaves the stop report, the park and the unwatched parent's notice.
+// It hands over whatever the tree holds.
+// A step of the old build can fail midway, as on a board stencil installed after it started.
+// Such a step leaves its producer's output uncommitted, and only the on-disk build can re-step it.
+// It records the hand-over and leaves the stop report, the park and the unwatched parent's notice.
 // It then releases the driver lock and spawns the successor.
-// A failed spawn leaves the run parked with its report, for the parent or a watching batten to pick up.
+// A failed spawn leaves the run parked with its report for the parent;
+// a watching batten re-steps it only over a tree with no uncommitted paths outside the run's records.
 // The seam must be set: the rule table reaches a hand-over only over facts that seam reads.
 func (d *goDriver) handOver(ctx context.Context, stop Stop) error {
 	seam := d.deps.HandOver
 	if err := d.holdPause(ctx); err != nil {
 		return err
-	}
-	dirty, err := seam.DirtyPaths()
-	if err != nil {
-		return d.handBackAs(stop, driveHandBack{Rules: []string{"reading the uncommitted paths: " + err.Error()}}, "the hand-over could not check the tree")
-	}
-	if len(dirty) > 0 {
-		return d.handBackAs(stop, driveHandBack{Rules: []string{"the on-disk build changed but the tree has uncommitted paths outside the run's records, so no successor is spawned: " + strings.Join(dirty, ", ")}}, "the tree is not clean for a hand-over")
 	}
 	onDisk, err := seam.OnDiskBuild()
 	if err != nil {

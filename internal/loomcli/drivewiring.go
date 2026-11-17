@@ -303,7 +303,6 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 			BuildChanged: func(onDisk buildvcs.Identity) bool {
 				return shedverbs.LastStepBuildChanged(c.spec.StepsDir, onDisk)
 			},
-			DirtyPaths:  func() ([]string, error) { return dirtyPathsOutsideRecords(location, c.runID) },
 			ReleaseLock: release,
 			Executable:  executable,
 			SpawnSuccessor: func(executable string) error {
@@ -386,24 +385,6 @@ func writeDrivePausedNote(frictionDir, runID string, stop sheddriver.Stop) error
 		return fmt.Errorf("loom: write go-driver-paused note %s: %w", path, err)
 	}
 	return nil
-}
-
-// dirtyPathsOutsideRecords lists the pair's uncommitted or untracked paths outside the run's own records directories.
-// Both sides join onto the task worktree, since the records side reaches it through the `_lym` junction.
-func dirtyPathsOutsideRecords(location *lymcwd.Location, runID string) ([]string, error) {
-	fab, err := fabricengine.Open(location)
-	if err != nil {
-		return nil, err
-	}
-	entries, err := fab.Status()
-	if err != nil {
-		return nil, err
-	}
-	paths := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		paths = append(paths, filepath.Join(location.WorktreePath(), filepath.FromSlash(entry.Path)))
-	}
-	return loomengine.PathsOutsideRunRecords(location, runID, paths), nil
 }
 
 // newestAttemptsFor names the newest tackler and arbiter attempt directories recorded for key.

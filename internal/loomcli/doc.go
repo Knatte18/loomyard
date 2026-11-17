@@ -644,7 +644,9 @@
 // so a move that lands between the check and the push is caught only by the push's own refusal.
 //
 // A hand-over runs only at a binary-eligible stop, once per stop key and build.
-// It runs over a clean tree outside the run's records, and never under a pause.
+// It never runs under a pause, and it runs over uncommitted paths too:
+// a step of the old build that failed midway leaves its producer's output uncommitted,
+// and the successor re-steps over it.
 // It records the hand-over and leaves the stop report and the park marker.
 // It releases the driver lock and spawns a fresh `lym loom drive` of the on-disk build, which re-steps;
 // a driver starting at a blocked Finalize stop first runs the Finalize arm,

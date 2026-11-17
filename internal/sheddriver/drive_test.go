@@ -215,9 +215,9 @@ func TestGoDriver_Settle(t *testing.T) {
 		restartAttempt bool
 		restartArbiter bool
 
-		// The hand-over seams: whether the last step ran another build than the on-disk one, the uncommitted paths, and what the successor spawn fails with.
+		// buildChanged is whether the last step ran another build than the on-disk one.
+		// spawnErr is what the successor spawn fails with.
 		buildChanged bool
-		dirty        []string
 		spawnErr     error
 
 		// Each no-group field leaves that optional group nil for the row.
@@ -571,7 +571,7 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
-			name:  "a changed build on a clean tree records the hand-over, parks, notifies before releasing the lock, spawns and exits",
+			name:  "a changed build records the hand-over, parks, notifies before releasing the lock, spawns and exits",
 			steps: []func(*testing.T) []byte{blocked}, buildChanged: true, orchRecorded: true,
 			wantCalls: []string{"step", "release", "spawn:" + wiredExecutable}, wantOrder: []string{"notify", "release", "spawn"},
 			wantActions: []string{shedrun.SettleHandOver}, wantSettlers: []string{shedrun.SettlerGoRule}, wantBuild: "newbuild1234",
@@ -584,11 +584,6 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
 			wantActions: []string{shedrun.SettleHandOver, shedrun.SettleSpawn, shedrun.SettleHandBack},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
-		},
-		{
-			name: "a dirty tree hands back naming its paths and spawns nothing", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, dirty: []string{"a.go", "b.go"},
-			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
-			wantReportHas: map[int][]string{1: {"a.go, b.go"}},
 		},
 		{
 			name: "a failing successor spawn leaves the report and the park marker on disk", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, spawnErr: errors.New("no such binary"),
@@ -872,7 +867,6 @@ func TestGoDriver_Settle(t *testing.T) {
 				HandOver: &HandOverSeam{
 					OnDiskBuild:  func() (buildvcs.Identity, error) { return buildvcs.Identity{Revision: "newbuild1234567"}, nil },
 					BuildChanged: func(buildvcs.Identity) bool { return tt.buildChanged },
-					DirtyPaths:   func() ([]string, error) { return tt.dirty, nil },
 					ReleaseLock: func() error {
 						calls = append(calls, "release")
 						order = append(order, "release")
