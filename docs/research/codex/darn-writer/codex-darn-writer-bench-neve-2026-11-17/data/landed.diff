@@ -1,0 +1,94 @@
+commit 824eb2b60fba2fc63f09fe4d18dcbdcc2d5b81c5
+Author: Henrik Anfinsen <henrik.anfinsen@gmail.com>
+Date:   Sun Nov 15 17:36:37 2026 +0100
+
+    A beam window opens no README by default
+    
+    The `ide.yaml` template in `internal/ideconfig` listed `README.md` under `open_files.beam`.
+    The `code` button in a beam therefore opened the beam worktree's README, which is of no use there.
+    The template now sets `open_files.beam: []`, so no place (prime, beam or task) opens a file unless a hub adds an entry.
+    A hub that wants a beam file, such as `docs/{beam}.md`, names it in its own `ide.yaml`.
+    
+    Existing hubs that kept the old template's `README.md` entry in their `ide.yaml` still open it; they must remove the entry.
+    
+    The change also updates the `ideconfig` package doc, `docs/overview.md` and the `TestLoadConfig` expectations to match.
+    
+    ## Design decisions
+    
+    - `render_markdown` and its `workbench.editorAssociations` `"*.md"` entry in `internal/vscode/config.go` are unchanged.
+      The report that the markdown preview does not render in a lym-opened window was not diagnosed here.
+      It showed while VS Code had an Extension Bisect running, which may have disabled the markdown extension.
+      Whether lym's settings are at fault is still open.
+    
+    ## To check by hand
+    
+    - Open a window with `lym ide spawn` or `lym ide open` on a beam and confirm that no file opens.
+    - Open a `.md` file in a lym-seeded window with no Extension Bisect running, and confirm whether it renders as the preview.
+      If it does not, `render_markdown` needs a follow-up task.
+    
+    Created using
+     - LoomYard https://github.com/Knatte18/loomyard
+     - Claude Code <noreply@anthropic.com>
+
+diff --git a/docs/overview.md b/docs/overview.md
+index 05675589..0dc04a08 100644
+--- a/docs/overview.md
++++ b/docs/overview.md
+@@ -565,7 +565,7 @@ User-facing modules each get one `lym <module>` namespace:
+   The hub-wide `ide.yaml` lists them under `open_files` for the worktree's place: the prime, a beam or a task.
+   Paths are relative to the worktree's anchored directory, and `{beam}` stands for the beam's slug.
+   An entry naming no file is skipped.
+-  The template opens `README.md` for a beam and nothing for the prime or a task.
++  The template opens nothing for any place.
+   `ide.yaml`'s `render_markdown` is on by default.
+   With it on, a seed points the `*.md` entry of `workbench.editorAssociations` at the markdown preview,
+   so a markdown file opens rendered.
+diff --git a/internal/ideconfig/config_test.go b/internal/ideconfig/config_test.go
+index e4b4d8c2..5a462d66 100644
+--- a/internal/ideconfig/config_test.go
++++ b/internal/ideconfig/config_test.go
+@@ -29,7 +29,7 @@ func TestLoadConfig(t *testing.T) {
+ 	}{
+ 		{
+ 			name: "TemplateDefaults",
+-			want: ideconfig.Config{OpenFiles: ideconfig.OpenFiles{Prime: []string{}, Beam: []string{"README.md"}, Task: []string{}}, RenderMarkdown: true},
++			want: ideconfig.Config{OpenFiles: ideconfig.OpenFiles{Prime: []string{}, Beam: []string{}, Task: []string{}}, RenderMarkdown: true},
+ 		},
+ 		{
+ 			name: "HubFileSetsBothKeys",
+@@ -39,7 +39,7 @@ func TestLoadConfig(t *testing.T) {
+ 		{
+ 			name:  "LocalOverrideSetsRenderMarkdown",
+ 			local: "render_markdown: false\n",
+-			want:  ideconfig.Config{OpenFiles: ideconfig.OpenFiles{Prime: []string{}, Beam: []string{"README.md"}, Task: []string{}}},
++			want:  ideconfig.Config{OpenFiles: ideconfig.OpenFiles{Prime: []string{}, Beam: []string{}, Task: []string{}}},
+ 		},
+ 		{name: "AbsoluteEntryRefused", hub: "open_files:\n  task: [/etc/hosts]\n", wantErr: `ide config key "open_files.task" holds "/etc/hosts"`},
+ 		{name: "ClimbingEntryRefused", hub: "open_files:\n  beam: [../README.md]\n", wantErr: `ide config key "open_files.beam" holds "../README.md"`},
+diff --git a/internal/ideconfig/doc.go b/internal/ideconfig/doc.go
+index 6c9bd08a..92211815 100644
+--- a/internal/ideconfig/doc.go
++++ b/internal/ideconfig/doc.go
+@@ -6,8 +6,8 @@
+ // open_files holds one list per place: the prime, a beam and a task.
+ // Each entry is a path relative to the worktree's anchored directory, the folder its window shows.
+ // An entry may name the {beam} placeholder, which the opener resolves to the beam's slug.
+-// The template opens README.md for a beam and nothing for the prime or a task;
+-// a beam's own file, such as docs/{beam}.md, is named by adding an entry.
++// The template opens nothing for any place;
++// a file to open, such as a beam's own docs/{beam}.md, is named by adding an entry.
+ // render_markdown, on in the template, makes a markdown file open as VS Code's markdown preview rather than as source.
+ // Both keys only change what a window shows, so a worktree's local override may set them.
+ //
+diff --git a/internal/ideconfig/template.yaml b/internal/ideconfig/template.yaml
+index cb5cb259..b0b2a756 100644
+--- a/internal/ideconfig/template.yaml
++++ b/internal/ideconfig/template.yaml
+@@ -1,6 +1,5 @@
+ open_files:  # files `lym ide spawn` and `lym ide open` open beside the folder or workspace they launch, one list per place, in order; each a path relative to the worktree's anchored directory, the folder its window shows, where {beam} stands for the beam's slug: a beam's own, a task's parent's, or the prime's name for the prime and a task forked from it; an entry naming no existing file is skipped
+   prime: []
+-  beam:
+-    - README.md
++  beam: []
+   task: []
+ render_markdown: true  # whether a markdown file opens rendered, as VS Code's markdown preview, in a worktree `lym ide` seeds; lym then owns the "*.md" entry of workbench.editorAssociations in the worktree's settings.json, and off removes that entry while it names the preview; "Reopen Editor With..." switches one file either way
