@@ -185,7 +185,7 @@ func TestSelect(t *testing.T) {
 	}
 }
 
-func TestPlan_TaskFieldsFilesOneDarnTaskOnTheDocsProfile(t *testing.T) {
+func TestPlan_TaskFieldsFilesOneDarnTaskOnTheDocsProfileWithAnOpusWriter(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -195,13 +195,14 @@ func TestPlan_TaskFieldsFilesOneDarnTaskOnTheDocsProfile(t *testing.T) {
 	got := plan.TaskFields("the body\n")
 
 	for key, want := range map[string]any{
-		"slug":    "retro-20261116-140000",
-		"title":   "Retro of 2 landed runs up to 2026-11-16T14:00:00Z",
-		"kind":    boardengine.KindTask,
-		"recipe":  shedrun.RecipeDarn,
-		"profile": "docs",
-		"labels":  []string{"research"},
-		"body":    "the body\n",
+		"slug":         "retro-20261116-140000",
+		"title":        "Retro of 2 landed runs up to 2026-11-16T14:00:00Z",
+		"kind":         boardengine.KindTask,
+		"recipe":       shedrun.RecipeDarn,
+		"profile":      "docs",
+		"labels":       []string{"research"},
+		"body":         "the body\n",
+		"run_settings": map[string]any{"darn": map[string]any{"writer": "opus"}},
 	} {
 		if !reflect.DeepEqual(got[key], want) {
 			t.Errorf("TaskFields()[%q] = %v; want %v", key, got[key], want)

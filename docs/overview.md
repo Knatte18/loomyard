@@ -842,7 +842,7 @@ User-facing modules each get one `lym <module>` namespace:
   Convergence and timing cover tapestry and darn runs, each tagged with its recipe, and read records lym already writes.
   ✅ Implemented. See the `internal/reportengine` package documentation.
 - **retro** — one command that audits recent runs and proposes fixes (`internal/retrocli` + `internal/retroengine`; `lym retro [<slug>...] [--since <date>] [--until <date>] [--max-runs <n>]`, prime only).
-  It files one darn task on the `docs` profile from the `retro-template-task` stencil and releases it.
+  It files one darn task on the `docs` profile from the `retro-template-task` stencil, with its writer set to Opus through `run_settings`, and releases it.
   With no slug it covers the runs landed since the last retro, the newest stamp among the report directories under `docs/research/retro` and the retro tasks on the board, up to a cap of runs;
   past the cap it keeps the oldest, and the next retro starts after them.
   The task's writer runs `tools/retro/retro.sh`, `tools/tokencount` and `tools/forkaudit` over the runs' records and transcripts,

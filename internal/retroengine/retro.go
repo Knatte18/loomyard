@@ -38,6 +38,10 @@ const (
 	// TaskProfile is the run profile of the retro task, the darn profile for prose work.
 	TaskProfile = "docs"
 
+	// TaskWriter is the model-spec of the retro task's darn writer.
+	// The writer judges transcripts and routes proposals, work a weaker model turns into board noise.
+	TaskWriter = "opus"
+
 	// TaskLabel is the type label of the retro task.
 	TaskLabel = "research"
 
@@ -259,16 +263,18 @@ func (p Plan) Body(stencilsDir string) (string, error) {
 	return strings.TrimSpace(stencil.StripLeadingComment(string(body))) + "\n", nil
 }
 
-// TaskFields returns the board fields of the retro task with body: a darn task on the docs profile.
+// TaskFields returns the board fields of the retro task with body:
+// a darn task on the docs profile whose run settings put the writer on TaskWriter.
 func (p Plan) TaskFields(body string) map[string]any {
 	return map[string]any{
-		"slug":    p.Slug,
-		"title":   fmt.Sprintf("Retro of %d landed runs up to %s", len(p.Runs), p.Until.UTC().Format(time.RFC3339)),
-		"brief":   "Audit the runs from their records and transcripts, and propose fixes, most severe first",
-		"kind":    boardengine.KindTask,
-		"recipe":  shedrun.RecipeDarn,
-		"profile": TaskProfile,
-		"labels":  []string{TaskLabel},
-		"body":    body,
+		"slug":         p.Slug,
+		"title":        fmt.Sprintf("Retro of %d landed runs up to %s", len(p.Runs), p.Until.UTC().Format(time.RFC3339)),
+		"brief":        "Audit the runs from their records and transcripts, and propose fixes, most severe first",
+		"kind":         boardengine.KindTask,
+		"recipe":       shedrun.RecipeDarn,
+		"profile":      TaskProfile,
+		"labels":       []string{TaskLabel},
+		"body":         body,
+		"run_settings": map[string]any{"darn": map[string]any{"writer": TaskWriter}},
 	}
 }
