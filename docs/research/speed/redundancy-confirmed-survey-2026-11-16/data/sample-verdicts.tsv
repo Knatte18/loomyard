@@ -1,0 +1,31 @@
+package	test	verdict	kind of check the mutator missed	evidence
+internal/shedengine	TestRun_CommitStatusErrorHaltsRunWithWriteAlreadyDurable	false	error returned by an injected seam, and the status file after it fails	run_commitstatus_test.go:184
+internal/shedengine	TestRun_LockAlreadyHeld	false	absence of side effects on a refused call	run_persist_test.go:472
+internal/shedengine	TestRun_UnconditionalRecall	false	input setup: a stale output file already on disk (weakest call)	run_routing_test.go:121
+internal/shedengine	TestStep_CountedAndExemptStucksDoNotFold	false	persisted history length	step_fold_test.go:142
+internal/shedengine	TestStep_LockReleasedBetweenCalls	redundant	-	step_test.go:524
+internal/shedengine	TestStep_ToldMissingStatusWayForward	false	value of a field production code only passes through	step_test.go:671
+internal/shuttleengine/claudeengine	TestAuditForksIncremental_SeenSetFiltering	false	partial input set (some seen, some not)	audit_incremental_test.go:66
+internal/shuttleengine/claudeengine	TestContextTokens_FollowsTranscriptNamedByEachStop	false	state kept across two calls	usage_test.go:63
+internal/shuttleengine/claudeengine	TestParseEvents_MatchingTaskNotificationIsStop	false	one input shape among several	background_test.go:132
+internal/shuttleengine/claudeengine	TestPrepare_AdvisorReachesSettings	false	value of a field written to a file on disk	settings_test.go:859
+internal/battenshed	TestInnerRun_AwaitingResumesOnARejectionOnceAndAgainOnASameSecondApproval	false	state kept across two calls	innerrun_awaiting_test.go:299
+internal/battenshed	TestNotice_NilNotifyRunsNoStep	false	absence of a side effect (no marker file)	notice_test.go:481
+internal/battenshed	TestWorktreeCreate_TakesThePrimeLockOnlyThroughItsHold	false	absence of a side effect, and release counts	create_test.go:105
+internal/shedverbs	TestStatusCmd_AbsentFileOnTerminalStillReportsEnvelope	false	terminal-mode behavior and directory creation	human_test.go:287
+internal/shedverbs	TestStepCmd_InflightRecordExistsWhileProducerRuns	false	state seen from inside a running producer	steprecord_test.go:62
+internal/shedrecipe	TestImplementerEntry_WebsterBuildsTheWebsterProducer	false	concrete type of the produced value	entries_implementer_test.go:36
+internal/shedrecipe	TestResolveGateSpec_ListOrderAndPassOnCap	false	order of a multi-entry list, and a parsed flag	entries_gate_test.go:208
+internal/loomrecipe	TestDriftRows_EntryGate	false	value of a closure the covering test never calls	drift_test.go:62
+internal/loomrecipe	TestReviewBudget_NegativeRefused	false	exact error text	reviewbudget_test.go:231
+internal/orchengine	TestCompact_RequestedCycleClearsRequestAndCompactsAfterNote	false	state fields a cycle records, and one line of an injected message	watcher_compact_test.go:125
+internal/orchengine	TestWatcher_AskEventBlocksInjection	false	absence of a side effect (suppressed injection)	watcher_test.go:473
+internal/loomcli	TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON	false	file content on disk after a migration	landingdeps_markdone_test.go:104
+internal/loomcli	TestPairSlugOf	false	result read from another package's real hub fixture	gatefixer_integration_test.go:39
+internal/loomcli	TestResolveSeedRecipe	redundant	-	arm_seed_test.go:162
+internal/planglyph	TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither	redundant	-	handle_test.go:678
+internal/planglyph	TestCanonicalizeHandles_Rewrites	false	several items in one call matched back by position	handle_test.go:68
+internal/planglyph	TestStatusFindings_UnrecognizedStatusFailsClosed	false	value of a field production code only passes through	resolve_test.go:245
+internal/boardengine	TestListAndFindLabelFilter	false	combination of two filters, and result order	store_test.go:1149
+internal/boardengine	TestPromoteMakesNoteATaskAndIsIdempotent	false	absence of a side effect (file not rewritten)	board_test.go:452
+internal/boardengine	TestRunLock_SketchExemptionIsTheWholeNetChange	false	negative case: a refusal	sketch_test.go:157

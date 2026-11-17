@@ -1,0 +1,1 @@
+{"candidates":[],"kept":[],"map_built_at":"2026-11-16T15:14:01+01:00","map_commit":"e97e2474d8a223377e880ecba275e24382c70cfe","not_judged":[{"name":"TestToldGeometryInvariant_AllowlistOnly","reason":"checks the module's source files, which no mutant changes"}],"ok":true,"package":"internal/shuttleengines","refuted":[],"tests":10}
