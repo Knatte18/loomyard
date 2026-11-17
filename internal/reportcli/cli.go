@@ -123,7 +123,7 @@ Example:
 				return fail(err)
 			}
 
-			geometry, err := primeGeometry(location)
+			geometry, err := PrimeGeometry(location)
 			if err != nil {
 				return fail(err)
 			}
@@ -181,8 +181,8 @@ func parseOptions(since string, freshDays int, format string, now time.Time) (re
 	return options, nil
 }
 
-// primeGeometry resolves the checkouts and branches the report reads from the prime worktree's location.
-func primeGeometry(location *lymcwd.Location) (reportengine.Geometry, error) {
+// PrimeGeometry resolves the checkouts and branches a report reads from the prime worktree's location.
+func PrimeGeometry(location *lymcwd.Location) (reportengine.Geometry, error) {
 	codeRepo := location.WorktreePath()
 	parentBranch, err := gitrepo.New(codeRepo).CurrentBranch()
 	if err != nil {

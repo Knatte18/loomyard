@@ -312,6 +312,8 @@ github.com/Knatte18/loomyard/
 ├── internal/reedengine/render/   pure display-vocabulary leaf (Anchor, Display, ValidateDisplay)
 ├── internal/reportcli/           the report CLI command (`lym report convergence`, the read-only convergence report, `lym report timing`, the read-only timing report, `lym report cost`, the read-only cost report, `lym report raddle`, the read-only predicted-against-actual cost of each filed Sketch, and `lym report replies`, the read-only count of creel's expected replies, prime only)
 ├── internal/reportengine/        the report domain kernel (finished runs, wakes, stops, repairs, review rounds and landings for convergence, per-run time, waits, attempts and stop settlers for timing, per-cell dollars, hours and cost fits from the runs' usage records for cost, each filed Sketch's predicted cost against its parts' actual cost from the raddle store for raddle, read from git objects, and the per-role count of creel's expected replies, read from the creel log)
+├── internal/retrocli/            the retro CLI command (`lym retro`, filing and releasing the darn task that audits landed runs from their transcripts, prime only)
+├── internal/retroengine/         the retro domain kernel (the last retro's stamp, the landed runs a retro covers under its cap, and the retro task's body and board fields)
 ├── internal/orchcli/             the orch CLI command
 ├── internal/orchengine/          the orch domain kernel (config, stencil renders, persisted state, cycle state machine)
 ├── internal/orchroute/           the orch lookups below `orchcli`: the orch paths, the liveness of a worktree's orch, its strand name and the walk to the nearest live orch (`Asker`)
@@ -839,6 +841,16 @@ User-facing modules each get one `lym <module>` namespace:
   The replies report counts, per receiver role over the creel journal's seven days, the replies creel was asked for, the replies it got, the chases it sent and the messages left unanswered.
   Convergence and timing cover tapestry and darn runs, each tagged with its recipe, and read records lym already writes.
   ✅ Implemented. See the `internal/reportengine` package documentation.
+- **retro** — one command that audits recent runs and proposes fixes (`internal/retrocli` + `internal/retroengine`; `lym retro [<slug>...] [--since <date>] [--until <date>] [--max-runs <n>]`, prime only).
+  It files one darn task on the `docs` profile from the `retro-template-task` stencil and releases it.
+  With no slug it covers the runs landed since the last retro, the newest stamp among the report directories under `docs/research/retro` and the retro tasks on the board, up to a cap of runs;
+  past the cap it keeps the oldest, and the next retro starts after them.
+  The task's writer runs `tools/retro/retro.sh`, `tools/tokencount` and `tools/forkaudit` over the runs' records and transcripts,
+  reads at most a fixed number of moments the figures point at,
+  and writes a report under `docs/research/retro/<slug>/` of proposals, most severe first, each routed to a check, a rubric line or a deletion.
+  The run files nothing on the board: the operator picks which proposals become notes.
+  Friction-Reflect stays as it is, a per-run step that files lym issues from the notes agents chose to write.
+  ✅ Implemented. See the `internal/retrocli` package documentation.
 - **tender** — the one ordered pause that makes the hub safe to suspend within seconds (`internal/tendercli` + `internal/tenderengine`; `lym tender pause [<slug>] [--grace <seconds>]`, `lym tender resume [<slug>]`, `lym tender revive [<slug>]`, `lym tender status` and `lym tender reap`, from any worktree of the hub; `lym p` and `lym r` are shortcuts for the first two verbs).
   `lym tender pause` records an entry, waits a short grace for busy agent sessions and network operations to finish, interrupts every covered session still in a running turn with Esc and holds every path that would start agent or network work;
   the orchestrator is interrupted by its own watcher at the grace end.

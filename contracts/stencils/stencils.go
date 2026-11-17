@@ -590,6 +590,12 @@ var TwillJudgePlain []byte
 //go:embed beam/beam-template-board-tidy.md
 var BeamTemplateBoardTidy []byte
 
+// RetroTemplateTask is the retro task's shipped-default board body.
+// It is the goal of the darn task `lym retro` files: the scripts to run, the reading cap, the questions and the report.
+//
+//go:embed retro/retro-template-task.md
+var RetroTemplateTask []byte
+
 // SeatDirectiveChair is the chair seat block's shipped default:
 // the channel rules a multi-seat step's chair works under, pulled into a seat stencil as an include.
 //
@@ -865,6 +871,7 @@ var entries = []registryEntry{
 	{"engine/claude/edit-directive", &EngineClaudeEditDirective},
 	{"engine/codex/edit-directive", &EngineCodexEditDirective},
 	{"beam-template-board-tidy", &BeamTemplateBoardTidy},
+	{"retro-template-task", &RetroTemplateTask},
 	{"gatefix-frame-cold", &GatefixFrameCold},
 	{"gatefix-body-darn", &GatefixBodyDarn},
 	{"gatefix-body-plan", &GatefixBodyPlan},

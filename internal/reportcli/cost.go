@@ -62,7 +62,7 @@ Example:
 				return fail(err)
 			}
 			options.MinRuns = config.CostMinRuns
-			geometry, err := primeGeometry(location)
+			geometry, err := PrimeGeometry(location)
 			if err != nil {
 				return fail(err)
 			}
