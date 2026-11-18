@@ -88,11 +88,6 @@ func (f *fakeRepo) commitOnChainWith(sha string, at time.Time, message string, o
 	f.chain = append(f.chain, sha)
 }
 
-// commitOffChain adds a commit outside the main line holding exactly files, with no parent.
-func (f *fakeRepo) commitOffChain(sha string, at time.Time, files map[string]string) {
-	f.commitOffChainOn(sha, "", at, "", files)
-}
-
 // commitOffChainOn adds a commit outside the main line holding exactly files.
 // It sets message as the commit's message and parent as its only parent when parent is not empty.
 func (f *fakeRepo) commitOffChainOn(sha, parent string, at time.Time, message string, files map[string]string) {

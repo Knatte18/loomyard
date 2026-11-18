@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -40,38 +39,6 @@ func stampedSiblingCount(t *testing.T, dir, base string) int {
 		}
 	}
 	return count
-}
-
-// stopLog records the strand guid of every Stop call on the handles built over it.
-// Each Stop call returns err when err is set.
-type stopLog struct {
-	mu      sync.Mutex
-	err     error
-	stopped []string
-}
-
-// probedHandle is a burlerengine.Handle for an agent that a probe reports live.
-// A producer reads its strand guid and stops it.
-// A nil log makes Stop a no-op.
-type probedHandle struct {
-	guid string
-	log  *stopLog
-}
-
-func (h probedHandle) StrandGUID() string { return h.guid }
-
-func (h probedHandle) RunDir() string { return "/kept/" + h.guid }
-
-func (h probedHandle) Wait() (shuttleengine.Result, error) { return shuttleengine.Result{}, nil }
-
-func (h probedHandle) Stop() error {
-	if h.log == nil {
-		return nil
-	}
-	h.log.mu.Lock()
-	defer h.log.mu.Unlock()
-	h.log.stopped = append(h.log.stopped, h.guid)
-	return h.log.err
 }
 
 // --- Bouncer, judge pass ---

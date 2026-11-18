@@ -48,14 +48,6 @@ type bouncerFixtureSpec struct {
 
 type bouncerFixtureOpt func(*bouncerFixtureSpec)
 
-// withRubric names the rubric stencil and sets its body.
-func withRubric(name, body string) bouncerFixtureOpt {
-	return func(s *bouncerFixtureSpec) {
-		s.rubricName = name
-		s.rubricBody = body
-	}
-}
-
 // withRubricName names the rubric stencil and keeps the default body.
 func withRubricName(name string) bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.rubricName = name }

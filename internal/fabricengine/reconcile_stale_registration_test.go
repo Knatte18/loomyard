@@ -492,15 +492,3 @@ func TestCleanup_VerdictIsIndependentOfDryRunAndForce(t *testing.T) {
 		t.Errorf("unmanaged branch %q was deleted by Cleanup(apply, force=true); want it to survive", unmanaged)
 	}
 }
-
-// reconcilePairFor returns the result entry for slug's pair, failing the test when the result has none.
-func reconcilePairFor(t *testing.T, result fabricengine.ReconcileResult, slug string) fabricengine.ReconcilePairResult {
-	t.Helper()
-	for _, pair := range result.Pairs {
-		if filepath.Base(pair.CodeWorktree) == slug {
-			return pair
-		}
-	}
-	t.Fatalf("Reconcile() reported no pair for slug %q", slug)
-	return fabricengine.ReconcilePairResult{}
-}

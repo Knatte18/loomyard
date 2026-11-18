@@ -7,7 +7,6 @@ package burlerengine
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -166,15 +165,6 @@ type fakeShuttle struct {
 	// stopErr makes a handle's Stop fail, for every handle or only the one named by stopErrGuid when that is set.
 	stopErr     error
 	stopErrGuid string
-	// stoppedGUIDs holds the strand guid of every Stop call, in call order.
-	stoppedGUIDs []string
-}
-
-// stopCalls returns the strand guids of the Stop calls so far, in call order.
-func (f *fakeShuttle) stopCalls() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.stoppedGUIDs)
 }
 
 // fakeHandle is one started fake seat.
@@ -218,10 +208,9 @@ func (h *fakeHandle) stop() {
 	h.stopOnce.Do(func() { close(h.stopped) })
 }
 
-// Stop records the call and, unless the shuttle was told to fail it, ends the handle's Wait as died.
+// Stop ends the handle's Wait as died, unless the shuttle was told to fail it.
 func (h *fakeHandle) Stop() error {
 	h.shuttle.mu.Lock()
-	h.shuttle.stoppedGUIDs = append(h.shuttle.stoppedGUIDs, h.guid)
 	failed := h.shuttle.stopErr != nil && (h.shuttle.stopErrGuid == "" || h.shuttle.stopErrGuid == h.guid)
 	err := h.shuttle.stopErr
 	h.shuttle.mu.Unlock()
@@ -230,19 +219,6 @@ func (h *fakeHandle) Stop() error {
 	}
 	h.stop()
 	return nil
-}
-
-// settled reports whether the handle is no longer blocked: its Wait returned, or it was stopped.
-func (h *fakeHandle) settled() bool {
-	if h.returned.Load() {
-		return true
-	}
-	select {
-	case <-h.stopped:
-		return true
-	default:
-		return false
-	}
 }
 
 // diedResult is what a stopped handle's Wait reports.
@@ -428,30 +404,6 @@ func (f *fakeShuttle) ProbeGated(spec shuttleengine.Spec, gate shuttleengine.Gat
 		return nil, false, nil
 	}
 	return f.registerLocked(spec, gate, f.scriptFor(spec)), true, nil
-}
-
-// stop ends the blocked Wait of the handle with guid, if one was started.
-func (f *fakeShuttle) stop(guid string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, h := range f.handles {
-		if h.guid == guid {
-			h.stop()
-		}
-	}
-}
-
-// blocked returns the roles of started handles that are neither done waiting nor stopped.
-func (f *fakeShuttle) blocked() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var roles []string
-	for role, h := range f.handles {
-		if !h.settled() {
-			roles = append(roles, role)
-		}
-	}
-	return roles
 }
 
 // newEngineTestProfile builds a minimal valid Profile rooted at a fresh temp dir.

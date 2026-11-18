@@ -1423,17 +1423,12 @@ func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
 	}
 }
 
-// skillStartFixture starts a run whose launch defers its prompt, over a skillReed and skillFakeEngine.
+// skillStartFixtureWith starts a run whose launch defers its prompt.
+// The run's doubles are a skillReed that adds strand and a skillFakeEngine.
 // The reports script each load turn's classification.
 // Hangs and dies name the load turns, counted from zero, that never end or kill the pane.
+// When configure is set, it lets the test adjust the doubles before the start.
 // It returns the started run (nil with the error on a refused start), the reed double and the virtual time Start took.
-func skillStartFixture(t *testing.T, spec Spec, reports []SkillLoadReport, hangs, dies []int) (*Run, *skillReed, time.Duration, error) {
-	t.Helper()
-	return skillStartFixtureWith(t, reedengine.Strand{GUID: "strand-1"}, spec, reports, hangs, dies, nil)
-}
-
-// skillStartFixtureWith is skillStartFixture over a reed that adds the given strand;
-// when configure is set, it lets the test adjust the doubles before the start.
 func skillStartFixtureWith(t *testing.T, strand reedengine.Strand, spec Spec, reports []SkillLoadReport, hangs, dies []int, configure func(*skillReed, *skillFakeEngine)) (*Run, *skillReed, time.Duration, error) {
 	t.Helper()
 	base := &fakeReed{

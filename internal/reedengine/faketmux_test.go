@@ -135,14 +135,6 @@ func (f *fakeTmux) answerWindowPanes(out string, err error) {
 	f.windowPanes = &tmuxAnswer{out, err}
 }
 
-// answerSession scripts the answers a session with live panes gives:
-// list-panes, the generation probe and the live window-size query.
-func (f *fakeTmux) answerSession(live []LivePane, box string, boxErr error) {
-	f.answer("list-panes", encodeLivePanes(live), nil)
-	f.answerFormat(paneGenerationFormat, "$0|1|1000", nil)
-	f.answer("display-message", box, boxErr)
-}
-
 // mustNotCall fails the test, at the call, whenever one of verbs runs.
 func (f *fakeTmux) mustNotCall(verbs ...string) {
 	f.mu.Lock()

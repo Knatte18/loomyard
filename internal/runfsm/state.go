@@ -102,16 +102,7 @@ var order = []struct {
 	{NoRun, func(Records) bool { return true }},
 }
 
-// Order returns the run states, highest precedence first.
-func Order() []State {
-	states := make([]State, len(order))
-	for i, entry := range order {
-		states[i] = entry.state
-	}
-	return states
-}
-
-// Derive returns the state of the run the records describe: the first state of Order whose condition holds.
+// Derive returns the state of the run the records describe: the highest-precedence state whose condition holds.
 // A batten record whose shed state is cancelled while its task branch is gone from origin counts as no record.
 // It is the leftover of a cancel that crashed after removing the pair.
 func Derive(r Records) Reading {

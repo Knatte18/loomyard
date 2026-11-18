@@ -15,17 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// failOutput renders go test output failing the named tests in pkg, each at its subtest nesting depth.
-func failOutput(pkg string, tests ...string) string {
-	var b strings.Builder
-	for _, name := range tests {
-		indent := strings.Repeat("    ", strings.Count(name, "/"))
-		b.WriteString(indent + "--- FAIL: " + name + " (0.00s)\n" + indent + "    x_test.go:1: boom " + name + "\n")
-	}
-	b.WriteString("FAIL\nFAIL\t" + pkg + "\t0.01s\n")
-	return b.String()
-}
-
 func TestTriageWarnings(t *testing.T) {
 	tiergate.Require(t, 0)
 	cases := []struct {

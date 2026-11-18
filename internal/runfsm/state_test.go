@@ -3,7 +3,6 @@
 package runfsm_test
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/runfsm"
@@ -71,17 +70,6 @@ func TestDerive(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("OrderListsEveryStateHighestFirst", func(t *testing.T) {
-		t.Parallel()
-		want := []runfsm.State{
-			runfsm.Landed, runfsm.Cancelled, runfsm.Cancelling, runfsm.Paused, runfsm.Halted,
-			runfsm.Landing, runfsm.Running, runfsm.Starting, runfsm.Queued, runfsm.NoRun,
-		}
-		if got := runfsm.Order(); !reflect.DeepEqual(got, want) {
-			t.Errorf("Order() = %v; want %v", got, want)
-		}
-	})
 }
 
 func TestTransitionState(t *testing.T) {
