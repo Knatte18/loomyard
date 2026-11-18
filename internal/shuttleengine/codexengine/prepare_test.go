@@ -26,16 +26,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// wantCreelHead returns the developer instructions of an autonomous launch with guards and no standing passage.
-// They are the deny notice of the question-tool deny and the rows, then the creel trust sentence.
-func wantCreelHead(guards []shellguard.Row) string {
-	return denyNotice(true, guards) + " " + shuttleengine.CreelTrustSentence
+// wantCreelHead returns the developer instructions of an autonomous launch with guards and inputs in.
+// The launch has no standing passage.
+// They are the deny notice of the question-tool deny and the rows in announces, then the creel trust sentence.
+func wantCreelHead(guards []shellguard.Row, in guardInputs) string {
+	return denyNotice(true, guards, in) + " " + shuttleengine.CreelTrustSentence
 }
 
 // autonomousHooks returns the tool hooks of an autonomous launch in runDir.
 // The launch installs guards, under the template's batching nudge.
 func autonomousHooks(runDir string, guards []shellguard.Row) toolHooks {
-	return toolHooks{guards: guards, questionDeny: true, batchingStatePath: filepath.Join(runDir, batchingNudgeStateFileName)}
+	return toolHooks{guards: guards, lymPath: testLymPath, questionDeny: true, batchingStatePath: filepath.Join(runDir, batchingNudgeStateFileName)}
 }
 
 func readRecord(t *testing.T, home string) trustRecord {
@@ -127,7 +128,8 @@ func TestPrepare_Launch(t *testing.T) {
 			}
 
 			promptPath := filepath.Join(runDir, "prompt.md")
-			guards := installedGuards(nil, guardInputs{denyPython: true, denyPublish: true})
+			guardIn := guardInputs{denyPython: true, denyPublish: true}
+			guards := installedGuards(nil, guardIn)
 			sh := shell.ForGOOS()
 			want := shuttleengine.Launch{
 				Cmd: buildLaunchCmd(sh, launchLine{
@@ -137,7 +139,7 @@ func TestPrepare_Launch(t *testing.T) {
 					writableRoots:         wantRoots,
 					model:                 "gpt-6-astra",
 					effort:                "medium",
-					developerInstructions: wantCreelHead(guards),
+					developerInstructions: wantCreelHead(guards, guardIn),
 					maxSubagentThreads:    16,
 					projectDocMaxBytes:    defaultProjectDocMaxBytes,
 					hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, guards), creelDelivery{}),
@@ -250,7 +252,7 @@ func TestPrepare_SandboxMode(t *testing.T) {
 				home:                  repo.lymHome,
 				sandboxMode:           tt.wantMode,
 				writableRoots:         repo.wantGitDirs(anchor),
-				developerInstructions: wantCreelHead(installedGuards(nil, guardInputs{})),
+				developerInstructions: wantCreelHead(installedGuards(nil, guardInputs{}), guardInputs{}),
 				maxSubagentThreads:    16,
 				projectDocMaxBytes:    defaultProjectDocMaxBytes,
 				hooks:                 hookSettings(eventsPath, autonomousHooks(runDir, installedGuards(nil, guardInputs{})), creelDelivery{}),
@@ -296,7 +298,7 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 		home:                  repo.lymHome,
 		sandboxMode:           sandboxWorkspaceWrite,
 		writableRoots:         append(repo.wantGitDirs(anchor), cache),
-		developerInstructions: wantCreelHead(installedGuards(nil, guardInputs{})),
+		developerInstructions: wantCreelHead(installedGuards(nil, guardInputs{}), guardInputs{}),
 		maxSubagentThreads:    16,
 		projectDocMaxBytes:    defaultProjectDocMaxBytes,
 		hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, installedGuards(nil, guardInputs{})), creelDelivery{}),
@@ -309,7 +311,8 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 }
 
 // TestPrepare_InstallsGuardsFromItsInputs pins which inputs reach the installed guard rows.
-// The python switch and the publish guard each install their own row alone;
+// The python switch decides only whether the deny notice names the python row, which every launch installs;
+// the publish guard installs its own row alone;
 // a seeded refuse_raw list of the hub's gate config reaches the hook and the developer instructions' deny notice;
 // and a gate config that is present but does not load refuses the launch before the prompt file is written.
 func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
@@ -364,7 +367,7 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 				home:                  repo.lymHome,
 				sandboxMode:           sandboxWorkspaceWrite,
 				writableRoots:         repo.wantGitDirs(anchor),
-				developerInstructions: wantCreelHead(guards),
+				developerInstructions: wantCreelHead(guards, tt.wantInputs),
 				maxSubagentThreads:    16,
 				projectDocMaxBytes:    defaultProjectDocMaxBytes,
 				hooks:                 hookSettings(filepath.Join(runDir, "events.jsonl"), autonomousHooks(runDir, guards), creelDelivery{}),
@@ -396,7 +399,7 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	tiergate.Require(t, 0)
 
-	head := wantCreelHead(installedGuards(nil, guardInputs{}))
+	head := wantCreelHead(installedGuards(nil, guardInputs{}), guardInputs{})
 	// fillBytes is the size of the one passage that makes the setting maxArgumentBytes-1 bytes.
 	// tomlString of the head and its blank line holds both quotes, so a plain passage adds exactly its own length.
 	fillBytes := maxArgumentBytes - 1 - len(developerInstructionsKey+"=") - len(tomlString(head+"\n\n"))
@@ -549,7 +552,7 @@ func TestPrepare_SwitchedToolHooks(t *testing.T) {
 				t.Fatalf("Prepare() error: %v", err)
 			}
 			guards := installedGuards(nil, guardInputs{})
-			tools := toolHooks{guards: guards, questionDeny: tt.wantDeny}
+			tools := toolHooks{guards: guards, lymPath: testLymPath, questionDeny: tt.wantDeny}
 			statePath := filepath.Join(runDir, batchingNudgeStateFileName)
 			if tt.wantBatching {
 				tools.batchingStatePath = statePath
@@ -562,7 +565,7 @@ func TestPrepare_SwitchedToolHooks(t *testing.T) {
 					t.Errorf("Prepare() launch line = %q; want it to hold the setting %s", launch.Cmd, quoted)
 				}
 			}
-			notice := shell.ForGOOS().Quote(developerInstructionsKey + "=" + tomlString(denyNotice(tt.wantDeny, guards)+" "+shuttleengine.CreelTrustSentence))
+			notice := shell.ForGOOS().Quote(developerInstructionsKey + "=" + tomlString(denyNotice(tt.wantDeny, guards, guardInputs{})+" "+shuttleengine.CreelTrustSentence))
 			if !strings.Contains(launch.Cmd, notice) {
 				t.Errorf("Prepare() launch line = %q; want developer instructions opening %s", launch.Cmd, notice)
 			}
@@ -1161,7 +1164,7 @@ func TestPrepare_SubagentTerms(t *testing.T) {
 				t.Fatalf("Prepare() error: %v", err)
 			}
 
-			items := []instructionItem{{text: wantCreelHead(installedGuards(nil, guardInputs{}))}}
+			items := []instructionItem{{text: wantCreelHead(installedGuards(nil, guardInputs{}), guardInputs{})}}
 			effortSetting := "agents.default_subagent_reasoning_effort="
 			if tt.wantEffort != "" {
 				passage := subagentPassage(tt.wantEffort, tt.skills)

@@ -150,7 +150,7 @@ func TestPrepare_UserSetup(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
-			texts := []string{wantCreelHead(installedGuards(nil, guardInputs{}))}
+			texts := []string{wantCreelHead(installedGuards(nil, guardInputs{}), guardInputs{})}
 			for _, item := range append(tt.setup.InstructionFiles, tt.setup.PluginContexts...) {
 				texts = append(texts, item.Text)
 			}

@@ -128,8 +128,10 @@ type launchFacts struct {
 	codex Config
 	// refuseRaw is the hub's refuse list, which the shell guard rows are built over.
 	refuseRaw []string
-	setup     shuttleengine.UserSetup
-	standing  shuttleengine.Standing
+	// lymPath is the lym binary the guard rows' live checks run.
+	lymPath  string
+	setup    shuttleengine.UserSetup
+	standing shuttleengine.Standing
 	// denyNotice and subagentPassage are the developer instructions' notice and passage, empty when it has none.
 	denyNotice      string
 	subagentPassage string
@@ -262,7 +264,7 @@ func guardCandidates(launched launchFacts) []manifestCandidate {
 	}
 	candidates := []manifestCandidate{guard(questionDenyKey, questionDenyCommand())}
 	for _, row := range shellguard.Rows(foregroundPhrase, launched.refuseRaw) {
-		candidates = append(candidates, guard(row.Name, guardCommand(row)))
+		candidates = append(candidates, guard(row.Name, guardCommand(row, launched.lymPath)))
 	}
 	return candidates
 }

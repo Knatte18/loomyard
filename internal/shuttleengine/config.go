@@ -55,7 +55,9 @@ type Config struct {
 	Engine string `yaml:"engine"`
 
 	// DenyPython switches the python guard of the shell-guard table for every engine.
-	// Each engine's hook and system-prompt sentence switch together with the guard.
+	// Each engine installs the guard's hook in every session,
+	// and the hook reads this key from the hub's config on each matching call,
+	// so a change reaches running sessions; the system-prompt sentence follows the value at launch.
 	// Leave it off for a hub whose work needs Python.
 	DenyPython bool `yaml:"deny_python"`
 

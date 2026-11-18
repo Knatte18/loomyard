@@ -481,7 +481,7 @@ func buildConfigLong() string {
 		"board dir's files, and \"lym config reconcile --apply\" from a worktree file.\n\n" +
 		"--layer default|worktree|machine|local picks the file to print or write: default is the board's\n" +
 		"repo default, committed from the prime; local is an untracked override.\n\n" +
-		"Python guard off for a hub (hook and notice), from the prime:\n" +
+		"deny_python=false lets Python through and drops the notice at launch, from the prime:\n" +
 		"  lym config shuttle --layer default --set " + string(shellguard.SwitchDenyPython) + "=false\n\n" +
 		"--resolved <module> prints the merged result, each unit annotated with its\n" +
 		"layer: template, default, worktree, machine or local.\n\n" +

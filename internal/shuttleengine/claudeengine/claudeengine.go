@@ -19,9 +19,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// LymBinary resolves the absolute path of the lym binary that Prepare names in the python guard hook.
+// It defaults to `selfexec.LymBinary`, which refuses a test binary.
+// A test that runs Prepare points it at a stand-in path.
+var LymBinary = selfexec.LymBinary
 
 // engineName is the name the engine registers under.
 // A spec's prompt engine must name it, and a turn hook command is given it as its last argument.
@@ -209,6 +215,11 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 			)
 		}
 	}
+	// The python guard hook runs this binary by path, so a lym of another version on PATH never answers it.
+	lymPath, err := LymBinary()
+	if err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("resolve the lym binary the python guard hook runs: %w", err)
+	}
 	if err := os.WriteFile(promptPath, []byte(spec.Prompt), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write prompt: %w", err)
 	}
@@ -231,7 +242,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 
 	scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role)
 	scope.Env = subagentEffortEnv(cfg.Agents, spec.ConfigRole)
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, spec.TurnHookCommand, creelFlagDirForHook, spec.Advisor, scope)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, spec.TurnHookCommand, creelFlagDirForHook, spec.Advisor, lymPath, scope)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}
@@ -291,6 +302,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		appendPromptPath: appendPromptPath,
 		launchLine:       launchLine,
 		eventsPathPosix:  eventsPathForHook,
+		lymPath:          lymPath,
 		notice:           notice,
 		subagentPassage:  subagentRule,
 		standing:         standing,

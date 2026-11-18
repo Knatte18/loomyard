@@ -53,7 +53,8 @@
 // The Codex texts name Codex's apply_patch tool for the edit rule and Codex's own subagents for the headless claude row.
 //
 // A row hangs on a Switch.
-// A SwitchNone row is installed for every run, and SwitchDenyPython follows the shuttle config's python key.
+// A SwitchNone row is installed for every run, and so is a SwitchDenyPython row.
+// Its hook asks the hub's current shuttle config on each matching call, and its notice follows the config at launch.
 // SwitchDenyPublish, which the publish row hangs on, is turned on only by a launch spec.
 // Only the session that sets it cannot run git push or a gh call outside what the row's table lets through:
 // reads, comments, and title and body edits.

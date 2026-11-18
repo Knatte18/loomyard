@@ -68,7 +68,7 @@ func TestBuildSettings_LeavesWorktreeSettingsOut(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "", "", tt.flagDir, "", sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "", "", tt.flagDir, "", testLymPath, sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -117,7 +117,7 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "", "", "", sessionScope{})
+			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "", "", "", testLymPath, sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -190,7 +190,7 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command, "", "", "", sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command, "", "", "", testLymPath, sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -291,7 +291,7 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 		{"Standalone", "", []string{"touch '/c/run/activity-stamp'; true"}, []stopHook{{command: recordingCommand(hookEventStop, quotedEventsPath)}}},
 	}
 	for _, tt := range tests {
-		data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "", tt.flagDir, "", sessionScope{})
+		data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "", tt.flagDir, "", testLymPath, sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings(%s) error: %v", tt.name, err)
 		}
@@ -382,7 +382,7 @@ func TestBuildSettings_TurnHookCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "lym slack hook", tt.flagDir, "", sessionScope{})
+			data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "lym slack hook", tt.flagDir, "", testLymPath, sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -397,6 +397,9 @@ func TestBuildSettings_TurnHookCommand(t *testing.T) {
 	}
 }
 
+// TestBuildSettings_DenyToggleMatrix proves each Bash deny's presence and the PreToolUse count follow the deny inputs.
+//
+//testtiming:keep pins each Bash deny's presence and the PreToolUse count across every interactive, fork and publish combination, which TestPrepare_WritesTheManifest checks for one autonomous spec
 func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -404,29 +407,24 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 		askUserDeny      bool
 		interactive      bool
 		wantAskUserEntry bool
-		pythonDeny       bool
 		fork             bool
 		denyPublish      bool
 	}{
-		{"all_off_autonomous", false, false, false, false, false, false},
-		{"askuser_on_autonomous", true, false, true, false, false, false},
+		{"all_off_autonomous", false, false, false, false, false},
+		{"askuser_on_autonomous", true, false, true, false, false},
 		// Interactive runs always carry the non-denying AskUserQuestion marker entry, regardless of DenyAskUserQuestion.
 		// The deny is autonomous-only, and the marker and the deny are mutually exclusive.
-		{"askuser_on_interactive_marker_not_deny", true, true, true, false, false, false},
-		{"askuser_off_interactive_marker_still_present", false, true, true, false, false, false},
-		{"askuser_on_fork", true, false, true, false, true, false},
-		// The python deny is independent of the others and installed in every run mode.
-		{"python_only_autonomous", false, false, false, true, false, false},
-		{"python_only_interactive", false, true, true, true, false, false},
-		{"python_only_fork", false, false, false, true, true, false},
+		{"askuser_on_interactive_marker_not_deny", true, true, true, false, false},
+		{"askuser_off_interactive_marker_still_present", false, true, true, false, false},
+		{"askuser_on_fork", true, false, true, true, false},
 		// The publish deny is installed only on the launch-spec switch, in every run mode.
-		{"publish_on", false, false, false, false, false, true},
+		{"publish_on", false, false, false, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := shuttleengine.Config{DenyPython: tt.pythonDeny}
+			cfg := shuttleengine.Config{}
 			claude := Config{DenyAskUserQuestion: tt.askUserDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, tt.denyPublish, "", "", "", "", sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, tt.denyPublish, "", "", "", "", testLymPath, sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -486,8 +484,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 				headlessClaudeInstalled = headlessClaudeInstalled || strings.Contains(command, shellRow(t, "headless-claude").Steer)
 				publishInstalled = publishInstalled || strings.Contains(command, shellRow(t, "publish").Steer)
 			}
-			if pythonInstalled != tt.pythonDeny {
-				t.Errorf("python Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", pythonInstalled, tt.pythonDeny, preToolUse)
+			if !pythonInstalled {
+				t.Errorf("python Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
 			// The raw go deny has no toggle: every run mode installs it.
 			if !rawGoInstalled {
@@ -512,8 +510,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if publishInstalled != tt.denyPublish {
 				t.Errorf("publish Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", publishInstalled, tt.denyPublish, preToolUse)
 			}
-			if !tt.wantAskUserEntry && !tt.pythonDeny && !tt.denyPublish && !tt.fork && len(preToolUse) != 6 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, shell-edit, computed-rm, sleep, headless claude and adopt takeover denies", preToolUse)
+			if !tt.wantAskUserEntry && !tt.denyPublish && !tt.fork && len(preToolUse) != 7 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the python, raw go, shell-edit, computed-rm, sleep, headless claude and adopt takeover denies", preToolUse)
 			}
 		})
 	}
@@ -527,7 +525,7 @@ func TestStandingDenies_RenderEveryShellGuardRow(t *testing.T) {
 	t.Parallel()
 
 	rows := shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw)
-	denies := standingDeniesFor(sampleRefuseRaw)
+	denies := standingDeniesFor(sampleRefuseRaw, testLymPath)
 	claudeCount := len(claudeDenies())
 	if len(denies) != claudeCount+len(rows) {
 		t.Fatalf("standingDeniesFor has %d entries; want %d Claude entries plus %d shell guard rows", len(denies), claudeCount, len(rows))
@@ -558,7 +556,7 @@ func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	// Each steer constant rides inside a JSON string literal, so a literal `"` or `\` would corrupt the payload.
 	// The JSON sits inside a single-quoted echo argument under git-bash, so a literal `'` would corrupt the hook command.
 	// All three characters must stay absent.
-	for _, deny := range standingDeniesFor(sampleRefuseRaw) {
+	for _, deny := range standingDeniesFor(sampleRefuseRaw, testLymPath) {
 		if strings.ContainsAny(deny.steer, steerTextForbiddenChars) {
 			t.Errorf("steer text contains a forbidden character (one of %q): %q", steerTextForbiddenChars, deny.steer)
 		}
@@ -622,7 +620,7 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, false, "", "", "", "", sessionScope{})
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, false, "", "", "", "", testLymPath, sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -632,11 +630,14 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 				t.Errorf("Agent PreToolUse entries = %q; want none (data: %s)", agentCommands, data)
 			}
 
-			// The raw go, shell-edit, computed-rm, sleep, headless claude and adopt takeover denies are installed under every input;
-			// the rest of the Bash entries are the fork guard.
-			var bashCommands, rawGoCommands, shellEditCommands, computedRmCommands, sleepCommands, headlessClaudeCommands, adoptTakeHoldCommands []string
+			// Every input installs the python, raw go, shell-edit, computed-rm, sleep and headless claude denies.
+			// It also installs the adopt takeover deny.
+			// The rest of the Bash entries are the fork guard.
+			var bashCommands, pythonCommands, rawGoCommands, shellEditCommands, computedRmCommands, sleepCommands, headlessClaudeCommands, adoptTakeHoldCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
+				case strings.Contains(command, shellRow(t, "python").Steer):
+					pythonCommands = append(pythonCommands, command)
 				case strings.Contains(command, shellRow(t, "adopt-take-hold").Steer):
 					adoptTakeHoldCommands = append(adoptTakeHoldCommands, command)
 				case strings.Contains(command, shellRow(t, "raw-go").Steer):
@@ -658,6 +659,9 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 			}
 			if len(adoptTakeHoldCommands) != 1 {
 				t.Errorf("adopt takeover Bash PreToolUse entries = %q; want exactly one (data: %s)", adoptTakeHoldCommands, data)
+			}
+			if len(pythonCommands) != 1 {
+				t.Errorf("python Bash PreToolUse entries = %q; want exactly one (data: %s)", pythonCommands, data)
 			}
 			if len(rawGoCommands) != 1 {
 				t.Errorf("raw go Bash PreToolUse entries = %q; want exactly one (data: %s)", rawGoCommands, data)
@@ -977,8 +981,8 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 		wantRefused bool
 		wantErr     bool
 	}{
-		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 7, true, false},
-		{"AbsentGateConfigRendersNoRefuseRawRow", "", 6, false, false},
+		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 8, true, false},
+		{"AbsentGateConfigRendersNoRefuseRawRow", "", 7, false, false},
 		{"UnparsableGateConfigRefusesBeforeArtifacts", "slots: [\n", 0, false, true},
 	}
 	for _, tt := range gateTests {
@@ -1033,6 +1037,8 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 }
 
 // TestBuildDenyNotice_MatchesInstalledDenies pins that the notice names exactly the denies buildSettings installs.
+// The python deny is the one exception:
+// it is installed in every run, and named only while the launch's config denies Python.
 // It checks every deny combination.
 //
 //testtiming:keep pins the notice sentences against the installed hooks over every combination, which its covering test checks only for the append-system-prompt.txt file
@@ -1044,7 +1050,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 				for _, fork := range []bool{false, true} {
 					cfg := shuttleengine.Config{DenyPython: pythonDeny, RefuseRaw: sampleRefuseRaw}
 					claude := Config{DenyAskUserQuestion: askUserDeny}
-					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", "", "", sessionScope{})
+					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", "", "", testLymPath, sessionScope{})
 					if err != nil {
 						t.Fatalf("buildSettings() error: %v", err)
 					}
@@ -1054,8 +1060,8 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 						hooks, _ := entry["hooks"].([]any)
 						cmd, _ := hooks[0].(map[string]any)
 						command, _ := cmd["command"].(string)
-						for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
-							if deny.command == command && deny.notice != "" {
+						for _, deny := range standingDeniesFor(cfg.RefuseRaw, testLymPath) {
+							if deny.command == command && deny.notice != "" && (pythonDeny || deny.notice != shellRow(t, "python").Notice) {
 								wantSentences = append(wantSentences, deny.notice)
 							}
 						}
@@ -1145,7 +1151,7 @@ func TestBuildSettings_MatchesGolden(t *testing.T) {
 			t.Errorf("golden lacks %q", label)
 			continue
 		}
-		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", "", "", sessionScope{})
+		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", "", "", testLymPath, sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings(%s): %v", label, err)
 		}

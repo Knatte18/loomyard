@@ -25,7 +25,10 @@ func rowNames(rows []shellguard.Row) []string {
 }
 
 // TestInstalledGuards_CoverEveryRow pins that a launch with every switch on installs every row, in table order.
-// The refuse-raw row is included for a non-empty refuse list, and the python and publish rows follow their switches.
+// The refuse-raw row is included for a non-empty refuse list, the python row under every input,
+// and the publish row follows its switch.
+//
+//testtiming:keep pins the literal installed row names per input, which TestPrepare_InstallsGuardsFromItsInputs derives from installedGuards itself
 func TestInstalledGuards_CoverEveryRow(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -38,7 +41,7 @@ func TestInstalledGuards_CoverEveryRow(t *testing.T) {
 		want      []string
 	}{
 		{"EverySwitchOn", sampleRefuseRaw, guardInputs{denyPython: true, denyPublish: true}, every},
-		{"SwitchesOff", sampleRefuseRaw, guardInputs{}, slices.DeleteFunc(slices.Clone(every), func(name string) bool { return name == "python" || name == "publish" })},
+		{"SwitchesOff", sampleRefuseRaw, guardInputs{}, slices.DeleteFunc(slices.Clone(every), func(name string) bool { return name == "publish" })},
 		{"NoRefuseList", nil, guardInputs{denyPython: true, denyPublish: true}, slices.DeleteFunc(slices.Clone(every), func(name string) bool { return name == "refuse-raw" })},
 	}
 	for _, tt := range tests {
@@ -54,6 +57,7 @@ func TestInstalledGuards_CoverEveryRow(t *testing.T) {
 // TestGuardEntries_RenderEveryRowWithItsCodexText pins the literal deny output Codex honours.
 // It pins one entry per row: each opens with the literal Bash matcher and carries the row's Codex steer in its deny.
 // It also pins a deny notice of the rows' Codex notices in order.
+// That notice names the python row only while the launch's config denies Python.
 //
 //testtiming:keep pins the literal deny JSON and the deny notice order, question notice first, which TestPrepare_CreelHooksInAHub does not read
 func TestGuardEntries_RenderEveryRowWithItsCodexText(t *testing.T) {
@@ -63,34 +67,41 @@ func TestGuardEntries_RenderEveryRowWithItsCodexText(t *testing.T) {
 	if got, want := denyDecision("x"), `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"x"}}`; got != want {
 		t.Errorf("denyDecision(x) = %s; want %s", got, want)
 	}
-	rows := installedGuards(sampleRefuseRaw, guardInputs{denyPython: true, denyPublish: true})
-	entries := guardEntries(rows)
+	every := guardInputs{denyPython: true, denyPublish: true}
+	rows := installedGuards(sampleRefuseRaw, every)
+	entries := guardEntries(rows, testLymPath)
 	if len(entries) != len(rows) {
 		t.Fatalf("guardEntries() = %d entries; want one per row, %d", len(entries), len(rows))
 	}
-	var notices []string
+	var notices, noticesWithoutPython []string
 	for i, row := range rows {
+		if row.Name != "python" {
+			noticesWithoutPython = append(noticesWithoutPython, row.NoticeFor(engineName))
+		}
 		if !strings.HasPrefix(entries[i], `{matcher="Bash",hooks=[`) {
 			t.Errorf("entry %d = %s; want the %s row's entry to open with the literal Bash matcher", i, entries[i], row.Name)
 		}
-		if !strings.Contains(entries[i], tomlString(guardCommand(row))) {
+		if !strings.Contains(entries[i], tomlString(guardCommand(row, testLymPath))) {
 			t.Errorf("entry %d = %s; want it to run the %s row's own command", i, entries[i], row.Name)
 		}
-		if !strings.Contains(guardCommand(row), denyDecision(row.SteerFor(engineName))) {
-			t.Errorf("%s command = %s; want it to carry the row's Codex deny", row.Name, guardCommand(row))
+		if !strings.Contains(guardCommand(row, testLymPath), denyDecision(row.SteerFor(engineName))) {
+			t.Errorf("%s command = %s; want it to carry the row's Codex deny", row.Name, guardCommand(row, testLymPath))
 		}
 		notices = append(notices, row.NoticeFor(engineName))
 	}
-	if got, want := denyNotice(false, rows), strings.Join(notices, " "); got != want {
+	if got, want := denyNotice(false, rows, every), strings.Join(notices, " "); got != want {
 		t.Errorf("denyNotice(false, rows) = %q; want %q", got, want)
 	}
-	if got, want := denyNotice(true, rows), noticeQuestionDeny+" "+strings.Join(notices, " "); got != want {
+	if got, want := denyNotice(true, rows, every), noticeQuestionDeny+" "+strings.Join(notices, " "); got != want {
 		t.Errorf("denyNotice(true, rows) = %q; want %q", got, want)
 	}
-	if got := denyNotice(false, rows); strings.Contains(got, "with Read") || !strings.Contains(got, "apply_patch") {
+	if got, want := denyNotice(false, rows, guardInputs{denyPublish: true}), strings.Join(noticesWithoutPython, " "); got != want {
+		t.Errorf("denyNotice(false, rows) with python allowed = %q; want %q", got, want)
+	}
+	if got := denyNotice(false, rows, every); strings.Contains(got, "with Read") || !strings.Contains(got, "apply_patch") {
 		t.Errorf("denyNotice() = %q; want the Codex edit rule in place of the Claude one", got)
 	}
-	if got := denyNotice(false, nil); got != "" {
+	if got := denyNotice(false, nil, every); got != "" {
 		t.Errorf("denyNotice(false, nil) = %q; want empty", got)
 	}
 	if !strings.Contains(questionDenyCommand(), denyDecision(steerQuestionDeny)) || strings.ContainsAny(steerQuestionDeny, `'"\`) {

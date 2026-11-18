@@ -132,7 +132,7 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 	}{
 		{
 			name: "AutonomousSpecWithSkills", spec: base,
-			want: append(guards(shellRowNames(shellguard.SwitchNone)),
+			want: append(guards(append(shellRowNames(shellguard.SwitchNone), shellRowNames(shellguard.SwitchDenyPython)...)),
 				item(shuttleengine.ChannelPromptEngine, "prompt-engine", shuttleengine.DeliveryDelivered),
 				guard("question-deny"),
 				item(shuttleengine.ChannelSkillLoad, "scribe:prose", shuttleengine.DeliveryDelivered),
@@ -147,7 +147,7 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 				item(shuttleengine.ChannelPluginContext, "scribe@market/emit", shuttleengine.DeliveryNative),
 				shuttleengine.ManifestItem{Channel: shuttleengine.ChannelSettings, Key: "settings", Engine: engineName, Delivery: shuttleengine.DeliveryDelivered},
 			),
-			wantAbsent: append(switched, guard(shuttleengine.WebsterForkDenyKey)),
+			wantAbsent: append(guards(shellRowNames(shellguard.SwitchDenyPublish)), guard(shuttleengine.WebsterForkDenyKey)),
 		},
 		{
 			name: "HandWrittenPrompt", spec: func() shuttleengine.Spec {

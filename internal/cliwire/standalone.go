@@ -49,6 +49,14 @@ type Standalone struct {
 	DefaultPlanDir    string
 }
 
+// StandaloneStateDir returns the state directory a standalone run of target anchors its config at.
+// target must be absolute.
+// It derives the directory only: it creates nothing and redirects no sink, as ResolveStandalone does.
+func StandaloneStateDir(target string) (string, error) {
+	stateDir, _, err := standalonestate.Derive(target)
+	return stateDir, err
+}
+
 // ResolveStandalone performs the whole ordered standalone prologue.
 // It resolves the target and derives the state identity, then refuses nested geometry.
 // It redirects the durable sink, seeds the stencils and specs directories, and resolves the plan directory.

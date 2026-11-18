@@ -143,7 +143,7 @@ func TestBuildSettings_EditHook(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			cfg := shuttleengine.Config{EditLoopEdits: tt.edits, EditLoopWindowS: 300}
-			data, err := buildSettings(eventsPath, tt.interactive, cfg, templateConfig(t), false, false, "", "", "", "", sessionScope{})
+			data, err := buildSettings(eventsPath, tt.interactive, cfg, templateConfig(t), false, false, "", "", "", "", testLymPath, sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}

@@ -96,9 +96,9 @@ func TestHookSettings(t *testing.T) {
 		want  []string
 	}{
 		{"NoToolHooks", toolHooks{}, creelDelivery{}, append(append([]string{}, recorded...), activity)},
-		{"Guards", toolHooks{guards: guards}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPreToolUse, guardEntries(guards)...), activity)},
-		{"QuestionDenyBeforeTheGuards", toolHooks{guards: guards, questionDeny: true}, creelDelivery{}, append(append([]string{}, recorded...),
-			hookSetting(hookEventPreToolUse, append([]string{hookEntry("*", questionDenyCommand())}, guardEntries(guards)...)...), activity)},
+		{"Guards", toolHooks{guards: guards, lymPath: testLymPath}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPreToolUse, guardEntries(guards, testLymPath)...), activity)},
+		{"QuestionDenyBeforeTheGuards", toolHooks{guards: guards, lymPath: testLymPath, questionDeny: true}, creelDelivery{}, append(append([]string{}, recorded...),
+			hookSetting(hookEventPreToolUse, append([]string{hookEntry("*", questionDenyCommand())}, guardEntries(guards, testLymPath)...)...), activity)},
 		{"BatchingAfterTheActivityHook", toolHooks{batchingStatePath: statePath}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPostToolUse, activityEntry, batching))},
 		{"EditHookBeforeTheBatchingHook", toolHooks{batchingStatePath: statePath, editRecordsPath: recordsPath}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPostToolUse, activityEntry, editHook, batching))},
 		{"CreelMailAfterTheBatchingHook", toolHooks{batchingStatePath: statePath}, creel, []string{

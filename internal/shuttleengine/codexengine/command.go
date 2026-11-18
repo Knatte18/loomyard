@@ -252,6 +252,8 @@ func creelWaitHookCommand(creel creelDelivery) string {
 type toolHooks struct {
 	// guards are the installed shell guard rows.
 	guards []shellguard.Row
+	// lymPath is the lym binary the guard rows' live checks run.
+	lymPath string
 	// questionDeny installs the question-tool deny, for an autonomous launch.
 	questionDeny bool
 	// batchingStatePath is the run's batching nudge state file; empty installs no batching hook.
@@ -282,7 +284,7 @@ func hookSettings(eventsPath string, tools toolHooks, creel creelDelivery) []str
 	if tools.questionDeny {
 		preToolUse = append(preToolUse, hookEntry(toolMatcherAll, questionDenyCommand()))
 	}
-	preToolUse = append(preToolUse, guardEntries(tools.guards)...)
+	preToolUse = append(preToolUse, guardEntries(tools.guards, tools.lymPath)...)
 	if len(preToolUse) > 0 {
 		settings = append(settings, hookSetting(hookEventPreToolUse, preToolUse...))
 	}

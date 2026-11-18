@@ -541,11 +541,18 @@
 // Every row follows the Claude rows, in table order.
 // The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position.
 // It applies in every run mode;
-// `shuttle.yaml`'s `deny_python` switches it off for a Python target repo.
+// `shuttle.yaml`'s `deny_python: false` lets Python through for a Python target repo.
 // Its notice names a version check as refused, so a session does not probe for Python,
 // and its steer names jq, grep and awk for parsing and the edit rule.
 // Both give the reason and the way forward for work that needs Python itself.
-// `deny_python: false` removes the hook and the notice sentence together.
+// Every run installs its hook.
+// On a matching call the hook runs the lym binary that launched the session, named by its absolute path.
+// It runs `shuttle hook-python-allowed` from the session's project directory.
+// It denies the call unless that verb exits 0.
+// The verb exits 0 only while the `deny_python` of the shuttle config the launch read is false.
+// So a change of the key reaches running sessions at their next matching call, with no restart;
+// a lym that is missing or fails keeps the deny.
+// The notice sentence follows `deny_python` at launch: `deny_python: false` leaves it out.
 // The publish row denies a Bash `git push`, with any flag words before `push`,
 // and every `gh` call in command position except the reads, comments and title and body edits the table lists;
 // it is installed only for a run whose spec sets `DenyPublish`.
@@ -588,7 +595,7 @@
 // so every test run in an agent session goes through `lym gate test`.
 // `Prepare` loads `gate.yaml` over the engine's dirs, the hub file inside a hub and the worktree's own file outside one;
 // it also fills `shuttleengine.Config.RefuseRaw` on its copy of the config before it builds anything;
-// the settings and the notice then render `standingDeniesFor(cfg.RefuseRaw)`:
+// the settings and the notice then render `standingDeniesFor(cfg.RefuseRaw, lymPath)`:
 // the Claude denies followed by every shell guard row.
 // An absent file leaves the list empty and renders no row;
 // any other load failure refuses the spawn with the loader's way forward before an artifact is written.

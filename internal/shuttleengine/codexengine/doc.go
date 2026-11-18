@@ -101,6 +101,13 @@
 // The hook prints Codex's deny decision with the row's Codex steer,
 // and the developer instructions open with the rows' Codex notices;
 // a hook that fails to run fails open in Codex, so a guard is a guardrail and not a barrier.
+// Every launch installs the python row.
+// On a matching call its hook runs the lym binary that launched the session, named by its absolute path.
+// It runs `shuttle hook-python-allowed` from its working directory, the session's own.
+// It denies the call unless that verb exits 0.
+// The verb exits 0 only while the `deny_python` of the shuttle config the launch read is false.
+// So a change of the key reaches a running session at its next matching call.
+// The row's notice follows `deny_python` at launch.
 // An autonomous launch also denies Codex's question tools, the counterpart of Claude's AskUserQuestion deny.
 // The entry opens the same PreToolUse setting, since a second `-c` of the key replaces the first.
 // It matches every tool and denies a payload whose tool name ends in `request_user_input` or `request_user_input_async`,

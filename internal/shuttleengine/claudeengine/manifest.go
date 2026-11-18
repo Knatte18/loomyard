@@ -143,6 +143,8 @@ type launchArtifacts struct {
 	launchLine string
 	// eventsPathPosix is the events path the settings' hook commands name.
 	eventsPathPosix string
+	// lymPath is the lym binary the settings' python guard hook runs.
+	lymPath string
 	// notice and subagentPassage are the appended prompt's deny notice and subagent passage, empty when it has none.
 	notice          string
 	subagentPassage string
@@ -198,7 +200,7 @@ func (c *Claude) manifestInputsFor(launched launchArtifacts) (manifestInputs, er
 	in.candidates = append(in.candidates, promptEngineCandidate(spec))
 	in.candidates = append(in.candidates, standingCandidates(launched.standing)...)
 	in.candidates = append(in.candidates, noticeCandidates(launched)...)
-	in.candidates = append(in.candidates, guardCandidates(launched.cfg.RefuseRaw)...)
+	in.candidates = append(in.candidates, guardCandidates(launched.cfg.RefuseRaw, launched.lymPath)...)
 	in.candidates = append(in.candidates, manifestCandidate{
 		item:  shuttleengine.ManifestItem{Channel: shuttleengine.ChannelBatchingNudge, Key: batchingNudgeItemKey, Delivery: shuttleengine.DeliveryDelivered},
 		in:    inPostToolUseHooks,
@@ -285,7 +287,8 @@ func noticeCandidates(launched launchArtifacts) []manifestCandidate {
 
 // guardCandidates returns one item per PreToolUse deny lym may install, keyed by its engine-neutral name.
 // The settings document holds a command only for a deny the run installs.
-func guardCandidates(refuseRaw []string) []manifestCandidate {
+// A live check in a command runs the lym binary at lymPath.
+func guardCandidates(refuseRaw []string, lymPath string) []manifestCandidate {
 	guard := func(key, command string) manifestCandidate {
 		return manifestCandidate{
 			item:  shuttleengine.ManifestItem{Channel: shuttleengine.ChannelGuard, Key: key, Delivery: shuttleengine.DeliveryDelivered},
@@ -299,7 +302,7 @@ func guardCandidates(refuseRaw []string) []manifestCandidate {
 		candidates = append(candidates, guard(claudeKeys[deny.steer], deny.command))
 	}
 	for _, row := range shellguard.Rows(bashForegroundPhrase, refuseRaw) {
-		candidates = append(candidates, guard(row.Name, renderShellGuard(row).command))
+		candidates = append(candidates, guard(row.Name, renderShellGuard(row, lymPath).command))
 	}
 	return candidates
 }

@@ -15,9 +15,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// LymBinary resolves the absolute path of the lym binary that Prepare names in the python guard hook.
+// It defaults to `selfexec.LymBinary`, which refuses a test binary.
+// A test that runs Prepare points it at a stand-in path.
+var LymBinary = selfexec.LymBinary
 
 // engineName is the name the engine registers under.
 // The standing passages are keyed by it, and a spec's prompt engine must name it.
@@ -165,13 +171,20 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	if err != nil && !errors.Is(err, gateslot.ErrConfigAbsent) {
 		return shuttleengine.Launch{}, fmt.Errorf("codexengine: %w", err)
 	}
+	// The python guard hook runs this binary by path, so a lym of another version on PATH never answers it.
+	lymPath, err := LymBinary()
+	if err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("codexengine: resolve the lym binary the python guard hook runs: %w", err)
+	}
+	guardIn := guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish}
 	tools := toolHooks{
-		guards:       installedGuards(gate.RefuseRaw, guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish}),
+		guards:       installedGuards(gate.RefuseRaw, guardIn),
+		lymPath:      lymPath,
 		questionDeny: !spec.Interactive,
 	}
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
 	standing := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
-	notice := denyNotice(tools.questionDeny, tools.guards)
+	notice := denyNotice(tools.questionDeny, tools.guards, guardIn)
 	items := []instructionItem{creelHeadItem(notice)}
 	subagentEffort := c.subagentEffort(cfg.Agents, spec.ConfigRole, codex)
 	passage := subagentPassage(subagentEffort, spec.Skills)
@@ -276,6 +289,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		spec:            spec,
 		codex:           codex,
 		refuseRaw:       gate.RefuseRaw,
+		lymPath:         lymPath,
 		setup:           setup,
 		standing:        standing,
 		denyNotice:      notice,

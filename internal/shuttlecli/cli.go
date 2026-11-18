@@ -13,6 +13,8 @@
 // The hidden hook-batching, which a session's after-tool-call hook runs, is implemented in hookbatching.go; it skips the resolution too and reads only its hook input and the state file it is told.
 // The hidden hook-edit, which a session's after-edit hook runs, is implemented in hookedit.go.
 // It skips the resolution too and writes only the edit records file it is told.
+// The hidden hook-python-allowed, which a session's python guard hook runs, is implemented in hookpython.go.
+// It skips the shared resolution and resolves only the shuttle config, so its exit code alone answers the hook.
 
 package shuttlecli
 
@@ -56,7 +58,7 @@ type shuttleCLI struct {
 // The parent command carries a PersistentPreRunE that resolves geometry and engines, skipping
 // resolution when the group command itself is invoked (no git repo required).
 // The await verb skips it too and needs no hub, reading only the keep-warm config inside a git worktree.
-// So do the hidden hook-batching and hook-edit verbs.
+// So do the hidden hook-batching and hook-edit verbs, and hook-python-allowed, which resolves its own config.
 // The manifest verb takes the strict cwd gate like run and open.
 func Command() *cobra.Command {
 	c := &shuttleCLI{}
@@ -76,7 +78,7 @@ provider specifics.`,
 			// listing or unknown-subcommand error path via GroupRunE), skip
 			// cwd/layout/config/engine resolution so that neither path
 			// requires a git repository to be present.
-			if cmd.Name() == "shuttle" || cmd.Name() == awaitVerb || cmd.Name() == shuttleengine.BatchingHookVerb || cmd.Name() == shuttleengine.EditHookVerb {
+			if cmd.Name() == "shuttle" || cmd.Name() == awaitVerb || cmd.Name() == shuttleengine.BatchingHookVerb || cmd.Name() == shuttleengine.EditHookVerb || cmd.Name() == shuttleengine.PythonAllowedHookVerb {
 				return nil
 			}
 
@@ -151,7 +153,7 @@ provider specifics.`,
 		},
 	}
 
-	parent.AddCommand(c.runCmd(), c.openCmd(), c.manifestCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd(), hookEditCmd())
+	parent.AddCommand(c.runCmd(), c.openCmd(), c.manifestCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd(), hookEditCmd(), hookPythonAllowedCmd())
 
 	return parent
 }
