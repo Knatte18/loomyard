@@ -11,6 +11,9 @@ import (
 	"strings"
 )
 
+// cgroupMemoryMaxFile names the cgroup v2 file that holds the cgroup's memory limit, in bytes or max for none.
+const cgroupMemoryMaxFile = "memory.max"
+
 // MemoryLimit is one cgroup's memory use and its limit.
 type MemoryLimit struct {
 	// Used is the bytes the cgroup and its descendants hold outside the file cache, which the kernel drops under pressure.
@@ -60,7 +63,7 @@ func readMemoryLimitAt(selfCgroup, mount string) (MemoryLimit, bool) {
 func readMemoryLevel(mount, level string) (MemoryLimit, bool) {
 	dir := filepath.Join(mount, filepath.FromSlash(level))
 	throttle, throttled := readIntFile(filepath.Join(dir, "memory.high"))
-	hard, capped := readIntFile(filepath.Join(dir, "memory.max"))
+	hard, capped := readIntFile(filepath.Join(dir, cgroupMemoryMaxFile))
 	limit := hard
 	switch {
 	case !throttled && !capped:

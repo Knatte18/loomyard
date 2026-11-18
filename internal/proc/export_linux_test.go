@@ -1,8 +1,14 @@
-// export_linux_test.go exposes the capped run of a host with no user manager to the external tests.
+// export_linux_test.go exposes capped runs with a stand-in scope starter or none to the external tests.
 
 package proc
 
 import "os/exec"
+
+// SelfCgroupFile is the file that names the cgroup of the process reading it.
+const SelfCgroupFile = selfCgroupFile
+
+// CgroupMount is the directory where the cgroup v2 hierarchy is mounted.
+const CgroupMount = cgroupMount
 
 // RunMemoryCappedWithStarter runs cmd capped at limit bytes in a scope that starter, standing in for systemd-run, starts.
 func RunMemoryCappedWithStarter(cmd *exec.Cmd, limit int64, starter string) (killed bool, err error) {

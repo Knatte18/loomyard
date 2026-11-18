@@ -54,7 +54,10 @@
 // RunMemoryCapped runs a command with the memory of its process tree capped.
 // On Linux the command runs in a transient scope of the systemd user manager, started through `systemd-run`.
 // The scope's `MemoryMax` is the cap and it has no swap, so the kernel kills the command alone.
-// The call reports a kill at the scope's own limit, read from the scope's `memory.events` while the command runs.
+// The scope checks its own `memory.max` before it runs the command, and a scope not held to the cap never runs it.
+// The call reports a kill at the scope's own limit, read from the scope's `memory.events` once the command has ended.
+// A holder process in the scope keeps the scope, and that count, until the read is done,
+// so the read never races the scope's removal.
 // A kill at the limit of an enclosing cgroup or of the host is no such kill.
 // After a SIGKILL of the command or a kill at the cap, it kills what is left in the scope through its `cgroup.kill`.
 // The scope's `OOMPolicy` is `continue`, so the kill never fails the scope with the result `oom-kill`.
@@ -69,7 +72,8 @@
 // RunMemoryCappedVia runs a command under the same cap through a caller's own start and wait.
 // An example is a start that ties the child to the caller's life.
 // It reports whether the kernel killed any process of the tree at the cap.
-// A cap that could not be set, a scope that never ran the command included, returns an error wrapping `ErrMemoryCap`.
+// A cap that could not be set returns an error wrapping `ErrMemoryCap`.
+// So does a scope that never ran the command, or one whose `memory.max` is not the cap.
 // MemoryCapCoversTree reports whether the cap bounds a command's whole tree as one.
 // Only the data segment limit does not.
 // proc cannot log, so the caller logs the command it hands over and its end.

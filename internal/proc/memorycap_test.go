@@ -42,18 +42,21 @@ func TestRunMemoryCapped(t *testing.T) {
 	tests := []struct {
 		name      string
 		megabytes int
+		limit     int64
 		// wantEnded is set for a child the cap ends before it exits 0.
 		wantEnded bool
 	}{
-		{"AChildWithinTheCapEndsOnItsOwn", hogWithinCap, false},
-		{"AChildOverTheCapIsEnded", hogOverCap, true},
+		{"AChildWithinTheCapEndsOnItsOwn", hogWithinCap, testMemoryCap, false},
+		// A cap that is not a whole number of pages is still held, so a child within it runs.
+		{"AChildWithinACapThatIsNoPageMultipleEndsOnItsOwn", hogWithinCap, testMemoryCap + 1, false},
+		{"AChildOverTheCapIsEnded", hogOverCap, testMemoryCap, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			killed, err := proc.RunMemoryCapped(memoryHog(t, tt.megabytes), testMemoryCap)
+			killed, err := proc.RunMemoryCapped(memoryHog(t, tt.megabytes), tt.limit)
 			if ended := err != nil; ended != tt.wantEnded || (killed && !tt.wantEnded) {
-				t.Errorf("RunMemoryCapped(a child keeping %d MB, %d) = killed %v, %v; want ended %v", tt.megabytes, testMemoryCap, killed, err, tt.wantEnded)
+				t.Errorf("RunMemoryCapped(a child keeping %d MB, %d) = killed %v, %v; want ended %v", tt.megabytes, tt.limit, killed, err, tt.wantEnded)
 			}
 		})
 	}
