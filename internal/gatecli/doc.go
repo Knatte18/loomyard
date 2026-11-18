@@ -63,6 +63,8 @@
 // Such a call is refused before hub resolution, naming the key and the flag to drop.
 // Once the config is loaded, a key the config does not hold, an empty tier list and an undeclared tier are refused.
 // The refusal takes its way forward from `gateslot.Config.Gate` and names `lym config gate`.
+// In a hub that declares no tier at all, a `--gate` call names that on stderr and runs the key's lints and no tier,
+// so a fresh hub with no tests yet runs and lands its tasks while its lints still hold.
 // A key of scope `card` takes the `--card` ids as the card form.
 // It is refused when none is given, naming the key and the way forward of passing `--card <id>` per card.
 // A key of scope `all` is the `--all` form, and a key of scope `diff` is the computed form.
@@ -249,6 +251,9 @@
 // Under `none` the empty share is the only change, and every other group and tier stays whole.
 // The scope plans no guard step.
 // Under `dotnet` the derivation drops inert paths itself.
+// Under every scoper a `--gate` key of scope `all` checks the diff from the merge base with the parent branch,
+// and an inert-only diff gets the empty scope, so the Finalize gate of an inert-only change runs no tier.
+// A worktree with no parent branch and an explicit `--all` stay whole.
 // A `--card` scope is not narrowed by `inert_paths`.
 // A whole gate carries over inert-only history.
 // A whole invocation of a tier that carries, with no entry on the current tree, is carried under one condition.

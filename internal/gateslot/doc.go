@@ -197,8 +197,10 @@
 // The template and a hub whose gate keys name an undeclared tier therefore both load.
 //
 // At use, Config.Gate returns a key's tiers and scope.
-// It refuses a hub with no `tier0`; a key the config does not hold;
-// an empty tier list; and a listed tier the hub does not declare.
+// It refuses a key the config does not hold; an empty tier list;
+// a hub that declares tiers but no `tier0`; and a listed tier the hub does not declare.
+// A hub that declares no tier at all, as the template does, gets the key with no tiers and no refusal,
+// so the gate calls of a fresh hub with no tests yet run the key's lints and no tier.
 // Config.TierList returns its tiers, and Config.Tier refuses an undeclared number.
 // Each refusal names `lym config gate`.
 // It closes with the clause that a session that is not the prime reports status: FAILED and the orch runs the steps.

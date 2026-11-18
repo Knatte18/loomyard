@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -624,6 +625,68 @@ func TestGateTest_Scopes(t *testing.T) {
 			if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "all" || run.GateKey != key {
 				t.Errorf("tier0 run record = %+v; want the all scope form and gate key %s", run, key)
 			}
+		}
+	})
+
+	t.Run("--gate with scope all over an inert-only diff from the parent branch runs no tier's command", func(t *testing.T) {
+		writeInert(t, "go", nil)
+		defer writeScoper(t, "go")
+		edit(t, "docs/note.md", "inert note for finalize\n")
+		g := gate(t, pair, nil, "--gate", "finalize")
+		wantArgs(t, g)
+		if out := g.stdout.String(); !strings.Contains(out, `scope all of --gate "finalize": every file changed since`) || !strings.Contains(out, "the scope is empty, so tier0 runs no command") {
+			t.Errorf("stdout = %q; want the inert-only diff named and tier0 running no command", out)
+		}
+	})
+
+	t.Run("--gate with scope all runs whole over an inert-only edit in the prime, which has no parent branch", func(t *testing.T) {
+		writeInert(t, "go", nil)
+		defer writeScoper(t, "go")
+		note := filepath.Join(prime, "docs", "note.md")
+		original, err := os.ReadFile(note)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.WriteFile(note, original, 0o644); err != nil {
+				t.Error(err)
+			}
+		})
+		if err := os.WriteFile(note, []byte("inert note edited in the prime\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		g := gate(t, prime, nil, "--gate", "finalize")
+		wantArgs(t, g, []string{"./..."})
+		if strings.Contains(g.stdout.String(), "the scope is empty") {
+			t.Errorf("stdout = %q; want no empty-scope line, since the prime has no parent branch to diff from", g.stdout.String())
+		}
+	})
+
+	t.Run("--gate with scope all runs whole and names why when the parent branch's merge base cannot be read", func(t *testing.T) {
+		writeInert(t, "go", nil)
+		defer writeScoper(t, "go")
+		recorded, found, err := fabricengine.ReadOriginFor(h.Location, hubforge.TemplatePairSlug)
+		if err != nil || !found {
+			t.Fatalf("read the pair's origin record = %v, found %v; want it present", err, found)
+		}
+		vanished := recorded
+		vanished.ParentBranch = "vanished-parent-branch"
+		rewrite := func(origin fabricengine.Origin) error {
+			return fabricengine.WriteOrigin(new(fabricengine.Mutations), h.Location, hubforge.TemplatePairSlug, origin)
+		}
+		if err := rewrite(vanished); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := rewrite(recorded); err != nil {
+				t.Error(err)
+			}
+		})
+		edit(t, "docs/note.md", "inert note with a vanished parent\n")
+		g := gate(t, pair, nil, "--gate", "finalize")
+		wantArgs(t, g, []string{"./..."})
+		if out := g.stdout.String(); !strings.Contains(out, `the scope of --gate "finalize" stays whole: cannot read the merge base`) || strings.Contains(out, "the scope is empty") {
+			t.Errorf("stdout = %q; want the stays-whole line and no empty-scope line", out)
 		}
 	})
 

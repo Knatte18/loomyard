@@ -51,7 +51,7 @@ var DarnTemplateWrite []byte
 var DarnFragmentMakeChange []byte
 
 // DarnFragmentMakeChangeGated is the darn writer prompt's Step 4 list when the verify gate has a cold fixer.
-// The writer and its subagents run no gate in it.
+// The writer and its subagents run no gate in it, except the writer's single measuring run of one test class.
 // The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it.
 //
 //go:embed darn/darn-fragment-make-change-gated.md

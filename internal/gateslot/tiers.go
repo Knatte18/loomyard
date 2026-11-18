@@ -356,17 +356,23 @@ func (c Config) Tier(number int) (Tier, error) {
 }
 
 // Gate returns the named gate key's tiers and scope.
-// It refuses, naming lym config gate, a hub with no tier0, a missing key, an empty list, or an undeclared tier.
+// A hub that declares no tier at all gets the key with no tiers.
+// A fresh hub with no tests yet then runs its gates with the key's lints and no tier.
+// It refuses a missing key, an empty list, a hub that declares tiers but no tier0, or an undeclared tier.
+// Each refusal names lym config gate.
 func (c Config) Gate(key string) (GateKey, error) {
-	if _, declared := c.Tiers[tierKey(0)]; !declared {
-		return GateKey{}, useRefusal("the hub declares no tier0, so no gate has a tier to run")
-	}
 	gate, ok := c.Gates[key]
 	if !ok {
 		return GateKey{}, useRefusal("gates holds no key %q", key)
 	}
 	if len(gate.Tiers) == 0 {
 		return GateKey{}, useRefusal("gates.%s is empty, and every gate verifies at least one tier", key)
+	}
+	if len(c.Tiers) == 0 {
+		return GateKey{Scope: gate.Scope, Lints: slices.Clone(gate.Lints), Reports: slices.Clone(gate.Reports)}, nil
+	}
+	if _, declared := c.Tiers[tierKey(0)]; !declared {
+		return GateKey{}, useRefusal("the hub declares no tier0, so no gate has a tier to run")
 	}
 	for _, number := range gate.Tiers {
 		if _, declared := c.Tiers[tierKey(number)]; !declared {

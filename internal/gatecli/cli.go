@@ -70,7 +70,7 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `test runs the tiers the hub declares in gate.yaml, in ascending tier number, going on past a failed one unless --stop-on-fail ends the call there.
 --gate K runs the tiers and the scope the gate key K of gate.yaml names, and goes with none of --tier, --upto, --all and --base.
-A key of scope card needs --card <id> per card, scope all runs every tier whole, and scope diff runs the diff from the merge base with the pair's parent branch.
+A key of scope card needs --card <id> per card, scope all runs every tier whole, or no tier when every changed file is inert, and scope diff runs the diff from the merge base with the pair's parent branch.
 Explicit <targets> beside --gate replace the key's scope.
 --tier N names a tier and may repeat; the default is tier0 without --upto or --gate.
 --upto N adds every declared tier numbered 0 through N but a manual one, which runs only when --tier names it.
@@ -78,12 +78,12 @@ Each tier takes the gate slots it asks for and runs its command through the plat
 Without --wait, an agent strand's call runs in a detached runner it starts or joins and answers done false with exit 75, no failure, once its keep-warm cap passes:
 run the same command again in a turn that does nothing else, so the prompt cache stays warm; it prints the result once the run ended.
 With --wait, and with no strand, the tiers run in this process.
-Inside a slot already held by an enclosing gate run it runs without acquiring another.
+Inside a slot an enclosing gate run holds it acquires no other.
 The exit code is the first failing run's own, or 0.
 Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
 --guards, and a narrower scope under the go scoper, also run the //lym:guard tests outside the scope.
---map builds the tier0 and tier1 coverage maps of the scope's packages, and refuses the flags that pick tiers or steps.
+--map builds the tier0 and tier1 coverage maps, and refuses the flags that pick tiers or steps.
 
 Examples:
 

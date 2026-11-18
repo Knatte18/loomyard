@@ -130,6 +130,8 @@ A landing key may list more tiers than the card keys, such as one that runs the 
 Parent-Align is then the one planned whole-solution run per task, since it is the first gate over the merged parent.
 Finalize carries that run from the green record when no commit landed between.
 It runs whole again only after a fix or a moved parent changed the tree.
+When the hub sets `inert_paths` and every file the branch changed matches them, the Parent-Align and Finalize gates run no tier,
+except a tier with `carry: false`, which always runs whole.
 
 ## A timing tier
 

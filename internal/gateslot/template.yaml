@@ -18,12 +18,13 @@ redundancy_budget_min: 10  # minutes the redundancy report step may spend on its
 tiers: {}
 
 # Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.
-# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree), and webster-fix, darn-write, code-burler-fix and pr-review (scope diff, the diff from the merge base).
+# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree, or no tier once inert_paths is set and every changed file matches it), and webster-fix, darn-write, code-burler-fix and pr-review (scope diff, the diff from the merge base).
 # The scope card is only for the card and batch keys.
 # A key may also hold lints, the lint steps its call runs after the tiers against HEAD: comments (fixed-column-wrapped breaks and over-long lines in // comments) and pattern (PATTERN.md grown past its headroom line).
 # A key may also hold reports, the advisory steps its call runs after the lints, which never change its result: redundancy (judges the diff's new and changed Go tests against the coverage maps and writes the verdicts into the worktree's gate directory); reports: [] turns them off.
 # The card key alone may also hold fixer, a model-spec such as sonnet[medium]: the cold fixer an agent's red lym gate test --gate card call hands its failures to; "" turns it off.
-# No tier list may be empty, and a tier a key names must be declared above when the gate runs.
+# No tier list may be empty.
+# While tiers is empty, every key runs with nothing to run; once any tier is declared, each tier a key names must be declared too.
 gates:
   card: {tiers: [0], scope: card, lints: [comments, pattern], fixer: "sonnet[medium]"}
   batch: {tiers: [0], scope: card}

@@ -946,6 +946,8 @@ func TestConfig_TierUse(t *testing.T) {
 			{"an empty list for any gate", twoTier, "empty", nil, "gates.empty is empty, and every gate verifies at least one tier"},
 			{"an empty list for a gate lym reads", Config{Tiers: twoTier.Tiers, Gates: map[string]GateKey{"webster-fix": {Scope: "diff"}}}, "webster-fix", nil, "gates.webster-fix is empty, and every gate verifies at least one tier"},
 			{"a hub with no tier0", Config{Tiers: map[string]Tier{"tier1": {}}, Gates: twoTier.Gates}, "batch", nil, "the hub declares no tier0"},
+			{"a hub that declares no tier", Config{Gates: twoTier.Gates}, "batch", nil, ""},
+			{"a hub that declares no tier and a gate the config holds no list for", Config{Gates: twoTier.Gates}, "nope", nil, `gates holds no key "nope"`},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

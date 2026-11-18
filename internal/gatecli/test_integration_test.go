@@ -2199,6 +2199,44 @@ func TestGateTest_Scenario(t *testing.T) {
 		})
 	}
 
+	t.Run("a --gate call in a hub that declares no tier passes with nothing to run", func(t *testing.T) {
+		writeConfig(t, []byte("slots: 2\n"))
+		defer writeConfig(t, gateConfig)
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "finalize"}})
+		if code, out := g.wait(t), g.stdout.String(); code != 0 || !strings.Contains(out, `the hub declares no tier, so --gate "finalize" runs no tier, only its lints`) {
+			t.Errorf("gate = exit %d, stdout %q; want exit 0 and the line naming the hub's missing tiers", code, out)
+		}
+		if _, err := os.Stat(g.record); err == nil {
+			t.Error("the stand-in ran although the hub declares no tier")
+		}
+	})
+
+	t.Run("a --gate call in a hub that declares no tier still runs the key's lints and fails on a finding", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["tiers"] = map[string]any{}
+			cfg["gates"] = map[string]any{"linted": map[string]any{"tiers": []int{0}, "scope": "all", "lints": []string{"comments"}}}
+		}))
+		defer writeConfig(t, gateConfig)
+		wrapComment(t)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "linted"}})
+		code, out := g.wait(t), g.stdout.String()
+		if code != 1 {
+			t.Errorf("gate = exit %d, stdout %q; want exit 1 from the lint step", code, out)
+		}
+		for _, want := range []string{
+			"  wrapped.go:3: wrapped break: // a fresh comment that wraps in the",
+			gateslot.FailedRunsPrefix + "lint comments (1 finding); the exit code is lint comments's",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("stdout %q lacks %q", out, want)
+			}
+		}
+		if _, err := os.Stat(g.record); err == nil {
+			t.Error("the stand-in ran although the hub declares no tier")
+		}
+	})
+
 	t.Run("a worktree outside every hub with no gate.yaml names lym config gate", func(t *testing.T) {
 		g := startGate(t, gateRun{cwd: standalone(t, false), args: []string{"test", "./pkg"}})
 		code := g.wait(t)

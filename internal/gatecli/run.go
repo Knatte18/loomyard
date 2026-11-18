@@ -80,6 +80,22 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := gateKeyRefusal(cfg, request); refusal != "" {
 		return output.Err(out, refusal)
 	}
+	if request.gate != "" && len(cfg.Tiers) == 0 {
+		printLine(request.stderr, fmt.Sprintf("gate test: the hub declares no tier, so --gate %q runs no tier, only its lints; once the repository has tests, declare tier0 with \"lym config gate\" from the prime", request.gate))
+		request.root = buildRoot(location, dir)
+		lints := runLints(request.root, cfg.Gates[request.gate].Lints)
+		if len(lints) == 0 {
+			return 0
+		}
+		labels := make([]string, len(lints))
+		for i, lint := range lints {
+			labels[i] = fmt.Sprintf("%s (%s)", lint.label, lint.outcome)
+		}
+		exe := &execution{ctx: runCtx, request: request, location: location, failed: lints}
+		exe.printReport(inHub)
+		printFailedRuns(request.stderr, labels, lints[0].label, false)
+		return exitAfterSignal(caught, 1)
+	}
 	cfg = cfg.WithDefaultDir(location.AnchorRel)
 	request.root = buildRoot(location, dir)
 	request.busyQuit = cfg.Limits().BusyQuit

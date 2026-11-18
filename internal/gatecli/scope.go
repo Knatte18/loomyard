@@ -119,7 +119,7 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 }
 
 // computeScope returns the scope of request over the worktree at root, for the config cfg.
-// Explicit targets and --all take no computation.
+// Explicit targets take no computation, and --all takes only allScope's inert check.
 // Otherwise the form is --card when a card is named, --base when a base is given, and the computed form otherwise.
 // The computed form takes its base per listed tier.
 // A computed tier's base is the newest ancestor of HEAD that green holds whole-green for the tier.
@@ -152,7 +152,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 	case len(request.targets) > 0:
 		return scope{form: scopeTargets}, nil
 	case request.all:
-		return scope{form: scopeAll, whole: true}, nil
+		return allScope(ctx, cfg, location, root, request), nil
 	}
 	form := scopeComputed
 	if request.base != "" {
@@ -322,6 +322,28 @@ func noneScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Locati
 		shares[number] = tierScope{whole: true}
 	}
 	return scope{form: form, tiers: shares}
+}
+
+// allScope returns the scope of an --all call, which is whole.
+// A --gate key of scope all gets the empty scope instead when every changed file is inert.
+// The diff is taken from the merge base with the parent branch.
+// A change of inert files alone then runs no tier at any gate key.
+// A worktree with no parent branch, a merge base that cannot be read and an explicit --all stay whole.
+func allScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest) scope {
+	whole := scope{form: scopeAll, whole: true}
+	if request.gate == "" || len(cfg.InertPaths) == 0 {
+		return whole
+	}
+	base, ok, err := parentMergeBase(location)
+	if err != nil {
+		printLine(request.stderr, fmt.Sprintf("gate test: the scope of --gate %q stays whole: cannot read the merge base with the parent branch: %v", request.gate, err))
+		return whole
+	}
+	if !ok || !allInertSince(ctx, cfg, root, base) {
+		return whole
+	}
+	printLine(request.stderr, fmt.Sprintf("gate test: scope all of --gate %q: every file changed since %s is inert, so the scope is empty", request.gate, base))
+	return scope{form: scopeAll}
 }
 
 // allInertSince reports whether every file that differs between base and the working tree, untracked files included, matches the hub's inert_paths.

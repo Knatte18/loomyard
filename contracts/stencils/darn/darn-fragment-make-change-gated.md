@@ -1,5 +1,6 @@
 <!-- This is the darn writer's Step 4 list for a run whose verify gate has a cold fixer:
-     the writer and its subagents run no gate, and the writer acts only on what the fixer leaves.
+     the writer and its subagents run no gate, except the writer's single measuring run of one test class,
+     and the writer acts only on what the fixer leaves.
      The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it.
      internal/darnengine's DarnTable reads it for the writer's engine,
      fills the {{.subagent_model}} marker its Claude engine block declares from loom.yaml's subagent_model,
@@ -20,6 +21,15 @@
    A fresh subagent sees none of this session, so each prompt names the files the subagent owns and the edits to make, and tells the subagent to run no `lym gate test`.
    Keep in this session the work that needs the overview: the design, a change that spans packages, the commits and the change description.
 3. Run no `lym gate test` yourself.
+   The one exception is a value the change needs that only a test run shows, such as a golden test's output:
+   run that one test class once through `lym gate test --gate darn-write <its package or test project> -- <args>`,
+   with the args by which the tier's runner selects one class.
+   The args reach every tier the key lists, so they must suit each of them.
+   Never run a raw test command for it: a raw run can exit 0 with no output when no test ran, and only the gate's report says so.
+   When that report says a project ran no test, the property that makes it run is the one its project file's `IsTestProject` condition names.
+   When the tier's command holds `{args}`, run the same gate call once more with `-p:<property>=true` among the args after `--`,
+   and never the raw command the report's line suggests.
+   When that run still runs no test, or the tier's command holds no `{args}`, name the tests to your parent.
    Once you end your turn, the row's verify gate tests your committed tree, and a cold fixer clears its failures before you hear of them.
    You are re-prompted only with what the fixer leaves: act on that alone.
 4. Update, in the same commits as the code, the docs the change makes stale: the package doc of each package whose behavior changes, `doc.go` for a Go package;

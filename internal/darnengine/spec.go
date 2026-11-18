@@ -66,7 +66,8 @@ type DarnInputs struct {
 	// A writer on Codex runs them on its own model.
 	SubagentModel string
 	// GateFixed reports that a cold fixer clears the writer's verify gate,
-	// so the writer and its subagents run no gate and the writer asks its parent for a reported failure's single run.
+	// so the writer and its subagents run no gate, except the writer's single measuring run of one test class,
+	// and the writer asks its parent for a reported failure's single run.
 	GateFixed bool
 }
 
@@ -78,8 +79,9 @@ type DarnInputs struct {
 // and the seat engine renders the parent and edit directives from its geometry.
 // The table carries no gate; the producer entry sets it.
 // With in.GateFixed, the prompt's Step 4 has the writer and its subagents run no gate.
-// They act only on what the verify gate's fixer leaves,
-// and the writer asks its parent for the single run of the test a task's reported failure names.
+// The one exception is the writer's single measuring run of one test class for a value only a test run shows.
+// They act only on what the verify gate's fixer leaves.
+// The writer asks its parent for the single run of the test a task's reported failure names.
 // Otherwise the step has them run the gate after each commit.
 // A friction directive that fails to render is logged and left empty, because the note is optional bookkeeping.
 func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {

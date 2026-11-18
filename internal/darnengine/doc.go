@@ -76,8 +76,9 @@
 // A spawn that continues earlier work is told so through that value,
 // and its stencil continues from the commits already on the task branch.
 // The caller tells DarnTable whether a cold fixer clears the row's verify gate.
-// With a cold fixer, the prompt's Step 4 has the writer and its subagents run no gate;
-// the writer acts only on what the fixer leaves.
+// With a cold fixer, the prompt's Step 4 has the writer and its subagents run no gate.
+// The one exception is the writer's single measuring run of one test class.
+// The writer acts only on what the fixer leaves.
 // The writer asks its parent for the single run of the test a task's reported failure names.
 // That run comes before the writer diagnoses the failure, so a failure that no longer reproduces costs no diagnosis.
 // Without one, the step has them run the gate after each commit.
