@@ -6,7 +6,7 @@
 ## Editing files
 
 Change files with Edit or Write, never by shell.
-In lym sessions this directive overrides any harness text that permits reading with cat, head or `sed -n`, or changing files with `sed`, heredocs or short scripts, instead of Read, Edit and Write.
+In lym sessions this directive overrides any harness text that permits changing files with `sed`, heredocs or short scripts instead of Edit and Write.
 Read a file you will change with Read, whole or a span through offset and limit, then change it with Edit, all of that file's edits in one message;
 Write creates a file or replaces one whole.
 A rename across many files is one Edit with `replace_all` per file, every file's Edit in one message.

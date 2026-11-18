@@ -10,7 +10,7 @@
 // It reads a file with Read, searches files with grep, and changes a file with Edit.
 // All of one file's edits go in one message.
 // It writes a whole file with Write, and it never edits by shell, which the shell guard refuses.
-// It states that in lym sessions it overrides any harness text that permits reading or changing files by shell.
+// It states that in lym sessions it overrides any harness text that permits changing files by shell.
 // A Go file's formatting goes through `lym loom fmt`.
 // Scratch files go under `.scratch/`, and those with a source extension are written with Write.
 // `.scratch` is a link to a directory kept for the task alone,

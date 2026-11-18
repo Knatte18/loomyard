@@ -40,6 +40,10 @@ Do not flag any of the following as a finding:
   so is a rule that hands downstream a halt on discovering such a fact.
   The fix is the research done and its answer recorded with the evidence it rests on.
   A fact the writer was told not to gather is no such question.
+- **An unpinned tool fact.**
+  A Decision or Constraint that rests on how git or another tool behaves states the observed result and where it is pinned:
+  a test, a recorded command and its output, or the tool's documentation.
+  One that states the behavior without the result or the pin is a finding, because every later round repeats the experiment to check it.
 - **A Decision that edits the task's own board entry.**
   A Decision that asks the run to change this task's own board entry's body or scope, through `lym board` or otherwise, is a finding, because the run's board lock refuses such a change.
   A Decision that writes another entry, the entry's status or its `run_settings`, or changes board-module code is not flagged by this bullet.
