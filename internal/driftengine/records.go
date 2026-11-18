@@ -140,6 +140,17 @@ type SessionMark struct {
 	OpenedAt string `json:"opened_at,omitempty"`
 	// SpawnID is the id of the spawn that opened the mark.
 	SpawnID string `json:"spawn_id,omitempty"`
+	// GuardHalt records the judge guard's last halt of the judge session, and is nil while the guard found nothing.
+	GuardHalt *GuardHalt `json:"guard_halt,omitempty"`
+}
+
+// GuardHalt records a Stuck of the judge guard over a judge session.
+type GuardHalt struct {
+	// At is the RFC 3339 time of the first guard halt after the judge session had returned.
+	// It ends the window the session could edit in, and is empty while the session has not returned.
+	At string `json:"at"`
+	// Changes names what the last guard check found changed since the snapshot.
+	Changes []string `json:"changes,omitempty"`
 }
 
 // Amendment is one change the run's parent made to the sealed expectation or the records.

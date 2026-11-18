@@ -199,6 +199,8 @@ var intentionallyNil = map[string]string{
 	"Drift.JudgeTable":                       "loom- and darn-only seam, batten has no Drift row",
 	"Drift.Checkouts":                        "loom- and darn-only seam, batten has no Drift row",
 	"Drift.RecordsChangedSince":              "loom- and darn-only seam, batten has no Drift row",
+	"Drift.LockDecisionRecord":               "loom- and darn-only seam, batten has no Drift row",
+	"Drift.ReplacedDecisionRecord":           "loom- and darn-only seam, batten has no Drift row",
 	"Drift.EndRoles":                         "loom- and darn-only seam, batten has no Drift row",
 	"Sampler.Spec":                           "sampler-only seam, batten runs no sampler row",
 	"Sampler.Sessions":                       "sampler-only seam, batten runs no sampler row",

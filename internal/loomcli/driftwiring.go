@@ -278,7 +278,46 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 		JudgeSnapshotDir: filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.DriftJudgeDirName, seedSlug(location.WorktreeName)),
 		LoomRecordsDirs:  loomRecordsDirs(location, tables.runID),
 		DecisionRecord:   tables.decisionRecordPath,
-		EndRoles:         tables.endRoles,
+		LockDecisionRecord: func() (func() error, error) {
+			return holdDecisionLock(tables.decisionRecordPath)
+		},
+		ReplacedDecisionRecord: replacedDecisionRecord(location, tables.decisionRecordPath),
+		EndRoles:               tables.endRoles,
+	}
+}
+
+// replacedDecisionRecord returns the seam that reads the decision record at recordPath in location's worktree.
+// It reads the record as the newest records commit whose replace trailer names it wrote it.
+// That commit must have been made after the records commit sinceHead, and an empty sinceHead admits any commit.
+// found is false when no commit's replace trailer names the record, or the newest such commit is not after sinceHead.
+func replacedDecisionRecord(location *lymcwd.Location, recordPath string) func(sinceHead string) ([]byte, bool, error) {
+	return func(sinceHead string) ([]byte, bool, error) {
+		rel, err := filepath.Rel(location.AnchorPath(), recordPath)
+		if err != nil {
+			return nil, false, fmt.Errorf("relate the decision record to the anchor: %w", err)
+		}
+		rel = filepath.ToSlash(rel)
+		commits, err := fabricengine.TrailerCommits(location, recordReplacedTrailerKey)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, commit := range commits {
+			if path, _, ok := parseRecordReplaced(commit.Value); !ok || path != rel {
+				continue
+			}
+			if sinceHead != "" {
+				after, err := fabricengine.RecordsCommitIsAfter(location, sinceHead, commit.SHA)
+				if err != nil {
+					return nil, false, err
+				}
+				// Commits come newest first, so every older replace is before the snapshot too.
+				if !after {
+					return nil, false, nil
+				}
+			}
+			return fabricengine.AnchoredFileAt(location, commit.SHA, rel)
+		}
+		return nil, false, nil
 	}
 }
 

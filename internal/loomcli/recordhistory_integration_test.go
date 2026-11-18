@@ -17,7 +17,8 @@ import (
 )
 
 // commitRecordVersion writes data as the discussion record of location and commits it with trailers.
-func commitRecordVersion(t *testing.T, location *lymcwd.Location, record runRecord, data string, trailers ...fabricengine.Trailer) {
+// It returns the commit's SHA.
+func commitRecordVersion(t *testing.T, location *lymcwd.Location, record runRecord, data string, trailers ...fabricengine.Trailer) string {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(record.path), 0o755); err != nil {
 		t.Fatal(err)
@@ -25,8 +26,65 @@ func commitRecordVersion(t *testing.T, location *lymcwd.Location, record runReco
 	if err := os.WriteFile(record.path, []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, []string{record.rel}, "record version", trailers, fabricengine.EnvSyncOptions()); err != nil {
+	sha, _, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, []string{record.rel}, "record version", trailers, fabricengine.EnvSyncOptions())
+	if err != nil {
 		t.Fatalf("commit the record: %v", err)
+	}
+	return sha
+}
+
+// TestReplacedDecisionRecord_ReadsTheNewestReplaceOfTheRecordMadeAfterTheSnapshot covers the seam over real commits.
+// A replace that names another path is no base however new it is.
+// A replace at or before the snapshot head is none either.
+// A branch with no replace of the record finds nothing.
+func TestReplacedDecisionRecord_ReadsTheNewestReplaceOfTheRecordMadeAfterTheSnapshot(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// since picks the snapshot's records head from the commits the history holds.
+		since func(plain, older, newest, tip string) string
+		// withoutReplaces commits the first two replaces as plain commits.
+		withoutReplaces bool
+		// want is the record the seam reads, and empty means found false.
+		want string
+	}{
+		{"TheNewestReplaceOfTheRecordWinsOverANewerReplaceOfAnotherPath", func(plain, _, _, _ string) string { return plain }, false, historyY},
+		{"AReplaceAfterAnEarlierReplaceIsRead", func(_, older, _, _ string) string { return older }, false, historyY},
+		{"AnEmptySinceHeadAdmitsAnyReplace", func(_, _, _, _ string) string { return "" }, false, historyY},
+		{"AReplaceAtTheSinceHeadIsNotAfterIt", func(_, _, newest, _ string) string { return newest }, false, ""},
+		{"NoReplaceIsAfterTheTip", func(_, _, _, tip string) string { return tip }, false, ""},
+		{"NoReplaceOfTheRecordFindsNothing", func(_, _, _, _ string) string { return "" }, true, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, location := beamHub(t)
+			beam := location(testBeam)
+			record := runRecordOf(beam, "")
+			replace := func(rel, data string) []fabricengine.Trailer {
+				if tt.withoutReplaces && rel == record.rel {
+					return nil
+				}
+				return []fabricengine.Trailer{{Key: recordReplacedTrailerKey, Value: recordReplacedValue(decisionByParent, rel, []byte(data))}}
+			}
+
+			plain := commitRecordVersion(t, beam, record, historyWithE)
+			older := commitRecordVersion(t, beam, record, historyX, replace(record.rel, historyX)...)
+			newest := commitRecordVersion(t, beam, record, historyY, replace(record.rel, historyY)...)
+			commitRecordVersion(t, beam, record, historyWithE, replace("other/record.md", historyWithE)...)
+			tip := commitRecordVersion(t, beam, record, historyX)
+
+			got, found, err := replacedDecisionRecord(beam, record.path)(tt.since(plain, older, newest, tip))
+
+			if err != nil {
+				t.Fatalf("replacedDecisionRecord() error = %v; want nil", err)
+			}
+			if found != (tt.want != "") || string(got) != tt.want {
+				t.Errorf("replacedDecisionRecord() = %q, %v; want %q, found %v", got, found, tt.want, tt.want != "")
+			}
+		})
 	}
 }
 

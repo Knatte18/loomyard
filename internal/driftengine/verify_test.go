@@ -163,6 +163,10 @@ type verifyFixture struct {
 	// onArrival runs at each judge arrival before the judgement is written; badJudgement makes it unparsable.
 	onArrival    func()
 	badJudgement bool
+	// reasonOf, when set, gives the reason the judge writes for each cell; it defaults to a fixed sentence.
+	// reverseCells makes the judge write its rulings in the reverse of the request's order.
+	reasonOf     func(cell JudgeCell) string
+	reverseCells bool
 	// requests, judgementPresent, and marksAtArrival record each arrival's request, file presence and session mark.
 	requests         []JudgeRequest
 	judgementPresent []bool
@@ -286,12 +290,20 @@ func (f *verifyFixture) judgeArrives() {
 
 	var text strings.Builder
 	fmt.Fprintf(&text, "spawn_id: %s\ncells:\n", request.SpawnID)
-	for _, cell := range request.Cells {
+	cells := slices.Clone(request.Cells)
+	if f.reverseCells {
+		slices.Reverse(cells)
+	}
+	for _, cell := range cells {
 		ruling := RulingMatches
 		if set, ok := f.rulings[cell.Case+" "+cell.Identity.Key]; ok {
 			ruling = set
 		}
-		fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: compared the old and the new value\n", cell.ID, ruling)
+		reason := "compared the old and the new value"
+		if f.reasonOf != nil {
+			reason = f.reasonOf(cell)
+		}
+		fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: %s\n", cell.ID, ruling, reason)
 	}
 	text.WriteString("open_ranges:\n")
 	for _, open := range request.OpenRanges {
@@ -805,6 +817,214 @@ func TestDriftVerify(t *testing.T) {
 		}
 		if !f.judgementGone() {
 			t.Errorf("judgement.yaml is still there after the does-not-match Stuck; want it removed once the rulings are stored")
+		}
+	})
+
+	t.Run("a halt over many ruled cells leads with the way forward, groups them, caps the text and writes every one to the findings file", func(t *testing.T) {
+		t.Parallel()
+		const rows, cases = 150, 100
+		var repeatedBase, repeatedNow strings.Builder
+		for i := range rows {
+			fmt.Fprintf(&repeatedBase, "t=%d\n", i)
+			fmt.Fprintf(&repeatedNow, "t=%d\n", i+1)
+		}
+		manyBase, manyNow := map[string]string{}, map[string]string{}
+		var manyExpected strings.Builder
+		manyRulings := map[string]Ruling{}
+		manyExpected.WriteString("cases:\n")
+		for i := range cases {
+			name := fmt.Sprintf("c%03d.txt", i)
+			manyBase[name], manyNow[name] = "y=2\n", "y=3\n"
+			fmt.Fprintf(&manyExpected, "  %s:\n    keys:\n      - key: y\n        why: tuned the setting\n", name)
+			manyRulings[name+" y"] = RulingNoMatch
+		}
+		const repeatedExpected = "cases:\n  a.txt:\n    keys:\n      - key: t\n        why: shifted the series\n"
+		repeatedFragments := []string{
+			fmt.Sprintf("%d findings", rows),
+			fmt.Sprintf(`changed in case "a.txt" at key "t" n 1 to %d, %d rows, first old "0", new "1", last old "%d", new "%d": compared the old and the new value`, rows, rows, rows-1, rows),
+		}
+		repeatedLast := fmt.Sprintf(`changed in case "a.txt" at key "t" n %d: old "%d", new "%d": compared the old and the new value`, rows, rows-1, rows)
+		manyLast := fmt.Sprintf(`changed in case "c%03d.txt" at key "y": old "2", new "3": compared the old and the new value`, cases-1)
+
+		tests := []struct {
+			name      string
+			baseline  map[string]string
+			current   map[string]string
+			expected  string
+			rulings   map[string]Ruling
+			findings  int
+			fragments []string
+			shown     int
+			// reasonOf sets the judge's reason per cell, and reversed makes it rule the cells in reverse order.
+			reasonOf func(cell JudgeCell) string
+			reversed bool
+			// groups is how many findings the reason carries, those it leaves out included.
+			groups int
+			// inFile holds the exact line of a cell the reason leaves out, which the findings file must still hold.
+			inFile []string
+			// absent holds text the reason must not carry.
+			absent []string
+			// cutToTheLimit says the one finding passes the limit, so the reason ends it with an ellipsis.
+			cutToTheLimit bool
+		}{
+			{
+				name:      "RepeatedKeyIsOneGroup",
+				baseline:  map[string]string{"a.txt": repeatedBase.String()},
+				current:   map[string]string{"a.txt": repeatedNow.String()},
+				expected:  repeatedExpected,
+				rulings:   map[string]Ruling{"a.txt t": RulingNoMatch},
+				findings:  rows,
+				fragments: repeatedFragments,
+				shown:     1,
+				groups:    1,
+				inFile:    []string{repeatedLast},
+			},
+			{
+				name:      "GroupEndsFollowTheRowsWhenTheJudgeRulesThemOutOfOrder",
+				baseline:  map[string]string{"a.txt": repeatedBase.String()},
+				current:   map[string]string{"a.txt": repeatedNow.String()},
+				expected:  repeatedExpected,
+				rulings:   map[string]Ruling{"a.txt t": RulingNoMatch},
+				reversed:  true,
+				findings:  rows,
+				fragments: repeatedFragments,
+				shown:     1,
+				groups:    1,
+				inFile:    []string{repeatedLast},
+			},
+			{
+				name:      "ManyGroupsAreCapped",
+				baseline:  manyBase,
+				current:   manyNow,
+				expected:  manyExpected.String(),
+				rulings:   manyRulings,
+				findings:  cases,
+				fragments: []string{fmt.Sprintf("%d findings", cases), " more; every finding is in "},
+				groups:    cases,
+				inFile:    []string{manyLast},
+			},
+			{
+				name:     "CellsThatDifferOnlyInReasonStayApart",
+				baseline: map[string]string{"a.txt": "t=0\nt=1\nt=2\nt=3\n"},
+				current:  map[string]string{"a.txt": "t=1\nt=2\nt=3\nt=4\n"},
+				expected: repeatedExpected,
+				rulings:  map[string]Ruling{"a.txt t": RulingNoMatch},
+				reasonOf: func(cell JudgeCell) string {
+					if cell.Identity.N <= 2 {
+						return "reason A"
+					}
+					return "reason B"
+				},
+				findings: 4,
+				fragments: []string{
+					`changed in case "a.txt" at key "t" n 1 to 2, 2 rows, first old "0", new "1", last old "1", new "2": reason A`,
+					`changed in case "a.txt" at key "t" n 3 to 4, 2 rows, first old "2", new "3", last old "3", new "4": reason B`,
+				},
+				groups: 2,
+			},
+			{
+				name:      "UnkeyedLinesWordALineRange",
+				baseline:  map[string]string{"a.txt": "alpha\nbeta\ngamma\n"},
+				current:   map[string]string{"a.txt": "ALPHA\nBETA\ngamma\n"},
+				expected:  "cases:\n  a.txt:\n    lines:\n      - range: \"1-\"\n        why: the free text is rewritten\n",
+				rulings:   map[string]Ruling{"a.txt ": RulingNoMatch},
+				findings:  2,
+				fragments: []string{`changed in case "a.txt" at lines #1 to #2, 2 rows, first old "alpha", new "ALPHA", last old "beta", new "BETA": compared the old and the new value`},
+				groups:    1,
+			},
+			{
+				name:     "AddedCasesStayOneFindingEach",
+				baseline: map[string]string{"a.txt": "x=1\n"},
+				current:  map[string]string{"a.txt": "x=1\n", "b.txt": "x=1\n", "c.txt": "x=1\n"},
+				expected: "added:\n  - case: b.txt\n    why: the task adds b\n  - case: c.txt\n    why: the task adds c\n",
+				rulings:  map[string]Ruling{"b.txt ": RulingNoMatch, "c.txt ": RulingNoMatch},
+				findings: 2,
+				fragments: []string{
+					`added case "b.txt": compared the old and the new value`,
+					`added case "c.txt": compared the old and the new value`,
+				},
+				groups: 2,
+				absent: []string{" rows,"},
+			},
+			{
+				name:          "ALongFindingIsCutToTheLimit",
+				baseline:      map[string]string{"a.txt": "y=2\n"},
+				current:       map[string]string{"a.txt": "y=3\n"},
+				expected:      expectsY,
+				rulings:       map[string]Ruling{"a.txt y": RulingNoMatch},
+				reasonOf:      func(JudgeCell) string { return strings.Repeat("x", 2*haltFindingsLimit) },
+				findings:      1,
+				groups:        1,
+				cutToTheLimit: true,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newVerifyFixture(t)
+				f.seed(countedScope(), tt.baseline)
+				f.seal(tt.expected)
+				f.current = tt.current
+				f.rulings = tt.rulings
+				f.reasonOf, f.reverseCells = tt.reasonOf, tt.reversed
+
+				outcome, pointer, err := f.call()
+
+				findingsRel, relErr := filepath.Rel(f.deps.WorktreeRoot, f.paths.Findings)
+				if relErr != nil {
+					t.Fatal(relErr)
+				}
+				requireStuck(t, outcome, pointer, err, true, append(tt.fragments, "every finding is in "+filepath.ToSlash(findingsRel))...)
+				if way, findings := strings.Index(pointer.Reason, "way forward"), strings.Index(pointer.Reason, "findings: "); way < 0 || way > findings {
+					t.Errorf("reason %q puts the way forward at %d and the findings at %d; want the way forward first", pointer.Reason, way, findings)
+				}
+				if limit := haltFindingsLimit + 1000; len(pointer.Reason) > limit {
+					t.Errorf("reason is %d characters; want at most %d", len(pointer.Reason), limit)
+				}
+				if tt.shown > 0 {
+					if got := strings.Count(pointer.Reason, "compared the old and the new value"); got != tt.shown {
+						t.Errorf("reason carries %d rulings; want %d", got, tt.shown)
+					}
+				}
+				for _, text := range tt.absent {
+					if strings.Contains(pointer.Reason, text) {
+						t.Errorf("reason %q carries %q; want it left out", pointer.Reason, text)
+					}
+				}
+
+				const findingsMark, findingsEnd = "findings: ", "; every finding is in "
+				start := strings.Index(pointer.Reason, findingsMark) + len(findingsMark)
+				part := pointer.Reason[start:strings.Index(pointer.Reason, findingsEnd)]
+				if len(part) > haltFindingsLimit {
+					t.Errorf("the findings part is %d characters; want at most %d", len(part), haltFindingsLimit)
+				}
+				if got := strings.HasSuffix(part, findingsEllipsis); got != tt.cutToTheLimit {
+					t.Errorf("the findings part %q ends with the ellipsis = %v; want %v", part, got, tt.cutToTheLimit)
+				}
+				pieces, omitted := strings.Split(part, findingsSeparator), 0
+				if note := pieces[len(pieces)-1]; strings.HasPrefix(note, "and ") {
+					if _, scanErr := fmt.Sscanf(note, "and %d more", &omitted); scanErr != nil {
+						t.Fatalf("read the omission note %q: %v", note, scanErr)
+					}
+					pieces = pieces[:len(pieces)-1]
+				}
+				if got := len(pieces) + omitted; got != tt.groups {
+					t.Errorf("the findings part carries %d findings and omits %d, %d in all; want %d", len(pieces), omitted, got, tt.groups)
+				}
+
+				data, readErr := os.ReadFile(f.paths.Findings)
+				if readErr != nil {
+					t.Fatalf("read the findings file: %v", readErr)
+				}
+				if got := strings.Count(string(data), "\n- "); got != tt.findings {
+					t.Errorf("the findings file holds %d findings; want %d", got, tt.findings)
+				}
+				for _, line := range tt.inFile {
+					if !strings.Contains(string(data), "\n- "+line+"\n") {
+						t.Errorf("the findings file lacks the line %q", line)
+					}
+				}
+			})
 		}
 	})
 
@@ -1478,6 +1698,113 @@ func TestDriftVerify(t *testing.T) {
 				requireDone(f)
 			})
 		}
+
+		t.Run("AResumeNamesWhatStillDiffersWhatWasRestoredAndWhenEachFileChanged", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedChanged(expectsY)
+			now := f.deps.Now()
+			later := now.Add(6 * time.Minute)
+			edit := func(rel string, at time.Time) {
+				writeTestFile(t, f.codeCheckout.Root, rel, "edited at "+at.String())
+				if err := os.Chtimes(filepath.Join(f.codeCheckout.Root, rel), at, at); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f.onArrival = func() {
+				edit("a.go", now)
+				edit("b.go", now)
+				f.codeCheckout.Changed = []string{"a.go", "b.go"}
+			}
+
+			outcome, pointer, err := f.call()
+
+			opened := stamp(now)
+			requireStuck(t, outcome, pointer, err, true, "the judge session changed what it may not",
+				fmt.Sprintf("code: a.go was changed (modified at %s, inside the judge session's window from %s to %s", opened, opened, opened))
+			if halt := f.scope().JudgeSession.GuardHalt; halt == nil || halt.At != opened || !slices.Equal(halt.Changes, []string{"code: a.go was changed", "code: b.go was changed"}) {
+				t.Fatalf("guard halt %+v; want it at %s naming both files", halt, opened)
+			}
+
+			f.onArrival = nil
+			removeTestFile(t, f.codeCheckout.Root, "a.go")
+			f.codeCheckout.Changed = []string{"b.go"}
+			edit("b.go", later)
+			outcome, pointer, err = f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "the resume re-checked the judge guard",
+				fmt.Sprintf("code: b.go was changed (modified at %s, after the guard halted the returned judge session at %s, so by another process)", stamp(later), opened),
+				"restored since the last check: code: a.go was changed")
+			if f.seats.Calls != 1 {
+				t.Fatalf("%d judge runs after a resume with b.go still changed; want the guard to stop it with no spawn", f.seats.Calls)
+			}
+
+			if halt := f.scope().JudgeSession.GuardHalt; halt == nil || halt.At != opened || !slices.Equal(halt.Changes, []string{"code: b.go was changed"}) {
+				t.Fatalf("guard halt after the resume %+v; want the first halt's time %s and only b.go", halt, opened)
+			}
+
+			removeTestFile(t, f.codeCheckout.Root, "b.go")
+			f.codeCheckout.Changed = nil
+			f.captureFails = true
+			outcome, pointer, err = f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "the current capture did not pass")
+			if mark := f.scope().JudgeSession; !mark.Open || mark.GuardHalt != nil {
+				t.Fatalf("mark %+v after a check that found nothing; want it open with the guard halt cleared", mark)
+			}
+
+			f.captureFails = false
+			requireDone(f)
+		})
+
+		t.Run("AChangeDatedBeforeTheSessionOpenedSaysSo", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedChanged(expectsY)
+			now := f.deps.Now()
+			before := now.Add(-time.Hour)
+			f.onArrival = func() {
+				writeTestFile(t, f.codeCheckout.Root, "a.go", "edited")
+				if err := os.Chtimes(filepath.Join(f.codeCheckout.Root, "a.go"), before, before); err != nil {
+					t.Fatal(err)
+				}
+				f.codeCheckout.Changed = []string{"a.go"}
+			}
+
+			outcome, pointer, err := f.call()
+
+			requireStuck(t, outcome, pointer, err, true,
+				fmt.Sprintf("code: a.go was changed (modified at %s, before the judge session opened at %s)", stamp(before), stamp(now)))
+		})
+
+		t.Run("AResumeOverASessionThatNeverReturnedNamesWhatWasRestored", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedChanged(expectsY)
+			f.badJudgement = true
+			outcome, pointer, err := f.call()
+			if err != nil || outcome != shedengine.Stuck || !f.scope().JudgeSession.Open {
+				t.Fatalf("Call() = %q, %v (%s), mark %+v; want the shed's Stuck with the mark left open", outcome, err, pointer.Reason, f.scope().JudgeSession)
+			}
+
+			both := []string{"code: a.go was changed", "code: b.go was changed"}
+			for _, rel := range []string{"a.go", "b.go"} {
+				writeTestFile(t, f.codeCheckout.Root, rel, "edited")
+			}
+			f.codeCheckout.Changed = []string{"a.go", "b.go"}
+			outcome, pointer, err = f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "the judge session changed what it may not")
+			if halt := f.scope().JudgeSession.GuardHalt; halt == nil || halt.At != "" || !slices.Equal(halt.Changes, both) {
+				t.Fatalf("guard halt %+v; want the changes of both files and no time, since the judge never returned", halt)
+			}
+
+			removeTestFile(t, f.codeCheckout.Root, "a.go")
+			f.codeCheckout.Changed = []string{"b.go"}
+			outcome, pointer, err = f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "the resume re-checked the judge guard", "restored since the last check: code: a.go was changed")
+		})
 
 		t.Run("AChangeMadeBeforeTheSpawnIsNoJudgeEdit", func(t *testing.T) {
 			t.Parallel()

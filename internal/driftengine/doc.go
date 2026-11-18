@@ -80,6 +80,7 @@
 // Paths is the one declarer of every drift path.
 // The durable directory `_lym/drift/` holds the scope and judged records and the expectation.
 // It also holds the judgement file and the logs of every run.
+// Beside the logs lies the findings file, which a Stuck over judge rulings writes every finding to.
 // The ephemeral directory `.lym/drift/` holds the expect agent's identity listing and the judge request.
 // It also holds the capture record, the capture lock and the compare marker.
 // The baseline and current-capture directories live there too, the baseline's metadata directory beside the baseline.
@@ -257,8 +258,11 @@
 // ReadJudgeSnapshot reads it back, found false when it is gone.
 // A new snapshot clears only the copies and replaces the record in one atomic write;
 // a reader therefore never finds the snapshot gone while one is taken.
+// The snapshot and every comparison with it hold the run's decision lock, Deps.LockDecisionRecord.
+// Every `lym loom decision` verb holds that lock through its commit, so neither reads a verb's write before its commit.
 // JudgeSnapshot.Changes names what the judge session changed since the snapshot:
 // a moved code HEAD, each changed, added or deleted path of either checkout, and each changed scratch file.
+// Each change carries the changed file's path, which the guard's halt reads the modification time of.
 // Changes are judged by content, so a later commit of content that was already there is no change.
 // Exempt are judgement.yaml and its timestamped siblings.
 // The siblings keep an earlier judge's file when the next judge starts.
@@ -272,15 +276,19 @@
 // A moved records HEAD counts only through the paths Deps.RecordsChangedSince names since the snapshot's head.
 // Loom's own commits are therefore never read as the judge's edits.
 // The decision record is exempt when the records checkout holds it committed.
-// It must also differ from its copy only by entries added after the Discussion.
-// Every entry and carry-over block the copy held must be kept unchanged.
-// A `lym loom decision add` of plain entries the parent runs during the judge session is therefore no judge's edit.
+// It must also differ only by entries added after the Discussion from one of two bases.
+// One base is its copy in the snapshot.
+// The other is the record as the newest `lym loom decision replace` commit made after the snapshot wrote it.
+// Deps.ReplacedDecisionRecord reads that record, so a replace that predates the snapshot is no base.
+// Every entry and carry-over block the base held must be kept unchanged.
+// A `lym loom decision add` of plain entries during the judge session is therefore no judge's edit.
+// Neither is a `lym loom decision replace` the parent runs then, nor an add after such a replace.
 // Any other change to the record, and any change to a file outside it, is not exempt and is named as a change.
 // Bound: an edit the judge session makes under the exempt loom paths or the drift logs goes unseen;
 // they are lym's own run bookkeeping and hold no code, no expectation and neither record.
-// So does a committed added entry or carry-over block the judge session adds to the decision record.
-// An uncommitted append, an edit or removal of an existing entry or block,
-// and a `lym loom decision replace` during the session are still named as a change.
+// So does a committed added entry or carry-over block the judge session adds to the decision record,
+// and a commit it makes carrying a replace trailer that names the record.
+// An uncommitted write and an edit or removal of an existing entry or block are still named as a change.
 //
 // # Records
 //
@@ -602,11 +610,23 @@
 // and a baseline that no longer matches its digest.
 // The way forward of a changed checkout names the scratch directory by its path and keeps the snapshot directory.
 // The resume compares against the snapshot directory.
+// Each change it names carries its file's modification time against the judge session's window.
+// The window runs from the mark's opening to the guard's first halt of the returned session.
+// The mark records that halt as its `guard_halt` with the changes named.
+// A file modified after that halt is named as changed by another process.
+// A resume re-checks the guard against the snapshot before anything else.
+// While a change remains, the Stuck names what still differs and what was restored since the last check,
+// and the mark's halt keeps the changes found; a check that finds none clears the halt.
 // The rulings are stored in judged.json as exact tuples with the judge's strand and time.
 // Each listed open range carries the covering entry's why and the judge's sentence.
 // A listing replaces an earlier listing of the same range.
 // The mark closes and the last check is recorded in the same write, and judgement.yaml is removed after it.
-// A ruling of `does not match` is a Stuck naming the cells and their reasons, and all `matches` records the pass and is Done.
+// A ruling of `does not match` is a Stuck over its cells, and all `matches` records the pass and is Done.
+// A Stuck over rulings, stored or fresh, leads with the count of findings and the way forward.
+// It groups the cells that share a case, key, kind and reason into one finding:
+// the group's row range, its row count and the old and new values of its first and last rows.
+// It carries the findings up to a cap and names how many it left out.
+// It names the findings file, by its path relative to the worktree, which holds every cell's finding.
 //
 // Under a recorded `command` diff the steps run as far as Check, which runs the declared compare against the baseline directory in place of a capture and a diff, and the pass goes on by the compare's exit:
 // an exit 0 records the pass and is Done with no judge;

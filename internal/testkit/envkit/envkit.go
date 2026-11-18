@@ -746,8 +746,12 @@ func driftDeps(root string) driftengine.Deps {
 			return fabricengine.CheckoutState{}, fabricengine.CheckoutState{}, nil
 		},
 		RecordsChangedSince: func(string) ([]string, error) { return nil, nil },
-		EndRoles:            func([]string) error { return nil },
-		JudgeSnapshotDir:    filepath.Join(root, "judge-snapshot"),
+		LockDecisionRecord: func() (func() error, error) {
+			return func() error { return nil }, nil
+		},
+		ReplacedDecisionRecord: func(string) ([]byte, bool, error) { return nil, false, nil },
+		EndRoles:               func([]string) error { return nil },
+		JudgeSnapshotDir:       filepath.Join(root, "judge-snapshot"),
 	}
 }
 

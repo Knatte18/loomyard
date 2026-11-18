@@ -166,7 +166,7 @@ func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 	}
 
 	if rec.Scope.JudgeSession.Open && !rec.Scope.SnapshotLost {
-		reason, err := p.settleOpenSession()
+		reason, err := p.settleOpenSession(rec.Scope.JudgeSession)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
@@ -274,7 +274,7 @@ func (p *DriftVerify) checkAndJudge(ctx context.Context, rec Records, head strin
 	}
 
 	var toJudge []ClassifiedCell
-	var ruledNoMatch []string
+	var ruledNoMatch []ruledCell
 	reused := 0
 	for _, cell := range report.Cells {
 		tuple, stored := storedRuling(rec.Judged, cell.Cell)
@@ -284,14 +284,18 @@ func (p *DriftVerify) checkAndJudge(ctx context.Context, rec Records, head strin
 		case tuple.Ruling == RulingMatches:
 			reused++
 		default:
-			ruledNoMatch = append(ruledNoMatch, fmt.Sprintf("%s: %s", describeCell(cell), tuple.Reason))
+			ruledNoMatch = append(ruledNoMatch, ruledCell{cell: cell, reason: tuple.Reason})
 		}
 	}
 	if len(ruledNoMatch) > 0 {
 		if err := p.recordCheck(p.checkResult(report, head, false, 0, reused), nil); err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
-		return haltForParent(p.noMatchReason("a change the judge already ruled does not match its expectation", ruledNoMatch))
+		reason, err := p.cellsNoMatchReason("a change the judge already ruled does not match its expectation", ruledNoMatch)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		return haltForParent(reason)
 	}
 	listed, err := p.listFiles(rec)
 	if err != nil {
@@ -335,10 +339,29 @@ func (p *DriftVerify) faultReason(report CheckReport) string {
 	return ""
 }
 
-// noMatchReason words a Stuck over changes ruled not to match.
-// It names each change with its reason, the parent's amendment and the route that fixes code.
-func (p *DriftVerify) noMatchReason(lead string, ruled []string) string {
-	return fmt.Sprintf("%s: %s; way forward: the parent runs lym drift amend <slug> --entries <file> with entries that explain the change, then lym loom resume; or fix the code with %s", lead, strings.Join(ruled, "; "), p.fixRoute())
+// noMatchReason words a Stuck over findings of changes ruled not to match, and writes every finding to the findings file.
+// every holds one finding per ruled cell or case, and shown the findings as the reason carries them.
+// The reason opens with lead, the count of findings and the way forward:
+// the parent's amendment and the route that fixes code.
+// It then carries shown, capped at haltFindingsLimit characters.
+// It names the findings file by its worktree-relative path.
+func (p *DriftVerify) noMatchReason(lead string, every, shown []string) (string, error) {
+	rel, err := writeFindingsFile(p.deps, lead, every)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s, %d findings; way forward: the parent runs lym drift amend <slug> --entries <file> with entries that explain the change, then lym loom resume; or fix the code with %s; findings: %s; every finding is in %s",
+		lead, len(every), p.fixRoute(), cappedFindings(shown), rel), nil
+}
+
+// cellsNoMatchReason words a Stuck over cells ruled not to match.
+// The reason carries the cells grouped by case, key, kind and reason, and the findings file holds each cell.
+func (p *DriftVerify) cellsNoMatchReason(lead string, ruled []ruledCell) (string, error) {
+	every := make([]string, len(ruled))
+	for i, item := range ruled {
+		every[i] = describeRuledCell(item)
+	}
+	return p.noMatchReason(lead, every, groupRuledCells(ruled))
 }
 
 // fixRoute returns the parent's route to the row that edits code.
@@ -601,18 +624,19 @@ func (p *DriftVerify) removeJudgement() error {
 	return nil
 }
 
-// settleOpenSession returns why a session an earlier entry left open may not go on, and empty when it may.
+// settleOpenSession returns why the session mark, which an earlier entry left open, may not go on;
+// it returns empty when the session may.
 // A snapshot that is gone guards nothing once no chair is live,
 // so it is recorded as lost and the pass goes on to take a new one;
 // under a live chair the reason is snapshotGoneReason, since what that session changed cannot be told.
-func (p *DriftVerify) settleOpenSession() (string, error) {
+func (p *DriftVerify) settleOpenSession(mark SessionMark) (string, error) {
 	d := p.deps
 	snapshot, found, err := ReadJudgeSnapshot(d)
 	if err != nil {
 		return "", err
 	}
 	if found {
-		return p.changedSince(snapshot)
+		return p.changedSince(snapshot, mark, false)
 	}
 	table, err := p.tableFor()
 	if err != nil {
@@ -631,7 +655,7 @@ func (p *DriftVerify) settleOpenSession() (string, error) {
 	return "", nil
 }
 
-// judgeSessionChanged returns why the checkouts no longer match the snapshot the judge was spawned under;
+// judgeSessionChanged returns why the checkouts no longer match the snapshot the returned judge was spawned under;
 // it returns empty when they match.
 // A snapshot that went while that judge ran is recorded as lost, so the parent's resume takes a new one.
 func (p *DriftVerify) judgeSessionChanged() (string, error) {
@@ -642,7 +666,11 @@ func (p *DriftVerify) judgeSessionChanged() (string, error) {
 	if !found {
 		return snapshotGoneReason, p.recordSnapshotLost()
 	}
-	return p.changedSince(snapshot)
+	rec, err := ReadRecords(p.deps)
+	if err != nil {
+		return "", err
+	}
+	return p.changedSince(snapshot, rec.Scope.JudgeSession, true)
 }
 
 // recordSnapshotLost marks the session's snapshot lost, so the next judge step takes a new one.
@@ -654,22 +682,115 @@ func (p *DriftVerify) recordSnapshotLost() error {
 }
 
 // changedSince returns why the checkouts no longer match snapshot, and empty when they match.
-// The reason names each change, the directory that holds the snapshot's copies, and the way to restore;
-// it tells the parent or the operator to keep that directory, since the resume compares against it.
-func (p *DriftVerify) changedSince(snapshot JudgeSnapshot) (string, error) {
+// mark is the open judge-session mark, and returned says the judge session has just returned.
+// The reason names each change with its file's modification time against the judge session's window,
+// so a change made after the guard halted a returned session reads as another process's.
+// It names the directory that holds the snapshot's copies and the way to restore.
+// It tells the parent or the operator to keep that directory, since the resume compares against it.
+// A check after a recorded guard check names what still differs and what was restored since the last check.
+// The check is recorded on the mark through recordGuardHalt.
+func (p *DriftVerify) changedSince(snapshot JudgeSnapshot, mark SessionMark, returned bool) (string, error) {
 	d := p.deps
 	changes, err := snapshot.Changes(d)
 	if err != nil {
 		return "", err
 	}
+	now := p.now()
+	texts := make([]string, len(changes))
+	described := make([]string, len(changes))
+	for i, change := range changes {
+		texts[i] = change.Text
+		described[i] = change.Text + changeTime(change.Path, mark, now)
+	}
+	if err := p.recordGuardHalt(mark, texts, returned, now); err != nil {
+		return "", err
+	}
 	if len(changes) == 0 {
 		return "", nil
+	}
+
+	lead := "the judge session changed what it may not: " + strings.Join(described, "; ")
+	if mark.GuardHalt != nil {
+		var restored []string
+		for _, earlier := range mark.GuardHalt.Changes {
+			if !slices.Contains(texts, earlier) {
+				restored = append(restored, earlier)
+			}
+		}
+		restoredText := "none"
+		if len(restored) > 0 {
+			restoredText = strings.Join(restored, "; ")
+		}
+		lead = fmt.Sprintf("the resume re-checked the judge guard against the snapshot, and what the judge session changed still differs: %s; restored since the last check: %s", strings.Join(described, "; "), restoredText)
 	}
 	deletes := "an added path"
 	if snapshot.ScratchDir != "" {
 		deletes += " and the current capture's scratch directory " + snapshot.ScratchDir
 	}
-	return fmt.Sprintf("the judge session changed what it may not: %s; the snapshot taken before it ran, with a copy of each untracked file, is in %s; way forward: the parent or the operator resets a moved branch to its snapshot HEAD, restores a changed tracked file from its HEAD and an untracked path from the snapshot's copy, deletes %s, keeps the snapshot directory, which the resume compares against, then runs lym loom resume", strings.Join(changes, "; "), d.JudgeSnapshotDir, deletes), nil
+	return fmt.Sprintf("%s; the snapshot taken before it ran, with a copy of each untracked file, is in %s; way forward: the parent or the operator resets a moved branch to its snapshot HEAD, restores a changed tracked file from its HEAD and an untracked path from the snapshot's copy, deletes %s, keeps the snapshot directory, which the resume compares against, then runs lym loom resume", lead, d.JudgeSnapshotDir, deletes), nil
+}
+
+// changeTime words when the file at path was last modified, against the judge session's window, the mark records.
+// The window runs from the mark's opening to the guard's first halt of the returned session, or to now before one.
+// A file modified after that halt was changed by another process, since the judge session had returned.
+// It returns empty for a change with no file, such as a moved HEAD or a deleted path.
+func changeTime(path string, mark SessionMark, now time.Time) string {
+	if path == "" {
+		return ""
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	modified := info.ModTime()
+	windowEnd := stamp(now)
+	if mark.GuardHalt != nil && mark.GuardHalt.At != "" {
+		windowEnd = mark.GuardHalt.At
+		// The halt's stamp drops its fraction of a second, so a second's grace keeps a judge edit inside the window.
+		if halted, err := time.Parse(time.RFC3339, mark.GuardHalt.At); err == nil && modified.After(halted.Add(time.Second)) {
+			return fmt.Sprintf(" (modified at %s, after the guard halted the returned judge session at %s, so by another process)", stamp(modified), mark.GuardHalt.At)
+		}
+	}
+	if opened, err := time.Parse(time.RFC3339, mark.OpenedAt); err == nil && modified.Before(opened) {
+		return fmt.Sprintf(" (modified at %s, before the judge session opened at %s)", stamp(modified), mark.OpenedAt)
+	}
+	return fmt.Sprintf(" (modified at %s, inside the judge session's window from %s to %s, so by the judge session or a process working beside it)", stamp(modified), mark.OpenedAt, windowEnd)
+}
+
+// recordGuardHalt records a guard check on the open judge-session mark, given the changes it named.
+// A check of a returned session that names changes records its time as the halt's, the first time, and the changes.
+// A check of a session that has not returned records the changes with no time,
+// so the next check words what was restored; the first check after the session returns sets the time.
+// A later check updates the changes of a recorded halt, and one that names none clears the halt.
+// Over records that differ from their commit it writes nothing, since the guard names that edit itself.
+func (p *DriftVerify) recordGuardHalt(mark SessionMark, changes []string, returned bool, now time.Time) error {
+	var halt *GuardHalt
+	switch {
+	case len(changes) == 0 && mark.GuardHalt == nil:
+		return nil
+	case len(changes) == 0:
+	case mark.GuardHalt != nil:
+		at := mark.GuardHalt.At
+		if at == "" && returned {
+			at = stamp(now)
+		}
+		halt = &GuardHalt{At: at, Changes: changes}
+	case returned:
+		halt = &GuardHalt{At: stamp(now), Changes: changes}
+	default:
+		halt = &GuardHalt{Changes: changes}
+	}
+	records, err := ReadRecords(p.deps)
+	if err != nil {
+		return err
+	}
+	if records.Mismatch {
+		return nil
+	}
+	return WriteRecords(p.deps, func(scope *ScopeRecord, _ *JudgedRecord) error {
+		scope.JudgeSession.GuardHalt = halt
+		return nil
+	})
 }
 
 // tableFor builds the judge's table over the request file, gated by the row's judgement entry.
@@ -774,7 +895,7 @@ func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, r
 	}
 
 	var tuples []JudgedTuple
-	var notMatching []string
+	var notMatching []ruledCell
 	matched := 0
 	for _, ruling := range session.Judgement.Cells {
 		cell := byID[ruling.ID]
@@ -793,7 +914,7 @@ func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, r
 			matched++
 			continue
 		}
-		notMatching = append(notMatching, fmt.Sprintf("%s: %s", describeCell(cell), ruling.Reason))
+		notMatching = append(notMatching, ruledCell{cell: cell, reason: ruling.Reason})
 	}
 
 	whys := make(map[[2]string]string, len(request.OpenRanges))
@@ -833,7 +954,9 @@ func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, r
 	}
 	noMatch := ""
 	if len(notMatching) > 0 {
-		noMatch = p.noMatchReason("the judge ruled that a change does not match its expectation", notMatching)
+		if noMatch, err = p.cellsNoMatchReason("the judge ruled that a change does not match its expectation", notMatching); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
 	}
 	if reason := haltReasons(noMatch, uncaused); reason != "" {
 		return haltForParent(reason)
@@ -865,7 +988,11 @@ func (p *DriftVerify) passCommand(ctx context.Context, rec Records, report Check
 		if err := p.recordCheck(p.commandResult(report, head, false), nil); err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
-		return haltForParent(p.noMatchReason("a case the judge already ruled does not match its expectation", stored))
+		reason, err := p.noMatchReason("a case the judge already ruled does not match its expectation", stored, stored)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		return haltForParent(reason)
 	}
 
 	mark := rec.Scope.JudgeSession
@@ -983,7 +1110,9 @@ func (p *DriftVerify) storeCaseRulings(report CheckReport, session *judgeSession
 	}
 	noMatch := ""
 	if len(notMatching) > 0 {
-		noMatch = p.noMatchReason("the judge ruled that the failing compare does not match its expectation", notMatching)
+		if noMatch, err = p.noMatchReason("the judge ruled that the failing compare does not match its expectation", notMatching, notMatching); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
 	}
 	if reason := haltReasons(noMatch, uncaused); reason != "" {
 		return haltForParent(reason)

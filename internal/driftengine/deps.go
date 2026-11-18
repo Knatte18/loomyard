@@ -73,6 +73,16 @@ type Deps struct {
 	// A committed change made only of such entries, with every entry and carry-over block it held kept, is no judge's edit.
 	// Empty exempts no change of it.
 	DecisionRecord string
+	// LockDecisionRecord takes the run's decision lock, which every `lym loom decision` verb holds through its commit.
+	// It waits while another holder has the lock, and returns its release.
+	// The judge snapshot holds it while it reads the decision record, so it never reads a verb's write half-done.
+	// Nil takes no lock.
+	LockDecisionRecord func() (release func() error, err error)
+	// ReplacedDecisionRecord reads the decision record as the newest `lym loom decision replace` commit of it wrote it.
+	// Only a commit made after the records commit sinceHead counts, and an empty sinceHead admits any commit.
+	// found is false when no such commit exists.
+	// Nil reads none, so no replace is exempt.
+	ReplacedDecisionRecord func(sinceHead string) (record []byte, found bool, err error)
 	// StartCapture starts the detached capture and returns once its record exists.
 	StartCapture func() error
 	// RunCapture runs the capture in the calling process and returns its final record.
