@@ -394,8 +394,16 @@
 // A StepTie holds the steps directory and the step's trace id.
 // Every run the runner starts records that step in run.json as `step`, and a runner never told one writes no step.
 // Runner.StopStepRuns stops, through the same record-then-remove order, every run under the runner's run-directory root.
-// A run qualifies when it still reads running, has a live or not-live own-window strand and records the given step.
-// A running run with such a strand and no step is listed under StepStopReport.Untied and left alone.
+// A run qualifies when it still reads running and records the given step.
+// Its strand is removed when it is live or a not-live own-window one;
+// a run whose strand is dead but not removable only has its record stopped, since no process waits on it.
+// A run whose strand reed does not track, or tracks with its pane binding cleared, may have a live agent.
+// That agent works in a pane reed cannot address.
+// It is stopped only when its record's engine can name the process holding its session and finds none;
+// otherwise it stays running and is listed under StepStopReport.Held.
+// A run whose output files all exist keeps reading running through the stop and is listed under StepStopReport.Finished.
+// A running run with no step is left alone and listed under StepStopReport.Untied.
+// That holds only when its strand is live or a not-live own-window one.
 // A run of another step is left alone.
 // A stop that fails is listed under Failed while the stop goes on.
 // Attach's removal of a superseded run's strand goes through the same record-then-remove order.
@@ -771,6 +779,17 @@
 // A renderer returning several lines, or an empty or whitespace-only line, fails the send.
 // That ends the loop with the attempts spent so far.
 // A re-prompt held by a busy session spends no attempt and is re-sent on a later tick.
+// A re-prompt whose strand can take no keys resumes the writer's session in a fresh strand.
+// A strand takes no keys when reed lost it, holds no pane for it or its pane died.
+// The re-prompt is the resumed session's first turn.
+// The run keeps its run directory, events file and gate state, and its record names the new strand.
+// The old strand is removed only after the record names the new one.
+// The resume's launch replaces the run directory's prompt.md.
+// The new provider's startup reads the events file only past its size at the resume.
+// The resumed session keeps the run's skills for its settings and passages but takes no skill-load turn.
+// The resume needs an engine that can resume a session and name the process holding one, and no live holder,
+// and a resume check that confirms the session;
+// otherwise the loop ends as for any send that failed, naming both failures.
 // One held by a pane showing no input box maxNoInputBoxReprompts times in a row ends the loop.
 // It ends with the attempts spent so far.
 // So a picker shuttle cannot dismiss ends the wait instead of holding the run until its deadline.

@@ -442,6 +442,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.RunID = shedrun.ResolveRunID(c.location, c.runID)
 		spec.Loop = loopSpecFor(c.location, c.runID, c.loopExecutable(), c.stepIdleTimeout, agentActivityFor(c.location, c.runID, c.shuttleCfg))
 		spec.Loop.OnWatchdogKill = watchdogKillNote(c.stopStepRuns, spec.StepsDir)
+		spec.Loop.OnStepOrphaned = orphanedStepNote(c.stopStepRuns, spec.StepsDir)
 		locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(c.location.HubPath))}
 		self := selfLockOwner(c.location, c.runID)
 		spec.Loop.OnExit = loopLockExit(locks, self)

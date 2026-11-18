@@ -198,6 +198,13 @@
 // The loop never re-steps an interrupted step itself;
 // loop.interrupt_policy and loop.status_moved let the driver's rule decide.
 // A child that exits on its own with a non-zero status and no record keeps cause exited with the exit status.
+// Such a child, which the watchdog did not kill, goes to Spec.Loop.OnStepOrphaned with its trace id.
+// The note the hook returns ends the cause.
+// A loop that starts on a failed status naming an interrupted step first reconciles that step.
+// It hands the trace id of the newest interrupted record in the steps directory to the same hook.
+// It does so before its first child starts.
+// A stop that failed at the interruption then does not leave its runs to the re-step.
+// The note goes to the loop log.
 // The watch kills only the loop's own in-flight child and its process group or job.
 //
 // A loop ends without an envelope by a signal that kills it.
@@ -206,6 +213,7 @@
 // the loop lock not taken, the teardown's mark, an undelivered envelope or a dead loop's pid file.
 // A panic while stepping is recovered:
 // the in-flight child's step tree is killed, and the stop is interrupted with the cause loop-panicked: <value>.
+// That child goes to Spec.Loop.OnStepOrphaned with its trace id, and the note the hook returns ends the cause.
 // A terminating signal is SIGINT, SIGTERM or SIGHUP, received through Spec.Loop.Signals.
 // The loop writes it to the loop log as a mark of the loop, and then ends the process through Spec.Loop.Raise.
 // By default Spec.Loop.Raise sends the signal again with its default action.
@@ -240,6 +248,8 @@
 //
 // A loop that is gone without an envelope ends in the dead-loop stop.
 // It kills what is left of the loop's step tree from the pid file's child record.
+// It then hands the in-flight child's trace id to Spec.Loop.OnStepOrphaned.
+// The note the hook returns ends loop.detail.
 // It writes the run failed while the status file still reads running.
 // It reports an interrupted stop with cause loop-exited.
 // loop.status_moved compares the recorded producer and history length against the status file.

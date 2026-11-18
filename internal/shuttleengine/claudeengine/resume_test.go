@@ -218,6 +218,8 @@ func TestSessionHolder(t *testing.T) {
 		name string
 		// entry is the one registry file's content; empty leaves the registry empty.
 		entry string
+		// laterEntry, when set, is a second registry file read after entry.
+		laterEntry string
 		// missingRegistry points the read at a registry directory that does not exist.
 		missingRegistry bool
 		alive           bool
@@ -232,6 +234,8 @@ func TestSessionHolder(t *testing.T) {
 		{name: "DeadPIDHoldsNothing", entry: `{"pid":4242,"sessionId":%q,"procStart":"100"}`, startReadable: true},
 		{name: "AnotherSessionsEntryHoldsNothing", entry: `{"pid":4242,"sessionId":"ffffffff-ffff-4fff-8fff-ffffffffffff%.0s"}`, alive: true, startReadable: true},
 		{name: "UnreadableRegistryIsAnError", missingRegistry: true, wantErr: true},
+		{name: "UndecodableEntryIsAnError", entry: "{not json", alive: true, startReadable: true, wantErr: true},
+		{name: "LiveHolderBehindAnUndecodableEntryIsStillFound", entry: "{not json", laterEntry: `{"pid":4242,"sessionId":%q,"procStart":"100"}`, alive: true, startReadable: true, wantPID: 4242, wantFound: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -239,6 +243,9 @@ func TestSessionHolder(t *testing.T) {
 			_, registryDir := resumeFixture(t, false)
 			if tt.entry != "" {
 				writeRegistryEntry(t, registryDir, "a.json", fmt.Sprintf(tt.entry, resumeTestID))
+			}
+			if tt.laterEntry != "" {
+				writeRegistryEntry(t, registryDir, "b.json", fmt.Sprintf(tt.laterEntry, resumeTestID))
 			}
 			if tt.missingRegistry {
 				registryDir = filepath.Join(registryDir, "missing")

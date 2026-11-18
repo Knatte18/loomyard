@@ -501,6 +501,33 @@ func TestPrepare_ResumeSessionID(t *testing.T) {
 	}
 }
 
+// TestPrepare_SkipSkillLoadTurn proves that SkipSkillLoadTurn keeps the prompt pointer on the launch line.
+// That holds for a spec naming skills, fresh or resumed.
+// It returns no PromptLine and puts no skill-load message on the line.
+func TestPrepare_SkipSkillLoadTurn(t *testing.T) {
+	tiergate.Require(t, 0)
+	const id = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+	skills := []string{"scribe:prose"}
+	for _, resume := range []bool{false, true} {
+		spec := shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Skills: skills, SkipSkillLoadTurn: true}
+		if resume {
+			spec.ResumeSessionID = id
+		}
+		runDir := t.TempDir()
+		launch, err := engineWith(t, templateConfig(t)).Prepare(runDir, spec, shuttleengine.Config{})
+		if err != nil {
+			t.Fatalf("Prepare(resume=%v) error: %v", resume, err)
+		}
+		pointer := launchPointer(filepath.Join(runDir, "prompt.md"))
+		if !strings.Contains(launch.Cmd, pointer) || strings.Contains(launch.Cmd, New().SkillLoadMessage(skills)) {
+			t.Errorf("resume=%v: Launch.Cmd = %q; want the prompt pointer and no skill-load message", resume, launch.Cmd)
+		}
+		if launch.PromptLine != "" {
+			t.Errorf("resume=%v: PromptLine = %q; want empty", resume, launch.PromptLine)
+		}
+	}
+}
+
 // TestPrepare_SkillsDeferPromptPointer proves that a spec naming skills puts the skill-load message on the launch line.
 // For fresh and resumed launches, it returns the prompt pointer as PromptLine.
 // Without skills, the pointer stays on the line and PromptLine is empty.

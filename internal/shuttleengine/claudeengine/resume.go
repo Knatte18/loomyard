@@ -116,21 +116,33 @@ func checkResumable(sessionID, projectDir, registryDir string, alive func(pid in
 
 // sessionHolder returns the pid of the live process a registry entry in registryDir names as holding sessionID.
 // It applies the resume check's rule, so a pid whose start time differs from the entry's procStart holds nothing.
-// Unreadable and undecodable entries are skipped, and an unreadable registry is an error.
+// An unreadable registry is an error.
+// So is an unreadable or undecodable entry when no live holder is found.
+// A holder behind such an entry cannot be ruled out.
+// A live holder found in another entry is still returned.
 func sessionHolder(sessionID, registryDir string, alive func(pid int) bool, startTime func(pid int) (string, bool)) (int, bool, error) {
 	records, err := readRegistry(registryDir)
 	if err != nil {
 		return 0, false, fmt.Errorf("claudeengine: read session registry %s: %w", registryDir, err)
 	}
+	var unreadable error
 	for _, record := range records {
-		if record.ReadErr != nil || record.DecodeErr != nil || record.Entry.SessionID != sessionID {
+		if record.ReadErr != nil {
+			unreadable = fmt.Errorf("claudeengine: read session registry entry %s: %w", record.Path, record.ReadErr)
+			continue
+		}
+		if record.DecodeErr != nil {
+			unreadable = fmt.Errorf("claudeengine: decode session registry entry %s: %w", record.Path, record.DecodeErr)
+			continue
+		}
+		if record.Entry.SessionID != sessionID {
 			continue
 		}
 		if held, _ := liveHolder(record.Entry, alive, startTime); held {
 			return record.Entry.PID, true, nil
 		}
 	}
-	return 0, false, nil
+	return 0, false, unreadable
 }
 
 // liveHolder reports whether entry's process is alive and may still be the one that registered.

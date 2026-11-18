@@ -505,6 +505,292 @@ func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
 	}
 }
 
+// resumableFakeEngine is a fakeEngine that can resume a session and name the process holding one.
+// A session reads held by its heldSessions entry when it has one, and by holder otherwise; 0 is no process.
+// CheckResume answers checkWarning and checkErr, and a failing holder lookup answers holderErr.
+type resumableFakeEngine struct {
+	*fakeEngine
+	holder       int
+	heldSessions map[string]int
+	holderErr    error
+	checkWarning string
+	checkErr     error
+}
+
+func (e *resumableFakeEngine) CheckResume(string, string) (string, error) {
+	return e.checkWarning, e.checkErr
+}
+
+func (e *resumableFakeEngine) SessionHolder(sessionID string) (int, bool, error) {
+	if e.holderErr != nil {
+		return 0, false, e.holderErr
+	}
+	pid, found := e.heldSessions[sessionID]
+	if !found {
+		pid = e.holder
+	}
+	return pid, pid != 0, nil
+}
+
+// resumableFakeEngine is checked at compile time against both capabilities the resume needs.
+var (
+	_ SessionResumer      = (*resumableFakeEngine)(nil)
+	_ SessionHolderFinder = (*resumableFakeEngine)(nil)
+)
+
+// signalingFakeEngine is a resumableFakeEngine that reads two events lines as session signals.
+// SESSION_START is a session start and TURN_START is a turn start.
+type signalingFakeEngine struct{ *resumableFakeEngine }
+
+func (e *signalingFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
+	var signals []SessionSignal
+	for _, line := range strings.Split(string(data), "\n") {
+		switch strings.TrimSpace(line) {
+		case "SESSION_START":
+			signals = append(signals, SessionSignal{Kind: SessionSignalSessionStart})
+		case "TURN_START":
+			signals = append(signals, SessionSignal{Kind: SessionSignalTurnStart})
+		}
+	}
+	return signals, len(data)
+}
+
+var _ SessionSignalParser = (*signalingFakeEngine)(nil)
+
+// TestGate_RepromptToGoneStrand covers a re-prompt whose strand can take no keys.
+// The strand is untracked, has a dead pane or has a cleared pane binding.
+// With an engine that can resume the session and no live process holding it, the session resumes in a fresh strand.
+// The re-prompt is its first turn and counts as an attempt.
+// The resumed launch keeps the run's skills and takes no skill-load turn.
+// The strand carries no done-when list, the run's record names it, and its manifest copy is kept.
+// A removable old strand is removed after the record names the new one.
+// A resumed provider that never becomes ready ends the wait with the startup teardown's result.
+// That holds even when the events file already holds an earlier session's session start and turn start.
+// These end the loop with no attempt: a live holder, a failing holder lookup, or an engine that cannot name a holder.
+// So do a refused or unconfirming resume check, and a failing prepare, strand add or record save.
+// That end names the gone strand and why the session was not resumed, and leaves no new strand behind.
+//
+//testtiming:keep pins that a re-prompt to a strand that takes no keys resumes the writer's session in a fresh strand and that every refusal or failure of the resume ends the loop instead
+func TestGate_RepromptToGoneStrand(t *testing.T) {
+	tiergate.Require(t, 0)
+	// deadOwnWindow is a strand reed still tracks, whose pane died in a window of its own, so a stop removes it.
+	deadOwnWindow := reedengine.StrandStatus{GUID: "strand-1", PaneID: "%1", OwnWindow: true, Present: true}
+	tests := []struct {
+		name         string
+		resumable    bool
+		holder       int
+		holderErr    error
+		checkWarning string
+		checkErr     error
+		prepareErr   error
+		addStrandErr error
+		saveFails    bool
+		neverReady   bool
+		// oldStrand is the strand reed reports for the run's strand; the zero value is an untracked strand.
+		oldStrand reedengine.StrandStatus
+		// wantEndedEarly is a text the gate's EndedEarly holds; empty when the session resumes.
+		wantEndedEarly string
+		wantAddCalls   int
+		wantRemoved    []string
+	}{
+		{name: "a resumable session with no holder resumes", resumable: true},
+		{
+			name: "a dead own-window pane resumes and its strand is removed", resumable: true,
+			oldStrand:   deadOwnWindow,
+			wantRemoved: []string{"strand-1"},
+		},
+		{name: "a cleared pane binding resumes", resumable: true, oldStrand: reedengine.StrandStatus{GUID: "strand-1"}},
+		{name: "a live holder keeps the session", resumable: true, holder: 4242, wantEndedEarly: "process 4242 still holds session"},
+		{name: "an engine that cannot name a holder", wantEndedEarly: "cannot name the process holding a session"},
+		{name: "a failing holder lookup", resumable: true, holderErr: errors.New("registry unreadable"), wantEndedEarly: "registry unreadable"},
+		{name: "a refused resume check", resumable: true, checkErr: errors.New("transcript missing"), wantEndedEarly: "transcript missing"},
+		{
+			name: "a resume check that cannot rule out a holder", resumable: true, checkWarning: "registry entry unreadable",
+			wantEndedEarly: "could not be ruled out: registry entry unreadable",
+		},
+		{name: "a failing prepare", resumable: true, prepareErr: errors.New("disk full"), wantEndedEarly: "prepare the resumed session: disk full"},
+		{
+			name: "a failing strand add keeps a removable old strand", resumable: true, addStrandErr: errors.New("reed refused"),
+			oldStrand: deadOwnWindow, wantEndedEarly: "add the resumed session's strand: reed refused", wantAddCalls: 1,
+		},
+		{
+			name: "a failing record save removes the new strand and keeps a removable old one", resumable: true, saveFails: true,
+			oldStrand: deadOwnWindow, wantEndedEarly: "record the resumed session's strand", wantAddCalls: 1, wantRemoved: []string{"strand-2"},
+		},
+		{name: "a resumed provider that never becomes ready", resumable: true, neverReady: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, eventsFileName)
+			outputFile := filepath.Join(runDir, "out.md")
+			touchOutputFile(t, outputFile)
+			events := "STOP:turn1\n"
+			if tt.neverReady {
+				// The first session's session start and turn start, which the resumed strand's startup must not read as its own.
+				events = "SESSION_START\nTURN_START\nSTOP:turn1\n"
+			}
+			if err := os.WriteFile(eventsPath, []byte(events), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
+			findingsPath := filepath.Join(runDir, gateFindingsFileName)
+			gateCalls := 0
+			gate := func() (GateResult, error) {
+				gateCalls++
+				return GateResult{Passed: gateCalls > 1, Findings: "fix the thing"}, nil
+			}
+
+			oldStatus := reedengine.StatusResult{}
+			if tt.oldStrand.GUID != "" {
+				oldStatus = reedengine.StatusResult{Strands: []reedengine.StrandStatus{tt.oldStrand}}
+			}
+			reed := &fakeReed{
+				StatusQueue:     []reedengine.StatusResult{oldStatus, oldStatus, liveStatus("strand-2", "%2")},
+				AddStrandResult: reedengine.Strand{GUID: "strand-2", Name: "writer-2"},
+				AddStrandErr:    tt.addStrandErr,
+			}
+			fake := readyAgentEngine()
+			fake.PrepareLaunch = Launch{SessionID: "session-1", RecordsSessionStarts: tt.neverReady}
+			fake.PrepareErr = tt.prepareErr
+			if tt.neverReady {
+				fake.StartupScript = []StartupState{StartupPending}
+			}
+			fake.PrepareHook = func(dir string) {
+				if err := WriteManifest(dir, Manifest{}); err != nil {
+					t.Errorf("write the manifest: %v", err)
+				}
+				if tt.neverReady {
+					// A present output file would make the startup window's expiry read done, so the teardown would never run.
+					if err := os.Remove(outputFile); err != nil {
+						t.Errorf("remove the output file: %v", err)
+					}
+				}
+				if tt.saveFails {
+					// A directory named run.json makes the record save fail.
+					recordPath := filepath.Join(dir, runStateFileName)
+					if err := os.RemoveAll(recordPath); err != nil {
+						t.Errorf("remove the record: %v", err)
+					}
+					if err := os.Mkdir(recordPath, 0o755); err != nil {
+						t.Errorf("plant the blocking directory: %v", err)
+					}
+				}
+			}
+			var engine Engine = fake
+			if tt.resumable {
+				resumable := &resumableFakeEngine{fakeEngine: fake, holder: tt.holder, holderErr: tt.holderErr, checkWarning: tt.checkWarning, checkErr: tt.checkErr}
+				engine = resumable
+				if tt.neverReady {
+					engine = &signalingFakeEngine{resumable}
+				}
+			}
+			fx := newFixture(t, reed, engine, withConfig(gateConfig))
+			stubInputSleep(t)
+
+			fc := newFakeClock(time.Now())
+			mc := &multiStepClock{fakeClock: fc, steps: []func(){
+				func() { appendEventsLine(t, eventsPath, "STOP:turn2") },
+			}}
+			skills := []string{"scribe:prose", "scribe:testing"}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour, KeepPane: true, Skills: skills},
+				withRunDir(runDir),
+				withRunState(RunState{RunID: "run-1", StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+				withRunClock(mc, mc.Now().Add(time.Hour)),
+				withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
+
+			result, err := run.Wait()
+			if tt.neverReady {
+				if !errors.Is(err, ErrNotStarted) {
+					t.Fatalf("Wait() error = %v; want it to wrap ErrNotStarted", err)
+				}
+				if result.Outcome != OutcomeDied {
+					t.Errorf("Outcome = %q, want %q: the startup teardown's result", result.Outcome, OutcomeDied)
+				}
+				if len(fake.StartupCalls) == 0 {
+					t.Error("Startup calls = 0, want the resumed pane read before the gate goes on")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeDone {
+				t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
+			}
+			if result.Gate == nil {
+				t.Fatalf("Gate = nil, want a verdict")
+			}
+			if len(reed.SendTextCalls) != 0 {
+				t.Errorf("SendText calls = %+v, want none: the gone strand takes no keys", reed.SendTextCalls)
+			}
+
+			if tt.wantEndedEarly != "" {
+				if result.Gate.Passed || result.Gate.Attempts != 0 {
+					t.Errorf("Gate = %+v, want a failed verdict with no attempt", result.Gate)
+				}
+				goneText := "is not tracked by reed"
+				if tt.oldStrand.GUID != "" {
+					goneText = "has no live pane"
+				}
+				for _, want := range []string{goneText, tt.wantEndedEarly} {
+					if !strings.Contains(result.Gate.EndedEarly, want) {
+						t.Errorf("EndedEarly = %q, want it to hold %q", result.Gate.EndedEarly, want)
+					}
+				}
+				if len(reed.AddStrandCalls) != tt.wantAddCalls {
+					t.Errorf("AddStrand calls = %+v, want %d", reed.AddStrandCalls, tt.wantAddCalls)
+				}
+				if got := removedStrandGUIDs(reed); !reflect.DeepEqual(got, tt.wantRemoved) {
+					t.Errorf("RemoveStrand calls = %v, want %v", got, tt.wantRemoved)
+				}
+				if result.StrandGUID != "strand-1" {
+					t.Errorf("Result.StrandGUID = %q, want strand-1: the failed resume leaves the record on the old strand", result.StrandGUID)
+				}
+				return
+			}
+
+			if got := removedStrandGUIDs(reed); !reflect.DeepEqual(got, tt.wantRemoved) {
+				t.Errorf("RemoveStrand calls = %v, want %v", got, tt.wantRemoved)
+			}
+			copyPath := filepath.Join(runDirRoot(fx.Runner.cfg, fx.Runner.anchorPath), manifestsDirName, "run-1.json")
+			if _, err := os.Stat(copyPath); err != nil {
+				t.Errorf("the resumed launch's manifest copy %s: %v, want it kept", copyPath, err)
+			}
+			if !result.Gate.Passed || result.Gate.Attempts != 1 {
+				t.Errorf("Gate = %+v, want a passed verdict after one attempt", result.Gate)
+			}
+			if len(reed.AddStrandCalls) != 1 || reed.AddStrandCalls[0].DoneWhen != nil || reed.AddStrandCalls[0].SessionID != "session-1" {
+				t.Errorf("AddStrand calls = %+v, want one for session-1 with no done-when list", reed.AddStrandCalls)
+			}
+			if len(fake.PrepareCalls) != 1 {
+				t.Fatalf("Prepare calls = %d, want 1", len(fake.PrepareCalls))
+			}
+			prepared := fake.PrepareCalls[0]
+			if prepared.RunDir != runDir || prepared.Spec.ResumeSessionID != "session-1" || prepared.Spec.Prompt != gateRepromptText(findingsPath) ||
+				!reflect.DeepEqual(prepared.Spec.Skills, skills) || !prepared.Spec.SkipSkillLoadTurn {
+				t.Errorf("Prepare(%q, spec) resumes %q with prompt %q, skills %v, skip skill-load turn %t; want %q, session-1, the re-prompt, %v and the skip",
+					prepared.RunDir, prepared.Spec.ResumeSessionID, prepared.Spec.Prompt, prepared.Spec.Skills, prepared.Spec.SkipSkillLoadTurn, runDir, skills)
+			}
+			record, _, err := loadRunState(runDir)
+			if err != nil {
+				t.Fatalf("loadRunState: %v", err)
+			}
+			if record.StrandGUID != "strand-2" || record.StrandName != "writer-2" || !record.Started {
+				t.Errorf("record names strand %q (%q), started %t; want strand-2 (writer-2), started", record.StrandGUID, record.StrandName, record.Started)
+			}
+		})
+	}
+}
+
+// removedStrandGUIDs returns the guids reed was asked to remove, in call order.
+func removedStrandGUIDs(reed *fakeReed) []string {
+	var guids []string
+	for _, call := range reed.RemoveStrandCalls {
+		guids = append(guids, call.GUID)
+	}
+	return guids
+}
+
 // TestGate_DeadlineExpiresBetweenAttempts covers a run that ends mid-loop after one successful re-prompt.
 // The run ends by its deadline or by a lost session.
 // The loop stops, and the Done classification runs the gate once more.

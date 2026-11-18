@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/spf13/cobra"
 )
@@ -349,6 +350,28 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 		}
 		if loop.OnExit == nil || loop.OnWake == nil {
 			t.Errorf("loop exit hook set %v, wake hook set %v; want both for the parent lock", loop.OnExit != nil, loop.OnWake != nil)
+		}
+	})
+
+	t.Run("LoopHooksStopTheStepsShuttleRuns", func(t *testing.T) {
+		var ties []shuttleengine.StepTie
+		c := &loomCLI{location: loc, runID: "self", stopRuns: func(tie shuttleengine.StepTie) (shuttleengine.StepStopReport, error) {
+			ties = append(ties, tie)
+			return shuttleengine.StepStopReport{Stopped: []string{"a:1:plan"}}, nil
+		}}
+		spec := c.specFor("step")
+		if spec.Loop.OnWatchdogKill == nil || spec.Loop.OnStepOrphaned == nil {
+			t.Fatalf("loop watchdog hook set %v, orphaned-step hook set %v; want both", spec.Loop.OnWatchdogKill != nil, spec.Loop.OnStepOrphaned != nil)
+		}
+
+		note := spec.Loop.OnStepOrphaned("trace-7")
+
+		wantTie := shuttleengine.StepTie{StepsDir: spec.StepsDir, TraceID: "trace-7"}
+		if len(ties) != 1 || ties[0] != wantTie {
+			t.Errorf("stop ties = %+v; want the one tie %+v", ties, wantTie)
+		}
+		if note != "stopped shuttle runs: a:1:plan" {
+			t.Errorf("OnStepOrphaned note = %q; want the stopped runs named", note)
 		}
 	})
 

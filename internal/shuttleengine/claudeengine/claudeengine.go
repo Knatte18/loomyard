@@ -122,6 +122,8 @@ func validateSessionID(id string) error {
 // Prepare writes prompt.md, settings.json and the Bash env file bash-env.sh into runDir and returns the Launch command strings.
 // The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
 // A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
+// A spec that sets SkipSkillLoadTurn keeps the pointer on the launch line, whatever skills it names.
+// It returns no Launch.PromptLine.
 // It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID, the prompt-cache TTL config, the keep-warm caps and the batching nudge before writing any artifacts.
 // With the batching nudge on it also seeds the nudge's state file beside the settings.
 // The settings carry the session's scope, resolved from claude.yaml's session_scope, spec.Skills and spec.Role.
@@ -205,8 +207,9 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 			len(pointer), maxLaunchPromptBytes, promptPath,
 		)
 	}
+	loadsSkills := len(spec.Skills) > 0 && !spec.SkipSkillLoadTurn
 	skillLoadMessage := ""
-	if len(spec.Skills) > 0 {
+	if loadsSkills {
 		skillLoadMessage = c.SkillLoadMessage(spec.Skills)
 		if len(skillLoadMessage) > maxLaunchPromptBytes {
 			return shuttleengine.Launch{}, fmt.Errorf(
@@ -290,7 +293,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	sh := shell.ForGOOS()
 	// A spec that names skills launches with the load message as its first turn, and the pointer goes out after the skills as Launch.PromptLine.
 	launchArg, promptLine := pointer, ""
-	if len(spec.Skills) > 0 {
+	if loadsSkills {
 		launchArg, promptLine = skillLoadMessage, pointer
 	}
 	launchLine := buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, resume, skipPermissions, spec.ForkSubagents)

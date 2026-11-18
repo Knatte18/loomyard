@@ -544,6 +544,8 @@ func awaitLoopProcessExitMark(ctx context.Context, loop LoopSpec, loopID string)
 // Then come how the loop ended, from the loop log after a bounded wait for the keeper's exit mark,
 // and an excerpt of the in-flight child's captured stderr;
 // and last whether its step tree was still running, which a loop killed from outside leaves behind.
+// With a child in flight under a recorded trace id, it then hands that id to LoopSpec.OnStepOrphaned.
+// It ends the detail with the note the hook returns.
 // A child moves the status file itself when it skips gated rows.
 // A moved status file therefore still names the child that was in flight.
 // For a dead loop it then writes the stop as the loop's envelope under its recorded id, delivers it and retires the pid file.
@@ -577,6 +579,11 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 		}
 		if killStepTree(rec) {
 			detail += "; its step tree was still running and was killed"
+		}
+		if inFlight && rec.TraceID != "" && spec.Loop.OnStepOrphaned != nil {
+			if note := spec.Loop.OnStepOrphaned(rec.TraceID); note != "" {
+				detail += "; " + note
+			}
 		}
 	}
 
@@ -612,6 +619,8 @@ func loopExitedEarlyStop(ctx context.Context, spec *Spec, loopID string, out io.
 // It gets the loop log when rec records no child in flight or that child has no trace file.
 // loop.stderr_path names that child's captured stderr, and loop.trace_copy a copy of its trace files when it has any.
 // With no child in flight both are empty.
+// With a child in flight under a trace id it also keeps that child's interrupted record in the steps directory.
+// It writes none when one exists.
 // It reports busy, with the busy stop as its envelope, when another holder has the run lock; nothing is written then.
 func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail string) (envelope []byte, busy bool) {
 	before, _ := readStatusFile(spec)
@@ -659,14 +668,20 @@ func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail str
 	}
 
 	friction := ""
-	if rec.LoopID != TeardownLoopID && spec.Hooks.AfterInterrupt != nil {
-		traceFile := spec.Loop.LogPath
-		if rec.TraceID != "" && rec.hasChild() {
-			if files := traceFilesOf(spec.Loop, rec.TraceID); len(files) > 0 {
-				traceFile = files[0]
-			}
+	traceFile := spec.Loop.LogPath
+	if rec.TraceID != "" && rec.hasChild() {
+		if files := traceFilesOf(spec.Loop, rec.TraceID); len(files) > 0 {
+			traceFile = files[0]
 		}
+	}
+	if rec.LoopID != TeardownLoopID && spec.Hooks.AfterInterrupt != nil {
 		friction = spec.Hooks.AfterInterrupt(ctx, producer, "loop-exited: "+detail, traceFile)
+	}
+	// The record is what lets the re-step find the in-flight child to reconcile when this stop's own hook call failed.
+	if rec.LoopID != TeardownLoopID && rec.hasChild() && rec.TraceID != "" && spec.StepsDir != "" {
+		if _, statErr := os.Stat(filepath.Join(spec.StepsDir, rec.TraceID+envelopeSuffix)); os.IsNotExist(statErr) {
+			interruptedRecord(spec, rec.TraceID, message+"; way forward: "+wayForward, traceFile, friction)
+		}
 	}
 	locations := StepLocations{TraceFile: logger.TraceFile(), FrictionDir: spec.FrictionDir, ScratchDir: spec.ScratchDir, TraceID: logger.TraceID(), RunID: spec.RunID}
 	step := shortStepErrFields(stepErrFields(KindInterrupted, "", friction, locations), "")

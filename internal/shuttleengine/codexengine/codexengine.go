@@ -260,7 +260,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	firstTurn, promptLine := launchPointer(promptPath), ""
 	// The roots come from the codex.yaml this launch already loaded, so one load serves the whole launch.
 	skillRoots := c.expandSkillRoots(codex)
-	if len(spec.Skills) > 0 {
+	if len(spec.Skills) > 0 && !spec.SkipSkillLoadTurn {
 		firstTurn, promptLine = skillLoadOver(spec.Skills, skillRoots), firstTurn
 	}
 

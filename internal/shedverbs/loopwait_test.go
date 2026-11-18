@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -477,6 +478,30 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 		}
 	})
 
+	t.Run("a dead loop's stop keeps an interrupted record the re-step reconciles when the stop's own hook call failed", func(t *testing.T) {
+		w := newWaitWorld(t)
+		w.setStatus("A", shedengine.StateRunning, 0)
+		w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: proc.TreeRecord{PID: 4242}, TraceID: "trace-dead", CurrentProducer: "A"})
+		var orphaned []string
+		w.spec.Loop.OnStepOrphaned = func(traceID string) string {
+			orphaned = append(orphaned, traceID)
+			return "a run stayed held"
+		}
+
+		w.wait()
+
+		if got := newestInterruptedTraceID(w.stepsDir); got != "trace-dead" {
+			t.Fatalf("newest interrupted trace id = %q; want the dead loop's in-flight trace-dead", got)
+		}
+		orphaned = nil
+		if note := reconcileInterruptedStep(w.spec, w.readStatus()); note != "reconciled the interrupted step trace-dead: a run stayed held" {
+			t.Errorf("reconcile note = %q; want the dead loop's in-flight step reconciled", note)
+		}
+		if !slices.Equal(orphaned, []string{"trace-dead"}) {
+			t.Errorf("OnStepOrphaned trace ids on the re-step = %v; want the dead loop's trace-dead", orphaned)
+		}
+	})
+
 	t.Run("a dead loop's stop waits for the keeper's exit mark that lands after the loop released its lock", func(t *testing.T) {
 		w := deadLoopWorld(t)
 		if err := os.WriteFile(w.spec.Loop.LogPath, []byte(loopLogMark("dead-1", loopStartingMark)), 0o644); err != nil {
@@ -671,6 +696,12 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 						}
 					}
 				}
+				const orphanedNote = "stopped shuttle runs: a:1:plan"
+				var orphaned []string
+				w.spec.Loop.OnStepOrphaned = func(traceID string) string {
+					orphaned = append(orphaned, traceID)
+					return orphanedNote
+				}
 				var producer, cause, file string
 				w.spec.Hooks.AfterInterrupt = func(_ context.Context, gotProducer, gotCause, gotFile string) string {
 					producer, cause, file = gotProducer, gotCause, gotFile
@@ -692,6 +723,15 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 					t.Errorf("loop status_moved = %v; want %v", got, wantStatusMoved)
 				}
 				wantCause := "loop-exited: loop dead-1 ended without an envelope; its output is in " + w.spec.Loop.LogPath + tt.wantCause
+				// The hook runs only for a child in flight under a recorded trace id.
+				wantOrphaned := ""
+				if tt.traceID != "" && !tt.noChild {
+					wantOrphaned = tt.traceID
+					wantCause += "; " + orphanedNote
+				}
+				if got := strings.Join(orphaned, ","); got != wantOrphaned {
+					t.Errorf("OnStepOrphaned trace ids = %q; want %q", got, wantOrphaned)
+				}
 				if producer != tt.wantProducer || cause != wantCause || file != tt.wantFile(w) {
 					t.Errorf("AfterInterrupt(%q, %q, %q); want (%q, %q, %q)", producer, cause, file, tt.wantProducer, wantCause, tt.wantFile(w))
 				}

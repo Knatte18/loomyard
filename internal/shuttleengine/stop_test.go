@@ -200,11 +200,16 @@ func TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone(t *testing.T) {
 	}
 }
 
-// TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns covers the step form over one run-directory root:
-// only a running run tied to the step is stopped when its strand is live or a dead own-window one;
-// an untied run is listed and left alone; a dead window 0 strand is left alone;
+// TestRunner_StopStepRuns_StopsOnlyTheStepsRuns covers the step form over one run-directory root:
+// every running run tied to the step is stopped, and only a live or dead own-window strand is removed;
+// a run whose strand is a dead window 0 one has its record stopped with no removal;
+// a run whose strand is untracked or has its pane binding cleared is stopped only when no live process holds its session;
+// otherwise it is listed as held and left running;
+// a run whose output files all exist is listed as finished and keeps reading running;
+// an untied run with a removable strand is listed and left alone;
+// a run of another step and a terminal run are left alone;
 // and a failed stop is reported and skipped.
-func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
+func TestRunner_StopStepRuns_StopsOnlyTheStepsRuns(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -218,9 +223,13 @@ func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 		{GUID: "guid-dead-own", PaneID: "%6", OwnWindow: true, Present: true},
 		{GUID: "guid-dead-window0", PaneID: "%7", Present: true},
 		{GUID: "guid-failing", PaneID: "%5", Live: true},
+		{GUID: "guid-cleared"},
 	}
 	fake := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: strands}}}
-	fx := newFixture(t, fake, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	engine := &resumableFakeEngine{fakeEngine: &fakeEngine{}, heldSessions: map[string]int{"session-held": 4242}}
+	fx := newFixture(t, fake, engine, withConfig(fastConfig), withSeparateRunDir())
+	finishedFile := filepath.Join(t.TempDir(), "finished.md")
+	touchOutputFile(t, finishedFile)
 	seed := func(id string, record RunState) string {
 		t.Helper()
 		runDir := filepath.Join(fx.RunRoot, id)
@@ -229,7 +238,9 @@ func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 		}
 		record.RunID = id
 		// A run with no output file reads finished, which a stop never turns into a stopped record.
-		record.OutputFiles = []string{filepath.Join(fx.RunRoot, "never-written.md")}
+		if record.OutputFiles == nil {
+			record.OutputFiles = []string{filepath.Join(fx.RunRoot, "never-written.md")}
+		}
 		if err := saveRunState(runDir, record); err != nil {
 			t.Fatalf("saveRunState: %v", err)
 		}
@@ -242,19 +253,25 @@ func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 		"terminal":     seed("run-4", RunState{StrandGUID: "guid-terminal", StrandName: "name-terminal", Outcome: "died", Step: &tie}),
 		"dead-own":     seed("run-5", RunState{StrandGUID: "guid-dead-own", StrandName: "name-dead-own", Outcome: runOutcomeRunning, Step: &tie}),
 		"dead-window0": seed("run-6", RunState{StrandGUID: "guid-dead-window0", StrandName: "name-dead-window0", Outcome: runOutcomeRunning, Step: &tie}),
+		"untracked":    seed("run-8", RunState{StrandGUID: "guid-untracked", StrandName: "name-untracked", SessionID: "session-free", Outcome: runOutcomeRunning, Step: &tie}),
+		"cleared":      seed("run-9", RunState{StrandGUID: "guid-cleared", StrandName: "name-cleared", SessionID: "session-free", Outcome: runOutcomeRunning, Step: &tie}),
+		"held":         seed("run-91", RunState{StrandGUID: "guid-held", StrandName: "name-held", SessionID: "session-held", Outcome: runOutcomeRunning, Step: &tie}),
+		"finished":     seed("run-92", RunState{StrandGUID: "guid-finished", StrandName: "name-finished", SessionID: "session-free", OutputFiles: []string{finishedFile}, Outcome: runOutcomeRunning, Step: &tie}),
 	}
 
 	report, err := fx.Runner.StopStepRuns(tie)
 	if err != nil {
 		t.Fatalf("StopStepRuns() error = %v", err)
 	}
-	if !slices.Equal(report.Stopped, []string{"name-tied", "name-dead-own"}) || !slices.Equal(report.Untied, []string{"name-untied"}) || len(report.Failed) != 0 {
-		t.Errorf("report = %+v; want the tied live run and the tied dead own-window run stopped and the untied one listed", report)
+	if !slices.Equal(report.Stopped, []string{"name-tied", "name-dead-own", "name-dead-window0", "name-untracked", "name-cleared"}) ||
+		!slices.Equal(report.Held, []string{"name-held"}) || !slices.Equal(report.Finished, []string{"name-finished"}) ||
+		!slices.Equal(report.Untied, []string{"name-untied"}) || len(report.Failed) != 0 {
+		t.Errorf("report = %+v; want the unheld tied runs stopped, the held one and the finished one listed, and the untied one listed", report)
 	}
 	if len(fake.RemoveStrandCalls) != 2 || fake.RemoveStrandCalls[0].GUID != "guid-tied" || fake.RemoveStrandCalls[1].GUID != "guid-dead-own" {
 		t.Errorf("RemoveStrand calls = %v; want the removals of guid-tied and guid-dead-own", fake.RemoveStrandCalls)
 	}
-	for name, wantOutcome := range map[string]string{"tied": runOutcomeStopped, "other": runOutcomeRunning, "untied": runOutcomeRunning, "terminal": "died", "dead-own": runOutcomeStopped, "dead-window0": runOutcomeRunning} {
+	for name, wantOutcome := range map[string]string{"tied": runOutcomeStopped, "other": runOutcomeRunning, "untied": runOutcomeRunning, "terminal": "died", "dead-own": runOutcomeStopped, "dead-window0": runOutcomeStopped, "untracked": runOutcomeStopped, "cleared": runOutcomeStopped, "held": runOutcomeRunning, "finished": runOutcomeRunning} {
 		record, _, err := loadRunState(dirs[name])
 		if err != nil {
 			t.Fatalf("loadRunState %s: %v", name, err)
@@ -277,6 +294,20 @@ func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 		if failure.Strand == "" || !strings.Contains(failure.Error, "reed down") {
 			t.Errorf("failure = %+v; want a strand name and the removal error text", failure)
 		}
+	}
+
+	// A failing holder lookup leaves a live holder unruled out, so an untracked run stays running and is listed as held.
+	engine.holderErr = errors.New("registry entry unreadable")
+	lookupFailedDir := seed("run-93", RunState{StrandGUID: "guid-lookup-failed", StrandName: "name-lookup-failed", SessionID: "session-free", Outcome: runOutcomeRunning, Step: &tie})
+	report, err = fx.Runner.StopStepRuns(tie)
+	if err != nil {
+		t.Fatalf("StopStepRuns() with a failing holder lookup error = %v", err)
+	}
+	if !slices.Contains(report.Held, "name-lookup-failed") || slices.Contains(report.Stopped, "name-lookup-failed") {
+		t.Errorf("report = %+v; want the run with a failing holder lookup listed as held and not stopped", report)
+	}
+	if record, _, err := loadRunState(lookupFailedDir); err != nil || record.Outcome != runOutcomeRunning {
+		t.Errorf("lookup-failed run outcome = %q (err %v); want %q", record.Outcome, err, runOutcomeRunning)
 	}
 }
 

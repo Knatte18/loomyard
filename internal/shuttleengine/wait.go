@@ -64,6 +64,7 @@
 // the pane reading idle for turnStartIdleOverride restores it too, unless the engine reads that turn in flight.
 // Every gate send goes through sendWithin, so its idle wait and submit window end by the run deadline.
 // A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded by the run deadline.
+// A re-prompt whose strand is gone resumes the writer's session in a fresh strand.
 // Held maxNoInputBoxReprompts times in a row, a pane with no input box ends the loop with the attempts spent so far.
 // The loop thus ends before a picker that shuttle cannot dismiss holds the run until its deadline.
 // A gated run off the boundary also asks each entry's read-only Expired probe once per gateRecheckEvery.
@@ -564,6 +565,9 @@ func gateEntryError(name, problem string) error {
 // so a later tick re-sends it until the run deadline.
 // When maxNoInputBoxReprompts such failures follow each other from a pane with no input box, the loop finalizes done.
 // The attempts spent so far are kept.
+// A re-prompt whose strand can take no keys resumes the writer's session in a fresh strand.
+// The re-prompt is its first turn and counts as a delivered re-prompt.
+// A resume refused or failed before its strand registers ends the loop, naming both failures.
 // Any other re-prompt send failure ends the loop.
 // A pending result sends its Send text when non-empty and keeps polling.
 // A failed pending send warns once per entry and episode, naming the entry, the error and the closure's way-forward.
@@ -603,7 +607,19 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	if render := run.gate[failed].Reprompt; render != nil {
 		reprompt = render(run.gateFindingsPath)
 	}
-	if serr := run.sendWithin(reprompt); serr != nil {
+	serr := run.sendWithin(reprompt)
+	if errors.Is(serr, errStrandGone) {
+		result, finished, rerr := run.relaunchForReprompt(reprompt)
+		switch {
+		case finished:
+			return result, true, rerr
+		case rerr != nil:
+			serr = fmt.Errorf("%w; resuming the session in a fresh strand failed: %v", serr, rerr)
+		default:
+			serr = nil
+		}
+	}
+	if serr != nil {
 		if errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded) || errors.Is(serr, ErrPaused) {
 			var busy *SessionBusyError
 			if errors.As(serr, &busy) && busy.NoInputBox {
@@ -1449,11 +1465,15 @@ func allOutputFilesExist(files []string) bool {
 // Until then the tick stays not started, records the reason on the run for the teardown, and answers as a still-booting pane does.
 // Gate detection and dismissal run as for any run.
 // A session-start line an earlier launch of the same run left satisfies the line half; the pane half still gates it.
+// A resumed strand's startup is the exception: both halves read the events file only past run.startupEventsOffset.
 //
 // With eventsProof set, a record with `RecordsSessionStarts` also starts once the events file holds a session start followed by a turn start.
 // That check runs before the pane capture; a false answer falls through to the capture path, so a recognized gate is still dismissed.
-// Only the launch's own startup wait sets eventsProof.
-// Its events file is created fresh for the launch, so only this launch's hooks satisfy it.
+// Only a strand's own startup wait sets eventsProof.
+// It reads the events file from run.startupEventsOffset.
+// A launch's file is created fresh and its offset is zero, so only that launch's hooks satisfy it.
+// A resume keeps the file, and its offset is the file's size at the resume.
+// So only the resumed session's hooks satisfy it.
 // The wait's probe of a not-yet-started run may read an earlier incarnation's lines, so it leaves eventsProof unset.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, eventsProof bool) (Outcome, error) {
 	status, err := run.runner.reed.Status()
@@ -1497,7 +1517,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 		return "", nil
 	}
 
-	if eventsProof && run.state.RecordsSessionStarts && turnStartedAfterSessionStart(run.engine, run.state.EventsPath) {
+	if eventsProof && run.state.RecordsSessionStarts && turnStartedAfterSessionStart(run.engine, run.state.EventsPath, run.startupEventsOffset) {
 		*started = true
 		run.markStarted()
 		return "", nil
@@ -1519,7 +1539,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 	switch run.engine.Startup(capture) {
 	case StartupReady:
 		if run.state.RecordsSessionStarts {
-			recorded, readErr := sessionStartRecorded(run.engine, run.state.EventsPath)
+			recorded, readErr := sessionStartRecorded(run.engine, run.state.EventsPath, run.startupEventsOffset)
 			switch {
 			case readErr != nil:
 				run.startupHookReason = fmt.Sprintf("the events file %s could not be read for a session-start line: %v", run.state.EventsPath, readErr)
@@ -1642,10 +1662,10 @@ func (run *Run) sessionGone() bool {
 }
 
 // sessionStartRecorded reports whether the events file holds a session-start signal of any source.
-// It reads the file from its start.
+// It reads the file from byte offset onward.
 // An absent file reports false with no error, and an unreadable one returns the read error.
 // An engine that does not parse session signals reports false.
-func sessionStartRecorded(engine Engine, eventsPath string) (bool, error) {
+func sessionStartRecorded(engine Engine, eventsPath string, offset int64) (bool, error) {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
 		return false, nil
@@ -1657,7 +1677,7 @@ func sessionStartRecorded(engine Engine, eventsPath string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	signals, _ := parser.ParseSessionSignals(data)
+	signals, _ := parser.ParseSessionSignals(eventsFrom(data, offset))
 	for _, signal := range signals {
 		if signal.Kind == SessionSignalSessionStart {
 			return true, nil
@@ -1667,10 +1687,10 @@ func sessionStartRecorded(engine Engine, eventsPath string) (bool, error) {
 }
 
 // turnStartedAfterSessionStart reports whether the events file holds a turn-start signal after a session-start signal.
-// Signals are taken in file order, from the file's start.
+// Signals are taken in file order, from byte offset onward.
 // An absent or unreadable file, and an engine that does not parse session signals, report false.
 // It reads signals through the engine's parser, never by a provider's hook names.
-func turnStartedAfterSessionStart(engine Engine, eventsPath string) bool {
+func turnStartedAfterSessionStart(engine Engine, eventsPath string, offset int64) bool {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
 		return false
@@ -1679,7 +1699,7 @@ func turnStartedAfterSessionStart(engine Engine, eventsPath string) bool {
 	if err != nil {
 		return false
 	}
-	signals, _ := parser.ParseSessionSignals(data)
+	signals, _ := parser.ParseSessionSignals(eventsFrom(data, offset))
 	sessionStarted := false
 	for _, signal := range signals {
 		switch signal.Kind {
@@ -1692,6 +1712,14 @@ func turnStartedAfterSessionStart(engine Engine, eventsPath string) bool {
 		}
 	}
 	return false
+}
+
+// eventsFrom returns data from byte offset onward, and nothing when offset is at or past its end.
+func eventsFrom(data []byte, offset int64) []byte {
+	if offset >= int64(len(data)) {
+		return nil
+	}
+	return data[offset:]
 }
 
 // classifyStartupWindow reports the outcome once startupDeadline has passed.

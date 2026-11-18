@@ -356,11 +356,76 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 	}
 }
 
+// TestLoop_ReconcilesTheInterruptedStepBeforeTheFirstChild covers a loop that starts on a run whose status reads failed.
+// It hands the newest interrupted record's trace id to OnStepOrphaned before its first child starts.
+// It also writes the note to the loop log.
+// A run that does not read an interrupted stop settles nothing first.
+func TestLoop_ReconcilesTheInterruptedStepBeforeTheFirstChild(t *testing.T) {
+	tiergate.Require(t, 0)
+	tests := []struct {
+		name        string
+		state       shedengine.State
+		statusError string
+		wantCalls   []string
+		wantMark    bool
+	}{
+		{
+			"a failed run that was interrupted settles the interrupted step first", shedengine.StateFailed,
+			"shedverbs: step A interrupted (exited: exit status 3); way forward: re-run", []string{"stop trace-old", "run", "stop child"}, true,
+		},
+		{"a failed run with a producer error settles nothing first", shedengine.StateFailed, "producer failed", []string{"run", "stop child"}, false},
+		{"a running run settles nothing first", shedengine.StateRunning, "", []string{"run", "stop child"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls []string
+			fx := newLoopFixture(t, func(*loopFixture, string, ChildRequest) error {
+				calls = append(calls, "run")
+				return errors.New("exit status 3")
+			})
+			status := shedengine.Status{CurrentProducer: "A", State: tt.state, Error: tt.statusError, History: historyOf(0)}
+			if err := state.WriteJSON(fx.paths.StatusPath, fx.paths.StatusLockPath, status); err != nil {
+				t.Fatalf("write status: %v", err)
+			}
+			if err := os.MkdirAll(fx.stepsDir, 0o755); err != nil {
+				t.Fatalf("create the steps directory: %v", err)
+			}
+			record := `{"ok":false,"kind":"interrupted","trace_id":"trace-old"}`
+			if err := os.WriteFile(filepath.Join(fx.stepsDir, "trace-old.json"), []byte(record), 0o644); err != nil {
+				t.Fatalf("write the interrupted record: %v", err)
+			}
+			fx.spec.Loop.OnStepOrphaned = func(traceID string) string {
+				if traceID == "trace-old" {
+					calls = append(calls, "stop trace-old")
+				} else {
+					calls = append(calls, "stop child")
+				}
+				return "stopped shuttle runs: a:1:plan"
+			}
+
+			fx.execute()
+
+			if !reflect.DeepEqual(calls, tt.wantCalls) {
+				t.Errorf("calls = %v; want %v", calls, tt.wantCalls)
+			}
+			// A loop that wrote no mark and ran no child with output leaves no log file.
+			log, err := os.ReadFile(fx.spec.Loop.LogPath)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("read the loop log: %v", err)
+			}
+			if got := strings.Contains(string(log), "reconciled the interrupted step trace-old: stopped shuttle runs: a:1:plan"); got != tt.wantMark {
+				t.Errorf("loop log holds the reconcile mark = %v; want %v; log: %s", got, tt.wantMark, log)
+			}
+		})
+	}
+}
+
 func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("child ends without an envelope", func(t *testing.T) {
 		var hookArgs []string
 		var traceFile string
+		var orphaned []string
 		fx := newLoopFixture(t, func(fx *loopFixture, traceID string, _ ChildRequest) error {
 			traceFile = filepath.Join(t.TempDir(), "trace-"+traceID+".log")
 			if err := os.WriteFile(traceFile, []byte("time=t level=INFO msg=started\n"), 0o644); err != nil {
@@ -369,6 +434,10 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 			fx.traces[traceID] = []string{traceFile}
 			return errors.New("exit status 3")
 		})
+		fx.spec.Loop.OnStepOrphaned = func(traceID string) string {
+			orphaned = append(orphaned, traceID)
+			return "stopped shuttle runs: a:1:plan"
+		}
 		fx.spec.Hooks.AfterInterrupt = func(_ context.Context, producer, cause, file string) string {
 			hookArgs = []string{producer, cause, file}
 			return "reflected"
@@ -377,7 +446,10 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 		env, code := fx.execute()
 
 		id := fx.childIDs()[0]
-		wantText := "shedverbs: step A interrupted (exited: exit status 3; command: lym-fake); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lym shed step run-1 --until-stop"
+		if !reflect.DeepEqual(orphaned, []string{id}) {
+			t.Errorf("OnStepOrphaned trace ids = %v; want one call with the child's trace id %s", orphaned, id)
+		}
+		wantText := "shedverbs: step A interrupted (exited: exit status 3; command: lym-fake; stopped shuttle runs: a:1:plan); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lym shed step run-1 --until-stop"
 		recordPath := filepath.Join(fx.stepsDir, id+".json")
 		if code != 1 || env["kind"] != KindInterrupted || env["error"] != wantText || env["transient"] != "" || env["run_id"] != "run-1" {
 			t.Errorf("exit/kind/error/transient/run_id = %d/%v/%v/%v/%v; want 1/%s/%q/empty/run-1", code, env["kind"], env["error"], env["transient"], env["run_id"], KindInterrupted, wantText)
@@ -385,7 +457,7 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 		if env["trace_file"] != traceFile || env["friction"] != "reflected" || env["envelope_path"] != recordPath {
 			t.Errorf("trace_file/friction/envelope_path = %v/%v/%v; want %s/reflected/%s", env["trace_file"], env["friction"], env["envelope_path"], traceFile, recordPath)
 		}
-		if !reflect.DeepEqual(hookArgs, []string{"A", "exited: exit status 3; command: lym-fake", traceFile}) {
+		if !reflect.DeepEqual(hookArgs, []string{"A", "exited: exit status 3; command: lym-fake; stopped shuttle runs: a:1:plan", traceFile}) {
 			t.Errorf("AfterInterrupt args = %v; want the stop row, the cause and the first trace file", hookArgs)
 		}
 
@@ -477,6 +549,48 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 		}
 		if fileExists(fx.spec.Loop.PIDPath) {
 			t.Errorf("the loop left its pid file behind; it removes it once its envelope is written")
+		}
+	})
+
+	t.Run("the loop panics with a child in flight", func(t *testing.T) {
+		var orphaned []string
+		var cause string
+		fx := newLoopFixture(t, func(*loopFixture, string, ChildRequest) error { return nil })
+		// The clock is read after the child's process tree is recorded and before the child exits.
+		fx.spec.Loop.Now = func() time.Time { panic("boom") }
+		fx.spec.Loop.OnStepOrphaned = func(traceID string) string {
+			orphaned = append(orphaned, traceID)
+			return "stopped shuttle runs: a:1:plan"
+		}
+		fx.spec.Hooks.AfterInterrupt = func(_ context.Context, _, gotCause, _ string) string {
+			cause = gotCause
+			return ""
+		}
+
+		_, code := fx.execute()
+
+		id := fx.childIDs()[0]
+		if !reflect.DeepEqual(orphaned, []string{id}) {
+			t.Errorf("OnStepOrphaned trace ids = %v; want one call with the in-flight child's trace id %s", orphaned, id)
+		}
+		if want := "loop-panicked: boom; stopped shuttle runs: a:1:plan"; code != 1 || cause != want {
+			t.Errorf("exit/hook cause = %d/%q; want 1/%q", code, cause, want)
+		}
+	})
+
+	t.Run("an empty orphaned note leaves the cause bare", func(t *testing.T) {
+		var cause string
+		fx := newLoopFixture(t, func(*loopFixture, string, ChildRequest) error { return errors.New("exit status 3") })
+		fx.spec.Loop.OnStepOrphaned = func(string) string { return "" }
+		fx.spec.Hooks.AfterInterrupt = func(_ context.Context, _, gotCause, _ string) string {
+			cause = gotCause
+			return ""
+		}
+
+		fx.execute()
+
+		if want := "exited: exit status 3; command: lym-fake"; cause != want {
+			t.Errorf("AfterInterrupt cause = %q; want %q with no trailing separator", cause, want)
 		}
 	})
 
@@ -1313,6 +1427,11 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 				kills = append(kills, kill)
 				return "stopped runs"
 			}
+			var orphaned []string
+			fx.spec.Loop.OnStepOrphaned = func(traceID string) string {
+				orphaned = append(orphaned, traceID)
+				return "orphaned note"
+			}
 			fx.spec.Loop.Runner = func(_ context.Context, req ChildRequest) (Child, error) {
 				fx.mu.Lock()
 				fx.requests = append(fx.requests, req)
@@ -1360,6 +1479,9 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 			}
 			if tt.wantStop != LoopStopInterrupted && len(kills) != 0 {
 				t.Errorf("OnWatchdogKill calls = %+v; want none for a child the watchdog did not kill", kills)
+			}
+			if len(orphaned) != 0 {
+				t.Errorf("OnStepOrphaned calls = %v; want none, since the watchdog or no kill left a record or a kill note", orphaned)
 			}
 			if tt.quiet && clock.sleepCount() != 0 {
 				t.Errorf("clock slept %d times; want none under a disarmed watchdog", clock.sleepCount())

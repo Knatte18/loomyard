@@ -89,34 +89,58 @@ func registerRunProcess(loc *lymcwd.Location, owner, role string) {
 	}
 }
 
-// watchdogKillNote returns the hook the loop calls after the watchdog killed a step.
-// The hook stops the killed step's shuttle runs through stop, given the steps directory and the kill's trace id;
-// it renders the note that ends the interrupted cause:
-// the runs it stopped, the live runs whose record names no step, which it leaves alone, and a stop that failed.
-func watchdogKillNote(stop func(shuttleengine.StepTie) (shuttleengine.StepStopReport, error), stepsDir string) func(shedverbs.WatchdogKill) string {
-	return func(kill shedverbs.WatchdogKill) string {
-		report, err := stop(shuttleengine.StepTie{StepsDir: stepsDir, TraceID: kill.TraceID})
-		var parts []string
-		if len(report.Stopped) > 0 {
-			parts = append(parts, "stopped shuttle runs: "+strings.Join(report.Stopped, ", "))
-		}
-		if len(report.Untied) > 0 {
-			parts = append(parts, "left live runs naming no step: "+strings.Join(report.Untied, ", "))
-		}
-		for _, failure := range report.Failed {
-			parts = append(parts, fmt.Sprintf("could not stop the run %s: %s", failure.Strand, failure.Error))
-		}
-		if err != nil {
-			parts = append(parts, "could not stop the step's runs: "+err.Error())
-		}
-		return strings.Join(parts, "; ")
+// stepRunsNote stops the shuttle runs of the step traceID names under stepsDir through stop and renders what it did.
+// The note joins with "; " the runs it stopped.
+// It then names the runs whose output files all exist, which stay running.
+// It names the runs a live process may still hold, which it leaves running.
+// It then names the live runs whose record names no step, which it leaves alone.
+// It ends with each stop that failed and the failure of the stop itself.
+// It is empty when there was nothing to report.
+func stepRunsNote(stop func(shuttleengine.StepTie) (shuttleengine.StepStopReport, error), stepsDir, traceID string) string {
+	report, err := stop(shuttleengine.StepTie{StepsDir: stepsDir, TraceID: traceID})
+	var parts []string
+	if len(report.Stopped) > 0 {
+		parts = append(parts, "stopped shuttle runs: "+strings.Join(report.Stopped, ", "))
 	}
+	if len(report.Finished) > 0 {
+		parts = append(parts, "left runs whose output files all exist: "+strings.Join(report.Finished, ", "))
+	}
+	if len(report.Held) > 0 {
+		parts = append(parts, "left running the runs a live process may still hold: "+strings.Join(report.Held, ", "))
+	}
+	if len(report.Untied) > 0 {
+		parts = append(parts, "left live runs naming no step: "+strings.Join(report.Untied, ", "))
+	}
+	for _, failure := range report.Failed {
+		parts = append(parts, fmt.Sprintf("could not stop the run %s: %s", failure.Strand, failure.Error))
+	}
+	if err != nil {
+		parts = append(parts, "could not stop the step's runs: "+err.Error())
+	}
+	return strings.Join(parts, "; ")
+}
+
+// watchdogKillNote returns the hook the loop calls after the watchdog killed a step.
+// The hook stops the killed step's shuttle runs through stop, given the steps directory and the kill's trace id,
+// and returns the note that ends the interrupted cause.
+func watchdogKillNote(stop func(shuttleengine.StepTie) (shuttleengine.StepStopReport, error), stepsDir string) func(shedverbs.WatchdogKill) string {
+	return func(kill shedverbs.WatchdogKill) string { return stepRunsNote(stop, stepsDir, kill.TraceID) }
+}
+
+// orphanedStepNote returns the hook the loop calls for a step whose process is gone without an envelope.
+// The hook stops that step's shuttle runs through stop, given the steps directory and the step's trace id.
+// It returns the note that ends the interrupted cause.
+func orphanedStepNote(stop func(shuttleengine.StepTie) (shuttleengine.StepStopReport, error), stepsDir string) func(traceID string) string {
+	return func(traceID string) string { return stepRunsNote(stop, stepsDir, traceID) }
 }
 
 // stopStepRuns stops the shuttle runs recorded under tie.
 // The receiver's runner is used when `wire` built one;
 // a receiver wired lightly gets the pair's runner built the way `wire` builds it.
 func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepStopReport, error) {
+	if c.stopRuns != nil {
+		return c.stopRuns(tie)
+	}
 	runner := c.runner
 	if runner == nil {
 		configDirs := fabricengine.ConfigDirs(c.location)

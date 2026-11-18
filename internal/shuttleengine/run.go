@@ -376,6 +376,9 @@ type Run struct {
 	startupStrandRemoved bool
 	// sessionLiveness is the per-wait state of sessionGone, reset at the entry of Wait and awaitStartup.
 	sessionLiveness sessionLivenessState
+	// startupEventsOffset is the events file's size when a resume started this run's current strand, zero for a first launch.
+	// The startup wait reads the file only past it, so the lines of an earlier session prove nothing about the new one.
+	startupEventsOffset int64
 	// startupHookReason is why the latest startup probe held a ready pane back for want of a session-start line, empty when it held nothing back.
 	startupHookReason string
 	// dismissed reports that this run sent a key to dismiss the startup gate; dismissedAt is when, on the run's clock.
@@ -678,19 +681,7 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		doneWhen = spec.OutputFiles
 	}
 
-	strand, err := r.reed.AddStrand(reedengine.AddSpec{
-		Role:         spec.Role,
-		NameOverride: spec.NameOverride,
-		Segment:      string(spec.Segment),
-		Provider:     engineName,
-		CreelHooks:   launch.CreelHooks,
-		Parent:       spec.Parent,
-		Cmd:          launch.Cmd,
-		ResumeCmd:    launch.ResumeCmd,
-		SessionID:    launch.SessionID,
-		Display:      spec.Display,
-		DoneWhen:     doneWhen,
-	})
+	strand, err := r.reed.AddStrand(strandAddSpec(spec, engineName, launch, doneWhen))
 	if err != nil {
 		// Nothing to resume: the strand never registered, so the run
 		// directory this attempt created is cleaned up rather than left as
@@ -794,6 +785,25 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		return run, result, err
 	}
 	return run, Result{}, nil
+}
+
+// strandAddSpec returns the reed request that registers the strand of a run of spec.
+// The run is launched through launch on the engine engineName.
+// doneWhen is the strand's done-when list, nil for a strand reed must never drop as finished.
+func strandAddSpec(spec Spec, engineName string, launch Launch, doneWhen []string) reedengine.AddSpec {
+	return reedengine.AddSpec{
+		Role:         spec.Role,
+		NameOverride: spec.NameOverride,
+		Segment:      string(spec.Segment),
+		Provider:     engineName,
+		CreelHooks:   launch.CreelHooks,
+		Parent:       spec.Parent,
+		Cmd:          launch.Cmd,
+		ResumeCmd:    launch.ResumeCmd,
+		SessionID:    launch.SessionID,
+		Display:      spec.Display,
+		DoneWhen:     doneWhen,
+	}
 }
 
 // typeStartupColor types color into the run's pane, doing nothing for an empty color.
@@ -1512,6 +1522,17 @@ type paneNotReadyError struct{ msg string }
 func (e paneNotReadyError) Error() string { return e.msg }
 func (e paneNotReadyError) Unwrap() error { return ErrPaneNotReady }
 
+// errStrandGone reports that a strand can take no keys.
+// Reed does not track it, holds no pane id for it, or its pane is dead.
+var errStrandGone = errors.New("shuttle: the strand can take no keys")
+
+// strandGoneError carries the liveness lookup's full message while it satisfies errors.Is(err, errStrandGone).
+// The message is kept exactly as operators and tests know it.
+type strandGoneError struct{ msg string }
+
+func (e strandGoneError) Error() string { return e.msg }
+func (e strandGoneError) Unwrap() error { return errStrandGone }
+
 // requireLiveStrand fails unless guid's strand is tracked by reed and bound
 // to a live pane. This guards against tmux send-keys exiting 0 on dead panes.
 func requireLiveStrand(reed ReedOps, guid string) error {
@@ -1520,7 +1541,8 @@ func requireLiveStrand(reed ReedOps, guid string) error {
 }
 
 // liveStrand returns guid's strand as reed reports it.
-// It fails unless the strand is tracked and bound to a live pane.
+// It fails unless the strand is tracked and bound to a live pane;
+// an untracked strand, a cleared pane binding and a dead pane fail with an error wrapping errStrandGone.
 func liveStrand(reed ReedOps, guid string) (reedengine.StrandStatus, error) {
 	status, err := reed.Status()
 	if err != nil {
@@ -1536,16 +1558,16 @@ func liveStrand(reed ReedOps, guid string) (reedengine.StrandStatus, error) {
 			// For the second, naming a terminal outcome or a dead pane is wrong:
 			// the agent may still be working in a pane tmux reports alive, so the error names the dropped binding.
 			if s.PaneID == "" {
-				return reedengine.StrandStatus{}, fmt.Errorf("shuttle: reed tracks strand %q but holds no pane id for it — either its pane binding was cleared as stale (reed does that when the persisted pane generation is not the session incarnation now running: a restored backup, a copied .lym, or a reed.json older than the session) or the strand was added anchor:hidden and never given a pane. Its agent may still be working in a pane reed can no longer address, so keys have nowhere to go; check \"lym reed status\"", guid)
+				return reedengine.StrandStatus{}, strandGoneError{msg: fmt.Sprintf("shuttle: reed tracks strand %q but holds no pane id for it — either its pane binding was cleared as stale (reed does that when the persisted pane generation is not the session incarnation now running: a restored backup, a copied .lym, or a reed.json older than the session) or the strand was added anchor:hidden and never given a pane. Its agent may still be working in a pane reed can no longer address, so keys have nowhere to go; check \"lym reed status\"", guid)}
 			}
-			return reedengine.StrandStatus{}, fmt.Errorf("shuttle: strand %q has no live pane — its run already reached a terminal outcome or its pane died; keys would be silently dropped", guid)
+			return reedengine.StrandStatus{}, strandGoneError{msg: fmt.Sprintf("shuttle: strand %q has no live pane — its run already reached a terminal outcome or its pane died; keys would be silently dropped", guid)}
 		}
 		return s, nil
 	}
 	// The same branch is reached by a completed run, and also by several causes with the run still unfinished:
 	// a `lym reed remove`, a `down`/`up` cycle, or a server rebirth.
 	// So the message states what was observed, then lists the causes.
-	return reedengine.StrandStatus{}, fmt.Errorf("shuttle: strand %q is not tracked by reed — either its run completed and was cleaned up, or reed's strand table was reset under it (a reed remove/down, or a lost or rebuilt reed.json); check \"lym reed status\"", guid)
+	return reedengine.StrandStatus{}, strandGoneError{msg: fmt.Sprintf("shuttle: strand %q is not tracked by reed — either its run completed and was cleaned up, or reed's strand table was reset under it (a reed remove/down, or a lost or rebuilt reed.json); check \"lym reed status\"", guid)}
 }
 
 // playInputs sends inputs to guid's pane through reed in order.

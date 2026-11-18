@@ -85,6 +85,14 @@ type LoopSpec struct {
 	Pause func(now time.Time) (pauserecord.Coverage, error)
 	// OnWatchdogKill runs once after the watchdog killed a child, before the loop reads back what the child left, and returns a note the interrupted cause ends with; nil is skipped.
 	OnWatchdogKill func(kill WatchdogKill) string
+	// OnStepOrphaned runs for a step whose process is gone without an envelope and that the watchdog did not kill.
+	// It runs once per such child the loop reads back, and once for the step a panic or a dead loop leaves in flight.
+	// A loop that starts on a failed status naming an interrupted step also runs it once, before its first child.
+	// That call is for the step of the newest interrupted record in the steps directory.
+	// It gets the step's trace id.
+	// It returns a note the interrupted cause ends with, naming what it did with the runs the step left.
+	// A nil hook is skipped, and so is an empty note.
+	OnStepOrphaned func(traceID string) string
 	// OnStart runs once in runLoop after the pid file is written and the start is logged, and before the first step; nil is skipped.
 	// A loop that refuses before its first step never runs it.
 	// The loop's keeper also runs it once after it has started the loop process, whether or not that loop then refuses;
@@ -228,6 +236,9 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 		loop.OnStart()
 	}
 	obj := loopObject{FirstProducer: first.CurrentProducer}
+	if note := reconcileInterruptedStep(spec, first); note != "" {
+		appendLoopLogMark(loop.LogPath, loopLogMark(loopID, note))
+	}
 	run := stepUntilStop(ctx, spec, loopID, argv, &pid, first, &obj)
 	if endedBySignal() {
 		return 1
@@ -348,6 +359,7 @@ type steppedRun struct {
 
 // stepUntilStop runs child steps from the status file first read until one stops the run, writing each child's start and exit into pid and counting the steps and a re-step into obj.
 // A panic while stepping is recovered as an interrupted stop with the cause loop-panicked: <value>, after the in-flight child's step tree is killed, so the loop still writes its envelope.
+// The cause then ends with the note LoopSpec.OnStepOrphaned returns for that child.
 func stepUntilStop(ctx context.Context, spec *Spec, loopID string, argv []string, pid *LoopPIDRecord, first shedengine.Status, obj *loopObject) (run steppedRun) {
 	loop := spec.Loop
 	idleWindow := idleWindowOf(loop)
@@ -365,7 +377,13 @@ func stepUntilStop(ctx context.Context, spec *Spec, loopID string, argv []string
 		}
 		logger.Error("shed: loop panicked while stepping", "loop_id", loopID, "panic", fmt.Sprint(recovered), "stack", string(debug.Stack()))
 		killStepTree(*pid)
-		run.res = childResult{traceID: traceID, cause: fmt.Sprintf("loop-panicked: %v", recovered)}
+		cause := fmt.Sprintf("loop-panicked: %v", recovered)
+		if pid.hasChild() && pid.TraceID != "" && loop.OnStepOrphaned != nil {
+			if note := loop.OnStepOrphaned(pid.TraceID); note != "" {
+				cause += "; " + note
+			}
+		}
+		run.res = childResult{traceID: traceID, cause: cause}
 		run.stop = LoopStopInterrupted
 	}()
 
@@ -435,6 +453,64 @@ func stepUntilStop(ctx context.Context, spec *Spec, loopID string, argv []string
 		run.stop = LoopStopInterrupted
 		return run
 	}
+}
+
+// reconcileInterruptedStep settles the step a failed run was last interrupted in, before the loop's first child starts.
+// It hands that step's trace id to LoopSpec.OnStepOrphaned.
+// It covers an interrupted stop whose own hook call failed or never ran.
+// The leftover of that step then never meets the re-step.
+// The status reads an interrupted stop when it is failed and its error carries the text interruptedError writes.
+// The step is the newest kind-interrupted record in the steps directory.
+// It returns the note to write to the loop log.
+// The note is empty when the hook is nil or the status reads no interrupted stop.
+// It is empty too when no record names an interrupted step or the hook returns no note.
+func reconcileInterruptedStep(spec *Spec, first shedengine.Status) string {
+	if spec.Loop.OnStepOrphaned == nil || first.State != shedengine.StateFailed || !strings.Contains(first.Error, " interrupted (") {
+		return ""
+	}
+	traceID := newestInterruptedTraceID(spec.StepsDir)
+	if traceID == "" {
+		return ""
+	}
+	note := spec.Loop.OnStepOrphaned(traceID)
+	if note == "" {
+		return ""
+	}
+	return "reconciled the interrupted step " + traceID + ": " + note
+}
+
+// newestInterruptedTraceID returns the trace id of the newest kind-interrupted record in stepsDir.
+// It returns empty when there is none.
+func newestInterruptedTraceID(stepsDir string) string {
+	entries, err := os.ReadDir(stepsDir)
+	if err != nil {
+		return ""
+	}
+	newest, newestWritten := "", time.Time{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), envelopeSuffix) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(stepsDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var record struct {
+			Kind    string `json:"kind"`
+			TraceID string `json:"trace_id"`
+		}
+		if json.Unmarshal(data, &record) != nil || record.Kind != KindInterrupted || record.TraceID == "" {
+			continue
+		}
+		if newest == "" || info.ModTime().After(newestWritten) {
+			newest, newestWritten = record.TraceID, info.ModTime()
+		}
+	}
+	return newest
 }
 
 // recordTerminatingSignals watches for a terminating signal until the function it returns first is called.
@@ -526,6 +602,7 @@ func loopStartRefusal(loop LoopSpec) string {
 // The child's own record, <StepsDir>/<traceID>.json, is its full envelope;
 // a child that refused before its step body ran left an error envelope on stdout instead;
 // a child that left neither is reported interrupted for the cause its exit gives, followed by its command line and an excerpt of its captured stderr, or for the cause the watchdog's kill renders when the idle watch killed it, which ends with the note OnWatchdogKill returned.
+// The exit cause ends with the note OnStepOrphaned returned for the child's trace id, when it returned one.
 // record is told the child's process tree when it starts and the zero record when it has exited.
 // idleWindow is the window of the child's idle watch, and zero disarms it.
 func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, idleWindow time.Duration, record func(proc.TreeRecord)) childResult {
@@ -591,6 +668,11 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, id
 	cause += "; command: " + strings.Join(append([]string{loop.Executable}, argv...), " ")
 	if excerpt := stderrExcerpt(stderrPath); excerpt != "" {
 		cause += "; stderr: " + excerpt
+	}
+	if loop.OnStepOrphaned != nil {
+		if note := loop.OnStepOrphaned(traceID); note != "" {
+			cause += "; " + note
+		}
 	}
 	return childResult{traceID: traceID, cause: cause}
 }
