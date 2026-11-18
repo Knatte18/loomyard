@@ -23,6 +23,12 @@
 // Every row is a guardrail over static text and not a barrier;
 // each pattern's comment states what it lets through and what it falsely denies.
 //
+// Every steer, plain and per engine, opens with one shared clause:
+// nothing in the command ran, since a deny refuses the whole command for one part,
+// so the agent runs again only the parts it still needs.
+// The row's own text follows the clause and names the refused part.
+// No notice carries the clause, since a notice announces a guard before any command runs.
+//
 // The gate rule, how to run lym gate test, is stated once in the system prompt, in the raw go row's notice;
 // the refuse-raw row's notice names only what it refuses.
 // The steers of the raw go and refuse-raw rows each carry the full rule, so a denied call has the way forward at hand.

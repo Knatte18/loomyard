@@ -78,7 +78,8 @@ const codexEditToolsRule = "change a file with the apply_patch tool, and read or
 // It names the version check, which agents otherwise run as a probe before choosing how to edit or parse.
 const pythonRefusal = "python and python3 are refused in every lym session, a version check included, so never probe for Python: what it runs differs from machine to machine with the installed packages, venvs and installations, and it is often very slow; when the work itself needs Python, as OCR does, say so to the operator or your parent, who can set " + string(SwitchDenyPython) + ": false for the hub, and never work round the guard"
 
-// pythonRoutes opens every python steer: the refusal and the parse routes in Python's place.
+// pythonRoutes opens the python row's own steer text, which follows the shared whole-command clause.
+// It holds the refusal and the parse routes in Python's place.
 const pythonRoutes = pythonRefusal + "; for work that does not need Python itself, parse JSON with jq and text with grep or awk; "
 
 // steerPythonDeny refuses a Bash python invocation and names the parse and edit routes in its place; it must contain no single/double quote or backslash (checked at init).
@@ -90,7 +91,8 @@ const codexSteerPythonDeny = pythonRoutes + codexEditToolsRule
 // noticePythonDeny announces the python deny; the edit rule its steer carries is announced by the shell-edit row's notice.
 const noticePythonDeny = pythonRefusal + "."
 
-// shellEditRefusal opens every shell-edit steer: the commands the row refuses.
+// shellEditRefusal opens the shell-edit row's own steer text, which follows the shared whole-command clause.
+// It names the commands the row refuses.
 const shellEditRefusal = "sed -i, perl -i, and a heredoc, redirect or tee into a source file are refused here; "
 
 // steerShellEditDeny refuses a Bash edit of a file; it must contain no single/double quote or backslash (checked at init).
@@ -178,7 +180,8 @@ const noticeSleepDeny = steerSleepDeny + "."
 // A word that is not a flag ends the match, so systemctl status and every other verb pass.
 const sleepCommandPattern = commandPositionPattern + `systemctl([[:space:]]+-` + goWordPattern + `)*[[:space:]]+(sleep|hibernate|suspend|hybrid-sleep|suspend-then-hibernate)([^A-Za-z0-9_.-]|$)`
 
-// headlessClaudeRefusal opens every headless claude steer: the refusal and its reason.
+// headlessClaudeRefusal opens the headless claude row's own steer text, which follows the shared whole-command clause.
+// It holds the refusal and its reason.
 const headlessClaudeRefusal = "a headless claude launch, in print mode, is refused here because its work shows in no pane; "
 
 // steerHeadlessClaudeDeny refuses a Bash launch of a headless claude and names the subagent route in its place; it must contain no single/double quote or backslash (checked at init).
@@ -377,6 +380,26 @@ func refuseRawPattern(prefixes []string) string {
 	return commandPositionPattern + `(` + strings.Join(alternatives, "|") + `)([^A-Za-z0-9_./-]|$)`
 }
 
+// wholeCommandRefusal opens every steer, plain and per engine.
+// A guard deny refuses the whole shell command, so none of its other parts ran either.
+// The row's own text follows it and names the refused part, so the agent runs again only the parts it still needs.
+const wholeCommandRefusal = "Nothing in this command ran: the guard refuses the whole command for one part, so run the parts you still need again without it. The refused part: "
+
+// openSteersWithWholeCommandRefusal prefixes every steer of rows, plain and per engine, with wholeCommandRefusal.
+// Notices stay as they are, since a notice announces a guard before any command runs.
+func openSteersWithWholeCommandRefusal(rows []Row) []Row {
+	for i := range rows {
+		rows[i].Steer = wholeCommandRefusal + rows[i].Steer
+		for engine, text := range rows[i].EngineTexts {
+			if text.Steer != "" {
+				text.Steer = wholeCommandRefusal + text.Steer
+				rows[i].EngineTexts[engine] = text
+			}
+		}
+	}
+	return rows
+}
+
 // forbiddenSteerChars are characters that would corrupt steer text in JSON or shell quoting layers (checked at init).
 const forbiddenSteerChars = `'"\`
 
@@ -384,8 +407,11 @@ const forbiddenSteerChars = `'"\`
 const forbiddenNoticeChars = forbiddenSteerChars + "\n\r"
 
 // Rows returns a fresh slice of the shell guard rows in table order.
-// foreground is the engine's phrase for running a long command in the foreground, which the gate rule in the raw go row's steer and notice and the refuse-raw row's steer carries.
-// refuseRaw lists the command prefixes the hub refuses to run raw; a non-empty list adds the refuse-raw row after the raw go row, and an empty one adds none.
+// Each steer opens with the clause that nothing in the refused command ran.
+// foreground is the engine's phrase for running a long command in the foreground.
+// The gate rule in the raw go row's steer and notice and the refuse-raw row's steer carries it.
+// refuseRaw lists the command prefixes the hub refuses to run raw;
+// a non-empty list adds the refuse-raw row after the raw go row, and an empty one adds none.
 // The raw go row's steer names only the compile checks refuseRaw does not refuse.
 func Rows(foreground string, refuseRaw []string) []Row {
 	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here." + compileCheckSentence(refuseRaw) + " Gate rule: run lym gate test in the foreground " + foreground + ", never in the background, for example lym gate test ./internal/x, and use its --tier flag for a tier. When lym gate test or lym gate card-verify answers done: false, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lym, and a command setting or reading any of them is refused"
@@ -393,7 +419,7 @@ func Rows(foreground string, refuseRaw []string) []Row {
 	if len(refuseRaw) > 0 {
 		rows = append(rows, refuseRawRow(foreground, refuseRaw))
 	}
-	return append(rows, rowsAfterRawGo()...)
+	return openSteersWithWholeCommandRefusal(append(rows, rowsAfterRawGo()...))
 }
 
 // compileCheckForms are the package-scoped compile checks the raw go row's steer offers in place of a refused ./... or all run.

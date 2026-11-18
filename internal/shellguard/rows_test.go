@@ -1,4 +1,5 @@
-// rows_test.go pins the package's import set and the refusal of forbidden characters in a row's steer and notice.
+// rows_test.go pins the package's import set, the refusal of forbidden characters in a row's steer and notice,
+// and the texts the shipped rows carry.
 
 package shellguard
 
@@ -24,7 +25,12 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 }
 
 // TestCheckTexts plants each forbidden character in a row's steer and notice and asserts checkTexts refuses it naming the row;
-// it also asserts the shipped rows, rendered over a sample refuse list, pass checkTexts and state the gate rule and the edit rule in one notice each, that the refuse-raw steer carries the full gate rule while its notice names only the refusal and the tier and card scopes, that the python and shell-edit steers carry the full edit rule, that the Codex python steer opens with the shared refusal, and that the raw-go steer names the done: false retry of lym gate card-verify.
+// it also asserts the shipped rows, rendered over a sample refuse list, pass checkTexts.
+// The shipped rows state the gate rule and the edit rule in one notice each.
+// The refuse-raw steer carries the full gate rule, while its notice names only the refusal and the tier and card scopes.
+// The python and shell-edit steers carry the full edit rule.
+// The Codex python steer opens with the whole-command clause and then the shared refusal.
+// The raw-go steer names the done: false retry of lym gate card-verify.
 func TestCheckTexts(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -45,8 +51,8 @@ func TestCheckTexts(t *testing.T) {
 			if (row.Name == "python" || row.Name == "shell-edit") && !strings.Contains(row.Steer, editToolsRule) {
 				t.Errorf("%s steer %q: want it to carry the edit rule %q", row.Name, row.Steer, editToolsRule)
 			}
-			if row.Name == "python" && !strings.HasPrefix(row.SteerFor(engineCodex), pythonRefusal) {
-				t.Errorf("python Codex steer %q: want it to open with the refusal %q", row.SteerFor(engineCodex), pythonRefusal)
+			if row.Name == "python" && !strings.HasPrefix(row.SteerFor(engineCodex), wholeCommandRefusal+pythonRefusal) {
+				t.Errorf("python Codex steer %q: want it to open with %q", row.SteerFor(engineCodex), wholeCommandRefusal+pythonRefusal)
 			}
 			if row.Name == "raw-go" {
 				for _, want := range []string{"done: false", "lym gate card-verify"} {
@@ -164,10 +170,32 @@ func TestRows_RawGoSteerNamesOnlyUnrefusedCompileChecks(t *testing.T) {
 				if !strings.Contains(row.Steer, tt.want) {
 					t.Errorf("raw-go steer with refuse list %q = %q; want it to contain %q", tt.refuseRaw, row.Steer, tt.want)
 				}
-				if row.Notice != row.Steer+"." {
-					t.Errorf("raw-go notice = %q; want the steer and a full stop", row.Notice)
+				if row.Notice != strings.TrimPrefix(row.Steer, wholeCommandRefusal)+"." {
+					t.Errorf("raw-go notice = %q; want the steer without its whole-command clause and a full stop", row.Notice)
 				}
 			}
 		})
+	}
+}
+
+// TestRows_SteersOpenWithWholeCommandRefusal asserts every row's steer opens by saying nothing in the command ran.
+// It checks the steer on Claude and on Codex, and the steer then names the refused part.
+// No notice carries that clause, since a notice announces a guard before any command runs.
+//
+//testtiming:keep pins that every row's steer on claude and codex opens with the whole-command clause and that no notice carries it
+func TestRows_SteersOpenWithWholeCommandRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	for _, row := range Rows("with a long timeout", []string{"go test"}) {
+		for _, engine := range []string{"claude", engineCodex} {
+			steer := row.SteerFor(engine)
+			refusedPart, ok := strings.CutPrefix(steer, "Nothing in this command ran: the guard refuses the whole command for one part, so run the parts you still need again without it. The refused part: ")
+			if !ok || refusedPart == "" {
+				t.Errorf("%s steer on %s = %q; want the whole-command clause and then the refused part", row.Name, engine, steer)
+			}
+			if notice := row.NoticeFor(engine); strings.Contains(notice, "Nothing in this command ran") {
+				t.Errorf("%s notice on %s = %q; want no whole-command clause", row.Name, engine, notice)
+			}
+		}
 	}
 }
