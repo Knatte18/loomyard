@@ -84,6 +84,10 @@ func Tagged(a bool) string {
 	}
 	return tag
 }
+
+func Half() uint64 {
+	return (1 << 63) / 2
+}
 `
 
 // mutantVariables is the fixture file that holds only a package-level variable, which two blocks of mutantSource read.
@@ -109,6 +113,7 @@ const (
 	blockReads
 	blockTaggedTrue
 	blockTaggedTail
+	blockHalf
 )
 
 // mutantBlocks returns the coverage blocks of mutantSource, each spanning the text from one marker to the end of another.
@@ -130,6 +135,7 @@ func mutantBlocks(t *testing.T) []testcover.ProfileBlock {
 		{"{\n\treturn len(set)", "len(all)\n}"},
 		{"return tag\n\t}", "return tag\n\t}"},
 		{"return tag\n}", "return tag\n}"},
+		{"{\n\treturn (1 << 63)", "/ 2\n}"},
 	}
 	var blocks []testcover.ProfileBlock
 	for _, span := range spans {
@@ -293,6 +299,10 @@ func TestPlanMutants(t *testing.T) {
 			file:    "fixvars.go",
 			want:    []site{{3, testcover.OperatorChangeConstant, []int{blockTaggedTrue, blockTaggedTail}}},
 		},
+		{
+			name:    "the literals of an expression of integer constants alone stay, as its intermediate value may overflow once it is not constant",
+			targets: []int{blockHalf},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -357,7 +367,7 @@ func TestMutantPlan_WriteOverlay(t *testing.T) {
 		`[]string{"a", "b"}`, `[]string{lymMutantString("a", 6), lymMutantString("b", 7)}`,
 		"if a && b || s == names[0] {",
 		"if lymMutantBool(lymMutantDropOr(lymMutantDropAnd(a, 10) && lymMutantDropAnd(b, 11), 9) || "+
-			"lymMutantDropOr(lymMutantBool(s == names[lymMutantInt(0, 14)], 13), 12), 8) {",
+			"lymMutantDropOr(lymMutantBool(s == names[(0 + 1>>lymMutantStep(14))], 13), 12), 8) {",
 		"return s + suffix", "return s + lymMutantString(suffix, 15)",
 		"return text\n}", "return lymMutantLine(lymMutantLine(text, 3, 17), 1, 16)\n}",
 	).Replace(mutantSource)
@@ -378,25 +388,33 @@ func TestMutantPlan_UnbuildableMutants(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	classify := []int{blockClassifyHead, blockClassifyNegative}
+	// The targets hold mutants 1 and 2 on line 4 and 3 on line 5 of fix.go, and mutant 4 on line 3 of fixvars.go.
+	targets := []int{blockClassifyHead, blockClassifyNegative, blockTaggedTail}
+	refused := func(file string, line int) error {
+		return &testcover.MutantBuildError{Lines: []testcover.SourceLine{{File: file, Line: line}}}
+	}
 	tests := []struct {
-		name    string
-		targets []int
-		err     error
-		dropped map[int]bool
-		want    []int
+		name       string
+		targets    []int
+		err        error
+		dropped    map[int]bool
+		wholeFiles bool
+		want       []int
 	}{
-		{name: "every mutant spanning a refused line", targets: classify, err: &testcover.MutantBuildError{Lines: []testcover.SourceLine{{File: "fix.go", Line: 4}}}, want: []int{1, 2}},
-		{name: "a dropped mutant stays dropped", targets: classify, err: &testcover.MutantBuildError{Lines: []testcover.SourceLine{{File: "fix.go", Line: 4}}}, dropped: map[int]bool{1: true}, want: []int{2}},
-		{name: "a line of another file", targets: classify, err: &testcover.MutantBuildError{Lines: []testcover.SourceLine{{File: "other.go", Line: 5}}}},
-		{name: "an error that names no line", targets: classify, err: errors.New("mutant binary: timed out")},
-		{name: "a mutant spanning two lines when the second is refused", targets: []int{blockJoinSplitStatement}, err: &testcover.MutantBuildError{Lines: []testcover.SourceLine{{File: "fix.go", Line: 23}}}, want: []int{1}},
+		{name: "every mutant spanning a refused line", targets: targets, err: refused("fix.go", 4), want: []int{1, 2}},
+		{name: "a dropped mutant stays dropped", targets: targets, err: refused("fix.go", 4), dropped: map[int]bool{1: true}, want: []int{2}},
+		{name: "every mutant of the file when no mutant spans its refused line", targets: targets, err: refused("fix.go", 1), want: []int{1, 2, 3}},
+		{name: "every mutant of the file of a refused line with wholeFiles", targets: targets, err: refused("fix.go", 4), wholeFiles: true, want: []int{1, 2, 3}},
+		{name: "every mutant left for a line of a file holding none", targets: targets, err: refused("other.go", 5), dropped: map[int]bool{2: true}, want: []int{1, 3, 4}},
+		{name: "none once every mutant is dropped", targets: targets, err: refused("other.go", 5), dropped: map[int]bool{1: true, 2: true, 3: true, 4: true}},
+		{name: "an error that names no line", targets: targets, err: errors.New("mutant binary: timed out")},
+		{name: "a mutant spanning two lines when the second is refused", targets: []int{blockJoinSplitStatement}, err: refused("fix.go", 23), want: []int{1}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			_, plan, _ := planFixture(t, tt.targets...)
-			if got := plan.UnbuildableMutants(tt.err, tt.dropped); !reflect.DeepEqual(got, tt.want) {
+			if got := plan.UnbuildableMutants(tt.err, tt.dropped, tt.wholeFiles); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("UnbuildableMutants = %v; want %v", got, tt.want)
 			}
 		})

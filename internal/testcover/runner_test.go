@@ -138,7 +138,7 @@ func TestBuildMutantBinary(t *testing.T) {
 		{
 			name:      "NamesTheLinesOfARefusedBuild",
 			env:       []string{standInCompileErrorsEnv + "=1"},
-			wantLines: []testcover.SourceLine{{File: "x.go", Line: 4}, {File: "y.go", Line: 12}},
+			wantLines: []testcover.SourceLine{{File: "x.go", Line: 4}, {File: "y.go", Line: 12}, {File: "z.go", Line: 62}},
 		},
 	}
 	for _, tt := range tests {

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -30,6 +31,8 @@ func TestScanTestFuncs(t *testing.T) {
 					tiered + "\n\nfunc TestMain(m *testing.M) {}\n\nfunc Testlower(t *testing.T) {}\n\nfunc helper() {}\n",
 				"b_test.go": "package p\n\nimport \"testing\"\n\ntype suite struct{}\n\nfunc (suite) TestMethod(t *testing.T) {}\n\n" + untiered + "\n",
 				"c.go":      "package p\n\nfunc TestInAFileThatIsNoTestFile() {}\n",
+				// No platform but another one compiles this file.
+				"d_test.go": "//go:build !" + runtime.GOOS + "\n\npackage p\n\nimport \"testing\"\n\nfunc TestOnAnotherPlatform(t *testing.T) {}\n",
 			},
 			want: []testcover.TestFunc{
 				{Name: "TestTiered", File: "a_test.go", Tier: 1, Tiered: true, Hash: testcover.ContentHash([]byte(tiered))},

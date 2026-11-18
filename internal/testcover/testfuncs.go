@@ -6,6 +6,7 @@ package testcover
 import (
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"os"
@@ -33,7 +34,8 @@ type TestFunc struct {
 
 // ScanTestFuncs returns the top-level Test functions of the `_test.go` files directly in dir, sorted by name.
 // A Test function is one `go test` runs as a test; TestMain and methods are not.
-// Build constraints are not read, so a file only another platform compiles still counts.
+// It reads only the files the default build context takes, so a test only another platform compiles is left out;
+// a build tag set through GOFLAGS is not read.
 // A test file that cannot be read or parsed is an error naming it.
 func ScanTestFuncs(dir string) ([]TestFunc, error) {
 	entries, err := os.ReadDir(dir)
@@ -43,6 +45,11 @@ func ScanTestFuncs(dir string) ([]TestFunc, error) {
 	var funcs []TestFunc
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		if match, err := build.Default.MatchFile(dir, entry.Name()); err != nil {
+			return nil, err
+		} else if !match {
 			continue
 		}
 		filename := filepath.Join(dir, entry.Name())

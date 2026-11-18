@@ -1119,6 +1119,7 @@
 // It records the failure and HEAD in its `Failure`.
 // With no such map the call writes a map of the file hashes with no tests and the failure as its `BuildFailure`.
 // No later call at that HEAD queues the package again.
+// A test of a file only another platform compiles is no mapped test, so it never counts as failed.
 // A test the `testcover.ScanSpawns` scan marks out of process or unresolved is never run;
 // a whole rebuild records it with its verdict.
 // A timed-out test is listed.
@@ -1185,7 +1186,10 @@
 // It builds the package's coverage binary over the package alone and reads its block table from a run of no test.
 // `testcover.PlanMutants` gives the mutants of the contained tests' blocks,
 // and `testcover.Toolchain.BuildMutantBinary` builds one test binary holding them all.
-// A refused build drops the mutants on the lines the compiler names and builds again, up to `mutantBuildRounds` builds.
+// A refused build drops the mutants on the lines the compiler names and builds again, counting them unbuildable.
+// From build `mutantBuildRounds` on, it drops every mutant of the files the compiler names.
+// When the compiler names no line or file of a mutant, it drops every mutant left,
+// so a mutant that does not compile never fails the check.
 // A contained test's covering tests here are those `testcover.CoveringTests` picks among the other judged tests.
 // The pick ignores what the greedy pass removed, so it never depends on the tests' seconds.
 // A source-checking test is no covering test, since it kills no mutant.

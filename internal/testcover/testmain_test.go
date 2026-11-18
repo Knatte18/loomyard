@@ -50,8 +50,10 @@ const standInHangBuildEnv = "TESTCOVER_STAND_IN_HANG_BUILD"
 // standInCompileErrorsEnv makes the stand-in `go test -c` fail with standInCompileErrors on stderr.
 const standInCompileErrorsEnv = "TESTCOVER_STAND_IN_COMPILE_ERRORS"
 
-// standInCompileErrors is what the stand-in build prints when the compiler refuses the package: two errors in two files.
-const standInCompileErrors = "# m/p\n./overlay-1/x.go:4:9: cannot use v (value of type int) as time.Duration value\n/abs/y.go:12:3: mismatched types\n"
+// standInCompileErrors is what the stand-in build prints when the compiler refuses the package:
+// three errors in three files, the last with no column.
+const standInCompileErrors = "# m/p\n./overlay-1/x.go:4:9: cannot use v (value of type int) as time.Duration value\n/abs/y.go:12:3: mismatched types\n" +
+	"/abs/overlay-3/z.go:62: invalid operation: digits[0] == lymMutantInt('0', 275) (mismatched types byte and rune)\n"
 
 // standInChildSleep is how long the child standInHoldsPipe leaves behind holds the output pipe.
 // The test's cleanup kills the child long before.

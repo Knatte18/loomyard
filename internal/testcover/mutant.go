@@ -40,11 +40,20 @@ const (
 	OperatorNegateComparison = "negate comparison"
 	// OperatorDeleteClause replaces an operand of a && or || chain with the value that ignores it.
 	// The operand is still evaluated, and only its value is replaced, so a side effect of the operand stays.
-	OperatorDeleteClause       = "delete clause"
-	OperatorDropStatement      = "drop statement"
-	OperatorChangeConstant     = "change constant"
+	OperatorDeleteClause   = "delete clause"
+	OperatorDropStatement  = "drop statement"
+	OperatorChangeConstant = "change constant"
+	// OperatorChangeEmbeddedLine marks one line of an embedded file with a ~.
+	// On a line whose first `: ` or `=` has text after it, the mark opens that value and the key stays,
+	// so a loader that refuses an unknown key does not fail every test that loads the file.
 	OperatorChangeEmbeddedLine = "change embedded line"
 )
+
+// stepHelper is the helper an integer or rune constant's mutant calls.
+// The mutant writes the constant c as `(c + 1>>stepHelper(id))`, which adds one while the mutant is on.
+// The untyped 1 of a shift whose count is not constant takes the type c takes there,
+// so the sum keeps the type of the constant it replaces, a byte or a rune included.
+const stepHelper = "lymMutantStep"
 
 // mutantHelpers is the source of the file the overlay adds, after its package clause.
 // Each helper changes its value only while the mutant whose ID it gets is on.
@@ -83,11 +92,11 @@ func lymMutantKeep(id int) bool {
 	return id != lymMutantActive
 }
 
-func lymMutantInt[T ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr](v T, id int) T {
+func ` + stepHelper + `(id int) int {
 	if id == lymMutantActive {
-		return v + 1
+		return 0
 	}
-	return v
+	return 1
 }
 
 func lymMutantString[T ~string](v T, id int) T {
@@ -103,8 +112,20 @@ func lymMutantLine[T ~string](v T, line, id int) T {
 	}
 	lines := lymmutantstrings.SplitAfter(string(v), "\n")
 	text := lines[line-1]
-	indent := len(text) - len(lymmutantstrings.TrimLeft(text, " \t"))
-	lines[line-1] = text[:indent] + "~" + text[indent:]
+	at := len(text) - len(lymmutantstrings.TrimLeft(text, " \t"))
+	separator := -1
+	for _, mark := range []string{": ", "="} {
+		if i := lymmutantstrings.Index(text, mark); i >= 0 && (separator < 0 || i < separator) {
+			separator = i
+		}
+	}
+	if separator >= 0 {
+		value := lymmutantstrings.TrimLeft(text[separator+1:], " \t")
+		if lymmutantstrings.TrimSpace(value) != "" {
+			at = len(text) - len(value)
+		}
+	}
+	lines[line-1] = text[:at] + "~" + text[at:]
 	return T(lymmutantstrings.Join(lines, ""))
 }
 `
@@ -143,8 +164,11 @@ func (m Mutant) InBlocks(blocks BlockSet) bool {
 
 // opening returns the text the mutant inserts before its site.
 func (m Mutant) opening() string {
-	if m.helper == "" {
+	switch m.helper {
+	case "":
 		return fmt.Sprintf("if lymMutantKeep(%d) { ", m.ID)
+	case stepHelper:
+		return "("
 	}
 	return m.helper + "("
 }
@@ -154,6 +178,8 @@ func (m Mutant) closing() string {
 	switch {
 	case m.helper == "":
 		return " }"
+	case m.helper == stepHelper:
+		return fmt.Sprintf(" + 1>>%s(%d))", stepHelper, m.ID)
 	case m.args != "":
 		return fmt.Sprintf(", %s, %d)", m.args, m.ID)
 	}
@@ -215,6 +241,8 @@ type packageDecls struct {
 // The literals of a package-level variable's value are sites too.
 // A literal of a constant declaration, an array length or a field tag stays, since it must be constant.
 // So does a composite literal's key unless it is a string literal, which only a map key can be.
+// So does a literal or constant of an expression built from integer and rune constants alone.
+// The step rewrite makes such an expression non-constant, so an intermediate that overflows its type changes the value.
 // A file that does not parse, an embedded file that cannot be read, or a block outside its file is an error.
 func PlanMutants(dir, importPath string, profile []ProfileBlock, targets BlockSet) (*MutantPlan, error) {
 	var own []ProfileBlock
@@ -493,7 +521,7 @@ func localNames(fn *ast.FuncDecl) map[string]bool {
 func literalHelper(kind token.Token) string {
 	switch kind {
 	case token.INT, token.CHAR:
-		return "lymMutantInt"
+		return stepHelper
 	case token.STRING:
 		return "lymMutantString"
 	}
@@ -537,6 +565,42 @@ func markFixed(node ast.Node, fixed map[ast.Node]bool) {
 			return true
 		})
 	}
+}
+
+// markConstantIntegerExpression records in fixed the literals and constant names below expr.
+// It does so only when expr is built from integer and rune constants alone.
+// The step rewrite of one of them makes the expression non-constant, so the compiler no longer evaluates it exactly.
+// An intermediate value that overflows the type of the context then changes the result with no mutant on.
+// locals holds the names the enclosing function declares; a use of one of them is no package-level constant.
+func markConstantIntegerExpression(expr *ast.BinaryExpr, locals map[string]bool, decls packageDecls, fixed map[ast.Node]bool) {
+	if !isConstantInteger(expr, locals, decls) {
+		return
+	}
+	ast.Inspect(expr, func(n ast.Node) bool {
+		switch n.(type) {
+		case *ast.BasicLit, *ast.Ident:
+			fixed[n] = true
+		}
+		return true
+	})
+}
+
+// isConstantInteger reports whether expr is built from integer and rune literals and package-level constants of one.
+// It looks through parentheses, unary operators and binary operators.
+func isConstantInteger(expr ast.Expr, locals map[string]bool, decls packageDecls) bool {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		return e.Kind == token.INT || e.Kind == token.CHAR
+	case *ast.Ident:
+		return !locals[e.Name] && decls.constants[e.Name] == stepHelper
+	case *ast.ParenExpr:
+		return isConstantInteger(e.X, locals, decls)
+	case *ast.UnaryExpr:
+		return isConstantInteger(e.X, locals, decls)
+	case *ast.BinaryExpr:
+		return isConstantInteger(e.X, locals, decls) && isConstantInteger(e.Y, locals, decls)
+	}
+	return false
 }
 
 // variableReads finds each identifier of file's function bodies that names a package-level variable.
@@ -636,6 +700,8 @@ func fileSites(file *ast.File, tokenFile *token.File, decls packageDecls) []site
 						switch n := n.(type) {
 						case *ast.FuncLit:
 							return false
+						case *ast.BinaryExpr:
+							markConstantIntegerExpression(n, nil, decls, fixed)
 						case *ast.BasicLit:
 							if helper := literalHelper(n.Kind); helper != "" && !fixed[n] {
 								add(n, OperatorChangeConstant, helper, "", variables)
@@ -662,6 +728,7 @@ func fileSites(file *ast.File, tokenFile *token.File, decls packageDecls) []site
 						add(n.Cond, OperatorNegateCondition, "lymMutantBool", "", nil)
 					}
 				case *ast.BinaryExpr:
+					markConstantIntegerExpression(n, locals, decls, fixed)
 					if isComparison(n.Op) && !conditions[n] {
 						add(n, OperatorNegateComparison, "lymMutantBool", "", nil)
 					}
@@ -823,23 +890,34 @@ func applyMutants(text []byte, mutants []Mutant) []byte {
 	return []byte(out.String())
 }
 
-// UnbuildableMutants returns the IDs of the mutants outside dropped that span a source line the compiler refused.
-// It returns none when err holds no *MutantBuildError or names no line a mutant spans.
-func (p *MutantPlan) UnbuildableMutants(err error, dropped map[int]bool) []int {
+// UnbuildableMutants returns the IDs of the mutants outside dropped that err, a refused build, blames.
+// Those are the mutants spanning a source line the compiler refused.
+// When no mutant spans one, or wholeFiles is set, they are the mutants of each file the compiler named.
+// When no mutant lies in such a file either, they are every mutant outside dropped.
+// It returns none when err holds no *MutantBuildError or every mutant is in dropped.
+func (p *MutantPlan) UnbuildableMutants(err error, dropped map[int]bool, wholeFiles bool) []int {
 	var buildErr *MutantBuildError
 	if !errors.As(err, &buildErr) {
 		return nil
 	}
+	blamed := func(blames func(Mutant, SourceLine) bool) []int {
+		var ids []int
+		for _, m := range p.Mutants {
+			if !dropped[m.ID] && slices.ContainsFunc(buildErr.Lines, func(l SourceLine) bool { return blames(m, l) }) {
+				ids = append(ids, m.ID)
+			}
+		}
+		return ids
+	}
 	var ids []int
-	for _, m := range p.Mutants {
-		if dropped[m.ID] {
-			continue
-		}
-		if slices.ContainsFunc(buildErr.Lines, func(l SourceLine) bool {
-			return l.File == m.File && m.Line <= l.Line && l.Line <= m.lastLine
-		}) {
-			ids = append(ids, m.ID)
-		}
+	if !wholeFiles {
+		ids = blamed(func(m Mutant, l SourceLine) bool { return l.File == m.File && m.Line <= l.Line && l.Line <= m.lastLine })
+	}
+	if len(ids) == 0 {
+		ids = blamed(func(m Mutant, l SourceLine) bool { return l.File == m.File })
+	}
+	if len(ids) == 0 {
+		ids = blamed(func(Mutant, SourceLine) bool { return true })
 	}
 	return ids
 }

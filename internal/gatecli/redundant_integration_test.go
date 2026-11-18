@@ -7,7 +7,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -37,7 +42,7 @@ import (
 // Hoard panics at hoardStop megabytes, so a memory cap that does not hold fails the test and never the machine.
 // TestAllowedChecked checks what TestAllowedRun only runs: an || chain and an && chain that one clause each decides,
 // and the lines of an embedded file.
-// TestAll and TestDoubleChecked also call Timeout, whose constant does not compile behind the mutant helper.
+// TestAll and TestDoubleChecked also call Timeout, whose integer constant in a float context does not compile mutated.
 // The module stands in its own tiergate, at the import path a coverage map reads tiers from, so it builds alone.
 var redundantModuleFiles = map[string]string{
 	"go.mod":                                "module github.com/Knatte18/loomyard\n\ngo 1.21\n",
@@ -79,7 +84,7 @@ func Double(n int) int {
 }
 
 func Timeout() time.Duration {
-	return 5 * time.Second
+	return time.Duration(5 * float64(time.Second))
 }
 
 func Tally(n int) int {
@@ -232,6 +237,58 @@ func TestHoardCheckedAgain(t *testing.T) {
 // redundantTestSecond is the length of one `redundancy_test_timeout_sec` second in TestGateRedundant.
 const redundantTestSecond = 2 * time.Second
 
+// The mutants of the fixture package cov: those that build, and Timeout's constant, which does not compile mutated.
+const (
+	redundantBuildableMutants   = 20
+	redundantUnbuildableMutants = 1
+)
+
+// helperRoleRedundantGo makes the test binary a `go` that refuses the first mutantBuildRounds mutant builds.
+// Each refusal names the next line of redundantRefusedLines in cov.go; every other call goes to the real go command.
+const helperRoleRedundantGo = "redundant-go"
+
+// redundantBuildsEnv names the file the stand-in records one line into for each mutant build it gets.
+const redundantBuildsEnv = "GATECLI_TEST_REDUNDANT_BUILDS"
+
+// redundantRefusedLines are lines of cov.go that mutants span, one per refused build.
+// Each is a line the earlier builds left in place.
+var redundantRefusedLines = []int{13, 18, 26, 27, 29}
+
+func init() {
+	helperRoles[helperRoleRedundantGo] = runRedundantBuildCapStandIn
+}
+
+// runRedundantBuildCapStandIn acts as `go`: a `test -c -overlay=...` build is the mutant build.
+// The first len(redundantRefusedLines) mutant builds fail with a compile error at the line each names.
+// Every other call, and every later mutant build, runs the real go command.
+func runRedundantBuildCapStandIn() int {
+	args := os.Args[1:]
+	if slices.ContainsFunc(args, func(arg string) bool { return strings.HasPrefix(arg, "-overlay=") }) {
+		builds := os.Getenv(redundantBuildsEnv)
+		if appendLine(builds, "mutant build") != nil {
+			return 1
+		}
+		recorded, err := os.ReadFile(builds)
+		if err != nil {
+			return 1
+		}
+		if built := strings.Count(string(recorded), "\n"); built <= len(redundantRefusedLines) {
+			fmt.Fprintf(os.Stderr, "# cov\n./cov.go:%d:9: refused by the stand-in\n", redundantRefusedLines[built-1])
+			return 1
+		}
+	}
+	cmd := exec.Command(defaultGoBinary, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return exit.ExitCode()
+		}
+		return 1
+	}
+	return 0
+}
+
 // TestGateRedundant confirms a built map's candidates by mutation and refuses where no map can be judged.
 func TestGateRedundant(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -338,8 +395,9 @@ func TestGateRedundant(t *testing.T) {
 			t.Errorf("redundant ./cov lists %d removable candidates; want at most 1, one of the pair", removable)
 		}
 		// Timeout's constant is the one mutant that does not compile.
-		if got.Mutation.Mutants != 20 || got.Mutation.Unbuildable != 1 {
-			t.Errorf("redundant ./cov mutation = %+v; want 20 buildable mutants and 1 unbuildable", got.Mutation)
+		if got.Mutation.Mutants != redundantBuildableMutants || got.Mutation.Unbuildable != redundantUnbuildableMutants {
+			t.Errorf("redundant ./cov mutation = %+v; want %d buildable mutants and %d unbuildable",
+				got.Mutation, redundantBuildableMutants, redundantUnbuildableMutants)
 		}
 		// Each involved test runs once with no mutant on, and each contained test once with each mutant of its blocks.
 		// Each covering test then runs with each mutant a contained test killed or left unjudged, when it covers the mutant.
@@ -411,6 +469,43 @@ func TestGateRedundant(t *testing.T) {
 		if diff := cmp.Diff(want, got); diff != "" {
 			t.Errorf("redundant ./cov mismatch (-want +got):\n%s", diff)
 		}
+
+		// It reads the map this subtest built, so it runs inside it, and in sequence.
+		t.Run("DropsEveryMutantOfTheFileAtTheBuildCapInsteadOfFailing", func(t *testing.T) {
+			if len(redundantRefusedLines) != mutantBuildRounds {
+				t.Fatalf("redundantRefusedLines = %v; want one line per build up to mutantBuildRounds (%d)", redundantRefusedLines, mutantBuildRounds)
+			}
+			standIn, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			builds := filepath.Join(t.TempDir(), "mutant-builds")
+			var capped bytes.Buffer
+			code := runRedundant(lymcwd.WithCwd(context.Background(), prime), &capped, redundantRequest{
+				pkg: "./cov", goBinary: standIn,
+				environ:    append(os.Environ(), helperEnv+"="+helperRoleRedundantGo, redundantBuildsEnv+"="+builds),
+				secondUnit: redundantTestSecond, minuteUnit: time.Minute, grace: defaultPipeWaitDelay,
+				cappedParallel: func(int, int64) int { return 2 },
+			})
+			var got struct {
+				OK       bool          `json:"ok"`
+				Mutation mutationStats `json:"mutation"`
+			}
+			if err := json.Unmarshal(capped.Bytes(), &got); err != nil || code != 0 || !got.OK {
+				t.Fatalf("redundant ./cov with refused mutant builds = %d, %s; want exit 0 and a JSON envelope (%v)", code, capped.Bytes(), err)
+			}
+			// The build at the cap drops every mutant of cov.go: the buildable ones and Timeout's, which never compiles.
+			if want := redundantBuildableMutants + redundantUnbuildableMutants; got.Mutation.Mutants != 0 || got.Mutation.Unbuildable != want {
+				t.Errorf("redundant ./cov mutation = %+v; want 0 mutants left and all %d of cov.go unbuildable", got.Mutation, want)
+			}
+			recorded, err := os.ReadFile(builds)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if built, want := strings.Count(string(recorded), "\n"), mutantBuildRounds+1; built != want {
+				t.Errorf("redundant ./cov started %d mutant builds; want %d, the refused ones and one that builds", built, want)
+			}
+		})
 	})
 
 	t.Run("AnswersEmptyListsForAMapHoldingNoContainedTest", func(t *testing.T) {

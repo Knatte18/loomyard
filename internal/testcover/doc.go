@@ -23,7 +23,7 @@
 // That error is how the cap shows where the host fails the allocation instead.
 // A failed test whose pid the toolchain's GuardKilled names comes back marked GuardKilled.
 // Such a kill reflects the machine's memory, not the test, so a caller judges nothing from it.
-// ScanTestFuncs reads a package's top-level Test functions.
+// ScanTestFuncs reads a package's top-level Test functions, leaving out those of a file only another platform compiles.
 // Each comes with its file, the tier its `tiergate.Require` names and the hash of its source text.
 // ParseTestFuncs reads them from one test file's source, such as the file as a commit stores it.
 //
@@ -45,14 +45,20 @@
 // Another deletes one operand of a chain of && or ||, so a clause only one test feeds has a mutant that test alone kills;
 // the operand is still evaluated, and only its value is replaced.
 // Another changes an integer, rune or string constant: a literal, or a use of a package-level constant holding one.
+// An integer or rune constant c becomes `c` plus a shift of an untyped 1, which keeps the type c takes in its context.
+// A constant of an expression built from integer and rune constants alone stays.
+// The shift would make that expression non-constant, and an intermediate value could overflow its type.
 // A literal of a package-level variable's value is a site of each block that names the variable.
 // It is also a site of each block that names a variable whose value names it.
 // At a use of a string variable an embed directive fills, one mutant per non-blank line of the file changes that line.
+// On a line whose first `: ` or `=` has text after it, the mutant changes that value and keeps the key,
+// so a loader that refuses an unknown key does not make every test that loads the file kill it.
 // MutantPlan.WriteOverlay writes every mutant into one copy of the changed files and an overlay naming them.
 // Each mutant sits behind a helper that changes its value only while MutantEnv names the mutant's ID.
 // No line moves, so a compiler error names the mutant's own line.
 // BuildMutantBinary builds the package's test binary with the overlay;
-// a refused build is a MutantBuildError, and UnbuildableMutants names the mutants on its lines for the caller to drop.
+// a refused build is a MutantBuildError, and UnbuildableMutants names the mutants it blames for the caller to drop.
+// Those are the mutants on its lines, else those of its files, else every mutant left.
 // RunAlone with no profile runs a test of that binary.
 // JudgeMutants calls a candidate redundant when it kills a mutant and a covering test kills each one it kills;
 // a candidate that kills a mutant no covering test kills is refuted.

@@ -331,7 +331,8 @@ func (tc Toolchain) runTestBinary(cmd *exec.Cmd) (killed bool, err error) {
 }
 
 // compileErrorLine matches a compiler error line, capturing its file and line.
-var compileErrorLine = regexp.MustCompile(`(?m)^(\S+\.go):(\d+):\d+: `)
+// The column is optional, since some errors of the type checker name none.
+var compileErrorLine = regexp.MustCompile(`(?m)^(\S+\.go):(\d+)(?::\d+)?: `)
 
 // MutantBuildError is a mutant build the compiler refused, with the source lines its errors name.
 type MutantBuildError struct {

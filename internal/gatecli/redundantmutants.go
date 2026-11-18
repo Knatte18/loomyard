@@ -32,8 +32,9 @@ import (
 // redundantSite labels the slot holder record of a `lym gate redundant` call.
 const redundantSite = "lym gate redundant"
 
-// mutantBuildRounds caps the builds of one call's mutant binary.
-// Each refused build drops the mutants on the lines the compiler names, such as a constant a typed context needs.
+// mutantBuildRounds is the build of one call's mutant binary from which a refused build drops whole files.
+// A refused build from it on drops every mutant of the files the compiler names;
+// the builds before it drop only the mutants of the lines the compiler refuses.
 const mutantBuildRounds = 5
 
 // A test runs with a mutant on for at most mutantTimeoutFactor times its unmutated seconds.
@@ -386,8 +387,11 @@ func (c *mutationCheck) planMutants(targets testcover.BlockSet) (*testcover.Muta
 }
 
 // buildMutants builds the binary holding every mutant of plan and returns it with the mutants dropped on the way.
-// A build the compiler refuses drops each mutant on a line it names and builds again, up to mutantBuildRounds builds.
-// The error reports a build that failed otherwise, refused a line no mutant spans or still failed at the last round.
+// A build the compiler refuses drops the mutants it blames and builds again.
+// Those are the mutants on a line it names, from round mutantBuildRounds on every mutant of a file it names.
+// With none there, they are every mutant left, since the package built unmutated for the plan.
+// Each round drops a mutant, so the rounds end.
+// The error reports a build that failed otherwise, or one that failed with every mutant dropped.
 func (c *mutationCheck) buildMutants(plan *testcover.MutantPlan) (string, map[int]bool, error) {
 	dropped := map[int]bool{}
 	bin := filepath.Join(c.tmp, "mutants.test")
@@ -404,8 +408,8 @@ func (c *mutationCheck) buildMutants(plan *testcover.MutantPlan) (string, map[in
 		if err == nil {
 			return bin, dropped, nil
 		}
-		unbuildable := plan.UnbuildableMutants(err, dropped)
-		if len(unbuildable) == 0 || round == mutantBuildRounds {
+		unbuildable := plan.UnbuildableMutants(err, dropped, round >= mutantBuildRounds)
+		if len(unbuildable) == 0 {
 			return "", nil, err
 		}
 		for _, id := range unbuildable {
