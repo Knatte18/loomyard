@@ -164,6 +164,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [session-scope-launch-2026-11-06](tokens/session-scope-launch-2026-11-06/report.md) — which session-scope settings work in a real Claude Code launch, and the start load with and without them.
 - [session-scope-fix-launch-2026-11-06](tokens/session-scope-fix-launch-2026-11-06/report.md) — the session-scope fix in a real launch: first-request tokens of a spawned role and an orch, the `Workflow` tool gone, preloaded and plugin skills kept.
 - [role-tool-schemas-2026-11-07](tokens/role-tool-schemas-2026-11-07/report.md) — each tool's schema tokens in a role's and the orch's first request, the tools each role called, and `--disallowedTools` against `permissions.deny`.
+- [usage-outside-runs-2026-11-18](tokens/usage-outside-runs-2026-11-18/report.md) — weekly Claude usage W45 to W47 of every session tokencount does not count, by kind and model, beside the run spend.
 
 ### model-downgrade — cheaper models per role
 
