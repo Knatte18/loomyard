@@ -338,6 +338,8 @@
 // RootProjectBrief gives the root as one listing row, with the slug RootSubject.
 // Every write renders README.md, the overview of every project, and one board file per project.
 // Every project, open or done, renders to project-<slug>.md beside it, and the root to project-root.md.
+// A render rewrites each board file in place rather than by temp file and rename,
+// so an open VS Code markdown preview, which refreshes only on a file change event, shows the new content.
 // The split is rendering only: every entry stays in the one store, and handles stay numbered across the hub.
 // So a file's handles have gaps, and layers, After cells and owners read the whole board.
 // README.md opens with the UTC date and time it was rendered, so its ages read as of that moment, and the prime owner.

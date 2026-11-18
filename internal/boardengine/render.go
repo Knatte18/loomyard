@@ -34,6 +34,9 @@ import (
 const renderManifestFile = ".board-rendered.json"
 
 // RenderToDisk renders the board as of now and writes its output files under boardPath.
+// It rewrites an existing output file in place, keeping its inode.
+// VS Code's file watcher reports a file replaced by rename as created, not changed.
+// VS Code's markdown preview refreshes only on a change.
 // It removes the files the previous render recorded in the manifest that this render does not produce.
 // An entry flagged discussed whose decision record file is missing from boardPath renders as undiscussed,
 // so no board file links a missing record.
@@ -43,7 +46,14 @@ func RenderToDisk(boardPath string, tasks []Task, primeOwner string, out Outputs
 		return err
 	}
 	for relPath, content := range files {
-		if err := fsx.AtomicWrite(boardPath, relPath, content); err != nil {
+		if err := fsx.PathGuard(relPath); err != nil {
+			return fmt.Errorf("write %s: %w", relPath, err)
+		}
+		fullPath := filepath.Join(boardPath, relPath)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			return fmt.Errorf("write %s: %w", relPath, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o600); err != nil {
 			return fmt.Errorf("write %s: %w", relPath, err)
 		}
 	}

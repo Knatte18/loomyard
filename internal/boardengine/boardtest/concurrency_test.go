@@ -24,7 +24,8 @@ import (
 // so every read sees a complete board.json: either the pre-upsert or the post-upsert state, never a partial one.
 //
 // The test is bound by the filesystem, not the CPU.
-// Each write runs Board.boardCriticalSection, which performs an AtomicWrite of board.json, Home.md and _Sidebar.md.
+// Each write runs Board.boardCriticalSection, which saves board.json atomically.
+// It then rewrites the rendered board files in place.
 // The readers loop until the writer closes the stop channel.
 // Read-under-write coverage therefore depends on how long the writer runs, not on how many writes it makes.
 // The writes constant therefore stays small: it bounds the filesystem work and keeps the race window open.

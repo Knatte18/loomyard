@@ -38,6 +38,69 @@ func seedManifest(t *testing.T, dir string, names []string) {
 	}
 }
 
+// TestRenderToDiskRewritesAnExistingFileInPlace pins that a re-render keeps each output file's inode,
+// so a file watcher reports the rewrite as a change rather than a creation.
+func TestRenderToDiskRewritesAnExistingFileInPlace(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	dir := t.TempDir()
+	out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
+	task := boardengine.Task{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}, Body: "first body"}
+	if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, "", out, renderTime); err != nil {
+		t.Fatalf("first RenderToDisk: %v", err)
+	}
+	designPath := filepath.Join(dir, "proposal-a.md")
+	before, err := os.Stat(designPath)
+	if err != nil {
+		t.Fatalf("stat after first render: %v", err)
+	}
+
+	task.Body = "second body"
+	if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, "", out, renderTime); err != nil {
+		t.Fatalf("second RenderToDisk: %v", err)
+	}
+	after, err := os.Stat(designPath)
+	if err != nil {
+		t.Fatalf("stat after second render: %v", err)
+	}
+	if !os.SameFile(before, after) {
+		t.Errorf("proposal-a.md was replaced by a new file; want the same file rewritten in place")
+	}
+	if b, err := os.ReadFile(designPath); err != nil || !strings.HasSuffix(string(b), "second body") {
+		t.Errorf("proposal-a.md after second render: got %q, err %v; want it to end with %q", b, err, "second body")
+	}
+}
+
+// TestRenderToDiskOutputPaths pins that an output path under a subdirectory of the board is created and written,
+// and that a path escaping the board directory is refused with no file written.
+func TestRenderToDiskOutputPaths(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	task := boardengine.Task{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}
+	t.Run("NestedReadmeIsCreatedUnderItsDirectory", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		out := boardengine.Outputs{Readme: "views/Home.md", DesignPrefix: "proposal-"}
+		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, "", out, renderTime); err != nil {
+			t.Fatalf("RenderToDisk: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "views", "Home.md")); err != nil {
+			t.Errorf("views/Home.md not written: %v", err)
+		}
+	})
+	t.Run("ParentEscapingReadmeIsRefused", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		out := boardengine.Outputs{Readme: "../outside.md", DesignPrefix: "proposal-"}
+		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, "", out, renderTime); err == nil {
+			t.Errorf("RenderToDisk with readme %q succeeded; want an error", out.Readme)
+		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "outside.md")); !os.IsNotExist(err) {
+			t.Errorf("outside.md was written outside the board directory: stat err %v", err)
+		}
+	})
+}
+
 // TestRenderToDiskManifestCleanup covers RenderToDisk's outputs and the manifest-based cleanup:
 // a seeded orphan removed under a custom design prefix; renamed outputs removed across consecutive renders;
 // body loss removing a design doc; a removed project dropping its board file; unrelated files left untouched;
