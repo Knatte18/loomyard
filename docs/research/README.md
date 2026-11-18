@@ -158,6 +158,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [testmap-smart-build-2026-11-15](speed/testmap-smart-build-2026-11-15/report.md) — five ways to build and keep the per-test coverage maps more cheaply, weighed by three probes on `internal/loomcli`, with one recommended design.
 - [map-tooling-trial-2026-11-17](speed/map-tooling-trial-2026-11-17/report.md) — `lym gate test --map` and `lym gate redundant` run on `internal/durfmt` and `internal/boardengine`: cost, map agreement with single-test runs, leftovers, and the defects found.
 - [redundant-candidates-check-2026-11-17](speed/redundant-candidates-check-2026-11-17/report.md) — `lym gate redundant internal/boardengine` after the kill-count fix: its lists against the trial's 14 candidates, and five candidates read by hand against their covering tests.
+- [testmap-use-cases-2026-11-18](speed/testmap-use-cases-2026-11-18/report.md) — what the per-test coverage maps can do for lym and its agents: every use found in research and practice, ranked, with the top three argued and the rest ruled out.
 
 ## tokens — token use, cost and models
 
