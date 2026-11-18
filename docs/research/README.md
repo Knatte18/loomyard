@@ -28,6 +28,10 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [code-mode-darn-bench-2026-11-17](claude/code-mode-darn-bench-2026-11-17/report.md) — Code Mode on a darn writer repeating one edit across packages, one sample per arm, and a check that the shell guard holds in a script.
 - [code-mode-web-research-2026-11-16](claude/code-mode-web-research-2026-11-16/report.md) — how Anthropic and users say to use Code Mode, each tip judged for lym's writers, and a correction to the bench's reading of `Poll`.
 
+## cleanup — what to cut
+
+- [unused-features-2026-11-18](cleanup/unused-features-2026-11-18/report.md) — verbs and config keys with no use in three weeks of transcripts and hub configs, as a candidate list for the operator.
+
 ## codex — the Codex engine
 
 - [codex-feasibility.md](codex/codex-feasibility.md) — which Claude couplings stand between lym and the Codex CLI.
