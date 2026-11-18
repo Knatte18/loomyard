@@ -42,6 +42,7 @@ const (
 // The text is built from the change description, the regression check and the credit block.
 // When it changes, the wait sets the title and body again.
 // The wait ends when the pull request is merged or approved, or closed or continued by the operator.
+// It also ends when the agent has sent findings back: the row reroutes to Code-Bouncer with the findings file as output.
 // It takes no parent lock.
 type PRReview struct {
 	name string
@@ -68,6 +69,7 @@ func NewPRReview(name string, deps Deps) *PRReview {
 // A cancelled context returns an error.
 // A transient push, GitHub or session-start failure is an error the driver re-steps.
 // Any other such failure is Stuck with Halt.
+// A send-back mark in the record is settled first, before any session starts or resumes.
 func (p *PRReview) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -75,13 +77,87 @@ func (p *PRReview) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 	if err := p.checkWiring(); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	outcome, pointer, err := p.decide(ctx)
-	var halt *sessionStartHalt
-	if errors.As(err, &halt) {
-		outcome, pointer, err = stuckVerdict(ctx, p.name, halt.haltReason(), true)
+	outcome, pointer, ended, err := p.settleSendBack(ctx)
+	if !ended && err == nil {
+		outcome, pointer, err = p.decide(ctx)
+		var halt *sessionStartHalt
+		if errors.As(err, &halt) {
+			outcome, pointer, err = stuckVerdict(ctx, p.name, halt.haltReason(), true)
+		}
 	}
 	p.endSession(ctx, err)
 	return outcome, pointer, err
+}
+
+// settleSendBack handles the record's send-back mark at the start of a call.
+// With no mark it does nothing.
+// With a mark it reads the row's newest own history entry.
+// When that entry is the reroute of the mark's file, shed persisted the reroute:
+// one write clears the mark, the fixed-in-place count with its counted sets, the parent-review ask and the session.
+// The record is committed, and the row runs as on any entry.
+// With any other newest entry it keeps all of them and sends the findings back again.
+// That covers a re-step, a crash before the persist and a goto onto the row.
+// It also covers the resume after a dirty-tree halt or a reroute-cap halt.
+// The file must match, not only the outcome.
+// Otherwise a crash after a later send-back takes an earlier send-back's reroute for its own.
+// It reports whether it ended the call with the returned verdict.
+func (p *PRReview) settleSendBack(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+	pr := p.deps.PullRequest
+	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, true, fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)
+	}
+	if !found || rec.SendBack == "" {
+		return "", shedengine.OutputPointer{}, false, nil
+	}
+	status, err := pr.ShedStatus()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, true, fmt.Errorf("landingshed: %s: read the run's status: %w", p.name, err)
+	}
+	if !p.reroutePersisted(status.History, rec.SendBack) {
+		return p.sendBack(ctx, rec)
+	}
+	err = p.updateRecord(func(r *pullrequest.Record) {
+		r.SendBack, r.FixHereCount, r.CountedSets, r.ParentReviewAsked = "", 0, nil, false
+		r.StrandGUID, r.StrandName, r.SessionID, r.Engine = "", "", "", ""
+	})
+	return "", shedengine.OutputPointer{}, err != nil, err
+}
+
+// reroutePersisted reports whether the row's newest own entry in history is a reroute whose output is file.
+func (p *PRReview) reroutePersisted(history []shedengine.HistoryEntry, file string) bool {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Producer == p.name {
+			return history[i].Outcome == shedengine.OutcomeReroute && history[i].Output == file
+		}
+	}
+	return false
+}
+
+// sendBack ends the call with the send-back the record's mark names, and always reports that it ended the call.
+// It stops the live session, then reads the tree again, since the agent may have changed it after the verb answered.
+// On a clean tree it returns Stuck with Reroute set and the mark's file as the output, and clears nothing:
+// shed persists the reroute entry with that file, and the row's next call clears the mark.
+// On a dirty tree it halts for the parent, and the resumed row meets the mark on a clean tree and reroutes.
+func (p *PRReview) sendBack(ctx context.Context, rec pullrequest.Record) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+	if _, err := p.stopLiveSession(rec); err != nil {
+		return "", shedengine.OutputPointer{}, true, err
+	}
+	_, dirty, err := p.readTree()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, true, err
+	}
+	if len(dirty) > 0 {
+		reason := fmt.Sprintf("pull request #%d has findings sent back to Code-Review, but the task worktree has uncommitted changes: %s; way forward: commit or discard them in the task worktree, then run lym loom resume", rec.Number, listShown(dirty))
+		outcome, pointer, err := stuckVerdict(ctx, p.name, reason, true)
+		return outcome, pointer, true, err
+	}
+	reason := fmt.Sprintf("pull request #%d has findings sent back to Code-Review; they are in %s", rec.Number, rec.SendBack)
+	outcome, pointer, err := stuckVerdict(ctx, p.name, reason, false)
+	if err == nil {
+		pointer.Reroute, pointer.Path = true, rec.SendBack
+	}
+	return outcome, pointer, true, err
 }
 
 // decide resolves whether the landing goes through a pull request and runs the row's side of the answer.
@@ -169,6 +245,8 @@ func (p *PRReview) checkWiring() error {
 		missing = "PullRequest.RegisterSession"
 	case pr.CommitRecord == nil:
 		missing = "PullRequest.CommitRecord"
+	case pr.ShedStatus == nil:
+		missing = "PullRequest.ShedStatus"
 	case p.deps.TaskHead == nil:
 		missing = "TaskHead"
 	}
@@ -336,7 +414,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 const parentReviewRequestPrefix = "[pr-review request]"
 
 // askParentReview asks the parent orch to review the open pull request rec records, when the setting is on.
-// It asks once per record, and the request names the PR-Review session the orch answers.
+// It asks once per record until a send-back clears the ask, and the request names the PR-Review session the orch answers.
 // An unreadable setting, a failed post, an orch no record names and a failed write of the ask into the record are logged,
 // and the row's next entry asks again.
 // The row asks and does not gate: the orch's answer reaches the session's agent as creel mail, which the row never reads.
@@ -623,6 +701,9 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
 	if err != nil || !found {
 		return end("", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the pull request record (found %v): %w", p.name, found, err))
+	}
+	if rec.SendBack != "" {
+		return p.sendBack(ctx, rec)
 	}
 
 	// The status is read before the gate, and forced when a gate is due,

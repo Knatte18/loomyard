@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -288,6 +289,64 @@ func fixerReportInput(scratchDir string) func() (string, time.Time, bool, error)
 			return path, written, found, err
 		}
 		return retired()
+	}
+}
+
+// prFindingsPrefix and prFindingsSuffix frame the name of a send-back's findings file around the send-back's number.
+const (
+	prFindingsPrefix = "pr-findings-"
+	prFindingsSuffix = ".md"
+)
+
+// prFindingsPattern matches the name of a send-back's findings file and captures its number.
+var prFindingsPattern = regexp.MustCompile(`^` + regexp.QuoteMeta(prFindingsPrefix) + `(\d+)` + regexp.QuoteMeta(prFindingsSuffix) + `$`)
+
+// prFindingsFile returns the path of send-back n's findings file under scratchDir.
+func prFindingsFile(scratchDir string, n int) string {
+	return filepath.Join(scratchDir, prFindingsPrefix+strconv.Itoa(n)+prFindingsSuffix)
+}
+
+// reviewInputs returns the review inputs seam of a run, reading under scratchDir.
+// It answers the merge fixer's latest Parent-Align report as a non-full input,
+// and the newest send-back findings file, the one with the highest number, as a full input.
+// It answers an input only once its file exists, so a run with neither answers none.
+func reviewInputs(scratchDir string) func() ([]shedadapters.ReviewInput, error) {
+	fixerReport := fixerReportInput(scratchDir)
+	return func() ([]shedadapters.ReviewInput, error) {
+		var inputs []shedadapters.ReviewInput
+		path, writtenAt, found, err := fixerReport()
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			inputs = append(inputs, shedadapters.ReviewInput{Path: path, WrittenAt: writtenAt})
+		}
+
+		entries, err := os.ReadDir(scratchDir)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("loom: read the review inputs under %s: %w", scratchDir, err)
+		}
+		newest := -1
+		for _, entry := range entries {
+			match := prFindingsPattern.FindStringSubmatch(entry.Name())
+			if match == nil {
+				continue
+			}
+			if n, convErr := strconv.Atoi(match[1]); convErr == nil && n > newest {
+				newest = n
+			}
+		}
+		if newest < 0 {
+			return inputs, nil
+		}
+		path, writtenAt, found, err = reviewInputFile(prFindingsFile(scratchDir, newest))()
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			inputs = append(inputs, shedadapters.ReviewInput{Path: path, WrittenAt: writtenAt, Full: true})
+		}
+		return inputs, nil
 	}
 }
 

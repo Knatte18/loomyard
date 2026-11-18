@@ -68,6 +68,8 @@ Check whether landed work, another board entry or another run overtook or contra
 Write the change description to `{{.description_path}}`, in the format the final-summary spec defines at `{{.specs_dir}}/loom/loom-final-summary-spec.md`.
 Read that spec for the format; it is authoritative and this prompt does not restate it.
 Write the description for a reviewer who knows the codebase but has not seen this session, and never describe the session's own process.
+A claim that a result agrees with a reference, or that the change improves one, carries before and after figures from the current code, taken from your commits or the drift verdict.
+Leave out a claim that has none.
 
 Before handing off, run `lym loom validate-description` and fix every finding it reports.
 A clean `validate-description` run is the last thing you do before you end your turn.
@@ -96,6 +98,8 @@ The `drift` gate entry checks after each turn that every changed value of the ca
 Fix such a value in the code yourself.
 When the change is intended, leave it: only the run's parent amends the expectation, at the Stuck that follows.
 `lym drift check` runs the same check on demand.
+
+{{template "loom-fragment-loosened-check"}}
 
 ## What happens after you hand off
 

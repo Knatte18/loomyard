@@ -250,6 +250,28 @@ func TestPRReview_Session(t *testing.T) {
 			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 0, true) },
 		},
 		{
+			name: "AfterTheSendBackMarkIsClearedTheRowStartsANewSessionAndAsksTheParentAgain",
+			record: recordedAtHead(func(r *pullrequest.Record) {
+				r.SendBack, r.ParentReviewAsked = "/run/pr-findings-1.md", true
+				r.StrandGUID, r.StrandName, r.SessionID, r.Engine = "g-old", "old-strand", "sess-old", "claude"
+			}),
+			scripts: map[string][]scriptedCall{"Status": {open}},
+			setup: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				parentReviewOn(t, fx, s)
+				fx.status.History = []shedengine.HistoryEntry{{Producer: "PR-Review", Outcome: shedengine.OutcomeReroute, Output: "/run/pr-findings-1.md"}}
+			},
+			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
+			check: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				if s.starts[0].ResumeSessionID != "" {
+					t.Errorf("start ResumeSessionID = %q; want a new session, not the cleared one", s.starts[0].ResumeSessionID)
+				}
+				assertAsks(t, fx, 1, true)
+				if got, _, err := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath); err != nil || got.SendBack != "" {
+					t.Errorf("ReadRecord() = %+v, %v; want the mark cleared", got, err)
+				}
+			},
+		},
+		{
 			name: "ParentReviewOffAsksNone", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
 			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 0, false) },

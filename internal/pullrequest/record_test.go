@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -31,13 +32,28 @@ func TestRecord_RoundTripAndUpdate(t *testing.T) {
 		t.Errorf("UpdateRecord(absent) left a file at %s (stat error %v); want none", path, err)
 	}
 
-	want := Record{Number: 7, URL: "https://github.com/o/r/pull/7", Base: "main", Head: "task", GatedHead: "abc", StrandGUID: "g", StrandName: "n", SessionID: "s", Engine: "claude"}
+	want := Record{
+		Number: 7, URL: "https://github.com/o/r/pull/7", Base: "main", Head: "task", GatedHead: "abc", StrandGUID: "g", StrandName: "n", SessionID: "s", Engine: "claude",
+		SendBack: "/run/pr-findings-2.md", FixHereCount: 2, SendBacks: 2, CountedSets: []string{"aa", "bb"},
+	}
 	if err := WriteRecord(path, lockPath, want); err != nil {
 		t.Fatalf("WriteRecord() error: %v", err)
 	}
 	got, found, err := ReadRecord(path, lockPath)
-	if err != nil || !found || got != want {
+	if err != nil || !found || !reflect.DeepEqual(got, want) {
 		t.Fatalf("ReadRecord() = %+v, %v, %v; want %+v, true, nil", got, found, err, want)
+	}
+
+	// A record from an older run, without the send-back keys, reads them as zero.
+	if err := os.WriteFile(path, []byte(`{"number": 7, "parent_review_asked": true}`), 0o644); err != nil {
+		t.Fatalf("write older record file: %v", err)
+	}
+	older, _, err := ReadRecord(path, lockPath)
+	if wantOlder := (Record{Number: 7, ParentReviewAsked: true}); err != nil || !reflect.DeepEqual(older, wantOlder) {
+		t.Fatalf("ReadRecord(older) = %+v, %v; want %+v with the send-back fields zero", older, err, wantOlder)
+	}
+	if err := WriteRecord(path, lockPath, want); err != nil {
+		t.Fatalf("WriteRecord() error: %v", err)
 	}
 
 	// A key a newer binary wrote is kept across the rewrite.

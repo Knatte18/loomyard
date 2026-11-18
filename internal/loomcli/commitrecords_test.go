@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -239,7 +240,7 @@ func TestPRContinueVerb(t *testing.T) {
 		}
 		got, _, err := pullrequest.ReadRecord(record, lock)
 		want := pullrequest.Record{Number: 7, URL: url, GatedHead: "h1", Continue: true}
-		if err != nil || got != want {
+		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Errorf("record after prContinueVerb = %+v, %v; want %+v, the mailed head cleared", got, err, want)
 		}
 	})

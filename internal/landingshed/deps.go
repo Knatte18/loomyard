@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -381,6 +382,9 @@ type PullRequestDeps struct {
 	// CommitRecord commits the record's file, or its removal, to the pair's records and starts their push.
 	// The row calls it after every successful write or removal of the record, and returns its error.
 	CommitRecord func() error
+	// ShedStatus reads the run's shed status, whose history shows whether shed persisted the row's last reroute.
+	// A producer's call receives no history, so the row reads it through this seam.
+	ShedStatus func() (shedengine.Status, error)
 	// ParentMode reads the receiving branch's beam.yaml `pull_request`.
 	// It returns that value with the name of the worktree it was read in.
 	// On an error the worktree name is still returned, so the halt names where to fix the file.

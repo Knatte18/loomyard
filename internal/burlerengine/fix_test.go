@@ -201,14 +201,14 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 	if format == "" {
 		t.Errorf("review-format.md is empty; want the review-file format written")
 	}
-	singleStep, err := stencil.FillOptional(bytes.ReplaceAll(stencils.BurlerStepFix, []byte("{{.self_check}}"), nil), map[string]string{
+	singleStep, err := stencil.FillWith(bytes.ReplaceAll(stencils.BurlerStepFix, []byte("{{.self_check}}"), nil), fixStepIncludes(), map[string]string{
 		"work":              fixWork(resolved.ReviewPath, "", false),
 		"fix_scope_rules":   fixScopeRules(&resolved),
 		"review_path":       resolved.ReviewPath,
 		"fixer_report_path": resolved.FixerReportPath,
 	}, []string{friction.MarkerName})
 	if err != nil {
-		t.Fatalf("stencil.FillOptional(fix step without self_check) = %v; want nil", err)
+		t.Fatalf("stencil.FillWith(fix step without self_check) = %v; want nil", err)
 	}
 	if !twill {
 		if fixStep != string(singleStep) {

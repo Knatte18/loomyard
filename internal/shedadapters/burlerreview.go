@@ -79,6 +79,11 @@ type BurlerHalfDeps struct {
 	// Diff reads the unified diff a spawned reviewer is given in pieces, read by the review producer once per spawning call.
 	// Nil gives no diff, and so does a failed read, which is logged.
 	Diff func() (string, error)
+	// Rubric reads the rubric a round's reviewers are given.
+	// The review producer calls it once per Call, before it builds the round's profile.
+	// Its answer replaces the profile's rubric; a read error fails the call, with no reviewer spawned.
+	// Nil keeps the profile's rubric, as a row with a literal rubric does.
+	Rubric func() (string, error)
 }
 
 // AssistSettings is one review segment's assistant reviewer seat: the per-round model and fan lists, the keys they came from and the assistant's run bound.
@@ -150,6 +155,8 @@ type BurlerReviewProducer struct {
 	decisionRecordPath string
 	// diff, when non-nil, reads the diff a spawned reviewer is given.
 	diff func() (string, error)
+	// rubric, when non-nil, reads each round's rubric.
+	rubric func() (string, error)
 	// gateFindingsPath, when non-empty, is the file cleared once the review's gate has passed.
 	gateFindingsPath string
 	profile          burlerengine.Profile
@@ -163,6 +170,7 @@ var _ shedengine.ShedProducer = (*BurlerReviewProducer)(nil)
 
 // NewBurlerReviewProducer returns a BurlerReviewProducer identified as name, driving profile through deps.Runner under opts, with round artifacts under runDir.
 // profile is a template; each round overwrites its per-round fields, such as ReviewPath and FocusDirective.
+// When deps.Rubric is set, it overwrites Rubric too, with that seam's answer.
 // opts is a template whose Round, Review and Fix fields are overwritten per attempt, the last two from deps.Models.
 // A nil now defaults to time.Now.
 // The injected clock resolves the archive filename's same-second collision suffix and stamps a parent-review ask.
@@ -175,7 +183,7 @@ func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlereng
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, snapshot: deps.Snapshot, decisionRecordPath: deps.DecisionRecordPath, diff: deps.Diff, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, snapshot: deps.Snapshot, decisionRecordPath: deps.DecisionRecordPath, diff: deps.Diff, rubric: deps.Rubric, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
 // recordRoundStart writes round's snapshot record when none exists yet.
@@ -230,15 +238,16 @@ func (p *BurlerReviewProducer) attemptOpts(round int, attempt roundAttempt, pare
 }
 
 // roundProfile returns a fresh per-round copy of the stored template profile for round running under fan.
-// It fills in the fan, the round's own review and fixer-report paths, and the focus directive.
+// It fills in the fan, the rubric, the round's own review and fixer-report paths, and the focus directive.
 // It also hydrates earlier complete rounds and, from round 2 on, sets the cluster exclusions.
 // A complete round before it gives the profile its round context; a failed build is logged and leaves the round full.
 // The stored template itself is never mutated; every slice field set is a freshly allocated slice.
-func (p *BurlerReviewProducer) roundProfile(round int, fan string) burlerengine.Profile {
+func (p *BurlerReviewProducer) roundProfile(round int, fan, rubric string) burlerengine.Profile {
 	focus := readRoundFocus(p.name, p.runDir, round)
 	priorReviews, priorFixerReports, _ := hydrationPaths(p.runDir, round)
 
 	profile := p.profile
+	profile.Rubric = rubric
 	profile.ClusterFan = fan
 	profile.ReviewPath = roundReviewPath(p.runDir, round)
 	profile.FixerReportPath = roundFixerReportPath(p.runDir, round)
@@ -325,6 +334,13 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		return p.handOn(ctx, reviewPath, fmt.Sprintf("round %d review is accepted; handing on to the fixer", round))
 	}
 
+	rubric := p.profile.Rubric
+	if p.rubric != nil {
+		if rubric, err = p.rubric(); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: read the rubric: %w", p.name, burlerReviewEngineLabel, round, err)
+		}
+	}
+
 	p.recordRoundStart(round)
 
 	fan, fixFan := p.profile.ClusterFan, ""
@@ -337,10 +353,10 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 			probeFan = recordedFan
 		}
 	}
-	profile := p.roundProfile(round, fan)
+	profile := p.roundProfile(round, fan, rubric)
 	probeProfile := profile
 	if probeFan != fan {
-		probeProfile = p.roundProfile(round, probeFan)
+		probeProfile = p.roundProfile(round, probeFan, rubric)
 	}
 	paths := []string{profile.ReviewPath, profile.FixerReportPath, roundAcceptancePath(p.runDir, round), burlerengine.AssistCopyPath(profile.ReviewPath, burlerengine.AssistSeatName), burlerengine.ParentCopyPath(profile.ReviewPath)}
 	archiveRound := func() {

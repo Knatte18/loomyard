@@ -40,7 +40,7 @@
 // One resolver reads every copy, for the engine its caller names.
 // ReadSet reads a stencil with every block it includes, an engine block from the copy of the engine it is told,
 // and a plain include with its own engine blocks written in place.
-// ReadForEngine reads a stencil with its engine blocks written in place.
+// ReadForEngine reads a stencil with its engine blocks and its plain includes written in place.
 // A producer that fills a stencil, or a fragment of one, with no include map calls it.
 // Every caller that renders a stencil for a launch therefore reads its blocks for that launch's engine.
 // An engine with no copy of an included block is a MissingEngineBlockError naming the block, the engine and the file,

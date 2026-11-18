@@ -1161,9 +1161,10 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		CodeDiff:        committedCodeDiff(location),
 		MergeInOnly:     parentMergeInOnly(location),
 		RecordHead:      recordHead(location),
-		// ReviewInput is the merge fixer's latest Parent-Align report.
+		// ReviewInputs are the merge fixer's latest Parent-Align report and the newest send-back findings file.
 		// A report newer than the Code-Perch's settled verdict re-opens the perch as an amendment over it.
-		ReviewInput: fixerReportInput(loomengine.LoomScratchDir(location)),
+		// A findings file newer than it re-opens the perch as a full generation.
+		ReviewInputs: reviewInputs(loomengine.LoomScratchDir(location)),
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge.
 		// It reads committed state on demand and opens nothing at wire time.
 		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },
@@ -1252,6 +1253,9 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		decisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 		endRoles:           strandRoleStopper(reedEngine.Status, runner.StopStrand),
 	})
+	// One value feeds both, so Drift lists the range the Code-Review rubric reads, from the same base.
+	// It is nil for a standalone run, which records no parent branch and lists no file.
+	c.env.Drift.ReviewBase = verifyMergeBase
 
 	// c.shedPaths holds the values shedengine.Shed itself reads and no shedrecipe.Env registry entry reads.
 	// StatusPath and StatusLockPath are set twice, here and in c.env.

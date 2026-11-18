@@ -324,6 +324,30 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 		}
 	})
 
+	t.Run("RendersTheReviewInputNoteAtEachCallNotAtBuild", func(t *testing.T) {
+		env := newTestEnv(t)
+		writeStencil(t, env.StencilsDir, "round-rubric", "Input: {{.review_input}}\n")
+		producer, err := burlerReviewEntry(reviewRow("review-row"), stencilCfg, env)
+		if err != nil {
+			t.Fatalf("burlerReviewEntry() error = %v; want nil", err)
+		}
+
+		const sendBack = "/scratch/pr-findings-1.md"
+		record := `{"number":2,"review_inputs":["` + sendBack + `"]}`
+		if err := os.WriteFile(filepath.Join(env.RunRoot, "review-segment", "generation-record.json"), []byte(record), 0o644); err != nil {
+			t.Fatalf("write generation-record.json: %v", err)
+		}
+		_, _, _ = producer.Call(context.Background())
+
+		fake := env.Burler.(*shedfake.BurlerHalfRunner)
+		if len(fake.GotReviewProfiles) != 1 {
+			t.Fatalf("BurlerHalfRunner recorded %d review profiles; want 1", len(fake.GotReviewProfiles))
+		}
+		if got := fake.GotReviewProfiles[0].Rubric; !strings.Contains(got, sendBack) {
+			t.Errorf("profile.Rubric = %q; want the review input note naming %q, written after the row was built", got, sendBack)
+		}
+	})
+
 	t.Run("StripsLeadingStampBanner", func(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "round-rubric", "<!-- lym-stencil: sha256=aaaa -->\nBLOCKING: a round bug.\n")

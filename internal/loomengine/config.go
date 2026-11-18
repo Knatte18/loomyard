@@ -538,6 +538,10 @@ type Config struct {
 	// PRReviewAskParent makes the PR-Review row ask the parent orch for a review of the run's open pull request.
 	// It is open to the local layer, so a task's run_settings turns it on or off for one run.
 	PRReviewAskParent bool `yaml:"pr_review_ask_parent"`
+	// PRReviewSmallMax is the most findings PR-Review fixes in place when none is BLOCKING.
+	// The count runs between two send-backs, or before the first.
+	// It is open to the local layer, so a task's run_settings sets it for one run.
+	PRReviewSmallMax int `yaml:"pr_review_small_max"`
 
 	// DiscussionReviewAskParent makes each Discussion-Review round ask the parent orch to review the decision record.
 	// It is open to the local layer, so a task's run_settings turns it on or off for one run.
@@ -671,6 +675,7 @@ func ConfigSpec() configengine.Spec {
 			"review_circling_checkpoint":       none,
 			"review_stalemate_rounds":          none,
 			"pr_review_ask_parent":             none,
+			"pr_review_small_max":              none,
 
 			"discussion_review_ask_parent":         none,
 			"discussion_review_parent_timeout_min": none,

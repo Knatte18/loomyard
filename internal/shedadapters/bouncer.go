@@ -217,12 +217,14 @@ type BouncerConfig struct {
 	// FullGeneration makes a changed subject start a full generation with the perch's own budget and hard cap, instead of an amendment.
 	// It is true for a segment whose changed subject is a new subject rather than an amended one.
 	FullGeneration bool
-	// ReviewInput reports the file a re-entry is told to review besides the subject's change, and when the file was written.
-	// An input written after the settle re-opens an unchanged subject as an amendment generation.
-	// It records its path in that generation's record, and the amendment note names it.
+	// ReviewInputs reports every file a re-entry is told to review besides the subject's change.
+	// An input written after the settle re-opens an unchanged subject.
+	// A non-full input re-opens it as an amendment generation, and the amendment note names it.
+	// An input marked Full re-opens it as a full generation, whatever FullGeneration says.
+	// Each kept input's path is recorded in the new generation's record.
 	// An error is returned by the call that reads it, before the run directory is archived.
 	// Nil is the absent value: no input is recorded and an unchanged subject always re-settles.
-	ReviewInput func() (path string, writtenAt time.Time, found bool, err error)
+	ReviewInputs func() ([]ReviewInput, error)
 }
 
 // Bouncer is the generic review-gate producer.
@@ -400,7 +402,7 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		}
 	}
 
-	if outcome, ptr, handled, err := b.reenterUnchanged(); handled {
+	if outcome, ptr, handled, err := b.reenterUnchanged(ctx); handled {
 		return outcome, ptr, err
 	}
 
@@ -699,9 +701,11 @@ const (
 // reenterUnchanged settles a live settle record again without a review when its subject is unchanged against the live one.
 // It reports handled false, reading nothing from disk, when the Subject seam is nil;
 // it also does so when there is no live record, when the seam answers no subject, or when the subject changed.
-// The ReviewInput seam reporting an input written after the record's settle time also yields handled false;
-// the Call then starts a new generation over it.
-func (b *Bouncer) reenterUnchanged() (outcome shedengine.Outcome, ptr shedengine.OutputPointer, handled bool, err error) {
+// A non-full input written after the record's settle time also yields handled false, unless FullGeneration is set;
+// the Call then starts an amendment generation over it.
+// A full input written after it starts the full generation here and reports handled true,
+// so a round-0 settle record never falls through to the seed path with no generation record naming the input.
+func (b *Bouncer) reenterUnchanged(ctx context.Context) (outcome shedengine.Outcome, ptr shedengine.OutputPointer, handled bool, err error) {
 	if b.cfg.Subject == nil {
 		return "", shedengine.OutputPointer{}, false, nil
 	}
@@ -726,14 +730,16 @@ func (b *Bouncer) reenterUnchanged() (outcome shedengine.Outcome, ptr shedengine
 	if !unchanged {
 		return "", shedengine.OutputPointer{}, false, nil
 	}
-	if !b.cfg.FullGeneration {
-		newer, err := b.keptReviewInput(record.SettledAt)
-		if err != nil {
-			return "", shedengine.OutputPointer{}, true, err
-		}
-		if newer != "" {
-			return "", shedengine.OutputPointer{}, false, nil
-		}
+	kept, err := b.keptReviewInput(record.SettledAt)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, true, err
+	}
+	if hasFullInput(kept) {
+		outcome, ptr, err = b.startNextGeneration(ctx, record, record.Base)
+		return outcome, ptr, true, err
+	}
+	if len(kept) > 0 && !b.cfg.FullGeneration {
+		return "", shedengine.OutputPointer{}, false, nil
 	}
 	outcome, ptr, err = b.resettle(record)
 	return outcome, ptr, true, err
@@ -1681,7 +1687,7 @@ func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.
 // rubricNotes gathers the notes that fill the rubric's markers.
 // Each note is blank when no function is configured for it.
 func (b *Bouncer) rubricNotes() RubricNotes {
-	notes := RubricNotes{GateTiers: b.cfg.GateTiers, Amendment: AmendmentNote(b.cfg.RunDir), RedundancyReport: b.cfg.RedundancyReport}
+	notes := RubricNotes{GateTiers: b.cfg.GateTiers, Amendment: AmendmentNote(b.cfg.RunDir), ReviewInput: ReviewInputNote(b.cfg.RunDir), RedundancyReport: b.cfg.RedundancyReport}
 	if b.cfg.WebsterRecord != nil {
 		notes.WebsterRecord = b.cfg.WebsterRecord()
 	}

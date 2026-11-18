@@ -122,20 +122,27 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	if err != nil {
 		return nil, err
 	}
-	notes := shedadapters.RubricNotes{GateTiers: env.GateTiers, Amendment: shedadapters.AmendmentNote(runDir), RedundancyReport: env.RedundancyReport}
-	if env.WebsterRecord != nil {
-		notes.WebsterRecord = env.WebsterRecord()
-	}
-	if env.ReviewBase != nil {
-		base, err := env.ReviewBase()
-		if err != nil {
-			return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: read the review base: %w", row.Name, err)
-		}
-		notes.ReviewBase = base
+	notes, err := reviewRubricNotes(row, env, runDir)
+	if err != nil {
+		return nil, err
 	}
 	profile, err := burlerRoundProfile(profileCfg, env.StencilsDir, env.SpecsDir, notes)
 	if err != nil {
 		return nil, err
+	}
+	rubricStencil, err := configString(profileCfg, "rubric_stencil", false)
+	if err != nil {
+		return nil, err
+	}
+	var rubric func() (string, error)
+	if rubricStencil != "" {
+		rubric = func() (string, error) {
+			roundNotes, err := reviewRubricNotes(row, env, runDir)
+			if err != nil {
+				return "", err
+			}
+			return shedadapters.ReadRubric(env.StencilsDir, rubricStencil, env.SpecsDir, roundNotes)
+		}
 	}
 	profile.Segment = colorSegment
 	profile.RolePrefix = rolePrefix
@@ -159,11 +166,35 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	snapshot := reviewTargetSnapshot(env, runSubdir)
 	snapshot.Scope, snapshot.Paths = profile.FixScope, profile.Target.Paths
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: segment.ReviewKey}
-	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name), Snapshot: &snapshot, DecisionRecordPath: env.DecisionRecordPath, Diff: diff}, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name), Snapshot: &snapshot, DecisionRecordPath: env.DecisionRecordPath, Diff: diff, Rubric: rubric}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}
 	return producer, nil
+}
+
+// reviewRubricNotes gathers the notes that fill a review row's rubric stencil from env and the run directory's records.
+// The row calls it at build and again at each round.
+// The amendment and review input notes follow the generation record.
+// A failed review base read is an error naming row.
+func reviewRubricNotes(row RowIdentity, env Env, runDir string) (shedadapters.RubricNotes, error) {
+	notes := shedadapters.RubricNotes{
+		GateTiers:        env.GateTiers,
+		Amendment:        shedadapters.AmendmentNote(runDir),
+		ReviewInput:      shedadapters.ReviewInputNote(runDir),
+		RedundancyReport: env.RedundancyReport,
+	}
+	if env.WebsterRecord != nil {
+		notes.WebsterRecord = env.WebsterRecord()
+	}
+	if env.ReviewBase != nil {
+		base, err := env.ReviewBase()
+		if err != nil {
+			return shedadapters.RubricNotes{}, fmt.Errorf("shedrecipe: BurlerReview: row %q: read the review base: %w", row.Name, err)
+		}
+		notes.ReviewBase = base
+	}
+	return notes, nil
 }
 
 // burlerFixEntry is the Constructor for the "BurlerFix" registry row.
@@ -305,6 +336,9 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 //
 // rubric_stencil names a stencilstore rubric stencil, read and filled by shedadapters.ReadRubric.
 // Its filled text sets Profile.Rubric in place of a literal rubric string.
+// That text is the template's rubric.
+// A review row's producer sets the rubric among the round's own fields.
+// It takes the rubric from the answer of its Rubric seam, which refills the stencil at each round.
 // The stencil route fills specs_dir and the optional notes at read time;
 // the literal route passes rubric through unfilled.
 // That asymmetry is deliberate: a literal rubric is author-written prose.

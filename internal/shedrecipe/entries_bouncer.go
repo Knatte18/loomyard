@@ -6,7 +6,6 @@ package shedrecipe
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
@@ -264,9 +263,9 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	default:
 		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q or %q, got %q", "subject", shedadapters.SubjectDocument, shedadapters.SubjectCode, subjectKind)
 	}
-	var reviewInput func() (string, time.Time, bool, error)
+	var reviewInputs func() ([]shedadapters.ReviewInput, error)
 	if subject != nil {
-		reviewInput = env.ReviewInput
+		reviewInputs = env.ReviewInputs
 	}
 
 	// Slug and SegmentBounces are both optional.
@@ -319,7 +318,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		MergeInOnly:       mergeInOnly,
 		SettledBase:       settledBase,
 		AmendAllowance:    segment.AmendMaxBounces,
-		ReviewInput:       reviewInput,
+		ReviewInputs:      reviewInputs,
 
 		BlockingEscalates: blockingEscalates,
 		EscalateDecisions: escalateDecisions,

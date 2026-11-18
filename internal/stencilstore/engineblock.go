@@ -23,8 +23,8 @@ const EngineBlockPrefix = "engine-"
 // EngineBlocksDir is the directory under a stencils baseDir that holds one directory of engine blocks per engine.
 const EngineBlocksDir = "engine"
 
-// engineIncludePattern matches the bare include action of an engine block and captures the block's name.
-var engineIncludePattern = regexp.MustCompile(`\{\{template "` + EngineBlockPrefix + `([^"]+)"\}\}`)
+// bareIncludePattern matches a bare include action, engine block or plain fragment, and captures the include's name.
+var bareIncludePattern = regexp.MustCompile(`\{\{template "([^"]+)"\}\}`)
 
 // EngineBlockName returns the stencil name of engine's copy of block, `engine/<engine>/<block>`.
 // That copy is the file `engine/<engine>/<block>.md` under the stencils base directory.
@@ -73,34 +73,48 @@ func ReadSet(baseDir, engine, name string) ([]byte, map[string][]byte, error) {
 
 // ReadForEngine reads the stencil name from baseDir.
 // Each engine block it includes is written in place, in engine's copy.
+// Each bare plain include is written in place too, as the stencil of that name with its leading comment dropped.
+// The engine blocks that stencil includes are written in place as well.
+// Its own plain includes are left as they stand.
 // A producer that fills a stencil with no include map calls it, so the text it fills is already worded for engine.
-// An include that is not an engine block is left as it stands.
-// Its errors are ReadSet's.
+// A plain include of a stencil that does not exist is an error naming both stencils and the way forward.
+// Its other errors are ReadSet's.
 func ReadForEngine(baseDir, engine, name string) ([]byte, error) {
 	body, err := Read(baseDir, name)
 	if err != nil {
 		return nil, err
 	}
-	return writeEngineBlocksInPlace(baseDir, engine, name, body)
+	return writeEngineBlocksInPlace(baseDir, engine, name, body, true)
 }
 
 // writeEngineBlocksInPlace returns body with each bare engine-block include action replaced.
-// Each is replaced by engine's copy of the block, its leading comment dropped.
+// An engine block is replaced by engine's copy of it, its leading comment dropped.
+// With plainIncludes, each bare plain include is replaced too.
+// It is replaced by the stencil of its name read through readInclude, its leading comment dropped.
+// Without plainIncludes, a plain include is left as it stands.
+// A plain include of a stencil that does not exist is refused, naming stencilName and the missing stencil.
 // A leading comment of body itself is kept as it stands, so a header that spells an include action is not read.
 // An engine-block include left unresolved is refused:
 // one written in a form other than the bare action, or one an engine block itself carries.
-func writeEngineBlocksInPlace(baseDir, engine, stencilName string, body []byte) ([]byte, error) {
+func writeEngineBlocksInPlace(baseDir, engine, stencilName string, body []byte, plainIncludes bool) ([]byte, error) {
 	text := string(body)
 	rest := stencil.StripLeadingComment(text)
 	header := text[:len(text)-len(rest)]
 
 	var readErr error
-	expanded := engineIncludePattern.ReplaceAllStringFunc(rest, func(action string) string {
+	expanded := bareIncludePattern.ReplaceAllStringFunc(rest, func(action string) string {
 		if readErr != nil {
 			return action
 		}
-		include := EngineBlockPrefix + engineIncludePattern.FindStringSubmatch(action)[1]
+		include := bareIncludePattern.FindStringSubmatch(action)[1]
+		isEngineBlock := strings.HasPrefix(include, EngineBlockPrefix)
+		if !isEngineBlock && !plainIncludes {
+			return action
+		}
 		block, err := readInclude(baseDir, engine, stencilName, include)
+		if errors.Is(err, os.ErrNotExist) && !isEngineBlock {
+			err = fmt.Errorf("stencilstore: stencil %q includes stencil %q, which does not exist; way forward: run lym stencil diff, then lym stencil sync to seed the missing stencil: %w", stencilName, include, err)
+		}
 		if err != nil {
 			readErr = err
 			return action
@@ -130,7 +144,11 @@ func writeEngineBlocksInPlace(baseDir, engine, stencilName string, body []byte) 
 func readInclude(baseDir, engine, stencilName, include string) ([]byte, error) {
 	block, isEngineBlock := strings.CutPrefix(include, EngineBlockPrefix)
 	if !isEngineBlock {
-		return ReadForEngine(baseDir, engine, include)
+		content, err := Read(baseDir, include)
+		if err != nil {
+			return nil, err
+		}
+		return writeEngineBlocksInPlace(baseDir, engine, include, content, false)
 	}
 	if engine == "" {
 		return nil, fmt.Errorf("stencilstore: stencil %q includes engine block %q, but no engine was named to read it for; way forward: name the seat's engine in its model spec, or set the engine key of shuttle.yaml", stencilName, block)

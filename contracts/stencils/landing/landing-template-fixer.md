@@ -46,6 +46,8 @@ When the landing failure record holds `build: true`, the gate failed in its buil
 - Never push.
 - Leave the working tree clean when you end your turn.
 
+{{template "loom-fragment-loosened-check"}}
+
 ## The report — your terminal act
 
 Write the report at `{{.report_path}}`, in the format the `landing-fixer-report-spec.md` spec pins.

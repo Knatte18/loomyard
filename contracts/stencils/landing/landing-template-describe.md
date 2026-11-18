@@ -57,6 +57,9 @@ Write exactly one file, `{{.description_path}}`, in the format of the final-summ
 Never describe the pipeline's process: no batches, cards, forks, the Master, verify gates, glyph deviations or review rounds.
 Naming a module is fine when the change touches it.
 
+A claim that a result agrees with a reference, or that the change improves one, carries before and after figures from the current code, taken from the commits or the regression check.
+Leave out a claim that has none.
+
 ## Rules
 
 - Write no `Co-Authored-By` line and no credit lines — the landing step appends the configured credit block itself.

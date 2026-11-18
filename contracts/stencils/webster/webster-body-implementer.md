@@ -87,6 +87,8 @@ Make exactly the changes the card describes, in exactly the targets its type lab
 
 A card that departs from its own text because a PATTERN entry forbids the card's way records the departure as a `Pattern-Departure:` trailer in that card's commit, in the shape the `## Pattern-Departure trailer` section of `{{.specs_dir}}/loom/loom-plan-spec.md` defines.
 
+{{template "loom-fragment-loosened-check"}}
+
 If any card's gate fails, or a test the card broke fails, and you cannot fix it within your self-fix bound (see next section), stop and report `status: FAILED` — do not continue to a later card on top of a broken one.
 
 ## The sandbox rule

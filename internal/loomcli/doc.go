@@ -599,6 +599,18 @@
 // It commits the record, which every write of the PR-Review and Finalize rows does too.
 // It writes nothing else, and it is refused until the PR-Review row has opened the pull request.
 //
+// `lym loom pr-findings <file>` is the PR-Review agent's verb for a findings set.
+// The file is in burler's review format.
+// It sends the set back to Code-Review when the send-back edge can fire and a finding is BLOCKING,
+// or the findings plus those already fixed in place exceed `pr_review_small_max`.
+// The edge can fire when the PR-Review row declares a reroute and its target's entry gate holds.
+// The target's budget must also be above 0.
+// A send-back copies the file to the run's scratch directory, writes a friction note and marks the pull-request record.
+// A set that stays is only counted, once per file, and the agent fixes it.
+// It is refused while the task worktree has uncommitted paths.
+// It is refused for a file that does not parse, and for a run with no record.
+// It commits the record, and a re-run after a failed commit completes without counting twice.
+//
 // `lym loom sampler-done` ends a sampler run's build:
 // it sets the done flag in the Sampler-Session record to the row's current entry stamp and nothing else.
 // It is refused on a recipe with no SamplerSession row.

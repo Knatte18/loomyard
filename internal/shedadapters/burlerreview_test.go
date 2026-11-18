@@ -52,6 +52,8 @@ type halfProducerSpec struct {
 	decisionRecordPath string
 	// diff is the deps' diff reader; nil gives no diff.
 	diff func() (string, error)
+	// rubric is the deps' rubric reader; nil keeps the profile's rubric.
+	rubric func() (string, error)
 }
 
 // newHalfSpec returns a spec over the minimal profile and a fixed clock.
@@ -62,7 +64,7 @@ func newHalfSpec() halfProducerSpec {
 // newReviewProducer builds a BurlerReviewProducer over runDir, failing the test on constructor error.
 func newReviewProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerReviewProducer {
 	t.Helper()
-	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent, DecisionsEscalated: spec.decisionsEscalated, Assist: spec.assist, Parent: spec.parent, Snapshot: spec.snapshot, DecisionRecordPath: spec.decisionRecordPath, Diff: spec.diff}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent, DecisionsEscalated: spec.decisionsEscalated, Assist: spec.assist, Parent: spec.parent, Snapshot: spec.snapshot, DecisionRecordPath: spec.decisionRecordPath, Diff: spec.diff, Rubric: spec.rubric}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerReviewProducer() error = %v; want nil", err)
 	}
@@ -475,6 +477,39 @@ func TestBurlerReviewProducer_Call_ProfileAndOpts(t *testing.T) {
 		}
 		if len(runner.GotReviewProfiles) != 2 || runner.GotReviewProfiles[0].Diff != told || runner.GotReviewProfiles[1].Diff != told {
 			t.Errorf("spawned profiles = %+v; want two, both carrying the told diff", runner.GotReviewProfiles)
+		}
+	})
+
+	t.Run("a Rubric seam's answer sets the round's profile rubric", func(t *testing.T) {
+		t.Parallel()
+		spec := newHalfSpec()
+		spec.profile.Rubric = "the template's rubric"
+		spec.rubric = func() (string, error) { return "the round's rubric", nil }
+		runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
+
+		shedfake.CallOK(t, newReviewProducer(t, filepath.Join(t.TempDir(), "run"), runner, spec))
+
+		if got := runner.GotReviewProfiles[0].Rubric; got != "the round's rubric" {
+			t.Errorf("spawned profile's Rubric = %q; want the Rubric seam's answer", got)
+		}
+		if spec.profile.Rubric != "the template's rubric" {
+			t.Errorf("the stored template's Rubric = %q; want it untouched", spec.profile.Rubric)
+		}
+	})
+
+	t.Run("a failing Rubric seam fails the call and spawns no reviewer", func(t *testing.T) {
+		t.Parallel()
+		sentinel := errors.New("rubric unreadable")
+		spec := newHalfSpec()
+		spec.rubric = func() (string, error) { return "", sentinel }
+		runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
+		p := newReviewProducer(t, filepath.Join(t.TempDir(), "run"), runner, spec)
+
+		if _, _, err := p.Call(context.Background()); !errors.Is(err, sentinel) {
+			t.Errorf("Call() error = %v; want it to wrap %v", err, sentinel)
+		}
+		if len(runner.GotReviewProfiles) != 0 {
+			t.Errorf("spawned reviews = %d; want none", len(runner.GotReviewProfiles))
 		}
 	})
 

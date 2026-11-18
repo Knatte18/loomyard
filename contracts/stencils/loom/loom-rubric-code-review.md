@@ -81,6 +81,15 @@ Do not flag any of the following as a finding:
   A difference from the answer key that a `Pattern-Departure:` trailer explains is judged on that reason, and holds when the named entry forbids the answer key's way, read in its declared new text where the directive's declared changes list it.
   A trailer naming an unknown entry, or an entry that does not forbid that way, is a finding.
   A trailer excuses only the difference it names.
+- **Loosened checks.**
+  An assertion, tolerance or limit the diff widens or removes in a test that exists at the review base is a finding, unless a `Loosened-Check:` trailer on any commit of the review range names it and a measured cause.
+  A cause that is no measurement, such as "flaky" or "to make it pass", is a finding too.
+- **Tests still check what they say.**
+  A test whose limits changed still checks the behaviour its name and doc comment state.
+  A test whose new limits admit the failure its name rules out is a finding.
+- **Claims of agreement or improvement.**
+  A claim in the change description or in a commit message of the range that a result agrees with a reference, or improves, carries before and after figures from the current code.
+  A claim without them is a finding, as is a figure the change itself made obsolete and an agreement claim across a set-up difference it does not name.
 - **Declared PATTERN changes landed.**
   Check that the branch's `PATTERN.md` and `pattern/` diff carries each entry the constraints section's declared changes list, its add, change or remove with the declared text, and raise a BLOCKING finding for each declared entry the diff does not land.
   Read the declarations rendered into your directive, never the plan's or the record's section, so a bullet appended after the gate is checked too.
@@ -136,9 +145,15 @@ When the note above is not `none`, this round reviews an amendment: review only 
 
 ## Review input
 
+{{.review_input}}
+
+When the note above is not `none`, this generation reviews the whole range, and each file it lists is a review input written after this perch last settled.
+Read each such file as an input besides the diff.
 When the amendment note names a review input, that file is a report written after this perch last settled: the merge fixer's report of the latest Parent-Align.
 Read it as an input besides the diff: judge from it whether the alignment it reports, and the parent changes it names, keep the code consistent with the answer key.
-A finding about the report itself is never raised; each finding is about the code.
+A PR-findings input is a `pr-findings-<n>.md` file of findings PR-Review received after Code-Review approved.
+Review the whole range as usual, read the file, and file each of its findings that holds against the code as a finding of this round.
+A finding about an input file itself is never raised; each finding is about the code.
 
 ## Finding class
 

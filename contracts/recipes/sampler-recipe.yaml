@@ -40,8 +40,9 @@
 # fix halts the run for the orch.
 # Record-Write, the Drift rows, Sampler-Session and Describe carry none either: a Stuck of each halts the run for the parent
 # with the ways forward in its reason.
-# PR-Review carries no on_stuck because its Stuck is always a Halt, and Friction-Reflect none because it
-# never returns Stuck.
+# PR-Review carries no on_stuck because its Stuck halts the run, except a marked send-back's reroute to
+# Code-Bouncer, which only lym loom pr-findings marks; Friction-Reflect carries none because it never returns Stuck.
+# Code-Bouncer keeps its sampler.code_review entry gate, so with the review off the verb answers fix-here.
 # PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
 # board field and the origin, which the row decides in its own call.
 #
@@ -237,10 +238,12 @@ producers:
           attempts: 3
 
   # PR-Review lands the task through a GitHub pull request when the pull-request resolver says so.
-  # It carries no entry_gate and no on_stuck, because its Stuck is always a Halt.
+  # It carries no entry_gate and no on_stuck, because its Stuck halts the run, except a marked send-back's
+  # reroute to Code-Bouncer.
   - name: PR-Review
     engine: PRReview
     on_done: Finalize
+    on_reroute: Code-Bouncer
 
   # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
   # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.

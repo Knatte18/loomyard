@@ -90,6 +90,22 @@ func TestVerdict(t *testing.T) {
 				"- Last check: did not pass at `head3`. The compare exited 3."),
 		},
 		{
+			"LoosenedChecksListEachWithItsRulingAndCause",
+			&ScopeRecord{Scope: ScopeFull, LastCheck: CheckResult{
+				Head: "head4", At: "2026-01-02T03:04:05Z", Mode: DiffLines,
+				Loosened: []LoosenedCheck{
+					{Path: "limits_test.go", Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingCaused, Cause: "measured 40 under load", Reason: "the trailer names a measurement"},
+					{Path: "retry_test.go", Test: "TestRetry", Loosened: "the retry count from 3 to 9", Ruling: RulingUncaused, Reason: "no measurement is named"},
+				},
+			}},
+			JudgedRecord{},
+			join("## Regression check", "", "- Scope: full.", "- Diff: lines.",
+				"- Last check: did not pass at `head4`. 0 changed cells, 0 expected, 0 judged as matching, 0 reused from stored rulings, 0 unexpected.",
+				"- Loosened checks:",
+				"  - `TestLimit` in `limits_test.go`: the limit from 5 to 50; caused; cause: measured 40 under load",
+				"  - `TestRetry` in `retry_test.go`: the retry count from 3 to 9; uncaused; cause: none"),
+		},
+		{
 			"OldPartialScopeNamesTheLeftOutCases",
 			&ScopeRecord{Scope: ScopePartial, Skip: []string{"slow", "flaky"}, LastCheck: CheckResult{Head: "head2", Passed: true, At: "2026-01-02T03:04:05Z", Mode: DiffLines}},
 			JudgedRecord{},

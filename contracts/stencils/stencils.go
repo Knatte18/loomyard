@@ -195,6 +195,12 @@ var LoomFragmentArbiterFix []byte
 //go:embed loom/loom-fragment-arbiter-no-fix.md
 var LoomFragmentArbiterNoFix []byte
 
+// LoomFragmentLoosenedCheck is the Loosened-Check commit trailer rule.
+// Every brief of a session that commits code includes it.
+//
+//go:embed loom/loom-fragment-loosened-check.md
+var LoomFragmentLoosenedCheck []byte
+
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by every row of the Discussion-Review perch.
 //
 //go:embed loom/loom-rubric-discussion-review.md
@@ -916,6 +922,7 @@ var entries = []registryEntry{
 	{"loom-template-arbiter", &LoomTemplateArbiter},
 	{"loom-fragment-arbiter-fix", &LoomFragmentArbiterFix},
 	{"loom-fragment-arbiter-no-fix", &LoomFragmentArbiterNoFix},
+	{"loom-fragment-loosened-check", &LoomFragmentLoosenedCheck},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-raddle-review", &LoomRubricRaddleReview},

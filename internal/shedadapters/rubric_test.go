@@ -43,6 +43,8 @@ func TestReadRubric(t *testing.T) {
 		websterRecord string
 		// amendment is the note ReadRubric fills the amendment marker from.
 		amendment string
+		// reviewInput is the note ReadRubric fills the review_input marker from.
+		reviewInput string
 		// reviewBase is the commit ReadRubric fills the review_base marker from.
 		reviewBase string
 		// gateTiers is the text ReadRubric fills the gate_tiers marker from.
@@ -114,6 +116,21 @@ func TestReadRubric(t *testing.T) {
 			body:     "# Rubric\n\nAmendment: {{.amendment}}\n",
 			specsDir: "/abs/specs",
 			want:     "# Rubric\n\nAmendment: none\n",
+		},
+		{
+			name:        "renders the review input note",
+			rubric:      "bouncer-rubric-test",
+			body:        "# Rubric\n\nInput: {{.review_input}}\n",
+			specsDir:    "/abs/specs",
+			reviewInput: "Read /scratch/pr-findings-1.md.",
+			want:        "# Rubric\n\nInput: Read /scratch/pr-findings-1.md.\n",
+		},
+		{
+			name:     "a blank review input note renders none",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nInput: {{.review_input}}\n",
+			specsDir: "/abs/specs",
+			want:     "# Rubric\n\nInput: none\n",
 		},
 		{
 			name:       "renders the review base",
@@ -202,7 +219,7 @@ func TestReadRubric(t *testing.T) {
 				writeStampedRubric(t, dir, tt.rubric, tt.body)
 			}
 
-			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{WebsterRecord: tt.websterRecord, Amendment: tt.amendment, GateTiers: tt.gateTiers, ReviewBase: tt.reviewBase, RedundancyReport: tt.redundancyReport})
+			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{WebsterRecord: tt.websterRecord, Amendment: tt.amendment, ReviewInput: tt.reviewInput, GateTiers: tt.gateTiers, ReviewBase: tt.reviewBase, RedundancyReport: tt.redundancyReport})
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("ReadRubric() = nil error; want one containing %q", tt.wantErr)

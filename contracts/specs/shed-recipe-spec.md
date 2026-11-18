@@ -107,7 +107,8 @@ It selects the seams that tell the Bouncer what its segment judges.
 `document` selects `Env.DocumentSubject`, told the row's resolved artifact paths.
 `document` also selects `Env.RecordHead`, told as the settled base.
 `code` selects `Env.CodeSubject` and `Env.MergeInOnly`.
-Every kind also tells the Bouncer `Env.ReviewInput`, which stays optional.
+Every kind also tells the Bouncer `Env.ReviewInputs`, which stays optional.
+The Bouncer takes every input written after the settle, and an input marked full forces a full generation.
 Every kind also tells it the segment's `AmendMaxBounces` as the amendment allowance.
 It follows the same two rules as `commit_seam`.
 An absent key tells no subject and keeps the Bouncer on its clear-and-reseed path,

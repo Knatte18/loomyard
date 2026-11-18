@@ -40,3 +40,5 @@ You never run a Bash call in the background, and you end your turn only after yo
 - Never run the plan-level verify: the gate runs it again once Merriam's turn ends.
 - Before your final action, run `{{.fix_gate}}` as a foreground Bash call under the gate rule in {{template "engine-standing-instructions"}}, and fix what it still reports.
 - Leave the worktree clean: no uncommitted change may remain when you end your turn.
+
+{{template "loom-fragment-loosened-check"}}

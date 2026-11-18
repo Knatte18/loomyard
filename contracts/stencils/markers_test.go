@@ -45,6 +45,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"loom-fragment-parts-medium", LoomFragmentPartsMedium, nil},
 		{"loom-fragment-arbiter-fix", LoomFragmentArbiterFix, []string{"run_id", "worktree"}},
 		{"loom-fragment-arbiter-no-fix", LoomFragmentArbiterNoFix, nil},
+		{"loom-fragment-loosened-check", LoomFragmentLoosenedCheck, nil},
 		{"loom-template-part-writer", LoomTemplatePartWriter, []string{"decision_record_path", "edit_directive", "friction_directive", "overview_path", "parent_directive", "part_name", "parts_path", "pattern_directive", "plan_dir", "relevant_path", "specs_dir"}},
 		{"loom-template-parts-chair", LoomTemplatePartsChair, []string{"decision_record_path", "edit_directive", "friction_directive", "join_path", "overview_path", "parent_directive", "parts_dir", "parts_path", "pattern_directive", "plan_dir", "specs_dir"}},
 		{"seat-directive-chair", SeatDirectiveChair, []string{"advisor_names", "inputs", "output_files"}},

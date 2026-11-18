@@ -108,14 +108,14 @@ func TestWire_DarnRecipe(t *testing.T) {
 				}
 			}
 		}
-		// envkit.NilSeams skips ReviewInput through nilLegal.
+		// envkit.NilSeams skips ReviewInputs through nilLegal.
 		// A direct check pins that a darn seed keeps the shared wiring's seam.
-		// The seam answers not found, since darn has no Parent-Align report.
-		if c.env.ReviewInput == nil {
-			t.Fatal("ReviewInput is nil after wire() of a darn seed; want it told")
+		// The seam answers no input, since darn has no Parent-Align report and no send-back.
+		if c.env.ReviewInputs == nil {
+			t.Fatal("ReviewInputs is nil after wire() of a darn seed; want it told")
 		}
-		if path, _, found, err := c.env.ReviewInput(); err != nil || found {
-			t.Errorf("ReviewInput() = %q, %v, %v; want not found, nil", path, found, err)
+		if inputs, err := c.env.ReviewInputs(); err != nil || len(inputs) != 0 {
+			t.Errorf("ReviewInputs() = %v, %v; want no input, nil", inputs, err)
 		}
 		if c.env.VerifyMergeBase == nil {
 			t.Error("c.env.VerifyMergeBase is nil after wire() of a darn seed; want the merge base reader")

@@ -34,14 +34,16 @@ type waitWorld struct {
 	tree   *fakeVerifyTree
 	cancel context.CancelFunc
 
-	now        time.Time
-	sleeps     []time.Duration
-	head       string
-	dirty      []string
-	pushes     []string
-	mails      []string
-	marks      []string
-	missing    []string
+	now     time.Time
+	sleeps  []time.Duration
+	head    string
+	dirty   []string
+	pushes  []string
+	mails   []string
+	marks   []string
+	missing []string
+	// status is the run's shed status the row reads through the ShedStatus seam, with an empty history by default.
+	status     shedengine.Status
 	mailErr    error
 	pauseCalls int
 	// liveAtRead records, for each read of the task worktree's uncommitted paths, whether the session was live.
@@ -77,6 +79,7 @@ func newWaitWorld(t *testing.T, scripts map[string][]scriptedCall) (*waitWorld, 
 	}
 	pr := &w.deps.PullRequest
 	pr.DirtyPaths = func() ([]string, error) { return w.dirty, nil }
+	pr.ShedStatus = func() (shedengine.Status, error) { return w.status, nil }
 	pr.PushTask = func() error {
 		w.pushes = append(w.pushes, w.head)
 		return nil
@@ -175,6 +178,23 @@ func TestPRReview_Wait(t *testing.T) {
 			t.Errorf("write the continue flag: %v", err)
 		}
 	}
+	const sendBackFile = "/run/pr-findings-1.md"
+	// markSendBackAtFirstSleep is a setup that has the session live and writes the send-back mark at the first sleep.
+	markSendBackAtFirstSleep := func(w *waitWorld) {
+		sessionsOf(w.deps).live["guid-1"] = true
+		w.onSleep = func(w *waitWorld, n int) {
+			if n != 1 {
+				return
+			}
+			err := pullrequest.UpdateRecord(w.deps.PullRequest.RecordPath, w.deps.PullRequest.RecordLockPath, func(r *pullrequest.Record) error {
+				r.SendBack = sendBackFile
+				return nil
+			})
+			if err != nil {
+				t.Errorf("write the send-back mark: %v", err)
+			}
+		}
+	}
 	// changeDuringFirstSleep returns a setup for a wait whose first sleep advances the clock by elapsed.
 	// That sleep writes the continue flag and signals a record change, then ends only when the wait cancels it.
 	// A guard fails the test if the sleep never ends.
@@ -259,6 +279,8 @@ func TestPRReview_Wait(t *testing.T) {
 		wantOutcome shedengine.Outcome
 		wantHalt    bool
 		wantReason  []string
+		// wantReroute is the output of the reroute the verdict asks for, empty when it asks for none.
+		wantReroute string
 		wantErr     error
 		wantCalls   []string
 		wantRecord  *pullrequest.Record
@@ -791,6 +813,24 @@ func TestPRReview_Wait(t *testing.T) {
 			wantCalls: []string{"Status 7", editSeven, "Status 7", editNew},
 		},
 		{
+			name: "AWakeWhoseRecordCarriesTheSendBackMarkStopsTheSessionAndReroutesWithTheFile", record: seed("h1", withLiveStrand), scripts: statusScript(open),
+			setup:       markSendBackAtFirstSleep,
+			wantOutcome: shedengine.Stuck, wantReroute: sendBackFile, wantReason: []string{"findings sent back to Code-Review", sendBackFile},
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				assertSessionCounts(t, w.deps, 0, 1)
+			},
+		},
+		{
+			name: "AWakeWhoseTreeIsDirtyAfterTheStopHaltsNamingTheFilesAndKeepsTheMark", record: seed("h1", withLiveStrand), scripts: statusScript(open), dirty: []string{"wip.go"},
+			setup:       markSendBackAtFirstSleep,
+			wantOutcome: shedengine.Stuck, wantHalt: true,
+			wantReason: []string{"findings sent back to Code-Review, but the task worktree has uncommitted changes: wip.go", "lym loom resume"},
+			wantRecord: recorded("h1", withLiveStrand, func(r *pullrequest.Record) { r.SendBack = sendBackFile }),
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				assertSessionCounts(t, w.deps, 0, 1)
+			},
+		},
+		{
 			name: "TheMarkIsSetAtTheStartAndAfterAGateAndClearedOnDone", record: seed("h1"), scripts: statusScript(approvedAt("h2", false)), head: "h2",
 			setup:       func(w *waitWorld) { w.withGateCommand() },
 			wantOutcome: shedengine.Done, gatePushes: 1,
@@ -830,6 +870,9 @@ func TestPRReview_Wait(t *testing.T) {
 			} else {
 				if err != nil {
 					t.Fatalf("Call() error = %v; want none", err)
+				}
+				if pointer.Reroute != (tt.wantReroute != "") || pointer.Path != tt.wantReroute {
+					t.Errorf("Call() reroute = %v with output %q; want output %q", pointer.Reroute, pointer.Path, tt.wantReroute)
 				}
 				if outcome != tt.wantOutcome || pointer.Halt != tt.wantHalt {
 					t.Errorf("Call() = %q, halt %v; want %q, halt %v (reason %q)", outcome, pointer.Halt, tt.wantOutcome, tt.wantHalt, pointer.Reason)

@@ -17,11 +17,11 @@ import (
 )
 
 // rubricMarkerAllowlist is the complete set of top-level stencil markers a rubric may carry:
-// only specs_dir, stencils_dir, webster_record, gate_tiers, amendment, review_base and redundancy_report.
+// only specs_dir, stencils_dir, webster_record, gate_tiers, amendment, review_input, review_base and redundancy_report.
 // internal/shedadapters.ReadRubric fills these markers as the rubric's own template at read time.
 // A marker outside this set would sit inside the value the Bouncer and Burler prompts interpolate the rubric as.
 // The fill's required-marker check cannot see such a marker, so this test must fail on it.
-var rubricMarkerAllowlist = map[string]bool{"specs_dir": true, "stencils_dir": true, "webster_record": true, "gate_tiers": true, "amendment": true, "review_base": true, "redundancy_report": true}
+var rubricMarkerAllowlist = map[string]bool{"specs_dir": true, "stencils_dir": true, "webster_record": true, "gate_tiers": true, "amendment": true, "review_input": true, "review_base": true, "redundancy_report": true}
 
 // TestLoomRubrics asserts, for each stencil-sourced rubric:
 //   - its top-level marker set is a subset of rubricMarkerAllowlist, the same allowed set for every rubric:
@@ -32,6 +32,7 @@ var rubricMarkerAllowlist = map[string]bool{"specs_dir": true, "stencils_dir": t
 //     a bare "{{" an author writes in prose has no marker name to inspect,
 //     so it becomes a runtime parse-template error only once the rubric is filled;
 //   - the amendment marker is carried by every rubric, and the rendered text holds the note;
+//   - the review_input marker is carried by the Code-Review rubric alone, and its rendered text holds the note;
 //   - a review rubric's rendered text names its writer stencil's deployed path as the registry lays it out,
 //     so the named path is pinned to stencilstore.Path rather than to a hand-typed string.
 //     The comparison is slash-normalised: the rubric text joins with "/", but the rendered prefix uses the OS separator.
@@ -79,10 +80,11 @@ func TestLoomRubrics(t *testing.T) {
 			const record = "Webster has begun these batches: batch 1 (done)."
 			const tier = "- tier1: the hub's first tier"
 			const amendment = "Review only the change since commit abc123."
+			const reviewInput = "This generation reads /scratch/pr-findings-1.md."
 			const reviewBase = "0123abcd4567ef"
 			const redundancyReport = "No current redundancy report: none written."
 			got, err := shedadapters.ReadRubric(dir, tt.name, "/abs/specs/dir", shedadapters.RubricNotes{
-				WebsterRecord: record, GateTiers: tier, Amendment: amendment, ReviewBase: reviewBase,
+				WebsterRecord: record, GateTiers: tier, Amendment: amendment, ReviewInput: reviewInput, ReviewBase: reviewBase,
 				RedundancyReport: func() string { return redundancyReport },
 			})
 			if err != nil {
@@ -96,6 +98,9 @@ func TestLoomRubrics(t *testing.T) {
 			}
 			if !strings.Contains(got, amendment) {
 				t.Errorf("rendered %s does not carry the amendment note; every rubric carries the marker", tt.name)
+			}
+			if carriesInput := strings.Contains(got, reviewInput); carriesInput != (tt.name == "loom-rubric-code-review") {
+				t.Errorf("rendered %s carries the review input note = %v; only the Code-Review rubric carries the marker", tt.name, carriesInput)
 			}
 			if carriesBase := strings.Contains(got, "git diff "+reviewBase+"..HEAD"); carriesBase != (tt.name == "loom-rubric-code-review") {
 				t.Errorf("rendered %s carries the review range over the review base = %v; only the Code-Review rubric carries the marker", tt.name, carriesBase)

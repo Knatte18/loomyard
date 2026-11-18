@@ -106,7 +106,7 @@ func (p *PRReview) ensureSession(ctx context.Context, rec pullrequest.Record) (p
 // The edit directive in it is the copy for the named engine, so the prompt suits the engine the session runs on.
 // The prompt carries paths only, never file content, except the drift verdict, which no file holds.
 func RenderPRReviewPrompt(deps Deps, prURL, engine string) (string, error) {
-	template, err := stencilstore.Read(deps.StencilsDir, prReviewStencilName)
+	template, err := stencilstore.ReadForEngine(deps.StencilsDir, engine, prReviewStencilName)
 	if err != nil {
 		return "", err
 	}

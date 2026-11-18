@@ -138,6 +138,7 @@ var templateDefaults = map[string]any{
 	"DiscussionAutoAccept":          false,
 	"CodeAutoAccept":                true,
 
+	"PRReviewSmallMax":                 3,
 	"DiscussionReviewAskParent":        false,
 	"DiscussionReviewParentTimeoutMin": 30,
 }
@@ -220,6 +221,11 @@ review_timeout_min: 240
 			name:   "pr_review_ask_parent overridden",
 			values: map[string]string{"pr_review_ask_parent": "true"},
 			mutate: func(c *Config) { c.PRReviewAskParent = true },
+		},
+		{
+			name:   "pr_review_small_max overridden",
+			values: map[string]string{"pr_review_small_max": "5"},
+			mutate: func(c *Config) { c.PRReviewSmallMax = 5 },
 		},
 		{
 			name:   "Discussion-Review parent-review keys overridden",

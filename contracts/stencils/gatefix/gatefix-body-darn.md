@@ -27,3 +27,5 @@ You never run a Bash call in the background.
   Name each one you leave in your reply, with why.
 - Re-run the check that failed first, then run `{{.fix_gate}}` as a foreground Bash call under the gate rule in {{template "engine-standing-instructions"}}, and fix what it still reports.
 - Leave the worktree clean: no uncommitted change may remain when you write your reply.
+
+{{template "loom-fragment-loosened-check"}}

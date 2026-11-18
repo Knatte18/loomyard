@@ -418,6 +418,36 @@ func TestRecipe_FinalizeDeclaresNoReroute(t *testing.T) {
 	}
 }
 
+// TestRecipe_PRReviewReroutesToCodeBouncer pins the edge a marked send-back travels:
+// the PR-Review row of the tapestry, darn and sampler recipes reroutes to Code-Bouncer.
+//
+//testtiming:keep pins PR-Review's on_reroute edge in the tapestry, darn and sampler recipes, which the covering tests do not assert
+func TestRecipe_PRReviewReroutesToCodeBouncer(t *testing.T) {
+	tiergate.Require(t, 0)
+	for _, recipe := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeSampler} {
+		t.Run(recipe, func(t *testing.T) {
+			env, paths := testEnv(t)
+			shed, err := New(recipe, env, paths)
+			if err != nil {
+				t.Fatalf("New(%q) error = %v; want nil", recipe, err)
+			}
+			found := false
+			for _, p := range shed.Producers {
+				if p.Name != loomshed.NamePRReview {
+					continue
+				}
+				found = true
+				if p.OnReroute != loomshed.NameCodeBouncer {
+					t.Errorf("PR-Review.OnReroute = %q; want %q", p.OnReroute, loomshed.NameCodeBouncer)
+				}
+			}
+			if !found {
+				t.Errorf("%s recipe has no %s row", recipe, loomshed.NamePRReview)
+			}
+		})
+	}
+}
+
 // TestRecipe_WebsterReroutesToPlanReview pins the edge a Webster plan conflict travels.
 // The Webster row reroutes to Plan-Burler-Review.
 // Its fasit instructions name the conflict record by the path that websterengine declares.

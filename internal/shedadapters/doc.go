@@ -290,8 +290,10 @@
 //     Re-entry over a settled verdict depends on the records.
 //     A live settle record over an unchanged subject re-settles with no spawn.
 //     The re-settle re-runs the carry-over (except for a round-0 record), Approve and Commit, and keeps the settle time.
-//     One exception: BouncerConfig.ReviewInput may report an input written after the settle time.
-//     Then an amendment generation over the input starts instead.
+//     One exception: BouncerConfig.ReviewInputs may report inputs written after the settle time.
+//     Then a new generation over them starts instead.
+//     It is a full generation when any of them is marked Full, whatever FullGeneration says;
+//     otherwise it is an amendment, and a segment with FullGeneration re-settles.
 //     A live record over a changed subject starts a new generation.
 //     So does a generation record whose judge subject differs from the live one.
 //     A generation record whose judge subject equals the live one settles the verdict as a harvest.
@@ -299,11 +301,15 @@
 //     A record that is not live settles on the round-by-round path and never clears.
 //     A new generation archives the run directory with the records travelling along.
 //     It writes the generation record with the next number and then seeds.
-//     A segment without BouncerConfig.FullGeneration starts an amendment under BouncerConfig.AmendAllowance.
+//     A segment without BouncerConfig.FullGeneration starts an amendment under BouncerConfig.AmendAllowance,
+//     unless a kept review input is marked Full.
 //     The generation record carries the Amendment mark.
 //     It carries the base: the settle record's, or the judge base when the judge subject differs from the live one.
-//     It carries the review input's path.
-//     The input counts when BouncerConfig.ReviewInput reports it written after the settle or judge time.
+//     It carries the path of each review input kept, a full generation's record included.
+//     An input counts when BouncerConfig.ReviewInputs reports it written after the settle or judge time.
+//     A record written with a single review_input path reads as that one input.
+//     ReviewInputNote renders from the record of a full generation the note that fills the rubric's optional
+//     `review_input` marker, naming each input the generation reads besides the diff.
 //     AmendmentNote renders from the record the note that fills the rubric's optional `amendment` marker.
 //     The note scopes the seed, the reviewers and the judge to the change:
 //     for a document it is the artifacts' change since the base commit;
@@ -311,7 +317,8 @@
 //     An amendment spends the allowance, clamped to the Bounces seam's budget.
 //     Its hard cap is the allowance plus one, clamped to HardCap.
 //     An allowance of 0 settles it without a review.
-//     A full generation carries the number alone and keeps the perch's own budget and hard cap.
+//     A full generation carries the number and its inputs' paths, no Amendment mark and no base.
+//     It keeps the perch's own budget and hard cap.
 //     The generation's seed Stuck is marked GenerationStart, which restarts the row's bounce count.
 //     A seed that failed after the archive is repeated by the next Call's seed.
 //     The exemption covers only the Bouncer's Stuck.

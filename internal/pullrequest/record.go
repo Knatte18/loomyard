@@ -43,6 +43,16 @@ type Record struct {
 	ReviewEnded bool `json:"closed_for_continue,omitempty"`
 	// ParentReviewAsked records that the PR-Review row asked the parent orch to review this pull request.
 	ParentReviewAsked bool `json:"parent_review_asked,omitempty"`
+	// SendBack is the send-back mark: the absolute path of the findings file the verb stored.
+	SendBack string `json:"send_back,omitempty"`
+	// FixHereCount is the number of findings PR-Review fixed in place since the last send-back.
+	FixHereCount int `json:"fix_here_count,omitempty"`
+	// SendBacks is the run's send-backs so far, which numbers the next findings file; no clear resets it.
+	SendBacks int `json:"send_backs,omitempty"`
+	// CountedSets holds the sha256 of each findings file FixHereCount already counts,
+	// so a repeated call over one file counts it once.
+	// It is cleared with FixHereCount.
+	CountedSets []string `json:"counted_sets,omitempty"`
 }
 
 // ErrNoRecord is returned when the record's file does not exist.

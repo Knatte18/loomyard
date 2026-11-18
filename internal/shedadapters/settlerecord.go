@@ -112,16 +112,27 @@ type settleRecord struct {
 // generationRecord is the record of a run directory's review generation, kept as generation-record.json.
 // Number is the generation; Amendment says the generation reviews only a change under the amendment allowance;
 // Base is its amendment base.
-// ReviewInput is the path of the review input a re-entry is told, which the amendment reviews besides the change.
+// ReviewInputs holds the path of each review input the generation was opened over, which it reads besides the change.
+// ReviewInput is the one path an earlier record held; it is only read, as a single entry of ReviewInputs.
 // JudgeSubject, JudgeBase and JudgeAt (RFC 3339) are the subject, base and time the latest judge spawn recorded.
 type generationRecord struct {
-	Number       int     `json:"number"`
-	Amendment    bool    `json:"amendment,omitempty"`
-	Base         string  `json:"base,omitempty"`
-	ReviewInput  string  `json:"review_input,omitempty"`
-	JudgeSubject Subject `json:"judge_subject"`
-	JudgeBase    string  `json:"judge_base,omitempty"`
-	JudgeAt      string  `json:"judge_at,omitempty"`
+	Number       int      `json:"number"`
+	Amendment    bool     `json:"amendment,omitempty"`
+	Base         string   `json:"base,omitempty"`
+	ReviewInput  string   `json:"review_input,omitempty"`
+	ReviewInputs []string `json:"review_inputs,omitempty"`
+	JudgeSubject Subject  `json:"judge_subject"`
+	JudgeBase    string   `json:"judge_base,omitempty"`
+	JudgeAt      string   `json:"judge_at,omitempty"`
+}
+
+// inputPaths returns the review input paths the record names.
+// A record written with only ReviewInput names that one path.
+func (g generationRecord) inputPaths() []string {
+	if len(g.ReviewInputs) == 0 && g.ReviewInput != "" {
+		return []string{g.ReviewInput}
+	}
+	return g.ReviewInputs
 }
 
 // readRecord decodes the JSON record at path, tolerating keys the type does not know.

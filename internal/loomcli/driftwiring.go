@@ -94,7 +94,7 @@ func driftJudgeSessionOpen(location *lymcwd.Location) func() (bool, error) {
 
 // driftDeps builds the seams the Drift rows read over location's worktree.
 // statusPath and statusLockPath locate the run status.
-// The seat runner, clock and gate findings file are left unset.
+// The seat runner, clock, gate findings file and review base are left unset.
 // The registry entries fill them from the recipe's environment.
 func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tables driftTables) driftengine.Deps {
 	paths := driftengine.NewPaths(location.AnchorPath())
@@ -181,6 +181,20 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 				return nil, err
 			}
 			return fabric.CommitLog(base, "HEAD")
+		},
+		ChangedFiles: func(base string) ([]fabricengine.FileDiff, error) {
+			fabric, err := fabricengine.Open(location)
+			if err != nil {
+				return nil, err
+			}
+			return fabric.CommittedFileDiffs(base)
+		},
+		CommitMessages: func(base string) ([]string, error) {
+			fabric, err := fabricengine.Open(location)
+			if err != nil {
+				return nil, err
+			}
+			return fabric.CommitMessages(base, "HEAD")
 		},
 		ExpectTable: func(listing string) (seatengine.Table, error) {
 			cfg, err := config()

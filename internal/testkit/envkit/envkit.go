@@ -135,6 +135,7 @@ var nilLegal = map[string]bool{
 	"Setting":                          true,
 	"Command.Setting":                  true,
 	"Command.ExecutableSetting":        true,
+	"Drift.ReviewBase":                 true,
 	"Drift.Seats":                      true,
 	"Drift.Now":                        true,
 	"DocumentSubject":                  true,
@@ -142,7 +143,7 @@ var nilLegal = map[string]bool{
 	"CodeDiff":                         true,
 	"MergeInOnly":                      true,
 	"RecordHead":                       true,
-	"ReviewInput":                      true,
+	"ReviewInputs":                     true,
 }
 
 // noopSamplerSessions is a loomshed.SamplerSessions that starts and stops nothing.
@@ -240,6 +241,7 @@ func LandingDeps(dir string) landingshed.Deps {
 			RecordPath:     filepath.Join(dir, "landing-scratch", "pull-request.json"),
 			RecordLockPath: filepath.Join(dir, "landing-scratch", "pull-request.lock"),
 			CommitRecord:   func() error { return nil },
+			ShedStatus:     func() (shedengine.Status, error) { return shedengine.Status{}, nil },
 			ParentMode:     func() (string, string, error) { return "off", "fixture-parent", nil },
 			EntryField:     func() (string, error) { return "", nil },
 			Origin:         func() (landingshed.Origin, error) { return landingshed.Origin{}, nil },
@@ -552,7 +554,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		CodeDiff:           func() (string, error) { return "", nil },
 		MergeInOnly:        func(string) (bool, error) { return false, nil },
 		RecordHead:         func() (string, error) { return "record-head", nil },
-		ReviewInput:        func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+		ReviewInputs:       func() ([]shedadapters.ReviewInput, error) { return nil, nil },
 		ReviewBase:         func() (string, error) { return "review-base", nil },
 		ReviewTreeID:       func() (string, error) { return "review-tree", nil },
 		ReviewTreeChanges:  func(string, string) ([]string, error) { return nil, nil },
@@ -723,6 +725,10 @@ func driftDeps(root string) driftengine.Deps {
 		},
 		FileAt:       func(string, string) ([]byte, bool, error) { return nil, false, nil },
 		CommitsSince: func(string) ([]string, error) { return nil, nil },
+		ChangedFiles: func(string) ([]fabricengine.FileDiff, error) { return nil, nil },
+		CommitMessages: func(string) ([]string, error) {
+			return nil, nil
+		},
 		ExpectTable:  func(string) (seatengine.Table, error) { return table() },
 		StartCapture: func() error { return nil },
 		RunCapture: func(context.Context) (driftengine.CaptureRecord, error) {

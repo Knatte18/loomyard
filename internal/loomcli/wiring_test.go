@@ -1011,9 +1011,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if !reflect.DeepEqual(gotSegments, wantSegments) {
 		t.Errorf("Segments = %+v; want %+v", gotSegments, wantSegments)
 	}
-	// envkit.NilSeams skips ReviewInput through nilLegal, so a direct check pins that wire tells it.
-	if c.env.ReviewInput == nil {
-		t.Error("c.env.ReviewInput = nil; want the merge fixer report reader")
+	// envkit.NilSeams skips ReviewInputs through nilLegal, so a direct check pins that wire tells it.
+	if c.env.ReviewInputs == nil {
+		t.Error("c.env.ReviewInputs = nil; want the review input reader")
 	}
 
 	// Per-round fan lists reach each segment's Bouncer and review row, and the fixer fan lists the review rows alone.
@@ -1142,6 +1142,32 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		if got := roled.env.Segments[segment].Assist; got.Timeout != want || got.SkipReason != "" {
 			t.Errorf("Segments[%s].Assist timeout %v skip reason %q; want %v and none", segment, got.Timeout, got.SkipReason, want)
 		}
+	}
+
+	// The drift rows list the range from the review base the Code-Review rubric reads.
+	// A standalone run records no parent branch, so both are nil; a pair run's origin record tells both.
+	if c.env.ReviewBase != nil || c.env.Drift.ReviewBase != nil {
+		t.Errorf("a standalone run: Env.ReviewBase nil = %v, Drift.ReviewBase nil = %v; want both nil", c.env.ReviewBase == nil, c.env.Drift.ReviewBase == nil)
+	}
+	pairLoc := hubLocation(t, "pair", ".")
+	recordPath := fabricengine.OriginRecordPath(pairLoc)
+	if err := os.MkdirAll(filepath.Dir(recordPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(recordPath), err)
+	}
+	if err := os.WriteFile(recordPath, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", recordPath, err)
+	}
+	paired := &loomCLI{runID: shedrun.SelfRunID}
+	if err := paired.wire(pairLoc, pairLoc.AnchorPath()); err != nil {
+		t.Fatalf("wire() over an origin record = %v; want nil", err)
+	}
+	if paired.env.ReviewBase == nil || paired.env.Drift.ReviewBase == nil {
+		t.Fatalf("a pair run: Env.ReviewBase nil = %v, Drift.ReviewBase nil = %v; want both set", paired.env.ReviewBase == nil, paired.env.Drift.ReviewBase == nil)
+	}
+	wantBase, wantErr := paired.env.ReviewBase()
+	gotBase, gotErr := paired.env.Drift.ReviewBase()
+	if gotBase != wantBase || fmt.Sprint(gotErr) != fmt.Sprint(wantErr) {
+		t.Errorf("Drift.ReviewBase() = %q, %v; want the answer of Env.ReviewBase(), %q, %v", gotBase, gotErr, wantBase, wantErr)
 	}
 }
 

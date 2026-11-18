@@ -32,6 +32,13 @@ type Deps struct {
 	Head        func() (string, error)
 	BranchPoint func() (string, error)
 	DirtyPaths  func() ([]string, error)
+	// ReviewBase reads the review base the task's review range starts from: the merge base with the last merged parent tip.
+	// Nil lists no file, since a standalone run records no parent branch and has no review range.
+	ReviewBase func() (string, error)
+	// ChangedFiles lists the files that exist at base and that the commits from base to HEAD change, each with its diff.
+	ChangedFiles func(base string) ([]fabricengine.FileDiff, error)
+	// CommitMessages lists the whole message of every commit from base to HEAD.
+	CommitMessages func(base string) ([]string, error)
 	// Commit commits the told anchor-relative paths under the durable drift directory with the run's records.
 	Commit func(relPaths []string) error
 	// CommitWithTrailers commits the told anchor-relative paths as one records commit.

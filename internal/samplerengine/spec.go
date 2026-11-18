@@ -99,7 +99,7 @@ func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttlee
 // The implementer directive renders that overview from WorktreeRoot, since the agent writes and commits code.
 // It returns an error when a stencil or directive cannot be rendered.
 func RenderSessionPrompt(in SessionInputs, engine string) (string, error) {
-	template, err := stencilstore.Read(in.StencilsDir, stencilName)
+	template, err := stencilstore.ReadForEngine(in.StencilsDir, engine, stencilName)
 	if err != nil {
 		return "", err
 	}

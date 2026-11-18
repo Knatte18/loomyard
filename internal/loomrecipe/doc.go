@@ -22,7 +22,10 @@
 // Drift-Await sits between the Plan-Review ring and Drift-Expect, and Drift-Expect sits before Webster.
 // Drift-Expect has an agent write the expectation of the task's changes against the counted capture;
 // its Stuck halts the run.
-// PR-Review's Stuck is always a Halt, so it carries no on_stuck, and Finalize declares no reroute.
+// PR-Review carries no on_stuck.
+// Its Stuck halts the run except a marked send-back, which only `lym loom pr-findings` writes.
+// That send-back reroutes to Code-Bouncer.
+// Finalize declares no reroute.
 // The darn recipe has no Parent-Align and reads:
 // `Preflight → Record-Write → Drift-Baseline → Drift-Await → Drift-Expect → Darn-Write → Drift-Verify → Code-Review → Drift-Recheck → Describe → PR-Review → Finalize → Friction-Reflect`.
 // Every Drift row carries the entry gate `drift.enabled`;

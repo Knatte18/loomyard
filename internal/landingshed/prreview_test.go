@@ -141,9 +141,21 @@ func TestPRReview_Call(t *testing.T) {
 		taskHead        = "head-new"
 		recordedGated   = "head-old"
 		recordedURLSeen = "https://github.com/acme/widgets/pull/7"
+		sendBackFile    = "/run/pr-findings-1.md"
 	)
 	// mergedAtHead ends the wait of a row whose task head is taskHead: the pull request is merged at that head.
 	mergedAtHead := scriptedCall{status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: taskHead}}
+	// marked returns a record carrying the send-back mark, a fixed-in-place count and a recorded session.
+	marked := func() *pullrequest.Record {
+		return &pullrequest.Record{
+			Number: 7, URL: recordedURLSeen, GatedHead: taskHead, SendBack: sendBackFile, SendBacks: 1,
+			FixHereCount: 2, CountedSets: []string{"set"}, ParentReviewAsked: true,
+			StrandGUID: "g-old", StrandName: "old-strand", SessionID: "sess-old", Engine: "claude",
+		}
+	}
+	ownReroute := func(file string) shedengine.HistoryEntry {
+		return shedengine.HistoryEntry{Producer: "PR-Review", Outcome: shedengine.OutcomeReroute, Output: file}
+	}
 
 	tests := []struct {
 		name       string
@@ -180,6 +192,12 @@ func TestPRReview_Call(t *testing.T) {
 		// wantCommits is how many times the row commits the record.
 		// Starting a PR-Review session writes the session's identity into the record, which commits it once more.
 		wantCommits int
+		// history is the run's shed history the row reads to tell whether its reroute persisted.
+		history []shedengine.HistoryEntry
+		// wantReroute is the output of the reroute the verdict asks for, empty when it asks for none.
+		wantReroute string
+		// check runs after the call, over the fixture.
+		check func(t *testing.T, fx *prReviewFixture)
 	}{
 		{
 			name: "OffWithNoFieldReadsTheParentRulesAndIsDone", parentMode: "off", origin: githubOrigin,
@@ -406,12 +424,74 @@ func TestPRReview_Call(t *testing.T) {
 			wantErr:   true, wantErrText: "commit the pull request record", wantCommits: 1,
 			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: " + localNoReason},
 		},
+		{
+			name: "NewestEntryTheMarkedFilesRerouteStartsWithNoMarkNoCountAndNoSessionId", parentMode: "on", origin: githubOrigin, wantCommits: 3,
+			record:      marked(),
+			history:     []shedengine.HistoryEntry{ownReroute(sendBackFile), {Producer: "Code-Bouncer", Outcome: shedengine.Done}},
+			scripts:     map[string][]scriptedCall{"Status": {open, mergedAtHead}},
+			wantOutcome: shedengine.Done, wantPushes: 1,
+			wantCalls:  []string{"Status 7", wantEditSeven, "Status 7"},
+			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: taskHead, SendBacks: 1},
+			check: func(t *testing.T, fx *prReviewFixture) {
+				starts := sessionsOf(fx.deps).starts
+				if len(starts) != 1 {
+					t.Fatalf("session starts = %d; want one fresh session", len(starts))
+				}
+				if starts[0].ResumeSessionID != "" {
+					t.Errorf("start ResumeSessionID = %q; want a fresh session, not the recorded one", starts[0].ResumeSessionID)
+				}
+			},
+		},
+		{
+			name: "AReStepAfterTheRowsOwnStuckKeepsTheCountAndReroutesWithTheFileAsOutput", parentMode: "on", origin: githubOrigin,
+			record:      marked(),
+			history:     []shedengine.HistoryEntry{{Producer: "PR-Review", Outcome: shedengine.Stuck}},
+			wantOutcome: shedengine.Stuck, wantReroute: sendBackFile, wantReason: []string{"findings sent back to Code-Review", sendBackFile},
+			wantRecord: marked(),
+		},
+		{
+			name: "AReStepWithNoMarkAndAFixedInPlaceCountKeepsTheCount", parentMode: "on", origin: githubOrigin, wantCommits: 2,
+			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: taskHead, FixHereCount: 2},
+			scripts:     map[string][]scriptedCall{"Status": {open, mergedAtHead}},
+			wantOutcome: shedengine.Done, wantPushes: 1,
+			wantCalls:  []string{"Status 7", wantEditSeven, "Status 7"},
+			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: taskHead, FixHereCount: 2},
+		},
+		{
+			name: "AMarkWithNoHistoryEntryOfTheRowsOwnKeepsTheMarkAndTheCountAndReroutes", parentMode: "on", origin: githubOrigin,
+			record:      marked(),
+			history:     []shedengine.HistoryEntry{{Producer: "Code-Bouncer", Outcome: shedengine.Done}},
+			wantOutcome: shedengine.Stuck, wantReroute: sendBackFile,
+			wantRecord: marked(),
+		},
+		{
+			name: "NewestEntryARerouteOfAnotherFileKeepsTheMarkAndTheCountAndReroutes", parentMode: "on", origin: githubOrigin,
+			record:      marked(),
+			history:     []shedengine.HistoryEntry{ownReroute("/run/pr-findings-0.md")},
+			wantOutcome: shedengine.Stuck, wantReroute: sendBackFile,
+			wantRecord: marked(),
+		},
+		{
+			name: "NewestEntryARerouteCappedStuckKeepsTheMarkAndTheCountAndReroutes", parentMode: "on", origin: githubOrigin,
+			record:      marked(),
+			history:     []shedengine.HistoryEntry{{Producer: "PR-Review", Outcome: shedengine.Stuck, Output: sendBackFile, RerouteCapped: true, BudgetExempt: true}},
+			wantOutcome: shedengine.Stuck, wantReroute: sendBackFile,
+			wantRecord: marked(),
+		},
+		{
+			name: "ADirtyTreeHaltsNamingThePathsAndKeepsTheMark", parentMode: "on", origin: githubOrigin,
+			record: marked(), dirty: []string{"wip.go"},
+			wantOutcome: shedengine.Stuck, wantHalt: true,
+			wantReason: []string{"findings sent back to Code-Review, but the task worktree has uncommitted changes: wip.go", "way forward: commit or discard them in the task worktree, then run lym loom resume"},
+			wantRecord: marked(),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newPRReviewFixture(t, tt.parentMode, tt.parentErr, tt.field, tt.origin, tt.record, tt.scripts, tt.pushErr)
 			fx.dirty = tt.dirty
+			fx.status.History = tt.history
 			fx.commits.err = tt.commitErr
 			fx.deps.PullRequest.TaskHasCommits = func() (bool, error) { return !tt.taskEmpty, tt.taskErr }
 			if tt.verdict != "" {
@@ -427,6 +507,9 @@ func TestPRReview_Call(t *testing.T) {
 				t.Errorf("Call() error = %q; want it to hold %q", err, tt.wantErrText)
 			}
 			if err == nil {
+				if pointer.Reroute != (tt.wantReroute != "") || pointer.Path != tt.wantReroute {
+					t.Errorf("Call() reroute = %v with output %q; want output %q", pointer.Reroute, pointer.Path, tt.wantReroute)
+				}
 				if outcome != tt.wantOutcome || pointer.Halt != tt.wantHalt {
 					t.Errorf("Call() = %q, halt %v; want %q, halt %v (reason %q)", outcome, pointer.Halt, tt.wantOutcome, tt.wantHalt, pointer.Reason)
 				}
@@ -449,6 +532,9 @@ func TestPRReview_Call(t *testing.T) {
 			}
 			if fx.commits.calls != tt.wantCommits {
 				t.Errorf("Call() committed the record %d times; want %d", fx.commits.calls, tt.wantCommits)
+			}
+			if tt.check != nil {
+				tt.check(t, fx)
 			}
 			got, found, rerr := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath)
 			if rerr != nil {
@@ -492,6 +578,7 @@ func TestPRReview_Call(t *testing.T) {
 			"PullRequest.SessionLive":     func(d *Deps) { d.PullRequest.SessionLive = nil },
 			"PullRequest.RegisterSession": func(d *Deps) { d.PullRequest.RegisterSession = nil },
 			"PullRequest.CommitRecord":    func(d *Deps) { d.PullRequest.CommitRecord = nil },
+			"PullRequest.ShedStatus":      func(d *Deps) { d.PullRequest.ShedStatus = nil },
 			"TaskHead":                    func(d *Deps) { d.TaskHead = nil },
 		}
 		for field, unset := range unsetters {
@@ -608,6 +695,8 @@ type prReviewFixture struct {
 	commits *commitRecorder
 	// dirty is what the task worktree's uncommitted-paths seam reports.
 	dirty []string
+	// status is the run's shed status the row reads through the ShedStatus seam, with an empty history by default.
+	status shedengine.Status
 	// asks are the lines the parent-ask seam was handed.
 	asks []string
 	// askErr is what the parent-ask seam fails with, and askUnrecorded makes it report no orch recorded.
@@ -687,6 +776,7 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 			},
 			RecordChanges:      func() (<-chan struct{}, func()) { return nil, func() {} },
 			CommitRecord:       func() error { return nil },
+			ShedStatus:         func() (shedengine.Status, error) { return shedengine.Status{}, nil },
 			ParentReviewWanted: func() (bool, error) { return false, nil },
 			AskParent:          func(string) (bool, error) { return true, nil },
 		},
@@ -705,6 +795,7 @@ func newPRReviewFixture(t *testing.T, parentMode string, parentErr error, field 
 	pr.EntryField = func() (string, error) { return field, nil }
 	pr.Origin = func() (Origin, error) { return origin, nil }
 	pr.DirtyPaths = func() ([]string, error) { return fx.dirty, nil }
+	pr.ShedStatus = func() (shedengine.Status, error) { return fx.status, nil }
 	pr.PushTask = func() error {
 		fx.pushes++
 		return pushErr

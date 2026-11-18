@@ -15,6 +15,7 @@ const verdictHeading = "## Regression check"
 // so a hand edit of a record never reaches the landing, and it runs no capture.
 // The section names the scope, the commit the counted baseline was captured at, and the last check's counts.
 // It names the expectation entries no cell used and the capture files and keys marked as metadata.
+// It also lists each loosened check of the last check with its ruling and cause.
 // It also names the open ranges the judge looked into and the parent's amendments.
 // It returns "" when no scope record exists,
 // so a task no Drift row recorded a scope for carries no section, and it creates no directory.
@@ -58,6 +59,7 @@ func renderVerdict(rec Records, baseHead string) string {
 		}
 		lines = append(lines, "- Diff: "+diffText(mode))
 		lines = append(lines, checkLines(scope.LastCheck)...)
+		lines = append(lines, loosenedLines(scope.LastCheck.Loosened)...)
 	default:
 		lines = append(lines, oldCheckLines(scope)...)
 	}

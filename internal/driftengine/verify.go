@@ -1,5 +1,6 @@
 // verify.go implements the Drift-Verify producer, which checks the captured code changes against the sealed expectation.
 // One judge rules on the expected changes that no stored ruling covers.
+// It also rules on each loosened check of the review range's files that no stored ruling covers.
 
 package driftengine
 
@@ -67,6 +68,9 @@ func NewDriftVerify(name string, row Row, judgement shuttleengine.GateEntry, dep
 // With no change left to judge the check passes; otherwise one judge rules on the rest, and its rulings are stored.
 // Under a recorded diff of command the declared compare replaces the capture and the diff.
 // An exit 0 is Done, and a failing compare is ruled on case by case by one judge.
+// Where the review base is told, each file of the review range that exists at the base is also listed,
+// and the judge rules on the loosened checks of every file with no stored ruling under its key.
+// A loosened check with no measured cause is a Stuck for the parent.
 // A stored ruling of the same code head stands until an amendment follows it.
 // Every Stuck for the parent opens with shedadapters.DecisionHaltPrefix.
 // A Stuck that names `lym drift defer` carries DeferHaltPrefix right after it.
@@ -86,6 +90,8 @@ func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		seam{"Checkouts", d.Checkouts != nil},
 		seam{"RecordsChangedSince", d.RecordsChangedSince != nil},
 		seam{"EndRoles", d.EndRoles != nil},
+		seam{"ChangedFiles", d.ChangedFiles != nil},
+		seam{"CommitMessages", d.CommitMessages != nil},
 	)
 	if err == nil && p.judgement.Gate == nil {
 		err = fmt.Errorf("drift: %s is wired without a judgement gate entry", p.name)
@@ -243,7 +249,8 @@ func (p *DriftVerify) recordUnsealed(rec Records) error {
 
 // checkAndJudge runs the drift check and maps its report.
 // A fault or an unexpected change is a Stuck.
-// Stored rulings are reused, and the changes left over go to the judge.
+// Stored rulings are reused, and the changes and files left over go to the judge.
+// A stored ruling that a loosened check has no measured cause is a Stuck, with no judge.
 func (p *DriftVerify) checkAndJudge(ctx context.Context, rec Records, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	report, err := Check(ctx, p.deps)
 	if err != nil {
@@ -286,14 +293,30 @@ func (p *DriftVerify) checkAndJudge(ctx context.Context, rec Records, head strin
 		}
 		return haltForParent(p.noMatchReason("a change the judge already ruled does not match its expectation", ruledNoMatch))
 	}
-	if len(toJudge) == 0 {
-		err := p.recordCheck(p.checkResult(report, head, true, 0, reused), closeJudgeSession)
-		if err != nil {
-			return "", shedengine.OutputPointer{}, err
-		}
-		return doneBecause("the check passed: every change is expected and ruled to match")
+	listed, err := p.listFiles(rec)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
 	}
-	return p.judge(ctx, rec, report, toJudge, reused, head)
+	if len(toJudge) == 0 && len(listed.unruled) == 0 {
+		return p.passWithoutJudge(p.checkResult(report, head, true, 0, reused), listed, "the check passed: every change is expected and ruled to match")
+	}
+	return p.judge(ctx, rec, report, toJudge, listed, reused, head)
+}
+
+// passWithoutJudge records result with the loosened checks the stored file rulings hold, when no judge is needed.
+// A stored check with no measured cause turns the pass into a Stuck; otherwise the pass is Done for why.
+func (p *DriftVerify) passWithoutJudge(result CheckResult, listed listedFiles, why string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	checks := listed.allChecks(nil)
+	uncaused := uncausedChecks(checks)
+	result.Loosened = checks
+	result.Passed = result.Passed && len(uncaused) == 0
+	if err := p.recordCheck(result, closeJudgeSession); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if len(uncaused) > 0 {
+		return haltForParent(uncausedReason(uncaused))
+	}
+	return doneBecause(why)
 }
 
 // faultReason returns the Stuck reason for a fault in the report, or empty when the report holds none.
@@ -395,12 +418,13 @@ func (p *DriftVerify) now() time.Time {
 	return p.deps.Now()
 }
 
-// judge spawns the judge on cells, which no stored ruling covers, and stores its rulings.
+// judge spawns the judge on cells that no stored ruling covers and on the files listed leaves unruled.
+// It stores the judge's rulings.
 // A fresh session removes a stale judgement.yaml and writes the request under a new spawn id.
 // It then takes the snapshot of both checkouts and opens the session mark.
 // A session an earlier entry left open keeps its spawn id and snapshot.
 // It takes a new snapshot only when the records say the old one was lost.
-func (p *DriftVerify) judge(ctx context.Context, rec Records, report CheckReport, cells []ClassifiedCell, reused int, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *DriftVerify) judge(ctx context.Context, rec Records, report CheckReport, cells []ClassifiedCell, listed listedFiles, reused int, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	mark := rec.Scope.JudgeSession
 	spawnID := mark.SpawnID
 	if !mark.Open {
@@ -409,7 +433,7 @@ func (p *DriftVerify) judge(ctx context.Context, rec Records, report CheckReport
 			return "", shedengine.OutputPointer{}, err
 		}
 	}
-	request, err := p.judgeRequest(spawnID, rec, report, cells)
+	request, err := p.judgeRequest(spawnID, rec, report, cells, listed)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
@@ -427,7 +451,7 @@ func (p *DriftVerify) judge(ctx context.Context, rec Records, report CheckReport
 	if session == nil {
 		return outcome, pointer, err
 	}
-	return p.storeRulings(report, cells, request, session, reused, head)
+	return p.storeRulings(report, cells, request, session, listed, reused, head)
 }
 
 // newSpawnID returns a fresh id for one judge spawn.
@@ -448,7 +472,8 @@ func judgeCellID(index int) string {
 // Each cell carries its exact old and new value and the covering entry's why.
 // The request also lists the open ranges that cover a cell, and the sealed expectation and the amendments as text.
 // An added case names its file in the current capture, and a removed case names its file in the baseline.
-func (p *DriftVerify) judgeRequest(spawnID string, rec Records, report CheckReport, cells []ClassifiedCell) (JudgeRequest, error) {
+// The request also lists the unruled files of the review range and the range's commit messages.
+func (p *DriftVerify) judgeRequest(spawnID string, rec Records, report CheckReport, cells []ClassifiedCell, listed listedFiles) (JudgeRequest, error) {
 	d := p.deps
 	baseHead, err := baselineHead(d)
 	if err != nil {
@@ -459,8 +484,9 @@ func (p *DriftVerify) judgeRequest(spawnID string, rec Records, report CheckRepo
 		return JudgeRequest{}, err
 	}
 	request := JudgeRequest{SpawnID: spawnID, Mode: DiffLines, Expectation: string(seal.Sealed), Amendments: amendmentsText(rec.Scope.Amendments)}
+	request.Files, request.CommitMessages = listed.judgeFiles(), listed.messages
 
-	listed := map[[2]string]bool{}
+	listedRanges := map[[2]string]bool{}
 	for i, classified := range cells {
 		cell := classified.Cell
 		judged := JudgeCell{
@@ -485,8 +511,8 @@ func (p *DriftVerify) judgeRequest(spawnID string, rec Records, report CheckRepo
 			continue
 		}
 		entry := coveringLine(report.Expectation, cell)
-		if key := [2]string{cell.Case, entry.Range}; !listed[key] {
-			listed[key] = true
+		if key := [2]string{cell.Case, entry.Range}; !listedRanges[key] {
+			listedRanges[key] = true
 			request.OpenRanges = append(request.OpenRanges, JudgeOpenRange{Case: cell.Case, Range: entry.Range, Why: entry.Why})
 		}
 	}
@@ -733,10 +759,15 @@ func (p *DriftVerify) runAgent(ctx context.Context, request JudgeRequest) (shede
 // storeRulings stores the judge's rulings in judged.json as exact tuples:
 // each listed open range that the request covers is stored with the request's why and the judge's sentence.
 // It closes the session mark and records the check in one write; then it removes judgement.yaml.
-// Any ruling other than matches is a Stuck naming the cells and their reasons;
-// all matches records the pass and is Done.
-func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, request JudgeRequest, session *judgeSession, reused int, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+// It also stores each file ruling as a JudgedFile and records every loosened check on the check.
+// Any ruling other than matches is a Stuck naming the cells and their reasons.
+// So is a loosened check with no measured cause, whose reason follows the cells'.
+// All matches with every loosened check caused records the pass and is Done.
+func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, request JudgeRequest, session *judgeSession, listed listedFiles, reused int, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	at := stamp(p.now())
+	fileRulings, freshChecks := listed.newRulings(session.Judgement, session.Strand, at)
+	checks := listed.allChecks(freshChecks)
+	uncaused := uncausedChecks(checks)
 	byID := make(map[string]ClassifiedCell, len(cells))
 	for i, cell := range cells {
 		byID[judgeCellID(i)] = cell
@@ -778,7 +809,8 @@ func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, r
 		ranges = append(ranges, JudgedRange{Case: note.Case, Range: note.Range, Why: why, Checked: note.Checked, Strand: session.Strand, At: at})
 	}
 
-	result := p.checkResult(report, head, len(notMatching) == 0, matched, reused)
+	result := p.checkResult(report, head, len(notMatching) == 0 && len(uncaused) == 0, matched, reused)
+	result.Loosened = checks
 	err := p.recordCheck(result, func(scope *ScopeRecord, judged *JudgedRecord) {
 		closeJudgeSession(scope, judged)
 		for _, tuple := range tuples {
@@ -791,6 +823,7 @@ func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, r
 				return held.Case == note.Case && held.Range == note.Range
 			})
 		}
+		storeFileRulings(judged, fileRulings)
 	})
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -798,8 +831,12 @@ func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, r
 	if err := p.removeJudgement(); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
+	noMatch := ""
 	if len(notMatching) > 0 {
-		return haltForParent(p.noMatchReason("the judge ruled that a change does not match its expectation", notMatching))
+		noMatch = p.noMatchReason("the judge ruled that a change does not match its expectation", notMatching)
+	}
+	if reason := haltReasons(noMatch, uncaused); reason != "" {
+		return haltForParent(reason)
 	}
 	return doneBecause("the check passed: every change is expected and ruled to match")
 }
@@ -809,19 +846,22 @@ func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, r
 // a failing compare at a code head with a stored non-matching case ruling and no amendment since is a Stuck naming them,
 // and no judge runs;
 // otherwise one judge, spawned under a snapshot guard, rules on the cases, and its rulings are stored.
+// The review range's files are listed before the exit is read:
+// an exit 0 with a file no stored ruling covers spawns the judge for the files alone.
 func (p *DriftVerify) passCommand(ctx context.Context, rec Records, report CheckReport) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	head, err := d.Head()
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: read the code HEAD: %w", p.name, err)
 	}
-	if report.Compare.Passed {
-		if err := p.recordCheck(p.commandResult(report, head, true), closeJudgeSession); err != nil {
-			return "", shedengine.OutputPointer{}, err
-		}
-		return doneBecause("the check passed: the compare exited 0")
+	listed, err := p.listFiles(rec)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
 	}
-	if stored := storedCaseRulings(rec, head, report.Metadata); len(stored) > 0 {
+	if report.Compare.Passed && len(listed.unruled) == 0 {
+		return p.passWithoutJudge(p.commandResult(report, head, true), listed, "the check passed: the compare exited 0")
+	}
+	if stored := storedCaseRulings(rec, head, report.Metadata); !report.Compare.Passed && len(stored) > 0 {
 		if err := p.recordCheck(p.commandResult(report, head, false), nil); err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
@@ -843,7 +883,11 @@ func (p *DriftVerify) passCommand(ctx context.Context, rec Records, report Check
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	request := JudgeRequest{SpawnID: spawnID, Mode: DiffCommand, CompareLog: report.Compare.Log, Expectation: string(seal.Sealed), Amendments: amendmentsText(rec.Scope.Amendments)}
+	request := JudgeRequest{SpawnID: spawnID, Mode: DiffCommand, Expectation: string(seal.Sealed), Amendments: amendmentsText(rec.Scope.Amendments)}
+	request.Files, request.CommitMessages = listed.judgeFiles(), listed.messages
+	if !report.Compare.Passed {
+		request.CompareLog = report.Compare.Log
+	}
 
 	if mark.Open {
 		err = p.resumeJudgeSession(rec, request, "")
@@ -857,7 +901,7 @@ func (p *DriftVerify) passCommand(ctx context.Context, rec Records, report Check
 	if session == nil {
 		return outcome, pointer, err
 	}
-	return p.storeCaseRulings(report, session, head)
+	return p.storeCaseRulings(report, session, listed, head)
 }
 
 // commandResult builds the record of a check under diff command over report at head, with the compare's exit and log.
@@ -896,10 +940,15 @@ func storedCaseRulings(rec Records, head string, metadata Volatile) []string {
 // A ruling of matches, and any ruling on a case the report's metadata marks name, is not stored.
 // It drops an earlier stored ruling of the same case at head.
 // Each other ruling is stored as a JudgedCase keyed by head and case.
-// Any ruling other than matches is a Stuck naming the cases and their reasons;
-// all matches records the pass and is Done.
-func (p *DriftVerify) storeCaseRulings(report CheckReport, session *judgeSession, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+// It also stores each file ruling as a JudgedFile and records every loosened check on the check.
+// Any ruling other than matches is a Stuck naming the cases and their reasons.
+// So is a loosened check with no measured cause, whose reason follows the cases'.
+// All matches with every loosened check caused records the pass and is Done.
+func (p *DriftVerify) storeCaseRulings(report CheckReport, session *judgeSession, listed listedFiles, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	at := stamp(p.now())
+	fileRulings, freshChecks := listed.newRulings(session.Judgement, session.Strand, at)
+	checks := listed.allChecks(freshChecks)
+	uncaused := uncausedChecks(checks)
 	var ruled []JudgedCase
 	var matching, notMatching []string
 	for _, ruling := range session.Judgement.Cases {
@@ -911,8 +960,9 @@ func (p *DriftVerify) storeCaseRulings(report CheckReport, session *judgeSession
 		notMatching = append(notMatching, describeCaseRuling(ruling.Case, ruling.Ruling, ruling.Reason))
 	}
 
-	result := p.commandResult(report, head, len(notMatching) == 0)
+	result := p.commandResult(report, head, len(notMatching) == 0 && len(uncaused) == 0)
 	result.Matched = len(matching)
+	result.Loosened = checks
 	err := p.recordCheck(result, func(scope *ScopeRecord, judged *JudgedRecord) {
 		closeJudgeSession(scope, judged)
 		judged.Cases = slices.DeleteFunc(judged.Cases, func(held JudgedCase) bool {
@@ -923,6 +973,7 @@ func (p *DriftVerify) storeCaseRulings(report CheckReport, session *judgeSession
 				return held.CodeHead == stored.CodeHead && held.Case == stored.Case
 			})
 		}
+		storeFileRulings(judged, fileRulings)
 	})
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -930,8 +981,15 @@ func (p *DriftVerify) storeCaseRulings(report CheckReport, session *judgeSession
 	if err := p.removeJudgement(); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
+	noMatch := ""
 	if len(notMatching) > 0 {
-		return haltForParent(p.noMatchReason("the judge ruled that the failing compare does not match its expectation", notMatching))
+		noMatch = p.noMatchReason("the judge ruled that the failing compare does not match its expectation", notMatching)
+	}
+	if reason := haltReasons(noMatch, uncaused); reason != "" {
+		return haltForParent(reason)
+	}
+	if report.Compare.Passed {
+		return doneBecause("the check passed: the compare exited 0 and every loosened check has a measured cause")
 	}
 	return doneBecause("the check passed: the judge ruled every case of the failing compare to match")
 }

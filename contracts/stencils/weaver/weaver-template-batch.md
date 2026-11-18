@@ -70,6 +70,8 @@ For each card above, in the order listed:
 
 A card that departs from its own text because a PATTERN entry forbids the card's way records the departure as a `Pattern-Departure:` trailer in that card's commit.
 
+{{template "loom-fragment-loosened-check"}}
+
 ## Where and how you run commands
 
 Your session's working directory already is the worktree root: run every Bash command from there and give paths in Bash commands worktree-relative.

@@ -370,8 +370,16 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 		RecordPath:     shedrun.PullRequestRecord(l, shedrun.SelfRunID),
 		RecordLockPath: shedrun.PullRequestRecordLock(l, shedrun.SelfRunID),
 		CommitRecord:   pullRequestRecordCommitter(check, l),
-		ParentMode:     parentPullRequestMode(l),
-		Sessions:       runner,
+		ShedStatus: func() (shedengine.Status, error) {
+			status, _, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(l, shedrun.SelfRunID), shedrun.StatusLock(l, shedrun.SelfRunID))
+			// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
+			if errors.Is(err, fs.ErrNotExist) {
+				return shedengine.Status{}, nil
+			}
+			return status, err
+		},
+		ParentMode: parentPullRequestMode(l),
+		Sessions:   runner,
 		EntryField: func() (string, error) {
 			board, err := boardengine.OpenHub(l.HubPath)
 			if err != nil {

@@ -69,6 +69,11 @@ func fixStepMarkerValues() map[string]string {
 	}
 }
 
+// fixStepIncludes returns the fragments the fix step includes by name, keyed by include name.
+func fixStepIncludes() map[string][]byte {
+	return map[string][]byte{"loom-fragment-loosened-check": stencils.LoomFragmentLoosenedCheck}
+}
+
 // instruction1MarkerValues returns a values map with a placeholder for each marker of the explore step.
 // The optional markers pattern_directive, focus_directive, diff_pieces and fork_reading are included too.
 // Tests delete one key at a time to prove the per-marker error of stencil.FillOptional.
@@ -97,6 +102,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	tests := []struct {
 		name            string
 		template        []byte
+		includes        map[string][]byte
 		values          map[string]string
 		optional        []string
 		requiredMarkers []string
@@ -125,6 +131,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 		{
 			name:            "fix step",
 			template:        stencils.BurlerStepFix,
+			includes:        fixStepIncludes(),
 			values:          fixStepMarkerValues(),
 			optional:        []string{"friction_directive", "self_check"},
 			requiredMarkers: []string{"work", "fix_scope_rules", "review_path", "fixer_report_path"},
@@ -146,8 +153,8 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Run("all markers supplied", func(t *testing.T) {
-				if _, err := stencil.FillOptional(tt.template, tt.values, tt.optional); err != nil {
-					t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+				if _, err := stencil.FillWith(tt.template, tt.includes, tt.values, tt.optional); err != nil {
+					t.Fatalf("stencil.FillWith() = %v; want nil", err)
 				}
 			})
 
@@ -161,12 +168,12 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 					}
 					delete(values, marker)
 
-					_, err := stencil.FillOptional(tt.template, values, tt.optional)
+					_, err := stencil.FillWith(tt.template, tt.includes, values, tt.optional)
 					if err == nil {
-						t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
+						t.Fatalf("stencil.FillWith() with %q missing = nil error; want error naming the marker", marker)
 					}
 					if !strings.Contains(err.Error(), marker) {
-						t.Errorf("stencil.FillOptional() error = %q; want it to name marker %q", err.Error(), marker)
+						t.Errorf("stencil.FillWith() error = %q; want it to name marker %q", err.Error(), marker)
 					}
 				})
 			}
@@ -248,9 +255,9 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 		for _, marker := range []string{"friction_directive", "self_check"} {
 			values := fixStepMarkerValues()
 			values[marker] = ""
-			got, err := stencil.FillOptional(stencils.BurlerStepFix, values, []string{"friction_directive", "self_check"})
+			got, err := stencil.FillWith(stencils.BurlerStepFix, fixStepIncludes(), values, []string{"friction_directive", "self_check"})
 			if err != nil {
-				t.Fatalf("stencil.FillOptional() with %s empty = %v; want nil", marker, err)
+				t.Fatalf("stencil.FillWith() with %s empty = %v; want nil", marker, err)
 			}
 			if strings.Contains(string(got), "{{") {
 				t.Errorf("rendered output with %s empty contains leftover {{: %q", marker, got)

@@ -169,6 +169,34 @@ func (f *Fabric) CommitLog(from, to string) ([]string, error) {
 	return lines, nil
 }
 
+// CommitMessages lists the whole message of every commit reachable from to and not from from.
+// The commits come from the pair's code repository, newest first.
+// A message keeps its body and trailer paragraphs.
+// An empty range returns an empty slice, and a ref that does not resolve is an error naming it.
+func (f *Fabric) CommitMessages(from, to string) ([]string, error) {
+	fromSHA, err := f.code.ResolveSHA(from)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: commit messages from %s to %s: %w", from, to, err)
+	}
+	toSHA, err := f.code.ResolveSHA(to)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: commit messages from %s to %s: %w", from, to, err)
+	}
+	shas, err := f.code.CommitsNotIn(toSHA, fromSHA)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: commit messages from %s to %s: %w", from, to, err)
+	}
+	messages := make([]string, 0, len(shas))
+	for _, sha := range shas {
+		detail, err := f.code.CommitDetail(sha)
+		if err != nil {
+			return nil, fmt.Errorf("fabricengine: commit messages from %s to %s: %w", from, to, err)
+		}
+		messages = append(messages, detail.Message)
+	}
+	return messages, nil
+}
+
 // HeadHoldsCommitsNotIn reports whether the pair's code HEAD holds a commit that ref lacks.
 // A ref that does not resolve is an error naming it.
 func (f *Fabric) HeadHoldsCommitsNotIn(ref string) (bool, error) {

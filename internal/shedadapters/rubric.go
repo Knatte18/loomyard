@@ -26,6 +26,8 @@ type RubricNotes struct {
 	GateTiers string
 	// Amendment fills amendment with the note scoping an amendment generation's review to changes since its base.
 	Amendment string
+	// ReviewInput fills review_input with the note naming the inputs a full generation was opened over.
+	ReviewInput string
 	// ReviewBase fills review_base with the commit the Code-Review rubric's review range starts from.
 	ReviewBase string
 	// RedundancyReport returns the note redundancy_report is filled from, the gate's redundancy report as review reads it.
@@ -65,6 +67,7 @@ func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, 
 		"webster_record":       noteOrNone(notes.WebsterRecord),
 		"gate_tiers":           noteOrNone(notes.GateTiers),
 		"amendment":            noteOrNone(notes.Amendment),
+		"review_input":         noteOrNone(notes.ReviewInput),
 		"review_base":          noteOrNone(notes.ReviewBase),
 		redundancyReportMarker: redundancyReport,
 	})

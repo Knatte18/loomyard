@@ -44,6 +44,8 @@ Start any tmux a trial needs outside lym, on a server of its own: `tmux -L <name
 Kill that server before you run `lym loom sampler-done`.
 Commit what the trial settled as an ordinary change.
 
+{{template "loom-fragment-loosened-check"}}
+
 ## The operator's ending
 
 The build ends when the operator says the work is done.

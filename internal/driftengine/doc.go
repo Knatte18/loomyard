@@ -101,6 +101,7 @@
 // the commit the counted baseline was captured at, from the oldest `Drift-Baseline` commit;
 // the diff mode, and under `command` that containment was the judge's;
 // the last check's counts of changed, expected, matching, reused and unexpected cells;
+// each loosened check of the review range with its ruling and cause;
 // each expectation entry that covered no cell;
 // the files and keys marked as metadata, which no check compared;
 // each open range with its `why` and the judge's sentence;
@@ -246,7 +247,8 @@
 // the spawn id and the mode;
 // the cells, with their exact old and new value and covering why;
 // the open ranges covering a judged cell or, under `command`, the compare's log;
-// and the expectation and amendments as text.
+// the expectation and amendments as text;
+// and, under either mode, the files of the review range with no stored ruling and that range's commit messages.
 // TakeJudgeSnapshot records under Deps.JudgeSnapshotDir:
 // both checkouts' HEAD;
 // a content hash of every changed tracked path and every untracked path, with a copy of each untracked file;
@@ -544,8 +546,9 @@
 // # Drift-Verify
 //
 // DriftVerify is the containment check and the judge.
-// It checks the code's captured changes against the sealed expectation,
-// and it has one judge rule on the expected changes no stored ruling covers.
+// It checks the code's captured changes against the sealed expectation.
+// It has one judge rule on the expected changes no stored ruling covers.
+// The judge also rules on each loosened check of the review range's files that no stored ruling covers.
 // It first ends, through Deps.EndRoles, every live strand of the removed `drift-baseline` and `drift-verify` agents,
 // so no pane keeps an old stencil.
 // It then runs these steps in order:
@@ -562,7 +565,30 @@
 // a run past Drift-Expect with neither a seal commit nor an expected.yaml records `unsealed` once;
 // then Check runs, and a seal fault, a failed current capture and any cell the expectation does not cover are a Stuck;
 // each cell whose exact tuple has a stored ruling reuses it;
-// a stored `does not match` is a Stuck, and with no cell left to judge the pass is recorded and Done.
+// a stored `does not match` is a Stuck;
+// with no cell or file left to judge the pass is recorded and Done.
+// The exception is a stored file ruling that holds a loosened check with no measured cause, which is a Stuck.
+//
+// Where Deps.ReviewBase is told, the pass then lists the review range's files.
+// The base is the one the Code-Review rubric's range starts from, so a Parent-Align merge's parent commits lie below it.
+// Deps.ChangedFiles gives each file the range's commits change that exists at the base, with its diff.
+// Deps.CommitMessages gives the whole messages of the range's commits.
+// A standalone run records no parent branch, tells no base and lists no file.
+// A pass that ends before the check lists no file: the resume after fixing such a halt reaches the listing.
+// Under `command` the listing comes before the compare's exit is read.
+// A file's key is the sha256 of its diff, a NUL and the range's `Loosened-Check:` trailer lines.
+// Those lines are the lines of each message's last paragraph that open with the trailer, sorted and without duplicates.
+// A commit that only adds a trailer therefore changes every key.
+// A stored file ruling of the same path and key is reused.
+// The other files go to the judge, even with no changed cell.
+// The judge's rulings on a file are `none` or `loosened`, and each loosened check is `caused` or `uncaused`.
+// They are stored in `judged.json` with their key, and the last check records every loosened check, stored or new.
+// A loosened check with no measured cause is a Stuck.
+// Its way forward is a `Loosened-Check:` trailer on any commit of the range.
+// A revert of the loosening is the other way forward.
+// Either is followed by `lym loom resume`.
+// Bound: a trailer's measured cause is the committer's attestation, which neither the judge nor the code re-measures.
+// The verdict's `Loosened checks` lines carry each check with its ruling and cause.
 //
 // Otherwise one judge is spawned.
 // Drift-Verify removes a stale judgement.yaml and writes the JudgeRequest under a fresh spawn id.

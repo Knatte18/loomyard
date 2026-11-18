@@ -57,6 +57,18 @@
 // A pause that covers the run holds the row in process, before its push and at each wake.
 // The row does no gate, push or GitHub call meanwhile.
 //
+// The agent's `lym loom pr-findings` marks the record when it sends findings back to Code-Review.
+// A call meeting the mark settles it before any session starts or resumes, through PullRequest.ShedStatus.
+// A wake that reads the mark acts on it before any gate.
+// The row stops its live session and reads the tree again.
+// On a clean tree it returns Stuck with Reroute set and the mark's findings file as the output.
+// It clears nothing then, so shed persists the reroute entry with that file.
+// A dirty tree halts the row for the parent, and the resume reroutes once the tree is clean.
+// The row's next call clears the mark, the fixed-in-place count, the parent-review ask and the session.
+// It does so only when its newest own history entry is a reroute whose output is the mark's file.
+// Every other entry keeps them, and the row sends the findings back again.
+// The generic reroute cap bounds the send-backs.
+//
 // An entry that finds its recorded pull request a draft marks it ready for review before it sets the title and body.
 // The pull request thus keeps its link, comments and history.
 //
@@ -81,7 +93,8 @@
 // It also stops the session on every verdict, Stuck and error, and leaves it running when the context is cancelled.
 // The wait's wakes start no session.
 // With PullRequest.ParentReviewWanted reading true, the row asks the parent orch to review the open pull request.
-// It asks through PullRequest.AskParent once it has the session and before it waits, once per pull request record.
+// It asks through PullRequest.AskParent once it has the session and before it waits.
+// It asks once per pull request record, until a send-back clears the ask.
 // The request opens with `[pr-review request]`.
 // It names the slug, the pull request, its branches and the session's strand, which the orch answers;
 // the session's agent fixes the orch's findings.

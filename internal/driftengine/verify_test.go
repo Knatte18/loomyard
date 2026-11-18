@@ -148,6 +148,15 @@ type verifyFixture struct {
 	// checkoutsErr, when set, is what the checkouts read fails with, so taking the judge snapshot fails.
 	checkoutsErr   error
 	recordsChanged []string
+	// reviewBase is what the ReviewBase seam answers; changedFiles and commitMessages are what the range's reads answer.
+	// changedFilesBases and commitMessagesBases hold the base each of those reads was called with.
+	reviewBase          string
+	changedFiles        []fabricengine.FileDiff
+	commitMessages      []string
+	changedFilesBases   []string
+	commitMessagesBases []string
+	// fileRulings maps a listed file's path to the loosened checks the judge rules on it; a file with none is ruled none.
+	fileRulings map[string][]LoosenedRuling
 	// rulings maps a cell's "<case> <key>" to its ruling, which defaults to matching; rangeChecked is the open-range note.
 	rulings      map[string]Ruling
 	rangeChecked string
@@ -173,6 +182,7 @@ func newVerifyFixture(t *testing.T) *verifyFixture {
 		row:             "Drift-Verify",
 		config:          Config{Enabled: true, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}},
 		rangeChecked:    "read what the range covers",
+		reviewBase:      "review-base",
 		compare:         passingCompare,
 		codeCheckout:    fabricengine.CheckoutState{Root: t.TempDir(), Head: "code-1"},
 		recordsCheckout: fabricengine.CheckoutState{Root: t.TempDir(), Head: "records-1"},
@@ -224,6 +234,16 @@ func newVerifyFixture(t *testing.T) *verifyFixture {
 		f.endedRoles = append(f.endedRoles, slices.Clone(roles))
 		return nil
 	}
+	d.BranchPoint = func() (string, error) { return "branch-point", nil }
+	d.ReviewBase = func() (string, error) { return f.reviewBase, nil }
+	d.ChangedFiles = func(base string) ([]fabricengine.FileDiff, error) {
+		f.changedFilesBases = append(f.changedFilesBases, base)
+		return f.changedFiles, nil
+	}
+	d.CommitMessages = func(base string) ([]string, error) {
+		f.commitMessagesBases = append(f.commitMessagesBases, base)
+		return f.commitMessages, nil
+	}
 	f.deps = d
 	return f
 }
@@ -259,6 +279,7 @@ func (f *verifyFixture) judgeArrives() {
 		for _, name := range slices.Sorted(maps.Keys(f.caseRulings)) {
 			fmt.Fprintf(&text, "  - case: %s\n    ruling: %s\n    reason: compared the old and the new value\n", name, f.caseRulings[name])
 		}
+		text.WriteString(f.filesYAML(request))
 		writeTree(f.t, filepath.Dir(f.paths.Judgement), map[string]string{judgementFileName: text.String()})
 		return
 	}
@@ -276,7 +297,31 @@ func (f *verifyFixture) judgeArrives() {
 	for _, open := range request.OpenRanges {
 		fmt.Fprintf(&text, "  - case: %s\n    range: %q\n    checked: %s\n", open.Case, open.Range, f.rangeChecked)
 	}
+	text.WriteString(f.filesYAML(request))
 	writeTree(f.t, filepath.Dir(f.paths.Judgement), map[string]string{judgementFileName: text.String()})
+}
+
+// filesYAML returns the files block of the scripted judgement.
+// Each listed file is ruled by fileRulings, and none by default.
+// It is empty when the request lists no file.
+func (f *verifyFixture) filesYAML(request JudgeRequest) string {
+	if len(request.Files) == 0 {
+		return ""
+	}
+	var text strings.Builder
+	text.WriteString("files:\n")
+	for _, file := range request.Files {
+		checks := f.fileRulings[file.Path]
+		if len(checks) == 0 {
+			fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: no assertion was widened\n", file.ID, RulingNone)
+			continue
+		}
+		fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: a limit was widened\n    checks:\n", file.ID, RulingLoosened)
+		for _, check := range checks {
+			fmt.Fprintf(&text, "      - test: %q\n        loosened: %q\n        ruling: %s\n        cause: %q\n        reason: %q\n", check.Test, check.Loosened, check.Ruling, check.Cause, check.Reason)
+		}
+	}
+	return text.String()
 }
 
 // seed writes the baseline files and a passed capture record at the code HEAD.
@@ -999,6 +1044,174 @@ func TestDriftVerify(t *testing.T) {
 						t.Errorf("%d judge runs, stored cases %+v, last check %+v; want one judge, no stored ruling and a pass with one matched case", f.seats.Calls, f.records().Judged.Cases, scope.LastCheck)
 					}
 				})
+			}
+		})
+	})
+
+	t.Run("a loosened check in the review range", func(t *testing.T) {
+		t.Parallel()
+		const limitsTest = "limits_test.go"
+		const trailer = "Loosened-Check: TestLimit — the limit from 5 to 50 — measured 40 under load"
+		widened := []fabricengine.FileDiff{{Path: limitsTest, Diff: "-\tlimit := 5\n+\tlimit := 50\n"}}
+		uncaused := map[string][]LoosenedRuling{limitsTest: {{Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingUncaused, Reason: "no measurement is named"}}}
+		caused := map[string][]LoosenedRuling{limitsTest: {{Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingCaused, Cause: "measured 40 under load", Reason: "the trailer names a measurement"}}}
+		wantUncaused := LoosenedCheck{Path: limitsTest, Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingUncaused, Reason: "no measurement is named"}
+		wantCaused := LoosenedCheck{Path: limitsTest, Test: "TestLimit", Loosened: "the limit from 5 to 50", Ruling: RulingCaused, Cause: "measured 40 under load", Reason: "the trailer names a measurement"}
+
+		t.Run("a widened limit with no trailer halts, a trailer-only commit passes, and an unchanged range reuses the ruling", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seed(countedScope(), verifyBaseline)
+			f.current = verifyBaseline
+			f.changedFiles = widened
+			f.commitMessages = []string{"3: widen the limit\n"}
+			f.fileRulings = uncaused
+
+			outcome, pointer, err := f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "has no measured cause", limitsTest+": TestLimit: the limit from 5 to 50: no measurement is named",
+				`"Loosened-Check: <test> — <what was loosened> — <measured cause>" trailer`, "commit a revert of the loosening", "lym loom resume")
+			wantFile := JudgeFile{ID: "f1", Path: limitsTest, Diff: widened[0].Diff}
+			if len(f.requests) != 1 || len(f.requests[0].Cells) != 0 || !slices.Equal(f.requests[0].Files, []JudgeFile{wantFile}) || !slices.Equal(f.requests[0].CommitMessages, f.commitMessages) {
+				t.Fatalf("requests = %+v; want one judge listing %+v and the range's messages, with no cell", f.requests, wantFile)
+			}
+			if !slices.Equal(f.changedFilesBases, []string{"review-base"}) || !slices.Equal(f.commitMessagesBases, []string{"review-base"}) {
+				t.Errorf("ChangedFiles bases %q and CommitMessages bases %q; want the review base alone, not the branch point", f.changedFilesBases, f.commitMessagesBases)
+			}
+			scope, judged := f.records().Scope, f.records().Judged
+			if len(judged.Files) != 1 || judged.Files[0].Path != limitsTest || judged.Files[0].Key != fileRulingKey(widened[0].Diff, nil) || judged.Files[0].Ruling != RulingLoosened {
+				t.Errorf("stored files = %+v; want the one loosened ruling under the key of the diff with no trailer", judged.Files)
+			}
+			if scope.LastCheck.Passed || !slices.Equal(scope.LastCheck.Loosened, []LoosenedCheck{wantUncaused}) {
+				t.Errorf("last check = %+v; want it not passed, recording %+v", scope.LastCheck, wantUncaused)
+			}
+
+			outcome, pointer, err = f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "has no measured cause")
+			if f.seats.Calls != 1 {
+				t.Fatalf("%d judge runs after a resume with no new commit; want the stored ruling to halt with no judge", f.seats.Calls)
+			}
+
+			f.moveHead("code-head-1")
+			f.commitMessages = []string{"record the cause\n\n" + trailer + "\n", "3: widen the limit\n"}
+			f.fileRulings = caused
+
+			requireDone(f)
+
+			if f.seats.Calls != 2 {
+				t.Fatalf("%d judge runs after a trailer-only commit; want the judge spawned again", f.seats.Calls)
+			}
+			scope, judged = f.records().Scope, f.records().Judged
+			if len(judged.Files) != 1 || judged.Files[0].Key != fileRulingKey(widened[0].Diff, []string{trailer}) {
+				t.Errorf("stored files = %+v; want the one ruling replaced, under the key that holds the trailer", judged.Files)
+			}
+			if !scope.LastCheck.Passed || !slices.Equal(scope.LastCheck.Loosened, []LoosenedCheck{wantCaused}) {
+				t.Errorf("last check = %+v; want a pass recording %+v", scope.LastCheck, wantCaused)
+			}
+
+			f.moveHead("code-head-2")
+
+			requireDone(f)
+
+			if f.seats.Calls != 2 || !slices.Equal(f.scope().LastCheck.Loosened, []LoosenedCheck{wantCaused}) {
+				t.Errorf("%d judge runs and last check %+v over an unchanged range; want the ruling reused, with no judge", f.seats.Calls, f.scope().LastCheck)
+			}
+		})
+
+		t.Run("a judge spawn ruling a cell does not match and a file uncaused halts with both reasons, the no-match one first", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedChanged(expectsY)
+			f.rulings = map[string]Ruling{"a.txt y": RulingNoMatch}
+			f.changedFiles = widened
+			f.fileRulings = uncaused
+
+			outcome, pointer, err := f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "does not match", "has no measured cause")
+			if strings.Index(pointer.Reason, "does not match") > strings.Index(pointer.Reason, "has no measured cause") {
+				t.Errorf("reason %q names the uncaused check before the no-match one; want the no-match reason first", pointer.Reason)
+			}
+		})
+
+		t.Run("a nil review base lists no file", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedChanged(expectsY)
+			f.deps.ReviewBase = nil
+			f.changedFiles = widened
+			f.fileRulings = uncaused
+
+			requireDone(f)
+
+			if len(f.requests) != 1 || len(f.requests[0].Files) != 0 || len(f.changedFilesBases)+len(f.commitMessagesBases) != 0 {
+				t.Errorf("requests = %+v, file reads %q and %q; want one judge for the cell alone and no range read", f.requests, f.changedFilesBases, f.commitMessagesBases)
+			}
+		})
+
+		t.Run("under command a compare that exits 0 still spawns the judge for an unruled file and halts on its uncaused ruling", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedCommand()
+			f.compare = passingCompare
+			f.changedFiles = widened
+			f.fileRulings = uncaused
+
+			outcome, pointer, err := f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "has no measured cause", "lym loom resume")
+			if f.compares != 1 || len(f.requests) != 1 {
+				t.Fatalf("%d compares and %d requests; want one compare and one judge", f.compares, len(f.requests))
+			}
+			request := f.requests[0]
+			if request.Mode != DiffCommand || request.CompareLog != "" || len(request.Cells) != 0 || len(request.Files) != 1 {
+				t.Errorf("request = %+v; want the command mode with no compare log, no cell and the one file", request)
+			}
+			scope := f.scope()
+			if scope.LastCheck.Passed || scope.LastCheck.CompareExit != 0 || !slices.Equal(scope.LastCheck.Loosened, []LoosenedCheck{wantUncaused}) {
+				t.Errorf("last check = %+v; want it not passed, with exit 0 and %+v", scope.LastCheck, wantUncaused)
+			}
+		})
+
+		t.Run("under command a failing compare and an uncaused file halt with the no-match reason first and store the file ruling", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedCommand()
+			f.caseRulings = map[string]Ruling{"a.txt": RulingNoMatch}
+			f.changedFiles = widened
+			f.fileRulings = uncaused
+
+			outcome, pointer, err := f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "does not match", "has no measured cause")
+			if strings.Index(pointer.Reason, "does not match") > strings.Index(pointer.Reason, "has no measured cause") {
+				t.Errorf("reason %q names the uncaused check before the no-match one; want the no-match reason first", pointer.Reason)
+			}
+			judged := f.records().Judged
+			if len(judged.Files) != 1 || judged.Files[0].Path != limitsTest || judged.Files[0].Key != fileRulingKey(widened[0].Diff, nil) || judged.Files[0].Ruling != RulingLoosened {
+				t.Errorf("stored files = %+v; want the one loosened ruling under the key of the diff with no trailer", judged.Files)
+			}
+		})
+
+		t.Run("under command a compare that exits 0 over a file already ruled reuses the ruling with no judge", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedCommand()
+			f.compare = passingCompare
+			f.changedFiles = widened
+			f.fileRulings = caused
+			requireDone(f)
+			if f.seats.Calls != 1 {
+				t.Fatalf("%d judge runs for the first pass; want one, for the unruled file", f.seats.Calls)
+			}
+
+			f.moveHead("code-head-1")
+
+			requireDone(f)
+
+			if f.seats.Calls != 1 || !f.scope().LastCheck.Passed || !slices.Equal(f.scope().LastCheck.Loosened, []LoosenedCheck{wantCaused}) {
+				t.Errorf("%d judge runs and last check %+v over a ruled file; want no new judge and a pass recording %+v", f.seats.Calls, f.scope().LastCheck, wantCaused)
 			}
 		})
 	})

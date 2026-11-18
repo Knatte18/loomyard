@@ -17,6 +17,8 @@ import (
 // A Burler row reports its segment's step name.
 // Friction-Reflect is the last main-line step.
 // The rows after Webster follow the recipe's tail order and reroute edges.
+//
+//testtiming:keep pins the exact reroute table of the tapestry tail, which the covering tests do not assert
 func TestRouting_ProgressAt(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -70,7 +72,7 @@ func TestRouting_ProgressAt(t *testing.T) {
 			{loomshed.NameCodeBouncer, loomshed.NameDriftRecheck, loomshed.NameCodeBurlerReview, ""},
 			{loomshed.NameDriftRecheck, loomshed.NameDescribe, "", ""},
 			{loomshed.NameDescribe, loomshed.NamePRReview, "", ""},
-			{loomshed.NamePRReview, loomshed.NameFinalize, "", ""},
+			{loomshed.NamePRReview, loomshed.NameFinalize, "", loomshed.NameCodeBouncer},
 			{loomshed.NameFinalize, loomshed.NameFrictionReflect, "", ""},
 		} {
 			got, ok := rows[want.row]

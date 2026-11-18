@@ -178,6 +178,24 @@ type CheckResult struct {
 	CompareExit int `json:"compare_exit,omitempty"`
 	// CompareLog is the compare command's log file under DiffCommand.
 	CompareLog string `json:"compare_log,omitempty"`
+	// Loosened lists each loosened check the last check found, with the judge's ruling on it.
+	Loosened []LoosenedCheck `json:"loosened,omitempty"`
+}
+
+// LoosenedCheck is one loosened check as the last check found it.
+type LoosenedCheck struct {
+	// Path is the repository-relative path of the file holding the check.
+	Path string `json:"path"`
+	// Test names the test holding the check.
+	Test string `json:"test"`
+	// Loosened says what the diff loosened.
+	Loosened string `json:"loosened"`
+	// Ruling is RulingCaused or RulingUncaused.
+	Ruling Ruling `json:"ruling"`
+	// Cause is the measured cause a Loosened-Check trailer names, and empty under RulingUncaused.
+	Cause string `json:"cause,omitempty"`
+	// Reason is why the judge ruled so.
+	Reason string `json:"reason"`
 }
 
 // JudgedRecord is the judge's stored rulings, which Drift-Verify writes and the verdict renders.
@@ -188,6 +206,22 @@ type JudgedRecord struct {
 	Ranges []JudgedRange `json:"ranges,omitempty"`
 	// Cases are the rulings on a failing compare under DiffCommand.
 	Cases []JudgedCase `json:"cases,omitempty"`
+	// Files are the rulings on the files of the task's range, each against the key of what it judged.
+	Files []JudgedFile `json:"files,omitempty"`
+}
+
+// JudgedFile is the judge's ruling on one file, stored with the key of the diff and messages it judged.
+type JudgedFile struct {
+	Path string `json:"path"`
+	// Key identifies the judged diff and commit messages, so a later check reuses the ruling only while they are unchanged.
+	Key    string           `json:"key"`
+	Ruling Ruling           `json:"ruling"`
+	Reason string           `json:"reason"`
+	Checks []LoosenedRuling `json:"checks,omitempty"`
+	// Strand is the judge's strand name.
+	Strand string `json:"strand"`
+	// At is the RFC 3339 time of the ruling.
+	At string `json:"at"`
 }
 
 // JudgedTuple is the judge's ruling on one cell, stored with the exact values it judged.

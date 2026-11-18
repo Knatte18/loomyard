@@ -1083,6 +1083,8 @@ User-facing modules each get one `lym <module>` namespace:
   One gated `Darn-Write` writer reads the record as its scope, edits, tests and commits;
   its `drift` gate entry checks the code's changes against that expectation.
   `Drift-Verify` checks the writer's code by containment and has a judge rule on the expected changes.
+  The judge also rules on each loosened check, an assertion, tolerance or limit widened in a test existing at the review base, as caused or uncaused.
+  An uncaused one makes the row Stuck until a `Loosened-Check` trailer commit or a revert, then `lym loom resume`.
   The `Code-Review` perch (`Code-Bouncer`, `Code-Burler-Review` and `Code-Burler-Fix`) reviews the committed diff.
   It carries its open findings into the record.
   `Drift-Recheck` then checks again, by containment and the judge, the code the perch's fixes committed.
@@ -1331,6 +1333,7 @@ User-facing modules each get one `lym <module>` namespace:
   `Darn-Write → Drift-Verify → Code-Review → Drift-Recheck → Describe → PR-Review → Finalize`, with no `Parent-Align`.
   `Drift-Recheck` runs the `DriftVerify` engine again on code committed after `Drift-Verify`'s last check,
   and its Stuck goes through the stop chain to the parent, with no route back to `Drift-Verify`.
+  It rules on each loosened check as `Drift-Verify` does, and an uncaused one makes it Stuck the same way.
   The regression rows are `Drift-Baseline`, `Drift-Await`, `Drift-Expect`, `Drift-Verify` and `Drift-Recheck`.
   Each carries the entry gate `drift.enabled` of the hub-wide `drift.yaml`;
   a sampler run's rows also need `drift.scope` set to `full`.
@@ -1359,7 +1362,11 @@ User-facing modules each get one `lym <module>` namespace:
   It ends Done when the pull request is merged or approved at the gated head.
   It also ends Done when the operator's `lym loom pr-continue` ends the review.
   With `loom.yaml`'s `pr_review_ask_parent` on, the row asks the parent orch to review the open pull request.
-  It asks once per pull request, and the orch answers the row's session, whose agent fixes the findings.
+  It asks once per pull request until a send-back clears the ask, and the orch answers the row's session, whose agent fixes the findings.
+  `pr_review_small_max` bounds how many findings that agent fixes in place between two send-backs, or before the first, when none is BLOCKING.
+  The agent runs `lym loom pr-findings <file>` on every findings set.
+  The verb sends the set back to Code-Review when a finding is BLOCKING or the set passes that bound, and the row then reroutes.
+  It writes a friction note for each send-back, and a set that stays is only counted.
   The row asks and does not gate: its endings do not wait on the orch's answer.
   That ending leaves the pull request for `Finalize` to merge on GitHub.
   Any other ending is Stuck.
@@ -1448,6 +1455,8 @@ User-facing modules each get one `lym <module>` namespace:
   `raddle_auto_approve` files a raddle proposal once its gate passes, with no operator approval; a run whose recipe rows hold a split perch never reads it.
   `pr_review_ask_parent` has PR-Review ask the parent orch to review the open pull request.
   It is open to the local layer, so a task's `run_settings` sets it for one run.
+  `pr_review_small_max` is the most findings PR-Review fixes in place between two send-backs to Code-Review, or before the first, when none is BLOCKING; the default is 3.
+  It is open to the local layer too.
   `discussion_review_ask_parent` has each Discussion-Review round ask the parent orch to review the decision record.
   `discussion_review_parent_timeout_min` sets the minutes from that ask to its deadline,
   capped so the reviewer keeps room to consolidate before `review_timeout_min`; both are open to `run_settings`.

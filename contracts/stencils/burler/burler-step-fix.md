@@ -87,6 +87,8 @@ Below the frontmatter, include what you changed, a `Disputed` section (empty if 
 The review at `{{.review_path}}` is the reviewer's file: you never write it.
 The round is not done until `{{.fixer_report_path}}` exists on disk — a skipped fixer-report leaves the round looking unfinished.
 
+{{template "loom-fragment-loosened-check"}}
+
 ## Never push, never touch `_lym`
 
 You must never push,

@@ -299,9 +299,10 @@ type Env struct {
 	// RecordHead reads the record head that a document segment's settled artifacts stand at.
 	// It is the settled base of a Bouncer whose subject is "document"; nil is legal when no row names one.
 	RecordHead func() (string, error)
-	// ReviewInput reports the file a re-entered review is told to review besides the subject's change.
-	// It also reports when that file was written; nil is legal and means a review with no input file.
-	ReviewInput func() (path string, writtenAt time.Time, found bool, err error)
+	// ReviewInputs reports every file a re-entered review is told to review besides the subject's change.
+	// Each carries when it was written and whether it forces a full generation.
+	// Nil is legal and means a review with no input file.
+	ReviewInputs func() ([]shedadapters.ReviewInput, error)
 	// ReviewBase reads the commit a code review's range starts from, filled into the review_base marker.
 	// Nil is legal and renders the marker as `none`.
 	// The Code-Review rubric reads `none` as an unknown range.

@@ -505,6 +505,41 @@ func TestPullRequestDeps_ParentReviewWantedReadsThePairsLayers(t *testing.T) {
 	}
 }
 
+// TestPullRequestDeps_ShedStatus asserts what the PR-Review row's status seam reads.
+// A run directory not yet created reads as an empty status with no error.
+// A status file that cannot be parsed is an error.
+func TestPullRequestDeps_ShedStatus(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	t.Run("NoRunDirectoryReadsAsAnEmptyStatus", func(t *testing.T) {
+		t.Parallel()
+		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+
+		status, err := pullRequestDepsGuardedBy(prePushCheck{}, loc, "main", false, &shuttleengine.Runner{}).ShedStatus()
+
+		if err != nil || !reflect.DeepEqual(status, shedengine.Status{}) {
+			t.Errorf("ShedStatus() = %+v, %v; want an empty status and nil", status, err)
+		}
+	})
+
+	t.Run("UnparsableStatusFileIsAnError", func(t *testing.T) {
+		t.Parallel()
+		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+		statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
+		if err := os.MkdirAll(filepath.Dir(statusPath), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(statusPath), err)
+		}
+		if err := os.WriteFile(statusPath, []byte("{not json"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", statusPath, err)
+		}
+
+		if _, err := pullRequestDepsGuardedBy(prePushCheck{}, loc, "main", false, &shuttleengine.Runner{}).ShedStatus(); err == nil {
+			t.Error("ShedStatus() over an unparsable status file = nil; want an error")
+		}
+	})
+}
+
 // TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait writes Publish's status as running and asserts the pause seam.
 // It reports false with no pause condition, or with pause_after naming another row.
 // It reports true with pause_after naming Publish, and false with only pause_requested set.
