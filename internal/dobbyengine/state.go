@@ -46,6 +46,8 @@ type State struct {
 	Land *LandState `json:"land,omitempty"`
 	// ReadyHold is the episode in which the beam is flagged ready and the dobby starts no task, nil when the beam is not flagged ready.
 	ReadyHold *ReadyHoldState `json:"ready_hold,omitempty"`
+	// CatchUp is the catch-up from origin the dobby waits on, nil while none is owed or the last one succeeded.
+	CatchUp *CatchUpWait `json:"catch_up,omitempty"`
 }
 
 // ReadyHoldState is the memory of one episode of a beam flagged ready.
@@ -70,8 +72,6 @@ type RunState struct {
 	OwnedElsewhere bool `json:"owned_elsewhere,omitempty"`
 	// OwnerNoticeSent reports whether the owned-elsewhere notice went out.
 	OwnerNoticeSent bool `json:"owner_notice_sent,omitempty"`
-	// OwnerPauseFailed reports whether the pause for an owned-elsewhere run failed.
-	OwnerPauseFailed bool `json:"owner_pause_failed,omitempty"`
 	// LastPassExit is when the last pass of the run exited.
 	LastPassExit time.Time `json:"last_pass_exit,omitzero"`
 	// FailingPassError is the error text of the failing pass and FailingPassCount the passes that failed in a row with it.

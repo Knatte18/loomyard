@@ -318,7 +318,7 @@ func TestChangeAnchor(t *testing.T) {
 					f.owners["pair1"] = "elsewhere"
 					f.subjects["pair1"] = "beam1"
 				},
-				want:   []string{"elsewhere", "`lym adopt beam1` here", "`lym adopt beam1 --keep-local`", "lym fabric anchor pair1 --set sub` on elsewhere"},
+				want:   []string{"elsewhere", "`lym adopt beam1` here", "resets a weft stopped by an anchor change to origin's tip", "lym fabric anchor pair1 --set sub` on elsewhere"},
 				absent: []string{"the marker at the fetched upstream tip", "lym adopt pair1"},
 			},
 			{

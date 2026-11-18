@@ -1,5 +1,6 @@
 // handover_test.go pins what the loop does on a probe tick that reads the beam owned by another machine:
-// the adopt hold, the hand-over's pause and archive, and the Bolt pull through which an idle machine learns the owner.
+// the adopt hold, the hand-over's catch-up, subject end and archive,
+// and the Bolt pull through which an idle machine learns the owner.
 
 package dobbyengine
 
@@ -34,35 +35,29 @@ func TestRun_ForeignOwner(t *testing.T) {
 	tests := []struct {
 		name       string
 		underAdopt bool
-		// archiveErrs answers the archive calls in order; a call past the list succeeds.
+		// archiveErrs and catchUpErrs answer the archive and catch-up calls in order; a call past the list succeeds.
+		// A fresh start also owes the tick its own catch-up, so a probe that did not hand over adds one catch-up call.
 		archiveErrs []error
-		// runs replaces the default running run r1 when set, and runsErr fails the run listing instead.
-		runs    []RunView
-		runsErr error
-		// recordedElsewhere names the runs the state record already holds owned elsewhere.
-		recordedElsewhere []string
-		wantArchives      int
-		wantPauses        []string
-		wantExit          bool
-		wantLine          string
+		catchUpErrs []error
+		// wantCatchUps, wantEndSubjects and wantArchives count the calls of each step of the hand-over.
+		wantCatchUps    int
+		wantEndSubjects int
+		wantArchives    int
+		wantExit        bool
+		wantLine        string
 	}{
 		{name: "AnAdoptInFlightKeepsTheDobbyUpAndIdle", underAdopt: true, wantLine: "adopt hold:"},
-		{name: "NoAdoptPausesTheRunsArchivesAndExits", wantArchives: 1, wantPauses: []string{"r1"}, wantExit: true, wantLine: handOverStop},
 		{
-			name: "ADoneRunIsNotPaused", runs: []RunView{{Slug: "r1", State: runStateDone, Producer: producerRunShed}},
-			wantArchives: 1, wantExit: true, wantLine: handOverStop,
+			name:         "NoAdoptRunsTheCatchUpEndsTheSubjectArchivesAndExits",
+			wantCatchUps: 1, wantEndSubjects: 1, wantArchives: 1, wantExit: true, wantLine: handOverStop,
 		},
 		{
-			name: "ARunAlreadyOwnedElsewhereIsNotPausedAgain", recordedElsewhere: []string{"r1"},
-			wantArchives: 1, wantExit: true, wantLine: handOverStop,
-		},
-		{
-			name: "AFailingRunListingPausesNothingAndStillArchivesAndExits", runsErr: errors.New("status unreadable"),
-			wantArchives: 1, wantExit: true, wantLine: handOverStop,
+			name: "AFailedCatchUpKeepsTheDobbyUpAndRetriesAtTheNextProbe", catchUpErrs: []error{errors.New("origin unreachable")},
+			wantCatchUps: 3, wantEndSubjects: 1, wantArchives: 1, wantExit: true, wantLine: "catch-up failing: dobbyengine: the catch-up could not pull Bolt: origin unreachable",
 		},
 		{
 			name: "AFailedArchiveKeepsTheDobbyUpAndRetriesAtTheNextProbe", archiveErrs: []error{errors.New("origin unreachable")},
-			wantArchives: 2, wantPauses: []string{"r1"}, wantExit: true, wantLine: "archive failing: origin unreachable",
+			wantCatchUps: 3, wantEndSubjects: 2, wantArchives: 2, wantExit: true, wantLine: "archive failing: origin unreachable",
 		},
 	}
 	for _, tt := range tests {
@@ -70,31 +65,23 @@ func TestRun_ForeignOwner(t *testing.T) {
 			t.Parallel()
 
 			h := newLoopHarness(t, 3)
-			var pauses, spawns []string
-			archives := 0
-			h.deps.Owner = func() (string, error) { return "m2", nil }
+			var spawns []string
+			archives, catchUps, endSubjects := 0, 0, 0
+			h.deps.Owner = func() (string, bool, error) { return "m2", true, nil }
 			h.deps.SlugOwner = func(string) (string, error) { return "m2", nil }
 			h.deps.UnderAdopt = func() bool { return tt.underAdopt }
 			h.deps.Runs = func() ([]RunView, error) {
-				if tt.runsErr != nil || tt.runs != nil {
-					return tt.runs, tt.runsErr
-				}
-				return []RunView{{Slug: "r1", State: runStateRunning, Producer: producerRunShed, Covered: len(pauses) > 0}}, nil
+				return []RunView{{Slug: "r1", State: runStateRunning, Producer: producerRunShed}}, nil
 			}
-			if len(tt.recordedElsewhere) > 0 {
-				err := UpdateState(h.geom.StatePath, func(s *State) error {
-					s.Runs = map[string]RunState{}
-					for _, slug := range tt.recordedElsewhere {
-						s.Runs[slug] = RunState{OwnedElsewhere: true}
-					}
-					return nil
-				})
-				if err != nil {
-					t.Fatalf("UpdateState() = %v; want nil", err)
+			h.deps.CatchUp = fakeCatchUpDeps(func() error {
+				catchUps++
+				if catchUps <= len(tt.catchUpErrs) {
+					return tt.catchUpErrs[catchUps-1]
 				}
-			}
-			h.deps.PauseOwned = func(_ context.Context, slug string) error {
-				pauses = append(pauses, slug)
+				return nil
+			})
+			h.deps.EndSubject = func() error {
+				endSubjects++
 				return nil
 			}
 			h.deps.ReleaseParentLock = func(context.Context, string) error { return nil }
@@ -114,14 +101,12 @@ func TestRun_ForeignOwner(t *testing.T) {
 				t.Fatalf("Run() = %v; want nil", err)
 			}
 
-			if archives != tt.wantArchives {
-				t.Errorf("archives = %d; want %d", archives, tt.wantArchives)
-			}
-			if !slices.Equal(pauses, tt.wantPauses) {
-				t.Errorf("owner pauses = %v; want %v", pauses, tt.wantPauses)
+			if archives != tt.wantArchives || catchUps != tt.wantCatchUps || endSubjects != tt.wantEndSubjects {
+				t.Errorf("archives, catch-ups, subject ends = %d, %d, %d; want %d, %d, %d",
+					archives, catchUps, endSubjects, tt.wantArchives, tt.wantCatchUps, tt.wantEndSubjects)
 			}
 			if len(spawns) != 0 {
-				t.Errorf("passes spawned = %v; want none, held or paused", spawns)
+				t.Errorf("passes spawned = %v; want none, held or handed over", spawns)
 			}
 			if got := h.loggedContaining(handOverStop); got != tt.wantExit {
 				t.Errorf("logged the hand-over stop = %v; want %v", got, tt.wantExit)
@@ -136,7 +121,8 @@ func TestRun_ForeignOwner(t *testing.T) {
 // adoptHoldRun is what a beam dobby did across a run that held it under an adopt for two ticks and then lifted the adopt.
 type adoptHoldRun struct {
 	h                    *loopHarness
-	spawns, pauses       []string
+	spawns               []string
+	catchUps             int
 	tidyAgents, archives int
 	landReads, landings  int
 }
@@ -157,14 +143,14 @@ func runAnAdoptHold(t *testing.T, ownerAfterLift string, stopAt int) adoptHoldRu
 	h.geom.TidyDir = filepath.Join(filepath.Dir(h.geom.StatePath), TidyDirName)
 
 	underAdopt, lifted := true, false
-	var spawns, pauses []string
+	var spawns []string
 	shuttle := &tidyShuttleFake{}
-	archives, landReads, landings, landingReads := 0, 0, 0, 0
-	h.deps.Owner = func() (string, error) {
+	archives, catchUps, landReads, landings, landingReads := 0, 0, 0, 0, 0
+	h.deps.Owner = func() (string, bool, error) {
 		if lifted {
-			return ownerAfterLift, nil
+			return ownerAfterLift, ownerAfterLift != "", nil
 		}
-		return "m2", nil
+		return "m2", true, nil
 	}
 	h.deps.SlugOwner = func(string) (string, error) { return "m2", nil }
 	h.deps.UnderAdopt = func() bool { return underAdopt }
@@ -175,10 +161,10 @@ func runAnAdoptHold(t *testing.T, ownerAfterLift string, stopAt int) adoptHoldRu
 		exit <- PassExit{}
 		return exit, nil
 	}
-	h.deps.PauseOwned = func(_ context.Context, slug string) error {
-		pauses = append(pauses, slug)
+	h.deps.CatchUp = fakeCatchUpDeps(func() error {
+		catchUps++
 		return nil
-	}
+	})
 	h.deps.ReleaseParentLock = func(context.Context, string) error { return nil }
 	h.deps.StatusExists = func(string) (bool, error) { return true, nil }
 	h.deps.PauseCovers = func(string) (bool, error) { return false, nil }
@@ -229,13 +215,13 @@ func runAnAdoptHold(t *testing.T, ownerAfterLift string, stopAt int) adoptHoldRu
 		t.Fatalf("Run() = %v; want nil", err)
 	}
 	return adoptHoldRun{
-		h: h, spawns: spawns, pauses: pauses, tidyAgents: len(shuttle.started),
+		h: h, spawns: spawns, catchUps: catchUps, tidyAgents: len(shuttle.started),
 		archives: archives, landReads: landReads, landings: landings,
 	}
 }
 
 // TestRun_AnAdoptHoldSchedulesNothingUntilItLifts pins that the hold gates every scheduling step.
-// It also pins that the probe after the lift hands over.
+// It also pins that the probe after the lift hands over through the catch-up.
 func TestRun_AnAdoptHoldSchedulesNothingUntilItLifts(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -245,8 +231,8 @@ func TestRun_AnAdoptHoldSchedulesNothingUntilItLifts(t *testing.T) {
 	if len(got.h.ticks) != 2 {
 		t.Errorf("ticks = %d; want the two held ticks, the probe after the lift handing over before a third", len(got.h.ticks))
 	}
-	if got.archives != 1 || !slices.Equal(got.pauses, []string{"due"}) {
-		t.Errorf("archives = %d, owner pauses = %v; want one archive and the run paused", got.archives, got.pauses)
+	if got.archives != 1 || got.catchUps != 1 {
+		t.Errorf("archives, catch-ups = %d, %d; want one archive and one catch-up handing the run over", got.archives, got.catchUps)
 	}
 	for _, want := range []string{"adopt hold:", "adopt hold ended", "lym adopt beam-a takes it over here"} {
 		if !got.h.loggedContaining(want) {
@@ -286,10 +272,10 @@ func TestRun_ALaterArchiveFailureLogsAgainAfterTheOwnerLeaves(t *testing.T) {
 	h := newLoopHarness(t, 4)
 	owners := []string{"m2", "", "m2", "m2"}
 	reads := 0
-	h.deps.Owner = func() (string, error) {
+	h.deps.Owner = func() (string, bool, error) {
 		owner := owners[min(reads, len(owners)-1)]
 		reads++
-		return owner, nil
+		return owner, owner != "", nil
 	}
 	h.deps.ArchiveOwner = func() error { return errors.New("origin unreachable") }
 
@@ -318,7 +304,7 @@ func TestRun_AFailedBoltPullLeavesTheOwnerReadToTheLocalBolt(t *testing.T) {
 		pulls++
 		return errors.New("origin unreachable")
 	}
-	h.deps.Owner = func() (string, error) { return "m2", nil }
+	h.deps.Owner = func() (string, bool, error) { return "m2", true, nil }
 	h.deps.ArchiveOwner = func() error {
 		archives++
 		return nil
@@ -349,7 +335,7 @@ func TestRun_BoltPullBringsInANewOwner(t *testing.T) {
 		}
 		return nil
 	}
-	h.deps.Owner = func() (string, error) { return owner, nil }
+	h.deps.Owner = func() (string, bool, error) { return owner, owner != "", nil }
 	h.deps.ArchiveOwner = func() error {
 		archives++
 		return nil

@@ -216,6 +216,55 @@ func (b *Board) SetStatus(idOrSlug any, status *string) error {
 	return err
 }
 
+// SetStatusPushed sets or clears the status of the task slug names and pushes the change before it returns.
+// It brings the Bolt up to date with origin first, then commits the write and waits for the push, and it spawns no sync.
+// A landing's done mark takes this path, since the run acts on a status only once origin holds it.
+// An unreachable origin returns an error wrapping ErrOwnerOriginUnreachable; a push that failed leaves the commit local.
+// BOARD_SKIP_GIT writes board.json with no pull, commit or push, and BOARD_SKIP_PUSH commits with no pull or push.
+func (b *Board) SetStatusPushed(slug string, status *string) error {
+	opts := fabricengine.SyncOptions{SkipGit: b.skipGit, SkipPush: b.skipPush}
+	bolt := fabricengine.NewBolt(b.boardPath)
+	write := func() ([]string, error) {
+		store := NewStore(b.boardPath)
+		store.vocab = &b.vocab
+		store.parentOf = b.parentOf
+		store.pairExists = b.pairExists
+		if err := store.Load(); err != nil {
+			return nil, err
+		}
+		if err := store.SetStatus(slug, status); err != nil {
+			return nil, err
+		}
+		if err := store.Save(); err != nil {
+			return nil, fmt.Errorf("save store: %w", err)
+		}
+		rendered, err := renderOwnerWrite(b.boardPath, store.Tasks(), store.primeOwner)
+		if err != nil {
+			return nil, err
+		}
+		return append([]string{boardFile}, rendered...), nil
+	}
+
+	message := "board: status of " + slug
+	if b.skipGit || b.skipPush {
+		_, _, err := bolt.CommitWritten(message, write, opts)
+		return err
+	}
+	rec := fabricengine.NewMutations(filepath.Dir(b.boardPath))
+	result, err := bolt.PullThenCommitWritten([]fabricengine.BoltWrite{{Message: message, Write: write}}, rec)
+	if err != nil {
+		return err
+	}
+	switch result.Skipped {
+	case "":
+	case fabricengine.BoltSkipFetchFailed:
+		return fmt.Errorf("%w: %s", ErrOwnerOriginUnreachable, result.SkipDetail)
+	default:
+		return fmt.Errorf("board: the status write was refused, since the board could not be brought up to date: %s", result.SkipDetail)
+	}
+	return pushOwnerCommit(bolt, opts, rec, time.Sleep)
+}
+
 // SetRunStatus sets status on the entry slug under the write lock.
 // It writes nothing when the entry is absent, done, or already carries status.
 func (b *Board) SetRunStatus(slug, status string) error {

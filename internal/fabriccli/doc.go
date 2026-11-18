@@ -90,7 +90,7 @@
 // The removal exempts this process's network gate from every live pause for its duration.
 // Its own network calls therefore pass under any pause.
 // The teardown child it starts for the remote steps runs exempt too, since the job carries the exemption;
-// the push children it respawns keep their own gates, and `--force` still answers dirtiness only.
+// `--force` still answers dirtiness only.
 //
 // A pair whose task worktree was already removed by hand is finished:
 // the remaining teardown runs, and the envelope reports `finished: true` and the `steps` performed.

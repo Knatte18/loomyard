@@ -371,6 +371,17 @@ func TestResume(t *testing.T) {
 				t.Errorf("report %+v, err %v, pushed %v; want only p1 pushed", report, err, e.pushedPairs)
 			}
 		}},
+		{"a lifted entry over a pair with no deferred push spawns no pair push", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"), newPair("p2"))
+			e.pushDeferred = map[string]bool{"p2": true}
+			e.seedLive(hubEntry(e.clock.Now()))
+
+			report, err := e.resume("")
+
+			if err != nil || !reflect.DeepEqual(e.pushedPairs, []string{"p2"}) || !reflect.DeepEqual(report.Spawned, []string{"pair:p2", "prime-records", "board-sync"}) {
+				t.Errorf("report %+v, err %v, pushed %v; want only p2, whose push a pause deferred", report, err, e.pushedPairs)
+			}
+		}},
 		{"a lifted entry whose pair is gone spawns no pair push", func(t *testing.T) {
 			e := newEnv(t, newPair("p1"))
 			e.seedLive(pauserecord.Entry{Scope: "gone", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
@@ -408,7 +419,7 @@ func TestResume(t *testing.T) {
 			e := newEnv(t, newPair("p1"))
 			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
 			cleared := 0
-			wait := runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonHeld}
+			wait := runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonHeld, HoldMachine: "oslo"}
 
 			_, err := Resume(e.deps(), ResumeRequest{
 				Slug:    "p1",
@@ -416,8 +427,104 @@ func TestResume(t *testing.T) {
 				Clear:   func() error { cleared++; return nil },
 			})
 
-			if err == nil || !strings.Contains(err.Error(), "an adopt holds the hub") {
+			if err == nil || !strings.Contains(err.Error(), "an adopt on machine oslo holds the hub") {
 				t.Errorf("err = %v; want the verdict's refusal", err)
+			}
+			if live := e.record().Live; len(live) != 1 || cleared != 0 {
+				t.Errorf("live entries %+v, Clear calls %d; want the entry live and no Clear", live, cleared)
+			}
+		}},
+		{"a hub-wide resume under a standing hold lifts the hub entry and leaves every bolt-hold entry standing", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"), newPair("p2"))
+			e.boltHold = &BoltHoldState{Standing: true, Machine: "oslo"}
+			now := e.clock.Now()
+			e.seedLive(hubEntry(now), pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: pauserecord.BoltHoldCaller, Machine: "oslo"})
+
+			report, err := e.resume("")
+
+			if err != nil || !reflect.DeepEqual(report.Resumed, []string{pauserecord.ScopeHub}) {
+				t.Errorf("report %+v, err %v; want the hub entry resumed alone", report, err)
+			}
+			if live := e.record().Live; len(live) != 1 || live[0].Scope != "p1" || live[0].Caller != pauserecord.BoltHoldCaller {
+				t.Errorf("live entries = %+v; want the bolt-hold entry of p1 standing", live)
+			}
+		}},
+		{"a resume of a slug only a bolt-hold entry covers refuses naming the hold's machine, with nothing lifted and no intent cleared", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"))
+			e.boltHold = &BoltHoldState{Standing: true, Machine: "oslo"}
+			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: pauserecord.BoltHoldCaller, Machine: "oslo"})
+			cleared := 0
+
+			_, err := Resume(e.deps(), ResumeRequest{
+				Slug:    "p1",
+				Verdict: func() (runfsm.Verdict, error) { return runfsm.Verdict{Answer: runfsm.AnswerAct}, nil },
+				Clear:   func() error { cleared++; return nil },
+			})
+
+			want := "tender: p1 is held by an adopt on machine oslo; way forward: wait for that adopt's hold to clear, " +
+				"and the worktree's dobby lifts its entry at its next tick (with no dobby running, run lym beam start); " +
+				"if machine oslo has stopped, ask the operator"
+			if err == nil || err.Error() != want {
+				t.Errorf("err = %v; want %q", err, want)
+			}
+			if live := e.record().Live; len(live) != 1 || cleared != 0 {
+				t.Errorf("live entries %+v, Clear calls %d; want the entry live and no Clear", live, cleared)
+			}
+		}},
+		{"a slug entry of another caller lifted under a standing hold is replaced by a bolt-hold entry that keeps its session with no line", func(t *testing.T) {
+			p := newPair("p1", "a")
+			e := newEnv(t, p)
+			e.boltHold = &BoltHoldState{Standing: true, Machine: "oslo"}
+			now := e.clock.Now()
+			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: "EXTERNAL", Sessions: []pauserecord.Session{recorded("p1", "a")}})
+
+			report, err := e.resume("p1")
+
+			if err != nil || !reflect.DeepEqual(report.Resumed, []string{"p1"}) || !reflect.DeepEqual(report.Moved, []string{"a"}) || len(report.Lines) != 0 || len(p.sends) != 0 {
+				t.Errorf("report %+v, err %v, sends %v; want p1 resumed with a moved and no line", report, err, p.sends)
+			}
+			live := e.record().Live
+			if len(live) != 1 || live[0].Scope != "p1" || live[0].Caller != pauserecord.BoltHoldCaller || live[0].Machine != "oslo" ||
+				!reflect.DeepEqual(live[0].Sessions, []pauserecord.Session{recorded("p1", "a")}) {
+				t.Errorf("live entries = %+v; want one bolt-hold entry of p1 for oslo owning the session", live)
+			}
+		}},
+		{"the hold's fix task is lifted with no bolt-hold entry in its place", func(t *testing.T) {
+			p := newPair("p1", "a")
+			e := newEnv(t, p)
+			e.boltHold = &BoltHoldState{Standing: true, Machine: "oslo", FixTask: "p1"}
+			now := e.clock.Now()
+			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: "EXTERNAL", Sessions: []pauserecord.Session{recorded("p1", "a")}})
+
+			report, err := e.resume("p1")
+
+			if err != nil || !reflect.DeepEqual(report.Lines, []string{"a"}) || len(e.record().Live) != 0 {
+				t.Errorf("report %+v, err %v, live %+v; want a given its line and no entry left", report, err, e.record().Live)
+			}
+		}},
+		{"a bolt-hold entry whose hold no longer stands is lifted like any other entry", func(t *testing.T) {
+			p := newPair("p1", "a")
+			e := newEnv(t, p)
+			e.boltHold = &BoltHoldState{}
+			now := e.clock.Now()
+			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: pauserecord.BoltHoldCaller, Machine: "oslo", Sessions: []pauserecord.Session{recorded("p1", "a")}})
+
+			report, err := e.resume("p1")
+
+			if err != nil || !reflect.DeepEqual(report.Resumed, []string{"p1"}) || !reflect.DeepEqual(report.Lines, []string{"a"}) || len(e.record().Live) != 0 {
+				t.Errorf("report %+v, err %v, live %+v; want p1 lifted with a given its line", report, err, e.record().Live)
+			}
+		}},
+		{"a failed hold reading refuses with nothing lifted and no intent cleared", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"))
+			e.boltHoldErr = errors.New("board unreadable")
+			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
+			cleared := 0
+
+			_, err := Resume(e.deps(), ResumeRequest{Slug: "p1", Clear: func() error { cleared++; return nil }})
+
+			if !errors.Is(err, e.boltHoldErr) || !strings.Contains(err.Error(), "way forward: fix the cause") {
+				t.Errorf("err = %v; want the hold reading's error with its way forward", err)
 			}
 			if live := e.record().Live; len(live) != 1 || cleared != 0 {
 				t.Errorf("live entries %+v, Clear calls %d; want the entry live and no Clear", live, cleared)

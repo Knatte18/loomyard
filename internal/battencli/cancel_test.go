@@ -69,6 +69,8 @@ type cancelFake struct {
 	lifted          []string
 	notifyErr       error
 	ownerHeld       bool
+	pushOwed        bool
+	pushErr         error
 
 	// verdict answers the act rule; commitResult is whether the record commit made a commit.
 	// intentErr, commitErr and finishErr fail the intent write, the record commit and the finish.
@@ -139,7 +141,10 @@ func (f *cancelFake) deps() cancelDeps {
 			return f.report, f.reconcileErr
 		},
 		PullBolt: func() error { f.call("PullBolt"); return f.pullErr },
-		Owner:    func() (string, string, string, error) { f.call("Owner"); return f.machine, f.owner, f.subject, nil },
+		Owner: func() (string, string, bool, error) {
+			f.call("Owner")
+			return f.owner, f.subject, f.owner != "" && f.owner != f.machine, nil
+		},
 		ReadStatus: func() (shedengine.Status, bool, error) {
 			f.call("ReadStatus")
 			return f.status, f.statusFound, nil
@@ -231,7 +236,7 @@ func (f *cancelFake) deps() cancelDeps {
 		RemoveRecords: func() (bool, error) { f.call("RemoveRecords"); return f.recordsCommit, f.recordsErr },
 		ClearClaim:    func() (bool, bool, error) { f.call("ClearClaim"); return f.claimCleared, f.boardFound, f.claimErr },
 		LiftPauses:    func() ([]string, error) { f.call("LiftPauses"); return f.lifted, nil },
-		SpawnPush:     func() error { f.call("SpawnPush"); return nil },
+		PushRecords:   func() (bool, error) { f.call("PushRecords"); return f.pushOwed, f.pushErr },
 		Notify: func(line string) error {
 			f.call("Notify")
 			f.notices = append(f.notices, line)
@@ -427,6 +432,20 @@ func TestCancelRun(t *testing.T) {
 				}
 				if f.locksHeld != 0 {
 					t.Errorf("batten locks held after the cancel = %d; want 0", f.locksHeld)
+				}
+			},
+		},
+		{
+			name:      "OwedRecordsPushAfterTheLiftsNamesTheRerun",
+			setup:     func(f *cancelFake) { f.pushOwed = true },
+			wantCalls: []string{"FinishCancel", "CommitRecord", "ClearClaim", "LiftPauses", "PushRecords", "Notify"},
+			marker:    "removed",
+			check: func(t *testing.T, r cancelReport, _ *cancelFake) {
+				if !r.RecordKept || r.PushSpawned {
+					t.Errorf("report = %+v; want the record kept and no push counted as landed", r)
+				}
+				if !strings.Contains(r.WayForward, `run "lym batten cancel some-slug" again`) {
+					t.Errorf("report way forward = %q; want it to name the cancel to run again", r.WayForward)
 				}
 			},
 		},
@@ -983,7 +1002,7 @@ func TestCancelRun(t *testing.T) {
 				judging:   "endonly",
 				setup:     func(f *cancelFake) { unreachable.setup(f); f.parts = fabricengine.PairParts{TaskBranch: true} },
 				wantCalls: []string{"Owner", "WriteIntent", "CommitRecord", "EndForCancel", "StopTackler", "Notify"},
-				noCalls:   []string{"RemovePair", "DiscardTaskBranch", "FinishCancel", "RemoveRecords", "ClearClaim", "LiftPauses", "SpawnPush"},
+				noCalls:   []string{"RemovePair", "DiscardTaskBranch", "FinishCancel", "RemoveRecords", "ClearClaim", "LiftPauses", "PushRecords"},
 				marker:    "left",
 				check: func(t *testing.T, r cancelReport, f *cancelFake) {
 					if !r.EndOnly || r.RecordsRemoved || r.ClaimCleared {
@@ -1109,7 +1128,7 @@ func TestCancelVerdict(t *testing.T) {
 			records:    started(shedengine.Status{CurrentProducer: battenrecipe.NameRunShed, State: shedengine.StateRunning, Cancel: &shedengine.CancelIntent{}}),
 			wantAnswer: runfsm.AnswerAct,
 		},
-		{name: "HeldRunWithAnOwedPushActs", records: started(running), inputs: runfsm.Inputs{Held: true, PushOwedOffline: true}, wantAnswer: runfsm.AnswerAct},
+		{name: "HeldRunWithAnOwedPushActs", records: started(running), inputs: runfsm.Inputs{Held: true, PushOwed: true}, wantAnswer: runfsm.AnswerAct},
 		{name: "LandedSlugWaitsAsTerminal", records: runfsm.Records{BoardDone: true}, wantAnswer: runfsm.AnswerWait, wantReason: runfsm.ReasonTerminal},
 		{name: "OwnedElsewhereIsHandedOver", records: started(running), inputs: runfsm.Inputs{OwnedElsewhere: true}, wantAnswer: runfsm.AnswerHandOver, wantReason: runfsm.ReasonOwnedElsewhere},
 		{name: "MissingCodeTipWaits", records: started(running), inputs: runfsm.Inputs{CodeTipMissing: true}, wantAnswer: runfsm.AnswerWait, wantReason: runfsm.ReasonCodeTip},
@@ -1128,50 +1147,52 @@ func TestCancelVerdict(t *testing.T) {
 }
 
 // TestCommitCancelRecord asserts the cancel's commit of batten's record:
-// it commits and starts the push, and starts none when nothing was committed.
+// it commits and pushes, and pushes nothing when nothing was committed.
 // It refuses while the records side is mid-merge.
-// It returns a failed merge-state read or commit.
-// It never returns a push that failed to start.
+// It returns a failed merge-state read, commit or push that is not owed.
+// A push that is owed returns nil with the commit made, so the cancel goes on and its push stays owed.
 func TestCommitCancelRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	boom := errors.New("boom")
+	owed := &fabricengine.PushFailedError{Record: fabricengine.FailedPush{Class: fabricengine.PushFailureTransport}, Err: boom}
 	tests := []struct {
 		name          string
 		mergeActive   bool
 		mergeErr      error
 		committed     bool
 		commitErr     error
-		spawnErr      error
+		pushErr       error
 		wantCommitted bool
 		wantCommits   int
-		wantSpawns    int
+		wantPushes    int
 		wantErr       string
 	}{
-		{name: "CommitsAndStartsThePush", committed: true, wantCommitted: true, wantCommits: 1, wantSpawns: 1},
-		{name: "NothingCommittedStartsNoPush", wantCommits: 1},
+		{name: "CommitsAndPushes", committed: true, wantCommitted: true, wantCommits: 1, wantPushes: 1},
+		{name: "NothingCommittedPushesNothing", wantCommits: 1},
 		{name: "MidMergeRefusesAndCommitsNothing", mergeActive: true, wantErr: "a merge is in progress on the prime's records side"},
 		{name: "FailedMergeStateReadIsReturned", mergeErr: boom, wantErr: "boom"},
 		{name: "FailedCommitIsReturned", commitErr: boom, wantCommits: 1, wantErr: "boom"},
-		{name: "FailedPushStartIsNotReturned", committed: true, spawnErr: boom, wantCommitted: true, wantCommits: 1, wantSpawns: 1},
+		{name: "OwedPushKeepsTheCommitAndReturnsNil", committed: true, pushErr: owed, wantCommitted: true, wantCommits: 1, wantPushes: 1},
+		{name: "FailedPushIsReturned", committed: true, pushErr: boom, wantCommitted: true, wantCommits: 1, wantPushes: 1, wantErr: "boom"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var commits, spawns int
+			var commits, pushes int
 			committed, err := commitCancelRecord(commitStatusDeps{
 				MergeActive: func() (bool, error) { return tt.mergeActive, tt.mergeErr },
 				Commit:      func(string) (bool, error) { commits++; return tt.committed, tt.commitErr },
-				Spawn:       func() error { spawns++; return tt.spawnErr },
+				Push:        func() error { pushes++; return tt.pushErr },
 			}, "a-slug")
 
 			if (err == nil) != (tt.wantErr == "") || (err != nil && !strings.Contains(err.Error(), tt.wantErr)) {
 				t.Errorf("commitCancelRecord() error = %v; want it to contain %q", err, tt.wantErr)
 			}
-			if committed != tt.wantCommitted || commits != tt.wantCommits || spawns != tt.wantSpawns {
-				t.Errorf("committed, commits, spawns = %v, %d, %d; want %v, %d, %d", committed, commits, spawns, tt.wantCommitted, tt.wantCommits, tt.wantSpawns)
+			if committed != tt.wantCommitted || commits != tt.wantCommits || pushes != tt.wantPushes {
+				t.Errorf("committed, commits, pushes = %v, %d, %d; want %v, %d, %d", committed, commits, pushes, tt.wantCommitted, tt.wantCommits, tt.wantPushes)
 			}
 		})
 	}

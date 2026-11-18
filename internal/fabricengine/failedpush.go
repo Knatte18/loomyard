@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -36,6 +37,9 @@ const (
 	PushFailureOther PushFailureClass = "other"
 	// PushFailureDeferred means the push was held back, not refused, and is retried by the next push of the branch.
 	PushFailureDeferred PushFailureClass = "deferred"
+	// PushFailureTeardownLock means a removal or another push of the pair held its teardown lock past the push's wait.
+	// The push is owed and retried once the lock is free.
+	PushFailureTeardownLock PushFailureClass = "teardown_lock"
 )
 
 // The repository sides a failed push is recorded against.
@@ -61,6 +65,7 @@ const (
 // Prime marks a code record of the hub prime's own branch.
 // Paths, Commits and OriginHead are set where the failure has them, such as a replay stop or a rewind.
 // WayForward is set for the anchor-change class only, which carries its own commands.
+// Runs names the runs whose pushes failed the record, unioned across failures of one branch.
 type FailedPush struct {
 	Repo         string           `json:"repo"`
 	RepoPath     string           `json:"repo_path"`
@@ -73,6 +78,7 @@ type FailedPush struct {
 	Commits      []string         `json:"commits,omitempty"`
 	OriginHead   string           `json:"origin_head,omitempty"`
 	WayForward   string           `json:"way_forward,omitempty"`
+	Runs         []string         `json:"runs,omitempty"`
 	FirstSeen    time.Time        `json:"first_seen"`
 	LastSeen     time.Time        `json:"last_seen"`
 	Count        int              `json:"count"`
@@ -136,6 +142,8 @@ func failedPushLockPath(path string) string {
 // RecordPushFailure writes f as the failed-push record of its repository side and branch under the record's lock.
 // The first failure creates the record.
 // Later failures keep its first-seen time and notified flag, replace the other fields and bump the count.
+// The runs of a later failure are unioned with the record's,
+// so a second run's failure of one branch keeps the first run owed.
 // While the record is not notified and its class is not deferred, the installed notifier is called once.
 // The notice it receives names the branch, the class, the error and the way forward.
 // It carries the side and branch as its topic and the pair's slug as its run.
@@ -156,6 +164,7 @@ func recordPushFailure(hubPath string, f FailedPush, now time.Time, notify PushN
 			f.FirstSeen = cur.FirstSeen
 			f.Count = cur.Count + 1
 			f.Notified = cur.Notified
+			f.Runs = unionRuns(cur.Runs, f.Runs)
 		}
 		f.LastSeen = now
 		if f.Notified || f.Class == PushFailureDeferred {
@@ -177,6 +186,27 @@ func recordPushFailure(hubPath string, f FailedPush, now time.Time, notify PushN
 		f.Notified = posted
 		return f, nil
 	})
+}
+
+// unionRuns returns the runs of existing followed by those of added it lacks, in order.
+func unionRuns(existing, added []string) []string {
+	union := slices.Clone(existing)
+	for _, run := range added {
+		if !slices.Contains(union, run) {
+			union = append(union, run)
+		}
+	}
+	return union
+}
+
+// readFailedPush returns the failed-push record of a repository side and branch, and whether one exists.
+func readFailedPush(hubPath, repo, branch string) (FailedPush, bool, error) {
+	path := failedPushPath(hubPath, repo, branch)
+	record, found, err := state.ReadJSON[FailedPush](path, failedPushLockPath(path))
+	if err != nil {
+		return FailedPush{}, false, fmt.Errorf("read failed-push record %s: %w", filepath.Base(path), err)
+	}
+	return record, found, nil
 }
 
 // pairSlug names the pair whose branch f records.
@@ -237,6 +267,28 @@ func ListFailedPushes(hubPath string) ([]FailedPush, error) {
 		return records[i].Branch < records[j].Branch
 	})
 	return records, nil
+}
+
+// FailedPushesOwedBy returns the failed-push records that hold the run slug's push owed, newest last-seen first.
+// A record holds a push owed when its class is transport, deferred or teardown_lock and its Runs name the slug.
+// A record of another class is no owed push, since such a push is no transient failure.
+// A record whose Runs lack the slug is not the run's, even when it records the prime's records branch.
+func FailedPushesOwedBy(hubPath, slug string) ([]FailedPush, error) {
+	records, err := ListFailedPushes(hubPath)
+	if err != nil {
+		return nil, err
+	}
+	var owed []FailedPush
+	for _, record := range records {
+		switch record.Class {
+		case PushFailureTransport, PushFailureDeferred, PushFailureTeardownLock:
+			if slices.Contains(record.Runs, slug) {
+				owed = append(owed, record)
+			}
+		}
+	}
+	sort.SliceStable(owed, func(i, j int) bool { return owed[i].LastSeen.After(owed[j].LastSeen) })
+	return owed, nil
 }
 
 // FailedPushFields renders the hub's failed-push records as the envelope rows a verb prints.
@@ -314,6 +366,9 @@ func FailedPushWayForward(f FailedPush) string {
 		return rewoundWayForward(f.RepoPath, f.Branch, f.OriginHead, f.Commits)
 	case PushFailureAnchorChange:
 		return f.WayForward
+	case PushFailureTeardownLock:
+		return fmt.Sprintf("the push retries once the removal or push holding the pair's teardown lock lets go, so run %s again then, "+
+			"or end the stuck child whose pid `lym tender status` lists", pushStep(f))
 	case PushFailureGone:
 		pairWorktree := f.RepoPath
 		if f.Repo == failedPushSideRecords {

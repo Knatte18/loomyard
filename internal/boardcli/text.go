@@ -1,9 +1,10 @@
 // text.go renders the compact listing that "list --text" and "find --text" print instead of JSON.
-// It also renders the prime-owner line that opens the "list --text" listing.
+// It also renders the prime-owner line that opens the "list --text" listing and places its root project row.
 
 package boardcli
 
 import (
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -83,6 +84,18 @@ func primeOwnerLine(primeOwner string) string {
 		primeOwner = "none"
 	}
 	return "prime owner: " + primeOwner + "\n"
+}
+
+// withRootProjectRow returns tasks with the root project's P0 row inserted before the first project, note or done entry.
+// The row goes at the end when there is none, so that in README order it leads the projects.
+func withRootProjectRow(tasks []boardengine.BriefTask) []boardengine.BriefTask {
+	at := slices.IndexFunc(tasks, func(t boardengine.BriefTask) bool {
+		return t.Kind == boardengine.KindProject || t.Kind == boardengine.KindNote || t.IsDone()
+	})
+	if at < 0 {
+		at = len(tasks)
+	}
+	return slices.Insert(tasks, at, boardengine.RootProjectBrief())
 }
 
 // pad right-pads s with spaces to width characters, so a multi-byte character counts as one column.

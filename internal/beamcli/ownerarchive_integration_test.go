@@ -4,14 +4,16 @@
 package beamcli
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -81,28 +83,34 @@ func TestOwnerArchiveBeforeRefusal_SkipsWhileAnAdoptCoversTheWorktree(t *testing
 	tiergate.Require(t, 1)
 	t.Parallel()
 
+	here, err := machinename.ReadIdentity()
+	if err != nil {
+		t.Fatalf("ReadIdentity() = %v; want nil", err)
+	}
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.Location
 	tip := gitkit.CommitFile(t, h.PrimeWorktree(), "owner-archive.txt", "local", "local code commit")
 	archive := ownerArchiveBeforeRefusal(primeTarget(prime))
-
-	if err := adoptrecord.Write(h.Path, adoptrecord.Record{State: adoptrecord.StateRunning, Subjects: []string{"root"}}); err != nil {
-		t.Fatalf("adoptrecord.Write() = %v; want nil", err)
+	writeBoard := func(holds string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(h.BoardDir(), "board.json"), []byte(`{"version":1,`+holds+`"entries":[]}`), 0o644); err != nil {
+			t.Fatalf("write board.json: %v", err)
+		}
 	}
+
+	writeBoard(rootHoldJSON(here.Name))
 	if err := archive(); err != nil {
-		t.Fatalf("archive() under an adopt = %v; want nil", err)
+		t.Fatalf("archive() under this machine's hold = %v; want nil", err)
 	}
 	if got := archiveOwnerTagsOnCodeOrigin(t, h); len(got) != 0 {
-		t.Errorf("owner archive tags under an adopt = %v; want none", got)
+		t.Errorf("owner archive tags under this machine's hold = %v; want none", got)
 	}
 
-	if err := adoptrecord.Write(h.Path, adoptrecord.Record{State: adoptrecord.StateDone, Subjects: []string{"root"}}); err != nil {
-		t.Fatalf("adoptrecord.Write() = %v; want nil", err)
-	}
+	writeBoard("")
 	if err := archive(); err != nil {
-		t.Fatalf("archive() with the adopt done = %v; want nil", err)
+		t.Fatalf("archive() with no hold = %v; want nil", err)
 	}
 	if got, want := archiveOwnerTagsOnCodeOrigin(t, h), []string{fabricengine.OwnerArchiveTagName("root", tip)}; !slices.Equal(got, want) {
-		t.Errorf("owner archive tags with the adopt done = %v; want %v", got, want)
+		t.Errorf("owner archive tags with no hold = %v; want %v", got, want)
 	}
 }

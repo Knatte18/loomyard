@@ -32,7 +32,7 @@ type action struct {
 var actions = map[string]action{
 	ActionAdoptCheck: {
 		args:     func(subject string) []string { return []string{"adopt", "check", subject} },
-		handStep: func(subject string) string { return "lym adopt " + subject },
+		handStep: func(string) string { return "lym beam status" },
 	},
 }
 

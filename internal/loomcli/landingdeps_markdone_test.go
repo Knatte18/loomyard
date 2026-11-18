@@ -45,6 +45,8 @@ func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine
 	return deps.MarkTaskDone, board, slug, boardDir
 }
 
+// TestLandingDeps_MarkTaskDone_SetsStatusDone asserts MarkTaskDone leaves the task done through the pushed write.
+// Under the skip variables the write commits and pushes nothing, so the board file alone holds the status.
 func TestLandingDeps_MarkTaskDone_SetsStatusDone(t *testing.T) {
 	tiergate.Require(t, 0)
 	markDone, board, slug, _ := markDoneFixtureDir(t)

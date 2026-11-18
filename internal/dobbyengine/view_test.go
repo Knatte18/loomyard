@@ -182,6 +182,19 @@ func TestBuildView(t *testing.T) {
 			want: View{Alive: true, MaxRuns: 2, Runs: []ViewRun{}, Waiting: []WaitingTask{{Slug: "next", FrontFirst: "fix"}}},
 		},
 		{
+			name: "AnAdoptHoldReadsHeldByAndTakesNoMaxRunsSlot",
+			mutate: func(in *ViewInput) {
+				in.Config.MaxRuns = 1
+				held := readyTask("held")
+				held.HeldBy = "oslo"
+				in.Tasks = []TaskView{held, readyTask("ready")}
+			},
+			want: View{Alive: true, MaxRuns: 1, Runs: []ViewRun{}, Waiting: []WaitingTask{
+				{Slug: "held", HeldBy: "oslo"},
+				{Slug: "ready"},
+			}},
+		},
+		{
 			name: "AReadyHoldInTheRecordHoldsEveryWaitingTaskAndTakesNoSlot",
 			mutate: func(in *ViewInput) {
 				in.Config.MaxRuns = 1
@@ -192,6 +205,13 @@ func TestBuildView(t *testing.T) {
 				{Slug: "first", ReadyHold: true},
 				{Slug: "second", ReadyHold: true},
 			}},
+		},
+		{
+			name: "ACatchUpWaitInTheRecordShowsInTheView",
+			mutate: func(in *ViewInput) {
+				in.Record.CatchUp = &CatchUpWait{Reason: CatchUpWaitOrigin, Detail: "fetch failed", At: now}
+			},
+			want: View{Alive: true, MaxRuns: 2, Runs: []ViewRun{}, Waiting: []WaitingTask{}, CatchUp: &CatchUpWait{Reason: CatchUpWaitOrigin, Detail: "fetch failed", At: now}},
 		},
 		{
 			name:   "ADeadDobbyReadsNotAlive",

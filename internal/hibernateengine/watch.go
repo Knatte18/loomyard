@@ -1,6 +1,6 @@
-// watch.go implements the request's sequence, which the prime's dobby carries.
-// The sequence waits for the trigger, pauses the hub, confirms the pause, and hibernates the machine;
-// it detects the wake, and lifts or keeps the request's own pause entry.
+// watch.go implements the request's sequence, which the prime's dobby carries, and PauseAndConfirm.
+// The sequence waits for the trigger, then pauses the hub and confirms the pause through PauseAndConfirm.
+// It then hibernates the machine, detects the wake, and lifts or keeps the request's own pause entry.
 
 package hibernateengine
 
@@ -88,30 +88,29 @@ func carry(deps Deps, r Request) (Request, error) {
 		return r, err
 	}
 
+	paused, err := PauseAndConfirm(deps, PauseConfirmRequest{
+		Requester: r.Requester,
+		Added:     func(ref tenderengine.EntryRef) error { return recordOwned(deps, ref) },
+		Confirming: func() (bool, error) {
+			next, moved, err := advance(deps, PhaseConfirming, "")
+			if moved {
+				r = next
+			}
+			return moved, err
+		},
+		Carried: func() bool { return stillOurs(deps) },
+	})
 	// kept holds the entry the pause added even when recording it in the request fails, so the sequence can still lift it.
-	var kept *tenderengine.EntryRef
-	report, err := deps.Pause(tenderengine.PauseRequest{Grace: pauseGrace, Added: func(entry pauserecord.Entry) error {
-		ref := tenderengine.EntryRef{Scope: entry.Scope, Caller: entry.Caller, PausedAt: entry.PausedAt}
-		kept = &ref
-		return recordOwned(deps, ref)
-	}})
-	if err != nil {
+	kept := paused.Owned
+	switch paused.Outcome {
+	case ConfirmationNone:
 		return fail(deps, r, kept, err.Error())
-	}
-	if report.ResumedDuringGrace {
+	case ConfirmationLifted:
 		return finish(deps, r, PhaseCancelled, "the pause was lifted before the hibernate")
-	}
-
-	if r, ok, err = advance(deps, PhaseConfirming, ""); err != nil || !ok {
+	case ConfirmationStopped:
 		return withdrawn(deps, r, kept, err)
-	}
-	switch outcome, reason := awaitConfirmation(deps, report, r.Requester); outcome {
-	case confirmationStopped:
-		return withdrawn(deps, r, kept, nil)
-	case confirmationLifted:
-		return finish(deps, r, PhaseCancelled, "the pause was lifted before the hibernate")
-	case confirmationTimedOut:
-		return fail(deps, r, kept, reason)
+	case ConfirmationTimedOut:
+		return fail(deps, r, kept, paused.Withheld)
 	}
 
 	// The status read comes first so a cancel that lands during it is seen by the advance that follows.
@@ -433,26 +432,100 @@ func triggerReading(deps Deps, r Request) (fire bool, reason string, err error) 
 	return true, "", nil
 }
 
-// confirmation is how the wait for a confirmed pause ended.
-type confirmation int
+// Confirmation is how one PauseAndConfirm ended.
+type Confirmation int
 
 const (
-	confirmationReached confirmation = iota
-	// confirmationLifted: no live hub entry stands, the operator's resume having lifted the pause.
-	confirmationLifted
-	// confirmationStopped: the request is not carried here.
-	confirmationStopped
-	confirmationTimedOut
+	// ConfirmationNone: the pause failed, so no reading was made.
+	ConfirmationNone Confirmation = iota
+	// ConfirmationReached: a reading confirmed the pause.
+	ConfirmationReached
+	// ConfirmationLifted: no live hub entry stands, the operator's resume having lifted the pause.
+	ConfirmationLifted
+	// ConfirmationStopped: the caller withdrew the wait.
+	ConfirmationStopped
+	// ConfirmationTimedOut: no reading confirmed the pause within the wait.
+	ConfirmationTimedOut
 )
+
+// PauseConfirmRequest is what a caller of PauseAndConfirm adds to the hub pause and its confirmation.
+type PauseConfirmRequest struct {
+	// Caller, when set, is the caller label the added hub entry records in place of tender's default.
+	Caller string
+	// Requester is the caller's strand; the readings leave its session out when it parses as the orch.
+	Requester string
+	// Added, when set, is called with the entry the pause added, after it is on disk and before the grace.
+	// Its error ends the pause with the entry live.
+	Added func(tenderengine.EntryRef) error
+	// Confirming, when set, is called once the pause holds and before the first reading.
+	// False or an error ends the wait as ConfirmationStopped, with that error.
+	Confirming func() (bool, error)
+	// Carried, when set, is asked before each reading whether the caller still wants the wait;
+	// false ends it as ConfirmationStopped.
+	Carried func() bool
+}
+
+// HubPause is what one PauseAndConfirm did.
+type HubPause struct {
+	// Owned is the hub entry the pause added, nil when a live hub entry already stood and covers the caller.
+	// It is set on every outcome once the entry is on disk, so the caller can still lift it.
+	Owned *tenderengine.EntryRef
+	// Outcome is how the pause and the wait for its confirmation ended.
+	Outcome Confirmation
+	// Withheld is the last reason a reading withheld the confirmation, set when Outcome is ConfirmationTimedOut.
+	Withheld string
+}
+
+// PauseAndConfirm pauses the hub through tender with a ten second grace.
+// It then reads the hub until a reading confirms that the pause holds it quiet.
+// It serves every caller that needs the hub quiet on this machine before it acts, such as a hibernate or a hub stop.
+// It owns only an entry it added.
+// A live hub entry already standing, the operator's or another caller's, adds none.
+// It covers the caller and stays as it is.
+// PauseAndConfirm lifts no entry on any outcome.
+// A pause lifted during its grace ends as ConfirmationLifted with no reading.
+// A failed pause ends as ConfirmationNone with its error.
+func PauseAndConfirm(deps Deps, req PauseConfirmRequest) (HubPause, error) {
+	var result HubPause
+	report, err := deps.Pause(tenderengine.PauseRequest{Grace: pauseGrace, Caller: req.Caller, Added: func(entry pauserecord.Entry) error {
+		ref := tenderengine.EntryRef{Scope: entry.Scope, Caller: entry.Caller, PausedAt: entry.PausedAt}
+		result.Owned = &ref
+		if req.Added == nil {
+			return nil
+		}
+		return req.Added(ref)
+	}})
+	if err != nil {
+		return result, err
+	}
+	if report.ResumedDuringGrace {
+		result.Outcome = ConfirmationLifted
+		return result, nil
+	}
+	if req.Confirming != nil {
+		confirming, err := req.Confirming()
+		if err != nil || !confirming {
+			result.Outcome = ConfirmationStopped
+			return result, err
+		}
+	}
+	carried := req.Carried
+	if carried == nil {
+		carried = func() bool { return true }
+	}
+	result.Outcome, result.Withheld = awaitConfirmation(deps, report, req.Requester, carried)
+	return result, nil
+}
 
 // awaitConfirmation reads the hub until a reading confirms the pause.
 // The first reading comes right after the pause, and each re-read waits confirmInterval.
 // The wait gives up after confirmRereads re-reads unless the latest reading withheld only for forks;
 // a fork-only reading may re-read up to confirmForkRereads times.
 // The first reading also withholds while the pause report lists a strand still busy or a refused one.
+// carried is asked before each reading, and false stops the wait.
 // A reading error is logged and counts as unconfirmed and as not fork-only;
 // the reason is the last withholding one when the wait times out.
-func awaitConfirmation(deps Deps, report tenderengine.PauseReport, requester string) (confirmation, string) {
+func awaitConfirmation(deps Deps, report tenderengine.PauseReport, requester string, carried func() bool) (Confirmation, string) {
 	withheld := ""
 	forkOnly := false
 	for reading := 0; reading <= confirmForkRereads; reading++ {
@@ -462,8 +535,8 @@ func awaitConfirmation(deps Deps, report tenderengine.PauseReport, requester str
 			}
 			deps.Sleep(confirmInterval)
 		}
-		if !stillOurs(deps) {
-			return confirmationStopped, ""
+		if !carried() {
+			return ConfirmationStopped, ""
 		}
 		status, err := deps.TenderStatus()
 		landLockHeld := false
@@ -478,19 +551,19 @@ func awaitConfirmation(deps Deps, report tenderengine.PauseReport, requester str
 		ok, hubEntry, onlyForks, reason := confirmed(status, landLockHeld, requester)
 		switch {
 		case !hubEntry:
-			return confirmationLifted, ""
+			return ConfirmationLifted, ""
 		case ok && reading == 0 && len(report.StillBusy) > 0:
 			ok, onlyForks, reason = false, false, "the pause left "+strings.Join(report.StillBusy, ", ")+" busy"
 		case ok && reading == 0 && len(report.Refused) > 0:
 			ok, onlyForks, reason = false, false, "the pause was refused by "+report.Refused[0].Strand
 		}
 		if ok {
-			return confirmationReached, ""
+			return ConfirmationReached, ""
 		}
 		logger.Debug("hibernate: the pause is not confirmed", "reason", reason)
 		withheld, forkOnly = reason, onlyForks
 	}
-	return confirmationTimedOut, withheld
+	return ConfirmationTimedOut, withheld
 }
 
 // hubPaused reports whether status shows a live hub entry.

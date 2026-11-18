@@ -204,7 +204,8 @@ type RemoveResult struct {
 // The wait for a push of the pair to let go of the lock lasts at most the topology's teardown wait.
 // When the wait runs out, Remove returns an error wrapping ErrPairPushRunning before any mutation.
 // The child holds the lock past the remote steps.
-// A failure after taking it that leaves a worktree of the pair in place releases the lock and respawns the pair's push.
+// A failure after taking it that leaves a worktree of the pair in place releases the lock and spawns no push:
+// the pair's next synchronous push carries its commits.
 // After a successful teardown, and before it returns, Remove disables auto gc in both hub stores.
 // It then runs a best-effort foreground `git gc --auto` in each.
 // A failure there is logged and never fails Remove, and a refused or failed Remove runs none of it.
@@ -218,7 +219,7 @@ func (t *Topology) Remove(l *lymcwd.Location, slug string, force, remote bool) (
 // It commits the sibling's pending records.
 // It then puts a local set-aside/<slug>/<sha> tag on the weft tip, reported in SetAsideTag;
 // it takes the place of the pushed archive tag.
-// It runs no ls-remote and respawns no push after a failure.
+// It runs no ls-remote.
 // It skips the store housekeeping.
 // It regenerates the hub workspace file with one attempt at its lock and reports WorkspaceSkipped when the lock is held.
 // The commits the pushed archive tag would have carried stay under the local tag.
@@ -265,10 +266,8 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	}
 
 	// The pair's detached pushes hold this lock shared, so no push runs against a worktree this call deletes.
-	// A failure after this point that leaves a worktree behind respawns the pair's push once the lock is released.
-	// A child may have exited on the held lock, so the respawn is needed.
-	// A local removal holds the lock itself and respawns nothing:
-	// the surviving worktree's commits stay local for the next reconcile.
+	// A push child that exited on the held lock leaves its commits to the pair's next synchronous push.
+	// That push carries them when a failure after this point leaves a worktree behind.
 	hold, err := t.holdTeardown(rec, rec, l, slug, localMode, fmt.Sprintf("re-run `lym fabric remove %s`", slug), !localMode)
 	if err != nil {
 		return RemoveResult{}, err
@@ -277,10 +276,6 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	defer func() {
 		if !handedOver {
 			hold.finish(nil)
-		}
-		// A directory kept at the task worktree's path is no worktree, so it leaves nothing to push.
-		if err != nil && !errors.Is(err, ErrStrayPathKept) && !localMode && (pathPresent(target) || pathPresent(RecordsWorktreePath(l, slug))) {
-			respawnPairPush(l, slug)
 		}
 	}()
 

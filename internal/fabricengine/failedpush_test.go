@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -112,6 +113,44 @@ func TestFailedPushRecord(t *testing.T) {
 		})
 	}
 
+	t.Run("OwedByListsTheRunsOwedClassesNewestFirst", func(t *testing.T) {
+		hub := t.TempDir()
+		records := []fabricengine.FailedPush{
+			{Repo: "code", RepoPath: "/hub/task", Branch: "task", Class: fabricengine.PushFailureTransport, Runs: []string{"task"}},
+			{Repo: "records", RepoPath: "/hub/task-weft", Branch: "task-weft", Class: fabricengine.PushFailureDeferred, Runs: []string{"task"}},
+			{Repo: "records", RepoPath: "/hub/main-weft", Branch: "main-weft", Class: fabricengine.PushFailureTeardownLock, Runs: []string{"task", "other"}},
+			{Repo: "code", RepoPath: "/hub/diverged", Branch: "diverged", Class: fabricengine.PushFailureNotFastForward, Runs: []string{"task"}},
+			{Repo: "records", RepoPath: "/hub/only-other", Branch: "only-other", Class: fabricengine.PushFailureTransport, Runs: []string{"other"}},
+			{Repo: "records", RepoPath: "/hub/no-run", Branch: "no-run", Class: fabricengine.PushFailureTransport},
+		}
+		for i, record := range records {
+			if err := fabricengine.RecordPushFailureNotifyingForTest(hub, record, base.Add(time.Duration(i)*time.Minute), nil); err != nil {
+				t.Fatalf("RecordPushFailure(%s): %v", record.Branch, err)
+			}
+		}
+		branchesOwedBy := func(slug string) []string {
+			owed, err := fabricengine.FailedPushesOwedBy(hub, slug)
+			if err != nil {
+				t.Fatalf("FailedPushesOwedBy(%q): %v", slug, err)
+			}
+			var branches []string
+			for _, record := range owed {
+				branches = append(branches, record.Branch)
+			}
+			return branches
+		}
+
+		for slug, want := range map[string][]string{
+			"task":  {"main-weft", "task-weft", "task"},
+			"other": {"only-other", "main-weft"},
+			"ghost": nil,
+		} {
+			if got := branchesOwedBy(slug); !slices.Equal(got, want) {
+				t.Errorf("FailedPushesOwedBy(%q) branches = %q; want %q", slug, got, want)
+			}
+		}
+	})
+
 	t.Run("NotPostedLeavesNotifiedUnsetSoTheNextFailureMails", func(t *testing.T) {
 		hub := t.TempDir()
 		fake := &fakePushNotifier{hub: hub, posted: false}
@@ -166,6 +205,25 @@ func TestFailedPushRecord(t *testing.T) {
 		records, _ := fabricengine.ListFailedPushes(hub)
 		if len(records) != 1 || records[0].Notified {
 			t.Errorf("records = %+v; want one unnotified record", records)
+		}
+	})
+
+	t.Run("RunsRoundTripAndUnionAcrossFailuresOfOneBranch", func(t *testing.T) {
+		hub := t.TempDir()
+		for i, runs := range [][]string{{"first"}, {"second"}, {"first"}} {
+			failure := codePushFailure()
+			failure.Runs = runs
+			if err := fabricengine.RecordPushFailure(hub, failure, base.Add(time.Duration(i)*time.Minute)); err != nil {
+				t.Fatalf("RecordPushFailure #%d: %v", i+1, err)
+			}
+		}
+
+		records, err := fabricengine.ListFailedPushes(hub)
+		if err != nil || len(records) != 1 {
+			t.Fatalf("ListFailedPushes() = %v, %v; want one record", records, err)
+		}
+		if want := []string{"first", "second"}; !slices.Equal(records[0].Runs, want) {
+			t.Errorf("record Runs = %q; want %q, both runs kept once", records[0].Runs, want)
 		}
 	})
 
@@ -290,6 +348,12 @@ func TestFailedPushRecord(t *testing.T) {
 			"BoltDeferred",
 			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/" + fabricengine.BoltDirName, Branch: "main", Class: fabricengine.PushFailureDeferred},
 			"run `lym board sync` from the prime worktree to retry the push",
+		},
+		{
+			"RecordsTeardownLock",
+			fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/task-weft", CodeWorktree: "/hub/task", Branch: "task-weft", Class: fabricengine.PushFailureTeardownLock},
+			"the push retries once the removal or push holding the pair's teardown lock lets go, so run `lym fabric push` in /hub/task again then, " +
+				"or end the stuck child whose pid `lym tender status` lists",
 		},
 		{
 			"CodeTransport",

@@ -8,11 +8,9 @@ package loomcli
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -101,27 +99,11 @@ func mergeHeadPresent(t *testing.T, dir string) bool {
 // The ordinary dispositions run first while the remote is healthy;
 // the mid-merge skips share one live foreign merge;
 // the remote-failure steps run last because they leave the branch diverged.
-// The seam spawns its push instead of running it, so the test swaps the package's spawnStatusPush for a recorder;
-// only commit-records pushes to the remote.
+// The seam pushes its transition to the remote before it returns, and so does commit-records.
 // Each step changes the status file first, so every seam call has something of its own to commit.
-//
-// It is serial because it swaps a package variable.
 func TestCommitStatusSeam_Real(t *testing.T) {
 	tiergate.Require(t, 1)
 	seam, location, recordsSibling := realSeamFixture(t)
-
-	type spawnRequest struct {
-		location *lymcwd.Location
-		gateSlug string
-	}
-	var spawns []spawnRequest
-	var spawnErr error
-	originalSpawn := spawnStatusPush
-	spawnStatusPush = func(l *lymcwd.Location, gateSlug string) (fabricengine.SpawnResult, error) {
-		spawns = append(spawns, spawnRequest{l, gateSlug})
-		return fabricengine.SpawnResult{}, spawnErr
-	}
-	t.Cleanup(func() { spawnStatusPush = originalSpawn })
 
 	statusRel := realSeamStatusRel(location)
 	statusChanges := 0
@@ -142,7 +124,7 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 	}
 
 	// The seed written by realSeamFixture is this step's own change.
-	t.Run("ordinary path commits and requests one push spawn", func(t *testing.T) {
+	t.Run("ordinary path commits and pushes the transition", func(t *testing.T) {
 		before := gitkit.RevParse(t, recordsSibling, "HEAD")
 
 		if err := seam("Discussion-Write", "running"); err != nil {
@@ -159,11 +141,11 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		if got := headChangedFiles(); !strings.Contains(got, statusRel) {
 			t.Errorf("records HEAD touched %q; want it to include %q", got, statusRel)
 		}
-		if got := gitkit.Git(t, recordsSibling, "log", "--oneline", "@{u}..HEAD"); got == "" {
-			t.Error("unpushed records commits after the seam = none; want the commit still local — the seam spawns its push and runs none")
+		if got := gitkit.Git(t, recordsSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
+			t.Errorf("unpushed records commits after the seam = %q; want none — the seam pushes before it returns", got)
 		}
-		if want := []spawnRequest{{location, ""}}; !reflect.DeepEqual(spawns, want) {
-			t.Errorf("push spawns = %v; want one for the pair's location", spawns)
+		if got := remoteBranchTip(t, recordsSibling); got != after {
+			t.Errorf("remote records branch = %q; want it at the records HEAD %q", got, after)
 		}
 	})
 
@@ -382,11 +364,10 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
-	// The task branch diverged on its remote by a second clone:
-	// the verb reports the rejection naming the task worktree;
-	// the records still reach their remote;
-	// and the local task branch is left as it was.
-	t.Run("diverged task branch is reported and the records still push", func(t *testing.T) {
+	// The task branch advanced on its remote by a second clone, past every tip the run's transitions name:
+	// The commit-records commit is itself a transition, so the owner's code push resets origin's branch to its tip.
+	// The records reach their remote, and the local task branch is left as it was.
+	t.Run("task branch advanced on origin is overridden by the owner's push", func(t *testing.T) {
 		taskWorktree := location.WorktreePath()
 		branch := gitkit.CurrentBranch(t, taskWorktree)
 		clone := t.TempDir()
@@ -403,38 +384,58 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		writeRecordFile(t, filepath.Join(shedrun.DriveReportsDir(location, shedrun.SelfRunID), "diverged-report.md"), "stop report\n")
 
 		var out bytes.Buffer
-		if code := commitRecordsVerb(&out, loomCommitStatusDeps(location, shedrun.SelfRunID)); code == 0 {
-			t.Fatalf("exit = 0; want non-zero; output %s", out.String())
-		}
-		for _, want := range []string{"the commit landed locally but the push failed", "way forward: origin/" + branch + " holds commits this branch lacks", "git merge origin/" + branch, taskWorktree} {
-			if !strings.Contains(out.String(), want) {
-				t.Errorf("output = %s; want it to contain %q", out.String(), want)
-			}
-		}
-		if got := strings.Count(out.String(), "way forward: "); got != 1 {
-			t.Errorf("output = %s; want the way forward exactly once, got %d", out.String(), got)
+		if code := commitRecordsVerb(&out, loomCommitStatusDeps(location, shedrun.SelfRunID)); code != 0 {
+			t.Fatalf("exit = %d; want 0; output %s", code, out.String())
 		}
 		if got := gitkit.RevParse(t, taskWorktree, "HEAD"); got != taskHead {
 			t.Errorf("task branch HEAD = %q; want unchanged %q", got, taskHead)
+		}
+		if got := remoteBranchTip(t, taskWorktree); got != taskHead {
+			t.Errorf("remote task branch = %q; want it reset to the local tip %q", got, taskHead)
 		}
 		if got, want := remoteBranchTip(t, recordsSibling), gitkit.RevParse(t, recordsSibling, "HEAD"); got != want {
 			t.Errorf("remote records branch = %q; want it at the records HEAD %q", got, want)
 		}
 	})
 
-	// The spawn-warns disposition: a push that cannot be spawned returns nil from the seam;
-	// the local commit stays for the next transition's spawn to carry.
-	t.Run("failing spawn warns and the commit stays", func(t *testing.T) {
-		spawnErr = errors.New("spawn failed")
-		t.Cleanup(func() { spawnErr = nil })
-
-		before := gitkit.RevParse(t, recordsSibling, "HEAD")
+	// The transition's tracked writes and its code commit are on origin before the seam returns:
+	// the records branch holds the transition and a fixer attempts file written under the durable directory,
+	// and the code branch holds the code commit.
+	// It runs after the diverged step.
+	// A transition naming a pushed code tip makes the owner's push override another clone's advance of the code branch.
+	t.Run("transition pushes the records and the code side", func(t *testing.T) {
+		attemptsRel := filepath.ToSlash(filepath.Join(loomengine.LoomDurableDirRel(), "fixer-attempts.json"))
+		writeRecordFile(t, filepath.Join(loomengine.LoomDurableDir(location), "fixer-attempts.json"), "{\"attempts\":1}\n")
+		commitInTaskWorktree(t, location, "code-change.txt")
 		changeStatus()
-		if err := seam("Discussion-Write", "running"); err != nil {
-			t.Fatalf("seam(...) error = %v; want nil — a spawn that fails to start warns and continues", err)
+
+		if err := seam("Code-Review", "running"); err != nil {
+			t.Fatalf("seam(Code-Review, running) error = %v; want nil", err)
 		}
-		if got := gitkit.RevParse(t, recordsSibling, "HEAD"); got == before {
-			t.Errorf("records HEAD = %q; want it moved off %q — the commit lands even though the spawn failed", got, before)
+
+		if got := headChangedFiles(); !strings.Contains(got, attemptsRel) {
+			t.Errorf("records HEAD touched %q; want it to include %q", got, attemptsRel)
+		}
+		if got, want := remoteBranchTip(t, recordsSibling), gitkit.RevParse(t, recordsSibling, "HEAD"); got != want {
+			t.Errorf("remote records branch = %q; want it at the records HEAD %q", got, want)
+		}
+		taskWorktree := location.WorktreePath()
+		if got, want := remoteBranchTip(t, taskWorktree), gitkit.RevParse(t, taskWorktree, "HEAD"); got != want {
+			t.Errorf("remote code branch = %q; want it at the code HEAD %q", got, want)
+		}
+	})
+
+	// Relies on the step above: its records HEAD was made after the code commit.
+	t.Run("transition commit names its code tip and its run", func(t *testing.T) {
+		message := gitkit.Git(t, recordsSibling, "log", "-1", "--format=%B")
+		codeHead := gitkit.RevParse(t, location.WorktreePath(), "HEAD")
+
+		trailers := gitkit.Git(t, recordsSibling, "log", "-1", "--format=%(trailers:only,valueonly,separator=%x2C)")
+		if !strings.Contains(message, codeHead) || !strings.Contains(trailers, codeHead) {
+			t.Errorf("records HEAD message = %q; want a trailer naming the code HEAD %q", message, codeHead)
+		}
+		if want := fabricengine.TransitionTrailerKey + ": " + shedrun.ResolveRunID(location, shedrun.SelfRunID); !strings.Contains(message, want) {
+			t.Errorf("records HEAD message = %q; want it to contain the trailer %q", message, want)
 		}
 	})
 }

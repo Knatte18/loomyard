@@ -35,6 +35,7 @@ func TestReadyToStart(t *testing.T) {
 		{"CoveringPauseDoesNotStart", nil, true, false},
 		{"OwnedElsewhereDoesNotStart", func(task *TaskView) { task.OwnedElsewhere = true }, false, false},
 		{"AStartRefusalDoesNotStart", func(task *TaskView) { task.StartRefusal = "already completed" }, false, false},
+		{"AnAdoptHoldDoesNotStart", func(task *TaskView) { task.HeldBy = "oslo" }, false, false},
 		{"AnotherBeamsTaskDoesNotStart", func(task *TaskView) { task.Parent = "other-beam" }, false, false},
 		{"AProjectDoesNotStart", func(task *TaskView) { task.Kind = "project" }, false, false},
 	}
@@ -203,15 +204,15 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 		}
 	})
 
-	t.Run("an owned-elsewhere first pass with no status file is a refused start with one notice and no pause", func(t *testing.T) {
+	t.Run("an owned-elsewhere first pass with no status file is a refused start with one notice", func(t *testing.T) {
 		t.Parallel()
 		h := newPassHarness(t)
 		h.fake.tasks = []TaskView{readyTask("a")}
 		h.fake.exits = []PassExit{{Code: PassExitOwnedElsewhere, Error: "owned by m2"}}
 		h.tick(true)
 		h.tick(true)
-		if len(h.fake.notices) != 1 || h.fake.pauses != 0 {
-			t.Errorf("notices, pauses = %d, %d; want 1, 0", len(h.fake.notices), h.fake.pauses)
+		if len(h.fake.notices) != 1 {
+			t.Errorf("notices = %d; want 1", len(h.fake.notices))
 		}
 	})
 

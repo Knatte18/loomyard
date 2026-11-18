@@ -112,7 +112,12 @@ func WaitUncovered(ctx context.Context, path, slug string, w Waiter) error {
 }
 
 // heldLine renders the line a wait writes when it starts, naming the pause and the resume that lifts it.
+// An entry carrying BoltHoldCaller names the adopt and its machine instead, and no resume.
 func heldLine(entry Entry) string {
+	if entry.Caller == BoltHoldCaller {
+		return fmt.Sprintf("lym: held by an adopt on machine %s since %s; it continues after that adopt's hold clears",
+			holdMachineName(entry), entry.PausedAt.Format(time.RFC3339))
+	}
 	pause, resume := "a hub-wide pause", `"lym tender resume"`
 	if entry.Scope != ScopeHub {
 		pause = fmt.Sprintf("the pause of %s", entry.Scope)

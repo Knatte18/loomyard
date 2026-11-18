@@ -12,15 +12,20 @@
 //     ReadState reads it, and UpdateState rewrites it under its lock.
 //     A record that does not decode reads as absent with one Warn, so a hand-damaged file never wedges the beam.
 //   - The PassExit codes are what a `lym batten run` pass exits with for a refusal dobby reads by code.
+//     PassExitOriginWait is the exit of a pass whose catch-up could not reach origin or was refused.
+//     It counts as no failing pass.
 //   - EnsureLive starts the dobby of each worktree it is named, the prime's name or beam slugs.
 //     It starts each only when Live reads its lock free, through SpawnDetached.
 //     It records this machine as the prime owner first when the prime is named and none is recorded.
 //     It reports per worktree and is idempotent.
-//     A named prime or beam that another machine owns is refused.
+//     A named prime or beam whose owner reads as another machine is refused.
 //     The refusal names its owner and `lym adopt root` or `lym adopt <slug>`.
+//     The engine compares no machine name: the hub wiring judges each owner through the registry
+//     and hands over the answer as a flag, in StartDeps.PrimeOwner, BeamPair.Elsewhere and Deps.Owner.
+//     A machine whose name does not read starts no dobby: each named worktree is refused with that failure as its detail.
 //     A named beam whose landing hold stands is refused naming `lym batten status <slug>` and spawns nothing.
 //     StartDeps.LandingHeld reads the hold, and a nil one reads as no hold standing.
-//     OwnedWorktrees lists the prime and every local beam this machine may start.
+//     OwnedWorktrees lists the prime and every local beam whose owner does not read as another machine.
 //     A caller that narrows nothing names that set.
 //     A worktree with an anchor change on its own records worktree or the prime's is refused and starts nothing.
 //     The refusal carries the change's way forward.
@@ -69,19 +74,18 @@
 //   - It reads its beam's owner at start and on each probe tick.
 //     A probe tick first pulls Bolt through Deps.PullBolt, at most once per five minutes,
 //     so an idle machine learns a new owner; a failed pull logs once per episode.
-//     While an adopt in flight on this machine covers the beam another machine owns (Deps.UnderAdopt),
-//     the dobby stays up and hands nothing over.
+//     While a hold this machine wrote in Bolt covers the subject of the beam another machine owns (Deps.UnderAdopt),
+//     the dobby stays up and hands nothing over, until the adopt's check is green.
 //     It spawns no pass, starts no task, and runs no tidy or landing step.
 //     The hold's start and end each log one line.
 //     Any other foreign owner gets the hand-over.
-//     The dobby owner-pauses each run it drives that is neither done nor recorded owned elsewhere,
-//     as a pass exiting owned elsewhere does.
+//     The dobby runs the catch-up from origin, which hands over each run another machine owns.
+//     Once it succeeds the dobby ends the subject's processes through Deps.EndSubject,
+//     and the calling dobby is never ended by that call.
 //     It then archives the local tips under the beam that origin lacks through Deps.ArchiveOwner.
 //     Once the archive succeeds it exits with the logged reason `stop: another machine owns this beam`,
 //     which names `lym adopt root` or `lym adopt <slug>`.
-//     A failed archive logs once per episode and keeps the dobby up, retrying at each probe tick.
-//     Meanwhile a run whose owner pause stands gets no pass,
-//     and one whose pause failed gets its full pass each probe tick.
+//     A failed catch-up, subject end or archive logs once per episode and keeps the dobby up, retrying at each probe tick.
 //     A cancelled context logs `stop: the context ended`.
 //   - A record with the process's own pid and start ticks owes no new full pass;
 //     a record with the pid and no ticks gains the ticks and owes one;
@@ -110,7 +114,7 @@
 //     The second stop removes a strand only while reed still tracks it.
 //     It logs a failed stop when reed's status probe fails.
 //   - Between ticks it calls the binary check, which re-execs onto a changed lym binary.
-//     It skips the check while a teardown of an ended run's pair is in flight, which a re-exec would cut short.
+//     It skips the check while a teardown of a leftover pair is in flight, which a re-exec would cut short.
 //     The check logs `re-exec onto the changed lym binary` right before the exec.
 //     An exec that fails logs `re-exec failed` and posts a notice naming `lym beam stop` and `lym beam start`.
 //     The notice goes once per binary identity, and the dobby keeps running.
@@ -166,31 +170,27 @@
 //     by the dobby's start; and by the lift of a pause that covered the run.
 //     A lift while a pass is in flight gives the run its pass once that one exits.
 //   - A continue pass needs the run at Run-Shed with no full pass owed and no lift to answer.
-//     Every other pass is full, and it runs with `--no-reopen` while the run's origin-owed marker stands.
+//     Every other pass is full.
 //     A start and each recorded sleep owe every run a full pass.
-//     The state record keeps it until a full pass exits 0 with no origin-owed marker standing.
+//     The state record keeps it until a full pass exits 0.
 //   - While a pause covers the run, the act rule waits it and it gets no pass, and the lift gives it the full pass.
-//     A run an adopt pause covers, the legacy `adopt-hold` entry included, gets no owner-pause recheck.
-//     Only a hand lifts that pause.
-//   - A refused continue pass owes a full pass, and a covered pass counts as no failure.
+//     Only a hand lifts an adopt pause, the legacy `adopt-hold` entry included.
+//   - A refused continue pass owes a full pass, and a covered pass or a pass that waits on origin counts as no failure.
 //     Any other non-zero exit counts a failure by its error text and is retried on the next probe tick.
 //     The third failure in a row with one text posts one notice to the nearest live orch.
 //     An exit 0 clears the count and the noticed texts.
 //   - A pass that exits as owned by another machine keeps the run's full pass owed.
 //     The state record marks the run as owned elsewhere.
-//     Dobby pauses the run under the owner caller and releases the parent lock record naming its child.
+//     Dobby pauses nothing: it releases the parent lock record naming its child and owes the catch-up from origin,
+//     which hands the run over.
 //     It posts one notice per owner episode naming `lym adopt <subject>`, and no failing-pass notice.
 //     Deps.AdoptSubject reads the subject; the slug stands in when that seam is nil or fails.
-//     A failed pause warns once per episode and is recorded.
-//     It is never retried blind:
-//     while the mark stands and no pause covers the run, each probe tick gives it a full pass.
+//     While the mark stands and no pause covers the run, each probe tick gives it a full pass the act rule lets act.
 //     That pass is refused again, or it exits 0 and clears the mark.
 //     While the mark stands and a pause covers the run, it gets no pass, a start's and a wake's included.
 //     The covering pause's lift still gives it a full pass.
-//     Once the owner pause stands, each probe tick reads the run's effective owner from the local Bolt with no pull.
-//     When the owner no longer reads as another machine, dobby lifts its own owner pause and runs a full pass.
 //     An owner that a continue pass's own check finds sets no mark:
-//     that check pauses the run itself, and dobby goes on passing it.
+//     that check releases the lock and holds the run itself, and dobby goes on passing it.
 //     A marked run is in flight for the backoff only while no pause covers it.
 //   - A task waits on the board as `draft` until released, and dobby starts it from an empty status.
 //     A task starts when all of these hold:
@@ -275,23 +275,42 @@
 //     A landed run that batten stopped as failed or halted before its Worktree-Teardown row therefore frees its slot.
 //   - The view's `max_runs` reasons follow, since BuildView counts through the same rule.
 //
-// The ended teardown:
+// The leftover pairs:
 //
-//   - A run is stranded when its entry ended (RunView.EntryEnded) and its pair is on disk (RunView.PairPresent),
-//     while dobby gives it no pass: batten's state is neither running, nor paused with its work on its parent, nor done.
-//     A paused run whose work reached its parent is not stranded, since its Land is unfinished.
-//     A run with a pass in flight, a held driver lock or a cancel under way is not.
-//     Nor is a run a pause covers or one marked owned elsewhere.
-//   - After the passes, each tick hands every stranded run whose wait ran out to one call of Deps.TearDownEnded.
-//     The hub wiring runs the hub's origin reconcile there, as `lym cleanup --apply` does,
-//     and that reconcile tears down the pair of each run origin has ended.
+//   - A listed run's pair on disk (RunView.PairPresent) is left over, by kind, when no pass of it is in flight,
+//     its driver lock is free and no cancel is under way:
+//     the local pair of a run this machine's hand-over mark names (RunView.HandOverMarked) while another machine owns it,
+//     whatever pause or hold covers it, since its removal takes no origin step;
+//     and, with no pause, no Bolt hold and no other machine owning the run, the pair of a run in the FSM state landed,
+//     the pair of a cancelled run whose cancel did not keep it,
+//     and the pair of a run whose entry ended (RunView.EntryEnded) while batten's state is neither running,
+//     nor paused with its work on its parent, nor done.
+//     A paused run whose work reached its parent is not, since its Land is unfinished.
+//     A machine that adopted its run back owns it, so its pair stays.
+//   - An orphan pair is one that neither a board entry nor a batten record names; only the prime's dobby reads them,
+//     through Deps.Orphans, on each probe tick.
+//     Its first sight posts one notice saying when it goes.
+//     Once that notice posted, the time goes in the first-sight record Deps.OrphanRecord names,
+//     which a restart reads, so the grace is neither reset nor skipped.
+//     A notice that failed leaves the orphan out of the record, and the next probe tick posts it again.
+//     An orphan is left over once OrphanGrace has passed since its first sight and since its last commit,
+//     with no process of its slug alive.
+//     A pair that stops being an orphan leaves the record, and so does one torn down.
+//   - After the passes, each tick hands every leftover pair whose wait ran out to one call of Deps.TearDownLeftovers.
+//     The hub wiring tears each down by its kind and regenerates the hub workspace file after.
 //     The call returns at once, and a later tick reads its one result; only one is in flight at a time.
 //   - A removed pair logs `teardown <slug>: pair removed`.
 //     A teardown that failed logs `teardown <slug> failing: <reason>` once per episode.
-//     Its run waits one probe interval, then twice its last wait after each further failure, up to an hour.
-//     The waits are in memory only, and a run that is no longer stranded forgets its wait.
+//     Its pair waits one probe interval, then twice its last wait after each further failure, up to an hour.
+//     The waits are in memory only, and a pair that is no longer left over forgets its wait.
 //   - A teardown in flight keeps the loop out of its idle backoff, and holds the binary check until it ends.
-//     A nil TearDownEnded tears nothing down.
+//     A nil TearDownLeftovers tears nothing down.
+//   - The pair of a cancelled run whose cancel kept it stays.
+//     Each fresh start posts one notice listing those pairs and naming `lym fabric remove <slug>`, and the view lists them.
+//     Before the passes of its first tick, a dobby process gives each run cancelled with keep before cancel intents existed,
+//     whose pair stands here, its finished keep cancel intent through Deps.MarkKeptCancels, so such a run reads kept;
+//     the same call commits again a finished keep intent of this machine whose commit failed;
+//     a failure logs once per episode and is tried again at the next tick, and the notice waits for it.
 //
 // The landing step:
 //
@@ -490,6 +509,7 @@
 //     So a finished run's record or leftover branch never refuses a later start under its slug.
 //     A failed branch removal leaves the records, so the next tick tries again.
 //   - A run is cleared only when no pass of it is in flight and its driver lock is free,
+//     its pair is gone, so the leftover teardown takes a landed run's pair first,
 //     the landing-notice memory holds nothing of it,
 //     and a landing it holds is counted.
 //     So neither its landing notice nor its board-tidy count is lost.
@@ -505,6 +525,71 @@
 //
 //   - The dobby builds no coverage maps; the operator builds them on command with `lym gate test --map`.
 //
+// The catch-up:
+//
+//   - CatchUp brings this machine's view of its runs up to origin's after an absence, before any act rule answer.
+//     It reads and acts through the seams of CatchUpDeps, so the package imports no fabric or teardown package.
+//   - It runs these steps in order:
+//     PullBolt fetches Bolt and replays the local display commits, and Register registers this machine or checks its entry;
+//     for each slug Runs lists, FetchRun fetches the run's branches and ReadRun reads the run as a CatchUpRun;
+//     a run owned here that is Ahead of origin gets PushOwed, which pushes the records first and hands the run over itself
+//     when origin holds another machine's takeover entry, and nothing is reset;
+//     a run owned elsewhere gets HandOver, naming its owner, a landing past its parent-side merge included;
+//     and ApplyPauseIntents gets the runs owned here, to write this machine's pause entries from their pause intents.
+//   - CatchUpReport lists the runs pushed, handed over and owned here, and a caller reads every listed run as touched.
+//   - An unreachable origin at the Bolt pull or a run's fetch returns an error wrapping ErrOriginUnreachable.
+//     A registration refusal returns as Register gave it.
+//     Both return before any run is acted on.
+//     A failed push or hand-over is joined into the returned error and the other runs go on.
+//     A nil seam is a wiring error returned at once.
+//   - The dobby owes the catch-up at a fresh start, never at a re-exec, and when its sleep watch sees a sleep.
+//     It owes it when a pass exits PassExitOriginWait or PassExitOwnedElsewhere.
+//     It owes it too when a listed run's verdict hands it over while its pair is still here,
+//     once per run until the run stops answering hand over.
+//     Deps.CatchUp with no PullBolt means no catch-up.
+//   - UpgradeRead is the first read after an upgrade, run through Deps.Upgrade before the first catch-up that succeeds.
+//     It turns the pause record's standing `adopt`, legacy `adopt-hold` and `owner` entries into the Bolt model.
+//     It holds UpgradeDeps.Lock, so the dobbies of one machine run it one at a time and the second finds nothing left.
+//     With no such entry it does nothing.
+//     Otherwise it pulls Bolt first.
+//     An unreachable origin returns an error wrapping ErrOriginUnreachable with nothing written.
+//     Each adopt entry of a run this machine owns that has a batten record and is not terminal becomes a pause intent.
+//     A pause intent whose push meets another machine's takeover entry reads the run as owned elsewhere and records none.
+//     The subjects of those runs and of the released tasks the entries name form one Bolt hold.
+//     The hold is `adopt-fix` while an open adopt fix task of a subject stands, with each subject's try count.
+//     Otherwise the hold is `adopt`.
+//     A hold of another machine that stands writes none.
+//     One notice names the hold or the standing one, and an identical hold of this machine that already stands posts none.
+//     It gives the way forward of re-running `lym adopt` and then `lym tender resume`.
+//     Only then does it drop every adopt, adopt-hold and owner entry.
+//     The catch-up then writes this machine's entries from the intents.
+//     A failure before the drops leaves the entries, so the read runs again; a failed read keeps the catch-up owed.
+//     An `Upgrade` whose Entries is nil means no first read.
+//   - A tick runs the owed catch-up first, when its next try is due, before any scheduling.
+//     Success clears the wait, resets the retry delay and owes every run a full pass.
+//     Failure keeps it owed, retries after a delay that doubles from a second to the idle ceiling,
+//     and records State.CatchUp as a CatchUpWait whose reason is origin, refused or failed.
+//     A refused or failed wait posts one notice per episode, and an origin wait posts none.
+//     While the catch-up is owed the tick spawns no pass, starts no task, takes no landing step and runs no tidy step.
+//     The state record's upkeep and the landing count go on, and the view's `catch_up` shows the wait.
+//   - After the listing and before it plans passes, a tick hands Deps.SyncBoltHold every slug the catch-up covers
+//     and the listed runs the hold holds, those whose verdict reason is held.
+//     A failed sync logs once per episode and the tick goes on.
+//
+// The desktop launcher:
+//
+//   - CatchUpDeps.Launcher names the hub's desktop launcher, which internal/desktoplauncher writes;
+//     one with no shortname, as a hand-built Deps leaves it, keeps no launcher.
+//   - Each start of the dobby, a re-exec's included, adds the hub's launcher, and the all-hubs launcher with it,
+//     when Deps.Owner reads the worktree owned by this machine.
+//     The launcher runs the dobby's lym binary, so a re-exec onto a moved binary rewrites it.
+//   - Every catch-up, the one a fresh start owes, one after a sleep and a hand pass's included,
+//     removes the hub's launcher once OwnsAnything reads, from the pulled board, that this machine owns nothing in the hub:
+//     neither the prime nor a beam not done.
+//   - A machine with no desktop keeps no launcher; any other failure is logged at Warn and stops nothing.
+//   - Bound: a launcher outlives this machine's ownership until this machine next runs a catch-up,
+//     since no other machine reaches its desktop.
+//
 // The view:
 //
 //   - It carries beam.yaml's `max_runs` and `land_notice`.
@@ -513,6 +598,7 @@
 //   - The runs are the listed ones that are not done.
 //     Each carries batten's state and producer, and a pass in flight while its driver lock is held.
 //     It also carries its last pass exit, owed full pass, owner mark and failing count from the state record.
+//   - The kept pairs are the listed cancelled runs' pairs their cancel kept, each with when that cancel finished.
 //   - A task waits while it is released to the worktree and not started.
 //     Released means an empty status and the worktree as parent.
 //     Its reasons are the start step's own conditions:

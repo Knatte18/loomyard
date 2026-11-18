@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/statuspane"
@@ -324,6 +325,11 @@ func viewRuns(slugs ...string) []dobbyengine.ViewRun {
 	return runs
 }
 
+// actVerdict is a verdict seam answering that every run may act, so a test reads no run records.
+func actVerdict(string) (runfsm.Verdict, error) {
+	return runfsm.Verdict{Answer: runfsm.AnswerAct}, nil
+}
+
 func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -354,6 +360,17 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	pauseRecordPath := filepath.Join(t.TempDir(), "pause.json")
 	cells := NewDobbyRunCells(prime, pauseRecordPath)
 	cells.childStatus = func(string) (string, error) { return childStatusPath, nil }
+	// run-a owes a push, run-b a code tip, and the verdict of future-key does not read.
+	const owesPush, owesTip = "push owed: dial tcp: i/o timeout", "code tip 0123456789ab missing on origin, owed by oslo"
+	cells.verdict = func(slug string) (runfsm.Verdict, error) {
+		switch slug {
+		case "run-a":
+			return runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonPushOwed, PushOwedError: "dial tcp: i/o timeout"}, nil
+		case "run-b":
+			return runfsm.Verdict{Answer: runfsm.AnswerWait, Reason: runfsm.ReasonCodeTip, CodeTip: "0123456789abcdef0123", CodeTipMachine: "oslo"}, nil
+		}
+		return runfsm.Verdict{}, errors.New("records unreadable")
+	}
 	childPair := locationkit.Location(t.TempDir(), "run-a", ".")
 	cells.childPair = func(string) (*lymcwd.Location, error) { return childPair, nil }
 	if err := shedrun.WriteSeed(childPair, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
@@ -369,8 +386,8 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	}
 
 	want := map[string]RunCells{
-		"run-a":      {State: "running", Stage: "6.8 Plan-Write", InStage: "2h00m"},
-		"run-b":      {State: "running", Stage: "Plan", InStage: "1h00m"},
+		"run-a":      {State: "running", Stage: "6.8 Plan-Write", InStage: "2h00m", Owes: owesPush},
+		"run-b":      {State: "running", Stage: "Plan", InStage: "1h00m", Owes: owesTip},
 		"future-key": {State: "running", Stage: "Plan", InStage: "-"},
 	}
 	check("first read", want)
@@ -387,7 +404,7 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeOverviewFile(t, runBStatus, []byte("{not json"), minutesAgo(40))
-	want["run-a"] = RunCells{State: "running", Stage: "6. Run-Shed", InStage: "2h00m"}
+	want["run-a"] = RunCells{State: "running", Stage: "6. Run-Shed", InStage: "2h00m", Owes: owesPush}
 	check("second read", want)
 
 	want["run-b"] = RunCells{Unreadable: true}
@@ -406,16 +423,16 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	}
 	writeOverviewFile(t, pauseRecordPath, record, minutesAgo(1))
 	check("fourth read", map[string]RunCells{
-		"run-a":      {State: "paused 10m", Stage: "6. Run-Shed", InStage: "2h00m"},
-		"run-b":      {State: "paused 4m", Stage: "Plan", InStage: "1h00m"},
+		"run-a":      {State: "paused 10m", Stage: "6. Run-Shed", InStage: "2h00m", Owes: owesPush},
+		"run-b":      {State: "paused 4m", Stage: "Plan", InStage: "1h00m", Owes: owesTip},
 		"future-key": {State: "paused 4m", Stage: "Plan", InStage: "-"},
 	})
 
 	// A record that does not decode covers nothing.
 	writeOverviewFile(t, pauseRecordPath, []byte("{not json"), minutesAgo(1))
 	check("fifth read", map[string]RunCells{
-		"run-a":      {State: "running", Stage: "6. Run-Shed", InStage: "2h00m"},
-		"run-b":      {State: "running", Stage: "Plan", InStage: "1h00m"},
+		"run-a":      {State: "running", Stage: "6. Run-Shed", InStage: "2h00m", Owes: owesPush},
+		"run-b":      {State: "running", Stage: "Plan", InStage: "1h00m", Owes: owesTip},
 		"future-key": {State: "running", Stage: "Plan", InStage: "-"},
 	})
 
@@ -431,6 +448,7 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	seedless := locationkit.Location(t.TempDir(), "run-c", ".")
 	cells2 := NewDobbyRunCells(prime2, pauseRecordPath)
 	cells2.childStatus = func(string) (string, error) { return childStatusPath, nil }
+	cells2.verdict = actVerdict
 	cells2.childPair = func(slug string) (*lymcwd.Location, error) {
 		if slug == "run-d" {
 			return nil, errors.New("no pair")
@@ -461,7 +479,9 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 		slugs = append(slugs, slug)
 		writeOverviewStatus(t, shedrun.StatusFile(prime3, slug), row.status, minutesAgo(100))
 	}
-	gotWords := NewDobbyRunCells(prime3, pauseRecordPath).Of(viewRuns(slugs...), overviewNow)
+	wordCells := NewDobbyRunCells(prime3, pauseRecordPath)
+	wordCells.verdict = actVerdict
+	gotWords := wordCells.Of(viewRuns(slugs...), overviewNow)
 	for slug, row := range words {
 		if gotWords[slug].State != row.want {
 			t.Errorf("state cell of %s = %q; want %q", slug, gotWords[slug].State, row.want)
@@ -501,6 +521,7 @@ func TestDobbyRunCells_ResolvesTheChildPairAgainInEachRunShedSpell(t *testing.T)
 		writeOverviewStatus(t, shedrun.StatusFile(locationkit.Location(hub, slug, anchorRel), shedrun.SelfRunID), shedengine.Status{State: shedengine.StateRunning, CurrentProducer: producer}, modTime)
 	}
 	cells := NewDobbyRunCells(prime, filepath.Join(t.TempDir(), "pause.json"))
+	cells.verdict = actVerdict
 	check := func(read string, want RunCells) {
 		t.Helper()
 		if diff := cmp.Diff(map[string]RunCells{slug: want}, cells.Of(viewRuns(slug), overviewNow)); diff != "" {

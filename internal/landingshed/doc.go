@@ -318,7 +318,7 @@
 // The note names the task's squash by the parent head's SHA.
 // It gives a `git reset --keep` to origin's parent when the squash is the only commit origin lacks.
 // When another commit is listed, it gives a `git rebase --onto` dropping the squash.
-// It ends with `lym fabric remove` of the run, leaving the owner pause standing.
+// It ends with `lym fabric remove` of the run.
 // An origin parent lacking the work, or a failed read, adds no note.
 // A parent push the remote refuses as a protected branch is read from GitHub's rejection wording:
 // `protected branch` or `repository rule violations`.
@@ -537,20 +537,29 @@
 // The retry's attempt is included.
 // A record that names this run passes;
 // one that does not name it means something released it:
-// an owner pause, another machine's ownership or an operator's `lym batten lock release`.
+// another machine's ownership, whose hand-over releases it, or an operator's `lym batten lock release`.
 // Finalize then lands nothing, takes no lock and is Stuck with Halt.
 // The Halt names the release and its causes,
-// and it gives `lym loom resume` as the way forward once no owner pause stands and the run is this machine's.
+// and it gives `lym loom resume` as the way forward once the run is this machine's.
 // An unreadable record is a Stuck with Halt too, as at the acquire.
 // Both halts open with LandingStopPrefix, so only the orch's resume lifts them.
 // The resume re-runs Finalize from its first step under a lock taken afresh,
 // so a resume made before the cause clears lands nothing.
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
-// After the parent-side merge and before the push, Finalize marks the board task done.
-// It hands the parent pair's head, the landing commit, to the told Deps.RecordLanding.
+// After the parent-side merge and before the push, Finalize hands the landing commit to the told Deps.RecordLanding.
+// The commit is the parent pair's head.
 // It then hands the parent head it merged into the task worktree and the landing commit to Deps.RecordLandedSize;
 // a failure of either is only logged.
 // A Finalize that read no such parent head in its process, as one resumed past the merge, records no landed size.
+// Finalize then pushes the parent branch, then commits and pushes the run's records, then writes the board task done.
+// Before each of the three it reads, through Deps.OwnedElsewhere, whether another machine owns the run now.
+// An owner there hands the run over through Deps.HandOver and halts, so nothing more is merged or pushed.
+// The same hand-over answers a run the origin reconcile reads as owned elsewhere, before any merge.
+// A parent push rejected while origin's parent branch already holds the task's work goes through Deps.ArchiveParentMerge.
+// That archives the local merge, and the landing goes on.
+// Any other rejection stays Stuck.
+// A failed records push or board write is returned as an error, so the driver re-steps the landing.
+// Under Deps.PushSkipped nothing is pushed, and the done mark follows the local merge.
 //
 // Finalize lands through the run's pull request, which it merges on GitHub only here, under the parent lock.
 // Right after it takes the lock, Finalize asks ResolvePullRequest the question PR-Review asked.

@@ -56,11 +56,11 @@ type Deps struct {
 	// Its channel delivers one value per change; closeWatch releases it.
 	// A nil Watch, or one that returns an error, leaves the timer alone to drive the loop.
 	Watch func() (events <-chan struct{}, closeWatch func(), err error)
-	// Machine returns this machine's name.
-	Machine func() (string, error)
-	// Owner returns the machine that owns this beam, the prime owner for the prime; empty means no other machine owns it.
-	Owner func() (string, error)
-	// UnderAdopt reports whether an adopt in flight on this machine covers this dobby's worktree.
+	// Owner returns the machine recorded as this beam's owner, the prime owner for the prime, empty when none is recorded.
+	// It also returns whether that owner reads as a machine other than this one, which the hub wiring judges.
+	Owner func() (owner string, elsewhere bool, err error)
+	// UnderAdopt reports whether a hold this machine wrote in Bolt covers the subject of this dobby's worktree.
+	// The hold stands until the adopt's check is green.
 	// It is asked only on a probe tick that reads the beam owned by another machine; a nil UnderAdopt covers nothing.
 	UnderAdopt func() bool
 	// PullBolt pulls the hub's Bolt from origin, so an idle machine learns a new owner; a nil PullBolt pulls nothing.
@@ -69,6 +69,20 @@ type Deps struct {
 	// the code and records tips of the worktree's own pair and of each run whose parent it is.
 	// A nil ArchiveOwner archives nothing.
 	ArchiveOwner func() error
+	// CatchUp is the seams of the catch-up from origin the dobby runs after every absence it sees.
+	// A CatchUp whose PullBolt is nil means no catch-up, as a nil PullBolt pulls nothing.
+	// Its Launcher also names the hub's desktop launcher the dobby's start adds.
+	CatchUp CatchUpDeps
+	// Upgrade is the seams of the first read after an upgrade, which the dobby runs before its first catch-up that succeeds.
+	// An Upgrade whose Entries is nil means no first read.
+	Upgrade UpgradeDeps
+	// SyncBoltHold brings the bolt-hold entries of the runs in scope in line with the hold, held being the slugs it holds.
+	// A nil SyncBoltHold syncs nothing.
+	SyncBoltHold func(ctx context.Context, scope, held []string) error
+	// EndSubject ends the processes this machine runs for the beam another machine now owns.
+	// It runs once the catch-up handed the beam's runs over.
+	// A nil EndSubject ends nothing.
+	EndSubject func() error
 	// CheckBinary re-execs onto a changed lym binary and returns when the binary is unchanged.
 	// It calls beforeExec right before an exec and failed with the error of an exec that failed.
 	CheckBinary func(beforeExec func(), failed func(error))
@@ -98,22 +112,29 @@ type Deps struct {
 	// It runs in its own process group with the prime's anchor as its working directory, and the spawn is logged at Info.
 	// The pass registers itself in `internal/runproc`, so dobby registers nothing; the channel delivers the exit once.
 	SpawnPass func(slug string, continuePass, noReopen bool) (<-chan PassExit, error)
-	// TearDownEnded starts the teardown of the pairs of slugs, runs whose board entry ended short of their own teardown.
+	// TearDownLeftovers starts the teardown of the leftover pairs, each by the kind that decides how it goes.
 	// The channel delivers once, mapping each slug to nil when its pair was removed and to the reason otherwise.
-	// A nil TearDownEnded tears nothing down.
-	TearDownEnded func(slugs []string) <-chan map[string]error
+	// A nil TearDownLeftovers tears nothing down.
+	TearDownLeftovers func(pairs []LeftoverPair) <-chan map[string]error
+	// MarkKeptCancels marks each run of this worktree cancelled with keep before cancel intents existed.
+	// Each marked run, whose pair stands here, gets its finished keep cancel intent.
+	// A finished keep intent of this machine whose commit failed is committed again.
+	// It returns the slugs it committed.
+	// A nil MarkKeptCancels marks nothing.
+	MarkKeptCancels func() ([]string, error)
+	// Orphans lists the hub's orphan pairs, the pairs neither a board entry nor a batten record names.
+	// The hub wiring gives it to the prime's dobby only; a nil Orphans or an empty OrphanRecord notices no orphan.
+	Orphans func() ([]OrphanView, error)
+	// OrphanRecord is the path of the machine-local first-sight record of the orphan pairs.
+	OrphanRecord string
 	// Notice posts one line to the nearest live orch.
 	Notice func(ctx context.Context, line string) error
-	// PauseOwned pauses the run slug under the owner caller, since another machine owns it.
-	PauseOwned func(ctx context.Context, slug string) error
-	// ReleaseParentLock releases the parent lock record that names the run's child, as a run's owned-elsewhere pause does.
+	// ReleaseParentLock releases the parent lock record that names the run's child, which a run another machine owns needs.
 	ReleaseParentLock func(ctx context.Context, slug string) error
 	// SlugOwner returns the effective owner of slug on the local Bolt, with no pull; empty means no other machine owns it.
 	SlugOwner func(slug string) (string, error)
 	// AdoptSubject returns the beam or `root` that `lym adopt` moves slug to; nil or an error names the slug.
 	AdoptSubject func(slug string) (string, error)
-	// LiftOwnerPause lifts the pause entry of the slug's own scope that carries the owner caller.
-	LiftOwnerPause func(ctx context.Context, slug string) error
 	// Tasks reads the local board as TaskViews, each with its parent worktree (`hubgeom.ParentOf`) and effective owner.
 	Tasks func() ([]TaskView, error)
 	// LoadConfig loads beam.yaml over the dobby's worktree layer stack.
@@ -199,6 +220,7 @@ func ReadsAsReexec(statePath string, pid int, startTicks string) (bool, error) {
 // While an adopt in flight on this machine covers a beam another machine owns, the dobby stays up and schedules nothing.
 // Otherwise it hands such a beam over, and returns nil, logging why, once the hand-over's archive succeeds.
 // A start that does not read as a re-exec owes every run a full pass; a re-exec owes none.
+// Every start, a re-exec's included, adds the hub's desktop launcher when this machine owns the beam.
 // A tick that fails is logged once per episode and the loop goes on; a cancelled context ends it after the tick in flight.
 // Every way the dobby ends leaves a line in the log,
 // and an error after a re-exec posts a notice.
@@ -206,6 +228,7 @@ func Run(ctx context.Context, geom Geometry, deps Deps) error {
 	d := &daemon{
 		geom: geom, deps: deps, probe: deps.ProbeInterval,
 		flights: map[string]flight{}, childSeen: map[string]time.Time{}, wasCovered: map[string]bool{}, liftPending: map[string]bool{},
+		handedOver: map[string]bool{},
 	}
 	defer d.releaseLock()
 	if d.probe < wakeFloor {
@@ -218,6 +241,7 @@ func Run(ctx context.Context, geom Geometry, deps Deps) error {
 		d.logOwn(deps.Now(), "dobby: stopped on error: "+err.Error()+stoppedWayForward)
 		return err
 	}
+	d.keptNoticeOwed = !reexec
 	err = d.run(ctx, reexec)
 	if err != nil && !errors.Is(err, ErrDobbyRunning) {
 		d.logOwn(deps.Now(), "dobby: stopped on error: "+err.Error()+stoppedWayForward)
@@ -275,6 +299,7 @@ func (d *daemon) run(ctx context.Context, reexec bool) error {
 	} else {
 		d.logOwn(d.deps.Now(), fmt.Sprintf("start fresh pid %d", os.Getpid()))
 	}
+	d.addLauncher()
 	d.heartbeat(d.deps.Now(), nil)
 
 	var events <-chan struct{}
@@ -322,6 +347,22 @@ type daemon struct {
 	// archiveFailures is the failure episode of the hand-over's archive; archiveFailing reports whether its line was logged.
 	archiveFailures logger.Episode
 	archiveFailing  bool
+	// catchUpOwed reports whether the catch-up from origin is owed, which holds every scheduling step until it succeeds.
+	catchUpOwed bool
+	// catchUpNext is the earliest time of the next try of an owed catch-up, and catchUpDelay the delay that try followed.
+	catchUpNext  time.Time
+	catchUpDelay time.Duration
+	// catchUpReason is the failure class whose line the log last carried, empty when the catch-up stands clear.
+	catchUpReason string
+	// catchUpNoticed holds the failure classes whose notice went out this episode.
+	catchUpNoticed map[string]bool
+	// upgraded reports whether the first read after an upgrade succeeded in this process.
+	upgraded bool
+	// handedOver holds the slugs whose hand-over verdict already owed the catch-up, until they stop answering hand over.
+	handedOver map[string]bool
+	// syncFailures is the failure episode of the bolt-hold sync; syncFailing reports whether its line was logged.
+	syncFailures logger.Episode
+	syncFailing  bool
 
 	sleepWatch pauserecord.SleepWatch
 	owesAll    bool
@@ -368,8 +409,6 @@ type daemon struct {
 	wasCovered map[string]bool
 	// liftPending holds the runs whose covering pause lifted and which have not been given a pass since.
 	liftPending map[string]bool
-	// ownerPauses tracks, by slug, the episodes of a failing owner pause.
-	ownerPauses logger.EpisodeSet
 	// runs is the listing of the tick in flight.
 	runs []RunView
 	// deliveries holds the attempts to post each run notice not yet posted, by slug and episode key, in memory only.
@@ -382,10 +421,21 @@ type daemon struct {
 	lastReminders map[string]time.Time
 	// waitFailures guards the wait reads by slug or `|`-prefixed name: Warn first, Debug while it repeats, Info on recovery.
 	waitFailures logger.EpisodeSet
-	// teardown is the teardown of stranded runs' pairs in flight, nil when none is.
-	teardown *endedTeardown
-	// endedRetries holds, by slug, when each stranded run's teardown may start next, in memory only.
-	endedRetries map[string]endedRetry
+	// teardown is the teardown of leftover pairs in flight, nil when none is.
+	teardown *leftoverTeardown
+	// leftoverRetries holds, by slug, when each leftover pair's teardown may start next, in memory only.
+	leftoverRetries map[string]leftoverRetry
+	// keptNoticeOwed reports whether this fresh start still owes its one notice of the kept pairs.
+	keptNoticeOwed bool
+	// keptMarked reports whether this process marked the kept cancels from before the upgrade.
+	// keptMarkFailing reports whether the failure episode of that step logged its line.
+	keptMarked      bool
+	keptMarkFailing bool
+	// orphansRead reports whether a probe tick of this process read the orphan pairs, and orphansDue the due ones it found.
+	orphansRead bool
+	orphansDue  []string
+	// orphanFailures is the failure episode of the orphan read and of its first-sight record.
+	orphanFailures logger.Episode
 }
 
 // releaseLock releases the dobby lock when it is held.
@@ -429,7 +479,8 @@ func (d *daemon) postRefusedReexec(ctx context.Context) {
 // recordStart reads the state record under the held lock and records this process as the dobby.
 // A record with this pid and these start ticks owes nothing.
 // One with this pid and no ticks owes a full pass and gains the ticks.
-// Any other start owes a full pass and rewrites the pid, the start time and the ticks.
+// Any other start owes the catch-up from origin and a full pass, and rewrites the pid, the start time and the ticks.
+// A re-exec follows no absence, so it owes no catch-up.
 func (d *daemon) recordStart() error {
 	record, found, err := ReadState(d.geom.StatePath)
 	if err != nil {
@@ -447,6 +498,7 @@ func (d *daemon) recordStart() error {
 			return nil
 		})
 	}
+	d.oweCatchUp()
 	now := d.deps.Now()
 	return UpdateState(d.geom.StatePath, func(s *State) error {
 		s.PID, s.StartTime, s.StartTicks = os.Getpid(), now.UTC().Format(time.RFC3339), d.startTicks
@@ -586,17 +638,14 @@ func (d *daemon) loop(ctx context.Context, events <-chan struct{}) error {
 // beamOwnedElsewhere reads the beam's owner and reports the other machine that owns it.
 // A failed read is logged once per episode and reads as not owned elsewhere.
 func (d *daemon) beamOwnedElsewhere() (bool, string) {
-	machine, err := d.deps.Machine()
+	owner, elsewhere, err := d.deps.Owner()
 	if err == nil {
-		var owner string
-		if owner, err = d.deps.Owner(); err == nil {
-			d.ownerRead.Recover("dobbyengine: the beam's owner reads again", "worktree", d.geom.WorktreeName)
-			if d.ownerUnreadable {
-				d.ownerUnreadable = false
-				d.logLine(d.deps.Now(), "owner reads again")
-			}
-			return owner != "" && owner != machine, owner
+		d.ownerRead.Recover("dobbyengine: the beam's owner reads again", "worktree", d.geom.WorktreeName)
+		if d.ownerUnreadable {
+			d.ownerUnreadable = false
+			d.logLine(d.deps.Now(), "owner reads again")
 		}
+		return elsewhere, owner
 	}
 	d.ownerRead.Fail("dobbyengine: the beam's owner is unreadable; the dobby goes on", "worktree", d.geom.WorktreeName, "error", err)
 	if !d.ownerUnreadable {
@@ -625,6 +674,8 @@ func (d *daemon) standingMove() string {
 // That is logged once per episode,
 // and the state record's upkeep and the landing count go on.
 // The adopt hold holds the scheduling the same way, and the beam's landing step too.
+// A sleep the watch sees owes the catch-up from origin, which runs first, before any scheduling.
+// While it stands owed the tick holds the scheduling and the landing step as under an anchor change.
 func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	d.sleepWatch.Observe(now, d.deps.Awake())
 	seen := d.sleepWatch.Sleeps()
@@ -640,6 +691,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 			}) {
 				s.Sleeps = append(s.Sleeps, sleep)
 				d.owesAll = true
+				d.oweCatchUp()
 			}
 		}
 		cutoff := now.Add(-pauserecord.Retention)
@@ -649,20 +701,24 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	// An adopt hold hands nothing over, so the catch-up waits for it to lift.
+	catchingUp := !d.adoptHolds && d.catchUp(ctx, now)
 	moving := d.standingMove()
 	if moving != "" {
 		d.moveStands.Fail("dobbyengine: an anchor change stands; the dobby schedules nothing until it ends", "worktree", d.geom.WorktreeName, "record", moving)
 	} else {
 		d.moveStands.Recover("dobbyengine: the anchor change ended; the dobby schedules again", "worktree", d.geom.WorktreeName)
 	}
-	scheduling := moving == "" && !d.adoptHolds
+	scheduling := moving == "" && !d.adoptHolds && !catchingUp
 	if scheduling {
+		d.markKeptCancels(now)
 		if err := d.drivePasses(ctx, now); err != nil {
 			return err
 		}
-		if err := d.tearDownEnded(now); err != nil {
+		if err := d.tearDownLeftovers(ctx, now); err != nil {
 			return err
 		}
+		d.noticeKeptPairs(ctx)
 		d.runNotices(ctx, now)
 		d.waitReminders(ctx, now)
 		d.landNotices(ctx, now, d.listedRuns)
@@ -680,7 +736,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
-	if !d.adoptHolds {
+	if !d.adoptHolds && !catchingUp {
 		if err := d.landBeam(ctx); err != nil {
 			return err
 		}

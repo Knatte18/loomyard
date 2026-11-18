@@ -47,6 +47,8 @@ type PauseRequest struct {
 	// Record, when set, is called once the entry is on disk, an already-paused scope included, and before the grace.
 	// An error ends the pause at once with it wrapped; the entry stays live, so the run's processes stay held.
 	Record func() error
+	// HoldMachine, when set, is recorded as the added entry's Machine: the machine of the hold the entry stands for.
+	HoldMachine string
 }
 
 // OwnerRefusal is the refusal of a pause of slug that machine owner owns.
@@ -149,7 +151,7 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 		if caller == "" {
 			caller = externalCaller
 		}
-		entry = pauserecord.Entry{Scope: scope, PausedAt: now, GraceEnd: now.Add(req.Grace), Caller: caller, Sessions: []pauserecord.Session{}}
+		entry = pauserecord.Entry{Scope: scope, PausedAt: now, GraceEnd: now.Add(req.Grace), Caller: caller, Sessions: []pauserecord.Session{}, Machine: req.HoldMachine}
 		record.Live = append(record.Live, entry)
 		return nil
 	})

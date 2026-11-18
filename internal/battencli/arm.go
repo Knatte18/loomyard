@@ -576,7 +576,6 @@ func (r *continueRefusal) Error() string {
 // refuseContinuePass refuses a continue pass unless dobby may continue the run.
 // Batten's status must read running at Run-Shed, and the task worktree must be present.
 // The dobby state record of the parent worktree must name the run as driven, with no full pass owed.
-// No origin-owed marker may stand.
 // A gone task worktree owes a full pass, whose resume re-adopts a live pair.
 // The dobby state record is read through the parent worktree's geometry.
 // A record that is absent, or does not name the run, reads as a run that dobby does not drive.
@@ -621,14 +620,6 @@ func (c *battenCLI) refuseContinuePass() error {
 	}
 	if run.FullPassOwed {
 		return refuse("its parent's dobby owes it a full pass")
-	}
-
-	owed, err := OriginOwed(c.location, c.slug)
-	if err != nil {
-		return refuse(fmt.Sprintf("its origin-owed marker does not read: %v", err))
-	}
-	if owed {
-		return refuse("a resume judged it without origin and origin has not been reached since")
 	}
 	return nil
 }
@@ -722,8 +713,9 @@ func (c *battenCLI) pausedExtras() map[string]any {
 // Once the owner pre-flight lets a found status resume, reopenWindow reopens the terminal window;
 // it does so when no client is attached, unless --no-reopen is set.
 // Under --continue-pass, refuseContinuePass runs first,
-// and a run it lets through skips the act rule, the owner pre-flight and the reopening:
+// and a run it lets through skips the catch-up, the act rule, the owner pre-flight and the reopening:
 // the run is one dobby already drives, and the pass is not a resume.
+// Any other pass runs the catch-up of its own run before the act rule answers.
 //
 // This seed-when-absent behaviour is batten's alone and must stay out of the generic body:
 // loom refuses in exactly the situation batten seeds here, because only "lym loom start" may seed loom's status file.
@@ -732,8 +724,13 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		if err := c.refuseContinuePass(); err != nil {
 			return err
 		}
-	} else if err := c.refuseByAct(); err != nil {
-		return err
+	} else {
+		if err := c.catchUpRun(); err != nil {
+			return err
+		}
+		if err := c.refuseByAct(); err != nil {
+			return err
+		}
 	}
 	found, err := c.checkRunStatus()
 	if err != nil {

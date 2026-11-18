@@ -12,14 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/weftname"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 const (
@@ -39,6 +38,19 @@ var takenFlagCounter atomic.Uint64
 // pendingFlagPath returns the path of side's pending flag in lockDir, the lock directory that holds fabric.push.lock.
 func pendingFlagPath(lockDir, side string) string {
 	return filepath.Join(lockDir, "pending."+side)
+}
+
+// PairPushDeferred reports whether a detached push of the pair at l left a side's pending flag on disk.
+// A push that a pause deferred leaves one.
+// The flag stays until the pair's next push carries that side, so a lift reads from it whether a push is owed.
+func PairPushDeferred(l *lymcwd.Location) bool {
+	lockDir := RecordsLockDirPath(RecordsWorktree(l))
+	for _, side := range []string{pushSideCode, pushSideRecords} {
+		if pathPresent(pendingFlagPath(lockDir, side)) {
+			return true
+		}
+	}
+	return false
 }
 
 // exitDeferred ends a detached push child that a pause covers; a test swaps it for a recorder.
@@ -125,7 +137,7 @@ func takePending(lockDir, side string) (req PushSpawn, found bool, err error) {
 // It runs step with the owed flags taken before each run, looping while step reports progress.
 // After the last run it releases the lock and re-reads the flags.
 // A flag of an owed side set again sends the loop back to acquiring,
-// and a flag of a side it does not push is respawned as a detached push of that side.
+// and a flag of a side it does not owe stays on disk for its worktree's next push.
 // acquired is false only when the first acquire missed, which leaves the commits and the flags to the current holder;
 // a missed re-acquire after a step ran reports true, since the caller's own push landed.
 // A step error releases the lock and is returned.
@@ -151,7 +163,6 @@ func coalesceFlagged(lockDir string, owed map[string]PushSpawn, acquire func(loc
 		if ownedFlagSet(lockDir, owed) {
 			continue
 		}
-		respawnForeignFlags(lockDir, owed)
 		return true, nil
 	}
 }
@@ -189,70 +200,4 @@ func ownedFlagSet(lockDir string, owed map[string]PushSpawn) bool {
 		}
 	}
 	return false
-}
-
-// respawnForeignFlags takes the flag of each side the holder does not owe and spawns that side's push from it.
-// A flag that does not decode is dropped with a Warn.
-// A flag whose path is not this lock directory's own worktree is dropped with a Warn.
-// Likewise, a flag whose slug is not a plain name is dropped with a Warn.
-// The spawn starts in the board directory, never in the holder's own directory, which may be a pair worktree.
-func respawnForeignFlags(lockDir string, owed map[string]PushSpawn) {
-	for _, side := range []string{pushSideCode, pushSideRecords} {
-		if _, isOwed := owed[side]; isOwed {
-			continue
-		}
-		flag, found, err := takePending(lockDir, side)
-		if !found {
-			if err != nil {
-				logger.Warn("fabricengine: pending flag could not be taken; dropped", "side", side, "lock_dir", lockDir, "error", err)
-			}
-			continue
-		}
-		if err != nil {
-			logger.Warn("fabricengine: pending flag unusable; dropped", "flag", pendingFlagPath(lockDir, side), "error", err)
-			continue
-		}
-		req, reason := foreignFlagRequest(lockDir, side, flag)
-		if reason != "" {
-			logger.Warn("fabricengine: pending flag rejected; dropped", "flag", pendingFlagPath(lockDir, side), "reason", reason)
-			continue
-		}
-		if err := spawnDetachedPushFn(req); err != nil {
-			logger.Warn("fabricengine: respawn of a pending push failed; the commits stay local for the next push", "flag", pendingFlagPath(lockDir, side), "error", err)
-		}
-	}
-}
-
-// foreignFlagRequest builds the detached push request a flag of side asks for, or names why the flag cannot be trusted.
-// Only side's own path is kept.
-// It must be the worktree lockDir belongs to for records, or the paired code worktree for code.
-func foreignFlagRequest(lockDir, side string, flag PushSpawn) (req PushSpawn, reason string) {
-	for name, slug := range map[string]string{"PauseSlug": flag.PauseSlug, "TeardownSlug": flag.TeardownSlug} {
-		if slug == ".." || strings.ContainsAny(slug, `/\`) {
-			return PushSpawn{}, fmt.Sprintf("%s %q is not a plain name", name, slug)
-		}
-	}
-
-	recordsWorktree := filepath.Dir(lockDir)
-	req = PushSpawn{
-		PauseSlug:    flag.PauseSlug,
-		TeardownSlug: flag.TeardownSlug,
-		ParentLocked: flag.ParentLocked,
-		WorkDir:      BoltDir(filepath.Dir(recordsWorktree)),
-	}
-	switch side {
-	case pushSideRecords:
-		if flag.WeftPath == "" || RecordsLockDirPath(flag.WeftPath) != lockDir {
-			return PushSpawn{}, fmt.Sprintf("records path %q is not the worktree of lock directory %s", flag.WeftPath, lockDir)
-		}
-		req.WeftPath = flag.WeftPath
-	case pushSideCode:
-		if flag.WarpPath == "" || RecordsLockDirPath(weftname.SiblingPath(filepath.Dir(flag.WarpPath), filepath.Base(flag.WarpPath))) != lockDir {
-			return PushSpawn{}, fmt.Sprintf("code path %q is not the paired worktree of lock directory %s", flag.WarpPath, lockDir)
-		}
-		req.WarpPath = flag.WarpPath
-		// The child's coalescing push requires the records path even for a code-only flag.
-		req.WeftPath = recordsWorktree
-	}
-	return req, ""
 }

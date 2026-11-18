@@ -20,11 +20,10 @@ const (
 
 // hereRequest resolves a `lym adopt --here` call to the request it runs, or to the envelope fields it ends with.
 // call carries the call's flags, and a subject, `root` or --all in it is refused.
-// An unfinished record that takes the call's worktree up gives the request:
-// the record's own, with the call's flags merged in, so the call follows or resumes it whoever the owner reads as.
-// Otherwise Bolt is pulled and the subject's owner is read from it.
+// Bolt is pulled once and the subject's owner is read from it.
 // A pull that cannot bring Bolt up to date reads the local Bolt, and its detail becomes a warning of the end.
-// A subject no other machine owns ends `owned_here`, and any other gives the request that adopts the subject alone.
+// A subject no other machine owns ends `owned_here` with no write and nothing started,
+// and any other gives the request that adopts the subject alone.
 // A worktree that is neither the prime nor an open beam project ends `no_subject`.
 func hereRequest(deps callerDeps, call request) (request, map[string]any, error) {
 	if len(call.Slugs) > 0 || call.Root || call.All {
@@ -40,21 +39,6 @@ func hereRequest(deps callerDeps, call request) (request, map[string]any, error)
 		return request{}, map[string]any{"outcome": outcomeNoSubject, "worktree": deps.Worktree}, nil
 	}
 
-	record, recorded, err := deps.ReadRecord()
-	if err != nil {
-		return request{}, nil, err
-	}
-	if recorded {
-		takesUp, err := record.TakesUp(owners, slug, steps.ParentOf)
-		if err != nil {
-			return request{}, nil, fmt.Errorf("lym adopt: judge whether the unfinished adopt of %v takes up %s: %w", record.Subjects, subject, err)
-		}
-		if takesUp {
-			merged, _ := mergeRequest(record.Request, call.recorded())
-			return requestOf(merged), nil, nil
-		}
-	}
-
 	skipped, err := deps.PullBolt()
 	if err != nil {
 		return request{}, nil, fmt.Errorf("lym adopt: pull Bolt to read the owner of %s: %w", subject, err)
@@ -66,13 +50,17 @@ func hereRequest(deps callerDeps, call request) (request, map[string]any, error)
 	if err != nil {
 		return request{}, nil, fmt.Errorf("lym adopt: read this machine's name: %w", err)
 	}
+	identity, err := steps.hereIdentity(here)
+	if err != nil {
+		return request{}, nil, fmt.Errorf("lym adopt: read this machine's identity: %w", err)
+	}
 	owner := owners.Prime
 	if slug != "" {
 		if owner, err = owners.Effective(slug, steps.ParentOf); err != nil {
 			return request{}, nil, fmt.Errorf("lym adopt: read the owner of %s: %w", subject, err)
 		}
 	}
-	if !boardengine.OwnedElsewhere(owner, here) {
+	if !boardengine.OwnedElsewhere(owner, owners.Registry, identity) {
 		fields := map[string]any{"outcome": outcomeOwnedHere, "subject": subject}
 		if skipped != "" {
 			fields["warnings"] = []string{"Bolt was not brought up to date, so the owner was read from the local Bolt: " + skipped}

@@ -10,6 +10,9 @@ const (
 	PassExitCovered = 78
 	// PassExitContinueRefused is the exit code of a continue pass that refused because the run is not one dobby may continue.
 	PassExitContinueRefused = 79
+	// PassExitOriginWait is the exit code of a `lym batten run` pass whose catch-up could not reach origin or was refused.
+	// The pass acted on no run, and dobby counts it as no failing pass.
+	PassExitOriginWait = 80
 )
 
 const (

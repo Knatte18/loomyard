@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+
+	"github.com/Knatte18/loomyard/internal/machinename"
 )
 
 // RootSubject is what `lym adopt` takes to move the ownership of the root project.
@@ -48,6 +50,10 @@ type Owners struct {
 	Prime string
 	// Entries maps a slug to its owner facts.
 	Entries map[string]OwnerEntry
+	// Registry is the board's machine registry, empty when none is recorded.
+	Registry Registry
+	// Holds is the board's adopt holds, empty when none stands.
+	Holds []Hold
 }
 
 // ParseOwners decodes board.json bytes into Owners.
@@ -61,12 +67,16 @@ func ParseOwners(boardJSON []byte) (Owners, error) {
 		return Owners{}, err
 	}
 	var record struct {
-		PrimeOwner string `json:"prime_owner"`
+		PrimeOwner string   `json:"prime_owner"`
+		Machines   Registry `json:"machines"`
+		Holds      []Hold   `json:"holds"`
 	}
 	if err := json.Unmarshal(boardJSON, &record); err != nil {
-		return Owners{}, fmt.Errorf("read prime_owner: %w", err)
+		return Owners{}, fmt.Errorf("read prime_owner, machines and holds: %w", err)
 	}
-	return ownersOf(record.PrimeOwner, tasks), nil
+	owners := ownersOf(record.PrimeOwner, tasks)
+	owners.Registry, owners.Holds = record.Machines, record.Holds
+	return owners, nil
 }
 
 // ownersOf builds the Owners of a board holding tasks and recording primeOwner.
@@ -171,7 +181,8 @@ func (o Owners) AdoptSubject(slug string, parentOf func(slug string) (string, er
 	return o.AdoptSubject(parent, parentOf)
 }
 
-// OwnedElsewhere reports whether owner names a machine other than here; an empty owner is owned by no other machine.
-func OwnedElsewhere(owner, here string) bool {
-	return owner != "" && owner != here
+// OwnedElsewhere reports whether owner names a machine other than here, reading the name through registry.
+// An owner recorded under a former name of the machine here reads as here; an empty owner is owned by no other machine.
+func OwnedElsewhere(owner string, registry Registry, here machinename.Identity) bool {
+	return owner != "" && !registry.ReadsAsHere(owner, here)
 }

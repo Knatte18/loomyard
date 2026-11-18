@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // originRemoteName is the remote name deleteRemoteBranch always operates against.
@@ -245,6 +246,7 @@ const (
 	pathOwnershipBoardWorktree
 	pathOwnershipMovePathspecs
 	pathOwnershipUntrackedTrackedAt
+	pathOwnershipHubScratch
 )
 
 // pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must satisfy.
@@ -308,6 +310,12 @@ func ownedMovePathspecs(weftPath string, pathspecs []string) pathOwnership {
 // It serves a move to sha that git refuses while such an untracked file stands where sha puts its own.
 func ownedUntrackedTrackedAt(worktree, sha string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipUntrackedTrackedAt, root: worktree, sha: sha}
+}
+
+// ownedHubScratch declares target as owned when it lies at or below root, the hub's machine-local scratch directory.
+// The directory is `.lym` in the Bolt checkout, and it holds markers and records fabric wrote for this machine alone.
+func ownedHubScratch(root string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipHubScratch, root: root}
 }
 
 // ownedFabricHub declares target as owned when it structurally looks like a fabric hub:
@@ -591,6 +599,17 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		}
 		if _, err := gitrepo.New(own.root).FileAtRevision(own.sha, rel); err != nil {
 			return false, fmt.Sprintf("%s is not tracked at %s: %v", rel, own.sha, err)
+		}
+		return true, ""
+
+	case pathOwnershipHubScratch:
+		// The base-name test runs against the resolved root, so a link standing where the scratch directory belongs is refused.
+		resolvedRoot := resolveAncestorSymlinks(own.root)
+		if base := filepath.Base(resolvedRoot); base != lymdirs.DotLymDirName {
+			return false, fmt.Sprintf("%s is not a hub scratch directory", own.root)
+		}
+		if !pathAtOrBelow(own.root, target) {
+			return false, fmt.Sprintf("%s does not resolve at or below the hub scratch directory %s", target, own.root)
 		}
 		return true, ""
 
@@ -1640,13 +1659,25 @@ func updateRemoteBranch(rec *Mutations, req remoteBranchUpdateRequest) error {
 	err = req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA)
 	switch {
 	case errors.Is(err, gitrepo.ErrLeaseRejected):
-		return fmt.Errorf("the remote task branch %s moved while this reset ran, so it may now hold commits this checkout lacks; %s", req.branch, remoteDivergenceWayForward(req.remote, req.branch))
+		return &leaseLostError{message: fmt.Sprintf("the remote task branch %s moved while this reset ran, so it may now hold commits this checkout lacks; %s", req.branch, remoteDivergenceWayForward(req.remote, req.branch))}
 	case err != nil:
 		return fmt.Errorf("moving the remote task branch %s to %s failed: %w; way forward: re-run this reset once the remote is reachable", req.branch, req.sha, err)
 	}
 	rec.AppendRef(KindRemoteBranchUpdated, req.remote+"/"+req.branch, req.sha)
 	return nil
 }
+
+// leaseLostError is updateRemoteBranch's refusal for a lease that no longer holds.
+// Its text is the divergence advice, and it wraps gitrepo.ErrLeaseRejected so a caller tells it from a failed move.
+type leaseLostError struct {
+	message string
+}
+
+// Error returns the divergence refusal.
+func (e *leaseLostError) Error() string { return e.message }
+
+// Unwrap returns gitrepo.ErrLeaseRejected.
+func (e *leaseLostError) Unwrap() error { return gitrepo.ErrLeaseRejected }
 
 // remoteDivergenceWayForward returns the way forward for a remote task branch holding commits the checkout lacks.
 // It offers the `ours` merge for the run's own abandoned commits, because it takes no content and cannot conflict.
@@ -1899,6 +1930,32 @@ func resetHardTo(rec *Mutations, req pathRequest, repo *gitrepo.Repo, sha string
 	return nil
 }
 
+// resetKeepUnderArchive moves the checkout of repo to sha with `git reset --keep`, once checkPathRequest passes for req.
+// It first refuses unless archiveTag is on origin at the tip repo has checked out, the tip the reset leaves.
+// The refusal leaves the checkout where it was.
+// On a nil error from repo.ResetKeep it appends KindWorktreeReset to rec, with sha as the detail.
+func resetKeepUnderArchive(rec *Mutations, req pathRequest, repo *gitrepo.Repo, sha, archiveTag string) error {
+	if err := checkPathRequest(req); err != nil {
+		return err
+	}
+	leftTip, err := repo.CurrentSHA()
+	if err != nil {
+		return fmt.Errorf("read the tip %s leaves: %w", req.target, err)
+	}
+	onOrigin, err := remoteTagsUnder(req.target, archiveTag)
+	if err != nil {
+		return fmt.Errorf("look up the archive tag %q on %q: %w", archiveTag, originRemoteName, err)
+	}
+	if onOrigin[archiveTag] != leftTip {
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.target, Reason: fmt.Sprintf("the archive tag %q is not on %s at the tip %s the reset leaves", archiveTag, originRemoteName, leftTip)}
+	}
+	if err := repo.ResetKeep(sha); err != nil {
+		return err
+	}
+	rec.Append(KindWorktreeReset, req.target, sha)
+	return nil
+}
+
 // DropLocalResult reports a local drop: its mutation record and the archive tags it kept.
 type DropLocalResult struct {
 	MutationRecord
@@ -1936,6 +1993,7 @@ type dropLocalPlan struct {
 // and a commits_dropped entry per moved branch.
 // Each entry follows its effect, and the commits_dropped detail holds the dropped commits' SHAs.
 // Entries go to rec and to the result.
+// The takeover of a run is its caller: it moves the moved run's pair onto origin's tips before it writes its entry.
 func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalResult, err error) {
 	own := NewMutations(l.HubPath)
 	defer func() {
@@ -2170,6 +2228,23 @@ func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto st
 		rec.Append(KindRepoAdvanced, req.target, endTip)
 	}
 	return dropped, nil
+}
+
+// dropTakeoverEntryAndReplayOnto is the executor that moves a records branch off its takeover entry commit.
+// It runs the pipeline against req and resets repo to base, keeping uncommitted changes.
+// base is the tip the entry commit was made on.
+// It then replays commits onto onto as cherryPickOnto does.
+// A reset git refuses over a local change returns an error with nothing moved.
+// A replay that fails leaves the branch at base, so a failure never leaves the entry commit or a half replay.
+func dropTakeoverEntryAndReplayOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, base, onto string, commits []string) error {
+	if err := checkPathRequest(req); err != nil {
+		return err
+	}
+	if err := repo.ResetKeep(base); err != nil {
+		return fmt.Errorf("drop the takeover entry commit: reset %s to %s: %w", req.target, base, err)
+	}
+	_, err := cherryPickOnto(rec, req, repo, onto, commits)
+	return err
 }
 
 // resetWeftToIntegrated is the executor that moves the weft branch checked out at weftPath to onto.

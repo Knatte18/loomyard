@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
@@ -22,6 +23,7 @@ import (
 
 // landDeps holds the seam of every land step: one field per read or write a step makes.
 // A test substitutes the fields it needs.
+// Identity reads this machine's identity, and a nil Identity reads the name Machine returns alone.
 // ParentOf names the slug of the pair a slug was forked from, "" for the prime.
 // ChildStatus reads the status of the beam pair's own pawl run, found false when it has none.
 // RunID returns the seed id of that pawl run, which a land request names.
@@ -62,6 +64,7 @@ import (
 // Only the pull request verbs and `ready` call them.
 type landDeps struct {
 	Machine        func() (string, error)
+	Identity       func() (machinename.Identity, error)
 	ReadOwners     func() (boardengine.Owners, error)
 	ParentOf       func(slug string) (string, error)
 	PairPresent    func(slug string) bool
@@ -424,11 +427,23 @@ func judgeNotReady(deps landDeps, verb, slug string) error {
 	return nil
 }
 
+// identityOrName returns the identity read yields, or the name alone as an identity when read is nil.
+func identityOrName(read func() (machinename.Identity, error), name string) (machinename.Identity, error) {
+	if read == nil {
+		return machinename.Identity{Name: name}, nil
+	}
+	return read()
+}
+
 // judgeLandOwners refuses a beam another machine owns and a beam whose parent another machine owns.
 // Each refusal opens with verb, names the run to repeat, and names the adopt that takes the beam over.
 // A beam with no owner recorded reads its parent's, so only the parent check judges it.
 func judgeLandOwners(deps landDeps, owners boardengine.Owners, here, verb, slug string) error {
-	if owner := owners.Entries[slug].Owner; boardengine.OwnedElsewhere(owner, here) {
+	identity, err := identityOrName(deps.Identity, here)
+	if err != nil {
+		return fmt.Errorf("%s: read this machine's identity: %w", verb, err)
+	}
+	if owner := owners.Entries[slug].Owner; boardengine.OwnedElsewhere(owner, owners.Registry, identity) {
 		return fmt.Errorf("%s: the beam %s is owned by machine %s; way forward: run `%s %s` on %s, or run `lym adopt %s` here to take the beam over", verb, slug, owner, verb, slug, owner, slug)
 	}
 	parent, err := deps.ParentOf(slug)
@@ -444,7 +459,7 @@ func judgeLandOwners(deps landDeps, owners boardengine.Owners, here, verb, slug 
 			return fmt.Errorf("%s: read what adopting %s takes: %w", verb, parent, err)
 		}
 	}
-	if boardengine.OwnedElsewhere(owner, here) {
+	if boardengine.OwnedElsewhere(owner, owners.Registry, identity) {
 		return fmt.Errorf("%s: the parent of %s is owned by machine %s, and a landing merges into it; way forward: run `lym adopt %s` here to take it over, then `%s %s`", verb, slug, owner, subject, verb, slug)
 	}
 	return nil

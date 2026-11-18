@@ -313,10 +313,9 @@
 // a failed stat or a vanished status file runs none and leaves it due for the next Call.
 // An unreachable verdict and a check error keep it due and hold nothing.
 // A verdict of another machine records that owner and releases the parent lock record naming the child's run.
-// It pauses the slug under the owner caller through deps.PauseOwned.
+// It pauses nothing and holds the producer, which the dobby's catch-up hands over.
 // It sends one notice per episode naming the owner and "lym adopt <subject>".
 // The subject is `OwnerVerdict.AdoptSubject`, or the slug when a spawn refusal brought none.
-// A failed pause warns once per episode and is retried at the next probe while the owner stands.
 // A Finalize already past its parent-side merge keeps its record and finishes its landing:
 // a Finalize running, or failed on a transient cause with no re-step recorded for that stop;
 // deps.ParentHoldsTaskWork must read true.
@@ -324,27 +323,25 @@
 // Any other state at Finalize, blocked included, releases it.
 // FinalizePastMerge is that decision over its seams as arguments,
 // so a caller outside the wait reads the same carve-out;
-// the owner pause's end spares such a Finalize and ends the processes of every other run.
+// the hand-over's end spares such a Finalize and ends the processes of every other run.
 // batten survives its own probe's end:
 // the end spares the calling process and its ancestors;
 // batten keeps its owner hold and probe, and the pair's removal ends it.
 // A running child whose driver the end took has neither lock held and no strand.
-// It is noticed as driver-dead once the owner pause lifts and an owned-here verdict follows.
-// While the pause covers it, it is not noticed.
+// It is noticed as driver-dead once an owned-here verdict follows.
 // A pause held for an owner releases the record the same way on a probe check, with no check of its own.
 // Every spawn on an existing run reads a ChildOwnedElsewhereError as that verdict:
 // the respawn of an unconfirmed running child returns a budget-exempt Stuck naming the owner;
 // the awaiting resume and the binary re-step pause write no marker and keep waiting.
 // While an owner stands every spawn waits,
 // and the spawn hold re-runs the owner check once per probe until it reads the run as owned here,
-// so a failed owner pause never makes the wait spawn and re-reconcile in a loop.
+// so the wait never spawns and re-reconciles in a loop.
 // Bound: the child can act until the full pass the dobby owes after a wake runs the check,
 // and it can act for as long as origin stays unreachable;
 // a loom child judges its owner again before each of its pushes,
 // so it pushes nothing meanwhile once origin answers.
 // A Finalize past its parent-side merge finishes its landing here.
-// Once it is done its batten waits under the owner pause until "lym tender resume <slug>" lifts it;
-// it then goes on to Land.
+// Once it is done its batten stays held while the owner stands.
 //
 // A driver that finishes normally leaves its strand and its run directory behind, by design.
 // Nothing here tears either down as part of a clean finish;

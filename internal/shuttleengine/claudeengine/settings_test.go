@@ -475,8 +475,9 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			pythonInstalled, rawGoInstalled, shellEditInstalled, computedRmInstalled, sleepInstalled, headlessClaudeInstalled, publishInstalled := false, false, false, false, false, false, false
+			pythonInstalled, rawGoInstalled, shellEditInstalled, computedRmInstalled, sleepInstalled, headlessClaudeInstalled, adoptTakeHoldInstalled, publishInstalled := false, false, false, false, false, false, false, false
 			for _, command := range matcherCommands(doc, "Bash") {
+				adoptTakeHoldInstalled = adoptTakeHoldInstalled || strings.Contains(command, shellRow(t, "adopt-take-hold").Steer)
 				pythonInstalled = pythonInstalled || strings.Contains(command, shellRow(t, "python").Steer)
 				rawGoInstalled = rawGoInstalled || strings.Contains(command, shellRow(t, "raw-go").Steer)
 				shellEditInstalled = shellEditInstalled || strings.Contains(command, shellRow(t, "shell-edit").Steer)
@@ -492,7 +493,10 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if !rawGoInstalled {
 				t.Errorf("raw go Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
-			// The shell-edit, computed-rm, sleep and headless claude denies have no toggle either.
+			// The shell-edit, computed-rm, sleep, headless claude and adopt takeover denies have no toggle either.
+			if !adoptTakeHoldInstalled {
+				t.Errorf("adopt takeover Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
+			}
 			if !headlessClaudeInstalled {
 				t.Errorf("headless claude Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
@@ -508,8 +512,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if publishInstalled != tt.denyPublish {
 				t.Errorf("publish Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", publishInstalled, tt.denyPublish, preToolUse)
 			}
-			if !tt.wantAskUserEntry && !tt.pythonDeny && !tt.denyPublish && !tt.fork && len(preToolUse) != 5 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, shell-edit, computed-rm, sleep and headless claude denies", preToolUse)
+			if !tt.wantAskUserEntry && !tt.pythonDeny && !tt.denyPublish && !tt.fork && len(preToolUse) != 6 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, shell-edit, computed-rm, sleep, headless claude and adopt takeover denies", preToolUse)
 			}
 		})
 	}
@@ -587,7 +591,7 @@ func matcherCommands(doc map[string]any, matcher string) []string {
 
 // TestBuildSettings_NoAgentHookAndForkGuard covers the PreToolUse entries that forkSubagents and AskUserQuestion decide.
 // It also checks that no input installs an Agent entry.
-// The raw go, shell-edit, computed-rm, sleep and headless claude denies are the Bash entries every document carries.
+// Every document carries the raw go, shell-edit, computed-rm, sleep, headless claude and adopt takeover Bash entries.
 // The fork-loop-deadlock guard is the only other Bash entry, so no run mode installs a Bash stdin rewrite.
 // A fork-mode run emits a PreToolUse(Bash) hook that denies a call with steerWebsterForkDeny.
 // It matches only a fork-context agent_id together with a `lym webster` command.
@@ -628,11 +632,13 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 				t.Errorf("Agent PreToolUse entries = %q; want none (data: %s)", agentCommands, data)
 			}
 
-			// The raw go, shell-edit, computed-rm, sleep and headless claude denies are installed under every input;
+			// The raw go, shell-edit, computed-rm, sleep, headless claude and adopt takeover denies are installed under every input;
 			// the rest of the Bash entries are the fork guard.
-			var bashCommands, rawGoCommands, shellEditCommands, computedRmCommands, sleepCommands, headlessClaudeCommands []string
+			var bashCommands, rawGoCommands, shellEditCommands, computedRmCommands, sleepCommands, headlessClaudeCommands, adoptTakeHoldCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
+				case strings.Contains(command, shellRow(t, "adopt-take-hold").Steer):
+					adoptTakeHoldCommands = append(adoptTakeHoldCommands, command)
 				case strings.Contains(command, shellRow(t, "raw-go").Steer):
 					rawGoCommands = append(rawGoCommands, command)
 				case strings.Contains(command, shellRow(t, "shell-edit").Steer):
@@ -649,6 +655,9 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 			}
 			if len(headlessClaudeCommands) != 1 {
 				t.Errorf("headless claude Bash PreToolUse entries = %q; want exactly one (data: %s)", headlessClaudeCommands, data)
+			}
+			if len(adoptTakeHoldCommands) != 1 {
+				t.Errorf("adopt takeover Bash PreToolUse entries = %q; want exactly one (data: %s)", adoptTakeHoldCommands, data)
 			}
 			if len(rawGoCommands) != 1 {
 				t.Errorf("raw go Bash PreToolUse entries = %q; want exactly one (data: %s)", rawGoCommands, data)
@@ -968,8 +977,8 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 		wantRefused bool
 		wantErr     bool
 	}{
-		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 6, true, false},
-		{"AbsentGateConfigRendersNoRefuseRawRow", "", 5, false, false},
+		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 7, true, false},
+		{"AbsentGateConfigRendersNoRefuseRawRow", "", 6, false, false},
 		{"UnparsableGateConfigRefusesBeforeArtifacts", "slots: [\n", 0, false, true},
 	}
 	for _, tt := range gateTests {

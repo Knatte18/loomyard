@@ -34,6 +34,9 @@ type TaskView struct {
 	// StartRefusal is the refusal every start of the slug gets now, such as a finished run record; empty when none.
 	// Dobby spawns no pass for it and starts it on the first tick after the refusal is gone; read for released tasks.
 	StartRefusal string
+	// HeldBy names the machine of the adopt hold that holds the task, empty when none does; read for released tasks.
+	// A hold holds every queued task but the fix task of an adopt-fix hold.
+	HeldBy string
 	// NotifyOnLand reports whether the entry carries notify_on_land, a request for a landing notice.
 	NotifyOnLand bool
 	// Front reports whether the entry is a front task, filed ahead of its worktree's other starts; read for every entry.
@@ -64,9 +67,9 @@ func released(task TaskView, here string) bool {
 
 // heldByEntry reports whether a released task is held.
 // A task is held while a dependency is not done, another machine owns it, or a refusal awaits its slug's starts.
-// A pause entry covering the hub or the slug holds it too.
+// A pause entry covering the hub or the slug holds it too, and so does an adopt hold on any machine.
 func heldByEntry(task TaskView, covered bool) bool {
-	return len(task.PendingDependencies) > 0 || task.OwnedElsewhere || task.StartRefusal != "" || covered
+	return len(task.PendingDependencies) > 0 || task.OwnedElsewhere || task.StartRefusal != "" || task.HeldBy != "" || covered
 }
 
 // readyToStart reports whether dobby of the worktree named here starts task.

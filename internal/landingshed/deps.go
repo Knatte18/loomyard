@@ -135,6 +135,31 @@ type Deps struct {
 	//
 	// Nil means no repair note.
 	ParentCommitsOriginLacks func() ([]string, error)
+	// OwnedElsewhere reads whether another machine owns the run now, from a board it pulls first.
+	// owner is that machine and subject is what `lym adopt` takes to move the run.
+	// The finalize step reads it before the parent push, before the push of the run's records and before the board write.
+	// A returned error is returned from Call as a transient failure, so the driver re-steps the landing once origin answers.
+	//
+	// Nil means the run is owned here.
+	OwnedElsewhere func() (owner, subject string, elsewhere bool, err error)
+	// HandOver hands the run over to owner, under a takeover entry naming owner and subject.
+	// It ends the run's processes, archives its local tips and removes or leaves its pair as the caller's wiring decides.
+	// The error it returns wraps `fabricengine.ErrHandedOver` once the run is handed over, and any other error is a failure.
+	//
+	// Nil is never called, since a nil OwnedElsewhere never answers elsewhere.
+	HandOver func(owner, subject string) error
+	// PushRecords pushes the run's records and returns once origin holds them.
+	// The finalize step calls it after CommitStatus committed the landing's transition.
+	// A push owed on an unreachable origin or a held teardown lock is returned as an error.
+	//
+	// Nil pushes nothing.
+	PushRecords func() error
+	// ArchiveParentMerge archives the local parent merge under a tag pushed to origin.
+	// It then resets the parent branch to origin's tip.
+	// The finalize step calls it for a parent push rejected while origin's parent branch already holds the task's work.
+	//
+	// Nil leaves that rejected parent push Stuck.
+	ArchiveParentMerge func() error
 
 	// LandBlockers reads what still works under the beam the run lands:
 	// its open member entries and the local pairs forked from it.
@@ -178,8 +203,9 @@ type Deps struct {
 	TaskHead func() (string, error)
 
 	// MarkTaskDone marks the task's board entry done.
-	// The finalize step calls it once the parent-side merge has landed, before the parent push.
-	// It only logs a failure: the change is on the parent whatever the board says.
+	// The finalize step calls it last, after the parent push and the push of the run's records.
+	// It returns once origin holds the mark.
+	// A returned error is returned from Call, so the driver re-steps the landing and the mark is written again.
 	// landingshed names no board path, so the board wiring lives in the closure.
 	//
 	// Nil means "no board to update", and the step fails safe by leaving the board untouched.
@@ -188,7 +214,7 @@ type Deps struct {
 
 	// RecordLanding records commit as the run's landing commit, so the dobby driving the run can name it.
 	// The commit is the parent pair's head right after a parent-side merge that landed.
-	// The finalize step calls it after marking the task done and before the push.
+	// The finalize step calls it after the parent-side merge and before the push.
 	// It only logs a failure, of the head read or of the record; nil records nothing.
 	RecordLanding func(commit string) error
 	// RecordLandedSize records the size of the diff the run landed.

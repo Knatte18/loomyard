@@ -9,10 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -56,6 +58,74 @@ func standMove(t *testing.T, prime *lymcwd.Location, worktree string) string {
 		t.Fatal(err)
 	}
 	return record
+}
+
+// TestBeamPair pins the owner a beam pair reads as and whether the registry reads it as another machine.
+// An owner recorded under a former name of this machine's registry entry reads here.
+// An unregistered machine reads no registered machine's current name as its own.
+// A beam with no owner of its own reads its parent's.
+func TestBeamPair(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	beamProject := func(owner string) boardengine.OwnerEntry {
+		return boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: owner}
+	}
+	tests := []struct {
+		name          string
+		owners        boardengine.Owners
+		here          machinename.Identity
+		wantOwner     string
+		wantElsewhere bool
+	}{
+		{
+			name: "AnOwnerUnderAFormerNameOfThisMachinesEntryReadsHere",
+			owners: boardengine.Owners{
+				Entries:  map[string]boardengine.OwnerEntry{"b": beamProject("old-name")},
+				Registry: boardengine.Registry{"id1": {Name: "new-name", Former: []string{"old-name"}}},
+			},
+			here:      machinename.Identity{ID: "id1", Name: "new-name"},
+			wantOwner: "old-name",
+		},
+		{
+			name: "AnUnregisteredMachineReadsARegisteredMachinesCurrentNameElsewhere",
+			owners: boardengine.Owners{
+				Entries:  map[string]boardengine.OwnerEntry{"b": beamProject("other")},
+				Registry: boardengine.Registry{"id2": {Name: "other"}},
+			},
+			here:          machinename.Identity{Name: "other"},
+			wantOwner:     "other",
+			wantElsewhere: true,
+		},
+		{
+			name: "ABeamWithNoOwnerOfItsOwnReadsItsParentsOwner",
+			owners: boardengine.Owners{
+				Entries: map[string]boardengine.OwnerEntry{"b": beamProject(""), "p": beamProject("there")},
+			},
+			here:          machinename.Identity{Name: "here"},
+			wantOwner:     "there",
+			wantElsewhere: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			parentOf := func(slug string) (string, error) {
+				if slug == "b" {
+					return "p", nil
+				}
+				return "", nil
+			}
+			got, err := beamPair("b", tt.owners, tt.here, parentOf)
+			if err != nil {
+				t.Fatalf("beamPair() error = %v; want nil", err)
+			}
+			if got.Slug != "b" || got.Owner != tt.wantOwner || got.Elsewhere != tt.wantElsewhere {
+				t.Errorf("beamPair() = %+v; want slug b, owner %q, elsewhere %v", got, tt.wantOwner, tt.wantElsewhere)
+			}
+		})
+	}
 }
 
 // TestDobbyGeometry pins the paths each worktree's dobby uses and the move records that stop a dobby.

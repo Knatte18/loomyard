@@ -61,7 +61,7 @@ var excludedModules = []scankit.Entry{
 	},
 	{
 		Key: "machine",
-		Why: "name <name> rewrites the per-user machine file and the owners on every hub of the machine record, which no sandbox scenario may do; exercised by internal/machinecli's own tests instead",
+		Why: "name <name> rewrites the per-user machine file and the owners on every hub of the machine record, and start spawns lym beam start children, opens windows and writes desktop launchers, none of which a sandbox scenario may do; exercised by internal/machinecli's own tests instead",
 	},
 	{
 		Key: "weaver",

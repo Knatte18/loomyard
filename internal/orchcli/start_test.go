@@ -159,11 +159,19 @@ type startHarness struct {
 	// claims, when set, wires the prime claim to answer each call with the next entry, the last one repeating; claimCalls counts the calls.
 	claims     []claimAnswer
 	claimCalls int
-	// pauseOwned, when set, wires the owner pause to fail with pauseOwnedErr, record each slug in ownerPaused and count the calls callsAtOwnerPause saw of the strand operations.
+	// noPrimeClaim brings the beam up with BeamUpOptions.NoPrimeClaim.
+	noPrimeClaim bool
+	// pauseOwned, when set, wires the end of owned runs to fail with pauseOwnedErr.
+	// It records each slug in ownerPaused with its dobby flag in ownerEndDobby.
+	// It counts the calls callsAtOwnerPause saw of the strand operations.
+	// beams names the slugs the isBeam seam reads as beams, and beamErr fails that read.
 	pauseOwned        bool
 	pauseOwnedErr     error
 	ownerPaused       []string
+	ownerEndDobby     map[string]bool
 	callsAtOwnerPause int
+	beams             map[string]bool
+	beamErr           error
 }
 
 // claimAnswer is one scripted answer of the fake prime claim.
@@ -224,7 +232,7 @@ const harnessRunsWindowTitle = "harness-runs-window"
 // run brings the beam up with Prepare, unless the test set prepareOff, and decodes the report as the envelope a verb would print.
 func (h *startHarness) run(t *testing.T) (int, map[string]any) {
 	t.Helper()
-	return h.runWith(t, BeamUpOptions{Prepare: !h.prepareOff})
+	return h.runWith(t, BeamUpOptions{Prepare: !h.prepareOff, NoPrimeClaim: h.noPrimeClaim})
 }
 
 // runWith brings the beam up with opts and decodes the report into a map under the report's keys.
@@ -239,12 +247,17 @@ func (h *startHarness) runWith(t *testing.T, opts BeamUpOptions) (int, map[strin
 		}
 	}
 	if h.pauseOwned {
-		h.cli.pauseOwned = func(_ *lymcwd.Location, slug string) error {
+		h.cli.isBeam = func(slug string) (bool, error) { return h.beams[slug], h.beamErr }
+		h.cli.endOwned = func(_ *lymcwd.Location, slug string, endDobby bool) error {
 			h.callsAtOwnerPause = len(h.calls)
 			if h.pauseOwnedErr != nil {
 				return h.pauseOwnedErr
 			}
 			h.ownerPaused = append(h.ownerPaused, slug)
+			if h.ownerEndDobby == nil {
+				h.ownerEndDobby = map[string]bool{}
+			}
+			h.ownerEndDobby[slug] = endDobby
 			return nil
 		}
 	}
@@ -917,7 +930,7 @@ func TestStart_Refusals(t *testing.T) {
 			name: "a beam another machine owns names the owner and the takeover",
 			seed: func(t *testing.T, h *startHarness) {
 				h.cli.readBeamFacts = func() (beamFacts, error) {
-					return beamFacts{slug: "b", here: "desktop", owner: "laptop"}, nil
+					return beamFacts{slug: "b", here: "desktop", owner: "laptop", elsewhere: true}, nil
 				}
 			},
 			wantIn:             []string{`"laptop"`, "lym adopt b"},
@@ -927,7 +940,7 @@ func TestStart_Refusals(t *testing.T) {
 			name: "the prime another machine owns names the root takeover",
 			seed: func(t *testing.T, h *startHarness) {
 				h.cli.readBeamFacts = func() (beamFacts, error) {
-					return beamFacts{here: "desktop", owner: "laptop"}, nil
+					return beamFacts{here: "desktop", owner: "laptop", elsewhere: true}, nil
 				}
 			},
 			wantIn:             []string{`"laptop"`, "lym adopt root"},
@@ -1059,7 +1072,7 @@ func TestStart_ArchivesBeforeRefusingAForeignOwner(t *testing.T) {
 
 			h := newStartHarness(t)
 			h.cli.readBeamFacts = func() (beamFacts, error) {
-				return beamFacts{slug: "b", here: "desktop", owner: tt.owner, moveWayForward: tt.move}, nil
+				return beamFacts{slug: "b", here: "desktop", owner: tt.owner, elsewhere: tt.owner != "", moveWayForward: tt.move}, nil
 			}
 			archives := 0
 
@@ -1263,43 +1276,80 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			},
 		},
 		{
-			name: "an owned_elsewhere entry is paused once before the launch and named in owner_pauses",
+			name: "under NoPrimeClaim a hub with no prime owner is reconciled but its prime is left unclaimed",
 			prepare: func(t *testing.T, h *startHarness) {
-				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
-				h.pauseOwned = true
+				h.claims = []claimAnswer{{claimed: "desktop"}}
+				h.noPrimeClaim = true
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				pauses := envList(t, env, "owner_pauses")
-				row, _ := pauses[0].(map[string]any)
-				if !reflect.DeepEqual(h.ownerPaused, []string{"p1"}) || len(pauses) != 1 || row["slug"] != "p1" || row["owner"] != "laptop" || h.callsAtOwnerPause != 0 || len(h.starter.specs) != 1 {
-					t.Errorf("paused = %v, owner_pauses = %v, calls before the pause = %d, starts = %d; want p1 paused once before any strand call and one launch", h.ownerPaused, pauses, h.callsAtOwnerPause, len(h.starter.specs))
+				if h.reconciles != 1 || h.claimCalls != 0 || strings.Contains(warningText(env), "claimed for machine") || len(h.starter.specs) != 1 {
+					t.Errorf("reconciles = %d, claims = %d, warning = %q, starts = %d; want one reconcile, no claim and one launch", h.reconciles, h.claimCalls, warningText(env), len(h.starter.specs))
 				}
 			},
 		},
 		{
-			name: "a failing owner pause warns naming the re-run of beam start and the launch goes on",
+			name: "an owned_elsewhere beam and task are ended once before the launch, the dobby with the beam only, and named in owner_pauses",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.report.Entries = []fabricengine.EntryOutcome{
+					{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"},
+					{Slug: "p2", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"},
+				}
+				h.pauseOwned = true
+				h.beams = map[string]bool{"p1": true}
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				ended := envList(t, env, "owner_pauses")
+				if !reflect.DeepEqual(h.ownerPaused, []string{"p1", "p2"}) || !reflect.DeepEqual(h.ownerEndDobby, map[string]bool{"p1": true, "p2": false}) ||
+					len(ended) != 2 || h.callsAtOwnerPause != 0 || len(h.starter.specs) != 1 {
+					t.Errorf("ended = %v, dobby flags = %v, owner_pauses = %v, calls before the end = %d, starts = %d; want p1 with its dobby and p2 without, before any strand call, and one launch",
+						h.ownerPaused, h.ownerEndDobby, ended, h.callsAtOwnerPause, len(h.starter.specs))
+				}
+				for i, want := range []string{"p1", "p2"} {
+					if row, _ := ended[i].(map[string]any); row["slug"] != want || row["owner"] != "laptop" {
+						t.Errorf("owner_pauses[%d] = %v; want slug %s owned by laptop", i, ended[i], want)
+					}
+				}
+			},
+		},
+		{
+			name: "a failing end warns naming the re-run of beam start and the launch goes on",
 			prepare: func(t *testing.T, h *startHarness) {
 				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
-				h.pauseOwned, h.pauseOwnedErr = true, errors.New("tender down")
+				h.pauseOwned, h.pauseOwnedErr = true, errors.New("end refused")
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
 				warning := warningText(env)
-				if !strings.Contains(warning, "tender down") || !strings.Contains(warning, "re-run `lym beam start`, which pauses it again") || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
-					t.Errorf("warning = %q, starts = %d; want the failure and the re-run named, nothing paused and one launch", warning, len(h.starter.specs))
+				if !strings.Contains(warning, "p1 is owned by machine laptop and could not be ended (end refused); re-run `lym beam start`, which ends it again") || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, starts = %d; want the failure and the re-run named, nothing ended and one launch", warning, len(h.starter.specs))
 				}
 			},
 		},
 		{
-			name: "with no owner pause wired an owned_elsewhere entry is named under the warnings and the launch goes on",
+			name: "a failed beam read ends nothing for that entry and warns, and the launch goes on",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
+				h.pauseOwned, h.beamErr = true, errors.New("board unreadable")
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				warning := warningText(env)
+				if !strings.Contains(warning, "p1 is owned by machine laptop and could not be ended (board unreadable); re-run `lym beam start`, which ends it again") || len(h.ownerPaused) != 0 || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, ended = %v, starts = %d; want the read's error named, nothing ended and one launch", warning, h.ownerPaused, len(h.starter.specs))
+				}
+			},
+		},
+		{
+			name: "with no end wired an owned_elsewhere entry is named under the warnings and the launch goes on",
 			prepare: func(t *testing.T, h *startHarness) {
 				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				if warning := warningText(env); !strings.Contains(warning, "p1 is owned by machine laptop") || len(h.starter.specs) != 1 {
-					t.Errorf("warning = %q, starts = %d; want p1 and its owner named and one launch", warning, len(h.starter.specs))
+				if warning := warningText(env); !strings.Contains(warning, "p1 is owned by machine laptop and was not ended; re-run `lym beam start`, which ends it again") || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, starts = %d; want p1 and its owner named as not ended and one launch", warning, len(h.starter.specs))
 				}
 			},
 		},
@@ -1329,7 +1379,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 					t.Errorf("reconciles = %d, claims = %d, paused = %v, starts = %d; want none reconciled, claimed or paused and one launch", h.reconciles, h.claimCalls, h.ownerPaused, len(h.starter.specs))
 				}
 				if got := envList(t, env, "mutations"); len(got) != 0 || len(envList(t, env, "owner_pauses")) != 0 || warningText(env) != "" {
-					t.Errorf("env = %v; want no mutation, owner pause or warning", env)
+					t.Errorf("env = %v; want no mutation, owner end or warning", env)
 				}
 			},
 		},

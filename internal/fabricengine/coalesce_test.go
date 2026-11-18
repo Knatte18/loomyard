@@ -10,7 +10,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -190,7 +189,7 @@ func TestPushDeferral_PutsBackTheUnpushedFlags(t *testing.T) {
 // TestCoalesceFlagged_PendingFlags covers the pending-flag protocol over a temp lock directory and a step closure:
 // a missed first acquire leaves the flag to the holder;
 // a flag set during a step makes the holder run again;
-// a foreign side's flag is respawned only when it validates;
+// a foreign side's flag stays on disk for its worktree's next push, and nothing is spawned;
 // and an owed side's flag is only ever taken.
 // It swaps the package's spawn variable and the logger's output, so it is not parallel.
 func TestCoalesceFlagged_PendingFlags(t *testing.T) {
@@ -348,29 +347,20 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 		}
 	})
 
-	t.Run("ForeignFlagRespawn", func(t *testing.T) {
+	t.Run("ForeignFlagStaysOnDisk", func(t *testing.T) {
 		for _, side := range []string{pushSideCode, pushSideRecords} {
 			t.Run(side, func(t *testing.T) {
 				tests := []struct {
 					name string
 					// edit changes the valid flag; raw, when set, replaces its encoded bytes.
-					edit      func(f pendingFlagFixture, flag *PushSpawn)
-					raw       []byte
-					wantSpawn bool
-					// wantWarn is a substring of the Warn, empty when none is expected.
-					wantWarn string
+					edit func(f pendingFlagFixture, flag *PushSpawn)
+					raw  []byte
 				}{
-					{name: "ValidFlagWithForeignWorkDir", edit: func(f pendingFlagFixture, flag *PushSpawn) { flag.WorkDir = filepath.Join(f.hub, "elsewhere") }, wantSpawn: true},
-					{name: "ParentLockedMarkKept", edit: func(f pendingFlagFixture, flag *PushSpawn) { flag.ParentLocked = true }, wantSpawn: true},
-					{name: "OppositeSidePathDropped", edit: func(f pendingFlagFixture, flag *PushSpawn) { setOppositePath(side, f, flag) }, wantSpawn: true},
+					{name: "ValidFlag"},
 					{name: "PathOfAnotherWorktree", edit: func(f pendingFlagFixture, flag *PushSpawn) {
 						setSidePath(side, filepath.Join(f.hub, "badworktree"), flag)
-					}, wantWarn: "badworktree"},
-					{name: "PauseSlugDotDot", edit: func(f pendingFlagFixture, flag *PushSpawn) { flag.PauseSlug = ".." }, wantWarn: "pending." + side},
-					{name: "PauseSlugWithSeparator", edit: func(f pendingFlagFixture, flag *PushSpawn) { flag.PauseSlug = "a/b" }, wantWarn: "pending." + side},
-					{name: "TeardownSlugDotDot", edit: func(f pendingFlagFixture, flag *PushSpawn) { flag.TeardownSlug = ".." }, wantWarn: "pending." + side},
-					{name: "TeardownSlugWithSeparator", edit: func(f pendingFlagFixture, flag *PushSpawn) { flag.TeardownSlug = "a/b" }, wantWarn: "pending." + side},
-					{name: "NotJSON", raw: []byte("{not json"), wantWarn: "pending." + side},
+					}},
+					{name: "NotJSON", raw: []byte("{not json")},
 				}
 				for _, tt := range tests {
 					t.Run(tt.name, func(t *testing.T) {
@@ -410,26 +400,18 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 						if steps != 1 {
 							t.Errorf("step ran %d times; want 1", steps)
 						}
-						if _, err := os.Stat(pendingFlagPath(f.lockDir, side)); !errors.Is(err, os.ErrNotExist) {
-							t.Errorf("flag after the call: %v; want it removed", err)
+						left, err := os.ReadFile(pendingFlagPath(f.lockDir, side))
+						if err != nil {
+							t.Fatalf("flag after the call: %v; want it left on disk", err)
 						}
-
-						var want []PushSpawn
-						if tt.wantSpawn {
-							req := PushSpawn{PauseSlug: "pause", TeardownSlug: "teardown", ParentLocked: flag.ParentLocked, WorkDir: BoardDir(f.hub)}
-							setSidePath(side, validSidePath(side, f), &req)
-							// The child's coalescing push requires the records path, so a code-side respawn carries it too.
-							req.WeftPath = f.records
-							want = []PushSpawn{req}
+						if !bytes.Equal(left, content) {
+							t.Errorf("flag after the call = %q; want it unchanged as %q", left, content)
 						}
-						if !reflect.DeepEqual(spawned, want) {
-							t.Errorf("spawned %+v; want %+v", spawned, want)
+						if len(spawned) != 0 {
+							t.Errorf("spawned %+v; want nothing", spawned)
 						}
-						if tt.wantWarn == "" && strings.Contains(logged.String(), "WARN") {
+						if strings.Contains(logged.String(), "WARN") {
 							t.Errorf("logged %q; want no warning", logged.String())
-						}
-						if tt.wantWarn != "" && !strings.Contains(logged.String(), tt.wantWarn) {
-							t.Errorf("logged %q; want a warning naming %q", logged.String(), tt.wantWarn)
 						}
 					})
 				}
@@ -453,13 +435,4 @@ func setSidePath(side, path string, flag *PushSpawn) {
 		return
 	}
 	flag.WeftPath = path
-}
-
-// setOppositePath sets the path field of the side a flag of side does not carry.
-func setOppositePath(side string, f pendingFlagFixture, flag *PushSpawn) {
-	if side == pushSideCode {
-		flag.WeftPath = f.records
-		return
-	}
-	flag.WarpPath = f.code
 }

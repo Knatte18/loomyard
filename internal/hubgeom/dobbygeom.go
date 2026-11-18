@@ -91,21 +91,38 @@ func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
 
 // DobbyStart fills dobbyengine.StartDeps over the hub of prime.
 // The owners come from the board.
+// Each is judged through the board's machine registry against this machine's identity.
+// The Machine seam returns the name of the identity `boardengine.EnsureIdentity` returns, which writes the id once;
+// its error is the refusal of a machine whose config directory resolves from no variable.
 // The prime owner claim is the one a batten resume makes.
 // The local beams are the pairs whose origin record carries the beam mark.
-// Each carries the owner it effectively reads as through its parent.
+// Each carries the owner it effectively reads as through its parent, and whether that owner reads as another machine.
 // The move check reads an anchor change standing on a worktree's own records worktree or on the prime's.
 // A landing hold is read from the local board's entry of the worktree.
 func DobbyStart(prime *lymcwd.Location) dobbyengine.StartDeps {
 	boardDir := fabricengine.BoardDir(prime.HubPath)
 	return dobbyengine.StartDeps{
-		Machine: machinename.Name,
-		PrimeOwner: func() (string, error) {
-			owners, err := boardengine.ReadOwners(boardDir)
-			return owners.Prime, err
+		Machine: func() (string, error) {
+			identity, err := boardengine.EnsureIdentity()
+			return identity.Name, err
 		},
-		ClaimPrime: func(machine string) (string, error) {
-			write, err := boardengine.SetOwners(boardDir, boardengine.OwnerRequest{Machine: machine, Prime: true})
+		PrimeOwner: func() (string, bool, error) {
+			here, err := machinename.ReadIdentity()
+			if err != nil {
+				return "", false, err
+			}
+			owners, err := boardengine.ReadOwners(boardDir)
+			if err != nil {
+				return "", false, err
+			}
+			return owners.Prime, boardengine.OwnedElsewhere(owners.Prime, owners.Registry, here), nil
+		},
+		ClaimPrime: func(string) (string, error) {
+			identity, err := boardengine.EnsureIdentity()
+			if err != nil {
+				return "", err
+			}
+			write, err := boardengine.SetOwners(boardDir, boardengine.OwnerRequest{Machine: identity.Name, Identity: identity, Prime: true})
 			if err != nil {
 				return "", err
 			}
@@ -157,13 +174,17 @@ func moveGateSlugs(prime *lymcwd.Location, worktree string) []string {
 }
 
 // localBeams lists the pairs of the hub present on this machine whose origin record carries the beam mark.
-// Each pair carries the owner it effectively reads as.
+// Each pair carries the owner it effectively reads as and whether that owner reads as another machine.
 func localBeams(prime *lymcwd.Location, boardDir string) ([]dobbyengine.BeamPair, error) {
 	entries, err := fabricengine.List(prime.AnchorPath())
 	if err != nil {
 		return nil, err
 	}
 	owners, err := boardengine.ReadOwners(boardDir)
+	if err != nil {
+		return nil, err
+	}
+	here, err := machinename.ReadIdentity()
 	if err != nil {
 		return nil, err
 	}
@@ -181,11 +202,22 @@ func localBeams(prime *lymcwd.Location, boardDir string) ([]dobbyengine.BeamPair
 		if !found || !origin.Beam {
 			continue
 		}
-		owner, err := owners.Effective(slug, parentOf)
+		pair, err := beamPair(slug, owners, here, parentOf)
 		if err != nil {
-			return nil, fmt.Errorf("hubgeom: resolve the owner of %q: %w", slug, err)
+			return nil, err
 		}
-		beams = append(beams, dobbyengine.BeamPair{Slug: slug, Owner: owner})
+		beams = append(beams, pair)
 	}
 	return beams, nil
+}
+
+// beamPair returns the pair of the beam slug with the owner it effectively reads as through parentOf.
+// Elsewhere is set when the board's registry reads that owner as a machine other than here,
+// so an owner recorded under a former name of here's registry entry reads as here.
+func beamPair(slug string, owners boardengine.Owners, here machinename.Identity, parentOf func(slug string) (string, error)) (dobbyengine.BeamPair, error) {
+	owner, err := owners.Effective(slug, parentOf)
+	if err != nil {
+		return dobbyengine.BeamPair{}, fmt.Errorf("hubgeom: resolve the owner of %q: %w", slug, err)
+	}
+	return dobbyengine.BeamPair{Slug: slug, Owner: owner, Elsewhere: boardengine.OwnedElsewhere(owner, owners.Registry, here)}, nil
 }

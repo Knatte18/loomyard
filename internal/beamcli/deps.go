@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
@@ -44,6 +45,7 @@ func hubCreateDeps(prime *lymcwd.Location) (createDeps, error) {
 	return createDeps{
 		PrimeName:  prime.WorktreeName,
 		Machine:    machinename.Name,
+		Identity:   machinename.ReadIdentity,
 		ReadOwners: func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
 		ParentOf: func(slug string) (string, error) {
 			return hubgeom.ParentOf(prime, slug)
@@ -60,6 +62,11 @@ func hubCreateDeps(prime *lymcwd.Location) (createDeps, error) {
 			return topology.TaskBranchOnOrigin(prime, slug)
 		},
 		SetOwners: func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
+			identity, err := boardengine.EnsureIdentity()
+			if err != nil {
+				return boardengine.OwnerWrite{}, err
+			}
+			req.Identity, req.Machine = identity, identity.Name
 			return boardengine.SetOwners(boardDir, req)
 		},
 		RunStatus: func(slug string) (shedengine.State, bool, error) {
@@ -178,7 +185,8 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		return pair, head, present, nil
 	}
 	return landDeps{
-		Machine: machinename.Name,
+		Machine:  machinename.Name,
+		Identity: machinename.ReadIdentity,
 		ReadOwners: func() (boardengine.Owners, error) {
 			return boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
 		},
@@ -345,7 +353,9 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			if err != nil {
 				return "", err
 			}
-			if _, err := fabricengine.PushPairAnchored(beam, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
+			// A beam verb may run inside the beam's pair, so a hand-over leaves the pair for the parent's dobby to remove.
+			push := pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait, InsidePair: true}
+			if _, err := pairteardown.PushRun(prime, beam, slug, push); err != nil {
 				return "", err
 			}
 			pair, err := fabricengine.Open(beam)

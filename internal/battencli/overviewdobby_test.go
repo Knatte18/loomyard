@@ -89,12 +89,43 @@ func TestDobbyLines(t *testing.T) {
 			},
 		},
 		{
+			name: "ARunThatOwesAPushOrACodeTipEndsItsPassCellWithWhatItOwes",
+			view: dobbyengine.View{MaxRuns: 3, Runs: []dobbyengine.ViewRun{{Slug: "owing"}, {Slug: "tip"}}},
+			cells: map[string]RunCells{
+				"owing": {State: "halted", Stage: "7. Land", InStage: "3m", Owes: "push owed: origin unreachable"},
+				"tip":   {State: "running", Stage: "6. Run-Shed", InStage: "1h12m", Owes: "code tip 0123456789ab missing on origin, owed by oslo"},
+			},
+			want: []string{
+				"dobby prime: not running; way forward: lym beam start",
+				"  owing  halted   7. Land      3m     no pass yet, push owed: origin unreachable",
+				"  tip    running  6. Run-Shed  1h12m  no pass yet, code tip 0123456789ab missing on origin, owed by oslo",
+			},
+		},
+		{
 			name: "AReadyBeamHoldsAWaitingTaskAndNamesTheCancel",
 			view: dobbyengine.View{Alive: true, MaxRuns: 2, LandNotice: dobbyengine.LandNoticeOff, Waiting: []dobbyengine.WaitingTask{{Slug: "held", ReadyHold: true}}},
 			want: []string{
 				"dobby prime: alive, max_runs 2, land_notice off",
 				"  no runs driven",
 				"  held  waits on the beam is flagged ready: lym batten cancel held --remove",
+			},
+		},
+		{
+			name: "AKeptPairShowsWhenItsCancelFinishedAndNamesTheRemoval",
+			view: dobbyengine.View{Alive: true, MaxRuns: 3, LandNotice: dobbyengine.LandNoticeOff, Kept: []dobbyengine.KeptPair{{Slug: "k", Since: minutesAgo(12)}}},
+			want: []string{
+				"dobby prime: alive, max_runs 3, land_notice off",
+				"  no runs driven",
+				"  k  kept pair, cancelled 12m ago; way forward: lym fabric remove k",
+			},
+		},
+		{
+			name: "AKeptPairWithNoFinishTimeSaysItsAgeIsUnknown",
+			view: dobbyengine.View{Alive: true, MaxRuns: 3, LandNotice: dobbyengine.LandNoticeOff, Kept: []dobbyengine.KeptPair{{Slug: "k"}}},
+			want: []string{
+				"dobby prime: alive, max_runs 3, land_notice off",
+				"  no runs driven",
+				"  k  kept pair, age unknown; way forward: lym fabric remove k",
 			},
 		},
 		{

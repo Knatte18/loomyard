@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -61,6 +62,11 @@ func PullBolt(boardDir string) error {
 type OwnerRequest struct {
 	// Machine is the owner to record, this machine's name; empty is refused.
 	Machine string
+	// Identity is this machine's identity.
+	// When its ID is set, the write registers the machine in the same commit, after a check against the registry it pulled.
+	// Its Name must equal Machine.
+	// A request with no Identity registers nothing.
+	Identity machinename.Identity
 	// Slugs names the entries to write; an absent, done or note entry is left alone.
 	// Only a beam project records an owner, so a task or grouping project named without Claim or Beam is not written.
 	Slugs []string
@@ -106,6 +112,8 @@ type OwnerWrite struct {
 // The commit is made after the board is brought up to date with its upstream, so a stale copy is never written over.
 // Without req.Takeover, a named entry whose effective owner is another machine is neither written nor claimed,
 // and it is reported in Lost; req.Replace selects only entries whose recorded owner it names.
+// With req.Identity it also registers the machine in the same commit and push,
+// and a registration the registry refuses returns that refusal with nothing written.
 // A competing write that origin already holds wins over the replay of this one,
 // and the re-read after the push reports what stands.
 // An unreachable origin returns ErrOwnerOriginUnreachable, wrapped with its detail.
@@ -115,6 +123,9 @@ type OwnerWrite struct {
 func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 	if req.Machine == "" {
 		return OwnerWrite{}, errors.New("board: the owner write names no machine: take this machine's name from internal/machinename.Name, which fails when the name cannot be read")
+	}
+	if req.Identity.Name != "" && req.Identity.Name != req.Machine {
+		return OwnerWrite{}, fmt.Errorf("board: the owner write names the machine %q and the identity %q: pass the identity's name as the machine", req.Machine, req.Identity.Name)
 	}
 	if req.Claim != "" && len(req.Slugs) != 1 {
 		return OwnerWrite{}, fmt.Errorf("board: a claim status goes with exactly one slug, and the owner write names %d", len(req.Slugs))
@@ -210,6 +221,8 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 // The owners include those its replace set selects.
 // It returns the names it wrote, OwnerWritePrime among them, and the board-relative paths it changed.
 // An entry left alone for an owner elsewhere is added to lost with that owner.
+// A request with an identity is checked against the registry before any owner is touched.
+// It registers the machine in the same save.
 // The caller holds the board write lock.
 func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (written, paths []string, err error) {
 	store := NewStore(boardDir)
@@ -217,9 +230,20 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 	if err := store.Load(); err != nil {
 		return nil, nil, err
 	}
+	registration := Registration{Identity: req.Identity}
+	registers := req.Identity.ID != ""
+	if registers {
+		if err := store.machines.Check(registration); err != nil {
+			return nil, nil, err
+		}
+	}
+	here := req.Identity
+	if here.Name == "" {
+		here = machinename.Identity{Name: req.Machine}
+	}
 
 	if req.Prime {
-		if !req.Takeover && OwnedElsewhere(store.primeOwner, req.Machine) {
+		if !req.Takeover && OwnedElsewhere(store.primeOwner, store.machines, here) {
 			lost[OwnerWritePrime] = store.primeOwner
 		} else {
 			store.primeOwner = req.Machine
@@ -235,7 +259,7 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 		if err != nil {
 			return nil, nil, fmt.Errorf("entry %q: resolve its owner: %w", slug, err)
 		}
-		if !req.Takeover && OwnedElsewhere(effective, req.Machine) {
+		if !req.Takeover && OwnedElsewhere(effective, store.machines, here) {
 			lost[slug] = effective
 			continue
 		}
@@ -277,7 +301,11 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 			written = append(written, entry.Slug)
 		}
 	}
-	if len(written) == 0 {
+	registered := false
+	if registers {
+		store.machines, registered = store.machines.apply(registration)
+	}
+	if len(written) == 0 && !registered {
 		return nil, nil, nil
 	}
 	if err := store.Save(); err != nil {
@@ -321,7 +349,7 @@ func renderOwnerWrite(boardDir string, tasks []Task, primeOwner string) ([]strin
 	return paths, nil
 }
 
-// pushOwnerCommit pushes the committed owner write.
+// pushOwnerCommit pushes the committed board write, an owner, a claim or a status.
 // When a held lock deferred the first push, it pushes once more after sleep.
 // An unreachable origin is ErrOwnerOriginUnreachable wrapped with the push's error,
 // and any other failed push is returned wrapped with its way forward.
@@ -332,7 +360,7 @@ func pushOwnerCommit(bolt *fabricengine.Bolt, opts fabricengine.SyncOptions, rec
 			if errors.As(err, &failed) && failed.Record.Class == fabricengine.PushFailureTransport {
 				return fmt.Errorf("%w: %w", ErrOwnerOriginUnreachable, err)
 			}
-			return fmt.Errorf("board: the owner commit was kept locally and not pushed: %w", err)
+			return fmt.Errorf("board: the commit was kept locally and not pushed: %w", err)
 		}
 		ahead, err := bolt.HasUnpushed()
 		if err != nil {
@@ -342,7 +370,7 @@ func pushOwnerCommit(bolt *fabricengine.Bolt, opts fabricengine.SyncOptions, rec
 			return nil
 		}
 		if attempt == 2 {
-			return errors.New("board: a held board lock deferred the push of the owner commit, and the board is still ahead of origin: run `lym board sync`, then re-run the verb")
+			return errors.New("board: a held board lock deferred the push of the commit, and the board is still ahead of origin: run `lym board sync`, then re-run the verb")
 		}
 		sleep(ownerPushRetryWait)
 	}

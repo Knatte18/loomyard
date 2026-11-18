@@ -52,21 +52,27 @@ func headOrEmpty(path string) (string, error) {
 	return "", err
 }
 
-// pushSideDetached pushes one side of a detached push.
-// A push failure it records leaves the commits unpushed for a later push and returns nil.
+// pushSideDetached pushes one side of a detached push and reports whether the side landed.
+// A side landed when its push returned nil and its worktree then holds nothing unpushed.
+// A push failure it records, a deferral and an ended branch leave the commits unpushed for a later push:
+// each returns landed false and a nil error.
 // Any other error is returned.
-func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (bool, error)) error {
-	err := pushClassified(rec, hubPath, side, path, opts, retryRecords)
+func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (bool, error)) (landed bool, err error) {
+	err = pushClassified(rec, hubPath, side, path, opts, retryRecords)
 	var failed *PushFailedError
 	switch {
 	case err == nil:
-		return nil
 	case errors.As(err, &failed):
 		logger.Warn("fabricengine: push failed and was recorded; commits left unpushed", "path", path, "class", string(failed.Record.Class), "error", err)
-		return nil
+		return false, nil
 	default:
-		return err
+		return false, err
 	}
+	unpushed, err := gitrepo.New(path).HasUnpushed()
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: push %s side at %s: %w", side, path, err)
+	}
+	return !unpushed, nil
 }
 
 // CoalescePushBothAt pushes warp and weft under fabric's absorbing push lock.
@@ -77,9 +83,9 @@ func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptio
 // warpPath may be empty, in which case only the weft side is pushed.
 // A call with warpPath set and weftPath empty is rejected by the same guard.
 // It blocks until the lock is free,
-// and it marks the sides it pushes pending, so it also respawns a side another pusher left flagged.
+// and it marks the sides it pushes pending.
 func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushResult, err error) {
-	return coalescePushSides(PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, opts, "CoalescePushBothAt", func(lockPath string) (*lock.FileLock, bool, error) {
+	return coalescePushSides(PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, opts, MachineNames{}, "CoalescePushBothAt", func(lockPath string) (*lock.FileLock, bool, error) {
 		held, err := lock.AcquireWriteLock(lockPath)
 		if err != nil {
 			return nil, false, fmt.Errorf("fabricengine: acquire push lock: %w", err)
@@ -92,19 +98,24 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushRe
 // Warp is the code side and weft the records side.
 // When the lock is held, it returns nil at once with nothing pushed.
 // It leaves its commits to the lock holder through the pending flags it marked first.
-// The holder pushes them once it releases the lock, and respawns a side it does not push itself.
+// The holder pushes the sides it owes, and a flag of a side it does not owe stays on disk for that worktree's next push.
 // req.WeftPath must be non-empty, since the lock lives under the records worktree.
 // It honors SkipGit and SkipPush.
-func CoalescePushRequest(req PushSpawn, opts SyncOptions) (res PushResult, err error) {
-	return coalescePushSides(req, opts, "CoalescePushRequest", lock.TryAcquireWriteLock)
+// A rejected records push reads the run's record on origin first, for the run req names, through here.
+// A takeover entry of a machine here does not hold returns a *TakeoverError, with no side pushed after the rejection.
+func CoalescePushRequest(req PushSpawn, opts SyncOptions, here MachineNames) (res PushResult, err error) {
+	return coalescePushSides(req, opts, here, "CoalescePushRequest", lock.TryAcquireWriteLock)
 }
 
 // coalescePushSides runs the two-sided rebase-free push of req under fabric.push.lock.
 // It takes the lock through acquire and flags the sides req carries as owed.
+// The run a rejected records push reads on origin is req.TeardownSlug, the pair's slug.
+// The prime has no such slug, so it reads req.PauseSlug.
 // caller names the public entry point in the error for a missing weft path.
+// The code side goes out with SyncOptions.AfterRecords set, after the records side landed.
 // For the duration of the call it installs a gate deferral that a pause triggers:
 // the flags of the owed sides not yet pushed go back, and the process exits.
-func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire func(lockPath string) (*lock.FileLock, bool, error)) (res PushResult, err error) {
+func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, caller string, acquire func(lockPath string) (*lock.FileLock, bool, error)) (res PushResult, err error) {
 	warpPath, weftPath := req.WarpPath, req.WeftPath
 	hubRoot := ""
 	if warpPath != "" {
@@ -125,6 +136,10 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire f
 		return PushResult{}, err
 	}
 	hubPath := filepath.Dir(weftPath)
+	runSlug := req.TeardownSlug
+	if runSlug == "" {
+		runSlug = req.PauseSlug
+	}
 
 	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}}
 	if warpPath != "" {
@@ -134,6 +149,8 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire f
 	// pushed records the sides the current step has pushed,
 	// so a deferral restores the flag of every owed side the step has not reached.
 	pushed := map[string]bool{}
+	codeOpts := opts
+	codeOpts.AfterRecords = true
 	defer pauserecord.SetGateDeferral(pushDeferral(lockDir, owed, pushed, exitDeferred))()
 
 	step := func() (progressed bool, err error) {
@@ -149,19 +166,24 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire f
 
 		// A side with an empty path or an unborn HEAD has nothing to push, so it is skipped;
 		// it still takes part in the before/after HEAD comparison below, where its empty HEAD is trivially stable.
-		if warpPath != "" && beforeWarp != "" {
-			if err := pushSideDetached(rec, hubPath, failedPushSideCode, warpPath, opts, nil); err != nil {
-				return false, err
-			}
-		}
-		pushed[pushSideCode] = true
+		// The records side goes first, and the code side only once the records side landed.
+		recordsLanded := true
 		if beforeWeft != "" {
-			retryWeft := func() (bool, error) { return retryWeftPush(rec, hubPath, weftPath) }
-			if err := pushSideDetached(rec, hubPath, failedPushSideRecords, weftPath, opts, retryWeft); err != nil {
+			retryWeft := func() (bool, error) { return retryWeftPush(rec, hubPath, weftPath, runSlug, here) }
+			recordsLanded, err = pushSideDetached(rec, hubPath, failedPushSideRecords, weftPath, opts, retryWeft)
+			if err != nil {
 				return false, err
 			}
 		}
 		pushed[pushSideRecords] = true
+		if recordsLanded {
+			if warpPath != "" && beforeWarp != "" {
+				if _, err := pushSideDetached(rec, hubPath, failedPushSideCode, warpPath, codeOpts, nil); err != nil {
+					return false, err
+				}
+			}
+			pushed[pushSideCode] = true
+		}
 
 		afterWarp, err := headOrEmpty(warpPath)
 		if err != nil {

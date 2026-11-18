@@ -117,6 +117,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		{Label: "board", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]' --skill scribe:prose --skill scribe:conversation --skill ly:board-policy --skill ly:board", Ask: "Board agent name:", AskDefault: "board"},
 		{Label: "distill", Run: "lym orch distill", Confirm: "Distill the orch?"},
 		{Label: "refresh", Run: "lym orch refresh", Confirm: "Refresh the orch?"},
+		{Label: "stop", Run: "lym beam stop --all", Confirm: "Stop every orch, dobby, run and reed session of the hub on this machine?"},
 	}
 	wantShipped := shippedButtons{Task: wantTaskButtons, Beam: wantBeamButtons, Prime: wantPrimeButtons}
 	if got := decodeButtons(t, cfg.Buttons); !reflect.DeepEqual(got, wantShipped) {

@@ -22,7 +22,8 @@ type OwnerWatch struct {
 	End func() error
 	// Stop removes the orch strand guid.
 	Stop func(guid string) error
-	// UnderAdopt reports whether an adopt in flight on this machine covers the beam.
+	// UnderAdopt reports whether a hold this machine wrote in Bolt covers the beam's subject.
+	// The hold stands until the adopt's check is green.
 	// It is asked only while the owner reads as another machine, and a nil UnderAdopt covers nothing.
 	UnderAdopt func() bool
 }

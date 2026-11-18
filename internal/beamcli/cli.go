@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/adoptcli"
-	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/battencli"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -23,11 +23,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/spf13/cobra"
 )
+
+// NoPrimeClaimFlag is the hidden `beam start` flag that leaves a prime with no recorded owner unclaimed.
+const NoPrimeClaimFlag = "no-prime-claim"
 
 // Command returns the root cobra command of the beam module, with its verb groups attached.
 func Command() *cobra.Command {
@@ -301,11 +305,13 @@ Example:
 
 // statusResult is the envelope of `beam status`:
 // one entry per local beam, the prime's first, one adopt check item per subject the hub holds a record of,
-// and the adopt that has not finished, if there is one.
+// and the adopt hold the hub's Bolt records, if there is one.
+// It also carries machine_refused, the refusal that keeps every dobby of this machine from starting, when there is one.
 type statusResult struct {
-	Dobbies     []statusEntry        `json:"dobbies"`
-	AdoptChecks []adoptcli.CheckView `json:"adopt_checks,omitempty"`
-	Adopt       *adoptSection        `json:"adopt,omitempty"`
+	Dobbies        []statusEntry        `json:"dobbies"`
+	AdoptChecks    []adoptcli.CheckView `json:"adopt_checks,omitempty"`
+	Adopt          *adoptSection        `json:"adopt,omitempty"`
+	MachineRefused string               `json:"machine_refused,omitempty"`
 }
 
 // statusEntry is one beam's view in `beam status`:
@@ -336,8 +342,12 @@ strand is live, whether its watcher is live and the session id it recorded.
 The adopt_checks section holds one item per subject whose check a lym adopt started: the subject,
 its state, the tier in flight, the tiers done and the paths of its log and output, and is absent
 when the hub holds no record of one.
-The adopt section shows an adopt that has not finished: its subjects, state, step, steps done and
-way forward, and is absent when none stands.
+The adopt section shows the adopt hold the hub's Bolt records: its kind, machine, time and subjects,
+under an adopt-fix hold the fix task and each subject's tries, and for this machine's own hold the
+way forward, and is absent when no hold stands.
+The machine_refused field holds the refusal that keeps every dobby of this machine from starting,
+because no directory holds this machine's file; it names the variable to set and the restart, and is absent
+when the directory resolves.
 It starts and changes nothing; its one write is the empty orch directory its watcher probe creates.
 
 It runs from the prime and from any beam.
@@ -355,21 +365,26 @@ Example:
 
 // dobbyStatus reads the dobby and orch views of the prime and of every local beam at the given time.
 // A view that does not read is reported in its entry and joins the returned error, and the others still read.
+// The refusal of a machine whose identity does not resolve is read first, so it shows while no dobby runs.
 func dobbyStatus(prime *lymcwd.Location, now time.Time) (statusResult, error) {
+	var machineRefused string
+	if refusal := boardengine.IdentityRefusal(); refusal != nil {
+		machineRefused = refusal.Error()
+	}
 	beams, err := hubgeom.DobbyStart(prime).Beams()
 	if err != nil {
-		return statusResult{}, fmt.Errorf("lym beam status: list the local beams: %w", err)
+		return statusResult{MachineRefused: machineRefused}, fmt.Errorf("lym beam status: list the local beams: %w", err)
 	}
 	pause, err := hubgeom.PauseGeometry(prime)
 	if err != nil {
-		return statusResult{}, fmt.Errorf("lym beam status: locate the pause record: %w", err)
+		return statusResult{MachineRefused: machineRefused}, fmt.Errorf("lym beam status: locate the pause record: %w", err)
 	}
 	cells := battencli.NewDobbyRunCells(prime, pause.RecordPath)
 	worktrees := []string{prime.WorktreeName}
 	for _, beam := range beams {
 		worktrees = append(worktrees, beam.Slug)
 	}
-	result := statusResult{Dobbies: make([]statusEntry, 0, len(worktrees))}
+	result := statusResult{Dobbies: make([]statusEntry, 0, len(worktrees)), MachineRefused: machineRefused}
 	var failures []error
 	for _, worktree := range worktrees {
 		label := worktree
@@ -399,11 +414,16 @@ func dobbyStatus(prime *lymcwd.Location, now time.Time) (statusResult, error) {
 		failures = append(failures, fmt.Errorf("adopt checks: %w", err))
 	}
 	result.AdoptChecks = checks
-	record, found, err := adoptrecord.Read(prime.HubPath)
+	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
-		failures = append(failures, fmt.Errorf("adopt record: %w", err))
-	} else if found {
-		result.Adopt = adoptSectionOf(record, record.ReadState(adoptrecord.WorkerAlive))
+		failures = append(failures, fmt.Errorf("adopt hold: %w", err))
+	} else if len(owners.Holds) > 0 {
+		here, err := machinename.ReadIdentity()
+		if err != nil {
+			failures = append(failures, fmt.Errorf("adopt hold: read this machine's name: %w", err))
+		} else {
+			result.Adopt = adoptSectionOf(owners.Holds[0], owners.Registry.ReadsAsHere(owners.Holds[0].Machine, here))
+		}
 	}
 	if err := errors.Join(failures...); err != nil {
 		return result, fmt.Errorf("lym beam status: %w; way forward: fix the cause each names, then run `lym beam status` again", err)
@@ -446,7 +466,7 @@ type startEntry struct {
 
 // startCmd returns the `beam start` verb.
 func startCmd() *cobra.Command {
-	var all bool
+	var all, noPrimeClaim bool
 	cmd := &cobra.Command{
 		Use:         "start [<slug>]",
 		Short:       "bring a beam up: its dobby and its orch",
@@ -483,18 +503,21 @@ Example:
 			if len(args) == 1 {
 				slug = args[0]
 			}
-			result, err := start(cmd, slug, all)
+			result, err := start(cmd, slug, all, noPrimeClaim)
 			return finishVerb(cmd, result, err)
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "start the prime and every local beam this machine owns")
+	cmd.Flags().BoolVar(&noPrimeClaim, NoPrimeClaimFlag, false, "leave a prime with no recorded owner unclaimed")
+	_ = cmd.Flags().MarkHidden(NoPrimeClaimFlag)
 	return cmd
 }
 
 // start runs `beam start` for slug, or for every owned beam with all.
 // It resolves its targets before the reconcile, so a refusal of the target touches no state.
 // A nil result is a refusal made before any beam was tried.
-func start(cmd *cobra.Command, slug string, all bool) (*startResult, error) {
+// With noPrimeClaim the bring-up claims no prime that has no recorded owner.
+func start(cmd *cobra.Command, slug string, all, noPrimeClaim bool) (*startResult, error) {
 	if all && slug != "" {
 		return nil, fmt.Errorf("lym beam start: a slug and --all are exclusive; way forward: drop the slug to start every owned beam, or drop --all to start %s alone", slug)
 	}
@@ -514,12 +537,18 @@ func start(cmd *cobra.Command, slug string, all bool) (*startResult, error) {
 		}
 	}
 	result, err := startBeams(targets, func(target beamTarget, prepare bool) (orchcli.BeamUpReport, error) {
-		return orchcli.BeamUp(target.Location, orchcli.BeamUpOptions{Prepare: prepare, ArchiveOwned: ownerArchiveBeforeRefusal(target)})
+		return orchcli.BeamUp(target.Location, startOptions(target, prepare, noPrimeClaim))
 	})
 	if err != nil {
 		return &result, fmt.Errorf("lym beam start: %w; way forward: fix the cause each names, then run `lym beam start` again", err)
 	}
 	return &result, nil
+}
+
+// startOptions returns the bring-up options of `beam start` for target.
+// prepare runs the hub-scope steps, and noPrimeClaim leaves the prime claim out of them.
+func startOptions(target beamTarget, prepare, noPrimeClaim bool) orchcli.BeamUpOptions {
+	return orchcli.BeamUpOptions{Prepare: prepare, NoPrimeClaim: noPrimeClaim, ArchiveOwned: ownerArchiveBeforeRefusal(target)}
 }
 
 // startTargets resolves what `beam start` brings up: every beam this machine owns with all, else the one beam slug names.
@@ -549,22 +578,37 @@ func startTargets(location *lymcwd.Location, slug string, all bool) ([]beamTarge
 
 // stopCmd returns the `beam stop` verb.
 func stopCmd() *cobra.Command {
-	return &cobra.Command{
+	var all, detached bool
+	cmd := &cobra.Command{
 		Use:         "stop [<slug>]",
-		Short:       "take a beam down: its orch and its dobby",
+		Short:       "take a beam down: its orch and its dobby; with --all, the whole hub on this machine",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Takes a beam down: removes its orch strand, after which the orch's watcher exits on
-its own, and ends its dobby. With no slug it acts on the worktree it runs in, the prime
-or a beam; the slug "root" names the prime, and any other slug names that beam from
-anywhere in the hub. Each part stops only when it is live, so a second call stops
-nothing, and the next "lym beam start" resumes the orch's recorded session.
+its own, ends its dobby, and last ends the orch session's registered Claude process.
+With no slug it acts on the worktree it runs in, the prime or a beam; the slug "root"
+names the prime, and any other slug names that beam from anywhere in the hub. Each part
+stops only when it is live, so a second call stops nothing, and the next
+"lym beam start" resumes the orch's recorded session.
 
 It refuses a task pair, naming the beam it belongs to, and a slug with no pair here.
 It prints what it stopped.
 
+With --all it takes down everything of the hub on this machine, whoever owns each
+worktree, and writes no tracked record. It re-starts itself detached in the prime and
+prints that process's pid, so the end of the session it was run from does not cut it.
+The detached process pauses the hub and waits for hibernate's confirmation that every
+session is idle, no network call is in flight and no land lock is held; past
+hibernate's wait it goes on and names what was still busy. It then downs each task
+pair's processes and reed session as "lym reed down" does, takes down the prime's and
+each beam's orch and dobby, downs the beams' reed sessions, ends the run processes no
+run owns as "lym tender reap" does, lifts the pause entry it added, and downs the
+prime's reed session last. A hub pause that stood before it, and a Bolt hold, stay.
+Its report goes to lym's log. "lym beam start --all" or "lym s" brings the hub back.
+
 Example:
   lym beam stop
-  lym beam stop payments`,
+  lym beam stop payments
+  lym beam stop --all`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -574,10 +618,17 @@ Example:
 			if len(args) == 1 {
 				slug = args[0]
 			}
+			if all {
+				return stopAll(cmd, slug, detached)
+			}
 			result, err := stop(cmd, slug)
 			return finishVerb(cmd, result, err)
 		},
 	}
+	cmd.Flags().BoolVar(&all, "all", false, "take down every orch, dobby, run and reed session of the hub on this machine")
+	cmd.Flags().BoolVar(&detached, stopDetachedFlag, false, "run the hub stop's sequence in this process; set on the detached re-start")
+	_ = cmd.Flags().MarkHidden(stopDetachedFlag)
+	return cmd
 }
 
 // stop runs `beam stop` for slug.

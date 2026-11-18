@@ -116,7 +116,10 @@
 // It returns to one second when the reason changes.
 // Bound: the wait has no deadline, since the operator cancels a request whose run halted.
 //
-// Firing pauses the hub through tender with a ten second grace.
+// Firing pauses the hub and confirms the pause through `PauseAndConfirm`.
+// That function also serves the hub stop, `lym beam stop --all`, which runs it with no request file.
+// It owns only an entry it added and lifts none; what becomes of that entry is its caller's.
+// The pause goes through tender with a ten second grace.
 // The pause's `Added` callback records the entry as the request's owned entry before the grace, whatever the phase.
 // The sequence keeps the entry in memory even when that write fails.
 // A pause that found a live hub entry owns none, so neither the sequence nor Cancel lifts that pause.
@@ -182,15 +185,9 @@
 // The notice names the stop before the runs.
 // A pair whose pause fails is left unheld and named with `lym tender pause <slug>`.
 // A run whose `WakeRun.Owner` is set is owned by another machine.
-// Its pair pause carries the owner caller, so a slug entry already standing adds none.
+// It gets no pair pause entry and no end of its processes: the dobby's catch-up after the wake hands it over.
 // The notice names the owner and `lym adopt <subject>` from this machine's prime.
 // The subject is `WakeRun.AdoptSubject`, the beam or `root`, and the slug when it is empty.
-// Once an owner pause is added, `Deps.EndOwned` ends the run's owned processes on this machine.
-// The hub's wiring fills it with `tendercli.EndOwnedElsewhere`.
-// That function spares a Finalize past its parent-side merge and the calling process and its ancestors.
-// An end error is logged and leaves the notice as it was, and a nil `EndOwned` skips the end.
-// A failed owner pause is named with "the next wake or `lym beam start` pauses it again".
-// It is never named with `lym tender pause`, whose entry would carry no owner label.
 // The notice names per stopped run its way forward, then `lym tender resume <slug>`.
 // A pair busy on a parked push gets only `lym tender resume <slug>`.
 // A pair stopped as gone gets `lym cleanup --apply` in place of the resume.

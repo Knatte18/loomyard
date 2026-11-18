@@ -643,6 +643,24 @@ func SetArchiveTagPushHookForTest(t testing.TB, hook func(tagRef string) error) 
 	t.Cleanup(func() { archiveTagPushHook = nil })
 }
 
+// SetOwedTipPushedHookForTest sets `owedTipPushedHook` to hook and restores nil in t.Cleanup.
+// It mutates a package variable, so only a non-parallel test may call it.
+func SetOwedTipPushedHookForTest(t testing.TB, hook func()) {
+	t.Helper()
+
+	owedTipPushedHook = hook
+	t.Cleanup(func() { owedTipPushedHook = nil })
+}
+
+// SetTakeoverBeforePushHookForTest sets `takeoverBeforePushHook` to hook and restores nil in t.Cleanup.
+// It mutates a package variable, so only a non-parallel test may call it.
+func SetTakeoverBeforePushHookForTest(t testing.TB, hook func(attempt int)) {
+	t.Helper()
+
+	takeoverBeforePushHook = hook
+	t.Cleanup(func() { takeoverBeforePushHook = nil })
+}
+
 // SetArchiveSleepForTest replaces the real sleep between t's archive-tag push attempts with sleep.
 // The seam sits on each Topology, so parallel tests inject their own sleep per instance.
 func SetArchiveSleepForTest(t *Topology, sleep func(time.Duration)) {
@@ -913,6 +931,15 @@ func HoldHubPauseForTest(t *testing.T, slug string) {
 		Sleep:    func(context.Context, time.Duration) error { return errors.New("the test's pause is never lifted") },
 	}))
 }
+
+// PendingFlagPathForTest is pendingFlagPath, the path of a side's pending flag in a lock directory.
+var PendingFlagPathForTest = pendingFlagPath
+
+// PushSideCodeForTest and PushSideRecordsForTest name the two sides a pending flag can stand for.
+const (
+	PushSideCodeForTest    = pushSideCode
+	PushSideRecordsForTest = pushSideRecords
+)
 
 // SetBeforeWireForTest makes the Add call on t run hook once the new pair's weft worktree exists.
 // The hook runs before the pair's junctions are wired.

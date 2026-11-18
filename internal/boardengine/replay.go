@@ -17,6 +17,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -314,6 +315,120 @@ type replayRun struct {
 	lostAdds map[string]bool
 	result   fabricengine.ReplayResult
 	applied  bool
+	// The holds and machine registry of the merge base, the commit's parent and the commit.
+	baseHolds, parentHolds, commitHolds          []Hold
+	baseMachines, parentMachines, commitMachines Registry
+}
+
+// sameHold reports whether two holds are equal in every field.
+func sameHold(a, b Hold) bool { return reflect.DeepEqual(a, b) }
+
+// containsHold reports whether holds holds a hold equal to hold.
+func containsHold(holds []Hold, hold Hold) bool {
+	return slices.ContainsFunc(holds, func(candidate Hold) bool { return sameHold(candidate, hold) })
+}
+
+// refuseOverAnotherMachinesNewHold judges the commit's hold changes against origin's holds.
+// It reports whether it refused.
+// A commit that changes no hold is never refused.
+// Otherwise it is refused whole when origin holds a hold the commit's parent did not hold.
+// The refusal applies when that hold was written by a machine other than the one the commit's hold changes name.
+// That machine is the machine of each hold the commit added, else the machine of each hold it removed.
+// The refusal is one finding, and nothing of the commit's board.json change is applied.
+func (r *replayRun) refuseOverAnotherMachinesNewHold() bool {
+	if slices.EqualFunc(r.parentHolds, r.commitHolds, sameHold) {
+		return false
+	}
+	var writers []string
+	for _, hold := range r.commitHolds {
+		if !containsHold(r.parentHolds, hold) {
+			writers = append(writers, hold.Machine)
+		}
+	}
+	if len(writers) == 0 {
+		for _, hold := range r.parentHolds {
+			if !containsHold(r.commitHolds, hold) {
+				writers = append(writers, hold.Machine)
+			}
+		}
+	}
+	for _, standing := range r.store.holds {
+		if containsHold(r.parentHolds, standing) {
+			continue
+		}
+		written := slices.ContainsFunc(writers, func(writer string) bool { return r.store.machines.sameMachine(standing.Machine, writer) })
+		if written {
+			continue
+		}
+		r.refuse("holds", "", fmt.Errorf("origin holds the %s hold of machine %q written at %s, which this commit's parent did not hold, so the commit's whole %s change is refused",
+			standing.Kind, standing.Machine, standing.At.Format(time.RFC3339), boardFile))
+		return true
+	}
+	return false
+}
+
+// changeHolds applies the commit's hold changes onto origin's holds.
+// A parent hold the commit removed or replaced is matched in origin's list by equality:
+// a removed one leaves the list, and a replaced one is replaced at the same position as in the commit.
+// One origin no longer holds is reported lost with its change not applied.
+// Each hold the commit added is appended.
+func (r *replayRun) changeHolds() {
+	if slices.EqualFunc(r.parentHolds, r.commitHolds, sameHold) {
+		return
+	}
+	replacement := make([]bool, len(r.commitHolds))
+	for i, before := range r.parentHolds {
+		if containsHold(r.commitHolds, before) {
+			continue
+		}
+		replaced := i < len(r.commitHolds) && !containsHold(r.parentHolds, r.commitHolds[i])
+		if replaced {
+			replacement[i] = true
+		}
+		index := slices.IndexFunc(r.store.holds, func(candidate Hold) bool { return sameHold(candidate, before) })
+		if index < 0 {
+			r.lost("holds", "hold", "origin no longer holds the hold this commit changes", "")
+			continue
+		}
+		if replaced {
+			r.store.holds[index] = r.commitHolds[i]
+		} else {
+			r.store.holds = slices.Delete(r.store.holds, index, index+1)
+		}
+		r.applied = true
+	}
+	for i, added := range r.commitHolds {
+		if replacement[i] || containsHold(r.parentHolds, added) || containsHold(r.store.holds, added) {
+			continue
+		}
+		r.store.holds = append(r.store.holds, added)
+		r.applied = true
+	}
+}
+
+// changeRegistry sets each machine entry the commit added or changed onto origin's registry.
+// An entry origin changed since the merge base keeps origin's and is reported lost.
+func (r *replayRun) changeRegistry() {
+	for _, id := range slices.Sorted(maps.Keys(r.commitMachines)) {
+		entry := r.commitMachines[id]
+		if before, held := r.parentMachines[id]; held && reflect.DeepEqual(before, entry) {
+			continue
+		}
+		current, inOrigin := r.store.machines[id]
+		if inOrigin && reflect.DeepEqual(current, entry) {
+			continue
+		}
+		base, inBase := r.baseMachines[id]
+		if inOrigin != inBase || (inOrigin && !reflect.DeepEqual(current, base)) {
+			r.lost("machines", id, "origin changed the machine's entry since the merge base", "")
+			continue
+		}
+		if r.store.machines == nil {
+			r.store.machines = Registry{}
+		}
+		r.store.machines[id] = entry
+		r.applied = true
+	}
 }
 
 // Apply re-applies the request's commit onto the board directory:
@@ -336,6 +451,10 @@ type replayRun struct {
 // The rest of the commit still lands.
 // An added entry takes a handle free on origin's board,
 // and a changed entry keeps origin's handle unless its letter changed.
+// The commit's holds and machine registry replay too.
+// A commit whose holds differ from its parent's is refused whole when origin gained a hold of another machine.
+// None of its board.json change is applied then.
+// A commit that changes neither key replays as before, even when origin gained a hold.
 // It saves board.json and re-renders the board's output files when anything was applied;
 // and writes nothing otherwise.
 // It takes no lock and spawns no sync, since its caller holds the board and push locks.
@@ -397,27 +516,49 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 	if err := store.Load(); err != nil {
 		return fabricengine.ReplayResult{}, err
 	}
-	run := &replayRun{store: store, origin: cloneTasks(store.Tasks()), base: base, refusedAdds: map[string]bool{}, lostAdds: map[string]bool{}}
-
-	inCommit := make(map[string]bool, len(commitTasks))
-	for _, commit := range commitTasks {
-		inCommit[commit.Slug] = true
-		if before, existed := parent[commit.Slug]; existed {
-			run.changeEntry(before, commit)
-		} else {
-			run.addEntry(commit)
-		}
+	baseOwners, err := ParseOwners(baseJSON)
+	if err != nil {
+		return fabricengine.ReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
 	}
-	for _, before := range parentTasks {
-		if !inCommit[before.Slug] {
-			run.removeEntry(before)
-		}
+	parentOwners, err := ParseOwners(parentJSON)
+	if err != nil {
+		return fabricengine.ReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
+	}
+	commitOwners, err := ParseOwners(commitJSON)
+	if err != nil {
+		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
 	}
 
-	run.changePrimeOwner(basePrime, parentPrime, commitPrime)
-	if commitDraft && !store.draftStatus {
-		store.draftStatus = true
-		run.applied = true
+	run := &replayRun{
+		store: store, origin: cloneTasks(store.Tasks()), base: base, refusedAdds: map[string]bool{}, lostAdds: map[string]bool{},
+		baseHolds: baseOwners.Holds, parentHolds: parentOwners.Holds, commitHolds: commitOwners.Holds,
+		baseMachines: baseOwners.Registry, parentMachines: parentOwners.Registry, commitMachines: commitOwners.Registry,
+	}
+
+	// The hold check runs before any board.json change, so an adopt commit lands all or nothing.
+	if !run.refuseOverAnotherMachinesNewHold() {
+		inCommit := make(map[string]bool, len(commitTasks))
+		for _, commit := range commitTasks {
+			inCommit[commit.Slug] = true
+			if before, existed := parent[commit.Slug]; existed {
+				run.changeEntry(before, commit)
+			} else {
+				run.addEntry(commit)
+			}
+		}
+		for _, before := range parentTasks {
+			if !inCommit[before.Slug] {
+				run.removeEntry(before)
+			}
+		}
+
+		run.changePrimeOwner(basePrime, parentPrime, commitPrime)
+		if commitDraft && !store.draftStatus {
+			store.draftStatus = true
+			run.applied = true
+		}
+		run.changeHolds()
+		run.changeRegistry()
 	}
 
 	designsApplied := false

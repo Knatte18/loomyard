@@ -37,7 +37,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/partsparser"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -59,15 +61,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// spawnStatusPush starts the detached push of the status records at a location, held under a gate slug.
-// A test replaces it with a recorder.
-var spawnStatusPush = fabricengine.SpawnStatusPush
-
 // commitStatusDeps carries the fabric calls that the status commit makes.
 // They are injected as plain function values rather than reached directly.
 // Injected this way, the seam's branching is drivable in a Tier 1 test from stub closures.
 // Such a test needs no hub fixture and no git spawn:
-// a commit failure is a hard error, a spawn failure only warns, and a mid-merge state skips the step.
+// a commit failure is a hard error, an owed push is retried, and a mid-merge state skips the step.
 type commitStatusDeps struct {
 	// MergeActive reports whether the fabric sibling worktree that carries the status file is mid-merge,
 	// and the seam then skips its commit.
@@ -76,14 +74,18 @@ type commitStatusDeps struct {
 	// When the reviews directory holds a file, the same commit also carries the review round record.
 	// It reports whether it made a commit.
 	Commit func(msg string) (committed bool, err error)
-	// Spawn starts the detached push of the run records and, in a task pair, the task branch.
-	// The status seam calls it after a commit that landed something.
-	Spawn func() error
 	// Push pushes the run records and, in a task pair, the task branch, and waits for the result.
 	// An error from one side's push names that side.
 	// A push lock that stayed busy names no side.
-	// Only commit-records calls it.
+	// The status seam calls it after a commit that landed something, and commit-records calls it too.
+	// It is required: the status seam refuses a nil Push.
 	Push func() error
+	// Admit takes the network gate's admission for a transition's push and returns its release; nil takes none.
+	Admit func() (release func())
+	// Owed reports whether a failed transition push is owed, so the seam retries it; nil reads none as owed.
+	Owed func(err error) bool
+	// Sleep waits between the retries of an owed push; nil is time.Sleep.
+	Sleep func(time.Duration)
 	// SetBoardStatus writes status onto the run's board entry, leaving an entry that is absent or already done untouched.
 	// Nil writes nothing.
 	SetBoardStatus func(status string) error
@@ -199,37 +201,41 @@ func removeSettledAmendment(amendmentPath, planRunDir string) error {
 
 // loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric.
 // MergeActive reports the merge state, and Commit commits the run's status pathspec.
-// Spawn starts the detached push of the run records and, in a task pair, the task branch.
-// Push runs that same push synchronously.
-// Commit, Spawn and Push each pass the run's pre-push check first.
+// Every records commit carries the run's transition trailer and the code tip it was made at.
+// Push pushes the run records and, in a task pair, the task branch, synchronously.
+// Admit, Owed and Sleep drive the status seam's gate admission and its retry of an owed push.
+// Commit and Push each pass the run's pre-push check first.
 // A Commit the check stops commits nothing and returns its error, which the status seam reads as no commit made.
-// A Spawn the check stops starts no push and returns nil, its commits staying local.
 // A Push the check stops returns the check's error.
 func loomCommitStatusDeps(location *lymcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDepsGuardedBy(newPrePushCheck(location, runID), location, runID)
 }
 
 // commitStatusDepsGuardedBy returns the status-commit dependencies for the run at location.
-// Its commit, spawn and push steps pass through check, the pre-push check.
+// Its commit and push steps pass through check, the pre-push check.
 func commitStatusDepsGuardedBy(check prePushCheck, location *lymcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
 			return fabricengine.MergeStateActive(location)
 		},
 		// A Commit over an already-clean tracked path is a no-op that reports committed false, not a failure.
-		// The status seam spawns nothing for it.
+		// The status seam pushes nothing for it.
 		Commit: check.guardedCommit(func(msg string) (bool, error) {
-			_, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, statusCommitPathspec(location, runID), msg, fabricengine.EnvSyncOptions())
+			trailers := []fabricengine.Trailer{{Key: fabricengine.TransitionTrailerKey, Value: shedrun.ResolveRunID(location, runID)}}
+			_, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, statusCommitPathspec(location, runID), msg, trailers, fabricengine.EnvSyncOptions())
 			return committed, err
 		}),
-		Spawn: check.guardedSpawn(func() error {
-			_, err := spawnStatusPush(location, "")
-			return err
-		}),
 		Push: check.guardedPush(func() error {
-			_, err := fabricengine.PushPairAnchored(location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
+			prime, err := primeOfHub(location)
+			if err != nil {
+				return err
+			}
+			_, err = pairteardown.PushRun(prime, location, shedrun.ResolveRunID(location, runID), pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait, TeardownWait: fabricengine.StatusPushLockWait, InsidePair: true})
 			return err
 		}),
+		Admit: func() func() { return pauserecord.Admit("transition push") },
+		Owed:  fabricengine.IsPushOwed,
+		Sleep: time.Sleep,
 		SetBoardStatus: func(status string) error {
 			board, err := boardengine.OpenHub(location.HubPath)
 			if err != nil {
@@ -330,9 +336,9 @@ func sketchRefusedNotice(slug string, refusal error) string {
 // a failed board write only warns, and the next transition retries it;
 // the board is the hub's overview, never the run's own bookkeeping.
 // It then calls the shared statuscommit core, which owns the dispositions:
-// skip-while-mid-merge, commit-hard-errors and spawn-warns.
+// skip-while-mid-merge, commit-hard-errors, the synchronous push and the retry of an owed push.
 // This seam passes loom's own commit and log prefixes and no after-commit callback.
-// A commit the pre-push check stopped reads as no commit made, so the core starts no push and the transition goes on.
+// A commit the pre-push check stopped reads as no commit made, so the core pushes nothing and the transition goes on.
 func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) error {
 	core := statuscommit.New(statuscommit.Deps{
 		MergeActive: deps.MergeActive,
@@ -344,7 +350,10 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 			}
 			return committed, err
 		},
-		Spawn: deps.Spawn,
+		Push:  deps.Push,
+		Admit: deps.Admit,
+		Owed:  deps.Owed,
+		Sleep: deps.Sleep,
 	}, "loom", "loomcli", nil)
 	lastBoardStatus, finished := "", false
 	return func(producer, state string) error {

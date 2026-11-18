@@ -94,12 +94,11 @@ func reconcileExempt(deps Deps, owned *tenderengine.EntryRef) (WakeReconcile, er
 	return deps.Reconcile()
 }
 
-// holdRuns adds a pair pause entry for each stopped run, each run owned elsewhere, and each busy ended run.
+// holdRuns adds a pair pause entry for each stopped run and each busy ended run.
 // The entries are not recorded as owned, so they outlive the request.
 // It returns the notice sentence that names each run's next step.
-// A run owned elsewhere is paused with the owner caller, so a slug entry already standing adds none;
-// once paused, its owned processes are ended through deps.EndOwned.
-// An end error is logged at Warn and leaves the notice as it was.
+// A run owned elsewhere gets no entry and no end, since the dobby's catch-up after the wake hands it over;
+// the sentence still names its owner and `lym adopt`.
 // A pair whose pause fails is left unheld and named with the step that holds it.
 func holdRuns(deps Deps, runs []WakeRun) string {
 	var steps, unheld, ended []string
@@ -108,20 +107,13 @@ func holdRuns(deps Deps, runs []WakeRun) string {
 			ended = append(ended, run.Slug)
 			continue
 		}
-		request := tenderengine.PauseRequest{Slug: run.Slug, Grace: pauseGrace}
 		if run.Owner != "" {
-			request.Caller = pauserecord.OwnerCaller
+			steps = append(steps, runStep(run))
+			continue
 		}
+		request := tenderengine.PauseRequest{Slug: run.Slug, Grace: pauseGrace}
 		if _, err := deps.Pause(request); err != nil {
-			if run.Owner != "" {
-				unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); the next wake or `lym beam start` pauses it again", run.Slug, err))
-			} else {
-				unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); hold it with `lym tender pause %s`", run.Slug, err, run.Slug))
-			}
-		} else if run.Owner != "" && deps.EndOwned != nil {
-			if err := deps.EndOwned(run.Slug); err != nil {
-				logger.Warn("hibernate: ending the processes of a run owned elsewhere failed", "slug", run.Slug, "error", err)
-			}
+			unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); hold it with `lym tender pause %s`", run.Slug, err, run.Slug))
 		}
 		steps = append(steps, runStep(run))
 	}

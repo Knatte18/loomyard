@@ -11,12 +11,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelcli"
@@ -365,21 +365,35 @@ func TestHubDobbyDeps_WaitReminderPostReachesTheSlackRelaySignedAsTheDobby(t *te
 	}
 }
 
+// rootHoldJSON returns the `holds` member of a board.json holding one adopt hold of machine over the root subject.
+// It ends with a comma, so it sits before the next member.
+func rootHoldJSON(machine string) string {
+	return `"holds":[{"kind":"adopt","machine":"` + machine + `","at":"2026-11-17T09:00:00Z","subjects":[{"subject":"root"}]}],`
+}
+
 // TestHubDobbyDeps_ABeamWithNoOwnerOfItsOwnIsUnderARootAdopt pins the dobby of beam b.
 // b records no owner, so the dobby reads the prime's owner, another machine.
-// Its under-adopt seam must then read b covered by a root adopt, which holds the dobby up and idle.
+// Its under-adopt seam must then read b covered by this machine's Bolt hold over root, which holds the dobby up and idle.
 func TestHubDobbyDeps_ABeamWithNoOwnerOfItsOwnIsUnderARootAdopt(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const foreign = "other-machine"
+	here, err := machinename.ReadIdentity()
+	if err != nil {
+		t.Fatalf("ReadIdentity() = %v; want nil", err)
+	}
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
-	board := `{"version":1,"prime_owner":"` + foreign + `","entries":[` +
-		`{"id":0,"slug":"b","title":"B","kind":"project","labels":["bug"],"beam":true}]}`
-	if err := os.WriteFile(filepath.Join(h.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
-		t.Fatalf("write board.json: %v", err)
+	writeBoard := func(holds string) {
+		t.Helper()
+		board := `{"version":1,"prime_owner":"` + foreign + `",` + holds + `"entries":[` +
+			`{"id":0,"slug":"b","title":"B","kind":"project","labels":["bug"],"beam":true}]}`
+		if err := os.WriteFile(filepath.Join(h.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
+			t.Fatalf("write board.json: %v", err)
+		}
 	}
+	writeBoard("")
 	geom, err := hubgeom.DobbyGeometry(h.Location, "b")
 	if err != nil {
 		t.Fatalf("DobbyGeometry(b) = %v; want nil", err)
@@ -389,17 +403,40 @@ func TestHubDobbyDeps_ABeamWithNoOwnerOfItsOwnIsUnderARootAdopt(t *testing.T) {
 		t.Fatalf("hubDobbyDeps(b) = %v; want nil", err)
 	}
 
-	if owner, err := deps.Owner(); err != nil || owner != foreign {
-		t.Fatalf("Owner() = %q, %v; want the prime's owner %q", owner, err, foreign)
+	if owner, elsewhere, err := deps.Owner(); err != nil || owner != foreign || !elsewhere {
+		t.Fatalf("Owner() = %q, %v, %v; want the prime's owner %q reading elsewhere", owner, elsewhere, err, foreign)
 	}
 	if deps.UnderAdopt() {
-		t.Error("UnderAdopt() with no adopt record = true; want false")
+		t.Error("UnderAdopt() with no hold = true; want false")
 	}
-	if err := adoptrecord.Write(h.Path, adoptrecord.Record{State: adoptrecord.StateRunning, Subjects: []string{"root"}}); err != nil {
-		t.Fatalf("adoptrecord.Write() = %v; want nil", err)
-	}
+	writeBoard(rootHoldJSON(here.Name))
 	if !deps.UnderAdopt() {
-		t.Error("UnderAdopt() under a running root adopt = false; want true")
+		t.Error("UnderAdopt() under this machine's hold over root = false; want true")
+	}
+}
+
+// TestDobbyStatus_ShowsTheIdentityRefusal pins that `lym beam status` shows the identity refusal.
+// That refusal is the one of a machine whose config directory resolves from no variable.
+// The refusal names the variable to set and the restart, and shows while no dobby runs.
+// It sets process environment, so it does not run in parallel.
+func TestDobbyStatus_ShowsTheIdentityRefusal(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	for _, variable := range []string{"XDG_CONFIG_HOME", "HOME", "LOCALAPPDATA"} {
+		t.Setenv(variable, "")
+	}
+
+	result, _ := dobbyStatus(h.Location, time.Now())
+
+	variable := "XDG_CONFIG_HOME or HOME"
+	if runtime.GOOS == "windows" {
+		variable = "LOCALAPPDATA"
+	}
+	for _, want := range []string{variable, "lym beam stop", "lym beam start"} {
+		if !strings.Contains(result.MachineRefused, want) {
+			t.Errorf("machine_refused = %q; want it to name %q", result.MachineRefused, want)
+		}
 	}
 }
 

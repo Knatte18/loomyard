@@ -29,7 +29,7 @@ var traceSinkMu sync.RWMutex
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
 	fabriccli.SetPairPushForTest(func(l *lymcwd.Location) error {
-		_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.LockWaitUnbounded)
+		_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
 		return err
 	})
 	os.Exit(tmuxkit.Main(m))

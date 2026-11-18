@@ -250,7 +250,6 @@ func logAttempt(first bool, msg string, args ...any) {
 // A nil deps.ArbiterStop resolves to a reading that is not eligible.
 // A nil deps.ParentLock switches the parent lock step off.
 // A nil deps.OwnerCheck switches the owner check off.
-// A nil deps.PauseOwned resolves to a no-op.
 // A nil deps.ParentHoldsTaskWork or deps.Restepped resolves to reporting false.
 // A nil deps.HandBack resolves to marking no status.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
@@ -303,9 +302,6 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	}
 	if deps.ReviveStrands == nil {
 		deps.ReviveStrands = func(context.Context) error { return errors.New("no strand revive wired") }
-	}
-	if deps.PauseOwned == nil {
-		deps.PauseOwned = func(context.Context, string) error { return nil }
 	}
 	if deps.ParentHoldsTaskWork == nil {
 		deps.ParentHoldsTaskWork = func() (bool, error) { return false, nil }

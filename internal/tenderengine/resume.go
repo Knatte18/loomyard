@@ -3,6 +3,7 @@
 package tenderengine
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -117,6 +118,9 @@ type StaleProcess struct {
 // A slug with no entry of its own that a live hub entry covers is refused, naming `lym tender resume`;
 // resuming nothing succeeds.
 // A request's Verdict and Clear run before the lift, as ResumeRequest describes.
+// While the board's adopt hold stands, a resume leaves every bolt-hold slug entry standing.
+// It refuses a slug whose own entry is a bolt-hold one, with nothing lifted or cleared.
+// It replaces each other slug entry it lifts with a bolt-hold entry, bar the hold's fix task.
 func Resume(deps Deps, req ResumeRequest) (ResumeReport, error) {
 	retry := fmt.Sprintf("%q", "lym tender resume "+req.Slug)
 	if req.Verdict != nil {
@@ -129,17 +133,34 @@ func Resume(deps Deps, req ResumeRequest) (ResumeReport, error) {
 			return ResumeReport{}, refusal
 		}
 	}
+	hold, err := readBoltHold(deps)
+	if err != nil {
+		return ResumeReport{}, fmt.Errorf("resume: read the adopt hold of the board to decide what %s lifts: %w; way forward: fix the cause, then run %s again", retry, err, retry)
+	}
+	if hold.Standing && req.Slug != "" {
+		record, err := pauserecord.Read(deps.RecordPath)
+		if err != nil {
+			return ResumeReport{}, err
+		}
+		if own, found := ownEntry(record, req.Slug); found && own.Caller == pauserecord.BoltHoldCaller {
+			return ResumeReport{}, boltHoldRefusal(req.Slug, cmp.Or(own.Machine, hold.Machine))
+		}
+	}
 	if req.Clear != nil {
 		if err := req.Clear(); err != nil {
 			return ResumeReport{}, fmt.Errorf("resume: clear the pause intent of %s: %w; way forward: fix the cause, then run %s again", req.Slug, err, retry)
 		}
 	}
+	now := deps.Now()
 	return liftEntries(deps, func(record *pauserecord.Record) ([]pauserecord.Entry, error) {
 		var targets, kept []pauserecord.Entry
 		for _, live := range record.Live {
-			if req.Slug == "" || live.Scope == req.Slug {
+			switch {
+			case hold.Standing && live.Caller == pauserecord.BoltHoldCaller && live.Scope != pauserecord.ScopeHub:
+				kept = append(kept, live)
+			case req.Slug == "" || live.Scope == req.Slug:
 				targets = append(targets, live)
-			} else {
+			default:
 				kept = append(kept, live)
 			}
 		}
@@ -149,7 +170,7 @@ func Resume(deps Deps, req ResumeRequest) (ResumeReport, error) {
 			}
 			return nil, nil
 		}
-		record.Live = kept
+		record.Live = append(kept, replacementHoldEntries(hold, targets, now)...)
 		return targets, nil
 	})
 }
@@ -237,8 +258,8 @@ func liftEntries(deps Deps, pick func(record *pauserecord.Record) ([]pauserecord
 
 // spawnOwed spawns the detached pushes and the board sync that a pause deferred and the lift uncovers.
 // It records each spawn in report.
-// A pair is pushed when a lifted entry covered it, no live entry of record still covers it, no other machine owns it,
-// and the hub still holds it;
+// A pair is pushed when a lifted entry covered it and no live entry of record still covers it.
+// It is pushed only when no other machine owns it, a pause deferred a detached push of it, and the hub still holds it;
 // a pair that is gone had its owed push go with it.
 // An owners reading that fails spawns no pair push, since an owner it cannot read may be another machine.
 // A seam error is recorded under SpawnFailed and never fails the lift.
@@ -280,6 +301,9 @@ func pairsToPush(deps Deps, record pauserecord.Record, lifted []pauserecord.Entr
 			continue
 		}
 		if slices.ContainsFunc(owners, func(owner PairOwner) bool { return owner.Slug == slug && owner.Local && !owner.OwnedHere }) {
+			continue
+		}
+		if deps.PushDeferred != nil && !deps.PushDeferred(slug) {
 			continue
 		}
 		slugs = append(slugs, slug)

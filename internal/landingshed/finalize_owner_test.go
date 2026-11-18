@@ -3,7 +3,10 @@
 package landingshed
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,16 +47,16 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 	}{
 		{name: "run and parent owned here lands", report: active, parent: here, wantOutcome: shedengine.Done},
 		{
-			name: "run owned elsewhere halts naming the owner and keep-local with the run's beam", report: ownedElsewhere("desk"), parent: here, subject: "beam", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `"lym adopt beam --keep-local"`},
+			name: "run owned elsewhere halts naming the owner and the adopt of the run's beam", report: ownedElsewhere("desk"), parent: here, subject: "beam", wantOutcome: shedengine.Stuck,
+			wantInReason: []string{`machine "desk"`, `"lym adopt beam"`},
 		},
 		{
 			name: "run with no adopt subject names its slug", report: ownedElsewhere("desk"), parent: here, wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `"lym adopt me --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `"lym adopt me"`},
 		},
 		{
 			name: "prime owned elsewhere halts naming its owner and both adopt forms with root", report: active, parent: primeElsewhere, subject: "root", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{"the prime", `machine "laptop"`, `"lym adopt root"`, `"lym adopt root" on machine "laptop"`, `"--keep-local" and "--drop-local"`},
+			wantInReason: []string{"the prime", `machine "laptop"`, `"lym adopt root"`, `"lym adopt root" on machine "laptop"`, "once the check is green"},
 		},
 		{
 			name: "parent pair owned elsewhere halts naming its slug in the adopt form", report: active, parent: pairElsewhere, subject: "base", wantOutcome: shedengine.Stuck,
@@ -61,19 +64,19 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		},
 		{
 			name: "root run and prime both elsewhere name both owners and the one adopt of root", report: ownedElsewhere("desk"), parent: primeElsewhere, subject: "root", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt root" on machine "laptop"`, `"lym adopt root --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt root" on machine "laptop"`, `or run "lym adopt root" here`},
 		},
 		{
 			name: "beam run and prime both elsewhere name root and the beam in the run's form", report: ownedElsewhere("desk"), parent: primeElsewhere, subject: "me", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt me" on machine "laptop"`, `"lym adopt root me --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt me" on machine "laptop"`, `"lym adopt root me"`},
 		},
 		{
 			name: "member run and its beam both elsewhere name the beam once", report: ownedElsewhere("desk"), parent: pairElsewhere, subject: "base", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt base --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `or run "lym adopt base" here`},
 		},
 		{
 			name: "beam run and parent pair both elsewhere name the parent slug in the run's form", report: ownedElsewhere("desk"), parent: pairElsewhere, subject: "me", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt base me --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt base me"`},
 		},
 		{
 			name: "an unreachable origin halts naming the re-run", report: unreachable, parent: here, wantOutcome: shedengine.Stuck,
@@ -132,6 +135,84 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 			}
 		})
 	}
+
+	type handOverRun struct {
+		fz        *Finalize
+		merger    *recordingParentMerger
+		handOvers []string
+	}
+	newHandOverRun := func(t *testing.T, report *fabricengine.OriginReport, configure func(*Deps)) *handOverRun {
+		t.Helper()
+		run := &handOverRun{merger: &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}}
+		deps := newTestDeps(t)
+		deps.Slug = "me"
+		deps.AdoptSubject = func() (string, error) { return "beam", nil }
+		deps.Reconcile = func() (fabricengine.OriginReport, error) { return *report, nil }
+		deps.ParentOwner = func() (ParentOwnership, error) { return *here, nil }
+		deps.HandOver = func(owner, subject string) error {
+			run.handOvers = append(run.handOvers, owner+"/"+subject)
+			return fmt.Errorf("%w: machine %q holds the run %q now", fabricengine.ErrHandedOver, owner, "me")
+		}
+		configure(&deps)
+		run.fz = &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return run.merger, nil }}
+		return run
+	}
+	requireHandOver := func(t *testing.T, run *handOverRun, ptr shedengine.OutputPointer) {
+		t.Helper()
+		if want := []string{"desk/beam"}; !slices.Equal(run.handOvers, want) {
+			t.Errorf("hand-overs = %v; want %v", run.handOvers, want)
+		}
+		reason := requireFinalizeReason(t, ptr)
+		if !strings.HasPrefix(reason, OwnerHaltPrefix) || !strings.Contains(reason, `machine "desk"`) || !strings.Contains(reason, "the landing finishes on that machine") {
+			t.Errorf("reason = %q; want an owner halt naming machine %q and where the landing finishes", reason, "desk")
+		}
+		if !ptr.Halt {
+			t.Error("OutputPointer.Halt = false; want a hand-over to block the run")
+		}
+	}
+
+	t.Run("a run the reconcile reads owned elsewhere is handed over and merges nothing", func(t *testing.T) {
+		run := newHandOverRun(t, ownedElsewhere("desk"), func(*Deps) {})
+
+		ptr := shedfake.RequireOutcome(t, run.fz, shedengine.Stuck)
+
+		requireHandOver(t, run, ptr)
+		if len(run.merger.calls) != 0 {
+			t.Errorf("parent-side merge calls = %d; want 0", len(run.merger.calls))
+		}
+	})
+
+	t.Run("an owner read after the merge is handed over before the parent push", func(t *testing.T) {
+		run := newHandOverRun(t, active, func(d *Deps) {
+			d.OwnedElsewhere = func() (string, string, bool, error) { return "desk", "beam", true, nil }
+		})
+
+		ptr := shedfake.RequireOutcome(t, run.fz, shedengine.Stuck)
+
+		requireHandOver(t, run, ptr)
+		if len(run.merger.calls) != 1 || len(run.merger.pushCalls) != 0 {
+			t.Errorf("parent-side merge calls = %d and parent pushes = %d; want 1 and 0", len(run.merger.calls), len(run.merger.pushCalls))
+		}
+	})
+
+	t.Run("an unreadable owner returns its error as a transient failure with nothing pushed", func(t *testing.T) {
+		readErr := errors.New("origin unreachable")
+		run := newHandOverRun(t, active, func(d *Deps) {
+			d.OwnedElsewhere = func() (string, string, bool, error) { return "", "", false, readErr }
+		})
+
+		_, _, err := run.fz.Call(context.Background())
+
+		if !errors.Is(err, readErr) {
+			t.Fatalf("Call() error = %v; want it to wrap %v", err, readErr)
+		}
+		if shedengine.TransientOf(err) == "" {
+			t.Errorf("Call() error = %v; want a transient mark, so the driver re-steps it", err)
+		}
+		if len(run.handOvers) != 0 || len(run.merger.pushCalls) != 0 {
+			t.Errorf("hand-overs = %v and parent pushes = %d; want none", run.handOvers, len(run.merger.pushCalls))
+		}
+	})
 
 	t.Run("a halted Finalize resumed with the parent not holding the work meets both checks again", func(t *testing.T) {
 		report, parent := *ownedElsewhere("desk"), *pairElsewhere

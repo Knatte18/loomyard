@@ -272,9 +272,6 @@ type InnerRunDeps struct {
 	// A machine wake reaches it through the full pass the scheduling dobby owes, which leaves it due.
 	// A nil OwnerCheck switches the check off.
 	OwnerCheck func(ctx context.Context) (OwnerVerdict, error)
-	// PauseOwned pauses the slug under the owner caller, naming the machine that owns it.
-	// A nil PauseOwned resolves to a no-op in NewInnerRun.
-	PauseOwned func(ctx context.Context, owner string) error
 	// ParentHoldsTaskWork reports whether the parent branch holds the task work, which means Finalize is past its merge.
 	// A nil ParentHoldsTaskWork resolves to reporting false in NewInnerRun.
 	ParentHoldsTaskWork func() (bool, error)

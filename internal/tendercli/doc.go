@@ -35,6 +35,8 @@
 //
 // `HubDeps` fills the lift's spawn seams.
 // They are a pair's detached push over the pair's location, the prime's records push, and the board sync.
+// A pair is pushed only when `fabricengine.PairPushDeferred` finds a push a pause deferred, such as an anchor change's;
+// a run's transition pushes synchronously, so a lift spawns no pair push for one.
 // `syncBoardIfOwed` spawns the board sync when Bolt is ahead of its upstream or holds uncommitted changes.
 // A sync deferred at its start leaves that state.
 // The resume report names the spawned seams under `spawned` and the failed ones under `spawn_failed`.
@@ -43,7 +45,7 @@
 // # Run pause intent
 //
 // `pause <slug>` and `resume <slug>` also write and clear the run's pause intent in its batten record on the prime.
-// Each commits the record and spawns the push of the prime's records side, held under the slug.
+// Each commits the record and pushes the prime's records side, held under the slug, and waits for the push.
 // A slug with no batten record writes and commits nothing.
 // Both verbs pull the Bolt first and refuse a run another machine owns, naming that machine;
 // with origin unreachable they read the owner from the local Bolt.
@@ -51,29 +53,32 @@
 // `resume` asks the act rule with a pause, a cancel under way, a shed pause and an owed push set aside.
 // It lifts its own entry and drives nothing; a landed or cancelled run's entry is lifted too.
 // Offline, the pause entry still stops the run's processes here, and the intent is committed with its push owed.
+// An owed push writes one line to stderr and the verb succeeds;
+// the intent lands with the prime's records branch's next push, or with `lym fabric push` from the prime.
+// Any other failed push fails the verb.
 // Until it lands another machine reads the run unpaused.
-// `PausePair`, `PauseOwnedElsewhere` and every hub-wide pause record no intent.
+// `PausePair` and every hub-wide pause record no intent.
+// `RecordPauseIntent` records one for a caller outside the verbs: the upgrade's first read.
+// Unlike the verb, it returns an owed push as an error, so no entry is dropped whose intent is not on origin.
+// A push that hands the run over returns an error wrapping `fabricengine.ErrHandedOver`.
+// That caller reads it as the run owned elsewhere.
+// `PauseIntentEntries` writes this machine's pause entries from the pause intents of the runs it owns.
+// The dobby's catch-up and the upgrade's first read call it.
+// A slug whose batten record holds an intent and whose scope has no live entry is paused under the default caller.
 //
-// # Owned elsewhere
+// # Bolt hold
 //
-// `PauseOwnedElsewhere` pauses a run another machine owns,
-// and `EndOwnedElsewhere` then ends the run's owned processes on this machine,
-// so a driver chain parked under the owner pause never outlives an adoption.
-// The pause stands whatever the end does.
-// A failed end or a survivor is logged at Warn, naming `lym fabric remove <slug>`,
-// or `lym reed down` in the pair while it exists, and `lym tender reap` once it is gone.
-// A failed end also ends in the step that settles the run's batten record.
-// That step runs when `pairteardown.BattenFollowUp` words one.
-// The removal would otherwise leave the record standing.
-// A run whose Finalize is past its parent-side merge keeps its processes.
-// Origin's fetched parent branch decides that, or the local one while pushes are skipped.
-// It finishes its landing on either machine, and its pair's removal ends them.
-// A task worktree with no status file, or none at all, is ended by slug, since no Finalize can be running there.
+// `HubDeps` fills `Deps.BoltHold` from the hub's Bolt after a pull, an unreachable origin reading the local Bolt.
+// Any other failed pull refuses the resume with nothing lifted, naming the pull's detail.
+// The resume's act rule sets the adopt hold aside, and the engine's own hold rules decide:
+// while a hold stands, `lym tender resume <slug>` of a slug held only by a `bolt-hold` entry is refused,
+// and a hub-wide resume leaves every `bolt-hold` entry standing.
+// A slug entry the resume lifts is replaced by a `bolt-hold` entry, bar the hold's fix task.
+//
+// # Plain pair pause
+//
 // `PausePair` pauses a run with a plain pair entry, for a run lym stopped because origin moved what it works on;
 // it ends nothing.
-// The end spares the calling process and its ancestors.
-// Inside `lym batten run`, batten therefore survives its own probe's end and keeps its owner hold and probe.
-// The pair's removal ends it.
 //
 // # Revive
 //

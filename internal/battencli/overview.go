@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -39,6 +40,12 @@ const (
 	overviewColumnGap    = "  "
 	// overviewPausedFormat is the state cell of a run under a live pause; %s takes the minutes since the pause began.
 	overviewPausedFormat = "paused %s"
+	// overviewPushOwed is the Owes text of a run holding an owed push; the push's last error follows when one is recorded.
+	overviewPushOwed = "push owed"
+	// overviewCodeTipFormat is the Owes text of a run whose code tip origin lacks; %s takes the tip's leading characters.
+	overviewCodeTipFormat = "code tip %s missing on origin"
+	// overviewCodeTipLength is how many leading characters of the code tip the Owes text shows.
+	overviewCodeTipLength = 12
 )
 
 // overviewRun is what one poll learned about one batten run.
@@ -71,6 +78,10 @@ type RunCells struct {
 	// Unreadable reports that the run's status, or the status of the child it runs, failed to read on two polls in a row;
 	// the other fields are then empty.
 	Unreadable bool
+	// Owes is what the run's act rule waits on when that is an owed push or a code tip origin lacks:
+	// the push with its last error, or the tip with the machine that owes it.
+	// It is empty when the run waits on neither.
+	Owes string
 }
 
 // overviewRunCells builds the cells of run at now.
@@ -197,6 +208,8 @@ type DobbyRunCells struct {
 	childStatus func(slug string) (string, error)
 	// childPair returns the task worktree location of slug; a test replaces it.
 	childPair func(slug string) (*lymcwd.Location, error)
+	// verdict returns the act rule's verdict for slug, judged with nothing set aside; a test replaces it.
+	verdict func(slug string) (runfsm.Verdict, error)
 
 	battenCaches map[string]*statuspane.StatusCache
 	childCaches  map[string]*statuspane.StatusCache
@@ -224,12 +237,49 @@ func NewDobbyRunCells(prime *lymcwd.Location, pauseRecord string) *DobbyRunCells
 	}
 	r.childPair = r.resolveChildPair
 	r.childStatus = r.resolveChildStatus
+	r.verdict = func(slug string) (runfsm.Verdict, error) {
+		records, inputs, err := pairteardown.ReadRun(prime, slug)
+		if err != nil {
+			return runfsm.Verdict{}, err
+		}
+		_, verdict := runfsm.Judge(records, inputs, runfsm.Aside{})
+		return verdict, nil
+	}
 	return r
+}
+
+// owes words what the act rule waits on for slug when it is an owed push or a code tip origin lacks.
+// It is empty for any other verdict, and for one that does not read, which logs at Debug.
+func (r *DobbyRunCells) owes(slug string) string {
+	verdict, err := r.verdict(slug)
+	if err != nil {
+		logger.Debug("batten: reading a run's verdict for the overview failed", "slug", slug, "err", err)
+		return ""
+	}
+	switch verdict.Reason {
+	case runfsm.ReasonPushOwed:
+		if verdict.PushOwedError == "" {
+			return overviewPushOwed
+		}
+		return overviewPushOwed + ": " + firstLine(verdict.PushOwedError)
+	case runfsm.ReasonCodeTip:
+		tip := verdict.CodeTip
+		if len(tip) > overviewCodeTipLength {
+			tip = tip[:overviewCodeTipLength]
+		}
+		owes := fmt.Sprintf(overviewCodeTipFormat, tip)
+		if verdict.CodeTipMachine != "" {
+			owes += ", owed by " + verdict.CodeTipMachine
+		}
+		return owes
+	}
+	return ""
 }
 
 // Of returns the RunCells of each of runs at now, by slug.
 // A status that fails to read once keeps the cells of its previous read;
 // a pause record that does not read covers nothing.
+// A run whose cells read also carries what its act rule waits on in Owes.
 func (r *DobbyRunCells) Of(runs []dobbyengine.ViewRun, now time.Time) map[string]RunCells {
 	record, err := pauserecord.Read(r.pauseRecord)
 	if err != nil {
@@ -245,6 +295,9 @@ func (r *DobbyRunCells) Of(runs []dobbyengine.ViewRun, now time.Time) map[string
 		runCells := overviewRunCells(run, now)
 		if run.Batten.Found && runCells.State == string(run.Batten.Status.State) {
 			runCells.State = overviewState(run.Batten.Status)
+		}
+		if !runCells.Unreadable {
+			runCells.Owes = r.owes(viewRun.Slug)
 		}
 		cells[viewRun.Slug] = runCells
 	}

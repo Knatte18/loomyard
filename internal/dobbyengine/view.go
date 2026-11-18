@@ -23,6 +23,17 @@ type View struct {
 	Runs []ViewRun `json:"runs"`
 	// Waiting are the released tasks not yet started, in board order.
 	Waiting []WaitingTask `json:"waiting"`
+	// CatchUp is the catch-up from origin the dobby waits on, nil when it waits on none.
+	CatchUp *CatchUpWait `json:"catch_up,omitempty"`
+	// Kept are the pairs that cancels of the dobby's runs kept and that still stand, by slug.
+	Kept []KeptPair `json:"kept,omitempty"`
+}
+
+// KeptPair is the pair of a cancelled run whose cancel kept it, still on disk.
+type KeptPair struct {
+	Slug string `json:"slug"`
+	// Since is when the cancel finished; zero when the record does not say.
+	Since time.Time `json:"since,omitzero"`
 }
 
 // ViewRun is one run a dobby drives, as read from its batten status and the dobby's state record.
@@ -50,6 +61,8 @@ type WaitingTask struct {
 	OwnedElsewhere bool     `json:"owned_elsewhere,omitempty"`
 	// Paused reports whether a pause entry covers the hub or the slug.
 	Paused bool `json:"paused,omitempty"`
+	// HeldBy is the machine of the adopt hold that holds the task, empty when none does.
+	HeldBy string `json:"held_by,omitempty"`
 	// StartRefusal is the refusal every start of the slug gets, such as one for a finished run record of the same slug;
 	// while it stands, no pass is spawned.
 	StartRefusal string `json:"start_refusal,omitempty"`
@@ -69,7 +82,7 @@ type WaitingTask struct {
 
 // Ready reports whether nothing holds the task back, so the dobby starts it on its next tick.
 func (w WaitingTask) Ready() bool {
-	return len(w.Dependencies) == 0 && !w.OwnedElsewhere && !w.Paused && w.StartRefusal == "" && w.NextTry.IsZero() && !w.AtMaxRuns && w.FrontFirst == "" && !w.ReadyHold
+	return len(w.Dependencies) == 0 && !w.OwnedElsewhere && !w.Paused && w.HeldBy == "" && w.StartRefusal == "" && w.NextTry.IsZero() && !w.AtMaxRuns && w.FrontFirst == "" && !w.ReadyHold
 }
 
 // ViewInput is everything one view is built from.
@@ -90,12 +103,13 @@ type ViewInput struct {
 
 // BuildView returns the View of the dobby in.
 // The runs are the listed ones that are not done; a done run takes a slot only while its driver lock is held.
+// The kept pairs are those of the listed cancelled runs whose cancel kept a pair that still stands.
 // A task waits while it is released to the worktree and not started.
 // Its reasons are the conditions the dobby's start step checks, in the start step's own order for max_runs.
 // An open front task of the worktree holds every other waiting task back and takes no slot under max_runs.
 // While the record carries the ready hold, every waiting task is held and none takes a slot.
 func BuildView(in ViewInput) View {
-	view := View{Alive: in.Alive, MaxRuns: in.Config.MaxRuns, LandNotice: in.Config.LandNotice, Runs: []ViewRun{}, Waiting: []WaitingTask{}}
+	view := View{Alive: in.Alive, MaxRuns: in.Config.MaxRuns, LandNotice: in.Config.LandNotice, Runs: []ViewRun{}, Waiting: []WaitingTask{}, CatchUp: in.Record.CatchUp}
 	requested := make(map[string]bool, len(in.Tasks))
 	for _, task := range in.Tasks {
 		requested[task.Slug] = task.NotifyOnLand
@@ -114,6 +128,9 @@ func BuildView(in ViewInput) View {
 			FailingPassError: rs.FailingPassError, FailingPassCount: rs.FailingPassCount,
 			NotifyOnLand: requested[run.Slug] || in.Record.LandNotices[run.Slug].Requested,
 		})
+		if keptPair(run) {
+			view.Kept = append(view.Kept, KeptPair{Slug: run.Slug, Since: run.KeptSince})
+		}
 	}
 
 	slots := in.Config.MaxRuns - slotsTaken(slotRuns, in.Record)
@@ -123,7 +140,7 @@ func BuildView(in ViewInput) View {
 			continue
 		}
 		covered := in.Covers(task.Slug)
-		waiting := WaitingTask{Slug: task.Slug, Dependencies: task.PendingDependencies, OwnedElsewhere: task.OwnedElsewhere, Paused: covered, StartRefusal: task.StartRefusal, NotifyOnLand: task.NotifyOnLand, ReadyHold: in.Record.ReadyHold != nil}
+		waiting := WaitingTask{Slug: task.Slug, Dependencies: task.PendingDependencies, OwnedElsewhere: task.OwnedElsewhere, Paused: covered, HeldBy: task.HeldBy, StartRefusal: task.StartRefusal, NotifyOnLand: task.NotifyOnLand, ReadyHold: in.Record.ReadyHold != nil}
 		if frontOpen && task.Slug != front.Slug {
 			waiting.FrontFirst = front.Slug
 		}

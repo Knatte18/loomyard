@@ -107,11 +107,6 @@ func (c *battenCLI) driveRun(cmd *cobra.Command) error {
 		return battenRunEnvelope(exit, status, found, abandonedSession, yieldReason, c.spec.RunBusyMessage)
 	})
 	clihelp.SetExit(ctx, exit)
-	// A pass that reached origin and exited 0 pays the origin the earlier resume owed;
-	// any other pass leaves the marker standing.
-	if exit == 0 && c.originReached {
-		c.clearOriginOwed()
-	}
 	// A hand pass leaves the run to its parent's dobby, so the dobby is made live once the pass is over.
 	if err := c.ensureDobby(); err != nil {
 		logger.Warn("battencli: the pass ended but its parent's dobby is not live", "slug", c.slug, "error", err.Error())
@@ -121,11 +116,13 @@ func (c *battenCLI) driveRun(cmd *cobra.Command) error {
 
 // passExitCode returns the exit code of a pass that refused with err before the step loop:
 // the owned-elsewhere code for a run another machine owns; the covered code for a run a pause covers;
-// the continue-refused code for a continue pass of a run dobby may not continue; and 1 for any other refusal.
+// the continue-refused code for a continue pass of a run dobby may not continue;
+// the origin-wait code for a pass whose catch-up failed or was refused; and 1 for any other refusal.
 func passExitCode(err error) int {
 	var owned *OwnedElsewhereError
 	var covered *coveredRefusal
 	var continueRefused *continueRefusal
+	var catchUpRefused *catchUpRefusal
 	switch {
 	case errors.As(err, &owned):
 		return dobbyengine.PassExitOwnedElsewhere
@@ -133,6 +130,8 @@ func passExitCode(err error) int {
 		return dobbyengine.PassExitCovered
 	case errors.As(err, &continueRefused):
 		return dobbyengine.PassExitContinueRefused
+	case errors.As(err, &catchUpRefused):
+		return dobbyengine.PassExitOriginWait
 	default:
 		return 1
 	}

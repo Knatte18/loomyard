@@ -85,6 +85,8 @@ type Finalize struct {
 	parentHeadMerged string
 	// flaky holds each gate failure of this process that passed when run once more on the same head.
 	flaky []flakyPass
+	// handedOver is the error of the hand-over the last handOverIfOwnedElsewhere made.
+	handedOver error
 }
 
 // flakyHeading opens the landing texts' section listing the gate failures a rerun on the same head did not repeat.
@@ -442,7 +444,6 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, summary summa
 	mergeOpts := fabricengine.MergeOptions{Squash: (fz.deps.Config.Squash || landing.atOnce) && !landing.trueMerge, Message: landingMessage}
 	_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 	if mergeErr == nil {
-		fz.markTaskDone()
 		fz.recordLanding(parentHandle)
 		return landed()
 	}
@@ -468,7 +469,6 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, summary summa
 		}
 		_, retryErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 		if retryErr == nil {
-			fz.markTaskDone()
 			fz.recordLanding(parentHandle)
 			return landed()
 		}
@@ -705,16 +705,65 @@ func (fz *Finalize) configChangeNotice() string {
 	return strings.Join(strings.Fields("loom: "+strings.Join(parts, "; also, ")), " ")
 }
 
-// markTaskDone marks the task's board entry done right after a parent-side merge succeeds, ahead of the push,
-// so a skipped or failed push still leaves the task done: the change is on the parent once the merge lands.
-// A failure is a logged warning and never changes the verdict.
-func (fz *Finalize) markTaskDone() {
+// markTaskDone writes the task's board entry done, once the parent branch and the run's records are on origin.
+// A failed write is returned, so the driver re-steps the landing and the write is made again.
+func (fz *Finalize) markTaskDone() error {
 	if fz.deps.MarkTaskDone == nil {
-		return
+		return nil
 	}
 	if err := fz.deps.MarkTaskDone(); err != nil {
-		logger.Warn("landingshed: mark board task done failed", "producer", finalizeName, "cause", err)
+		return fmt.Errorf("landingshed: %s: mark the board task done: %w", finalizeName, err)
 	}
+	return nil
+}
+
+// archiveHeldParentMerge archives the local parent merge when origin's parent branch already holds the task's work.
+// It reports whether it did.
+// Any other state, an unreadable one included, reports false, which leaves the rejected parent push Stuck.
+func (fz *Finalize) archiveHeldParentMerge() bool {
+	if fz.deps.ArchiveParentMerge == nil || fz.deps.OriginParentHoldsWork == nil {
+		return false
+	}
+	held, err := fz.deps.OriginParentHoldsWork()
+	if err != nil {
+		logger.Warn("landingshed: read whether origin's parent holds the task's work failed", "producer", finalizeName, "cause", err)
+		return false
+	}
+	if !held {
+		return false
+	}
+	if err := fz.deps.ArchiveParentMerge(); err != nil {
+		logger.Warn("landingshed: archive the local parent merge failed", "producer", finalizeName, "cause", err)
+		return false
+	}
+	return true
+}
+
+// pushRecords commits the run's status file and pushes the run's records.
+// stop is false when the landing may go on, and otherwise the first three values are what Call returns.
+// A push that finds another machine's takeover of the run halts the landing,
+// and an owed push is returned as a transient failure the driver re-steps.
+// Under Deps.PushSkipped the status file is committed and nothing is pushed.
+func (fz *Finalize) pushRecords(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	if fz.deps.CommitStatus != nil {
+		if err := fz.deps.CommitStatus(); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: commit status file: %w", finalizeName, err), true
+		}
+	}
+	if fz.deps.PushSkipped || fz.deps.PushRecords == nil {
+		return "", shedengine.OutputPointer{}, nil, false
+	}
+	err := fz.deps.PushRecords()
+	switch {
+	case err == nil:
+		return "", shedengine.OutputPointer{}, nil, false
+	case errors.Is(err, fabricengine.ErrHandedOver):
+		return fz.handedOverHalt(ctx, err)
+	case fabricengine.IsPushOwed(err):
+		return "", shedengine.OutputPointer{}, shedengine.MarkTransient(shedengine.TransientGitTransport,
+			fmt.Errorf("landingshed: %s: push the run's records: %w", finalizeName, err)), true
+	}
+	return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: push the run's records: %w", finalizeName, err), true
 }
 
 // recordLanding hands the parent pair's head, the commit the landing put on the parent branch, to `Deps.RecordLanding`.
@@ -767,6 +816,11 @@ func (fz *Finalize) keepParentHead(parentHandle parentMerger) {
 
 // pushParent publishes the parent branch the merge just landed on to its upstream,
 // so a landing reaches the remote rather than only this hub's parent worktree, and reports Done.
+// Once the parent branch is pushed, the run's transition is committed and pushed, and then the board `done` is written.
+// Before each of the three it reads whether another machine owns the run now.
+// An owner there hands the run over and halts.
+// A push rejected while origin's parent branch already holds the task's work goes through `Deps.ArchiveParentMerge`.
+// That archives the local merge, records the landing commit again from the reset branch, and the landing goes on.
 // A transient push failure (one with a non-empty transient class) is returned as an error, so the driver re-steps once;
 // the re-step's parent-side Merge reports AlreadyUpToDate and goes straight to the push.
 // Any other failed push is Stuck: the merge has already landed locally,
@@ -784,6 +838,9 @@ func (fz *Finalize) keepParentHead(parentHandle parentMerger) {
 // a failure there is a logged warning that never changes the verdict.
 // The push is the parent branch's own, whether the landing went through a pull request merged on GitHub or not.
 func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, notice string, parentMerges bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if outcome, out, err, stop := fz.handedOverStop(ctx); stop {
+		return outcome, out, err
+	}
 	if _, err := parentHandle.PushBranch(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped}); err != nil {
 		if terr := transientFailure(ctx, finalizeName, "push parent branch", err); terr != nil {
 			return "", shedengine.OutputPointer{}, terr
@@ -798,14 +855,30 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 				fz.deps.ParentBranch, cause, protectedParentWayForward(fz.deps.TaskBranch, fz.deps.ParentBranch, parentMerges))
 			return fz.stuckOrCancelled(ctx, reason, "error", err)
 		}
-		reason := fmt.Sprintf("parent branch %q was merged locally but its push failed: %v", fz.deps.ParentBranch, err)
-		// A classified failure's text already ends in the way forward of its class, and a plain push is what a hold-back refuses.
-		var failed *fabricengine.PushFailedError
-		if !errors.As(err, &failed) {
-			reason += "; push it by hand"
+		if !fz.archiveHeldParentMerge() {
+			reason := fmt.Sprintf("parent branch %q was merged locally but its push failed: %v", fz.deps.ParentBranch, err)
+			// A classified failure's text already ends in the way forward of its class, and a plain push is what a hold-back refuses.
+			var failed *fabricengine.PushFailedError
+			if !errors.As(err, &failed) {
+				reason += "; push it by hand"
+			}
+			reason += fz.adopterFirstRepair(parentHandle)
+			return fz.stuckOrCancelled(ctx, reason, "error", err)
 		}
-		reason += fz.adopterFirstRepair(parentHandle)
-		return fz.stuckOrCancelled(ctx, reason, "error", err)
+		// The archive reset the branch past the merge that recordLanding stored, so the landing commit is read again.
+		fz.recordLanding(parentHandle)
+	}
+	if outcome, out, err, stop := fz.handedOverStop(ctx); stop {
+		return outcome, out, err
+	}
+	if outcome, out, err, stop := fz.pushRecords(ctx); stop {
+		return outcome, out, err
+	}
+	if outcome, out, err, stop := fz.handedOverStop(ctx); stop {
+		return outcome, out, err
+	}
+	if err := fz.markTaskDone(); err != nil {
+		return "", shedengine.OutputPointer{}, err
 	}
 	// The landing is done, so a failed removal of the attempt record changes no verdict.
 	if err := RemoveFixerAttempts(FixerAttemptsPath(fz.deps.RecordsDir, finalizeName)); err != nil {

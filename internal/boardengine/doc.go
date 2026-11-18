@@ -167,7 +167,10 @@
 // It walks an entry's project links upward and returns the nearest open project that is a beam, "" meaning the prime.
 // The list view carries it as parent_beam, taken from Config.ParentOf when that seam is set.
 // Otherwise it comes from ParentBeam over the board's own entries, and it is empty when the seam fails.
+// The list view prints the prime as RootSubject, `root`, since an empty value reads as no beam.
 // Board.ParentBeamOf answers it for one slug.
+// ParentBeam and Board.ParentBeamOf keep the empty slug for the prime.
+// Every owner read and beam verb takes that empty slug as the prime.
 // Board.BeamUnder answers it for an entry not yet written, from the project link it will carry.
 // ReadTasks reads the entries of a local board.json for a reader outside a Board.
 // An owner change is never a scope change, so the run lock lets a run-held entry take it.
@@ -196,7 +199,7 @@
 // and the owners re-read from the local board.json after the push decide Recorded and Lost.
 // An origin that does not answer is ErrOwnerOriginUnreachable,
 // and a push a held lock keeps deferring is refused naming `lym board sync`.
-// ReadOwners reads the owners the local board.json records.
+// ReadOwners reads the owners the local board.json records, with the registry and the holds.
 // The list and get views carry each task's and project's effective owner as owner_machine.
 // They never carry an owner recorded on a task.
 // Board.EffectiveOwner resolves one slug's effective owner.
@@ -206,6 +209,53 @@
 // Any other value is refused naming `lym adopt`.
 // The rule runs from the store's upsert, batch and merge paths, never from the replay.
 // The replay applies an owner change through its own entry writes.
+//
+// # Machine registry and holds
+//
+// board.json carries two more top-level records that no entry holds.
+// `machines` is the registry, keyed by machine id.
+// Each entry holds the machine's current name and the names it replaced.
+// `holds` lists the adopt holds.
+// Each holds its kind, the machine that wrote it, when, its subjects and, for an adopt-fix hold, its fix task.
+// A load keeps both and a save writes them back unchanged.
+// An unknown key inside an entry or a hold survives the rewrite.
+// Each record is written only by its own setter, which pushes synchronously.
+// Registry.ReadsAsHere is the one comparison of a recorded machine name with this machine:
+// a name an entry resolves reads as here only when that entry's id is the machine's own,
+// and a name no entry resolves reads as here when it is the machine's current or a former name.
+// OwnedElsewhere is its owner form: an empty owner reads as owned by no other machine,
+// and any other owner reads as another machine's unless the registry reads it as here.
+// Owners carries both records, and Owners.HoldOf names the hold that holds a slug:
+// every hold holds every slug, except an adopt-fix hold, which does not hold its fix task.
+//
+// RegisterMachine is the setter of the registry.
+// It pulls the board level with its upstream and runs Registry.Check against the registry it pulled.
+// It then writes one commit and pushes it before it returns.
+// A registration the registry already holds writes and pushes nothing.
+// Check refuses with a *RegistrationError naming the clashing machine and the way forward.
+// It refuses a registration with no id and a machine file copied from another machine.
+// It refuses a former name that is another machine's current name, and a name another machine holds.
+// EnsureIdentity is the one write of the machine id into the machine file, beside `lym machine name`.
+// It creates a missing file from the hostname rule's name, adds an id to a file without one, and keeps every other key.
+// IdentityRefusal returns its refusal for an unresolved config directory without reading or writing the file.
+//
+// Only boardengine's hold setters write the holds.
+// Each pulls the board level with its upstream, judges the holds that stand, and pushes its one commit before it returns.
+// WriteHold appends a hold.
+// A hold of another machine stands and is returned in HoldWrite.Standing with nothing written.
+// A hold of the same machine with the same kind and subjects writes nothing either,
+// so a re-run of a cut write is idempotent.
+// A hold of the same machine with another kind or other subjects is appended beside the standing one.
+// WriteAdopt writes the hold, the owners and this machine's registry entry in one commit.
+// It keeps this machine's hold over the same subjects.
+// It refuses a hold over other subjects.
+// It refuses another machine's hold unless TakeHold moves a hold over the same subjects to this machine.
+// A refusal is a *HoldRefusal naming the other machine, and the way forward.
+// FixHold turns this machine's hold into an adopt-fix hold naming the fix task and the try counts.
+// ClearHold removes this machine's hold.
+// Both re-read the board after the push and refuse when the hold does not stand as written.
+// A rejected push's replay refuses a commit whole over a hold another machine wrote.
+// A hold carries `fix_machine`, the machine whose check filed the fix task, empty when the hold's own machine filed it.
 //
 // # Slug rule
 //
@@ -285,6 +335,7 @@
 // The root, the entries whose project is empty, is a project like the others.
 // It renders with the handle `P0` and the title `Root: entries under no project`.
 // Board project handles start at 1, so `P0` names no board entry.
+// RootProjectBrief gives the root as one listing row, with the slug RootSubject.
 // Every write renders README.md, the overview of every project, and one board file per project.
 // Every project, open or done, renders to project-<slug>.md beside it, and the root to project-root.md.
 // The split is rendering only: every entry stays in the one store, and handles stay numbered across the hub.
@@ -705,8 +756,12 @@
 //
 // Board sequences all mutating operations with a file lock:
 // lock → load → mutate → save board.json → move or remove decision record files → render → write files.
-// After each write, sync.go launches a detached background process that commits and pushes the changes to the remote.
-// The write returns immediately without waiting for the sync.
+// After each write but the three below, sync.go launches a detached background process.
+// That process commits and pushes the changes to the remote.
+// Such a write returns immediately without waiting for the sync.
+// The run claim, the owner write and a landing's `done` push synchronously instead:
+// each pulls the Bolt first, commits, waits for its push and spawns no sync.
+// A display status stays on the detached sync.
 // Read methods (Get/List) bypass the lock and load directly from disk, persisting nothing.
 //
 // The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls.
@@ -778,6 +833,14 @@
 // origin removed the entry.
 // A change a check refuses is reported refused, and so is a later change depending on an entry a refused change added.
 // A commit that set `draft_status` sets it on origin's board too, and neither side ever clears it.
+// The replay carries the commit's `holds` and `machines` records as well.
+// A commit whose holds differ from its parent's is refused whole when origin gained a hold of another machine:
+// none of its entry, prime owner, hold or registry changes applies, and one refusal names that hold's machine and time.
+// Otherwise a hold the commit removed or replaced is matched in origin's list by equality and removed or replaced.
+// One origin no longer holds is reported lost.
+// Each hold the commit added is appended.
+// A machine entry the commit added or changed is set on origin's registry unless origin changed it since the merge base.
+// A commit that changes neither key replays as before, even when origin gained a hold.
 // It takes neither the board lock nor the push lock, spawns no sync, and writes nothing when no change survives.
 //
 // # loomyard's own area labels

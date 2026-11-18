@@ -1,6 +1,6 @@
 // dobbydeps.go fills the seams of dobbyengine.Run over a hub.
 // It covers the runs and tasks it reads, the pass it spawns, and the notices it sends.
-// It also covers the owner pause and board tidy it sends, and the teardown of an ended run's pair it starts.
+// It also covers the board tidy it sends, and the teardown of the leftover pairs it starts.
 // It also covers the hibernate request the prime's dobby carries, and the registration of the dobby process itself.
 
 package beamcli
@@ -11,8 +11,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -40,9 +42,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -55,7 +59,7 @@ import (
 
 const (
 	// dobbyProgram is the program name dobby signs its notices with, scoped to its beam's slug.
-	dobbyProgram = "DOBBY"
+	dobbyProgram = orchcli.DobbyProgram
 	// runNoticeTopicPrefix leads the creel topic of a run notice, followed by the run's slug.
 	runNoticeTopicPrefix = "dobby-run-notice/"
 	// defaultNoticeProbe is the probe interval when the batten recipe's Run-Shed row names none.
@@ -91,11 +95,127 @@ func requirePosted(posted bool, err error) error {
 // The owner is the beam's slug, so the pair teardown of a landed beam ends its dobby;
 // the prime's dobby has the hub owner instead.
 func registerDobby(runProcDir string, geom dobbyengine.Geometry) error {
-	owner := geom.Slug
-	if owner == "" {
-		owner = runproc.HubOwner
+	return runproc.Register(runProcDir, subjectOwner(geom), runproc.SelfRecord(runproc.RoleDobby))
+}
+
+// subjectOwner returns the owner the processes of geom's subject register under:
+// the beam's slug, or runproc.HubOwner for the prime's dobby.
+func subjectOwner(geom dobbyengine.Geometry) string {
+	if geom.Slug == "" {
+		return runproc.HubOwner
 	}
-	return runproc.Register(runProcDir, owner, runproc.SelfRecord(runproc.RoleDobby))
+	return geom.Slug
+}
+
+// boltHoldGrace is how long the running turns of a run given a bolt-hold entry get to finish before the Esc.
+const boltHoldGrace = 10 * time.Second
+
+// syncBoltHoldEntries brings the bolt-hold entries of the runs in scope in line with the hold the local Bolt records.
+// Machine and standing come from the Bolt's holds, and a run holding its parent lock gets no entry.
+// A hub whose Bolt records no hold and whose pause record holds no bolt-hold entry has nothing to settle,
+// so the tender deps, which wire every pair of the hub, are built only when there is.
+func syncBoltHoldEntries(prime *lymcwd.Location, recordPath, boardDir string, scope, held []string) error {
+	owners, err := boardengine.ReadOwners(boardDir)
+	if err != nil {
+		return err
+	}
+	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(prime.HubPath))}
+	req := tenderengine.BoltHoldRequest{Scope: scope, Hold: held, Grace: boltHoldGrace, HoldsParentLock: locks.HeldBy}
+	if len(owners.Holds) > 0 {
+		req.Standing, req.Machine = true, owners.Holds[0].Machine
+	}
+	record, err := pauserecord.Read(recordPath)
+	if err != nil {
+		return err
+	}
+	if !req.Standing && !slices.ContainsFunc(record.Live, func(entry pauserecord.Entry) bool { return entry.Caller == pauserecord.BoltHoldCaller }) {
+		return nil
+	}
+	deps, _, err := tendercli.HubDeps(prime, os.Getenv(agentname.StrandNameEnv))
+	if err != nil {
+		return err
+	}
+	_, err = tenderengine.SyncBoltHold(deps, req)
+	return err
+}
+
+// upgradeLockFileName is the lock of the first read after an upgrade, which sits beside the pause record.
+const upgradeLockFileName = "upgrade-first-read.lock"
+
+// hubUpgradeDeps fills the seams of the first read after an upgrade over the hub of prime, for the dobby of the worktree.
+// Its notice goes through the nearest live orch of the worktree, scoped to slug.
+// Entries are read from the pause record at recordPath, and pullBolt is the catch-up's own Bolt pull.
+// Classify reads the run through the act rule's inputs, so its owner is judged through the machine registry.
+// An entry drops through tender's lift, by the entry's exact scope, caller and pause time.
+func hubUpgradeDeps(prime, worktree *lymcwd.Location, slug, recordPath string, pullBolt func() error) dobbyengine.UpgradeDeps {
+	boardDir := fabricengine.BoardDir(prime.HubPath)
+	var tender tenderengine.Deps
+	tenderBuilt := false
+	return dobbyengine.UpgradeDeps{
+		Lock: filepath.Join(filepath.Dir(recordPath), upgradeLockFileName),
+		Now:  time.Now,
+		Entries: func() ([]pauserecord.Entry, error) {
+			record, err := pauserecord.Read(recordPath)
+			return record.Live, err
+		},
+		PullBolt: pullBolt,
+		Classify: func(slug string) (dobbyengine.UpgradeRun, error) {
+			records, inputs, err := pairteardown.ReadRun(prime, slug)
+			if err != nil {
+				return dobbyengine.UpgradeRun{}, err
+			}
+			state := runfsm.Derive(records).State
+			return dobbyengine.UpgradeRun{
+				OwnedHere: !inputs.OwnedElsewhere,
+				HasRecord: records.BattenFound,
+				Terminal:  state == runfsm.Landed || state == runfsm.Cancelled,
+				Queued:    state == runfsm.Queued,
+				Subject:   inputs.AdoptSubject,
+			}, nil
+		},
+		PauseIntent: func(slug string) (bool, error) {
+			err := tendercli.RecordPauseIntent(prime, slug)
+			if errors.Is(err, fabricengine.ErrHandedOver) {
+				return true, nil
+			}
+			return false, err
+		},
+		Machine: machinename.Name,
+		OpenFixTask: func(subject string) (string, bool, error) {
+			board, err := boardengine.OpenHub(prime.HubPath)
+			if err != nil {
+				return "", false, err
+			}
+			tasks, err := board.ListTasksFull()
+			if err != nil {
+				return "", false, err
+			}
+			project := subject
+			if subject == boardengine.RootSubject {
+				project = ""
+			}
+			task, found := fronttask.FrontOf(tasks, project, fronttask.ActionAdoptCheck)
+			return task.Slug, found, nil
+		},
+		AdoptDir: fabricengine.AdoptScratchDir(prime.HubPath),
+		WriteHold: func(hold boardengine.Hold) (boardengine.HoldWrite, error) {
+			return boardengine.WriteHold(boardDir, hold)
+		},
+		Drop: func(entry pauserecord.Entry) error {
+			if !tenderBuilt {
+				built, _, err := tendercli.HubDeps(prime, os.Getenv(agentname.StrandNameEnv))
+				if err != nil {
+					return err
+				}
+				tender, tenderBuilt = built, true
+			}
+			_, err := tenderengine.Lift(tender, tenderengine.EntryRef{Scope: entry.Scope, Caller: entry.Caller, PausedAt: entry.PausedAt})
+			return err
+		},
+		Notice: func(line string) error {
+			return requirePosted(orchcli.NotifyFromScoped(worktree, slug, dobbyProgram, line))
+		},
+	}
 }
 
 // hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom.
@@ -138,7 +258,10 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 	if geom.Slug == "" {
 		hibernateRequestPath = hibernatecli.RequestPath(prime)
 	}
-	underAdopt := orchcli.UnderAdoptWatch(prime)
+	catchUp := battencli.HubCatchUp(prime, func() ([]string, error) {
+		return battencli.DobbyPairSlugs(prime, geom, parents)
+	})
+	underHold := orchcli.UnderOwnHold(prime)
 	runNotices := battencli.DobbyRunNotices(prime, pause.RecordPath, quiet)
 	runNotices.Post = func(_ context.Context, slug, line string) error {
 		return requirePosted(orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, runNoticeTags(slug), line))
@@ -150,22 +273,34 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		Watch: func() (<-chan struct{}, func(), error) {
 			return openDobbyWatch(dobbyWatchDirs(prime, pause.RecordPath, boardDir, hibernateRequestPath))
 		},
-		Machine:       machinename.Name,
 		CheckBinary:   selfexec.New().CheckWith,
 		ProbeInterval: probe,
-		Owner: func() (string, error) {
+		Owner: func() (string, bool, error) {
 			read, err := owners()
 			if err != nil {
-				return "", err
+				return "", false, err
 			}
-			if geom.Slug == "" {
-				return read.Prime, nil
+			here, err := machinename.ReadIdentity()
+			if err != nil {
+				return "", false, err
 			}
-			return read.Effective(geom.Slug, parents.Of)
+			owner := read.Prime
+			if geom.Slug != "" {
+				if owner, err = read.Effective(geom.Slug, parents.Of); err != nil {
+					return "", false, err
+				}
+			}
+			return owner, boardengine.OwnedElsewhere(owner, read.Registry, here), nil
 		},
-		UnderAdopt:   func() bool { return underAdopt.Covers(geom.Slug) },
+		UnderAdopt:   func() bool { return underHold(geom.Slug) },
 		PullBolt:     func() error { return pullBolt(geom.HubRoot, boardDir) },
 		ArchiveOwner: func() error { return archiveOwnerTips(prime, geom.WorktreeName) },
+		CatchUp:      catchUp,
+		Upgrade:      hubUpgradeDeps(prime, worktree, geom.Slug, pause.RecordPath, catchUp.PullBolt),
+		SyncBoltHold: func(_ context.Context, scope, held []string) error {
+			return syncBoltHoldEntries(prime, pause.RecordPath, boardDir, scope, held)
+		},
+		EndSubject: func() error { return pairteardown.EndSubjectProcesses(prime, subjectOwner(geom), true) },
 		Runs: func() ([]dobbyengine.RunView, error) {
 			return battencli.DobbyRuns(prime, geom, parents, pause.RecordPath)
 		},
@@ -173,11 +308,13 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		SpawnPass: func(slug string, continuePass, noReopen bool) (<-chan dobbyengine.PassExit, error) {
 			return spawnPass(geom, slug, continuePass, noReopen)
 		},
-		TearDownEnded: func(slugs []string) <-chan map[string]error { return tearDownEnded(prime, slugs) },
+		TearDownLeftovers: func(pairs []dobbyengine.LeftoverPair) <-chan map[string]error { return tearDownLeftovers(prime, pairs) },
+		MarkKeptCancels: func() ([]string, error) {
+			return battencli.MarkKeptCancels(prime, geom, parents)
+		},
 		Notice: func(_ context.Context, line string) error {
 			return requirePosted(orchcli.NotifyFromScoped(worktree, geom.Slug, dobbyProgram, line))
 		},
-		PauseOwned: func(_ context.Context, slug string) error { return tendercli.PauseOwnedElsewhere(prime, slug) },
 		ReleaseParentLock: func(_ context.Context, slug string) error {
 			return battencli.ReleaseRunParentLock(prime, slug)
 		},
@@ -188,9 +325,6 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 				return "", err
 			}
 			return read.AdoptSubject(slug, parents.Of)
-		},
-		LiftOwnerPause: func(_ context.Context, slug string) error {
-			return liftOwnerPause(prime, pause.RecordPath, slug)
 		},
 		Tasks:      func() ([]dobbyengine.TaskView, error) { return battencli.DobbyTasks(prime, boardDir, parents) },
 		LoadConfig: func() (dobbyengine.Config, error) { return dobbyengine.LoadConfig(dirs) },
@@ -212,7 +346,10 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			return board.ClearNotifyOnLand(slug)
 		},
 		SettleFronts: func() error { return fronttask.Settle(settleFronts) },
-		Landings: machineLandings(machinename.Names, func(machines []string) ([]string, error) {
+		Landings: machineLandings(func() (string, []string, error) {
+			here, err := pairteardown.ThisMachine(prime.HubPath)
+			return here.Current, here.Former, err
+		}, func(machines []string) ([]string, error) {
 			return battencli.DobbyLandings(prime, geom, parents, machines)
 		}),
 		Log: func(path, line string, rotate bool) {
@@ -227,6 +364,8 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		},
 	}
 	if geom.Slug == "" {
+		deps.Orphans = func() ([]dobbyengine.OrphanView, error) { return battencli.DobbyOrphans(prime, boardDir) }
+		deps.OrphanRecord = fabricengine.OrphanFirstSightPath(prime.HubPath)
 		carrier, err := hibernatecli.NewDobbyCarrier(prime)
 		if err != nil {
 			return dobbyengine.Deps{}, err
@@ -267,26 +406,74 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 	return deps, nil
 }
 
-// tearDownEnded runs the hub-scope origin reconcile from prime in a goroutine of its own, as `lym cleanup --apply` does.
-// That reconcile tears down the local pair of every run origin has ended, and moves the hub's branches behind origin.
-// Each entry of its mutation record is logged at Info.
-// The channel delivers once.
-// It maps each of slugs to nil when the reconcile removed its pair, and to the reason otherwise.
-func tearDownEnded(prime *lymcwd.Location, slugs []string) <-chan map[string]error {
+// tearDownLeftovers tears down each of pairs by its kind in a goroutine of its own.
+// It then regenerates the hub workspace file once, so it no longer lists a removed pair.
+// The channel delivers once, mapping each slug to nil when its pair was removed and to the reason otherwise.
+func tearDownLeftovers(prime *lymcwd.Location, pairs []dobbyengine.LeftoverPair) <-chan map[string]error {
 	result := make(chan map[string]error, 1)
 	go func() {
-		teardown, err := pairteardown.New(prime)
-		if err != nil {
-			result <- endedTeardownResults(slugs, fabricengine.OriginReport{}, err)
-			return
+		results := make(map[string]error, len(pairs))
+		var ended []string
+		for _, pair := range pairs {
+			if pair.Kind == dobbyengine.LeftoverEnded {
+				ended = append(ended, pair.Slug)
+				continue
+			}
+			results[pair.Slug] = tearDownLeftover(prime, pair)
 		}
-		report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
-		for _, mutation := range report.Mutations.Entries() {
-			logger.Info("beamcli: origin reconcile mutation", "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
+		if len(ended) > 0 {
+			maps.Copy(results, reconcileEnded(prime, ended))
 		}
-		result <- endedTeardownResults(slugs, report, err)
+		if _, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(prime.HubPath), prime); err != nil {
+			logger.Warn(`beamcli: the hub workspace file was not regenerated after a leftover teardown; run "lym fabric reconcile" once the cause is fixed`, "error", err)
+		}
+		result <- results
 	}()
 	return result
+}
+
+// tearDownLeftover tears down one leftover pair that is not an ended run's.
+// A handed-over run's local pair is removed in local mode, and an orphan's after its tips are archived.
+// A landed or cancelled run's pair goes through the pair teardown with its task branch on origin;
+// the landed run's claim is marked done, and the cancelled run's batten record goes with its pair.
+// The cancel chose the removal, so the cancelled run's teardown answers dirtiness with force.
+func tearDownLeftover(prime *lymcwd.Location, pair dobbyengine.LeftoverPair) error {
+	switch pair.Kind {
+	case dobbyengine.LeftoverHandedOver:
+		_, err := pairteardown.RemoveHandedOverPair(prime, pair.Slug)
+		return err
+	case dobbyengine.LeftoverOrphan:
+		_, err := pairteardown.RemoveOrphanPair(context.Background(), prime, pair.Slug)
+		return err
+	}
+	teardown, err := pairteardown.New(prime)
+	if err != nil {
+		return err
+	}
+	_, err = teardown.Run(context.Background(), pairteardown.Request{
+		Slug:    pair.Slug,
+		Remote:  true,
+		Force:   pair.Kind == dobbyengine.LeftoverCancelled,
+		Landed:  pair.Kind == dobbyengine.LeftoverLanded,
+		Verdict: fabricengine.EntryEnded,
+	})
+	return err
+}
+
+// reconcileEnded runs the hub-scope origin reconcile from prime, as `lym cleanup --apply` does.
+// That reconcile tears down the local pair of every run origin has ended, and moves the hub's branches behind origin.
+// Each entry of its mutation record is logged at Info.
+// It maps each of slugs to nil when the reconcile removed its pair, and to the reason otherwise.
+func reconcileEnded(prime *lymcwd.Location, slugs []string) map[string]error {
+	teardown, err := pairteardown.New(prime)
+	if err != nil {
+		return endedTeardownResults(slugs, fabricengine.OriginReport{}, err)
+	}
+	report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+	for _, mutation := range report.Mutations.Entries() {
+		logger.Info("beamcli: origin reconcile mutation", "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
+	}
+	return endedTeardownResults(slugs, report, err)
 }
 
 // endedTeardownResults maps each of slugs to nil when report shows its pair removed, and to the reason otherwise.
@@ -433,7 +620,7 @@ func beamLandReading(prime *lymcwd.Location, slug string) (dobbyengine.LandReadi
 	if !blockers.Empty() {
 		return dobbyengine.LandReading{}, nil
 	}
-	here, err := machinename.Name()
+	here, err := machinename.ReadIdentity()
 	if err != nil {
 		return dobbyengine.LandReading{}, err
 	}
@@ -456,7 +643,7 @@ func beamLandReading(prime *lymcwd.Location, slug string) (dobbyengine.LandReadi
 		}
 	}
 	reading := dobbyengine.LandReading{Passes: true}
-	if boardengine.OwnedElsewhere(owner, here) {
+	if boardengine.OwnedElsewhere(owner, owners.Registry, here) {
 		reading.ParentOwner, reading.ParentSubject = owner, subject
 	}
 	return reading, nil
@@ -528,33 +715,6 @@ func pairLocation(prime *lymcwd.Location, slug string) (*lymcwd.Location, error)
 		return nil, fmt.Errorf("locate the pair %s: %w", slug, err)
 	}
 	return pair, nil
-}
-
-// liftOwnerPause lifts the live pause entry of slug's own scope that carries the owner caller.
-func liftOwnerPause(prime *lymcwd.Location, recordPath, slug string) error {
-	record, err := pauserecord.Read(recordPath)
-	if err != nil {
-		return err
-	}
-	var refs []tenderengine.EntryRef
-	for _, entry := range record.Live {
-		if entry.Scope == slug && entry.Caller == pauserecord.OwnerCaller {
-			refs = append(refs, tenderengine.EntryRef{Scope: entry.Scope, Caller: entry.Caller, PausedAt: entry.PausedAt})
-		}
-	}
-	if len(refs) == 0 {
-		return nil
-	}
-	deps, _, err := tendercli.HubDeps(prime, os.Getenv(agentname.StrandNameEnv))
-	if err != nil {
-		return err
-	}
-	for _, ref := range refs {
-		if _, err := tenderengine.Lift(deps, ref); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // spawnPass starts `<lym> batten run <slug>` for geom as its own process, in the prime's anchor.

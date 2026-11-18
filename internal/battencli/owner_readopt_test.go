@@ -474,9 +474,6 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			if len(fake.notices) != tt.wantNotices || fake.commitFailed != tt.wantCommitFailed {
 				t.Errorf("notices = %q and failed-stop commits = %d; want %d and %d", fake.notices, fake.commitFailed, tt.wantNotices, tt.wantCommitFailed)
 			}
-			if owed, owedErr := OriginOwed(c.location, c.slug); owedErr != nil || owed {
-				t.Errorf("OriginOwed() = %v, %v; want false, nil", owed, owedErr)
-			}
 		})
 	}
 }

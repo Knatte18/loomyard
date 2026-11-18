@@ -626,7 +626,8 @@
 // A pause's network gate holds the push, and Finalize judges origin and its owners itself.
 // An unreachable origin, a failed check and a failed read of whether the parent holds the run's work let the push go,
 // so the push's own failure is recorded.
-// A run another machine owns is paused under the owner, naming `lym adopt <subject>`;
+// A run another machine owns stops the push with no pause, naming `lym adopt <subject>`,
+// and the dobby's catch-up hands it over;
 // a run a branch stops is paused naming each of its branches and its parent branch that stopped;
 // that pause also names the way forward and `lym tender resume <slug>`;
 // and a run origin ended is paused naming `lym cleanup --apply`.
@@ -772,7 +773,7 @@
 //
 // The landing wiring reads the run's start from the pair's seed and fails on a seed it cannot decode.
 // `landingDeps` tells landingshed the follow-up of a removal, through `pairteardown.FollowUpFor`.
-// It runs over the prime's batten record of the run's slug and the owner pause.
+// It runs over the prime's batten record of the run's slug.
 // A stopped reason that sends the operator to `lym fabric remove` thus names the step that settles that record.
 //
 // # Review subjects

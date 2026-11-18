@@ -24,6 +24,8 @@ type beamFacts struct {
 	here string
 	// owner is the machine the worktree reads as owned by, empty for none.
 	owner string
+	// elsewhere is whether the machine registry reads owner as a machine other than this one.
+	elsewhere bool
 	// moveWayForward is the way forward of an anchor change standing on the worktree or the prime, empty when none stands.
 	moveWayForward string
 	// held is whether the worktree's entry is held by its run, and status is that entry's status.
@@ -43,18 +45,19 @@ func ownLandingHold(boardStatus *string, run shedengine.Status, runFound bool) b
 }
 
 // beamUpRefusal returns nil when an orch may come up in the beam slug, or in the prime when slug is empty, on the machine here.
-// owner is the machine the worktree reads as owned by, empty for none;
+// owner is the machine the worktree reads as owned by, empty for none.
+// elsewhere says owner is another machine than here.
 // moveWayForward is the way forward of a standing anchor change, empty for none.
 // A worktree another machine owns is refused naming the owner and the takeover;
 // a standing anchor change is refused naming its way forward;
 // and a beam whose entry a run other than its own landing holds is refused naming that run's status verb.
 // A beam held by its own landing, ownLanding, is no refusal.
-func beamUpRefusal(slug, here, owner string, moveWayForward string, held, ownLanding bool, status string) error {
+func beamUpRefusal(slug, here, owner string, elsewhere bool, moveWayForward string, held, ownLanding bool, status string) error {
 	subject, adopted := fmt.Sprintf("beam %q", slug), slug
 	if slug == "" {
 		subject, adopted = "the prime", "root"
 	}
-	if boardengine.OwnedElsewhere(owner, here) {
+	if elsewhere {
 		return fmt.Errorf("orch: %s is owned by machine %q, not this machine (%q); way forward: run `lym adopt %s` from this machine's prime to take it over, then run `lym beam start` again", subject, owner, here, adopted)
 	}
 	if moveWayForward != "" {

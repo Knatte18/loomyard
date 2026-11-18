@@ -89,7 +89,11 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 			return producer, nil
 		},
 		OwnedElsewhere: func() (bool, error) {
-			here, err := machinename.Name()
+			here, err := machinename.ReadIdentity()
+			if err != nil {
+				return false, err
+			}
+			registry, err := hubRegistry(location)
 			if err != nil {
 				return false, err
 			}
@@ -97,7 +101,7 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 			if err != nil {
 				return false, err
 			}
-			return boardengine.OwnedElsewhere(owner, here), nil
+			return boardengine.OwnedElsewhere(owner, registry, here), nil
 		},
 		MarkBeam: func() error {
 			hub, err := prime()
@@ -331,11 +335,24 @@ func ownerOfSubject(location *lymcwd.Location, slug string) (owner, subject stri
 	return owner, subject, err
 }
 
+// hubRegistry reads the machine registry the hub's local board records.
+func hubRegistry(location *lymcwd.Location) (boardengine.Registry, error) {
+	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
+	if err != nil {
+		return nil, err
+	}
+	return owners.Registry, nil
+}
+
 // pawlRecheck reads what the landing re-check judges for the beam slug at location.
 // These are the members and pairs working under the beam, the beam's owner, the parent's owner and the ready record.
 // It returns the lines naming each failed check, empty when the beam may land.
 func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
-	here, err := machinename.Name()
+	here, err := machinename.ReadIdentity()
+	if err != nil {
+		return nil, err
+	}
+	registry, err := hubRegistry(location)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +381,7 @@ func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pawlRecheckLines(slug, ready, blockers, refusal, here, beamOwner, parentOwner, parentSubject), nil
+	return pawlRecheckLines(slug, ready, blockers, refusal, registry, here, beamOwner, parentOwner, parentSubject), nil
 }
 
 // pawlRecheckLines words the failed landing re-check of the beam slug as lines, empty when every check passes.
@@ -372,7 +389,7 @@ func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
 // A beam this machine does not own names `lym adopt <slug>`.
 // A parent another machine owns names `lym adopt <parentSubject>`, where the subject is `root` for the prime.
 // A beam not flagged ready names `lym beam ready <slug>`.
-func pawlRecheckLines(slug string, ready bool, blockers battencli.BeamLandBlockers, refusal error, here, beamOwner, parentOwner, parentSubject string) []string {
+func pawlRecheckLines(slug string, ready bool, blockers battencli.BeamLandBlockers, refusal error, registry boardengine.Registry, here machinename.Identity, beamOwner, parentOwner, parentSubject string) []string {
 	var lines []string
 	switch {
 	case refusal != nil:
@@ -380,11 +397,11 @@ func pawlRecheckLines(slug string, ready bool, blockers battencli.BeamLandBlocke
 	case !blockers.Empty():
 		lines = append(lines, fmt.Sprintf("work remains under the beam %s; run `lym beam land %s` again once it is gone", slug, slug))
 	}
-	if boardengine.OwnedElsewhere(beamOwner, here) {
-		lines = append(lines, fmt.Sprintf("the beam %s is owned by %s, not this machine (%s): run `lym adopt %s` to take it", slug, beamOwner, here, slug))
+	if boardengine.OwnedElsewhere(beamOwner, registry, here) {
+		lines = append(lines, fmt.Sprintf("the beam %s is owned by %s, not this machine (%s): run `lym adopt %s` to take it", slug, beamOwner, here.Name, slug))
 	}
-	if boardengine.OwnedElsewhere(parentOwner, here) {
-		lines = append(lines, fmt.Sprintf("the beam's parent is owned by %s, not this machine (%s): run `lym adopt %s` to take it", parentOwner, here, parentSubject))
+	if boardengine.OwnedElsewhere(parentOwner, registry, here) {
+		lines = append(lines, fmt.Sprintf("the beam's parent is owned by %s, not this machine (%s): run `lym adopt %s` to take it", parentOwner, here.Name, parentSubject))
 	}
 	if !ready {
 		lines = append(lines, fmt.Sprintf("the beam %s is not flagged ready to merge: run `lym beam ready %s` to flag it", slug, slug))

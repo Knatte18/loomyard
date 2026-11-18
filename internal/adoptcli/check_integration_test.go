@@ -44,7 +44,7 @@ func TestHubCheckDeps_StaleStampRunsTheTunedFinalizeTiers(t *testing.T) {
 		t.Fatalf("make the build stamp stale: %v", err)
 	}
 
-	deps, err := hubCheckDeps(h.Location, "root")
+	deps, err := hubCheckDeps(h.Location, "root", nil)
 	if err != nil {
 		t.Fatalf("hubCheckDeps: %v", err)
 	}

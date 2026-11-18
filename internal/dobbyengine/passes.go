@@ -46,13 +46,11 @@ type RunView struct {
 	Verdict runfsm.Verdict
 	// DriverLockHeld reports whether the run's driver lock is held, which a pass in flight does.
 	DriverLockHeld bool
-	// OriginOwed reports whether the run's origin-owed marker stands.
-	OriginOwed bool
 	// Covered reports whether a pause entry covers the hub or the slug.
 	Covered bool
-	// Held reports whether a live pause entry of the run's own scope is an adopt pause:
-	// it carries pauserecord.AdoptCaller, or the legacy pauserecord.HoldCaller.
-	// Only a hand lifts such an entry.
+	// Held reports whether a live pause entry of the run's own scope is an adopt pause or a bolt-hold entry.
+	// An adopt pause carries pauserecord.AdoptCaller, or the legacy pauserecord.HoldCaller, and only a hand lifts it.
+	// A bolt-hold entry carries pauserecord.BoltHoldCaller, and the dobby lifts it itself.
 	Held bool
 	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
 	NoSlot bool
@@ -61,6 +59,16 @@ type RunView struct {
 	EntryEnded bool
 	// PairPresent reports whether the run's task worktree is still on disk.
 	PairPresent bool
+	// PairKept reports whether the run is cancelled by a cancel that kept its pair, and KeptSince when that cancel finished.
+	// KeptSince is zero when the record does not say.
+	PairKept  bool
+	KeptSince time.Time
+	// OwnedElsewhere reports whether the machine registry reads the run's owner as another machine.
+	OwnedElsewhere bool
+	// BoltHeld reports whether an adopt hold in Bolt holds the run.
+	BoltHeld bool
+	// HandOverMarked reports whether this machine's hand-over mark names the run, which this machine handed over.
+	HandOverMarked bool
 	// PastLand reports whether the run is past its Land row, and Landed whether it landed there rather than ending without landing.
 	PastLand bool
 	Landed   bool
@@ -93,8 +101,6 @@ const (
 	passContinue
 	// passFull is a full pass.
 	passFull
-	// passFullNoReopen is a full pass that leaves the origin reconcile owed.
-	passFullNoReopen
 )
 
 // passTrigger is what woke the planner for one run.
@@ -122,7 +128,7 @@ type passTrigger struct {
 // so a pass's own writes never trigger the next.
 // The lift of a pause that covered the run gives the full pass, and an owed full pass is given with it.
 // A continue pass needs the run at Run-Shed, with no full pass owed and no lift to answer.
-// Every other pass is full, and while the origin-owed marker stands it leaves the origin reconcile owed.
+// Every other pass is full.
 // A run recorded owned elsewhere gets a full pass at the lift and on each probe tick; no other trigger gives it one.
 func planPass(run RunView, rs RunState, trigger passTrigger) passKind {
 	if !drivable(run) || run.CancelMarker || trigger.InFlight || run.DriverLockHeld {
@@ -131,13 +137,9 @@ func planPass(run RunView, rs RunState, trigger passTrigger) passKind {
 	if run.Verdict.Answer != runfsm.AnswerAct {
 		return passNone
 	}
-	full := passFull
-	if run.OriginOwed {
-		full = passFullNoReopen
-	}
 	if rs.OwnedElsewhere {
 		if trigger.Lift || trigger.ProbeTick {
-			return full
+			return passFull
 		}
 		return passNone
 	}
@@ -145,8 +147,8 @@ func planPass(run RunView, rs RunState, trigger passTrigger) passKind {
 	if !(trigger.ProbeTick || trigger.ChildWrite || trigger.Start || trigger.Lift || battenWrite) {
 		return passNone
 	}
-	if rs.FullPassOwed || run.Producer != producerRunShed || run.OriginOwed || trigger.Lift {
-		return full
+	if rs.FullPassOwed || run.Producer != producerRunShed || trigger.Lift {
+		return passFull
 	}
 	return passContinue
 }
@@ -162,6 +164,8 @@ type flight struct {
 }
 
 // drivePasses reads exited passes, owes full passes, and spawns the pass each listed run's trigger calls for.
+// A listed run whose verdict hands it over while its pair is here owes the catch-up from origin.
+// Right after the listing, the bolt-hold entries of the runs the catch-up covers are synced with the hold.
 // A done run is driven no further.
 // Unless a pass of it is in flight, it takes no slot, is planned no pass, and its state entry is dropped.
 // It leaves d.busy set while any run is in flight or could be given a pass on the next probe tick.
@@ -174,6 +178,8 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	}
 	d.logRunChanges(now, runs)
 	d.listedRuns = slices.Clone(runs)
+	d.oweHandOverCatchUp(d.listedRuns)
+	d.syncBoltHold(ctx)
 	runs = slices.DeleteFunc(runs, func(run RunView) bool {
 		_, inFlight := d.flights[run.Slug]
 		return run.State == runStateDone && !inFlight
@@ -190,13 +196,6 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	d.busy = false
 	for _, run := range runs {
 		rs := current.Runs[run.Slug]
-		if d.probeDue && rs.OwnedElsewhere && !rs.OwnerPauseFailed && !run.Held {
-			d.recheckOwnerPause(ctx, run.Slug)
-			if d.liftPending[run.Slug] && run.Verdict.Reason == runfsm.ReasonPauseCovers {
-				// The lift removed the pause the listed verdict waited on.
-				run.Covered, run.Verdict = false, runfsm.Verdict{Answer: runfsm.AnswerAct}
-			}
-		}
 		trigger := d.triggerFor(run)
 		kind := planPass(run, rs, trigger)
 		if !trigger.InFlight && (!drivable(run) || run.CancelMarker || run.Verdict.Answer != runfsm.AnswerAct) {
@@ -361,7 +360,7 @@ func (d *daemon) triggerFor(run RunView) passTrigger {
 // A spawn that fails counts as a failed pass whose text is the spawn error.
 func (d *daemon) spawn(slug string, kind passKind, now time.Time) {
 	full := kind != passContinue
-	exit, err := d.deps.SpawnPass(slug, !full, kind == passFullNoReopen)
+	exit, err := d.deps.SpawnPass(slug, !full, false)
 	delete(d.liftPending, slug)
 	if err != nil {
 		d.passExited(slug, full, 1, err.Error(), now)
@@ -398,16 +397,12 @@ func (d *daemon) collectExits(now time.Time) {
 
 // passExited reads how a pass of slug exited.
 // Exit 0 clears the run's failing-pass count and noticed texts.
-// It also clears the owed full pass when the pass was full and no origin-owed marker stands.
+// It also clears the owed full pass when the pass was full.
 // A refused continue pass owes a full pass, and a covered pass counts as no failure.
-// The owned-elsewhere exit is never a failing pass.
+// The owned-elsewhere exit and the origin-wait exit are never a failing pass, and each owes the catch-up from origin.
 // Any other exit counts a failure by its error text.
 // Once the count reaches failingPassNoticeAfter, one notice per error text goes to the nearest live orch.
 func (d *daemon) passExited(slug string, full bool, code int, errText string, at time.Time) {
-	originOwed := false
-	if code == 0 && full {
-		originOwed = d.originOwed(slug)
-	}
 	noticeDue, failingStarted, succeedsAgain := false, false, false
 	err := UpdateState(d.geom.StatePath, func(s *State) error {
 		rs := s.Runs[slug]
@@ -416,15 +411,13 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 		case 0:
 			succeedsAgain = rs.FailingPassCount > 0
 			rs.FailingPassError, rs.FailingPassCount, rs.Noticed = "", 0, nil
-			if full && !originOwed {
-				rs.FullPassOwed = false
-			}
 			if full {
-				rs.OwnedElsewhere, rs.OwnerNoticeSent, rs.OwnerPauseFailed = false, false, false
+				rs.FullPassOwed = false
+				rs.OwnedElsewhere, rs.OwnerNoticeSent = false, false
 			}
 		case PassExitContinueRefused:
 			rs.FullPassOwed = true
-		case PassExitCovered, PassExitOwnedElsewhere:
+		case PassExitCovered, PassExitOwnedElsewhere, PassExitOriginWait:
 		default:
 			if errText == rs.FailingPassError {
 				rs.FailingPassCount++
@@ -453,24 +446,12 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 	if noticeDue {
 		d.noticeFailingPass(slug, errText)
 	}
+	if code == PassExitOriginWait {
+		d.oweCatchUp()
+	}
 	if code == PassExitOwnedElsewhere {
 		d.ownedElsewhere(d.tickCtx, slug, at)
 	}
-}
-
-// originOwed reads whether slug's origin-owed marker stands now, the pass having just exited.
-// A run no longer listed has none.
-func (d *daemon) originOwed(slug string) bool {
-	runs, err := d.deps.Runs()
-	if err != nil {
-		return true
-	}
-	for _, run := range runs {
-		if run.Slug == slug {
-			return run.OriginOwed
-		}
-	}
-	return false
 }
 
 // noticeFailingPass posts the failing-pass notice for slug and records the text as noticed once it went out.

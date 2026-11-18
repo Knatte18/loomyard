@@ -103,7 +103,7 @@ func (g parentGuard) release(producer string) {
 
 // stillHeld re-reads the parent lock record just before a landing and returns "" when it still names this run.
 // A record that no longer names the run, or none, means something released the lock:
-// an owner pause, another machine's ownership of the run or an operator's `lym batten lock release`.
+// another machine's ownership of the run, whose hand-over releases it, or an operator's `lym batten lock release`.
 // An unreadable record is a reason too, not an error.
 // Both reasons open with LandingStopPrefix, so only the orch's `lym loom resume` lifts the halt they make.
 // A guard with no lock store holds no lock and checks none.
@@ -125,7 +125,7 @@ func (g parentGuard) stillHeld(producer string) (string, error) {
 	case found && record.Owner.SameRun(owner):
 		return "", nil
 	}
-	return fmt.Sprintf("%sthe parent lock on %q no longer names this run, so something released it before the landing: an owner pause, another machine's ownership of the run or an operator's `lym batten lock release`; nothing was landed; way forward: `lym loom resume` once no owner pause stands and the run is this machine's, which after an operator's release holds already", LandingStopPrefix, g.parentBranch), nil
+	return fmt.Sprintf("%sthe parent lock on %q no longer names this run, so something released it before the landing: another machine's ownership of the run, whose hand-over releases it, or an operator's `lym batten lock release`; nothing was landed; way forward: `lym loom resume` once the run is this machine's, which after an operator's release holds already", LandingStopPrefix, g.parentBranch), nil
 }
 
 // pauseRequested reads the told pause seam, which reports a `--after` naming the waiting row.

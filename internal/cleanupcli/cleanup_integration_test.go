@@ -77,7 +77,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	if _, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), h.Location, rels, "test: finished run", fabricengine.EnvSyncOptions()); err != nil || !committed {
 		t.Fatalf("commit the finished run: committed=%v err=%v", committed, err)
 	}
-	if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
+	if _, err := fabricengine.PushPairAnchored(h.Location, fabricengine.EnvSyncOptions(), fabricengine.PairPush{LockWait: fabricengine.StatusPushLockWait}); err != nil {
 		t.Fatalf("push the finished run: %v", err)
 	}
 	runDir := shedrun.RunDir(h.Location, runSlug)

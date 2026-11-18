@@ -339,11 +339,10 @@ func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
 // TestPullRequestDeps_CommitsTheRecord asserts the CommitRecord seam commits the run's record on the records side.
 // A record written through the deps' paths is committed, and so is its removal.
 // A clean call commits nothing, and a record found only at its former scratch path is moved and committed.
-// Each commit starts one records push, and the test counts them through a recorder swapped for the spawn.
-//
-// It is serial because it swaps a package variable.
+// Each commit is pushed synchronously, so origin's records branch holds it once the committer returns.
 func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, "task")
@@ -353,13 +352,14 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	}
 	records := h.PairRecordsSibling("task")
 
-	spawns := 0
-	originalSpawn := spawnStatusPush
-	spawnStatusPush = func(*lymcwd.Location, string) (fabricengine.SpawnResult, error) {
-		spawns++
-		return fabricengine.SpawnResult{}, nil
+	recordsBranch := gitkit.Git(t, records, "rev-parse", "--abbrev-ref", "HEAD")
+	requireOriginAtHead := func(when string) {
+		t.Helper()
+		origin, head := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+recordsBranch), gitkit.RevParse(t, records, "HEAD")
+		if origin != head {
+			t.Errorf("origin's records branch %s = %s; want the committed head %s", when, origin, head)
+		}
 	}
-	t.Cleanup(func() { spawnStatusPush = originalSpawn })
 
 	deps := pullRequestDepsGuardedBy(prePushCheck{slug: "task", skip: func() (bool, error) { return true, nil }}, location, "main", true, nil)
 	rel := filepath.ToSlash(shedrun.PullRequestRecordRel(location, shedrun.SelfRunID))
@@ -380,9 +380,7 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	if got := headFiles("--name-status"); got != "A\t"+rel {
 		t.Errorf("records HEAD after a write = %q; want the record added", got)
 	}
-	if spawns != 1 {
-		t.Errorf("push spawns after a write = %d; want 1", spawns)
-	}
+	requireOriginAtHead("after a write")
 
 	if err := pullrequest.RemoveRecord(deps.RecordPath, deps.RecordLockPath); err != nil {
 		t.Fatalf("RemoveRecord() error = %v; want nil", err)
@@ -393,16 +391,14 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	if got := headFiles("--name-status"); got != "D\t"+rel {
 		t.Errorf("records HEAD after a removal = %q; want the record deleted", got)
 	}
-	if spawns != 2 {
-		t.Errorf("push spawns after a removal = %d; want 2", spawns)
-	}
+	requireOriginAtHead("after a removal")
 
 	headBefore := gitkit.RevParse(t, records, "HEAD")
 	if err := deps.CommitRecord(); err != nil {
 		t.Fatalf("CommitRecord() with nothing to commit error = %v; want nil", err)
 	}
-	if got := gitkit.RevParse(t, records, "HEAD"); got != headBefore || spawns != 2 {
-		t.Errorf("records HEAD = %s, spawns = %d with nothing to commit; want HEAD %s and 2 spawns", got, spawns, headBefore)
+	if got := gitkit.RevParse(t, records, "HEAD"); got != headBefore {
+		t.Errorf("records HEAD = %s with nothing to commit; want %s", got, headBefore)
 	}
 
 	legacy := shedrun.LegacyPullRequestRecord(location, shedrun.SelfRunID)
@@ -425,9 +421,7 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
 		t.Errorf("the scratch record after the move: stat error = %v; want it gone", err)
 	}
-	if spawns != 3 {
-		t.Errorf("push spawns after the move = %d; want 3", spawns)
-	}
+	requireOriginAtHead("after the move")
 }
 
 // TestLandingDeps_RemoveFollowUpIsEmptyWhenThePrimeIsUnreadable asserts the RemoveFollowUp seam returns no step.

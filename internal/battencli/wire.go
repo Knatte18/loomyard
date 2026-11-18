@@ -59,7 +59,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -1034,6 +1033,12 @@ func (c *battenCLI) commandDeps(location *lymcwd.Location, slug, executable stri
 func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 	// Batten runs in the prime on behalf of one pair, so its network git and GitHub calls wait under that pair's pause entry.
 	pauserecord.SetGateSlug(slug)
+	// A pass catches up over its own run alone, so a hand pass fetches only that run's branches.
+	if c.catchUp == nil {
+		c.catchUp = func() (dobbyengine.CatchUpReport, error) {
+			return dobbyengine.CatchUp(HubCatchUp(location, func() ([]string, error) { return []string{slug}, nil }))
+		}
+	}
 	primeRunLockPath := PrimeRunLock(location)
 	primeLock := battenshed.PrimeLock{
 		Path: primeRunLockPath,
@@ -1284,9 +1289,6 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					return battenshed.OwnerVerdict{}, err
 				}
 				return ownerVerdictOf(report, slug), nil
-			},
-			PauseOwned: func(ctx context.Context, owner string) error {
-				return tendercli.PauseOwnedElsewhere(location, slug)
 			},
 			// ParentHoldsTaskWork marks a Finalize past its parent-side merge, read over the prime and the located task worktree.
 			ParentHoldsTaskWork: func() (bool, error) {

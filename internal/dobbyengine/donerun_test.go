@@ -58,6 +58,35 @@ func TestClearDoneRuns_WaitsForTheLandingCountOfARunWhileATidyIsInFlight(t *test
 	}
 }
 
+func TestClearDoneRuns_LeavesARunWhosePairStandsForTheLeftoverTeardown(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const slug = "beam-merge-in"
+	var calls []string
+	d := &daemon{
+		geom: Geometry{WorktreeName: "prime", StatePath: filepath.Join(t.TempDir(), StateFileName)},
+		deps: Deps{ClearDoneRun: func(slug string) (bool, error) {
+			calls = append(calls, slug)
+			return true, nil
+		}},
+		flights:    map[string]flight{},
+		listedRuns: []RunView{{Slug: slug, State: runStateDone, PairPresent: true}},
+	}
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+
+	d.clearDoneRuns(now)
+	if len(calls) != 0 {
+		t.Fatalf("ClearDoneRun calls = %v; want none while the run's pair stands", calls)
+	}
+
+	d.listedRuns[0].PairPresent = false
+	d.clearDoneRuns(now)
+	if !slices.Equal(calls, []string{slug}) {
+		t.Errorf("ClearDoneRun calls = %v; want the one call once the pair is gone", calls)
+	}
+}
+
 func TestClearDoneRuns(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

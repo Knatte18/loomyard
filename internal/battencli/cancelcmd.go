@@ -203,22 +203,22 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		TaskWorktreePresent: func() (bool, error) { return taskWorktreePresent(location, slug) },
 		Reconcile:           func() (fabricengine.OriginReport, error) { return reconcileRun(location, slug, true) },
 		PullBolt:            func() error { return boardengine.PullBolt(boltDir) },
-		Owner: func() (string, string, string, error) {
-			machine, err := machinename.Name()
+		Owner: func() (string, string, bool, error) {
+			identity, err := machinename.ReadIdentity()
 			if err != nil {
-				return "", "", "", err
+				return "", "", false, err
 			}
 			owners, err := boardengine.ReadOwners(boardDir)
 			if err != nil {
-				return "", "", "", err
+				return "", "", false, err
 			}
 			parentOf := func(slug string) (string, error) { return hubgeom.ParentOf(location, slug) }
 			owner, err := owners.Effective(slug, parentOf)
 			if err != nil {
-				return "", "", "", err
+				return "", "", false, err
 			}
 			subject, err := owners.AdoptSubject(slug, parentOf)
-			return machine, owner, subject, err
+			return owner, subject, boardengine.OwnedElsewhere(owner, owners.Registry, identity), err
 		},
 		ReadStatus: func() (shedengine.Status, bool, error) { return readBattenStatus(location, slug) },
 		OwnerHeld:  func() (bool, error) { return pairteardown.OwnerPauseHeld(location, slug) },
@@ -347,9 +347,12 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 			)
 		},
 		LiftPauses: func() ([]string, error) { return liftSlugPauses(location, slug, pauseGeometry.RecordPath) },
-		SpawnPush: func() error {
-			_, err := spawnStatusPush(location, "")
-			return err
+		PushRecords: func() (bool, error) {
+			_, err := pairteardown.PushRun(location, location, slug, pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait})
+			if fabricengine.IsPushOwed(err) {
+				return true, nil
+			}
+			return false, err
 		},
 		Notify: func(line string) error {
 			_, err := notifyRunParent(location, slug, line)
@@ -466,25 +469,32 @@ func cancelVerdict(records runfsm.Records, inputs runfsm.Inputs) runfsm.Verdict 
 	return verdict
 }
 
-// commitCancelRecord commits batten's record with the run's other records and spawns the push of the records side.
-// It refuses while a merge is in progress on the prime's records side, so no cancel goes on with its record uncommitted.
-// A push that fails to start is logged, never returned, since the next push carries the commit.
-func commitCancelRecord(deps commitStatusDeps, slug string) (committed bool, err error) {
+// refuseWhileMergeActive returns an error while a merge is in progress on the prime's records side.
+// A record written while it holds could not be committed.
+func refuseWhileMergeActive(deps commitStatusDeps) error {
 	active, err := deps.MergeActive()
 	if err != nil {
-		return false, fmt.Errorf("read the prime's records merge state: %w", err)
+		return fmt.Errorf("read the prime's records merge state: %w", err)
 	}
 	if active {
-		return false, errors.New("a merge is in progress on the prime's records side; conclude or abort that merge there")
+		return errors.New("a merge is in progress on the prime's records side; conclude or abort that merge there")
+	}
+	return nil
+}
+
+// commitCancelRecord commits batten's record with the run's other records and pushes the records side.
+// It refuses while a merge is in progress on the prime's records side, so no cancel goes on with its record uncommitted.
+// A push that is owed is logged and the commit stands, so the cancel goes on and its push stays owed;
+// any other push failure is returned with committed true.
+func commitCancelRecord(deps commitStatusDeps, slug string) (committed bool, err error) {
+	if err := refuseWhileMergeActive(deps); err != nil {
+		return false, err
 	}
 	committed, err = deps.Commit("batten cancel: record the run state of " + slug)
 	if err != nil || !committed {
 		return committed, err
 	}
-	if err := deps.Spawn(); err != nil {
-		logger.Warn("battencli: the push of the cancel record did not start; the next push carries it", "slug", slug, "error", err)
-	}
-	return true, nil
+	return true, pushRecordsOrOwe(deps, slug)
 }
 
 // pairSessionLive reports whether the pair's reed session of slug is live on the hub's tmux server; a hub with no server has none.

@@ -343,6 +343,7 @@ github.com/Knatte18/loomyard/
 ├── internal/failuretrace/        traces a failed Parent-Align or Finalize verify log to the plan cards, batch commit ranges and untraced locations the landing failure record carries
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
 ├── internal/desktophook/         the hub-wide `desktop.yaml` config and the machine's window command, run after `lym reed window` and `lym ide` open a window, and the machine's added status-bar buttons
+├── internal/desktoplauncher/     the desktop launchers that run `lym machine start`, one per hub and one for every hub: a `.desktop` file on Linux, a `.cmd` file on the Windows desktop, through `wsl.exe` under WSL, and the sole namer of where they live
 ├── internal/samplerengine/       the sampler recipe's hub-wide `sampler.yaml` config
 ├── internal/heddleengine/        heddle's instruction layers, the one lym ships in its binary and the repository's `heddle.json`, their rendering into a worktree's CLAUDE and AGENTS files, its `.claude/settings.local.json` and a session's system prompt, the Bolt checkout's `HEDDLE.md` overview of every entry, and the hub-wide `heddle.yaml` that turns the hub's overrides of shipped entries on
 ├── internal/driftengine/         regression around a task: the hub-wide `drift.yaml` config, the drift paths and records, the capture and compare runs and the Drift rows' producers
@@ -363,7 +364,7 @@ github.com/Knatte18/loomyard/
 ├── internal/durfmt/              the duration formats the status panes and the timing report share, minute-resolution for growing times and second-resolution for closed spans, a stdlib-only leaf
 ├── internal/consoletitle/        the one join of a console window's title, `<T#> [<hub shortname>:<P#>] <name>` or `ORCH [...]` with a missing part left out, shared by VS Code and terminal windows, a stdlib-only leaf
 ├── internal/machinename/         this machine's name, read from the machine file in the per-user config directory before the hostname rule (the hostname cut at the first dot and lowercased), the sole reader of the hostname and of that file, a leaf over the standard library and `internal/standalonestate`
-├── internal/machinecli/          the `lym machine name` command, its seams and the owner sweep
+├── internal/machinecli/          the `lym machine name` command, its seams and the owner sweep, and `lym machine start`, which brings back what this machine owns in every live hub and keeps the desktop launchers
 ├── internal/sleepjournal/        the machine's suspends and hibernates read from systemd-sleep's journal entries, spawning no process, a stdlib-only leaf
 ├── internal/lymdirs/             the two directory-name tokens (`_lym` durable, `.lym` ephemeral), a zero-import leaf
 ├── internal/buildinfo/           the ldflags-stamped build channel, a zero-import leaf
@@ -385,7 +386,7 @@ github.com/Knatte18/loomyard/
 ├── internal/parentlock/          the per-branch parent lock: one record valid while its owner process lives, a ticket queue and compare-and-release
 ├── internal/tendercli/           the `lym tender` commands (`pause`, `resume`, `revive`, `status` and `reap`) and the network gate every lym process in a hub runs under
 ├── internal/tenderengine/        the pause, resume, revive and status sequences over seams: the entry, the grace, the Esc, the resume line and the revive line
-├── internal/hibernatecli/        the `lym hibernate` commands (`request`, `cancel`, `status`), their hub wiring, the prime dobby's carrier and the `systemctl` spawn
+├── internal/hibernatecli/        the `lym hibernate` commands (`request`, `cancel`, `status`), their hub wiring, the prime dobby's carrier, the `systemctl` spawn, and the hub pause and confirmation `lym beam stop --all` runs
 ├── internal/hibernateengine/     the hibernate request file, the submit, cancel and status sequences, and the carrier the prime's dobby runs the request with, over seams
 ├── internal/hibernateconfig/     the hub-wide `hibernate.yaml` config: whether the wake from a `lym hibernate request` lifts the hub pause that request added
 ├── internal/reportconfig/        the hub-wide `report.yaml` config: the run count a cell of `lym report cost` needs before it shows figures
@@ -806,28 +807,22 @@ User-facing modules each get one `lym <module>` namespace:
   and fabric's sweep of the hub's retired `_launchers` directory.
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
-- **adopt** — the takeover of beam projects, or of root, and of the runs under them from another machine of the operator, as one verb (`internal/adoptcli`; `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`, with `--keep-local` and `--drop-local`, from the prime and from any beam).
-  The call runs no step itself: it validates the request, starts a hidden detached worker, `lym adopt worker`, and follows the adopt record, printing each step as it ends.
-  The worker takes `adopt.lock` and writes the adopt record, `adopt.json`, as each step ends, so a killed worker resumes from the first step not done, a re-run of the same subjects follows or resumes it, and `lym adopt --discard` removes a record no worker will finish.
-  `lym beam status` shows an unfinished adopt.
-  `lym adopt --here` adopts the subject of the worktree it runs in, `root` in the prime and the beam in a beam: it follows or resumes an unfinished adopt that takes the worktree up, and otherwise pulls Bolt and ends `owned_here` when no other machine owns the subject; `lym s` runs it with `--no-orch` before `lym beam start`.
+- **adopt** — the takeover of beam projects, or of root, and of the runs under them from another machine of the operator, as one verb (`internal/adoptcli`; `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`, from the prime and from any beam).
+  The call runs every step in its own process over tracked state and prints each step as it ends; nothing is detached and no record is written, so a re-run goes on from the tracked state.
+  `lym adopt --here` adopts the subject of the worktree it runs in, `root` in the prime and the beam in a beam: it pulls Bolt and ends `owned_here` when no other machine owns the subject; `lym s` runs it with `--no-orch` before `lym beam start`.
   `lym adopt --archives <subject>...` lists the `archive-owner/` tags the old owner pushed whose commit the slug's branch on origin lacks, and the adopt's end envelope names that call.
-  The steps run in order: the worker reconciles the hub against origin, stops a beam or a run under it whose pair holds local commits origin lacks or is live, and adds the missing pairs.
-  It pauses each moved run, and each unstarted released task of an adopted subject bar a front task, with an adopt pause entry.
-  An adopt passes every pause, so a pause the operator holds does not stop its own network calls.
-  Its reconcile waits up to a bound on a records branch's held push lock, so a deferred records push that is ending does not leave the branch busy.
-  A record stopped at `done` restarts at `reconcile`, so the stops it held back are judged afresh.
-  It then records this machine as the owner of the beams and of the prime in one pushed owner write, before anything else runs.
-  When the call records the prime's owner, the landing config deploys into the prime's branch and the prime's head is ahead of the running lym's build, the hub's landing deploy runs next,
-  and a failed deploy stops the record with the owner written and the runs still paused.
-  The beam steps start each dobby and its orch, and `--no-orch` leaves the orch down; a call from an orch session passes it by default.
-  The worker then starts one adopt check per adopted subject, detached, in that subject's worktree, which runs the hub's `adopt` gate there, reports each tier to the subject's orch, shows its tier in flight, time, tiers done and result on the prime's reed status bar, and shows in `lym beam status`,
+  The steps run in order: one pushed Bolt commit writes the hold, this machine as the owner of the beams and of the prime, and this machine's registry entry.
+  Each adopted beam's pair is added from origin, and each run the other machine left is taken over from origin with a pushed takeover entry, judged by its record on origin and by the hold's prior owners.
+  The catch-up over the hub follows, then the landing deploy when the call adopts the prime, the landing config deploys into the prime's branch and the prime's head is ahead of the running lym's build, then the workspace.
+  Before each of those steps the call pulls Bolt and reads the hold again: a hold another machine took, or one that cleared, ends the adopt and starts nothing.
+  The hub's `adopt` gate then runs in the foreground in each subject's worktree, reports each tier to the subject's orch, shows its tier in flight, time, tiers done and result on the prime's reed status bar, and shows in `lym beam status`,
   so a break this machine brings to the landed code shows at adopt time.
-  A green check only reports.
-  The adopt pause stays until an operator lifts it with `lym tender resume`.
+  A green check clears the hold, and a failing one files a fix task and keeps the hold, with its try counts, as an adopt-fix hold, so the call exits non-zero.
+  The beam steps then start each dobby and its orch, on green and on red, and `--no-orch` leaves the orch down; a call from an orch session passes it by default.
+  `--take-hold` moves another machine's hold over the same subjects here and is denied to agents.
   It calls each owning module's function in-process and has no engine package of its own.
   ✅ Implemented. See the `internal/adoptcli` package documentation.
-- **beam** — the making, landing, starting and stopping of a beam, a long-lived pair that groups board work, and dobby, the daemon every beam and the prime run (`internal/beamcli` + `internal/dobbyengine`; `lym beam create <slug>`, `lym beam ready <slug>`, which flags the beam ready to merge so its dobby writes the land request once nothing works under it, and is final: no verb takes the flag back, `lym beam land <slug>`, which writes the land request the beam's pawl run consumes at Beam-Await and refuses a beam not flagged ready, `lym beam merge-parent <slug>`, which files a darn task in the beam, its Code-Review perch on, whose run merges the beam's parent branch into the beam, `lym beam start [slug] [--all]`, `lym beam stop [slug]` and `lym beam status`, from the prime and from any beam, and the hidden `lym beam dobby`).
+- **beam** — the making, landing, starting and stopping of a beam, a long-lived pair that groups board work, and dobby, the daemon every beam and the prime run (`internal/beamcli` + `internal/dobbyengine`; `lym beam create <slug>`, `lym beam ready <slug>`, which flags the beam ready to merge so its dobby writes the land request once nothing works under it, and is final: no verb takes the flag back, `lym beam land <slug>`, which writes the land request the beam's pawl run consumes at Beam-Await and refuses a beam not flagged ready, `lym beam merge-parent <slug>`, which files a darn task in the beam, its Code-Review perch on, whose run merges the beam's parent branch into the beam, `lym beam start [slug] [--all]`, `lym beam stop [slug] [--all]`, whose `--all` takes the whole hub down on this machine from a detached process, and `lym beam status`, from the prime and from any beam, and the hidden `lym beam dobby`).
   Create runs from the beam's parent worktree, claims the root when none is recorded, records this machine as a board project's owner with the beam flag and the pawl recipe, and starts the beam's pawl run as a detached first pass, whose Worktree-Create makes the pair, forked from the parent beam of a nested beam, whose Record-Write writes the project record from the project entry's body under `_lym/project/<slug>/`, and whose Beam-Up marks it.
   Before it starts that run, create removes a done batten run under the same slug whose pair is gone and whose child ran motif, reporting `motif_run_cleared`;
   any other done run is refused, naming `lym batten cleanup --apply`, until the parent's dobby removes it once its landing is counted and its notice decided.
@@ -900,6 +895,11 @@ User-facing modules each get one `lym <module>` namespace:
 - **machine** — this machine's name (`internal/machinecli` + `internal/machinename`; `lym machine name [<name>]`: show, or set and sweep owners on every live hub and the hub of the working directory, from any directory).
   The show gives the name, whether it comes from the machine file or the hostname rule, the file's path and the former names the file records.
   The set writes the machine file and rewrites the owners recorded under the former names, on each swept hub, to the new name.
+  `lym machine start [<shortname>]` brings back what this machine owns in every live hub, or the one named, from any directory:
+  it starts the owned prime and beams through `lym beam start` in each hub's prime, skipping and naming what another machine owns or no owner claims,
+  then opens the hub's workspace file and a terminal per started worktree, and prints a standing adopt hold.
+  The desktop launchers that run it, one per hub and one for every hub, are written by `internal/desktoplauncher`:
+  a dobby start adds a hub's launcher for a worktree this machine owns, and the verb or a catch-up removes it once this machine owns nothing there.
   ✅ Implemented. See the `internal/machinecli` package documentation.
 - **creel** — the per-hub message daemon, the one way to reach an agent:
   mail to a Claude strand shuttle launched with creel's hooks arrives in full through those hooks, while every other strand, a hand-added one or a session launched without those hooks included, gets a typed notice or reminder and pulls its mail with `lym creel read`, and lines are injected into a pane (`internal/creelcli` + `internal/creelengine` + `internal/creelconfig`; `lym creel post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and `hubs`, from any worktree of the hub, and the hidden `lym creel daemon`, `lym creel hook-read` and `lym creel hook-wait`).

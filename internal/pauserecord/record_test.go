@@ -366,6 +366,24 @@ func TestCoverageOf(t *testing.T) {
 			t.Errorf("%s: Held = %v, Covered = %v, OwnerHeld = %v, want %v, %v, false", row.name, got.Held, got.Covered, got.OwnerHeld, row.wantHeld, row.wantCovered)
 		}
 	}
+
+	boltHold := Entry{Scope: "a", PausedAt: epoch, Caller: BoltHoldCaller, Machine: "m1"}
+	for _, row := range []struct {
+		name        string
+		record      Record
+		wantHeld    bool
+		wantMachine string
+	}{
+		{"a live bolt-hold entry of the slug's scope", Record{Live: []Entry{boltHold}}, true, "m1"},
+		{"a bolt-hold entry of another slug's scope", Record{Live: []Entry{{Scope: "b", PausedAt: epoch, Caller: BoltHoldCaller, Machine: "m1"}}}, false, ""},
+		{"a resumed bolt-hold entry", Record{Resumed: []Entry{{Scope: "a", PausedAt: epoch, ResumedAt: epoch.Add(time.Minute), Caller: BoltHoldCaller, Machine: "m1"}}}, false, ""},
+		{"an adopt entry carries no hold machine", Record{Live: []Entry{{Scope: "a", PausedAt: epoch, Caller: AdoptCaller}}}, true, ""},
+	} {
+		got := row.record.CoverageOf("a", now)
+		if got.Held != row.wantHeld || got.HoldMachine != row.wantMachine || got.OwnerHeld {
+			t.Errorf("%s: Held = %v, HoldMachine = %q, OwnerHeld = %v, want %v, %q, false", row.name, got.Held, got.HoldMachine, got.OwnerHeld, row.wantHeld, row.wantMachine)
+		}
+	}
 }
 
 func TestReadCoverage(t *testing.T) {
@@ -436,6 +454,22 @@ func TestCoveredError(t *testing.T) {
 			Entry{Scope: "a", PausedAt: pausedAt},
 			"a",
 			`pause: the pause of a has held this run since 2026-01-10T12:00:00Z; way forward: run "lym tender resume a", then retry`,
+		},
+		{
+			"bolt-hold entry names its machine and no resume",
+			Entry{Scope: "a", PausedAt: pausedAt, Caller: BoltHoldCaller, Machine: "m1"},
+			"a",
+			"pause: an adopt on machine m1 holds this run since 2026-01-10T12:00:00Z; way forward: wait for that adopt's hold to clear, " +
+				"which lifts this entry at the next tick of the worktree's dobby (with no dobby running, `lym beam start` starts one), " +
+				"then retry; if machine m1 has stopped, ask the operator",
+		},
+		{
+			"bolt-hold entry with no machine names another machine",
+			Entry{Scope: "a", PausedAt: pausedAt, Caller: BoltHoldCaller},
+			"a",
+			"pause: an adopt on machine another machine holds this run since 2026-01-10T12:00:00Z; way forward: wait for that adopt's hold to clear, " +
+				"which lifts this entry at the next tick of the worktree's dobby (with no dobby running, `lym beam start` starts one), " +
+				"then retry; if machine another machine has stopped, ask the operator",
 		},
 	}
 	for _, tt := range tests {

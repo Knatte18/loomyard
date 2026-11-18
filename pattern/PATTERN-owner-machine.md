@@ -1,15 +1,17 @@
 # PATTERN-owner-machine
 
-Starting, resuming, pushing or landing a run, or picking a pair's parent: only on the entry's owner machine, read through hubgeom's one `ParentOf`.
+Starting, resuming, pushing or landing a run, a Finalize past its merge included, or picking a pair's parent: only on the entry's owner machine, read through hubgeom's one `ParentOf` and Bolt's machine registry; after an absence, a catch-up from origin first.
 
 ## Owner machine
 
-Rule: Run start, resume, push or landing: only if no other machine owns its entry; a loom push reconciles run-scope origin first; owners only on roots and beams, set only by `boardengine`'s setter; others read their `hubgeom.ParentOf` owner; a dobby continue is no resume.
+Rule: Run start, resume, push or landing, a Finalize past its merge included: only if no other machine owns its entry, read through Bolt's machine registry; a loom push reconciles run-scope origin first; owners only on roots and beams, set only by `boardengine`'s setter; others read their `hubgeom.ParentOf` owner; a dobby continue is no resume; after an absence, a catch-up from origin first.
 
 A run starts, resumes, pushes or lands only on a machine that does not read its entry as owned by another.
 The same holds for acting on an entry after a wake.
-The rest of a Finalize already past its parent-side merge is exempt.
+The rest of a Finalize already past its parent-side merge finishes on the run's owner.
 
+- Every comparison of a recorded machine name with this machine goes through `boardengine.OwnedElsewhere` over the registry.
+  A former name of a registered machine reads as that machine.
 - A start, a resume, a claim and a landing proceed only when the entry does not read as owned by another machine.
 - A loom run's commit and push of its pair proceed only after a run-scope origin reconcile reads its entry as active.
   The exceptions are a run with git or pushes off, a run in the prime, Finalize, which judges itself, and a paused run.
@@ -18,9 +20,9 @@ The rest of a Finalize already past its parent-side merge is exempt.
   That covers an unreachable origin, a failed reconcile, and a failed read of whether the check applies.
   It covers a failed read of whether the parent holds the run's work too.
   An ended entry whose parent already holds the run's work goes on too, as after its own landing.
-  An entry owned elsewhere is paused under the owner, naming `lym adopt`.
+  An entry owned elsewhere is handed over by the catch-up, naming `lym adopt`.
   An entry a branch stops, or origin ended while the parent lacks its work, is paused naming what moved.
-- The rest of a Finalize already past its parent-side merge finishes on either machine.
+- The rest of a Finalize already past its parent-side merge finishes on the run's owner.
   A landing in flight is therefore never stranded.
 - An owner is recorded for a beam project as `owner_machine` and for the root as `prime_owner`.
   Only `boardengine`'s owner setter writes either.
@@ -37,17 +39,18 @@ The rest of a Finalize already past its parent-side merge is exempt.
   The re-read after an owner write's push reads the Bolt it just pushed.
   The landing's parent-owner read uses the Bolt its reconcile left.
   A resume with origin unreachable reads the local Bolt.
-- This machine's name comes only from `internal/machinename`.
+- This machine's name comes only from `internal/machinename`, with the machine id beside it.
   It reads the machine file in the per-user lym config directory before the hostname rule,
   and a machine file that yields no valid name is an error, never a fallback to the hostname.
 
-### Origin reconcile first
+### Catch-up after an absence
 
-Acting on a run or a hub after an absence starts with `fabricengine`'s origin reconcile.
+Acting on a run or a hub after an absence starts with a catch-up from origin:
+a sleep the dobby sees, a dobby start and a hand pass each run it before any act rule answer.
 Every verdict above therefore reads the state origin holds.
-A loom run's commit and push of its pair start with the run-scope origin reconcile too.
+A loom run's commit and push of its pair start with the run-scope origin reconcile.
 The one exception is a resume at Worktree-Teardown whose task worktree is gone.
-It runs no origin reconcile, judges the owner on the local board alone and writes no origin-owed marker.
+It runs no origin reconcile and judges the owner on the local board alone.
 The teardown only finishes what is left of the pair.
 
 ### Passes
@@ -62,12 +65,8 @@ A run is driven in passes, one `lym batten run` each, and a pass is either full 
   A resume gets the origin reconcile, which every full pass keeps first.
   The exception is a resume at Worktree-Teardown whose task worktree is gone.
 - A continue pass is refused unless batten's status reads `running` at Run-Shed;
-  the parent worktree's dobby state names the run as one it drives with no full pass owed;
-  and no origin-owed marker stands.
+  and the parent worktree's dobby state names the run as one it drives with no full pass owed.
   The refusal reads to dobby as a full pass owed.
-- A resume that judged its owner without origin leaves the origin-owed marker.
-  A Worktree-Teardown resume whose task worktree is gone writes none.
-  The marker stays until a pass that reached origin exits 0, so the passes stay full until origin has been reached.
 
 ### Enforcement
 
@@ -75,7 +74,9 @@ A run is driven in passes, one `lym batten run` each, and a pass is either full 
 - The reconcile, batten, loom, `InnerRun` and Finalize tests reach each check.
   They cover `ReconcileOrigin`'s owned-elsewhere outcome and batten's start, resume and claim refusals.
   They cover loom's `owned_elsewhere` start refusal and loom's pre-push stops.
-  They cover `InnerRun`'s owner pause and Finalize's `owner check:` halts.
+  They cover `InnerRun`'s owner hold and Finalize's `owner check:` halts.
+- `TestReadsAsHere` and `TestRegistryCheck` cover the registry comparison.
+  `TestCatchUp` and `TestRun_CatchUp` cover the catch-up after an absence.
 - Review covers the rest: who writes an owner, and which Bolt each verdict reads.
 
 ## Pair parent

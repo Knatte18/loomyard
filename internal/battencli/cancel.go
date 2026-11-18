@@ -41,9 +41,10 @@ type cancelDeps struct {
 	Reconcile func() (fabricengine.OriginReport, error)
 	// PullBolt brings the hub's Bolt level with origin; an unreachable origin wraps boardengine.ErrOwnerOriginUnreachable.
 	PullBolt func() error
-	// Owner returns this machine's name and the slug's effective owner on the local Bolt, empty when none is recorded.
+	// Owner returns the slug's effective owner on the local Bolt, empty when none is recorded.
 	// It also returns the subject that `lym adopt` takes to move the owner.
-	Owner func() (machine, owner, subject string, err error)
+	// The elsewhere result says whether the machine registry reads that owner as a machine other than this one.
+	Owner func() (owner, subject string, elsewhere bool, err error)
 	// ReadStatus reads batten's status file for the slug.
 	ReadStatus func() (status shedengine.Status, found bool, err error)
 	// OwnerHeld reports whether an owner pause covers the slug.
@@ -91,7 +92,8 @@ type cancelDeps struct {
 	// WriteIntent records the cancel intent in batten's record, with the time now, this machine's name and remove.
 	// found is false when the slug has no record, which then holds no intent.
 	WriteIntent func(remove bool) (found bool, err error)
-	// CommitRecord commits batten's record with the run's other records and spawns the push of the records side.
+	// CommitRecord commits batten's record with the run's other records and pushes the records side.
+	// A push that is owed leaves the commit standing.
 	// It refuses while a merge is in progress on the prime's records side.
 	// committed reports whether a records commit was made.
 	CommitRecord func() (committed bool, err error)
@@ -107,8 +109,10 @@ type cancelDeps struct {
 	ClearClaim func() (cleared, found bool, err error)
 	// LiftPauses lifts the slug's own live slug-scope pause entries and returns their scopes.
 	LiftPauses func() ([]string, error)
-	// SpawnPush starts the detached push of the records side.
-	SpawnPush func() error
+	// PushRecords pushes the records side and waits for the result.
+	// owed is true when the push is owed, because origin is unreachable or a held lock deferred it.
+	// Any other failed push is returned.
+	PushRecords func() (owed bool, err error)
 	// Notify posts line to the orch.
 	Notify func(line string) error
 	// BeamProject reports whether the slug's board entry is a beam project.
@@ -520,18 +524,19 @@ func heldBeamCancelRefusal(slug, rerun string, blockers BeamLandBlockers) error 
 // the finish is written, the state set cancelled, and the record committed and pushed.
 // A slug with no record has nothing to keep, so what is left of its records is removed.
 // It then clears the board claim and lifts the slug's own pauses.
-// If the records were committed, it spawns the records push.
+// If the records were committed, it pushes them after the lifts and waits for the push.
+// A push that is owed makes the report's way forward name rerun, and any other failed push is a warning.
 // It releases the batten locks the report holds once the claim is cleared.
 // The cancel's lock and the pause gate stay with the caller.
 // Its errors name rerun as the step to run again.
 func clearRunPhase(slug string, remove bool, rerun string, report *cancelReport, deps cancelDeps) error {
-	spawnPush := false
+	pushRecords := false
 	removeRecords := func() error {
 		committed, err := deps.RemoveRecords()
 		if err != nil {
 			return fmt.Errorf("battencli: could not remove the records of %s: %w; way forward: fix the cause, then run %s again", slug, err, rerun)
 		}
-		report.RecordsCommitted, spawnPush = committed, committed
+		report.RecordsCommitted, pushRecords = committed, committed
 		return nil
 	}
 	if remove {
@@ -552,7 +557,7 @@ func clearRunPhase(slug string, remove bool, rerun string, report *cancelReport,
 			if err != nil {
 				return fmt.Errorf("battencli: could not commit the cancel of %s: %w; way forward: fix the cause it names, then run %s again", slug, err, rerun)
 			}
-			report.RecordKept, report.RecordsCommitted, report.PushSpawned = true, committed, committed
+			report.RecordKept, report.RecordsCommitted, pushRecords = true, committed, committed
 		} else if err := removeRecords(); err != nil {
 			return err
 		}
@@ -572,15 +577,24 @@ func clearRunPhase(slug string, remove bool, rerun string, report *cancelReport,
 		logger.Warn("battencli: could not lift the slug's pause entries", "slug", slug, "cause", err)
 	}
 	report.Lifted = lifted
-	if spawnPush {
-		if err := deps.SpawnPush(); err != nil {
-			logger.Warn("battencli: could not spawn the records push", "slug", slug, "cause", err)
-		} else {
+	var ways []string
+	if pushRecords {
+		owed, err := deps.PushRecords()
+		switch {
+		case err != nil:
+			logger.Warn("battencli: the records push failed", "slug", slug, "cause", err)
+			report.Warnings = append(report.Warnings, fmt.Sprintf("the records push failed: %v", err))
+		case owed:
+			ways = append(ways, fmt.Sprintf("the records push is owed; run %s again once origin answers", rerun))
+		default:
 			report.PushSpawned = true
 		}
 	}
 	if report.pairKept {
-		report.WayForward = fmt.Sprintf("run %q before rerunning it", cancelCommand(slug, true))
+		ways = append(ways, fmt.Sprintf("run %q before rerunning it", cancelCommand(slug, true)))
+	}
+	if len(ways) > 0 {
+		report.WayForward = strings.Join(ways, "; ")
 	}
 	return nil
 }
@@ -611,11 +625,11 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 	}
 
 	if endOnly || !present {
-		machine, owner, subject, err := deps.Owner()
+		owner, subject, elsewhere, err := deps.Owner()
 		if err != nil {
 			return false, probeRefusal("the slug's owner", slug, rerun, err)
 		}
-		if owner != "" && owner != machine {
+		if elsewhere {
 			return false, cancelOwnedElsewhere(slug, owner, subject)
 		}
 	}

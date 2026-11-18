@@ -14,6 +14,7 @@ import (
 // It takes only a run whose batten status reads done.
 // It runs after the landing count and the landing notices of the tick, and it clears a run only when all of these hold:
 // no pass of it is in flight and its driver lock is free;
+// its pair is gone, so the leftover teardown, which reads the run's records, takes a pair left standing first;
 // the landing-notice memory holds nothing of it, so its notice is decided and posted;
 // and a landing it holds is counted.
 // A cleared run logs `run <slug>: done run cleared`, and its slug leaves the counted landings,
@@ -35,7 +36,7 @@ func (d *daemon) clearDoneRuns(now time.Time) {
 	}
 	var cleared []string
 	for _, run := range d.listedRuns {
-		if run.State != runStateDone || run.DriverLockHeld {
+		if run.State != runStateDone || run.DriverLockHeld || run.PairPresent {
 			continue
 		}
 		if _, inFlight := d.flights[run.Slug]; inFlight {

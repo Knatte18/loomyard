@@ -598,13 +598,17 @@ func checkSocketPath(dir string, uid int) error {
 // setTempEnv points every temporary file at dir: `TMPDIR`, and on Windows `TMP` and `TEMP`.
 // It also makes dir the `GIT_CEILING_DIRECTORIES` ceiling.
 // Git and a repository-root walk then cannot climb above dir to a `.git` the test did not create.
-// `XDG_STATE_HOME`, and on Windows `LOCALAPPDATA`, point at dir too,
-// so no process a test starts, a `lym creel daemon` included, writes the operator's per-user state;
+// `XDG_STATE_HOME` and `XDG_CONFIG_HOME`, and on Windows `LOCALAPPDATA`, point at dir too,
+// so no process a test starts, a `lym creel daemon` included, writes the operator's per-user state or machine file;
 // a test that sets the variable itself still wins.
+// `XDG_DESKTOP_DIR` points at dir on every platform.
+// So no dobby a test starts writes a launcher on the operator's desktop.
 func setTempEnv(dir string) {
 	os.Setenv("TMPDIR", dir)
 	os.Setenv("GIT_CEILING_DIRECTORIES", dir)
 	os.Setenv("XDG_STATE_HOME", dir)
+	os.Setenv("XDG_CONFIG_HOME", dir)
+	os.Setenv("XDG_DESKTOP_DIR", dir)
 	if runtime.GOOS == "windows" {
 		os.Setenv("TMP", dir)
 		os.Setenv("TEMP", dir)

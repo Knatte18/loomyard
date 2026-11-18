@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/spf13/cobra"
 )
 
@@ -258,13 +259,18 @@ Related commands:
 					return nil
 				}
 				logger.SetDurableSinkDir(fabricengine.HubLogsDir(hubLocation.HubPath))
+				here, err := pairteardown.ThisMachine(hubLocation.HubPath)
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+					return nil
+				}
 				res, err := fabricengine.DetachedPush(hubLocation.HubPath, fabricengine.PushSpawn{
 					WarpPath:     warpPath,
 					WeftPath:     weftPath,
 					PauseSlug:    pauseSlug,
 					TeardownSlug: teardownSlug,
 					ParentLocked: parentLocked,
-				})
+				}, here)
 				rec.Extend(res.Mutated())
 				if err != nil {
 					// The detached child's stdout goes nowhere, so the trace log is the only place its failure surfaces.
@@ -279,6 +285,11 @@ Related commands:
 			// The ordinary branch's envelope concatenates the commit call's record with the push call's record, in execution order.
 			// A commit that lands followed by a push that fails is "mutated, then errored".
 			// Only the combined record makes that visible.
+			here, err := pairteardown.ThisMachine(l.HubPath)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 			rec := fabricengine.NewMutations(l.HubPath)
 			opts := fabricengine.EnvSyncOptions()
 			commitRes, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, opts)
@@ -287,7 +298,7 @@ Related commands:
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			pushRes, err := fabricengine.PushPairAnchored(l, opts, fabricengine.LockWaitUnbounded)
+			pushRes, err := fabricengine.PushPairAnchored(l, opts, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, Here: here})
 			rec.Extend(pushRes.Mutated())
 			if errors.Is(err, fabricengine.ErrPairPushRunning) {
 				logger.Warn("fabriccli: the push was skipped; the commits stay local for the pair's next push", "error", err)

@@ -52,13 +52,13 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 		_, found, _ := fx.deps.Lock.Store.Read("main")
 		return found
 	}
-	haltFragments := []string{"no longer names this run", "an owner pause", "`lym batten lock release`", "`lym loom resume` once no owner pause stands"}
+	haltFragments := []string{"no longer names this run", "another machine's ownership of the run, whose hand-over releases it", "`lym batten lock release`", "`lym loom resume` once the run is this machine's"}
 
 	releases := []struct {
 		name    string
 		release func(fx *finalizeGateFixture)
 	}{
-		{"released by an owner pause", releaseOwn},
+		{"released by another machine's ownership", releaseOwn},
 		{"removed by an operator's release", func(fx *finalizeGateFixture) {
 			if _, err := fx.deps.Lock.Store.ForceRelease("main"); err != nil {
 				t.Error(err)

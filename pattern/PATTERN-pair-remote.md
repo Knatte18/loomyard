@@ -1,21 +1,26 @@
 # PATTERN-pair-remote
 
-Pushing run records or tearing down a pair: the code branch goes along;
+Pushing run records or tearing down a pair: the code branch goes along after the records side, both before the run acts;
 a pair's remote steps hold the slug's teardown lock;
 teardown only via `internal/pairteardown`.
 
 ## Push both sides
 
-Rule: Pushing run records from Go: code branch goes along;
+Rule: Pushing run records from Go: the records side first and the code branch only once it landed;
 a push refused after retry leaves a failed-push record and creel notice.
 A teardown's push of a weft branch it archives and deletes goes alone and only logs a refusal. (test)
 
-Go pushes a run's records side, and in a task pair the code branch goes with it.
+Go pushes a run's records side, and in a task pair the code branch goes after it.
 
-- In a task pair the records push carries the code branch along, rebase-free, under fabric's absorbing push lock.
+- In a task pair the records push carries the code branch after it, rebase-free, under fabric's absorbing push lock.
+  The records side goes first and the code side only once it landed:
+  a failed or rejected records side pushes no code.
 - The push is never left to an agent.
-- A per-transition status push is spawned through fabric's detached push, never run by the seam that committed;
-  only `commit-records` pushes synchronously.
+- A transition's push is synchronous through `statuscommit`, before the next producer starts.
+  A push owed on an unreachable origin or a held teardown lock holds the run at its transition and retries behind the gate.
+- The detached pushes that stay keep that order in `coalescePushSides`:
+  the anchor change, fabric's commit spawn, `lym fabric sync` and `add`, and a lift's deferred push.
+  The pending-flag respawn and the failed-remove respawn are gone, and a left flag waits for its worktree's next push.
 - The prime's pushes stay records-only, its code branch being the operator's.
 - A teardown's archive step pushes the weft branch alone, with no code branch, before the archive tag naming its tip,
   and a refusal of that push is logged only, since the removal archives and deletes the branch anyway.
@@ -48,6 +53,11 @@ it then runs before the owned processes are ended.
 A batten cancel's phase instead ends the owned processes and strands first and waits for the run lock after,
 and its removal leaves the board claim to the cancel, which clears it.
 
+- The dobby tears down the leftover pairs of its runs through `internal/pairteardown` alone:
+  a landed run's pair, a cancelled run's pair its cancel did not keep, an ended run's pair through the origin reconcile,
+  and a handed-over run's local pair in local mode.
+  The prime's dobby also tears down an orphan pair, one no board entry or batten record names,
+  once it has gone idle for `dobbyengine.OrphanGrace`, its tips archived first.
 - No production package outside `internal/pairteardown` and `internal/fabricengine` calls `Topology.Remove`.
 - The composite waits for the pair's driver to go quiet, bounded by `Request.QuietWait`;
   `--force` answers dirtiness only and never shortens or skips that wait.

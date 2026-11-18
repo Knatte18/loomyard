@@ -158,6 +158,24 @@ func landingDeps(
 			return fabricengine.ParentHoldsTaskWork(prime, l, seedSlug(l.WorktreeName))
 		},
 		ParentOwner: parentOwner(l, seedSlug(l.WorktreeName)),
+		// OwnedElsewhere pulls the board first, so a takeover another machine recorded is seen before the landing acts.
+		OwnedElsewhere: func() (string, string, bool, error) {
+			if err := boardengine.PullBolt(fabricengine.BoardDir(l.HubPath)); err != nil {
+				return "", "", false, err
+			}
+			owner, subject, err := ownerOfSubject(l, seedSlug(l.WorktreeName))
+			if err != nil {
+				return "", "", false, err
+			}
+			here, err := pairteardown.ThisMachine(l.HubPath)
+			if err != nil {
+				return "", "", false, err
+			}
+			return owner, subject, owner != "" && !here.Holds(owner), nil
+		},
+		HandOver:           runHandOver(l, seedSlug(l.WorktreeName)),
+		PushRecords:        runRecordsPusher(l, seedSlug(l.WorktreeName)),
+		ArchiveParentMerge: parentMergeArchiver(l, seedSlug(l.WorktreeName)),
 		// The origin parent's work and the parent commits origin lacks are read over the parent's own pair.
 		// Finalize's push failure describes that pair.
 		OriginParentHoldsWork: func() (bool, error) {
@@ -204,13 +222,14 @@ func landingDeps(
 		},
 		// MarkTaskDone marks this worktree's board task done once its work has landed.
 		// The landing package names no board path; this closure opens the hub's board.
+		// The status is pushed before the closure returns, so the landing goes on only once origin holds the done mark.
 		MarkTaskDone: func() error {
 			board, err := boardengine.OpenHub(l.HubPath)
 			if err != nil {
 				return err
 			}
 			done := "done"
-			return board.SetStatus(seedSlug(l.WorktreeName), &done)
+			return board.SetStatusPushed(seedSlug(l.WorktreeName), &done)
 		},
 		// RecordLanding records the landing commit in the prime's scratch for the batten run of this worktree's slug.
 		// The run's dobby reads it there.
@@ -390,7 +409,11 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 		// PushTask passes the run's pre-push check first, whose stop is returned as the push's error.
 		PushTask: check.guardedPush(func() error {
 			return pushRidingOutBusyLock(func() error {
-				_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
+				prime, err := primeOfHub(l)
+				if err != nil {
+					return err
+				}
+				_, err = pairteardown.PushRun(prime, l, slug, pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait, InsidePair: true})
 				return err
 			}, landingPushRetryPauses, time.Sleep)
 		}),
@@ -440,19 +463,29 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 
 // pullRequestRecordCommitter returns the seam that commits the run's pull request record to the pair's records.
 // The seam commits the record's removal the same way.
-// A change it commits starts the pair's detached records push, and a failed start only warns.
+// A change it commits is pushed with the pair's records and waits for the push.
+// A push that is owed is logged and leaves the commit for the pair's next push; any other failed push is returned.
 // A record found only at its former scratch path is moved to the tracked path first.
 // So a run in flight keeps its pull request.
 // It commits nothing while neither the file nor a tracked copy of it exists.
-// A commit the pre-push check stops leaves the records local and returns nil.
+// A commit or push the pre-push check stops leaves the records local and returns nil.
 func pullRequestRecordCommitter(check prePushCheck, l *lymcwd.Location) func() error {
 	rel := shedrun.PullRequestRecordRel(l, shedrun.SelfRunID)
+	slug := seedSlug(l.WorktreeName)
 	commit := check.guardedCommit(func(msg string) (bool, error) {
 		_, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{rel}, msg, fabricengine.EnvSyncOptions())
 		return committed, err
 	})
-	spawn := check.guardedSpawn(func() error {
-		_, err := spawnStatusPush(l, "")
+	push := check.guardedPush(func() error {
+		prime, err := primeOfHub(l)
+		if err != nil {
+			return err
+		}
+		_, err = pairteardown.PushRun(prime, l, slug, pairteardown.RunPush{
+			LockWait:     fabricengine.StatusPushLockWait,
+			TeardownWait: fabricengine.StatusPushLockWait,
+			InsidePair:   true,
+		})
 		return err
 	})
 	return func() error {
@@ -471,12 +504,19 @@ func pullRequestRecordCommitter(check prePushCheck, l *lymcwd.Location) func() e
 		if err != nil {
 			return err
 		}
-		if committed {
-			if err := spawn(); err != nil {
-				logger.Warn("loomcli: the push of the pull request record could not be started; the commit stays local", "cause", err)
-			}
+		if !committed {
+			return nil
 		}
-		return nil
+		err = push()
+		switch {
+		case errors.Is(err, errPushStopped):
+			logger.Info("loomcli: the pull request record's push was stopped; its commit stays local", "error", err)
+			return nil
+		case fabricengine.IsPushOwed(err):
+			logger.Warn("loomcli: the push of the pull request record is owed; the pair's next push carries it", "cause", err)
+			return nil
+		}
+		return err
 	}
 }
 
@@ -827,7 +867,7 @@ func runReconciler(l *lymcwd.Location, slug string) func() (fabricengine.OriginR
 // A parent no other machine owns reads as owned here.
 func parentOwner(l *lymcwd.Location, slug string) func() (landingshed.ParentOwnership, error) {
 	return func() (landingshed.ParentOwnership, error) {
-		here, err := machinename.Name()
+		here, err := machinename.ReadIdentity()
 		if err != nil {
 			return landingshed.ParentOwnership{}, err
 		}
@@ -852,7 +892,89 @@ func parentOwner(l *lymcwd.Location, slug string) func() (landingshed.ParentOwne
 				return landingshed.ParentOwnership{}, err
 			}
 		}
-		return landingshed.ParentOwnership{Slug: parentSlug, Owner: owner, Here: !boardengine.OwnedElsewhere(owner, here)}, nil
+		return landingshed.ParentOwnership{Slug: parentSlug, Owner: owner, Here: !boardengine.OwnedElsewhere(owner, owners.Registry, here)}, nil
+	}
+}
+
+// parentPairLocation locates the parent pair the run of l merges into.
+// It returns nil when the hub records no parent worktree for the run.
+func parentPairLocation(l *lymcwd.Location) (*lymcwd.Location, error) {
+	parent, err := hubgeom.ResolveParent(l)
+	if err != nil {
+		return nil, fmt.Errorf("resolve the parent pair: %w", err)
+	}
+	if parent.Worktree == "" {
+		return nil, nil
+	}
+	location, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(l, parent.Worktree))
+	if err != nil {
+		return nil, fmt.Errorf("locate the parent pair %q: %w", parent.Worktree, err)
+	}
+	return location, nil
+}
+
+// runHandOver returns the seam that hands the run slug over to the machine owner now holds it.
+// The takeover entry is the one origin's records hold for the run, or one made here when origin holds none yet.
+// The hand-over covers the parent pair the run merged into, so a merge not yet pushed is archived and reset.
+// The Finalize runs inside the task pair, so the hand-over leaves the pair for the parent's dobby to remove.
+func runHandOver(l *lymcwd.Location, slug string) func(owner, subject string) error {
+	return func(owner, subject string) error {
+		prime, err := primeOfHub(l)
+		if err != nil {
+			return err
+		}
+		parent, err := parentPairLocation(l)
+		if err != nil {
+			return err
+		}
+		entry, found, err := fabricengine.ReadUpstreamTakeover(l, fabricengine.RecordsWorktree(l), slug)
+		if err != nil {
+			return err
+		}
+		if !found {
+			entry = shedengine.Takeover{Machine: owner, Subject: subject, At: time.Now().UTC().Format(time.RFC3339)}
+		}
+		return pairteardown.HandOver(prime, slug, entry, pairteardown.RunPush{InsidePair: true, Parent: parent})
+	}
+}
+
+// runRecordsPusher returns the seam that pushes the records of the run slug, from inside its task pair.
+// A rejected push that meets another machine's takeover hands the run over.
+func runRecordsPusher(l *lymcwd.Location, slug string) func() error {
+	return func() error {
+		prime, err := primeOfHub(l)
+		if err != nil {
+			return err
+		}
+		parent, err := parentPairLocation(l)
+		if err != nil {
+			return err
+		}
+		_, err = pairteardown.PushRun(prime, l, slug, pairteardown.RunPush{
+			LockWait:     fabricengine.StatusPushLockWait,
+			TeardownWait: fabricengine.StatusPushLockWait,
+			InsidePair:   true,
+			Parent:       parent,
+		})
+		return err
+	}
+}
+
+// errNoParentPairToArchive is the failure of a parent merge archive for a run whose hub records no parent pair.
+var errNoParentPairToArchive = errors.New("loomcli: the run has no parent pair whose merge could be archived")
+
+// parentMergeArchiver returns the seam that archives the local merge of the run slug in its parent pair.
+func parentMergeArchiver(l *lymcwd.Location, slug string) func() error {
+	return func() error {
+		parent, err := parentPairLocation(l)
+		if err != nil {
+			return err
+		}
+		if parent == nil {
+			return errNoParentPairToArchive
+		}
+		_, err = fabricengine.ArchiveParentMerge(parent, slug)
+		return err
 	}
 }
 

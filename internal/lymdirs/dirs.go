@@ -38,9 +38,8 @@ const FailedPushDirName = "failed-push"
 // RunProcDirName is the directory under the hub's board-level `.lym` that holds the owner record of a run's processes.
 const RunProcDirName = "runproc"
 
-// AdoptDirName is the directory under the hub's board-level `.lym` for the adopt worker.
-// It holds the adopt record, its lock and the worker's output.
-// It sits beside the adopt check's record, output and lock.
+// AdoptDirName is the directory under the hub's board-level `.lym` for the adopt.
+// It holds each subject's adopt check files and fix scratch, and no record, lock or worker output.
 // It also holds the log of the test suite that an adopt starts.
 const AdoptDirName = "adopt"
 
@@ -51,6 +50,15 @@ const FrontTaskDirName = "fronttask"
 // DriftJudgeDirName is the directory under the hub's board-level `.lym` that holds the task checkout snapshots.
 // Each task's snapshot of its checkouts is taken before the drift judge runs.
 const DriftJudgeDirName = "drift-judge"
+
+// HandOverDirName is the directory under the hub's board-level `.lym` that holds this machine's hand-over marks.
+// It holds one mark per slug.
+// A pair removal does not take it, since it sits under the hub's `.lym` and never in a pair.
+const HandOverDirName = "hand-over"
+
+// OrphanDirName is the directory under the hub's board-level `.lym` that holds the dobby's record of orphan pairs.
+// The record keeps when each orphan was first noticed, so a dobby restart neither resets nor skips its grace.
+const OrphanDirName = "orphan"
 
 // TestCoverDirName is the directory under a `.lym` that holds per-package coverage maps.
 // Under the hub's board-level `.lym` it holds the maps every worktree of the hub on the machine shares;

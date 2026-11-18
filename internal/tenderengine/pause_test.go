@@ -252,9 +252,14 @@ type env struct {
 	boardSyncs  int
 	// pushPairErr is what the pair push seam answers when set.
 	pushPairErr error
+	// pushDeferred holds the pairs a pause deferred a detached push of; a nil map leaves the seam unset.
+	pushDeferred map[string]bool
 	// owners and ownersErr are what the owners reading answers; a nil owners leaves the seam unset.
 	owners    []PairOwner
 	ownersErr error
+	// boltHold and boltHoldErr are what the Bolt hold reading answers; a nil boltHold with no error leaves the seam unset.
+	boltHold    *BoltHoldState
+	boltHoldErr error
 	// runProcs and runProcsErr are what the owner-record reading answers.
 	runProcs    map[string][]runproc.Record
 	runProcsErr error
@@ -361,6 +366,17 @@ func (e *env) deps() Deps {
 	}
 	if e.owners != nil || e.ownersErr != nil {
 		deps.Owners = func() ([]PairOwner, error) { return e.owners, e.ownersErr }
+	}
+	if e.pushDeferred != nil {
+		deps.PushDeferred = func(slug string) bool { return e.pushDeferred[slug] }
+	}
+	if e.boltHold != nil || e.boltHoldErr != nil {
+		deps.BoltHold = func() (BoltHoldState, error) {
+			if e.boltHold == nil {
+				return BoltHoldState{}, e.boltHoldErr
+			}
+			return *e.boltHold, e.boltHoldErr
+		}
 	}
 	// A nil *fakePair in the interface would read as a prime.
 	if e.prime != nil {

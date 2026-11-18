@@ -35,6 +35,8 @@
 // The session stays live in each refusal.
 // A refusal of the run-lock wait, or survivors of the end, are the envelope's error the same way.
 // The prime is no pair: its `down` ends no registered process.
+// `DownWorktree` runs the same `down` for a worktree its caller names, with no envelope.
+// One process can so take down the sessions of several worktrees.
 //
 // `add` places the strand in a window of its own, or its group's.
 // Its `--anchor` takes `own-window` (the default) or `hidden`; any other value is refused.

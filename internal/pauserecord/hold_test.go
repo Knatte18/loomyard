@@ -83,6 +83,14 @@ func TestWaitUncovered(t *testing.T) {
 			wantLines:  1,
 			wantLine:   `lym: held by the pause of a since 2026-01-10T12:00:00Z; it continues after "lym tender resume" or "lym tender resume a"`,
 		},
+		{
+			name: "a bolt-hold entry holds its slug with one line naming the hold's machine and no resume",
+			live: []Entry{{Scope: "a", PausedAt: epoch, Caller: BoltHoldCaller, Machine: "m1"}}, slug: "a",
+			onSleep:    func(t *testing.T, call int, path string) { resumeLive(t, path) },
+			wantDelays: []time.Duration{second},
+			wantLines:  1,
+			wantLine:   "lym: held by an adopt on machine m1 since 2026-01-10T12:00:00Z; it continues after that adopt's hold clears",
+		},
 		{name: "a slug entry does not hold another slug", live: []Entry{slugEntry}, slug: "b"},
 		{name: "an exempt caller passes a slug entry", live: []Entry{slugEntry}, slug: "a", exempt: true},
 		{

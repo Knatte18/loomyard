@@ -6,7 +6,12 @@ package runfsm
 import (
 	"fmt"
 	"strings"
+	"time"
 )
+
+// CodeTipGrace is how long a code tip the run's last transition on origin names may stay missing from origin.
+// It is measured from the commit time of that transition; past it, a tip absent from the owner's repository is given up.
+const CodeTipGrace = 30 * time.Minute
 
 // Inputs are the machine-local facts and the derived state the act rule decides over.
 type Inputs struct {
@@ -20,12 +25,23 @@ type Inputs struct {
 	AdoptSubject string
 	// Held is true while an adopt hold stands over the hub.
 	Held bool
+	// HoldMachine names the machine that wrote the hold, for the held refusal.
+	HoldMachine string
 	// PauseCovers is true when this machine's pause record covers the run.
 	PauseCovers bool
-	// PushOwedOffline is true while a push is owed because origin is unreachable.
-	PushOwedOffline bool
+	// PushOwed is true while a push of the run is owed:
+	// origin is unreachable, the records side was deferred or a teardown lock is held.
+	PushOwed bool
+	// PushOwedError is the owed push's last error, for the push-owed refusal.
+	PushOwedError string
+	// PushOwedWorktree is the worktree whose side is owed, for the push-owed refusal.
+	PushOwedWorktree string
 	// CodeTipMissing is true when the run's code tip is not on origin.
 	CodeTipMissing bool
+	// CodeTip is the code tip the run's last transition on origin names, for the code-tip refusal.
+	CodeTip string
+	// CodeTipMachine is the machine whose transition named CodeTip, for the code-tip refusal.
+	CodeTipMachine string
 	// PastParentMerge is true when origin's fetched parent branch holds the task's work.
 	PastParentMerge bool
 }
@@ -66,11 +82,19 @@ type Verdict struct {
 	// Owner and AdoptSubject are copied from the inputs for the hand-over refusal.
 	Owner        string
 	AdoptSubject string
+	// PushOwedError and PushOwedWorktree are copied from the inputs for the push-owed refusal.
+	// CodeTip and CodeTipMachine are copied from the inputs for the code-tip refusal.
+	PushOwedError    string
+	PushOwedWorktree string
+	CodeTip          string
+	CodeTipMachine   string
 	// CancelMachine and CancelRemove are the record's cancel intent, for the cancelling refusal; Judge fills them.
 	CancelMachine string
 	CancelRemove  bool
 	// PausedByIntent is true when a pause intent holds the paused run; Judge fills it.
 	PausedByIntent bool
+	// HoldMachine is copied from the inputs for the held refusal.
+	HoldMachine string
 }
 
 // Act answers whether a verb may act on the run the inputs describe, in the rule's order.
@@ -80,9 +104,13 @@ type Verdict struct {
 // A landing run past its parent-side merge acts unless a pause covers it.
 // Then a hold, a covering pause, and the paused, cancelling and terminal states wait, and everything else acts.
 func Act(in Inputs) Verdict {
-	verdict := Verdict{Answer: AnswerWait, State: in.State, Owner: in.Owner, AdoptSubject: in.AdoptSubject}
+	verdict := Verdict{
+		Answer: AnswerWait, State: in.State, Owner: in.Owner, AdoptSubject: in.AdoptSubject,
+		PushOwedError: in.PushOwedError, PushOwedWorktree: in.PushOwedWorktree,
+		CodeTip: in.CodeTip, CodeTipMachine: in.CodeTipMachine, HoldMachine: in.HoldMachine,
+	}
 	switch {
-	case in.PushOwedOffline:
+	case in.PushOwed:
 		verdict.Reason = ReasonPushOwed
 	case in.OwnedElsewhere:
 		verdict.Answer, verdict.Reason = AnswerHandOver, ReasonOwnedElsewhere
@@ -112,17 +140,37 @@ func (v Verdict) Refusal(slug, retry string) error {
 	var reason, wayForward string
 	switch v.Reason {
 	case ReasonPushOwed:
-		reason = "a push is owed to origin, which is unreachable"
-		wayForward = fmt.Sprintf("run %s again once origin answers", retry)
+		reason = "a push to origin is owed"
+		if v.PushOwedError != "" {
+			reason += fmt.Sprintf(" (last error: %s)", v.PushOwedError)
+		}
+		if v.PushOwedWorktree != "" {
+			wayForward = fmt.Sprintf("run `lym fabric push` in %s once origin answers, then run %s again", v.PushOwedWorktree, retry)
+		} else {
+			wayForward = fmt.Sprintf("run %s again once the owed push lands", retry)
+		}
 	case ReasonOwnedElsewhere:
 		reason = fmt.Sprintf("machine %s owns the run", v.Owner)
 		wayForward = fmt.Sprintf("run the same verb on %s, or run `lym adopt %s` on this machine first", v.Owner, v.AdoptSubject)
 	case ReasonCodeTip:
-		reason = "the run's code tip is not on origin yet"
-		wayForward = fmt.Sprintf("run %s again once the code push lands", retry)
+		reason = "the code tip the run's last transition names is not on origin yet"
+		if v.CodeTip != "" {
+			reason = fmt.Sprintf("the code tip %s the run's last transition names is not on origin yet", v.CodeTip)
+		}
+		if v.CodeTipMachine != "" {
+			reason += fmt.Sprintf("; machine %s owes it", v.CodeTipMachine)
+			wayForward = fmt.Sprintf("run `lym fabric push` in the task worktree on machine %s, then run %s again once the code push lands",
+				v.CodeTipMachine, retry)
+		} else {
+			wayForward = fmt.Sprintf("run %s again once the code push lands", retry)
+		}
 	case ReasonHeld:
-		reason = "an adopt holds the hub"
-		wayForward = fmt.Sprintf("wait for the adopt that holds the hub to finish, then run %s again", retry)
+		machine := v.HoldMachine
+		if machine == "" {
+			machine = "another machine"
+		}
+		reason = fmt.Sprintf("an adopt on machine %s holds the hub", machine)
+		wayForward = fmt.Sprintf("wait for that adopt's hold to clear, then run %s again; if machine %s has stopped, ask the operator", retry, machine)
 	case ReasonPauseCovers:
 		reason = "a pause covers the run"
 		wayForward = fmt.Sprintf("run `lym tender resume %s`, then run %s again", slug, retry)
@@ -178,7 +226,7 @@ type Aside struct {
 	Hold bool
 	// ShedPause reads a shed state of paused as not paused.
 	ShedPause bool
-	// PushOwed drops the owed push.
+	// PushOwed drops the owed push: Inputs.PushOwed, its error and its worktree.
 	PushOwed bool
 }
 
@@ -201,7 +249,9 @@ func Judge(r Records, in Inputs, aside Aside) (Reading, Verdict) {
 		in.Held = false
 	}
 	if aside.PushOwed {
-		in.PushOwedOffline = false
+		in.PushOwed = false
+		in.PushOwedError = ""
+		in.PushOwedWorktree = ""
 	}
 	reading := Derive(r)
 	in.State = reading.State

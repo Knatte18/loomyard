@@ -1018,7 +1018,8 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 		t.Errorf("listed layers = %v; want %v", layers, want)
 	}
 
-	// With no parent seam, each listed entry's parent beam is computed from the store's own entries.
+	// With no parent seam, each listed entry's parent beam is computed from the store's own entries,
+	// and the prime lists as RootSubject.
 	beamDir := t.TempDir()
 	beamBoard := `{"version":1,"entries":[` +
 		`{"id":0,"slug":"beamer","title":"B","kind":"project","labels":["bug"],"beam":true},` +
@@ -1035,7 +1036,7 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	for _, b := range beamStore.ListTasksBrief(nil) {
 		parentBeams[b.Slug] = b.ParentBeam
 	}
-	if want := map[string]string{"beamer": "", "member": "beamer", "loose": ""}; !maps.Equal(parentBeams, want) {
+	if want := map[string]string{"beamer": boardengine.RootSubject, "member": "beamer", "loose": boardengine.RootSubject}; !maps.Equal(parentBeams, want) {
 		t.Errorf("listed parent beams = %v; want %v", parentBeams, want)
 	}
 
@@ -1454,6 +1455,31 @@ func TestLoad(t *testing.T) {
 					t.Errorf("expected empty task list for missing file, got %d tasks", len(tasks))
 				}
 			},
+		},
+		{
+			name: "a board carrying machines and holds round-trips them through Save",
+			body: `{"version":1,"entries":[],"machines":{"m1":{"name":"osl46","former":["neve"]}},` +
+				`"holds":[{"kind":"adopt-fix","machine":"osl46","at":"2026-01-02T03:04:05Z",` +
+				`"subjects":[{"subject":"beam","prior_owner":"neve","tries":2}],"fix_task":"adopt-fix-beam"}]}`,
+			save: true,
+			saveContains: []string{
+				`"machines":{"m1":{"name":"osl46","former":["neve"]}}`,
+				`"holds":[{"kind":"adopt-fix","machine":"osl46","at":"2026-01-02T03:04:05Z",` +
+					`"subjects":[{"subject":"beam","prior_owner":"neve","tries":2}],"fix_task":"adopt-fix-beam"}]`,
+			},
+		},
+		{
+			name: "an unknown key inside a machine entry and a hold survives the rewrite",
+			body: `{"version":1,"entries":[],"machines":{"m1":{"name":"osl46","zz_entry":9007199254740993}},` +
+				`"holds":[{"kind":"adopt","machine":"osl46","at":"2026-01-02T03:04:05Z","subjects":[],"zz_hold":{"k":[1]}}]}`,
+			save:         true,
+			saveContains: []string{`"zz_entry":9007199254740993`, `"zz_hold":{"k":[1]}`},
+		},
+		{
+			name:       "a board without machines and holds reads and writes them empty",
+			body:       `{"version":1,"entries":[]}`,
+			save:       true,
+			saveAbsent: []string{`"machines"`, `"holds"`},
 		},
 		{
 			name: "a nil depends_on becomes an empty slice",

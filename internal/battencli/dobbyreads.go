@@ -136,15 +136,25 @@ var unreadableReachedParent logger.EpisodeSet
 // It is keyed by slug, so a persistent failure logs one Warn, not one line per dobby tick.
 var unreadableRunRecords logger.EpisodeSet
 
+// unsettledCodeTip keeps one failure episode per run whose code tip does not settle.
+// It is keyed by slug, so a persistent failure logs one Warn, not one line per dobby tick.
+var unsettledCodeTip logger.EpisodeSet
+
 // DobbyRuns builds the RunView of every batten run whose parent worktree is geom's.
 // The pause coverage is read from the record at pauseRecord.
 // Each run also carries its FSM state and the act rule's verdict, judged with nothing set aside.
 // A run whose records or act inputs do not read is left out of the call, with one Warn per episode.
+// A run this machine owns, with its pair here, then settles its code tip:
+// a tip missing from origin is pushed or, past its grace, given up, and a code branch origin moved past is brought level.
+// A run whose code tip does not settle is left out of the call, with one Warn per episode.
 // A run's place against its Land row is read from its status,
 // and a landed run carries the landing commit its landing recorded, empty when none is readable.
 // Whether the run takes no slot is judged from its board entry on the local board at geom.BoardDir.
 // Whether that entry ended, done or gone from the board, is judged from the same board.
 // Whether its pair is present is read from its task worktree's path.
+// It also carries whether a cancel kept its pair and when that cancel finished.
+// It carries whether the registry reads its owner as another machine and whether a Bolt hold holds it.
+// It carries whether this machine's hand-over mark names it.
 // A paused run also carries whether its work already reached its parent.
 // That is read from the child's status in the task worktree,
 // and a read that fails leaves the run unreached, with one Warn, so the run stays paused.
@@ -166,6 +176,7 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 		entryOf[entry.Slug] = entry
 	}
 	now := time.Now()
+	codeTip := hubCodeTipDeps(prime)
 	views := make([]dobbyengine.RunView, 0, len(runs))
 	for _, run := range runs {
 		slug := run.slug
@@ -190,6 +201,8 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 		unreadableRunRecords.Recover(slug, "battencli: a run's records and act inputs read again", "slug", slug)
 		reading, verdict := runfsm.Judge(records, inputs, runfsm.Aside{})
 		view.Run, view.Verdict = reading.State, verdict
+		view.PairKept, view.KeptSince = reading.PairKept, keptSince(reading, records.Batten)
+		view.OwnedElsewhere, view.BoltHeld = inputs.OwnedElsewhere, inputs.Held
 		pair, err := lymcwd.NamedWorktree(prime.HubPath, slug)
 		if err != nil {
 			return nil, fmt.Errorf("locate the pair %s: %w", slug, err)
@@ -205,9 +218,12 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 				view.CancelMarker = reading.Present
 				return err
 			},
-			func() (err error) { view.OriginOwed, err = markerExists(shedrun.OriginOwedMarker(prime, slug)); return },
 			func() (err error) { view.DriverLockHeld, err = lockHeld(shedrun.DriverLock(prime, slug)); return },
 			func() (err error) { view.PairPresent, err = markerExists(pair.WorktreePath()); return },
+			func() (err error) {
+				_, view.HandOverMarked, err = fabricengine.ReadHandOverMark(prime.HubPath, slug)
+				return
+			},
 			func() error {
 				if !view.Landed {
 					return nil
@@ -240,9 +256,29 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 				return nil, fmt.Errorf("read the run %s: %w", slug, err)
 			}
 		}
+		if !inputs.OwnedElsewhere && view.PairPresent {
+			if err := settleCodeTip(codeTip, slug, verdict, now); err != nil {
+				unsettledCodeTip.Fail(slug, "battencli: a run's code tip does not settle and the run is left out of this tick", "slug", slug, "error", err)
+				continue
+			}
+			unsettledCodeTip.Recover(slug, "battencli: a run's code tip settles again", "slug", slug)
+		}
 		views = append(views, view)
 	}
 	return views, nil
+}
+
+// keptSince returns when the cancel that kept a run's pair finished, read from the batten record's cancel intent.
+// It is zero for a run whose pair no cancel kept, and for a finish time that does not parse.
+func keptSince(reading runfsm.Reading, batten shedengine.Status) time.Time {
+	if !reading.PairKept || batten.Cancel == nil || batten.Cancel.Finish == nil {
+		return time.Time{}
+	}
+	at, err := time.Parse(time.RFC3339, batten.Cancel.Finish.EndedAt)
+	if err != nil {
+		return time.Time{}
+	}
+	return at
 }
 
 // runTakesNoSlot reports whether the run behind task takes no slot under its dobby's max_runs:
@@ -318,7 +354,7 @@ var unreadableDoneRunStart logger.EpisodeSet
 
 // readTaskPlacement reads the parent worktree of slug and whether another machine owns it.
 // The parent is the prime's own worktree name when slug has no parent.
-func readTaskPlacement(prime *lymcwd.Location, parents *DobbyParents, owners boardengine.Owners, here, slug string) (parent string, ownedElsewhere bool, err error) {
+func readTaskPlacement(prime *lymcwd.Location, parents *DobbyParents, owners boardengine.Owners, here machinename.Identity, slug string) (parent string, ownedElsewhere bool, err error) {
 	parent, err = parents.Of(slug)
 	if err != nil {
 		return "", false, fmt.Errorf("read the parent of %s: %w", slug, err)
@@ -330,13 +366,14 @@ func readTaskPlacement(prime *lymcwd.Location, parents *DobbyParents, owners boa
 	if err != nil {
 		return "", false, fmt.Errorf("read the owner of %s: %w", slug, err)
 	}
-	return parent, boardengine.OwnedElsewhere(owner, here), nil
+	return parent, boardengine.OwnedElsewhere(owner, owners.Registry, here), nil
 }
 
 // DobbyTasks reads the local board under boardDir as TaskViews.
 // A released task is a task with an empty status.
 // Released tasks and entries carrying notify_on_land get their parent worktree and owner read.
 // The other entries carry neither.
+// A released task also carries the machine of the adopt hold that holds it, none for the fix task of an adopt-fix hold.
 // A parent or owner that does not read fails the whole read for a released task.
 // For an entry carrying notify_on_land, that failure leaves both unset and logs once per episode.
 // Such an entry therefore never blocks the starts of the others.
@@ -357,7 +394,7 @@ func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) 
 	if err != nil {
 		return nil, err
 	}
-	here, err := machinename.Name()
+	here, err := machinename.ReadIdentity()
 	if err != nil {
 		return nil, err
 	}
@@ -380,6 +417,9 @@ func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) 
 			}
 		}
 		if released {
+			if hold, held := owners.HoldOf(task.Slug); held {
+				view.HeldBy = hold.Machine
+			}
 			status, found, err := readDobbyRunStatus(shedrun.StatusFile(prime, task.Slug))
 			if err != nil {
 				logger.Warn("battencli: a released task's run status is unreadable and holds no start", "slug", task.Slug, "error", err)

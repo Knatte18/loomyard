@@ -187,6 +187,19 @@
 // The pair's child record is read from the task worktree when the pair stands here.
 // Otherwise it is read from origin's fetched records branch.
 // Every read goes through the hub's tracked records and origin's fetched refs, never a cache a fresh machine lacks.
+// The owed-push inputs come from the failed-push records that name the run, newest first.
+// The refusal reads the newest record's error and worktree.
+// The code-tip inputs come from origin's fetched branches:
+// whether the tip the run's last transition names is missing there, the tip, and the machine that named it.
+// The owner inputs come from three seams:
+// the owners and registry the local Bolt records, this machine's identity and the parent resolver.
+// The run's effective owner, its adopt subject and whether it is owned elsewhere are computed from them.
+// Whether it is owned elsewhere compares the owner with the identity through the registry.
+// ReadRunPulled is ReadRun behind a pull of the hub's Bolt.
+// It serves a verb that asks the act rule outside the dobby's pass, so a hold another machine wrote is read.
+// An unreachable origin reads the local Bolt; any other failed pull is an error and reads nothing.
+// The hold inputs come from the same owners read:
+// the run is held while any Bolt hold stands, bar the fix task of an adopt-fix hold, and the hold's machine is carried.
 //
 // # Local mode
 //
@@ -267,16 +280,16 @@
 // It passes Force and Snapshot and no RefuseWhenBusy, so a busy driver is ended.
 // `SeamOptions.LiftWakeHold` runs as AfterSnapshot, lifting the hold only once the snapshot is kept.
 // `OwnerReader` builds the owner seam, `OwnerOf`, beside the live-pair, parent-lock and teardown seams.
-// `OwnerOf` reads the machine's name and parses a `board.json` with `boardengine.ParseOwners`.
+// `OwnerOf` reads the machine's identity and parses a `board.json` with `boardengine.ParseOwners`.
 // It takes the slug's effective owner and its adopt subject with a parent resolver.
-// It reports whether another machine owns it.
-// A name error, an empty hostname included, a parent resolver error and undecodable bytes are returned,
+// It reports whether another machine owns it, comparing the owner with the identity through the board's registry.
+// An identity error, an empty hostname included, a parent resolver error and undecodable bytes are returned,
 // so no owner is compared with an empty name.
 // `SeamOptions.Machine` and `SeamOptions.ParentOf` feed it.
 // A nil `Machine` builds no `OwnerOf`, so a call site that sets none keeps every entry owned here.
 // `HubSeamOptions` fills `HubPaused` from a read of the pause record at each call.
 // It fills `PrimeParentLockFree` from one listing of the parent lock store for the prime's branch.
-// It fills `Machine` with `machinename.Name` and `ParentOf` with `hubgeom.ParentOf` over the prime's location.
+// It fills `Machine` with `machinename.ReadIdentity` and `ParentOf` with `hubgeom.ParentOf` over the prime's location.
 // It leaves the wake-hold fields nil, which read as no wake hold.
 //
 // # Ending a subject owned elsewhere
@@ -288,6 +301,38 @@
 // The subject's own record is never one of its runs.
 // A run whose subject cannot be resolved is left alone and logged.
 // The subject's dobby ends last, and only when endDobby is set.
+//
+// # Handing a run over
+//
+// PushRun is the run's synchronous pair push, and every such push outside fabric goes through it.
+// A rejected records push that meets another machine's takeover entry for the run gets a hand-over, not a replay.
+// HandOver ends the processes this machine runs for the run, which spares the caller and its ancestors.
+// It names the pause and cancel intents the local batten record holds and origin's lacks.
+// Origin's record is read after a fetch of the prime's records branch.
+// It then has fabricengine archive the local tips and move the owed code tip, and writes the hand-over mark.
+// Unless the caller runs inside the pair, it removes the local pair, whose uncommitted files the archive holds by then;
+// inside the pair the removal is left to the parent's dobby.
+// Its error wraps fabricengine.ErrHandedOver and names the new owner, so the caller stops.
+// A failed step returns its own error before the mark is written, and the next rejected push hands the run over again.
+//
+// HandOverOwnedElsewhere hands over a run another machine owns, from this machine's side.
+// It has no push of its own to reject.
+// With no takeover entry on origin's batten record of the run, it first pushes the prime's records and the run's pair,
+// so this machine's transitions reach origin before it lets go.
+// A push that meets a takeover entry hands the run over inside PushRun, and the call ends with nil.
+// Otherwise HandOver follows, with no dobby end, and its ErrHandedOver answers nil.
+// A failed push returns its error and archives nothing.
+//
+// # Leftover pairs
+//
+// RemoveHandedOverPair serves the dobby for a run this machine handed over from inside its pair.
+// It ends the run's processes through EndSubjectProcesses.
+// It then ends the pair's reed session and removes the pair in local mode with force, leaving the batten record alone.
+// RemoveOrphanPair serves the dobby for a pair no board entry or batten run names.
+// It first reads again that the pair is still an orphan with no live process.
+// It archives the code and records tips under owner archive tags and commits uncommitted files onto the archived tip.
+// It then tears the pair down, leaving its branches on origin and settling no board claim.
+// A failed archive removes nothing.
 //
 // # Quiet rule
 //

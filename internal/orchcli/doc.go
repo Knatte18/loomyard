@@ -43,8 +43,13 @@
 // The beam then has its dobby and no orch until `lym beam start` starts one.
 // Only `lym adopt` sets it, for a request carrying `--no-orch`.
 // `BeamDown` removes the orch strand, after which the watcher exits on its own.
-// It ends the worktree's dobby through `runproc.EndRole`, so no other process of the beam is signalled;
+// It ends the worktree's dobby, then, as its last step, the orch session's registered provider process.
+// Each end goes through `runproc.EndRole`, so no other process of the beam is signalled;
 // each part stops only when live.
+// Every caller ends that process this way: `lym beam stop`, a beam's cancel and pawl's beam-down row.
+// The strand's removal ends the orch's pane and every process below it, so a caller inside that pane ends there;
+// the later steps run only for a caller outside it.
+// An earlier step's failure does not skip the orch process's end, and every failure is returned.
 // `OrchLive` is the liveness predicate other modules call:
 // the worktree's orch state records a strand that reed tracks and reports live.
 //
@@ -107,9 +112,10 @@
 // The read takes the prime's owner for the prime and a beam's effective owner through `hubgeom.ParentOf`.
 // It reads from the hub's local Bolt and compares the owner with this machine's name from `machinename`.
 // The verdict is as fresh as that Bolt.
-// `watch` also tells it the under-adopt accessor `UnderAdoptWatch` builds.
-// The accessor reads the hub's adopt record, its local board and `hubgeom.ParentOf`.
-// While an adopt in flight on this machine covers the worktree, a foreign owner leaves the orch strand up.
+// `watch` also tells it the accessor `UnderOwnHold` builds.
+// The accessor reads the hub's local Bolt, this machine's identity and `hubgeom.ParentOf`.
+// While a hold this machine wrote in Bolt covers the worktree's subject, a foreign owner leaves the orch strand up.
+// The hold stands until the adopt's check is green.
 // Before it removes the strand, the watcher ends every process this machine runs for the worktree's subject.
 // `pairteardown.EndSubjectProcesses` first ends the runs whose adopt subject is the beam, or the root for the prime.
 // It then ends the worktree's own records, the orch's provider process among them.
@@ -215,6 +221,7 @@
 // A caller that already judged origin leaves `Prepare` false.
 // Adopt does so after its own reconcile, and so does the pawl run's Beam-Up.
 // The refusals still run.
+// `BeamUpOptions.NoPrimeClaim` leaves the prime claim out of `Prepare`, for a caller that must claim no prime.
 // The reconcile never refuses the bring-up:
 // a stop, an unreachable origin and a reconcile error are reported for the orch to act on,
 // and a run already driving is reported live or stopped when origin moved its branch.
@@ -227,18 +234,21 @@
 // The summary includes the owned-elsewhere lines.
 // Under an operator's live hub pause the reconcile's network calls wait at the network gate until the lift.
 //
-// # The prime claim and the owner pause at bring-up
+// # The prime claim and the end of owned runs at bring-up
 //
 // After the reconcile, `Prepare` claims the prime for this machine through `claimPrime`.
 // The claim runs in the prime and in a beam alike, and writes only when the board records no prime owner.
 // A claim, a claim lost to another machine and a failure are reported under the warnings, and none refuses the bring-up.
-// Before it touches any strand, `Prepare` then pauses each owned_elsewhere entry of the report through `pauseOwned`.
-// `InstallOwnerPause` stores `pauseOwned` for the process;
-// the root pre-run installs `tendercli.PauseOwnedElsewhere`.
-// `tendercli` imports this package, so the reverse import would cycle.
-// The paused slugs with their owners are the report's `OwnerPauses`.
-// A failed or unwired pause is a warning naming that `lym beam start` pauses it again.
-// A nil `claimPrime` or `pauseOwned`, as a hand-built start harness has, is skipped.
+// Before it touches any strand, `Prepare` then ends the processes of each owned_elsewhere entry.
+// It does so through `endOwned`, over the entries of the report.
+// `wireCLI` fills `endOwned` with `pairteardown.EndSubjectProcesses`.
+// The end takes the entry's dobby too when `isBeam`, read from the board's owners, reports the entry a beam.
+// A subject read as owned elsewhere therefore leaves no process of its runs, its orch or its dobby on this machine.
+// The ended slugs with their owners are the report's `OwnerPauses`, a key that keeps its name.
+// A failed or unwired end is a warning naming that `lym beam start` ends it again.
+// A failed `isBeam` read ends nothing for that entry and warns the same way.
+// A nil `claimPrime`, `endOwned` or `isBeam`, as a hand-built start harness has, is skipped;
+// a nil `isBeam` reads no entry as a beam.
 //
 // # Withdrawing around a fresh launch
 //

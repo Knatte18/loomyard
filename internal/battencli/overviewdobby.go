@@ -28,8 +28,10 @@ const (
 // It takes the dobby's state from view and the cells of its runs from runCells.
 // The header gives max_runs and land_notice while the dobby is alive, else says it is not running and how to start it.
 // Each run it drives takes one line, with its cells and its last pass.
+// What a run's cells say it owes ends its pass cell.
 // Each released task it has not started takes one line, naming everything that holds it back.
 // A run or task whose board entry asks for a landing notice ends its line with notify_on_land.
+// Each pair a cancel kept takes one line with its age and the verb that removes it.
 // A run whose cells are unreadable draws `status unreadable` in their place and takes no part in their column widths.
 // A duration still growing renders in whole minutes, so the lines change at most once a minute.
 func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCells, now time.Time) []string {
@@ -44,6 +46,9 @@ func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCell
 	}
 	for _, task := range view.Waiting {
 		slugWidth = max(slugWidth, len([]rune(task.Slug)))
+	}
+	for _, kept := range view.Kept {
+		slugWidth = max(slugWidth, len([]rune(kept.Slug)))
 	}
 
 	lines := []string{header}
@@ -68,7 +73,11 @@ func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCell
 		} else {
 			drawn = append(drawn, padRight(cells.State, stateWidth), padRight(cells.Stage, stageWidth), padRight(cells.InStage, inStageWidth))
 		}
-		drawn = append(drawn, dobbyRunPass(run, now))
+		pass := dobbyRunPass(run, now)
+		if cells.Owes != "" {
+			pass += ", " + cells.Owes
+		}
+		drawn = append(drawn, pass)
 		lines = append(lines, dobbyIndent+strings.Join(drawn, overviewColumnGap))
 	}
 	for _, task := range view.Waiting {
@@ -77,6 +86,13 @@ func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCell
 			wait += ", " + dobbyNotifyOnLand
 		}
 		lines = append(lines, dobbyIndent+padRight(task.Slug, slugWidth)+overviewColumnGap+wait)
+	}
+	for _, kept := range view.Kept {
+		age := "kept pair, age unknown"
+		if !kept.Since.IsZero() {
+			age = "kept pair, cancelled " + durfmt.FormatMinutes(now.Sub(kept.Since)) + " ago"
+		}
+		lines = append(lines, dobbyIndent+padRight(kept.Slug, slugWidth)+overviewColumnGap+age+"; way forward: lym fabric remove "+kept.Slug)
 	}
 	return lines
 }

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -202,6 +203,14 @@ func TestPROpen(t *testing.T) {
 			name:    "FailingPushRefusedNamingTheRerun",
 			setup:   func(w *landWorld) { w.pushErr = errors.New("the push was rejected") },
 			wantErr: []string{"the push was rejected", "lym beam pr open b"},
+		},
+		{
+			name: "PushThatHandedTheRunOverIsReturnedWithoutARerun",
+			setup: func(w *landWorld) {
+				w.pushErr = fmt.Errorf("the run b was handed over to machine oslo: %w", fabricengine.ErrHandedOver)
+			},
+			wantErr:   []string{"handed over to machine oslo"},
+			wantNoErr: []string{"again"},
 		},
 		{
 			name:    "FailingCreateRefusedNamingTheRerun",

@@ -19,9 +19,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// fixFixtureRerun is the re-run of a two-subject hold, which the fix loop's way forward lines must name.
+const fixFixtureRerun = "lym adopt alpha beta"
+
+// fixHoldCall is one call of the fake hold write: the task it named and the tries it recorded.
+type fixHoldCall struct {
+	task  string
+	tries int
+}
+
 // fixFixture holds the fake seams of the fix loop over a temp subject directory, each recording its calls.
+// The fake hold write records the tries it is given in deps.Tries, as the hold would.
 type fixFixture struct {
-	t    *testing.T
 	deps fixDeps
 	dir  string
 
@@ -32,6 +41,8 @@ type fixFixture struct {
 	branchSlugs []string
 	vocabulary  []string
 
+	fixHolds   []fixHoldCall
+	fixHoldErr error
 	created    []map[string]any
 	createdFor []string
 	released   []string
@@ -47,14 +58,23 @@ type fixFixture struct {
 func newFixFixture(t *testing.T) *fixFixture {
 	t.Helper()
 	root := t.TempDir()
-	f := &fixFixture{t: t, dir: filepath.Join(root, "alpha"), runRecords: map[string]shedengine.Status{}, eligible: map[string]bool{}, vocabulary: []string{"bug", "gate"}}
+	f := &fixFixture{dir: filepath.Join(root, "alpha"), runRecords: map[string]shedengine.Status{}, eligible: map[string]bool{}, vocabulary: []string{"bug", "gate"}}
 	f.deps = fixDeps{
 		Subject:  "alpha",
 		Dir:      f.dir,
 		Project:  "alpha",
 		Machine:  "boxA",
 		TryLimit: 3,
-		Tasks:    func() ([]boardengine.Task, error) { return f.tasks, nil },
+		Rerun:    fixFixtureRerun,
+		FixHold: func(task string, tries int) error {
+			if f.fixHoldErr != nil {
+				return f.fixHoldErr
+			}
+			f.fixHolds = append(f.fixHolds, fixHoldCall{task, tries})
+			f.deps.Tries = tries
+			return nil
+		},
+		Tasks: func() ([]boardengine.Task, error) { return f.tasks, nil },
 		RunRecord: func(slug string) (shedengine.Status, bool, error) {
 			status, found := f.runRecords[slug]
 			return status, found, nil
@@ -112,20 +132,16 @@ func failedRecord() CheckRecord {
 	}
 }
 
-func (f *fixFixture) tries() int {
-	f.t.Helper()
-	count, err := readTries(f.dir)
-	if err != nil {
-		f.t.Fatalf("readTries: %v", err)
-	}
-	return count
-}
+// tries returns the try count the fixture's hold holds.
+func (f *fixFixture) tries() int { return f.deps.Tries }
 
-func (f *fixFixture) setTries(count int) {
-	f.t.Helper()
-	if err := writeTries(f.dir, count); err != nil {
-		f.t.Fatalf("writeTries: %v", err)
-	}
+// setTries sets the try count the fixture's hold holds.
+func (f *fixFixture) setTries(count int) { f.deps.Tries = count }
+
+// failedLines runs failedEnd and returns its lines alone.
+func failedLines(deps fixDeps, record CheckRecord) []string {
+	_, lines, _ := failedEnd(deps, record)
+	return lines
 }
 
 // ownFix returns the subject's fix task `adopt-fix-alpha-t1` with the status given.
@@ -139,9 +155,15 @@ func TestFailedEnd(t *testing.T) {
 		t.Parallel()
 		f := newFixFixture(t)
 
-		lines := failedEnd(f.deps, failedRecord())
+		task, lines, lost := failedEnd(f.deps, failedRecord())
 		if len(f.created) != 1 {
 			t.Fatalf("created = %v; want one fix task (lines %q)", f.created, lines)
+		}
+		if task != "adopt-fix-alpha-t1" || lost != nil {
+			t.Errorf("failedEnd() task = %q, lost = %v; want the filed slug and no refusal", task, lost)
+		}
+		if want := []fixHoldCall{{"adopt-fix-alpha-t1", 1}}; !slices.Equal(f.fixHolds, want) {
+			t.Errorf("hold writes = %v; want the task with the tries plus one, %v", f.fixHolds, want)
 		}
 		fields := f.created[0]
 		for key, want := range map[string]any{"slug": "adopt-fix-alpha-t1", "title": "Fix the adopt check of alpha on boxA", "kind": boardengine.KindTask, "recipe": "darn", "profile": "light", "project": "alpha"} {
@@ -171,7 +193,7 @@ func TestFailedEnd(t *testing.T) {
 		f := newFixFixture(t)
 		f.deps.Subject, f.deps.Project = "root", ""
 
-		failedEnd(f.deps, failedRecord())
+		failedLines(f.deps, failedRecord())
 		if len(f.created) != 1 {
 			t.Fatalf("created = %v; want one fix task", f.created)
 		}
@@ -185,7 +207,7 @@ func TestFailedEnd(t *testing.T) {
 		f := newFixFixture(t)
 		f.vocabulary = []string{"bug"}
 
-		failedEnd(f.deps, failedRecord())
+		failedLines(f.deps, failedRecord())
 		if len(f.created) != 1 {
 			t.Fatalf("created = %v; want one fix task", f.created)
 		}
@@ -199,12 +221,12 @@ func TestFailedEnd(t *testing.T) {
 		f := newFixFixture(t)
 		f.setTries(3)
 
-		lines := failedEnd(f.deps, failedRecord())
+		lines := failedLines(f.deps, failedRecord())
 		if len(f.created) != 0 || len(f.removed) != 0 {
 			t.Errorf("created = %v, removed = %q; want neither", f.created, f.removed)
 		}
-		if len(lines) != 1 || !mentions(lines, "ran out", "tier0", "example.com/a TestA", "suite.log", "lym adopt alpha") {
-			t.Errorf("lines = %q; want the tries ran out, the failing tier and test, suite.log and lym adopt alpha", lines)
+		if len(lines) != 1 || !mentions(lines, "ran out", "tier0", "example.com/a TestA", "suite.log", fixFixtureRerun) || !strings.HasPrefix(lines[0], fixLimitLineOpening) {
+			t.Errorf("lines = %q; want the tries ran out, the failing tier and test, suite.log and %q", lines, fixFixtureRerun)
 		}
 	})
 
@@ -215,9 +237,9 @@ func TestFailedEnd(t *testing.T) {
 		other.OnLand = "something-else"
 		f.tasks = []boardengine.Task{other}
 
-		lines := failedEnd(f.deps, failedRecord())
-		if len(f.created) != 0 || !mentions(lines, "other-front", "lym adopt alpha") {
-			t.Errorf("created = %v, lines = %q; want none filed and a line naming other-front and lym adopt alpha", f.created, lines)
+		lines := failedLines(f.deps, failedRecord())
+		if len(f.created) != 0 || !mentions(lines, "other-front", fixFixtureRerun) {
+			t.Errorf("created = %v, lines = %q; want none filed and a line naming other-front and %q", f.created, lines, fixFixtureRerun)
 		}
 	})
 
@@ -248,7 +270,7 @@ func TestFailedEnd(t *testing.T) {
 				}
 				f.eligible["adopt-fix-alpha-t1"] = tt.eligible
 
-				lines := failedEnd(f.deps, failedRecord())
+				lines := failedLines(f.deps, failedRecord())
 				if len(f.created) != 0 || len(f.removed) != 0 || len(f.cancelled) != 0 {
 					t.Errorf("created = %v, removed = %q, cancelled = %q; want none", f.created, f.removed, f.cancelled)
 				}
@@ -284,12 +306,53 @@ func TestFailedEnd(t *testing.T) {
 				}
 				f.setTries(1)
 
-				lines := failedEnd(f.deps, failedRecord())
+				lines := failedLines(f.deps, failedRecord())
 				if !slices.Equal(f.removed, []string{"adopt-fix-alpha-t1"}) || (len(f.cancelled) == 1) != tt.wantCancel {
 					t.Errorf("removed = %q, cancelled = %q; want the task removed, cancelled: %v", f.removed, f.cancelled, tt.wantCancel)
 				}
 				if len(f.created) != 1 || f.created[0]["slug"] != "adopt-fix-alpha-t2" || f.tries() != 2 {
 					t.Errorf("created = %v, tries = %d (lines %q); want adopt-fix-alpha-t2 filed and the count 2", f.created, f.tries(), lines)
+				}
+			})
+		}
+	})
+
+	t.Run("an own fix task with no local run record files no second task and comes back as the task standing", func(t *testing.T) {
+		t.Parallel()
+		running := boardengine.RunStatus("running", "Code-Write")
+		f := newFixFixture(t)
+		f.tasks = []boardengine.Task{ownFix(&running)}
+
+		task, lines, lost := failedEnd(f.deps, failedRecord())
+		if task != "adopt-fix-alpha-t1" || lost != nil || len(f.created) != 0 || len(f.removed) != 0 || len(f.fixHolds) != 0 {
+			t.Errorf("failedEnd() task = %q, lost = %v, created = %v, removed = %q, hold writes = %v; want the own task standing and nothing filed, removed or written", task, lost, f.created, f.removed, f.fixHolds)
+		}
+		if !mentions(lines, "adopt-fix-alpha-t1", "starting") {
+			t.Errorf("lines = %q; want the task named as starting", lines)
+		}
+	})
+
+	t.Run("a hold write that refuses comes back as the lost refusal and names the re-run", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name    string
+			refusal *boardengine.HoldRefusal
+		}{
+			{"AnotherMachineTookTheHold", &boardengine.HoldRefusal{Reason: "machine \"otherbox\" holds the hub for an adopt", Machine: "otherbox"}},
+			{"ThisMachinesHoldWasChangedByASecondProcess", &boardengine.HoldRefusal{Reason: "the hold does not stand as written", OwnStands: true}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newFixFixture(t)
+				f.fixHoldErr = tt.refusal
+
+				task, lines, lost := failedEnd(f.deps, failedRecord())
+				if task != "" || lost != tt.refusal {
+					t.Errorf("failedEnd() task = %q, lost = %v; want no task and the refusal %v", task, lost, tt.refusal)
+				}
+				if !mentions(lines, tt.refusal.Reason, fixFixtureRerun) {
+					t.Errorf("lines = %q; want the refusal's reason and %q", lines, fixFixtureRerun)
 				}
 			})
 		}
@@ -308,15 +371,15 @@ func TestFailedEnd(t *testing.T) {
 		beside.tasks = []boardengine.Task{ownFix(&running), other}
 		beside.runRecords["adopt-fix-alpha-t1"] = shedengine.Status{State: shedengine.StateBlocked}
 
-		limitLines := failedEnd(atLimit.deps, failedRecord())
-		besideLines := failedEnd(beside.deps, failedRecord())
+		limitTask, limitLines, _ := failedEnd(atLimit.deps, failedRecord())
+		besideLines := failedLines(beside.deps, failedRecord())
 		for name, f := range map[string]*fixFixture{"AtTheLimit": atLimit, "BesideAnotherFront": beside} {
 			if len(f.created) != 0 || len(f.removed) != 0 || len(f.cancelled) != 0 {
 				t.Errorf("%s: created = %v, removed = %q, cancelled = %q; want none", name, f.created, f.removed, f.cancelled)
 			}
 		}
-		if !mentions(limitLines, "adopt-fix-alpha-t1", "halted", "lym adopt alpha") || !mentions(besideLines, "other-front") {
-			t.Errorf("limit lines = %q, beside lines = %q; want the halted task named at the limit and the other front task named beside it", limitLines, besideLines)
+		if !mentions(limitLines, "adopt-fix-alpha-t1", "halted", fixFixtureRerun) || !mentions(besideLines, "other-front") || limitTask != "adopt-fix-alpha-t1" {
+			t.Errorf("limit task = %q, limit lines = %q, beside lines = %q; want the halted task named at the limit and the other front task named beside it", limitTask, limitLines, besideLines)
 		}
 	})
 
@@ -327,12 +390,12 @@ func TestFailedEnd(t *testing.T) {
 		dying := newFixFixture(t)
 		dying.releaseErr = errors.New("board locked")
 
-		refusedLines := failedEnd(refused.deps, failedRecord())
-		dyingLines := failedEnd(dying.deps, failedRecord())
-		if !mentions(refusedLines, "label unknown", "lym adopt alpha") || refused.tries() != 0 {
+		refusedLines := failedLines(refused.deps, failedRecord())
+		dyingLines := failedLines(dying.deps, failedRecord())
+		if !mentions(refusedLines, "label unknown", fixFixtureRerun) || refused.tries() != 0 {
 			t.Errorf("refused lines = %q, tries = %d; want the error and the re-run, and the count left at 0", refusedLines, refused.tries())
 		}
-		if !mentions(dyingLines, "board locked", "lym adopt alpha") || dying.tries() != 1 {
+		if !mentions(dyingLines, "board locked", fixFixtureRerun) || dying.tries() != 1 {
 			t.Errorf("dying lines = %q, tries = %d; want the error and the re-run, and the count 1", dyingLines, dying.tries())
 		}
 	})
@@ -349,15 +412,15 @@ func TestFailedEnd(t *testing.T) {
 		entry.tasks = []boardengine.Task{ownFix(&draft)}
 		entry.removeErr = errors.New("board locked")
 
-		cancelLines := failedEnd(cancel.deps, failedRecord())
-		entryLines := failedEnd(entry.deps, failedRecord())
+		cancelLines := failedLines(cancel.deps, failedRecord())
+		entryLines := failedLines(entry.deps, failedRecord())
 		if len(cancel.created) != 0 || len(entry.created) != 0 {
 			t.Errorf("created = %v and %v; want none", cancel.created, entry.created)
 		}
 		if !mentions(cancelLines, "driver alive", "`lym batten cancel adopt-fix-alpha-t1 --remove`") || mentions(cancelLines, "re-run lym adopt") {
 			t.Errorf("cancel lines = %q; want the hand cancel first and no re-run", cancelLines)
 		}
-		if !mentions(entryLines, "board locked", "`lym board remove '{\"slug\":\"adopt-fix-alpha-t1\"}'`", "re-run lym adopt alpha") {
+		if !mentions(entryLines, "board locked", "`lym board remove '{\"slug\":\"adopt-fix-alpha-t1\"}'`", "re-run "+fixFixtureRerun) {
 			t.Errorf("entry lines = %q; want the hand removal and the re-run", entryLines)
 		}
 	})
@@ -368,7 +431,7 @@ func TestFailedEnd(t *testing.T) {
 		f.runSlugs = []string{"adopt-fix-alpha-t3", "unrelated"}
 		f.branchSlugs = []string{"adopt-fix-alpha-t5"}
 
-		failedEnd(f.deps, failedRecord())
+		failedLines(f.deps, failedRecord())
 		if len(f.created) != 1 || f.created[0]["slug"] != "adopt-fix-alpha-t6" {
 			t.Errorf("created = %v; want adopt-fix-alpha-t6", f.created)
 		}
@@ -442,12 +505,12 @@ func TestFixBody(t *testing.T) {
 	logLines[20] = "a_test.go:12: got 1; want 2"
 	suiteLog := strings.Join(logLines, "\n")
 
-	body := fixBody("alpha", record, suiteLog)
+	body := fixBody("alpha", fixFixtureRerun, record, suiteLog)
 	for _, want := range []string{
 		"tier1",
 		"- example.com/a TestA: a_test.go:12: got 1; want 2",
 		"log line 18\nlog line 19\na_test.go:12: got 1; want 2",
-		"Stop condition: the failure is a machine failure. Write a stop report naming the exact steps the operator must take on this machine and, as its way forward, a re-run of lym adopt alpha once the machine is settled, never lym loom resume.",
+		"Stop condition: the failure is a machine failure. Write a stop report naming the exact steps the operator must take on this machine and, as its way forward, a re-run of " + fixFixtureRerun + " once the machine is settled, never lym loom resume.",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body = %q; want it to hold %q", body, want)
@@ -465,7 +528,7 @@ func TestFixBody(t *testing.T) {
 	for i := range maxListedFailures + 3 {
 		many.Tiers[0].Failures = append(many.Tiers[0].Failures, gateslot.TestFailure{Package: "example.com/p", Test: fmt.Sprintf("Test%d", i)})
 	}
-	if got := fixBody("alpha", many, ""); !strings.Contains(got, "and 3 more") || strings.Contains(got, fmt.Sprintf("Test%d", maxListedFailures)) {
+	if got := fixBody("alpha", fixFixtureRerun, many, ""); !strings.Contains(got, "and 3 more") || strings.Contains(got, fmt.Sprintf("Test%d", maxListedFailures)) {
 		t.Errorf("body = %q; want the failed tests capped at %d with the remainder counted", got, maxListedFailures)
 	}
 }

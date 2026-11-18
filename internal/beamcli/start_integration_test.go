@@ -73,6 +73,12 @@ func TestStart_RefusesBeforeTheReconcile(t *testing.T) {
 			want: []string{"exclusive", "drop the slug", "drop --all"},
 		},
 		{
+			name: "StopSlugWithAllNamesBothWaysForward",
+			cwd:  h.PrimeWorktree(),
+			args: []string{"stop", "b", "--all"},
+			want: []string{"lym beam stop: a slug and --all are exclusive; way forward: drop the slug to stop the whole hub on this machine, or drop --all to stop b alone"},
+		},
+		{
 			name: "OutsideAHubNamesWhereToRun",
 			cwd:  outside,
 			args: []string{"start"},

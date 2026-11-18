@@ -74,3 +74,6 @@ buttons:  # status-bar buttons in the groups task, beam and prime; an entry has 
     - label: refresh
       run: lym orch refresh
       confirm: Refresh the orch?
+    - label: stop
+      run: lym beam stop --all
+      confirm: Stop every orch, dobby, run and reed session of the hub on this machine?

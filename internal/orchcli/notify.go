@@ -18,6 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchroute"
 )
 
+// DobbyProgram is the program name a dobby signs its notices with, scoped to its beam's slug.
+const DobbyProgram = "DOBBY"
+
 // notifyPoster is the one creel call a notice makes: leaving a body as mail for a receiver, carrying tags.
 type notifyPoster interface {
 	PostTagged(receiver, body string, tags creelengine.PostTags) (int64, error)

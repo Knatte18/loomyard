@@ -43,9 +43,11 @@
 // `upsert` refuses a payload naming it as an unknown field.
 // `upsert` takes `front`, `on_land` and `discussed` only as the entry's stored values, since only lym writes them.
 // `get` carries the entry's `parent_beam` beside `task` in its envelope:
-// the slug of the beam above the entry, empty when the prime is its parent.
+// the slug of the beam above the entry, `root` (`boardengine.RootSubject`) when the prime is its parent.
 // `get` gives a project its effective owner as it gives a task's.
-// `list` carries `parent_beam` on each entry that has one.
+// `list` carries `parent_beam` on each entry the same way, and leaves it out when the parent cannot be resolved.
+// The prime becomes `root` only where the value is printed:
+// `boardengine.Board.ParentBeamOf` still answers the empty slug for the prime.
 //
 // A payload argument that is a bare handle, in either letter case, reads as `{"handle":…}`.
 // So `lym board get B4` works, and a verb that needs further keys refuses it as missing them.
@@ -62,8 +64,12 @@
 // `list` names the machine that owns the hub's prime beside its entries.
 // The envelope carries it as the `prime_owner` key, empty when none is recorded.
 // With `--text`, a `prime owner: <machine>` line, `none` when none is recorded, comes before the entry lines.
+// `list --text` without `--label` shows the root project, the prime, as a row from `boardengine.RootProjectBrief`:
+// handle `P0`, slug `root` and the title the board files give it, placed before the first project, note or done entry.
+// The JSON `tasks` array holds no root row.
 // `list` takes `--sort age` to list the oldest entries first and `--sort revised` the longest unrevised first.
 // An entry lacking the date comes last, and ties stay in README order.
+// The root row has no dates, so it comes last under `--sort`.
 //
 // `upsert` takes `--body-file <path>` to read `body` from a file, or from stdin when the path is `-`.
 // It is refused when the payload also carries `body`, and when the payload argument is itself `-`.

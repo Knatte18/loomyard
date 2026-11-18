@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/tendercli"
 )
 
-// errPushStopped marks a push the pre-push check stopped: the run is paused and the orch was noticed.
+// errPushStopped marks a push the pre-push check stopped: the run is paused or held, and the orch was noticed.
 var errPushStopped = errors.New("loomcli: the push was stopped before it ran")
 
 // prePushCheck is the check a loom run's commits and pushes pass first, its seams injected so a test drives it from stubs.
@@ -39,8 +39,6 @@ type prePushCheck struct {
 	parentNoticed func(key string) bool
 	// landed reports whether the run's parent already holds the run's work.
 	landed func() (bool, error)
-	// pauseOwned pauses the run under the owner caller.
-	pauseOwned func() error
 	// pause pauses the run with a plain pair entry.
 	pause func() error
 	// notify posts one line to the nearest live orch.
@@ -76,8 +74,7 @@ func newPrePushCheck(location *lymcwd.Location, runID string) prePushCheck {
 			}
 			return fabricengine.ParentHoldsTaskWork(prime, location, slug)
 		},
-		pauseOwned: func() error { return tendercli.PauseOwnedElsewhere(location, slug) },
-		pause:      func() error { return tendercli.PausePair(location, slug) },
+		pause: func() error { return tendercli.PausePair(location, slug) },
 		notify: func(line string) error {
 			_, err := orchcli.NotifyParent(location, loomProgram, line)
 			return err
@@ -116,13 +113,14 @@ func skipsCheck(opts fabricengine.SyncOptions, isPrime func() (bool, error), pau
 // when a read of whether the parent holds the run's work fails; and when the run's entry reads active.
 // An active entry whose own branches the reconcile moved posts one notice naming them.
 // One whose parent branch origin moved past this machine's tip posts another naming it, once per origin tip.
-// An entry another machine owns pauses the run under the owner;
+// An entry another machine owns stops the push and pauses nothing, since the dobby's catch-up hands the run over;
 // it names `lym adopt` with the verdict's subject, or the slug when it brought none.
 // An entry origin ended pauses the run unless its parent already holds the run's work, as after its own landing.
 // An entry a branch stops pauses the run and names the stopped branches with their state;
 // they are the run's own branches and its parent branch, or a branch every run shares when none did.
 // The notice then gives the way forward and `lym tender resume`.
 // Every stop posts one notice, which names a failed pause.
+// An owned-elsewhere stop posts its notice as stopped, not paused.
 func (c prePushCheck) guard() error {
 	skip, err := c.skip()
 	if err != nil {
@@ -155,12 +153,12 @@ func (c prePushCheck) guard() error {
 		return nil
 	}
 
-	pause := c.pause
 	if owned {
-		pause = c.pauseOwned
+		c.post(fmt.Sprintf("%s: stopped before its push: %s", c.slug, reason))
+		return fmt.Errorf("%w: %s", errPushStopped, reason)
 	}
 	line := fmt.Sprintf("%s: paused before its push: %s", c.slug, reason)
-	if err := pause(); err != nil {
+	if err := c.pause(); err != nil {
 		line += fmt.Sprintf("; the pause failed (%v), so the run's next push stops again", err)
 	}
 	c.post(line)
@@ -177,18 +175,6 @@ func (c prePushCheck) guardedCommit(commit func(msg string) (bool, error)) func(
 			return false, err
 		}
 		return commit(msg)
-	}
-}
-
-// guardedSpawn returns spawn behind the check.
-// A push the check stops is not started; it returns nil and leaves its commits local.
-func (c prePushCheck) guardedSpawn(spawn func() error) func() error {
-	return func() error {
-		if err := c.guard(); err != nil {
-			logger.Info("loomcli: the status push was stopped; its commits stay local", "error", err)
-			return nil
-		}
-		return spawn()
 	}
 }
 

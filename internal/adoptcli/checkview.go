@@ -94,8 +94,8 @@ func checkView(record CheckRecord, alive bool, dir string) CheckView {
 		view.Running = nil
 		view.Lines = []string{
 			fmt.Sprintf("%s %s; %s", opening, checkEndedWithoutVerdict, doneText),
-			fmt.Sprintf("  see %s and %s, or re-run lym adopt %s", view.SuiteLog, view.CheckOut, record.Subject),
-			"  the record clears at the next lym adopt with an owner write, which starts a fresh check",
+			fmt.Sprintf("  see %s and %s, or re-run the adopt that lym beam status shows under the adopt hold", view.SuiteLog, view.CheckOut),
+			"  the record clears when that adopt starts a fresh check",
 		}
 	case record.State == checkRunning:
 		inFlight := "between tiers"

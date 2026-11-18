@@ -182,6 +182,13 @@ const rootTitle = "Board"
 // Its empty slug names the root wherever a project is looked up, and it has no board entry, so no design file.
 var rootProject = Task{Handle: projectHandleLetter + "0", Title: "Root: entries under no project"}
 
+// RootProjectBrief returns the root project as one listing row.
+// The row has handle P0, slug RootSubject and the title the board files give the root.
+// The root is no board entry, so the row carries no labels, dates or owner.
+func RootProjectBrief() BriefTask {
+	return BriefTask{Handle: rootProject.Handle, Slug: RootSubject, Title: rootProject.Title, Kind: KindProject, Layer: projectLayer}
+}
+
 // rootProjectFile is the name of the root project's own board file.
 var rootProjectFile = projectFileName(RootSubject)
 

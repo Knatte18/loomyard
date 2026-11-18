@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -193,7 +194,7 @@ func TestPawlRecheckLines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := pawlRecheckLines("b", !tt.unflagged, tt.blockers, tt.refusal, "here", tt.beamOwner, tt.parentOwner, tt.parentSubject)
+			got := pawlRecheckLines("b", !tt.unflagged, tt.blockers, tt.refusal, nil, machinename.Identity{Name: "here"}, tt.beamOwner, tt.parentOwner, tt.parentSubject)
 			if strings.Join(got, "\n") != strings.Join(tt.want, "\n") {
 				t.Errorf("pawlRecheckLines() = %q; want %q", got, tt.want)
 			}

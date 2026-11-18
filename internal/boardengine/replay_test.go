@@ -142,6 +142,42 @@ func boardJSONWithDraft(t *testing.T, tasks []Task, prime string, draft bool) []
 	return data
 }
 
+// boardJSONWithHolds encodes tasks as boardJSONWithDraft does, plus the top-level holds and machines keys.
+// Each key is absent when empty.
+func boardJSONWithHolds(t *testing.T, tasks []Task, prime string, draft bool, holds []Hold, machines Registry) []byte {
+	t.Helper()
+	numbered := make([]Task, len(tasks))
+	for i, task := range tasks {
+		task.ID = i
+		numbered[i] = task
+	}
+	data, err := json.Marshal(struct {
+		Version     int      `json:"version"`
+		Entries     []Task   `json:"entries"`
+		PrimeOwner  string   `json:"prime_owner,omitempty"`
+		DraftStatus bool     `json:"draft_status,omitempty"`
+		Machines    Registry `json:"machines,omitempty"`
+		Holds       []Hold   `json:"holds,omitempty"`
+	}{1, numbered, prime, draft, machines, holds})
+	if err != nil {
+		t.Fatalf("marshal board.json: %v", err)
+	}
+	return data
+}
+
+// recordJSON encodes a holds list or a registry for comparison, empty when it holds none.
+func recordJSON(t *testing.T, record any, empty bool) string {
+	t.Helper()
+	if empty {
+		return ""
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("marshal record: %v", err)
+	}
+	return string(data)
+}
+
 // hubWithBoardConfig returns a temp hub whose board directory holds the board config template.
 func hubWithBoardConfig(t *testing.T) string {
 	t.Helper()
@@ -172,7 +208,12 @@ type replayRow struct {
 	// commitDraft reports whether the commit's board.json records draft_status; wantDraft whether the board keeps it.
 	commitDraft, wantDraft bool
 	wantEmpty              bool
-	wantLost               []fabricengine.ReplayFinding
+	// originHolds, baseHolds, parentHolds and commitHolds are each side's holds, nil leaving the key absent.
+	// wantHolds is held afterwards.
+	originHolds, baseHolds, parentHolds, commitHolds, wantHolds []Hold
+	// originMachines, baseMachines, parentMachines and commitMachines are each side's registry, nil leaving the key absent.
+	originMachines, baseMachines, parentMachines, commitMachines, wantMachines Registry
+	wantLost                                                                   []fabricengine.ReplayFinding
 	// wantRefused maps an entry to a substring of its refusal reason.
 	wantRefused map[string]string
 	// wantEntries maps a slug to the title the board holds afterwards, "" meaning the entry is absent.
@@ -197,7 +238,137 @@ func TestFabricReplay(t *testing.T) {
 		{Path: storeJSONPath, After: []byte(storeJSON)},
 		{Path: storeProposalPath, After: []byte("proposal")},
 	}
+	holdAt := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+	adoptHold := func(machine string, subjects ...string) Hold {
+		hold := Hold{Kind: HoldKindAdopt, Machine: machine, At: holdAt}
+		for _, subject := range subjects {
+			hold.Subjects = append(hold.Subjects, HoldSubject{Subject: subject})
+		}
+		return hold
+	}
+	oneEntry := []Task{replayEntry("a")}
+	beamEntry := []Task{replayEntry("a", asProject, asBeam)}
 	rows := []replayRow{
+		{
+			name:        "AHoldTheCommitAddedLandsOnOrigin",
+			base:        oneEntry,
+			origin:      oneEntry,
+			parent:      oneEntry,
+			commit:      oneEntry,
+			commitHolds: []Hold{adoptHold("neve", "beam")},
+			wantHolds:   []Hold{adoptHold("neve", "beam")},
+			wantEntries: map[string]string{"a": "a"},
+		},
+		{
+			name:        "AHoldRemovedByTheCommitLeavesOrigin",
+			base:        oneEntry,
+			origin:      oneEntry,
+			parent:      oneEntry,
+			commit:      oneEntry,
+			baseHolds:   []Hold{adoptHold("neve", "beam")},
+			parentHolds: []Hold{adoptHold("neve", "beam")},
+			originHolds: []Hold{adoptHold("neve", "beam")},
+			wantEntries: map[string]string{"a": "a"},
+		},
+		{
+			name:        "AHoldTheCommitRewroteToThisMachineReplacesOriginsCopy",
+			base:        oneEntry,
+			origin:      oneEntry,
+			parent:      oneEntry,
+			commit:      oneEntry,
+			baseHolds:   []Hold{adoptHold("box", "beam")},
+			parentHolds: []Hold{adoptHold("box", "beam")},
+			originHolds: []Hold{adoptHold("box", "beam")},
+			commitHolds: []Hold{adoptHold("neve", "beam")},
+			wantHolds:   []Hold{adoptHold("neve", "beam")},
+			wantEntries: map[string]string{"a": "a"},
+		},
+		{
+			name:        "AParentHoldOriginNoLongerHoldsIsLost",
+			base:        oneEntry,
+			origin:      oneEntry,
+			parent:      oneEntry,
+			commit:      oneEntry,
+			baseHolds:   []Hold{adoptHold("neve", "beam")},
+			parentHolds: []Hold{adoptHold("neve", "beam")},
+			wantEmpty:   true,
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "holds", Field: "hold", Reason: "origin no longer holds the hold this commit changes"}},
+			wantEntries: map[string]string{"a": "a"},
+		},
+		{
+			name:           "AnAdoptCommitMeetingAnotherMachinesNewHoldIsRefusedWhole",
+			base:           beamEntry,
+			origin:         beamEntry,
+			parent:         beamEntry,
+			commit:         []Task{replayEntry("a", asProject, asBeam, withOwner("neve"))},
+			basePrime:      "base",
+			originPrime:    "base",
+			parentPrime:    "base",
+			commitPrime:    "neve",
+			wantPrime:      "base",
+			originHolds:    []Hold{adoptHold("box", "beam")},
+			commitHolds:    []Hold{adoptHold("neve", "beam")},
+			originMachines: Registry{"id-box": {Name: "box"}},
+			commitMachines: Registry{"id-neve": {Name: "neve"}},
+			wantHolds:      []Hold{adoptHold("box", "beam")},
+			wantMachines:   Registry{"id-box": {Name: "box"}},
+			wantEmpty:      true,
+			wantRefused:    map[string]string{"holds": `machine "box" written at 2026-11-16T10:00:00Z`},
+			wantEntries:    map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if got["a"].OwnerMachine != "" {
+					t.Errorf("owner_machine = %q; want it unchanged, since the commit is refused whole", got["a"].OwnerMachine)
+				}
+			},
+		},
+		{
+			name:        "ACommitTouchingNoHoldReplaysOverAHoldOriginGained",
+			base:        []Task{replayEntry("a", withTitle("A"))},
+			origin:      []Task{replayEntry("a", withTitle("A"))},
+			parent:      []Task{replayEntry("a", withTitle("A"))},
+			commit:      []Task{replayEntry("a", withTitle("A2"))},
+			originHolds: []Hold{adoptHold("box", "beam")},
+			wantHolds:   []Hold{adoptHold("box", "beam")},
+			wantEntries: map[string]string{"a": "A2"},
+		},
+		{
+			name:           "AHoldOfTheSameMachineUnderAFormerNameIsNotAnotherMachines",
+			base:           oneEntry,
+			origin:         oneEntry,
+			parent:         oneEntry,
+			commit:         oneEntry,
+			originMachines: Registry{"m1": {Name: "neve", Former: []string{"neve-old"}}},
+			originHolds:    []Hold{adoptHold("neve-old", "beam")},
+			commitHolds:    []Hold{adoptHold("neve", "root")},
+			wantMachines:   Registry{"m1": {Name: "neve", Former: []string{"neve-old"}}},
+			wantHolds:      []Hold{adoptHold("neve-old", "beam"), adoptHold("neve", "root")},
+			wantEntries:    map[string]string{"a": "a"},
+		},
+		{
+			name:           "ARegistryEntryTheCommitAddedLands",
+			base:           oneEntry,
+			origin:         oneEntry,
+			parent:         oneEntry,
+			commit:         oneEntry,
+			commitMachines: Registry{"m1": {Name: "neve"}},
+			wantMachines:   Registry{"m1": {Name: "neve"}},
+			wantEntries:    map[string]string{"a": "a"},
+		},
+		{
+			name:           "ARegistryEntryOriginChangedSinceTheBaseIsLost",
+			base:           oneEntry,
+			origin:         oneEntry,
+			parent:         oneEntry,
+			commit:         oneEntry,
+			baseMachines:   Registry{"m1": {Name: "neve"}},
+			parentMachines: Registry{"m1": {Name: "neve"}},
+			originMachines: Registry{"m1": {Name: "neve", Former: []string{"x"}}},
+			commitMachines: Registry{"m1": {Name: "neve", Former: []string{"y"}}},
+			wantMachines:   Registry{"m1": {Name: "neve", Former: []string{"x"}}},
+			wantEmpty:      true,
+			wantLost:       []fabricengine.ReplayFinding{{Entry: "machines", Field: "m1", Reason: "origin changed the machine's entry since the merge base"}},
+			wantEntries:    map[string]string{"a": "a"},
+		},
 		{
 			name:        "DifferentEntriesChangedOnTheTwoSidesBothLand",
 			base:        []Task{replayEntry("a", withTitle("A")), replayEntry("b", withTitle("B"))},
@@ -731,7 +902,7 @@ func TestFabricReplay(t *testing.T) {
 					t.Fatalf("WriteFile(%q) = %v; want nil", configFile, err)
 				}
 			}
-			if err := os.WriteFile(filepath.Join(dir, "board.json"), boardJSONWithPrime(t, tt.origin, tt.originPrime), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "board.json"), boardJSONWithHolds(t, tt.origin, tt.originPrime, false, tt.originHolds, tt.originMachines), 0o644); err != nil {
 				t.Fatalf("WriteFile(board.json) = %v; want nil", err)
 			}
 			for name, content := range tt.originFiles {
@@ -742,9 +913,9 @@ func TestFabricReplay(t *testing.T) {
 
 			boardFileSides := fabricengine.ReplayFile{
 				Path:   boardFile,
-				Base:   boardJSONWithPrime(t, tt.base, tt.basePrime),
-				Before: boardJSONWithPrime(t, tt.parent, tt.parentPrime),
-				After:  boardJSONWithDraft(t, tt.commit, tt.commitPrime, tt.commitDraft),
+				Base:   boardJSONWithHolds(t, tt.base, tt.basePrime, false, tt.baseHolds, tt.baseMachines),
+				Before: boardJSONWithHolds(t, tt.parent, tt.parentPrime, false, tt.parentHolds, tt.parentMachines),
+				After:  boardJSONWithHolds(t, tt.commit, tt.commitPrime, tt.commitDraft, tt.commitHolds, tt.commitMachines),
 			}
 			result, err := FabricReplay{}.Apply(fabricengine.ReplayRequest{
 				Dir:   dir,
@@ -803,6 +974,12 @@ func TestFabricReplay(t *testing.T) {
 			}
 			if stored.draftStatus != tt.wantDraft {
 				t.Errorf("draft_status = %v; want %v", stored.draftStatus, tt.wantDraft)
+			}
+			if got, want := recordJSON(t, stored.holds, len(stored.holds) == 0), recordJSON(t, tt.wantHolds, len(tt.wantHolds) == 0); got != want {
+				t.Errorf("holds = %s; want %s", got, want)
+			}
+			if got, want := recordJSON(t, stored.machines, len(stored.machines) == 0), recordJSON(t, tt.wantMachines, len(tt.wantMachines) == 0); got != want {
+				t.Errorf("machines = %s; want %s", got, want)
 			}
 			if !tt.wantEmpty {
 				readme, err := os.ReadFile(filepath.Join(dir, "README.md"))

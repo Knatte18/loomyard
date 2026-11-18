@@ -55,8 +55,14 @@ type BriefTask struct {
 	HasProposal bool      `json:"has_proposal"`
 	// OwnerMachine is the effective owner, recorded or read through the parent; empty for a note or when unresolved.
 	OwnerMachine string `json:"owner_machine,omitempty"`
-	// ParentBeam is the slug of the beam the entry belongs to; empty for the prime or when the beam cannot be resolved.
+	// ParentBeam is the slug of the beam the entry belongs to, RootSubject for the prime;
+	// empty when the beam cannot be resolved.
 	ParentBeam string `json:"parent_beam,omitempty"`
+}
+
+// IsDone reports whether the entry is done, the state that sorts it after every open entry.
+func (t BriefTask) IsDone() bool {
+	return t.Layer == doneLayer
 }
 
 const (
@@ -71,6 +77,7 @@ const (
 // LegacyDone lists the slugs whose done mark came from a legacy file, so the fold never re-applies one.
 // PrimeOwner names the machine that owns the hub's prime, empty when none is recorded.
 // DraftStatus is true once the board's open tasks with no status were marked draft.
+// Machines is the machine registry and Holds the adopt holds, each omitted while empty.
 // Unknown holds the top-level keys this binary does not know, written back after the known ones in key order.
 type storeFile struct {
 	Version     int                        `json:"version"`
@@ -78,6 +85,8 @@ type storeFile struct {
 	LegacyDone  []string                   `json:"legacy_done,omitempty"`
 	PrimeOwner  string                     `json:"prime_owner,omitempty"`
 	DraftStatus bool                       `json:"draft_status,omitempty"`
+	Machines    Registry                   `json:"machines,omitempty"`
+	Holds       []Hold                     `json:"holds,omitempty"`
 	Unknown     map[string]json.RawMessage `json:"-"`
 }
 
@@ -99,6 +108,8 @@ type loadedStoreFile struct {
 	LegacyDone  []string                   `json:"legacy_done,omitempty"`
 	PrimeOwner  string                     `json:"prime_owner,omitempty"`
 	DraftStatus bool                       `json:"draft_status,omitempty"`
+	Machines    Registry                   `json:"machines,omitempty"`
+	Holds       []Hold                     `json:"holds,omitempty"`
 	Unknown     map[string]json.RawMessage `json:"-"`
 }
 
@@ -113,6 +124,8 @@ func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 		LegacyDone  []string       `json:"legacy_done,omitempty"`
 		PrimeOwner  string         `json:"prime_owner,omitempty"`
 		DraftStatus bool           `json:"draft_status,omitempty"`
+		Machines    Registry       `json:"machines,omitempty"`
+		Holds       []Hold         `json:"holds,omitempty"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
@@ -131,7 +144,7 @@ func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 	eachElement(rawEntries, func(raw []byte) {
 		entries = append(entries, storedEntryFrom(decoded.Entries[len(entries)], raw))
 	})
-	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, LegacyDone: decoded.LegacyDone, PrimeOwner: decoded.PrimeOwner, DraftStatus: decoded.DraftStatus}
+	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, LegacyDone: decoded.LegacyDone, PrimeOwner: decoded.PrimeOwner, DraftStatus: decoded.DraftStatus, Machines: decoded.Machines, Holds: decoded.Holds}
 	if len(unknown) > 0 {
 		f.Unknown = unknown
 	}
@@ -149,6 +162,10 @@ type Store struct {
 	primeOwner string
 	// draftStatus is the board.json draft_status record: true once the open tasks with no status were marked draft.
 	draftStatus bool
+	// machines is the board.json machine registry, kept and written back unchanged; nil when none is recorded.
+	machines Registry
+	// holds is the board.json adopt holds, kept and written back unchanged.
+	holds []Hold
 	// unknown is the top-level keys of board.json this binary does not know, kept raw and written back by Save.
 	unknown  map[string]json.RawMessage
 	boardDir string
@@ -183,6 +200,8 @@ func (s *Store) Load() error {
 	s.legacyDone = nil
 	s.primeOwner = ""
 	s.draftStatus = false
+	s.machines = nil
+	s.holds = nil
 	s.unknown = nil
 	if s.boardDir == "" {
 		return nil
@@ -203,6 +222,8 @@ func (s *Store) Load() error {
 	var unknown map[string]json.RawMessage
 	var primeOwner string
 	var draftStatus bool
+	var machines Registry
+	var holds []Hold
 	if fileExists(path) {
 		// The raw bytes are read under the shared lock and decoded after it is released,
 		// so the decode never holds off a writer waiting for the exclusive lock.
@@ -220,6 +241,7 @@ func (s *Store) Load() error {
 			}
 			entries, legacyDone, unknown = migrateEntries(file.Entries, s.vocab), file.LegacyDone, file.Unknown
 			primeOwner, draftStatus = file.PrimeOwner, file.DraftStatus
+			machines, holds = file.Machines, file.Holds
 		}
 	} else if haveTasks || haveNotes {
 		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords, s.vocab)
@@ -251,6 +273,8 @@ func (s *Store) Load() error {
 	s.legacyDone = legacyDone
 	s.primeOwner = primeOwner
 	s.draftStatus = draftStatus
+	s.machines = machines
+	s.holds = holds
 	s.unknown = unknown
 	return nil
 }
@@ -306,6 +330,8 @@ func (s *Store) Save() error {
 		LegacyDone:  s.legacyDone,
 		PrimeOwner:  s.primeOwner,
 		DraftStatus: s.draftStatus,
+		Machines:    s.machines,
+		Holds:       s.holds,
 		Unknown:     s.unknown,
 	})
 }
@@ -744,14 +770,18 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 			// A resolver error leaves the cell empty: a list never fails on a parent it cannot read.
 			owner, _ = owners.Effective(t.Slug, parentOf)
 		}
+		// The listing prints the prime as RootSubject, since an empty value reads as no beam.
 		// A resolver error leaves the cell empty, as for the owner.
 		parentBeam := ParentBeam(s.tasks, t.Slug)
+		var parentErr error
 		if s.parentOf != nil {
-			resolved, err := s.parentOf(t.Slug)
-			parentBeam = resolved
-			if err != nil {
-				parentBeam = ""
-			}
+			parentBeam, parentErr = s.parentOf(t.Slug)
+		}
+		switch {
+		case parentErr != nil:
+			parentBeam = ""
+		case parentBeam == "":
+			parentBeam = RootSubject
 		}
 		brief := BriefTask{
 			ID:           t.ID,

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -84,7 +85,7 @@ func prOpen(ctx context.Context, deps landDeps, slug string) (map[string]any, er
 
 	head, err := deps.PushBeam(slug)
 	if err != nil {
-		return nil, rerunRefusal(verb, slug, "push the beam branch", err)
+		return nil, pushRefusal(verb, slug, err)
 	}
 	ref, open, err := side.API.FindOpen(ctx, side.Branch, side.ParentBranch)
 	if err != nil {
@@ -178,7 +179,7 @@ func prUpdate(ctx context.Context, deps landDeps, slug string) (map[string]any, 
 
 	head, err := deps.PushBeam(slug)
 	if err != nil {
-		return nil, rerunRefusal(verb, slug, "push the beam branch", err)
+		return nil, pushRefusal(verb, slug, err)
 	}
 	title, body, err := deps.Description(slug)
 	if err != nil {
@@ -285,6 +286,16 @@ func markReadyForReview(ctx context.Context, side beamPullRequestSide, number in
 // The message names the step and its cause, then the way forward: fix the cause and run the same verb for slug again.
 func rerunRefusal(verb, slug, step string, err error) error {
 	return fmt.Errorf("%s: %s: %w; way forward: fix the cause it names, then run `%s %s` again", verb, step, err, verb, slug)
+}
+
+// pushRefusal words the refusal of a failed beam push.
+// A push that handed the run over to another machine is returned as it is:
+// its error names the new owner, and a re-run on this machine would only hand over again.
+func pushRefusal(verb, slug string, err error) error {
+	if errors.Is(err, fabricengine.ErrHandedOver) {
+		return err
+	}
+	return rerunRefusal(verb, slug, "push the beam branch", err)
 }
 
 // pullRequestFollowUp names the next steps once the pull request stands.

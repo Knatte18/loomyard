@@ -36,6 +36,9 @@ import (
 // orchStrandName is the role the orchestrator strand is added and addressed by in the prime's reed session.
 const orchStrandName = agentname.RoleOrch
 
+// dobbyStartProgram is the program name a notice about a dobby start signs with.
+const dobbyStartProgram = "DOBBY"
+
 // Report "action" values.
 const (
 	actionAlreadyRunning = "already-running"
@@ -49,8 +52,10 @@ const stoppingWatcherHint = `the watcher is stopping; run "lym beam start" again
 // BeamUpOptions tunes one BeamUp.
 type BeamUpOptions struct {
 	// Prepare runs, before the beam steps, the hub-scope origin reconcile, the failed-push read, and the prime claim.
-	// It also runs the owner pauses; a caller that already judged origin leaves it false.
+	// It also ends the processes of each run another machine owns; a caller that already judged origin leaves it false.
 	Prepare bool
+	// NoPrimeClaim leaves the prime claim out of Prepare, for a caller that must claim no prime.
+	NoPrimeClaim bool
 	// Here names this machine for the owner refusal; empty reads machinename.Name.
 	Here string
 	// SkipOrch brings the beam up without its orch:
@@ -84,6 +89,7 @@ type BeamUpReport struct {
 	Hint            string `json:"hint,omitempty"`
 	WatcherStopping bool   `json:"watcher_stopping,omitempty"`
 	// Reconcile, FailedPushes and OwnerPauses are what Prepare gathered.
+	// OwnerPauses names each owned run whose processes it ended.
 	Reconcile    fabricengine.OriginReport `json:"reconcile"`
 	FailedPushes []map[string]any          `json:"failed_pushes"`
 	OwnerPauses  []map[string]string       `json:"owner_pauses"`
@@ -415,27 +421,38 @@ func (c *orchCLI) claimPrimeNotes() []string {
 	return nil
 }
 
-// pauseOwnedRuns pauses the pair of each owned_elsewhere entry of report.
-// It returns the paused slugs with their owners, and a warning line per entry that could not be paused.
-// An unwired pause names every such entry in a warning, since nothing holds it.
+// pauseOwnedRuns ends the processes of each owned_elsewhere entry of report, its dobby too when the entry is a beam.
+// It returns the slugs it ended with their owners, and a warning line per entry whose processes could not be ended.
+// An unwired end names every such entry in a warning, since nothing ended it.
+// A failed read of whether an entry is a beam ends nothing for that entry,
+// so a beam's dobby is never left running by a guess.
 func (c *orchCLI) pauseOwnedRuns(report fabricengine.OriginReport) ([]map[string]string, []string) {
-	paused := []map[string]string{}
+	ended := []map[string]string{}
 	var warnings []string
 	for _, entry := range report.Entries {
 		if entry.State != fabricengine.EntryOwnedElsewhere {
 			continue
 		}
-		if c.pauseOwned == nil {
-			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and was not paused; re-run `lym beam start`, which pauses it again", entry.Slug, entry.Owner))
+		if c.endOwned == nil {
+			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and was not ended; re-run `lym beam start`, which ends it again", entry.Slug, entry.Owner))
 			continue
 		}
-		if err := c.pauseOwned(c.location, entry.Slug); err != nil {
-			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be paused (%v); re-run `lym beam start`, which pauses it again", entry.Slug, entry.Owner, err))
+		endDobby := false
+		if c.isBeam != nil {
+			beam, err := c.isBeam(entry.Slug)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be ended (%v); re-run `lym beam start`, which ends it again", entry.Slug, entry.Owner, err))
+				continue
+			}
+			endDobby = beam
+		}
+		if err := c.endOwned(c.location, entry.Slug, endDobby); err != nil {
+			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be ended (%v); re-run `lym beam start`, which ends it again", entry.Slug, entry.Owner, err))
 			continue
 		}
-		paused = append(paused, map[string]string{"slug": entry.Slug, "owner": entry.Owner})
+		ended = append(ended, map[string]string{"slug": entry.Slug, "owner": entry.Owner})
 	}
-	return paused, warnings
+	return ended, warnings
 }
 
 // reconcileNote renders the note a fresh launch's prompt gains.
@@ -456,10 +473,11 @@ func reconcileNote(report fabricengine.OriginReport, failedPushes []map[string]a
 	return strings.Join(parts, "\n")
 }
 
-// prepare records on report the origin reconcile, the failed-push read, the prime claim and the owner pauses.
+// prepare records on report the origin reconcile, the failed-push read, the prime claim and the ends of owned runs.
+// The prime is claimed only when claimPrime is set.
 // The reconcile never refuses the start: the orch is the session that resolves what it reports.
 // It returns the note a fresh launch's prompt gains.
-func (c *orchCLI) prepare(report *BeamUpReport) string {
+func (c *orchCLI) prepare(report *BeamUpReport, claimPrime bool) string {
 	reconciled, reconcileErr := c.reconcile()
 	report.Reconcile = reconciled
 	report.Mutations = reconciled.Mutations.Entries()
@@ -479,10 +497,12 @@ func (c *orchCLI) prepare(report *BeamUpReport) string {
 	}
 	report.FailedPushes = failedPushes
 
-	report.Warnings = append(report.Warnings, c.claimPrimeNotes()...)
-	paused, pauseWarnings := c.pauseOwnedRuns(reconciled)
-	report.OwnerPauses = paused
-	report.Warnings = append(report.Warnings, pauseWarnings...)
+	if claimPrime {
+		report.Warnings = append(report.Warnings, c.claimPrimeNotes()...)
+	}
+	ended, endWarnings := c.pauseOwnedRuns(reconciled)
+	report.OwnerPauses = ended
+	report.Warnings = append(report.Warnings, endWarnings...)
 	return reconcileNote(reconciled, failedPushes)
 }
 
@@ -508,7 +528,7 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 
 	note := ""
 	if opts.Prepare {
-		note = c.prepare(&report)
+		note = c.prepare(&report, !opts.NoPrimeClaim)
 	}
 
 	ownLandingOf := ""
@@ -521,8 +541,8 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 		if opts.Here != "" {
 			here = opts.Here
 		}
-		if err := beamUpRefusal(facts.slug, here, facts.owner, facts.moveWayForward, facts.held, facts.ownLanding, facts.status); err != nil {
-			return report, archiveBeforeOwnerRefusal(err, facts.owner, here, opts.ArchiveOwned)
+		if err := beamUpRefusal(facts.slug, here, facts.owner, facts.elsewhere, facts.moveWayForward, facts.held, facts.ownLanding, facts.status); err != nil {
+			return report, archiveBeforeOwnerRefusal(err, facts.owner, facts.elsewhere, opts.ArchiveOwned)
 		}
 		if facts.held && facts.ownLanding {
 			ownLandingOf = facts.slug
@@ -555,10 +575,11 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 	return report, err
 }
 
-// archiveBeforeOwnerRefusal runs archive before refusal stands when owner is a machine other than here.
+// archiveBeforeOwnerRefusal runs archive before refusal stands when elsewhere is set.
+// elsewhere says the registry reads owner as a machine other than this one.
 // A failed archive joins the refusal with its retry; any other refusal, or a nil archive, returns refusal as it is.
-func archiveBeforeOwnerRefusal(refusal error, owner, here string, archive func() error) error {
-	if archive == nil || !boardengine.OwnedElsewhere(owner, here) {
+func archiveBeforeOwnerRefusal(refusal error, owner string, elsewhere bool, archive func() error) error {
+	if archive == nil || !elsewhere {
 		return refusal
 	}
 	if err := archive(); err != nil {
@@ -583,6 +604,23 @@ func (c *orchCLI) startDobbyStep(report *BeamUpReport) {
 		return
 	}
 	report.Warnings = append(report.Warnings, fmt.Sprintf("the dobby was not started (%s); way forward: fix the cause it names, then run `lym beam start`", cause))
+	if entry.Outcome == dobbyengine.OutcomeRefused {
+		postMachineRefusal(c.location, report, entry.Detail)
+	}
+}
+
+// postMachineRefusal posts the refusal of a dobby start whose machine identity does not resolve to the prime's orch.
+// detail is the refused entry's detail.
+// Only the refusal `boardengine.IdentityRefusal` reads is posted, once per bring-up.
+// A post that fails adds a warning to report, and the bring-up goes on.
+func postMachineRefusal(location *lymcwd.Location, report *BeamUpReport, detail string) {
+	refusal := boardengine.IdentityRefusal()
+	if refusal == nil || detail != refusal.Error() {
+		return
+	}
+	if _, err := NotifyPrime(location, dobbyStartProgram, refusal.Error()); err != nil {
+		report.Warnings = append(report.Warnings, fmt.Sprintf("the machine refusal was not posted to the prime's orch (%v); way forward: read it in this warning and in `lym beam status`", err))
+	}
 }
 
 // startRelayStep starts the hub's Slack relay when it is down, and records on report only a failure.

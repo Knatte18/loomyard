@@ -59,7 +59,7 @@ func archiveOwnerTips(prime *lymcwd.Location, worktree string) error {
 // ownerArchiveBeforeRefusal returns the archive `lym beam start` runs for target.
 // The verb runs it before refusing target for another machine's ownership.
 // The archive covers this machine's unpushed tips under the worktree.
-// It archives nothing while an adopt in flight here covers the worktree.
+// It archives nothing while a hold this machine wrote in Bolt covers the worktree's subject.
 func ownerArchiveBeforeRefusal(target beamTarget) func() error {
 	return func() error {
 		root, err := resolveBeamTarget(target.Location, rootSlug)
@@ -72,7 +72,7 @@ func ownerArchiveBeforeRefusal(target beamTarget) func() error {
 		if worktree == prime.WorktreeName {
 			slug = ""
 		}
-		if orchcli.UnderAdoptWatch(prime).Covers(slug) {
+		if orchcli.UnderOwnHold(prime)(slug) {
 			return nil
 		}
 		return archiveOwnerTips(prime, worktree)

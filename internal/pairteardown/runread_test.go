@@ -12,7 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -33,14 +35,20 @@ type runFakes struct {
 	childHere, childOrigin           shedengine.Status
 	childHereFound, childOriginFound bool
 
-	owner, adoptSubject string
-	elsewhere           bool
-	pauseCovers         bool
+	owners      boardengine.Owners
+	identity    machinename.Identity
+	parents     map[string]string
+	pauseCovers bool
 
 	skipPush          bool
 	originParentHolds bool
 	localParentHolds  bool
 	restepped         bool
+
+	owedPush    []fabricengine.FailedPush
+	codeTip     fabricengine.CodeTipReading
+	owedPushErr error
+	codeTipErr  error
 
 	boardErr error
 
@@ -67,8 +75,12 @@ func (f *runFakes) reader() runReader {
 			f.calls = append(f.calls, "child-origin")
 			return f.childOrigin, f.childOriginFound, nil
 		},
-		owner:       func(string) (string, string, bool, error) { return f.owner, f.adoptSubject, f.elsewhere, nil },
+		owners:      func() (boardengine.Owners, error) { return f.owners, nil },
+		identity:    func() (machinename.Identity, error) { return f.identity, nil },
+		parentOf:    func(slug string) (string, error) { return f.parents[slug], nil },
 		pauseCovers: func(string) (bool, error) { return f.pauseCovers, nil },
+		owedPush:    func(string) ([]fabricengine.FailedPush, error) { return f.owedPush, f.owedPushErr },
+		codeTip:     func(string) (fabricengine.CodeTipReading, error) { return f.codeTip, f.codeTipErr },
 		skipPush:    f.skipPush,
 		originParentHolds: func(string) (bool, error) {
 			f.calls = append(f.calls, "parent-origin")
@@ -94,6 +106,13 @@ func TestReadRun(t *testing.T) {
 	t.Parallel()
 
 	empty, done := "", boardengine.StatusDone
+	// beamOwnedBy holds the run's entry as a beam recorded under owner, over a registry that knows the machine oslo.
+	beamOwnedBy := func(owner string) boardengine.Owners {
+		return boardengine.Owners{
+			Entries:  map[string]boardengine.OwnerEntry{"slug": {IsProject: true, Beam: true, Owner: owner}},
+			Registry: boardengine.Registry{"id-oslo": {Name: "oslo", Former: []string{"bergen"}}},
+		}
+	}
 	tests := []struct {
 		name      string
 		fakes     runFakes
@@ -238,14 +257,91 @@ func TestReadRun(t *testing.T) {
 		},
 		{
 			name:      "OwnerAndPauseCoverageAreCarriedThrough",
-			fakes:     runFakes{owner: "other", adoptSubject: "beam", elsewhere: true, pauseCovers: true},
-			wantIn:    runfsm.Inputs{Owner: "other", AdoptSubject: "beam", OwnedElsewhere: true, PauseCovers: true},
+			fakes:     runFakes{owners: beamOwnedBy("other"), identity: machinename.Identity{Name: "here"}, pauseCovers: true},
+			wantIn:    runfsm.Inputs{Owner: "other", AdoptSubject: "slug", OwnedElsewhere: true, PauseCovers: true},
+			wantCalls: []string{"child-origin"},
+		},
+		{
+			name: "AnOwnerRecordedUnderAFormerNameOfThisMachineReadsOwnedHere",
+			fakes: runFakes{
+				owners:   beamOwnedBy("bergen"),
+				identity: machinename.Identity{ID: "id-oslo", Name: "oslo", Former: []string{"bergen"}},
+			},
+			wantIn:    runfsm.Inputs{Owner: "bergen", AdoptSubject: "slug"},
+			wantCalls: []string{"child-origin"},
+		},
+		{
+			name:      "TheSameOwnerReadByAnotherMachineReadsOwnedElsewhereNamingThatOwner",
+			fakes:     runFakes{owners: beamOwnedBy("bergen"), identity: machinename.Identity{ID: "id-tromso", Name: "tromso"}},
+			wantIn:    runfsm.Inputs{Owner: "bergen", AdoptSubject: "slug", OwnedElsewhere: true},
+			wantCalls: []string{"child-origin"},
+		},
+		{
+			name:      "AnUnregisteredMachineNamedLikeARegisteredOneReadsItsRunOwnedElsewhere",
+			fakes:     runFakes{owners: beamOwnedBy("oslo"), identity: machinename.Identity{Name: "oslo"}},
+			wantIn:    runfsm.Inputs{Owner: "oslo", AdoptSubject: "slug", OwnedElsewhere: true},
+			wantCalls: []string{"child-origin"},
+		},
+		{
+			name: "AnAdoptHoldReadsHeldWithItsMachine",
+			fakes: runFakes{
+				owners:   boardengine.Owners{Holds: []boardengine.Hold{{Kind: boardengine.HoldKindAdopt, Machine: "oslo"}}},
+				identity: machinename.Identity{Name: "here"},
+			},
+			wantIn:    runfsm.Inputs{Held: true, HoldMachine: "oslo"},
+			wantCalls: []string{"child-origin"},
+		},
+		{
+			name: "AnAdoptFixHoldReadsItsFixTaskNotHeld",
+			fakes: runFakes{
+				owners:   boardengine.Owners{Holds: []boardengine.Hold{{Kind: boardengine.HoldKindAdoptFix, Machine: "oslo", FixTask: "slug"}}},
+				identity: machinename.Identity{Name: "here"},
+			},
+			wantCalls: []string{"child-origin"},
+		},
+		{
+			name: "AnAdoptFixHoldReadsAnotherSlugHeld",
+			fakes: runFakes{
+				owners:   boardengine.Owners{Holds: []boardengine.Hold{{Kind: boardengine.HoldKindAdoptFix, Machine: "oslo", FixTask: "other"}}},
+				identity: machinename.Identity{Name: "here"},
+			},
+			wantIn:    runfsm.Inputs{Held: true, HoldMachine: "oslo"},
+			wantCalls: []string{"child-origin"},
+		},
+		{
+			name: "AnOwedPushCarriesTheNewestRecordsErrorAndWorktree",
+			fakes: runFakes{owedPush: []fabricengine.FailedPush{
+				{Error: "connection refused", RepoPath: "/hub/task-records"},
+				{Error: "older failure", RepoPath: "/hub/task"},
+			}},
+			wantIn:    runfsm.Inputs{PushOwed: true, PushOwedError: "connection refused", PushOwedWorktree: "/hub/task-records"},
+			wantCalls: []string{"child-origin"},
+		},
+		{
+			name:      "AMissingCodeTipSetsTheThreeCodeTipInputs",
+			fakes:     runFakes{codeTip: fabricengine.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
+			wantIn:    runfsm.Inputs{CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "oslo"},
+			wantCalls: []string{"child-origin"},
+		},
+		{
+			name:      "ACodeTipOriginHoldsSetsNoCodeTipInput",
+			fakes:     runFakes{codeTip: fabricengine.CodeTipReading{Tip: "abc123", Machine: "oslo"}},
 			wantCalls: []string{"child-origin"},
 		},
 		{
 			name:    "AReadErrorNamesTheReadAndTheSlug",
 			fakes:   runFakes{boardErr: errors.New("boom")},
 			wantErr: "read the board entry of slug: boom",
+		},
+		{
+			name:    "AnOwedPushReadErrorNamesTheReadAndTheSlug",
+			fakes:   runFakes{owedPushErr: errors.New("boom")},
+			wantErr: "read the owed push of slug: boom",
+		},
+		{
+			name:    "ACodeTipReadErrorNamesTheReadAndTheSlug",
+			fakes:   runFakes{codeTipErr: errors.New("boom")},
+			wantErr: "read the code tip of slug: boom",
 		},
 	}
 	for _, tt := range tests {
@@ -267,8 +363,13 @@ func TestReadRun(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("read(slug) records = %+v; want %+v", got, tt.want)
 			}
-			if gotIn != tt.wantIn {
-				t.Errorf("read(slug) inputs = %+v; want %+v", gotIn, tt.wantIn)
+			wantIn := tt.wantIn
+			// A board with no entry for the slug reads the slug as its own adopt subject.
+			if wantIn.AdoptSubject == "" {
+				wantIn.AdoptSubject = "slug"
+			}
+			if gotIn != wantIn {
+				t.Errorf("read(slug) inputs = %+v; want %+v", gotIn, wantIn)
 			}
 			if !slices.Equal(fakes.calls, tt.wantCalls) {
 				t.Errorf("read(slug) called %v; want %v", fakes.calls, tt.wantCalls)

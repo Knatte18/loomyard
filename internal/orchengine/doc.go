@@ -145,7 +145,8 @@
 // A failed stop is the tick's error, joined with a failed end, and the tick is not done.
 // A failed stop leaves the strand, so the next tick ends and stops again.
 // A failed read reads as not owned elsewhere and logs once per episode.
-// A foreign owner stops nothing while OwnerWatch.UnderAdopt reports an adopt in flight here covering the beam.
+// A foreign owner stops nothing while OwnerWatch.UnderAdopt reports a hold this machine wrote in Bolt.
+// The hold covers the beam's subject and stands until the adopt's check is green.
 // The watcher goes on, and the hold's start and end each log once.
 // The verdict is as fresh as this machine's local Bolt.
 // A watcher running an older binary reaches the check only after it restarts;

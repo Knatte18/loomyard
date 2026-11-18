@@ -198,6 +198,10 @@ With a slug, a resume also clears the run's pause intent from its batten record,
 and commits and pushes it. A run another machine owns is refused, naming that
 machine.
 
+While an adopt's hold stands in the board, a slug held only by a bolt-hold entry
+is refused, naming the hold's machine, and a resume with no slug leaves every
+bolt-hold entry standing; the worktree's dobby lifts them once the hold clears.
+
 Each session the pause interrupted gets one line to carry on, unless its strand
 is not live or its guarded send is refused, as for a running turn, a draft, a
 dialog on screen or an open rewind picker; those are named with the reason. A
@@ -205,10 +209,12 @@ session another live entry still covers moves to that entry with no line. The
 orchestrator's line comes from its own watcher.
 
 A lift also spawns what a pause deferred: the detached push of each pair the
-lifted entries covered, the prime's records push and the board sync. A pair a
-live entry still covers, one another machine owns and one that is gone is not
-pushed. The report's "spawned" lists the spawns and "spawn_failed" the ones that
-failed; neither fails the resume.
+lifted entries covered whose push a pause deferred, such as an anchor change's,
+the prime's records push and the board sync. A run's transition pushes
+synchronously, so no pair push is spawned for one. A pair a live entry still
+covers, one another machine owns and one that is gone is not pushed. The
+report's "spawned" lists the spawns and "spawn_failed" the ones that failed;
+neither fails the resume.
 
 Example:
   lym tender resume

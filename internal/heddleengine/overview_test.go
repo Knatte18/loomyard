@@ -26,8 +26,8 @@ func readOverview(t *testing.T, bolt string) string {
 // It also holds a claude-settings entry and one whose text is no object.
 // It pins a table row per entry and place, the repository's texts in full, and lym's own folded under a summary.
 // It pins a shared entry under each file it renders into, the widened fence of a backtick run and an escaped table pipe.
-// It pins the settings object with its setters marked, a note for the entry that holds no object,
-// a place no entry reaches left out, and a second call changing nothing.
+// It pins the settings object with its setters marked and a note for the entry that holds no object.
+// It pins a place no entry reaches left out, and a second call changing nothing.
 func TestRenderOverview(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

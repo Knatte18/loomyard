@@ -32,6 +32,8 @@ const commitRecordsMessage = "loom: commit run records"
 // A push skipped because a removal, an Add or a discard of the pair holds its teardown lock exclusive is no error:
 // the envelope is ok with committed true and push_skipped carrying the reason,
 // and the commit stays local for the pair's next push.
+// A push that handed the run over to the machine of another machine's takeover entry is an error envelope.
+// It names the new owner and the way forward of driving the run there.
 // A commit or push the run's pre-push check stopped is no error either:
 // the envelope is ok with push_stopped carrying the check's reason; the run is paused and the orch noticed.
 // committed is false when the check stopped the commit, which then pushes nothing.
@@ -61,6 +63,9 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 		}
 		if errors.Is(err, errPushStopped) {
 			return output.Ok(out, map[string]any{"committed": true, "push_stopped": err.Error()})
+		}
+		if errors.Is(err, fabricengine.ErrHandedOver) {
+			return output.Err(out, "loom: commit-records: the run was handed over to another machine: "+err.Error()+"; way forward: drive the run on the machine that took it over")
 		}
 		message := "loom: commit-records: the commit landed locally but the push failed: " + err.Error()
 		// A classified push failure's text already ends in its class's way forward.

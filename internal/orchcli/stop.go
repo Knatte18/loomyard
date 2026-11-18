@@ -4,6 +4,7 @@
 package orchcli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -29,11 +30,18 @@ type BeamDownReport struct {
 	Strand      string `json:"strand,omitempty"`
 	// DobbyEnded reports whether a live dobby was ended.
 	DobbyEnded bool `json:"dobby_ended"`
+	// OrchProcessEnded reports whether the orch session's registered provider process was ended.
+	OrchProcessEnded bool `json:"orch_process_ended"`
 }
 
 // BeamDown takes the worktree at location down.
 // It removes the orch strand, after which the watcher exits on its own,
 // and it ends the worktree's dobby when one is live.
+// As its last step it ends the orch session's registered provider process, which outlives the strand's removal;
+// the caller and its ancestors are spared.
+// The strand's removal ends the orch's pane and every process below it, so a caller inside that pane ends there;
+// the later steps run only for a caller outside it.
+// A failed dobby step does not skip the orch process's end, and every failure is returned.
 // Each part stops only when live, so a second call stops nothing.
 // It refuses a worktree that is neither the prime nor a beam.
 func BeamDown(location *lymcwd.Location) (BeamDownReport, error) {
@@ -45,7 +53,8 @@ func BeamDown(location *lymcwd.Location) (BeamDownReport, error) {
 }
 
 // beamDown runs the bring-down steps on a receiver that has already been wired.
-// The dobby is ended through the receiver's role-scoped end, so no other process of the beam is signalled.
+// The dobby and the orch process are each ended through the receiver's role-scoped end,
+// so no other process of the beam is signalled.
 func (c *orchCLI) beamDown() (BeamDownReport, error) {
 	report := BeamDownReport{Worktree: c.location.WorktreeName}
 	removed, strand, err := c.stopOrch()
@@ -53,20 +62,32 @@ func (c *orchCLI) beamDown() (BeamDownReport, error) {
 		return report, err
 	}
 	report.OrchRemoved, report.Strand = removed, strand
-	live := false
-	if c.dobbyLive != nil {
-		live, err = c.dobbyLive()
-		if err != nil {
-			return report, fmt.Errorf("orch: read whether the dobby of %s is live: %w", c.location.WorktreeName, err)
-		}
+	dobbyErr := c.endLiveDobby(&report)
+	ended, err := c.endOrch()
+	if err != nil {
+		err = fmt.Errorf("orch: end the orch process of %s: %w", c.location.WorktreeName, err)
 	}
-	if live {
-		if err := c.endDobby(); err != nil {
-			return report, fmt.Errorf("orch: end the dobby of %s: %w", c.location.WorktreeName, err)
-		}
-		report.DobbyEnded = true
+	report.OrchProcessEnded = len(ended) > 0
+	return report, errors.Join(dobbyErr, err)
+}
+
+// endLiveDobby ends the worktree's dobby when it is live and records the end in report.
+func (c *orchCLI) endLiveDobby(report *BeamDownReport) error {
+	if c.dobbyLive == nil {
+		return nil
 	}
-	return report, nil
+	live, err := c.dobbyLive()
+	if err != nil {
+		return fmt.Errorf("orch: read whether the dobby of %s is live: %w", c.location.WorktreeName, err)
+	}
+	if !live {
+		return nil
+	}
+	if err := c.endDobby(); err != nil {
+		return fmt.Errorf("orch: end the dobby of %s: %w", c.location.WorktreeName, err)
+	}
+	report.DobbyEnded = true
+	return nil
 }
 
 // stopOrch removes the recorded orchestrator strand when reed tracks it.

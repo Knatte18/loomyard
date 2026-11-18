@@ -252,6 +252,9 @@ type battenCLI struct {
 	// reconcile runs the run-scope origin reconcile of a slug that the pre-run resumes.
 	// Nil reads as no reconcile, which only a hand-populated receiver has.
 	reconcile func(slug string) (fabricengine.OriginReport, error)
+	// catchUp runs the catch-up from origin over this pass's own run, before a pass that is not a continue pass resumes.
+	// Nil reads as no catch-up, which only a hand-populated receiver has.
+	catchUp func() (dobbyengine.CatchUpReport, error)
 	// readopt carries the seams that re-make a live pair whose task worktree is gone.
 	// A receiver that skips the arm leaves it zero, which reads as no re-adoption.
 	readopt readoptSeams
@@ -261,8 +264,6 @@ type battenCLI struct {
 	continuePass bool
 	// noReopen carries "run"'s hidden --no-reopen value, which skips only the Open-Window re-run.
 	noReopen bool
-	// originReached records that this pass's resume reconcile reached origin, which lets a pass that exits 0 remove the origin-owed marker.
-	originReached bool
 	// owner carries the seams of the owner checks.
 	// The arm fills it with the hub's owner seams when it is zero.
 	// A receiver that skips the arm keeps it zero, which reads as no owner check.
@@ -731,7 +732,7 @@ func (c *battenCLI) otherMachineOwning(parent string) (string, error) {
 	if c.owner.Machine == nil {
 		return "", nil
 	}
-	machine, err := c.thisMachine()
+	identity, err := c.thisIdentity()
 	if err != nil {
 		return "", err
 	}
@@ -746,7 +747,7 @@ func (c *battenCLI) otherMachineOwning(parent string) (string, error) {
 			return "", err
 		}
 	}
-	if !boardengine.OwnedElsewhere(owner, machine) {
+	if !boardengine.OwnedElsewhere(owner, owners.Registry, identity) {
 		return "", nil
 	}
 	return owner, nil

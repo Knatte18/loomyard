@@ -89,7 +89,7 @@ func HubSettleDeps(prime *lymcwd.Location, beam string) (SettleDeps, error) {
 		Subject: subject,
 		Tasks:   board.ListTasksFull,
 		OwnedHere: func() (bool, error) {
-			here, err := machinename.Name()
+			here, err := machinename.ReadIdentity()
 			if err != nil {
 				return false, err
 			}
@@ -104,7 +104,7 @@ func HubSettleDeps(prime *lymcwd.Location, beam string) (SettleDeps, error) {
 					return false, err
 				}
 			}
-			return !boardengine.OwnedElsewhere(owner, here), nil
+			return !boardengine.OwnedElsewhere(owner, owners.Registry, here), nil
 		},
 		RecordPath: recordPathOf(prime.HubPath),
 		RunAction: func(key, subject string) error {

@@ -47,7 +47,8 @@ const (
 	RoleTeardown = "teardown"
 	// RoleSlackRelay is the hub's Slack relay, registered under HubOwner.
 	RoleSlackRelay = "slack-relay"
-	// RoleAdopt is the detached worker of `lym adopt`, registered under HubOwner.
+	// RoleAdopt is the role the detached adopt worker of an older lym registered under HubOwner.
+	// A record of one is still spared at a subject's process end.
 	RoleAdopt = "adopt"
 	// RoleOrch is the provider process of a worktree's orch session.
 	// The orch's start registers it under the beam's slug, or HubOwner for the prime.

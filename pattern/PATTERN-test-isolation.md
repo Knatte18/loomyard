@@ -67,6 +67,8 @@ A test package never reaches the operator's global gitconfig or default tmux soc
   `Main` also points `XDG_STATE_HOME`, and on Windows `LOCALAPPDATA`, at that directory,
   so a test, or a `lym creel daemon` it spawns, never writes the operator's per-user state directory;
   a test that sets the variable itself wins.
+  `Main` also points `XDG_DESKTOP_DIR` at that directory on every platform,
+  so no dobby a test starts writes a launcher on the operator's desktop.
   A test binary re-executed as a helper inherits that directory,
   and its own run directory is made beside it by the temp package's beside-the-parent rule rather than inside it,
   so nesting never pushes a socket path past the `sun_path` limit.

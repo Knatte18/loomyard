@@ -122,8 +122,9 @@ func emptyMarkerStop(weftPath string) *AnchorStopError {
 // A local weft ahead of origin with a re-anchor not yet pushed differs as well, since the comparison ignores ancestry.
 // An empty own marker is refused first.
 // Both refusals wrap ErrAnchorChange.
-// The second refusal names the anchor change and says to re-run the same adopt under --drop-local;
+// The second refusal names the anchor change and says to re-run the same adopt;
 // the pair may be a moved run that no adopt names.
+// The takeover of a run is its caller.
 func refuseDropLocalAnchorChange(l *lymcwd.Location, slug, weftPath, tracking string) error {
 	if stop := emptyMarkerStop(weftPath); stop != nil {
 		return fmt.Errorf("%w: %s", stop, stop.WayForward)
@@ -140,7 +141,7 @@ func refuseDropLocalAnchorChange(l *lymcwd.Location, slug, weftPath, tracking st
 	if err != nil || !stop {
 		return err
 	}
-	return fmt.Errorf("%w: the weft of %s and origin's tip carry different anchors, origin's being %q, so moving it to origin's tip would cross an anchor change; run `lym fabric anchor %s --set %s`, then re-run the same `lym adopt` with `--drop-local`",
+	return fmt.Errorf("%w: the weft of %s and origin's tip carry different anchors, origin's being %q, so moving it to origin's tip would cross an anchor change; run `lym fabric anchor %s --set %s`, then re-run the same `lym adopt`",
 		ErrAnchorChange, slug, want, slug, want)
 }
 

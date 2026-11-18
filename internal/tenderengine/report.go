@@ -105,8 +105,14 @@ type Deps struct {
 	Orchs func() ([]Orch, error)
 	// Owners lists each local pair with its effective owner and each run-held entry owned elsewhere; nil reports none.
 	Owners func() ([]PairOwner, error)
+	// BoltHold reads the adopt hold the local Bolt records, which a resume judges; nil reads no hold.
+	BoltHold func() (BoltHoldState, error)
 	// PushPair spawns the detached push of the pair slug names; nil spawns none.
 	PushPair func(slug string) error
+	// PushDeferred reports whether a pause deferred a detached push of the pair slug names, which a lift then pays.
+	// A run's transition pushes synchronously and owes no lift a push.
+	// A nil PushDeferred reads every pair as owed one.
+	PushDeferred func(slug string) bool
 	// PushPrimeRecords spawns the detached push of the prime's records; nil spawns none.
 	PushPrimeRecords func() error
 	// SyncBoardIfOwed spawns the board sync when the board holds changes a deferred sync left; nil spawns none.

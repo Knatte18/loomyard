@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -81,6 +82,83 @@ func originStatusAtTip(prime *lymcwd.Location, recordsRoot, tip, slug string) (s
 		return status, true, nil
 	}
 	return shedengine.Status{}, false, nil
+}
+
+// CodeTipReading is what OriginCodeTip read of a run's code tip.
+type CodeTipReading struct {
+	// Tip is the code tip the run's last transition on origin names, empty when origin holds no such transition.
+	Tip string
+	// Missing reports whether origin's fetched code branch lacks Tip.
+	Missing bool
+	// Machine is the machine of the last history entry of the run's child record at that transition.
+	Machine string
+	// At is the commit time of that transition.
+	At time.Time
+}
+
+// OriginCodeTip reads the code tip the last transition of slug on origin names, with no network call.
+// It reads origin's fetched records branch of the slug for the transition.
+// It reads origin's fetched code branch for whether that branch holds the tip.
+// A tip this repository lacks counts as missing from origin, and so does an absent code branch.
+// A slug with no records branch on origin reads the zero CodeTipReading, not missing.
+func OriginCodeTip(prime *lymcwd.Location, slug string) (CodeTipReading, error) {
+	cfg, err := LoadConfig(ConfigDirs(prime))
+	if err != nil {
+		return CodeTipReading{}, err
+	}
+	recordsRoot, err := RecordsRepoRoot(prime)
+	if err != nil {
+		return CodeTipReading{}, fmt.Errorf("resolve the records repository: %w", err)
+	}
+	for _, name := range pairBranchNames(cfg, slug) {
+		recordsTip, err := gitrepo.New(recordsRoot).RefSHA(originRefPrefix + RecordsBranchName(name))
+		if errors.Is(err, gitrepo.ErrRefNotFound) {
+			continue
+		}
+		if err != nil {
+			return CodeTipReading{}, err
+		}
+		return readCodeTipAt(prime, recordsRoot, recordsTip, name, slug)
+	}
+	return CodeTipReading{}, nil
+}
+
+// readCodeTipAt reads the code tip of slug's last transition on the records branch tip recordsTip.
+// branch is the slug's code branch, whose fetched origin ref says whether origin holds the tip.
+func readCodeTipAt(prime *lymcwd.Location, recordsRoot, recordsTip, branch, slug string) (CodeTipReading, error) {
+	commit, found, err := lastTransitionCommit(recordsRoot, recordsTip, slug)
+	if err != nil || !found {
+		return CodeTipReading{}, err
+	}
+	tip := trailerValue(commit.Message, WarpSHATrailerKey)
+	if tip == "" {
+		return CodeTipReading{}, nil
+	}
+	reading := CodeTipReading{Tip: tip, At: commit.Committed}
+
+	status, statusFound, err := originStatusAtTip(prime, recordsRoot, commit.SHA, slug)
+	if err != nil {
+		return CodeTipReading{}, err
+	}
+	if statusFound && len(status.History) > 0 {
+		reading.Machine = status.History[len(status.History)-1].Machine
+	}
+
+	codeDir := prime.WorktreePath()
+	originTip, err := gitrepo.New(codeDir).RefSHA(originRefPrefix + branch)
+	switch {
+	case errors.Is(err, gitrepo.ErrRefNotFound):
+		reading.Missing = true
+	case err != nil:
+		return CodeTipReading{}, err
+	default:
+		held, err := isAncestorOrEqual(codeDir, tip, originTip)
+		if err != nil {
+			return CodeTipReading{}, err
+		}
+		reading.Missing = !held
+	}
+	return reading, nil
 }
 
 // FetchedTaskBranchOnOrigin reports whether slug's task branch has a remote-tracking ref under origin.

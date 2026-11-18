@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
@@ -111,8 +112,11 @@ type orchCLI struct {
 	// claimPrime records this machine as prime owner if the board has none; a Prepare bring-up calls it after reconcile.
 	// claimed names this machine after a claim, lostTo the other machine when its claim won; nil skips the claim.
 	claimPrime func() (claimed, lostTo string, err error)
-	// pauseOwned pauses the pair of each run another machine owns in a Prepare bring-up; nil skips the pause.
-	pauseOwned func(location *lymcwd.Location, slug string) error
+	// endOwned ends the processes of each run another machine owns in a Prepare bring-up; nil skips the end.
+	// endDobby is set when the entry is a beam, whose dobby the end takes too.
+	endOwned func(location *lymcwd.Location, slug string, endDobby bool) error
+	// isBeam reports whether the board entry slug is a beam, which decides endDobby; nil reads no entry as a beam.
+	isBeam func(slug string) (bool, error)
 	// startDobby starts this worktree's dobby when it is not live and reports the outcome; nil starts none.
 	// Its failure never stops the bring-up: it becomes a warning.
 	startDobby func() (dobbyengine.StartEntry, error)
@@ -277,7 +281,20 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.reconcile = func() (fabricengine.OriginReport, error) { return reconcileHub(location) }
 	c.readBeamFacts = func() (beamFacts, error) { return readBeamFacts(location, beam) }
 	c.claimPrime = func() (string, string, error) { return claimPrimeFor(location) }
-	c.pauseOwned = installedOwnerPause()
+	c.endOwned = func(at *lymcwd.Location, slug string, endDobby bool) error {
+		prime, err := resolvePrime(at)
+		if err != nil {
+			return err
+		}
+		return pairteardown.EndSubjectProcesses(prime, slug, endDobby)
+	}
+	c.isBeam = func(slug string) (bool, error) {
+		owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
+		if err != nil {
+			return false, err
+		}
+		return owners.Entries[slug].Beam, nil
+	}
 	c.startDobby = func() (dobbyengine.StartEntry, error) { return ensureDobbies(location) }
 	c.startRelay = relayStarter(location, beam)
 	c.dobbyLive = func() (bool, error) {

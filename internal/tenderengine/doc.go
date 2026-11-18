@@ -82,11 +82,32 @@
 // These pairs are left out:
 // a pair a live entry of the updated record still covers;
 // a pair `Deps.Owners` reads owned by another machine;
+// a pair `Deps.PushDeferred` reads with no detached push a pause deferred, since a run's transition pushes synchronously;
 // and a pair no longer in `Deps.Pairs`.
 // An owners reading that fails spawns no pair push, since an owner it cannot read may be another machine.
 // `PushPrimeRecords` and `SyncBoardIfOwed` run once each.
 // The report lists the spawns under `spawned` as `pair:<slug>`, `prime-records` and `board-sync`.
 // It lists a failed spawn or owners reading under `spawn_failed`; neither fails the lift.
+//
+// # Bolt hold
+//
+// While an adopt hold stands in the board, each machine holds its runs through `bolt-hold` slug entries.
+// A request's `HoldMachine` is recorded as the entry's `Machine`.
+// `SyncBoltHold` settles one dobby's runs against the hold.
+// While it stands, Pause writes a `bolt-hold` entry for each slug of the request's `Hold`.
+// A slug with a live entry of its own scope gets none.
+// A `bolt-hold` entry recording another machine than the request's is replaced by one recording the request's.
+// A slug that holds its parent lock, through the request's `HoldsParentLock`, gets none and has its entry lifted;
+// so does a slug that left `Hold`, and every slug once the hold no longer stands.
+// Only `bolt-hold` entries are written or lifted, so an operator's hub entry or slug entry stands.
+// A failure for one slug is joined into the error and leaves that slug's entries as they are.
+//
+// `Deps.BoltHold` reads the hold the local Bolt records, and a nil seam reads none.
+// While a hold stands, a resume leaves every `bolt-hold` entry standing.
+// It refuses `lym tender resume <slug>` of a slug whose own entry is a `bolt-hold` one.
+// The refusal comes before it clears the run's pause intent, so the intent stands too.
+// A slug entry of another caller that it lifts is replaced by a `bolt-hold` entry, bar the hold's fix task.
+// A `bolt-hold` entry whose hold no longer stands is lifted like any other entry.
 //
 // # Revive
 //

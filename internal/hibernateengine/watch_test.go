@@ -1020,23 +1020,19 @@ func TestSequence(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p2" {
 				t.Errorf("got %+v, %v, live %+v; want done with only p2 held", got, err, live)
 			}
-			if ended := w.endedOwnedList(); len(ended) != 0 {
-				t.Errorf("EndOwned calls = %q; want none for stopped runs", ended)
-			}
 			requireNotice(t, w, "its pause was lifted.", "fix p2; then `lym tender resume p2`", "p1 could not be paused (tender down); hold it with `lym tender pause p1`")
 		}},
-		{"a run owned elsewhere gets a pair pause entry with the owner label, lifts the daemon's entry and names the owner and the adopt", func(t *testing.T) {
+		{"a run owned elsewhere gets no pair pause entry and no end, lifts the daemon's entry and names the owner and the adopt", func(t *testing.T) {
 			w := newFakeWorld(t)
 			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "origin's board records another machine as the owner", Owner: "laptop", AdoptSubject: "beam"}}}
 
 			got, err := watchNow(t, w)
 
-			live := w.liveEntries()
-			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" || live[0].Caller != pauserecord.OwnerCaller {
-				t.Errorf("got %+v, %v, live %+v; want done with only the pair entry live under the owner caller", got, err, live)
+			if live := w.liveEntries(); err != nil || got.Phase != PhaseDone || len(live) != 0 {
+				t.Errorf("got %+v, %v, live %+v; want done with no entry live", got, err, live)
 			}
-			if ended := w.endedOwnedList(); !reflect.DeepEqual(ended, []string{"p1"}) {
-				t.Errorf("EndOwned calls = %q; want p1 once", ended)
+			if slices.ContainsFunc(w.pauses, func(request tenderengine.PauseRequest) bool { return request.Slug == "p1" }) {
+				t.Errorf("pause requests = %+v; want none for the run owned elsewhere", w.pauses)
 			}
 			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lym adopt beam` from this machine's prime takes it over here")
 		}},
@@ -1061,39 +1057,6 @@ func TestSequence(t *testing.T) {
 			standing := byScope["p1"]
 			if err != nil || got.Phase != PhaseDone || len(byScope) != 2 || standing.Caller != pauserecord.AdoptCaller || !standing.PausedAt.Equal(adopt.PausedAt) || byScope["p2"].Caller != PauseCaller {
 				t.Errorf("got %+v, %v, live %+v; want done with the adopt entry of p1 unchanged beside the wake's entry of p2", got, err, byScope)
-			}
-		}},
-		{"an EndOwned error leaves the notice as it was", func(t *testing.T) {
-			w := newFakeWorld(t)
-			w.endOwnedErr = errors.New("a process survived")
-			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "owned elsewhere", Owner: "laptop"}}}
-
-			got, err := watchNow(t, w)
-
-			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 1 {
-				t.Errorf("got %+v, %v, live %+v; want done with the pair entry held", got, err, w.liveEntries())
-			}
-			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lym adopt p1` from this machine's prime takes it over here")
-			if strings.Contains(w.noticeList()[0], "survived") {
-				t.Errorf("notice = %q; want the EndOwned error left out", w.noticeList()[0])
-			}
-		}},
-		{"a failed owner pause is named with the next wake or orch start, never the tender pause", func(t *testing.T) {
-			w := newFakeWorld(t)
-			w.pairPauseErr = map[string]error{"p1": errors.New("tender down")}
-			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "owned elsewhere", Owner: "laptop"}}}
-
-			got, err := watchNow(t, w)
-
-			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 0 {
-				t.Errorf("got %+v, %v, live %+v; want done with nothing held", got, err, w.liveEntries())
-			}
-			if ended := w.endedOwnedList(); len(ended) != 0 {
-				t.Errorf("EndOwned calls = %q; want none after a failed owner pause", ended)
-			}
-			requireNotice(t, w, "p1 could not be paused (tender down); the next wake or `lym beam start` pauses it again")
-			if strings.Contains(w.noticeList()[0], "lym tender pause") {
-				t.Errorf("notice = %q; want no tender pause for an owner pause", w.noticeList()[0])
 			}
 		}},
 		{"a cancel that lands while the pause runs, before its entry is recorded, has the entry lifted by the sequence", func(t *testing.T) {

@@ -99,7 +99,8 @@ func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
 		`{"id":6,"slug":"landed-here","title":"H","kind":"task","labels":["bug"],"status":"done","notify_on_land":true}`,
 		`{"id":7,"slug":"beam-b","title":"B2","kind":"project","labels":["bug"],"beam":true,"owner_machine":"another-machine","status":"running · Beam-Await"}`,
 	}, ",")
-	content := `{"version":1,"entries":[` + entries + `]}`
+	holds := `[{"kind":"adopt","machine":"oslo","at":"2026-11-17T09:00:00Z","subjects":[]}]`
+	content := `{"version":1,"holds":` + holds + `,"entries":[` + entries + `]}`
 	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
 	}
@@ -127,6 +128,9 @@ func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
 	}
 	if !released.NotifyOnLand || bySlug["open-dep"].NotifyOnLand {
 		t.Errorf("DobbyTasks() NotifyOnLand = %v, %v; want true for the entry carrying it and false for the other", released.NotifyOnLand, bySlug["open-dep"].NotifyOnLand)
+	}
+	if released.HeldBy != "oslo" || bySlug["open-dep"].HeldBy != "" {
+		t.Errorf("DobbyTasks() HeldBy = %q, %q; want the hold's machine for the released task and none for the draft", released.HeldBy, bySlug["open-dep"].HeldBy)
 	}
 	if draft := bySlug["open-dep"]; draft.Parent != "" {
 		t.Errorf("DobbyTasks() draft Parent = %q; want none read for a task with a status", draft.Parent)

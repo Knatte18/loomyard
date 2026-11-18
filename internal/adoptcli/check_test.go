@@ -62,6 +62,7 @@ func newCheckFixture(t *testing.T, tiers []scriptedTier, exit int) *checkFixture
 	f.deps = checkDeps{
 		Subject:        "alpha",
 		Dir:            f.dir,
+		Rerun:          checkFixtureRerun,
 		Now:            f.tick,
 		PID:            4242,
 		StartTicks:     "777",
@@ -84,6 +85,9 @@ func newCheckFixture(t *testing.T, tiers []scriptedTier, exit int) *checkFixture
 // checkFixtureNow is the time of a fixture clock's first read, which the check's start takes.
 var checkFixtureNow = time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
 
+// checkFixtureRerun is the re-run of a two-subject hold, which the check's way forward lines must name.
+const checkFixtureRerun = "lym adopt alpha beta"
+
 func passedTier(tier, passed, skipped int) gateslot.RunRecord {
 	return gateslot.RunRecord{Tier: tier, Outcome: "passed", Passed: passed, Skipped: skipped, WallSec: 1.5}
 }
@@ -100,7 +104,7 @@ func TestRunCheck(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("two green tiers end green and post a line per tier and one end notice", func(t *testing.T) {
+	t.Run("two green tiers end green and post a line per tier and no end line", func(t *testing.T) {
 		t.Parallel()
 		f := newCheckFixture(t, []scriptedTier{{0, passedTier(0, 10, 1)}, {1, passedTier(1, 4, 0)}}, 0)
 
@@ -117,7 +121,6 @@ func TestRunCheck(t *testing.T) {
 		wantNotices := []string{
 			"adopt check of alpha: tier0 green, passed 10 failed 0 skipped 1, 1.5s",
 			"adopt check of alpha: tier1 green, passed 4 failed 0 skipped 0, 1.5s",
-			"adopt check of alpha: green, tiers 0, 1; log " + f.logPath(),
 		}
 		if !slices.Equal(f.notices, wantNotices) {
 			t.Errorf("notices = %q; want %q", f.notices, wantNotices)
@@ -127,7 +130,7 @@ func TestRunCheck(t *testing.T) {
 		}
 	})
 
-	t.Run("a failing tier ends the check failed naming the tier, its failed tests, the log and the rerun", func(t *testing.T) {
+	t.Run("a failing tier ends the check failed with its tier notice naming the failed tests and the log, and no end line", func(t *testing.T) {
 		t.Parallel()
 		failures := []gateslot.TestFailure{
 			{Package: "example.com/a", Test: "TestA/sub", FirstLine: "a_test.go:12: got 1; want 2"},
@@ -152,19 +155,8 @@ func TestRunCheck(t *testing.T) {
 		if onDisk, _, err := ReadCheck(f.recordPath()); err != nil || len(onDisk.Tiers) != 2 || !slices.Equal(onDisk.Tiers[1].Failures, failures) {
 			t.Errorf("ReadCheck() = %+v, %v; want tier1's failures on disk", onDisk, err)
 		}
-		end := f.notices[len(f.notices)-1]
-		for _, want := range []string{"tier1", f.logPath()} {
-			if !strings.Contains(end, want) {
-				t.Errorf("end notice = %q; want it to hold %q", end, want)
-			}
-		}
-		for _, unwanted := range []string{"in the prime", "lym gate test --gate adopt"} {
-			if strings.Contains(end, unwanted) {
-				t.Errorf("end notice = %q; want it to hold no %q", end, unwanted)
-			}
-		}
-		if len(f.notices) != 3 {
-			t.Errorf("notices = %q; want two tier lines and one end notice", f.notices)
+		if len(f.notices) != 2 {
+			t.Errorf("notices = %q; want the two tier notices and no end line", f.notices)
 		}
 	})
 
@@ -220,19 +212,13 @@ func TestRunCheck(t *testing.T) {
 		t.Parallel()
 		f := newCheckFixture(t, nil, 0)
 		f.deps.Reconcile = func() error { return errors.New("config invalid") }
-		endCalls := 0
-		f.deps.Green = func() []string { endCalls++; return nil }
-		f.deps.Failed = func(CheckRecord) []string { endCalls++; return nil }
 
 		record, ran, err := runCheck(context.Background(), f.deps)
 		if err != nil || !ran {
 			t.Fatalf("runCheck() = ran %v, error %v; want it to run", ran, err)
 		}
-		if record.State != checkFailed || !strings.Contains(record.Error, "config invalid") || !strings.Contains(record.Error, "lym fabric reconcile") || !strings.Contains(record.Error, "lym adopt alpha") || strings.Contains(record.Error, "lym gate test --gate adopt") {
-			t.Errorf("record = %+v; want failed with the reconcile's error and the re-run of lym adopt alpha", record)
-		}
-		if endCalls != 0 {
-			t.Errorf("Green and Failed calls = %d; want none", endCalls)
+		if record.State != checkFailed || !strings.Contains(record.Error, "config invalid") || !strings.Contains(record.Error, "lym fabric reconcile") || !strings.Contains(record.Error, checkFixtureRerun) || strings.Contains(record.Error, "lym gate test --gate adopt") {
+			t.Errorf("record = %+v; want failed with the reconcile's error and the re-run %q", record, checkFixtureRerun)
 		}
 		if f.gateCalls != 0 || len(f.notices) != 1 || !strings.Contains(f.notices[0], "config invalid") {
 			t.Errorf("gate calls = %d, notices = %q; want no gate and the one notice naming the error", f.gateCalls, f.notices)
@@ -245,7 +231,7 @@ func TestRunCheck(t *testing.T) {
 		f.ownedBy = "otherbox"
 
 		_, ran, err := runCheck(context.Background(), f.deps)
-		want := "adopt check of alpha: alpha is owned by otherbox, so no check ran; way forward: run lym adopt alpha on this machine"
+		want := "adopt check of alpha: alpha is owned by otherbox, so no check ran; way forward: run " + checkFixtureRerun + " on this machine"
 		if ran || err == nil || err.Error() != want {
 			t.Errorf("runCheck() = ran %v, error %v; want it not to run, with the error %q", ran, err, want)
 		}
@@ -263,8 +249,8 @@ func TestRunCheck(t *testing.T) {
 		f.ownerErr = errors.New("board unreadable")
 
 		_, ran, err := runCheck(context.Background(), f.deps)
-		if ran || err == nil || !strings.Contains(err.Error(), "board unreadable") || !strings.Contains(err.Error(), "lym adopt alpha") {
-			t.Errorf("runCheck() = ran %v, error %v; want it not to run, with an error naming the cause and lym adopt alpha", ran, err)
+		if ran || err == nil || !strings.Contains(err.Error(), "board unreadable") || !strings.Contains(err.Error(), checkFixtureRerun) {
+			t.Errorf("runCheck() = ran %v, error %v; want it not to run, with an error naming the cause and %q", ran, err, checkFixtureRerun)
 		}
 		if _, statErr := os.Stat(f.dir); !errors.Is(statErr, os.ErrNotExist) || f.gateCalls != 0 || len(f.notices) != 0 {
 			t.Errorf("Stat(%s) error = %v, gate calls = %d, notices = %q; want nothing written, run or posted", f.dir, statErr, f.gateCalls, f.notices)
@@ -368,8 +354,6 @@ func TestRunCheck(t *testing.T) {
 	t.Run("a gate that exits 1 with no tier ended ends failed naming the exit code and the log", func(t *testing.T) {
 		t.Parallel()
 		f := newCheckFixture(t, nil, 1)
-		failedCalls := 0
-		f.deps.Failed = func(CheckRecord) []string { failedCalls++; return nil }
 
 		record, _, err := runCheck(context.Background(), f.deps)
 		if err != nil {
@@ -378,36 +362,11 @@ func TestRunCheck(t *testing.T) {
 		if record.State != checkFailed || record.FailedTier != nil || !strings.Contains(record.Error, "exited 1") {
 			t.Errorf("record = %+v; want failed with no failed tier and an error naming exit 1", record)
 		}
-		if len(f.notices) != 1 || !strings.Contains(f.notices[0], "exited 1") || !strings.Contains(f.notices[0], f.logPath()) || !strings.Contains(f.notices[0], "lym adopt alpha") {
-			t.Errorf("notices = %q; want one end notice naming the exit code, the log and lym adopt alpha", f.notices)
+		if len(f.notices) != 1 || !strings.Contains(f.notices[0], "exited 1") || !strings.Contains(f.notices[0], f.logPath()) || !strings.Contains(f.notices[0], checkFixtureRerun) {
+			t.Errorf("notices = %q; want one notice naming the exit code, the log and %q", f.notices, checkFixtureRerun)
 		}
-		if strings.Contains(f.notices[0], "in the prime") || strings.Contains(f.notices[0], "lym gate test --gate adopt") || failedCalls != 0 {
-			t.Errorf("notice = %q, Failed calls = %d; want no worktree named and no fix loop", f.notices[0], failedCalls)
-		}
-	})
-
-	t.Run("a failed tier calls Failed once after the failed record is written and posts its lines after the failed notice", func(t *testing.T) {
-		t.Parallel()
-		f := newCheckFixture(t, []scriptedTier{{0, failedTier(0, gateslot.TestFailure{Package: "example.com/a", Test: "TestA"})}}, 1)
-		calls := 0
-		var seen CheckRecord
-		var onDisk CheckRecord
-		f.deps.Failed = func(record CheckRecord) []string {
-			calls++
-			seen = record
-			onDisk, _, _ = ReadCheck(f.recordPath())
-			return []string{"filed the fix task adopt-fix-alpha-t1"}
-		}
-
-		if _, _, err := runCheck(context.Background(), f.deps); err != nil {
-			t.Fatalf("runCheck() error = %v", err)
-		}
-		if calls != 1 || seen.State != checkFailed || seen.FailedTier == nil || onDisk.State != checkFailed || onDisk.EndedAt.IsZero() {
-			t.Errorf("Failed calls = %d, record = %+v, on disk = %+v; want one call with the failed record written", calls, seen, onDisk)
-		}
-		wantEnd := []string{"adopt check of alpha: failed, tier0 failed; log " + f.logPath(), "filed the fix task adopt-fix-alpha-t1"}
-		if got := f.notices[len(f.notices)-2:]; !slices.Equal(got, wantEnd) {
-			t.Errorf("last notices = %q; want %q", got, wantEnd)
+		if strings.Contains(f.notices[0], "in the prime") || strings.Contains(f.notices[0], "lym gate test --gate adopt") {
+			t.Errorf("notice = %q; want no worktree named", f.notices[0])
 		}
 	})
 
@@ -449,85 +408,6 @@ func TestRunCheck(t *testing.T) {
 		}
 	})
 
-	t.Run("a green end calls Green once after the green record is written and posts its lines after the green notice", func(t *testing.T) {
-		t.Parallel()
-		f := newCheckFixture(t, []scriptedTier{{0, passedTier(0, 1, 0)}}, 0)
-		calls := 0
-		var onDiskAtCall CheckRecord
-		f.deps.Green = func() []string {
-			calls++
-			onDiskAtCall, _, _ = ReadCheck(f.recordPath())
-			return []string{"the hold of t1 was not lifted", "the dobby was not brought up"}
-		}
-
-		if _, _, err := runCheck(context.Background(), f.deps); err != nil {
-			t.Fatalf("runCheck() error = %v", err)
-		}
-		if calls != 1 || onDiskAtCall.State != checkGreen || onDiskAtCall.EndedAt.IsZero() {
-			t.Errorf("Green calls = %d, record at the call = %+v; want one call after the green record was written", calls, onDiskAtCall)
-		}
-		want := []string{
-			"adopt check of alpha: tier0 green, passed 1 failed 0 skipped 0, 1.5s",
-			"adopt check of alpha: green, tiers 0; log " + f.logPath(),
-			"the hold of t1 was not lifted",
-			"the dobby was not brought up",
-		}
-		if !slices.Equal(f.notices, want) {
-			t.Errorf("notices = %q; want %q", f.notices, want)
-		}
-	})
-
-	t.Run("a failed end and an end before any tier never call Green, and a check leaves the tries file as it was", func(t *testing.T) {
-		t.Parallel()
-		tests := []struct {
-			name  string
-			tiers []scriptedTier
-			exit  int
-		}{
-			{"GreenEnd", []scriptedTier{{0, passedTier(0, 1, 0)}}, 0},
-			{"FailedTier", []scriptedTier{{0, failedTier(0)}}, 1},
-			{"GateExitsBeforeAnyTier", nil, 1},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				f := newCheckFixture(t, tt.tiers, tt.exit)
-				if err := writeTries(f.dir, 2); err != nil {
-					t.Fatal(err)
-				}
-				triesBefore, _ := os.ReadFile(filepath.Join(f.dir, triesFileName))
-				calls := 0
-				f.deps.Green = func() []string { calls++; return nil }
-
-				if _, ran, err := runCheck(context.Background(), f.deps); err != nil || !ran {
-					t.Fatalf("runCheck() = ran %v, error %v; want it to run", ran, err)
-				}
-				if wantCalls := map[bool]int{true: 1, false: 0}[tt.exit == 0]; calls != wantCalls {
-					t.Errorf("Green calls = %d; want %d", calls, wantCalls)
-				}
-				triesAfter, _ := os.ReadFile(filepath.Join(f.dir, triesFileName))
-				if string(triesAfter) != string(triesBefore) {
-					t.Errorf("tries %q -> %q; want the file byte for byte as it was", triesBefore, triesAfter)
-				}
-			})
-		}
-	})
-
-	t.Run("a subject owned elsewhere and a failing reconcile never call Green", func(t *testing.T) {
-		t.Parallel()
-		owned := newCheckFixture(t, nil, 0)
-		owned.ownedBy = "otherbox"
-		reconcile := newCheckFixture(t, nil, 0)
-		reconcile.deps.Reconcile = func() error { return errors.New("config invalid") }
-		for _, f := range []*checkFixture{owned, reconcile} {
-			calls := 0
-			f.deps.Green = func() []string { calls++; return nil }
-			_, _, _ = runCheck(context.Background(), f.deps)
-			if calls != 0 {
-				t.Errorf("Green calls = %d; want none", calls)
-			}
-		}
-	})
 }
 
 // TestRunCheckMarks pins the status bar marks of a check run, in order:

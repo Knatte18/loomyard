@@ -83,6 +83,12 @@ type SyncOptions struct {
 	BackoffSleep func(time.Duration)
 	// Notifier mails a failed push's record to the hub's orch; nil mails through the process's installed notifier.
 	Notifier PushNotifier
+	// RunSlug names the run a failed push of these options serves, so its failed-push record lists it in Runs.
+	// Empty means the push serves no run.
+	RunSlug string
+	// AfterRecords marks a task pair's code-side push sent once the run's own records side landed.
+	// Only such a push resets a code tip that no transition of the run names, when origin's code branch is ahead.
+	AfterRecords bool
 }
 
 // EnvSyncOptions reads FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH and returns the SyncOptions they describe.

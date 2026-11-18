@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -27,8 +26,9 @@ import (
 // It also uses a temp dobby state and a pause covering the slug, and checks these outcomes:
 // a continue pass of a running Run-Shed run the state names runs no reconcile, no reopening and no pause refusal;
 // a run at Land, a run blocked at Run-Shed, a run with no status, a run the state does not name;
-// a run with a full pass owed, and a run with an origin-owed marker;
+// and a run with a full pass owed;
 // each of these refuses, naming `lym batten run <slug>`, with the continue-refused exit code.
+// A continue pass runs no catch-up, whether it passes or refuses.
 func TestBattenPreRun_ContinuePass(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -46,7 +46,6 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 		name      string
 		status    *shedengine.Status
 		dobbyRuns map[string]dobbyengine.RunState
-		marker    bool
 		// goneReads makes the receiver's re-adoption seam read the task worktree as gone.
 		goneReads bool
 		// goneErrors makes the receiver's re-adoption seam fail to read whether the task worktree is gone.
@@ -60,7 +59,6 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 		{name: "a run the state does not name refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: map[string]dobbyengine.RunState{"other-slug": {}}, wantRefusal: "does not name it"},
 		{name: "a run with no state record refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), wantRefusal: "does not name it"},
 		{name: "a run with a full pass owed refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: map[string]dobbyengine.RunState{slug: {FullPassOwed: true}}, wantRefusal: "owes it a full pass"},
-		{name: "a run with an origin-owed marker refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: driven, marker: true, wantRefusal: "without origin"},
 		{name: "a run whose task worktree is gone refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: driven, goneReads: true, wantRefusal: "its task worktree is gone"},
 		{name: "a run whose task worktree cannot be read as present refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: driven, goneErrors: true, wantRefusal: "whether its task worktree is gone does not read"},
 	}
@@ -103,19 +101,15 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 			}); err != nil {
 				t.Fatalf("pauserecord.Update: %v", err)
 			}
-			if tt.marker {
-				marker := shedrun.OriginOwedMarker(c.location, slug)
-				if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(marker, []byte("{}"), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
 			if tt.status != nil {
 				writeStatus(t, c, *tt.status)
 			}
 
+			catchUps := 0
+			c.catchUp = func() (dobbyengine.CatchUpReport, error) {
+				catchUps++
+				return dobbyengine.CatchUpReport{}, nil
+			}
 			reconciles := 0
 			c.reconcile = func(string) (fabricengine.OriginReport, error) {
 				reconciles++
@@ -142,8 +136,8 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 				if err != nil {
 					t.Fatalf("battenPreRun() = %v; want nil", err)
 				}
-				if reconciles != 0 || len(commands) != 0 {
-					t.Errorf("battenPreRun() ran the reconcile %d times and commands %q; want neither", reconciles, commands)
+				if reconciles != 0 || len(commands) != 0 || catchUps != 0 {
+					t.Errorf("battenPreRun() ran the reconcile %d times, the catch-up %d times and commands %q; want none", reconciles, catchUps, commands)
 				}
 				return
 			}
@@ -159,8 +153,8 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 			if got := passExitCode(err); got != dobbyengine.PassExitContinueRefused {
 				t.Errorf("passExitCode(%v) = %d; want %d", err, got, dobbyengine.PassExitContinueRefused)
 			}
-			if reconciles != 0 || len(commands) != 0 {
-				t.Errorf("a refused continue pass ran the reconcile %d times and commands %q; want neither", reconciles, commands)
+			if reconciles != 0 || len(commands) != 0 || catchUps != 0 {
+				t.Errorf("a refused continue pass ran the reconcile %d times, the catch-up %d times and commands %q; want none", reconciles, catchUps, commands)
 			}
 		})
 	}

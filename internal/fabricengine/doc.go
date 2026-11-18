@@ -358,7 +358,8 @@
 // `CoalescePushBothAt` is its blocking foreground form.
 // The loop holds a separate absorbing push lock, `fabric.push.lock` under the weft worktree's `.weft/` directory.
 // That lock is distinct from the commit lock below.
-// The loop pushes whichever side has commits, repeatedly, and exits once an iteration advances neither side's HEAD.
+// Each iteration pushes the records side first and the code side only once the records side landed,
+// and the loop exits once an iteration advances neither side's HEAD.
 // The push is rebase-free: `gitrepo.PushRebaseFree` is a plain `git push`, never `git pull --rebase`.
 // So a rejected push never mutates the calling process's working tree.
 // A refused push is classified, as **Push classification** below says.
@@ -1116,7 +1117,7 @@
 // Every other rule is in `IsReadOnlyCommand`'s comment.
 // `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to substring-match.
 // A caller like `preflight.CheckResolved` thus switches on `HealthReason.Cause` instead of parsing prose.
-// `PushPairAnchored(l, opts, lockWait)` is a vocabulary-neutral entry point.
+// `PushPairAnchored(l, opts, push)` is a vocabulary-neutral entry point.
 // `MergeStateActive(l)`, `MidMerge(l)` and `RequireDrivableWorktree(l)` are too.
 // Each takes `l` and is reachable the same way `CommitAnchoredPaths` is.
 // `MidMerge(l)` answers whether the pair carries an unfinished merge and which paths are still conflicted.
@@ -1129,29 +1130,102 @@
 // The invariant's scan matches the bare token inside an identifier, so the published name is itself the leak,
 // and a caller that must refuse fabric's own checkouts before driving topology has no other way in.
 // `PushPairAnchored` is synchronous and rebase-free:
-// it pushes the code side and then the records side;
+// it pushes the records side and then the code side;
+// a records side that fails, is rejected, is deferred or did not land sends no code side;
 // in the hub's prime it pushes the records side only,
 // and it reports a code branch with unpushed commits in `PushResult.CodePushSkipped`;
 // and it runs under the weft-side absorbing push lock that `CoalescePushBothAt` also holds.
-// `lockWait` bounds only the wait for that lock:
-// `StatusPushLockWait` is the bound `commit-records` passes;
+// Its third argument is a `PairPush`, which also carries `TeardownWait`, `RunSlug` and `Here`, a `MachineNames`.
+// `PairPush.LockWait` bounds only the wait for that lock:
+// `StatusPushLockWait` is the bound `commit-records` and a run's transition push pass;
 // it is also the default of the wait `Remove` gives a push of the pair for the pair's teardown lock;
 // an expiry returns an error wrapping `ErrPushLockBusy` with nothing pushed;
 // and `LockWaitUnbounded` blocks.
+//
+// A rejected records push reads origin's record of its run before it replays anything.
+// `retryWeftPush` fetches the records branch.
+// `takeoverStop` then reads the run's status file at the fetched tip through `ReadUpstreamTakeover`.
+// That read reports found false for a worktree with no upstream or a tip with no entry.
+// The read does nothing for a zero `MachineNames` or an empty run slug.
+// The run is the pair's slug, or on the prime's records branch the slug `PairPush.RunSlug` names.
+// No entry lets the replay and push run as before.
+// So does an entry naming a machine `MachineNames.Holds` reports as this machine.
+// That covers the prime's records branch holding other runs' commits and the adopter's own record after a rename.
+// An entry naming another machine stops the push.
+// When this machine's hand-over mark names that machine, the error wraps `ErrHandedOver`.
+// Otherwise it is a `*TakeoverError` carrying the slug, the entry and the records worktree.
+// The mark is the file `HandOverMarkPath` names, `<HubScratchDir>/hand-over/<slug>.json`.
+// `ReadHandOverMark` reads it.
+// It holds the entry's machine and time and the time it was written, and an absent mark reads not found.
+// Both errors are non-retryable and write no failed-push record or notice, since a takeover is no failed push.
+// The detached push child pushes no code side after either, and logs it.
+//
+// `HandOverTips` runs the git steps of a hand-over, which a caller outside fabric starts on a `*TakeoverError`.
+// It runs under the slug's teardown lock, taken exclusive.
+// It first pushes the code tip the run's last transition on origin names, when origin's code branch lags behind it.
+// That tip is the `Warp-SHA` of the newest commit on the fetched records branch.
+// The commit's `Run-Transition` trailer must name the slug.
+// The push is leased at the origin tip read, and the records branch is fetched again after it;
+// a tip the last transition no longer names is moved off origin again, to the value origin had.
+// It next archives the pair's local code and records tips that origin lacks, uncommitted files included.
+// Each goes under an `archive-owner/` tag it pushes, with no branch push.
+// A parent branch that only the run's own merge puts ahead of its upstream is tagged the same way.
+// That branch is reset to the upstream through `git reset --keep`.
+// One notice goes through the installed push notifier.
+// `WriteHandOverMark` writes this machine's mark last, after the tags landed.
+// A failed step is thus handed over again by the next rejected push.
+// `ArchiveParentMerge` is the parent branch's archive alone, for a Finalize whose parent push origin rejected.
+// It fetches under the slug's teardown lock, taken exclusive, and leaves a branch whose tip origin holds untouched.
+// Otherwise it tags the local tip `archive-owner/<slug>/<sha12>`, pushes the tag and resets the branch to origin's tip.
+// The reset runs through `resetKeepUnderArchive`, which refuses unless the tag is on origin at the tip being left.
+// `OriginBattenStatus` reads a run's batten record at the prime's records branch on origin, after fetching it.
+// `OriginParentRunStatus` reads a run's record at the upstream tip of a parent pair's records branch.
+// The prime's parent slug is `""`.
+//
+// `TakeOverRun` is the writer of the takeover entry the reader above finds, for one run moved to this machine.
+// It takes the moved slug's teardown lock and then the parent slug's, `root` for the prime, each exclusive.
+// It holds both until it returns.
+// A lock still held when `TakeOverRequest.LockWait` runs out refuses before any fetch.
+// It fetches the code and records branches of the pair and the parent.
+// It archives the local tips origin lacks of both pairs through `archiveOwnerSides`, which takes no lock of its own.
+// It resets the pair's local branches to origin's through `DropLocal`, whose anchor-change refusal is returned unwrapped.
+// It then writes the entry into the run's status file on the pair's records branch and on the parent's.
+// It commits each and pushes the pair's before the parent's, with no code side.
+// A rejected push fetches again and drops the entry commit.
+// It replays this machine's other commits origin lacks onto origin's new tip.
+// It then writes the entry again and pushes, after each wait of `TakeOverRequest.Delays`.
+// The replay and the drop run in destroy.go as `dropTakeoverEntryAndReplayOnto`.
+// A replay that conflicts is undone, and an exhausted retry returns the last push's error;
+// either way the branch ends at its local commits with no entry commit.
+// So a later push never publishes an unfinished adopt.
+// `TakeOverRun` last moves the local branches to origin's tips and drops the hand-over mark through `DropHandOverMark`.
+//
+// `FailedPushesOwedBy` reads the push a run owes.
+// An owed push is a failed-push record of class transport, deferred or teardown_lock whose `Runs` name the run.
+// `OriginCodeTip` reads, with no network call, the code tip the run's last transition on origin names.
+// It reports whether origin's fetched code branch lacks that tip, with the machine and time of the transition.
+// A code-side push sent with `SyncOptions.AfterRecords`, after the run's own records side landed, may reset origin's tip.
+// When origin's branch is ahead, `resetUnnamedTip` moves it to the tip the last transition names under a lease.
+// It does so only when origin's tip is neither that tip nor an ancestor of it, and never for the prime's code branch.
+// `FetchPairTips` fetches a pair's code and records branches, so `OriginCodeTip` reads what origin holds now.
+// `ReturnToPreviousTransition` gives up a missing tip.
+// It commits the status of the transition before the last one, naming that transition's `Warp-SHA`.
+// The commit carries a `Run-Transition` trailer, and nothing is pushed.
+// It reports false, committing nothing, when origin's records branch holds one transition of the slug.
 //
 // `fabric.push.lock` alone follows the pending-flag protocol; `board.push.lock` of `Bolt.Sync` does not.
 // `Bolt.HasUncommitted` reads whether the board worktree holds changed files.
 // A lift thus can tell that a board sync deferred at its start still owes its commit.
 // A pusher writes one flag per side it owes, `pending.records` or `pending.code`, beside the lock.
 // It writes each flag before it tries the lock, so a commit always precedes its flag.
-// A flag holds that side's path and the pause and teardown slugs of the push it serves, so any holder can respawn it.
+// A flag holds that side's path and the pause and teardown slugs of the push it serves.
 // The detached push child (`CoalescePushRequest`) try-locks and exits at once when the lock is held.
 // It leaves its commits to the holder.
 // The holder takes its owed sides' flags before each push, and after releasing re-reads them.
 // A flag of an owed side set again sends it back to the lock.
-// A flag of a side it does not push is respawned as a detached push only when both hold:
-// its path is the worktree the lock directory belongs to, and its slugs are plain names.
-// Any other such flag is dropped with a warning.
+// A flag of a side it does not owe stays on disk for its worktree's next push, which takes it as an owed side.
+// In a pair that is the owed retry of the push that set it.
+// It sends both sides through `PushPairAnchored`, records first.
 // The last holder to release therefore always sees a flag set after its last push.
 // No committed transition is left unpushed.
 // A synchronous pusher returns `ErrPushLockBusy` only when its first acquire misses its wait.
@@ -1166,7 +1240,7 @@
 // The next holder overwrites it.
 //
 // The hub-wide scratch tree also holds two sibling directories.
-// `AdoptScratchDir(hub)` holds the adopt check's files, and also the adopt record, its lock and the worker's output.
+// `AdoptScratchDir(hub)` holds the adopt check's files.
 // `FrontTaskScratchDir(hub)` holds the front-task record and its action output.
 //
 // A pair's teardown lock is `TeardownLockPath(hub, slug)`, `<HubScratchDir>/teardown/<slug>.lock`.
@@ -1200,12 +1274,14 @@
 // `PushPairAnchored` takes the lock shared for a non-prime pair, through `lock.TryAcquireReadLock`.
 // It takes it before the weft push lock and holds it through the push.
 // While any holder has the lock exclusive, the push sends nothing.
+// A zero `PairPush.TeardownWait` makes one try; a positive one polls the lock from one second, up to that wait.
 // It returns an empty `PushResult` and an error wrapping `ErrPairPushRunning`.
+// A positive wait that runs out also records a failed push of class `teardown_lock` for the records side.
+// The record's `Runs` name the pair's slug, and the push returns it as a `*PushFailedError`.
 // The commits stay local for the pair's next push.
-// A `Remove` that fails after taking the lock and leaves a worktree of the pair in place respawns the pair's push.
-// It does so once the lock is released:
-// through `SpawnStatusPush` over the pair's location while the task worktree stands;
-// else through a records-side-only request when only the records worktree stands.
+// A `Remove` that fails after taking the lock and leaves a worktree of the pair in place releases the lock.
+// It spawns no push.
+// The pair's next synchronous push carries its commits.
 // A push of the prime's records side carries no teardown slug, so it never delays a `Remove`.
 // Every detached push child registers in the owner record under `RunProcDir(hub)`, `<HubScratchDir>/runproc`.
 // It registers right after its start:
@@ -1226,7 +1302,7 @@
 // so `CoalescePushBothAt` in an ordinary process is unaffected.
 // `statusPushRequest` sets `PushSpawn.ParentLocked` at spawn time when a live parent lock record names the pair's slug.
 // That holds for the pushes a Finalize spawns past its parent-side merge.
-// The mark travels as the hidden `--parent-locked` flag and through the pending flags and their respawns.
+// The mark travels as the hidden `--parent-locked` flag and through the pending flags.
 // A parent-locked child never exits for coverage and lets only its own slug's owner entry pass.
 // The mark covers only pushes spawned while that record stood.
 // `repushOverOriginContained` retries a code-side rejected push over the push backoff.
@@ -1234,6 +1310,10 @@
 // a stale remote-tracking ref or a lost race recovers, and a real divergence is reported at once.
 // The `gitrepo.ErrPushRejected` that remains, carried by a `*PushFailedError`, is a condition a human decides.
 // `IsPushRejected(err)` reads it without importing `gitrepo`.
+// `IsPushOwed(err)` tells a seam whether a failed push is owed, one it retries until it lands.
+// An error wrapping `ErrPushLockBusy` is owed.
+// So is one whose recorded failures are all of class `transport`, `deferred` or `teardown_lock`.
+// A bare `ErrPairPushRunning`, a rejection and a hand-over are not owed.
 // `MergeStateActive` is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing.
 // It differs from `Fabric.MergeInProgress` and from the two-sided `foreignMergeStatePresent`.
 // `PairComplete(l)` is the predicate over `Add`'s own post-condition.
@@ -1801,7 +1881,7 @@
 // and a held one returns an error wrapping `ErrPairBusy` with nothing changed.
 // It commits the sibling's pending records, then puts a local `set-aside/<slug>/<sha>` tag on the weft tip.
 // The tag is reported as `SetAsideTag`; `Remove` pushes an archive tag instead.
-// It asks origin for nothing and respawns no push after a failure, so the surviving worktree's commits stay local.
+// It asks origin for nothing, so the surviving worktree's commits stay local after a failure.
 // It skips the store housekeeping.
 // It regenerates the hub workspace file by one attempt at its lock, reporting `WorkspaceSkipped` when the lock is held.
 // Both modes clear the failed-push records of the pair's code and records branches once the pair is removed.

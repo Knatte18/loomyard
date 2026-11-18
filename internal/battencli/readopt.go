@@ -32,7 +32,8 @@ type readoptSeams struct {
 	SpawnPush func(slug string) error
 	// Notice posts line to the run's parent; nil posts nothing.
 	Notice func(slug, line string) error
-	// CommitFailed commits batten's status file after the failed stop of the row producer and spawns its push.
+	// CommitFailed commits batten's status file after the failed stop of the row producer and pushes it.
+	// An owed push is logged and returns nil, since the run already halts at the failed stop.
 	// A nil CommitFailed commits nothing.
 	CommitFailed func(slug, producer string) error
 	// RecordsRoot returns the root of the records repository, which a way forward names.
@@ -95,7 +96,7 @@ func hubReadoptSeams(location *lymcwd.Location) readoptSeams {
 			if _, err := deps.Commit(statuscommit.Message(failedStopCommitPrefix, producer, string(shedengine.StateFailed))); err != nil {
 				return err
 			}
-			return deps.Spawn()
+			return pushRecordsOrOwe(deps, slug)
 		},
 		RecordsRoot: func() (string, error) { return fabricengine.RecordsRepoRoot(location) },
 		Tags: func(slug string) ([]fabricengine.RecordsTag, error) {
@@ -148,7 +149,7 @@ func reconcileGoneRun(location *lymcwd.Location, slug string) (fabricengine.Orig
 // readoptGonePair resumes a run whose task worktree is gone.
 // An origin that ended, stopped or gave the run to another machine is refused as in any resume.
 // That refusal comes before the pair is touched.
-// An unreachable origin refuses without writing the origin-owed marker, since a pair is never re-made unjudged.
+// An unreachable origin refuses, since a pair is never re-made unjudged.
 // Past those checks, it prunes the stale registrations and re-makes the pair over its live branches.
 // It then spawns the pair's push and runs the resume reconcile over the re-made pair.
 // A pair that can never be re-made fails the run once, with a way forward by row.

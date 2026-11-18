@@ -26,8 +26,11 @@ import (
 // ownerSeams carries what the owner checks need from the hub's board and this machine.
 // The zero value skips every owner check, which only a receiver that calls no arm has.
 type ownerSeams struct {
-	// Machine returns this machine's name.
+	// Machine returns this machine's name, the one an owner write records.
 	Machine func() (string, error)
+	// Identity returns this machine's identity, which every comparison of a recorded owner with this machine reads.
+	// A nil Identity reads the name Machine returns alone.
+	Identity func() (machinename.Identity, error)
 	// Pull brings the hub's Bolt level with origin.
 	// An unreachable origin returns an error wrapping boardengine.ErrOwnerOriginUnreachable.
 	// A Bolt that cannot be brought level returns an error naming its detail and way forward.
@@ -51,6 +54,7 @@ func hubOwnerSeams(location *lymcwd.Location) ownerSeams {
 	parentOf := func(slug string) (string, error) { return hubgeom.ParentOf(location, slug) }
 	return ownerSeams{
 		Machine:  machinename.Name,
+		Identity: machinename.ReadIdentity,
 		Pull:     func() error { return boardengine.PullBolt(boltDir) },
 		Read:     func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
 		ParentOf: parentOf,
@@ -58,6 +62,11 @@ func hubOwnerSeams(location *lymcwd.Location) ownerSeams {
 			if req.ParentOf == nil {
 				req.ParentOf = parentOf
 			}
+			identity, err := boardengine.EnsureIdentity()
+			if err != nil {
+				return boardengine.OwnerWrite{}, err
+			}
+			req.Identity, req.Machine = identity, identity.Name
 			return boardengine.SetOwners(boardDir, req)
 		},
 	}
@@ -100,13 +109,39 @@ func subjectOrSlug(subject, slug string) string {
 	return subject
 }
 
+// unknownMachineRefusal words the refusal of an ownership judgment whose machine name could not be read.
+func (c *battenCLI) unknownMachineRefusal(err error) error {
+	return fmt.Errorf("battencli: this machine's name is unknown, so ownership cannot be judged: %w; once the name reads, re-run lym batten run %s", err, c.slug)
+}
+
 // thisMachine returns this machine's name, refusing with the name read's own way forward when it cannot be read.
 func (c *battenCLI) thisMachine() (string, error) {
 	machine, err := c.owner.Machine()
 	if err != nil {
-		return "", fmt.Errorf("battencli: this machine's name is unknown, so ownership cannot be judged: %w; once the name reads, re-run lym batten run %s", err, c.slug)
+		return "", c.unknownMachineRefusal(err)
 	}
 	return machine, nil
+}
+
+// readIdentity returns this machine's identity from the Identity seam, or the name Machine returns alone when it is nil.
+func (c *battenCLI) readIdentity() (machinename.Identity, error) {
+	if c.owner.Identity != nil {
+		return c.owner.Identity()
+	}
+	name, err := c.owner.Machine()
+	if err != nil {
+		return machinename.Identity{}, err
+	}
+	return machinename.Identity{Name: name}, nil
+}
+
+// thisIdentity returns this machine's identity, refusing with the name read's own way forward when it cannot be read.
+func (c *battenCLI) thisIdentity() (machinename.Identity, error) {
+	identity, err := c.readIdentity()
+	if err != nil {
+		return machinename.Identity{}, c.unknownMachineRefusal(err)
+	}
+	return identity, nil
 }
 
 // refuseStartOwnedElsewhere refuses a run about to start when another machine owns the slug's task.
@@ -118,7 +153,7 @@ func (c *battenCLI) refuseStartOwnedElsewhere() error {
 	if c.owner.Machine == nil {
 		return nil
 	}
-	machine, err := c.thisMachine()
+	identity, err := c.thisIdentity()
 	if err != nil {
 		return err
 	}
@@ -140,7 +175,7 @@ func (c *battenCLI) refuseStartOwnedElsewhere() error {
 	if err != nil {
 		return fmt.Errorf("battencli: cannot resolve the owner of %q: %w", c.slug, err)
 	}
-	if boardengine.OwnedElsewhere(owner, machine) {
+	if boardengine.OwnedElsewhere(owner, owners.Registry, identity) {
 		subject, err := owners.AdoptSubject(c.slug, c.owner.ParentOf)
 		if err != nil {
 			return fmt.Errorf("battencli: cannot resolve what adopt takes for %q: %w", c.slug, err)
@@ -213,7 +248,6 @@ func (c *battenCLI) claimBoardEntry(slug string) error {
 // A status at Worktree-Teardown whose task worktree is gone takes no reconcile.
 // The run-scope reconcile refuses a slug with no pair worktree.
 // The teardown only finishes what is left of the pair, and the local board alone judges its owner.
-// No origin-owed marker is written on that route.
 // A status at any row but Worktree-Create or Worktree-Teardown runs readoptGonePair when its task worktree is gone.
 // On a receiver without the re-adoption seams, the resume reconcile runs instead.
 // With owner seams, a run with no status file is checked as a start.
@@ -296,7 +330,7 @@ func (c *battenCLI) refuseOwnedElsewhereOnLocalBoard(retry string) error {
 	if c.owner.Machine == nil {
 		return nil
 	}
-	machine, err := c.thisMachine()
+	identity, err := c.thisIdentity()
 	if err != nil {
 		return err
 	}
@@ -310,7 +344,7 @@ func (c *battenCLI) refuseOwnedElsewhereOnLocalBoard(retry string) error {
 		logger.Warn("battencli: local owner unresolvable, resuming without judging the owner", "slug", c.slug, "cause", err)
 		return nil
 	}
-	if boardengine.OwnedElsewhere(owner, machine) {
+	if boardengine.OwnedElsewhere(owner, owners.Registry, identity) {
 		subject, err := owners.AdoptSubject(c.slug, c.owner.ParentOf)
 		if err != nil {
 			logger.Warn("battencli: local adopt subject unresolvable, naming the slug", "slug", c.slug, "cause", err)
@@ -333,7 +367,7 @@ func (c *battenCLI) ownerExtras() map[string]any {
 	if c.owner.Machine == nil {
 		return nil
 	}
-	machine, err := c.owner.Machine()
+	identity, err := c.readIdentity()
 	if err != nil {
 		logger.Warn("battencli: machine name unreadable, status omits the owner", "slug", c.slug, "cause", err)
 		return nil
@@ -350,6 +384,6 @@ func (c *battenCLI) ownerExtras() map[string]any {
 	}
 	return map[string]any{
 		"owner_machine": owner,
-		"owned_here":    !boardengine.OwnedElsewhere(owner, machine),
+		"owned_here":    !boardengine.OwnedElsewhere(owner, owners.Registry, identity),
 	}
 }

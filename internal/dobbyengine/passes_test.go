@@ -39,7 +39,6 @@ func TestPlanPass(t *testing.T) {
 	}{
 		{"RunningAtRunShedGivesContinue", nil, probe, passContinue},
 		{"OwedGivesFull", func(_ *RunView, rs *RunState) { rs.FullPassOwed = true }, probe, passFull},
-		{"OriginOwedGivesFullWithNoReopen", func(run *RunView, _ *RunState) { run.OriginOwed = true }, probe, passFullNoReopen},
 		{"AnotherProducerGivesFull", func(run *RunView, _ *RunState) { run.Producer = "Land" }, probe, passFull},
 		{"HaltedGivesNone", func(run *RunView, _ *RunState) { run.State = "blocked" }, probe, passNone},
 		{"FailedGivesNone", func(run *RunView, _ *RunState) { run.State = "failed" }, probe, passNone},
@@ -56,7 +55,6 @@ func TestPlanPass(t *testing.T) {
 		{"BattenWriteNoLaterThanTheLastExitGivesNone", func(_ *RunView, rs *RunState) { rs.LastPassExit = exited }, passTrigger{}, passNone},
 		{"BattenWriteLaterThanTheLastExitGivesContinue", func(_ *RunView, rs *RunState) { rs.LastPassExit = exited.Add(-time.Second) }, passTrigger{}, passContinue},
 		{"LiftGivesFull", nil, passTrigger{Lift: true}, passFull},
-		{"LiftWithOriginOwedGivesFullWithNoReopen", func(run *RunView, _ *RunState) { run.OriginOwed = true }, passTrigger{Lift: true}, passFullNoReopen},
 	}
 
 	// A run whose verdict does not act, and a run with a cancel under way beside an act verdict, get none on every trigger.
@@ -123,9 +121,8 @@ type passFake struct {
 	hold    bool
 	notices []string
 
-	// pauses, releases and lifts count the pause calls; pauseErr fails the pause, and a standing pause covers the first run.
-	pauses, releases, lifts int
-	pauseErr                error
+	// releases counts the parent lock releases.
+	releases int
 	// owner is what the local Bolt reads as the run's owner.
 	owner string
 	// subject is what the local Bolt reads as the run's adopt subject, and subjectErr fails that read.
@@ -220,30 +217,18 @@ func newPassHarness(t *testing.T, runs ...RunView) *passHarness {
 				fake.spawnedAtSettle = append(fake.spawnedAtSettle, len(fake.spawned))
 				return fake.settleErr
 			},
-			Machine:      func() (string, error) { return "m1", nil },
-			Tasks:        func() ([]TaskView, error) { return append([]TaskView(nil), fake.tasks...), nil },
-			LoadConfig:   func() (Config, error) { return Config{MaxRuns: fake.maxRuns, TaskHeadroom: fake.taskHeadroom}, nil },
-			TaskLimit:    func() (proc.TaskLimit, bool) { return fake.limit, fake.limitFound },
-			StatusExists: func(slug string) (bool, error) { return fake.statuses[slug], nil },
-			PauseCovers:  func(slug string) (bool, error) { return fake.covers[slug], nil },
-			PauseOwned: func(context.Context, string) error {
-				fake.pauses++
-				if fake.pauseErr == nil {
-					fake.runs[0].Covered = true
-				}
-				return fake.pauseErr
-			},
+			Tasks:             func() ([]TaskView, error) { return append([]TaskView(nil), fake.tasks...), nil },
+			LoadConfig:        func() (Config, error) { return Config{MaxRuns: fake.maxRuns, TaskHeadroom: fake.taskHeadroom}, nil },
+			TaskLimit:         func() (proc.TaskLimit, bool) { return fake.limit, fake.limitFound },
+			StatusExists:      func(slug string) (bool, error) { return fake.statuses[slug], nil },
+			PauseCovers:       func(slug string) (bool, error) { return fake.covers[slug], nil },
 			ReleaseParentLock: func(context.Context, string) error { fake.releases++; return nil },
 			SlugOwner:         func(string) (string, error) { return fake.owner, nil },
 			AdoptSubject:      func(string) (string, error) { return fake.subject, fake.subjectErr },
-			LiftOwnerPause: func(context.Context, string) error {
-				fake.lifts++
-				fake.runs[0].Covered = false
-				return nil
-			},
 		},
 		probe:   10 * time.Second,
 		flights: map[string]flight{}, childSeen: map[string]time.Time{}, wasCovered: map[string]bool{}, liftPending: map[string]bool{},
+		handedOver: map[string]bool{},
 	}
 	// A record with a pid is a dobby already started, so a tick finds no start to owe passes for.
 	if err := UpdateState(h.d.geom.StatePath, func(s *State) error { s.PID = 1; return nil }); err != nil {
@@ -424,26 +409,48 @@ func TestDrivePasses_ExitHandling(t *testing.T) {
 		}
 	})
 
-	t.Run("a full pass that exits 0 while the origin-owed marker stands stays owed", func(t *testing.T) {
+	t.Run("a full pass that exits 0 clears the owed full pass and spawns with no reopen", func(t *testing.T) {
 		t.Parallel()
-		run := runningRun("task")
-		run.OriginOwed = true
-		h := newPassHarness(t, run)
+		h := newPassHarness(t, runningRun("task"))
 		h.d.owesAll = true
 		h.tick(true)
 		h.tick(true)
-		if !h.state().FullPassOwed {
-			t.Errorf("FullPassOwed = false after a full pass with the marker standing; want true")
-		}
-		if first := h.fake.spawnsOf("task")[0]; first.continuePass || !first.noReopen {
-			t.Errorf("first pass = %+v; want a full pass with no reopen", first)
-		}
-
-		h.fake.runs[0].OriginOwed = false
-		h.tick(true)
-		h.tick(true)
 		if h.state().FullPassOwed {
-			t.Errorf("FullPassOwed = true after a full pass exited 0 with no marker; want it cleared")
+			t.Errorf("FullPassOwed = true after a full pass exited 0; want it cleared")
+		}
+		if first := h.fake.spawnsOf("task")[0]; first.continuePass || first.noReopen {
+			t.Errorf("first pass = %+v; want a full pass with no reopen flag", first)
+		}
+	})
+
+	t.Run("an origin-wait or owned-elsewhere exit owes the catch-up", func(t *testing.T) {
+		t.Parallel()
+		for _, code := range []int{PassExitOriginWait, PassExitOwnedElsewhere} {
+			h := newPassHarness(t, runningRun("task"))
+			catchUps := 0
+			h.d.deps.CatchUp = fakeCatchUpDeps(func() error { catchUps++; return nil })
+			h.fake.exits = []PassExit{{Code: code}}
+			h.tick(true)
+			h.tick(true)
+			if catchUps != 0 {
+				t.Fatalf("catch-ups in the tick that read exit %d = %d; want none before the next tick", code, catchUps)
+			}
+			h.tick(true)
+			if catchUps != 1 {
+				t.Errorf("catch-ups after exit %d = %d; want 1", code, catchUps)
+			}
+		}
+	})
+
+	t.Run("an origin-wait exit counts no failure and sends no notice", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t, runningRun("task"))
+		h.fake.exits = []PassExit{{Code: PassExitOriginWait}, {Code: PassExitOriginWait}, {Code: PassExitOriginWait}, {Code: PassExitOriginWait}}
+		for range 5 {
+			h.tick(true)
+		}
+		if rs := h.state(); rs.FailingPassCount != 0 || len(h.fake.notices) != 0 {
+			t.Errorf("failures, notices = %d, %d; want none", rs.FailingPassCount, len(h.fake.notices))
 		}
 	})
 

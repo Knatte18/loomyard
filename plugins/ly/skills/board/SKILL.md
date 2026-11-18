@@ -24,7 +24,8 @@ Every entry carries a `kind`:
   A project's `beam` field marks it a beam, a long-lived pair that spawns its members from its own worktree;
   it is set only by `lym beam create`, never by a board write.
   `lym board list` and `lym board get` carry an entry's `parent_beam`:
-  the slug of the nearest beam above it, empty when the prime is its parent.
+  the slug of the nearest beam above it, `root` when the prime is its parent.
+  `lym board list --text` shows the prime as the root project's `P0` row.
 
 A new entry without `kind` lands as a note, so claimable work must pass `kind: "task"`.
 A note stays as written until the operator decides to build it;

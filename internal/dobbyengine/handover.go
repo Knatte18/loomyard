@@ -1,6 +1,8 @@
 // handover.go is what a dobby does on a probe tick that reads its beam owned by another machine.
-// It stays up and idle while an adopt in flight here covers the beam.
-// Otherwise it pauses its runs, archives the local tips origin lacks and exits.
+// It stays up and idle while a hold this machine wrote in Bolt covers the beam's subject.
+// That hold stands until the adopt's check is green.
+// Otherwise it runs the catch-up that hands its runs over and ends the subject's processes.
+// It then archives the local tips origin lacks and exits.
 // It also holds the probe's periodic Bolt pull, through which an idle machine learns a new owner.
 
 package dobbyengine
@@ -32,7 +34,7 @@ func (d *daemon) pullBolt(now time.Time) {
 }
 
 // probeOwner reads the beam's owner on a probe tick and reports whether the dobby exits.
-// While an adopt in flight on this machine covers a beam another machine owns, it sets the adopt hold.
+// While a hold this machine wrote in Bolt covers the subject of a beam another machine owns, it sets the adopt hold.
 // Under the hold the dobby stays up and schedules nothing, and the hold's start and end each log one line.
 // Any other foreign owner gets the hand-over.
 func (d *daemon) probeOwner(ctx context.Context, now time.Time) bool {
@@ -41,7 +43,7 @@ func (d *daemon) probeOwner(ctx context.Context, now time.Time) bool {
 	if holds != d.adoptHolds {
 		d.adoptHolds = holds
 		if holds {
-			d.logLine(now, fmt.Sprintf("adopt hold: an adopt in flight here covers this beam, which machine %s owns; the dobby schedules nothing", owner))
+			d.logLine(now, fmt.Sprintf("adopt hold: this machine's Bolt hold covers this beam's subject, and machine %s owns the beam; the dobby schedules nothing", owner))
 		} else {
 			d.logLine(now, "adopt hold ended")
 		}
@@ -63,23 +65,32 @@ func (d *daemon) endArchiveEpisode(msg string) {
 }
 
 // handOver hands the beam to owner, the machine that owns it now, and reports whether the dobby exits.
-// It first owner-pauses the runs it drives, so no pass of a run whose pause stands starts while it archives.
+// It first runs the catch-up from origin, which hands over each run another machine owns:
+// its processes end, its local tips go under owner archive tags and its local pair is removed.
+// Once the catch-up succeeds it ends the subject's processes through Deps.EndSubject.
 // It then archives the local tips under the beam that origin lacks, and exits once the archive succeeds.
-// A failed archive is logged once per episode and keeps the dobby up; the next probe tick retries it.
+// A failed catch-up, subject end or archive is logged once per episode and keeps the dobby up.
+// The next probe tick retries it.
 func (d *daemon) handOver(ctx context.Context, now time.Time, owner string) bool {
-	d.pauseRunsForOwner(ctx, now)
-	if d.deps.ArchiveOwner != nil {
-		if err := d.deps.ArchiveOwner(); err != nil {
-			d.archiveFailures.Fail("dobbyengine: archiving the local tips for the beam's new owner failed; the dobby stays up and retries at the next probe tick",
-				"worktree", d.geom.WorktreeName, "owner", owner, "error", err)
-			if !d.archiveFailing {
-				d.archiveFailing = true
-				d.logLine(now, "archive failing: "+oneLine(err.Error()))
-			}
+	if d.deps.CatchUp.PullBolt != nil {
+		if _, err := CatchUp(d.deps.CatchUp); err != nil {
+			d.handOverFailed(now, owner, "catch-up failing: ", "the catch-up handing the beam's runs over failed; the dobby stays up and retries at the next probe tick", err)
 			return false
 		}
-		d.endArchiveEpisode("dobbyengine: the archive succeeds again")
 	}
+	if d.deps.EndSubject != nil {
+		if err := d.deps.EndSubject(); err != nil {
+			d.handOverFailed(now, owner, "subject end failing: ", "ending the processes of the beam's subject failed; the dobby stays up and retries at the next probe tick", err)
+			return false
+		}
+	}
+	if d.deps.ArchiveOwner != nil {
+		if err := d.deps.ArchiveOwner(); err != nil {
+			d.handOverFailed(now, owner, "archive failing: ", "archiving the local tips for the beam's new owner failed; the dobby stays up and retries at the next probe tick", err)
+			return false
+		}
+	}
+	d.endArchiveEpisode("dobbyengine: the hand-over succeeds again")
 	logger.Info("dobbyengine: another machine owns this beam; the dobby exits", "worktree", d.geom.WorktreeName, "owner", owner)
 	subject := d.geom.Slug
 	if subject == "" {
@@ -89,24 +100,12 @@ func (d *daemon) handOver(ctx context.Context, now time.Time, owner string) bool
 	return true
 }
 
-// pauseRunsForOwner owner-pauses each run this dobby drives that is neither done nor recorded owned elsewhere.
-// It pauses as a pass exiting owned elsewhere does.
-// A run listing or state read that fails is logged at Warn and pauses nothing; the next probe tick tries again.
-func (d *daemon) pauseRunsForOwner(ctx context.Context, now time.Time) {
-	runs, err := d.deps.Runs()
-	if err != nil {
-		logger.Warn("dobbyengine: the runs could not be listed for the hand-over; none is paused", "worktree", d.geom.WorktreeName, "error", err)
-		return
-	}
-	current, _, err := ReadState(d.geom.StatePath)
-	if err != nil {
-		logger.Warn("dobbyengine: the state record could not be read for the hand-over; no run is paused", "worktree", d.geom.WorktreeName, "error", err)
-		return
-	}
-	for _, run := range runs {
-		if run.State == runStateDone || current.Runs[run.Slug].OwnedElsewhere {
-			continue
-		}
-		d.ownedElsewhere(ctx, run.Slug, now)
+// handOverFailed logs a failed step of the hand-over once per episode and keeps the dobby up.
+// The dobby's own log line starts with linePrefix.
+func (d *daemon) handOverFailed(now time.Time, owner, linePrefix, message string, err error) {
+	d.archiveFailures.Fail("dobbyengine: "+message, "worktree", d.geom.WorktreeName, "owner", owner, "error", err)
+	if !d.archiveFailing {
+		d.archiveFailing = true
+		d.logLine(now, linePrefix+oneLine(err.Error()))
 	}
 }

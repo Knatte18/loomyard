@@ -4,6 +4,7 @@
 package pairteardown
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -36,10 +37,18 @@ type runReader struct {
 	childHere func(slug string) (shedengine.Status, bool, error)
 	// childOnOrigin reads the child run record from origin's records branch.
 	childOnOrigin func(slug string) (shedengine.Status, bool, error)
-	// owner reads the slug's effective owner, the subject adopt takes to move it and whether another machine owns it.
-	owner func(slug string) (owner, adoptSubject string, elsewhere bool, err error)
+	// owners reads the owners and the machine registry the local Bolt records.
+	owners func() (boardengine.Owners, error)
+	// identity reads this machine's identity, which the registry compares a recorded owner against.
+	identity func() (machinename.Identity, error)
+	// parentOf names the slug of the pair slug was forked from, "" for the prime.
+	parentOf func(slug string) (string, error)
 	// pauseCovers reports whether this machine's pause record covers the slug.
 	pauseCovers func(slug string) (bool, error)
+	// owedPush lists the failed-push records that hold a push of the slug's run owed, newest first.
+	owedPush func(slug string) ([]fabricengine.FailedPush, error)
+	// codeTip reads the code tip the slug's last transition on origin names, and whether origin lacks it.
+	codeTip func(slug string) (fabricengine.CodeTipReading, error)
 	// skipPush is true when the environment skips every push, so origin never holds the parent merge.
 	skipPush bool
 	// originParentHolds reports whether origin's fetched parent branch holds the task's work.
@@ -56,6 +65,22 @@ type runReader struct {
 // Every read error is returned naming the read and the slug.
 func ReadRun(prime *lymcwd.Location, slug string) (runfsm.Records, runfsm.Inputs, error) {
 	return hubRunReader(prime).read(slug)
+}
+
+// ReadRunPulled brings the hub's Bolt level with origin, then reads the run of slug as ReadRun does.
+// A hold, an owner or a registry entry another machine pushed is therefore read.
+// An unreachable origin reads the local Bolt and goes on, and so does a hub with no Bolt checkout.
+// Any other failed pull returns an error naming the pull's detail and the way forward, and reads nothing.
+func ReadRunPulled(prime *lymcwd.Location, slug string) (runfsm.Records, runfsm.Inputs, error) {
+	boltDir := fabricengine.BoltDir(prime.HubPath)
+	if _, err := os.Stat(boltDir); err == nil {
+		if err := boardengine.PullBolt(boltDir); err != nil && !errors.Is(err, boardengine.ErrOwnerOriginUnreachable) {
+			return runfsm.Records{}, runfsm.Inputs{}, fmt.Errorf(
+				"read the run of %s: the board could not be pulled: %w; way forward: bring the board level as it names, then run the verb again",
+				slug, err)
+		}
+	}
+	return ReadRun(prime, slug)
 }
 
 // hubRunReader wires a runReader over the hub of prime.
@@ -98,26 +123,15 @@ func hubRunReader(prime *lymcwd.Location) runReader {
 			return readStatus(shedrun.StatusFile(task, shedrun.SelfRunID), shedrun.StatusLock(task, shedrun.SelfRunID))
 		},
 		childOnOrigin: func(slug string) (shedengine.Status, bool, error) { return fabricengine.OriginRunStatus(prime, slug) },
-		owner: func(slug string) (string, string, bool, error) {
-			here, err := machinename.Name()
+		owners:        func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
+		identity: func() (machinename.Identity, error) {
+			identity, err := machinename.ReadIdentity()
 			if err != nil {
-				return "", "", false, fmt.Errorf("read this machine's name: %w", err)
+				return machinename.Identity{}, fmt.Errorf("read this machine's name: %w", err)
 			}
-			owners, err := boardengine.ReadOwners(boardDir)
-			if err != nil {
-				return "", "", false, err
-			}
-			parentOf := func(entry string) (string, error) { return hubgeom.ParentOf(prime, entry) }
-			owner, err := owners.Effective(slug, parentOf)
-			if err != nil {
-				return "", "", false, err
-			}
-			subject, err := owners.AdoptSubject(slug, parentOf)
-			if err != nil {
-				return "", "", false, err
-			}
-			return owner, subject, boardengine.OwnedElsewhere(owner, here), nil
+			return identity, nil
 		},
+		parentOf: func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) },
 		pauseCovers: func(slug string) (bool, error) {
 			geometry, err := hubgeom.PauseGeometry(prime)
 			if err != nil {
@@ -126,6 +140,10 @@ func hubRunReader(prime *lymcwd.Location) runReader {
 			coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, slug, time.Now())
 			return coverage.Covered, err
 		},
+		owedPush: func(slug string) ([]fabricengine.FailedPush, error) {
+			return fabricengine.FailedPushesOwedBy(prime.HubPath, slug)
+		},
+		codeTip:  func(slug string) (fabricengine.CodeTipReading, error) { return fabricengine.OriginCodeTip(prime, slug) },
 		skipPush: fabricengine.EnvSyncOptions().SkipPush,
 		originParentHolds: func(slug string) (bool, error) {
 			task, err := taskLocation(slug)
@@ -203,11 +221,30 @@ func (r runReader) read(slug string) (runfsm.Records, runfsm.Inputs, error) {
 	records.ChildLanding = battenAtLanding ||
 		(records.ChildFound && (records.Child.CurrentProducer == loomshed.NameFinalize || records.Child.State == shedengine.StateDone))
 
-	if inputs.Owner, inputs.AdoptSubject, inputs.OwnedElsewhere, err = r.owner(slug); err != nil {
+	if err := r.readOwner(slug, &inputs); err != nil {
 		return fail("the owner", err)
 	}
 	if inputs.PauseCovers, err = r.pauseCovers(slug); err != nil {
 		return fail("the pause record", err)
+	}
+
+	owed, err := r.owedPush(slug)
+	if err != nil {
+		return fail("the owed push", err)
+	}
+	if len(owed) > 0 {
+		inputs.PushOwed = true
+		inputs.PushOwedError = owed[0].Error
+		inputs.PushOwedWorktree = owed[0].RepoPath
+	}
+	tip, err := r.codeTip(slug)
+	if err != nil {
+		return fail("the code tip", err)
+	}
+	if tip.Missing {
+		inputs.CodeTipMissing = true
+		inputs.CodeTip = tip.Tip
+		inputs.CodeTipMachine = tip.Machine
 	}
 
 	switch {
@@ -228,4 +265,30 @@ func (r runReader) read(slug string) (runfsm.Records, runfsm.Inputs, error) {
 		}
 	}
 	return records, inputs, nil
+}
+
+// readOwner fills inputs with the slug's effective owner and the subject adopt takes to move it.
+// It also fills whether the registry reads that owner as another machine.
+// It fills whether a Bolt hold holds the slug, with the hold's machine.
+func (r runReader) readOwner(slug string, inputs *runfsm.Inputs) error {
+	here, err := r.identity()
+	if err != nil {
+		return err
+	}
+	owners, err := r.owners()
+	if err != nil {
+		return err
+	}
+	if inputs.Owner, err = owners.Effective(slug, r.parentOf); err != nil {
+		return err
+	}
+	if inputs.AdoptSubject, err = owners.AdoptSubject(slug, r.parentOf); err != nil {
+		return err
+	}
+	inputs.OwnedElsewhere = boardengine.OwnedElsewhere(inputs.Owner, owners.Registry, here)
+	if hold, held := owners.HoldOf(slug); held {
+		inputs.Held = true
+		inputs.HoldMachine = hold.Machine
+	}
+	return nil
 }

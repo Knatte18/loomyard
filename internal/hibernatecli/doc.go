@@ -40,6 +40,12 @@
 // The dobby's file watch opens only a directory that exists.
 // internal/beamcli runs the Carrier in the prime's dobby; the sequence's log lines go to that dobby's own output.
 //
+// # The hub stop's pause
+//
+// `PauseHub` runs the engine's `PauseAndConfirm` over the same Deps, with no request file.
+// `lym beam stop --all` calls it, so the hub stop pauses and confirms through the hibernate sequence's own function.
+// Its entry carries the caller label the stop names.
+//
 // # Spawns
 //
 // The machine's hibernate is `systemctl hibernate`, which returns once the job is queued;

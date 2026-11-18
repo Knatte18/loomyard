@@ -1,4 +1,5 @@
-// overview.go renders HEDDLE.md at the Bolt checkout's root: every entry heddle holds, by the place it lands in, for a reader.
+// overview.go renders HEDDLE.md at the Bolt checkout's root for a reader.
+// It shows every entry heddle holds, by the place it lands in.
 
 package heddleengine
 
@@ -52,8 +53,8 @@ var overviewGroups = []overviewGroup{
 	{heading: "From lym", collapsed: true, holds: func(entry LayeredEntry) bool { return entry.Layer == LayerShipped && !entry.Overridden }},
 }
 
-// overviewPlace is one place entries land in: a file target, a JSON-object target or a prompt target,
-// with the entries that reach it in render order.
+// overviewPlace is one place entries land in: a file target, a JSON-object target or a prompt target.
+// It holds the entries that reach the place in render order.
 type overviewPlace struct {
 	target  Target
 	entries []LayeredEntry

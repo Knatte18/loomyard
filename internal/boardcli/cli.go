@@ -97,7 +97,7 @@ a task can be claimed and depend on other tasks; a note is an idea or observatio
 entries: a task or note joins it through its "project" field, the project lists its members' plan
 order in "order", and its "beam" flag, set only by "lym beam create", makes it
 a long-lived pair that runs its members. "get" and "list" carry an entry's "parent_beam", the slug of
-the beam above it, empty when the prime is its parent. A task carries at least
+the beam above it, "root" when the prime is its parent. A task carries at least
 one type label, a note exactly one, and every label must be configured in board.yaml. Every entry
 carries a handle the board assigns, T and a number for a task, P and a number for a project, a
 note's type letter and a number for a note, such as T4 or B2. The README renders tasks split into dependency layers and notes grouped by
@@ -930,6 +930,9 @@ A task's "owner_machine" is its effective owner, its beam's or root's; only a be
 With --text, print a "prime owner: <machine>" line ("none" when none is recorded),
 then the compact one-line-per-task listing (handle, kind, priority, age, time since last revision, slug, title, labels, [status])
 instead of JSON; errors stay JSON.
+Without --label, the --text listing shows the root project, the prime, as a P0 row with slug root
+before the first project, note or done entry, and last under --sort; the JSON "tasks" array holds no root row.
+An entry's "parent_beam" is the slug of the beam above it, "root" when the prime is its parent.
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
 A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
 --sort age lists the oldest entries first, --sort revised the longest unrevised first;
@@ -954,6 +957,15 @@ Examples:
 			}
 			if !listText {
 				return output.Ok(out, map[string]any{"prime_owner": primeOwner, "tasks": tasks})
+			}
+			// A label filter keeps only entries carrying the label, and the root carries none.
+			// The root has no dates, so a date-sorted listing puts it last, as it does any undated entry.
+			if len(listLabels) == 0 {
+				if listSort != "" {
+					tasks = append(tasks, boardengine.RootProjectBrief())
+				} else {
+					tasks = withRootProjectRow(tasks)
+				}
 			}
 			if _, err := io.WriteString(out, primeOwnerLine(primeOwner)+RenderCompact(tasks, time.Now())); err != nil {
 				return outputError(out, err.Error())
@@ -1361,11 +1373,15 @@ func outputSuccessWithTask(out io.Writer, task boardengine.Task, notice string) 
 
 // outputGetTask writes {"ok":true,"task":{...},"parent_beam":"..."} with task as a pointer.
 // A nil task writes null and omits parent_beam.
-// parentBeam is the slug of the beam the entry belongs to, empty when the prime is its parent.
+// parentBeam is the slug of the beam the entry belongs to, empty when the prime is its parent;
+// the envelope prints the prime as boardengine.RootSubject, since an empty value reads as no beam.
 // The task carries "discussed": true when its run's Discussion was approved, and no discussed key otherwise.
 func outputGetTask(out io.Writer, task *boardengine.Task, parentBeam string) int {
 	envelope := map[string]any{"task": task}
 	if task != nil {
+		if parentBeam == "" {
+			parentBeam = boardengine.RootSubject
+		}
 		envelope["parent_beam"] = parentBeam
 	}
 	return output.Ok(out, envelope)

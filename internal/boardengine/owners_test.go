@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -126,20 +127,23 @@ func TestOwnersEffective(t *testing.T) {
 		}
 	})
 
+	neve := machinename.Identity{Name: "neve"}
 	elsewhere := []struct {
-		name        string
-		owner, here string
-		want        bool
+		name     string
+		owner    string
+		registry Registry
+		here     machinename.Identity
+		want     bool
 	}{
-		{"EmptyOwnerIsOwnedByNoOther", "", "neve", false},
-		{"SameOwnerIsNotElsewhere", "neve", "neve", false},
-		{"OtherOwnerIsElsewhere", "box", "neve", true},
+		{"EmptyOwnerIsOwnedByNoOther", "", nil, neve, false},
+		{"SameOwnerIsNotElsewhere", "neve", nil, neve, false},
+		{"OtherOwnerIsElsewhere", "box", nil, neve, true},
 	}
 	for _, tt := range elsewhere {
 		t.Run("OwnedElsewhere_"+tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := OwnedElsewhere(tt.owner, tt.here); got != tt.want {
-				t.Errorf("OwnedElsewhere(%q, %q) = %v; want %v", tt.owner, tt.here, got, tt.want)
+			if got := OwnedElsewhere(tt.owner, tt.registry, tt.here); got != tt.want {
+				t.Errorf("OwnedElsewhere(%q, %v, %+v) = %v; want %v", tt.owner, tt.registry, tt.here, got, tt.want)
 			}
 		})
 	}

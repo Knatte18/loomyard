@@ -159,10 +159,10 @@ func TestNewFinalize_Refusals(t *testing.T) {
 // --- Call behaviour ---
 
 // TestFinalize_MergeMarkPushOrderAndVerdict pins the landing order:
-// a landed merge is marked done on the board, then pushed to the parent's upstream, before Done.
-// With `Deps.PushSkipped` set, the push is skipped and the landing is Done.
-// A failed push is Stuck rather than Done.
-// Neither a failing push nor a failing board seam changes the other's outcome.
+// a landed merge is pushed to the parent's upstream, its records are committed and pushed, then it is marked done.
+// With `Deps.PushSkipped` set, no push is made and the landing is Done.
+// A failed push is Stuck rather than Done and leaves no mark, and a failing board write returns an error.
+// A rejected push over a parent that already holds the work archives the local merge and goes on.
 // A failed push carries the adopter-first repair note only when origin's parent holds the work,
 // and a parent commit is listed.
 // With only the squash listed, the note is a reset;
@@ -201,7 +201,7 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 		{"pushed", false, nil, nil, shedengine.Done, "", nil, nil},
 		{"push skipped", true, nil, nil, shedengine.Done, "", nil, nil},
 		{"failing push still marks", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", nil, nil},
-		{"erroring board seam still Done", false, nil, errors.New("board unavailable"), shedengine.Done, "", nil, nil},
+		{"a failing board write returns an error", false, nil, errors.New("board unavailable"), "", "", nil, nil},
 		{"rewound hold-back", false, rewound, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(rewound.Record), nil, nil},
 		{"prime not fast-forward", false, primeDiverged, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(primeDiverged.Record), nil, nil},
 		{"auth refusal", false, authRefused, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(authRefused.Record), nil, nil},
@@ -241,6 +241,8 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 				deps.ParentCommitsOriginLacks = func() ([]string, error) { return tt.repair.lacks, tt.repair.lacksErr }
 			}
 			deps.PushSkipped = tt.pushSkipped
+			deps.CommitStatus = func() error { order = append(order, "commit"); return nil }
+			deps.PushRecords = func() error { order = append(order, "push-records"); return nil }
 			deps.MarkTaskDone = func() error {
 				order = append(order, "mark")
 				return tt.markErr
@@ -254,9 +256,28 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 			}
 			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
+			if tt.markErr != nil {
+				_, _, err := fz.Call(context.Background())
+				if !errors.Is(err, tt.markErr) {
+					t.Fatalf("Call() error = %v; want it to wrap %v", err, tt.markErr)
+				}
+				if got, want := strings.Join(order, ","), "commit,merge,push,commit,push-records,mark"; got != want {
+					t.Errorf("call order = %q; want %q", got, want)
+				}
+				return
+			}
+
 			ptr := shedfake.RequireOutcome(t, fz, tt.wantOutcome)
-			if got, want := strings.Join(order, ","), "merge,mark,push"; got != want {
-				t.Errorf("call order = %q; want %q", got, want)
+			wantOrder := "commit,merge,push"
+			switch {
+			case tt.wantOutcome != shedengine.Done:
+			case tt.pushSkipped:
+				wantOrder += ",commit,mark"
+			default:
+				wantOrder += ",commit,push-records,mark"
+			}
+			if got := strings.Join(order, ","); got != wantOrder {
+				t.Errorf("call order = %q; want %q", got, wantOrder)
 			}
 			if len(merger.pushCalls) != 1 {
 				t.Fatalf("PushBranch calls = %d; want 1", len(merger.pushCalls))
@@ -294,6 +315,31 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a rejected push over a parent that holds the work archives and marks", func(t *testing.T) {
+		var order []string
+		merger := &recordingParentMerger{
+			results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
+			pushErr: errors.New("remote rejected"),
+			headSHA: squash,
+			order:   &order,
+		}
+		deps := newTestDeps(t)
+		deps.Slug = "me"
+		deps.OriginParentHoldsWork = func() (bool, error) { return true, nil }
+		// The archive resets the parent branch to origin's tip, so the head the pair reads afterwards is another commit.
+		deps.ArchiveParentMerge = func() error { order = append(order, "archive"); merger.headSHA = "originTip"; return nil }
+		deps.CommitStatus = func() error { order = append(order, "commit"); return nil }
+		deps.PushRecords = func() error { order = append(order, "push-records"); return nil }
+		deps.RecordLanding = func(commit string) error { order = append(order, "record "+commit); return nil }
+		deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
+		fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+		shedfake.RequireOutcome(t, fz, shedengine.Done)
+		if got, want := strings.Join(order, ","), "commit,merge,record "+squash+",push,archive,record originTip,commit,push-records,mark"; got != want {
+			t.Errorf("call order = %q; want %q", got, want)
+		}
+	})
 }
 
 // TestFinalize_MergeOptionsCarriesComposedMessage asserts that the merge-in runs first.
@@ -440,7 +486,7 @@ func (r *orderedResolver) Resolve(ctx context.Context, source, tip string) (merg
 // The board seam runs once, after the retry that lands, never after a failed attempt.
 // The parent run records are committed after each merge-in and before the parent-side merge.
 // This holds on the first pass and on the retry alike.
-// The parent pair's head is recorded as the landing commit after the board seam and before the push.
+// The parent pair's head is recorded as the landing commit before the push, and the board seam runs after the push.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -453,9 +499,9 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 		// parentMoves moves the parent tip from p2 to p3 at the first parent-side merge call, as a code-side commit would.
 		parentMoves bool
 	}{
-		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,record landed1,push", 2, false, false},
+		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,record landed1,push,mark", 2, false, false},
 		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 2, false, false},
-		{"a code-side parent commit between the passes lands through the retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,record landed1,push", 2, false, true},
+		{"a code-side parent commit between the passes lands through the retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,record landed1,push,mark", 2, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -518,8 +564,10 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 }
 
 // TestFinalize_RecordsTheLandingCommitOnTheFirstTry pins that a parent-side merge lands on the first call:
-// the parent pair's head is recorded after the board seam and before the push.
+// the parent pair's head is recorded after the merge and before the push, and the board seam runs last.
 // It then pins that the landed size is recorded from the parent head read before the merge-in to the landing commit.
+//
+//testtiming:keep pins the landed-size range recorded from the pre-merge parent head and the record-before-push order on the first-try merge
 func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -533,7 +581,7 @@ func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
 	fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 	shedfake.RequireOutcome(t, fz, shedengine.Done)
-	if got, want := strings.Join(order, ","), "merge,mark,record landed1,size parent0..landed1,push"; got != want {
+	if got, want := strings.Join(order, ","), "merge,record landed1,size parent0..landed1,push,mark"; got != want {
 		t.Errorf("call order = %q; want %q", got, want)
 	}
 }
@@ -1028,6 +1076,24 @@ func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
 	if got := shedtransient.Class(err); got != shedengine.TransientGitTransport {
 		t.Errorf("Class(err) = %q; want %q", got, shedengine.TransientGitTransport)
 	}
+
+	t.Run("a re-step whose merge is already in the parent pushes the parent before the records", func(t *testing.T) {
+		var order []string
+		deps := newTestDeps(t)
+		deps.CommitStatus = func() error { order = append(order, "commit"); return nil }
+		deps.PushRecords = func() error { order = append(order, "push-records"); return nil }
+		deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
+		merger := &recordingParentMerger{
+			results: []mergeCallResult{{result: fabricengine.MergeResult{AlreadyUpToDate: true}}},
+			order:   &order,
+		}
+		fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+		shedfake.RequireOutcome(t, fz, shedengine.Done)
+		if got, want := strings.Join(order, ","), "commit,merge,push,commit,push-records,mark"; got != want {
+			t.Errorf("call order = %q; want %q", got, want)
+		}
+	})
 }
 
 // TestFinalize_LockFirstAndFastForward pins Finalize's entry.

@@ -195,6 +195,23 @@ const codexSteerHeadlessClaudeDeny = headlessClaudeRefusal + "hand the work to a
 // A word that crosses a separator ends the match, so a print flag of a later command passes.
 const headlessClaudeCommandPattern = commandPositionPattern + `claude(\.exe)?([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+(-[a-z]*p[a-z]*|--print)([^A-Za-z0-9_./-]|$)`
 
+// steerAdoptTakeHoldDeny refuses a Bash adopt that takes another machine hold over to this one.
+// It must contain no single/double quote or backslash (checked at init).
+// It names the operator as the way forward and spells no flag.
+const steerAdoptTakeHoldDeny = "a lym adopt that takes the hold of another machine over to this one is refused here; that takeover is the operator to decide, so ask the operator"
+
+// noticeAdoptTakeHoldDeny announces the adopt takeover deny in the same wording as its steer.
+const noticeAdoptTakeHoldDeny = steerAdoptTakeHoldDeny + "."
+
+// adoptTakeHoldCommandPattern is the grep -E pattern the adopt takeover deny matches in the payload JSON.
+// It matches lym adopt in command position, optionally path-prefixed.
+// Any argument words on the same command may follow, then the --take-hold flag word.
+// The flag with an = value is included.
+// A word that crosses a separator ends the match, so a flag of a later command passes.
+// It sees static text only.
+// A written script, a command substitution inside a quoted string and the flag spelled through a variable pass.
+const adoptTakeHoldCommandPattern = commandPositionPattern + `lym[[:space:]]+adopt([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+--take-hold` + wordEndPattern
+
 // githubAllowed maps each gh command the publish row lets through to the subcommands of it the row lets through, nil for every subcommand.
 // They read GitHub, comment on a pull request or edit its title and body; every other gh command and subcommand is refused.
 // Each word is lowercase letters only, which notWordPattern relies on.
@@ -512,6 +529,18 @@ func rowsAfterRawGo() []Row {
 			Switch:      SwitchNone,
 			Forms:       [][]string{{"claude", "-p"}, {"claude", "--print"}},
 			EngineTexts: map[string]EngineText{engineCodex: {Steer: codexSteerHeadlessClaudeDeny, Notice: codexSteerHeadlessClaudeDeny + "."}},
+		},
+		{
+			// Installed for every run, the orch included, with no config key, so no agent moves another machine hold to this one.
+			// A guardrail, not a barrier.
+			// A written script, a command substitution inside a quoted string and a variable-spelled flag pass.
+			// A matching spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
+			Name:     "adopt-take-hold",
+			Patterns: []string{adoptTakeHoldCommandPattern},
+			Steer:    steerAdoptTakeHoldDeny,
+			Notice:   noticeAdoptTakeHoldDeny,
+			Switch:   SwitchNone,
+			Forms:    [][]string{{"lym", "adopt", "--take-hold"}},
 		},
 		{
 			// Installed only for a launch spec that sets DenyPublish, such as the PR-Review session's, which reads the pull request, comments on it and edits its title and body through gh.

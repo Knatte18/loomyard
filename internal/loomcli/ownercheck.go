@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/runfsm"
@@ -45,12 +46,12 @@ func primeOfHub(l *lymcwd.Location) (*lymcwd.Location, error) {
 }
 
 // runOwnerVerdict judges whether another machine owns the run of slug.
-// It runs a judge-only origin reconcile of the run from the hub's prime, with machine as this machine's name.
+// It runs a judge-only origin reconcile of the run from the hub's prime, with identity as this machine's identity.
 // It then reads the run's owned_elsewhere entry.
 // With origin unreachable it reads the local board's effective owner instead.
 // It writes no owner.
 // A reconcile or read error is returned.
-func runOwnerVerdict(l *lymcwd.Location, slug string, machine func() (string, error)) (ownerVerdict, error) {
+func runOwnerVerdict(l *lymcwd.Location, slug string, identity func() (machinename.Identity, error)) (ownerVerdict, error) {
 	prime, err := primeOfHub(l)
 	if err != nil {
 		return ownerVerdict{}, err
@@ -60,13 +61,13 @@ func runOwnerVerdict(l *lymcwd.Location, slug string, machine func() (string, er
 		return ownerVerdict{}, err
 	}
 	options := pairteardown.HubSeamOptions(prime)
-	options.Machine = machine
+	options.Machine = identity
 	report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{Run: slug, JudgeOnly: true}, teardown.OriginSeams(options), fabricengine.ReconcileOptions{})
 	if err != nil {
 		return ownerVerdict{}, fmt.Errorf("origin reconcile of %q: %w", slug, err)
 	}
 	if report.Unreachable {
-		return localOwnerVerdict(l, slug, machine, options.ParentOf)
+		return localOwnerVerdict(l, slug, identity, options.ParentOf)
 	}
 	for _, entry := range reportOfRun(report, slug).Entries {
 		if entry.State == fabricengine.EntryOwnedElsewhere {
@@ -77,8 +78,8 @@ func runOwnerVerdict(l *lymcwd.Location, slug string, machine func() (string, er
 }
 
 // localOwnerVerdict judges the owner of slug from the hub's local board, for a reconcile that could not reach origin.
-func localOwnerVerdict(l *lymcwd.Location, slug string, machine func() (string, error), parentOf func(slug string) (string, error)) (ownerVerdict, error) {
-	here, err := machine()
+func localOwnerVerdict(l *lymcwd.Location, slug string, identity func() (machinename.Identity, error), parentOf func(slug string) (string, error)) (ownerVerdict, error) {
+	here, err := identity()
 	if err != nil {
 		return ownerVerdict{}, err
 	}
@@ -94,7 +95,7 @@ func localOwnerVerdict(l *lymcwd.Location, slug string, machine func() (string, 
 	if err != nil {
 		return ownerVerdict{}, err
 	}
-	return ownerVerdict{Owner: owner, AdoptSubject: subject, Elsewhere: boardengine.OwnedElsewhere(owner, here)}, nil
+	return ownerVerdict{Owner: owner, AdoptSubject: subject, Elsewhere: boardengine.OwnedElsewhere(owner, owners.Registry, here)}, nil
 }
 
 // refuseOwnedElsewhere writes the refusal envelope when another machine owns the run or its owner cannot be judged.
@@ -137,12 +138,13 @@ func writeOwnedElsewhere(ctx context.Context, out io.Writer, slug, owner, subjec
 // hubRunVerdict judges whether the run of slug may act, over the hub of l.
 // The verdict is judged over the run's tracked records and this machine's inputs.
 // A shed pause is set aside, since the verbs asking resume the child's own shed pause.
+// The hub's Bolt is pulled first, so a hold another machine wrote is read.
 func hubRunVerdict(l *lymcwd.Location, slug string) (runfsm.Verdict, error) {
 	prime, err := primeOfHub(l)
 	if err != nil {
 		return runfsm.Verdict{}, err
 	}
-	records, inputs, err := pairteardown.ReadRun(prime, slug)
+	records, inputs, err := pairteardown.ReadRunPulled(prime, slug)
 	if err != nil {
 		return runfsm.Verdict{}, err
 	}

@@ -201,7 +201,7 @@ func readLocalReading(prime *lymcwd.Location, slug string) (localReading, error)
 		return localReading{}, err
 	}
 	return localReading{
-		ownedElsewhere: boardengine.OwnedElsewhere(owner, machine),
+		ownedElsewhere: boardengine.OwnedElsewhere(owner, owners.Registry, machine),
 		done:           found && task.Status != nil && *task.Status == "done",
 	}, nil
 }

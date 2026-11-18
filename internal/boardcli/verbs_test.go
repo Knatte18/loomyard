@@ -343,9 +343,11 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
 
+	// The root project's P0 row stands before the first project, note or done entry, with no dates.
 	wantList := "prime owner: none\n" +
-		"T1  task  0m  0m  soon   Soon thing   bug                    [active]\n" +
-		"E1  note  0m  0m  later  Later thing  enhancement,undecided\n"
+		"T1  task     0m  0m  soon   Soon thing                      bug                    [active]\n" +
+		"P0  project          root   Root: entries under no project\n" +
+		"E1  note     0m  0m  later  Later thing                     enhancement,undecided\n"
 	exitCode, stdout := runCLI(t, "list", "--text")
 	if exitCode != 0 || stdout != wantList {
 		t.Fatalf("list --text: exit %d, stdout %q, want %q", exitCode, stdout, wantList)
@@ -360,6 +362,14 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 		t.Fatalf("find --text: exit %d, stdout %q, want %q", exitCode, stdout, wantFind)
 	}
 
+	// A label filter keeps only entries carrying the label, so the root row is left out.
+	wantLabelled := "prime owner: none\n" +
+		"T1  task  0m  0m  soon  Soon thing  bug  [active]\n"
+	exitCode, stdout = runCLI(t, "list", "--text", "--label", "bug")
+	if exitCode != 0 || stdout != wantLabelled {
+		t.Fatalf("list --text --label bug: exit %d, stdout %q, want %q", exitCode, stdout, wantLabelled)
+	}
+
 	// A backfilled creation date reorders --sort age, oldest first, and leaves --sort revised in README order.
 	// Both entries get the same revised stamp, since the upserts above can fall in different whole seconds.
 	mustUpsert(t, `{"slug":"soon","revised":"2026-02-03T04:05:06Z"}`)
@@ -372,6 +382,18 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	}
 	if result := runJSON(t, 1, "list", "--sort", "newest"); !strings.Contains(fmt.Sprint(result["error"]), "newest") {
 		t.Fatalf("list --sort newest: result = %v, want a refusal naming the value", result)
+	}
+
+	// The root row goes last under --sort, and ahead of the done entries when no open project or note stands.
+	_, stdout = runCLI(t, "list", "--text", "--sort", "age")
+	if lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n"); !strings.HasPrefix(lines[len(lines)-1], "P0 ") {
+		t.Errorf("list --text --sort age = %q; want the P0 row last", stdout)
+	}
+	runJSON(t, 0, "set-status", `{"slug":"later","status":"done"}`)
+	runJSON(t, 0, "set-status", `{"slug":"soon","status":"done"}`)
+	_, stdout = runCLI(t, "list", "--text")
+	if lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n"); len(lines) != 4 || !strings.HasPrefix(lines[1], "P0 ") {
+		t.Errorf("list --text with only done entries = %q; want the P0 row ahead of them", stdout)
 	}
 }
 
@@ -577,7 +599,7 @@ func stepProjectRelease(t *testing.T, f *cliFixture) {
 
 // stepProjects drives the project kind through a seeded hub:
 // list and get carry parent_beam.
-// It is empty under a grouping project, and it names the beam once the project is hand-marked a beam.
+// It is root under a grouping project, and it names the beam once the project is hand-marked a beam.
 // A task slug ending in the records suffix, or one equal to a configured junction name, is refused with fabric's reason.
 // A member's project change is refused while a worktree stands at its pair path;
 // the refusal names `lym batten cancel <slug> --remove`.
@@ -595,11 +617,11 @@ func stepProjects(t *testing.T, f *cliFixture) {
 		t.Fatalf("list: no entry %q", slug)
 		return nil
 	}
-	if got := runJSON(t, 0, "get", `{"slug":"member"}`)["parent_beam"]; got != "" {
-		t.Errorf("get member under a grouping project: parent_beam = %v, want empty", got)
+	if got := runJSON(t, 0, "get", `{"slug":"member"}`)["parent_beam"]; got != boardengine.RootSubject {
+		t.Errorf("get member under a grouping project: parent_beam = %v, want %s", got, boardengine.RootSubject)
 	}
-	if got := parentBeamOfListed("member"); got != nil {
-		t.Errorf("list member under a grouping project: parent_beam = %v, want none", got)
+	if got := parentBeamOfListed("member"); got != boardengine.RootSubject {
+		t.Errorf("list member under a grouping project: parent_beam = %v, want %s", got, boardengine.RootSubject)
 	}
 
 	seedBoardFile(t, f.cwd, `{"version":1,"entries":[`+
@@ -612,8 +634,8 @@ func stepProjects(t *testing.T, f *cliFixture) {
 	if got := parentBeamOfListed("member"); got != "proj" {
 		t.Errorf("list member of a beam: parent_beam = %v, want proj", got)
 	}
-	if got := runJSON(t, 0, "get", `{"slug":"proj"}`)["parent_beam"]; got != "" {
-		t.Errorf("get the beam itself: parent_beam = %v, want empty", got)
+	if got := runJSON(t, 0, "get", `{"slug":"proj"}`)["parent_beam"]; got != boardengine.RootSubject {
+		t.Errorf("get the beam itself: parent_beam = %v, want %s", got, boardengine.RootSubject)
 	}
 
 	if err := os.WriteFile(configengine.ConfigFile(fabricengine.BoardDir(filepath.Dir(f.cwd)), "fabric"), []byte("branch_prefix: \"\"\npathspec: docs\n"), 0o644); err != nil {

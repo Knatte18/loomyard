@@ -6,7 +6,7 @@
 //   - `lym beam land <slug>` lands a beam into its parent;
 //   - `lym beam merge-parent <slug>` files a task that merges a beam's parent branch into it;
 //   - `lym beam start [slug] [--all]` brings up a beam's dobby and orch;
-//   - `lym beam stop [slug]` brings them down;
+//   - `lym beam stop [slug] [--all]` brings them down, and with `--all` the whole hub on this machine;
 //   - `lym beam status` shows every local dobby and orch;
 //   - the hidden `lym beam dobby` is the dobby process itself.
 //
@@ -312,18 +312,19 @@
 // The names come from `dobbyengine.OwnedWorktrees` over `hubgeom.DobbyStart`.
 // `startBeams` runs `BeamUp` for each name.
 // The first run sets `Prepare`.
-// That makes the hub's origin reconcile, failed-push read, prime claim and owner pauses run once.
+// That makes the hub's origin reconcile, failed-push read, prime claim and the end of owned runs run once.
 // The envelope holds one entry per beam.
 // Each entry carries the dobby's outcome and detail and the orch's action, prompt source and abandoned session.
 // It also carries the warnings and the error.
-// The prepared beam's entry adds the reconcile, failed pushes, owner pauses and mutations.
+// The prepared beam's entry adds the reconcile, failed pushes, the ended owned runs under `owner_pauses`, and mutations.
 // A beam that fails to come up records its error on its entry, and the others still start.
 // The verb exits non-zero, naming each.
 // Every `BeamUp` refusal applies to the beam it acts on.
 // Those refusals include an owner of another machine and a hold of a run other than the beam's own landing.
 // Before the owner refusal stands, `BeamUp` runs the archive `ownerArchiveBeforeRefusal` returns.
 // It archives this machine's unpushed tips under the worktree through `archiveOwnerTips`.
-// It archives nothing while an adopt in flight here covers the worktree (`orchcli.UnderAdoptWatch`).
+// It archives nothing while a hold this machine wrote in Bolt covers the worktree's subject (`orchcli.UnderOwnHold`).
+// That hold stands until the adopt's check is green.
 // A failed archive joins the refusal, and a re-run of the verb retries it.
 // A beam held by its own pawl run's landing, a halted Finalize for one, gets its orch back, and its dobby stays down;
 // `lym beam start` never starts the dobby of a held beam.
@@ -332,8 +333,34 @@
 // # stop
 //
 // `stop [slug]` resolves its target as `start` does and calls `orchcli.BeamDown`.
-// That removes the orch strand and ends the beam's dobby through `runproc.EndRole`, each only when live.
-// It prints what it stopped and takes no `--all`.
+// That removes the orch strand and ends the beam's dobby, then the orch session's registered provider process.
+// Each end goes through `runproc.EndRole` and only when live.
+// It prints what it stopped.
+//
+// `stop --all` takes the hub down on this machine, every worktree whoever owns it, and writes no tracked record.
+// A slug beside `--all` is refused.
+// The caller's process re-starts the verb detached at the prime's anchor through `selfexec`.
+// It logs the spawn and prints the pid,
+// so the end of the session it ran from, the prime's last, does not cut it.
+// The detached process runs the sequence, going past every failed step and naming each in its report:
+//  1. `hibernatecli.PauseHub`: a hub pause entry under the caller label `beam-stop` and hibernate's confirmation.
+//     A hub entry already standing covers the stop and stays.
+//     A confirmation not reached within hibernate's wait does not stop the stop; the report names what was busy.
+//  2. Each task pair's processes and reed session through `reedcli.DownWorktree`, which accepts a pair a hub pause covers.
+//     A pair whose `_lym` junction or origin record cannot be read is named in the report and goes unstopped.
+//  3. `orchcli.BeamDown` for the prime and each local beam.
+//     A failed dobby step does not skip the orch process's end, and each failure is named.
+//  4. Each beam's reed session through `reedcli.DownWorktree`.
+//  5. The run processes no run owns, through `tenderengine.Reap`.
+//  6. Its own pause entry, if it added one, lifted by identity through `tenderengine.Lift`,
+//     which pays the detached pushes the pause deferred.
+//  7. The prime's reed session, last.
+//
+// Its report goes to lym's log, since the detached process has no terminal.
+// It writes no pause intent, and a Bolt hold stays as it stands.
+// Bound: the stop ends agent steps mid-step; a run's transitions are pushed or owed,
+// so the cut step runs again once `lym beam start --all` or `lym s` brings the hub back.
+// A stop that dies midway leaves its pause entry, which `lym tender resume` lifts.
 //
 // # status
 //
@@ -353,12 +380,14 @@
 // A view carries the subject, its adopt check's state, the tier in flight and the tiers done.
 // It also carries the paths of its log and output.
 // The field is absent when the hub holds no record of a check.
-// The envelope also carries `adopt`, an `adoptSection` built from the hub's adopt record.
-// The record is read with `adoptrecord.Read` and no lock.
-// Its state is read with `Record.ReadState` over `adoptrecord.WorkerAlive`.
-// The section holds the subjects, the state, the step in flight or stopped at, the steps done and the way forward.
-// It also holds a `lines` text that opens with `adopt of <subjects>:`.
-// The field is absent when no record stands or the record is done.
+// The envelope also carries `adopt`, an `adoptSection` built from the first adopt hold the hub's local Bolt records.
+// The Bolt is read with `boardengine.ReadOwners`.
+// The section holds the hold's kind, machine, time and subjects.
+// Under an `adopt-fix` hold it also holds the fix task and each subject's tries.
+// For a hold whose machine reads as this machine it holds the `lym adopt <subjects>` rerun.
+// It also holds a `lines` text that opens with `adopt hold`.
+// The field is absent when no hold stands.
+// A Bolt that does not read joins the returned error as `adopt hold`.
 // A read error joins the returned error like a dobby's.
 // A view that does not read carries its error in its entry, and the others still read.
 // The verb fails, naming each.
@@ -375,7 +404,7 @@
 // It writes `runproc.SelfRecord(runproc.RoleDobby)` under the beam's slug, or `runproc.HubOwner` for the prime.
 // That record lets the pair teardown of a landed beam end that beam's dobby.
 // `hubDobbyDeps` fills the hand-over seams.
-// `UnderAdopt` is over `orchcli.UnderAdoptWatch`.
+// `UnderAdopt` is over `orchcli.UnderOwnHold`, this machine's Bolt hold over the worktree's subject.
 // `PullBolt` is through `fabricengine.Bolt.Pull`.
 // `ArchiveOwner` is through `archiveOwnerTips`.
 // `archiveOwnerTips` archives the worktree's own pair, named `root` for the prime.
@@ -418,7 +447,7 @@
 // A beam dobby spawned inside a teardown of its own beam escapes that teardown; the worktree-gone exit ends it.
 //
 // Bound: `runproc.End` of the beam's own slug also ends its dobby.
-// A cancel or an owner pause of the beam's landing run does this.
+// A cancel of the beam's landing run does this.
 // By then `BeamLandRefusal` has left the beam no members, so the dobby drives nothing.
 // `lym beam start` brings it back if the beam stays.
 //
@@ -429,19 +458,27 @@
 // The seams are:
 //   - the local batten status files of the prime and the board's tasks;
 //     `battencli.DobbyRuns`, `battencli.DobbyLandings` and `battencli.DobbyTasks` read them;
-//     `DobbyLandings` reads the landings of this machine's current and former names only,
-//     read through `machinename.Names` on each call, and a beam's window reads `DobbyTasks` too;
+//     `DobbyLandings` reads the landings of the names that read as this machine through the registry only,
+//     read through `pairteardown.ThisMachine` on each call, and a beam's window reads `DobbyTasks` too;
 //     each run's parent comes through `hubgeom.ParentOf`;
 //   - `battencli.DobbyRuns` also marks each run `NoSlot` through the run's board entry;
 //     a pawl run without its landing hold thus takes no slot under `max_runs`;
 //     it marks the run `EntryEnded` when that entry is done or gone from the board, and reads whether its pair is on disk;
-//   - the teardown of an ended run's pair, `TearDownEnded`, for every dobby:
-//     `tearDownEnded` runs `fabricengine.ReconcileOrigin` over the hub scope from the prime in a goroutine of its own,
+//   - the teardown of the leftover pairs, `TearDownLeftovers`, for every dobby, in a goroutine of its own:
+//     an ended run's pairs go through `fabricengine.ReconcileOrigin` over the hub scope from the prime,
 //     with the seams `pairteardown` builds for the hub, as `lym cleanup --apply` does;
 //     that reconcile tears down every pair origin has ended and moves the hub's branches behind origin;
-//     each requested run reads as removed only when the report's ended entry for it says so;
+//     each such run reads as removed only when the report's ended entry for it says so;
+//     a landed or cancelled run's pair goes through `pairteardown`'s teardown with its task branch on origin,
+//     a handed-over run's through `pairteardown.RemoveHandedOverPair` in local mode,
+//     and an orphan's through `pairteardown.RemoveOrphanPair`, which archives its tips first;
+//     the hub workspace file is regenerated once after each batch;
 //     Bound: a teardown in flight when the dobby stops ends half done;
 //     the next attempt or `lym cleanup --apply` finishes it;
+//   - `battencli.MarkKeptCancels`, which gives a run cancelled with keep before cancel intents existed
+//     its finished keep cancel intent, and commits again one whose commit failed;
+//   - for the prime's dobby only, `battencli.DobbyOrphans`,
+//     with the first-sight record `fabricengine.OrphanFirstSightPath` names;
 //   - `battencli.DobbyRuns` also reads each run's place against its Land row through `battenrecipe.LandOutcomeOf`;
 //     it reads the landing commit through `shedrun.ReadLandedCommit`;
 //     for a paused run, whether its work already reached its parent, by the judgment `lym batten cancel` refuses on;
@@ -465,7 +502,7 @@
 //   - the board and the owners through `boardengine`, and the pause record through `pauserecord`;
 //   - the file watch through `internal/fswatch`, one watcher per directory merged into the loop's one channel;
 //   - the pass spawn of `lym batten run`, started in the prime's anchor;
-//   - the owner pause and the parent lock release through `tendercli` and `battencli`;
+//   - the parent lock release through `battencli`;
 //   - the notice through `orchcli.NotifyFromScoped`, signed `ly:DOBBY` for the prime and `ly:<slug>:DOBBY` for a beam;
 //   - the wait reminders of every dobby through `waitReminderDeps`: the rows PR-Review and Sampler-Session of `loomshed`, the latest resume through `pauserecord`, the presence and `remind_after_min` through `slackengine`, and the post as creel mail to `<shortname>:SLACK`, signed as the notice is;
 //   - `beam.yaml` through `dobbyengine.LoadConfig`, and the binary check through `internal/selfexec`;

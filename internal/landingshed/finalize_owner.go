@@ -6,6 +6,7 @@ package landingshed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -34,7 +35,8 @@ const ownerRerun = `re-run "lym loom resume" in the task worktree`
 // An error is returned, an unreachable origin halts, and an ended or stopped entry stops as the reconcile's verdict.
 // The run's owner is the owner of its `owned_elsewhere` entry,
 // and the parent's owner comes from `Deps.ParentOwner`.
-// A parent or run owned by another machine halts through ownerHaltReason.
+// A run another machine owns is handed over through Deps.HandOver, when it is wired, and halts naming the new owner.
+// Otherwise it halts through ownerHaltReason, as does a parent another machine owns.
 // A failed read of the parent's owner halts too.
 func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	if fz.deps.ParentHoldsTaskWork != nil {
@@ -69,6 +71,17 @@ func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, sheden
 			runOwner = entry.Owner
 			break
 		}
+	}
+
+	if runOwner != "" && fz.deps.HandOver != nil {
+		subject := fz.adoptSubject()
+		if subject == "" {
+			subject = fz.deps.Slug
+		}
+		if err := fz.runHandOver(runOwner, subject); err != nil {
+			return "", shedengine.OutputPointer{}, err, true
+		}
+		return fz.handedOverHalt(ctx, fz.handedOver)
 	}
 
 	parent := ParentOwnership{Here: true}
@@ -106,6 +119,58 @@ func (fz *Finalize) ownerHalt(ctx context.Context, reason string) (shedengine.Ou
 	return outcome, out, err, true
 }
 
+// runHandOver hands the run over to owner through Deps.HandOver and keeps the hand-over's own error for the halt.
+// It returns an error only when the hand-over failed.
+func (fz *Finalize) runHandOver(owner, subject string) error {
+	err := fz.deps.HandOver(owner, subject)
+	if !errors.Is(err, fabricengine.ErrHandedOver) {
+		return fmt.Errorf("landingshed: %s: hand the run over to machine %q: %w", finalizeName, owner, err)
+	}
+	fz.handedOver = err
+	return nil
+}
+
+// handOverIfOwnedElsewhere reads whether another machine owns the run now and, when one does, hands the run over.
+// It reports whether it did.
+// An unreadable owner is returned as a transient failure, so the driver re-steps the landing once origin answers,
+// and the Finalize never goes on with the owner unread.
+// Nothing is read under Deps.PushSkipped, which has no origin to read it from.
+func (fz *Finalize) handOverIfOwnedElsewhere() (handedOver bool, err error) {
+	if fz.deps.OwnedElsewhere == nil || fz.deps.PushSkipped {
+		return false, nil
+	}
+	owner, subject, elsewhere, err := fz.deps.OwnedElsewhere()
+	if err != nil {
+		return false, shedengine.MarkTransient(shedengine.TransientGitTransport,
+			fmt.Errorf("landingshed: %s: read who owns the run: %w; the landing's re-step reads it again once origin answers", finalizeName, err))
+	}
+	if !elsewhere {
+		return false, nil
+	}
+	if err := fz.runHandOver(owner, subject); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// handedOverStop hands the run over when another machine owns it now, and returns the halt that ends the landing then.
+// stop is false when the landing may go on.
+func (fz *Finalize) handedOverStop(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	handedOver, err := fz.handOverIfOwnedElsewhere()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err, true
+	}
+	if !handedOver {
+		return "", shedengine.OutputPointer{}, nil, false
+	}
+	return fz.handedOverHalt(ctx, fz.handedOver)
+}
+
+// handedOverHalt returns the Stuck that halts a landing whose run was handed over, naming the hand-over's error.
+func (fz *Finalize) handedOverHalt(ctx context.Context, handedOver error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	return fz.ownerHalt(ctx, fmt.Sprintf("%v; the landing finishes on that machine, and nothing more is merged or pushed here", handedOver))
+}
+
 // ownerHaltReason words the reason of an owner halt for the run slug.
 // subject is what `lym adopt` takes to move the run, the beam or `root`, and reads as slug when empty.
 // runOwner is the machine owning the run, empty when this machine does; the parent is judged by parent.Here.
@@ -119,18 +184,18 @@ func ownerHaltReason(slug, subject, runOwner string, parent ParentOwnership) str
 		parentSubject, parentName = parent.Slug, fmt.Sprintf("the parent pair %q", parent.Slug)
 	}
 	adoptParentHere := "lym adopt " + parentSubject
-	adoptRunWithParent := fmt.Sprintf("lym adopt %s %s --keep-local", parentSubject, subject)
+	adoptRunWithParent := fmt.Sprintf("lym adopt %s %s", parentSubject, subject)
 	if parentSubject == subject {
-		adoptRunWithParent = fmt.Sprintf("lym adopt %s --keep-local", subject)
+		adoptRunWithParent = "lym adopt " + subject
 	}
 	adoptOnParentOwner := fmt.Sprintf(`run "lym adopt %s" on machine %q`, subject, parent.Owner)
 
 	switch {
 	case runOwner == "":
-		return fmt.Sprintf(`%s is owned by machine %q, so this machine does not land on it; way forward: adopt it here with "%s", which pauses the run here, so run "lym tender resume %s" and then "lym loom resume" in its pair to let it go on, or %s, which stops at its first step and names "--keep-local" and "--drop-local" when that machine drove the run before and holds local commits or a live pair for it`,
-			parentName, parent.Owner, adoptParentHere, slug, adoptOnParentOwner)
+		return fmt.Sprintf(`%s is owned by machine %q, so this machine does not land on it; way forward: adopt it here with "%s", which takes the run over and runs its check, after which the run goes on by itself once the check is green, or %s`,
+			parentName, parent.Owner, adoptParentHere, adoptOnParentOwner)
 	case parent.Here:
-		return fmt.Sprintf(`this run is owned by machine %q, so this machine does not land it; way forward: run "lym adopt %s --keep-local" here`, runOwner, subject)
+		return fmt.Sprintf(`this run is owned by machine %q, so this machine does not land it; way forward: run "lym adopt %s" here`, runOwner, subject)
 	default:
 		return fmt.Sprintf(`this run is owned by machine %q and %s by machine %q, so this machine lands neither; way forward: %s, or run "%s" here`,
 			runOwner, parentName, parent.Owner, adoptOnParentOwner, adoptRunWithParent)
@@ -174,5 +239,5 @@ func (fz *Finalize) adopterFirstRepair(parentHandle parentMerger) string {
 	if len(commits) > 1 {
 		repair = fmt.Sprintf(`run "git rebase --onto %s~1 %s %s" in the parent's worktree, and on a conflict run "git rebase --abort" and drop the squash by hand`, squash, squash, fz.deps.ParentBranch)
 	}
-	return fmt.Sprintf(`; origin's parent branch already holds this task's work, so this machine's squash %s duplicates it; way forward: %s, then run "lym fabric remove %s", leaving the owner pause standing`, squash, repair, fz.deps.Slug)
+	return fmt.Sprintf(`; origin's parent branch already holds this task's work, so this machine's squash %s duplicates it; way forward: %s, then run "lym fabric remove %s"`, squash, repair, fz.deps.Slug)
 }

@@ -24,7 +24,6 @@ import (
 
 // unboundedWaitFiles lists the module-relative, slash-separated files holding an unbounded wait or its driving loop.
 var unboundedWaitFiles = []string{
-	"internal/adoptcli/follow.go",
 	"internal/reedengine/watchloop.go",
 	"internal/reedengine/namerepair.go",
 	"internal/reedcli/watchdog.go",
@@ -45,6 +44,7 @@ var unboundedWaitFiles = []string{
 	"internal/shuttleengine/loadturn.go",
 	"internal/verifytree/verify.go",
 	"internal/websterengine/poll.go",
+	"internal/statuscommit/statuscommit.go",
 	"internal/shedverbs/status.go",
 	"internal/shedverbs/loopwait.go",
 	"internal/shedverbs/loop.go",

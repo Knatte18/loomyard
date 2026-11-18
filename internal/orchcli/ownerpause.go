@@ -1,5 +1,5 @@
 // ownerpause.go holds what the bring-up does about machine ownership:
-// the owner pause seam, the claim of the hub's prime for this machine, and the read of the facts its refusals judge.
+// the claim of the hub's prime for this machine, and the read of the facts its refusals judge.
 
 package orchcli
 
@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sync"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -21,27 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
-
-var (
-	ownerPauseMu sync.Mutex
-	ownerPause   func(location *lymcwd.Location, slug string) error
-)
-
-// InstallOwnerPause stores the process's pause of a run owned by another machine.
-// A bring-up calls it for each such entry of its reconcile.
-// The root pre-run installs it, since the pause lives in a package that imports this one.
-func InstallOwnerPause(pause func(location *lymcwd.Location, slug string) error) {
-	ownerPauseMu.Lock()
-	defer ownerPauseMu.Unlock()
-	ownerPause = pause
-}
-
-// installedOwnerPause returns the process's installed owner pause, or nil when none is installed.
-func installedOwnerPause() func(location *lymcwd.Location, slug string) error {
-	ownerPauseMu.Lock()
-	defer ownerPauseMu.Unlock()
-	return ownerPause
-}
 
 // readBeamFacts reads the facts the bring-up's refusals judge for the worktree at location.
 // It reads them from the local Bolt and the move records.
@@ -59,11 +37,11 @@ func readBeamFacts(location *lymcwd.Location, beam bool) (beamFacts, error) {
 	if err != nil {
 		return beamFacts{}, err
 	}
-	here, err := machinename.Name()
+	here, err := machinename.ReadIdentity()
 	if err != nil {
 		return beamFacts{}, err
 	}
-	facts := beamFacts{here: here, owner: owners.Prime}
+	facts := beamFacts{here: here.Name, owner: owners.Prime}
 	if beam {
 		slug := location.WorktreeName
 		facts.slug = slug
@@ -93,6 +71,7 @@ func readBeamFacts(location *lymcwd.Location, beam bool) (beamFacts, error) {
 			break
 		}
 	}
+	facts.elsewhere = boardengine.OwnedElsewhere(facts.owner, owners.Registry, here)
 	wayForward, standing, err := hubgeom.DobbyStart(prime).MoveInProgress(location.WorktreeName)
 	if err != nil {
 		return beamFacts{}, fmt.Errorf("read whether an anchor change stands: %w", err)
@@ -131,11 +110,12 @@ func claimPrimeFor(location *lymcwd.Location) (claimed, lostTo string, err error
 	if owners.Prime != "" {
 		return "", "", nil
 	}
-	machine, err := machinename.Name()
+	identity, err := boardengine.EnsureIdentity()
 	if err != nil {
 		return "", "", err
 	}
-	write, err := boardengine.SetOwners(boardDir, boardengine.OwnerRequest{Machine: machine, Prime: true})
+	machine := identity.Name
+	write, err := boardengine.SetOwners(boardDir, boardengine.OwnerRequest{Machine: machine, Identity: identity, Prime: true})
 	if err != nil {
 		return "", "", fmt.Errorf("claim the prime for machine %s: %w", machine, err)
 	}

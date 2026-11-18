@@ -8,10 +8,8 @@ package tendercli
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -267,20 +264,62 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 		}
 		return status.PauseIntent
 	}
+	// The push is synchronous, so origin's records branch holds the intent's commit once the verb returns.
+	recordsBranch := gitkit.Git(t, h.PrimeRecords(), "rev-parse", "--abbrev-ref", "HEAD")
+	originHoldsLocalHead := func(wantSubject string) {
+		t.Helper()
+		originRef := "refs/heads/" + recordsBranch
+		if origin, head := gitkit.RevParse(t, h.RecordsBare, originRef), gitkit.RevParse(t, h.PrimeRecords(), "HEAD"); origin != head {
+			t.Errorf("origin's records branch = %s; want the local head %s", origin, head)
+		}
+		if subject := gitkit.Git(t, h.RecordsBare, "log", "-1", "--format=%s", originRef); subject != wantSubject {
+			t.Errorf("origin's records branch tip subject = %q; want %q", subject, wantSubject)
+		}
+	}
 	if paused, code := verb(t, Command(), prime, "pause", pairSlug); !paused.OK || code != 0 {
 		t.Fatalf("pause of a run with a batten record: ok=%v error=%q", paused.OK, paused.Error)
 	}
 	if intent := committedIntent(); intent == nil || intent.By != agentname.External {
 		t.Errorf("committed pause intent = %+v; want one by the external caller", intent)
 	}
+	originHoldsLocalHead("tender pause: record the pause intent of " + pairSlug)
 	if resumedRun, code := verb(t, Command(), prime, "resume", pairSlug); !resumedRun.OK || code != 0 {
 		t.Fatalf("resume of a batten-paused run: ok=%v error=%q", resumedRun.OK, resumedRun.Error)
 	}
 	if intent := committedIntent(); intent != nil {
 		t.Errorf("committed pause intent after the resume = %+v; want it cleared", intent)
 	}
+	originHoldsLocalHead("tender resume: clear the pause intent of " + pairSlug)
 	if live, _ := liveEntries(t, h); len(live) != 0 {
 		t.Errorf("live entries after the resume = %+v; want the slug's entry lifted", live)
+	}
+
+	// Under a standing Bolt hold, a resume of a slug with an entry of its own replaces it with a bolt-hold entry.
+	// A second resume then refuses.
+	hold := boardengine.Hold{Kind: boardengine.HoldKindAdopt, Machine: "oslo", At: time.Now().UTC(), Subjects: []boardengine.HoldSubject{{Subject: "root"}}}
+	if written, err := boardengine.WriteHold(h.BoardDir(), hold); err != nil || !written.Wrote {
+		t.Fatalf("WriteHold() = %+v, %v; want the hold written", written, err)
+	}
+	geometry, err := hubgeom.PauseGeometry(h.Location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pauserecord.Update(geometry.RecordPath, time.Now(), func(record *pauserecord.Record) error {
+		record.Live = append(record.Live, pauserecord.Entry{Scope: pairSlug, PausedAt: time.Now(), GraceEnd: time.Now(), Caller: "EXTERNAL"})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	heldResume, code := verb(t, Command(), prime, "resume", pairSlug)
+	if !heldResume.OK || code != 0 {
+		t.Fatalf("resume under a Bolt hold: ok=%v error=%q", heldResume.OK, heldResume.Error)
+	}
+	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Scope != pairSlug || live[0].Caller != pauserecord.BoltHoldCaller || live[0].Machine != "oslo" {
+		t.Errorf("live entries after the resume under a hold = %+v; want one bolt-hold entry of %s for oslo", live, pairSlug)
+	}
+	heldAgain, code := verb(t, Command(), prime, "resume", pairSlug)
+	if heldAgain.OK || code == 0 || !strings.Contains(heldAgain.Error, "held by an adopt on machine oslo") {
+		t.Errorf("resume of a bolt-hold slug: ok=%v error=%q; want a refusal naming machine oslo", heldAgain.OK, heldAgain.Error)
 	}
 }
 
@@ -306,50 +345,6 @@ func TestPause_AnAdoptPausedSlugAnswersAlreadyPausedAndKeepsItsEntry(t *testing.
 	}
 	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Caller != pauserecord.AdoptCaller || !live[0].PausedAt.Equal(seeded.PausedAt) {
 		t.Errorf("live entries = %+v; want the adopt entry unchanged", live)
-	}
-}
-
-func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Setenv(agentname.StrandNameEnv, "")
-	h := newHub(t)
-	var ends []string
-	var endErr error
-	previous := endOwnedElsewhere
-	t.Cleanup(func() { endOwnedElsewhere = previous })
-	endOwnedElsewhere = func(location *lymcwd.Location, slug string) ([]runproc.Ended, error) {
-		live, _ := liveEntries(t, h)
-		if len(live) != 1 {
-			t.Errorf("live entries at the end = %+v; want the pause written first", live)
-		}
-		ends = append(ends, slug)
-		return nil, endErr
-	}
-
-	for range 2 {
-		if err := PauseOwnedElsewhere(h.Location, pairSlug); err != nil {
-			t.Fatalf("PauseOwnedElsewhere() error = %v", err)
-		}
-	}
-
-	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Scope != pairSlug || live[0].Caller != pauserecord.OwnerCaller {
-		t.Errorf("live entries = %+v; want one entry of the pair under the owner caller", live)
-	}
-	if want := []string{pairSlug, pairSlug}; !reflect.DeepEqual(ends, want) {
-		t.Errorf("end calls = %q; want %q", ends, want)
-	}
-
-	for name, err := range map[string]error{
-		"an end error":    errors.New("signal refused"),
-		"a survivors one": &runproc.SurvivorsError{Survivors: []runproc.Ended{{PID: 7, Role: runproc.RoleDriver}}},
-	} {
-		endErr = err
-		if got := PauseOwnedElsewhere(h.Location, pairSlug); got != nil {
-			t.Errorf("PauseOwnedElsewhere() with %s = %v; want nil", name, got)
-		}
-		if live, _ := liveEntries(t, h); len(live) != 1 {
-			t.Errorf("live entries with %s = %+v; want the entry standing", name, live)
-		}
 	}
 }
 

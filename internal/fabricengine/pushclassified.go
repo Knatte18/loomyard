@@ -92,6 +92,8 @@ type pushJob struct {
 // so a push that lost a race with another push of the branch lands instead of reporting a divergence.
 // A records retry runs retryRecords, which replays the local commits onto origin's and pushes again;
 // a deferral it reports writes a deferred record and returns nil, leaving the commits to the next push.
+// A takeover it reports is returned as it is, with no record and no notice.
+// That is a *TakeoverError or an error wrapping ErrHandedOver.
 // A code-side retry fetches and pushes again only while origin's tip is contained in the local tip;
 // it reports the rejection at once when origin holds commits the branch lacks.
 // An unsettled rejection records as not_fast_forward when a fresh fetch shows origin holding commits the branch lacks;
@@ -138,6 +140,9 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 			return job.landed(hadUnpushed, hadUnpushedErr)
 		}
 		pushErr = retryErr
+		if isTakeoverStop(pushErr) {
+			return pushErr
+		}
 	}
 	if failed, classified := job.classifyFailure(pushErr); classified {
 		return failed
@@ -196,7 +201,7 @@ func rejectionRetryKind(err error) (named, retryable bool) {
 	var anchorStop *AnchorStopError
 	var refusal *destructiveRefusal
 	switch {
-	case errors.As(err, &anchorStop), errors.Is(err, gitrepo.ErrPushAuthRefused):
+	case errors.As(err, &anchorStop), errors.Is(err, gitrepo.ErrPushAuthRefused), isTakeoverStop(err):
 		return true, false
 	case errors.Is(err, gitrepo.ErrPushRejected):
 		return true, true
@@ -213,7 +218,9 @@ func rejectionRetryKind(err error) (named, retryable bool) {
 // It fetches and pushes again while origin's tip is contained in the local tip;
 // that containment makes the rejection a race or a stale tracking ref rather than a divergence.
 // It returns errOriginAhead, without pushing, when origin holds commits the local branch lacks.
-// It never rebases, merges or forces.
+// A task pair's code side sent with SyncOptions.AfterRecords first resets a tip no transition of the run names.
+// It pushes again when it did.
+// It never rebases or merges, and forces only that reset.
 func (j *pushJob) repushOverOriginContained() (deferred bool, err error) {
 	if err := j.repo.Fetch(); err != nil {
 		return false, err
@@ -223,9 +230,78 @@ func (j *pushJob) repushOverOriginContained() (deferred bool, err error) {
 		return false, err
 	}
 	if unpulled {
-		return false, errOriginAhead
+		if j.side != failedPushSideCode || j.prime || !j.opts.AfterRecords {
+			return false, errOriginAhead
+		}
+		reset, err := j.resetUnnamedTip()
+		if err != nil {
+			return false, err
+		}
+		if !reset {
+			return false, errOriginAhead
+		}
+		if err := j.repo.Fetch(); err != nil {
+			return false, err
+		}
 	}
 	return false, j.repo.PushRebaseFree()
+}
+
+// resetUnnamedTip resets origin's code branch to the code tip the run's last transition on origin names.
+// It does so when origin's tip is neither that tip nor an ancestor of it, which drops every commit past the named tip.
+// The reset is leased at the origin tip read, and it fetches the records branch first to read the named tip.
+// It reports false and changes nothing in four cases.
+// The run has no transition on origin.
+// This repository lacks the named tip.
+// Origin's tip is the named tip or behind it.
+// The lease is lost to a push that moved the branch meanwhile.
+func (j *pushJob) resetUnnamedTip() (reset bool, err error) {
+	slug := filepath.Base(j.path)
+	weftPath := weftname.SiblingPath(j.hubPath, slug)
+	if err := gitrepo.New(weftPath).Fetch(); err != nil {
+		return false, fmt.Errorf("fetch the records branch of %q: %w", slug, err)
+	}
+	upstream, hasUpstream, err := upstreamSHAAt(weftPath)
+	if err != nil || !hasUpstream {
+		return false, err
+	}
+	named, err := lastTransitionCodeTip(weftPath, upstream, slug)
+	if err != nil || named == "" {
+		return false, err
+	}
+	held, err := holdsCommit(j.path, named)
+	if err != nil || !held {
+		return false, err
+	}
+	originTip, err := j.repo.UpstreamSHA()
+	if err != nil || originTip == named {
+		return false, err
+	}
+	originLags, err := isAncestorOrEqual(j.path, originTip, named)
+	if err != nil || originLags {
+		return false, err
+	}
+	err = updateRemoteBranch(j.rec, remoteBranchUpdateRequest{
+		pathReq: pathRequest{
+			what:      "reset the code branch of the run's pair on origin to the tip its last transition names",
+			container: filepath.Dir(j.path),
+			target:    j.path,
+			ownership: ownedPairWarpCheckout(j.path, weftPath, ""),
+			dirtiness: dirtinessNA("a move of origin's branch touches no checkout file"),
+		},
+		repo:     j.repo,
+		remote:   originRemoteName,
+		branch:   j.branch,
+		sha:      named,
+		leaseSHA: originTip,
+	})
+	if errors.Is(err, gitrepo.ErrLeaseRejected) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reset origin's code branch %s to the tip %s its last transition names: %w", j.branch, named, err)
+	}
+	return true, nil
 }
 
 // isPrimeWorktree reports whether the worktree at the job's path is the hub's prime.
@@ -276,6 +352,9 @@ func (j *pushJob) record(class PushFailureClass, cause error, paths, commits []s
 	if j.side == failedPushSideRecords {
 		f.CodeWorktree = pairedCodeWorktree(j.hubPath, j.path)
 	}
+	if j.opts.RunSlug != "" {
+		f.Runs = []string{j.opts.RunSlug}
+	}
 	var anchorStop *AnchorStopError
 	if errors.As(cause, &anchorStop) {
 		f.WayForward = anchorStop.WayForward
@@ -293,9 +372,22 @@ func (j *pushJob) fail(class PushFailureClass, cause error, paths, commits []str
 
 // deferral records that the push was held back for a lock or an uncommitted change.
 // The branch's next push retries it.
+// A records side whose worktree holds uncommitted tracked changes records them as the cause.
+// Origin's commits cannot be replayed onto the worktree until those changes are committed or discarded.
 func (j *pushJob) deferral() error {
-	j.record(PushFailureDeferred, errors.New("the push was deferred to the branch's next push"), nil, nil, "")
+	cause := errors.New("the push was deferred to the branch's next push")
+	if j.side == failedPushSideRecords && j.hasUncommittedChanges() {
+		cause = fmt.Errorf("origin's commits cannot be replayed onto %s until its uncommitted changes are committed or discarded", j.path)
+	}
+	j.record(PushFailureDeferred, cause, nil, nil, "")
 	return nil
+}
+
+// hasUncommittedChanges reports whether the job's worktree holds an uncommitted change to a tracked file.
+// A worktree whose status cannot be read reports none.
+func (j *pushJob) hasUncommittedChanges() bool {
+	out, err := gitexec.Run([]string{"status", "--porcelain", "--untracked-files=no"}, j.path)
+	return err == nil && strings.TrimSpace(out) != ""
 }
 
 // classifyFailure records the failure of a push that was run and returns it as a *PushFailedError.
@@ -583,21 +675,33 @@ func goneEntryEnded(hubPath, branch string) (bool, error) {
 }
 
 // retryWeftPush replays the weft worktree's local commits onto origin's and pushes again, after a rejected push.
-// It fetches the weft branch and origin's Bolt branch.
-// It then try-acquires the weft write lock, while the caller holds the push lock.
+// It fetches the weft branch and then reads origin's record of the run runSlug through takeoverStop:
+// a run taken over by a machine here does not hold returns an error before anything is replayed or changed.
+// The error is a *TakeoverError, or wraps ErrHandedOver.
+// A zero here or an empty runSlug skips that read.
+// It then fetches origin's Bolt branch, and try-acquires the weft write lock, while the caller holds the push lock.
 // A held write lock and an uncommitted change on a path the replay touches report a deferral, with nothing changed.
 // A replay that stops returns ErrReplayConflict with the conflicting paths,
 // and a second rejection returns gitrepo.ErrPushRejected.
 // A weft whose own anchor marker is empty returns an *AnchorStopError before anything is replayed or changed.
 // So does a weft whose upstream carries commits and another anchor marker.
 // So does a weft that carries a move record while its upstream has commits it lacks.
-func retryWeftPush(rec *Mutations, hubPath, weftPath string) (deferred bool, err error) {
+func retryWeftPush(rec *Mutations, hubPath, weftPath, runSlug string, here MachineNames) (deferred bool, err error) {
 	if stop := emptyMarkerStop(weftPath); stop != nil {
 		return false, stop
 	}
 	repo := gitrepo.New(weftPath)
 	if err := repo.Fetch(); err != nil {
 		return false, fmt.Errorf("fabricengine: fetch the weft branch in %s: %w", weftPath, err)
+	}
+	if !here.isZero() && runSlug != "" {
+		warpLocation, err := warpLocationOfRecords(weftPath)
+		if err != nil {
+			return false, err
+		}
+		if err := takeoverStop(warpLocation, weftPath, runSlug, here); err != nil {
+			return false, err
+		}
 	}
 	if err := fetchBoltBranch(hubPath); err != nil {
 		return false, err

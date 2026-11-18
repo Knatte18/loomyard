@@ -223,6 +223,14 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"headless-claude", "longer_command_word", "claudette -p", false},
 		{"headless-claude", "flag_of_a_later_command", "claude --version && ls -p", false},
 
+		{"adopt-take-hold", "flag_before_the_subject", "lym adopt --take-hold b", true},
+		{"adopt-take-hold", "flag_after_the_subject", "lym adopt b --take-hold", true},
+		{"adopt-take-hold", "flag_with_a_value", "lym adopt --take-hold=yes b", true},
+		{"adopt-take-hold", "flag_after_a_separator", "cd x && lym adopt --take-hold root", true},
+		{"adopt-take-hold", "plain_adopt", "lym adopt b", false},
+		{"adopt-take-hold", "adopt_here", "lym adopt --here", false},
+		{"adopt-take-hold", "adopt_as_an_argument", "echo lym adopt", false},
+
 		{"publish", "git_push", "git push", true},
 		{"publish", "git_push_after_dash_c", "git -C x push origin b", true},
 		{"publish", "gh_pr_merge", "gh pr merge 3", true},
@@ -300,6 +308,7 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"machine-sleep", "x; systemctl hibernate"},
 		{"shell-edit", "x; sed -i s/a/b/ f > g.go"},
 		{"headless-claude", "x; claude -p hi"},
+		{"adopt-take-hold", "x; lym adopt --take-hold b"},
 		{"publish", "x; gh pr merge 3"},
 	}
 	for _, tt := range tests {

@@ -196,7 +196,7 @@ func newLoomCLI() *loomCLI {
 	}
 	c.parentCodeDirt = c.parentCodeDirtFromFabric
 	c.ownerOf = func(l *lymcwd.Location, slug string) (ownerVerdict, error) {
-		return runOwnerVerdict(l, slug, machinename.Name)
+		return runOwnerVerdict(l, slug, machinename.ReadIdentity)
 	}
 	c.runVerdict = hubRunVerdict
 	c.notifyParent = func(line string) error {

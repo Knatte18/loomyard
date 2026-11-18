@@ -92,20 +92,20 @@ func TestCommitRecordsVerb_StoppedCommitPushesNothing(t *testing.T) {
 func TestNewCommitStatusSeam_StoppedCommitStartsNoPush(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	spawns := 0
+	pushes := 0
 	seam := newCommitStatusSeam(commitStatusDeps{
 		MergeActive: func() (bool, error) { return false, nil },
 		Commit: func(string) (bool, error) {
 			return false, fmt.Errorf("%w: the run is owned by machine neve", errPushStopped)
 		},
-		Spawn: func() error { spawns++; return nil },
+		Push: func() error { pushes++; return nil },
 	})
 
 	if err := seam("Code-Review", "running"); err != nil {
 		t.Errorf("seam() = %v; want nil", err)
 	}
-	if spawns != 0 {
-		t.Errorf("Spawn calls = %d; want 0", spawns)
+	if pushes != 0 {
+		t.Errorf("Push calls = %d; want 0", pushes)
 	}
 }
 
@@ -143,6 +143,7 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 	}{
 		{"probe", boom, nil, nil, []string{"probe merge state"}, nil},
 		{"commit", nil, boom, nil, []string{"commit failed"}, nil},
+		{"push handed the run over", nil, nil, fmt.Errorf("hand over: %w: machine %q holds the run", fabricengine.ErrHandedOver, "oslo"), []string{"handed over to another machine", `machine \"oslo\" holds the run`, "way forward: drive the run on the machine that took it over"}, nil},
 		{"push rejected", nil, nil, rejected, []string{pushFailedPrefix, rejectionWayForward, refusedVerbClause}, nil},
 		{"push failed", nil, nil, boom, []string{pushFailedPrefix, transientWayForward}, nil},
 		{"push lock busy", nil, nil, fmt.Errorf("push: %w", fabricengine.ErrPushLockBusy), []string{pushFailedPrefix, transientWayForward}, nil},

@@ -188,6 +188,8 @@
 // the entry evaluation sets it; every routed write and skip clears it; Goto sets it to its target;
 // a Relaunch onto a target clears it; the resume and halt writes keep it.
 // A status without the field, or naming another row, reads as not entered.
+// cancel, pause_intent and takeover are outside-owned: Shed never writes them, and a rewrite carries them through.
+// takeover names the machine, the adopt subject and the time of another machine's takeover of the run.
 // pause_requested is shared write-to-clear:
 // an outside actor sets it and Shed clears it, exactly once, in the persist that records paused.
 // pause_before and pause_after are outside-set, both-cleared:
