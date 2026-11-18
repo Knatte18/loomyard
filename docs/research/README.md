@@ -140,6 +140,10 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 
 - [retro-20261116-115411](retro/retro-20261116-115411/report.md) — ten runs landed up to 2026-11-16T11:54:11Z, audited from their transcripts, with four proposals to the agent environment, most severe first.
 
+## rewrite — clean-room rewrites
+
+- [shrink-estimate-2026-11-18](rewrite/shrink-estimate-2026-11-18/report.md) — how much smaller a clean rewrite of the seven most patched modules would be, with a `landingshed` spec for a pilot.
+
 ## speed — test and start time
 
 - [batten-start-2026-10-18](speed/batten-start-2026-10-18/report.md) — the time of a batten start before the fast-start plan.
