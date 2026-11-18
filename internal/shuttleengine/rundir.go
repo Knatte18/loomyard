@@ -181,6 +181,41 @@ type RunState struct {
 	Role string `json:"role,omitempty"`
 	// Model is the spawning Spec's model, which the stop path reports; a record an older binary wrote leaves it empty.
 	Model string `json:"model,omitempty"`
+	// TranscriptCopied is true when the run's latest launch resumed a session after copying its transcript into the account.
+	// A record an older binary wrote decodes false.
+	TranscriptCopied bool `json:"transcriptCopied,omitempty"`
+	// LaunchOffset is the events file's size at the run's latest launch, zero for its first.
+	// A reader counts the first turn end of a resumed launch from it.
+	LaunchOffset int64 `json:"launchOffset,omitempty"`
+	// RelaunchingAt is the RFC 3339 time a relaunch of the run's session marked the record.
+	// The record's Outcome stays running, so every reader that compares the outcome reads a relaunching run as running.
+	// RunState.relaunching reads the mark against its bound.
+	// A record an older binary wrote decodes with none.
+	RelaunchingAt string `json:"relaunchingAt,omitempty"`
+}
+
+// relaunchBound is how long a record's relaunching mark holds its run live: twice the startup timeout.
+// A relaunched session gets that long to come up before its record reads by its pid again.
+func relaunchBound(cfg Config) time.Duration {
+	return 2 * time.Duration(cfg.StartupTimeoutS) * time.Second
+}
+
+// relaunching reads rs's relaunching mark at now against bound.
+// within is true while the mark is set and younger than bound.
+// past is true once the mark is bound old or older, or when it does not parse.
+// A record with no mark is neither.
+func (rs RunState) relaunching(now time.Time, bound time.Duration) (within, past bool) {
+	if rs.RelaunchingAt == "" {
+		return false, false
+	}
+	markedAt, err := time.Parse(time.RFC3339, rs.RelaunchingAt)
+	if err != nil {
+		return false, true
+	}
+	if now.Sub(markedAt) < bound {
+		return true, false
+	}
+	return false, true
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns both.
@@ -203,6 +238,22 @@ func saveRunState(runDir string, rs RunState) error {
 	path := filepath.Join(runDir, runStateFileName)
 	lockPath := path + ".lock"
 	return state.WriteJSON(path, lockPath, rs)
+}
+
+// errLeaveRunRecord is what an updateRunState mutate returns to leave the record exactly as it is, unwritten.
+var errLeaveRunRecord = errors.New("shuttle: leave the run record as it is")
+
+// updateRunState reads <runDir>/run.json, hands it to mutate and writes the result, all in one hold of the record's lock.
+// found is false for an absent record, which mutate receives as the zero RunState.
+// A mutate that returns errLeaveRunRecord leaves the file unwritten and updateRunState returns nil.
+// Any other mutate error, a failed read or a failed write is returned with the file as it was.
+func updateRunState(runDir string, mutate func(rs RunState, found bool) (RunState, error)) error {
+	path := filepath.Join(runDir, runStateFileName)
+	err := state.UpdateJSON(path, path+".lock", mutate)
+	if errors.Is(err, errLeaveRunRecord) {
+		return nil
+	}
+	return err
 }
 
 // loadRunState reads the RunState persisted at <runDir>/run.json.
@@ -326,10 +377,13 @@ func FindRun(cfg Config, anchorPath, guid string) (RunState, string, error) {
 // A directory whose run.json is missing or unreadable counts as an orphan: no strand can be confirmed live for it.
 // The same age guard applies to it.
 // The directory of kept manifest copies is never removed.
+// A directory whose record's relaunching mark is within bound of now is kept whatever its strand.
+// A relaunch holds its strand down for a moment.
+// Past its bound the rule above applies.
 // now is the clock the caller supplies, so tests can control aging deterministically.
 // It returns the removed directory paths and a joined error naming every directory that could not be removed.
 // The sweep visits every entry, so one undeletable directory costs only that directory.
-func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration, now time.Time) ([]string, error) {
+func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration, now time.Time, bound time.Duration) ([]string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -359,6 +413,11 @@ func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration
 		}
 
 		rs, found, err := loadRunState(runDir)
+		if err == nil && found {
+			if within, _ := rs.relaunching(now, bound); within {
+				continue
+			}
+		}
 		if err != nil || !found || !strandGUIDs[rs.StrandGUID] {
 			if rerr := os.RemoveAll(runDir); rerr != nil {
 				// Accumulate the failure and keep sweeping: returning on the first failure would leave every later orphan in place.

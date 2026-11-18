@@ -10,6 +10,12 @@
 // The codex entry builds its engine with the claude engine's user-setup source and plugin hook runner.
 // That is the one route from the user's Claude setup to a Codex launch.
 //
+// NewForWorktree builds the set New builds and tells the claude engine the worktree its launches run in.
+// New and every other builder tell no worktree, so an engine read-only wiring builds serves reading alone.
+// The codex entry ignores the told worktree.
+// AccountKeeper builds each engine over given directories and a told worktree and returns the first that keeps accounts.
+// A CLI verb and a worktree's creation reach the claude engine's account pick only through it.
+//
 // NewWithSeams builds the same set with a caller's plugin hook runner and sandbox probe, held in LaunchSeams.
 // It is the one entry point that does, for `lym shuttle manifest` and the parity test;
 // New and every other builder pass the zero seams, so a real launch is unchanged.
@@ -28,7 +34,8 @@
 // Reed is provider-blind, so this wiring layer chooses the namer that reads and repairs a session's own name.
 // It chooses per strand tag.
 // RecordReaders returns each registered engine's offline read capabilities keyed by engine name.
-// It builds them with a zero shuttle config and no config directories, as SessionNamers builds its engines.
+// Both it and SessionNamers build their engines with a zero shuttle config and the hub's Dirs they are given.
+// An engine then reads the sessions of every Claude account the hub lists, not only the default directory.
 // A capability is set only when the engine implements it.
 // Each set one is its own adapter, one per capability rather than one per engine:
 // a reader of finished session records gets reading alone.

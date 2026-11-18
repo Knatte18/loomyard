@@ -244,7 +244,7 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.cfg = orchCfg
 	c.shuttleCfg = shuttleCfg
 	c.orchSkills = orchSkills
-	engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(location))
+	engines, err := shuttleengines.NewForWorktree(shuttleCfg, fabricengine.ConfigDirs(location), hubgeom.EngineWorktree(location))
 	if err != nil {
 		return err
 	}

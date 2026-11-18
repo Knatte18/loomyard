@@ -30,6 +30,8 @@ type waitRun struct {
 	marker string
 	// engine is the engine name the record carries; empty leaves the record naming none.
 	engine string
+	// relaunchingAt is the RFC 3339 relaunching mark the record carries; empty leaves none.
+	relaunchingAt string
 }
 
 func TestReadAgentWaits(t *testing.T) {
@@ -56,6 +58,7 @@ func TestReadAgentWaits(t *testing.T) {
 		{"a gate wait is no turn end, so the busy session stays busy", waitRun{events: startLine, marker: gateWaitLabelPrefix + "entry"}, []AgentWait{{StrandName: "strand-run", Busy: true}}},
 		{"a finished session is neither", waitRun{events: startLine + endLine, outputExists: true}, []AgentWait{{StrandName: "strand-run"}}},
 		{"a run whose waiting process is dead is absent", waitRun{pid: 1, events: startLine}, nil},
+		{"a relaunching record within its bound with a dead waiter reads live, neither waiting nor busy", waitRun{pid: 1, events: startLine, relaunchingAt: now.Add(-time.Second).Format(time.RFC3339)}, []AgentWait{{StrandName: "strand-run"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -63,7 +66,7 @@ func TestReadAgentWaits(t *testing.T) {
 			writeWaitRun(t, root, "run", tt.run, livePID)
 			engine := &readEngine{fakeEngine: &fakeEngine{}}
 
-			got, err := ReadAgentWaits(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine), now)
+			got, err := ReadAgentWaits(Config{RunDir: root, StartupTimeoutS: 30}, t.TempDir(), singleEngineSet(engine), now)
 
 			if err != nil || !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ReadAgentWaits = (%+v, %v); want (%+v, nil)", got, err, tt.want)
@@ -164,6 +167,7 @@ func writeWaitRun(t *testing.T, root, name string, run waitRun, livePID int) {
 	state := RunState{
 		RunID: name, StrandGUID: "guid-" + name, StrandName: "strand-" + name, SessionID: "session",
 		EventsPath: eventsPath, Outcome: runOutcomeRunning, PID: run.pid, Interactive: run.interactive, Engine: run.engine,
+		RelaunchingAt: run.relaunchingAt,
 	}
 	if run.outputExists {
 		output := filepath.Join(runDir, "report.md")

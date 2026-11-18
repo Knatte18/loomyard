@@ -1,7 +1,7 @@
 // audit_test.go covers AuditForks end to end against a fake ~/.claude/projects layout built under t.TempDir().
 // It asserts the parent-transcript spawn tally and each fork's ForkReport fields.
 // It also covers the zero-fork finding for a missing subagents/ directory and the missing-parent-transcript error.
-// The path encoding that claudeProjectDirFor derives is covered too.
+// The path encoding that projectDirUnder derives is covered too.
 
 package claudeengine
 
@@ -272,16 +272,13 @@ func TestAuditForks_MissingParentTranscriptErrors(t *testing.T) {
 //testtiming:keep pins the literal encoding of a backslash-and-space path, which its covering test computes through its own reimplementation of the encoding
 func TestClaudeProjectDirFor_EncodesNonAlnumBytes(t *testing.T) {
 	tiergate.Require(t, 0)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	t.Parallel()
+	projects := t.TempDir()
 
-	got, err := claudeProjectDirFor(`C:\a b\c`)
-	if err != nil {
-		t.Fatalf("claudeProjectDirFor() error: %v", err)
-	}
-	want := filepath.Join(home, ".claude", "projects", "C--a-b-c")
+	got := projectDirUnder(projects, `C:\a b\c`)
+	want := filepath.Join(projects, "C--a-b-c")
 	if got != want {
-		t.Errorf("claudeProjectDirFor(%q) = %q; want %q", `C:\a b\c`, got, want)
+		t.Errorf("projectDirUnder(%q) = %q; want %q", `C:\a b\c`, got, want)
 	}
 }
 

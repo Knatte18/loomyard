@@ -95,6 +95,18 @@ type UsageLimitReader interface {
 	TurnEndUsageLimited(turnEnd Event) bool
 }
 
+// AccountSwitcher is an optional capability of an engine that spreads its sessions over accounts.
+// It records a usage limit against the account a session launched under and moves the worktree to another account.
+// Without it, a usage limit is handled by waiting it out.
+type AccountSwitcher interface {
+	// SwitchAccount records the usage limit the session turnEnd names hit on the account the run in runDir launched under.
+	// It reports whether the worktree now resolves to another account than the launched one,
+	// so the caller relaunches the session under it.
+	// False means the limit is handled by waiting it out, as when no other account can take the worktree.
+	// A session that launched on a directory no account lists records nothing and reports false.
+	SwitchAccount(runDir string, turnEnd Event) (relaunch bool, err error)
+}
+
 // holdNoticePending reports whether a held turn end would be notified or queued for notice now.
 // It is false for a run notifyHeld never notifies, and for a deferred-hold run whose next turn already started.
 // A pause covering the run discards the notice only when no hold is deferred;
@@ -113,6 +125,38 @@ func (run *Run) holdNoticePending() bool {
 func (run *Run) usageLimited(held *heldTurnEnd) bool {
 	reader, ok := run.engine.(UsageLimitReader)
 	return ok && reader.TurnEndUsageLimited(Event{Raw: held.raw})
+}
+
+// handleHeldTurnEnd acts on a held turn end whose usage limit, if any, no account switch took.
+// It first gives an API-error stall across a machine sleep its one continue line.
+// It then shows the hold, and sends the parent one notice unless a case below skips it:
+// a deferred prompt typed in its place, a usage limit, a turn the operator started, or background work it wakes from.
+// A Spec.HoldDeferral run queues the notice instead.
+func (run *Run) handleHeldTurnEnd(held *heldTurnEnd) {
+	continued := run.continueAPIErrorStall(held)
+	// A turn start read past this turn end in the same batch means the next turn is already under way, so no hold shows.
+	if !run.turnStartRead {
+		run.beginHeldWait(held.offset)
+	}
+	switch {
+	case continued:
+	case run.deliverPromptAtHold(held):
+		// The agent never got its task; the turn its prompt now starts is the work, so the parent has nothing to answer.
+	case run.holdNoticePending() && run.usageLimited(held):
+		// The parent cannot act while the account is limited,
+		// and a notice sent now lands in its context as stale clutter after the reset.
+		logger.Info("shuttle: held turn end stopped on the usage limit; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
+	case run.holdNoticePending() && run.operatorStartedTurn(held):
+		// The operator is talking to the agent in its pane, so the turn end is no stall for the parent.
+		logger.Info("shuttle: held turn end of a turn the operator started; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
+	case run.holdNoticePending() && run.wakesOnBackground(held):
+		// The session wakes when its own background work completes, so the parent has nothing to answer.
+		logger.Info("shuttle: held turn end left background work running; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
+	case run.spec.HoldDeferral == nil:
+		run.notifyHeld(held)
+	case !run.turnStartRead:
+		run.pendingHold, run.pendingHoldAt = held, run.clock.Now()
+	}
 }
 
 // operatorStartedTurn reports whether the held turn began with an instruction the operator typed into the pane.

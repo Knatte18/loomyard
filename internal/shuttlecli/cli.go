@@ -130,7 +130,7 @@ provider specifics.`,
 				return nil
 			}
 			reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
-			engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(layout))
+			engines, err := shuttleengines.NewForWorktree(shuttleCfg, fabricengine.ConfigDirs(layout), hubgeom.EngineWorktree(layout))
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)

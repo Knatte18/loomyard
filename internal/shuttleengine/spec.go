@@ -158,6 +158,10 @@ type Spec struct {
 	// The session then takes no skill-load turn, while Skills still shape its scope, settings and standing passages.
 	// A resume sets it, since the resumed session already holds the skills its first launch loaded.
 	SkipSkillLoadTurn bool
+	// TranscriptCopied is true when an earlier resume check of ResumeSessionID already copied its transcript.
+	// A caller that resumes again after a refusal sets it from SessionHeldError.TranscriptCopied,
+	// so the run's record reports the copy though this attempt's own carry copied nothing.
+	TranscriptCopied bool
 	// SkillLoadTimeout bounds each load turn's wait before skipping its skills; zero takes the engine's default.
 	// A turn still open at the timeout is awaited until it ends or the run's deadline fails the start;
 	// a turn the provider's API fails is run again however long that takes, so neither skips a skill at this bound.

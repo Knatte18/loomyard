@@ -107,6 +107,14 @@ func TestStart_CarriesOverOperatorInstructions(t *testing.T) {
 			want:         []string{"also fix the README"},
 		},
 		{
+			name: "a running run relaunching within its bound carries nothing",
+			predecessors: []RunState{{
+				RunID: "run-old", CreatedAt: earlier, Outcome: runOutcomeRunning, PID: -1, RoleKey: "darn",
+				RelaunchingAt: time.Now().Add(-time.Second).UTC().Format(time.RFC3339),
+			}},
+			role: "darn",
+		},
+		{
 			name:         "a done run carries nothing",
 			predecessors: []RunState{{RunID: "run-old", CreatedAt: earlier, Outcome: string(OutcomeDone), RoleKey: "darn"}},
 			role:         "darn",

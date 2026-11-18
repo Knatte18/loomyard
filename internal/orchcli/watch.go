@@ -249,6 +249,15 @@ A second watcher finding the first alive reports already_running and exits.`,
 					return underHold(holdSlug)
 				},
 			})
+			relaunch := func(fresh bool) func(orchengine.State) (orchengine.State, error) {
+				return func(st orchengine.State) (orchengine.State, error) {
+					if _, err := c.relaunchOrch(st, fresh); err != nil {
+						return st, err
+					}
+					return orchengine.LoadState(c.paths)
+				}
+			}
+			watcher.WatchRestart(orchengine.OrchRestart{Resume: relaunch(false), Fresh: relaunch(true)})
 			watcher.WatchBinary(selfexec.New().Check)
 			runErr := watcher.Run(ctx, time.Sleep)
 

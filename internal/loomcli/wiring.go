@@ -673,7 +673,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	}
 	c.parentName = reedGeom.ParentName
 	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
-	engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(location))
+	engines, err := shuttleengines.NewForWorktree(shuttleCfg, fabricengine.ConfigDirs(location), hubgeom.EngineWorktree(location))
 	if err != nil {
 		return err
 	}
@@ -687,7 +687,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		_, err := orchcli.NotifyAsker(location, loomProgram, line)
 		return err
 	})
-	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders()))
+	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders(fabricengine.ConfigDirs(location))))
 
 	websterGeom := hubgeom.WebsterGeometry(location)
 	websterGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), websterGeom.GateSlots, websterGeom.GateWaitDir)

@@ -75,6 +75,7 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 		AddPair: func(slug string) (fabricengine.AddResult, error) {
 			return topology.Add(prime, slug, fabricengine.AddOptions{})
 		},
+		PickAccount: func(slug string) { battencli.PickWorktreeAccount(prime, slug, false) },
 		WriteAdopt: func(req boardengine.AdoptRequest) (boardengine.AdoptWrite, error) {
 			own, err := boardengine.EnsureIdentity()
 			if err != nil {

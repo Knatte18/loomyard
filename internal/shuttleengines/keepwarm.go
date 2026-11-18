@@ -46,7 +46,7 @@ func keepWarmWith(dirs configengine.Dirs, strand string, constructors map[string
 	if err != nil {
 		return fallback(err)
 	}
-	set, err := build(cfg, dirs, constructors, LaunchSeams{})
+	set, err := build(cfg, dirs, constructors, LaunchSeams{}, shuttleengine.Worktree{})
 	if err != nil {
 		return fallback(err)
 	}

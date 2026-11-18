@@ -125,6 +125,7 @@ func runForeground(deps adoptDeps, req request, steps io.Writer) (outcome, error
 			return finish(stopWith("re-run `"+rerun+"`", "lym adopt: add the pair of %s: %s", slug, addError(slug, rerun, err)))
 		}
 		outcomes[slug].PairAdded = true
+		deps.PickAccount(slug)
 	}
 	printStep(steps, "pairs")
 
@@ -327,6 +328,7 @@ func takeOverRuns(deps adoptDeps, hold boardengine.Hold, owners boardengine.Owne
 				return stopWith("re-run `"+rerun+"`", "lym adopt: add the pair of the moved run %s: %s", run.Slug, addError(run.Slug, rerun, err))
 			}
 			out.PairAdded = true
+			deps.PickAccount(run.Slug)
 		}
 		if _, err := deps.TakeOver(run.Slug, subject); err != nil {
 			return stopWith("re-run `"+rerun+"`", "lym adopt: the takeover of run %s failed: %w", run.Slug, err)

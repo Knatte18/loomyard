@@ -32,6 +32,10 @@ type Strand struct {
 	// Retiring records that a caller of `reed remove --detach` asked for this strand's removal.
 	// It grants nothing by itself: a caller that finds it set only completes the request.
 	Retiring bool `json:"retiring,omitempty"`
+	// Held records that a caller ended this strand's process on purpose and means to relaunch it under the same GUID.
+	// Resume and reconcile leave a held strand's record alone, neither relaunching nor dropping it.
+	// Only a removal of the strand, ReleaseStrandHold or RelaunchStrand clears it.
+	Held bool `json:"held,omitempty"`
 	// DoneWhen lists paths whose joint existence means the strand's work finished.
 	// The spawner sets it at add time.
 	// Reed only stats them.

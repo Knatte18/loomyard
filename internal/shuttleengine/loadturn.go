@@ -56,8 +56,30 @@ func (e *loadDeadlineError) Error() string {
 	return "shuttle: a skill-load turn was still open at the run's deadline"
 }
 
+// loadAccountSwitchedError ends a load hold whose load turn a usage limit ended.
+// It applies when the engine's switch moved the account.
+// The hold counts nothing, and the start repeats its launch under the new account.
+type loadAccountSwitchedError struct{}
+
+func (e *loadAccountSwitchedError) Error() string {
+	return "shuttle: a usage limit ended a skill-load turn and the worktree's account was switched"
+}
+
+// loadRefusedResumeError ends a load hold whose first load turn, in a copied resume, the provider ended on an API error.
+// The error is no usage limit, so the resume is refused.
+// The hold counts nothing, and the start relaunches the session fresh in the same run.
+type loadRefusedResumeError struct{}
+
+func (e *loadRefusedResumeError) Error() string {
+	return "shuttle: the provider ended the first skill-load turn of a copied resume on an API error, so the session starts fresh"
+}
+
 // loadTurnWatch is what one load turn keeps across its polls.
 type loadTurnWatch struct {
+	// refused is true once the first load turn of a copied resume ended on an API error no usage limit caused.
+	refused bool
+	// switched is true once the engine's account switch took the usage limit that ended the load turn.
+	switched bool
 	// began is when the turn being awaited began: the call's entry, or the latest turn after an API error.
 	began time.Time
 	// open is true while a turn start read has no turn end after it.
@@ -132,6 +154,12 @@ func (w *loadTurnWatch) turnStartRead(signal SessionSignal, now time.Time) {
 // A busy session only moves the line to the next back-off.
 // A turn end the engine marks ModelRejected fails with a *loadModelRejectedError.
 // No further turn changes the model.
+// A turn a usage limit ended, on an engine that switches accounts, is first given to the switch.
+// That happens before the hold counts it.
+// A switch that moves the worktree to another account ends the hold uncounted with a *loadAccountSwitchedError;
+// any other answer leaves the turn to the hold as above.
+// The first turn end of a copied resume, when it is an API error no usage limit caused, is a refused resume.
+// It ends the hold uncounted with a *loadRefusedResumeError, and the start relaunches the session fresh.
 // The hold moves the run's deadline later by its length.
 func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.Duration, typed bool) (turnEnd Event, ended, died bool, err error) {
 	reed := run.runner.reed
@@ -145,7 +173,14 @@ func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.
 	defer run.endLoadHold(&watch)
 	interval := pollInterval(run.runner.cfg)
 	for {
-		if turnEnd, read := run.readLoadTurn(&watch, skills); read {
+		turnEnd, read := run.readLoadTurn(&watch, skills)
+		if watch.switched {
+			return Event{}, false, false, &loadAccountSwitchedError{}
+		}
+		if watch.refused {
+			return Event{}, false, false, &loadRefusedResumeError{}
+		}
+		if read {
 			return turnEnd, true, false, nil
 		}
 		if watch.rejected {
@@ -195,6 +230,10 @@ func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.
 // readLoadTurn reads the events past the run's offset into watch.
 // It returns the first turn end that is the load turn's own.
 // A turn end the transcript marks an API error counts as an API-error turn end.
+// Before either kind counts, the engine's switch is asked about the session's newest turn end.
+// It is asked only when that turn end reads as a usage limit.
+// That holds for an API-error signal with no turn-end event after it in the read, and for an event the transcript marks.
+// A switch that moves the worktree sets watch.switched and the read returns nothing more.
 // An unreadable file and a failed parse read nothing and leave the offset where it was.
 func (run *Run) readLoadTurn(watch *loadTurnWatch, skills []string) (Event, bool) {
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)
@@ -208,15 +247,41 @@ func (run *Run) readLoadTurn(watch *loadTurnWatch, skills []string) (Event, bool
 	run.offset = newOffset
 	errorsBefore := watch.errors
 	now := run.clock.Now()
-	if parser, ok := run.engine.(SessionSignalParser); ok {
+	// One ask per read: every turn end of a read is read from the same transcript.
+	askedLimit := false
+	switchedAtLimit := func(raw []byte) bool {
+		if watch.switched {
+			return true
+		}
+		if askedLimit {
+			return false
+		}
+		var limited bool
+		limited, watch.switched = run.switchAtLoadLimit(raw)
+		askedLimit = limited
+		return watch.switched
+	}
+	parser, parses := run.engine.(SessionSignalParser)
+	if parses {
 		signals, _ := parser.ParseSessionSignals(data)
 		for _, signal := range signals {
 			switch signal.Kind {
 			case SessionSignalTurnStart:
 				watch.turnStartRead(signal, now)
-			case SessionSignalTurnEnd, SessionSignalSessionStart:
+			case SessionSignalTurnEnd:
+				run.loadTurnEnds++
+				watch.open = false
+			case SessionSignalSessionStart:
 				watch.open = false
 			case SessionSignalAPIErrorTurnEnd:
+				run.loadTurnEnds++
+				if switchedAtLimit(signal.Raw) {
+					return Event{}, false
+				}
+				if refusedResume(run.state, signal, run.loadTurnEnds == 1, run.usageLimited(&heldTurnEnd{raw: signal.Raw})) {
+					watch.refused = true
+					return Event{}, false
+				}
 				watch.apiErrorRead(signal.ErrorText, signal.ModelRejected, now)
 			}
 		}
@@ -228,8 +293,18 @@ func (run *Run) readLoadTurn(watch *loadTurnWatch, skills []string) (Event, bool
 		if event.Kind != EventStop && event.Kind != EventWaiting {
 			continue
 		}
+		if !parses {
+			run.loadTurnEnds++
+		}
 		if canRead {
 			if activity := reader.TurnEndActivity(event); activity.APIError {
+				if activity.UsageLimit.Limited && switchedAtLimit(event.Raw) {
+					return Event{}, false
+				}
+				if refusedResume(run.state, SessionSignal{Kind: SessionSignalAPIErrorTurnEnd}, run.loadTurnEnds <= 1, activity.UsageLimit.Limited) {
+					watch.refused = true
+					return Event{}, false
+				}
 				watch.apiErrorRead(activity.APIErrorText, false, now)
 				continue
 			}

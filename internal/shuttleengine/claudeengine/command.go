@@ -328,7 +328,8 @@ func envFileContentFor(goos string) string {
 // so the pane shell expands the reference from the export that reed's launch script makes.
 // A non-empty remoteControlName adds --remote-control naming it, so the session starts with remote control on.
 // It wraps the finished line in the envFileKey assignment naming envFilePath, so that assignment leads the line.
-func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, resume, skipPermissions, forkSubagents bool) string {
+// The account's environment is applied outermost, so it wins over a value the pane's own environment holds.
+func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, account accountEnv, resume, skipPermissions, forkSubagents bool) string {
 	sessionFlag := " --session-id "
 	if resume {
 		sessionFlag = " --resume "
@@ -359,7 +360,7 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 	}
 	cmd = sh.WithEnv(promptCacheTTLEnvKey, promptCacheTTL, cmd)
 	cmd = sh.WithEnv(bashMaxTimeoutEnvKey, bashMaxTimeoutMS, cmd)
-	return sh.WithEnv(envFileKey, envFilePath, cmd)
+	return account.wrap(sh, sh.WithEnv(envFileKey, envFilePath, cmd))
 }
 
 // buildOpenCmd composes the pane-shell line of a named interactive session that takes no task prompt.
@@ -411,11 +412,14 @@ func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, sett
 // The TTL is spec.Role's from claude.yaml, as for a run, and an invalid TTL anywhere in claude.yaml refuses the open.
 // Both lines open with a statement that exports it as CLAUDE_CODE_PROMPT_CACHE_TTL,
 // so the resume line and its fresh fallback both run under it, in either shell dialect.
+// A statement that exports or unsets CLAUDE_CONFIG_DIR for the worktree's resolved account follows that export.
+// It runs ahead of both lines.
 // With a hub board directory, it creates dir and writes two files into it:
 // settings.json holds creel's hook delivery and the session's scope for spec.Skills alone.
 // The append-system-prompt file holds the creel trust sentence.
 // The Cmd and ResumeCmd lines both name these files, and the launch is marked CreelHooks,
 // so the session gets its mail through its hooks, as a run session does.
+// It also writes account.json there, naming the config directory and the listed account the session launched under.
 // Without a hub board directory, it writes nothing, creates no dir and marks nothing.
 // A failure after dir is created removes it.
 // Bypass is the default, and spec.PermissionMode "prompt" opts out per call.
@@ -453,6 +457,10 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 		return shuttleengine.Launch{}, err
 	}
 	logger.Info("claudeengine: resolved the prompt-cache TTL of an opened session", "role", spec.Role, "ttl", promptCacheTTL)
+	account, launched, err := c.resolveLaunchAccount(claude)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
 	skillLoadMessage := ""
 	if len(spec.Skills) > 0 {
 		skillLoadMessage = c.SkillLoadMessage(spec.Skills)
@@ -473,10 +481,22 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	}
 	settingsPath, appendPromptPath := "", ""
 	if creelFlagDirForHook != "" {
-		scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role)
-		settingsPath, appendPromptPath, err = writeOpenFiles(dir, creelFlagDirForHook, scope)
+		scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role, launched.ConfigDir)
+		statusLine := ""
+		if launched.Account != "" {
+			lymPath, err := LymBinary()
+			if err != nil {
+				return shuttleengine.Launch{}, fmt.Errorf("resolve the lym binary the status line runs: %w", err)
+			}
+			statusLine = statusLineCommand(lymPath, launched.Account)
+		}
+		settingsPath, appendPromptPath, err = writeOpenFiles(dir, creelFlagDirForHook, scope, statusLine)
 		if err != nil {
 			return shuttleengine.Launch{}, err
+		}
+		if err := writeLaunchedAccount(dir, launched); err != nil {
+			_ = os.RemoveAll(dir)
+			return shuttleengine.Launch{}, fmt.Errorf("write the launched account of the open session: %w", err)
 		}
 	}
 	sh := shell.ForGOOS()
@@ -484,9 +504,10 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	fresh := buildOpenCmd(sh, bin, skillLoadMessage, sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, false)
 	resumeLine := buildOpenCmd(sh, bin, "", sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, true)
 	exportTTL := sh.ExportEnv(promptCacheTTLEnvKey, promptCacheTTL)
+	accountStatement := account.statement(sh)
 	return shuttleengine.Launch{
-		Cmd:        sh.Chain(exportTTL, fresh),
-		ResumeCmd:  sh.Chain(exportTTL, sh.OrElse(resumeLine, fresh)),
+		Cmd:        sh.Chain(exportTTL, accountStatement, fresh),
+		ResumeCmd:  sh.Chain(exportTTL, accountStatement, sh.OrElse(resumeLine, fresh)),
 		SessionID:  sessionID,
 		CreelHooks: creelFlagDirForHook != "",
 	}, nil
@@ -494,10 +515,11 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 
 // writeOpenFiles creates dir and writes an opened session's two files into it.
 // settings.json holds creel's hook delivery over the flag directory creelFlagDirPosix and the scope passed in.
+// A non-empty statusLine is the command the settings run as the session's status line.
 // The append-system-prompt file holds the creel trust sentence.
 // It returns the two files' absolute paths.
 // A failure after the directory is created removes it, so a failed launch leaves nothing behind.
-func writeOpenFiles(dir, creelFlagDirPosix string, scope sessionScope) (settingsPath, appendPromptPath string, err error) {
+func writeOpenFiles(dir, creelFlagDirPosix string, scope sessionScope, statusLine string) (settingsPath, appendPromptPath string, err error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return "", "", fmt.Errorf("resolve the open session directory: %w", err)
@@ -513,6 +535,11 @@ func writeOpenFiles(dir, creelFlagDirPosix string, scope sessionScope) (settings
 	settingsJSON, err := buildOpenSettings(creelFlagDirPosix, scope)
 	if err != nil {
 		return "", "", fmt.Errorf("build open settings: %w", err)
+	}
+	if statusLine != "" {
+		if settingsJSON, err = addStatusLine(settingsJSON, statusLine); err != nil {
+			return "", "", fmt.Errorf("add the status line to the open settings: %w", err)
+		}
 	}
 	settingsPath = filepath.Join(absDir, settingsFileName)
 	if err := os.WriteFile(settingsPath, settingsJSON, 0o644); err != nil {
@@ -549,7 +576,8 @@ var _ shuttleengine.SessionOpener = (*Claude)(nil)
 // It carries the bashMaxTimeoutEnvKey assignment too, for the same reason.
 // It leads with the envFileKey assignment naming envFilePath:
 // a resumed session keeps the default stdin of its Bash tool.
-func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, skipPermissions, forkSubagents bool) string {
+// It applies the account's environment outermost, as the launch line does, since the resumed claude inherits nothing.
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, account accountEnv, skipPermissions, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
@@ -572,5 +600,5 @@ func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort,
 	}
 	cmd = sh.WithEnv(promptCacheTTLEnvKey, promptCacheTTL, cmd)
 	cmd = sh.WithEnv(bashMaxTimeoutEnvKey, bashMaxTimeoutMS, cmd)
-	return sh.WithEnv(envFileKey, envFilePath, cmd)
+	return account.wrap(sh, sh.WithEnv(envFileKey, envFilePath, cmd))
 }

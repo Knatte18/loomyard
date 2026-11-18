@@ -67,6 +67,8 @@ type seedAttachRunOpts struct {
 	// promptLine and promptOffset seed RunState.PromptLine and PromptOffset, written only when set.
 	promptLine   string
 	promptOffset int64
+	// relaunchingAt seeds RunState.RelaunchingAt, written only when set.
+	relaunchingAt string
 }
 
 // seedAttachRun writes a run.json fixture at <root>/<id>/run.json from a plain map.
@@ -101,6 +103,9 @@ func seedAttachRun(t *testing.T, root, id string, opts seedAttachRunOpts) string
 	}
 	if opts.promptOffset != 0 {
 		fields["promptOffset"] = opts.promptOffset
+	}
+	if opts.relaunchingAt != "" {
+		fields["relaunchingAt"] = opts.relaunchingAt
 	}
 	data, err := json.MarshalIndent(fields, "", "  ")
 	if err != nil {
@@ -192,28 +197,41 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 		outcome        string
 		includeOutcome bool
 		wantFound      bool
+		// strand is the strand reed reports; nil reports a live one.
+		strand *reedengine.StrandStatus
+		// relaunching seeds a relaunching mark a second old.
+		relaunching bool
 	}{
-		{"terminal_done", "done", true, false},
-		{"legacy_asking_attaches", "asking", true, true},
-		{"terminal_died", "died", true, false},
-		{"terminal_timeout", "timeout", true, false},
-		{"terminal_stopped_is_respawn_eligible_on_a_live_strand", runOutcomeStopped, true, false},
-		{"running_attaches", runOutcomeRunning, true, true},
-		{"omitted_outcome_is_legacy_upgrade_path", "", false, false},
-		{"unrecognized_outcome", "some-future-value", true, false},
+		{"terminal_done", "done", true, false, nil, false},
+		{"legacy_asking_attaches", "asking", true, true, nil, false},
+		{"terminal_died", "died", true, false, nil, false},
+		{"terminal_timeout", "timeout", true, false, nil, false},
+		{"terminal_stopped_is_respawn_eligible_on_a_live_strand", runOutcomeStopped, true, false, nil, false},
+		{"running_attaches", runOutcomeRunning, true, true, nil, false},
+		{"relaunching_attaches_over_a_held_paneless_strand", runOutcomeRunning, true, true, &reedengine.StrandStatus{GUID: "strand-1", Held: true}, true},
+		{"omitted_outcome_is_legacy_upgrade_path", "", false, false, nil, false},
+		{"unrecognized_outcome", "some-future-value", true, false, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
+			status := liveStatus("strand-1", "%1")
+			if tt.strand != nil {
+				status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{*tt.strand}}
+			}
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{status}}
 			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
 			runner, dotLymDir, runRoot := fx.Runner, fx.DotLym, fx.RunRoot
 			seedPresentReedState(t, dotLymDir)
 
 			outputFile := filepath.Join(runRoot, "out.md")
-			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{
+			seed := seedAttachRunOpts{
 				strandGUID: "strand-1", sessionID: "session-1",
 				outputFiles: []string{outputFile}, outcome: tt.outcome, includeOutcome: tt.includeOutcome,
-			})
+			}
+			if tt.relaunching {
+				seed.relaunchingAt = fx.Runner.clock.Now().Add(-time.Second).UTC().Format(time.RFC3339)
+			}
+			runDir := seedAttachRun(t, runRoot, "run-1", seed)
 			// Seeded for the one case (running_attaches) that reaches Wait.
 			// It classifies OutcomeDone on its first tick instead of looping to the config deadline.
 			// The seed is harmless for every other case, which never gets past dispositioning.

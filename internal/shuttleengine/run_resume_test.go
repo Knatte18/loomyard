@@ -2,12 +2,14 @@
 // A spec with a ResumeSessionID runs the engine's SessionResumer check against the runner's pane cwd before Prepare.
 // A refusal leaves no run directory or strand, and a warning reaches Run.ResumeWarning.
 // An engine without the capability refuses.
+// A transcript carry runs first, and its copy fact reaches the run record and a held refusal.
 
 package shuttleengine
 
 import (
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,8 +46,93 @@ func TestRunnerStart_Resume_ChecksSessionAgainstPaneCwdBeforePrepare(t *testing.
 	if got.SessionID != spec.ResumeSessionID || got.Workdir != anchorPath {
 		t.Errorf("CheckResume called with (%q, %q), want (%q, %q)", got.SessionID, got.Workdir, spec.ResumeSessionID, anchorPath)
 	}
-	if len(engine.Order) < 2 || engine.Order[0] != "CheckResume" || engine.Order[1] != "Prepare" {
+	if len(engine.Order) < 3 || engine.Order[1] != "CheckResume" || engine.Order[2] != "Prepare" {
 		t.Errorf("call order = %v, want CheckResume before Prepare", engine.Order)
+	}
+}
+
+// TestRunnerStart_Resume_CarriesTheTranscriptFirst pins the carry order: before the check and Prepare.
+// The copy fact reaches the run record and a held refusal, and a failed carry refuses before any run directory.
+func TestRunnerStart_Resume_CarriesTheTranscriptFirst(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// unawaited starts through StartSession in place of Start.
+		unawaited bool
+		// copied is what the carry reports.
+		copied bool
+		// specCopied is Spec.TranscriptCopied, the report of an earlier check.
+		specCopied bool
+		carryErr   error
+		// held makes the resume check refuse with a *SessionHeldError.
+		held    bool
+		wantErr string
+		// wantOrder is the engine's call order.
+		wantOrder []string
+		// wantRecorded is the run record's TranscriptCopied; it is read only for a run that started.
+		wantRecorded bool
+		// wantHeldCopied is the copy fact the held refusal carries.
+		wantHeldCopied bool
+	}{
+		{name: "StartRecordsACopy", copied: true, wantOrder: []string{"CarryTranscript", "CheckResume", "Prepare"}, wantRecorded: true},
+		{name: "StartSessionRecordsACopy", unawaited: true, copied: true, wantOrder: []string{"CarryTranscript", "CheckResume", "Prepare"}, wantRecorded: true},
+		{name: "StartRecordsNoCopyWhenNothingWasCopied", wantOrder: []string{"CarryTranscript", "CheckResume", "Prepare"}},
+		{name: "ARetrySpecsCopyFactIsRecordedThoughItsOwnCarryCopiedNothing", specCopied: true, wantOrder: []string{"CarryTranscript", "CheckResume", "Prepare"}, wantRecorded: true},
+		{name: "AHeldRefusalCarriesTheCopy", copied: true, held: true, wantErr: "held by live process 4242", wantOrder: []string{"CarryTranscript", "CheckResume"}, wantHeldCopied: true},
+		{name: "AHeldRefusalCarriesTheRetrySpecsCopyFact", specCopied: true, held: true, wantErr: "held by live process 4242", wantOrder: []string{"CarryTranscript", "CheckResume"}, wantHeldCopied: true},
+		{name: "AFailedCarryRefusesBeforeTheCheck", carryErr: errors.New("disk full"), wantErr: "shuttle: resume check: disk full", wantOrder: []string{"CarryTranscript"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+			engine := newResumeTestEngine()
+			engine.Copied, engine.CarryErr = tt.copied, tt.carryErr
+			if tt.held {
+				engine.Err = &SessionHeldError{SessionID: resumeSpec().ResumeSessionID, PID: 4242, Err: errors.New("held by live process 4242")}
+			}
+			readyStart(reed, engine.fakeEngine)
+			fx := newFixture(t, reed, engine, withConfig(fastConfig))
+
+			spec := resumeSpec()
+			spec.TranscriptCopied = tt.specCopied
+			var err error
+			if tt.unawaited {
+				spec.OutputFiles, spec.Unawaited = nil, true
+				_, err = fx.Runner.StartSession(spec)
+			} else {
+				_, err = fx.Runner.Start(spec)
+			}
+
+			if !slices.Equal(engine.Order, tt.wantOrder) {
+				t.Errorf("call order = %v; want %v", engine.Order, tt.wantOrder)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("start error = %v; want one containing %q", err, tt.wantErr)
+				}
+				var heldErr *SessionHeldError
+				if errors.As(err, &heldErr) && heldErr.TranscriptCopied != tt.wantHeldCopied {
+					t.Errorf("SessionHeldError.TranscriptCopied = %v; want %v", heldErr.TranscriptCopied, tt.wantHeldCopied)
+				}
+				if _, statErr := os.Stat(runDirRoot(fx.Runner.cfg, fx.Anchor)); !os.IsNotExist(statErr) {
+					t.Errorf("run directory root stat error = %v; want it absent for a refused resume", statErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("start error: %v", err)
+			}
+			rs, found, err := loadRunState(soleStartupRunDir(t, fastConfig, fx.Anchor))
+			if err != nil || !found {
+				t.Fatalf("loadRunState: found=%v err=%v", found, err)
+			}
+			if rs.TranscriptCopied != tt.wantRecorded {
+				t.Errorf("run record TranscriptCopied = %v; want %v", rs.TranscriptCopied, tt.wantRecorded)
+			}
+		})
 	}
 }
 

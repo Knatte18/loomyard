@@ -112,7 +112,7 @@ func newStrandRig(location *lymcwd.Location) (strandRig, error) {
 	if err != nil {
 		return strandRig{}, err
 	}
-	engines, err := shuttleengines.New(shuttleCfg, dirs)
+	engines, err := shuttleengines.NewForWorktree(shuttleCfg, dirs, hubgeom.EngineWorktree(location))
 	if err != nil {
 		return strandRig{}, err
 	}
@@ -127,7 +127,7 @@ func newStrandRig(location *lymcwd.Location) (strandRig, error) {
 	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	runner.SetPause(pauseGeom)
-	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders()))
+	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders(dirs)))
 	return strandRig{runner: runner, reed: reed, engines: engines, shuttleCfg: shuttleCfg, anchorRoot: reedGeom.AnchorPath}, nil
 }
 

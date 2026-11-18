@@ -184,6 +184,12 @@ func AdoptScratchDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), lymdirs.AdoptDirName)
 }
 
+// ClaudeAccountsDir returns the directory that holds the Claude account file and usage records.
+// It is `.lym/claude` in the Bolt checkout, a cache a fresh machine starts without.
+func ClaudeAccountsDir(hub string) string {
+	return filepath.Join(HubScratchDir(hub), lymdirs.ClaudeAccountsDirName)
+}
+
 // FrontTaskScratchDir returns the directory that holds the front-task record and its lock.
 // It also holds the output of the actions a front task runs.
 // It is `.lym/fronttask` in the Bolt checkout.

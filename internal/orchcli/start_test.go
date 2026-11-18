@@ -844,6 +844,55 @@ func TestStart_DeadStrandRemovedBeforeStart(t *testing.T) {
 	}
 }
 
+func TestRelaunchOrch_RestartsOverTheLiveLimitedStrand(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		fresh bool
+		// wantSession is the session id the launch resumed and the saved state records afterwards.
+		wantResume, wantSaved string
+	}{
+		{name: "ResumesTheRecordedSession", wantResume: recordedTestSessionID, wantSaved: recordedTestSessionID},
+		{name: "FreshLaunchesWithNoSessionId", fresh: true, wantSaved: "minted-id"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newStartHarness(t, reedengine.StrandStatus{GUID: "limited", Name: "orch", Live: true})
+			h.starter.holderPID = 777
+			var registered []int
+			h.cli.registerOrch = func(pid int) error {
+				registered = append(registered, pid)
+				return nil
+			}
+			saveSeedState(t, h, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "limited", SessionID: recordedTestSessionID, UsageLimitAt: time.Now()})
+
+			guid, err := h.cli.relaunchOrch(h.state(t), tt.fresh)
+			if err != nil || guid != "new-guid" {
+				t.Fatalf("relaunchOrch = %q, %v; want new-guid and no error", guid, err)
+			}
+			if !slices.Equal(h.strands.removed, []string{"limited"}) || slices.Index(h.calls, "remove") > slices.Index(h.calls, "start") {
+				t.Errorf("removed = %v, calls = %v; want the old strand removed before the start", h.strands.removed, h.calls)
+			}
+			if st := h.state(t); st.Strand != "new-guid" || st.SessionID != tt.wantSaved || !st.UsageLimitAt.IsZero() {
+				t.Errorf("state = %+v; want strand new-guid, session %q and no usage limit", st, tt.wantSaved)
+			}
+			if len(h.starter.specs) != 1 || h.starter.specs[0].ResumeSessionID != tt.wantResume {
+				t.Errorf("started specs = %+v; want one launch resuming %q", h.starter.specs, tt.wantResume)
+			}
+			if !slices.Equal(registered, []int{777}) {
+				t.Errorf("registered orch processes = %v; want the new process 777", registered)
+			}
+			if h.spawns != 0 {
+				t.Errorf("watcher spawns = %d; want none", h.spawns)
+			}
+		})
+	}
+}
+
 // starterFunc adapts a function to sessionStarter.
 type starterFunc func(shuttleengine.Spec) (startedSession, error)
 
@@ -1629,7 +1678,7 @@ func TestStart_ResumeOverALiveHolder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	held := &shuttleengine.SessionHeldError{SessionID: recordedTestSessionID, PID: 4242, Err: errors.New("claudeengine: session held by live process 4242")}
+	held := &shuttleengine.SessionHeldError{SessionID: recordedTestSessionID, PID: 4242, TranscriptCopied: true, Err: errors.New("claudeengine: session held by live process 4242")}
 	tests := []struct {
 		name       string
 		resumeErrs []error
@@ -1685,9 +1734,12 @@ func TestStart_ResumeOverALiveHolder(t *testing.T) {
 			if len(h.starter.specs) != tt.wantStarts {
 				t.Fatalf("starts = %d; want %d", len(h.starter.specs), tt.wantStarts)
 			}
-			for _, spec := range h.starter.specs {
+			for i, spec := range h.starter.specs {
 				if spec.ResumeSessionID != recordedTestSessionID {
 					t.Errorf("started spec resumes %q; want every start to resume %q and none to launch fresh", spec.ResumeSessionID, recordedTestSessionID)
+				}
+				if wantCopied := i > 0; spec.TranscriptCopied != wantCopied {
+					t.Errorf("start %d carries TranscriptCopied = %v; want %v, the held error's copy fact for a retry and none for the first start", i, spec.TranscriptCopied, wantCopied)
 				}
 			}
 			if tt.wantCode != 0 {

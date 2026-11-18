@@ -6,6 +6,7 @@ package testcover_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -116,7 +117,9 @@ func buildFixtureMutants(t *testing.T, files map[string]string, spans [][2]strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := append(os.Environ(), "GOFLAGS=", "GOWORK=off", "GOTOOLCHAIN=local")
+	// Clipped so every append onto env copies it:
+	// parallel subtests each append their own variables, and appends into shared spare capacity would overwrite each other's.
+	env := slices.Clip(append(os.Environ(), "GOFLAGS=", "GOWORK=off", "GOTOOLCHAIN=local"))
 	bin := filepath.Join(t.TempDir(), "mutants.test")
 	if err := (testcover.Toolchain{Go: "go", Env: env, Dir: module}).BuildMutantBinary("m/p", overlay, bin); err != nil {
 		t.Fatalf("BuildMutantBinary = %v; want every mutant to compile", err)

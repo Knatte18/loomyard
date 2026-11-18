@@ -261,6 +261,34 @@ func shQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// statusLineCommand returns the command Claude Code runs as a session's status line on the listed account account.
+// It is the lym binary at lymPath running `claude statusline` for the account, each value single-quoted.
+func statusLineCommand(lymPath, account string) string {
+	return shQuote(lymPath) + " claude statusline " + shQuote(account)
+}
+
+// addStatusLine returns the settings document with its `statusLine` key set to a command entry running command.
+// Every other key of the document is kept.
+func addStatusLine(settings []byte, command string) ([]byte, error) {
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(settings, &doc); err != nil {
+		return nil, fmt.Errorf("decode the settings document: %w", err)
+	}
+	statusLine, err := json.Marshal(struct {
+		Type    string `json:"type"`
+		Command string `json:"command"`
+	}{Type: "command", Command: command})
+	if err != nil {
+		return nil, fmt.Errorf("marshal the status line: %w", err)
+	}
+	doc["statusLine"] = statusLine
+	data, err := json.Marshal(doc)
+	if err != nil {
+		return nil, fmt.Errorf("marshal the settings document: %w", err)
+	}
+	return data, nil
+}
+
 // denyJSON builds the `echo`-able deny-and-steer JSON payload for PreToolUse hooks.
 // steer must contain no single quotes, as it rides inside a single-quoted `echo` argument under git-bash.
 func denyJSON(steer string) string {

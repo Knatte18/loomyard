@@ -662,18 +662,9 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 	if err != nil {
 		return report, err
 	}
-	named := orchStrands(strands)
-	if len(named) > 1 {
-		guids := make([]string, len(named))
-		for i, s := range named {
-			guids[i] = s.GUID
-		}
-		return report, fmt.Errorf("orch: %d strands are named %q (%s); remove the extras with `lym reed remove` and re-run", len(named), orchStrandName, strings.Join(guids, ", "))
-	}
-	var strand reedengine.StrandStatus
-	hasStrand := len(named) == 1
-	if hasStrand {
-		strand = named[0]
+	strand, hasStrand, err := soleOrchStrand(strands)
+	if err != nil {
+		return report, err
 	}
 	strandLive := hasStrand && strand.Live
 
@@ -690,58 +681,14 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 	report.Strand = strand.GUID
 	switch orchengine.DecideStart(strandLive, watcherLive) {
 	case orchengine.StartRelaunch:
-		receiver, err := c.orchReceiver(strand, hasStrand)
+		_, source, err := c.relaunchStrand(st, strand, hasStrand, note, false, &report)
 		if err != nil {
 			return report, err
 		}
-		creel, err := c.newCreel()
-		if err != nil {
-			return report, fmt.Errorf("orch: reach creel: %w; %s", err, withdrawWayForward)
-		}
-		firstFailure, err := c.withdrawFirst(creel, receiver, hasStrand)
-		if err != nil {
-			return report, err
-		}
-		if hasStrand {
-			if err := c.strands.RemoveStrand(strand.GUID); err != nil {
-				return report, err
-			}
-		}
-		if err := orchengine.RenderRoleFile(c.paths.RolePath); err != nil {
-			return report, err
-		}
-		remoteControlName := c.launchRemoteControlName(strand, hasStrand)
-		started, source, abandoned, err := c.launchOrch(st, note, remoteControlName)
-		report.AbandonedSession = abandoned
-		if err != nil {
-			return report, err
-		}
-		if remoteControlName != "" {
-			c.markLaunchedRemoteControl(started.GUID)
-		}
-		report.Strand = started.GUID
-		if started.Warning != "" {
-			report.Warnings = append(report.Warnings, started.Warning)
-		}
-		if abandoned != "" {
-			report.Warnings = append(report.Warnings, freshLaunchNote(abandoned, started.Carried))
-		}
-		if warning := c.registerOrchProcess(started); warning != "" {
-			report.Warnings = append(report.Warnings, warning)
-		}
-		next := orchengine.ResetForFreshLaunch(st, started.GUID, time.Now())
-		next.SessionID = started.SessionID
-		if err := c.saveFreshLaunch(next, firstFailure, creel, receiver); err != nil {
-			return report, err
-		}
-		logger.Info("orch: launched orchestrator session", "strandGUID", started.GUID, "sessionID", started.SessionID, "promptSource", source, "abandonedSessionID", abandoned)
 		if err := c.spawnWatcher(); err != nil {
 			return report, err
 		}
 		report.Action, report.PromptSource = actionRelaunched, source
-		if source == orchengine.SourceResume {
-			report.SessionID = started.SessionID
-		}
 	case orchengine.StartSpawnWatcher:
 		if err := c.adoptListedStrand(st, strand); err != nil {
 			return report, err
@@ -762,6 +709,107 @@ func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 		report.Hint = stoppingWatcherHint
 	}
 	return report, nil
+}
+
+// soleOrchStrand returns the orch strand among strands and whether one is listed.
+// It refuses a listing that names more than one.
+func soleOrchStrand(strands []reedengine.StrandStatus) (strand reedengine.StrandStatus, listed bool, err error) {
+	named := orchStrands(strands)
+	if len(named) > 1 {
+		guids := make([]string, len(named))
+		for i, s := range named {
+			guids[i] = s.GUID
+		}
+		return strand, false, fmt.Errorf("orch: %d strands are named %q (%s); remove the extras with `lym reed remove` and re-run", len(named), orchStrandName, strings.Join(guids, ", "))
+	}
+	if len(named) == 1 {
+		return named[0], true, nil
+	}
+	return strand, false, nil
+}
+
+// relaunchOrch relaunches the orch session over the orch strand reed lists, live or not.
+// It returns the new strand's GUID.
+// It runs directly, deciding nothing about whether the orch is already running and waiting for no watcher to go.
+// The live strand and the watcher calling it would read as a running orch.
+// The session st records is resumed; with fresh set the recorded session id is cleared and the launch starts fresh.
+// It spawns no watcher.
+func (c *orchCLI) relaunchOrch(st orchengine.State, fresh bool) (string, error) {
+	strands, err := c.strands.Strands()
+	if err != nil {
+		return "", err
+	}
+	strand, hasStrand, err := soleOrchStrand(strands)
+	if err != nil {
+		return "", err
+	}
+	var report BeamUpReport
+	guid, _, err := c.relaunchStrand(st, strand, hasStrand, "", fresh, &report)
+	for _, warning := range report.Warnings {
+		logger.Warn("orch: the restart's launch reported a warning", "strandGUID", guid, "warning", warning)
+	}
+	return guid, err
+}
+
+// relaunchStrand relaunches the orch session under a withdraw round on each side.
+// It removes the strand listed and launches through launchOrch.
+// It then registers the new process as the worktree's orch and saves st reset onto the new strand.
+// It records the launch's strand, abandoned session and warnings in report, and the session id when the launch resumed.
+// It returns the new strand's GUID and the prompt source of the launch.
+// With fresh set the recorded session id is cleared first, so the launch starts fresh.
+func (c *orchCLI) relaunchStrand(st orchengine.State, strand reedengine.StrandStatus, hasStrand bool, note string, fresh bool, report *BeamUpReport) (guid, source string, err error) {
+	if fresh {
+		st.SessionID = ""
+	}
+	receiver, err := c.orchReceiver(strand, hasStrand)
+	if err != nil {
+		return "", "", err
+	}
+	creel, err := c.newCreel()
+	if err != nil {
+		return "", "", fmt.Errorf("orch: reach creel: %w; %s", err, withdrawWayForward)
+	}
+	firstFailure, err := c.withdrawFirst(creel, receiver, hasStrand)
+	if err != nil {
+		return "", "", err
+	}
+	if hasStrand {
+		if err := c.strands.RemoveStrand(strand.GUID); err != nil {
+			return "", "", err
+		}
+	}
+	if err := orchengine.RenderRoleFile(c.paths.RolePath); err != nil {
+		return "", "", err
+	}
+	remoteControlName := c.launchRemoteControlName(strand, hasStrand)
+	started, source, abandoned, err := c.launchOrch(st, note, remoteControlName)
+	report.AbandonedSession = abandoned
+	if err != nil {
+		return "", "", err
+	}
+	if remoteControlName != "" {
+		c.markLaunchedRemoteControl(started.GUID)
+	}
+	report.Strand = started.GUID
+	if started.Warning != "" {
+		report.Warnings = append(report.Warnings, started.Warning)
+	}
+	if abandoned != "" {
+		report.Warnings = append(report.Warnings, freshLaunchNote(abandoned, started.Carried))
+	}
+	if warning := c.registerOrchProcess(started); warning != "" {
+		report.Warnings = append(report.Warnings, warning)
+	}
+	next := orchengine.ResetForFreshLaunch(st, started.GUID, time.Now())
+	next.SessionID = started.SessionID
+	if err := c.saveFreshLaunch(next, firstFailure, creel, receiver); err != nil {
+		return "", "", err
+	}
+	logger.Info("orch: launched orchestrator session", "strandGUID", started.GUID, "sessionID", started.SessionID, "promptSource", source, "abandonedSessionID", abandoned)
+	if source == orchengine.SourceResume {
+		report.SessionID = started.SessionID
+	}
+	return started.GUID, source, nil
 }
 
 // launchOrch starts the orch session: the session st records, resumed with the reload pointer, else a fresh launch.
@@ -813,6 +861,7 @@ func (c *orchCLI) resumeOrch(sessionID, remoteControlName string) (startedSessio
 	if err := c.endOwnHolder(sessionID, held.PID); err != nil {
 		return startedSession{}, err
 	}
+	spec.TranscriptCopied = held.TranscriptCopied
 	started, err = c.starter.StartSession(spec)
 	return started, resumeFailure(sessionID, err)
 }

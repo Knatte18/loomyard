@@ -46,7 +46,8 @@ type ResumeResult struct {
 	Resumed int
 	// Dropped counts the finished strands Resume removed from state instead of relaunching.
 	Dropped int
-	// Held names the strands a pause covering this pair left down instead of relaunching.
+	// Held names the strands Resume left down instead of relaunching:
+	// those a pause covering this pair holds, and those a caller ended on purpose (Strand.Held).
 	Held []string
 }
 
@@ -85,6 +86,9 @@ type StrandStatus struct {
 	// Retiring reports that a caller asked for this strand's removal.
 	// It grants nothing by itself: a caller that finds it set only completes the request.
 	Retiring bool
+	// Held reports that a caller ended the strand's process on purpose and means to relaunch it.
+	// Resume leaves a held strand down.
+	Held bool
 	// Color is the palette color the strand's segment resolves to, empty when it has none.
 	Color segmentcolor.Color
 	// LymBin is the absolute lym path the strand's pane prelude exported as LYM_BIN at its latest launch.
@@ -182,11 +186,17 @@ func pruneServerLogsLocked(logsDir, prefix string, keep int) error {
 // Every other non-live, non-hidden strand is relaunched;
 // a hidden strand that is not dropped is neither.
 // A live strand is in neither list.
+// A non-live strand a caller ended on purpose (Strand.Held) is returned in held.
+// It is never dropped or relaunched, whatever its done-when list.
 // When paused, every strand that would be relaunched is returned in held instead, so a pause leaves it down.
 func planResumeLaunches(strands []Strand, liveIDs map[string]bool, exists func(path string) bool, paused bool) (launch, drop, held []Strand) {
 	for _, s := range strands {
 		live := s.PaneID != "" && liveIDs[s.PaneID]
 		if live {
+			continue
+		}
+		if s.Held {
+			held = append(held, s)
 			continue
 		}
 		if len(s.DoneWhen) > 0 && allPathsExist(s.DoneWhen, exists) {
@@ -1326,7 +1336,7 @@ func (e *Engine) Status() (StatusResult, error) {
 		elsewhere := e.strandsElsewhereLocked(st.Strands, windows)
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Elsewhere: elsewhere[s.PaneID], Retiring: s.Retiring, Color: e.withColor(s).Color, LymBin: s.LymBin, Provider: s.Provider}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Elsewhere: elsewhere[s.PaneID], Retiring: s.Retiring, Held: s.Held, Color: e.withColor(s).Color, LymBin: s.LymBin, Provider: s.Provider}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

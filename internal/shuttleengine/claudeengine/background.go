@@ -41,7 +41,7 @@ const forkSubagentType = "fork"
 // A fork launch whose tool result never reached the transcript stays outstanding, since no notification can name it.
 // A missing or unreadable transcript is an error, since an empty answer would end the wait.
 func (c *Claude) OutstandingForks(sessionID, workdir string) ([]shuttleengine.BackgroundTask, error) {
-	projectDir, err := claudeProjectDirFor(workdir)
+	projectDir, err := c.sessionProjectDir(sessionID, workdir)
 	if err != nil {
 		return nil, err
 	}

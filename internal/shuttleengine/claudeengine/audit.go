@@ -31,13 +31,13 @@ func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit,
 	return c.AuditForksIncremental(sessionID, workdir, nil)
 }
 
-// AuditForksIncremental implements shuttleengine.ForkAuditor for Claude, deriving
-// the session's project directory from workdir and reading transcripts.
+// AuditForksIncremental implements shuttleengine.ForkAuditor for Claude.
+// It reads transcripts under the project directory of workdir, in the config directory the session was launched with.
 // A nil seenTranscripts reports every subagent transcript; missing subagents/ is not an error (zero
 // forks).
 // A missing parent transcript or unreadable subagent transcript is an error (audit incomplete).
 func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	projectDir, err := claudeProjectDirFor(workdir)
+	projectDir, err := c.sessionProjectDir(sessionID, workdir)
 	if err != nil {
 		return shuttleengine.ForkAudit{}, err
 	}
@@ -98,16 +98,6 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 		ParentWriteEvents:  writeEvents,
 		ParentBashCommands: bashCommands,
 	}, nil
-}
-
-// claudeProjectDirFor derives the ~/.claude/projects/<encoded-workdir> directory,
-// encoding workdir by replacing non-alphanumeric bytes with '-'.
-func claudeProjectDirFor(workdir string) (string, error) {
-	projects, err := projectsRoot()
-	if err != nil {
-		return "", err
-	}
-	return projectDirUnder(projects, workdir), nil
 }
 
 // claudeHomeDir resolves the home directory Claude Code uses for ~/.claude/projects/,

@@ -60,6 +60,9 @@ type AgentActivity struct {
 	// WaiterGone is true when the run's record reads running but no process is known to wait on it: the recorded waiting process is gone, or the record names none.
 	// Such a reading carries its last activity only, and does not show the agent live: a caller that acts on a live run skips it.
 	WaiterGone bool
+	// Relaunching is true when the run's record carries a relaunching mark within its bound.
+	// Such a reading carries its last activity only, with no API error or usage limit and WaiterGone unset.
+	Relaunching bool
 }
 
 // unreadableFiles keeps one failure episode per file the files-only readers skip, keyed by the path their log line names.
@@ -76,6 +79,8 @@ var unreadableFiles logger.EpisodeSet
 // a run with no turn end past the offset hands over the newest one before it, a skill-load turn end of the same session, for its last activity only, so a first turn spent in a fork still reads active.
 // A run with no turn end at all, or an engine without the capability, is judged by its events file alone.
 // A run whose record names an engine the set does not hold is skipped and logged once per episode.
+// A run whose record carries a relaunching mark within its bound is read as live.
+// Its reading has Relaunching set and no turn-end facts, since its newest turn end belongs to the session being replaced.
 // An absent root returns no readings and no error.
 func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]AgentActivity, error) {
 	root := runDirRoot(cfg, anchorPath)
@@ -87,6 +92,7 @@ func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]Agen
 		return nil, err
 	}
 	var readings []AgentActivity
+	now, bound := time.Now(), relaunchBound(cfg)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -102,7 +108,7 @@ func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]Agen
 			waiterlessRuns.Recover(runDir, waiterlessRecovered, "runDir", runDir)
 			continue
 		}
-		noteWaiterlessRun(runDir, rs)
+		noteWaiterlessRun(runDir, rs, now, bound)
 		if rs.Outcome != runOutcomeRunning {
 			continue
 		}
@@ -112,7 +118,10 @@ func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]Agen
 		}
 		reader, _ := engine.(ActivityReader)
 		reading := readRunActivity(runDir, rs, engine, reader)
-		if !runIsLive(rs) {
+		if within, _ := rs.relaunching(now, bound); within {
+			reading.APIError, reading.APIErrorText, reading.UsageLimit = false, "", UsageLimit{}
+			reading.Relaunching = true
+		} else if !runIsLive(rs, now, bound) {
 			reading.APIError, reading.APIErrorText, reading.UsageLimit = false, "", UsageLimit{}
 			reading.WaiterGone = true
 		}
@@ -165,9 +174,16 @@ func ReadNewestRunEnd(cfg Config, anchorPath string) (time.Time, error) {
 	return newest, nil
 }
 
-// runIsLive reports whether rs names a run still waited on: it reads running and its recorded pid is alive.
-func runIsLive(rs RunState) bool {
-	return rs.Outcome == runOutcomeRunning && rs.PID > 0 && isAlive(rs.PID)
+// runIsLive reports whether rs names a run still waited on, or being relaunched.
+// The run reads running, and either its recorded pid is alive or its relaunching mark is within bound of now.
+func runIsLive(rs RunState, now time.Time, bound time.Duration) bool {
+	if rs.Outcome != runOutcomeRunning {
+		return false
+	}
+	if within, _ := rs.relaunching(now, bound); within {
+		return true
+	}
+	return rs.PID > 0 && isAlive(rs.PID)
 }
 
 // waiterlessRuns keeps one episode per run directory whose record reads running while the process recorded as waiting on it is gone.
@@ -179,10 +195,11 @@ const waiterlessRecovered = "shuttle: run no longer has a gone waiting process"
 
 // noteWaiterlessRun logs the run at runDir once per episode when its record rs reads running with a recorded waiter that is gone.
 // Such a run's agent may still be working with no process acting on its turn ends.
-// It ends the episode when rs reads anything else.
+// It ends the episode when rs reads anything else, or carries a relaunching mark within bound of now.
 // A record with no pid predates the field and is not counted.
-func noteWaiterlessRun(runDir string, rs RunState) {
-	if rs.Outcome == runOutcomeRunning && rs.PID > 0 && !isAlive(rs.PID) {
+func noteWaiterlessRun(runDir string, rs RunState, now time.Time, bound time.Duration) {
+	within, _ := rs.relaunching(now, bound)
+	if rs.Outcome == runOutcomeRunning && !within && rs.PID > 0 && !isAlive(rs.PID) {
 		waiterlessRuns.Fail(runDir, "shuttle: a run reads running but its waiting process is gone", "runDir", runDir, "strand", rs.StrandName, "pid", rs.PID)
 		return
 	}

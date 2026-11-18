@@ -25,44 +25,43 @@ var _ shuttleengine.TurnProgressReader = (*Claude)(nil)
 const interruptMarkerPrefix = "[Request interrupted by user"
 
 // ProcessLiveness reports the liveness of the session's process.
-// It reads Claude's session registry under the home directory.
+// It reads the session registries of every known config directory as one set.
 func (c *Claude) ProcessLiveness(sessionID string) shuttleengine.Liveness {
-	registryDir, err := sessionRegistryDir()
-	if err != nil {
-		return shuttleengine.LivenessUnproven
-	}
-	return processLiveness(sessionID, registryDir, proc.IsAlive, proc.StartTime)
+	return processLiveness(sessionID, c.registryDirs(), proc.IsAlive, proc.StartTime)
 }
 
-// processLiveness answers from the registry entries that name sessionID.
+// processLiveness answers from the entries of every registry in registryDirs that name sessionID.
 // A live pid whose start time equals the entry's procStart is alive, and any alive entry wins.
-// Dead needs an entry whose pid is gone and no entry or file that leaves the answer open.
+// Dead needs an entry whose pid is gone and no registry, entry or file that leaves the answer open.
 // No entry, an unreadable registry or entry, and an unreadable start time all read unproven.
 // A live pid whose entry has no procStart, or whose start time differs (a reused pid), also reads unproven.
-func processLiveness(sessionID, registryDir string, alive func(pid int) bool, startTime func(pid int) (string, bool)) shuttleengine.Liveness {
-	records, err := readRegistry(registryDir)
-	if err != nil {
-		return shuttleengine.LivenessUnproven
-	}
+func processLiveness(sessionID string, registryDirs []string, alive func(pid int) bool, startTime func(pid int) (string, bool)) shuttleengine.Liveness {
 	sawDead, sawDoubt := false, false
-	for _, record := range records {
-		if record.ReadErr != nil || record.DecodeErr != nil {
+	for _, registryDir := range registryDirs {
+		records, err := readRegistry(registryDir)
+		if err != nil {
 			sawDoubt = true
 			continue
 		}
-		entry := record.Entry
-		if entry.SessionID != sessionID {
-			continue
+		for _, record := range records {
+			if record.ReadErr != nil || record.DecodeErr != nil {
+				sawDoubt = true
+				continue
+			}
+			entry := record.Entry
+			if entry.SessionID != sessionID {
+				continue
+			}
+			if !alive(entry.PID) {
+				sawDead = true
+				continue
+			}
+			live, readable := startTime(entry.PID)
+			if readable && entry.ProcStart != "" && live == entry.ProcStart {
+				return shuttleengine.LivenessAlive
+			}
+			sawDoubt = true
 		}
-		if !alive(entry.PID) {
-			sawDead = true
-			continue
-		}
-		live, readable := startTime(entry.PID)
-		if readable && entry.ProcStart != "" && live == entry.ProcStart {
-			return shuttleengine.LivenessAlive
-		}
-		sawDoubt = true
 	}
 	if sawDead && !sawDoubt {
 		return shuttleengine.LivenessDead

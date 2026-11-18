@@ -504,7 +504,7 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 	if err != nil {
 		return nil, err
 	}
-	engines, err := shuttleengines.New(shuttleConfig, dirs)
+	engines, err := shuttleengines.NewForWorktree(shuttleConfig, dirs, hubgeom.EngineWorktree(location))
 	if err != nil {
 		return nil, err
 	}
@@ -519,7 +519,7 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 	if taskLocation, err := taskWorktreeLocation(location, c.slug); err != nil {
 		logger.Warn("battencli: locate the task worktree to record its tackler and arbiter sessions failed; they stay unrecorded", "slug", c.slug, "error", err)
 	} else {
-		runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders()))
+		runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders(dirs)))
 	}
 	return sheddriver.RunnerShuttle{Runner: runner}, nil
 }

@@ -1145,6 +1145,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				if err := c.refuseHeldMember(ctx, location, slug, holdPrime); err != nil {
 					return err
 				}
+				// A row re-entered after a crash between Add and the pick gets its account here, and one with an entry keeps it.
+				c.pickAccount(location, slug, true)
 				return reconcileTaskPair(location, slug)
 			}
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
@@ -1197,6 +1199,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			if err := reconcileTaskPair(location, slug); err != nil {
 				return err
 			}
+			c.pickAccount(location, slug, false)
 			// Add pushes nothing; the new pair goes out through a detached push the run never waits on.
 			// A failed spawn leaves the branches local for the pair's next detached push, so it only warns.
 			if taskLocation, err := locateTask(); err != nil {
@@ -1419,7 +1422,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(taskLocation))
+				engines, err := shuttleengines.NewForWorktree(shuttleCfg, fabricengine.ConfigDirs(taskLocation), hubgeom.EngineWorktree(taskLocation))
 				if err != nil {
 					return err
 				}
@@ -1429,7 +1432,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					return err
 				}
 				runner.SetPause(pauseGeom)
-				runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders()))
+				runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders(fabricengine.ConfigDirs(taskLocation))))
 				if err := stopDeadArbiterStrands(rows, runner.StopStrand); err != nil {
 					logger.Warn("battencli: stopping the task worktree's dead arbiter strands failed", "slug", slug, "error", err)
 					return err
@@ -1688,6 +1691,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 	env.Command = c.commandDeps(location, slug, executable, locateTask)
 
 	c.beam = hubLandingSeams(location, slug)
+	c.pickAccount = PickWorktreeAccount
 	c.clientAttached = func() (bool, error) {
 		taskLocation, err := locateTask()
 		if err != nil {

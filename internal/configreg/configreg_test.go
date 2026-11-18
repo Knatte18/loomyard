@@ -158,7 +158,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	wantLocalDenied := map[string][]string{
 		"batten":   {"open_ide_command", "open_window_command", "seed_ide_command"},
 		"beam":     {"pull_request"},
-		"claude":   {"binary", "deny_ask_user_question"},
+		"claude":   {"account_pins", "accounts", "binary", "deny_ask_user_question"},
 		"codex":    {"binary", "sandbox_mode", "writable_roots"},
 		"reed":     {"buttons", "debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle":  {"deny_python", "run_dir"},
@@ -204,6 +204,9 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 			}
 			if m.Name == "env" {
 				wantMachineKeys = []string{"vars"}
+			}
+			if m.Name == "claude" {
+				wantMachineKeys = []string{"account_pins", "accounts"}
 			}
 			if m.Name == "codex" {
 				wantMachineKeys = []string{"sandbox_mode"}

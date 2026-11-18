@@ -367,6 +367,19 @@ type SessionResumer interface {
 	CheckResume(sessionID, workdir string) (warning string, err error)
 }
 
+// TranscriptCarrier is an optional capability of an engine:
+// bringing a session's newest transcript into the provider account a resume runs under.
+// A run that resumes a session calls it before the SessionResumer check.
+// An engine without it leaves the transcript where the provider wrote it.
+type TranscriptCarrier interface {
+	// CarryTranscript copies the newest transcript of provider session sessionID into the resume's account.
+	// The transcript is the one recorded under the pane cwd workdir.
+	// It reports whether it copied.
+	// A session this machine holds no transcript of is copied nowhere and reports false with no error.
+	// A non-nil error refuses the resume.
+	CarryTranscript(sessionID, workdir string) (copied bool, err error)
+}
+
 // ErrNoTranscript marks a resume a SessionResumer refused because this machine holds no transcript of the session.
 // A caller that may start the session's work over tells this refusal from every other by errors.Is.
 var ErrNoTranscript = errors.New("shuttle: this machine holds no transcript of the session")
@@ -378,6 +391,9 @@ type SessionHeldError struct {
 	SessionID string
 	// PID is the live process that holds it.
 	PID int
+	// TranscriptCopied is true when the session's transcript was copied before the holder test refused.
+	// A caller that resumes again passes it on as Spec.TranscriptCopied.
+	TranscriptCopied bool
 	// Err is the engine's refusal in its own words.
 	Err error
 }

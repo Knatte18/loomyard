@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -114,13 +115,15 @@ func roleKey(spec Spec) string {
 	return spec.Role
 }
 
-// unfinished reports whether rs is a run that ended without finishing: stopped, died, timed out or ended on API errors, or reading running with its waiter gone.
-func unfinished(rs RunState) bool {
+// unfinished reports whether rs is a run that ended without finishing at now.
+// Such a run is stopped, died, timed out or ended on API errors.
+// A run reading running with its waiter gone and no relaunching mark within bound is also unfinished.
+func unfinished(rs RunState, now time.Time, bound time.Duration) bool {
 	switch rs.Outcome {
 	case runOutcomeStopped, string(OutcomeDied), string(OutcomeTimeout), string(OutcomeAPIError):
 		return true
 	case runOutcomeRunning:
-		return !runIsLive(rs)
+		return !runIsLive(rs, now, bound)
 	}
 	return false
 }
@@ -151,7 +154,7 @@ func (r *Runner) carriedInstructions(key string) []string {
 			newest, newestDir = rs, runDir
 		}
 	}
-	if newestDir == "" || !unfinished(newest) {
+	if newestDir == "" || !unfinished(newest, r.clock.Now(), relaunchBound(r.cfg)) {
 		return nil
 	}
 	engine, _, err := r.engineFor(newest)

@@ -32,7 +32,7 @@ const customTitleType = "custom-title"
 // Any other read failure also reports no drift.
 // It logs at Warn once per session id, for as long as c lives, and at Debug after that.
 func (c *Claude) SessionNameDrift(sessionID, workdir, want string) bool {
-	projectDir, err := claudeProjectDirFor(workdir)
+	projectDir, err := c.sessionProjectDir(sessionID, workdir)
 	if err != nil {
 		c.logNameReadFailure(sessionID, "session_id", sessionID, "err", err)
 		return false

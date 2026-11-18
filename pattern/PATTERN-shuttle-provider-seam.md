@@ -91,6 +91,9 @@ and an attach probe or a Wait then reads a strand that is gone.
   So a method value handed to a wrapper is caught as well as a call.
 - Bound: the scan sees the selector, not whose strand it removes.
   A call inside an allowed package on a run's strand that bypasses the stop verb is caught by review.
+- The stop verb's relaunch mode marks the run record relaunching and keeps the strand.
+  Until the mark clears or its bound passes, every running-run reader reads the run as live,
+  a step stop stops it, and the orphan sweep keeps it.
 
 ## Completion signal
 
@@ -118,6 +121,7 @@ Only `shuttleengine` fills it, from an ungated run's `OutputFiles`;
 a gated run's strand carries none, since its outputs existing does not mean its gate passed.
 Only `reedengine`'s resume reads it.
 It drops a non-live strand whose list is non-empty and fully present instead of relaunching it.
+It neither drops nor relaunches a strand held for a relaunch.
 Reed cannot know that a gate passed,
 so a finished gated run's strand is still relaunched when shuttle's own teardown did not run,
 and the relaunch types no prompt.

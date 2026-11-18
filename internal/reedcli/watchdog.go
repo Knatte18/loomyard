@@ -339,7 +339,8 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	if err != nil {
 		return watchedSession{}, err
 	}
-	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
+	dirs := fabricengine.ConfigDirs(location)
+	cfg, err := reedengine.LoadConfig(dirs, "reed")
 	if err != nil {
 		return watchedSession{}, err
 	}
@@ -356,7 +357,7 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		if err := eng.WatchNames(ctx, shuttleengines.SessionNamers()); err != nil {
+		if err := eng.WatchNames(ctx, shuttleengines.SessionNamers(dirs)); err != nil {
 			logger.Debug("reed: watchdog's name repair loop returned", "session", sessionName, "err", err)
 		}
 	}()

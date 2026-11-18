@@ -111,6 +111,34 @@ func TestRunState_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestRunState_Relaunching(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	bound := 10 * time.Minute
+	tests := []struct {
+		name          string
+		relaunchingAt string
+		wantWithin    bool
+		wantPast      bool
+	}{
+		{"NoMark", "", false, false},
+		{"MarkInsideTheBound", now.Add(-time.Minute).Format(time.RFC3339), true, false},
+		{"MarkPastTheBound", now.Add(-time.Hour).Format(time.RFC3339), false, true},
+		{"UnparsableMarkReadsPast", "not a time", false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			within, past := RunState{RelaunchingAt: tt.relaunchingAt}.relaunching(now, bound)
+			if within != tt.wantWithin || past != tt.wantPast {
+				t.Errorf("relaunching(%q) = (%v, %v); want (%v, %v)", tt.relaunchingAt, within, past, tt.wantWithin, tt.wantPast)
+			}
+		})
+	}
+}
+
 // seedRun creates <root>/<id>/run.json with the given strand guid and returns the run directory path.
 func seedRun(t *testing.T, root, id, strandGUID string) string {
 	t.Helper()
@@ -275,15 +303,34 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	}
 	setDirMTime(t, manifestsDir, now, 10*time.Minute)
 
+	// A strandless record whose relaunching mark is inside the bound is kept, and one past it is swept like any orphan.
+	bound := 5 * time.Minute
+	seedRelaunching := func(id string, markedAt time.Time) string {
+		runDir := filepath.Join(root, id)
+		if err := os.MkdirAll(runDir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := saveRunState(runDir, RunState{RunID: id, StrandGUID: "strand-gone", RelaunchingAt: markedAt.Format(time.RFC3339)}); err != nil {
+			t.Fatalf("saveRunState: %v", err)
+		}
+		setDirMTime(t, runDir, now, 10*time.Minute)
+		return runDir
+	}
+	relaunchingWithin := seedRelaunching("relaunching-within", now.Add(-time.Minute))
+	relaunchingPast := seedRelaunching("relaunching-past", now.Add(-time.Hour))
+
 	strandGUIDs := map[string]bool{"strand-live": true}
-	removed, err := sweepOrphans(root, strandGUIDs, minAge, now)
+	removed, err := sweepOrphans(root, strandGUIDs, minAge, now, bound)
 	if err != nil {
 		t.Fatalf("sweepOrphans() error: %v", err)
 	}
 
 	// os.ReadDir hands the dirs back sorted by name, so the removed ones come back in that order.
-	if want := []string{oldNoState, oldOrphan}; !reflect.DeepEqual(removed, want) {
+	if want := []string{oldNoState, oldOrphan, relaunchingPast}; !reflect.DeepEqual(removed, want) {
 		t.Errorf("removed = %v, want %v", removed, want)
+	}
+	if _, err := os.Stat(relaunchingWithin); err != nil {
+		t.Errorf("relaunching dir within its bound was removed, want kept: %v", err)
 	}
 	if _, err := os.Stat(youngOrphan); err != nil {
 		t.Errorf("young orphan dir was removed, want kept: %v", err)
@@ -324,7 +371,7 @@ func TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest(t *testing.T) {
 	permkit.Chmod(t, stuck, 0o500)
 
 	// Neither dir carries a run.json, so both are orphans; both are old enough for the age guard.
-	removed, err := sweepOrphans(root, map[string]bool{}, time.Minute, time.Now().Add(time.Hour))
+	removed, err := sweepOrphans(root, map[string]bool{}, time.Minute, time.Now().Add(time.Hour), time.Minute)
 	if err == nil {
 		t.Error("sweepOrphans() error = nil; want the undeletable directory reported")
 	}

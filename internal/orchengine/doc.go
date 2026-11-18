@@ -663,6 +663,14 @@
 // A limit is read only at an idle tick:
 // one hit during a cycle is left to the cycle's own timeouts and read at the next idle turn end.
 //
+// `WatchRestart` tells a watcher an `OrchRestart`.
+// The watcher then asks Session.SwitchAccountOnLimit about a usage-limited turn end first.
+// When the orch's worktree switched to another account, the watcher calls OrchRestart.Resume.
+// It then records no limit and carries on over the new strand from the state the restart saved.
+// An answer of false, or an error logged at Warn, leaves the wait above as it is.
+// A turn end that is no usage limit goes to Session.RefusedResume, and a refused resume calls OrchRestart.Fresh.
+// A failed restart has removed the old strand, so it is logged at Warn naming `lym beam start`, and the watcher ends.
+//
 // # Binary re-exec
 //
 // `WatchBinary` tells a watcher a check, which `lym orch watch` wires to a `selfexec` watcher.

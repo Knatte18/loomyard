@@ -37,6 +37,19 @@ type fakeReed struct {
 	// RemoveStrandErrQueue is consumed FIFO by RemoveStrand, one per call, before RemoveStrandErr; a nil entry succeeds.
 	RemoveStrandErrQueue []error
 
+	// EndStrandProcessErr, ReleaseStrandHoldErr and RelaunchStrandErr fail the matching call after it is recorded.
+	EndStrandProcessErr  error
+	ReleaseStrandHoldErr error
+	RelaunchStrandErr    error
+	// OnEndStrandProcess runs after EndStrandProcess records its call and outside the fake's lock,
+	// so a test can interleave a stop between the hold and the relaunch.
+	OnEndStrandProcess func()
+	// RelaunchStrandCalls records every RelaunchStrand call.
+	RelaunchStrandCalls []struct {
+		GUID string
+		Spec reedengine.RelaunchSpec
+	}
+
 	StatusQueue []reedengine.StatusResult // Consumed FIFO by Status; last value sticks once drained.
 	StatusErr   error
 
@@ -146,6 +159,36 @@ func (m *fakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed
 		return reedengine.Removed{}, m.RemoveStrandErr
 	}
 	return reedengine.Removed{}, nil
+}
+
+func (m *fakeReed) EndStrandProcess(guid string) error {
+	m.mu.Lock()
+	m.CallLog = append(m.CallLog, "EndStrandProcess")
+	hook := m.OnEndStrandProcess
+	err := m.EndStrandProcessErr
+	m.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return err
+}
+
+func (m *fakeReed) ReleaseStrandHold(guid string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.CallLog = append(m.CallLog, "ReleaseStrandHold")
+	return m.ReleaseStrandHoldErr
+}
+
+func (m *fakeReed) RelaunchStrand(guid string, spec reedengine.RelaunchSpec) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.CallLog = append(m.CallLog, "RelaunchStrand")
+	m.RelaunchStrandCalls = append(m.RelaunchStrandCalls, struct {
+		GUID string
+		Spec reedengine.RelaunchSpec
+	}{guid, spec})
+	return m.RelaunchStrandErr
 }
 
 func (m *fakeReed) Status() (reedengine.StatusResult, error) {
@@ -499,22 +542,39 @@ func (e *fakeEngine) AuditForksIncremental(sessionID, workdir string, seenTransc
 // fakeEngine is checked at compile time against Engine.
 var _ Engine = (*fakeEngine)(nil)
 
-// resumeFakeEngine is a fakeEngine with the opt-in SessionResumer capability.
+// resumeFakeEngine is a fakeEngine with the opt-in SessionResumer and TranscriptCarrier capabilities.
 // A test that resumes a session wraps its fake in it, so the plain fake keeps satisfying Engine alone.
 // CheckResume records its (sessionID, workdir) and appends "CheckResume" to Order.
 // It returns the canned Warning and Err.
+// CarryTranscript records its (sessionID, workdir) and appends "CarryTranscript" to Order.
+// It returns the canned Copied and CarryErr.
 type resumeFakeEngine struct {
 	*fakeEngine
 
-	Warning string
-	Err     error
+	Warning  string
+	Err      error
+	Copied   bool
+	CarryErr error
 
 	CheckResumeCalls []struct {
 		SessionID string
 		Workdir   string
 	}
-	// Order logs CheckResume and Prepare in call order, so a test can assert the check ran first.
+	CarryCalls []struct {
+		SessionID string
+		Workdir   string
+	}
+	// Order logs CarryTranscript, CheckResume and Prepare in call order, so a test can assert the sequence.
 	Order []string
+}
+
+func (e *resumeFakeEngine) CarryTranscript(sessionID, workdir string) (bool, error) {
+	e.Order = append(e.Order, "CarryTranscript")
+	e.CarryCalls = append(e.CarryCalls, struct {
+		SessionID string
+		Workdir   string
+	}{sessionID, workdir})
+	return e.Copied, e.CarryErr
 }
 
 func (e *resumeFakeEngine) CheckResume(sessionID, workdir string) (string, error) {
@@ -531,8 +591,11 @@ func (e *resumeFakeEngine) Prepare(runDir string, spec Spec, cfg Config) (Launch
 	return e.fakeEngine.Prepare(runDir, spec, cfg)
 }
 
-// resumeFakeEngine is checked at compile time against SessionResumer.
-var _ SessionResumer = (*resumeFakeEngine)(nil)
+// resumeFakeEngine is checked at compile time against SessionResumer and TranscriptCarrier.
+var (
+	_ SessionResumer    = (*resumeFakeEngine)(nil)
+	_ TranscriptCarrier = (*resumeFakeEngine)(nil)
+)
 
 // readyStart scripts reed and engine so a Start through the pair resolves its startup step ready on the first probe.
 // reed's StatusQueue reports reed.AddStrandResult.GUID live with a non-empty PaneID.

@@ -48,7 +48,45 @@ func TestDispositionCandidate_AskingReentry(t *testing.T) {
 				dirMtime: time.Now(),
 				state:    RunState{StrandGUID: "strand-1", Outcome: legacyAskingOutcome, AskingOffset: tt.offset},
 			}
-			if got := dispositionCandidate(c, tt.strands, spec, time.Hour, time.Now()); got != tt.want {
+			if got := dispositionCandidate(c, tt.strands, spec, time.Hour, time.Now(), time.Minute); got != tt.want {
+				t.Errorf("dispositionCandidate() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDispositionCandidate_RelaunchingRecord pins that a relaunching mark attaches over a tracked strand.
+// It does so inside its bound and past it.
+// An untracked strand is left to the age rule.
+// The strand is tracked unless a row says otherwise.
+// The output files are absent, so no file contract decides the verdict.
+//
+//testtiming:keep pins the verdictError of a relaunching mark over an untracked strand, which no covering test reaches
+func TestDispositionCandidate_RelaunchingRecord(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	bound := 10 * time.Minute
+	spec := Spec{OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}
+	heldPaneless := []reedengine.StrandStatus{{GUID: "strand-1", Held: true}}
+	tests := []struct {
+		name          string
+		relaunchingAt time.Time
+		strands       []reedengine.StrandStatus
+		want          attachVerdict
+	}{
+		{"within_the_bound_over_a_held_paneless_strand_attaches", now.Add(-time.Minute), heldPaneless, verdictAttachable},
+		{"past_the_bound_over_a_held_paneless_strand_attaches_so_wait_settles_it", now.Add(-time.Hour), heldPaneless, verdictAttachable},
+		{"within_the_bound_over_an_untracked_strand_cannot_be_ruled_live", now.Add(-time.Minute), nil, verdictError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := attachCandidate{
+				dirMtime: now,
+				state:    RunState{StrandGUID: "strand-1", Outcome: runOutcomeRunning, RelaunchingAt: tt.relaunchingAt.Format(time.RFC3339)},
+			}
+			if got := dispositionCandidate(c, tt.strands, spec, time.Hour, now, bound); got != tt.want {
 				t.Errorf("dispositionCandidate() = %v; want %v", got, tt.want)
 			}
 		})

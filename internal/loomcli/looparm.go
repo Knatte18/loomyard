@@ -194,7 +194,7 @@ func (c *loomCLI) stepStopRunner() (*shuttleengine.Runner, error) {
 		return nil, err
 	}
 	runner := shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()), engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-	runner.SetSessionEnd(shedadapters.UsageRecorder(c.location, shuttleengines.RecordReaders()))
+	runner.SetSessionEnd(shedadapters.UsageRecorder(c.location, shuttleengines.RecordReaders(configDirs)))
 	return runner, nil
 }
 

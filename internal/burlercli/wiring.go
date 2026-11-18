@@ -134,7 +134,7 @@ func (c *burlerCLI) wireHub(loc *lymcwd.Location, stencilsDirOverride, targetDir
 		return err
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
-	engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(loc))
+	engines, err := shuttleengines.NewForWorktree(shuttleCfg, fabricengine.ConfigDirs(loc), hubgeom.EngineWorktree(loc))
 	if err != nil {
 		return err
 	}

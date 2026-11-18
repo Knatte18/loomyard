@@ -346,7 +346,7 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		rig.start("b")
 		_, runDir := rig.record()
 		root := runDirRoot(rig.fx.Runner.cfg, rig.fx.Anchor)
-		removed, err := sweepOrphans(root, map[string]bool{}, time.Minute, time.Now().Add(time.Hour))
+		removed, err := sweepOrphans(root, map[string]bool{}, time.Minute, time.Now().Add(time.Hour), time.Minute)
 		if err != nil || !slices.Equal(removed, []string{runDir}) {
 			t.Fatalf("sweepOrphans() = %v, %v; want only the run dir %q removed", removed, err, runDir)
 		}

@@ -59,6 +59,21 @@ type fakeSession struct {
 	settleErr error
 	// strandNameErr is returned by every StrandName while set.
 	strandNameErr error
+
+	// switches is the turn-end message to the answer SwitchAccountOnLimit gives, else false.
+	switches map[string]bool
+	// switchErr is returned by every SwitchAccountOnLimit while set.
+	switchErr error
+	// switchAsks lists the turn-end messages SwitchAccountOnLimit was asked about.
+	switchAsks []string
+	// refusals is the turn-end message to the answer RefusedResume gives, else false.
+	refusals map[string]bool
+	// refusedAsks lists the turn-end messages RefusedResume was asked about.
+	refusedAsks []string
+	// refusedErr is returned by every RefusedResume while set.
+	refusedErr error
+	// readGUIDs lists the strand guid each ReadEvents call named.
+	readGUIDs []string
 }
 
 func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error) {
@@ -105,6 +120,16 @@ func (f *fakeSession) UsageLimit(guid string, turnEnd shuttleengine.Event) (shut
 	return f.limits[turnEnd.Message], nil
 }
 
+func (f *fakeSession) SwitchAccountOnLimit(guid string, turnEnd shuttleengine.Event) (bool, error) {
+	f.switchAsks = append(f.switchAsks, turnEnd.Message)
+	return f.switches[turnEnd.Message], f.switchErr
+}
+
+func (f *fakeSession) RefusedResume(guid string, turnEnd shuttleengine.Event) (bool, error) {
+	f.refusedAsks = append(f.refusedAsks, turnEnd.Message)
+	return f.refusals[turnEnd.Message], f.refusedErr
+}
+
 func (f *fakeSession) StrandAlive(string) (bool, error) {
 	if f.onAlive != nil {
 		f.onAlive()
@@ -112,7 +137,8 @@ func (f *fakeSession) StrandAlive(string) (bool, error) {
 	return f.alive, nil
 }
 
-func (f *fakeSession) ReadEvents(_ string, offset int64) ([]shuttleengine.Event, int64, error) {
+func (f *fakeSession) ReadEvents(guid string, offset int64) ([]shuttleengine.Event, int64, error) {
+	f.readGUIDs = append(f.readGUIDs, guid)
 	if f.onReadEvents != nil {
 		f.onReadEvents()
 	}

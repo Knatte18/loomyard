@@ -310,6 +310,9 @@ func (run *Run) Wait() (Result, error) {
 	run.turnSince = run.clock.Now()
 	for tick := 1; ; tick++ {
 		run.observePause()
+		if result, finished, ferr := run.settleStaleRelaunch(); finished {
+			return result, ferr
+		}
 		run.deliverPromptOnAttach()
 		run.retypeLostPrompt()
 		outcome, held, err := run.pollEventsTick()
@@ -337,29 +340,14 @@ func (run *Run) Wait() (Result, error) {
 				// A turn end without every output file never ends the run.
 				// Log it so the durable trace records each one, and keep polling the same agent.
 				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "lastAssistantMessage", held.message)
-				continued := run.continueAPIErrorStall(held)
-				// A turn start read past this turn end in the same batch means the next turn is already under way, so no hold shows.
-				if !run.turnStartRead {
-					run.beginHeldWait(held.offset)
-				}
+				result, finished, switched, serr := run.switchAccountAtLimit(held)
 				switch {
-				case continued:
-				case run.deliverPromptAtHold(held):
-					// The agent never got its task; the turn its prompt now starts is the work, so the parent has nothing to answer.
-				case run.holdNoticePending() && run.usageLimited(held):
-					// The parent cannot act while the account is limited,
-					// and a notice sent now lands in its context as stale clutter after the reset.
-					logger.Info("shuttle: held turn end stopped on the usage limit; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
-				case run.holdNoticePending() && run.operatorStartedTurn(held):
-					// The operator is talking to the agent in its pane, so the turn end is no stall for the parent.
-					logger.Info("shuttle: held turn end of a turn the operator started; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
-				case run.holdNoticePending() && run.wakesOnBackground(held):
-					// The session wakes when its own background work completes, so the parent has nothing to answer.
-					logger.Info("shuttle: held turn end left background work running; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
-				case run.spec.HoldDeferral == nil:
-					run.notifyHeld(held)
-				case !run.turnStartRead:
-					run.pendingHold, run.pendingHoldAt = held, run.clock.Now()
+				case finished:
+					return result, serr
+				case switched:
+					run.reseedAfterRelaunch()
+				default:
+					run.handleHeldTurnEnd(held)
 				}
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Any other outcome, or a Done with no gate, finalizes at once.
@@ -740,8 +728,11 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 // Gate keys are spaced by the dismissal gap, not by the probe cadence,
 // so a capture taken before the provider redraws after a dismissal never sends a second key into the next gate.
 //
+// With eventsProof unset the probe never starts a run on its events file.
+// So a launch that keeps the file of an earlier session starts on its pane capture alone.
+//
 // Manual live-substrate verification recipe: docs/reference/claude-trust-dialog-repro.md.
-func (run *Run) awaitStartup() (Result, error) {
+func (run *Run) awaitStartup(eventsProof bool) (Result, error) {
 	cfg := run.runner.cfg
 	base := pollInterval(cfg)
 	ceiling := dismissalGap(cfg)
@@ -763,7 +754,7 @@ func (run *Run) awaitStartup() (Result, error) {
 	run.sessionLiveness = sessionLivenessState{}
 	statusFailures := 0
 	for tick := 0; tick < maxTicks; tick++ {
-		outcome, err := run.checkLivenessTick(&started, startupDeadline, true)
+		outcome, err := run.checkLivenessTick(&started, startupDeadline, eventsProof)
 		if err != nil {
 			statusFailures++
 			if statusFailures >= maxStatusRetries {
@@ -1494,6 +1485,10 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 	if !strand.Live {
 		if allOutputFilesExist(run.spec.OutputFiles) {
 			return OutcomeDone, nil
+		}
+		// A relaunch holds its strand down and paneless while it brings the session up, which is no failure inside its bound.
+		if strand.Held && strand.PaneID == "" && run.relaunchWithinBound() {
+			return "", nil
 		}
 		// Reed reports a strand it holds no pane id for as not live, as it does for a strand whose pane died.
 		// Those are different facts, and only the second is a dead run.

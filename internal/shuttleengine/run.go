@@ -422,6 +422,9 @@ type Run struct {
 	shadow sessionShadow
 	// apiErrors is the API-error re-send watch of one Wait, in memory.
 	apiErrors apiErrorWatch
+	// loadTurnEnds counts the turn ends the skill-load holds of the run's latest launch read, in memory.
+	// A relaunch resets it.
+	loadTurnEnds int
 	// dialog is the pending-dialog latch of one Wait, in memory.
 	dialog dialogLatch
 	// editLoops is the edit-loop watch of one Wait, in memory.
@@ -601,7 +604,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		}
 	}
 
-	resumeWarning, err := r.checkResume(spec, engine)
+	resumeWarning, transcriptCopied, err := r.checkResume(spec, engine)
 	if err != nil {
 		return nil, Result{}, err
 	}
@@ -620,7 +623,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 
 	attempts := 1 + r.cfg.StartRetries
 	for attempt := 1; ; attempt++ {
-		run, result, err := r.launch(spec, gate, engine, engineName, resumeWarning, carried)
+		run, result, err := r.launch(spec, gate, engine, engineName, resumeWarning, carried, transcriptCopied)
 		if err == nil {
 			if len(carried) > 0 {
 				r.noticeCarriedInstructions(run.state.StrandName, roleKey(spec), carried)
@@ -651,11 +654,12 @@ func (run *Run) startRetryable(result Result) bool {
 // It then persists run.json.
 // It then blocks on the new *Run's awaitStartup and, for a deferred prompt, its skill loading and prompt delivery.
 // carried holds the operator instructions that spec's prompt carries over from a predecessor; run.json records them.
+// transcriptCopied is whether the resume check copied the resumed session's transcript; run.json records it.
 // It returns (run, Result{}, nil) once the provider is past its startup gates.
 // A failure before the strand registered returns (nil, Result{}, err).
 // A failure after it returns the torn-down run beside the result and the error abandonStartup gave.
 // So start can judge whether to launch again.
-func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, resumeWarning string, carried []string) (*Run, Result, error) {
+func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, resumeWarning string, carried []string, transcriptCopied bool) (*Run, Result, error) {
 	root := runDirRoot(r.cfg, r.anchorPath)
 	runID, runDir, err := createRunDir(root)
 	if err != nil {
@@ -728,6 +732,7 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		Role:                 spec.Role,
 		Model:                spec.Model,
 		CarriedInstructions:  carried,
+		TranscriptCopied:     transcriptCopied,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		// The strand is registered and its pane is already launching.
@@ -766,7 +771,7 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		resumeWarning: resumeWarning,
 	}
 
-	result, err := run.awaitStartup()
+	result, err := run.awaitStartup(true)
 	if err != nil {
 		return run, result, err
 	}
@@ -829,6 +834,11 @@ func (run *Run) typeStartupColor(color segmentcolor.Color) {
 // A turn still open when the run's deadline passes fails the start as OutcomeTimeout with no prompt typed.
 // A load turn whose provider API fails skips nothing:
 // loadSkillTurn holds it, and the prompt waits until a load turn ends.
+// A load turn a usage limit ended may move the worktree to another account through the engine's switch.
+// The hold then ends uncounted and repeats the launch under the new account.
+// The first load turn of a copied resume ends the hold the same way when it ends on an API error no usage limit caused.
+// That is a refused resume, and the session starts fresh in the same run.
+// A relaunch that ends the run returns as abandonLoad does, and one whose pane starts returns the run to be handed back.
 // The prompt offset is the events file's size just before the prompt is sent.
 // That offset lies past every load turn end, the retry's included, and past any line appended after them.
 // So Wait never reads one as a held turn end of the run's own.
@@ -861,6 +871,14 @@ func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color
 			if len(missing) > 0 {
 				_, died, err = run.settleLoadTurn(loader, missing, timeout, true)
 			}
+		}
+		var switched *loadAccountSwitchedError
+		var refused *loadRefusedResumeError
+		switch {
+		case errors.As(err, &switched):
+			return run.relaunchAfterLoadHold(relaunchRepeat)
+		case errors.As(err, &refused):
+			return run.relaunchAfterLoadHold(relaunchFresh)
 		}
 		if err != nil {
 			return run.abandonLoad(err)
@@ -1066,25 +1084,43 @@ func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time
 	return nil, false, nil
 }
 
-// checkResume runs engine's SessionResumer check for a spec that resumes an existing session, against the runner's pane cwd.
+// checkResume prepares and checks a spec that resumes an existing session, against the runner's pane cwd.
+// An engine with the TranscriptCarrier capability first brings the session's transcript into its account.
+// Then engine's SessionResumer check runs.
 // It returns the check's warning, empty for a spec with no ResumeSessionID.
-// An engine without the capability is an error, so no run resumes a session unchecked.
-func (r *Runner) checkResume(spec Spec, engine Engine) (string, error) {
+// It also returns whether the transcript was copied.
+// Spec.TranscriptCopied reports a copy an earlier check made.
+// A carry failure refuses the resume as the check's own refusal does.
+// A *SessionHeldError refusal carries the copy fact, since the copy came before the holder test.
+// An engine without the SessionResumer capability is an error, so no run resumes a session unchecked.
+func (r *Runner) checkResume(spec Spec, engine Engine) (string, bool, error) {
 	if spec.ResumeSessionID == "" {
-		return "", nil
+		return "", false, nil
 	}
 	resumer, ok := engine.(SessionResumer)
 	if !ok {
-		return "", fmt.Errorf("shuttle: resume check: the engine does not implement the SessionResumer capability (CheckResume), so it cannot resume a session")
+		return "", false, fmt.Errorf("shuttle: resume check: the engine does not implement the SessionResumer capability (CheckResume), so it cannot resume a session")
+	}
+	copied := spec.TranscriptCopied
+	if carrier, ok := engine.(TranscriptCarrier); ok {
+		carriedNow, err := carrier.CarryTranscript(spec.ResumeSessionID, r.paneCwd)
+		if err != nil {
+			return "", false, fmt.Errorf("shuttle: resume check: %w", err)
+		}
+		copied = copied || carriedNow
 	}
 	warning, err := resumer.CheckResume(spec.ResumeSessionID, r.paneCwd)
 	if err != nil {
-		return "", fmt.Errorf("shuttle: resume check: %w", err)
+		var held *SessionHeldError
+		if errors.As(err, &held) {
+			held.TranscriptCopied = copied
+		}
+		return "", false, fmt.Errorf("shuttle: resume check: %w", err)
 	}
 	if warning != "" {
 		logger.Warn("shuttle: resume check could not confirm the session", "sessionID", spec.ResumeSessionID, "warning", warning)
 	}
-	return warning, nil
+	return warning, copied, nil
 }
 
 // ResumeWarning returns the warning the engine's resume check reported for a resumed session it could not confirm.
@@ -1203,7 +1239,7 @@ func (r *Runner) sweepOrphansOpportunistic() {
 	minAge := 2 * startupTimeout
 	root := runDirRoot(r.cfg, r.anchorPath)
 	// r.clock, not time.Now: the clock seam makes every age-based decision drivable from a test.
-	if _, err := sweepOrphans(root, guids, minAge, r.clock.Now()); err != nil {
+	if _, err := sweepOrphans(root, guids, minAge, r.clock.Now(), relaunchBound(r.cfg)); err != nil {
 		logger.Warn("shuttle: orphan sweep failed (non-fatal, new run proceeds)", "runDirRoot", root, "error", err)
 	}
 }

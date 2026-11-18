@@ -43,6 +43,17 @@ const RunProcDirName = "runproc"
 // It also holds the log of the test suite that an adopt starts.
 const AdoptDirName = "adopt"
 
+// ClaudeAccountsDirName is the directory under the hub's board-level `.lym`.
+// It holds the Claude account file and usage records.
+const ClaudeAccountsDirName = "claude"
+
+// ClaudeAccountsFileName is the name of the Claude account file under that directory.
+// It maps each worktree to its account and holds the pick counters.
+const ClaudeAccountsFileName = "accounts.json"
+
+// ClaudeUsageDirName is the directory under the Claude accounts directory that holds one usage record per account.
+const ClaudeUsageDirName = "usage"
+
 // FrontTaskDirName is the directory under the hub's board-level `.lym` that holds the front-task record and its lock.
 // It also holds the output of the actions it runs.
 const FrontTaskDirName = "fronttask"

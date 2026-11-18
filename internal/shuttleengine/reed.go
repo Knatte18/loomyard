@@ -21,10 +21,15 @@ import (
 // OperatorActive is the operator-activity query.
 // It answers whether an attached client is active on the strand's pane within a quiet window.
 // SetWaitMark sets the strand's pane wait mark, or clears it when label is empty; the mark is display only.
+// EndStrandProcess, ReleaseStrandHold and RelaunchStrand are the hold ops:
+// they end a strand's process while keeping its record held, end the hold, and relaunch the strand under the same GUID.
 // shuttleengine depends on this interface, never on the concrete *reedengine.Engine directly.
 type ReedOps interface {
 	AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error)
 	RemoveStrand(guid string, recursive bool) (reedengine.Removed, error)
+	EndStrandProcess(guid string) error
+	ReleaseStrandHold(guid string) error
+	RelaunchStrand(guid string, spec reedengine.RelaunchSpec) error
 	Status() (reedengine.StatusResult, error)
 	SendText(guid, text string, submit bool) error
 	SendKey(guid, key string) error

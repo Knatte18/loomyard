@@ -465,10 +465,26 @@
 // Reed only stats the paths:
 // Resume does not relaunch a non-live strand whose list is non-empty and whose every path exists.
 // It drops that strand from state and reports the count on ResumeResult.Dropped.
+// A held strand is the exception.
+// Resume neither relaunches nor drops it, whatever its list, and reports it on ResumeResult.Held.
 // A live pause entry covers a pair when Geometry.PauseRecordPath and NameSlug are both set.
 // While one covers it, Resume relaunches nothing and reports the strands it held back on ResumeResult.Held;
 // the prime is never held.
 // Resume leaves a live strand alone and relaunches a non-live strand that has no list or a missing path.
+//
+// A caller can end a strand's process and keep its record.
+// EndStrandProcess marks the strand held and saves the mark.
+// It then kills the strand's panes, reaps their process trees and clears its pane binding.
+// The record keeps its GUID and commands.
+// Reconcile only kills dead or untracked panes and clears bindings, so it leaves a held strand's record.
+// RelaunchStrand ends the hold.
+// It stores new commands and a session id, launches a pane under the same GUID and clears the mark.
+// ReleaseStrandHold also ends it, clearing the mark and leaving the pane as it is.
+// RemoveStrand removes a held strand like any other.
+// RelaunchStrand refuses a strand that is not held or not tracked.
+// Nothing else clears the mark, so a strand whose caller died stays down until one of those runs.
+// The caller that ended the process owns clearing its hold, by relaunching, releasing or removing the strand.
+// Reed never clears a hold on its own, so a hold whose release failed stays until the caller removes the strand.
 //
 // The name is mirrored outward, never read back as truth.
 // launchStrandLocked exports it to the strand's process as LYM_STRAND_NAME ahead of the launch command.

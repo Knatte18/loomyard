@@ -136,6 +136,8 @@ type launchArtifacts struct {
 	spec      shuttleengine.Spec
 	cfg       shuttleengine.Config
 	sessionID string
+	// configDir is the Claude Code config directory the launch's session reads.
+	configDir string
 	// settingsPath and appendPromptPath are the files Prepare wrote.
 	settingsPath     string
 	appendPromptPath string
@@ -308,8 +310,8 @@ func guardCandidates(refuseRaw []string, lymPath string) []manifestCandidate {
 }
 
 // resolvedCandidates returns the items the provider loads itself.
-// They are listed from the engine's own resolution of the session's setup:
-// the instruction files, the listed skills and the session-start hooks of the plugins the scope turns on.
+// They are the instruction files, the listed skills and the session-start hooks of the plugins the scope turns on.
+// The engine's own resolution of the session's setup lists them, all read under the launch's config directory.
 // The resolution runs no hook.
 // A resolution that fails is logged and lists none of them,
 // so the manifest then holds no instruction file above the working directory, listed skill or plugin context.
@@ -321,7 +323,7 @@ func (c *Claude) resolvedCandidates(launched launchArtifacts, workDir, root stri
 	if resolutionRoot == "" {
 		resolutionRoot = workDir
 	}
-	source := &UserSetupSource{dirs: c.dirs, claudeDir: c.claudeDir}
+	source := &UserSetupSource{dirs: c.dirs, claudeDir: c.effectiveConfigDir(launched.configDir)}
 	setup, err := source.UserSetup(shuttleengine.UserSetupRequest{
 		WorkDir:   workDir,
 		RepoRoot:  resolutionRoot,

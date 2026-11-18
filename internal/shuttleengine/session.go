@@ -7,6 +7,7 @@
 package shuttleengine
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -233,6 +234,78 @@ func (r *Runner) UsageLimit(guid string, turnEnd Event) (UsageLimit, error) {
 		return UsageLimit{}, nil
 	}
 	return reader.TurnEndActivity(turnEnd).UsageLimit, nil
+}
+
+// SwitchAccountOnLimit asks the engine of the run identified by guid to record the usage limit turnEnd names.
+// It also asks the engine to switch the run's worktree to another account.
+// It reports whether the worktree now resolves to another account, so the caller relaunches the session.
+// An engine without the capability answers false.
+func (r *Runner) SwitchAccountOnLimit(guid string, turnEnd Event) (bool, error) {
+	if r.toldErr != nil {
+		return false, r.toldErr
+	}
+	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return false, err
+	}
+	switcher, ok := engine.(AccountSwitcher)
+	if !ok {
+		return false, nil
+	}
+	return switcher.SwitchAccount(runDir, turnEnd)
+}
+
+// RefusedResume reports whether turnEnd is a refused resume's.
+// That is the first turn end past the launch offset of the record of the run identified by guid.
+// The record's launch must have copied a resumed session's transcript.
+// The turn end must be an API error no usage limit caused.
+// It reads the run's events file from the launch offset to turnEnd.
+// The answer is then the one the run's own Wait would give.
+// An engine that parses no session signals answers false.
+func (r *Runner) RefusedResume(guid string, turnEnd Event) (bool, error) {
+	if r.toldErr != nil {
+		return false, r.toldErr
+	}
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return false, err
+	}
+	parser, ok := engine.(SessionSignalParser)
+	if !ok {
+		return false, nil
+	}
+	data, _, err := readEventsFrom(state.EventsPath, state.LaunchOffset)
+	if err != nil {
+		return false, fmt.Errorf("shuttle: read the events of strand %q: %w", guid, err)
+	}
+	signals, _ := parser.ParseSessionSignals(data)
+	turnEnds := 0
+	for _, signal := range signals {
+		if signal.Kind != SessionSignalTurnEnd && signal.Kind != SessionSignalAPIErrorTurnEnd {
+			continue
+		}
+		turnEnds++
+		if !bytes.Equal(signal.Raw, turnEnd.Raw) {
+			continue
+		}
+		limited := false
+		if reader, ok := engine.(UsageLimitReader); ok {
+			limited = reader.TurnEndUsageLimited(turnEnd)
+		}
+		if activity, ok := engine.(ActivityReader); ok && activity.TurnEndActivity(turnEnd).APIError {
+			signal.Kind = SessionSignalAPIErrorTurnEnd
+		}
+		return refusedResume(state, signal, turnEnds == 1, limited), nil
+	}
+	return false, nil
 }
 
 // SessionIdle reports whether the run identified by guid can take typed input.

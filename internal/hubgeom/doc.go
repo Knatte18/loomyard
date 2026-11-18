@@ -86,6 +86,13 @@
 // So a beam reads as one before its pawl run marks the pair.
 // It also carries a {beam} resolver that reads the parent through ParentOf over the prime's location only when called.
 //
+// EngineWorktree converts a Location into the shuttleengine.Worktree a launching engine is told.
+// It tells the worktree's name and its kind: prime, beam or task.
+// A pair reads as a beam when its origin record carries the beam mark or its board entry is a project with the beam flag.
+// A failed prime read is taken as the prime and a failed beam read as a task, each logged at Warn.
+// It tells the hub's Claude account directory and a lazy reader of the hub's current worktree names.
+// That reader lists the worktrees through fabricengine.List and leaves out a prunable one and one gone from disk.
+//
 // Standalone CLIs do not call hubgeom:
 // they have no Location to convert, and resolve their own geometry from CLI flags and local paths instead.
 package hubgeom

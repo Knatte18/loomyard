@@ -42,6 +42,10 @@ type Config struct {
 	BatchingNudge BatchingNudgeConfig `yaml:"batching_nudge"`
 	// SessionScope switches the scope lym writes into every session's settings and names the skills it turns off.
 	SessionScope ScopeConfig `yaml:"session_scope"`
+	// Accounts lists the Claude accounts logged in on this machine; it is a machine-layer key, never tracked.
+	Accounts []AccountConfig `yaml:"accounts"`
+	// AccountPins pins the hub's worktrees or its beams to one listed account; it is a machine-layer key, never tracked.
+	AccountPins AccountPins `yaml:"account_pins"`
 }
 
 // ConfigOpenMaps returns the claude.yaml keys whose entries are the operator's own.
@@ -73,6 +77,8 @@ func ConfigSpec() configengine.Spec {
 			"keep_warm_cap_roles":    configengine.CategoryNone,
 			batchingNudgeKey:         configengine.CategoryNone,
 			sessionScopeKey:          configengine.CategoryNone,
+			accountsKey:              configengine.CategoryMachine,
+			accountPinsKey:           configengine.CategoryMachine,
 		},
 		RetiredKeys:       map[string]configengine.Category{retiredAgentDenyKey: configengine.CategoryGuard},
 		RetiredWayForward: map[string]string{retiredAgentDenyKey: retiredAgentDenyWayForward},
@@ -89,6 +95,14 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal claude config: %w", err))
+	}
+	if err := refuseTrackedAccountKeys(dirs); err != nil {
+		return Config{}, err
+	}
+	// An unresolvable home leaves it empty, so a `~/` config directory is refused as unresolved.
+	home, _ := claudeHomeDir()
+	if err := validateAccounts(&cfg, home); err != nil {
+		return Config{}, err
 	}
 	return cfg, nil
 }

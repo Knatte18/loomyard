@@ -22,8 +22,9 @@ func (c *shuttleCLI) stateCmd() *cobra.Command {
 		Long: `state lists, for every run of this worktree whose record reads running, the
 state of its agent session, read from the run's files alone: the strand name
 and guid, the state, its cause, the detail (an API error's text), the
-outstanding background tasks of a busy session, since when (RFC 3339), and the
-history of states the reading passed through.
+outstanding background tasks of a busy session, since when (RFC 3339), the
+history of states the reading passed through, and whether the run is being
+relaunched (relaunching), in which case its state is unknown.
 
 The states are busy, idle-done, idle-stalled, idle-fresh, asking, dead and unknown.
 The state model is in shadow mode: it is read here and logged beside the wait
@@ -61,6 +62,7 @@ Example:
 				run["strand"] = reading.StrandName
 				run["guid"] = reading.StrandGUID
 				run["history"] = history
+				run["relaunching"] = reading.Relaunching
 				runs = append(runs, run)
 			}
 

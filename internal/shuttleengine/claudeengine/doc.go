@@ -80,6 +80,96 @@
 // `binary`, `deny_ask_user_question`, `prompt_cache_ttl` and `prompt_cache_ttl_roles`;
 // `keep_warm_cap` and `keep_warm_cap_roles`;
 // and the `batching_nudge` and `session_scope` blocks.
+// The `accounts` list and the `account_pins` block are machine-layer keys:
+// `lym config claude --layer machine` writes them.
+// The local layer refuses them.
+// LoadConfig refuses a non-empty one in a tracked layer, naming the file and the way forward.
+// An account holds a `name` of lower-case letters, digits and hyphens.
+// It holds an absolute `config_dir` that may start with `~/`.
+// It holds a `weight` of 0 or more, where 0 retires the account.
+// It holds `windows`, a threshold of 1 to 100 for `five_hour` or `seven_day`.
+// LoadConfig refuses a repeated name.
+// It refuses two entries naming one directory after symlinks resolve.
+// It refuses a pin naming an unlisted or retired account.
+// It rewrites each `config_dir` to its expanded, cleaned form.
+// The told worktree's account directory holds the account file `accounts.json`.
+// It also holds the usage records `usage/<account>.json`.
+// Both are caches a fresh machine starts without.
+// A missing file, an empty one and an undecodable one read as the zero record.
+// Each is rewritten under its own lock with the keys it does not declare kept.
+// The account file maps each worktree to its account, with the time the entry was written.
+// It also holds the counters a pick reads:
+// a count per positive-weight account, and the weights and list it was taken under.
+// A usage record holds the latest reading of each window and the time a usage limit blocks the account until.
+// A merge of a new reading keeps a later reset, and the higher percentage of an equal one, and drops an earlier one;
+// it never loses the blocked-until time.
+// An account has headroom when no limit blocks it.
+// It also needs no listed window to stand at its threshold before the window's reset.
+// A pick takes, among the logged-in accounts of positive weight with headroom, the lowest count over weight.
+// A tie goes to the earlier list entry.
+// An account counts as logged in on darwin, and elsewhere when its config directory holds a credentials file.
+// With no account of headroom and the fallback on, it takes the account whose latest blocking reset is earliest.
+// An account new to the counters, or reweighted, starts at a reset count.
+// That count is the lowest count over weight of the unchanged accounts, times its weight.
+// The account a worktree runs under is the hub pin; else, for the prime and a beam, the beams pin;
+// else the worktree's own entry.
+// A beams pin whose account a usage limit blocks yields to the worktree's entry when it has one.
+// An entry naming an account the list lacks, or a retired one, counts as none.
+// PickAccount implements shuttleengine.AccountKeeper: it picks the told worktree's account when the worktree is made.
+// It does nothing for the prime, under a hub pin, or under a beams pin for a beam.
+// It also does nothing with fewer than two accounts of positive weight.
+// It runs under one hold of the account file's lock.
+// It drops the entry of each worktree the hub no longer holds.
+// It leaves alone an entry another pick wrote after this one began.
+// With no account to take, it removes the worktree's entry.
+// SwitchAccount implements shuttleengine.AccountSwitcher: it records a usage limit and moves the worktree's entry.
+// It reads the account the run launched under from the run directory's `account.json`;
+// a session on an unlisted directory records nothing and reports false.
+// It blocks that account until the reset the limit's message states, else for 30 minutes from now.
+// A block stored for a later time stays.
+// With fewer than two accounts of positive weight it then reports false.
+// Otherwise it decides under one hold of the account file's lock.
+// Under a hub pin it changes nothing and reports false.
+// A worktree may already resolve to another account with headroom, as after a sibling session's switch.
+// Then it writes nothing and reports true.
+// Otherwise the best logged-in account but the launched one becomes the worktree's entry, with its count raised.
+// The pick's fallback is off, and the result is true.
+// With none eligible nothing changes and the result is false.
+// Under a beams pin the switch writes the entry only;
+// the pinned account's block makes the resolution take that entry until the block passes.
+// SetAccount, ShowAccounts and RecordStatusLine are the verbs of `lym claude`.
+// SetAccount writes the told worktree's entry under one hold of the account file's lock.
+// It refuses an account the list lacks or has retired, and a hub pin, and it writes under a beams pin.
+// The entry takes effect at the worktree's next launch the engine builds.
+// ShowAccounts reports the resolved account, both pins, and each account's weight, headroom, block and stored windows.
+// RecordStatusLine takes the payload Claude Code's status line gives a command on standard input.
+// It reads `rate_limits.five_hour` and `rate_limits.seven_day`, each `used_percentage` and `resets_at`.
+// It drops a window whose percentage lies outside 0 to 100.
+// It drops a window whose reset lies further ahead than the window's length, which is five hours or seven days.
+// It merges the rest into the account's usage record and never writes or clears the blocked-until time.
+// It refuses a name no listed account has and writes nothing.
+// Every launch the engine builds resolves the told worktree's account first.
+// A launch whose config does not load, or whose env module does not, is refused;
+// a bad account list never degrades to none.
+// An account off Claude Code's default directory is exported as `CLAUDE_CONFIG_DIR`.
+// The export is outermost on the launch and resume lines.
+// An account on the default directory unsets the variable instead.
+// Setting it there moves Claude Code's `.claude.json`.
+// With no account the lines touch nothing, and the env module's value or Claude Code's default stands.
+// OpenLaunch puts the export or unset statement after the TTL export, ahead of both its lines.
+// A run's directory holds `account.json`, and so does an opened session's when the engine is told a board directory.
+// It names the config directory the session launched under and the listed account that directory is, if any.
+// A strand relaunched from its stored line keeps the account it launched under.
+// It changes only when an engine-built launch starts the strand again.
+// A session on a listed account gets the lym status line.
+// Prepare adds `statusLine` to settings.json, and OpenLaunch to its settings, when the launched account is a listed one.
+// The key holds a command entry running `'<lym>' claude statusline '<account>'`, each value shell-quoted.
+// Claude Code runs it in the session's directory, and the verb records the usage the status line reports.
+// Every other key of the document is kept.
+// A launch on an unlisted directory adds nothing, and so does an engine told no board directory, which lists no account.
+// The lym status line replaces the operator's own in the sessions it covers.
+// ScrubbedEnv names `CLAUDE_CONFIG_DIR`,
+// so a server spawned from a pane on one account never hands it to a pane with no export.
 // The retired `deny_agent_tool` key is read out of every layer;
 // a local override setting it is refused, with deleting it as the way forward.
 // LoadConfig resolves the module through the degrading loader.
@@ -92,6 +182,8 @@
 // The refusal names the file, the key and the way forward, `lym config claude`.
 // No other method and neither constructor loads it;
 // an engine built by New, with zero directories, refuses those methods.
+// NewForWorktree builds the engine NewFromConfig builds and keeps the shuttleengine.Worktree it is told.
+// NewFromConfig keeps the zero Worktree, which means no worktree is told.
 //
 // The launch and resume lines both carry `CLAUDE_CODE_PROMPT_CACHE_TTL`,
 // so a session writes its prompt cache at the TTL its role needs rather than at Claude Code's subscription default.
@@ -139,10 +231,21 @@
 // The reading shares one parse of the transcript lines with the transcript reader below.
 //
 // The transcript reader (TranscriptReader) locates and reads finished sessions with no run and no shuttle config.
-// A worktree's project directory is `<home>/.claude/projects/<dir>`;
+// A worktree's project directory is `projects/<dir>` under every known config directory;
 // `<dir>` is the worktree path with every non-alphanumeric byte as a hyphen.
-// Each `*.jsonl` file directly in it is a session, and the `*.jsonl` files in `<session>/subagents/` are its forks.
+// The known directories are each listed account's directory, retired accounts included.
+// They also include the env module's `CLAUDE_CONFIG_DIR` when set and `~/.claude`, each once.
+// An engine told no hub board directory takes the process's own `CLAUDE_CONFIG_DIR` and `~/.claude`.
+// A config that fails to load is logged at Warn, and the remaining directories are read.
+// Each `*.jsonl` file directly in a project directory is a session.
+// The `*.jsonl` files in `<session>/subagents/` are its forks.
+// A session id found in several directories is one session, its most recently written copy.
 // Sessions and forks come back sorted by file name.
+// The live-transcript readers read the session's launched directory.
+// They are fork audit, outstanding forks, session name and usage.
+// The launched directory is the known one whose registry holds a live entry for the session.
+// A session with no live entry is read under the worktree's resolved account directory when that holds its transcript.
+// Otherwise it is read under the known directory holding its newest copy.
 // A missing projects root, project directory or `subagents/` directory yields none of them and no error.
 // Reading a session parses its own transcript with sidechain lines included.
 // It then parses each fork with the message ids the session counted as a skip set.
@@ -413,24 +516,39 @@
 // the time bound keeps a limit an earlier turn already met from counting again.
 // A session with no previous turn end counts every fork, and every failure reads as no limit.
 //
+// CarryTranscript runs ahead of the resume check.
+// It finds the session's newest transcript for the pane cwd in every known config directory.
+// A transcript that is already the newest copy in the directory the resolved account names is left where it is.
+// Any other newest transcript is copied into that directory with its session directory and reports true.
+// The source stays.
+// It creates the project directory of an account that never ran in the worktree.
+// A session no known directory holds is copied nowhere and reports false.
+// A resume therefore finds its transcript after the worktree's account changed.
 // The resume check refuses a session whose registry entry names a live pid, with a `shuttleengine.SessionHeldError`.
+// It reads the registries of every known config directory as one set.
 // It does not refuse when the live process's start time differs from the entry's `procStart`;
 // that difference proves the pid was reused.
 // An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
-// A session with no transcript in the pane cwd's project directory refuses with `shuttleengine.ErrNoTranscript` wrapped.
+// A session with no transcript in the resolved directory's project for the pane cwd is refused.
+// The refusal wraps `shuttleengine.ErrNoTranscript` and names that project.
 // SessionHolder names the live pid holding a session by the same rule.
+// It reads the registries of every known config directory as one set.
 // A caller reads it to register the provider process of a session it launched.
 //
-// The session prober (SessionProber) reads process liveness from the same registry.
+// The session prober (SessionProber) reads process liveness from the same set of registries.
 // A session is alive when an entry names it and the live pid's start time equals `procStart`.
 // It is dead only for an entry whose pid is gone.
 // It is unproven in these cases:
 // no entry names it;
-// the registry or an entry is unreadable;
+// a registry or an entry is unreadable;
 // the start time is unreadable;
 // or the pid was reused.
 // A session Claude Code exited normally has no entry left, so it reads unproven.
-// The resume check and the prober share one reader of registry entries.
+// SessionHolder and the prober read every known directory's registry as one set.
+// Any live entry reads alive or holds.
+// A dead entry reads dead only when no registry or entry is unreadable.
+// Anything else is unproven.
+// For SessionHolder an unreadable registry is an error unless a live holder is found.
 // The prober also reads the interrupt marker.
 // The marker is the user's `[Request interrupted by user` entry;
 // it is read from the transcript a turn start's `transcript_path` names.
@@ -671,7 +789,8 @@
 // OpenLaunch writes it into an opened session's settings in a hub, as the documents' last keys;
 // Claude Code's `--settings` layer outranks the user's and the repository's settings,
 // so the scope holds whatever those say.
-// The plugins file is Claude Code's `plugins/installed_plugins.json`, under `CLAUDE_CONFIG_DIR` or else `~/.claude`.
+// The plugins file is Claude Code's `plugins/installed_plugins.json`, under the launch's effective config directory:
+// the account directory the launch exports, else the env module's `CLAUDE_CONFIG_DIR`, else `~/.claude`.
 // Each plugin it names is on in `enabledPlugins` exactly when the session preloads a skill of that plugin.
 // Every other plugin is off.
 // `skillOverrides` turns off each skill of `skills_off` the session does not preload.
@@ -711,7 +830,9 @@
 // The listing holds each skill of a plugin the scope turns on, named `<plugin>:<skill>`, with its SKILL.md path.
 // It holds the user's skills and the project's the same way.
 // A plugin counts for the worktree when it has a user-scope install or a project-scope install for that worktree's root.
-// The config directory is CLAUDE_CONFIG_DIR, else `.claude` under the home directory.
+// The config directory is the launch's effective one.
+// The Claude engine hands it to the source it runs for a launch's manifest.
+// A source built alone resolves CLAUDE_CONFIG_DIR, else `.claude` under the home directory.
 // When it cannot be resolved, the source leaves out the parts that need it and warns.
 // It keeps the project skills and the CLAUDE.md files above the root.
 // An unreadable global file is the one error.

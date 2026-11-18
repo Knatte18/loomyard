@@ -181,7 +181,7 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 
 	var attachable, errored, respawnEligible []attachCandidate
 	for _, c := range candidates {
-		switch dispositionCandidate(c, status.Strands, normalized, minAge, now) {
+		switch dispositionCandidate(c, status.Strands, normalized, minAge, now, relaunchBound(r.cfg)) {
 		case verdictAttachable:
 			attachable = append(attachable, c)
 		case verdictError:
@@ -509,7 +509,12 @@ const (
 
 // dispositionCandidate resolves c's strand via reed's strand table and returns exactly one of the
 // three verdicts, per the enumeration in mechanism-failures-do-not-attach-and-do-not-blindly-respawn.
-func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, spec Spec, minAge time.Duration, now time.Time) attachVerdict {
+//
+// A record running with a relaunching mark reads attachable over a tracked strand.
+// Its pane state does not matter.
+// The relaunch holds its strand down on purpose, and a respawn beside it would start a second agent.
+// A mark past its bound is attachable too, so the attach's Wait settles it with settleStaleRelaunch.
+func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, spec Spec, minAge time.Duration, now time.Time, bound time.Duration) attachVerdict {
 	// A satisfied file contract wins over every negative liveness answer here, exactly as it does
 	// inside Wait's own poll loop (checkLivenessTick's governing rule, and the four exit paths crucible
 	// rounds opus5-high-r4 and fable5-high-r5 hardened): a candidate whose persisted Outcome still
@@ -537,6 +542,10 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	}
 
 	strand, tracked := strandStatusByGUID(strands, c.state.StrandGUID)
+
+	if within, past := c.state.relaunching(now, bound); (within || past) && tracked && c.state.Outcome == runOutcomeRunning {
+		return verdictAttachable
+	}
 
 	if tracked && strand.Live {
 		// A legacy asking record is an older binary's halted run whose agent is still there,

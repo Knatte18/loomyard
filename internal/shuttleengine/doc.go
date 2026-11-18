@@ -40,6 +40,12 @@
 // requirement support, fork audit, the outstanding-fork reading, resume-context rendering and instruction files;
 // the check after startup; and the idle wake of a provider no hook exit wakes.
 // Creel hook delivery is one more: the hook-input parse, the hook output and the wake output.
+// AccountKeeper is another: an engine that spreads its sessions over accounts picks a new worktree's account.
+// A caller reaches it through internal/shuttleengines.
+// AccountSwitcher is one more.
+// An engine with it records a usage limit against the account a session launched under.
+// It also moves the worktree to another account.
+// Runner.SwitchAccountOnLimit asks it for the run a strand GUID names, and an engine without it answers false.
 // A ForkSubagents run whose engine cannot audit forks finishes with its classified result, a nil ForkAudit and an error.
 // It keeps its run directory.
 // Spec.Requires lists what a run requires of its engine.
@@ -102,6 +108,8 @@
 // It reads reed's own persisted state during the orphan sweep and during Attach's own liveness gate.
 // Both halves keep the provider boundary: nothing here names a tmux command or a Claude specific.
 // Panes are reed's vocabulary, reached only through ReedOps.
+// ReedOps also carries reed's hold ops.
+// They end a strand's process while holding its record, and relaunch it under the same GUID.
 // Provider grammar is the concrete Engine's, reached only through the Engine interface.
 //
 // A turn end without every output file never ends a run:
@@ -164,6 +172,9 @@
 // The parent cannot act while the account is limited, and a notice would reach it only as stale clutter after the reset.
 // The hold, the wait mark and the deadline are unchanged,
 // and the next held turn end it does not read limited is notified as any other.
+// An engine whose AccountSwitcher takes another account relaunches the run's session under it instead of holding.
+// Such a turn end goes to the switch first, which records the limit on the account the session launched under.
+// The relaunch is described after the notice logic below.
 // With an engine that meets RequirementBackgroundWake, a held turn end built from a waiting turn end is not notified:
 // it sends no notice, defers none and leaves RunState.NotifiedOffset alone.
 // This covers a waiting turn end the gated run judged plain on un-awaited shells and one the ungated shell wait expired.
@@ -188,10 +199,18 @@
 // The stall is then held and notified as any other.
 // A turn end on an API error that is not also an event, such as Claude's StopFailure, holds nothing and sends no notice.
 // A run whose Spec.APIErrorRetries is set re-sends such a turn with one line after a back-off.
+// A limited turn end the account switch handles is neither counted nor re-sent.
+// Neither is a refused resume's.
+// That is the first turn end past the record's launch offset.
+// The launch must have resumed a session whose transcript it copied.
+// An API error no usage limit caused must have ended it.
+// The session starts fresh in the same run, whatever the spec's retries.
+// Runner.RefusedResume answers the same question for the run a strand GUID names.
 // The back-off doubles with each API-error turn end of the run.
 // The turn end past the last re-send ends the run OutcomeAPIError, with Result.APIError naming the error.
 // When every output file exists, it ends the run done instead.
 // A run with no retries waits such a turn end out to its deadline.
+// A limited one the account switch handles is the exception: the switch relaunches the session instead.
 // A turn end the engine marks SessionSignal.ModelRejected ends the run OutcomeAPIError at once, retries or not.
 // No re-send changes the model, but every output file existing ends the run done.
 // RunState.NotifiedOffset is the events-file offset past the last notified one.
@@ -199,6 +218,38 @@
 // A held turn end at or below it is never notified again, including when an Attach replays it.
 // A batch of several new events is classified by its last event, so only its last held turn end is notified.
 // The notice logic stays provider-invariant, per the Shuttle Provider-Seam Invariant.
+//
+// A relaunch under another account keeps the run's run directory, strand and GUID.
+// It changes the process behind the strand.
+// The stop verb's relaunch mode marks the record relaunching, RunState.RelaunchingAt.
+// It ends the strand's process while reed holds it.
+// It records no outcome.
+// A relaunch builds a spec by its launch:
+// a continue resumes the run's session with a continue line as its first turn and no skill-load turn;
+// a fresh launch starts a new session with the run's own skills and prompt;
+// a resume whose transcript no known directory holds takes a fresh launch;
+// a repeat launches the run's own spec again.
+// The resume check carries the session's transcript into the new account first.
+// The record then takes the new session and its deferred prompt line.
+// It takes the events file's size as its prompt and launch offsets.
+// All of that is recorded before reed relaunches the strand under the same GUID.
+// The startup wait of a relaunch decides on the pane capture alone.
+// The events file still holds the limited session's lines.
+// Once the strand started the mark clears, and a deferred prompt line goes out as a launch sends it.
+// A failure of any step ends the run as a strand that died, classified through the completion-signal check.
+// A stop that made the record terminal meanwhile is left as it is.
+// The relaunch then removes the strand instead of writing.
+// After the handle's own stop the run is finalized.
+// After the runner's stop it returns its identity with the outcome died.
+// Wait then reads again from the record's prompt offset, with its API-error count and pending hold dropped.
+// A Wait process that dies inside a relaunch leaves the mark, which holds the run live for its bound.
+// An attach reads a record with a mark, within its bound or past it, as attachable over a tracked strand.
+// At each tick Wait re-reads the mark from the record.
+// Within the bound, a held strand with no pane is a strand still starting, and counts as no status failure.
+// Past the bound, a strand that is not live ends the run as a strand that died.
+// The completion-signal check classifies that ending.
+// Over a live strand Wait clears the mark and goes on as an attach, from the record's prompt offset.
+// It types a prompt line the dead waiter never sent.
 //
 // A second notice covers a permission or input dialog lym cannot answer.
 // It goes out in the same runs and through the same notifier.
@@ -367,6 +418,9 @@
 // The run record reads running until a stop ends it.
 // A resume treats the strand like any other non-live one, since an empty done-when list never drops it as finished.
 // A Spec with ResumeSessionID resumes that session through the engine's resume capability.
+// An engine with the TranscriptCarrier capability first brings the session's newest transcript into the run's account.
+// The run record keeps whether it copied.
+// A refusal for a live holder carries that fact, and a caller that resumes again passes it on as Spec.TranscriptCopied.
 // The capability refuses a session a live process holds with a SessionHeldError naming the process.
 // It refuses a session this machine holds no transcript of with an error wrapping ErrNoTranscript.
 // Run.SessionHolder names the live provider process holding a run's session, through the engine's SessionHolderFinder.
@@ -395,15 +449,17 @@
 // Every run the runner starts records that step in run.json as `step`, and a runner never told one writes no step.
 // Runner.StopStepRuns stops, through the same record-then-remove order, every run under the runner's run-directory root.
 // A run qualifies when it still reads running and records the given step.
-// Its strand is removed when it is live or a not-live own-window one;
+// Its strand is removed when it is live, held for a relaunch, or a not-live own-window one;
 // a run whose strand is dead but not removable only has its record stopped, since no process waits on it.
 // A run whose strand reed does not track, or tracks with its pane binding cleared, may have a live agent.
 // That agent works in a pane reed cannot address.
 // It is stopped only when its record's engine can name the process holding its session and finds none;
 // otherwise it stays running and is listed under StepStopReport.Held.
+// A run whose record carries a relaunching mark, within its bound or past it, is stopped whatever its pane state.
+// Its session holder is not looked up, since the relaunch ended the session's process on purpose.
 // A run whose output files all exist keeps reading running through the stop and is listed under StepStopReport.Finished.
 // A running run with no step is left alone and listed under StepStopReport.Untied.
-// That holds only when its strand is live or a not-live own-window one.
+// That holds only when its strand is live, held for a relaunch, or a not-live own-window one.
 // A run of another step is left alone.
 // A stop that fails is listed under Failed while the stop goes on.
 // Runner.StopOrphanedStepRuns stops the same way every running run that names a step under a given steps directory.
@@ -577,6 +633,14 @@
 // Shuttle holds the launch as a pause holds a send.
 // It waits a back-off that starts at apiErrorRetryBackoff and doubles to loadHoldBackoffCeiling.
 // It then types the same load message through the verified send path, and goes on so until a load turn ends.
+// A load turn a usage limit ended is first given to the engine's account switch.
+// The hold counts it only when the switch declines.
+// A switch that moves the worktree to another account ends the hold uncounted.
+// The start then repeats the launch under the new account.
+// The repeat uses the same spec, with its skill-load turn and deferred prompt line.
+// A relaunch that ends the run ends the start as a failed load does.
+// The first load turn of a copied resume, when an API error no usage limit caused ends it, ends the hold uncounted too.
+// The start then relaunches the session fresh in the same run, with the run's own skills and prompt.
 // That typed turn is the only probe of the API a session has.
 // So the prompt line is never typed into a session whose load turn the API failed.
 // A turn start read during the back-off takes the place of the typed line.
@@ -886,9 +950,17 @@
 //
 // Agent activity: RunState records the pid of the process that waits on the run, which Start writes and an attach rewrites to the attaching process.
 // A run counts as live when its outcome reads running and that pid is alive; a record without a pid, from an older binary, is not live.
+// A record whose relaunching mark, RunState.RelaunchingAt, is younger than twice the startup timeout counts as live.
+// Its pid does not matter.
+// A relaunch ends the waiting process before the next one starts.
+// An older mark is ignored, so the record reads by its pid again.
+// The record's outcome stays running throughout.
+// Every reader that compares the outcome reads a relaunching run as running.
 // ReadAgentActivity returns one AgentActivity per run under a run-directory root whose record reads running, live or not, so an agent whose waiter died still reads as working.
 // It logs a record that reads running with its recorded waiter gone at Warn once per episode per run directory, at Debug while it repeats and at Info once it reads live again, no longer reads running or has no record;
 // such a run's reading carries its last activity only, with no API error or usage limit and WaiterGone set, since no process acts on its turn ends.
+// A run relaunching within its bound is read the same way with Relaunching set and WaiterGone unset;
+// ReadSessionStates reads it unknown, with cause relaunching, from no events.
 // Each reading carries the run's strand name, its last activity, and whether its newest turn end is an API error with the error's text, and its UsageLimit: whether the provider classifies that error as its usage limit, and when the limit resets as its message states.
 // Runner.UsageLimit gives the same UsageLimit for one turn end of a named run, which the orch watcher reads at its own session's turn ends.
 // The last activity is the newest of the session's last activity, its forks included, the time of the events file's newest Stop or ask line, and the modification time of the run's activity stamp, the file ActivityStampFileName names in the run directory, which an engine's hooks touch whenever the session works;
@@ -906,7 +978,11 @@
 // A run's operator instructions are the SessionSignal.Instruction texts of its turn starts past its prompt offset, without the turn start of the run's prompt, and without any text the sent-texts file holds.
 // RunState records a role key, the spec's NameOverride else its Role, and the instructions the run carried over.
 // Before its orphan sweep, a start finds the newest run under the root with the same role key;
-// when that run is unfinished, its record reading stopped, died, timeout or api-error or reading running with its waiter gone, its carried and operator instructions, without repeats, are appended to the new prompt as one block, recorded as the new run's carried instructions and named in one Warn log line and one notifier line.
+// when that run is unfinished, its carried and operator instructions are appended to the new prompt as one block.
+// The instructions carry no repeats.
+// A run is unfinished when its record reads stopped, died, timeout or api-error.
+// A run reading running with its waiter gone and no relaunching mark within its bound is also unfinished.
+// The block is recorded as the new run's carried instructions and named in one Warn log line and one notifier line.
 // A done or live predecessor, an empty role key and a predecessor directory already swept carry nothing.
 //
 // Session state has two consumers: Runner.SessionIdle and the verified send's idle wait, which gate on the readiness reading built from it.
@@ -983,6 +1059,11 @@
 // it is also gone when the events file ends, past its size at the wait's first liveness tick, in a process-ending session end and the registry does not read the id alive.
 // An unproven reading, a session end at or before that first-tick size and a session end beside an alive reading end nothing, so an earlier launch's end never fails a resumed launch.
 // A gone session ends the run died, or done when every output file exists, the way a dead pane does; a startup that finds it fails as died.
+//
+// Worktree is what a launching engine is told about the worktree its sessions run in:
+// its name, its kind (prime, beam or task), the absolute directory for an engine's account file and usage records,
+// and a reader of the hub's current worktree names.
+// The zero Worktree means no worktree is told.
 //
 // UserSetupSource is the seam through which one engine hands another the user's Claude setup for a session.
 // A UserSetupRequest names the session's working directory, worktree root, preloaded skills and role.

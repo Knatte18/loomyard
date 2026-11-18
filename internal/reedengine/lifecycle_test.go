@@ -495,6 +495,7 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 	notLive := Strand{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}
 	stillLive := Strand{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorOwnWindow}}
 	hidden := Strand{GUID: "c", Display: render.Display{Anchor: render.AnchorHidden}}
+	heldNotLive := Strand{GUID: "d", Held: true, Display: render.Display{Anchor: render.AnchorOwnWindow}}
 	withDoneWhen := func(s Strand, paths ...string) Strand {
 		s.DoneWhen = paths
 		return s
@@ -555,6 +556,14 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 			name:    "HiddenStrandNeverRelaunched",
 			strands: []Strand{hidden},
 			liveIDs: map[string]bool{},
+		},
+		{
+			// A held strand stays down and in the table even when its done-when list is complete.
+			name:       "HeldNotLiveStrandIsNeitherLaunchedNorDroppedAndIsReportedHeld",
+			strands:    []Strand{notLive, withDoneWhen(heldNotLive, "/out/one", "/out/two")},
+			liveIDs:    map[string]bool{},
+			wantHeld:   []string{"d"},
+			wantLaunch: []string{"a"},
 		},
 		{
 			name:       "NoDoneWhenListRelaunches",

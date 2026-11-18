@@ -20,6 +20,7 @@ import (
 // The engine's Prepare replaces the run directory's prompt.md with text.
 // Only the strand changes.
 // The record names the new strand before the old strand is removed and before the new provider's startup is awaited.
+// It also records whether the resume copied the session's transcript, and the events file's size at the resume.
 // That startup reads the events file only past its size at the resume.
 // So the first session's lines never mark it started.
 // It returns a non-nil err, with no strand added, when the session cannot be resumed safely.
@@ -49,7 +50,7 @@ func (run *Run) relaunchForReprompt(text string) (result Result, finished bool, 
 	// The resumed session keeps the skills it loaded, so its first turn is the re-prompt itself.
 	// The skills still shape the settings and passages the resumed session runs under.
 	spec.SkipSkillLoadTurn = true
-	warning, err := runner.checkResume(spec, run.engine)
+	warning, transcriptCopied, err := runner.checkResume(spec, run.engine)
 	if err != nil {
 		return Result{}, false, err
 	}
@@ -76,6 +77,8 @@ func (run *Run) relaunchForReprompt(text string) (result Result, finished bool, 
 	run.state.Started = false
 	run.state.PromptLine = ""
 	run.state.RecordsSessionStarts = launch.RecordsSessionStarts
+	run.state.TranscriptCopied = transcriptCopied
+	run.state.LaunchOffset = startupEventsOffset
 	saveErr := run.saveState()
 	if saveErr != nil {
 		run.state = previous
@@ -100,7 +103,7 @@ func (run *Run) relaunchForReprompt(text string) (result Result, finished bool, 
 	}
 
 	run.startupEventsOffset = startupEventsOffset
-	if result, err := run.awaitStartup(); err != nil {
+	if result, err := run.awaitStartup(true); err != nil {
 		return result, true, err
 	}
 	return Result{}, false, nil

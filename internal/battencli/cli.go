@@ -268,6 +268,10 @@ type battenCLI struct {
 	// The arm fills it with the hub's owner seams when it is zero.
 	// A receiver that skips the arm keeps it zero, which reads as no owner check.
 	owner ownerSeams
+	// pickAccount picks the Claude account of the task worktree slug, which the hub of the given prime location holds.
+	// Its last argument is whether a worktree that already holds an account keeps it.
+	// The wiring fills it; a pick failure is logged inside and never fails the create.
+	pickAccount func(prime *lymcwd.Location, slug string, keepEntry bool)
 	// guard carries the pre-run's refusals of a cancel under way, a dirty source and a left pair.
 	// The arm fills it with the hub's start guard when its Marker is nil.
 	// A hand-populated receiver leaves it zero, which checks nothing.

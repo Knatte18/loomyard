@@ -532,7 +532,7 @@ func primeShuttleRunner(location *lymcwd.Location) (*shuttleengine.Runner, error
 	if err != nil {
 		return nil, err
 	}
-	engines, err := shuttleengines.New(shuttleConfig, dirs)
+	engines, err := shuttleengines.NewForWorktree(shuttleConfig, dirs, hubgeom.EngineWorktree(location))
 	if err != nil {
 		return nil, err
 	}

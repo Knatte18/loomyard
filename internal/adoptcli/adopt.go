@@ -135,6 +135,8 @@ type outcome struct {
 // With noOrch set it starts the dobby and leaves the orch down.
 // LandingHeld reports whether the pawl run of the beam slug holds the beam's landing hold.
 // The hold keeps the beam's steps from running; nil reads as no hold.
+// PickAccount picks the Claude account of a worktree the adopt added a pair for;
+// a failed pick is logged by the seam and never fails the adopt.
 // PrimeName is the prime worktree's directory name.
 // Now reads the clock the hold is stamped with.
 type adoptDeps struct {
@@ -147,6 +149,7 @@ type adoptDeps struct {
 	OriginRun      func(slug, parent string) (shedengine.Status, bool, error)
 	LocalPair      func(slug string) bool
 	AddPair        func(slug string) (fabricengine.AddResult, error)
+	PickAccount    func(slug string)
 	WriteAdopt     func(req boardengine.AdoptRequest) (boardengine.AdoptWrite, error)
 	TakeOver       func(slug, subject string) (fabricengine.TakeOverResult, error)
 	CatchUp        func() error

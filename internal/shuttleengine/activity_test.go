@@ -80,6 +80,8 @@ type activityRun struct {
 	engine string
 	// stampWritten, when set, writes the run's activity stamp with that modification time.
 	stampWritten time.Time
+	// relaunchingAt is the RFC 3339 relaunching mark the record carries; empty leaves none.
+	relaunchingAt string
 }
 
 func TestReadAgentActivity(t *testing.T) {
@@ -93,6 +95,11 @@ func TestReadAgentActivity(t *testing.T) {
 	eventsWritten := created.Add(10 * time.Minute)
 	transcriptWritten := created.Add(20 * time.Minute)
 	live := activityRun{outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver", events: "STOP:turn\n"}
+	// The relaunching marks are read against the real clock, with a bound of twice the config's startup timeout.
+	const startupTimeoutS = 30
+	markedWithin := time.Now().Add(-time.Second).UTC().Format(time.RFC3339)
+	markedPast := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	limited := map[string]TurnEndActivity{"turn": {TranscriptModTime: transcriptWritten, APIError: true, APIErrorText: "You've hit your weekly limit", UsageLimit: UsageLimit{Limited: true}}}
 
 	tests := []struct {
 		name string
@@ -240,6 +247,18 @@ func TestReadAgentActivity(t *testing.T) {
 			want:       []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten.Add(time.Minute), WaiterGone: true}},
 		},
 		{
+			name:       "a relaunching record within its bound is listed relaunching, with no usage limit and no gone waiter",
+			runs:       map[string]activityRun{"run-a": {outcome: runOutcomeRunning, pid: 4343, strandName: "hub:task:driver", events: "STOP:turn\n", relaunchingAt: markedWithin}},
+			transcript: limited,
+			want:       []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten, Relaunching: true}},
+		},
+		{
+			name:       "a relaunching record past its bound with a dead waiter reads waiter-gone",
+			runs:       map[string]activityRun{"run-a": {outcome: runOutcomeRunning, pid: 4343, strandName: "hub:task:driver", events: "STOP:turn\n", relaunchingAt: markedPast}},
+			transcript: limited,
+			want:       []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten, WaiterGone: true}},
+		},
+		{
 			name: "a finished run is skipped, and dead-pid and pid-less running runs are read",
 			runs: map[string]activityRun{
 				"run-a": {outcome: runOutcomeRunning, pid: 4343, events: "STOP:turn\n"},
@@ -268,7 +287,7 @@ func TestReadAgentActivity(t *testing.T) {
 				engine = signalActivityEngine{engine.(*activityEngine)}
 			}
 
-			got, err := ReadAgentActivity(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine))
+			got, err := ReadAgentActivity(Config{RunDir: root, StartupTimeoutS: startupTimeoutS}, t.TempDir(), singleEngineSet(engine))
 
 			if err != nil {
 				t.Fatalf("ReadAgentActivity error = %v; want nil", err)
@@ -573,6 +592,7 @@ func writeActivityRun(t *testing.T, root, name string, run activityRun, created,
 	state := RunState{
 		RunID: name, StrandGUID: "guid-" + name, StrandName: run.strandName, EventsPath: eventsPath,
 		CreatedAt: created.Format(time.RFC3339), Outcome: run.outcome, PID: run.pid, PromptOffset: run.promptOffset, Engine: run.engine,
+		RelaunchingAt: run.relaunchingAt,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		t.Fatal(err)

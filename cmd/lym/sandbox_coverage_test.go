@@ -72,6 +72,10 @@ var excludedModules = []scankit.Entry{
 		Why: "files a darn task on the board and releases it, so the hub's dobby starts a run, which no sandbox scenario may do; exercised by internal/retrocli's own tests instead",
 	},
 	{
+		Key: "claude",
+		Why: "its verbs run only from a worktree of a hub and write that worktree's entry in the account file under the machine's config directories, which no sandbox scenario may touch; exercised by internal/claudecli's and claudeengine's own tests instead",
+	},
+	{
 		Key: "slack",
 		Why: "its relay calls the live Slack Web API with the machine's bot token, which no sandbox scenario may reach; exercised by internal/slackcli's and internal/slackengine's own tests instead",
 	},

@@ -49,11 +49,13 @@ func (r *Runner) SetStepTie(tie StepTie) {
 // StopStepRuns stops every run under the runner's run-directory root that is still running.
 // A run qualifies when its record names tie as its step.
 // Each is stopped through the stop verb, which records the stop before removing the strand.
-// A strand is removable when it is live, or an own-window strand whose pane is present but not live.
+// A strand is removable when it is live, held for a relaunch, or an own-window strand whose pane is present but not live.
 // That covers a dead pane or one showing only its shell.
 // So a step stop ends the window of a run whose own-window agent died.
 // A run of the step whose strand is dead but not removable has its record stopped.
 // No strand is removed, since no process waits on it.
+// A run whose record carries a relaunching mark, within its bound or past it, is stopped whatever its pane state.
+// Its session holder is not looked up, since the relaunch ended the session's process on purpose.
 // A run whose strand reed does not track, or tracks with no pane bound, may have a live agent.
 // That agent works in a pane reed cannot address.
 // Such a run is stopped only when its record's engine names no live process holding its session.
@@ -76,7 +78,8 @@ func (r *Runner) StopStepRuns(tie StepTie) (StepStopReport, error) {
 // Each qualifying run is stopped, held or listed as finished the way StopStepRuns treats a run of its step.
 // Untied stays empty.
 func (r *Runner) StopOrphanedStepRuns(stepsDir string) (StepStopReport, error) {
-	return r.stopStepRunsWhere(func(rs RunState) bool { return rs.Step.StepsDir == stepsDir && !runIsLive(rs) }, false)
+	now, bound := r.clock.Now(), relaunchBound(r.cfg)
+	return r.stopStepRunsWhere(func(rs RunState) bool { return rs.Step.StepsDir == stepsDir && !runIsLive(rs, now, bound) }, false)
 }
 
 // stepRunCandidate is a running run a step stop acts on or lists.
@@ -125,6 +128,7 @@ func (r *Runner) stopStepRunsWhere(selects func(RunState) bool, listUntied bool)
 	if err != nil {
 		return report, fmt.Errorf("shuttle: stop step runs: probe reed: %w", err)
 	}
+	now, bound := r.clock.Now(), relaunchBound(r.cfg)
 	for _, candidate := range candidates {
 		rs := candidate.rs
 		name := rs.StrandName
@@ -138,7 +142,8 @@ func (r *Runner) stopStepRunsWhere(selects func(RunState) bool, listUntied bool)
 			}
 			continue
 		}
-		if (!tracked || (!strand.Live && strand.PaneID == "")) && r.sessionMayBeHeld(rs) {
+		within, past := rs.relaunching(now, bound)
+		if !within && !past && (!tracked || (!strand.Live && strand.PaneID == "")) && r.sessionMayBeHeld(rs) {
 			report.Held = append(report.Held, name)
 			continue
 		}

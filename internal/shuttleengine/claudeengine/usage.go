@@ -277,7 +277,7 @@ var _ shuttleengine.UsageReader = (*Claude)(nil)
 // An unreadable parent transcript, fork transcript or subagents directory makes the whole reading unknown:
 // it is not an error, since the layout is a Claude Code internal.
 func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUsage {
-	projectDir, err := claudeProjectDirFor(workdir)
+	projectDir, err := c.sessionProjectDir(sessionID, workdir)
 	if err != nil {
 		return shuttleengine.SessionUsage{}
 	}

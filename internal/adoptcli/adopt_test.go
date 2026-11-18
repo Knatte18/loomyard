@@ -73,6 +73,8 @@ type world struct {
 	deployStateErr error
 	deployErr      error
 	deployed       []string
+	// picked lists the slugs whose Claude account the adopt picked, in order.
+	picked []string
 }
 
 // newWorld returns a hub this machine owns the prime of.
@@ -151,7 +153,8 @@ func (w *world) deps() adoptDeps {
 			w.pairs[slug] = true
 			return fabricengine.AddResult{Slug: slug}, nil
 		},
-		WriteAdopt: w.writeAdopt,
+		PickAccount: func(slug string) { w.picked = append(w.picked, slug) },
+		WriteAdopt:  w.writeAdopt,
 		TakeOver: func(slug, subject string) (fabricengine.TakeOverResult, error) {
 			w.order = append(w.order, "takeover:"+slug)
 			if err := w.takeErr[slug]; err != nil {
@@ -742,6 +745,19 @@ func TestAdopt(t *testing.T) {
 				return strings.Contains(line, "could not be read (the installed lym carries no VCS stamp)") && strings.Contains(line, "run the hub's landing deploy")
 			}) {
 				t.Errorf("prime recorded = %v, warnings = %q; want the prime recorded and a warning naming the hand deploy", got.PrimeRecorded, got.Warnings)
+			}
+		}},
+		{name: "ThePairsAddedAtBothSitesGetTheirAccountPicked", req: request{Slugs: []string{"payments"}}, setup: func(w *world) {
+			withBeam(w)
+			w.pairs["t1"] = false
+		}, check: func(t *testing.T, w *world, _ outcome, _ error) {
+			if want := []string{"payments", "t1"}; !slices.Equal(w.picked, want) {
+				t.Errorf("accounts picked for %v; want %v, the beam's pair then its moved run's pair", w.picked, want)
+			}
+		}},
+		{name: "ALocalPairAndRootGetNoAccountPicked", req: request{Slugs: []string{"alpha", "root"}}, check: func(t *testing.T, w *world, _ outcome, _ error) {
+			if len(w.picked) != 0 {
+				t.Errorf("accounts picked for %v; want none for a pair already local and for root", w.picked)
 			}
 		}},
 	}

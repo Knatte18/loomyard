@@ -69,7 +69,7 @@ func TestKeepWarm(t *testing.T) {
 		t.Parallel()
 
 		constructors := map[string]constructor{
-			"claude": func(shuttleengine.Config, configengine.Dirs, LaunchSeams) shuttleengine.Engine {
+			"claude": func(shuttleengine.Config, configengine.Dirs, LaunchSeams, shuttleengine.Worktree) shuttleengine.Engine {
 				return &shuttlefake.Engine{}
 			},
 		}

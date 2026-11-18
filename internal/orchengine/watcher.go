@@ -107,6 +107,11 @@ type Session interface {
 	CompactedSince(guid string, turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error)
 	// UsageLimit returns the usage-limit reading of the transcript turnEnd names, for the run identified by guid.
 	UsageLimit(guid string, turnEnd shuttleengine.Event) (shuttleengine.UsageLimit, error)
+	// SwitchAccountOnLimit records the usage limit turnEnd names for the run identified by guid.
+	// It reports whether the run's worktree now resolves to another account, so the session must restart.
+	SwitchAccountOnLimit(guid string, turnEnd shuttleengine.Event) (bool, error)
+	// RefusedResume reports whether turnEnd is the first turn end of a refused resume of the run identified by guid.
+	RefusedResume(guid string, turnEnd shuttleengine.Event) (bool, error)
 	// Interrupt stops the session's running turn with the provider's interrupt key, sent only into a pane showing one.
 	// It fails with shuttleengine.ErrNoRunningTurn when the pane shows none.
 	// It fails with shuttleengine.ErrRewindPickerOpen when it closed an open rewind picker.
@@ -192,6 +197,8 @@ type Watcher struct {
 	ownerReadFailures logger.Episode
 	// ownerAdoptHeld reports whether the last owner reading found the beam owned elsewhere under an adopt in flight here.
 	ownerAdoptHeld bool
+	// restart is the told restarts of the orch's session, nil when the watcher was never told them.
+	restart *OrchRestart
 }
 
 // phaseEvents records what the current non-idle phase has observed.
@@ -352,6 +359,12 @@ func (w *Watcher) tick() (done bool, err error) {
 		}
 		if isTurnEnd(ev) {
 			w.seen.turnEnds = append(w.seen.turnEnds, ev)
+		}
+	}
+	if lastTurnEnd != nil && w.restart != nil {
+		// A restart rebinds the state to a new strand, so nothing of this tick's state is saved after it.
+		if restarted, ended, err := w.restartOnTurnEnd(st, limit, *lastTurnEnd); restarted {
+			return ended, err
 		}
 	}
 	limitEnded := false

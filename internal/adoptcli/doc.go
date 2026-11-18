@@ -50,6 +50,8 @@
 //     A hold over other subjects, or another machine's hold, is refused with its own way forward.
 //     An unreachable origin is refused naming the re-run once origin answers.
 //  2. `pairs`: each adopted beam this machine has no pair for gets it from origin.
+//     Each pair added, here and in the takeover, then gets its Claude account picked through `adoptDeps.PickAccount`;
+//     a pair already local and `root` pick nothing, and a failed pick is logged and never fails the adopt.
 //  3. `takeover`: `takeOverRuns` takes over each open run under the subjects that `movedRun` judges moved.
 //     A run's pair is added from origin first when this machine lacks it,
 //     and `fabricengine.TakeOverRun` then fetches, archives, resets the pair onto origin and pushes the takeover entry.

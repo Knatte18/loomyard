@@ -536,7 +536,7 @@ func ServerEnviron(environ []string) []string {
 	for _, entry := range environ {
 		key, _, _ := strings.Cut(entry, "=")
 		switch {
-		case key == "CLAUDECODE", strings.HasPrefix(key, "CLAUDE_CODE_"), strings.HasPrefix(key, "CODEX_"):
+		case key == "CLAUDECODE", key == "CLAUDE_CONFIG_DIR", strings.HasPrefix(key, "CLAUDE_CODE_"), strings.HasPrefix(key, "CODEX_"):
 		case key == "LYM_TRACE_ID", key == agentname.StrandNameEnv, key == agentname.ParentEnv, key == "LYM_RUN_PROCESS":
 		default:
 			clean = append(clean, entry)

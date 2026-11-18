@@ -269,6 +269,14 @@
 // A withdrawn resume line goes to `orchengine.ClearResumeNoticed`, so a resumed session gets the line posted again.
 // The call carries the orch GUID the state records at that call.
 //
+// # The watcher restarts the orch
+//
+// `watch` tells its watcher two restarts, each over the state the tick passes it:
+// one resumes the recorded session after the worktree's account switched, and one launches fresh after a refused resume.
+// Both run `relaunchOrch`, the relaunch a start runs for a dead or absent strand.
+// It neither decides whether the orch is already running nor waits for a watcher to go.
+// It removes the old strand, which ends a still-live limited process, and spawns no second watcher.
+//
 // # The session-start hook
 //
 // The orch run's spec is the one that installs the provider's context-after-compaction hook.

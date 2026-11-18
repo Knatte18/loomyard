@@ -17,10 +17,7 @@ func writeSessionTranscript(t *testing.T, sid string, lines ...string) string {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	workdir := filepath.Join(t.TempDir(), "work")
-	dir, err := claudeProjectDirFor(workdir)
-	if err != nil {
-		t.Fatalf("project dir: %v", err)
-	}
+	dir := homeProjectDir(t, workdir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -29,6 +26,16 @@ func writeSessionTranscript(t *testing.T, sid string, lines ...string) string {
 		t.Fatalf("write transcript: %v", err)
 	}
 	return workdir
+}
+
+// homeProjectDir returns workdir's project directory under the default config directory of the HOME the test set.
+func homeProjectDir(t *testing.T, workdir string) string {
+	t.Helper()
+	home, err := claudeHomeDir()
+	if err != nil {
+		t.Fatalf("home dir: %v", err)
+	}
+	return projectDirUnder(filepath.Join(home, claudeConfigDirName, projectsDirName), workdir)
 }
 
 func titleLine(title string) string {
@@ -75,8 +82,7 @@ func countNameReadLines(output, level string) int {
 // Reading it then fails with an error other than not-exist.
 func replaceTranscriptWithDirectory(t *testing.T, workdir, sid string) {
 	t.Helper()
-	dir, _ := claudeProjectDirFor(workdir)
-	path := filepath.Join(dir, sid+".jsonl")
+	path := filepath.Join(homeProjectDir(t, workdir), sid+".jsonl")
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}

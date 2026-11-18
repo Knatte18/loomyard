@@ -201,6 +201,35 @@ func TestStopStrand_UnrecordableStopRemovesNothing(t *testing.T) {
 	}
 }
 
+// TestStopStrand_RelaunchingRecordStopsAndRemovesTheHeldStrand covers the guid form over a relaunching record.
+// Its strand is held and has no pane, which a stop removes because the relaunch ended its process on purpose.
+func TestStopStrand_RelaunchingRecordStopsAndRemovesTheHeldStrand(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	fake := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Held: true}}}}}
+	fx := newFixture(t, fake, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	runDir := seedAttachRun(t, fx.RunRoot, "run-1", seedAttachRunOpts{
+		strandGUID: "strand-1", outputFiles: []string{filepath.Join(fx.RunRoot, "out.md")}, outcome: runOutcomeRunning, includeOutcome: true,
+		relaunchingAt: fx.Runner.clock.Now().Add(-time.Second).UTC().Format(time.RFC3339),
+	})
+
+	if err := fx.Runner.StopStrand("strand-1"); err != nil {
+		t.Fatalf("StopStrand() error = %v; want nil", err)
+	}
+
+	record, _, err := loadRunState(runDir)
+	if err != nil {
+		t.Fatalf("loadRunState: %v", err)
+	}
+	if record.Outcome != runOutcomeStopped {
+		t.Errorf("recorded outcome = %q; want %q", record.Outcome, runOutcomeStopped)
+	}
+	if len(fake.RemoveStrandCalls) != 1 || fake.RemoveStrandCalls[0].GUID != "strand-1" {
+		t.Errorf("RemoveStrand calls = %v; want the one removal of the held strand-1", fake.RemoveStrandCalls)
+	}
+}
+
 // TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone covers the guid form for a strand shuttle never recorded.
 func TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -222,6 +251,8 @@ func TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone(t *testing.T) {
 // a run whose strand is a dead window 0 one has its record stopped with no removal;
 // a run whose strand is untracked or has its pane binding cleared is stopped only when no live process holds its session;
 // otherwise it is listed as held and left running;
+// a relaunching run, within its bound or past it, is stopped and its held, paneless strand removed;
+// whoever holds its session does not matter;
 // a run whose output files all exist is listed as finished and keeps reading running;
 // an untied run with a removable strand is listed and left alone;
 // a run of another step and a terminal run are left alone;
@@ -241,6 +272,8 @@ func TestRunner_StopStepRuns_StopsOnlyTheStepsRuns(t *testing.T) {
 		{GUID: "guid-dead-window0", PaneID: "%7", Present: true},
 		{GUID: "guid-failing", PaneID: "%5", Live: true},
 		{GUID: "guid-cleared"},
+		{GUID: "guid-relaunching", Held: true},
+		{GUID: "guid-relaunching-past", Held: true},
 	}
 	fake := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: strands}}}
 	engine := &resumableFakeEngine{fakeEngine: &fakeEngine{}, heldSessions: map[string]int{"session-held": 4242}}
@@ -274,21 +307,32 @@ func TestRunner_StopStepRuns_StopsOnlyTheStepsRuns(t *testing.T) {
 		"cleared":      seed("run-9", RunState{StrandGUID: "guid-cleared", StrandName: "name-cleared", SessionID: "session-free", Outcome: runOutcomeRunning, Step: &tie}),
 		"held":         seed("run-91", RunState{StrandGUID: "guid-held", StrandName: "name-held", SessionID: "session-held", Outcome: runOutcomeRunning, Step: &tie}),
 		"finished":     seed("run-92", RunState{StrandGUID: "guid-finished", StrandName: "name-finished", SessionID: "session-free", OutputFiles: []string{finishedFile}, Outcome: runOutcomeRunning, Step: &tie}),
+		// Its session is one a live process holds, which a run with no relaunching mark would be left running for.
+		"relaunching": seed("run-94", RunState{
+			StrandGUID: "guid-relaunching", StrandName: "name-relaunching", SessionID: "session-held", Outcome: runOutcomeRunning, Step: &tie,
+			RelaunchingAt: fx.Runner.clock.Now().Add(-time.Second).UTC().Format(time.RFC3339),
+		}),
+		// Its mark is past its bound, which a stop treats as it does a mark within it.
+		"relaunching-past": seed("run-95", RunState{
+			StrandGUID: "guid-relaunching-past", StrandName: "name-relaunching-past", SessionID: "session-held", Outcome: runOutcomeRunning, Step: &tie,
+			RelaunchingAt: fx.Runner.clock.Now().Add(-(relaunchBound(fastConfig) + time.Minute)).UTC().Format(time.RFC3339),
+		}),
 	}
 
 	report, err := fx.Runner.StopStepRuns(tie)
 	if err != nil {
 		t.Fatalf("StopStepRuns() error = %v", err)
 	}
-	if !slices.Equal(report.Stopped, []string{"name-tied", "name-dead-own", "name-dead-window0", "name-untracked", "name-cleared"}) ||
+	if !slices.Equal(report.Stopped, []string{"name-tied", "name-dead-own", "name-dead-window0", "name-untracked", "name-cleared", "name-relaunching", "name-relaunching-past"}) ||
 		!slices.Equal(report.Held, []string{"name-held"}) || !slices.Equal(report.Finished, []string{"name-finished"}) ||
 		!slices.Equal(report.Untied, []string{"name-untied"}) || len(report.Failed) != 0 {
 		t.Errorf("report = %+v; want the unheld tied runs stopped, the held one and the finished one listed, and the untied one listed", report)
 	}
-	if len(fake.RemoveStrandCalls) != 2 || fake.RemoveStrandCalls[0].GUID != "guid-tied" || fake.RemoveStrandCalls[1].GUID != "guid-dead-own" {
-		t.Errorf("RemoveStrand calls = %v; want the removals of guid-tied and guid-dead-own", fake.RemoveStrandCalls)
+	if len(fake.RemoveStrandCalls) != 4 || fake.RemoveStrandCalls[0].GUID != "guid-tied" || fake.RemoveStrandCalls[1].GUID != "guid-dead-own" ||
+		fake.RemoveStrandCalls[2].GUID != "guid-relaunching" || fake.RemoveStrandCalls[3].GUID != "guid-relaunching-past" {
+		t.Errorf("RemoveStrand calls = %v; want the removals of guid-tied, guid-dead-own, guid-relaunching and guid-relaunching-past", fake.RemoveStrandCalls)
 	}
-	for name, wantOutcome := range map[string]string{"tied": runOutcomeStopped, "other": runOutcomeRunning, "untied": runOutcomeRunning, "terminal": "died", "dead-own": runOutcomeStopped, "dead-window0": runOutcomeStopped, "untracked": runOutcomeStopped, "cleared": runOutcomeStopped, "held": runOutcomeRunning, "finished": runOutcomeRunning} {
+	for name, wantOutcome := range map[string]string{"tied": runOutcomeStopped, "other": runOutcomeRunning, "untied": runOutcomeRunning, "terminal": "died", "dead-own": runOutcomeStopped, "dead-window0": runOutcomeStopped, "untracked": runOutcomeStopped, "cleared": runOutcomeStopped, "held": runOutcomeRunning, "finished": runOutcomeRunning, "relaunching": runOutcomeStopped, "relaunching-past": runOutcomeStopped} {
 		record, _, err := loadRunState(dirs[name])
 		if err != nil {
 			t.Fatalf("loadRunState %s: %v", name, err)
@@ -330,7 +374,7 @@ func TestRunner_StopStepRuns_StopsOnlyTheStepsRuns(t *testing.T) {
 
 // TestRunner_StopOrphanedStepRuns_StopsOnlyRunsWhoseWaiterIsGone covers the steps-directory form.
 // A running run naming any step under the steps directory is stopped when its waiting process is gone or never recorded.
-// A run whose waiter lives is left alone and unlisted.
+// A run whose waiter lives, or whose relaunching mark is within its bound, is left alone and unlisted.
 // So are a run of another steps directory, a run naming no step and a terminal run.
 // A run whose record gains a live waiter after the scan is left alone and unlisted.
 // A root with no qualifying run never probes reed.
@@ -381,6 +425,11 @@ func TestRunner_StopOrphanedStepRuns_StopsOnlyRunsWhoseWaiterIsGone(t *testing.T
 		"untied":      seed("run-5", RunState{StrandGUID: "guid-untied", StrandName: "name-untied", PID: -1, Outcome: runOutcomeRunning}),
 		"terminal":    seed("run-6", RunState{StrandGUID: "guid-terminal", StrandName: "name-terminal", PID: -1, Outcome: "died", Step: &oldTie}),
 		"attached":    seed("run-7", RunState{StrandGUID: "guid-attached", StrandName: "name-attached", PID: -1, Outcome: runOutcomeRunning, Step: &oldTie}),
+		// Its waiter is gone, but its relaunching mark is a second old, so the relaunch is still in flight.
+		"relaunching": seed("run-8", RunState{
+			StrandGUID: "guid-relaunching", StrandName: "name-relaunching", PID: deadPID, Outcome: runOutcomeRunning, Step: &oldTie,
+			RelaunchingAt: fx.Runner.clock.Now().Add(-time.Second).UTC().Format(time.RFC3339),
+		}),
 	}
 	// A process attaches to the run after the scan selected it as gone and before the stop.
 	hooked.onStatus = func() {
@@ -405,7 +454,7 @@ func TestRunner_StopOrphanedStepRuns_StopsOnlyRunsWhoseWaiterIsGone(t *testing.T
 	if len(fake.RemoveStrandCalls) != 2 || fake.RemoveStrandCalls[0].GUID != "guid-gone" || fake.RemoveStrandCalls[1].GUID != "guid-unrecorded" {
 		t.Errorf("RemoveStrand calls = %v; want the removals of guid-gone and guid-unrecorded", fake.RemoveStrandCalls)
 	}
-	for name, wantOutcome := range map[string]string{"gone": runOutcomeStopped, "unrecorded": runOutcomeStopped, "live-waiter": runOutcomeRunning, "foreign": runOutcomeRunning, "untied": runOutcomeRunning, "terminal": "died", "attached": runOutcomeRunning} {
+	for name, wantOutcome := range map[string]string{"gone": runOutcomeStopped, "unrecorded": runOutcomeStopped, "live-waiter": runOutcomeRunning, "foreign": runOutcomeRunning, "untied": runOutcomeRunning, "terminal": "died", "attached": runOutcomeRunning, "relaunching": runOutcomeRunning} {
 		record, _, err := loadRunState(dirs[name])
 		if err != nil {
 			t.Fatalf("loadRunState %s: %v", name, err)

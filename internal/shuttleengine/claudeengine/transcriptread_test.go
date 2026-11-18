@@ -7,10 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -371,6 +374,7 @@ func TestLocateSessions(t *testing.T) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv(claudeConfigDirEnv, "")
 	writeParentTranscript(t, projectDirUnder(filepath.Join(home, ".claude", "projects"), worktree), "only", []string{`{"type":"user"}`})
 	found, err := New().LocateSessions(worktree)
 	if err != nil || len(found) != 1 || found[0].ID != "only.jsonl" {
@@ -510,6 +514,166 @@ func TestLocateSessions(t *testing.T) {
 			tt.setup(t, projects, projectDir)
 			got, err := locateSessions(projects, worktree)
 			tt.check(t, projects, projectDir, got, err)
+		})
+	}
+
+	// The engine rows read the known config directories; each sets its own HOME, so they do not run in parallel.
+	const accounts = "accounts:\n  - {name: a, config_dir: ROOT/a, weight: 1}\n  - {name: old, config_dir: ROOT/old, weight: 0}\n"
+	writeSession := func(t *testing.T, configDir, id string, at time.Time) string {
+		t.Helper()
+		projectDir := projectDirUnder(filepath.Join(configDir, projectsDirName), worktree)
+		writeParentTranscript(t, projectDir, id, []string{`{}`})
+		path := filepath.Join(projectDir, id+".jsonl")
+		touch(t, path, at)
+		return path
+	}
+	sessionIDs := func(sessions []shuttleengine.LocatedSession) []string {
+		var got []string
+		for _, session := range sessions {
+			got = append(got, session.ID)
+		}
+		return got
+	}
+	engineRows := []struct {
+		name string
+		// run writes the sessions and returns the engine to ask, and the refs it wants the located sessions to have.
+		run     func(t *testing.T, root, home string) (engine *Claude, wantRefs []string)
+		wantIDs []string
+	}{
+		{
+			name: "a listed account's and a retired account's sessions are found",
+			run: func(t *testing.T, root, home string) (*Claude, []string) {
+				engine, _ := engineWithAccounts(t, strings.ReplaceAll(accounts, "ROOT", root), shuttleengine.Worktree{})
+				return engine, []string{writeSession(t, filepath.Join(root, "a"), "x", earlier), writeSession(t, filepath.Join(root, "old"), "y", earlier)}
+			},
+			wantIDs: []string{"x.jsonl", "y.jsonl"},
+		},
+		{
+			name: "a session id in two directories is returned once, as the newer copy",
+			run: func(t *testing.T, root, home string) (*Claude, []string) {
+				engine, _ := engineWithAccounts(t, strings.ReplaceAll(accounts, "ROOT", root), shuttleengine.Worktree{})
+				writeSession(t, filepath.Join(root, "a"), "x", earlier)
+				return engine, []string{writeSession(t, filepath.Join(root, "old"), "x", later)}
+			},
+			wantIDs: []string{"x.jsonl"},
+		},
+		{
+			name: "a machine layer whose accounts fail to load still reads the default directory",
+			run: func(t *testing.T, root, home string) (*Claude, []string) {
+				duplicate := "accounts:\n  - {name: a, config_dir: " + root + "/a, weight: 1}\n  - {name: a, config_dir: " + root + "/b, weight: 1}\n"
+				engine, _ := engineWithAccounts(t, duplicate, shuttleengine.Worktree{})
+				writeSession(t, filepath.Join(root, "a"), "x", earlier)
+				return engine, []string{writeSession(t, filepath.Join(home, ".claude"), "h", earlier)}
+			},
+			wantIDs: []string{"h.jsonl"},
+		},
+		{
+			name: "the env module's CLAUDE_CONFIG_DIR is a known directory",
+			run: func(t *testing.T, root, home string) (*Claude, []string) {
+				engine, board := engineWithAccounts(t, strings.ReplaceAll(accounts, "ROOT", root), shuttleengine.Worktree{})
+				writeClaudeLayer(t, configengine.ConfigFile(board, "env"), envconfig.ConfigTemplate())
+				writeClaudeLayer(t, configengine.MachineFile(board, "env"), fmt.Sprintf("vars:\n  %s: '%s'\n", claudeConfigDirEnv, filepath.Join(root, "env")))
+				return engine, []string{writeSession(t, filepath.Join(root, "env"), "e", earlier)}
+			},
+			wantIDs: []string{"e.jsonl"},
+		},
+		{
+			name: "an engine told no board directory reads the process's CLAUDE_CONFIG_DIR and ~/.claude",
+			run: func(t *testing.T, root, home string) (*Claude, []string) {
+				t.Setenv(claudeConfigDirEnv, filepath.Join(root, "process"))
+				return New(), []string{writeSession(t, filepath.Join(home, ".claude"), "h", earlier), writeSession(t, filepath.Join(root, "process"), "p", earlier)}
+			},
+			wantIDs: []string{"h.jsonl", "p.jsonl"},
+		},
+	}
+	for _, tt := range engineRows {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv(claudeConfigDirEnv, "")
+			engine, wantRefs := tt.run(t, t.TempDir(), home)
+			got, err := engine.LocateSessions(worktree)
+			if err != nil {
+				t.Fatalf("LocateSessions() error: %v", err)
+			}
+			if !reflect.DeepEqual(sessionIDs(got), tt.wantIDs) {
+				t.Fatalf("LocateSessions() ids = %q; want %q", sessionIDs(got), tt.wantIDs)
+			}
+			var gotRefs []string
+			for _, session := range got {
+				gotRefs = append(gotRefs, session.Ref)
+			}
+			slices.Sort(wantRefs)
+			if !reflect.DeepEqual(gotRefs, wantRefs) {
+				t.Errorf("LocateSessions() refs = %q; want %q", gotRefs, wantRefs)
+			}
+		})
+	}
+}
+
+// TestClaude_LiveReadersReadTheLaunchedDirectory pins which config directory the live-transcript readers read.
+// A session registered live under account A is read from A.
+// Its worktree's entry has moved to account B, which holds an older copy.
+// A session with no live entry is read under the worktree's resolution, B.
+// It sets HOME, so it does not run in parallel.
+func TestClaude_LiveReadersReadTheLaunchedDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
+	const (
+		worktree = "/hub/task"
+		// forkLaunch is a transcript line that launches a fork whose result never arrives.
+		// It gives the session one outstanding fork.
+		forkLaunch = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Agent","input":{"subagent_type":"fork","prompt":"go"}}]}}`
+	)
+	tests := []struct {
+		name string
+		live bool
+		// noResolvedCopy leaves B, the worktree's resolution, without any copy of the session.
+		noResolvedCopy bool
+		// want is the count of outstanding forks and of spawn calls the readers report; only the copy under A has the launch.
+		want int
+	}{
+		{name: "a live entry names the launched directory", live: true, want: 1},
+		{name: "no live entry reads the worktree's resolution", live: false, want: 0},
+		{name: "no live entry and no copy under the resolution reads the newest known copy", live: false, noResolvedCopy: true, want: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv(claudeConfigDirEnv, "")
+			root, accountDir := t.TempDir(), t.TempDir()
+			now := time.Unix(3_000_000, 0)
+			engine, _ := engineWithAccounts(t, "accounts:\n  - {name: a, config_dir: "+root+"/a, weight: 1}\n  - {name: b, config_dir: "+root+"/b, weight: 1}\n",
+				shuttleengine.Worktree{Name: "t", Kind: shuttleengine.WorktreeTask, AccountDir: accountDir})
+			engine.now = func() time.Time { return now }
+			entry := accountFile{Worktrees: map[string]string{"t": "b"}, Picked: map[string]time.Time{"t": now}}
+			if err := updateAccountFile(accountDir, func(accountFile) (accountFile, error) { return entry, nil }); err != nil {
+				t.Fatalf("seed the account file: %v", err)
+			}
+
+			writeParentTranscript(t, projectDirUnder(filepath.Join(root, "a", projectsDirName), worktree), resumeTestID, []string{forkLaunch})
+			if !tt.noResolvedCopy {
+				olderCopy := projectDirUnder(filepath.Join(root, "b", projectsDirName), worktree)
+				writeParentTranscript(t, olderCopy, resumeTestID, []string{`{}`})
+				if err := os.Chtimes(filepath.Join(olderCopy, resumeTestID+".jsonl"), time.Unix(1, 0), time.Unix(1, 0)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.live {
+				registry := filepath.Join(root, "a", sessionsDirName)
+				if err := os.MkdirAll(registry, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				writeRegistryEntry(t, registry, "live.json", fmt.Sprintf(`{"pid":%d,"sessionId":%q}`, os.Getpid(), resumeTestID))
+			}
+
+			forks, err := engine.OutstandingForks(resumeTestID, worktree)
+			if err != nil || len(forks) != tt.want {
+				t.Errorf("OutstandingForks() = %+v, %v; want %d outstanding forks", forks, err, tt.want)
+			}
+			audit, err := engine.AuditForks(resumeTestID, worktree)
+			if err != nil || audit.SpawnCalls != tt.want {
+				t.Errorf("AuditForks() spawn calls = %d, %v; want %d", audit.SpawnCalls, err, tt.want)
+			}
 		})
 	}
 }
