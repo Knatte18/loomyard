@@ -163,6 +163,9 @@
 // A filing the raddle store has not marked done is seen from the entry's kind or from the board.
 // Its refusal names `lym loom resume` first.
 //
+// `decision add` with `--amends-plan` or a PATTERN change is refused while the run's drift judge session is open.
+// Its refusal says to re-run the call once Drift-Verify has ended the session.
+//
 // `decision replace` writes a whole record from a file and commits it with a `Lym-Record-Replaced` trailer.
 // It holds the run's decision lock, `holdDecisionLock`, which `add`, `store` and `writeCarryOver` take too,
 // so its base check and its write are one step against every other Go writer of the record.

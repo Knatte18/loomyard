@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -72,6 +73,22 @@ func driftRecordsDeps(location *lymcwd.Location) driftengine.Deps {
 		FileAt: func(rev, relPath string) ([]byte, bool, error) {
 			return fabricengine.AnchoredFileAt(location, rev, relPath)
 		},
+	}
+}
+
+// driftJudgeSessionOpen returns the seam that reports whether location's scope record holds an open judge session.
+// A worktree with no scope record has none, and the read then creates no directory.
+func driftJudgeSessionOpen(location *lymcwd.Location) func() (bool, error) {
+	return func() (bool, error) {
+		paths := driftengine.NewPaths(location.AnchorPath())
+		if _, err := os.Stat(paths.Scope); errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		scope, found, err := driftengine.ReadScope(paths)
+		if err != nil {
+			return false, fmt.Errorf("read the drift scope record: %w", err)
+		}
+		return found && scope.JudgeSession.Open, nil
 	}
 }
 
@@ -246,6 +263,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 		},
 		JudgeSnapshotDir: filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.DriftJudgeDirName, seedSlug(location.WorktreeName)),
 		LoomRecordsDirs:  loomRecordsDirs(location, tables.runID),
+		DecisionRecord:   tables.decisionRecordPath,
 		EndRoles:         tables.endRoles,
 	}
 }

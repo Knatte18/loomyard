@@ -250,6 +250,7 @@
 // TakeJudgeSnapshot records under Deps.JudgeSnapshotDir:
 // both checkouts' HEAD;
 // a content hash of every changed tracked path and every untracked path, with a copy of each untracked file;
+// a copy of the decision record, Deps.DecisionRecord;
 // and the hash of every file of the current capture's scratch directory.
 // ReadJudgeSnapshot reads it back, found false when it is gone.
 // A new snapshot clears only the copies and replaces the record in one atomic write;
@@ -268,8 +269,16 @@
 // A hand edit or an unstamped commit of either is therefore still the judge's.
 // A moved records HEAD counts only through the paths Deps.RecordsChangedSince names since the snapshot's head.
 // Loom's own commits are therefore never read as the judge's edits.
+// The decision record is exempt when the records checkout holds it committed.
+// It must also differ from its copy only by entries added after the Discussion.
+// Every entry and carry-over block the copy held must be kept unchanged.
+// A `lym loom decision add` of plain entries the parent runs during the judge session is therefore no judge's edit.
+// Any other change to the record, and any change to a file outside it, is not exempt and is named as a change.
 // Bound: an edit the judge session makes under the exempt loom paths or the drift logs goes unseen;
 // they are lym's own run bookkeeping and hold no code, no expectation and neither record.
+// So does a committed added entry or carry-over block the judge session adds to the decision record.
+// An uncommitted append, an edit or removal of an existing entry or block,
+// and a `lym loom decision replace` during the session are still named as a change.
 //
 // # Records
 //

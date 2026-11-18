@@ -74,6 +74,12 @@ func TestParseExpectation(t *testing.T) {
 		{name: "OccurrenceBeyondBaseline", mode: DiffLines, data: "cases:\n  keyed.txt:\n    keys:\n      - {key: other, n: 2, why: a}\n", wantErr: `names occurrence 2, but the baseline holds 1`},
 		{name: "MalformedRange", mode: DiffLines, data: "cases:\n  plain.txt:\n    lines:\n      - {range: 3-1, why: a}\n", wantErr: `range "3-1"`},
 		{name: "RangeBelowOne", mode: DiffLines, data: "cases:\n  plain.txt:\n    lines:\n      - {range: 0-2, why: a}\n", wantErr: `range "0-2"`},
+		{
+			name: "RangeOverFullyKeyedBaselineCase",
+			mode: DiffLines,
+			data: "cases:\n  keyed.txt:\n    lines:\n      - {range: 1-, why: unkeyed line the change adds}\n",
+			want: Expectation{Cases: map[string]ExpectedCase{"keyed.txt": {Lines: []LineEntry{{Range: "1-", Why: "unkeyed line the change adds"}}}}},
+		},
 		{name: "EmptyWhy", mode: DiffLines, data: "cases:\n  plain.txt:\n    lines:\n      - {range: 1, why: '  '}\n", wantErr: "has an empty why"},
 		{name: "OccurrenceBelowOne", mode: DiffLines, data: "cases:\n  keyed.txt:\n    keys:\n      - {key: other, n: 0, why: a}\n", wantErr: "is below 1"},
 		{name: "CaseLevelWhyUnderLines", mode: DiffLines, data: "cases:\n  plain.txt:\n    why: whole file\n", wantErr: "case-level why"},

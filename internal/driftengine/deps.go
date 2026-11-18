@@ -61,6 +61,11 @@ type Deps struct {
 	// LoomRecordsDirs are the records paths loom itself writes during a row, relative to the records checkout's root:
 	// each a directory or, ending in `-`, a path prefix.
 	LoomRecordsDirs []string
+	// DecisionRecord is the task's decision record in the worktree.
+	// The parent may append entries to it while a judge runs.
+	// A committed change made only of such entries, with every entry and carry-over block it held kept, is no judge's edit.
+	// Empty exempts no change of it.
+	DecisionRecord string
 	// StartCapture starts the detached capture and returns once its record exists.
 	StartCapture func() error
 	// RunCapture runs the capture in the calling process and returns its final record.

@@ -97,6 +97,7 @@ const (
 	decisionWayAmendsDarn      = `way forward: record the decision without --amends-plan`
 	decisionWayNoticeTooLong   = "way forward: shorten the decision or rationale, put the detail in a file and name that file in the entry"
 	decisionWayLock            = `way forward: re-run the verb; nothing was written`
+	decisionWayJudgeOpen       = `way forward: re-run the call once Drift-Verify has ended its judge session: wait for a running judge, or run "lym loom resume" when the row is halted; or record the decision now without --amends-plan and without a PATTERN change; nothing was written`
 
 	replaceWayRebuild   = `way forward: re-read the record, rebuild the --from file from it and re-run "lym loom decision replace" with the sha256 of the record you read as --base-sha256`
 	replaceWayAdd       = `way forward: record the call with "lym loom decision add"`
@@ -350,6 +351,8 @@ type decisionDeps struct {
 	// It also reports whether the board holds every one of them as filed from the run.
 	// An absent or unparseable proposal holds no parts.
 	raddleBoardFiling func() ([]string, bool, error)
+	// judgeSessionOpen reports whether the run's drift scope record holds an open judge session.
+	judgeSessionOpen func() (bool, error)
 }
 
 // decisionNoticeError is one notice the verb could not send, reported on its success envelope.
@@ -907,6 +910,8 @@ func planApprovedReader(anchorPath string) func() (bool, error) {
 // A perch-mode raddle run standing at its RaddleFile row is refused, since no split reads a decision recorded there.
 // So is a raddle run whose filing is done.
 // The call holds the run's decision lock from its first precondition through its commit and board copy.
+// A call with --amends-plan or a PATTERN change is refused while the run's drift judge session is open.
+// The judge's check cannot tell what those forms write beside the record from the judge's own edit.
 func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionInput) int {
 	refuse := func(format string, args ...any) int {
 		return output.Err(out, fmt.Sprintf("loom: %s add: ", decisionGroup)+fmt.Sprintf(format, args...))
@@ -982,6 +987,17 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 			return refuse("read the plan: %s; %s", err, decisionWayRetry)
 		case !approved:
 			return refuse("the current generation has no approved plan to amend; %s", decisionWayAmendsNoPlan)
+		}
+	}
+
+	if input.amendsPlan || entriesChangePattern(entries) {
+		open, err := deps.judgeSessionOpen()
+		if err != nil {
+			return refuse("%s; %s", err, decisionWayRetry)
+		}
+		if open {
+			return refuse("a Drift-Verify judge session is open, and --amends-plan and a PATTERN change write beside the decision record, "+
+				"which the judge's check would read as the judge's edit; %s", decisionWayJudgeOpen)
 		}
 	}
 
@@ -1102,6 +1118,16 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		result["commit_error"] = commitErr.Error()
 	}
 	return output.Ok(out, result)
+}
+
+// entriesChangePattern reports whether any entry carries the PATTERN-change form.
+func entriesChangePattern(entries []decisionEntry) bool {
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.PatternEntry) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // raddleFilingRefusal returns the refusal text for a raddle run whose filing bars a decision call.
@@ -1557,6 +1583,7 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 			return !found || task.Kind == boardengine.KindTask, err
 		},
 		raddleBoardFiling: func() ([]string, bool, error) { return raddleBoardFiling(target) },
+		judgeSessionOpen:  driftJudgeSessionOpen(target),
 		append: func(ds []discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
 			return discussionparser.AppendDecisions(recordPath, supportLogPath, ds)
 		},

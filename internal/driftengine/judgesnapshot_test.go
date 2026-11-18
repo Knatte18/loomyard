@@ -20,6 +20,18 @@ const (
 	testFrictionPrefix = testFrictionRel + "-"
 	testReviewRel      = "_lym/loom/reviews/review-1.md"
 	testJudgementRel   = "_lym/drift/judgement.yaml"
+	testRecordRel      = "_lym/discussion/decision-record.md"
+)
+
+// Decision records the parent's decision verb and other edits leave behind.
+const (
+	testRecord      = "## Goal\n\nDo it.\n\n## Decisions\n\n## Constraints\n"
+	testRecordEntry = "## Goal\n\nDo it.\n\n## Decisions\n\n### Added after Discussion (parent, 2026-11-18): Retry\n\nDecision: retry.\n\nRationale: flaky.\n\n## Constraints\n"
+	testRecordEdit  = "## Goal\n\nDo more.\n\n## Decisions\n\n### Added after Discussion (parent, 2026-11-18): Retry\n\nDecision: retry.\n\nRationale: flaky.\n\n## Constraints\n"
+
+	testRecordRisks       = "## Goal\n\nDo it.\n\n## Decisions\n\n## Open risks\n\n<!-- lym:carry-over Plan-Review -->\n- Plan-Review, round 1: converged.\n<!-- /lym:carry-over Plan-Review -->\n\n## Constraints\n"
+	testRecordRisksEdited = "## Goal\n\nDo it.\n\n## Decisions\n\n## Open risks\n\n<!-- lym:carry-over Plan-Review -->\n- Plan-Review, round 2: converged.\n<!-- /lym:carry-over Plan-Review -->\n\n## Constraints\n"
+	testRecordRisksEntry  = "## Goal\n\nDo it.\n\n## Decisions\n\n### Added after Discussion (parent, 2026-11-18): Retry\n\nDecision: retry.\n\nRationale: flaky.\n\n## Open risks\n\n<!-- lym:carry-over Plan-Review -->\n- Plan-Review, round 1: converged.\n<!-- /lym:carry-over Plan-Review -->\n\n## Constraints\n"
 )
 
 // judgeFixture holds the fake code and records checkouts and a scratch directory.
@@ -46,6 +58,7 @@ func newJudgeFixture(t *testing.T) *judgeFixture {
 		WorktreeRoot:     f.code.Root,
 		JudgeSnapshotDir: filepath.Join(t.TempDir(), "snapshot"),
 		LoomRecordsDirs:  []string{testRunDirRel, testFrictionRel, testFrictionPrefix},
+		DecisionRecord:   filepath.Join(f.code.Root, filepath.FromSlash(testRecordRel)),
 		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
 			return f.code, f.records, nil
 		},
@@ -310,6 +323,96 @@ func TestJudgeSnapshot(t *testing.T) {
 				f.records.Head, f.records.Changed, f.recordsChanged = "records-2", nil, []string{testReviewRel}
 			},
 			nil,
+		},
+		{
+			"DecisionEntryCommittedIsNoChange",
+			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry)
+				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
+			},
+			nil,
+		},
+		{
+			"DecisionRecordEditedBesideAnEntryIsNamed",
+			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, testRecordRel, testRecordEdit)
+				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
+			},
+			[]string{"records: " + testRecordRel + " was changed"},
+		},
+		{
+			"DecisionEntryDroppedIsNamed",
+			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry) },
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, testRecordRel, testRecord)
+				f.records.Changed = []string{testRecordRel}
+			},
+			[]string{"records: " + testRecordRel + " was changed"},
+		},
+		{
+			"DecisionEntryUncommittedIsNamed",
+			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecord) },
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry)
+				f.records.Changed = []string{testRecordRel}
+			},
+			[]string{"records: " + testRecordRel + " was changed"},
+		},
+		{
+			"DecisionEntryBesideAKeptCarryOverBlockIsNoChange",
+			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecordRisks) },
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, testRecordRel, testRecordRisksEntry)
+				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
+			},
+			nil,
+		},
+		{
+			"DecisionCarryOverBlockEditedIsNamed",
+			func(t *testing.T, f *judgeFixture) { writeTestFile(t, f.records.Root, testRecordRel, testRecordRisks) },
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, testRecordRel, testRecordRisksEdited)
+				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
+			},
+			[]string{"records: " + testRecordRel + " was changed"},
+		},
+		{
+			"DecisionEntryWithNoDecisionRecordSetIsNamed",
+			func(t *testing.T, f *judgeFixture) {
+				f.deps.DecisionRecord = ""
+				writeTestFile(t, f.records.Root, testRecordRel, testRecord)
+			},
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry)
+				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
+			},
+			[]string{"records: " + testRecordRel + " was changed"},
+		},
+		{
+			"DecisionRecordAbsentAtTheSnapshotIsNamed",
+			func(*testing.T, *judgeFixture) {},
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry)
+				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
+			},
+			[]string{"records: " + testRecordRel + " was changed"},
+		},
+		{
+			"DecisionRecordCopyClearedByALaterSnapshotIsNamed",
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, testRecordRel, testRecord)
+				if _, err := TakeJudgeSnapshot(f.deps, f.scratch); err != nil {
+					t.Fatalf("first TakeJudgeSnapshot() = _, %v; want nil error", err)
+				}
+				removeTestFile(t, f.records.Root, testRecordRel)
+			},
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, testRecordRel, testRecordEntry)
+				f.records.Head, f.recordsChanged = "records-2", []string{testRecordRel}
+			},
+			[]string{"records: " + testRecordRel + " was changed"},
 		},
 		{
 			"DeletedScratchDirectoryIsLeftOut",

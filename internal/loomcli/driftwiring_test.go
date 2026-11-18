@@ -59,6 +59,24 @@ func TestLoomRecordsDirs_HoldTheUsageDirectoryUnderTheAnchor(t *testing.T) {
 	}
 }
 
+// TestDriftDeps_CarryTheDecisionRecord covers the decision record path the judge snapshot copies.
+// The run's agent tables name that path.
+//
+//testtiming:keep pins that driftDeps copies the agent tables' decision record path into Deps.DecisionRecord, which TestDriftDeps_RunWhereTheStepsDirResolves never asserts
+func TestDriftDeps_CarryTheDecisionRecord(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	location := &lymcwd.Location{HubPath: filepath.Join(t.TempDir(), "hub"), WorktreeName: "pair", AnchorRel: "."}
+	record := filepath.Join(location.HubPath, "pair", "_lym", "discussion", "decision-record.md")
+
+	deps := loomcli.DriftDepsWithDecisionRecord(location, "status.json", "status.lock", record)
+
+	if deps.DecisionRecord != record {
+		t.Errorf("DriftDeps() DecisionRecord = %q; want %q", deps.DecisionRecord, record)
+	}
+}
+
 // TestStrandRoleStopper_StopsOnlyTheToldRoles covers which strands of reed's table the seam ends.
 // It ends only a live or present own-window strand of exactly a told role.
 // It leaves alone other roles, numbered forms, dead strands and retiring ones.

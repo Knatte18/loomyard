@@ -190,6 +190,9 @@ type decisionFake struct {
 	recordWrites int
 	// writeFirstErr makes only the first record write fail; writeAllErr makes every record write fail.
 	writeFirstErr, writeAllErr error
+	// judgeOpen makes the drift judge session read as open, and judgeOpenErr makes the read fail.
+	judgeOpen    bool
+	judgeOpenErr error
 }
 
 // decisionPost is one notice the verb posted.
@@ -409,7 +412,8 @@ func (f *decisionFake) deps() decisionDeps {
 		raddleBoardFiling: func() ([]string, bool, error) {
 			return f.boardFilingParts, f.boardFilingHeld, nil
 		},
-		recordRel: "_lym/discussion/decision-record.md",
+		judgeSessionOpen: func() (bool, error) { return f.judgeOpen, f.judgeOpenErr },
+		recordRel:        "_lym/discussion/decision-record.md",
 		lockRecord: func() (func() error, error) {
 			if f.lockOverride != nil {
 				return f.lockOverride()
@@ -549,7 +553,10 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		perchAtRaddleWrite bool
 		// perchWithoutFileRow runs a perch-mode raddle state over a recipe with no RaddleFile row.
 		perchWithoutFileRow bool
+		// judgeOpen makes the run's drift judge session read as open.
+		judgeOpen bool
 	}{
+		{name: "a plain entry while a drift judge session is open", by: "parent", judgeOpen: true},
 		{name: "a raddle run outside perch mode at its Raddle-File row", by: "parent", atRaddleFile: true},
 		{name: "a perch-mode raddle run at its Raddle-Write row", by: "parent", perchAtRaddleWrite: true},
 		{name: "a perch-mode raddle state over a recipe with no Raddle-File row", by: "parent", perchWithoutFileRow: true},
@@ -579,6 +586,7 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			f.arbiterName = tc.arbiterName
 			f.samplerName = tc.samplerName
 			f.samplerErr = tc.samplerErr
+			f.judgeOpen = tc.judgeOpen
 			if tc.programNameFails {
 				f.programNameErr = errors.New("geometry boom")
 			}
@@ -973,6 +981,24 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 				f.findings = []discussionparser.Finding{{Check: "sections", Detail: "missing ## Scope"}}
 			},
 			want: []string{"discussion check flags the record", "sections: missing ## Scope", "way forward:", "the record is restored"},
+		},
+		{
+			name: "PATTERN change while a judge session is open",
+			setup: func(f *decisionFake, in *decisionInput) {
+				in.patternEntry, in.patternAction, in.patternText = "PATTERN-x", "adds", "New rule."
+				f.judgeOpen = true
+			},
+			inputRefusal: true,
+			want:         []string{"a Drift-Verify judge session is open", "PATTERN change", "way forward:", "once Drift-Verify has ended its judge session", "nothing was written"},
+		},
+		{
+			name: "judge session read failure with a PATTERN change",
+			setup: func(f *decisionFake, in *decisionInput) {
+				in.patternEntry, in.patternAction, in.patternText = "PATTERN-x", "adds", "New rule."
+				f.judgeOpenErr = errors.New("scope boom")
+			},
+			inputRefusal: true,
+			want:         []string{"scope boom", "way forward:", "nothing is appended"},
 		},
 		{
 			name:         "pattern action without an entry",
@@ -1964,6 +1990,11 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 			name:  "UnapprovedPlan_Refused",
 			setup: func(_ *testing.T, f *decisionFake) { f.planApproved = false },
 			want:  []string{"no approved plan to amend", "way forward:", "without --amends-plan", "Plan-Write and Plan-Review read the decision record"},
+		},
+		{
+			name:  "JudgeSessionOpen_Refused",
+			setup: func(_ *testing.T, f *decisionFake) { f.judgeOpen = true },
+			want:  []string{"a Drift-Verify judge session is open", "--amends-plan", "way forward:", "once Drift-Verify has ended its judge session"},
 		},
 		{
 			name:  "PlanReadError_RefusedWithRetry",

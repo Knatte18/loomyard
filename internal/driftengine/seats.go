@@ -44,6 +44,7 @@ const (
 const (
 	linesExpectationFormat = "The listing holds `mode: lines`: for each case of the baseline, each line with its identity and text.\n" +
 		"A keyed line carries its `key`, and its occurrence `n` when the key occurs more than once in the case; an unkeyed line carries `line`, its position among the case's unkeyed lines.\n" +
+		"Name a keyed line's value by a `keys` entry alone: a `lines` range counts the `line` positions of unkeyed lines, never file line numbers, and covers no keyed line.\n" +
 		"Write expected.yaml as a mapping with these keys, each optional:\n\n" +
 		"```yaml\n" +
 		"cases:\n" +

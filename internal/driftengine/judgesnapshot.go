@@ -4,6 +4,7 @@
 package driftengine
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -26,6 +28,8 @@ const (
 	judgeSnapshotFileName = "snapshot.json"
 	// judgeSnapshotUntrackedDir holds the copies of the untracked files, one subdirectory per checkout.
 	judgeSnapshotUntrackedDir = "untracked"
+	// judgeSnapshotRecordCopy is the copy of the decision record as the records checkout held it, beside the record.
+	judgeSnapshotRecordCopy = "decision-record.md"
 	// absentHash is the content hash recorded for a path that is not on disk.
 	absentHash = "absent"
 )
@@ -132,6 +136,7 @@ func judgeSnapshotLock(d Deps) string {
 // The record holds each checkout's HEAD and a content hash of every changed tracked path and every untracked path.
 // It also holds the path and hash of every file under scratchDir.
 // A copy of each untracked file lies beside the record.
+// So does a copy of the decision record Deps.DecisionRecord names when the records checkout holds it.
 // Only the copies are cleared first.
 // The earlier record stays until one atomic write replaces it,
 // so a reader never finds the snapshot gone while one is taken.
@@ -151,6 +156,10 @@ func TakeJudgeSnapshot(d Deps, scratchDir string) (JudgeSnapshot, error) {
 	if err := os.RemoveAll(copies); err != nil {
 		return JudgeSnapshot{}, fmt.Errorf("drift: clear the judge snapshot's copies %s: %w", copies, err)
 	}
+	recordCopy := filepath.Join(d.JudgeSnapshotDir, judgeSnapshotRecordCopy)
+	if err := os.Remove(recordCopy); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return JudgeSnapshot{}, fmt.Errorf("drift: clear the judge snapshot's copy of the decision record %s: %w", recordCopy, err)
+	}
 
 	snapshot := JudgeSnapshot{ScratchDir: scratchDir}
 	if snapshot.Code, err = snapshotCheckout(code, filepath.Join(copies, "code")); err != nil {
@@ -158,6 +167,17 @@ func TakeJudgeSnapshot(d Deps, scratchDir string) (JudgeSnapshot, error) {
 	}
 	if snapshot.Records, err = snapshotCheckout(records, filepath.Join(copies, "records")); err != nil {
 		return JudgeSnapshot{}, err
+	}
+	if d.DecisionRecord != "" {
+		source, err := recordsCheckoutPath(d, records.Root, d.DecisionRecord)
+		if err != nil {
+			return JudgeSnapshot{}, err
+		}
+		if _, statErr := os.Stat(source); statErr == nil {
+			if err := copyFile(source, recordCopy); err != nil {
+				return JudgeSnapshot{}, err
+			}
+		}
 	}
 	if scratchDir != "" {
 		if _, statErr := os.Stat(scratchDir); statErr == nil {
@@ -195,6 +215,9 @@ func ReadJudgeSnapshot(d Deps) (JudgeSnapshot, bool, error) {
 // every path under a loom records directory or starting with one of its prefixes, and the drift logs.
 // The scope.json and judged.json records are exempt only while both match their newest Drift-Records commit,
 // so a hand edit of either is still a change.
+// The decision record is exempt when the records checkout holds it committed.
+// It must also differ from its copy in the snapshot only by entries added after the Discussion.
+// Every entry and carry-over block the copy held must be kept unchanged.
 // A path is judged by content.
 // A path the snapshot recorded is a change only when its content now differs from the recorded content,
 // so a later commit of content that was already there is no change.
@@ -223,6 +246,10 @@ func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	appendedRecord, err := appendedDecisionRecord(d, records)
+	if err != nil {
+		return nil, err
+	}
 
 	var changes []string
 	if code.Head != s.Code.Head {
@@ -241,7 +268,7 @@ func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
 		}
 	}
 	recordsExempt := func(rel string) bool {
-		return isJudgementPath(judgementRel, rel) || isLoomRecordsPath(lymWritten, rel)
+		return isJudgementPath(judgementRel, rel) || isLoomRecordsPath(lymWritten, rel) || rel == appendedRecord
 	}
 	recordsChanges, err := checkoutChanges("records", s.Records, records, committed, recordsExempt)
 	if err != nil {
@@ -263,6 +290,57 @@ func worktreeRel(d Deps, path string) (string, error) {
 		return "", fmt.Errorf("drift: relate %s to the worktree: %w", path, err)
 	}
 	return filepath.ToSlash(rel), nil
+}
+
+// recordsCheckoutPath returns the file of the records checkout rooted at recordsRoot that path names in the worktree.
+func recordsCheckoutPath(d Deps, recordsRoot, path string) (string, error) {
+	rel, err := worktreeRel(d, path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(recordsRoot, filepath.FromSlash(rel)), nil
+}
+
+// appendedDecisionRecord returns the decision record's path relative to the worktree root, or empty.
+// It returns the path when the record is committed in the records checkout.
+// The record must also have changed since the snapshot only by entries added after the Discussion.
+// Every entry and carry-over block the snapshot's copy held must be kept unchanged.
+// It returns empty when Deps.DecisionRecord is unset, the snapshot holds no copy or the record is gone.
+// It also returns empty when the checkout lists the record as changed or untracked, which names an uncommitted write.
+// It also returns empty when the record differs in any other way.
+// Carry-over blocks the record gained are left out of the comparison, since lym settles them.
+func appendedDecisionRecord(d Deps, records fabricengine.CheckoutState) (string, error) {
+	if d.DecisionRecord == "" {
+		return "", nil
+	}
+	rel, err := worktreeRel(d, d.DecisionRecord)
+	if err != nil {
+		return "", err
+	}
+	if slices.Contains(records.Changed, rel) || slices.Contains(records.Untracked, rel) {
+		return "", nil
+	}
+	before, err := os.ReadFile(filepath.Join(d.JudgeSnapshotDir, judgeSnapshotRecordCopy))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("drift: read the judge snapshot's copy of the decision record: %w", err)
+	}
+	current := filepath.Join(records.Root, filepath.FromSlash(rel))
+	now, err := os.ReadFile(current)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("drift: read the decision record %s: %w", current, err)
+	}
+	if !bytes.Equal(discussionparser.IdentityText(before), discussionparser.IdentityText(now)) ||
+		len(discussionparser.CheckAddedEntriesSubset(now, before)) > 0 ||
+		len(discussionparser.CheckCarryOversNotLost(before, now)) > 0 {
+		return "", nil
+	}
+	return rel, nil
 }
 
 // lymWrittenRecords returns the records paths lym writes itself around a judge session.
