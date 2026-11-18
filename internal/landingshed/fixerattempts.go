@@ -10,6 +10,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // FixerAttempts records the fixer turns one row entry has spent.
@@ -70,6 +72,17 @@ func moveScratchAttempts(scratchDir, recordsDir, row string) error {
 		return err
 	}
 	return RemoveFixerAttempts(scratch)
+}
+
+// readRowAttempts reads the attempt record at path for entry, the row's current entry.
+// A record that does not decode comes back as a halting reason naming the file and how to remove it.
+func readRowAttempts(row, path string, entry int) (FixerAttempts, string, error) {
+	rec, err := ReadFixerAttempts(path, entry)
+	if err != nil {
+		logger.Warn("landingshed: fixer attempt record unreadable", "producer", row, "cause", err)
+		return FixerAttempts{}, fmt.Sprintf("%sthe fixer attempt record of %s does not decode: %s; way forward: remove %s, which grants the entry a fresh cap, then `lym loom resume`", LandingStopPrefix, row, path, path), nil
+	}
+	return rec, "", nil
 }
 
 // ReadFixerAttempts reads the record at path and returns it when it names entry.

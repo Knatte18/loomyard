@@ -8,8 +8,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
 // LandHaltPrefix opens the reason of every land halt,
@@ -29,38 +27,23 @@ type LandBlocker struct {
 
 // landCheck halts the landing of a beam while a blocker remains.
 // It backstops an open member the run's earlier re-check missed, such as one a stale board on another machine added.
-// stop is false when the landing may go on: with no LandBlockers seam, or with no blocker.
-// It is also false for a Finalize already past its parent-side merge, which finishes whatever remains under the beam.
-// Otherwise the first three values are the halt.
+// It returns nil when the landing may go on: with no LandBlockers seam, or with no blocker.
+// It also returns nil for a Finalize already past its parent-side merge, as held reports.
+// Such a Finalize finishes whatever remains under the beam.
+// Otherwise it returns the halt, whose reason opens with LandHaltPrefix.
 // Its reason names each blocker's way forward, or, when a read failed, the re-run.
-func (fz *Finalize) landCheck(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	if fz.deps.LandBlockers == nil {
-		return "", shedengine.OutputPointer{}, nil, false
-	}
-	if fz.deps.ParentHoldsTaskWork != nil {
-		held, err := fz.deps.ParentHoldsTaskWork()
-		if err != nil {
-			return fz.landHalt(ctx, fmt.Sprintf("could not read whether the parent branch already holds the beam's work: %v; %s", err, landRerun(fz.deps.Slug)))
-		}
-		if held {
-			return "", shedengine.OutputPointer{}, nil, false
-		}
+func (fz *Finalize) landCheck(ctx context.Context, held bool) *ending {
+	if fz.deps.LandBlockers == nil || held {
+		return nil
 	}
 	blockers, err := fz.deps.LandBlockers()
 	if err != nil {
-		return fz.landHalt(ctx, fmt.Sprintf("could not read what still works under the beam %s: %v; %s", fz.deps.Slug, err, landRerun(fz.deps.Slug)))
+		return halt(ctx, finalizeName, LandHaltPrefix+fmt.Sprintf("could not read what still works under the beam %s: %v; %s", fz.deps.Slug, err, landRerun(fz.deps.Slug)))
 	}
 	if len(blockers) == 0 {
-		return "", shedengine.OutputPointer{}, nil, false
+		return nil
 	}
-	return fz.landHalt(ctx, landHaltReason(fz.deps.Slug, fz.deps.ParentWorktree, blockers))
-}
-
-// landHalt returns the Stuck that halts a landing, which writes the loom halt note.
-// The reason is marked as a land check halt.
-func (fz *Finalize) landHalt(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	outcome, out, err := stuckVerdict(ctx, finalizeName, LandHaltPrefix+reason, true)
-	return outcome, out, err, true
+	return halt(ctx, finalizeName, LandHaltPrefix+landHaltReason(fz.deps.Slug, fz.deps.ParentWorktree, blockers))
 }
 
 // landRerun is the way forward of a land check that could not be judged:

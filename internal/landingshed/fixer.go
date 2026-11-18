@@ -1,4 +1,5 @@
-// fixer.go builds the merge fixer's session table, the one cold session that fixes a merge or test failure in a row.
+// fixer.go builds the merge fixer's session table, the one cold session that fixes a merge or test failure in a row,
+// and the one-seat table that every landing session's table is built on.
 // FixerTable is the pure builder that turns the row's told values into a seatengine.Table;
 // it derives no path of its own (Told-Geometry Invariant).
 
@@ -79,7 +80,7 @@ type FixerInputs struct {
 // The table's timeout is one turn's, cfg.FixerTimeoutMin;
 // the caller sets the gate and stretches the timeout over the turns it may spend.
 func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
-	required := []struct{ name, value string }{
+	if err := requireValues("FixerTable", [][2]string{
 		{"StencilsDir", in.StencilsDir},
 		{"Mode", string(in.Mode)},
 		{"DecisionRecordPath", in.DecisionRecordPath},
@@ -89,11 +90,8 @@ func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.
 		{"TaskBranch", in.TaskBranch},
 		{"ParentBranch", in.ParentBranch},
 		{"Slug", in.Slug},
-	}
-	for _, r := range required {
-		if r.value == "" {
-			return seatengine.Table{}, fmt.Errorf("landingshed: FixerTable: %s is empty", r.name)
-		}
+	}); err != nil {
+		return seatengine.Table{}, err
 	}
 	optional := []string{"plan_dir", "failure_record_path", "fix_review_path"}
 	switch in.Mode {
@@ -103,24 +101,19 @@ func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.
 	default:
 		return seatengine.Table{}, fmt.Errorf("landingshed: FixerTable: unknown Mode %q", in.Mode)
 	}
-	if _, err := stencilstore.Read(in.StencilsDir, fixerStencilName); err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: FixerTable: %w", err)
-	}
 
-	parsed, err := modelspec.Parse(cfg.Fixer)
-	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: FixerTable: fixer model-spec: %w", err)
-	}
-	resolved, err := reg.Resolve(parsed)
-	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: FixerTable: fixer model-spec: %w", err)
-	}
-
-	return seatengine.Table{
-		RolePrefix: fixerRole,
-		Segment:    segmentcolor.Landing,
-		Timeout:    time.Duration(cfg.FixerTimeoutMin) * time.Minute,
-		Values: map[string]string{
+	table, err := soloSession{
+		stencilsDir: in.StencilsDir,
+		stencil:     fixerStencilName,
+		role:        fixerRole,
+		segment:     segmentcolor.Landing,
+		configRole:  agentconfig.RoleMergeFixer,
+		modelKey:    "fixer",
+		modelSpec:   cfg.Fixer,
+		timeoutMin:  cfg.FixerTimeoutMin,
+		output:      in.ReportPath,
+		skills:      in.LanguageSkills,
+		values: map[string]string{
 			"slug":                 in.Slug,
 			"mode":                 string(in.Mode),
 			"decision_record_path": in.DecisionRecordPath,
@@ -134,13 +127,81 @@ func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.
 			"task_branch":          in.TaskBranch,
 			"parent_branch":        in.ParentBranch,
 		},
-		Optional: optional,
+		optional: optional,
+	}.table(reg)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: FixerTable: %w", err)
+	}
+	return table, nil
+}
+
+// soloSession is what a landing session with one lead seat runs.
+// It holds the stencil it renders and the values it fills, the model-spec and timeout it runs under,
+// and the one file it writes.
+type soloSession struct {
+	// stencilsDir is the absolute directory the stencil is read from.
+	stencilsDir string
+	stencil     string
+	role        string
+	segment     segmentcolor.Segment
+	configRole  agentconfig.Role
+	// modelKey names the landing.yaml key modelSpec comes from, which a model-spec error names.
+	modelKey   string
+	modelSpec  string
+	timeoutMin int
+	// output is the one file the seat writes.
+	output   string
+	skills   []string
+	values   map[string]string
+	optional []string
+}
+
+// table builds the seatengine.Table of s.
+// A stencil missing from s.stencilsDir is an error, and so is a model-spec that does not parse or resolve against reg.
+func (s soloSession) table(reg modelspec.Registry) (seatengine.Table, error) {
+	if _, err := stencilstore.Read(s.stencilsDir, s.stencil); err != nil {
+		return seatengine.Table{}, err
+	}
+	choice, err := resolveModelChoice(s.modelSpec, reg)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("%s model-spec: %w", s.modelKey, err)
+	}
+	return seatengine.Table{
+		RolePrefix: s.role,
+		Segment:    s.segment,
+		Timeout:    time.Duration(s.timeoutMin) * time.Minute,
+		Values:     s.values,
+		Optional:   s.optional,
 		Seats: []seatengine.Seat{{
-			Stencil:     fixerStencilName,
-			ModelChoice: shuttleengine.NewModelChoice(resolved),
-			Outputs:     []string{in.ReportPath},
-			ConfigRole:  agentconfig.RoleMergeFixer,
-			Skills:      in.LanguageSkills,
+			Stencil:     s.stencil,
+			ModelChoice: choice,
+			Outputs:     []string{s.output},
+			ConfigRole:  s.configRole,
+			Skills:      s.skills,
 		}},
 	}, nil
+}
+
+// resolveModelChoice parses the model-spec text spec and resolves it against reg into the choice a session runs on.
+func resolveModelChoice(spec string, reg modelspec.Registry) (shuttleengine.ModelChoice, error) {
+	parsed, err := modelspec.Parse(spec)
+	if err != nil {
+		return shuttleengine.ModelChoice{}, err
+	}
+	resolved, err := reg.Resolve(parsed)
+	if err != nil {
+		return shuttleengine.ModelChoice{}, err
+	}
+	return shuttleengine.NewModelChoice(resolved), nil
+}
+
+// requireValues returns an error naming the first of fields, each a name and its value, whose value is empty.
+// The error opens with builder, the function whose inputs the fields are.
+func requireValues(builder string, fields [][2]string) error {
+	for _, field := range fields {
+		if field[1] == "" {
+			return fmt.Errorf("landingshed: %s: %s is empty", builder, field[0])
+		}
+	}
+	return nil
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -146,15 +145,10 @@ func RenderPRReviewPrompt(deps Deps, prURL, engine string) (string, error) {
 // sessionSpec builds the spec the PR-Review session starts under for the pull request rec records.
 // The prompt is rendered for the engine the session's model choice resolves to.
 func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, error) {
-	parsed, err := modelspec.Parse(p.deps.Config.PRReviewer)
+	choice, err := resolveModelChoice(p.deps.Config.PRReviewer, p.deps.Registry)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: pr_reviewer model-spec: %w", p.name, err)
 	}
-	resolved, err := p.deps.Registry.Resolve(parsed)
-	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: pr_reviewer model-spec: %w", p.name, err)
-	}
-	choice := shuttleengine.NewModelChoice(resolved)
 	engine := p.deps.PullRequest.Sessions.EngineName(choice)
 
 	prompt, err := RenderPRReviewPrompt(p.deps, rec.URL, engine)

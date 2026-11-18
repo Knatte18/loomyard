@@ -5,12 +5,10 @@
 package landingshed
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -19,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // fixReviewStencilName is the registered name of the fix review's prompt.
@@ -58,31 +55,12 @@ type FixReviewReport struct {
 // A missing file is an error wrapping fs.ErrNotExist.
 // A first line that is no known verdict, and a rejected report with no finding, are errors naming the line and the spec.
 func ParseFixReviewReport(path string) (FixReviewReport, error) {
-	data, err := os.ReadFile(path)
+	parsed, err := parseVerdictReport(path, "fix review", fixReviewSpecName, string(FixReviewApproved), string(FixReviewRejected))
 	if err != nil {
-		return FixReviewReport{}, fmt.Errorf("landingshed: read fix review report %s: %w", path, err)
+		return FixReviewReport{}, err
 	}
-
-	lines := strings.Split(string(data), "\n")
-	first := strings.TrimSpace(lines[0])
-	verdict := FixReviewVerdict(strings.TrimPrefix(first, fixerVerdictPrefix))
-	if !strings.HasPrefix(first, fixerVerdictPrefix) || (verdict != FixReviewApproved && verdict != FixReviewRejected) {
-		return FixReviewReport{}, fmt.Errorf("landingshed: fix review report %s: line 1 %q is no known verdict; the first line is %q or %q, per %s",
-			path, first, fixerVerdictPrefix+string(FixReviewApproved), fixerVerdictPrefix+string(FixReviewRejected), fixReviewSpecName)
-	}
-
-	report := FixReviewReport{Verdict: verdict}
-	inFindings := false
-	for _, line := range lines[1:] {
-		if heading, ok := strings.CutPrefix(line, "## "); ok {
-			inFindings = strings.TrimSpace(heading) == "Findings"
-			continue
-		}
-		if bullet, ok := strings.CutPrefix(strings.TrimSpace(line), "- "); ok && inFindings {
-			report.Findings = append(report.Findings, bullet)
-		}
-	}
-	if verdict == FixReviewRejected && len(report.Findings) == 0 {
+	report := FixReviewReport{Verdict: FixReviewVerdict(parsed.verdict), Findings: bullets(parsed.sections["Findings"])}
+	if report.Verdict == FixReviewRejected && len(report.Findings) == 0 {
 		return FixReviewReport{}, fmt.Errorf("landingshed: fix review report %s: a rejected report needs at least one \"## Findings\" bullet, per %s", path, fixReviewSpecName)
 	}
 	return report, nil
@@ -119,7 +97,7 @@ type fixReviewInputs struct {
 // It runs on the merge fixer's model-spec and timeout.
 // An empty required input field is an error naming the field, and so is a stencil missing from in.StencilsDir.
 func fixReviewTable(in fixReviewInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
-	required := []struct{ name, value string }{
+	if err := requireValues("fixReviewTable", [][2]string{
 		{"StencilsDir", in.StencilsDir},
 		{"DecisionRecordPath", in.DecisionRecordPath},
 		{"Baseline", in.Baseline},
@@ -129,29 +107,21 @@ func fixReviewTable(in fixReviewInputs, cfg Config, reg modelspec.Registry) (sea
 		{"TaskBranch", in.TaskBranch},
 		{"ParentBranch", in.ParentBranch},
 		{"Slug", in.Slug},
+	}); err != nil {
+		return seatengine.Table{}, err
 	}
-	for _, r := range required {
-		if r.value == "" {
-			return seatengine.Table{}, fmt.Errorf("landingshed: fixReviewTable: %s is empty", r.name)
-		}
-	}
-	if _, err := stencilstore.Read(in.StencilsDir, fixReviewStencilName); err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: fixReviewTable: %w", err)
-	}
-	parsed, err := modelspec.Parse(cfg.Fixer)
-	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: fixReviewTable: fixer model-spec: %w", err)
-	}
-	resolved, err := reg.Resolve(parsed)
-	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: fixReviewTable: fixer model-spec: %w", err)
-	}
-
-	return seatengine.Table{
-		RolePrefix: fixReviewRole,
-		Segment:    segmentcolor.Landing,
-		Timeout:    time.Duration(cfg.FixerTimeoutMin) * time.Minute,
-		Values: map[string]string{
+	table, err := soloSession{
+		stencilsDir: in.StencilsDir,
+		stencil:     fixReviewStencilName,
+		role:        fixReviewRole,
+		segment:     segmentcolor.Landing,
+		configRole:  agentconfig.RoleFixReview,
+		modelKey:    "fixer",
+		modelSpec:   cfg.Fixer,
+		timeoutMin:  cfg.FixerTimeoutMin,
+		output:      in.ReportPath,
+		skills:      in.LanguageSkills,
+		values: map[string]string{
 			"slug":                 in.Slug,
 			"decision_record_path": in.DecisionRecordPath,
 			"fixer_report_path":    in.FixerReportPath,
@@ -162,15 +132,12 @@ func fixReviewTable(in fixReviewInputs, cfg Config, reg modelspec.Registry) (sea
 			"task_branch":          in.TaskBranch,
 			"parent_branch":        in.ParentBranch,
 		},
-		Optional: []string{"fixer_report_path"},
-		Seats: []seatengine.Seat{{
-			Stencil:     fixReviewStencilName,
-			ModelChoice: shuttleengine.NewModelChoice(resolved),
-			Outputs:     []string{in.ReportPath},
-			ConfigRole:  agentconfig.RoleFixReview,
-			Skills:      in.LanguageSkills,
-		}},
-	}, nil
+		optional: []string{"fixer_report_path"},
+	}.table(reg)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: fixReviewTable: %w", err)
+	}
+	return table, nil
 }
 
 // FixReviewSeatTable builds the seatengine.Table of the fix review session over stand-in values for a run's own inputs.
@@ -256,11 +223,7 @@ func runFixReview(deps Deps, gate verifyGate, row, baseline, head, capReason str
 	}}}
 
 	result, runErr := deps.FixerSeats.Run(table)
-	if (runErr != nil && errors.Is(runErr, shuttleengine.ErrNotStarted)) || (runErr == nil && result.Chair.NotStarted) {
-		cause := runErr
-		if cause == nil {
-			cause = errors.New(result.Chair.StartError)
-		}
+	if cause := startFailure(result, runErr); cause != nil {
 		return fixReviewOutcome{}, shedengine.MarkTransient(shedengine.TransientAgentStart, fmt.Errorf("landingshed: %s: the fix review session did not start: %w", row, cause))
 	}
 	if runErr != nil {

@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -77,16 +79,16 @@ func (p *PRReview) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 	if err := p.checkWiring(); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	outcome, pointer, ended, err := p.settleSendBack(ctx)
-	if !ended && err == nil {
-		outcome, pointer, err = p.decide(ctx)
-		var halt *sessionStartHalt
-		if errors.As(err, &halt) {
-			outcome, pointer, err = stuckVerdict(ctx, p.name, halt.haltReason(), true)
+	end := p.settleSendBack(ctx)
+	if end == nil {
+		end = p.decide(ctx)
+		var startHalt *sessionStartHalt
+		if errors.As(end.err, &startHalt) {
+			end = halt(ctx, p.name, startHalt.haltReason())
 		}
 	}
-	p.endSession(ctx, err)
-	return outcome, pointer, err
+	p.endSession(ctx, end.err)
+	return end.result()
 }
 
 // settleSendBack handles the record's send-back mark at the start of a call.
@@ -100,19 +102,19 @@ func (p *PRReview) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 // It also covers the resume after a dirty-tree halt or a reroute-cap halt.
 // The file must match, not only the outcome.
 // Otherwise a crash after a later send-back takes an earlier send-back's reroute for its own.
-// It reports whether it ended the call with the returned verdict.
-func (p *PRReview) settleSendBack(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+// It returns nil when the row runs as on any entry, and otherwise how the call ends.
+func (p *PRReview) settleSendBack(ctx context.Context) *ending {
 	pr := p.deps.PullRequest
 	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
 	if err != nil {
-		return "", shedengine.OutputPointer{}, true, fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)}
 	}
 	if !found || rec.SendBack == "" {
-		return "", shedengine.OutputPointer{}, false, nil
+		return nil
 	}
 	status, err := pr.ShedStatus()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, true, fmt.Errorf("landingshed: %s: read the run's status: %w", p.name, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: read the run's status: %w", p.name, err)}
 	}
 	if !p.reroutePersisted(status.History, rec.SendBack) {
 		return p.sendBack(ctx, rec)
@@ -121,7 +123,10 @@ func (p *PRReview) settleSendBack(ctx context.Context) (shedengine.Outcome, shed
 		r.SendBack, r.FixHereCount, r.CountedSets, r.ParentReviewAsked = "", 0, nil, false
 		r.StrandGUID, r.StrandName, r.SessionID, r.Engine = "", "", "", ""
 	})
-	return "", shedengine.OutputPointer{}, err != nil, err
+	if err != nil {
+		return &ending{err: err}
+	}
+	return nil
 }
 
 // reroutePersisted reports whether the row's newest own entry in history is a reroute whose output is file.
@@ -134,124 +139,86 @@ func (p *PRReview) reroutePersisted(history []shedengine.HistoryEntry, file stri
 	return false
 }
 
-// sendBack ends the call with the send-back the record's mark names, and always reports that it ended the call.
+// sendBack ends the call with the send-back the record's mark names.
 // It stops the live session, then reads the tree again, since the agent may have changed it after the verb answered.
 // On a clean tree it returns Stuck with Reroute set and the mark's file as the output, and clears nothing:
 // shed persists the reroute entry with that file, and the row's next call clears the mark.
 // On a dirty tree it halts for the parent, and the resumed row meets the mark on a clean tree and reroutes.
-func (p *PRReview) sendBack(ctx context.Context, rec pullrequest.Record) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+func (p *PRReview) sendBack(ctx context.Context, rec pullrequest.Record) *ending {
 	if _, err := p.stopLiveSession(rec); err != nil {
-		return "", shedengine.OutputPointer{}, true, err
+		return &ending{err: err}
 	}
 	_, dirty, err := p.readTree()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, true, err
+		return &ending{err: err}
 	}
 	if len(dirty) > 0 {
-		reason := fmt.Sprintf("pull request #%d has findings sent back to Code-Review, but the task worktree has uncommitted changes: %s; way forward: commit or discard them in the task worktree, then run lym loom resume", rec.Number, listShown(dirty))
-		outcome, pointer, err := stuckVerdict(ctx, p.name, reason, true)
-		return outcome, pointer, true, err
+		return halt(ctx, p.name, fmt.Sprintf("pull request #%d has findings sent back to Code-Review, but the task worktree has uncommitted changes: %s; way forward: commit or discard them in the task worktree, then run lym loom resume", rec.Number, listShown(dirty)))
 	}
-	reason := fmt.Sprintf("pull request #%d has findings sent back to Code-Review; they are in %s", rec.Number, rec.SendBack)
-	outcome, pointer, err := stuckVerdict(ctx, p.name, reason, false)
-	if err == nil {
-		pointer.Reroute, pointer.Path = true, rec.SendBack
+	end := stuck(ctx, p.name, fmt.Sprintf("pull request #%d has findings sent back to Code-Review; they are in %s", rec.Number, rec.SendBack))
+	if end.err == nil {
+		end.out.Reroute, end.out.Path = true, rec.SendBack
 	}
-	return outcome, pointer, true, err
+	return end
 }
 
 // decide resolves whether the landing goes through a pull request and runs the row's side of the answer.
-func (p *PRReview) decide(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *PRReview) decide(ctx context.Context) *ending {
 	pr := p.deps.PullRequest
 
 	mode, worktree, err := pr.ParentMode()
 	if err != nil {
-		return stuckVerdict(ctx, p.name, beamModeUnreadableReason(worktree, err), true)
+		return halt(ctx, p.name, beamModeUnreadableReason(worktree, err))
 	}
 	field, err := pr.EntryField()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the landing entry's pull_request: %w", p.name, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: read the landing entry's pull_request: %w", p.name, err)}
 	}
 	origin, err := pr.Origin()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the origin: %w", p.name, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: read the origin: %w", p.name, err)}
 	}
 	hasCommits, err := pr.TaskHasCommits()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read whether the task branch has commits beyond its parent: %w", p.name, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: read whether the task branch has commits beyond its parent: %w", p.name, err)}
 	}
 
 	_, recordFound, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)}
 	}
 	decision, err := resolveWithParentRule(ctx, p.name, p.deps, mode, field, NotABeam, origin, hasCommits, recordFound)
 	if err != nil {
-		return "", shedengine.OutputPointer{}, err
+		return &ending{err: err}
 	}
 	if decision.Halt != "" {
-		return stuckVerdict(ctx, p.name, decision.Halt, true)
+		return halt(ctx, p.name, decision.Halt)
 	}
 	if !decision.Open {
 		return p.closeRecordedPullRequest(ctx, origin, decision.Reason)
 	}
 	if decision.MergeAtOnce {
 		logger.Info("landingshed: the parent merges its pull request at once, so Finalize opens and merges it with no review", "row", p.name, "reason", decision.Reason)
-		return shedengine.Done, shedengine.OutputPointer{}, nil
+		return done()
 	}
 	return p.openPullRequest(ctx, origin)
 }
 
-// checkWiring returns an error naming the first value the row needs that Deps leaves unset.
+// optionalPullRequestSeams names the PullRequestDeps fields the row runs without.
+var optionalPullRequestSeams = []string{"ParentReviewWanted", "AskParent", "BeamRecord", "DropBeamRecord"}
+
+// checkWiring returns an error naming the first value the row needs that Deps leaves unset:
+// a PullRequestDeps field that optionalPullRequestSeams does not name, or TaskHead.
 func (p *PRReview) checkWiring() error {
-	pr := p.deps.PullRequest
-	var missing string
-	switch {
-	case pr.RecordPath == "":
-		missing = "PullRequest.RecordPath"
-	case pr.RecordLockPath == "":
-		missing = "PullRequest.RecordLockPath"
-	case pr.ParentMode == nil:
-		missing = "PullRequest.ParentMode"
-	case pr.EntryField == nil:
-		missing = "PullRequest.EntryField"
-	case pr.Origin == nil:
-		missing = "PullRequest.Origin"
-	case pr.API == nil:
-		missing = "PullRequest.API"
-	case pr.PushTask == nil:
-		missing = "PullRequest.PushTask"
-	case pr.CommitsMissing == nil:
-		missing = "PullRequest.CommitsMissing"
-	case pr.TaskHasCommits == nil:
-		missing = "PullRequest.TaskHasCommits"
-	case pr.DirtyPaths == nil:
-		missing = "PullRequest.DirtyPaths"
-	case pr.MailAgent == nil:
-		missing = "PullRequest.MailAgent"
-	case pr.PauseCovered == nil:
-		missing = "PullRequest.PauseCovered"
-	case pr.Now == nil:
-		missing = "PullRequest.Now"
-	case pr.Sleep == nil:
-		missing = "PullRequest.Sleep"
-	case pr.RecordChanges == nil:
-		missing = "PullRequest.RecordChanges"
-	case pr.Sessions == nil:
-		missing = "PullRequest.Sessions"
-	case pr.SessionLive == nil:
-		missing = "PullRequest.SessionLive"
-	case pr.RegisterSession == nil:
-		missing = "PullRequest.RegisterSession"
-	case pr.CommitRecord == nil:
-		missing = "PullRequest.CommitRecord"
-	case pr.ShedStatus == nil:
-		missing = "PullRequest.ShedStatus"
-	case p.deps.TaskHead == nil:
-		missing = "TaskHead"
+	seams := reflect.ValueOf(p.deps.PullRequest)
+	for i := range seams.NumField() {
+		name := seams.Type().Field(i).Name
+		if seams.Field(i).IsZero() && !slices.Contains(optionalPullRequestSeams, name) {
+			return fmt.Errorf("landingshed: %s: Deps.PullRequest.%s is not set", p.name, name)
+		}
 	}
-	if missing != "" {
-		return fmt.Errorf("landingshed: %s: Deps.%s is not set", p.name, missing)
+	if p.deps.TaskHead == nil {
+		return fmt.Errorf("landingshed: %s: Deps.TaskHead is not set", p.name)
 	}
 	return nil
 }
@@ -259,43 +226,30 @@ func (p *PRReview) checkWiring() error {
 // closeRecordedPullRequest ends the run's pull request when the landing does not go through one.
 // It logs reason and closes a recorded pull request GitHub reports open.
 // It then stops the recorded session, drops the record, and returns Done.
-func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, reason string) *ending {
 	logger.Info("landingshed: no pull request for this landing", "row", p.name, "reason", reason)
 	pr := p.deps.PullRequest
 
 	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)}
 	}
 	if !found {
-		return shedengine.Done, shedengine.OutputPointer{}, nil
+		return done()
 	}
 
-	api, err := pr.API(origin.URL)
-	if err != nil {
-		return p.githubFailure(ctx, "open the GitHub client", err)
-	}
-	status, err := api.Status(ctx, rec.Number)
-	if err != nil {
-		return p.githubFailure(ctx, "read the pull request's status", err)
-	}
-	if status.State == pullrequest.StateOpen {
-		if err := api.Close(ctx, rec.Number, "lym closed this pull request: "+reason); err != nil {
-			return p.githubFailure(ctx, "close the pull request", err)
-		}
+	if action, err := closeIfOpen(ctx, pr, origin.URL, rec.Number, reason); err != nil {
+		return p.githubFailure(ctx, action, err)
 	}
 	// The session is found through the record, so it is stopped before the record goes,
 	// and a failed stop keeps the record for the re-step to retry.
 	if _, err := p.stopLiveSession(rec); err != nil {
-		return "", shedengine.OutputPointer{}, err
+		return &ending{err: err}
 	}
-	if err := pullrequest.RemoveRecord(pr.RecordPath, pr.RecordLockPath); err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
+	if err := removePRRecord(pr, p.name); err != nil {
+		return &ending{err: err}
 	}
-	if err := p.commitRecord(); err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	return shedengine.Done, shedengine.OutputPointer{}, nil
+	return done()
 }
 
 // openPullRequest pushes the task branch, then finds or opens the run's pull request.
@@ -303,26 +257,23 @@ func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, 
 // It sets the body from the description's body, the regression check and the credit block.
 // It records the pull request and waits on it.
 // A pause that covers the run holds the call before the push.
-func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 	pr := p.deps.PullRequest
 	if err := p.holdWhileCovered(ctx); err != nil {
-		return "", shedengine.OutputPointer{}, err
+		return &ending{err: err}
 	}
 
-	if err := pr.PushTask(); err != nil {
-		if terr := transientFailure(ctx, p.name, "push the task branch", err); terr != nil {
-			return "", shedengine.OutputPointer{}, terr
-		}
-		return p.pushHalt(ctx, err)
+	if end := pushTask(ctx, p.deps, p.name, ""); end != nil {
+		return end
 	}
 
 	head, err := p.deps.TaskHead()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the task head: %w", p.name, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: read the task head: %w", p.name, err)}
 	}
 	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)}
 	}
 	api, err := pr.API(origin.URL)
 	if err != nil {
@@ -334,18 +285,15 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 		if head == rec.GatedHead {
 			return p.wait(ctx, api, rec, nil, time.Time{}, prText{})
 		}
-		if err := pullrequest.RemoveRecord(pr.RecordPath, pr.RecordLockPath); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
-		}
-		if err := p.commitRecord(); err != nil {
-			return "", shedengine.OutputPointer{}, err
+		if err := removePRRecord(pr, p.name); err != nil {
+			return &ending{err: err}
 		}
 		found = false
 	}
 
 	text, err := p.pullRequestText()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: %w", p.name, err)}
 	}
 
 	// A recorded pull request that GitHub reports as not open is left as it is, for the wait to judge.
@@ -371,24 +319,16 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 			// The session is for the agent to clean the tree under a continue flag.
 			if status.State != pullrequest.StateMerged {
 				if rec, err = p.ensureSession(ctx, rec); err != nil {
-					return "", shedengine.OutputPointer{}, err
+					return &ending{err: err}
 				}
 			}
 			return p.wait(ctx, api, rec, entryStatus, entryReadAt, prText{})
 		}
 		ref = pullrequest.Ref{Number: rec.Number, URL: rec.URL}
 	} else {
-		existing, open, err := api.FindOpen(ctx, p.deps.TaskBranch, p.deps.ParentBranch)
-		if err != nil {
-			return p.githubFailure(ctx, "look for an open pull request", err)
-		}
-		ref = existing
-		if !open {
-			ref, err = api.Create(ctx, p.deps.TaskBranch, p.deps.ParentBranch, text.title, text.body)
-			if err != nil {
-				return p.githubFailure(ctx, "open the pull request", err)
-			}
-			editTitleAndBody = false
+		var action string
+		if ref, editTitleAndBody, action, err = findOrOpenPullRequest(ctx, api, p.deps.TaskBranch, p.deps.ParentBranch, text); err != nil {
+			return p.githubFailure(ctx, action, err)
 		}
 	}
 	if editTitleAndBody {
@@ -397,14 +337,14 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 		}
 	}
 	if err := p.recordPullRequest(ref, head, found); err != nil {
-		return "", shedengine.OutputPointer{}, err
+		return &ending{err: err}
 	}
 	rec, found, err = pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
 	if err != nil || !found {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read back the pull request record (found %v): %w", p.name, found, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: read back the pull request record (found %v): %w", p.name, found, err)}
 	}
 	if rec, err = p.ensureSession(ctx, rec); err != nil {
-		return "", shedengine.OutputPointer{}, err
+		return &ending{err: err}
 	}
 	p.askParentReview(rec)
 	return p.wait(ctx, api, rec, entryStatus, entryReadAt, text)
@@ -467,15 +407,11 @@ func (p *PRReview) pullRequestText() (prText, error) {
 	if err != nil {
 		return prText{}, fmt.Errorf("read the change description: %w", err)
 	}
-	credit, err := p.deps.creditBlock()
+	credit, err := p.deps.completeSummary(summary)
 	if err != nil {
 		return prText{}, err
 	}
-	verdict, err := p.deps.driftVerdict()
-	if err != nil {
-		return prText{}, err
-	}
-	return prText{title: summary.Title, body: bodyWithCredit(withSection(summary.Body, verdict), credit)}, nil
+	return prText{title: summary.Title, body: bodyWithCredit(summary.Body, credit)}, nil
 }
 
 // syncText sets the pull request's title and body again when the change description yields other text than the last set,
@@ -484,36 +420,31 @@ func (p *PRReview) pullRequestText() (prText, error) {
 // A text that cannot be built is logged once per episode and left for a later poll, since the agent may be mid-edit.
 // A transient failure of the edit is logged once per episode of failed edits and left for a later poll;
 // any other failed edit ends the call with a verdict.
-// It reports whether it ended the call.
-func (p *PRReview) syncText(ctx context.Context, api pullrequest.API, state *prWaitState, number int) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+// It returns nil when the wait goes on.
+func (p *PRReview) syncText(ctx context.Context, api pullrequest.API, state *prWaitState, number int) *ending {
 	text, err := p.pullRequestText()
 	if err != nil {
 		if !state.textWarned {
 			logger.Warn("landingshed: no pull request text could be built, so the pull request keeps its title and body", "row", p.name, "cause", err)
 			state.textWarned = true
 		}
-		return "", shedengine.OutputPointer{}, false, nil
+		return nil
 	}
 	state.textWarned = false
 	switch {
 	case state.synced == prText{}:
 		state.synced = text
-		return "", shedengine.OutputPointer{}, false, nil
+		return nil
 	case text == state.synced:
 		state.editWarned = false
-		return "", shedengine.OutputPointer{}, false, nil
+		return nil
 	}
 	if err := api.Edit(ctx, number, text.title, text.body); err != nil {
 		return p.pollFailure(ctx, &state.editWarned, "set the pull request's title and body", err)
 	}
 	state.synced = text
 	state.editWarned = false
-	return "", shedengine.OutputPointer{}, false, nil
-}
-
-// pushHalt is the Stuck verdict of a push that failed for a reason other than a transient one.
-func (p *PRReview) pushHalt(ctx context.Context, err error) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	return stuckVerdict(ctx, p.name, pushHaltReason(p.deps.WorktreeRoot, err), true)
+	return nil
 }
 
 // recordPullRequest writes ref into the run's record and commits the record.
@@ -544,7 +475,7 @@ func (p *PRReview) recordPullRequest(ref pullrequest.Ref, head string, hadRecord
 	if err != nil {
 		return fmt.Errorf("landingshed: %s: record the pull request: %w", p.name, err)
 	}
-	return p.commitRecord()
+	return commitPRRecord(p.deps.PullRequest, p.name)
 }
 
 // nextPRWait returns the wait that follows current.
@@ -632,7 +563,7 @@ type prWaitState struct {
 // entryStatus and entryReadAt are the status read before the wait and its time, nil and zero when none was read.
 // synced is the title and body set before the wait, zero when none was set.
 // A cancelled context is an error.
-func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time, synced prText) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time, synced prText) *ending {
 	label := fmt.Sprintf("PR #%d", rec.Number)
 	p.gate.markWait(label)
 	defer p.gate.markWait("")
@@ -641,15 +572,11 @@ func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullreques
 
 	state := prWaitState{continueSeen: rec.Continue, pending: entryStatus, lastPoll: entryReadAt, synced: synced}
 	for {
-		outcome, pointer, ended, err := p.wake(ctx, api, &state, label)
-		if err != nil || ended {
-			return outcome, pointer, err
+		if end := p.wake(ctx, api, &state, label); end != nil {
+			return end
 		}
 		if err := p.pause(ctx, state.interval, state.wokeAt, changes); err != nil {
-			if cerr := cancelErr(ctx, p.name); cerr != nil {
-				return "", shedengine.OutputPointer{}, cerr
-			}
-			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: sleep between wakes: %w", p.name, err)
+			return fail(ctx, p.name, fmt.Errorf("landingshed: %s: sleep between wakes: %w", p.name, err))
 		}
 	}
 }
@@ -678,29 +605,26 @@ func (p *PRReview) pause(ctx context.Context, interval time.Duration, wokeAt tim
 
 // wake runs one wake of the review:
 // it reads the task head and the pull request record, gates the head when one is due, and judges the review.
-// It reports whether the wake ended the call with the returned verdict.
-func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitState, label string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+// It returns nil when the wait goes on, and otherwise how the call ends.
+func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitState, label string) *ending {
 	pr := p.deps.PullRequest
-	end := func(outcome shedengine.Outcome, pointer shedengine.OutputPointer, err error) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
-		return outcome, pointer, true, err
-	}
 	state.wokeAt = pr.Now()
 	if err := cancelErr(ctx, p.name); err != nil {
-		return end("", shedengine.OutputPointer{}, err)
+		return &ending{err: err}
 	}
 	if err := p.holdWhileCovered(ctx); err != nil {
-		return end("", shedengine.OutputPointer{}, err)
+		return &ending{err: err}
 	}
 
 	head, dirty, err := p.readTree()
 	if err != nil {
-		return end("", shedengine.OutputPointer{}, err)
+		return &ending{err: err}
 	}
 	moved := state.head != "" && head != state.head
 	state.head = head
 	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
 	if err != nil || !found {
-		return end("", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the pull request record (found %v): %w", p.name, found, err))
+		return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record (found %v): %w", p.name, found, err)}
 	}
 	if rec.SendBack != "" {
 		return p.sendBack(ctx, rec)
@@ -709,29 +633,28 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	// The status is read before the gate, and forced when a gate is due,
 	// so a pull request merged at a head the row never gated is not gated, pushed and recorded as if it had been.
 	gateDue := len(dirty) == 0 && head != rec.GatedHead && head != rec.MailedHead
-	status, polled, outcome, pointer, ended, err := p.pollStatus(ctx, api, state, rec, gateDue)
-	if err != nil || ended {
-		return outcome, pointer, ended, err
+	status, polled, end := p.pollStatus(ctx, api, state, rec, gateDue)
+	if end != nil {
+		return end
 	}
 
 	if gateDue && polled && status.State != pullrequest.StateMerged {
-		outcome, pointer, ended, err := p.gateHead(ctx, head, rec, label)
-		if err != nil || ended {
-			return outcome, pointer, ended, err
+		if end := p.gateHead(ctx, head, rec, label); end != nil {
+			return end
 		}
 		moved = true
 		if rec, found, err = pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath); err != nil || !found {
-			return end("", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the pull request record (found %v): %w", p.name, found, err))
+			return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record (found %v): %w", p.name, found, err)}
 		}
 	}
 	state.continueSeen = rec.Continue
 	state.interval = nextPRWait(state.interval, moved)
 	if !polled {
-		return "", shedengine.OutputPointer{}, false, nil
+		return nil
 	}
 	if status.State == pullrequest.StateOpen && !rec.ReviewEnded && !rec.Continue {
-		if outcome, pointer, ended, err := p.syncText(ctx, api, state, rec.Number); err != nil || ended {
-			return outcome, pointer, ended, err
+		if end := p.syncText(ctx, api, state, rec.Number); end != nil {
+			return end
 		}
 	}
 
@@ -741,20 +664,20 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	stopped := false
 	if sessionStopWanted(status, rec, head, dirty) {
 		if stopped, err = p.stopLiveSession(rec); err != nil {
-			return end("", shedengine.OutputPointer{}, err)
+			return &ending{err: err}
 		}
 		head, dirty, err = p.readTree()
 		if err != nil {
-			return end("", shedengine.OutputPointer{}, err)
+			return &ending{err: err}
 		}
 	}
-	outcome, pointer, ended, err = p.judge(ctx, status, rec, head, dirty)
-	if err == nil && !ended && stopped {
+	end = p.judge(ctx, status, rec, head, dirty)
+	if end == nil && stopped {
 		if err = p.resumeSession(ctx); err != nil {
-			return end("", shedengine.OutputPointer{}, err)
+			return &ending{err: err}
 		}
 	}
-	return outcome, pointer, ended, err
+	return end
 }
 
 // sessionStopWanted reports whether the read of status against rec may end the review or act on the operator's ending,
@@ -799,48 +722,42 @@ const gateRetryHint = "; when the failure lies outside the change, such as a fil
 // A runner crash judges no code, so it halts the row naming the crash and mails nothing;
 // the resume gates the head again.
 // A head moved or a tree dirtied during the gate discards the verdict.
-// It reports whether it ended the call.
-func (p *PRReview) gateHead(ctx context.Context, head string, rec pullrequest.Record, label string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
-	pr := p.deps.PullRequest
+// It returns nil when the wait goes on.
+func (p *PRReview) gateHead(ctx context.Context, head string, rec pullrequest.Record, label string) *ending {
 	reason, crashed, err := p.gate.checkHead(ctx, p.name)
 	p.gate.markWait(label)
 	if err != nil {
-		return "", shedengine.OutputPointer{}, true, err
+		return &ending{err: err}
 	}
 	after, dirty, err := p.readTree()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, true, err
+		return &ending{err: err}
 	}
 	if after != head || len(dirty) > 0 {
-		return "", shedengine.OutputPointer{}, false, nil
+		return nil
 	}
 
 	if crashed {
-		outcome, pointer, serr := stuckVerdict(ctx, p.name, reason, true)
-		return outcome, pointer, true, serr
+		return halt(ctx, p.name, reason)
 	}
 	if reason == "" {
-		if err := pr.PushTask(); err != nil {
-			if terr := transientFailure(ctx, p.name, "push the task branch", err); terr != nil {
-				return "", shedengine.OutputPointer{}, true, terr
-			}
-			outcome, pointer, perr := p.pushHalt(ctx, err)
-			return outcome, pointer, true, perr
+		if end := pushTask(ctx, p.deps, p.name, ""); end != nil {
+			return end
 		}
 		if err := p.updateRecord(func(r *pullrequest.Record) { r.GatedHead = head }); err != nil {
-			return "", shedengine.OutputPointer{}, true, err
+			return &ending{err: err}
 		}
-		return "", shedengine.OutputPointer{}, false, nil
+		return nil
 	}
 
 	if rec.MailedHead == head {
-		return "", shedengine.OutputPointer{}, false, nil
+		return nil
 	}
 	p.mailFailure(rec.StrandName, reason+gateRetryHint)
 	if err := p.updateRecord(func(r *pullrequest.Record) { r.MailedHead = head }); err != nil {
-		return "", shedengine.OutputPointer{}, true, err
+		return &ending{err: err}
 	}
-	return "", shedengine.OutputPointer{}, false, nil
+	return nil
 }
 
 // mailFailure posts reason to the PR-Review session's strand, or logs it when no session is recorded.
@@ -866,15 +783,7 @@ func (p *PRReview) updateRecord(mutate func(rec *pullrequest.Record)) error {
 	if err != nil {
 		return fmt.Errorf("landingshed: %s: update the pull request record: %w", p.name, err)
 	}
-	return p.commitRecord()
-}
-
-// commitRecord commits and pushes the pull request record's last change through the told seam.
-func (p *PRReview) commitRecord() error {
-	if err := p.deps.PullRequest.CommitRecord(); err != nil {
-		return fmt.Errorf("landingshed: %s: commit the pull request record: %w", p.name, err)
-	}
-	return nil
+	return commitPRRecord(p.deps.PullRequest, p.name)
 }
 
 // pollStatus returns the pull request's status for this wake when one is due, and reports whether it did.
@@ -883,59 +792,52 @@ func (p *PRReview) commitRecord() error {
 // A forced poll is also due whenever no fresh entry status is at hand.
 // A failed poll is judged as a GitHub failure, unless it is transient:
 // it logs one Warn per episode and leaves the wake without a status.
-func (p *PRReview) pollStatus(ctx context.Context, api pullrequest.API, state *prWaitState, rec pullrequest.Record, force bool) (pullrequest.Status, bool, shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+// A non-nil ending ends the call at once.
+func (p *PRReview) pollStatus(ctx context.Context, api pullrequest.API, state *prWaitState, rec pullrequest.Record, force bool) (pullrequest.Status, bool, *ending) {
 	now := p.deps.PullRequest.Now()
 	due := state.lastPoll.IsZero() || now.Sub(state.lastPoll) >= prPollInterval
 	pending := state.pending
 	state.pending = nil
 	switch {
 	case pending != nil && !due:
-		return *pending, true, "", shedengine.OutputPointer{}, false, nil
+		return *pending, true, nil
 	case !due && !force && !(rec.Continue && !state.continueSeen):
-		return pullrequest.Status{}, false, "", shedengine.OutputPointer{}, false, nil
+		return pullrequest.Status{}, false, nil
 	}
 
 	state.lastPoll = now
 	status, err := api.Status(ctx, rec.Number)
 	if err != nil {
-		outcome, pointer, ended, ferr := p.pollFailure(ctx, &state.transientWarned, "read the pull request's status", err)
-		return pullrequest.Status{}, false, outcome, pointer, ended, ferr
+		return pullrequest.Status{}, false, p.pollFailure(ctx, &state.transientWarned, "read the pull request's status", err)
 	}
 	state.transientWarned = false
-	return status, true, "", shedengine.OutputPointer{}, false, nil
+	return status, true, nil
 }
 
 // pollFailure judges a failed GitHub call of the wait named by action.
 // A transient failure that is not a token failure logs one Warn per episode, tracked in warned, and lets the wait go on.
 // Any other failure, token failures included, ends the call with the outcome of judging it as a GitHub failure.
-// It reports whether it ended the call.
-func (p *PRReview) pollFailure(ctx context.Context, warned *bool, action string, err error) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+// It returns nil when the wait goes on.
+func (p *PRReview) pollFailure(ctx context.Context, warned *bool, action string, err error) *ending {
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
-		return "", shedengine.OutputPointer{}, true, cerr
+		return &ending{err: cerr}
 	}
 	if !tokenFailure(err) && shedtransient.Class(err) != "" {
 		if !*warned {
 			logger.Warn("landingshed: a GitHub call failed transiently, the wait goes on", "row", p.name, "action", action, "cause", err)
 			*warned = true
 		}
-		return "", shedengine.OutputPointer{}, false, nil
+		return nil
 	}
-	outcome, pointer, gerr := p.githubFailure(ctx, action, err)
-	return outcome, pointer, true, gerr
+	return p.githubFailure(ctx, action, err)
 }
 
-// judge reads the pull request's status against the record and the task worktree, and reports whether it ends the call.
+// judge reads the pull request's status against the record and the task worktree.
+// It returns nil while the review goes on, and otherwise how the call ends.
 // A merged pull request takes the merged verdicts whatever the continue flag says, since nothing is left to merge.
 // The operator's ending leaves the pull request as GitHub has it, for Finalize to merge on GitHub.
 // Ending the review therefore never lands the run by a direct push to the parent.
-func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
-	done := func() (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
-		return shedengine.Done, shedengine.OutputPointer{}, true, nil
-	}
-	stuck := func(reason string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
-		outcome, pointer, err := stuckVerdict(ctx, p.name, reason, true)
-		return outcome, pointer, true, err
-	}
+func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) *ending {
 	clean := len(dirty) == 0
 	gated := head == rec.GatedHead
 
@@ -943,15 +845,15 @@ func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pul
 	case pullrequest.StateMerged:
 		missing, err := p.deps.PullRequest.CommitsMissing(status.HeadSHA, head)
 		if err != nil {
-			return "", shedengine.OutputPointer{}, true, fmt.Errorf("landingshed: %s: list the task commits the merged pull request lacks: %w", p.name, err)
+			return &ending{err: fmt.Errorf("landingshed: %s: list the task commits the merged pull request lacks: %w", p.name, err)}
 		}
 		switch {
 		case len(missing) > 0:
-			return stuck(fmt.Sprintf("pull request #%d was merged on GitHub without these task commits: %s; way forward: file them as a board note, then run lym batten cancel %s, then lym board set-status %s done, since the pull request's work is on the parent and the cancel leaves the entry cleared", rec.Number, listShown(missing), p.deps.Slug, p.deps.Slug))
+			return halt(ctx, p.name, fmt.Sprintf("pull request #%d was merged on GitHub without these task commits: %s; way forward: file them as a board note, then run lym batten cancel %s, then lym board set-status %s done, since the pull request's work is on the parent and the cancel leaves the entry cleared", rec.Number, listShown(missing), p.deps.Slug, p.deps.Slug))
 		case status.HeadSHA != rec.GatedHead:
-			return stuck(fmt.Sprintf("pull request #%d was merged on GitHub at %s, but the head this row gated is %s; way forward: run lym loom goto Finalize, which fast-forwards the local parent to the merge under the lock and lands through the already-landed path, marking the task done, then run the gate over the parent branch in its worktree and file a board note for any fix it needs", rec.Number, status.HeadSHA, rec.GatedHead))
+			return halt(ctx, p.name, fmt.Sprintf("pull request #%d was merged on GitHub at %s, but the head this row gated is %s; way forward: run lym loom goto Finalize, which fast-forwards the local parent to the merge under the lock and lands through the already-landed path, marking the task done, then run the gate over the parent branch in its worktree and file a board note for any fix it needs", rec.Number, status.HeadSHA, rec.GatedHead))
 		case !clean:
-			return stuck(p.dirtyEndReason(rec.Number, dirty))
+			return halt(ctx, p.name, p.dirtyEndReason(rec.Number, dirty))
 		}
 		return done()
 
@@ -960,24 +862,24 @@ func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pul
 		case rec.ReviewEnded && clean:
 			return done()
 		case rec.ReviewEnded:
-			return stuck(p.dirtyEndReason(rec.Number, dirty))
+			return halt(ctx, p.name, p.dirtyEndReason(rec.Number, dirty))
 		case rec.Continue && clean && gated:
 			return p.endReview(rec)
 		case rec.Continue:
-			return "", shedengine.OutputPointer{}, false, nil
+			return nil
 		}
-		return stuck(fmt.Sprintf("pull request #%d was closed on GitHub without being merged; way forward: reopen it on GitHub and run lym loom resume, or run lym batten cancel %s", rec.Number, p.deps.Slug))
+		return halt(ctx, p.name, fmt.Sprintf("pull request #%d was closed on GitHub without being merged; way forward: reopen it on GitHub and run lym loom resume, or run lym batten cancel %s", rec.Number, p.deps.Slug))
 
 	case pullrequest.StateOpen:
 		if rec.ReviewEnded {
 			if clean {
 				return done()
 			}
-			return stuck(p.dirtyEndReason(rec.Number, dirty))
+			return halt(ctx, p.name, p.dirtyEndReason(rec.Number, dirty))
 		}
 		if rec.Continue {
 			if !clean || !gated {
-				return "", shedengine.OutputPointer{}, false, nil
+				return nil
 			}
 			return p.endReview(rec)
 		}
@@ -985,17 +887,17 @@ func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pul
 			return done()
 		}
 	}
-	return "", shedengine.OutputPointer{}, false, nil
+	return nil
 }
 
 // endReview records the operator's ending in the record, unless rec already carries it, and ends the call Done.
-func (p *PRReview) endReview(rec pullrequest.Record) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+func (p *PRReview) endReview(rec pullrequest.Record) *ending {
 	if !rec.ReviewEnded {
 		if err := p.updateRecord(func(r *pullrequest.Record) { r.ReviewEnded = true }); err != nil {
-			return "", shedengine.OutputPointer{}, true, err
+			return &ending{err: err}
 		}
 	}
-	return shedengine.Done, shedengine.OutputPointer{}, true, nil
+	return done()
 }
 
 // dirtyEndReason is the Stuck reason for a review that ended with uncommitted changes in the task worktree.
@@ -1003,14 +905,9 @@ func (p *PRReview) dirtyEndReason(number int, dirty []string) string {
 	return fmt.Sprintf("pull request #%d ended the review, but the task worktree has uncommitted changes: %s; way forward: discard them in the task worktree, after filing any worth keeping as a board note, then run lym loom resume", number, listShown(dirty))
 }
 
-// githubFailure judges a failed GitHub call named by action.
-// A token failure is Stuck with Halt: the HTTP client wraps it in a type the transient classifier reads as transient.
-// Otherwise a transient failure is an error the driver re-steps, and any other failure is Stuck with Halt.
-func (p *PRReview) githubFailure(ctx context.Context, action string, err error) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if !tokenFailure(err) {
-		if terr := transientFailure(ctx, p.name, action, err); terr != nil {
-			return "", shedengine.OutputPointer{}, terr
-		}
-	}
-	return stuckVerdict(ctx, p.name, githubHaltReason(action, err), true)
+// githubFailure judges the row's failed GitHub call named by action.
+// A token failure and any other failure that is not transient are Stuck with Halt,
+// and a transient one is an error the driver re-steps.
+func (p *PRReview) githubFailure(ctx context.Context, action string, err error) *ending {
+	return githubFailure(ctx, p.name, "", action, err)
 }

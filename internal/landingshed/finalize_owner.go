@@ -22,15 +22,13 @@ const OwnerHaltPrefix = "owner check: "
 const ownerRerun = `re-run "lym loom resume" in the task worktree`
 
 // ownerChecks halts a landing on a machine that does not own the run and its parent.
-// stop is false when the landing may go on.
+// It returns nil when the landing may go on.
 // A run whose pair has no batten run record reads as owned here, since the reconcile judges only recorded pairs,
 // but its parent's owner is still read.
-// Otherwise the first three values are what the check returns at once.
 //
-// A parent already holding the task's work marks a Finalize past its parent-side merge.
-// It is judged by the reconcile's ended and stopped verdicts only.
+// held reports that the parent already holds the task's work, which marks a Finalize past its parent-side merge.
+// Such a Finalize is judged by the reconcile's ended and stopped verdicts only.
 // Neither the owner checks nor the unreachable halt keeps it from finishing.
-// An error reading that mark halts, so a doubt never skips the checks.
 // Otherwise the run-scope reconcile runs.
 // An error is returned, an unreachable origin halts, and an ended or stopped entry stops as the reconcile's verdict.
 // The run's owner is the owner of its `owned_elsewhere` entry,
@@ -38,30 +36,24 @@ const ownerRerun = `re-run "lym loom resume" in the task worktree`
 // A run another machine owns is handed over through Deps.HandOver, when it is wired, and halts naming the new owner.
 // Otherwise it halts through ownerHaltReason, as does a parent another machine owns.
 // A failed read of the parent's owner halts too.
-func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	if fz.deps.ParentHoldsTaskWork != nil {
-		held, err := fz.deps.ParentHoldsTaskWork()
-		if err != nil {
-			return fz.ownerHalt(ctx, fmt.Sprintf("could not read whether the parent branch already holds the task's work: %v; %s", err, ownerRerun))
-		}
-		if held {
-			// The work already reached the parent while the batten record still reads before Land;
-			// a follow-up naming the cancel would release a landed entry.
-			return reconcileVerdict(ctx, finalizeName, fz.deps.Reconcile, nil)
-		}
+func (fz *Finalize) ownerChecks(ctx context.Context, held bool) *ending {
+	if held {
+		// The work already reached the parent while the batten record still reads before Land;
+		// a follow-up naming the cancel would release a landed entry.
+		return reconcileVerdict(ctx, finalizeName, fz.deps.Reconcile, nil)
 	}
 
 	var report fabricengine.OriginReport
 	if fz.deps.Reconcile != nil {
 		var err error
 		if report, err = reconcileReport(ctx, finalizeName, fz.deps.Reconcile); err != nil {
-			return "", shedengine.OutputPointer{}, err, true
+			return &ending{err: err}
 		}
 		if report.Unreachable {
-			return fz.ownerHalt(ctx, fmt.Sprintf("origin was unreachable, so who owns this run could not be judged; %s once origin answers", ownerRerun))
+			return halt(ctx, finalizeName, OwnerHaltPrefix+fmt.Sprintf("origin was unreachable, so who owns this run could not be judged; %s once origin answers", ownerRerun))
 		}
-		if outcome, out, err, stop := reportVerdict(ctx, finalizeName, report, fz.deps.RemoveFollowUp); stop {
-			return outcome, out, err, true
+		if end := reportVerdict(ctx, finalizeName, report, fz.deps.RemoveFollowUp); end != nil {
+			return end
 		}
 	}
 
@@ -78,24 +70,21 @@ func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, sheden
 		if subject == "" {
 			subject = fz.deps.Slug
 		}
-		if err := fz.runHandOver(runOwner, subject); err != nil {
-			return "", shedengine.OutputPointer{}, err, true
-		}
-		return fz.handedOverHalt(ctx, fz.handedOver)
+		return fz.handOver(ctx, runOwner, subject)
 	}
 
 	parent := ParentOwnership{Here: true}
 	if fz.deps.ParentOwner != nil {
 		var err error
 		if parent, err = fz.deps.ParentOwner(); err != nil {
-			return fz.ownerHalt(ctx, fmt.Sprintf("could not read who owns the parent: %v; %s", err, ownerRerun))
+			return halt(ctx, finalizeName, OwnerHaltPrefix+fmt.Sprintf("could not read who owns the parent: %v; %s", err, ownerRerun))
 		}
 	}
 
 	if runOwner == "" && parent.Here {
-		return "", shedengine.OutputPointer{}, nil, false
+		return nil
 	}
-	return fz.ownerHalt(ctx, ownerHaltReason(fz.deps.Slug, fz.adoptSubject(), runOwner, parent))
+	return halt(ctx, finalizeName, OwnerHaltPrefix+ownerHaltReason(fz.deps.Slug, fz.adoptSubject(), runOwner, parent))
 }
 
 // adoptSubject reads what `lym adopt` takes to move the run.
@@ -112,63 +101,39 @@ func (fz *Finalize) adoptSubject() string {
 	return subject
 }
 
-// ownerHalt returns the Stuck that halts a landing, which writes the loom halt note.
-// The reason is marked as an owner check halt.
-func (fz *Finalize) ownerHalt(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	outcome, out, err := stuckVerdict(ctx, finalizeName, OwnerHaltPrefix+reason, true)
-	return outcome, out, err, true
-}
-
-// runHandOver hands the run over to owner through Deps.HandOver and keeps the hand-over's own error for the halt.
-// It returns an error only when the hand-over failed.
-func (fz *Finalize) runHandOver(owner, subject string) error {
+// handOver hands the run over to owner through Deps.HandOver, under a takeover entry naming owner and subject.
+// It returns the halt that ends the landing; a failed hand-over is an error.
+func (fz *Finalize) handOver(ctx context.Context, owner, subject string) *ending {
 	err := fz.deps.HandOver(owner, subject)
 	if !errors.Is(err, fabricengine.ErrHandedOver) {
-		return fmt.Errorf("landingshed: %s: hand the run over to machine %q: %w", finalizeName, owner, err)
+		return &ending{err: fmt.Errorf("landingshed: %s: hand the run over to machine %q: %w", finalizeName, owner, err)}
 	}
-	fz.handedOver = err
-	return nil
+	return fz.handedOverHalt(ctx, err)
 }
 
-// handOverIfOwnedElsewhere reads whether another machine owns the run now and, when one does, hands the run over.
-// It reports whether it did.
+// handedOverStop reads whether another machine owns the run now and, when one does, hands the run over and halts.
+// It returns nil when the landing may go on.
 // An unreadable owner is returned as a transient failure, so the driver re-steps the landing once origin answers,
 // and the Finalize never goes on with the owner unread.
 // Nothing is read under Deps.PushSkipped, which has no origin to read it from.
-func (fz *Finalize) handOverIfOwnedElsewhere() (handedOver bool, err error) {
+func (fz *Finalize) handedOverStop(ctx context.Context) *ending {
 	if fz.deps.OwnedElsewhere == nil || fz.deps.PushSkipped {
-		return false, nil
+		return nil
 	}
 	owner, subject, elsewhere, err := fz.deps.OwnedElsewhere()
 	if err != nil {
-		return false, shedengine.MarkTransient(shedengine.TransientGitTransport,
-			fmt.Errorf("landingshed: %s: read who owns the run: %w; the landing's re-step reads it again once origin answers", finalizeName, err))
+		return &ending{err: shedengine.MarkTransient(shedengine.TransientGitTransport,
+			fmt.Errorf("landingshed: %s: read who owns the run: %w; the landing's re-step reads it again once origin answers", finalizeName, err))}
 	}
 	if !elsewhere {
-		return false, nil
+		return nil
 	}
-	if err := fz.runHandOver(owner, subject); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// handedOverStop hands the run over when another machine owns it now, and returns the halt that ends the landing then.
-// stop is false when the landing may go on.
-func (fz *Finalize) handedOverStop(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	handedOver, err := fz.handOverIfOwnedElsewhere()
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err, true
-	}
-	if !handedOver {
-		return "", shedengine.OutputPointer{}, nil, false
-	}
-	return fz.handedOverHalt(ctx, fz.handedOver)
+	return fz.handOver(ctx, owner, subject)
 }
 
 // handedOverHalt returns the Stuck that halts a landing whose run was handed over, naming the hand-over's error.
-func (fz *Finalize) handedOverHalt(ctx context.Context, handedOver error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	return fz.ownerHalt(ctx, fmt.Sprintf("%v; the landing finishes on that machine, and nothing more is merged or pushed here", handedOver))
+func (fz *Finalize) handedOverHalt(ctx context.Context, handedOver error) *ending {
+	return halt(ctx, finalizeName, OwnerHaltPrefix+fmt.Sprintf("%v; the landing finishes on that machine, and nothing more is merged or pushed here", handedOver))
 }
 
 // ownerHaltReason words the reason of an owner halt for the run slug.

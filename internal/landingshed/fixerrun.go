@@ -146,11 +146,7 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 	if session.err != nil {
 		return fixerOutcome{}, session.rec, session.err
 	}
-	if (runErr != nil && errors.Is(runErr, shuttleengine.ErrNotStarted)) || (runErr == nil && result.Chair.NotStarted) {
-		cause := runErr
-		if cause == nil {
-			cause = errors.New(result.Chair.StartError)
-		}
+	if cause := startFailure(result, runErr); cause != nil {
 		if err := WriteFixerAttempts(attemptsPath, original); err != nil {
 			return fixerOutcome{}, session.rec, err
 		}
@@ -202,6 +198,17 @@ func archiveStaleReport(reportPath string, now time.Time, row, what string) erro
 	archived := strings.TrimSuffix(reportPath, ".md") + "-" + stamp + ".md"
 	if err := os.Rename(reportPath, archived); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("landingshed: %s: archive the stale %s report: %w", row, what, err)
+	}
+	return nil
+}
+
+// startFailure returns why a seat run's chair session did not start, or nil when it started.
+func startFailure(result seatengine.Result, runErr error) error {
+	switch {
+	case runErr != nil && errors.Is(runErr, shuttleengine.ErrNotStarted):
+		return runErr
+	case runErr == nil && result.Chair.NotStarted:
+		return errors.New(result.Chair.StartError)
 	}
 	return nil
 }

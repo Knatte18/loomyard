@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -590,6 +591,21 @@ func TestPRReview_Call(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "Deps."+field) {
 				t.Errorf("Call() with %s unset = %v; want an error naming Deps.%s", field, err, field)
 			}
+		}
+	})
+
+	t.Run("OptionalSeamsLeftUnsetRunTheRow", func(t *testing.T) {
+		t.Parallel()
+		for _, name := range []string{"ParentReviewWanted", "AskParent", "BeamRecord", "DropBeamRecord"} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}}, nil)
+				reflect.ValueOf(&fx.deps.PullRequest).Elem().FieldByName(name).SetZero()
+
+				if _, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background()); err != nil {
+					t.Errorf("Call() with %s unset error = %v; want none", name, err)
+				}
+			})
 		}
 	})
 

@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -19,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
@@ -117,7 +115,7 @@ func runRecordBullets(in DescribeInputs) (string, error) {
 // The table carries no gate; the caller that wires the producer sets it.
 // The `Segment` is the describe segment, because the session writes the pull request description.
 func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
-	required := []struct{ name, value string }{
+	if err := requireValues("DescribeTable", [][2]string{
 		{"StencilsDir", in.StencilsDir},
 		{"DecisionRecordPath", in.DecisionRecordPath},
 		{"DescriptionPath", in.DescriptionPath},
@@ -125,16 +123,9 @@ func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seate
 		{"ParentBranch", in.ParentBranch},
 		{"MergeBase", in.MergeBase},
 		{"Slug", in.Slug},
+	}); err != nil {
+		return seatengine.Table{}, err
 	}
-	for _, r := range required {
-		if r.value == "" {
-			return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %s is empty", r.name)
-		}
-	}
-	if _, err := stencilstore.Read(in.StencilsDir, describeStencilName); err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
-	}
-
 	runRecords, err := runRecordBullets(in)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
@@ -144,45 +135,29 @@ func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seate
 	if verdict == "" {
 		verdict = noDriftVerdict
 	}
-	table, err := describeSessionTable(describeStencilName, in.DescriptionPath, map[string]string{
-		"drift_verdict":        verdict,
-		"slug":                 in.Slug,
-		"decision_record_path": in.DecisionRecordPath,
-		"run_record_paths":     runRecords,
-		"description_path":     in.DescriptionPath,
-		"task_branch":          in.TaskBranch,
-		"parent_branch":        in.ParentBranch,
-		"merge_base":           in.MergeBase,
-	}, cfg, reg)
+	table, err := soloSession{
+		stencilsDir: in.StencilsDir,
+		stencil:     describeStencilName,
+		role:        describeRole,
+		segment:     segmentcolor.Describe,
+		configRole:  agentconfig.RoleDescriber,
+		modelKey:    "describe",
+		modelSpec:   cfg.Describe,
+		timeoutMin:  cfg.DescribeTimeoutMin,
+		output:      in.DescriptionPath,
+		values: map[string]string{
+			"drift_verdict":        verdict,
+			"slug":                 in.Slug,
+			"decision_record_path": in.DecisionRecordPath,
+			"run_record_paths":     runRecords,
+			"description_path":     in.DescriptionPath,
+			"task_branch":          in.TaskBranch,
+			"parent_branch":        in.ParentBranch,
+			"merge_base":           in.MergeBase,
+		},
+	}.table(reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
 	}
-
 	return table, nil
-}
-
-// describeSessionTable builds a Describe session's table from the stencil registered as stencilName, with markers as the table's values.
-// The one lead seat writes descriptionPath, its one output file, under cfg's describe model and timeout.
-func describeSessionTable(stencilName, descriptionPath string, markers map[string]string, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
-	parsed, err := modelspec.Parse(cfg.Describe)
-	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("describe model-spec: %w", err)
-	}
-	resolved, err := reg.Resolve(parsed)
-	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("describe model-spec: %w", err)
-	}
-
-	return seatengine.Table{
-		RolePrefix: describeRole,
-		Segment:    segmentcolor.Describe,
-		Timeout:    time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
-		Values:     markers,
-		Seats: []seatengine.Seat{{
-			Stencil:     stencilName,
-			ModelChoice: shuttleengine.NewModelChoice(resolved),
-			Outputs:     []string{descriptionPath},
-			ConfigRole:  agentconfig.RoleDescriber,
-		}},
-	}, nil
 }

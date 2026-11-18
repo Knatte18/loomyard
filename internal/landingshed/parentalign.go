@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -27,19 +26,36 @@ const parentAlignName = "Parent-Align"
 // A run parked on that row still holds the name in its status file and attempt record.
 const retiredMergeInName = "Merge-In"
 
-// parentPuller is the narrow seam over the parent pair's fast-forward.
-type parentPuller interface {
-	// FastForwardPair moves the parent pair to its upstream as a fast-forward only.
-	FastForwardPair(opts fabricengine.SyncOptions) (fabricengine.FastForwardResult, error)
+// mergeBefore is what a landing row reads before it merges the parent into the task, which the merge record carries.
+type mergeBefore struct {
+	// taskBase is the parent tip last merged into the task, empty when no merge-base read is wired.
+	taskBase string
+	// taskHead is the task head before the merge.
+	taskHead string
+	// earlier is the merge record the last merge wrote, zero when none is readable.
+	// An absent aligned tip in it reads as the task's fork point from the parent.
+	earlier MergeRecord
 }
 
-var _ parentPuller = (*fabricengine.Fabric)(nil)
-
-// mergeBefore is what Parent-Align reads before the merge, which the merge record carries.
-type mergeBefore struct {
-	taskBase   string
-	taskHead   string
-	alignedTip string
+// readMergeBefore reads, for producer, the task's head and merge base and the merge record the last merge wrote.
+// An unreadable earlier record is logged and read as absent, so a damaged record cannot block every later merge.
+func readMergeBefore(deps Deps, producer string) (mergeBefore, error) {
+	var before mergeBefore
+	var err error
+	if before.taskHead, err = deps.TaskHead(); err != nil {
+		return before, fmt.Errorf("landingshed: %s: read the task head: %w", producer, err)
+	}
+	if deps.MergeBase != nil {
+		if before.taskBase, err = deps.MergeBase(deps.ParentBranch); err != nil {
+			return before, fmt.Errorf("landingshed: %s: find the parent tip last merged into the task: %w", producer, err)
+		}
+	}
+	if earlier, found, err := ReadMergeRecord(deps.MergeRecordPath); err != nil {
+		logger.Warn("landingshed: earlier merge record unreadable, reading it as absent", "producer", producer, "cause", err)
+	} else if found {
+		before.earlier = earlier
+	}
+	return before, nil
 }
 
 // ParentAlign is the ShedProducer that merges the parent branch's tip into the task worktree and records the merge.
@@ -90,32 +106,14 @@ func NewParentAlign(deps Deps) (*ParentAlign, error) {
 		return nil, fmt.Errorf("landingshed: NewParentAlign: Deps.MergeRecordPath must not be empty")
 	}
 
-	fabricHandle, err := deps.OpenFabric()
+	res, err := newResolver(deps, "NewParentAlign")
 	if err != nil {
-		return nil, fmt.Errorf("landingshed: NewParentAlign: open pair: %w", err)
+		return nil, err
 	}
-	res, err := mergeresolve.New(mergeresolve.Deps{
-		Fabric:         fabricHandle,
-		Shuttle:        deps.Shuttle,
-		WorktreeRoot:   deps.WorktreeRoot,
-		ScratchDir:     deps.ScratchDir,
-		StencilsDir:    deps.StencilsDir,
-		ParentName:     deps.ParentName,
-		LanguageSkills: deps.LanguageSkills,
-		ConflictSpec:   deps.Config.Conflict,
-		Registry:       deps.Registry,
-		Timeout:        time.Duration(deps.Config.ConflictTimeoutMin) * time.Minute,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("landingshed: NewParentAlign: build resolver: %w", err)
-	}
-
-	gate := newVerifyGate(deps)
-	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, traceFailure: deps.TraceFailure, head: deps.TaskHead}
 	return &ParentAlign{
 		deps:     deps,
 		resolver: res,
-		gate:     gate,
+		gate:     newLandingGate(deps),
 		premerge: newPreMerge(deps),
 		guard:    newParentGuard(deps),
 	}, nil
@@ -149,22 +147,19 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	}
 
 	// The run-scope reconcile judges and never moves the parent.
-	if outcome, out, err, stop := reconcileVerdict(ctx, parentAlignName, m.deps.Reconcile, m.deps.RemoveFollowUp); stop {
-		return outcome, out, err
+	if end := reconcileVerdict(ctx, parentAlignName, m.deps.Reconcile, m.deps.RemoveFollowUp); end != nil {
+		return end.result()
 	}
 
 	tip, lockReason, err := m.mergeTip(ctx)
 	if err != nil {
-		if cerr := cancelErr(ctx, parentAlignName); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		return "", shedengine.OutputPointer{}, err
+		return fail(ctx, parentAlignName, err).result()
 	}
 	if lockReason != "" {
-		return stuckVerdict(ctx, parentAlignName, lockReason, true)
+		return halt(ctx, parentAlignName, lockReason).result()
 	}
 
-	if err := m.readBefore(); err != nil {
+	if m.before, err = readMergeBefore(m.deps, parentAlignName); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 	attemptsReason, err := m.readAttempts()
@@ -172,27 +167,24 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		return "", shedengine.OutputPointer{}, err
 	}
 	if attemptsReason != "" {
-		return stuckVerdict(ctx, parentAlignName, attemptsReason, true)
+		return halt(ctx, parentAlignName, attemptsReason).result()
 	}
 
 	reason, err := m.premerge.clear(parentAlignName, m.deps.ParentBranch)
-	if outcome, out, err, stop := gateStop(ctx, parentAlignName, reason, err); stop {
-		return outcome, out, err
+	if end := gateEnding(ctx, parentAlignName, reason, err); end != nil {
+		return end.result()
 	}
 	reason, err = m.gate.clean(parentAlignName, "before the merge-in")
-	if outcome, out, err, stop := gateStop(ctx, parentAlignName, reason, err); stop {
-		return outcome, out, err
+	if end := gateEnding(ctx, parentAlignName, reason, err); end != nil {
+		return end.result()
 	}
 
 	merge, err := m.resolver.Resolve(ctx, m.deps.ParentBranch, tip)
 	if err != nil {
-		if cerr := cancelErr(ctx, parentAlignName); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: merge-in against parent branch %q: %w", parentAlignName, m.deps.ParentBranch, err)
+		return fail(ctx, parentAlignName, fmt.Errorf("landingshed: %s: merge-in against parent branch %q: %w", parentAlignName, m.deps.ParentBranch, err)).result()
 	}
 	if merge.Outcome == mergeresolve.OutcomeStuck {
-		return stuckVerdict(ctx, parentAlignName, merge.Reason, false)
+		return stuck(ctx, parentAlignName, merge.Reason).result()
 	}
 	mergeCommit := ""
 	if !merge.AlreadyUpToDate {
@@ -205,25 +197,25 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	// The verify runs on committed content,
 	// and a verify that dirties the tree is a non-hermetic test that halts rather than ships.
 	reason, err = m.gate.clean(parentAlignName, "after the merge-in")
-	if outcome, out, err, stop := gateStop(ctx, parentAlignName, reason, err); stop {
-		return outcome, out, err
+	if end := gateEnding(ctx, parentAlignName, reason, err); end != nil {
+		return end.result()
 	}
 	gateReason, crashed, err := m.gate.check(ctx, parentAlignName, m.deps.ParentBranch)
-	if outcome, out, err, stop := gateStop(ctx, parentAlignName, "", err); stop {
-		return outcome, out, err
+	if err != nil {
+		return fail(ctx, parentAlignName, err).result()
 	}
 	if crashed {
-		return stuckVerdict(ctx, parentAlignName, gateReason, true)
+		return halt(ctx, parentAlignName, gateReason).result()
 	}
 	if gateReason == "" {
 		reason, err = m.gate.clean(parentAlignName, "after the verify")
-		if outcome, out, err, stop := gateStop(ctx, parentAlignName, reason, err); stop {
-			return outcome, out, err
+		if end := gateEnding(ctx, parentAlignName, reason, err); end != nil {
+			return end.result()
 		}
 	}
 
-	if outcome, out, err, stop := m.align(ctx, tip, mergeCommit, gateReason); stop {
-		return outcome, out, err
+	if end := m.align(ctx, tip, mergeCommit, gateReason); end != nil {
+		return end.result()
 	}
 	m.gate.clearFailure()
 
@@ -273,32 +265,6 @@ func (m *ParentAlign) mergeTip(ctx context.Context) (string, string, error) {
 	return tips.Local, "", nil
 }
 
-// readBefore reads what the merge record carries from before the merge:
-// the task head, the parent tip last merged into the task, and the aligned tip of the earlier merge record.
-// An absent aligned tip stays empty, which reads as the task's fork point from the parent.
-// An unreadable earlier record is logged and read as an empty aligned tip.
-// A damaged record therefore cannot block every later merge.
-func (m *ParentAlign) readBefore() error {
-	head, err := m.deps.TaskHead()
-	if err != nil {
-		return fmt.Errorf("landingshed: %s: read the task head: %w", parentAlignName, err)
-	}
-	base, err := m.deps.MergeBase(m.deps.ParentBranch)
-	if err != nil {
-		return fmt.Errorf("landingshed: %s: find the parent tip last merged into the task: %w", parentAlignName, err)
-	}
-
-	aligned := ""
-	if earlier, found, err := ReadMergeRecord(m.deps.MergeRecordPath); err != nil {
-		logger.Warn("landingshed: earlier merge record unreadable, falling back", "producer", parentAlignName, "cause", err)
-	} else if found {
-		aligned = earlier.AlignedTip
-	}
-
-	m.before = mergeBefore{taskBase: base, taskHead: head, alignedTip: aligned}
-	return nil
-}
-
 // removeAttempts removes the row's fixer attempt record and the one stored under the retired row name `Merge-In`.
 func (m *ParentAlign) removeAttempts() error {
 	for _, row := range []string{parentAlignName, retiredMergeInName} {
@@ -334,12 +300,11 @@ func (m *ParentAlign) readAttempts() (string, error) {
 			path = retired
 		}
 	}
-	rec, err := ReadFixerAttempts(path, entry)
-	if err != nil {
-		logger.Warn("landingshed: fixer attempt record unreadable", "producer", parentAlignName, "cause", err)
-		return fmt.Sprintf("%sthe fixer attempt record of %s does not decode: %s; way forward: remove %s, which grants the entry a fresh cap, then `lym loom resume`", LandingStopPrefix, parentAlignName, path, path), nil
+	rec, reason, err := readRowAttempts(parentAlignName, path, entry)
+	if err != nil || reason != "" {
+		return reason, err
 	}
-	if m.before.alignedTip == "" && rec.AlignFrom == "" {
+	if m.before.earlier.AlignedTip == "" && rec.AlignFrom == "" {
 		rec.AlignFrom = m.before.taskBase
 		if err := WriteFixerAttempts(ownPath, rec); err != nil {
 			return "", err
@@ -356,14 +321,14 @@ func (m *ParentAlign) readAttempts() (string, error) {
 // Parent commits brought in, or a failing gate, run the merge fixer on the attempts the entry has left.
 // A passing gate on a resume after an over-cap halt reads the operator's work as the alignment and spawns nothing.
 // An entry with no attempts left spawns no fixer.
-// stop is false when Parent-Align may proceed to record the merge and advance the aligned tip;
-// when stop is true, the other results go back to the caller as they are.
-func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateReason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+// It returns nil when Parent-Align may proceed to record the merge and advance the aligned tip.
+// Otherwise it returns how the call ends.
+func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateReason string) *ending {
 	attemptsPath := FixerAttemptsPath(m.deps.RecordsDir, parentAlignName)
 	rec := m.attempts
 	passed := gateReason == ""
 	capacity := m.deps.Config.ParentAlignFixAttempts
-	alignFrom := m.before.alignedTip
+	alignFrom := m.before.earlier.AlignedTip
 	if alignFrom == "" {
 		alignFrom = rec.AlignFrom
 	}
@@ -372,11 +337,11 @@ func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateRe
 	if overCapResume {
 		head, err := m.deps.TaskHead()
 		if err != nil {
-			return m.alignError(ctx, fmt.Errorf("landingshed: %s: read the task head: %w", parentAlignName, err))
+			return fail(ctx, parentAlignName, fmt.Errorf("landingshed: %s: read the task head: %w", parentAlignName, err))
 		}
 		rec.Baseline, rec.Halt = head, ""
 		if err := WriteFixerAttempts(attemptsPath, rec); err != nil {
-			return m.alignError(ctx, err)
+			return fail(ctx, parentAlignName, err)
 		}
 		m.attempts = rec
 	}
@@ -384,7 +349,7 @@ func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateRe
 
 	switch {
 	case passed && overCapResume:
-		return "", shedengine.OutputPointer{}, nil, false
+		return nil
 	case passed && !attemptsLeft:
 		return m.judgeFixerChange(ctx, rec)
 	case !passed && !attemptsLeft:
@@ -392,7 +357,7 @@ func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateRe
 	case passed:
 		holds, err := m.deps.HoldsWork(alignFrom, tip)
 		if err != nil {
-			return m.alignError(ctx, fmt.Errorf("landingshed: %s: test whether %s adds anything over %s: %w", parentAlignName, tip, alignFrom, err))
+			return fail(ctx, parentAlignName, fmt.Errorf("landingshed: %s: test whether %s adds anything over %s: %w", parentAlignName, tip, alignFrom, err))
 		}
 		if holds {
 			return m.judgeFixerChange(ctx, rec)
@@ -402,14 +367,14 @@ func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateRe
 	if rec.Baseline == "" {
 		head, err := m.deps.TaskHead()
 		if err != nil {
-			return m.alignError(ctx, fmt.Errorf("landingshed: %s: read the task head: %w", parentAlignName, err))
+			return fail(ctx, parentAlignName, fmt.Errorf("landingshed: %s: read the task head: %w", parentAlignName, err))
 		}
 		rec.Baseline = head
 	}
 	outcome, updated, err := newFixerRun(m.deps, parentAlignName, m.gate).run(ctx, FixerModeParentAlign, rec, capacity, [2]string{alignFrom, tip})
 	m.attempts = updated
 	if err != nil {
-		return m.alignError(ctx, err)
+		return fail(ctx, parentAlignName, err)
 	}
 	switch outcome.end {
 	case fixerEndFixed:
@@ -417,81 +382,64 @@ func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateRe
 	case fixerEndSpent:
 		updated.Halt = fixerHaltSpent
 		if err := WriteFixerAttempts(attemptsPath, updated); err != nil {
-			return m.alignError(ctx, err)
+			return fail(ctx, parentAlignName, err)
 		}
 		m.attempts = updated
 	}
-	return m.haltStop(ctx, outcome.haltReason(parentAlignName, m.deps.EscalateJudgedFirst))
-}
-
-// alignError stops the step with err, or with the cancellation error when ctx is cancelled.
-func (m *ParentAlign) alignError(ctx context.Context, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	if cerr := cancelErr(ctx, parentAlignName); cerr != nil {
-		return "", shedengine.OutputPointer{}, cerr, true
-	}
-	return "", shedengine.OutputPointer{}, err, true
-}
-
-// haltStop returns a halting Stuck verdict with reason.
-func (m *ParentAlign) haltStop(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	outcome, ptr, err := stuckVerdict(ctx, parentAlignName, reason, true)
-	return outcome, ptr, err, true
+	return halt(ctx, parentAlignName, outcome.haltReason(parentAlignName, m.deps.EscalateJudgedFirst))
 }
 
 // haltSpent halts the entry whose attempts are spent over a gate that still fails, naming the failed gate's log.
-func (m *ParentAlign) haltSpent(ctx context.Context, gateReason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+func (m *ParentAlign) haltSpent(ctx context.Context, gateReason string) *ending {
 	log := singleLine(gateReason)
 	failure, found, err := verifytree.ReadLandingFailure(m.gate.paths)
 	if err != nil {
-		return m.alignError(ctx, err)
+		return fail(ctx, parentAlignName, err)
 	}
 	if found {
 		log = failure.LogPath
 	}
-	return m.haltStop(ctx, fixerOutcome{end: fixerEndSpent, failureLog: log}.haltReason(parentAlignName, m.deps.EscalateJudgedFirst))
+	return halt(ctx, parentAlignName, fixerOutcome{end: fixerEndSpent, failureLog: log}.haltReason(parentAlignName, m.deps.EscalateJudgedFirst))
 }
 
 // judgeFixerChange judges the entry's fixer change against the caps when no review follows Parent-Align.
 // The change runs from the fixer's baseline to HEAD.
 // An entry whose fixer never ran has no baseline and no change.
 // A change over the caps halts with the fixer's commits named and notes over-cap in the attempt record;
-// a change within them, or one a following review will see, lets Parent-Align proceed.
-func (m *ParentAlign) judgeFixerChange(ctx context.Context, rec FixerAttempts) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	proceed := func() (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-		return "", shedengine.OutputPointer{}, nil, false
-	}
+// a change within them, or one a following review will see, returns nil so Parent-Align proceeds.
+func (m *ParentAlign) judgeFixerChange(ctx context.Context, rec FixerAttempts) *ending {
 	if rec.Baseline == "" {
-		return proceed()
+		return nil
 	}
 	reviewOff := true
 	if m.deps.CodeReviewOff != nil {
 		off, err := m.deps.CodeReviewOff()
 		if err != nil {
-			return m.alignError(ctx, fmt.Errorf("landingshed: %s: read the loom config for the Code-Review budget: %w", parentAlignName, err))
+			return fail(ctx, parentAlignName, fmt.Errorf("landingshed: %s: read the loom config for the Code-Review budget: %w", parentAlignName, err))
 		}
 		reviewOff = off
 	}
 	if !reviewOff {
-		return proceed()
+		return nil
 	}
 	head, err := m.deps.TaskHead()
 	if err != nil {
-		return m.alignError(ctx, fmt.Errorf("landingshed: %s: read the task head: %w", parentAlignName, err))
+		return fail(ctx, parentAlignName, fmt.Errorf("landingshed: %s: read the task head: %w", parentAlignName, err))
 	}
 	change, err := m.deps.LineChange(rec.Baseline, head)
 	if err != nil {
-		return m.alignError(ctx, fmt.Errorf("landingshed: %s: read the fixer's change: %w", parentAlignName, err))
+		return fail(ctx, parentAlignName, fmt.Errorf("landingshed: %s: read the fixer's change: %w", parentAlignName, err))
 	}
 	reason := FixCap{MaxLines: m.deps.Config.FinalizeFixMaxLines, IsTestFile: m.deps.IsTestFile}.Exceeded(change)
 	if reason == "" {
-		return proceed()
+		return nil
 	}
 	rec.Halt = fixerHaltOverCap
 	if err := WriteFixerAttempts(FixerAttemptsPath(m.deps.RecordsDir, parentAlignName), rec); err != nil {
-		return m.alignError(ctx, err)
+		return fail(ctx, parentAlignName, err)
 	}
 	m.attempts = rec
-	return m.haltStop(ctx, fmt.Sprintf("%sthe fixer's change in %s is over the caps: %s; fixer commits: %s..%s; way forward: review and fix on the task branch, then `lym loom resume`", LandingStopPrefix, parentAlignName, reason, rec.Baseline, head))
+	return halt(ctx, parentAlignName, fmt.Sprintf("%sthe fixer's change in %s is over the caps: %s; fixer commits: %s..%s; way forward: review and fix on the task branch, then `lym loom resume`", LandingStopPrefix, parentAlignName, reason, rec.Baseline, head))
 }
 
 // writeRecord writes the merge record of one alignment:
@@ -513,7 +461,7 @@ func (m *ParentAlign) writeRecord(tip, mergeCommit, alignedTip string, merge mer
 		UpToDate:     merge.AlreadyUpToDate,
 	}
 	if !merge.AlreadyUpToDate {
-		parentFrom := m.before.alignedTip
+		parentFrom := m.before.earlier.AlignedTip
 		if parentFrom == "" {
 			parentFrom = m.before.taskBase
 		}

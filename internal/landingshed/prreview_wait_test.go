@@ -933,7 +933,7 @@ func TestPRReview_WaitWithNoLastSetTextTakesTheDescriptionAsTheBaselineAndEditsN
 	row := NewPRReview("PR-Review", w.deps)
 	row.gate.verify = w.tree.verify
 
-	_, _, err := row.wait(ctx, w.api, rec, nil, time.Time{}, prText{})
+	err := row.wait(ctx, w.api, rec, nil, time.Time{}, prText{}).err
 
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("wait() error = %v; want one wrapping %v", err, context.Canceled)

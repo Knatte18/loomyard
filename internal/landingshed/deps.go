@@ -5,6 +5,7 @@ package landingshed
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -27,6 +28,30 @@ type resolver interface {
 }
 
 var _ resolver = (*mergeresolve.Resolver)(nil)
+
+// newResolver builds the resolver over the task pair deps opens; its errors open with the constructor named caller.
+func newResolver(deps Deps, caller string) (resolver, error) {
+	fabricHandle, err := deps.OpenFabric()
+	if err != nil {
+		return nil, fmt.Errorf("landingshed: %s: open pair: %w", caller, err)
+	}
+	res, err := mergeresolve.New(mergeresolve.Deps{
+		Fabric:         fabricHandle,
+		Shuttle:        deps.Shuttle,
+		WorktreeRoot:   deps.WorktreeRoot,
+		ScratchDir:     deps.ScratchDir,
+		StencilsDir:    deps.StencilsDir,
+		ParentName:     deps.ParentName,
+		LanguageSkills: deps.LanguageSkills,
+		ConflictSpec:   deps.Config.Conflict,
+		Registry:       deps.Registry,
+		Timeout:        time.Duration(deps.Config.ConflictTimeoutMin) * time.Minute,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("landingshed: %s: build resolver: %w", caller, err)
+	}
+	return res, nil
+}
 
 // Deps carries every told value the producers in this package need to construct and run.
 // It derives nothing; `landingDeps` in internal/loomcli sets every field, and a drift test asserts that it does.
@@ -372,7 +397,7 @@ type Deps struct {
 }
 
 // PullRequestDeps carries the told seams the PR-Review row decides and opens the run's pull request through.
-// The row treats every field but `BeamRecord` and `DropBeamRecord` as required.
+// The row treats every field but `ParentReviewWanted`, `AskParent`, `BeamRecord` and `DropBeamRecord` as required.
 // It returns an error naming the first one left unset.
 type PullRequestDeps struct {
 	// RecordPath is the run's pull-request record file, tracked with the run's records.

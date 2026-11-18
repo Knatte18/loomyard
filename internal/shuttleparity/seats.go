@@ -120,12 +120,15 @@ func specsOf(env SeatEnv, table seatengine.Table, seatName string) func(engine s
 	}
 }
 
+// soloSessionHolder is the holder glyph of the one-seat table builder the landing rows' session tables share.
+const soloSessionHolder = "internal/landingshed#soloSession.table"
+
 // seatTables is the catalog: one entry per seat table builder of production code.
 var seatTables = []seatTable{
 	{Builder: "internal/darnengine#DarnTable", Holders: []string{"internal/darnengine#DarnTable"}, Build: buildDarn},
-	{Builder: "internal/landingshed#DescribeTable", Holders: []string{"internal/landingshed#describeSessionTable"}, Build: buildDescribe},
-	{Builder: "internal/landingshed#FixerTable", Holders: []string{"internal/landingshed#FixerTable"}, Build: buildFixer},
-	{Builder: "internal/landingshed#FixReviewSeatTable", Holders: []string{"internal/landingshed#fixReviewTable"}, Build: buildFixReview},
+	{Builder: "internal/landingshed#DescribeTable", Holders: []string{soloSessionHolder}, Build: buildDescribe},
+	{Builder: "internal/landingshed#FixerTable", Holders: []string{soloSessionHolder}, Build: buildFixer},
+	{Builder: "internal/landingshed#FixReviewSeatTable", Holders: []string{soloSessionHolder}, Build: buildFixReview},
 	{
 		Builder: "internal/burlerengine#Engine.SeatTables",
 		Holders: []string{"internal/burlerengine#Profile.reviewTable", "internal/burlerengine#Profile.fixTable", "internal/burlerengine#Engine.assistSeat"},

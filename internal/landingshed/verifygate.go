@@ -139,6 +139,13 @@ func (g verifyGate) clearFailure() {
 	}
 }
 
+// newLandingGate builds the verify gate of a landing row from deps, with the recorder that writes its failure record.
+func newLandingGate(deps Deps) verifyGate {
+	gate := newVerifyGate(deps)
+	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, traceFailure: deps.TraceFailure, head: deps.TaskHead}
+	return gate
+}
+
 // newVerifyGate copies the gate's told values from deps and wires the real verifytree functions.
 func newVerifyGate(deps Deps) verifyGate {
 	return verifyGate{
@@ -218,17 +225,37 @@ func listShown(items []string) string {
 	return list
 }
 
-// readBase returns the base command, the one whose record entry every pass of this gate keeps.
-// A gate told no base command names none.
-func (g verifyGate) readBase(producer string) (string, error) {
-	if g.baseCommand == nil {
-		return "", nil
+// gateCall reads the call of the row's gate key for producer, and the verify site it runs at.
+// The site's base command, when the gate is told one, is the command whose record entry every pass keeps.
+// ok is false when no command is wired, and when the source carries none for the key;
+// the latter logs skipped as a warning, with the producer and fields.
+func (g verifyGate) gateCall(producer, skipped string, fields ...any) (command string, site verifytree.Site, ok bool, err error) {
+	if g.command == nil {
+		return "", verifytree.Site{}, false, nil
 	}
-	base, err := g.baseCommand()
-	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: read base command: %w", producer, err)
+	if command, err = g.command(g.key); err != nil {
+		return "", verifytree.Site{}, false, fmt.Errorf("landingshed: %s: read gate command: %w", producer, err)
 	}
-	return base, nil
+	if command == "" {
+		logger.Warn(skipped, append([]any{"producer", producer}, fields...)...)
+		return "", verifytree.Site{}, false, nil
+	}
+	site = verifytree.Site{Label: producer, Hold: g.hold}
+	if g.baseCommand != nil {
+		if site.BaseCommand, err = g.baseCommand(); err != nil {
+			return "", verifytree.Site{}, false, fmt.Errorf("landingshed: %s: read base command: %w", producer, err)
+		}
+	}
+	return command, site, true, nil
+}
+
+// runMarked runs command at site with the driver strand's pane mark showing the verify of producer.
+// It clears the mark once the verify ends.
+func (g verifyGate) runMarked(ctx context.Context, producer string, site verifytree.Site, command string) (verifytree.Result, error) {
+	g.markWait("verify " + producer)
+	result, err := g.verify(ctx, g.paths, site, command)
+	g.markWait("")
+	return result, err
 }
 
 // check runs the call of the row's gate key for producer after a merge of parentBranch.
@@ -247,28 +274,12 @@ func (g verifyGate) readBase(producer string) (string, error) {
 // A gate told onFlakyPass runs a failure once more on the same head when its report lists tier and guard runs alone.
 // It then judges the rerun's result in its place.
 func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (reason string, crashed bool, err error) {
-	if g.command == nil {
-		return "", false, nil
-	}
-
-	command, err := g.command(g.key)
-	if err != nil {
-		return "", false, fmt.Errorf("landingshed: %s: read gate command: %w", producer, err)
-	}
-	if command == "" {
-		logger.Warn("landingshed: post-merge verify skipped because no verify command is configured", "producer", producer, "parentBranch", parentBranch)
-		return "", false, nil
-	}
-	base, err := g.readBase(producer)
-	if err != nil {
+	command, site, ok, err := g.gateCall(producer, "landingshed: post-merge verify skipped because no verify command is configured", "parentBranch", parentBranch)
+	if !ok {
 		return "", false, err
 	}
-
-	site := verifytree.Site{Label: producer, BaseCommand: base, Hold: g.hold}
 	g.markWait("")
-	g.markWait("verify " + producer)
-	result, err := g.verify(ctx, g.paths, site, command)
-	g.markWait("")
+	result, err := g.runMarked(ctx, producer, site, command)
 	if err != nil {
 		return "", false, fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
@@ -315,9 +326,7 @@ func (g verifyGate) rerunTestFailure(ctx context.Context, producer string, site 
 		}
 	}
 	logger.Warn("landingshed: the verify failed in its test runs; it runs once more on the same head before any fixer", "producer", producer, "failures", strings.Join(failures, "; "), "log", first.Log, "rerun", rerun)
-	g.markWait("verify " + producer)
-	second, err := g.verify(ctx, g.paths, site, rerun)
-	g.markWait("")
+	second, err := g.runMarked(ctx, producer, site, rerun)
 	if err != nil {
 		return verifytree.Result{}, err
 	}
@@ -340,26 +349,12 @@ func (g verifyGate) rerunTestFailure(ctx context.Context, producer string, site 
 // no test judged the head, so the reason is a halt reason opening with `LandingStopPrefix`.
 // The caller halts the row with that reason instead of telling the agent.
 func (g verifyGate) checkHead(ctx context.Context, producer string) (reason string, crashed bool, err error) {
-	if g.command == nil {
-		return "", false, nil
-	}
-	command, err := g.command(g.key)
-	if err != nil {
-		return "", false, fmt.Errorf("landingshed: %s: read gate command: %w", producer, err)
-	}
-	if command == "" {
-		logger.Warn("landingshed: the pr-review gate skipped because no verify command is configured", "producer", producer)
-		return "", false, nil
-	}
-	base, err := g.readBase(producer)
-	if err != nil {
+	command, site, ok, err := g.gateCall(producer, "landingshed: the pr-review gate skipped because no verify command is configured")
+	if !ok {
 		return "", false, err
 	}
-
 	g.markWait("")
-	g.markWait("verify " + producer)
-	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: base, Hold: g.hold}, command)
-	g.markWait("")
+	result, err := g.runMarked(ctx, producer, site, command)
 	if err != nil {
 		return "", false, fmt.Errorf("landingshed: %s: %w", producer, err)
 	}

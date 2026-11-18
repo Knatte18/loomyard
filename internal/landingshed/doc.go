@@ -207,6 +207,8 @@
 // The owner checks let a run land only on the machine that owns it and its parent.
 // A tapestry run and a darn run, landing with no orch turn, pass them too.
 // Finalize reads Deps.ParentHoldsTaskWork first.
+// It reads it again after the owner checks for the land check and the sync.
+// The owner checks' reconcile can move the task branch.
 // A parent already holding the task's work marks a Finalize past its parent-side merge.
 // Such a Finalize skips both owner checks and the unreachable halt.
 // Otherwise an unreachable origin halts.
