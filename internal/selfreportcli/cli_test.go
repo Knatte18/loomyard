@@ -5,7 +5,8 @@
 // Each test injects a real go-github client pointed at an httptest server.
 // That server lets the tests assert on the request shape: method, path and JSON body.
 // All tests drive the full cobra->flag->CreateIssue->go-github pipeline through clihelp.Execute.
-// No test calls t.Parallel: each swaps the package-level NewGitHubClient seam, and the stdin rows swap the stdin seam.
+// No test calls t.Parallel: each swaps the package-level NewGitHubClient seam, the stdin rows swap the stdin seam,
+// and the body-file rows change the working directory.
 
 package selfreportcli
 
@@ -16,6 +17,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -113,6 +116,22 @@ func runCLI(t *testing.T, args ...string) (int, string) {
 	return code, buf.String()
 }
 
+// reportFileName is the file that chdirToReportFile writes, named by a relative path in the body-file rows.
+const reportFileName = "report.md"
+
+// reportFileContent is the content of the file that chdirToReportFile writes.
+const reportFileContent = "## What happened\n\nThe report held in a file.\n"
+
+// chdirToReportFile changes the working directory to a fresh temp directory holding reportFileName.
+func chdirToReportFile(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, reportFileName), []byte(reportFileContent), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(%s): %v", reportFileName, err)
+	}
+	t.Chdir(dir)
+}
+
 // labelsFromBody extracts the "labels" array from a decoded request body as a []string.
 // It preserves order, so tests can assert multi-label ordering survives encoding.
 func labelsFromBody(body map[string]any) []string {
@@ -154,11 +173,19 @@ func TestRunCreate_Success(t *testing.T) {
 		{"custom labels replace default", []string{"create", "T", "--label", "enhancement", "--label", "p1"}, "", withNumber, "T", []string{"enhancement", "p1"}, nil, new(123.0)},
 		{"body via flag", []string{"create", "T", "-b", "details"}, "", withNumber, "T", []string{"bug"}, new("details"), new(123.0)},
 		{"body via stdin", []string{"create", "T", "-b", "-"}, markdownBody, withNumber, "T", []string{"bug"}, new(markdownBody), new(123.0)},
+		{"body via file", []string{"create", "T", "--body-file", reportFileName}, "", withNumber, "T", []string{"bug"}, new(reportFileContent), new(123.0)},
+		{"body file via stdin", []string{"create", "T", "--body-file", "-"}, markdownBody, withNumber, "T", []string{"bug"}, new(markdownBody), new(123.0)},
+		// Body text that names a file only as part of a longer line is filed as text.
+		{"body text mentioning a file", []string{"create", "T", "-b", "see " + reportFileName}, "", withNumber, "T", []string{"bug"}, new("see " + reportFileName), new(123.0)},
+		// A directory is not a file to refuse, and an empty body is filed as empty rather than omitted.
+		{"body text naming a directory", []string{"create", "T", "-b", "."}, "", withNumber, "T", []string{"bug"}, new("."), new(123.0)},
+		{"empty body via flag", []string{"create", "T", "-b", ""}, "", withNumber, "T", []string{"bug"}, new(""), new(123.0)},
 		// A response that carries no number leaves the envelope's number field absent.
 		{"number omitted when response has none", []string{"create", "T"}, "", withoutNumber, "T", []string{"bug"}, nil, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			chdirToReportFile(t)
 			var captured []requestCapture
 			server := newIssueServer(t, http.StatusCreated, tt.response, &captured)
 			installGitHubClient(t, server.URL)
@@ -259,6 +286,8 @@ func TestRunCreate_Failure(t *testing.T) {
 // TestCommand_RefusedBeforeTransport verifies the cobra-level surface of the selfreport group.
 // A bare invocation lists create; an unknown subcommand gets the shared envelope;
 // a wrong positional count gets cobra's "accepts 1 arg(s)" message.
+// A body the flags cannot give is refused:
+// --body text that is one line naming an existing file, both body flags together, and a missing body file.
 // None of them reaches the transport.
 func TestCommand_RefusedBeforeTransport(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -272,9 +301,14 @@ func TestCommand_RefusedBeforeTransport(t *testing.T) {
 		{"unknown subcommand", []string{"bogus"}, 1, "unknown subcommand"},
 		{"too few args", []string{"create"}, 1, "accepts 1 arg"},
 		{"too many args", []string{"create", "a", "b"}, 1, "accepts 1 arg"},
+		{"body text naming an existing file", []string{"create", "T", "-b", reportFileName}, 1, `pass --body-file \"` + reportFileName + `\"`},
+		{"body text naming an existing file with padding", []string{"create", "T", "-b", " " + reportFileName + "\n"}, 1, `pass --body-file \"` + reportFileName + `\"`},
+		{"body and body file together", []string{"create", "T", "-b", "x", "--body-file", reportFileName}, 1, "[body body-file]"},
+		{"missing body file", []string{"create", "T", "--body-file", "missing.md"}, 1, "failed to read --body-file"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			chdirToReportFile(t)
 			var captured []requestCapture
 			server := newIssueServer(t, http.StatusCreated, `{"html_url":"https://example.invalid/1","number":1}`, &captured)
 			installGitHubClient(t, server.URL)
