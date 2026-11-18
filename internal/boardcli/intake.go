@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubissues"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -90,6 +91,9 @@ lym's own import pointers, are carried in the body. An issue an entry already re
 recording entries and touches nothing on GitHub. A success prints slug, issue, labels and dropped,
 the slug being the entry folded into for a fold. The board is written before GitHub is touched; when
 the comment or close then fails, the error carries the slug, issue, labels and dropped it would have printed, and the "close" payload to run.
+An issue whose body is blank adds "empty_body": true, and one that names files under ` + lymdirs.DotLymDirName + `/ adds
+"local_paths"; the entry body carries an import note for each. The named files are deleted with their worktree, so do not
+search for them: only what the entry body quotes or attaches of them is available.
 
 Examples:
   lym board intake import '{"issue":12,"slug":"retry-backoff"}'
@@ -311,6 +315,12 @@ func intakeImport(out io.Writer, b *boardengine.Board, repo *hubissues.Repo, pay
 		"issue":   number,
 		"labels":  result.Entry.Labels,
 		"dropped": dropped,
+	}
+	if result.EmptyBody {
+		short["empty_body"] = true
+	}
+	if len(result.LocalPaths) > 0 {
+		short["local_paths"] = result.LocalPaths
 	}
 	comment := importPointer(result.Entry.Slug)
 	if err := repo.CommentAndClose(number, comment, true); err != nil {

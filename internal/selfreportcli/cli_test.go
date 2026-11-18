@@ -20,8 +20,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/google/go-github/v75/github"
 
@@ -122,12 +124,63 @@ const reportFileName = "report.md"
 // reportFileContent is the content of the file that chdirToReportFile writes.
 const reportFileContent = "## What happened\n\nThe report held in a file.\n"
 
-// chdirToReportFile changes the working directory to a fresh temp directory holding reportFileName.
+// fencedFileName is the file that chdirToReportFile writes holding a code fence of its own.
+const fencedFileName = "fenced.md"
+
+// fencedFileContent is the content of fencedFileName.
+const fencedFileContent = "```go\nx\n```\n"
+
+// oversizedFileName is the file that chdirToReportFile writes, one character longer than GitHub's issue body limit.
+const oversizedFileName = "huge.log"
+
+// invalidUTF8FileName is the file that chdirToReportFile writes holding bytes that are not valid UTF-8.
+const invalidUTF8FileName = "binary.bin"
+
+// infixBacktickFileName and edgeBacktickFileName are files that chdirToReportFile writes whose names hold backticks.
+const (
+	infixBacktickFileName = "a`b.txt"
+	edgeBacktickFileName  = "`c`"
+)
+
+// namedFileContent is the content of the backtick-named files.
+const namedFileContent = "named\n"
+
+// limitBody is a multibyte --body whose attachments, with it, fill the issue body limit in characters but not in bytes.
+const limitBody = "ééé"
+
+// fitFileName and overFileName are the files that chdirToReportFile writes to hit the issue body limit with limitBody.
+// Filed after limitBody, the first makes the body exactly maxIssueBodyRunes characters and the second one more.
+const (
+	fitFileName  = "fit.log"
+	overFileName = "over.log"
+)
+
+// limitFillerContent returns multibyte content for the attachment called name.
+// Filed after limitBody, it makes the body maxIssueBodyRunes plus extraRunes characters.
+func limitFillerContent(name string, extraRunes int) string {
+	overhead := utf8.RuneCountInString(limitBody + "\n\n## Attached `" + name + "`\n\n```\n\n```")
+	return strings.Repeat("é", maxIssueBodyRunes+extraRunes-overhead)
+}
+
+// chdirToReportFile changes the working directory to a fresh temp directory.
+// The directory holds every file the constants above name.
 func chdirToReportFile(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, reportFileName), []byte(reportFileContent), 0o600); err != nil {
-		t.Fatalf("os.WriteFile(%s): %v", reportFileName, err)
+	files := map[string]string{
+		reportFileName:        reportFileContent,
+		fencedFileName:        fencedFileContent,
+		oversizedFileName:     strings.Repeat("x", maxIssueBodyRunes+1),
+		invalidUTF8FileName:   "ok\xff\xfe",
+		infixBacktickFileName: namedFileContent,
+		edgeBacktickFileName:  namedFileContent,
+		fitFileName:           limitFillerContent(fitFileName, 0),
+		overFileName:          limitFillerContent(overFileName, 1),
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("os.WriteFile(%s): %v", name, err)
+		}
 	}
 	t.Chdir(dir)
 }
@@ -180,6 +233,21 @@ func TestRunCreate_Success(t *testing.T) {
 		// A directory is not a file to refuse, and an empty body is filed as empty rather than omitted.
 		{"body text naming a directory", []string{"create", "T", "-b", "."}, "", withNumber, "T", []string{"bug"}, new("."), new(123.0)},
 		{"empty body via flag", []string{"create", "T", "-b", ""}, "", withNumber, "T", []string{"bug"}, new(""), new(123.0)},
+		// Attachments follow the body in order, each under its base name in a fence longer than any backtick run it holds.
+		{"attachments follow the body", []string{"create", "T", "-b", "details\n", "--attach", "./" + reportFileName, "--attach", fencedFileName}, "", withNumber, "T", []string{"bug"},
+			new("details\n\n## Attached `" + reportFileName + "`\n\n```\n## What happened\n\nThe report held in a file.\n```" +
+				"\n\n## Attached `" + fencedFileName + "`\n\n````\n```go\nx\n```\n````"), new(123.0)},
+		{"attachment alone is the body", []string{"create", "T", "--attach", reportFileName}, "", withNumber, "T", []string{"bug"},
+			new("## Attached `" + reportFileName + "`\n\n```\n## What happened\n\nThe report held in a file.\n```"), new(123.0)},
+		// An empty body adds no blank lines before the first section.
+		{"empty body with an attachment", []string{"create", "T", "-b", "", "--attach", reportFileName}, "", withNumber, "T", []string{"bug"},
+			new("## Attached `" + reportFileName + "`\n\n```\n## What happened\n\nThe report held in a file.\n```"), new(123.0)},
+		// A file name with a backtick is a code span delimited by a longer backtick run, padded at an edge backtick.
+		{"attachment names with backticks", []string{"create", "T", "--attach", infixBacktickFileName, "--attach", edgeBacktickFileName}, "", withNumber, "T", []string{"bug"},
+			new("## Attached ``a`b.txt``\n\n```\nnamed\n```\n\n## Attached `` `c` ``\n\n```\nnamed\n```"), new(123.0)},
+		// A body whose characters total the limit is filed, though its bytes exceed it.
+		{"body at the limit in characters", []string{"create", "T", "-b", limitBody, "--attach", fitFileName}, "", withNumber, "T", []string{"bug"},
+			new(limitBody + "\n\n## Attached `" + fitFileName + "`\n\n```\n" + limitFillerContent(fitFileName, 0) + "\n```"), new(123.0)},
 		// A response that carries no number leaves the envelope's number field absent.
 		{"number omitted when response has none", []string{"create", "T"}, "", withoutNumber, "T", []string{"bug"}, nil, nil},
 	}
@@ -287,7 +355,12 @@ func TestRunCreate_Failure(t *testing.T) {
 // A bare invocation lists create; an unknown subcommand gets the shared envelope;
 // a wrong positional count gets cobra's "accepts 1 arg(s)" message.
 // A body the flags cannot give is refused:
-// --body text that is one line naming an existing file, both body flags together, and a missing body file.
+// --body text that is one line naming an existing file;
+// both body flags together;
+// a missing body file;
+// a missing attachment;
+// an attachment that pushes the body past GitHub's limit, by one character at the boundary or by a whole file;
+// an attachment that is not valid UTF-8.
 // None of them reaches the transport.
 func TestCommand_RefusedBeforeTransport(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -305,6 +378,11 @@ func TestCommand_RefusedBeforeTransport(t *testing.T) {
 		{"body text naming an existing file with padding", []string{"create", "T", "-b", " " + reportFileName + "\n"}, 1, `pass --body-file \"` + reportFileName + `\"`},
 		{"body and body file together", []string{"create", "T", "-b", "x", "--body-file", reportFileName}, 1, "[body body-file]"},
 		{"missing body file", []string{"create", "T", "--body-file", "missing.md"}, 1, "failed to read --body-file"},
+		{"missing attachment", []string{"create", "T", "--attach", "missing.txt"}, 1, "failed to read --attach"},
+		{"attachment over the body limit", []string{"create", "T", "--attach", oversizedFileName}, 1, "over GitHub's limit of " + strconv.Itoa(maxIssueBodyRunes)},
+		{"body and attachment one character over the limit", []string{"create", "T", "-b", limitBody, "--attach", overFileName}, 1,
+			"is " + strconv.Itoa(maxIssueBodyRunes+1) + " characters, over GitHub's limit"},
+		{"attachment not valid UTF-8", []string{"create", "T", "--attach", invalidUTF8FileName}, 1, "is not valid UTF-8"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

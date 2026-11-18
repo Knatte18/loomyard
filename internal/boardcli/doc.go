@@ -185,6 +185,8 @@
 // For a fold, `slug` is the entry folded into.
 // A failed comment or close after the board write carries the same fields and the `close` payload in the error envelope.
 // An already-recorded issue prints `recorded`.
+// An issue whose body is blank adds `"empty_body":true`.
+// An issue whose body or comments name paths under `.lym/` adds `"local_paths":[…]`.
 //
 // `raddle <slug>` takes a bare slug, not a payload.
 // It prints, verbatim with no envelope, the approved raddle proposal of the store directory that holds the slug:

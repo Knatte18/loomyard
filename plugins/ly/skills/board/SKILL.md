@@ -235,6 +235,9 @@ lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'
   Either way it comments on the issue with a pointer and closes it.
   A new note gets its type and module labels through `import`'s `labels`.
   `import` prints the slug, issue, labels and dropped labels, not the entry; `lym board get` shows the entry.
+  It adds `empty_body` for an issue with a blank body and `local_paths` for one that names files under `.lym/`;
+  the entry's import note then says the named files are deleted with their worktree, so do not search for them;
+  only what the entry body quotes or attaches of them is available.
   A label `upsert` on a folded entry carries the entry's whole label list, since `labels` replaces it.
 - `close` ends a noise issue with a stated `reason` and writes nothing to the board.
 

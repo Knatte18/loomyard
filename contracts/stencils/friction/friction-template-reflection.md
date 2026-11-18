@@ -53,7 +53,14 @@ For each issue, invoke `lym selfreport create` yourself, following its own guida
 This prompt does not restate that contract.
 File only through `lym selfreport create`, never through `gh`.
 
-Each issue body states what happened, why it is abnormal and what to do, and then ends with a provenance line naming the task slug `{{.task_slug}}` and the file names of the notes the issue came from.
+Each issue body states what happened, why it is abnormal and what to do, and then gives a provenance line naming the task slug `{{.task_slug}}` and the file names of the notes the issue came from.
+The provenance line is the last of what you write; the sections that `--attach` appends follow it.
+Never file an issue with an empty body.
+
+When the problem rests on evidence in a run directory, such as a capture, a trace or a log line, the issue carries it inline:
+attach the file with `--attach`, or quote the lines that show the problem.
+A run directory is deleted with its worktree, so an issue that only names the path names a file nobody can read once the run is gone.
+An attachment obeys the content rule below like the rest of the body: quote an excerpt instead when the file holds anything the rule forbids.
 
 Content rule, which is a hard rule: the repository these issues go to is public.
 An issue body describes the lym problem and may quote lym's own output, verb names and repo-relative lym paths.

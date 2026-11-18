@@ -6,13 +6,17 @@
 // It takes the issue body as text through --body or from a file through --body-file.
 // It refuses --body text that is one line naming an existing file.
 // A path meant for --body-file is therefore never filed as the body itself.
+// --attach appends a file's contents to the body under the file's base name.
+// Evidence from a run directory therefore outlives the worktree that held it.
 package selfreportcli
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -28,6 +32,12 @@ const bodyFlag = "body"
 
 // bodyFileFlag is the name of the flag that gives the issue body as a file path.
 const bodyFileFlag = "body-file"
+
+// attachFlag is the name of the flag that appends a file's contents to the issue body.
+const attachFlag = "attach"
+
+// maxIssueBodyRunes is the most characters GitHub accepts in an issue body.
+const maxIssueBodyRunes = 65536
 
 // stdin is the source that runCreate reads body content from when --body or --body-file is "-".
 // Tests replace it with a strings.Reader so the stdin path runs without blocking on OS input.
@@ -69,6 +79,12 @@ Examples:
       Create a bug issue whose body is the given text.
       Text that is one line naming an existing file is refused: pass that file with --body-file.
 
+  lym selfreport create "Idle reading wrong" --body-file report.md --attach startup-capture.txt
+      Append the capture to the body, under its base name in a code fence.
+      A run directory is deleted with its worktree, so evidence a report rests on goes in the
+      issue this way or quoted in the body, never as a path alone.
+      A body the attachments push past GitHub's issue body limit is refused: attach an excerpt.
+
   lym selfreport create "Add dark mode" --label enhancement
       Create an enhancement issue; --label replaces the default "bug" label.
 
@@ -82,6 +98,7 @@ Examples:
 	createCmd.Flags().StringP(bodyFlag, "b", "", `issue body text; use "-" to read from stdin`)
 	createCmd.Flags().String(bodyFileFlag, "", `file whose contents are the issue body; use "-" to read from stdin`)
 	createCmd.MarkFlagsMutuallyExclusive(bodyFlag, bodyFileFlag)
+	createCmd.Flags().StringArray(attachFlag, []string{}, `file whose contents are appended to the body (repeatable)`)
 	createCmd.Flags().StringArray("label", []string{}, `label to apply (repeatable); defaults to "bug" when omitted`)
 	cmd.AddCommand(createCmd)
 
@@ -96,6 +113,11 @@ func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
 	title := args[0]
 
 	body, err := resolveBody(cmd)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	attachments, _ := cmd.Flags().GetStringArray(attachFlag)
+	body, err = appendAttachments(body, attachments)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -164,6 +186,71 @@ func readBodySource(source string) (*string, error) {
 	}
 	bodyText := string(content)
 	return &bodyText, nil
+}
+
+// appendAttachments returns body followed by one section per file in paths, in order.
+// It returns body unchanged when paths is empty.
+// Each section names the file by its base name.
+// That keeps a local directory such as a home path out of the public issue.
+// It refuses a body the sections push past GitHub's limit, since GitHub would reject the whole issue.
+// It refuses a file that is not valid UTF-8, since the JSON the issue travels in would replace its invalid bytes.
+func appendAttachments(body *string, paths []string) (*string, error) {
+	if len(paths) == 0 {
+		return body, nil
+	}
+	var sections []string
+	if body != nil && *body != "" {
+		sections = append(sections, strings.TrimRight(*body, "\n"))
+	}
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read --%s %q: %w", attachFlag, path, err)
+		}
+		if !utf8.Valid(content) {
+			return nil, fmt.Errorf("--%s %q is not valid UTF-8 text, so the issue would hold altered bytes: "+
+				"attach a UTF-8 text excerpt of it", attachFlag, path)
+		}
+		sections = append(sections, attachmentSection(filepath.Base(path), string(content)))
+	}
+	text := strings.Join(sections, "\n\n")
+	if count := utf8.RuneCountInString(text); count > maxIssueBodyRunes {
+		return nil, fmt.Errorf("the issue body with its attachments is %d characters, over GitHub's limit of %d: "+
+			"attach an excerpt holding the lines the report rests on", count, maxIssueBodyRunes)
+	}
+	return &text, nil
+}
+
+// attachmentSection renders one attached file as a heading naming it and its contents in a code fence.
+// The fence is longer than any backtick run in the contents, so the contents cannot close it early.
+// The name is a code span delimited by more backticks than any run in the name, so the name cannot close it early.
+func attachmentSection(name, content string) string {
+	fence := strings.Repeat("`", max(3, longestBacktickRun(content)+1))
+	return fmt.Sprintf("## Attached %s\n\n%s\n%s\n%s", codeSpan(name), fence, strings.TrimRight(content, "\n"), fence)
+}
+
+// longestBacktickRun returns the length of the longest run of consecutive backticks in text.
+func longestBacktickRun(text string) int {
+	longestRun, run := 0, 0
+	for _, r := range text {
+		if r != '`' {
+			run = 0
+			continue
+		}
+		run++
+		longestRun = max(longestRun, run)
+	}
+	return longestRun
+}
+
+// codeSpan renders text as a markdown code span whose delimiter is longer than any backtick run in text.
+// It pads text with a space on each side when text starts or ends with a backtick, which a delimiter would merge with.
+func codeSpan(text string) string {
+	delimiter := strings.Repeat("`", longestBacktickRun(text)+1)
+	if strings.HasPrefix(text, "`") || strings.HasSuffix(text, "`") {
+		text = " " + text + " "
+	}
+	return delimiter + text + delimiter
 }
 
 // existingFileNamedBy reports whether bodyText is one line naming an existing regular file.

@@ -451,6 +451,10 @@
 // An imported or folded body carries the issue's comments after the issue body, the ones the caller kept, oldest first.
 // Each comment is a heading naming its UTC creation date, one level below the body's own heading.
 // The comment follows verbatim, its author not recorded.
+// An issue whose body is blank gets an import note naming its title in place of the body.
+// An issue that names paths under a worktree's `.lym` directory gets an import note listing them.
+// Those files are deleted with their worktree, and only what the issue quotes of them reaches the board.
+// ImportResult reports both gaps, so the caller can flag them.
 //
 // # Pull request
 //

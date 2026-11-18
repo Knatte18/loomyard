@@ -36,6 +36,8 @@ type fakeIssue struct {
 	stateReason string
 	pullRequest bool
 	labels      []string
+	// body is the issue body; nil serves "Body <number>.".
+	body *string
 	// thread holds the issue's comments, oldest first; each is dated 2026-01-02 plus its index in days.
 	thread []string
 	// failThread makes the comments endpoint answer with a server error.
@@ -76,10 +78,14 @@ func (f *fakeInbox) issueJSON(issue fakeIssue) map[string]any {
 	for _, name := range issue.labels {
 		labels = append(labels, map[string]string{"name": name})
 	}
+	body := fmt.Sprintf("Body %d.", issue.number)
+	if issue.body != nil {
+		body = *issue.body
+	}
 	view := map[string]any{
 		"number":       issue.number,
 		"title":        fmt.Sprintf("Issue %d", issue.number),
-		"body":         fmt.Sprintf("Body %d.", issue.number),
+		"body":         body,
 		"html_url":     fmt.Sprintf("https://example.test/issues/%d", issue.number),
 		"state":        issue.state,
 		"state_reason": issue.stateReason,
@@ -423,6 +429,43 @@ func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
 	}
 }
 
+// TestIntakeImport_FlagsEvidenceGaps asserts that import output names a blank issue body.
+// It also asserts that import output names the local paths an issue names.
+// Each key is left out when its gap is absent.
+func TestIntakeImport_FlagsEvidenceGaps(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name           string
+		body           string
+		wantEmptyBody  any
+		wantLocalPaths string
+	}{
+		{"blank body", "", true, "<nil>"},
+		{"local paths", "Compare `.lym/shuttle/abc/startup-capture.txt`.", nil, "[.lym/shuttle/abc/startup-capture.txt]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			inbox := newFakeInbox(t, fakeIssue{number: 7, state: "open", labels: []string{"bug"}, body: new(tt.body)})
+			b, _ := newIntakeBoard(t)
+
+			code, envelope := runHandler(t, func(out *bytes.Buffer) int {
+				return intakeImport(out, b, inbox.repo, `{"issue":7,"slug":"gap"}`)
+			})
+			if code != 0 {
+				t.Fatalf("exit %d: %v", code, envelope)
+			}
+			if envelope["empty_body"] != tt.wantEmptyBody {
+				t.Errorf("empty_body = %v, want %v", envelope["empty_body"], tt.wantEmptyBody)
+			}
+			if got := fmt.Sprint(envelope["local_paths"]); got != tt.wantLocalPaths {
+				t.Errorf("local_paths = %s, want %s", got, tt.wantLocalPaths)
+			}
+		})
+	}
+}
+
 func TestIntakeImport_FoldIntoEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -539,7 +582,7 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 func TestIntakeImport_CloseFailureReportsShortResultAndClosePayload(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	inbox := newFakeInbox(t, fakeIssue{number: 16, state: "open", labels: []string{"bug"}})
+	inbox := newFakeInbox(t, fakeIssue{number: 16, state: "open", labels: []string{"bug"}, body: new("See .lym/x.log."), thread: []string{"A comment."}})
 	inbox.failClose = true
 	b, path := newIntakeBoard(t)
 
@@ -554,6 +597,12 @@ func TestIntakeImport_CloseFailureReportsShortResultAndClosePayload(t *testing.T
 	}
 	if _, present := envelope["entry"]; present {
 		t.Errorf("envelope carries entry, want it left out")
+	}
+	if fmt.Sprint(envelope["local_paths"]) != "[.lym/x.log]" {
+		t.Errorf("envelope local_paths = %v, want [.lym/x.log]", envelope["local_paths"])
+	}
+	if _, present := envelope["empty_body"]; present {
+		t.Errorf("envelope carries empty_body for a non-blank body")
 	}
 	closePayload := envelope["close"].(map[string]any)
 	if closePayload["issue"] != 16.0 || closePayload["completed"] != true || closePayload["reason"] != "Imported into the board as `half-done`." {

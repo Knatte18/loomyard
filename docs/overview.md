@@ -618,7 +618,8 @@ User-facing modules each get one `lym <module>` namespace:
   Credentials resolve from `GH_TOKEN`/`GITHUB_TOKEN` first.
   The `gh` CLI (`gh auth token`) is a bounded, non-blocking fallback token source, not a hard prerequisite.
   Target repo is hardcoded;
-  supports `--body` text, `--body-file` (either takes `-` for stdin) and `--label`;
+  supports `--body` text, `--body-file` (either takes `-` for stdin), `--attach` and `--label`;
+  `--attach` appends a file's contents under its base name, so evidence from a run directory outlives its worktree;
   `--body` text that is one line naming an existing file is refused with `--body-file` as the way forward;
   defaults to `bug`.
   Callable from any sandbox agent context with no config. ✅ Implemented.
