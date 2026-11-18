@@ -207,18 +207,22 @@ type RequirementSupporter interface {
 }
 
 // ForkAuditor is an optional capability of an engine:
-// the provider's read of its on-disk record of fork subagents.
+// the provider's read of its on-disk record of a session's subagents, forks and fresh subagents alike.
 // An engine without it has no fork audit.
 type ForkAuditor interface {
-	// AuditForks reads the provider's on-disk record of fork subagents for the fork-authorized session sessionID.
+	// AuditForks reads the provider's on-disk record of the subagents of the fork-authorized session sessionID.
+	// Each ForkReport marks whether its subagent is a fork or a fresh subagent.
 	// workdir is the pane's actual process cwd.
 	// It reports mechanical facts observed, with no policy interpretation.
 	// It returns an error rather than a zero ForkAudit when the provider has no fork concept.
 	// That lets callers distinguish "no forks" from "cannot audit".
 	AuditForks(sessionID, workdir string) (ForkAudit, error)
-	// AuditForksIncremental reads the provider's on-disk record of fork subagents, skipping transcripts already seen.
-	// Parent facts (SpawnCalls, NamedSpawns, ParentWriteCalls, ParentWrites, ParentBashCommands) are always full/cumulative.
-	// Forks holds one ForkReport per transcript not in seenTranscripts; nil seenTranscripts reports every fork transcript.
+	// AuditForksIncremental reads the provider's on-disk record of the session's subagents.
+	// It skips transcripts already seen.
+	// Parent facts are always full/cumulative:
+	// SpawnCalls, NamedSpawns, NamedForkSpawns, ParentWriteCalls, ParentWrites and ParentBashCommands.
+	// Forks holds one ForkReport per transcript not in seenTranscripts.
+	// A nil seenTranscripts reports every subagent transcript.
 	AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error)
 }
 

@@ -1922,7 +1922,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 
 // finalize builds run's terminal Result, persists the classification into the run's RunState.Outcome,
 // and performs cleanup for OutcomeDone.
-// For fork mode, it audits fork subagents and attaches the result.
+// For fork mode, it audits the session's subagents and attaches the result.
 //
 // finalize is the single gate verdict site.
 // On OutcomeDone it evaluates the gate before the Outcome write, the fork audit and cleanup;

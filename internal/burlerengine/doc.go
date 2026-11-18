@@ -214,6 +214,8 @@
 // That holds whether or not the gate passed, since the fork may have corrupted the fix.
 // A fork count other than the lens count, and a fork that never returned a report, are warnings only.
 // The fix is on disk, and failing the half would redo a finished fix.
+// A subagent the fixer started with a fresh context, to make its fixes, writes on the fixer's behalf:
+// the audit neither checks nor counts it, so only the self-check forks are held to the read-only rule.
 // FixResult carries the fixer fan's Lenses, the audited Forks count and the Warnings.
 // twillEngineRefusal words the start refusal of an engine without fork support.
 // It names the model key and the fan key that RunOpts.FixKey and RunOpts.FixFanKey carry.

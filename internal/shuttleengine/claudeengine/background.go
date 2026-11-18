@@ -30,6 +30,7 @@ import (
 const taskNotificationMarker = "<task-notification>"
 
 // forkSubagentType is the subagent_type of an Agent launch that forks the session.
+// It is also the agentType Claude Code records in a fork's .meta.json.
 // Claude Code runs every fork in the background, so its input carries no run_in_background flag.
 const forkSubagentType = "fork"
 

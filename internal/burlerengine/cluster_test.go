@@ -1,6 +1,7 @@
 // cluster_test.go tests auditClusterRound against each violation kind:
 // fork-count mismatch, Agent call in a fork, write in a fork, git mutation in a fork, and named spawns.
-// It also covers the warning-only case where ReportReturned is false.
+// It also covers the warning-only case where ReportReturned is false,
+// and a twill fixer's fresh subagent, which the fix-round audit neither checks nor counts.
 // It matrixes firstMutatingGitCommand against mutating and non-mutating Bash command strings.
 // It also runs it on fork command sequences that create their own repositories.
 
@@ -93,6 +94,38 @@ func TestAuditClusterRound(t *testing.T) {
 			wantN:     2,
 			wantErr:   true,
 			errSubstr: `twill fixer fork "b" attempted 2 write/edit tool call(s)`,
+			fix:       true,
+		},
+		{
+			name: "fix: a fresh subagent that wrote is neither a violation nor a fork",
+			audit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{cleanFork("a"), {TranscriptPath: "fresh", WriteCalls: 5, FreshSubagent: true}, cleanFork("b")},
+			},
+			wantN:     2,
+			fix:       true,
+			wantForks: 2,
+		},
+		{
+			name: "fix: a named fresh delegate is no named-fork violation",
+			audit: &shuttleengine.ForkAudit{
+				Forks:           []shuttleengine.ForkReport{cleanFork("a"), cleanFork("b"), {TranscriptPath: "fresh", FreshSubagent: true}},
+				NamedSpawns:     1,
+				NamedForkSpawns: 0,
+			},
+			wantN:     2,
+			fix:       true,
+			wantForks: 2,
+		},
+		{
+			name: "fix: a named fork spawn is the twill fixer violation",
+			audit: &shuttleengine.ForkAudit{
+				Forks:           []shuttleengine.ForkReport{cleanFork("a"), cleanFork("b")},
+				NamedSpawns:     1,
+				NamedForkSpawns: 1,
+			},
+			wantN:     2,
+			wantErr:   true,
+			errSubstr: "twill fixer 1 fork(s) were spawned with a name",
 			fix:       true,
 		},
 		{

@@ -543,17 +543,28 @@ func unreturnedForkWarnings(audit *shuttleengine.ForkAudit) []string {
 // The fix is already on disk; failing the half would redo a finished fix.
 // It returns the warnings, including one per fork that never returned a report.
 // It also returns the audited fork count, which is 0 for a nil audit.
+// A fresh subagent the fixer started to make its fixes writes on the fixer's behalf:
+// it is no self-check fork, so this audit neither checks nor counts it.
+// A name given to it is no named-fork violation.
 func auditFixRound(audit *shuttleengine.ForkAudit, wantN int) (warnings []string, forks int, err error) {
 	if audit == nil {
 		return []string{fmt.Sprintf("twill fixer spawned 0 fork(s) for %d lens(es)", wantN)}, 0, nil
 	}
-	if violation := forkViolation(audit); violation != nil {
-		return nil, len(audit.Forks), fmt.Errorf("burler: twill fixer %w; way forward: inspect the target's working-tree changes, revert what the fork wrote, and resume the run", violation)
+	selfCheck := *audit
+	selfCheck.Forks = nil
+	selfCheck.NamedSpawns = audit.NamedForkSpawns
+	for _, fork := range audit.Forks {
+		if !fork.FreshSubagent {
+			selfCheck.Forks = append(selfCheck.Forks, fork)
+		}
 	}
-	forks = len(audit.Forks)
+	if violation := forkViolation(&selfCheck); violation != nil {
+		return nil, len(selfCheck.Forks), fmt.Errorf("burler: twill fixer %w; way forward: inspect the target's working-tree changes, revert what the fork wrote, and resume the run", violation)
+	}
+	forks = len(selfCheck.Forks)
 	if forks != wantN {
 		warnings = append(warnings, fmt.Sprintf("twill fixer spawned %d fork(s) for %d lens(es)", forks, wantN))
 	}
-	warnings = append(warnings, unreturnedForkWarnings(audit)...)
+	warnings = append(warnings, unreturnedForkWarnings(&selfCheck)...)
 	return warnings, forks, nil
 }
