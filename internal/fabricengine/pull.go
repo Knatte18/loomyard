@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -493,24 +494,29 @@ func (f *Fabric) hubLocation() (*lymcwd.Location, error) {
 }
 
 // lockWeftForReplay takes the weft write lock and then the absorbing push lock, and returns the release of both.
+// It passes the process's pause gate before it takes the write lock and stays admitted until the release.
 func (f *Fabric) lockWeftForReplay() (release func(), err error) {
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
 		return nil, err
 	}
+	leaveGate := pauserecord.Admit(pushLockGateOp)
 	writeLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
 	if err != nil {
+		leaveGate()
 		return nil, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
 	pushLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftPushLockFile))
 	if err != nil {
 		_ = writeLock.Release()
+		leaveGate()
 		return nil, fmt.Errorf("fabricengine: acquire push lock: %w", err)
 	}
 	releasePush := holdPushLock(pushLock, lockDir, time.Now())
 	return func() {
 		_ = releasePush()
 		_ = writeLock.Release()
+		leaveGate()
 	}, nil
 }
 

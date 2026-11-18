@@ -218,6 +218,43 @@ func TestRemove_TeardownLockAgainstThePairsPush(t *testing.T) {
 	})
 }
 
+// TestPushPairAnchored_HeldByAPauseWithoutTheTeardownLock covers a pair push a pause holds.
+// At every wait the pause makes, the pair's teardown lock is free for an exclusive taker such as a removal.
+// The push then lands the pair's records commit.
+// Serial: it installs the process's network gate.
+func TestPushPairAnchored_HeldByAPauseWithoutTheTeardownLock(t *testing.T) {
+	tiergate.Require(t, 1)
+	const slug = "lock-pair-pause"
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+	if err != nil {
+		t.Fatalf("resolve the pair's location: %v", err)
+	}
+	if _, err := fabricengine.PushPairAnchored(pair, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+		t.Fatalf("first PushPairAnchored error = %v; want nil", err)
+	}
+	gitkit.CommitFile(t, h.PairRecordsSibling(slug), "paused.txt", "paused\n", "records work under a pause")
+	teardownLockPath := fabricengine.TeardownLockPath(h.Path, slug)
+	waits := fabricengine.PassingPauseGateForTest(t, func() {
+		if !fabricengine.LockFreeForTest(t, teardownLockPath) {
+			t.Errorf("the teardown lock was held while the pause held the push; want it free")
+		}
+	})
+
+	if _, err := fabricengine.PushPairAnchored(pair, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded}); err != nil {
+		t.Fatalf("PushPairAnchored under a pause error = %v; want nil", err)
+	}
+
+	if *waits == 0 {
+		t.Errorf("the pause held no call of the push; want at least one")
+	}
+	weftBranch := fabricengine.RecordsBranchName(slug)
+	if got, want := gitkit.RevParse(t, h.RecordsBare, weftBranch), gitkit.RevParse(t, h.PairRecordsSibling(slug), "HEAD"); got != want {
+		t.Errorf("origin weft tip = %s; want the pushed %s", got, want)
+	}
+}
+
 // TestTeardownLock_SerialisesAddDiscardAndPairPush holds the slug's teardown lock exclusive, one hub per row.
 // It meets Add, the task-branch discard and the synchronous pair push with that hold.
 // Each row sets its wait on its own Topology, and the test releases the holder,

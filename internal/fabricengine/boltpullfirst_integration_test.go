@@ -103,6 +103,98 @@ func kindsOf(rec *fabricengine.Mutations) []fabricengine.Kind {
 	return kinds
 }
 
+// TestBolt_PullHeldByAPauseWithoutTheBoardWriteLock covers a pull a pause holds.
+// While the pause holds the call, the board write lock is free for another writer.
+// Once the pause lifts, the call takes the lock and does its normal work after one wait.
+// Serial: it installs the process's network gate.
+func TestBolt_PullHeldByAPauseWithoutTheBoardWriteLock(t *testing.T) {
+	tiergate.Require(t, 1)
+	tests := []struct {
+		name string
+		run  func(t *testing.T, f *boltFixture)
+	}{
+		{"Pull", func(t *testing.T, f *boltFixture) {
+			skip, detail, err := f.bolt.Pull(fabricengine.SyncOptions{}, fabricengine.NewMutations(f.hub.Path))
+			if skip != "" || detail != "" || err != nil {
+				t.Errorf("Pull() = (%q, %q, %v); want (\"\", \"\", nil)", skip, detail, err)
+			}
+		}},
+		{"PullThenCommitWritten", func(t *testing.T, f *boltFixture) {
+			runs := 0
+			write := f.writeOf("notes/a.md", "a\n", "write a", &runs)
+			res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{write}, fabricengine.NewMutations(f.hub.Path))
+			if err != nil || res.Skipped != "" || !res.Committed || runs != 1 {
+				t.Errorf("PullThenCommitWritten() = (%+v, %v) with %d writes; want one committed write", res, err, runs)
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newBoltFixture(t)
+			writeLockPath, err := fabricengine.BoltLockPath(f.board, fabricengine.BoardWriteLockFile)
+			if err != nil {
+				t.Fatalf("BoltLockPath: %v", err)
+			}
+			cover, waits := fabricengine.PauseGateForTest(t, func() {
+				held, acquired, err := lock.TryAcquireWriteLock(writeLockPath)
+				if err != nil || !acquired {
+					t.Errorf("TryAcquireWriteLock while the pause held the call = (%v, %v); want the board write lock free", acquired, err)
+					return
+				}
+				_ = held.Release()
+			})
+			cover()
+
+			tt.run(t, f)
+
+			if *waits != 1 {
+				t.Errorf("gate waits = %d; want 1, before the board write lock", *waits)
+			}
+		})
+	}
+}
+
+// TestBolt_PushRecordedRetryHeldByAPauseWithoutTheBoardLocks covers a rejected board push whose replay a pause holds.
+// At every wait the pause makes, the board write lock and the board push lock are free for another holder.
+// The push then lands the board's commit on top of origin's.
+// Serial: it installs the process's network gate.
+func TestBolt_PushRecordedRetryHeldByAPauseWithoutTheBoardLocks(t *testing.T) {
+	tiergate.Require(t, 1)
+	boardkit.InstallReplay(t)
+	f := newBoltFixture(t)
+	gitkit.CommitFile(t, f.board, "notes/a.md", "a\n", "board change")
+	upstream := f.moveUpstream("notes/up.md", "up\n")
+	writeLockPath, err := fabricengine.BoltLockPath(f.board, fabricengine.BoardWriteLockFile)
+	if err != nil {
+		t.Fatalf("BoltLockPath: %v", err)
+	}
+	pushLockPath, err := gitrepo.New(f.board).PushLockPath()
+	if err != nil {
+		t.Fatalf("PushLockPath: %v", err)
+	}
+	waits := fabricengine.PassingPauseGateForTest(t, func() {
+		for name, path := range map[string]string{"board write lock": writeLockPath, "board push lock": pushLockPath} {
+			if !fabricengine.LockFreeForTest(t, path) {
+				t.Errorf("the %s was held while the pause held a call of the push; want it free", name)
+			}
+		}
+	})
+
+	if err := f.bolt.PushRecorded(fabricengine.SyncOptions{}, fabricengine.NewMutations(f.hub.Path)); err != nil {
+		t.Fatalf("PushRecorded: %v", err)
+	}
+
+	if *waits == 0 {
+		t.Errorf("the pause held no call of the push; want at least one")
+	}
+	if !gitkit.IsAncestor(t, f.board, upstream, "HEAD") {
+		t.Errorf("upstream %s missing under HEAD; want the board commit replayed onto it", upstream)
+	}
+	if got, want := gitkit.RevParse(t, f.hub.RecordsBare, "refs/heads/"+f.branch), f.head(); got != want {
+		t.Errorf("origin tip = %s; want the pushed board tip %s", got, want)
+	}
+}
+
 // entriesOfKind returns the entries of rec's snapshot of the given kind, in order.
 func entriesOfKind(rec *fabricengine.Mutations, kind fabricengine.Kind) []fabricengine.Mutation {
 	var entries []fabricengine.Mutation

@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -73,6 +74,8 @@ type takeoverBranch struct {
 }
 
 // TakeOverRun moves the run req names to this machine and leaves the takeover entry on origin.
+// It passes the process's pause gate before it takes the first teardown lock and stays admitted until it returns,
+// so a pause never holds it while it holds a teardown lock or a push lock.
 // It takes the moved slug's teardown lock and then the parent slug's, `root` for the prime, each exclusive.
 // It holds both until it returns, so no push of either pair runs meanwhile.
 // A lock still held when its wait runs out refuses with an error wrapping ErrPairPushRunning, before anything is fetched.
@@ -103,6 +106,8 @@ func TakeOverRun(prime *lymcwd.Location, req TakeOverRequest) (TakeOverResult, e
 		lockWait = StatusPushLockWait
 	}
 
+	leaveGate := pauserecord.Admit(pushLockGateOp)
+	defer leaveGate()
 	for _, slug := range []string{req.Slug, parentSlug} {
 		if err := ensureTeardownLockDir(hubPath, slug); err != nil {
 			return TakeOverResult{}, err
@@ -158,6 +163,7 @@ func TakeOverRun(prime *lymcwd.Location, req TakeOverRequest) (TakeOverResult, e
 }
 
 // land writes the takeover entry on the branch, commits it and pushes it under the records push lock.
+// The caller has passed the process's pause gate, so a pause never holds it while it holds the lock.
 // retries counts each push it repeated.
 func (b *takeoverBranch) land(rec *Mutations, req TakeOverRequest, entry shedengine.Takeover, retries *int) error {
 	delays := req.Delays

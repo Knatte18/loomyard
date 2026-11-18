@@ -15,10 +15,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
+// pushLockGateOp names the pause-gate operation a process marks while it wants or holds a push lock.
+// A pusher passes the gate under this name before it takes its first lock and stays admitted until it releases the last,
+// so a pause holds a pusher only while it holds no lock that other pushers wait on.
+const pushLockGateOp = "push-lock"
+
 // coalescePush runs step under one absorbing lock, looping while step reports progressed=true.
 // It returns on the first false or error from step and releases the lock.
+// It passes the process's pause gate before it takes the lock and stays admitted until the release.
 // step supplies all commit, stage and push policy.
 func coalescePush(lockPath string, step func() (progressed bool, err error)) error {
+	leaveGate := pauserecord.Admit(pushLockGateOp)
+	defer leaveGate()
 	l, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
 		return fmt.Errorf("fabricengine: acquire push lock: %w", err)
@@ -113,8 +121,9 @@ func CoalescePushRequest(req PushSpawn, opts SyncOptions, here MachineNames) (re
 // The prime has no such slug, so it reads req.PauseSlug.
 // caller names the public entry point in the error for a missing weft path.
 // The code side goes out with SyncOptions.AfterRecords set, after the records side landed.
-// For the duration of the call it installs a gate deferral that a pause triggers:
-// the flags of the owed sides not yet pushed go back, and the process exits.
+// For the duration of the call it installs a gate deferral.
+// A pause triggers it at the gate before an acquire of the lock:
+// the flags of the owed sides go back, and the process exits.
 func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, caller string, acquire func(lockPath string) (*lock.FileLock, bool, error)) (res PushResult, err error) {
 	warpPath, weftPath := req.WarpPath, req.WeftPath
 	hubRoot := ""
@@ -146,15 +155,11 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, calle
 		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}
 	}
 
-	// pushed records the sides the current step has pushed,
-	// so a deferral restores the flag of every owed side the step has not reached.
-	pushed := map[string]bool{}
 	codeOpts := opts
 	codeOpts.AfterRecords = true
-	defer pauserecord.SetGateDeferral(pushDeferral(lockDir, owed, pushed, exitDeferred))()
+	defer pauserecord.SetGateDeferral(pushDeferral(lockDir, owed, exitDeferred))()
 
 	step := func() (progressed bool, err error) {
-		clear(pushed)
 		beforeWarp, err := headOrEmpty(warpPath)
 		if err != nil {
 			return false, err
@@ -175,14 +180,10 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, calle
 				return false, err
 			}
 		}
-		pushed[pushSideRecords] = true
-		if recordsLanded {
-			if warpPath != "" && beforeWarp != "" {
-				if _, err := pushSideDetached(rec, hubPath, failedPushSideCode, warpPath, codeOpts, nil); err != nil {
-					return false, err
-				}
+		if recordsLanded && warpPath != "" && beforeWarp != "" {
+			if _, err := pushSideDetached(rec, hubPath, failedPushSideCode, warpPath, codeOpts, nil); err != nil {
+				return false, err
 			}
-			pushed[pushSideCode] = true
 		}
 
 		afterWarp, err := headOrEmpty(warpPath)

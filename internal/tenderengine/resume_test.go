@@ -616,6 +616,20 @@ func TestRevive(t *testing.T) {
 				t.Errorf("b's skip reason = %q; want the state read", report.Skipped[0].Reason)
 			}
 		}},
+		{"a pair with no reed session is skipped and the other pairs are still revived", func(t *testing.T) {
+			gone := newPair("p1")
+			gone.sessionsErr = errNoReedSession
+			p := newPair("p2", "b")
+			p.states["g-b"] = stalled
+			e := newEnv(t, gone, p)
+
+			report := revive(t, e, "")
+
+			wantSkipped := []SessionNote{{Slug: "p1", Reason: "no reed session, so no running turn: " + errNoReedSession.Error()}}
+			if !reflect.DeepEqual(report.Skipped, wantSkipped) || !reflect.DeepEqual(report.Sent, []string{"b"}) || !reflect.DeepEqual(p.conditioned, []string{"g-b"}) {
+				t.Errorf("report %+v, sent to %v; want p1 skipped for no reed session and b sent", report, p.conditioned)
+			}
+		}},
 		{"a session a live entry covers is reported paused and sent nothing", func(t *testing.T) {
 			p := newPair("p1", "a")
 			p.states["g-a"] = stalled
@@ -912,6 +926,37 @@ func TestStatus(t *testing.T) {
 			if !session.Paused {
 				t.Errorf("session %+v under a hub entry; want it paused, the prime's included", session)
 			}
+		}
+	})
+
+	t.Run("a pair and a prime with no reed session are skipped and the other pairs still read", func(t *testing.T) {
+		gone, p2, prime := newPair("p1"), newPair("p2", "b"), newPair("prime")
+		gone.sessionsErr, prime.sessionsErr = errNoReedSession, errNoReedSession
+		e := newEnv(t, gone, p2)
+		e.prime = prime
+
+		report := read(t, e)
+
+		reason := "no reed session, so no running turn: " + errNoReedSession.Error()
+		wantSkipped := []SessionNote{{Slug: "p1", Reason: reason}, {Slug: "prime", Reason: reason}}
+		if !reflect.DeepEqual(report.Skipped, wantSkipped) {
+			t.Errorf("skipped = %+v; want %+v", report.Skipped, wantSkipped)
+		}
+		wantSessions := []SessionStatus{{Slug: "p2", Strand: "b", State: "idle-done", Cause: "done"}}
+		if !reflect.DeepEqual(report.Sessions, wantSessions) {
+			t.Errorf("sessions = %+v; want %+v", report.Sessions, wantSessions)
+		}
+	})
+
+	t.Run("a sessions error other than no reed session fails the status and lists the pair under no skipped", func(t *testing.T) {
+		broken := newPair("p1")
+		broken.sessionsErr = errSessionsRead
+		e := newEnv(t, broken)
+
+		report, err := Status(e.deps())
+
+		if !errors.Is(err, errSessionsRead) || len(report.Skipped) != 0 {
+			t.Errorf("Status() = %+v, %v; want the sessions error and nothing skipped", report, err)
 		}
 	})
 

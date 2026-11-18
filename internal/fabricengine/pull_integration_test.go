@@ -353,6 +353,44 @@ func newDivergedWeftFixture(t *testing.T, originRel, originContent, originMarker
 	}
 }
 
+// TestPull_ReplayHeldByAPauseWithoutTheWeftLocks covers a pull whose weft replay a pause holds.
+// At every wait the pause makes, the weft write lock and the push lock are free for another holder.
+// The pull then replays the local weft commit onto origin's.
+// The replay makes no network call, so the admission before its locks is the only wait of its own.
+// The test pins the count of waits made while the weft head still sits at the local commit:
+// the pull's gated calls before the replay, plus that admission.
+// Serial: it installs the process's network gate.
+func TestPull_ReplayHeldByAPauseWithoutTheWeftLocks(t *testing.T) {
+	tiergate.Require(t, 1)
+	fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
+	lockDir := fabricengine.RecordsLockDirPath(fx.weftPath)
+	waitsBeforeReplay := 0
+	waits := fabricengine.PassingPauseGateForTest(t, func() {
+		for _, name := range []string{fabricengine.WeftWriteLockFileForTest, fabricengine.WeftPushLockFileForTest} {
+			if !fabricengine.LockFreeForTest(t, filepath.Join(lockDir, name)) {
+				t.Errorf("%s was held while the pause held a call of the pull; want it free", name)
+			}
+		}
+		if fabricengine.CurrentSHAForTest(t, fx.weftPath) == fx.localSHA {
+			waitsBeforeReplay++
+		}
+	})
+
+	result, err := fx.f.Pull(fabricengine.SyncOptions{})
+
+	if err != nil || !result.WeftPulled {
+		t.Errorf("Pull() = (%+v, %v); want the weft replayed", result, err)
+	}
+	if *waits == 0 {
+		t.Errorf("the pause held no call of the pull; want at least one")
+	}
+	const wantWaitsBeforeReplay = 3
+	if waitsBeforeReplay != wantWaitsBeforeReplay {
+		t.Errorf("waits before the replay = %d; want %d: the gated calls of the pull before it, and the admission before the weft locks",
+			waitsBeforeReplay, wantWaitsBeforeReplay)
+	}
+}
+
 // TestPull_WeftDivergedWarpAdvancesCleanly covers a weft that this machine and origin both moved.
 // The weft's local commit replays onto origin's and the pull succeeds.
 // A replay conflict and an uncommitted change on a replayed path each return a *WeftStopError.

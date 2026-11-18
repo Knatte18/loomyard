@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 const (
@@ -57,23 +58,23 @@ func PairPushDeferred(l *lymcwd.Location) bool {
 var exitDeferred = func() { os.Exit(0) }
 
 // pushDeferral returns the function a detached push child's gate calls when a pause covers it:
-// it marks pending again every owed side not in pushed, logs the sides left local, and calls exit.
-// The commits stay local and the flags stay on disk for the next push, so the push is deferred and not failed.
-func pushDeferral(lockDir string, owed map[string]PushSpawn, pushed map[string]bool, exit func()) func() {
+// it marks every owed side pending again, logs the sides, and calls exit.
+// The gate is passed before each acquire of the push lock and stays passed while the lock is held.
+// On the first acquire nothing has been pushed yet.
+// On a later acquire, after earlier steps pushed, the flags it puts back may name sides with nothing left to push.
+// The commits not yet pushed stay local and the flags stay on disk for the next push,
+// so the push is deferred and not failed.
+func pushDeferral(lockDir string, owed map[string]PushSpawn, exit func()) func() {
 	return func() {
-		left := map[string]PushSpawn{}
 		var sides []string
-		for side, req := range owed {
-			if !pushed[side] {
-				left[side] = req
-				sides = append(sides, side)
-			}
+		for side := range owed {
+			sides = append(sides, side)
 		}
 		sort.Strings(sides)
-		if err := markPending(lockDir, left); err != nil {
+		if err := markPending(lockDir, owed); err != nil {
 			logger.Warn("fabricengine: pending flags of a deferred push not written; the commits stay local for the next push", "lock_dir", lockDir, "error", err)
 		}
-		logger.Info("fabricengine: a pause covers the push; exiting with the commits left local", "sides", sides)
+		logger.Info("fabricengine: a pause covers the push; exiting with its pending flags put back", "sides", sides)
 		exit()
 	}
 }
@@ -133,6 +134,8 @@ func takePending(lockDir, side string) (req PushSpawn, found bool, err error) {
 
 // coalesceFlagged is the holder loop of fabric.push.lock under lockDir.
 // It marks the owed sides pending and acquires the lock.
+// Before each acquire it passes the process's pause gate, and it stays admitted until it releases the lock,
+// so a pause holds it only while it holds no lock and never while other pushers wait on it.
 // It writes its holder record.
 // It runs step with the owed flags taken before each run, looping while step reports progress.
 // After the last run it releases the lock and re-reads the flags.
@@ -148,15 +151,16 @@ func coalesceFlagged(lockDir string, owed map[string]PushSpawn, acquire func(loc
 	lockPath := filepath.Join(lockDir, weftPushLockFile)
 
 	for {
+		leaveGate := pauserecord.Admit(pushLockGateOp)
 		held, ok, err := acquire(lockPath)
-		if err != nil {
+		if err != nil || !ok {
+			leaveGate()
 			return acquired, err
 		}
-		if !ok {
-			return acquired, nil
-		}
 		acquired = true
-		if err := runHeld(holdPushLock(held, lockDir, time.Now()), lockDir, owed, step); err != nil {
+		err = runHeld(holdPushLock(held, lockDir, time.Now()), lockDir, owed, step)
+		leaveGate()
+		if err != nil {
 			return true, err
 		}
 

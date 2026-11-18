@@ -101,7 +101,9 @@ with Esc, and holds every path that would start agent or network work until
 
 A second Esc goes only after the provider's settle time, and only into a pane
 still showing a running turn. A session whose turn ended with background work
-is sent no Esc and is reported under "background".
+is sent no Esc and is reported under "background". A pair with no reed session,
+as after a crash, has no running turn: it is reported under "skipped" and the
+pause goes on.
 
 With no slug it covers the whole hub; with a slug it covers that pair. A repeated
 pause adds no entry and interrupts only the sessions in a running turn now. The
@@ -276,7 +278,8 @@ func reviveCmd() *cobra.Command {
 		Long: `revive types one fixed carry-on line into each session whose last turn stopped
 on an API error, the case a network outage without a machine sleep leaves
 behind. A session in any other state is skipped with the state read, and a
-session a live pause covers is left to "lym tender resume".
+session a live pause covers is left to "lym tender resume". A pair with no reed
+session, as after a crash, is reported under "skipped" and the revive goes on.
 
 With no slug it covers the whole hub, the orchestrator included: the orch gets
 the line as a checked creel inject, reported with its id. With a slug it covers that pair. Every send is refused at once when
@@ -338,6 +341,7 @@ func statusCmd() *cobra.Command {
 		Long: `status prints the live pause entries, the network operations in flight and the
 parent locks held, then every live session in the hub with its state, cause and
 whether an entry covers it, and the lym processes running a replaced binary.
+skipped lists each pair, the prime included, with no reed session, whose sessions are not read.
 processes lists every live process registered to a run, by owner, with its role,
 pid and age and whether it is an orphan: its owner has no pair and no live batten,
 and it works outside every registered worktree.

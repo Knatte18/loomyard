@@ -58,7 +58,7 @@
 // The CLI root installs a Gate once per process, and a call waits at entry while a pause covers the process.
 // It then writes a marker under `NetDir` that its returned function removes.
 // ListNetOps lists the markers of live processes, which are the operations in flight.
-// An operation named remote-refs marks a lock hold.
+// An operation an Admit caller names, such as remote-refs or push-lock, marks a lock hold.
 // The hold lasts from before the lock is taken until its release, and it covers the git calls and retries made under it.
 // Network returns the time it held the call, zero unless the wait slept,
 // so a caller can move its own deadline later by that time.

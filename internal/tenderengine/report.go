@@ -29,6 +29,7 @@ type Pair interface {
 	// Slug is the pair's slug.
 	Slug() string
 	// Sessions lists the pair's live shuttle-run strands, the loom driver included.
+	// It fails with an error wrapping reedengine.ErrNoSession when the pair has no reed session.
 	Sessions() ([]SessionInfo, error)
 	// State reads the session's state from its run's files, the zero state when the strand has none.
 	State(guid string) (shuttleengine.SessionState, error)
@@ -130,6 +131,12 @@ type SessionNote struct {
 	Strand string `json:"strand"`
 	Slug   string `json:"slug"`
 	Reason string `json:"reason"`
+}
+
+// noReedSessionNote returns the note of the pair slug whose reed session is gone, with reed's refusal err as the cause.
+// Such a pair has no running turn, so pause and status pass it over instead of failing.
+func noReedSessionNote(slug string, err error) SessionNote {
+	return SessionNote{Slug: slug, Reason: "no reed session, so no running turn: " + err.Error()}
 }
 
 // NetOpReport is one network operation in flight.

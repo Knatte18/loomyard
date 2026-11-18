@@ -9,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -86,6 +87,7 @@ type PauseReport struct {
 	// Refused holds the sessions refused on interrupt or reading, with the error's message.
 	Refused []SessionNote `json:"refused"`
 	// Skipped holds the sessions left alone: the caller's own and those owned by another live entry.
+	// It also holds each covered pair with no reed session, with no strand named.
 	Skipped []SessionNote `json:"skipped"`
 	// NetOps holds the covered network operations still in flight.
 	NetOps []NetOpReport `json:"net_ops"`
@@ -170,10 +172,11 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 		}
 	}
 
-	covered, err := coveredSessions(deps, scope)
+	covered, noSession, err := coveredSessions(deps, scope)
 	if err != nil {
 		return report, err
 	}
+	report.Skipped = append(report.Skipped, noSession...)
 	covers := func(slug string) bool { return scope == pauserecord.ScopeHub || slug == scope }
 
 	for {
@@ -230,21 +233,25 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 }
 
 // coveredSessions lists the live sessions of every pair scope covers.
-func coveredSessions(deps Deps, scope string) ([]session, error) {
-	var sessions []session
+// A pair with no reed session has no running turn, so it lists no session and is returned in noSession instead.
+func coveredSessions(deps Deps, scope string) (sessions []session, noSession []SessionNote, err error) {
 	for _, pair := range deps.Pairs {
 		if scope != pauserecord.ScopeHub && pair.Slug() != scope {
 			continue
 		}
 		infos, err := pair.Sessions()
+		if errors.Is(err, reedengine.ErrNoSession) {
+			noSession = append(noSession, noReedSessionNote(pair.Slug(), err))
+			continue
+		}
 		if err != nil {
-			return nil, fmt.Errorf("pause: list the sessions of %s: %w", pair.Slug(), err)
+			return nil, nil, fmt.Errorf("pause: list the sessions of %s: %w", pair.Slug(), err)
 		}
 		for _, info := range infos {
 			sessions = append(sessions, session{SessionInfo: info, pair: pair})
 		}
 	}
-	return sessions, nil
+	return sessions, noSession, nil
 }
 
 // anyBusy reports whether a session reads busy; a session whose busy reading fails does not hold the grace.

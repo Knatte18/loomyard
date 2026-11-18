@@ -866,12 +866,13 @@ User-facing modules each get one `lym <module>` namespace:
   ✅ Implemented. See the `internal/retrocli` package documentation.
 - **tender** — the one ordered pause that makes the hub safe to suspend within seconds (`internal/tendercli` + `internal/tenderengine`; `lym tender pause [<slug>] [--grace <seconds>]`, `lym tender resume [<slug>]`, `lym tender revive [<slug>]`, `lym tender status` and `lym tender reap`, from any worktree of the hub; `lym p` and `lym r` are shortcuts for the first two verbs).
   `lym tender pause` records an entry, waits a short grace for busy agent sessions and network operations to finish, interrupts every covered session still in a running turn with Esc and holds every path that would start agent or network work;
+  a pair with no reed session is reported under `skipped` and the pause goes on;
   the orchestrator is interrupted by its own watcher at the grace end.
   `lym tender resume` lifts the entry and gives each interrupted session one line to carry on.
   `lym tender revive [<slug>]` gives one fixed carry-on line to each session stalled on an API error, and the orch a checked creel inject, reported with its id;
   each send runs under the pause record's write lock, one at a time,
   so it types only while the session still reads stalled, sends no key and kills nothing.
-  `lym tender status` lists the live entries, the network operations in flight and the parent locks held, every live session in the hub with its state, cause and whether an entry covers it, the lym processes running a replaced binary, the processes registered to runs with their orphans, and each pair's owner machine with the run-held entries owned by another machine;
+  `lym tender status` lists the live entries, the network operations in flight and the parent locks held, every live session in the hub with its state, cause and whether an entry covers it, each pair with no reed session under `skipped`, the lym processes running a replaced binary, the processes registered to runs with their orphans, and each pair's owner machine with the run-held entries owned by another machine;
   it changes nothing, and any caller may run it.
   `lym tender reap` ends the orphans of one fresh reading of that processes part, which are the processes of a slug with no pair and no running batten and the unregistered lym processes in a deleted hub directory, never a hub-owner process or one working inside a registered worktree;
   the orch and an external caller may run it,

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -140,49 +139,30 @@ func newPendingFlagFixture(t *testing.T) pendingFlagFixture {
 	}
 }
 
-// TestPushDeferral_PutsBackTheUnpushedFlags covers the deferral a detached push child installs:
-// every owed side not yet pushed gets its flag back with its path and slugs;
-// a pushed side's flag stays off, and the exit runs once.
-func TestPushDeferral_PutsBackTheUnpushedFlags(t *testing.T) {
+// TestPushDeferral_PutsBackEveryOwedFlag covers the deferral a detached push child installs:
+// every owed side gets its flag back with its path and slugs, and the exit runs once.
+func TestPushDeferral_PutsBackEveryOwedFlag(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	tests := []struct {
-		name      string
-		pushed    map[string]bool
-		wantFlags []string
-	}{
-		{"NeitherPushed", map[string]bool{}, []string{pushSideCode, pushSideRecords}},
-		{"CodePushed", map[string]bool{pushSideCode: true}, []string{pushSideRecords}},
-		{"BothPushed", map[string]bool{pushSideCode: true, pushSideRecords: true}, nil},
+	f := newPendingFlagFixture(t)
+	owed := map[string]PushSpawn{
+		pushSideCode:    {WarpPath: f.code, PauseSlug: "feat", TeardownSlug: "feat", ParentLocked: true},
+		pushSideRecords: {WeftPath: f.records, PauseSlug: "feat", TeardownSlug: "feat", ParentLocked: true},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			f := newPendingFlagFixture(t)
-			owed := map[string]PushSpawn{
-				pushSideCode:    {WarpPath: f.code, PauseSlug: "feat", TeardownSlug: "feat", ParentLocked: true},
-				pushSideRecords: {WeftPath: f.records, PauseSlug: "feat", TeardownSlug: "feat", ParentLocked: true},
-			}
-			exits := 0
-			pushDeferral(f.lockDir, owed, tt.pushed, func() { exits++ })()
+	exits := 0
+	pushDeferral(f.lockDir, owed, func() { exits++ })()
 
-			if exits != 1 {
-				t.Errorf("exit ran %d times; want 1", exits)
-			}
-			for _, side := range []string{pushSideCode, pushSideRecords} {
-				flag, found, err := takePending(f.lockDir, side)
-				if err != nil {
-					t.Fatalf("takePending(%s): %v", side, err)
-				}
-				wantFound := slices.Contains(tt.wantFlags, side)
-				if found != wantFound {
-					t.Errorf("flag of %s on disk = %v; want %v", side, found, wantFound)
-				}
-				if found && flag != owed[side] {
-					t.Errorf("flag of %s = %+v; want %+v", side, flag, owed[side])
-				}
-			}
-		})
+	if exits != 1 {
+		t.Errorf("exit ran %d times; want 1", exits)
+	}
+	for _, side := range []string{pushSideCode, pushSideRecords} {
+		flag, found, err := takePending(f.lockDir, side)
+		if err != nil {
+			t.Fatalf("takePending(%s): %v", side, err)
+		}
+		if !found || flag != owed[side] {
+			t.Errorf("flag of %s = %+v, on disk %v; want %+v on disk", side, flag, found, owed[side])
+		}
 	}
 }
 

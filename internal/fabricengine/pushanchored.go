@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -133,6 +134,8 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 // It returns a *TakeoverError, or an error wrapping ErrHandedOver after this machine handed the run over.
 // Each side it pushes is marked pending before the lock is taken and re-read after it is released,
 // so a code commit made while another holder pushes is pushed by whichever holder releases last.
+// It passes the process's pause gate before it takes any lock and stays admitted until it returns,
+// so a pause never holds it while it holds the pair's teardown lock or the push lock.
 // For a pair, not the prime, it first takes the pair's teardown lock shared and holds it through the push.
 // While any holder has that lock exclusive, it pushes nothing.
 // push.TeardownWait zero makes one try, and a positive value polls the lock for at most that long.
@@ -155,6 +158,8 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push PairPush) (res 
 	if opts.SkipGit || opts.SkipPush {
 		return PushResult{}, nil
 	}
+	leaveGate := pauserecord.Admit(pushLockGateOp)
+	defer leaveGate()
 
 	isPrime, err := IsPrimeWorktree(l)
 	if err != nil {

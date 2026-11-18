@@ -1241,6 +1241,13 @@
 // The lock is an OS lock its holder's exit frees, so a dead holder never keeps it and nothing clears it by hand;
 // a record naming a pid with no running process may be stale, left by a holder that died.
 // The next holder overwrites it.
+// Every taker of a push lock, `fabric.push.lock` or the board checkout's, passes the process's pause gate first.
+// It passes through `pauserecord.Admit` before it takes its first lock and stays admitted until it releases the last.
+// The first lock is the outermost one it takes:
+// the board write lock for `Bolt.Pull` and `Bolt.PullThenCommitWritten`,
+// and the pair's teardown lock for `PushPairAnchored` and `TakeOverRun`.
+// A pause therefore holds a pusher only while it holds no lock, and another pair's push takes the lock meanwhile.
+// A pause that starts while a pusher holds the lock reads its operation in flight and lets it finish.
 //
 // The hub-wide scratch tree also holds two sibling directories.
 // `AdoptScratchDir(hub)` holds the adopt check's files.
@@ -1294,12 +1301,16 @@
 // A registration failure is logged at Warn and never fails the spawn.
 // A child run by hand with a wrong or empty teardown slug takes no lock of the pair and can race a removal.
 // A detached push under a pause defers instead of waiting.
-// It pushes nothing more, leaves its commits local and its pending flags in place, and exits with one Info line.
+// It pushes nothing more.
+// It leaves what it has not pushed local and its pending flags in place.
+// It exits with one Info line.
 // The push is deferred and not failed, so no failed-push record and no creel mail are written.
 // When `pauserecord.GateCovered` reads covered, `DetachedPush` exits before it takes the teardown lock or marks a flag.
 // `coalescePushSides` installs a deferral for the call's life.
-// The deferral puts back the flag of every owed side the running push step has not pushed.
-// It then exits through `exitDeferred`.
+// It fires at the gate before each acquire of the push lock, never while the lock is held.
+// On the first acquire nothing has been pushed;
+// on a later acquire after earlier steps pushed, the flags it puts back may name sides with nothing left to push.
+// The deferral puts back the flag of every owed side and exits through `exitDeferred`.
 // The deferral fires only in a process whose gate defers.
 // Only the detached push and board sync children install such a gate,
 // so `CoalescePushBothAt` in an ordinary process is unaffected.

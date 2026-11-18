@@ -8,6 +8,7 @@ package fabricengine_test
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -104,6 +105,36 @@ func TestTakeOverRun(t *testing.T) {
 		}
 		if _, found, err := fabricengine.ReadHandOverMark(f.hub.Location.HubPath, takeoverRunSlug); err != nil || found {
 			t.Errorf("ReadHandOverMark() = found %v, %v; want the earlier mark dropped", found, err)
+		}
+	})
+
+	t.Run("APauseHoldsTheTakeoverWithoutAnyTeardownOrPushLockAndTheEntryStillLands", func(t *testing.T) {
+		f := newTakeoverFixture(t)
+		lockPaths := []string{
+			fabricengine.TeardownLockPath(f.hub.Location.HubPath, takeoverRunSlug),
+			// The takeover's parent is the prime, whose teardown lock is named root.
+			fabricengine.TeardownLockPath(f.hub.Location.HubPath, "root"),
+		}
+		for _, weft := range []string{f.weftPath, f.primeWeft} {
+			lockPaths = append(lockPaths, filepath.Join(fabricengine.RecordsLockDirPath(weft), fabricengine.WeftPushLockFileForTest))
+		}
+		waits := fabricengine.PassingPauseGateForTest(t, func() {
+			for _, path := range lockPaths {
+				if !fabricengine.LockFreeForTest(t, path) {
+					t.Errorf("%s was held while the pause held the takeover; want it free", path)
+				}
+			}
+		})
+
+		if _, err := fabricengine.TakeOverRun(f.hub.Location, f.request()); err != nil {
+			t.Fatalf("TakeOverRun() error = %v; want nil", err)
+		}
+
+		if *waits == 0 {
+			t.Errorf("the pause held no call of the takeover; want at least one")
+		}
+		if entry, found := f.originTakeover(t, f.weftPath); !found || entry != f.wantEntry() {
+			t.Errorf("origin's pair records branch entry = %+v, found %v; want %+v", entry, found, f.wantEntry())
 		}
 	})
 

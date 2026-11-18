@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -58,6 +59,8 @@ type StatusReport struct {
 	Holds holdReport `json:"holds"`
 	// Sessions holds every live session of the hub's task pairs and of the prime.
 	Sessions []SessionStatus `json:"sessions"`
+	// Skipped holds each pair, the prime included, whose sessions were not read because it has no reed session.
+	Skipped []SessionNote `json:"skipped"`
 	// Stale holds the processes running a replaced binary.
 	Stale StaleReport `json:"stale"`
 	// Processes holds the registered run processes, the orphans among them, and the lym processes no record owns.
@@ -441,6 +444,7 @@ type ReviveReport struct {
 	// Paused holds the sessions a live entry covers, which resume gives their line.
 	Paused []SessionNote `json:"paused"`
 	// Skipped holds the sessions that did not read stalled on an API error, each with the state read.
+	// It also holds each pair in scope with no reed session, with no strand named.
 	Skipped []SessionNote `json:"skipped"`
 	// Refused holds the sessions whose state reading or guarded send was refused, each with the reason.
 	Refused []SessionNote `json:"refused"`
@@ -472,10 +476,11 @@ func Revive(deps Deps, req ReviveRequest) (ReviveReport, error) {
 	if req.Slug != "" {
 		scope = req.Slug
 	}
-	sessions, err := coveredSessions(deps, scope)
+	sessions, noSession, err := coveredSessions(deps, scope)
 	if err != nil {
 		return report, err
 	}
+	report.Skipped = append(report.Skipped, noSession...)
 	for _, s := range sessions {
 		if err := reviveSession(deps, s, &report); err != nil {
 			return report, err
@@ -624,13 +629,14 @@ func describeState(state shuttleengine.SessionState) string {
 // It reports the processes running a replaced binary and the processes registered to runs, with the orphans among them.
 // It reports the owners of the pairs.
 // A failed state, process or owners reading is reported inside its own part and leaves the rest of the report intact.
+// A pair with no reed session is reported under Skipped, and the other pairs' sessions are still read.
 func Status(deps Deps) (StatusReport, error) {
 	record, err := pauserecord.Read(deps.RecordPath)
 	if err != nil {
 		return StatusReport{}, err
 	}
 	report := StatusReport{Live: append([]pauserecord.Entry{}, record.Live...), Stale: StaleReport{Supported: true, Processes: []StaleProcess{}}, Processes: ProcessReport{Owned: []OwnedProcess{}, Unregistered: []StaleProcess{}, UnregisteredSupported: true}, Owners: []PairOwner{}}
-	if report.Sessions, err = sessionStatuses(deps, record); err != nil {
+	if report.Sessions, report.Skipped, err = sessionStatuses(deps, record); err != nil {
 		return report, err
 	}
 	if deps.Owners != nil {
@@ -666,7 +672,8 @@ func Status(deps Deps) (StatusReport, error) {
 
 // sessionStatuses lists every live session of every task pair and then of the prime, each with its state.
 // A session whose state reading fails is listed with the state "unknown" and the error as its cause.
-func sessionStatuses(deps Deps, record pauserecord.Record) ([]SessionStatus, error) {
+// A pair with no reed session lists no session; it is returned in skipped instead.
+func sessionStatuses(deps Deps, record pauserecord.Record) (statuses []SessionStatus, skipped []SessionNote, err error) {
 	type scope struct {
 		pair  Pair
 		prime bool
@@ -678,11 +685,15 @@ func sessionStatuses(deps Deps, record pauserecord.Record) ([]SessionStatus, err
 	if deps.Prime != nil {
 		scopes = append(scopes, scope{pair: deps.Prime, prime: true})
 	}
-	statuses := []SessionStatus{}
+	statuses, skipped = []SessionStatus{}, []SessionNote{}
 	for _, covered := range scopes {
 		sessions, err := covered.pair.Sessions()
+		if errors.Is(err, reedengine.ErrNoSession) {
+			skipped = append(skipped, noReedSessionNote(covered.pair.Slug(), err))
+			continue
+		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, session := range sessions {
 			_, paused := record.Covering(session.Slug)
@@ -702,7 +713,7 @@ func sessionStatuses(deps Deps, record pauserecord.Record) ([]SessionStatus, err
 			statuses = append(statuses, status)
 		}
 	}
-	return statuses, nil
+	return statuses, skipped, nil
 }
 
 // deletedSuffix is what the kernel appends to an exe or cwd link whose target was removed.

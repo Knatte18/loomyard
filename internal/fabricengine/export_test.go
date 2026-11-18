@@ -932,6 +932,97 @@ func HoldHubPauseForTest(t *testing.T, slug string) {
 	}))
 }
 
+// PauseGateForTest installs a gate over a temp pause record that holds no live entry.
+// cover adds one live hub entry.
+// Each time the gate sleeps it counts one wait, runs atWait when it is not nil, and then lifts the entry.
+// The gate stays installed until the test ends.
+// It changes process-global state, so the calling test must not be parallel.
+func PauseGateForTest(t *testing.T, atWait func()) (cover func(), waits *int) {
+	t.Helper()
+
+	recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+	pausedAt := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	setLive := func(live ...pauserecord.Entry) {
+		t.Helper()
+		if _, err := pauserecord.Update(recordPath, pausedAt, func(r *pauserecord.Record) error {
+			r.Live = live
+			return nil
+		}); err != nil {
+			t.Errorf("pauserecord.Update: %v", err)
+		}
+	}
+	setLive()
+	waits = new(int)
+	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{
+		Geometry: pauserecord.Geometry{RecordPath: recordPath, Slug: "held-pair"},
+		Notify:   func(string) {},
+		Sleep: func(context.Context, time.Duration) error {
+			*waits++
+			if atWait != nil {
+				atWait()
+			}
+			setLive()
+			return nil
+		},
+	}))
+	return func() { setLive(pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: pausedAt}) }, waits
+}
+
+// PassingPauseGateForTest installs a gate over a temp pause record that holds one live hub entry for the whole test.
+// Each wait the gate makes counts once and runs atWait, and then the call goes through with the entry still live.
+// atWait therefore runs at every point where a call would be held, until a call admits the process.
+// The gate stays installed until the test ends.
+// It changes process-global state, so the calling test must not be parallel.
+func PassingPauseGateForTest(t *testing.T, atWait func()) (waits *int) {
+	t.Helper()
+
+	recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+	pausedAt := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	if _, err := pauserecord.Update(recordPath, pausedAt, func(r *pauserecord.Record) error {
+		r.Live = []pauserecord.Entry{{Scope: pauserecord.ScopeHub, PausedAt: pausedAt}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waits = new(int)
+	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{
+		Geometry: pauserecord.Geometry{RecordPath: recordPath, Slug: "held-pair"},
+		Notify:   func(string) {},
+		Sleep: func(context.Context, time.Duration) error {
+			*waits++
+			atWait()
+			return errors.New("the test's pause lets the call through")
+		},
+	}))
+	return waits
+}
+
+// Lock file names in a records worktree's lock directory.
+const (
+	WeftPushLockFileForTest  = weftPushLockFile
+	WeftWriteLockFileForTest = weftWriteLockFile
+)
+
+// LockFreeForTest reports whether another holder could take the lock at path now.
+// It creates the lock's directory when it is missing, takes the lock by one try and releases it at once.
+func LockFreeForTest(t *testing.T, path string) bool {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Errorf("MkdirAll(%s): %v", filepath.Dir(path), err)
+		return false
+	}
+	held, acquired, err := lock.TryAcquireWriteLock(path)
+	if err != nil {
+		t.Errorf("TryAcquireWriteLock(%s) error = %v", path, err)
+		return false
+	}
+	if acquired {
+		_ = held.Release()
+	}
+	return acquired
+}
+
 // PendingFlagPathForTest is pendingFlagPath, the path of a side's pending flag in a lock directory.
 var PendingFlagPathForTest = pendingFlagPath
 

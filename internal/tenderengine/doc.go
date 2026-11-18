@@ -30,6 +30,8 @@
 // Only then is it interrupted through shuttle's guarded interrupt.
 // A pause killed before its Esc therefore leaves the session recorded.
 // The caller's own session and a session another live entry owns are skipped.
+// A covered pair with no reed session, as after a crash, has no running turn to interrupt.
+// The pause keeps its entry, reports the pair under `skipped` with reed's refusal as the reason, and goes on.
 // The keys go in passes over the sessions, each followed by one wait of the provider's settle time;
 // a pause therefore waits each settle once, whatever the number of sessions.
 // A session that still reads a running turn after the first settle is guarded and interrupted again, so at most twice.
@@ -115,6 +117,7 @@
 // For each live session of each task pair in scope, Revive reads the session's state.
 // It skips a session that does not read idle-stalled with cause `api-error`, reporting the state read.
 // It never waits for a session.
+// A pair in scope with no reed session has no session to read: Revive reports it under `Skipped` and goes on.
 // A stalled session is then sent `ReviveLine` through the conditioned send.
 // The send re-reads the state at its ready reading.
 // It refuses at once if the session does not read stalled on an API error.
@@ -169,6 +172,7 @@
 //     A prime session is covered only by a hub entry.
 //     A session busy on background work lists the kind of each outstanding task under `background`.
 //     A session whose state reading fails is listed with the state `unknown` and the error as its cause.
+//     A pair or prime with no reed session lists no session and is reported under `skipped` instead.
 //   - The processes running a replaced binary:
 //     each process whose exe is a deleted file with the running lym's own file name.
 //     Its cwd must be the hub or inside it.

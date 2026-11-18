@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -799,6 +800,7 @@ func fetchBoltBranch(hubPath string) error {
 // retryBoltPush replays the board's local commits onto origin's and pushes again, after a rejected push.
 // It try-acquires the board write lock, then takes the push lock, in the order the pull path uses.
 // It holds both locks across the replay and the push.
+// It passes the process's pause gate before it tries the write lock and stays admitted until both are released.
 // A held write lock and an uncommitted change on a path the replay touches report a deferral, with nothing changed.
 // A replay that stops returns ErrReplayConflict, and a second rejection returns gitrepo.ErrPushRejected.
 func retryBoltPush(rec *Mutations, boardDir string) (deferred bool, err error) {
@@ -806,6 +808,8 @@ func retryBoltPush(rec *Mutations, boardDir string) (deferred bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	leaveGate := pauserecord.Admit(pushLockGateOp)
+	defer leaveGate()
 	writeLock, held, err := lock.TryAcquireWriteLock(writeLockPath)
 	if err != nil {
 		return false, fmt.Errorf("fabricengine: acquire board write lock: %w", err)
