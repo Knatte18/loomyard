@@ -1,5 +1,6 @@
 // taskpatch.go — the read-only git reads a code segment's identity needs on a Fabric:
-// the task's patch against its merge base, the merge-in-only test of its history, and the weft HEAD.
+// the task's patch against its merge base and the task's committed diff.
+// It also holds the merge-in-only test of the task's history and the weft HEAD.
 
 package fabricengine
 
@@ -62,6 +63,16 @@ func (f *Fabric) ReadTaskPatch(base string, skip []string) (TaskPatch, error) {
 	}
 	sum := sha256.Sum256(full)
 	return TaskPatch{Head: head, Full: full, FullHash: hex.EncodeToString(sum[:]), PatchID: patchID}, nil
+}
+
+// ReadCommittedDiff returns the full diff of the commits from base to the warp checkout's HEAD.
+// It holds neither an uncommitted edit nor an untracked file, so it is the range a code review reads.
+func (f *Fabric) ReadCommittedDiff(base string) (string, error) {
+	diff, err := gitexec.Run([]string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "-U3", base, "HEAD", "--"}, f.warpPath)
+	if err != nil {
+		return "", fmt.Errorf("fabricengine: read committed diff: diff %s to HEAD: %w", base, err)
+	}
+	return diff, nil
 }
 
 // skippedPath reports whether the untracked path is exempted by a skip entry.

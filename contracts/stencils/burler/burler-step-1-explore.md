@@ -12,13 +12,15 @@
      focus_directive is the sixth marker, optional, and renders nothing when the round has no directive.
      Both stay at the top level, before the first work heading, so their optional-blank semantics hold.
      fork_reading is the seventh marker, optional, and renders nothing in a solo round;
-     it sits directly after tool_use_rules on the same line, so an empty value adds no byte. -->
+     it sits directly after tool_use_rules on the same line, so an empty value adds no byte.
+     diff_pieces is the eighth marker, optional, and renders nothing in a round with no diff;
+     it sits directly after target on the same line for the same reason. -->
 
 {{.pattern_directive}}
 {{.focus_directive}}
 ## What to review (the target)
 
-{{.target}}
+{{.target}}{{.diff_pieces}}
 
 ## What to judge it against (the fasit)
 

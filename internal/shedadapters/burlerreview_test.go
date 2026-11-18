@@ -50,6 +50,8 @@ type halfProducerSpec struct {
 	snapshot *TargetSnapshot
 	// decisionRecordPath is the deps' decision record; empty records no added entries.
 	decisionRecordPath string
+	// diff is the deps' diff reader; nil gives no diff.
+	diff func() (string, error)
 }
 
 // newHalfSpec returns a spec over the minimal profile and a fixed clock.
@@ -60,7 +62,7 @@ func newHalfSpec() halfProducerSpec {
 // newReviewProducer builds a BurlerReviewProducer over runDir, failing the test on constructor error.
 func newReviewProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerReviewProducer {
 	t.Helper()
-	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent, DecisionsEscalated: spec.decisionsEscalated, Assist: spec.assist, Parent: spec.parent, Snapshot: spec.snapshot, DecisionRecordPath: spec.decisionRecordPath}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent, DecisionsEscalated: spec.decisionsEscalated, Assist: spec.assist, Parent: spec.parent, Snapshot: spec.snapshot, DecisionRecordPath: spec.decisionRecordPath, Diff: spec.diff}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerReviewProducer() error = %v; want nil", err)
 	}
@@ -426,6 +428,53 @@ func TestBurlerReviewProducer_Call_ProfileAndOpts(t *testing.T) {
 
 		if got := runner.GotReviewProfiles[0].ClusterExclude; len(got) != 0 {
 			t.Errorf("ClusterExclude = %v; want none, since round 2's record does not say its names were recorded", got)
+		}
+	})
+
+	diffRows := []struct {
+		name     string
+		diff     func() (string, error)
+		wantDiff string
+	}{
+		{name: "the told diff reaches the spawned profile", diff: func() (string, error) { return "diff --git a/x b/x\n", nil }, wantDiff: "diff --git a/x b/x\n"},
+		{name: "a failed diff read spawns with no diff", diff: func() (string, error) { return "", errors.New("no merge base") }},
+		{name: "no diff reader spawns with no diff"},
+	}
+	for _, tt := range diffRows {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			spec := newHalfSpec()
+			spec.diff = tt.diff
+			runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
+
+			shedfake.CallOK(t, newReviewProducer(t, filepath.Join(t.TempDir(), "run"), runner, spec))
+
+			if got := runner.GotReviewProfiles[0].Diff; got != tt.wantDiff {
+				t.Errorf("spawned profile's Diff = %q; want %q", got, tt.wantDiff)
+			}
+		})
+	}
+
+	t.Run("a retried attempt shares the one diff read", func(t *testing.T) {
+		t.Parallel()
+		const told = "diff --git a/x b/x\n"
+		reads := 0
+		spec := newHalfSpec()
+		spec.diff = func() (string, error) {
+			reads++
+			return told, nil
+		}
+		runDir := filepath.Join(t.TempDir(), "run")
+		runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{{Outcome: shuttleengine.OutcomeDied}, reviewDone("d")}}
+		runner.DuringReview = func(int) { writeRoundFile(t, roundReviewPath(runDir, 1)) }
+
+		shedfake.CallOK(t, newReviewProducer(t, runDir, runner, spec))
+
+		if reads != 1 {
+			t.Errorf("diff reads = %d; want 1 shared by both attempts", reads)
+		}
+		if len(runner.GotReviewProfiles) != 2 || runner.GotReviewProfiles[0].Diff != told || runner.GotReviewProfiles[1].Diff != told {
+			t.Errorf("spawned profiles = %+v; want two, both carrying the told diff", runner.GotReviewProfiles)
 		}
 	})
 

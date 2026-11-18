@@ -290,6 +290,9 @@ type Env struct {
 	// CodeSubject is the injected closure reading a code segment's subject.
 	// The Bouncer's subject key reads it when set to "code"; nil is legal when no row names one.
 	CodeSubject func() (shedadapters.Subject, bool, error)
+	// CodeDiff is the injected closure reading the full diff of the commits a code segment's task holds past its merge base.
+	// A BurlerReview row's stage_diff key reads it; nil is legal when no row sets that key.
+	CodeDiff func() (string, error)
 	// MergeInOnly reports whether the history after the since commit holds only merge-ins.
 	// It is told to a Bouncer whose subject is "code"; nil is legal when no row names one.
 	MergeInOnly func(since string) (bool, error)

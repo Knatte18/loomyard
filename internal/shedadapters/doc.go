@@ -584,6 +584,9 @@
 // The `fans_recorded` key, never the `fan` key, says the names are there.
 // A live reviewer is probed and resumed under the fan already recorded for its round.
 // A list edited since therefore changes only rounds spawned after the edit.
+// A row told BurlerHalfDeps.Diff reads the diff once per spawning call and sets it as the spawned profile's Diff.
+// burlerengine writes that Diff out in per-package pieces for the reviewer.
+// A failed read is logged and spawns with none.
 // A row told BurlerHalfDeps.Assist picks the round's assistant reviewer and its fan from the per-round lists.
 // An entry with no model runs no assistant.
 // The row passes the assistant's key, capped timeout and skip reason on.

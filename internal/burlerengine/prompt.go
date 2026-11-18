@@ -136,15 +136,20 @@ func composeReviewPrompt(stencilsDir, specsDir, engine string, p *Profile, patte
 	if err != nil {
 		return halfPrompt{}, err
 	}
+	diffPieces, err := diffPiecesBlock(stencilsDir, engine, p.diffPieces)
+	if err != nil {
+		return halfPrompt{}, err
+	}
 	explore, err := stencil.FillWith(exploreTemplate, exploreBlocks, map[string]string{
 		"pattern_directive": patternDirective,
 		focusMarkerName:     focusDirective,
 		"target":            formatFileSet(p.Target),
+		"diff_pieces":       diffPieces,
 		"fasit":             formatFileSet(p.Fasit),
 		"rubric":            p.Rubric,
 		"tool_use_rules":    toolUseRules(p.ToolUse),
 		"fork_reading":      forkReading,
-	}, []string{"pattern_directive", focusMarkerName, "fork_reading"})
+	}, []string{"pattern_directive", focusMarkerName, "diff_pieces", "fork_reading"})
 	if err != nil {
 		return halfPrompt{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
@@ -511,6 +516,21 @@ func forkReadingBlock(stencilsDir, engine string, p *Profile) (string, error) {
 		return "", err
 	}
 	return "\n\n" + strings.TrimRight(string(reading), "\n"), nil
+}
+
+// diffPiecesBlock renders the diff-pieces stencil for engine, as the explore step's optional diff_pieces marker.
+// It lists pieces, and a round with no piece returns "" without reading anything.
+// The value leads with the blank line that separates it from the target,
+// and its trailing newline is left to the explore stencil.
+func diffPiecesBlock(stencilsDir, engine string, pieces []diffPiece) (string, error) {
+	if len(pieces) == 0 {
+		return "", nil
+	}
+	block, err := fillInstruction(stencilsDir, engine, "burler-diff-pieces", map[string]string{"piece_list": formatDiffPieces(pieces)}, nil)
+	if err != nil {
+		return "", err
+	}
+	return "\n\n" + strings.TrimRight(string(block), "\n"), nil
 }
 
 // selfCheckBlock renders the fix self-check stencil for engine, for the fix step's optional self_check marker.

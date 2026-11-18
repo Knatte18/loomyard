@@ -1158,6 +1158,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// Each reads on demand and opens nothing at wire time.
 		DocumentSubject: documentSubjectWithHead(location, recordHead(location)),
 		CodeSubject:     func() (shedadapters.Subject, bool, error) { return codeSubject(location, c.runID) },
+		CodeDiff:        committedCodeDiff(location),
 		MergeInOnly:     parentMergeInOnly(location),
 		RecordHead:      recordHead(location),
 		// ReviewInput is the merge fixer's latest Parent-Align report.

@@ -29,6 +29,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 	}{
 		{"burler-focus-directive", BurlerFocusDirective, []string{"focus_path"}},
 		{"burler-fork-reading", BurlerForkReading, nil},
+		{"burler-diff-pieces", BurlerDiffPieces, []string{"piece_list"}},
 		{"burler-cluster-solo", BurlerClusterSolo, nil},
 		{"burler-cluster-fan", BurlerClusterFan, []string{"lens_list", "lens_report_path", "lens_report_spec_path"}},
 		{"burler-fix-self-check", BurlerFixSelfCheck, []string{"lens_list", "lens_report_path", "lens_report_spec_path", "rubric_path"}},

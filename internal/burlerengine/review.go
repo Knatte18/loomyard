@@ -94,6 +94,7 @@ func (p *Profile) reviewTable(opts RunOpts, values map[string]string, skills []s
 // Review runs the review half for p, tuned by opts: one fresh reviewer session that writes the review file.
 // It validates p and resolves the PATTERN directive.
 // It composes the reviewer's instruction files into a fresh directory under the anchor's ephemeral burler directory.
+// It writes p's diff there in per-package pieces that the explore step names.
 // Then it runs the review table.
 // When opts names an assistant, the table also holds the assistant seat.
 // The assistant's own instruction files are composed for its engine into a directory of their own;
@@ -119,6 +120,10 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 		return ReviewResult{}, fmt.Errorf("burler: %w", err)
 	}
 	dir, err := e.instructionDir("review")
+	if err != nil {
+		return ReviewResult{}, err
+	}
+	p.diffPieces, err = writeDiffPieces(filepath.Join(dir, diffDirName), p.Diff, pieceCap{maxBytes: diffPieceMaxBytes, maxLines: diffPieceMaxLines})
 	if err != nil {
 		return ReviewResult{}, err
 	}

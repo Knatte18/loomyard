@@ -213,6 +213,7 @@ func TestEngine_Review_AssistedRound(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			root, p := newAssistProfile(t)
+			p.Diff = fileSection("internal/alpha/a.go", "-old\n+new\n") + fileSection("internal/beta/b.go", "-x\n+y\n")
 			opts := assistOpts()
 			shuttle := newAssistShuttle(halfScript{result: tt.result})
 			e := newAssistEngine(t, root, shuttle)
@@ -260,6 +261,21 @@ func TestEngine_Review_AssistedRound(t *testing.T) {
 			}
 			if strings.Contains(string(assistStep), "origin: assist:assist") || !strings.Contains(string(assistStep), report) {
 				t.Errorf("assistant review step holds the consolidation part or lacks its own report path %q", report)
+			}
+			chairExplorePath := firstGlob(t, filepath.Join(root, ".lym", "burler", "review-*", "instruction-1-explore.md"))
+			chairExplore, err := os.ReadFile(chairExplorePath)
+			if err != nil {
+				t.Fatalf("ReadFile(chair explore step) = %v; want nil", err)
+			}
+			assistExplore, err := os.ReadFile(firstGlob(t, filepath.Join(root, ".lym", "burler", "assist-*", "instruction-1-explore.md")))
+			if err != nil {
+				t.Fatalf("ReadFile(assistant explore step) = %v; want nil", err)
+			}
+			for _, name := range []string{"001-internal-alpha.diff", "002-internal-beta.diff"} {
+				piece := "`" + filepath.Join(filepath.Dir(chairExplorePath), diffDirName, name) + "`"
+				if !strings.Contains(string(chairExplore), piece) || !strings.Contains(string(assistExplore), piece) {
+					t.Errorf("chair and assistant explore steps do not both name the piece %s", piece)
+				}
 			}
 
 			if len(got.Assists) != 1 {

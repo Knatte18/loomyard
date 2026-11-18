@@ -60,6 +60,9 @@ func reviewTargetSnapshot(env Env, runSubdir string) shedadapters.TargetSnapshot
 
 // burlerReviewEntry is the Constructor for the "BurlerReview" registry row.
 // It takes no "gates" key: its only gate is the engine's review-parse entry.
+// The optional "stage_diff" key, set true, gives each spawned reviewer the task's committed diff from Env.CodeDiff.
+// burlerengine writes that diff out in per-package pieces.
+// A nil Env.CodeDiff then refuses the row when it is built.
 // Its producer records each round's target id, through a snapshot over the profile's fix scope and target paths.
 // Its models, review key, assistant and parent seat come from its segment's settings.
 // The fan lists come from the settings named by reviewer_fan_setting and fixer_fan_setting.
@@ -88,8 +91,19 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "color_segment", "role_prefix", "reviewer_fan_setting", "fixer_fan_setting"); err != nil {
+	stageDiff, err := configBool(cfg, "stage_diff", false)
+	if err != nil {
 		return nil, err
+	}
+	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "color_segment", "role_prefix", "reviewer_fan_setting", "fixer_fan_setting", "stage_diff"); err != nil {
+		return nil, err
+	}
+	var diff func() (string, error)
+	if stageDiff {
+		if err := requireSeam("BurlerReview", "CodeDiff", env.CodeDiff); err != nil {
+			return nil, err
+		}
+		diff = env.CodeDiff
 	}
 	segment, err := rowSegment("BurlerReview", row, env)
 	if err != nil {
@@ -145,7 +159,7 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	snapshot := reviewTargetSnapshot(env, runSubdir)
 	snapshot.Scope, snapshot.Paths = profile.FixScope, profile.Target.Paths
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: segment.ReviewKey}
-	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name), Snapshot: &snapshot, DecisionRecordPath: env.DecisionRecordPath}, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name), Snapshot: &snapshot, DecisionRecordPath: env.DecisionRecordPath, Diff: diff}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}

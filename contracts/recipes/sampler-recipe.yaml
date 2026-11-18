@@ -154,6 +154,9 @@ producers:
       role_prefix: code
       reviewer_fan_setting: loom.code_reviewer_fan
       fixer_fan_setting: loom.code_fixer_fan
+      # The reviewer gets the task's diff written out in per-package pieces, each small enough to
+      # read whole, so it never prints or reads the whole diff at once.
+      stage_diff: true
       profile:
         target:
           # No paths key: a diff has no file on disk for the profile's path check to stat.

@@ -523,7 +523,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			"fasit":          formatFileSet(p.Fasit),
 			"rubric":         p.Rubric,
 			"tool_use_rules": toolUseRules(p.ToolUse),
-		}, []string{"pattern_directive", focusMarkerName})
+		}, []string{"pattern_directive", focusMarkerName, "diff_pieces"})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional(explore without fork_reading) = %v; want nil", err)
 		}

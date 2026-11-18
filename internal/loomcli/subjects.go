@@ -151,15 +151,8 @@ func taskMergeBase(l *lymcwd.Location) func() (string, error) {
 // Bound: a change confined to harnessOwnFiles reads as an unchanged subject.
 // The landing gate at Parent-Align and Finalize bounds it.
 func codeSubject(location *lymcwd.Location, runID string) (shedadapters.Subject, bool, error) {
-	origin, found, err := fabricengine.ReadOrigin(location)
-	if err != nil {
-		return shedadapters.Subject{}, false, err
-	}
-	if !found || origin.ParentBranch == "" {
-		return shedadapters.Subject{}, false, nil
-	}
-	base, err := taskMergeBase(location)()
-	if err != nil {
+	base, found, err := recordedTaskBase(location)
+	if err != nil || !found {
 		return shedadapters.Subject{}, false, err
 	}
 	handle, err := fabricengine.Open(location)
@@ -179,6 +172,41 @@ func codeSubject(location *lymcwd.Location, runID string) (shedadapters.Subject,
 		Base:      base,
 		Patch:     patch.Full,
 	}, true, nil
+}
+
+// recordedTaskBase returns the commit the task's diff is taken from.
+// A run with no recorded parent branch, a standalone run, answers not found.
+func recordedTaskBase(location *lymcwd.Location) (string, bool, error) {
+	origin, found, err := fabricengine.ReadOrigin(location)
+	if err != nil {
+		return "", false, err
+	}
+	if !found || origin.ParentBranch == "" {
+		return "", false, nil
+	}
+	base, err := taskMergeBase(location)()
+	if err != nil {
+		return "", false, err
+	}
+	return base, true, nil
+}
+
+// committedCodeDiff returns the reader of the task's committed diff, from its merge base to HEAD.
+// It holds no uncommitted edit and no untracked file.
+// A standalone run, which records no parent branch, reads as no diff.
+// The base and the fabric are read on each call, so a commit made since wiring is read as it stands.
+func committedCodeDiff(location *lymcwd.Location) func() (string, error) {
+	return func() (string, error) {
+		base, found, err := recordedTaskBase(location)
+		if err != nil || !found {
+			return "", err
+		}
+		handle, err := fabricengine.Open(location)
+		if err != nil {
+			return "", err
+		}
+		return handle.ReadCommittedDiff(base)
+	}
 }
 
 // patchSkipEntries returns the skip entries of a code subject's patch.

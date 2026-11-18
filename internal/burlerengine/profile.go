@@ -56,6 +56,13 @@ type Profile struct {
 	FixerReportPath   string
 	PriorReviews      []string
 	PriorFixerReports []string
+	// Diff is the unified diff the round reviews, empty for a round whose target is no diff.
+	// The review half writes a non-empty Diff beside its instruction files in pieces of one package each.
+	// Every piece is small enough to read whole, and the explore step names them.
+	// The reviewer so never writes or reads the whole diff at once.
+	Diff string
+	// diffPieces are the written pieces of Diff, set by the review half before it composes the prompts.
+	diffPieces []diffPiece
 	// FocusDirective is an optional path to this round's focus directive file.
 	// It is steering input the reviewer reads before forming findings,
 	// and it is exempt from the prior-rounds clean-room rule.

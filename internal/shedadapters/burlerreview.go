@@ -76,6 +76,9 @@ type BurlerHalfDeps struct {
 	Snapshot *TargetSnapshot
 	// DecisionRecordPath is the decision record whose added entries the round's start records; empty records none.
 	DecisionRecordPath string
+	// Diff reads the unified diff a spawned reviewer is given in pieces, read by the review producer once per spawning call.
+	// Nil gives no diff, and so does a failed read, which is logged.
+	Diff func() (string, error)
 }
 
 // AssistSettings is one review segment's assistant reviewer seat: the per-round model and fan lists, the keys they came from and the assistant's run bound.
@@ -145,6 +148,8 @@ type BurlerReviewProducer struct {
 	snapshot *TargetSnapshot
 	// decisionRecordPath, when non-empty, is the decision record whose added entries each round's start records.
 	decisionRecordPath string
+	// diff, when non-nil, reads the diff a spawned reviewer is given.
+	diff func() (string, error)
 	// gateFindingsPath, when non-empty, is the file cleared once the review's gate has passed.
 	gateFindingsPath string
 	profile          burlerengine.Profile
@@ -170,7 +175,7 @@ func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlereng
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, snapshot: deps.Snapshot, decisionRecordPath: deps.DecisionRecordPath, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, snapshot: deps.Snapshot, decisionRecordPath: deps.DecisionRecordPath, diff: deps.Diff, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
 // recordRoundStart writes round's snapshot record when none exists yet.
@@ -368,6 +373,7 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		}
 	}
 
+	profile.Diff = p.readDiff(round)
 	assist, assistFan := p.assist.pick(round)
 	var priorResult burlerengine.ReviewResult
 	var priorToken string
@@ -446,6 +452,20 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 
 	// Unreachable: every path through the loop above returns.
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerReviewEngineLabel, round)
+}
+
+// readDiff returns the diff round's spawned reviewer is given, or "" when the row reads none.
+// A failed read is logged and gives no diff: the reviewer then derives the range from its rubric, as without one.
+func (p *BurlerReviewProducer) readDiff(round int) string {
+	if p.diff == nil {
+		return ""
+	}
+	diff, err := p.diff()
+	if err != nil {
+		logger.Warn("shedadapters: burler review could not read the round's diff; the reviewer gets no pieces", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
+		return ""
+	}
+	return diff
 }
 
 // forkMismatchError builds the failure of a round whose two attempts both failed, one of them on the chair's fork count.

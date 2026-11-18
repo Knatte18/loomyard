@@ -142,6 +142,9 @@
 // "document" selects Env.DocumentSubject and Env.RecordHead, and "code" Env.CodeSubject and Env.MergeInOnly.
 // A named seam the Env does not carry, and a value outside the two, are refused when the row is built;
 // an absent key tells no subject.
+// BurlerReview takes the optional key "stage_diff", a bool.
+// Set true, it gives each spawned reviewer the task's committed diff from Env.CodeDiff.
+// The diff is written out in per-package pieces, and a nil Env.CodeDiff is refused when the row is built.
 // BurlerReview renders the amendment note of its run directory into the rubric's amendment marker.
 // BurlerReview and the Bouncer hand Env.RedundancyReport to the rubric's redundancy_report marker.
 // The rubric reads it only when it carries the marker.

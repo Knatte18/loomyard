@@ -139,6 +139,7 @@ var nilLegal = map[string]bool{
 	"Drift.Now":                        true,
 	"DocumentSubject":                  true,
 	"CodeSubject":                      true,
+	"CodeDiff":                         true,
 	"MergeInOnly":                      true,
 	"RecordHead":                       true,
 	"ReviewInput":                      true,
@@ -548,6 +549,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		CodeSubject: func() (shedadapters.Subject, bool, error) {
 			return shedadapters.Subject{Kind: shedadapters.SubjectCode, MergeBase: "merge-base", Head: "head", FullHash: "full-hash", PatchID: "patch-id"}, true, nil
 		},
+		CodeDiff:           func() (string, error) { return "", nil },
 		MergeInOnly:        func(string) (bool, error) { return false, nil },
 		RecordHead:         func() (string, error) { return "record-head", nil },
 		ReviewInput:        func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },

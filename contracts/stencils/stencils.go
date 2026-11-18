@@ -270,6 +270,13 @@ var BurlerFocusDirective []byte
 //go:embed burler/burler-fork-reading.md
 var BurlerForkReading []byte
 
+// BurlerDiffPieces is burler's shipped-default diff-pieces part.
+// It lists a round's diff, written out in per-package pieces, in the explore step.
+// A round whose profile carries no diff renders nothing there.
+//
+//go:embed burler/burler-diff-pieces.md
+var BurlerDiffPieces []byte
+
 // BurlerClusterSolo is burler's shipped-default cluster-rules part of a round that names no fan:
 // the single-reviewer statement.
 //
@@ -928,6 +935,7 @@ var entries = []registryEntry{
 	{"burler-step-fix", &BurlerStepFix},
 	{"burler-focus-directive", &BurlerFocusDirective},
 	{"burler-fork-reading", &BurlerForkReading},
+	{"burler-diff-pieces", &BurlerDiffPieces},
 	{"burler-cluster-solo", &BurlerClusterSolo},
 	{"burler-cluster-fan", &BurlerClusterFan},
 	{"burler-fix-self-check", &BurlerFixSelfCheck},

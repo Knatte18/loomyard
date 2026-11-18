@@ -67,6 +67,14 @@
 // It sets ForkSubagents exactly when the profile names a cluster fan.
 // The review half's files are the explore step, the review step and the review-file format.
 // They are written to a fresh directory under the anchor's .lym.
+// A profile whose Diff is set gets that diff written to the same directory's diff subdirectory.
+// The diff is written in pieces of one package each.
+// No piece passes diffPieceMaxBytes or diffPieceMaxLines, so each piece reads whole.
+// A package too large for one piece is split at file boundaries, and a file too large at hunk starts, then line ends.
+// Each piece of a split file after its first opens with the file's header, when that header fits within half a piece.
+// The explore step's optional diff_pieces marker renders the burler-diff-pieces stencil, which lists the pieces;
+// a round with no diff renders nothing there.
+// An assistant reviewer's explore step names the same pieces.
 // The reviewer's prompt carries the PATTERN directive; it carries no friction directive.
 // acceptReview accepts a done reviewer's end:
 // the cluster audit for a fanned round, then ParseCurrentReview on the review file.

@@ -5,6 +5,7 @@ package shedrecipe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -194,6 +195,53 @@ func TestBurlerReviewEntry_ProfileMapping(t *testing.T) {
 		}
 		if len(record.AddedDecisions) != 1 || record.AddedDecisions[0].Title != "First call" {
 			t.Errorf("round-1 added_decisions = %+v; want the one entry titled %q", record.AddedDecisions, "First call")
+		}
+	})
+
+	t.Run("StageDiffGivesTheCommittedDiff", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			diff     func() (string, error)
+			wantDiff string
+		}{
+			{name: "DiffRead", diff: func() (string, error) { return "diff --git a/x b/x\n", nil }, wantDiff: "diff --git a/x b/x\n"},
+			{name: "NoDiff", diff: func() (string, error) { return "", nil }},
+			{name: "DiffReadFails", diff: func() (string, error) { return "", errors.New("no merge base") }},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				env := newTestEnv(t)
+				env.CodeDiff = tt.diff
+				cfg := minimalReviewConfig()
+				cfg["stage_diff"] = true
+
+				profile, _ := captureReview(t, "review-row", cfg, env)
+
+				if profile.Diff != tt.wantDiff {
+					t.Errorf("profile.Diff = %q; want %q", profile.Diff, tt.wantDiff)
+				}
+			})
+		}
+	})
+
+	t.Run("StageDiffWithoutCodeDiffIsRefused", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.CodeDiff = nil
+		cfg := minimalReviewConfig()
+		cfg["stage_diff"] = true
+
+		_, err := burlerReviewEntry(reviewRow("review-row"), cfg, env)
+
+		if err == nil || !strings.Contains(err.Error(), "Env.CodeDiff") {
+			t.Errorf("burlerReviewEntry() error = %v; want it to name Env.CodeDiff", err)
+		}
+	})
+
+	t.Run("NoStageDiffGivesNoDiff", func(t *testing.T) {
+		profile, _ := captureReview(t, "review-row", minimalReviewConfig(), newTestEnv(t))
+
+		if profile.Diff != "" {
+			t.Errorf("profile.Diff = %q; want none", profile.Diff)
 		}
 	})
 }

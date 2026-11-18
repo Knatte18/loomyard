@@ -120,6 +120,31 @@ func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool)
 	return before, after
 }
 
+// TestFabric_ReadCommittedDiff proves the committed diff holds the commits past the base and nothing else:
+// an uncommitted edit and an untracked file stay out of it.
+func TestFabric_ReadCommittedDiff(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	fx := newTaskPatchFixture(t)
+	gitkit.CommitFile(t, fx.warpDir, "task.txt", "committed\n", "task change")
+	writeTaskPatchFile(t, fx.warpDir, "lib.txt", strings.Replace(fx.baseFile, "line 15\n", "line 15 edited\n", 1))
+	writeTaskPatchFile(t, fx.warpDir, "untracked.txt", "new\n")
+
+	diff, err := fx.fabric.ReadCommittedDiff(fx.baseSHA)
+
+	if err != nil {
+		t.Fatalf("ReadCommittedDiff(%q) error = %v; want nil", fx.baseSHA, err)
+	}
+	if !strings.Contains(diff, diffHeader("task.txt")) {
+		t.Errorf("ReadCommittedDiff() lacks the committed change %q:\n%s", diffHeader("task.txt"), diff)
+	}
+	for _, path := range []string{"lib.txt", "untracked.txt"} {
+		if strings.Contains(diff, diffHeader(path)) {
+			t.Errorf("ReadCommittedDiff() holds %q; want only the committed change:\n%s", diffHeader(path), diff)
+		}
+	}
+}
+
 // TestFabric_ReadTaskPatch covers which changes the patch holds and how skip exempts untracked paths;
 // it also covers what its hashes follow, and that a root `.scratch` never enters the patch.
 func TestFabric_ReadTaskPatch(t *testing.T) {
