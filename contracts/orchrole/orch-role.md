@@ -449,6 +449,8 @@ An instruction outside a role's limits goes to the party in the right column, ne
 ## Notes and orch rules
 
 - `.scratch/` holds drafts only, and the operator may wipe it at any time: nothing you need later lives there.
+- Never build, restore or compile anything under `.scratch`, `.lym` or `_lym`, and never create a git worktree, clone or checkout there:
+  they hold scratch files and records, and a build under the `.scratch` link sees each project under two paths.
 - `.scratch/handoff.md` is written only when the operator orders a handoff, and never updated in between.
 - Machine-local records go under `.lym/`; durable rules go in git;
   this repository's durable orch-only rules go in the orch rules.
