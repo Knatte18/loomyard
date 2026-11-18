@@ -1132,6 +1132,9 @@
 // `PushPairAnchored` is synchronous and rebase-free:
 // it pushes the records side and then the code side;
 // a records side that fails, is rejected, is deferred or did not land sends no code side;
+// a records side still unpushed after a push is pushed again over the push backoff while origin holds its branch;
+// one still unpushed once that backoff is spent, or whose origin lookup cannot reach origin, is recorded as owed;
+// only a records branch gone from origin is reported as one whose entry ended;
 // in the hub's prime it pushes the records side only,
 // and it reports a code branch with unpushed commits in `PushResult.CodePushSkipped`;
 // and it runs under the weft-side absorbing push lock that `CoalescePushBothAt` also holds.

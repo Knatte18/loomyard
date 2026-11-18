@@ -79,7 +79,7 @@ type SyncOptions struct {
 	// The warp commit and the env-gated async push still run.
 	SkipGit  bool
 	SkipPush bool // Skip push operations if true; affects push only.
-	// BackoffSleep sleeps one push backoff delay before a missing branch or unreachable origin is recorded; nil means sleep.
+	// BackoffSleep sleeps one delay of the push backoff between a push's retries; nil means sleep.
 	BackoffSleep func(time.Duration)
 	// Notifier mails a failed push's record to the hub's orch; nil mails through the process's installed notifier.
 	Notifier PushNotifier

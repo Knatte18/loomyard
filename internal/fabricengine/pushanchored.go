@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -108,6 +109,12 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 // the note names the branch and says it was left for the operator to push.
 // Otherwise the records side is pushed first, and the code side only once the records side landed.
 // The records side landed when its push returned nil and its worktree then holds nothing unpushed.
+// A records side with unpushed commits is pushed again over the push backoff while origin holds its branch.
+// Commits made during the push, or a tracking ref the push left unmoved, keep it from reading as landed.
+// A side still unpushed once that backoff is spent records a failed push of class PushFailureDeferred,
+// and a failed lookup of the branch on origin that cannot reach origin records one of class PushFailureTransport;
+// each returns its *PushFailedError, which marks the push as owed.
+// Only a records branch gone from origin reads as one whose entry ended.
 // A records side that fails, is rejected, is deferred, or was left to its entry's teardown sends no code side:
 // the error is the records side's, joined with a line naming the withheld code worktree,
 // and the code commits go with the next pair push.
@@ -206,18 +213,34 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push PairPush) (res 
 		if head, err := headOrEmpty(weftPath); err == nil && head == "" {
 			return nil
 		}
-		started := time.Now()
-		if err := pushSide(pushSideRecords, weftPath); err != nil {
-			return err
+		delays := gitrepo.PushBackoffDelays()
+		sleep := opts.BackoffSleep
+		if sleep == nil {
+			sleep = time.Sleep
 		}
-		unpushed, err := gitrepo.New(weftPath).HasUnpushed()
-		if err != nil {
-			return fmt.Errorf("fabricengine: push records side at %s: %w", weftPath, err)
+		for attempt := 0; ; attempt++ {
+			started := time.Now()
+			if err := pushSide(pushSideRecords, weftPath); err != nil {
+				return err
+			}
+			unpushed, err := gitrepo.New(weftPath).HasUnpushed()
+			if err != nil {
+				return fmt.Errorf("fabricengine: push records side at %s: %w", weftPath, err)
+			}
+			if !unpushed {
+				return nil
+			}
+			notLanded := recordsSideNotLanded(l.HubPath, weftPath, started, opts)
+			if !errors.Is(notLanded, errRecordsUnpushedPastPush) {
+				return fmt.Errorf("fabricengine: push records side at %s: %w", weftPath, notLanded)
+			}
+			if attempt == len(delays) {
+				owed := recordOwedRecordsPush(l.HubPath, weftPath, PushFailureDeferred, notLanded, opts)
+				return fmt.Errorf("fabricengine: push records side at %s: %w", weftPath, owed)
+			}
+			logger.Warn("fabricengine: records side still unpushed after its push, pushed again", "path", weftPath, "attempt", attempt+1, "error", notLanded)
+			sleep(delays[attempt])
 		}
-		if !unpushed {
-			return nil
-		}
-		return fmt.Errorf("fabricengine: push records side at %s: %w", weftPath, recordsSideNotLanded(l.HubPath, weftPath, started))
 	}
 
 	step := func() (progressed bool, err error) {
@@ -290,11 +313,21 @@ func teardownLockOwedError(hubPath, weftPath, slug string, wait time.Duration, o
 	return &PushFailedError{Record: record, Err: refusal}
 }
 
+// errRecordsUnpushedPastPush is wrapped by the not-landed error of a records branch origin still holds.
+// The worktree gained commits after its push read HEAD, or the push left its tracking ref unmoved,
+// so another push of the branch carries them.
+var errRecordsUnpushedPastPush = errors.New("fabricengine: the records branch holds commits its push did not carry")
+
 // recordsSideNotLanded is the error of a records push that returned nil.
 // The worktree at weftPath still holds unpushed commits.
 // A push deferred since started returns its *PushFailedError, read from the deferred record the push wrote.
-// Otherwise origin ended the branch's entry and the branch is left to its teardown.
-func recordsSideNotLanded(hubPath, weftPath string, started time.Time) error {
+// A branch origin still holds returns an error wrapping errRecordsUnpushedPastPush.
+// A branch gone from origin had its entry ended there, since the push skips only such a branch,
+// and its error says the branch is left to its teardown.
+// A lookup of the branch on origin that fails to reach origin records a failed push of class PushFailureTransport,
+// and the error is that record's *PushFailedError, which marks the push as owed.
+// Any other failed lookup returns its error unclassified.
+func recordsSideNotLanded(hubPath, weftPath string, started time.Time, opts SyncOptions) error {
 	branch, err := gitrepo.New(weftPath).CurrentBranch()
 	if err != nil {
 		return err
@@ -306,7 +339,44 @@ func recordsSideNotLanded(hubPath, weftPath string, started time.Time) error {
 	if found && record.Class == PushFailureDeferred && !record.LastSeen.Before(started) {
 		return &PushFailedError{Record: record, Err: errors.New(record.Error)}
 	}
+	gone, err := branchGoneOnOrigin(weftPath)
+	if err != nil {
+		lookupErr := fmt.Errorf("look up branch %s on origin after its push: %w", branch, err)
+		if gitexec.IsTransportFailure(err) {
+			return recordOwedRecordsPush(hubPath, weftPath, PushFailureTransport, lookupErr, opts)
+		}
+		return lookupErr
+	}
+	if !gone {
+		return fmt.Errorf("%w: branch %s is still on origin", errRecordsUnpushedPastPush, branch)
+	}
 	return fmt.Errorf("the entry of branch %s is ended on origin, so the branch was not pushed and is left to its teardown", branch)
+}
+
+// recordOwedRecordsPush records a failed push of class for the records branch at weftPath.
+// It returns the record as a *PushFailedError wrapping cause.
+// The classes it is given read as owed pushes, so the caller retries the push.
+// A records branch that cannot be read returns cause with nothing recorded.
+func recordOwedRecordsPush(hubPath, weftPath string, class PushFailureClass, cause error, opts SyncOptions) error {
+	branch, err := gitrepo.New(weftPath).CurrentBranch()
+	if err != nil {
+		return cause
+	}
+	record := FailedPush{
+		Repo:         failedPushSideRecords,
+		RepoPath:     weftPath,
+		CodeWorktree: pairedCodeWorktree(hubPath, weftPath),
+		Branch:       branch,
+		Class:        class,
+		Error:        cause.Error(),
+	}
+	if opts.RunSlug != "" {
+		record.Runs = []string{opts.RunSlug}
+	}
+	if err := recordPushFailure(hubPath, record, time.Now(), opts.notifier()); err != nil {
+		logger.Warn("fabricengine: failed-push record not written", "side", failedPushSideRecords, "branch", branch, "error", err)
+	}
+	return &PushFailedError{Record: record, Err: cause}
 }
 
 // unpushedCodeBranchNote returns the CodePushSkipped text for the code worktree at path.

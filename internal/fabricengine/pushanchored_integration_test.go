@@ -22,6 +22,31 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// installRecordsCommitHook installs a post-receive hook on h's records bare repository.
+// The hook commits to the prime's records worktree.
+// It commits on the first push only when once is set, and on every push otherwise.
+// It then runs afterCommit, in which $RECORDS names that worktree.
+func installRecordsCommitHook(t *testing.T, h *hubforge.Hub, once bool, afterCommit string) {
+	t.Helper()
+	records := filepath.ToSlash(h.PrimeRecords())
+	body := "unset GIT_DIR GIT_QUARANTINE_PATH GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES\n" +
+		"RECORDS='" + records + "'\n" +
+		"git -C \"$RECORDS\" commit -q --allow-empty -m 'committed during the push'\n" +
+		afterCommit
+	hook := "#!/bin/sh\n" + body
+	if once {
+		marker := filepath.ToSlash(filepath.Join(h.RecordsBare, "committed-once"))
+		hook = "#!/bin/sh\nif [ ! -e '" + marker + "' ]; then\n: > '" + marker + "'\n" + body + "fi\n"
+	}
+	hookPath := filepath.Join(h.RecordsBare, "hooks", "post-receive")
+	if err := os.MkdirAll(filepath.Dir(hookPath), 0o755); err != nil {
+		t.Fatalf("mkdir hooks: %v", err)
+	}
+	if err := os.WriteFile(hookPath, []byte(hook), 0o755); err != nil {
+		t.Fatalf("write post-receive hook: %v", err)
+	}
+}
+
 // cloneBareForTest clones bareRepo into a fresh directory under t.TempDir() and returns its path.
 // The clone gets a commit identity and is checked out on branch, tracking origin/branch.
 // A test commits in this clone to advance the bare remote.
@@ -175,7 +200,7 @@ func branchPushedPosition(res fabricengine.PushResult, detailPrefix string) int 
 // A refusing records remote fails the call and leaves origin's code branch at its old tip.
 // So does a records side deferred by a held write lock, and so does one deferred over uncommitted changes.
 // A prime pushes its records side only and reports the skipped code push;
-// a prime pushes its records side only and reports the skipped code push;
+// a prime records branch that gains a commit during its push is pushed again rather than read as ended;
 // an unresolvable prime fails the call with nothing pushed.
 func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -517,6 +542,82 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 			t.Errorf("CodePushSkipped = %q; want it to name branch %q", res.CodePushSkipped, codeBranch)
 		}
 	})
+
+	// A commit landing on the prime's records branch while its push runs leaves the branch unpushed after the push.
+	// Origin still holds the branch, so the push goes again and lands the commit instead of reading the entry as ended.
+	t.Run("PrimeRecordsCommitDuringThePushIsPushedAgain", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		recordsBranch := gitkit.CurrentBranch(t, h.PrimeRecords())
+		installRecordsCommitHook(t, h, true, "")
+		recordsSHA := gitkit.CommitFile(t, h.PrimeRecords(), "records-file.txt", "records change", "records change")
+		sleeps := 0
+
+		_, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+
+		if err != nil {
+			t.Fatalf("PushPairAnchored() in the prime error = %v; want nil after the push goes again", err)
+		}
+		if sleeps != 1 {
+			t.Errorf("backoff sleeps = %d; want 1, the wait before the second push", sleeps)
+		}
+		localHead := gitkit.RevParse(t, h.PrimeRecords(), "HEAD")
+		if localHead == recordsSHA {
+			t.Fatalf("records HEAD = %q; want the commit the hook made during the push on top of it", localHead)
+		}
+		if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, recordsBranch); got != localHead {
+			t.Errorf("records bare = %q; want local HEAD %q, the commit made during the push", got, localHead)
+		}
+		requireNoFailedPush(t, h.Location.HubPath)
+	})
+
+	// A records branch that keeps gaining commits through every push is owed once the backoff is spent,
+	// and a post-push origin lookup that cannot reach origin is owed as a transport failure.
+	// Both read as owed pushes, so a run's transition retries them instead of failing.
+	owedRows := []struct {
+		name string
+		// everyPush makes the hook commit on every push, not only the first.
+		everyPush bool
+		// afterCommit is shell run by the hook after its commit.
+		afterCommit string
+		wantClass   fabricengine.PushFailureClass
+		wantSleeps  int
+		wantError   string
+	}{
+		{"BackoffSpent", true, "", fabricengine.PushFailureDeferred, len(gitrepo.PushBackoffDelays()), "holds commits its push did not carry"},
+		{
+			"OriginLookupTransportFailure",
+			false,
+			"git -C \"$RECORDS\" remote set-url origin '" + refusedOriginURL + "'\n",
+			fabricengine.PushFailureTransport,
+			0,
+			"look up branch",
+		},
+	}
+	for _, tt := range owedRows {
+		t.Run("PrimeRecordsPushOwed_"+tt.name, func(t *testing.T) {
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			installRecordsCommitHook(t, h, !tt.everyPush, tt.afterCommit)
+			gitkit.CommitFile(t, h.PrimeRecords(), "records-file.txt", "records change", "records change")
+			sleeps := 0
+
+			_, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+
+			var failed *fabricengine.PushFailedError
+			if !errors.As(err, &failed) || failed.Record.Class != tt.wantClass {
+				t.Fatalf("PushPairAnchored() error = %v; want a *PushFailedError of class %s", err, tt.wantClass)
+			}
+			if !strings.Contains(err.Error(), tt.wantError) {
+				t.Errorf("PushPairAnchored() error = %q; want it to hold %q", err, tt.wantError)
+			}
+			if !fabricengine.IsPushOwed(err) {
+				t.Errorf("IsPushOwed(%v) = false; want true", err)
+			}
+			if sleeps != tt.wantSleeps {
+				t.Errorf("backoff sleeps = %d; want %d", sleeps, tt.wantSleeps)
+			}
+			requireOneFailedPush(t, h.Location.HubPath, "records", tt.wantClass)
+		})
+	}
 
 	// A prime that cannot be resolved fails the call with nothing pushed.
 	t.Run("UnresolvablePrimePushesNothing", func(t *testing.T) {
