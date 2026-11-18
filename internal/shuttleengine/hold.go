@@ -3,10 +3,12 @@
 // The checks cover a usage limit, background work a session wakes from, and a turn the operator typed.
 // A deferred prompt line whose own turn never started is typed in place of the notice.
 // It is typed when a turn ends held, and when Attach reconstructs a run.
+// A typed line that no turn followed within the submit window is typed once more.
 
 package shuttleengine
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -173,6 +175,49 @@ func (run *Run) deliverPromptOnAttach() {
 	}
 	if sent {
 		logger.Warn("shuttle: attach: the deferred prompt never started a turn; typed it", "strandGUID", run.state.StrandGUID)
+	}
+}
+
+// retypeLostPrompt types the deferred prompt line once more when it was typed through this handle and no turn followed.
+// A provider can drop a submitted line and leave its input box empty, which the send reads as landed;
+// the idle session then ends no turn, so no held turn end types the line again.
+// It acts only for an engine that parses session signals.
+// It acts only while no pause covers the run and the run's deadline has not passed.
+// The line must have gone out at least the submit window ago.
+// No turn start of any instruction may lie past the events offset the line was last typed at.
+// A turn start past that offset ends the watch, so later ticks read nothing for it.
+// The send judges the prompt's turn again before it types, and its idle wait and submit window end by the run's deadline.
+// It acts at most once per handle:
+// a send held busy before it typed leaves the retype unused and is tried again at the next tick,
+// and any other failed send is logged at Warn and uses the retype up.
+func (run *Run) retypeLostPrompt() {
+	if run.covered || !run.clock.Now().Before(run.deadline) {
+		return
+	}
+	if _, parses := run.engine.(SessionSignalParser); !parses {
+		return
+	}
+	run.sendMu.Lock()
+	defer run.sendMu.Unlock()
+	if run.lostPromptRetyped || run.promptSentAt.IsZero() || run.clock.Now().Sub(run.promptSentAt) < submitConfirmTimeout(run.runner.cfg) {
+		return
+	}
+	if turnStartedSince(run.engine, run.state.EventsPath, run.promptSendOffset) {
+		run.promptSentAt = time.Time{}
+		return
+	}
+	sent, err := run.typePendingPrompt(run.deadline)
+	var busy *SessionBusyError
+	if errors.As(err, &busy) {
+		logger.Info("shuttle: the prompt line started no turn and the session was held busy, trying again at the next tick", "strandGUID", run.state.StrandGUID, "reason", busy.Reason)
+		return
+	}
+	run.lostPromptRetyped = true
+	switch {
+	case err != nil:
+		logger.Warn("shuttle: the prompt line started no turn and could not be typed again", "strandGUID", run.state.StrandGUID, "error", err)
+	case sent:
+		logger.Warn("shuttle: the prompt line started no turn within the submit window, typed it again", "strandGUID", run.state.StrandGUID)
 	}
 }
 

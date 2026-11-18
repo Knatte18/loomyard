@@ -276,6 +276,14 @@
 // and a failed delivery is logged at Warn and tried again at the next held turn end.
 // Bound: a prompt the provider queued while a turn ran starts its turn only when that turn ends,
 // so a held turn end read before it can type the line a second time.
+// Wait also types the line once more when it went out through the handle at least the submit window ago,
+// and no turn start of any instruction lies past the events offset the line was typed at.
+// A provider can drop a submitted line and leave its input box empty, which the send reads as landed,
+// and an idle session ends no turn for a held turn end to type the line at.
+// That retype happens at most once per handle:
+// a retype held busy before it typed does not count, and the next tick tries again.
+// It happens only for an engine that parses session signals.
+// It also needs no pause covering the run and a run deadline not yet passed.
 //
 // # Pause
 //
@@ -569,6 +577,11 @@
 // An attached run is the exception: it delivers a pending prompt without judging the API,
 // so a driver that died during a hold has its prompt typed by the attach.
 // PromptLine then goes out through the verified send path.
+// A start's prompt send whose idle wait holds the session busy typed nothing,
+// so the start sends it again with a fresh wait.
+// It does so up to startPromptBusyRetries times, while the run's deadline has not passed.
+// Each send's wait and submit window end by that deadline.
+// A prompt delivery that still fails tears the start down, and the capture it saves is the pane at the failure.
 // Every verified send first waits for an idle session and types nothing until then.
 // The wait lasts at most `send_ready_timeout_s` and never runs past the run's deadline.
 // For an engine with the optional SessionCycler idle reading, every poll takes the readiness reading.

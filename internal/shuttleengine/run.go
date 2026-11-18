@@ -323,12 +323,23 @@ type Run struct {
 	stopMarked bool
 	// sendMu orders in-process sends on this run; Send and sendWithin hold it through the idle wait and the delivery check.
 	sendMu sync.Mutex
-	// promptDelivered reports the deferred prompt typed through this handle, so no later call retypes it; sendMu guards it.
+	// promptDelivered reports the deferred prompt typed through this handle.
+	// No later DeliverPendingPrompt call retypes it.
+	// sendMu guards it.
 	promptDelivered bool
 	// attachPromptTried reports Wait judged the attach prompt, so no later tick does; only Wait's goroutine touches it.
 	attachPromptTried bool
 	// attached reports that Attach rebuilt this handle over a persisted record, so Wait first sends an unsent prompt.
 	attached bool
+	// promptSentAt is the run clock's time the deferred prompt line was last typed through this handle, zero when it was not;
+	// sendMu guards it.
+	promptSentAt time.Time
+	// promptSendOffset is the events file's size just before the prompt line was last typed through this handle;
+	// a turn start past it is the line's, and one before it never is; sendMu guards it.
+	promptSendOffset int64
+	// lostPromptRetyped reports that Wait typed the prompt line again after it started no turn, so no later tick does;
+	// sendMu guards it.
+	lostPromptRetyped bool
 
 	// offset is the byte offset already consumed from state.EventsPath.
 	offset int64
@@ -358,6 +369,7 @@ type Run struct {
 	// lastStartupCapture is the last successful pane capture the startup step took, empty until the first one.
 	// checkLivenessTick, called from awaitStartup or Wait, takes the capture.
 	// On a not-ready teardown (abandonStartup) it is saved to startupCaptureFileName in the run directory.
+	// A prompt delivery that fails after the skills replaces it with the pane at the failure.
 	// It is the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
 	// startupStrandRemoved is true once abandonStartup has removed the strand, which is what lets start launch the run again.
@@ -813,6 +825,8 @@ func (run *Run) typeStartupColor(color segmentcolor.Color) {
 // A pane that dies meanwhile is a died startup.
 // Every other failure tears the run down through abandonStartup.
 // A failed skill-load send, prompt-offset persist, or prompt delivery returns ErrNotStarted wrapped beside the cause.
+// A prompt send whose idle wait held the session busy typed nothing, so it is sent again, as sendStartPrompt says.
+// A prompt delivery that still fails keeps the pane at the failure as the capture the teardown saves.
 // A prompt delivery reporting ErrSubmissionNotLanded counts as landed late if a turn start follows the pre-send offset.
 // The run is then returned.
 // That turn start may be the operator's, so Wait checks the prompt's own turn at each held turn end.
@@ -858,31 +872,84 @@ func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color
 			return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err))
 		}
 	}
-	if err := run.sendThroughPause(run.newSendContext(), promptLine); err != nil {
+	promptSendOffset := sentAt
+	if err := run.sendStartPrompt(promptLine, &promptSendOffset); err != nil {
 		if errors.Is(err, ErrSubmissionNotLanded) && turnStartedSince(run.engine, run.state.EventsPath, sentAt) {
 			return Result{}, nil
 		}
+		run.keepFailureCapture()
 		return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err))
 	}
+	run.sendMu.Lock()
+	run.promptSentAt = run.clock.Now()
+	run.promptSendOffset = promptSendOffset
+	run.sendMu.Unlock()
 	return Result{}, nil
+}
+
+// startPromptBusyRetries is how many more times a start sends its prompt after an idle wait that held the session busy.
+// Such a wait typed nothing, so a later send cannot type the line twice.
+// One held reading then costs a wait instead of the whole start.
+const startPromptBusyRetries = 2
+
+// sendStartPrompt sends promptLine through the verified send path for a start.
+// A send whose idle wait held the session busy, a *SessionBusyError, is sent again with a fresh idle wait.
+// It is sent again up to startPromptBusyRetries times, and only while the run's deadline has not passed.
+// Each send's idle wait and submit window end by that deadline.
+// sentOffset receives the events file's size just before the line went out, and keeps its value when no send typed.
+// Every other result returns as the send gave it, and so does the last busy hold.
+func (run *Run) sendStartPrompt(promptLine string, sentOffset *int64) error {
+	for retry := 0; ; retry++ {
+		sc := run.newSendContext()
+		sc.deadline = run.deadline
+		sc.sentOffset = sentOffset
+		err := run.sendThroughPause(sc, promptLine)
+		var busy *SessionBusyError
+		if !errors.As(err, &busy) || retry == startPromptBusyRetries || !run.clock.Now().Before(run.deadline) {
+			return err
+		}
+		logger.Warn("shuttle: the start prompt was held busy, sending it again", "strandGUID", run.state.StrandGUID, "retry", retry+1, "reason", busy.Reason)
+	}
+}
+
+// keepFailureCapture takes the pane as a failed prompt delivery left it, for the teardown to save over the boot screen.
+// An engine whose box reading judges a styled capture keeps the styled one, escapes and all.
+// A capture that fails keeps the last startup capture.
+func (run *Run) keepFailureCapture() {
+	capture := run.runner.reed.CapturePane
+	if _, styled := run.engine.(StyledBoxReader); styled {
+		capture = run.runner.reed.CapturePaneStyled
+	}
+	if screen, err := capture(run.state.StrandGUID); err == nil {
+		run.lastStartupCapture = screen
+	}
 }
 
 // sendThroughPause sends text over sc through the verified send path.
 // When a pause refuses the send with ErrPaused, it waits out the pause and sends again.
-// The wait judges the slug the refusal judged, and each resend builds a fresh context,
-// so a second pause landing before the resend holds it again.
+// The wait judges the slug the refusal judged.
+// Each resend builds a fresh context that keeps sc's sent-offset target.
+// It also keeps sc's deadline, moved later by the wait, since a pause is not run time.
+// A second pause landing before the resend holds it again.
 // Any other result returns as the send gave it, and a failed wait returns wrapped.
 func (run *Run) sendThroughPause(sc sendContext, text string) error {
+	deadline, sentOffset := sc.deadline, sc.sentOffset
 	for {
 		err := sendVerified(sc, text)
 		var paused *PausedError
 		if !errors.As(err, &paused) {
 			return err
 		}
+		waitStart := run.clock.Now()
 		if waitErr := run.runner.waitWhileCovered(paused.Slug); waitErr != nil {
 			return fmt.Errorf("shuttle: wait for the pause to lift: %w", waitErr)
 		}
+		if !deadline.IsZero() {
+			deadline = deadline.Add(run.clock.Now().Sub(waitStart))
+		}
 		sc = run.newSendContext()
+		sc.deadline = deadline
+		sc.sentOffset = sentOffset
 	}
 }
 
@@ -903,6 +970,22 @@ func (run *Run) DeliverPendingPrompt() (bool, error) {
 	if run.promptDelivered {
 		return false, nil
 	}
+	sent, err := run.typePendingPrompt(time.Time{})
+	if sent {
+		run.promptDelivered = true
+	}
+	return sent, err
+}
+
+// typePendingPrompt reads the run record and types its deferred prompt line.
+// It types only when no turn start past the prompt offset carries the line.
+// It reports whether it typed the line.
+// It persists the events file's size as the prompt offset when none was recorded.
+// It clears any pending-send record first.
+// It keeps the typing's time as promptSentAt, and the events file's size just before it as promptSendOffset.
+// A non-zero deadline cuts the send's idle wait and submit window.
+// The caller holds sendMu.
+func (run *Run) typePendingPrompt(deadline time.Time) (bool, error) {
 	record, found, err := loadRunState(run.runDir)
 	if err != nil {
 		return false, fmt.Errorf("shuttle: read the run record in %s to deliver a pending prompt: %w", run.runDir, err)
@@ -926,10 +1009,15 @@ func (run *Run) DeliverPendingPrompt() (bool, error) {
 	if err := clearPendingSend(run.runDir); err != nil {
 		logger.Warn("shuttle: pending send not cleared before delivering the pending prompt", "strandGUID", run.state.StrandGUID, "error", err)
 	}
-	if err := run.sendThroughPause(run.newSendContext(), record.PromptLine); err != nil {
+	sendOffset := eventsSize(record.EventsPath)
+	sc := run.newSendContext()
+	sc.deadline = deadline
+	sc.sentOffset = &sendOffset
+	if err := run.sendThroughPause(sc, record.PromptLine); err != nil {
 		return false, fmt.Errorf("shuttle: deliver the pending prompt: %w", err)
 	}
-	run.promptDelivered = true
+	run.promptSentAt = run.clock.Now()
+	run.promptSendOffset = sendOffset
 	return true, nil
 }
 
@@ -1661,6 +1749,9 @@ func typeVerified(sc sendContext, text string) error {
 	typing := engine.ComposeSend
 	var closeAt time.Time
 	sentAt := eventsSize(sc.eventsPath)
+	if sc.sentOffset != nil {
+		*sc.sentOffset = sentAt
+	}
 	if readsBox {
 		typing = reader.TypeSequence
 		closeAt = sc.clock.Now().Add(submitConfirmTimeout(sc.cfg))

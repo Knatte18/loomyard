@@ -310,6 +310,7 @@ func (run *Run) Wait() (Result, error) {
 	for tick := 1; ; tick++ {
 		run.observePause()
 		run.deliverPromptOnAttach()
+		run.retypeLostPrompt()
 		outcome, held, err := run.pollEventsTick()
 		if err == nil && run.turnStartRead {
 			run.turnSince = run.clock.Now()
@@ -801,7 +802,8 @@ func (run *Run) awaitStartup() (Result, error) {
 // cause is nil when the provider never reached StartupReady inside its window.
 // Otherwise cause is the error that ended the start, and the returned error wraps it beside ErrNotStarted.
 //
-// In order, it saves any capture that checkLivenessTick recorded to startupCaptureFileName.
+// In order, it saves lastStartupCapture to startupCaptureFileName:
+// the startup probe's last capture, or the pane at a failed prompt delivery.
 // A write failure is a Warn, and the returned error then says no capture was saved.
 // It calls run.finalize(outcome), which persists RunState.Outcome and logs "run finished".
 // It skips the gate and cleanup, since outcome is never OutcomeDone here.

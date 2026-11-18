@@ -177,6 +177,9 @@ func TestInputBoxText(t *testing.T) {
 	t.Parallel()
 
 	rule := "────────────────────────────────"
+	doneReplyLayout := "● ok\n\n✻ Cooked for 4s\n\n" + rule + "\n❯ \n" + rule + "\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n"
+	styledDoneReplyLayout := "● ok\n\n\x1b[2m✻ Cooked for 4s\x1b[0m\n\n" + rule + "\n❯ \n" + rule +
+		"\n  \x1b[2m⏵⏵ bypass permissions on (shift+tab to cycle)\x1b[0m\n"
 	tests := []struct {
 		name     string
 		capture  string
@@ -184,6 +187,8 @@ func TestInputBoxText(t *testing.T) {
 		wantOK   bool
 	}{
 		{"empty box", readPaneFixture(t, "pane-idle-empty.txt"), "", true},
+		{"empty box under a done reply and the bypass-permissions footer", doneReplyLayout, "", true},
+		{"styled empty box under a done reply and the bypass-permissions footer", plainBox(styledDoneReplyLayout), "", true},
 		{"draft in box", readPaneFixture(t, "pane-idle-draft.txt"), "please also run the linter", true},
 		{"wrapped two-line draft", rule + "\n❯ first half of the draft\n  second half of the draft\n" + rule + "\n  ? for shortcuts\n", "first half of the draft second half of the draft", true},
 		{"collapsed paste placeholder", rule + "\n❯ [Pasted text #1 +42 lines]\n" + rule + "\n  ? for shortcuts\n", "[Pasted text #1 +42 lines]", true},

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -2130,16 +2131,23 @@ func TestStartup_SkillsRefusedWithoutSkillLoader(t *testing.T) {
 type startSendEngine struct {
 	*skillFakeEngine
 
-	idle   bool
-	box    string
-	onRead func()
+	idle bool
+	// idleWhen, when set, answers the idle reading in place of idle.
+	idleWhen func() bool
+	box      string
+	onRead   func()
 }
 
 func (e *startSendEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
 func (e *startSendEngine) CompactedSince(Event, time.Time) (CompactionBoundary, bool) {
 	return CompactionBoundary{}, false
 }
-func (e *startSendEngine) IdleSession(string) bool                   { return e.idle }
+func (e *startSendEngine) IdleSession(string) bool {
+	if e.idleWhen != nil {
+		return e.idleWhen()
+	}
+	return e.idle
+}
 func (e *startSendEngine) PaneTooShort(string) bool                  { return false }
 func (e *startSendEngine) ClearSessionSequence() []PaneInput         { return nil }
 func (e *startSendEngine) ReloadPluginsSequence() []PaneInput        { return nil }
@@ -2201,12 +2209,19 @@ func (r *brokenRunRecordReed) SendText(guid, text string, submit bool) error {
 
 // TestStartup_SendFailuresTearDown pins that a send failing past AddStrand tears the run down as not started:
 // the error wraps ErrNotStarted and the send's own sentinel, the strand is removed and the record reads died.
+// A failed prompt delivery saves the pane at the failure as the startup capture.
 // A prompt that fails ErrSubmissionNotLanded landed late when a turn start lands past the pre-send offset;
 // and start returns the run.
+// A prompt held busy for one whole send window is sent again, typed once, and start returns the run.
+// A prompt held busy on every send fails the start after startPromptBusyRetries more sends and types nothing.
+// One whose run deadline ends inside the first wait is not sent again.
+// The saved capture is the styled pane for an engine that reads a styled capture.
+// It is the boot capture when the failure capture itself fails.
 func TestStartup_SendFailuresTearDown(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	const prompt = "do the task"
+	const bootScreen = "BOOT SCREEN"
 	skillMissing := []SkillLoadReport{{Verified: true, Missing: []string{"a"}}}
 	tests := []struct {
 		name  string
@@ -2224,21 +2239,46 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 		// active scripts the operator-activity answers of the fake reed.
 		active []bool
 		// paste gives the engine the paste path.
-		paste       bool
-		wantIs      []error
-		wantStarted bool
+		paste bool
+		// busyFor holds the idle reading not idle for this long from its first reading, then idle.
+		busyFor time.Duration
+		// timeout is Spec.Timeout, left at its default when zero.
+		timeout time.Duration
+		// styled makes the engine read a styled capture, and is what a styled capture shows.
+		styled string
+		// failCaptureAfter makes every plain capture fail from this long after the start.
+		failCaptureAfter time.Duration
+		wantIs           []error
+		wantStarted      bool
+		// wantPromptTypings, when non-zero, is how many times the prompt is typed.
+		wantPromptTypings int
+		// wantWaits, when non-zero, is how many idle waits the start made.
+		wantWaits int
+		// wantNoSend asserts the prompt was neither typed nor pasted.
+		wantNoSend bool
+		// wantPastes, when non-zero, is how many times the prompt is pasted.
+		wantPastes int
+		// wantCaptureHolds, when set, is text the saved startup capture holds.
+		wantCaptureHolds string
+		// wantCaptureLacks, when set, is text the saved startup capture does not hold.
+		wantCaptureLacks string
 		// wantDiedRecord is false when the record itself is made unwritable.
 		wantDiedRecord bool
 		// wantOneTail asserts the pane's last lines appear once in the error: the cause carries them and the teardown adds none.
 		wantOneTail bool
 	}{
 		{name: "a skill-load send that stays busy", skill: true, reports: skillMissing, idle: false, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantOneTail: true},
-		{name: "a prompt delivery that does not land", idle: true, box: prompt, wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true},
+		{name: "a prompt delivery that does not land", idle: true, box: prompt, wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true, wantCaptureHolds: prompt},
 		{name: "a skill load held past the send window by an active operator", skill: true, reports: skillMissing, idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
 		{name: "a prompt delivery held past the send window by an active operator", idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
-		{name: "a prompt delivery that finds a foreign box", idle: true, box: "somebody else's draft", paste: true, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
+		{name: "a prompt delivery that finds a foreign box", idle: true, box: "somebody else's draft", paste: true, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantPastes: 1},
 		{name: "a prompt-offset persist that fails", skill: true, reports: skillMissing, idle: true, breakRecord: true, wantIs: []error{ErrNotStarted}},
 		{name: "an unlanded prompt followed by a turn start landed late", idle: true, box: prompt, startOnWindowClose: true, wantStarted: true},
+		{name: "a prompt held busy for one send window is sent again", busyFor: sendReadyTimeout(fastConfig) + time.Second, wantStarted: true, wantPromptTypings: 1, wantWaits: 2},
+		{name: "a prompt that stays busy is sent again up to the retry cap", wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: startPromptBusyRetries + 1, wantNoSend: true},
+		{name: "a busy prompt send past the run's deadline is not sent again", timeout: sendReadyTimeout(fastConfig) / 2, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: 1, wantNoSend: true},
+		{name: "a failed prompt delivery saves the styled pane for an engine that reads one", idle: true, box: prompt, styled: "STYLED PANE", wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true, wantCaptureHolds: "STYLED PANE", wantCaptureLacks: prompt},
+		{name: "a failure capture that fails keeps the boot capture", failCaptureAfter: time.Second, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantCaptureHolds: bootScreen},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2256,15 +2296,47 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 				idle: tt.idle,
 				box:  tt.box,
 			}
-			skills := &skillReed{fakeReed: base, Hangs: map[int]bool{}, Dies: map[int]bool{}}
+			skills := &skillReed{fakeReed: base, Hangs: map[int]bool{}, Dies: map[int]bool{}, Screen: bootScreen}
+			clock := newFakeClock(time.Now())
 			var reed ReedOps = skills
 			if tt.breakRecord {
 				reed = &brokenRunRecordReed{skillReed: skills}
 			}
-			clock := newFakeClock(time.Now())
+			if tt.styled != "" || tt.failCaptureAfter > 0 {
+				scripted := &captureReed{skillReed: skills, styled: tt.styled, clock: clock}
+				if tt.failCaptureAfter > 0 {
+					scripted.failFrom = clock.Now().Add(tt.failCaptureAfter)
+				}
+				reed = scripted
+			}
+			idleAnswer := func() bool { return tt.idle }
+			if tt.busyFor > 0 {
+				var firstReading time.Time
+				idleAnswer = func() bool {
+					if firstReading.IsZero() {
+						firstReading = clock.Now()
+					}
+					return clock.Now().Sub(firstReading) >= tt.busyFor
+				}
+			}
+			// An idle wait sleeps between its own readings, so a reading made at the instant of the one before it opens a new wait.
+			waits, readings := 0, 0
+			var lastReading time.Time
+			engine.idleWhen = func() bool {
+				now := clock.Now()
+				if readings == 0 || now.Equal(lastReading) {
+					waits++
+				}
+				readings++
+				lastReading = now
+				return idleAnswer()
+			}
 			var runEngine Engine = engine
 			if tt.paste {
 				runEngine = &startPasteEngine{engine}
+			}
+			if tt.styled != "" {
+				runEngine = &styledStartSendEngine{engine}
 			}
 			fx := newFixture(t, reed, runEngine, withConfig(fastConfig), withClock(clock))
 			skills.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
@@ -2287,19 +2359,33 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 					}
 				}
 			}
-			spec := Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}
+			spec := Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: tt.timeout}
 			if tt.skill {
 				spec.Skills = []string{"a"}
 			}
 
 			run, err := fx.Runner.Start(spec)
 
+			if tt.wantWaits > 0 && waits != tt.wantWaits {
+				t.Errorf("idle waits = %d; want %d", waits, tt.wantWaits)
+			}
 			if tt.wantStarted {
 				if err != nil || run == nil {
 					t.Fatalf("Start() = %v, %v; want the run started", run, err)
 				}
 				if len(base.RemoveStrandCalls) != 0 {
 					t.Errorf("RemoveStrandCalls = %+v; want none", base.RemoveStrandCalls)
+				}
+				if tt.wantPromptTypings > 0 {
+					typings := 0
+					for _, call := range base.SendTextCalls {
+						if call.Text == prompt {
+							typings++
+						}
+					}
+					if typings != tt.wantPromptTypings {
+						t.Errorf("prompt typed %d times; want %d", typings, tt.wantPromptTypings)
+					}
 				}
 				return
 			}
@@ -2314,9 +2400,38 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 			if len(base.RemoveStrandCalls) != 1 {
 				t.Errorf("RemoveStrandCalls = %+v; want exactly one", base.RemoveStrandCalls)
 			}
+			typings, pastes := 0, 0
+			for _, call := range base.SendTextCalls {
+				if call.Text == prompt {
+					typings++
+				}
+			}
+			for _, call := range base.PasteSubmitCalls {
+				if call.Text == prompt {
+					pastes++
+				}
+			}
+			if tt.wantNoSend && typings+pastes != 0 {
+				t.Errorf("prompt typed %d and pasted %d times; want neither", typings, pastes)
+			}
+			if tt.wantPastes > 0 && pastes != tt.wantPastes {
+				t.Errorf("prompt pasted %d times; want %d", pastes, tt.wantPastes)
+			}
 			if tt.wantOneTail {
 				if got := strings.Count(err.Error(), "The pane's last lines:"); got != 1 {
 					t.Errorf("Start() error has the pane's last lines %d times; want once: %v", got, err)
+				}
+			}
+			if tt.wantCaptureHolds != "" {
+				saved, readErr := os.ReadFile(filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), startupCaptureFileName))
+				if readErr != nil {
+					t.Fatalf("read the startup capture: %v", readErr)
+				}
+				if !strings.Contains(string(saved), tt.wantCaptureHolds) {
+					t.Errorf("startup capture = %q; want it to hold %q", saved, tt.wantCaptureHolds)
+				}
+				if tt.wantCaptureLacks != "" && strings.Contains(string(saved), tt.wantCaptureLacks) {
+					t.Errorf("startup capture = %q; want it not to hold %q", saved, tt.wantCaptureLacks)
 				}
 			}
 			if !tt.wantDiedRecord {
@@ -2330,6 +2445,180 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 				t.Errorf("loadRunState().Outcome = %q; want %q", rs.Outcome, OutcomeDied)
 			}
 		})
+	}
+}
+
+// styledStartSendEngine is a startSendEngine whose box reading judges a styled capture, which it takes as plain as it is.
+type styledStartSendEngine struct {
+	*startSendEngine
+}
+
+func (e *styledStartSendEngine) PlainBoxCapture(styled string) string { return styled }
+
+var _ StyledBoxReader = (*styledStartSendEngine)(nil)
+
+// captureReed is a skillReed whose captures a row scripts.
+// A non-empty styled is what CapturePaneStyled answers.
+// A plain capture fails once the clock has reached a non-zero failFrom.
+type captureReed struct {
+	*skillReed
+	styled   string
+	clock    Clock
+	failFrom time.Time
+}
+
+func (r *captureReed) CapturePane(guid string) (string, error) {
+	if !r.failFrom.IsZero() && !r.clock.Now().Before(r.failFrom) {
+		return "", errors.New("pane gone")
+	}
+	return r.skillReed.CapturePane(guid)
+}
+
+func (r *captureReed) CapturePaneStyled(guid string) (string, error) {
+	if r.styled != "" {
+		return r.styled, nil
+	}
+	return r.skillReed.CapturePaneStyled(guid)
+}
+
+// promptTurnStartReed is a skillReed whose typed prompt starts a turn when turnStarts is set.
+// The turn start is what a provider's hook records on submit.
+type promptTurnStartReed struct {
+	*skillReed
+	prompt     string
+	turnStarts bool
+}
+
+func (r *promptTurnStartReed) SendText(guid, text string, submit bool) error {
+	if err := r.skillReed.SendText(guid, text, submit); err != nil {
+		return err
+	}
+	if r.turnStarts && text == r.prompt {
+		return r.appendEvents("START\n")
+	}
+	return nil
+}
+
+// TestStart_RetypesAPromptLineThatStartedNoTurn pins the lost-prompt retype of a fresh start:
+// the prompt line a start typed that no turn start follows within the submit window is typed once more.
+// Wait does so while the run waits.
+// A line whose turn starts is typed once.
+func TestStart_RetypesAPromptLineThatStartedNoTurn(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const prompt = "do the task"
+	tests := []struct {
+		name        string
+		turnStarts  bool
+		wantTypings int
+	}{
+		{name: "a line no turn follows is typed once more", wantTypings: 2},
+		{name: "a line whose turn starts is typed once", turnStarts: true, wantTypings: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
+			engine := &startSendEngine{
+				skillFakeEngine: &skillFakeEngine{
+					fakeEngine: &fakeEngine{
+						PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1", PromptLine: prompt},
+						StartupScript: []StartupState{StartupReady},
+					},
+					Timeout: time.Minute,
+				},
+				idle: true,
+			}
+			skills := &skillReed{fakeReed: base, Hangs: map[int]bool{}, Dies: map[int]bool{}}
+			reed := &promptTurnStartReed{skillReed: skills, prompt: prompt, turnStarts: tt.turnStarts}
+			fx := newFixture(t, reed, engine, withConfig(fastConfig), withClock(newFakeClock(time.Now())))
+			skills.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
+			spec := Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: 3 * submitConfirmTimeout(fastConfig)}
+
+			if _, err := fx.Runner.Run(spec); err != nil {
+				t.Fatalf("Run() error = %v; want nil", err)
+			}
+
+			typings := 0
+			for _, call := range base.SendTextCalls {
+				if call.Text == prompt {
+					typings++
+				}
+			}
+			if typings != tt.wantTypings {
+				t.Errorf("prompt typed %d times; want %d", typings, tt.wantTypings)
+			}
+		})
+	}
+}
+
+// pausingReed is a skillReed that runs onAddStrand right after it adds the strand.
+type pausingReed struct {
+	*skillReed
+	onAddStrand func()
+}
+
+func (r *pausingReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	strand, err := r.skillReed.AddStrand(spec)
+	if err == nil {
+		r.onAddStrand()
+	}
+	return strand, err
+}
+
+// TestStart_PromptSendWaitsOutAPauseLongerThanTheRunTimeout pins the pause rule of a start's prompt send.
+// A pause landing after the strand is added does not count against the run's timeout.
+// The start types its prompt once the pause lifts, and returns the run.
+func TestStart_PromptSendWaitsOutAPauseLongerThanTheRunTimeout(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const prompt = "do the task"
+	const timeout = 30 * time.Second
+	fc := newFakeClock(time.Now())
+	recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+	resumeAt := fc.Now().Add(4 * timeout)
+	clock := &scheduledClock{fakeClock: fc, actions: []*scheduledAction{{at: resumeAt, run: func() {
+		_, err := pauserecord.Update(recordPath, resumeAt, func(record *pauserecord.Record) error {
+			entry := record.Live[0]
+			entry.ResumedAt = resumeAt
+			record.Live = nil
+			record.Resumed = append(record.Resumed, entry)
+			return nil
+		})
+		if err != nil {
+			t.Errorf("resume the pause: %v", err)
+		}
+	}}}}
+	base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
+	engine := &startSendEngine{
+		skillFakeEngine: &skillFakeEngine{
+			fakeEngine: &fakeEngine{
+				PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1", PromptLine: prompt},
+				StartupScript: []StartupState{StartupReady},
+			},
+			Timeout: time.Minute,
+		},
+		idle: true,
+	}
+	skills := &skillReed{fakeReed: base, Hangs: map[int]bool{}, Dies: map[int]bool{}}
+	reed := &pausingReed{skillReed: skills, onAddStrand: func() { addLiveEntry(t, recordPath, pauserecord.ScopeHub, fc.Now()) }}
+	fx := newFixture(t, reed, engine, withConfig(fastConfig), withClock(clock))
+	fx.Runner.SetPause(pauserecord.Geometry{RecordPath: recordPath, Slug: "slug"})
+	skills.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
+
+	run, err := fx.Runner.Start(Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: timeout})
+
+	if err != nil || run == nil {
+		t.Fatalf("Start() = %v, %v; want the run started", run, err)
+	}
+	typings := 0
+	for _, call := range base.SendTextCalls {
+		if call.Text == prompt {
+			typings++
+		}
+	}
+	if typings != 1 {
+		t.Errorf("prompt typed %d times; want once, after the pause lifted", typings)
 	}
 }
 
