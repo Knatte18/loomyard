@@ -1,5 +1,5 @@
 // stepstop.go ties each shuttle run to the shed step that started it.
-// It stops one step's live runs through the stop verb.
+// It stops one step's live runs, or the runs every gone step of a shed run left, through the stop verb.
 
 package shuttleengine
 
@@ -63,7 +63,35 @@ func (r *Runner) SetStepTie(tie StepTie) {
 // A run of another step, a run with a terminal record and an untied run without a removable strand are left alone.
 // A record that does not decode is skipped.
 // A stop that fails is listed under Failed and the stop goes on with the next run.
+// Reed is probed only when a running run of the step or with no step is found.
 func (r *Runner) StopStepRuns(tie StepTie) (StepStopReport, error) {
+	return r.stopStepRunsWhere(func(rs RunState) bool { return *rs.Step == tie }, true)
+}
+
+// StopOrphanedStepRuns stops the running runs that gone steps of one shed run left under the run-directory root.
+// A run qualifies when its record names a step under stepsDir and its waiting process is gone or never recorded.
+// It is for a caller that knows no step of the shed run is in flight.
+// Every such run is then a leftover, whatever the step left on record.
+// A run whose waiting process lives is left alone, and so is a run naming no step or a step of another steps directory.
+// Each qualifying run is stopped, held or listed as finished the way StopStepRuns treats a run of its step.
+// Untied stays empty.
+func (r *Runner) StopOrphanedStepRuns(stepsDir string) (StepStopReport, error) {
+	return r.stopStepRunsWhere(func(rs RunState) bool { return rs.Step.StepsDir == stepsDir && !runIsLive(rs) }, false)
+}
+
+// stepRunCandidate is a running run a step stop acts on or lists.
+type stepRunCandidate struct {
+	runDir string
+	rs     RunState
+}
+
+// stopStepRunsWhere stops the running runs whose record names a step that selects accepts.
+// Each is stopped, held or listed the way StopStepRuns describes.
+// selects is called only for a record that names a step.
+// A run whose record no longer reads running or no longer selected when its stop is reached is skipped and unlisted.
+// listUntied lists a running run naming no step under Untied when its strand is removable.
+// Reed is probed only when a run qualifies or may be listed.
+func (r *Runner) stopStepRunsWhere(selects func(RunState) bool, listUntied bool) (StepStopReport, error) {
 	var report StepStopReport
 	if r.toldErr != nil {
 		return report, r.toldErr
@@ -76,10 +104,7 @@ func (r *Runner) StopStepRuns(tie StepTie) (StepStopReport, error) {
 	if err != nil {
 		return report, fmt.Errorf("shuttle: stop step runs: read run dir root: %w", err)
 	}
-	status, err := r.reed.Status()
-	if err != nil {
-		return report, fmt.Errorf("shuttle: stop step runs: probe reed: %w", err)
-	}
+	var candidates []stepRunCandidate
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -89,31 +114,49 @@ func (r *Runner) StopStepRuns(tie StepTie) (StepStopReport, error) {
 		if err != nil || !found || rs.Outcome != runOutcomeRunning {
 			continue
 		}
+		if (rs.Step == nil && listUntied) || (rs.Step != nil && selects(rs)) {
+			candidates = append(candidates, stepRunCandidate{runDir: runDir, rs: rs})
+		}
+	}
+	if len(candidates) == 0 {
+		return report, nil
+	}
+	status, err := r.reed.Status()
+	if err != nil {
+		return report, fmt.Errorf("shuttle: stop step runs: probe reed: %w", err)
+	}
+	for _, candidate := range candidates {
+		rs := candidate.rs
 		name := rs.StrandName
 		if name == "" {
 			name = rs.StrandGUID
 		}
 		strand, tracked := strandStatusByGUID(status.Strands, rs.StrandGUID)
-		switch {
-		case rs.Step == nil:
+		if rs.Step == nil {
 			if tracked && strandRemovable(strand) {
 				report.Untied = append(report.Untied, name)
 			}
-		case *rs.Step == tie:
-			if (!tracked || (!strand.Live && strand.PaneID == "")) && r.sessionMayBeHeld(rs) {
-				report.Held = append(report.Held, name)
-				continue
-			}
-			if err := r.stopRecorded(runDir, rs.StrandGUID); err != nil {
-				report.Failed = append(report.Failed, StepStopFailure{Strand: name, Error: err.Error()})
-				continue
-			}
-			if after, found, err := loadRunState(runDir); err == nil && found && after.Outcome == runOutcomeRunning {
-				report.Finished = append(report.Finished, name)
-				continue
-			}
-			report.Stopped = append(report.Stopped, name)
+			continue
 		}
+		if (!tracked || (!strand.Live && strand.PaneID == "")) && r.sessionMayBeHeld(rs) {
+			report.Held = append(report.Held, name)
+			continue
+		}
+		// The scan's reading is stale by now.
+		// A process may have attached to the run since, and stopping it would end the live agent that process waits on.
+		current, found, err := loadRunState(candidate.runDir)
+		if err != nil || !found || current.Outcome != runOutcomeRunning || current.Step == nil || !selects(current) {
+			continue
+		}
+		if err := r.stopRecorded(candidate.runDir, rs.StrandGUID); err != nil {
+			report.Failed = append(report.Failed, StepStopFailure{Strand: name, Error: err.Error()})
+			continue
+		}
+		if after, found, err := loadRunState(candidate.runDir); err == nil && found && after.Outcome == runOutcomeRunning {
+			report.Finished = append(report.Finished, name)
+			continue
+		}
+		report.Stopped = append(report.Stopped, name)
 	}
 	return report, nil
 }

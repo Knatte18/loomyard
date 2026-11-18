@@ -87,12 +87,16 @@ type LoopSpec struct {
 	OnWatchdogKill func(kill WatchdogKill) string
 	// OnStepOrphaned runs for a step whose process is gone without an envelope and that the watchdog did not kill.
 	// It runs once per such child the loop reads back, and once for the step a panic or a dead loop leaves in flight.
-	// A loop that starts on a failed status naming an interrupted step also runs it once, before its first child.
-	// That call is for the step of the newest interrupted record in the steps directory.
 	// It gets the step's trace id.
 	// It returns a note the interrupted cause ends with, naming what it did with the runs the step left.
 	// A nil hook is skipped, and so is an empty note.
 	OnStepOrphaned func(traceID string) string
+	// ReconcileOrphanedSteps runs once in the loop before its first child, whatever the status file reads.
+	// No step of the run is in flight then.
+	// It settles what every earlier step whose process is gone left behind.
+	// It reads that from what those steps left, not from how the last stop was recorded.
+	// It returns a note for the loop log naming what it did; a nil hook is skipped, and an empty note writes nothing.
+	ReconcileOrphanedSteps func() string
 	// OnStart runs once in runLoop after the pid file is written and the start is logged, and before the first step; nil is skipped.
 	// A loop that refuses before its first step never runs it.
 	// The loop's keeper also runs it once after it has started the loop process, whether or not that loop then refuses;
@@ -236,8 +240,10 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 		loop.OnStart()
 	}
 	obj := loopObject{FirstProducer: first.CurrentProducer}
-	if note := reconcileInterruptedStep(spec, first); note != "" {
-		appendLoopLogMark(loop.LogPath, loopLogMark(loopID, note))
+	if loop.ReconcileOrphanedSteps != nil {
+		if note := loop.ReconcileOrphanedSteps(); note != "" {
+			appendLoopLogMark(loop.LogPath, loopLogMark(loopID, "reconciled the steps whose process is gone: "+note))
+		}
 	}
 	run := stepUntilStop(ctx, spec, loopID, argv, &pid, first, &obj)
 	if endedBySignal() {
@@ -453,64 +459,6 @@ func stepUntilStop(ctx context.Context, spec *Spec, loopID string, argv []string
 		run.stop = LoopStopInterrupted
 		return run
 	}
-}
-
-// reconcileInterruptedStep settles the step a failed run was last interrupted in, before the loop's first child starts.
-// It hands that step's trace id to LoopSpec.OnStepOrphaned.
-// It covers an interrupted stop whose own hook call failed or never ran.
-// The leftover of that step then never meets the re-step.
-// The status reads an interrupted stop when it is failed and its error carries the text interruptedError writes.
-// The step is the newest kind-interrupted record in the steps directory.
-// It returns the note to write to the loop log.
-// The note is empty when the hook is nil or the status reads no interrupted stop.
-// It is empty too when no record names an interrupted step or the hook returns no note.
-func reconcileInterruptedStep(spec *Spec, first shedengine.Status) string {
-	if spec.Loop.OnStepOrphaned == nil || first.State != shedengine.StateFailed || !strings.Contains(first.Error, " interrupted (") {
-		return ""
-	}
-	traceID := newestInterruptedTraceID(spec.StepsDir)
-	if traceID == "" {
-		return ""
-	}
-	note := spec.Loop.OnStepOrphaned(traceID)
-	if note == "" {
-		return ""
-	}
-	return "reconciled the interrupted step " + traceID + ": " + note
-}
-
-// newestInterruptedTraceID returns the trace id of the newest kind-interrupted record in stepsDir.
-// It returns empty when there is none.
-func newestInterruptedTraceID(stepsDir string) string {
-	entries, err := os.ReadDir(stepsDir)
-	if err != nil {
-		return ""
-	}
-	newest, newestWritten := "", time.Time{}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), envelopeSuffix) {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(stepsDir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		var record struct {
-			Kind    string `json:"kind"`
-			TraceID string `json:"trace_id"`
-		}
-		if json.Unmarshal(data, &record) != nil || record.Kind != KindInterrupted || record.TraceID == "" {
-			continue
-		}
-		if newest == "" || info.ModTime().After(newestWritten) {
-			newest, newestWritten = record.TraceID, info.ModTime()
-		}
-	}
-	return newest
 }
 
 // recordTerminatingSignals watches for a terminating signal until the function it returns first is called.

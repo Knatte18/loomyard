@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -13,6 +14,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// statusHookReed wraps a fakeReed and runs onStatus, when set, at the start of every Status probe.
+type statusHookReed struct {
+	*fakeReed
+	onStatus func()
+}
+
+func (r *statusHookReed) Status() (reedengine.StatusResult, error) {
+	if r.onStatus != nil {
+		r.onStatus()
+	}
+	return r.fakeReed.Status()
+}
+
+// deadPID is above the kernel's pid_max (at most 2^22), so no process carries it.
+const deadPID = 1 << 30
 
 // recordSeenReed wraps a fakeReed and notes the outcome run.json holds at the moment a strand is removed.
 type recordSeenReed struct {
@@ -308,6 +325,94 @@ func TestRunner_StopStepRuns_StopsOnlyTheStepsRuns(t *testing.T) {
 	}
 	if record, _, err := loadRunState(lookupFailedDir); err != nil || record.Outcome != runOutcomeRunning {
 		t.Errorf("lookup-failed run outcome = %q (err %v); want %q", record.Outcome, err, runOutcomeRunning)
+	}
+}
+
+// TestRunner_StopOrphanedStepRuns_StopsOnlyRunsWhoseWaiterIsGone covers the steps-directory form.
+// A running run naming any step under the steps directory is stopped when its waiting process is gone or never recorded.
+// A run whose waiter lives is left alone and unlisted.
+// So are a run of another steps directory, a run naming no step and a terminal run.
+// A run whose record gains a live waiter after the scan is left alone and unlisted.
+// A root with no qualifying run never probes reed.
+func TestRunner_StopOrphanedStepRuns_StopsOnlyRunsWhoseWaiterIsGone(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	oldTie := StepTie{StepsDir: "/steps", TraceID: "trace-old"}
+	otherTie := StepTie{StepsDir: "/steps", TraceID: "trace-other"}
+	foreignTie := StepTie{StepsDir: "/other-steps", TraceID: "trace-old"}
+	strands := []reedengine.StrandStatus{
+		{GUID: "guid-gone", PaneID: "%1", Live: true},
+		{GUID: "guid-unrecorded", PaneID: "%2", Live: true},
+		{GUID: "guid-live-waiter", PaneID: "%3", Live: true},
+		{GUID: "guid-foreign", PaneID: "%4", Live: true},
+		{GUID: "guid-untied", PaneID: "%5", Live: true},
+		{GUID: "guid-terminal", PaneID: "%6", Live: true},
+		{GUID: "guid-attached", PaneID: "%7", Live: true},
+	}
+	fake := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: strands}}}
+	hooked := &statusHookReed{fakeReed: fake}
+	fx := newFixture(t, hooked, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	seed := func(id string, record RunState) string {
+		t.Helper()
+		runDir := filepath.Join(fx.RunRoot, id)
+		if err := os.MkdirAll(runDir, 0o755); err != nil {
+			t.Fatalf("mkdir run dir: %v", err)
+		}
+		record.RunID = id
+		// A run with no output file reads finished, which a stop never turns into a stopped record.
+		record.OutputFiles = []string{filepath.Join(fx.RunRoot, "never-written.md")}
+		if err := saveRunState(runDir, record); err != nil {
+			t.Fatalf("saveRunState: %v", err)
+		}
+		return runDir
+	}
+
+	report, err := fx.Runner.StopOrphanedStepRuns("/steps")
+	if err != nil || !reflect.DeepEqual(report, StepStopReport{}) || slices.Contains(fake.CallLog, "Status") {
+		t.Fatalf("StopOrphanedStepRuns() over an empty root = %+v, %v with reed calls %v; want an empty report, no error and no probe", report, err, fake.CallLog)
+	}
+
+	dirs := map[string]string{
+		"gone":        seed("run-1", RunState{StrandGUID: "guid-gone", StrandName: "name-gone", PID: deadPID, Outcome: runOutcomeRunning, Step: &oldTie}),
+		"unrecorded":  seed("run-2", RunState{StrandGUID: "guid-unrecorded", StrandName: "name-unrecorded", Outcome: runOutcomeRunning, Step: &otherTie}),
+		"live-waiter": seed("run-3", RunState{StrandGUID: "guid-live-waiter", StrandName: "name-live-waiter", PID: os.Getpid(), Outcome: runOutcomeRunning, Step: &oldTie}),
+		"foreign":     seed("run-4", RunState{StrandGUID: "guid-foreign", StrandName: "name-foreign", PID: -1, Outcome: runOutcomeRunning, Step: &foreignTie}),
+		"untied":      seed("run-5", RunState{StrandGUID: "guid-untied", StrandName: "name-untied", PID: -1, Outcome: runOutcomeRunning}),
+		"terminal":    seed("run-6", RunState{StrandGUID: "guid-terminal", StrandName: "name-terminal", PID: -1, Outcome: "died", Step: &oldTie}),
+		"attached":    seed("run-7", RunState{StrandGUID: "guid-attached", StrandName: "name-attached", PID: -1, Outcome: runOutcomeRunning, Step: &oldTie}),
+	}
+	// A process attaches to the run after the scan selected it as gone and before the stop.
+	hooked.onStatus = func() {
+		record, _, err := loadRunState(dirs["attached"])
+		if err != nil {
+			t.Errorf("loadRunState attached: %v", err)
+			return
+		}
+		record.PID = os.Getpid()
+		if err := saveRunState(dirs["attached"], record); err != nil {
+			t.Errorf("saveRunState attached: %v", err)
+		}
+	}
+
+	report, err = fx.Runner.StopOrphanedStepRuns("/steps")
+	if err != nil {
+		t.Fatalf("StopOrphanedStepRuns() error = %v", err)
+	}
+	if want := (StepStopReport{Stopped: []string{"name-gone", "name-unrecorded"}}); !reflect.DeepEqual(report, want) {
+		t.Errorf("StopOrphanedStepRuns() report = %+v; want %+v", report, want)
+	}
+	if len(fake.RemoveStrandCalls) != 2 || fake.RemoveStrandCalls[0].GUID != "guid-gone" || fake.RemoveStrandCalls[1].GUID != "guid-unrecorded" {
+		t.Errorf("RemoveStrand calls = %v; want the removals of guid-gone and guid-unrecorded", fake.RemoveStrandCalls)
+	}
+	for name, wantOutcome := range map[string]string{"gone": runOutcomeStopped, "unrecorded": runOutcomeStopped, "live-waiter": runOutcomeRunning, "foreign": runOutcomeRunning, "untied": runOutcomeRunning, "terminal": "died", "attached": runOutcomeRunning} {
+		record, _, err := loadRunState(dirs[name])
+		if err != nil {
+			t.Fatalf("loadRunState %s: %v", name, err)
+		}
+		if record.Outcome != wantOutcome {
+			t.Errorf("%s run outcome = %q; want %q", name, record.Outcome, wantOutcome)
+		}
 	}
 }
 

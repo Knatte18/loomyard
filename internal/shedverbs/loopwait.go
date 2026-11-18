@@ -677,7 +677,8 @@ func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail str
 	if rec.LoopID != TeardownLoopID && spec.Hooks.AfterInterrupt != nil {
 		friction = spec.Hooks.AfterInterrupt(ctx, producer, "loop-exited: "+detail, traceFile)
 	}
-	// The record is what lets the re-step find the in-flight child to reconcile when this stop's own hook call failed.
+	// The in-flight child died before it wrote its record.
+	// The stop keeps one under its trace id, as an interrupted child in the loop gets.
 	if rec.LoopID != TeardownLoopID && rec.hasChild() && rec.TraceID != "" && spec.StepsDir != "" {
 		if _, statErr := os.Stat(filepath.Join(spec.StepsDir, rec.TraceID+envelopeSuffix)); os.IsNotExist(statErr) {
 			interruptedRecord(spec, rec.TraceID, message+"; way forward: "+wayForward, traceFile, friction)

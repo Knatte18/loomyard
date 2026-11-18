@@ -200,10 +200,11 @@
 // A child that exits on its own with a non-zero status and no record keeps cause exited with the exit status.
 // Such a child, which the watchdog did not kill, goes to Spec.Loop.OnStepOrphaned with its trace id.
 // The note the hook returns ends the cause.
-// A loop that starts on a failed status naming an interrupted step first reconciles that step.
-// It hands the trace id of the newest interrupted record in the steps directory to the same hook.
-// It does so before its first child starts.
-// A stop that failed at the interruption then does not leave its runs to the re-step.
+// Every loop calls Spec.Loop.ReconcileOrphanedSteps once before its first child starts, whatever the status file reads.
+// No step of the run is in flight then, so the hook settles what any earlier step whose process is gone left behind.
+// It reads what those steps left, not the status error, so a step that wrote no interrupted record is settled too.
+// A stop whose own hook call failed does not leave its runs to the next loop's first step.
+// Neither does a step that ended in an error.
 // The note goes to the loop log.
 // The watch kills only the loop's own in-flight child and its process group or job.
 //

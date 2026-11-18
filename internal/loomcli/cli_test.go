@@ -355,16 +355,21 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 
 	t.Run("LoopHooksStopTheStepsShuttleRuns", func(t *testing.T) {
 		var ties []shuttleengine.StepTie
+		var orphanedDirs []string
 		c := &loomCLI{location: loc, runID: "self", stopRuns: func(tie shuttleengine.StepTie) (shuttleengine.StepStopReport, error) {
 			ties = append(ties, tie)
 			return shuttleengine.StepStopReport{Stopped: []string{"a:1:plan"}}, nil
+		}, stopOrphanedRuns: func(stepsDir string) (shuttleengine.StepStopReport, error) {
+			orphanedDirs = append(orphanedDirs, stepsDir)
+			return shuttleengine.StepStopReport{Stopped: []string{"a:1:review"}}, nil
 		}}
 		spec := c.specFor("step")
-		if spec.Loop.OnWatchdogKill == nil || spec.Loop.OnStepOrphaned == nil {
-			t.Fatalf("loop watchdog hook set %v, orphaned-step hook set %v; want both", spec.Loop.OnWatchdogKill != nil, spec.Loop.OnStepOrphaned != nil)
+		if spec.Loop.OnWatchdogKill == nil || spec.Loop.OnStepOrphaned == nil || spec.Loop.ReconcileOrphanedSteps == nil {
+			t.Fatalf("loop watchdog hook set %v, orphaned-step hook set %v, reconcile hook set %v; want all three", spec.Loop.OnWatchdogKill != nil, spec.Loop.OnStepOrphaned != nil, spec.Loop.ReconcileOrphanedSteps != nil)
 		}
 
 		note := spec.Loop.OnStepOrphaned("trace-7")
+		reconcileNote := spec.Loop.ReconcileOrphanedSteps()
 
 		wantTie := shuttleengine.StepTie{StepsDir: spec.StepsDir, TraceID: "trace-7"}
 		if len(ties) != 1 || ties[0] != wantTie {
@@ -372,6 +377,12 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 		}
 		if note != "stopped shuttle runs: a:1:plan" {
 			t.Errorf("OnStepOrphaned note = %q; want the stopped runs named", note)
+		}
+		if len(orphanedDirs) != 1 || orphanedDirs[0] != spec.StepsDir {
+			t.Errorf("orphaned stop steps directories = %v; want the one %s", orphanedDirs, spec.StepsDir)
+		}
+		if reconcileNote != "stopped shuttle runs: a:1:review" {
+			t.Errorf("ReconcileOrphanedSteps note = %q; want the stopped runs named", reconcileNote)
 		}
 	})
 

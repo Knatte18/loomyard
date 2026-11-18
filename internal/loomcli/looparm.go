@@ -90,14 +90,18 @@ func registerRunProcess(loc *lymcwd.Location, owner, role string) {
 }
 
 // stepRunsNote stops the shuttle runs of the step traceID names under stepsDir through stop and renders what it did.
-// The note joins with "; " the runs it stopped.
+func stepRunsNote(stop func(shuttleengine.StepTie) (shuttleengine.StepStopReport, error), stepsDir, traceID string) string {
+	return stepStopNote(stop(shuttleengine.StepTie{StepsDir: stepsDir, TraceID: traceID}))
+}
+
+// stepStopNote renders a step stop's report and error as a note.
+// The note joins with "; " the runs the stop stopped.
 // It then names the runs whose output files all exist, which stay running.
 // It names the runs a live process may still hold, which it leaves running.
 // It then names the live runs whose record names no step, which it leaves alone.
 // It ends with each stop that failed and the failure of the stop itself.
 // It is empty when there was nothing to report.
-func stepRunsNote(stop func(shuttleengine.StepTie) (shuttleengine.StepStopReport, error), stepsDir, traceID string) string {
-	report, err := stop(shuttleengine.StepTie{StepsDir: stepsDir, TraceID: traceID})
+func stepStopNote(report shuttleengine.StepStopReport, err error) string {
 	var parts []string
 	if len(report.Stopped) > 0 {
 		parts = append(parts, "stopped shuttle runs: "+strings.Join(report.Stopped, ", "))
@@ -115,7 +119,7 @@ func stepRunsNote(stop func(shuttleengine.StepTie) (shuttleengine.StepStopReport
 		parts = append(parts, fmt.Sprintf("could not stop the run %s: %s", failure.Strand, failure.Error))
 	}
 	if err != nil {
-		parts = append(parts, "could not stop the step's runs: "+err.Error())
+		parts = append(parts, "could not stop the runs: "+err.Error())
 	}
 	return strings.Join(parts, "; ")
 }
@@ -134,36 +138,64 @@ func orphanedStepNote(stop func(shuttleengine.StepTie) (shuttleengine.StepStopRe
 	return func(traceID string) string { return stepRunsNote(stop, stepsDir, traceID) }
 }
 
+// orphanedStepsNote returns the hook the loop calls before its first child.
+// The hook stops through stop the shuttle runs that steps under stepsDir left with their waiting process gone.
+// It returns the note the loop writes to its log.
+func orphanedStepsNote(stop func(stepsDir string) (shuttleengine.StepStopReport, error), stepsDir string) func() string {
+	return func() string { return stepStopNote(stop(stepsDir)) }
+}
+
 // stopStepRuns stops the shuttle runs recorded under tie.
-// The receiver's runner is used when `wire` built one;
-// a receiver wired lightly gets the pair's runner built the way `wire` builds it.
 func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepStopReport, error) {
 	if c.stopRuns != nil {
 		return c.stopRuns(tie)
 	}
-	runner := c.runner
-	if runner == nil {
-		configDirs := fabricengine.ConfigDirs(c.location)
-		reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
-		if err != nil {
-			return shuttleengine.StepStopReport{}, err
-		}
-		shuttleCfg, err := shuttleengine.LoadConfig(configDirs, "shuttle")
-		if err != nil {
-			return shuttleengine.StepStopReport{}, err
-		}
-		reedGeom, err := hubgeom.ReedGeometry(c.location)
-		if err != nil {
-			return shuttleengine.StepStopReport{}, err
-		}
-		engines, err := shuttleengines.New(shuttleCfg, configDirs)
-		if err != nil {
-			return shuttleengine.StepStopReport{}, err
-		}
-		runner = shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()), engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-		runner.SetSessionEnd(shedadapters.UsageRecorder(c.location, shuttleengines.RecordReaders()))
+	runner, err := c.stepStopRunner()
+	if err != nil {
+		return shuttleengine.StepStopReport{}, err
 	}
 	return runner.StopStepRuns(tie)
+}
+
+// stopOrphanedStepRuns stops the running shuttle runs that steps under stepsDir left with their waiting process gone.
+func (c *loomCLI) stopOrphanedStepRuns(stepsDir string) (shuttleengine.StepStopReport, error) {
+	if c.stopOrphanedRuns != nil {
+		return c.stopOrphanedRuns(stepsDir)
+	}
+	runner, err := c.stepStopRunner()
+	if err != nil {
+		return shuttleengine.StepStopReport{}, err
+	}
+	return runner.StopOrphanedStepRuns(stepsDir)
+}
+
+// stepStopRunner returns the shuttle runner a step stop goes through.
+// The receiver's runner is used when `wire` built one;
+// a receiver wired lightly gets the pair's runner built the way `wire` builds it.
+func (c *loomCLI) stepStopRunner() (*shuttleengine.Runner, error) {
+	if c.runner != nil {
+		return c.runner, nil
+	}
+	configDirs := fabricengine.ConfigDirs(c.location)
+	reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
+	if err != nil {
+		return nil, err
+	}
+	shuttleCfg, err := shuttleengine.LoadConfig(configDirs, "shuttle")
+	if err != nil {
+		return nil, err
+	}
+	reedGeom, err := hubgeom.ReedGeometry(c.location)
+	if err != nil {
+		return nil, err
+	}
+	engines, err := shuttleengines.New(shuttleCfg, configDirs)
+	if err != nil {
+		return nil, err
+	}
+	runner := shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()), engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner.SetSessionEnd(shedadapters.UsageRecorder(c.location, shuttleengines.RecordReaders()))
+	return runner, nil
 }
 
 // agentActivityFor returns the reading of the run's agent activity:

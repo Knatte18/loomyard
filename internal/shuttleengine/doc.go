@@ -406,6 +406,11 @@
 // That holds only when its strand is live or a not-live own-window one.
 // A run of another step is left alone.
 // A stop that fails is listed under Failed while the stop goes on.
+// Runner.StopOrphanedStepRuns stops the same way every running run that names a step under a given steps directory.
+// It does so when the process recorded as waiting on the run is gone or the record names none.
+// It reads the run records alone, so it finds a gone step's leftover whatever that step wrote on its way out.
+// A run whose waiting process lives is left alone.
+// Both stops probe reed only once a run qualifies.
 // Attach's removal of a superseded run's strand goes through the same record-then-remove order.
 // A Wait on a stopped handle finalizes with the stop mark and records "stopped" unless the files show the run done.
 // Its liveness check reads the strand the stop removed as the run's end, OutcomeDied.

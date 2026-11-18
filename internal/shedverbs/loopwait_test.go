@@ -478,7 +478,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 		}
 	})
 
-	t.Run("a dead loop's stop keeps an interrupted record the re-step reconciles when the stop's own hook call failed", func(t *testing.T) {
+	t.Run("a dead loop's stop hands its in-flight step to OnStepOrphaned and keeps that step's interrupted record", func(t *testing.T) {
 		w := newWaitWorld(t)
 		w.setStatus("A", shedengine.StateRunning, 0)
 		w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: proc.TreeRecord{PID: 4242}, TraceID: "trace-dead", CurrentProducer: "A"})
@@ -490,15 +490,19 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 
 		w.wait()
 
-		if got := newestInterruptedTraceID(w.stepsDir); got != "trace-dead" {
-			t.Fatalf("newest interrupted trace id = %q; want the dead loop's in-flight trace-dead", got)
-		}
-		orphaned = nil
-		if note := reconcileInterruptedStep(w.spec, w.readStatus()); note != "reconciled the interrupted step trace-dead: a run stayed held" {
-			t.Errorf("reconcile note = %q; want the dead loop's in-flight step reconciled", note)
-		}
 		if !slices.Equal(orphaned, []string{"trace-dead"}) {
-			t.Errorf("OnStepOrphaned trace ids on the re-step = %v; want the dead loop's trace-dead", orphaned)
+			t.Errorf("OnStepOrphaned trace ids = %v; want the dead loop's trace-dead", orphaned)
+		}
+		data, err := os.ReadFile(filepath.Join(w.stepsDir, "trace-dead"+envelopeSuffix))
+		if err != nil {
+			t.Fatalf("read the in-flight step's record: %v", err)
+		}
+		var record struct {
+			Kind    string `json:"kind"`
+			TraceID string `json:"trace_id"`
+		}
+		if err := json.Unmarshal(data, &record); err != nil || record.Kind != KindInterrupted || record.TraceID != "trace-dead" {
+			t.Errorf("in-flight step record kind/trace_id = %q/%q (decode err %v); want %s/trace-dead", record.Kind, record.TraceID, err, KindInterrupted)
 		}
 	})
 

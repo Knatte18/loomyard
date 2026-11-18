@@ -356,25 +356,21 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 	}
 }
 
-// TestLoop_ReconcilesTheInterruptedStepBeforeTheFirstChild covers a loop that starts on a run whose status reads failed.
-// It hands the newest interrupted record's trace id to OnStepOrphaned before its first child starts.
-// It also writes the note to the loop log.
-// A run that does not read an interrupted stop settles nothing first.
-func TestLoop_ReconcilesTheInterruptedStepBeforeTheFirstChild(t *testing.T) {
+// TestLoop_ReconcilesOrphanedStepsBeforeTheFirstChild covers ReconcileOrphanedSteps.
+// Every loop calls it once before its first child, whatever its status reads.
+// The loop writes a non-empty note to the loop log.
+func TestLoop_ReconcilesOrphanedStepsBeforeTheFirstChild(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		state       shedengine.State
 		statusError string
-		wantCalls   []string
+		note        string
 		wantMark    bool
 	}{
-		{
-			"a failed run that was interrupted settles the interrupted step first", shedengine.StateFailed,
-			"shedverbs: step A interrupted (exited: exit status 3); way forward: re-run", []string{"stop trace-old", "run", "stop child"}, true,
-		},
-		{"a failed run with a producer error settles nothing first", shedengine.StateFailed, "producer failed", []string{"run", "stop child"}, false},
-		{"a running run settles nothing first", shedengine.StateRunning, "", []string{"run", "stop child"}, false},
+		{"a failed run whose error names no interrupted stop is reconciled", shedengine.StateFailed, "producer failed", "stopped shuttle runs: a:1:plan", true},
+		{"a running run is reconciled", shedengine.StateRunning, "", "stopped shuttle runs: a:1:plan", true},
+		{"an empty note writes no mark", shedengine.StateRunning, "", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -387,33 +383,22 @@ func TestLoop_ReconcilesTheInterruptedStepBeforeTheFirstChild(t *testing.T) {
 			if err := state.WriteJSON(fx.paths.StatusPath, fx.paths.StatusLockPath, status); err != nil {
 				t.Fatalf("write status: %v", err)
 			}
-			if err := os.MkdirAll(fx.stepsDir, 0o755); err != nil {
-				t.Fatalf("create the steps directory: %v", err)
-			}
-			record := `{"ok":false,"kind":"interrupted","trace_id":"trace-old"}`
-			if err := os.WriteFile(filepath.Join(fx.stepsDir, "trace-old.json"), []byte(record), 0o644); err != nil {
-				t.Fatalf("write the interrupted record: %v", err)
-			}
-			fx.spec.Loop.OnStepOrphaned = func(traceID string) string {
-				if traceID == "trace-old" {
-					calls = append(calls, "stop trace-old")
-				} else {
-					calls = append(calls, "stop child")
-				}
-				return "stopped shuttle runs: a:1:plan"
+			fx.spec.Loop.ReconcileOrphanedSteps = func() string {
+				calls = append(calls, "reconcile")
+				return tt.note
 			}
 
 			fx.execute()
 
-			if !reflect.DeepEqual(calls, tt.wantCalls) {
-				t.Errorf("calls = %v; want %v", calls, tt.wantCalls)
+			if want := []string{"reconcile", "run"}; !reflect.DeepEqual(calls, want) {
+				t.Errorf("calls = %v; want %v", calls, want)
 			}
 			// A loop that wrote no mark and ran no child with output leaves no log file.
 			log, err := os.ReadFile(fx.spec.Loop.LogPath)
 			if err != nil && !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("read the loop log: %v", err)
 			}
-			if got := strings.Contains(string(log), "reconciled the interrupted step trace-old: stopped shuttle runs: a:1:plan"); got != tt.wantMark {
+			if got := strings.Contains(string(log), "reconciled the steps whose process is gone: stopped shuttle runs: a:1:plan"); got != tt.wantMark {
 				t.Errorf("loop log holds the reconcile mark = %v; want %v; log: %s", got, tt.wantMark, log)
 			}
 		})

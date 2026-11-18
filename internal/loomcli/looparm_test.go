@@ -81,6 +81,11 @@ func TestStepRunsNote_StopsTheStepsRunsAndNamesTheRest(t *testing.T) {
 			return watchdogKillNote(stop, "/steps")(shedverbs.WatchdogKill{TraceID: "trace-9"})
 		}},
 		{"OrphanedStep", func(stop stopFunc) string { return orphanedStepNote(stop, "/steps")("trace-9") }},
+		{"OrphanedSteps", func(stop stopFunc) string {
+			return orphanedStepsNote(func(stepsDir string) (shuttleengine.StepStopReport, error) {
+				return stop(shuttleengine.StepTie{StepsDir: stepsDir, TraceID: "trace-9"})
+			}, "/steps")()
+		}},
 	}
 	tests := []struct {
 		name     string
@@ -111,7 +116,7 @@ func TestStepRunsNote_StopsTheStepsRunsAndNamesTheRest(t *testing.T) {
 		{
 			name:     "a failing stop renders its error",
 			stopErr:  errors.New("probe reed: no server"),
-			wantNote: "could not stop the step's runs: probe reed: no server",
+			wantNote: "could not stop the runs: probe reed: no server",
 		},
 	}
 	for _, tt := range tests {
