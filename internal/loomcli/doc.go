@@ -190,6 +190,16 @@
 // Each posts as `<shortname>:LOOM`, tagged with the pair's run.
 // The Drift rows' judge gets its parent seat in `driftDeps`, posting the same way.
 //
+// The rows loom.yaml's `notify_parent_on` names tell the parent when the run reaches them.
+// `newShed` wraps each such row's producer.
+// The wrapper posts a `[row reached]` line through the env's `NotifyParent` before the row's call.
+// It posts once per visit: the visit is the count of verdicts the run's history holds, kept in `shedrun.RowNoticeRecord`,
+// so a call after a yield or a pause tells nothing again, and a row the entry gate skips is never called.
+// A re-call after an escalation's answer or a resumed halt counts as a new visit and posts again.
+// It spawns a fresh agent.
+// A name that is no row of the recipe refuses the shed, naming the recipe's rows.
+// A failed read, write or post only warns: a notice never stops the run.
+//
 // # Start
 //
 // `lym loom start` works in order.

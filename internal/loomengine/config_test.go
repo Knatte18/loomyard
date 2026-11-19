@@ -240,6 +240,11 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.CodeReviewAskParent, c.CodeReviewParentTimeoutMin = true, 1 },
 		},
 		{
+			name:   "notify_parent_on overridden",
+			values: map[string]string{"notify_parent_on": `["Drift-Verify"]`},
+			mutate: func(c *Config) { c.NotifyParentOn = []string{"Drift-Verify"} },
+		},
+		{
 			name:   "reviewer_model as a per-round list",
 			values: map[string]string{"reviewer_model": "\n  - sonnet[low]\n  - opus[high]"},
 			mutate: func(c *Config) { c.ReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "opus[high]"} },

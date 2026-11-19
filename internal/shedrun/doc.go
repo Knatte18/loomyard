@@ -75,6 +75,9 @@
 // ReadWakeStamp reads it back by row, found only for the row that wrote it.
 // The Go driver reads it to tell a loop that lived through a wake from one that kept dying.
 //
+// RowNoticeRecord is the ephemeral row-notice record under ScratchDir:
+// the last row visit the run's parent was told of, which WriteRowNotice replaces and ReadRowNotice reads.
+//
 // RunsRootRel names the anchor-relative run-records root,
 // so a caller that needs the whole run-records tree need not name the shed segment itself.
 // RunsRoot and ScratchRoot are its absolute durable and ephemeral forms.

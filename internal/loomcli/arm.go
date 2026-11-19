@@ -310,8 +310,22 @@ func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 }
 
 // newShed builds the shed of the run's recipe over c.env and c.shedPaths.
+// The rows loom.yaml's notify_parent_on names mail the run's parent when the run reaches them,
+// and a name that is no row of the recipe is refused.
 func (c *loomCLI) newShed() (*shedengine.Shed, error) {
-	return loomrecipe.New(c.recipe, c.env, c.shedPaths)
+	shed, err := loomrecipe.New(c.recipe, c.env, c.shedPaths)
+	if err != nil || len(c.cfg.NotifyParentOn) == 0 {
+		return shed, err
+	}
+	paths := rowNoticePaths{
+		status:     c.shedPaths.StatusPath,
+		statusLock: c.shedPaths.StatusLockPath,
+		record:     shedrun.RowNoticeRecord(c.location, c.runID),
+	}
+	if err := watchRows(shed, c.cfg.NotifyParentOn, c.recipe, paths, c.env.NotifyParent); err != nil {
+		return nil, err
+	}
+	return shed, nil
 }
 
 // The engine names of the recipe rows loomcli's wiring keys on, and the tree-scope verify_source value.

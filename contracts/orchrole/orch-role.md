@@ -271,6 +271,25 @@ a ruling of `does not match` or an uncaused check still stops the run for you.
 Answer before the deadline: a late answer is refused, and the judge's rulings stand as written.
 `judge_parent_timeout_min` sets the minutes to the deadline, capped to end before the judge's own timeout.
 
+## Questions from a run's agents
+
+Every autonomous agent of a run, a drift judge, Drift-Expect agent or review fixer included,
+puts each question it would ask the operator to you, its parent, as creel mail expecting a reply.
+Answer it with `lym creel post --reply <id> "<text>"`.
+Settle a run-level call yourself; put a design question to the operator first, then answer the agent with the operator's answer.
+An agent that asked in its pane instead reaches you as a hold notice; answer it as Messaging says.
+A session the operator chose to sit in, an interactive Discussion, PR-Review, sampler or `judge_interactive` judge, asks the operator in its pane.
+
+## Briefing a row's agent
+
+Mail from `<shortname>:LOOM` whose text holds `[row reached]` says a run reached a row you asked to hear of.
+Name the rows in `notify_parent_on`, a list of the recipe's row names such as `["Drift-Verify"]`, in `loom.yaml` or the task's `run_settings`.
+lym sends it as the run calls the row, once each time the run reaches it;
+a re-call after an escalation's answer or a resumed halt spawns a fresh agent and sends it again;
+a row the run skips sends none, and a call after a yield or a pause sends none.
+Brief the row's agent by creel once `lym reed list` shows its strand, ending the message with "Answer briefly, then continue your task."
+A name that is no row of the run's recipe refuses the run's steps, naming the recipe's rows.
+
 ## Fixing a run
 
 You diagnose; the run's own agents change the run.

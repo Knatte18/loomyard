@@ -41,7 +41,7 @@ Give it exactly one of three dispositions, decided in this order.
 3. **Fix as proposed**: otherwise.
    A `fix` key that is vague leaves the change to you and needs no mark.
 
-The other legitimate reason to leave a finding unfixed is something you genuinely cannot do alone this round (an operator decision on a real tradeoff,
+The other legitimate reason to leave a finding unfixed is something you genuinely cannot do alone this round (a decision on a real tradeoff that belongs to the run's parent,
 or a capability you do not have);
 even then you must say so explicitly, with the specific reason, in the fixer-report's deferred section.
 Never leave a finding unfixed just because it looked small — small findings are usually the cheapest to fix, not a reason to skip them.

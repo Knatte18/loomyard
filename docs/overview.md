@@ -1486,6 +1486,9 @@ User-facing modules each get one `lym <module>` namespace:
   A CONVERGED verdict is refused while the parent's report holds findings.
   `code_review_parent_timeout_min` sets the minutes to that ask's deadline,
   capped to end before the judge's own timeout, `run_timeout_min`; both are open to `run_settings`.
+  `notify_parent_on` lists recipe rows whose start lym mails the parent orch as a `[row reached]` line,
+  once each time the run reaches the row and again on a re-call after an escalation's answer or a resumed halt,
+  so the parent can brief the row's agent; it is open to `run_settings`.
   `discussion_lenses` names the `lenses.yaml` fan whose lenses the Discussion-Write lead forks itself for.
   Empty turns the forks off, and the key is closed to the local layer.
   `subagent_model` names the model of the fresh subagents that Plan, Discussion-Write and darn writers hand lookups to.

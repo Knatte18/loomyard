@@ -559,6 +559,12 @@ type Config struct {
 	// The cap is the one run_timeout_min sets on the Bouncer's judge, which waits for the parent.
 	// It is a positive integer.
 	CodeReviewParentTimeoutMin int `yaml:"code_review_parent_timeout_min"`
+
+	// NotifyParentOn names the recipe rows whose start lym mails the run's parent orch.
+	// The parent can then brief the row's agent.
+	// lym mails once each time the run reaches a row, and again on a re-call after an escalation's answer or a resumed halt.
+	// It is open to the local layer, so a task's run_settings sets it for one run.
+	NotifyParentOn []string `yaml:"notify_parent_on"`
 }
 
 // DiscussionAdvisor is one Discussion-Write advisor: Name is its seat name and Model its model-spec.
@@ -690,6 +696,7 @@ func ConfigSpec() configengine.Spec {
 			"discussion_review_parent_timeout_min": none,
 			"code_review_ask_parent":               none,
 			"code_review_parent_timeout_min":       none,
+			"notify_parent_on":                     none,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"fan_review": none,

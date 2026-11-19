@@ -6,7 +6,7 @@
 
 Each finding below is a question the review could not settle itself.
 Where an arbiter runs, it settles each finding the board entry and the decision record answer before the parent sees it.
-Put each remaining finding to the operator, unless a recorded operator decision answers it.
+Settle each remaining finding yourself when it is a run-level call, and put it to the operator only when it is a design question, unless a recorded operator decision answers it.
 
 {{.decision_findings}}
 
