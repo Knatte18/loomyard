@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Knatte18/loomyard/internal/dotgit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -27,9 +28,14 @@ const (
 )
 
 // layoutAnswers maps the cleaned path of a worktree on disk to whether it belongs to a one-repository hub.
-// A hub's layout is fixed once its marker is committed, so an answer holds for the process;
-// fabric's own marker writes clear the map through forgetLayouts.
+// An answer holds for the process.
+// Fabric's own marker writes in this process clear the map through forgetLayouts,
+// and a marker another process adds or retires is seen only by a later process.
+// A read that overlaps a clear is not kept.
 var layoutAnswers sync.Map
+
+// layoutClears counts the clears of layoutAnswers, so a read can tell that a clear overlapped it.
+var layoutClears atomic.Uint64
 
 // oneRepositoryAt reports whether the worktree at path belongs to a one-repository hub, reading git alone.
 // A path with no `.git` entry is no worktree on disk and answers false without running git or logging.
@@ -46,18 +52,23 @@ func oneRepositoryAt(path string) bool {
 		return false
 	}
 
+	clearsBeforeRead := layoutClears.Load()
 	answer, err := readOneRepositoryLayout(key)
 	if err != nil {
 		logger.Warn("fabricengine: reading the layout of a worktree failed; reading it as two repositories", "path", key, "error", err)
 		return false
 	}
-	layoutAnswers.Store(key, answer)
+	if layoutClears.Load() == clearsBeforeRead {
+		layoutAnswers.Store(key, answer)
+	}
 	return answer
 }
 
 // forgetLayouts drops every kept layout answer.
-// A write that commits or removes a `.lym-anchor` marker calls it, so the next read sees the new layout.
+// A write that makes a `.lym-anchor` marker appear where none was committed, or removes one, calls it,
+// so the next read sees the new layout.
 func forgetLayouts() {
+	layoutClears.Add(1)
 	layoutAnswers.Clear()
 }
 

@@ -1349,8 +1349,8 @@
 // so each is owed until a landing's push of the parent or the operator's `git push` takes it to origin.
 // `MergeStateActive` is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing.
 // In a two-repository hub it reads a merge alone.
-// A weft cherry-pick, revert or rebase is fabric's own replay.
-// The replay holds the write lock the commit waits on, so it never makes the commit skip.
+// A weft cherry-pick, revert or rebase does not count;
+// fabric's own replay cherry-picks under the write lock the commit waits on.
 // It differs from `Fabric.MergeInProgress` and from the two-sided `foreignMergeStatePresent`.
 // `PairComplete(l)` is the predicate over `Add`'s own post-condition.
 // It lets a caller tell a finished pair creation from one a SIGKILL interrupted partway through.
@@ -2490,7 +2490,9 @@
 // The main worktree of a two-repository records repository is a records sibling and never reads as one repository.
 // A path with no worktree on disk reads as two repositories without running git or logging.
 // The answer for a worktree on disk is kept for the process, so a repeated read runs no git;
-// committing or retiring a marker through fabric drops every kept answer.
+// a fabric write that adds or retires a marker drops every kept answer, and a rewrite of a marker that stays leaves them.
+// The bound is the process:
+// a marker another process adds or retires is seen only by a later process.
 // In a one-repository hub a worktree is its own records worktree.
 // `RecordsRepoRoot` is the prime worktree, and a pair's records branch is its code branch.
 // The records locks then sit in the worktree's git directory, so the repository's exclude never gets `.weft/`.
