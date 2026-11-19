@@ -635,7 +635,11 @@
 // It never names `lym batten cancel`.
 // A merge GitHub refuses as pending is retried for at most a minute under the lock.
 // A method refusal names `lym config landing --set squash=<true|false>`, or the repository's settings under MergeAtOnce.
-// Any other refusal names a second person's approval or a settled check or conflict, and `lym batten cancel`.
+// Any other refusal has `pullrequest.ReadMergeState` read the pull request, which waits out a mergeability not yet computed.
+// While that reading says the pull request can merge, the merge is retried within the same minute;
+// past the minute the halt names `lym loom resume` alone.
+// A reading that says it cannot merge halts naming each cause it reports.
+// The halt also names a second person's approval or a settled check or conflict, and `lym batten cancel`.
 // The retry after a merge-in-required error never merges on GitHub a second time.
 // Every GitHub failure is judged as PR-Review judges one, with each halt opening with LandingStopPrefix.
 //

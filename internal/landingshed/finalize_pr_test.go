@@ -62,6 +62,13 @@ func TestFinalize_PullRequest(t *testing.T) {
 	mergeScript := func(open scriptedCall, calls ...scriptedCall) map[string][]scriptedCall {
 		return map[string][]scriptedCall{"Status": {open}, "Merge": calls}
 	}
+	// openAt is an open pull request at the task head in GitHub's mergeable state mergeable.
+	openAt := func(mergeable string) scriptedCall {
+		return scriptedCall{status: pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "task-head", MergeableState: mergeable}}
+	}
+	notMergeable := refusal(pullrequest.RefusalOther, "Pull Request is not mergeable")
+	// mergeStateRead is the GitHub calls of one merge-state reading of a pull request GitHub has computed.
+	mergeStateRead := []string{"Status 7", "RequiredChecks main task-head"}
 
 	tests := []struct {
 		name       string
@@ -290,9 +297,34 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Merge commits are not allowed", "lym config landing --set squash=<true|false>", "lym loom resume"}, wantCalls: []string{"Status 7", wantGitHubMerge},
 		},
 		{
-			name: "AnotherRefusalHaltsNamingGitHubsMessageAndTheCancel", parentMode: "on", record: recorded(),
-			scripts:     mergeScript(open, refusal(pullrequest.RefusalOther, "Required status check is expected")),
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Required status check is expected", "lym batten cancel me"}, wantCalls: []string{"Status 7", wantGitHubMerge},
+			name: "AnotherRefusalHaltsNamingGitHubsMessageTheCauseGitHubReportsAndTheCancel", parentMode: "on", record: recorded(),
+			scripts:     map[string][]scriptedCall{"Status": {open, openAt("blocked")}, "Merge": {refusal(pullrequest.RefusalOther, "Required status check is expected")}},
+			wantOutcome: shedengine.Stuck, wantHalt: true,
+			wantReason: []string{"Required status check is expected", "GitHub reports: blocked: a review or a required check is still owed", "lym batten cancel me"},
+			wantCalls:  append([]string{"Status 7", wantGitHubMerge}, mergeStateRead...),
+		},
+		{
+			name: "ANotMergeableRefusalWhileGitHubComputesMergeabilityWaitsItOutAndMerges", parentMode: "on", record: recorded(),
+			scripts:     map[string][]scriptedCall{"Status": {open, openAt("unknown"), openAt("clean")}, "Merge": {notMergeable, {}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,fast-forward,merge,push,mark",
+			wantCalls: slices.Concat([]string{"Status 7", wantGitHubMerge, "Status 7"}, mergeStateRead, []string{wantGitHubMerge}),
+		},
+		{
+			name: "AMergeabilityGitHubNeverComputesHaltsNamingItAfterTheWindow", parentMode: "on", record: recorded(),
+			scripts:     map[string][]scriptedCall{"Status": {open, openAt("unknown")}, "Merge": {notMergeable}},
+			wantOutcome: shedengine.Stuck, wantHalt: true,
+			wantReason: []string{"Pull Request is not mergeable", "GitHub reports: GitHub has not yet computed whether it can merge", "lym loom resume"},
+			// The reading sleeps 1, 2, 4, 8, 16 and then 29 seconds, the rest of the minute, so it reads the status seven times.
+			wantCalls: slices.Concat([]string{"Status 7", wantGitHubMerge}, slices.Repeat([]string{"Status 7"}, 7), []string{"RequiredChecks main task-head"}),
+		},
+		{
+			name: "ARefusalThatOutlastsTheWindowWhileGitHubReportsItCanMergeHaltsNamingOnlyTheResume", parentMode: "on", record: recorded(),
+			scripts:     map[string][]scriptedCall{"Status": {open, openAt("clean")}, "Merge": {notMergeable}},
+			wantOutcome: shedengine.Stuck, wantHalt: true,
+			wantReason:      []string{"Pull Request is not mergeable", "GitHub now reports it can merge", "lym loom resume"},
+			wantNotInReason: []string{"lym batten cancel", "approves"},
+			// Retries sleep 1, 2, 4, 8, 16 and 32 seconds, so the seventh refusal is the first past the minute.
+			wantCalls: append([]string{"Status 7"}, slices.Repeat(append([]string{wantGitHubMerge}, mergeStateRead...), 7)...),
 		},
 		{
 			name: "ATransientMergeFailureIsAnError", parentMode: "on", record: recorded(),
@@ -381,9 +413,10 @@ func TestFinalize_PullRequest(t *testing.T) {
 		},
 		{
 			name: "ABeamsOtherRefusalHaltsNamingTheStatusVerbAndNotACancel", parentMode: "on",
-			beam: true, beamPR: recordedBeam, scripts: mergeScript(open, refusal(pullrequest.RefusalOther, "Required status check is expected")),
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Required status check is expected", "lym beam pr status me", "lym loom resume"},
-			wantNotInReason: []string{"lym batten cancel"}, wantCalls: []string{"Status 7", wantGitHubMerge},
+			beam: true, beamPR: recordedBeam,
+			scripts:     map[string][]scriptedCall{"Status": {open, openAt("blocked")}, "Merge": {refusal(pullrequest.RefusalOther, "Required status check is expected")}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Required status check is expected", "GitHub reports: blocked", "lym beam pr status me", "lym loom resume"},
+			wantNotInReason: []string{"lym batten cancel"}, wantCalls: append([]string{"Status 7", wantGitHubMerge}, mergeStateRead...),
 		},
 		{
 			name: "ABeamsMethodRefusalNamesTheRepositorySettingsTheStatusVerbAndNotACancel", parentMode: "on",

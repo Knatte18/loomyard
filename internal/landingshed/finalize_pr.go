@@ -456,6 +456,8 @@ func pullRequestCommitTitle(title string, number int) string {
 // The commit title is the title with the pull request's number in parentheses;
 // the commit message is the message passed in.
 // A merge that GitHub refuses as pending is retried for up to `prMergeRetryWindow`, on `PullRequest.Now`'s clock.
+// Any other refusal but a method one has GitHub's merge state read, waiting out a mergeability not yet computed;
+// the merge is retried within the same window while that state reports the pull request can merge.
 // It then fetches the parent's upstream and fast-forwards the parent pair to it,
 // so the parent-side merge that follows finds the parent holding the task's work.
 // It returns nil when the landing goes on; each halt opens with LandingStopPrefix.
@@ -493,14 +495,26 @@ func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger
 		if !errors.As(err, &refusal) {
 			return fz.githubFailure(ctx, "merge the pull request", err)
 		}
-		if refusal.Kind == pullrequest.RefusalPending && pr.Now().Before(deadline) {
+		retry := refusal.Kind == pullrequest.RefusalPending
+		var state *pullrequest.MergeState
+		if refusal.Kind == pullrequest.RefusalOther {
+			// GitHub refuses a merge as not mergeable while it has not yet computed mergeability,
+			// so its own reading of the pull request decides whether the refusal lasts.
+			read, err := pullrequest.ReadMergeState(ctx, landing.api, landing.record.Number, head, fz.deps.ParentBranch, pr.Now, pr.Sleep)
+			if err != nil {
+				return fz.githubFailure(ctx, "read whether the pull request can merge", err)
+			}
+			state = &read
+			retry = read.MergeableNow
+		}
+		if retry && pr.Now().Before(deadline) {
 			if err := pr.Sleep(ctx, wait); err != nil {
 				return fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: sleep before retrying the merge: %w", finalizeName, err))
 			}
 			wait = nextPRWait(wait, false)
 			continue
 		}
-		return halt(ctx, finalizeName, LandingStopPrefix+fz.mergeRefusalReason(landing, refusal))
+		return halt(ctx, finalizeName, LandingStopPrefix+fz.mergeRefusalReason(landing, refusal, state))
 	}
 
 	if _, err := fz.deps.ReadParentTips(true); err != nil {
@@ -555,14 +569,23 @@ func (fz *Finalize) openAtOnce(ctx context.Context, api pullrequest.API, head, t
 // It also covers a merge GitHub kept refusing as pending past the retry window.
 // A method refusal names the squash setting, or the repository's settings for a parent that always squashes.
 // A beam's refusal never names a cancel: it names GitHub's message, the pull request's status verb and the resume.
-func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.MergeRefusal) string {
+// state is GitHub's merge state read after the refusal, nil when none was read;
+// each cause it names follows GitHub's message, and a state that can merge names the resume alone.
+func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.MergeRefusal, state *pullrequest.MergeState) string {
 	rec := landing.record
+	reported := ""
+	if state != nil {
+		if state.MergeableNow {
+			return fmt.Sprintf("GitHub refused to merge pull request %s: %s, yet GitHub now reports it can merge; way forward: run lym loom resume, which retries the merge", rec.URL, refusal.Message)
+		}
+		reported = "; GitHub reports: " + strings.Join(state.Causes, ", ")
+	}
 	if fz.deps.PullRequest.BeamRecord != nil {
 		check := fmt.Sprintf("check the pull request with lym beam pr status %s, then run lym loom resume", fz.deps.Slug)
 		if refusal.Kind == pullrequest.RefusalMethod {
 			return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a beam always lands by squash, then %s", rec.URL, refusal.Message, check)
 		}
-		return fmt.Sprintf("GitHub refused to merge pull request %s: %s; way forward: settle on GitHub what the message names, then %s", rec.URL, refusal.Message, check)
+		return fmt.Sprintf("GitHub refused to merge pull request %s: %s%s; way forward: settle on GitHub what the message names, then %s", rec.URL, refusal.Message, reported, check)
 	}
 	if refusal.Kind == pullrequest.RefusalMethod && landing.atOnce {
 		return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a parent whose beam.yaml pull_request is merge always squashes, then run lym loom resume", rec.URL, refusal.Message)
@@ -570,7 +593,7 @@ func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.M
 	if refusal.Kind == pullrequest.RefusalMethod {
 		return fmt.Sprintf("GitHub refused the merge method for pull request %s: %s; way forward: set landing.yaml's squash to the method the repository allows with lym config landing --set squash=<true|false> in the prime worktree, or allow the method in the repository's settings, then run lym loom resume", rec.URL, refusal.Message)
 	}
-	return fmt.Sprintf("GitHub refused to merge pull request %s: %s; way forward: a second person approves the pull request again or settles the required check or conflict on GitHub, then runs lym loom resume; or the operator runs lym batten cancel %s", rec.URL, refusal.Message, fz.deps.Slug)
+	return fmt.Sprintf("GitHub refused to merge pull request %s: %s%s; way forward: a second person approves the pull request again or settles the required check or conflict on GitHub, then runs lym loom resume; or the operator runs lym batten cancel %s", rec.URL, refusal.Message, reported, fz.deps.Slug)
 }
 
 // mergedButNotPulledReason is the Stuck reason for a pull request GitHub merged that the parent pair could not take in.
