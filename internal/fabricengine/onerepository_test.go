@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestOneRepositoryAt_NoWorktreeOnDiskReadsAsTwoRepositoriesQuietly pins the layout read of a path that holds no worktree.
+// TestOneRepositoryAt_NoWorktreeOnDiskReadsAsTwoRepositoriesQuietly pins the layout read of a path with no worktree.
 // Such a path, a project or a task not started, answers false and logs nothing.
 // It swaps the process-global log output, so it does not run in parallel.
 func TestOneRepositoryAt_NoWorktreeOnDiskReadsAsTwoRepositoriesQuietly(t *testing.T) {
