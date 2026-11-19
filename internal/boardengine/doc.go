@@ -336,10 +336,20 @@
 // It renders with the handle `P0` and the title `Root: entries under no project`.
 // Board project handles start at 1, so `P0` names no board entry.
 // RootProjectBrief gives the root as one listing row, with the slug RootSubject.
-// Every write renders README.md, the overview of every project, and one board file per project.
+// Every write renders README.md, the overview of every project, one board file per project, board-data.js and board.html.
+// board.html is a fixed render output: the embedded viewer page, rewritten verbatim, which ViewerPage returns.
 // Every project, open or done, renders to project-<slug>.md beside it, and the root to project-root.md.
 // A render rewrites each board file in place rather than by temp file and rename,
 // so an open VS Code markdown preview, which refreshes only on a file change event, shows the new content.
+// Every write also renders board-data.js, the board's view projection as `window.BOARD = <JSON>;`.
+// It holds the types and areas, the README's section names in README order,
+// and the root and every open project with its parent.
+// It also holds every task and note with its section, project and unmet dependencies.
+// Each of those carries its owner, recipe and file names.
+// Each entry carries a revision, the SHA-256 of its stored encoding.
+// Board.View and the render both take it over the stored entry.
+// BoardRevision is the SHA-256 of board.json, and "" while the file is absent.
+// The JSON keeps Go's HTML escaping, so no field can end the script.
 // The split is rendering only: every entry stays in the one store, and handles stay numbered across the hub.
 // So a file's handles have gaps, and layers, After cells and owners read the whole board.
 // README.md opens with the UTC date and time it was rendered, so its ages read as of that moment, and the prime owner.
@@ -770,6 +780,18 @@
 // A display status stays on the detached sync.
 // Read methods (Get/List) bypass the lock and load directly from disk, persisting nothing.
 //
+// Board.Expecting returns a copy of the board that expects one entry's revision, which Board.View gave a viewer.
+// The write section checks it under the lock, on the entries as loaded and migrated and before the mutation.
+// A board that never calls Expecting skips the check.
+// A stale check refuses with a *StaleEntryError and writes, renders and syncs nothing.
+// Its Fresh entry is the projection a reload shows, nil when the entry is gone.
+// It refuses three ways:
+// a non-empty revision whose entry was removed;
+// a non-empty revision that no longer equals the entry's;
+// and an empty revision, a create, whose slug exists.
+// The check covers only the entry it names.
+// A sibling the same write changes, such as a project released with its last member, is not checked.
+//
 // The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls.
 // It runs under the board write and push locks, which sit in the board checkout's never-tracked lock directory.
 // The swap lock that fences readers of board.json sits there too,
@@ -803,7 +825,7 @@
 // It is also the run ledger through which fabricengine reads the ended set and the owners.
 // The lym root pre-run registers it with `fabricengine.RegisterBoltReplayer`.
 // It claims these paths:
-// `board.json` and `README.md`;
+// `board.json`, `README.md`, `board-data.js` and `board.html`;
 // the `project-<slug>.md` files, of which `project-root.md` is the root project's and not a project's;
 // the `design-<slug>.md` and `decision-<slug>.md` files at the Bolt root;
 // the files directly in a raddle store directory, `raddle/<sketch>/<name>`.

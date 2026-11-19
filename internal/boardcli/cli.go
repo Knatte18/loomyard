@@ -403,7 +403,7 @@ Example:
 
 	rerenderCmd := &cobra.Command{
 		Use:         "rerender",
-		Short:       "rebuild the README and design docs from board.json",
+		Short:       "rebuild the board's rendered files from board.json",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if err := b.Rerender(); err != nil {
@@ -501,6 +501,8 @@ Example:
 		rerenderCmd,
 		syncCmd,
 		intakeCommand(board, hubRepo),
+		serveCommand(func() boardengine.Config { return config }, func() *lymcwd.Location { return location }),
+		openCommand(func() *lymcwd.Location { return location }),
 	)
 
 	return cmd

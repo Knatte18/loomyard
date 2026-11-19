@@ -13,6 +13,7 @@ package boardengine
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -103,6 +104,30 @@ func TestSync_Scenario(t *testing.T) {
 	for _, step := range steps {
 		if !t.Run(step.name, func(t *testing.T) { step.run(t, fixture) }) {
 			return
+		}
+	}
+}
+
+// TestSync_CommitsEveryFileTheRenderOfABoardWriteMade asserts what the sync commit after a board write holds.
+// It holds the files the render made: the README, board-data.js and board.html.
+func TestSync_CommitsEveryFileTheRenderOfABoardWriteMade(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	container := t.TempDir()
+	boardPath := newBoardRepo(t, container, "board", newBareRemote(t, container))
+	board := New(Config{Path: boardPath, Readme: "README.md", DesignPrefix: "design-", Types: []Label{{Name: "bug"}}, SkipGit: true})
+	if _, err := board.UpsertTask(map[string]any{"slug": "alpha", "title": "Alpha", "kind": "task", "labels": []any{"bug"}}); err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+
+	if err := Sync(boardPath, false, true); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	committed := strings.Fields(gitkit.Git(t, boardPath, "show", "--name-only", "--format=", "HEAD"))
+	for _, name := range []string{"README.md", BoardDataFile, BoardPageFile} {
+		if !slices.Contains(committed, name) {
+			t.Errorf("sync commit holds %v; want it to hold %s", committed, name)
 		}
 	}
 }

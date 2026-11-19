@@ -14,7 +14,9 @@ import (
 )
 
 // TestKeybindingsBlock pins the block's entries:
-// the Alt-arrow sendSequence keys in the terminal, and ctrl+alt+a running the reed attach task.
+// the Alt-arrow sendSequence keys in the terminal, and the keys running the reed attach, beam start and board open tasks.
+//
+//testtiming:keep pins the block's literal entries, which the merge test builds from the block itself
 func TestKeybindingsBlock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -26,6 +28,8 @@ func TestKeybindingsBlock(t *testing.T) {
 		`  { "key": "alt+right", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3C" }, "when": "terminalFocus" },`,
 		`  { "key": "alt+left", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3D" }, "when": "terminalFocus" },`,
 		`  { "key": "ctrl+alt+a", "command": "workbench.action.tasks.runTask", "args": "reed attach" },`,
+		`  { "key": "alt+shift+0", "command": "workbench.action.tasks.runTask", "args": "beam start" },`,
+		`  { "key": "alt+shift+9", "command": "workbench.action.tasks.runTask", "args": "board open" },`,
 		`// lym:end`,
 	}, "\r\n")
 	if got := keybindingsBlock("\r\n"); got != want {
@@ -163,6 +167,11 @@ func TestSeedKeybindings(t *testing.T) {
 			t.Fatalf("second run = %+v; want unchanged", got)
 		}
 		assertNoLeftovers(t, dir, "keybindings.json")
+		for _, key := range []string{`"alt+shift+0"`, `"alt+shift+9"`} {
+			if got := strings.Count(read(t, path), key); got != 1 {
+				t.Errorf("file holds %d entries for %s after a second run; want 1", got, key)
+			}
+		}
 	})
 
 	t.Run("an existing file is rewritten with its permission bits kept", func(t *testing.T) {

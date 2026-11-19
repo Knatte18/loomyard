@@ -70,9 +70,10 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	}
 
 	tasks := readTasksFile(t, dir).Tasks
-	if len(tasks) != 1 {
-		t.Fatalf("got %d tasks, want exactly 1: %v", len(tasks), tasks)
+	if len(tasks) != 2 {
+		t.Fatalf("got %d tasks, want exactly 2: %v", len(tasks), tasks)
 	}
+	assertBoardOpenTask(t, tasks[1], lymPath)
 	task := tasks[0]
 	if task["label"] != "reed attach" {
 		t.Errorf("label = %v; want reed attach", task["label"])
@@ -98,6 +99,27 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 		if presentation[key] != want {
 			t.Errorf("presentation.%s = %v; want %v", key, presentation[key], want)
 		}
+	}
+}
+
+// assertBoardOpenTask asserts task is the on-demand board open task running lymPath, with no folder-open trigger.
+// Its terminal shows on every run without taking focus.
+func assertBoardOpenTask(t *testing.T, task map[string]any, lymPath string) {
+	t.Helper()
+	if task["label"] != "board open" || task["type"] != "shell" || task["command"] != lymPath {
+		t.Errorf("task = %v; want the shell task board open running %q", task, lymPath)
+	}
+	args, _ := task["args"].([]any)
+	if len(args) != 2 || args[0] != "board" || args[1] != "open" {
+		t.Errorf("args = %v; want [board open]", task["args"])
+	}
+	if _, ok := task["runOptions"]; ok {
+		t.Errorf("task carries runOptions %v; want none", task["runOptions"])
+	}
+	presentation, _ := task["presentation"].(map[string]any)
+	wantPresentation := map[string]any{"reveal": "always", "focus": false, "echo": true, "panel": "shared"}
+	if !reflect.DeepEqual(presentation, wantPresentation) {
+		t.Errorf("presentation = %v; want %v", presentation, wantPresentation)
 	}
 }
 
@@ -132,11 +154,13 @@ func TestWriteConfigFallsBackToBareName(t *testing.T) {
 	}
 
 	tasks := readTasksFile(t, dir).Tasks
-	if len(tasks) != 1 {
-		t.Fatalf("got %d tasks, want exactly 1: %v", len(tasks), tasks)
+	if len(tasks) != 2 {
+		t.Fatalf("got %d tasks, want exactly 2: %v", len(tasks), tasks)
 	}
-	if tasks[0]["command"] != "lym" {
-		t.Errorf("command = %v; want lym", tasks[0]["command"])
+	for _, task := range tasks {
+		if task["command"] != "lym" {
+			t.Errorf("%v command = %v; want lym", task["label"], task["command"])
+		}
 	}
 }
 
@@ -190,9 +214,10 @@ func TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks(t *testing.T) {
 	if tasks.Version != "2.0.0" {
 		t.Errorf("tasks.json was not overwritten: version = %v", tasks.Version)
 	}
-	if len(tasks.Tasks) != 1 || tasks.Tasks[0]["label"] != "reed attach" {
-		t.Errorf("tasks = %v; want the single reed attach task", tasks.Tasks)
+	if len(tasks.Tasks) != 2 || tasks.Tasks[0]["label"] != "reed attach" {
+		t.Fatalf("tasks = %v; want the reed attach and board open tasks", tasks.Tasks)
 	}
+	assertBoardOpenTask(t, tasks.Tasks[1], "/opt/lym/bin/lym")
 }
 
 // TestWriteConfigOwnsMarkdownPreviewEntry pins the "*.md" editor association.
@@ -303,8 +328,8 @@ func TestWriteConfigLeavesUndecodableSettingsAlone(t *testing.T) {
 		if got, _ := os.ReadFile(settingsPath); string(got) != content {
 			t.Errorf("settings.json = %q; want %q untouched", got, content)
 		}
-		if tasks := readTasksFile(t, dir); len(tasks.Tasks) != 1 {
-			t.Errorf("tasks = %v; want the single reed attach task", tasks.Tasks)
+		if tasks := readTasksFile(t, dir); len(tasks.Tasks) != 2 {
+			t.Errorf("tasks = %v; want the reed attach and board open tasks", tasks.Tasks)
 		}
 	}
 }

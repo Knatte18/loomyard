@@ -482,6 +482,7 @@ func TestEndSubject_EndsTheRunsThenTheSubjectAndItsDobbyLast(t *testing.T) {
 			{PID: 83, StartTime: "830", Role: RoleTeardown},
 			{PID: 84, StartTime: "840", Role: RoleOrch},
 			{PID: 85, StartTime: "850", Role: RoleDobby},
+			{PID: 86, StartTime: "860", Role: RoleBoardServer},
 		},
 	}
 	beamRuns := []string{"run-a", "run-b"}
@@ -521,11 +522,11 @@ func TestEndSubject_EndsTheRunsThenTheSubjectAndItsDobbyLast(t *testing.T) {
 			wantEnded:   []Ended{{10, RoleDriver}, {20, RoleLoop}, {40, RoleOrch}},
 		},
 		{
-			name:        "TheHubOwnerSubjectLeavesTheHubWidePushesSlackRelayAndTeardownAlone",
+			name:        "TheHubOwnerSubjectEndsTheBoardServerAndLeavesTheHubWidePushesSlackRelayAndTeardownAlone",
 			subject:     HubOwner,
 			endDobby:    true,
-			wantSignals: []string{"term pid 84", "term pid 85"},
-			wantEnded:   []Ended{{84, RoleOrch}, {85, RoleDobby}},
+			wantSignals: []string{"term pid 84", "term pid 86", "term pid 85"},
+			wantEnded:   []Ended{{84, RoleOrch}, {86, RoleBoardServer}, {85, RoleDobby}},
 		},
 	}
 	for _, tt := range tests {

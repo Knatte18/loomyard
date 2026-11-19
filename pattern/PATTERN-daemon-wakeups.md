@@ -19,6 +19,10 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - dobby's loop in `internal/dobbyengine/loop.go`:
   it wakes on a file event or its timer, at most one tick a second,
   and it doubles the timer from batten's probe interval to a minute while no run is in flight,
+- the board server's watch loop in `internal/boardserve/run.go`:
+  it wakes on an `internal/fswatch` event on `board.json`, never within a second of its previous read, or on its timer,
+  from one second doubling to eight while the board is unchanged,
+  and each wake checks whether the binary was replaced and whether the idle bound passed,
 - batten's Land row land-lock wait in `internal/battenshed/land.go`:
   it polls from one second and doubles to thirty seconds,
 - the parent lock wait in `internal/parentlock/acquire.go`:

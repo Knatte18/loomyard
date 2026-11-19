@@ -295,6 +295,7 @@ github.com/Knatte18/loomyard/
 ├── internal/dobbyengine/         dobby, the daemon of a beam worktree: it starts released tasks, drives their batten runs in passes and spawns the board-tidy agent
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
+├── internal/boardserve/          the board's loopback server: the viewer page, the board's view projection, its live changes and the page's writes
 ├── internal/hubissues/           the GitHub issues of the hub's own repository that `lym board intake` lists, reads, comments on and closes
 ├── internal/pullrequest/         the run's pull-request record and its GitHub calls, for PR-Review, Finalize and pair teardown
 ├── internal/cleanupcli/          the cleanup CLI command (`lym cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
@@ -579,9 +580,10 @@ User-facing modules each get one `lym <module>` namespace:
   With it on, a seed points the `*.md` entry of `workbench.editorAssociations` at the markdown preview,
   so a markdown file opens rendered.
   The entry lives in the worktree's `settings.json`, and a setting the operator holds in its array form is left as it is.
-  The generated `tasks.json` holds one on-demand `reed attach` task.
-  The `lym` path in it is stamped absolute at generation time.
-  The task is reached through "Tasks: Run Task" or the seeded `ctrl+alt+a` key binding;
+  The generated `tasks.json` holds an on-demand `reed attach` task and a `board open` task.
+  The `lym` path in them is stamped absolute at generation time.
+  The tasks are reached through "Tasks: Run Task" or the seeded key bindings:
+  `ctrl+alt+a` runs `reed attach` and `alt+shift+9` runs `board open`;
   no task runs on folder open, so opening a worktree in VS Code starts no session and no `claude`.
   `lym ide spawn` and batten's Seed-IDE row write this config through one shared path.
   `lym ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one.
@@ -599,13 +601,15 @@ User-facing modules each get one `lym <module>` namespace:
   Each has the workspace look:
   `window.title` names the hub shortname, then the repository or beam followed by `workspace`,
   and the activity bar takes the workspace's blue-grey, which no worktree takes.
+  Each also carries one `beam start` task:
+  `lym beam start root` for the hub's file and `lym beam start <beam>` for a beam's, which `alt+shift+0` runs.
   `lym ide seed` writes the same config and, for the prime, the hub workspace file, and launches nothing;
   with no slug it seeds the worktree it runs in, the prime included.
   It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath, not `.gitignore`.
   It leaves a tracked `tasks.json` alone with a warning.
   `lym ide spawn` and `lym ide seed` also seed a `// lym:begin` … `// lym:end` block in the user's `keybindings.json`.
   The block forwards the Alt keys of reed's tmux bindings through VS Code's integrated terminal.
-  It also binds `ctrl+alt+a` to run the `reed attach` task.
+  It also binds `ctrl+alt+a` to run the `reed attach` task, `alt+shift+9` to run `board open` and `alt+shift+0` to run `beam start`.
   Both verbs report the outcome in their JSON result.
   A user-level binding applies in every VS Code window, so the keys reach reed in any hub.
   It writes only between its own markers,

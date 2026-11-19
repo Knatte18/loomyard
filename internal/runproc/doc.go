@@ -6,8 +6,8 @@
 // It also holds the role, the command line and the registration time.
 // The role is one of the `Role` constants.
 // The hub's own processes register under `HubOwner`.
-// Their roles are `RoleSync` and `RoleSlackRelay`.
-// `RoleAdopt` is a third, which only an older lym's detached adopt worker registered under.
+// Their roles are `RoleSync`, `RoleSlackRelay` and `RoleBoardServer`.
+// `RoleAdopt` is a fourth, which only an older lym's detached adopt worker registered under.
 // The prime's orch provider process also registers there, as `RoleOrch`.
 // A fixer strand role that `internal/gatefixer` declares is also valid; its `Registrar` registers it.
 // The provider process of a worktree's orch session registers through `RegisterOrch` as `RoleOrch`.

@@ -29,6 +29,7 @@ var unboundedWaitFiles = []string{
 	"internal/reedcli/watchdog.go",
 	"internal/orchengine/watchloop.go",
 	"internal/dobbyengine/loop.go",
+	"internal/boardserve/run.go",
 	"internal/battenshed/land.go",
 	"internal/battenshed/primelockwait.go",
 	"internal/pawlengine/beamawait.go",

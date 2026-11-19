@@ -31,6 +31,8 @@ type Board struct {
 	validateSlug func(slug string) error
 	// strandName is the writing session's agent name, which the write's task-creation check judges.
 	strandName string
+	// expected is the entry revision the write section checks, nil for a board that expects none; Expecting sets it.
+	expected *expectedRevision
 }
 
 // New returns a Board that runs with cfg, and uses the wall clock when cfg.Clock is nil.
@@ -69,6 +71,7 @@ type promoted struct{ task Task }
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method.
 // It takes the write lock and loads the store.
 // It migrates a board that has not been marked draft and every task left discussed.
+// A board made by Expecting then checks its entry's revision and refuses a stale one before anything is written.
 // It then calls fn to mutate the store, and it gives a new task the draft status except a promoted raddle task.
 // It stamps the entry dates and assigns the handles the mutation left missing or of another letter;
 // it refuses a net change to a run-held entry's scope and a run agent's new task.
@@ -113,9 +116,11 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	}
 
 	// Migrated before fn mutates, so a write that releases a task to an empty status is not re-drafted by the migration.
-	migrateDraftStatus(store)
-	migrateDiscussedStatus(store)
+	migrateLoaded(store)
 	loaded := cloneTasks(store.Tasks())
+	if err := b.checkExpected(loaded, store.primeOwner); err != nil {
+		return nil, err
+	}
 	// Read before fn mutates, so the slug rule judges the raddle store as it stood before the write.
 	raddleStore, raddleStoreErr := ReadRaddleStore(b.boardPath)
 
@@ -401,6 +406,24 @@ func (b *Board) loadStore() (*Store, error) {
 		return nil, err
 	}
 	return store, nil
+}
+
+// migrateLoaded applies the migrations a load owes: the draft marking, then the left-over discussed statuses.
+// The write section and the view both run it, so they see one entry state.
+func migrateLoaded(store *Store) {
+	migrateDraftStatus(store)
+	migrateDiscussedStatus(store)
+}
+
+// View returns the board's view projection as a write would see the board: loaded and migrated, with nothing saved.
+// An entry whose decision record file is missing reads as undiscussed, as the render treats it.
+func (b *Board) View() (BoardView, error) {
+	store, err := b.loadStore()
+	if err != nil {
+		return BoardView{}, err
+	}
+	migrateLoaded(store)
+	return buildView(store.Tasks(), withMissingRecordsUndiscussed(b.boardPath, store.Tasks()), store.primeOwner, b.out, b.now())
 }
 
 // GetTask returns the task identified by idOrSlug and reports whether one was found.

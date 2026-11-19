@@ -5,6 +5,7 @@
 package ideengine
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -35,6 +36,19 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 // It defaults to `selfexec.LymBinary`, which refuses a test binary.
 // It is exported so that tests can point it at a stand-in lym path.
 var LymBinary = selfexec.LymBinary
+
+// WorkspaceContent returns the "tasks" member of a workspace file: one "beam start" task.
+// The task runs "lym beam start <beam>" in anchorPath with the resolved lym binary, or bare "lym" when none resolves.
+// An empty beam, the hub's own file, runs it for the root subject.
+// It is installed as fabric's workspace-content hook.
+func WorkspaceContent(_, beam, anchorPath string) map[string]json.RawMessage {
+	lymPath, _ := LymBinary()
+	if beam == "" {
+		beam = boardengine.RootSubject
+	}
+	name, tasks := vscode.WorkspaceTasks(lymPath, beam, anchorPath)
+	return map[string]json.RawMessage{name: tasks}
+}
 
 // Spawn writes the worktree slug's window title, colours and .vscode/ config, and seeds the user's lym key bindings.
 // It then launches VS Code and runs the machine's desktop window command.

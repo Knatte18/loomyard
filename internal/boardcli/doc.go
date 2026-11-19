@@ -7,6 +7,18 @@
 //   - `promote`, `raddle`, `rename`, `prune`, `find`, `labels`, `profiles` and `retire-legacy` are built in `Command`.
 //     The `rerender` and `sync` maintenance verbs are built there too.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
+//   - `open` and `serve` come from `openCommand` and `serveCommand`.
+//
+// `open` makes sure the hub's board server runs and opens its page in the default browser.
+// It reads whether a server runs from the server's lock.
+// When none does, it spawns `serve` from the prime's anchored directory.
+// It then opens a launcher page in the server's state directory.
+// That page carries the access token, never the printed address.
+// `serve` is `open`'s detached child: it runs `boardserve.Run` over the hub's board with no strand name,
+// so every page write is the operator's, and it registers under the hub owner with `runproc.RoleBoardServer`.
+// A second `serve` for the hub prints `{"ok":true,"running":true}` and exits 0.
+// Both verbs refuse a run agent's session and a `--board-path` run, naming their way forward.
+// They need the hub's own board config.
 //
 // `prune` and `retire-legacy` are read-only dry runs without `--apply`.
 // Each prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;

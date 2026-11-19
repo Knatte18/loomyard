@@ -10,6 +10,8 @@
 // The design files are built by renderDesigns;
 // each opens with a header naming the entry's slug, kind, labels and status, then the stored body unchanged.
 // A discussed entry's header and Slug cells link its decision record.
+// board-data.js is the view projection of the board as a script, built beside the README.
+// board.html is the embedded viewer page, written verbatim.
 // RenderToDisk writes the files and maintains the manifest sidecar .board-rendered.json;
 // so renamed or removed outputs are cleaned up on the next render.
 
@@ -41,7 +43,7 @@ const renderManifestFile = ".board-rendered.json"
 // An entry flagged discussed whose decision record file is missing from boardPath renders as undiscussed,
 // so no board file links a missing record.
 func RenderToDisk(boardPath string, tasks []Task, primeOwner string, out Outputs, now time.Time) error {
-	files, err := Render(withMissingRecordsUndiscussed(boardPath, tasks), primeOwner, out, now)
+	files, err := renderFiles(tasks, withMissingRecordsUndiscussed(boardPath, tasks), primeOwner, out, now)
 	if err != nil {
 		return err
 	}
@@ -117,8 +119,16 @@ func writeRenderManifest(boardPath string, files map[string]string) {
 // primeOwner is the machine that owns the hub's prime, or "" when none is recorded.
 // Every project, open or done, gets a file named by projectFileName, and the root project gets rootProjectFile.
 // Every entry flagged discussed is linked to its decision record, which Render takes to exist.
+// BoardDataFile holds the board's view projection beside the README, and BoardPageFile the viewer page.
 func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[string]string, error) {
-	ordered, err := RenderOrder(tasks)
+	return renderFiles(tasks, tasks, primeOwner, out, now)
+}
+
+// renderFiles renders every board file from rendered, and the view projection's revisions from stored.
+// The two differ only where RenderToDisk clears the discussed flag of an entry whose decision record is missing,
+// so an entry's revision covers its stored copy while its files follow the copy rendered.
+func renderFiles(stored, rendered []Task, primeOwner string, out Outputs, now time.Time) (map[string]string, error) {
+	ordered, err := RenderOrder(rendered)
 	if err != nil {
 		return nil, err
 	}
@@ -134,9 +144,20 @@ func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[st
 		}
 	}
 
-	for name, content := range renderDesigns(tasks, out.DesignPrefix) {
+	for name, content := range renderDesigns(rendered, out.DesignPrefix) {
 		result[name] = content
 	}
+
+	view, err := buildView(stored, rendered, primeOwner, out, now)
+	if err != nil {
+		return nil, err
+	}
+	script, err := boardDataScript(view)
+	if err != nil {
+		return nil, err
+	}
+	result[BoardDataFile] = script
+	result[BoardPageFile] = string(ViewerPage())
 	return result, nil
 }
 
@@ -769,20 +790,29 @@ func (b boardView) childProjects(project Task) []TaskWithLayer {
 	return children
 }
 
+// unmetDependencies returns the slugs of t's dependencies that are not met, in depends_on order.
+// A project dependency is judged by its landing members too.
+// A dependency the board holds no entry for counts as unmet.
+func (b boardView) unmetDependencies(t Task) []string {
+	var unmet []string
+	for _, dep := range t.DependsOn {
+		if _, found := b.bySlug[dep]; found && b.dependencies.met(dep) {
+			continue
+		}
+		unmet = append(unmet, dep)
+	}
+	return unmet
+}
+
 // afterCell returns the After cell of t.
 // The cell holds the handles of its dependencies that are not met, one per line in depends_on order.
-// A project dependency is judged by its landing members too.
 // A dependency the board holds no handle for is shown by its slug.
 func (b boardView) afterCell(t Task) string {
 	var after []string
-	for _, dep := range t.DependsOn {
-		entry, found := b.bySlug[dep]
-		switch {
-		case found && b.dependencies.met(dep):
-			// A met dependency does not hold t back.
-		case found && entry.Handle != "":
+	for _, dep := range b.unmetDependencies(t) {
+		if entry, found := b.bySlug[dep]; found && entry.Handle != "" {
 			after = append(after, cellText(entry.Handle))
-		default:
+		} else {
 			after = append(after, codeSpan(dep))
 		}
 	}

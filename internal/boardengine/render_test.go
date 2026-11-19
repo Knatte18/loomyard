@@ -129,6 +129,21 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, "Home.md")); err != nil {
 			t.Errorf("Home.md not written: %v", err)
 		}
+		if _, err := os.Stat(filepath.Join(dir, boardengine.BoardDataFile)); err != nil {
+			t.Errorf("%s not written: %v", boardengine.BoardDataFile, err)
+		}
+		manifest, err := os.ReadFile(filepath.Join(dir, ".board-rendered.json"))
+		if err != nil {
+			t.Fatalf("read the manifest: %v", err)
+		}
+		for _, name := range []string{boardengine.BoardDataFile, boardengine.BoardPageFile} {
+			if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+				t.Errorf("%s not written: %v", name, err)
+			}
+			if !strings.Contains(string(manifest), `"`+name+`"`) {
+				t.Errorf("manifest = %s; want it to list %s", manifest, name)
+			}
+		}
 		if b, err := os.ReadFile(filepath.Join(dir, "prop-a.md")); err != nil || !strings.HasSuffix(string(b), "proposal A") {
 			t.Errorf("prop-a.md: got %q, err %v", b, err)
 		}

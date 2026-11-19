@@ -34,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/helpcli"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/idecli"
+	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
@@ -173,6 +174,8 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				fabricengine.InstallWorktreeSeam(heddleengine.Seam{})
 				// The hub workspace file leads a pair's folder name with its project's handle, read from the board.
 				fabricengine.InstallPairFolderNamer(boardengine.WorkspaceFolderNames)
+				// Each workspace file carries one beam start task, which the alt+shift+0 key runs.
+				fabricengine.InstallWorkspaceContent(ideengine.WorkspaceContent)
 				// A records replay merges heddle.json by entry through heddle's Bolt replayer.
 				// That replayer also claims HEDDLE.md and renders it afresh after each replay.
 				fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})

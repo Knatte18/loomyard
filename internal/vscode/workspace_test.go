@@ -42,7 +42,7 @@ func TestBuildWorkspace(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := BuildWorkspace(tt.folders, tt.settings)
+			got, err := BuildWorkspace(tt.folders, tt.settings, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -51,6 +51,92 @@ func TestBuildWorkspace(t *testing.T) {
 			}
 			if tt.valid && !json.Valid(got) {
 				t.Errorf("output is not valid JSON:\n%s", got)
+			}
+		})
+	}
+
+	memberTests := []struct {
+		name    string
+		members map[string]json.RawMessage
+		want    string
+		wantErr string
+	}{
+		{
+			name: "spliced after settings in name order, trailing whitespace trimmed",
+			members: map[string]json.RawMessage{
+				"tasks":  json.RawMessage("{\"version\":\"2.0.0\"}\n"),
+				"extras": json.RawMessage("[1]"),
+			},
+			want: head + "{},\n  \"extras\": [1],\n  \"tasks\": {\"version\":\"2.0.0\"}\n}\n",
+		},
+		{
+			name:    "folders refused",
+			members: map[string]json.RawMessage{"folders": json.RawMessage("[]")},
+			wantErr: `workspace member "folders" is a key the workspace builder writes itself`,
+		},
+		{
+			name:    "settings refused",
+			members: map[string]json.RawMessage{"settings": json.RawMessage("{}")},
+			wantErr: `workspace member "settings" is a key the workspace builder writes itself`,
+		},
+	}
+	for _, tt := range memberTests {
+		t.Run("Members_"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := BuildWorkspace(folders, []byte("{}"), tt.members)
+			if tt.wantErr != "" {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("BuildWorkspace error = %v; want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("got:\n%s\nwant:\n%s", got, tt.want)
+			}
+			if !json.Valid(got) {
+				t.Errorf("output is not valid JSON:\n%s", got)
+			}
+		})
+	}
+}
+
+func TestWorkspaceTasks(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name, lymPath, wantCommand string
+	}{
+		{"GivenLymPath", "/opt/lym/bin/lym", "/opt/lym/bin/lym"},
+		{"EmptyLymPathBecomesBareLym", "", "lym"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			name, value := WorkspaceTasks(tt.lymPath, "some-beam", "/hub/some-beam")
+			if name != "tasks" {
+				t.Fatalf("member name = %q; want tasks", name)
+			}
+			var got struct {
+				Version string           `json:"version"`
+				Tasks   []map[string]any `json:"tasks"`
+			}
+			if err := json.Unmarshal(value, &got); err != nil {
+				t.Fatalf("member is not valid JSON: %v\n%s", err, value)
+			}
+			want := map[string]any{
+				"label":        "beam start",
+				"type":         "process",
+				"command":      tt.wantCommand,
+				"args":         []any{"beam", "start", "some-beam"},
+				"options":      map[string]any{"cwd": "/hub/some-beam"},
+				"presentation": map[string]any{"reveal": "always", "panel": "new", "echo": true, "focus": true},
+			}
+			if got.Version != "2.0.0" || len(got.Tasks) != 1 || !reflect.DeepEqual(got.Tasks[0], want) {
+				t.Errorf("WorkspaceTasks = %+v; want one task %v", got, want)
 			}
 		})
 	}
