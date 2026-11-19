@@ -635,7 +635,8 @@
 // It never names `lym batten cancel`.
 // A merge GitHub refuses as pending is retried for at most a minute under the lock.
 // A method refusal names `lym config landing --set squash=<true|false>`, or the repository's settings under MergeAtOnce.
-// Any other refusal has `pullrequest.ReadMergeState` read the pull request, which waits out a mergeability not yet computed.
+// Any other refusal has `pullrequest.ReadMergeState` read the pull request.
+// That reading waits out a mergeability not yet computed.
 // While that reading says the pull request can merge, the merge is retried within the same minute;
 // past the minute the halt names `lym loom resume` alone.
 // A reading that says it cannot merge halts naming each cause it reports.
