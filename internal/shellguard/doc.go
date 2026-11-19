@@ -14,7 +14,11 @@
 // A command-shaped row reads the command from the start of the "command" value as the shell would, one unit at a time:
 // unquoted text, a single-quoted string, a double-quoted string, and at most one heredoc operator plus its line.
 // It matches its command word only in command position reached that way.
-// Text inside quotes, a heredoc body or another payload field does not trip it, bar the quotes the scan misreads.
+// Any of env, exec, xargs, sudo, time and the shell keywords that open a command, such as do and then, may come first.
+// The script of a sh, bash, dash, ksh or zsh -c in command position is read the same way, one level deep.
+// A guard thus refuses inside the script what it refuses outside it,
+// and the agent gets the row's way forward rather than an engine dialog.
+// Text inside other quotes, a heredoc body or another payload field does not trip it, bar the quotes the scan misreads.
 // Nothing after a heredoc operator's line is read.
 // The write-then-run shape leaves the later lines unguarded:
 // a heredoc that writes a script, followed by a line that runs it.

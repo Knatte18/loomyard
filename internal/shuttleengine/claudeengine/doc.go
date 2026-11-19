@@ -678,12 +678,15 @@
 // It is announced like every other row.
 // The command-shaped rows read the command as the shell would.
 // A command word in quoted text, a heredoc body or another payload field such as the description does not trip a row.
+// The script of a `sh -c` or `bash -c` in command position is read like the command itself, one level deep.
+// A double-quoted script's inner double-quoted string is not read by the raw go row.
+// A slot, strand or prebuilt-binary variable expanded there passes.
 // For every such row, these are not read and pass:
 // a command substitution inside a double-quoted string;
 // a command after a `<` before a quote or a backslash;
 // any line after a heredoc operator's line.
 // It is a guardrail, not a barrier: its hook greps the payload;
-// so python behind `bash -c`, `eval`, a launcher or a command substitution inside a double-quoted string passes,
+// so python behind a nested `bash -c`, `eval`, a launcher or a command substitution inside a double-quoted string passes,
 // and a separator inside a quote the scan misreads is falsely denied.
 //
 // The raw go row keeps a session from reaching the hub's gate slots around `lym gate test`.
@@ -702,7 +705,7 @@
 // `lym gate test` runs in the foreground with the Bash tool's `timeout` at the ceiling;
 // every other check runs in the foreground, and no `cd` goes into the session's own working directory.
 // It is a guardrail, not a barrier: its hook sees static text only, so these pass:
-// a run hidden behind a script or `bash -c`;
+// a run hidden behind a script file;
 // a `cd` plus a relative pattern it does not cover;
 // a shell variable or a command substitution inside a double-quoted string;
 // any raw package-scoped `go test`.
@@ -719,7 +722,7 @@
 // any other load failure refuses the spawn with the loader's way forward before an artifact is written.
 // Settings render at spawn, so a running session keeps the list it started with.
 // It is a guardrail, not a barrier: its hook sees static text only, so these pass:
-// a run behind a script or `bash -c`;
+// a run behind a script file;
 // a flag between the prefix's words such as `go -C dir test`;
 // an assignment prefix such as `GOFLAGS=x go test`.
 //
@@ -729,8 +732,8 @@
 // It keeps a session on the Edit tool, which takes only a file read with Read.
 // Its notice is the session's one statement of the edit rule, which the python row's steer carries too.
 // It is a guardrail, not a barrier: these pass:
-// an edit behind `bash -c`, a script or `awk`;
-// a `sed -i` after `do` or `then`, behind `find -exec` or behind `xargs` with a flag;
+// an edit behind a script file or `awk`;
+// a `sed -i` behind `find -exec` or behind `xargs` with a flag;
 // a redirect into a quoted target or a file of another extension;
 // anything after a heredoc operator's line.
 //
@@ -743,7 +746,7 @@
 // That dialog shows even in bypass mode and stalls an unwatched run.
 // The steer names the literal path as the way forward.
 // It is a guardrail, not a barrier: its hook sees static text only, so these pass:
-// a removal behind `find -delete`, `xargs rm` with no `$`, `bash -c` or a script;
+// a removal behind `find -delete`, `xargs rm` with no `$` or a script file;
 // a removal through `$$`, `$?`, `$#` or `$!`.
 // These are falsely denied:
 // an `rm` of a literal path in a command that uses `$` elsewhere;
@@ -757,7 +760,7 @@
 // A headless session runs in no pane, so its work is hidden from the session that launched it;
 // the steer and notice name a subagent through the Agent tool as the way to hand work off.
 // It is a guardrail, not a barrier: these pass:
-// a launch behind `bash -c`, a script, an assignment prefix or `env` with an assignment.
+// a launch behind a script file, an assignment prefix or `env` with an assignment.
 // A claude subcommand taking a single-dash flag word holding `p` of its own is falsely denied;
 // so is a command launched through one.
 //
