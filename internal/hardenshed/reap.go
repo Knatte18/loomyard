@@ -179,8 +179,8 @@ func (deps ReapDeps) strayEntry(kind string, recorded bool) StrayEntry {
 	return StrayEntry{Row: deps.Row, Point: deps.Point, Kind: kind, Recorded: recorded, Interrupted: deps.Point == ReapStart}
 }
 
-// rootProcesses lists the processes that name the root, or the root with its links resolved,
-// bar the caller and its ancestors.
+// rootProcesses lists the processes that name the root, or the root with its links resolved.
+// It never lists the caller or its ancestors.
 // It lists none when deps.ListProcesses is nil.
 func (deps ReapDeps) rootProcesses(recorded map[int]bool) ([]rootProcess, error) {
 	if deps.ListProcesses == nil {
