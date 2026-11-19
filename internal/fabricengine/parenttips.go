@@ -124,6 +124,21 @@ func (f *Fabric) ChangedPaths(from, to string) ([]string, error) {
 	return paths, nil
 }
 
+// ChangedCodePaths returns the paths that differ between from and to in the pair's code repository, leaving out records.
+// A path is left out when it is a records path of to or lies under one, as a one-repository hub keeps its records there.
+// The paths are repository-relative and sorted.
+func (f *Fabric) ChangedCodePaths(from, to string) ([]string, error) {
+	paths, err := f.ChangedPaths(from, to)
+	if err != nil {
+		return nil, err
+	}
+	recordsPaths, err := RecordsPathsAt(f.warpPath, to)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: changed code paths from %s to %s: %w", from, to, err)
+	}
+	return slices.DeleteFunc(paths, func(path string) bool { return underRecordsPath(path, recordsPaths) }), nil
+}
+
 // ChangedPathsBothSides returns the paths that differ between from and to in the pair's code repository.
 // The paths are repository-relative, sorted and deduplicated.
 // A rename is reported by both its old and its new path, so a move out of a tree is seen by the tree it left.

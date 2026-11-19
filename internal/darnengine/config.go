@@ -8,10 +8,13 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"gopkg.in/yaml.v3"
 )
@@ -43,6 +46,8 @@ type Config struct {
 	VerifyBudgetMin int `yaml:"verify_budget_min"`
 	// GateFixer is the model-spec of the cold fixer of Darn-Write's verify gate; empty turns the fixer off.
 	GateFixer string `yaml:"gate_fixer"`
+	// ReportDir is the worktree-relative directory the writer commits the task's report under; empty asks for no report file.
+	ReportDir string `yaml:"report_dir"`
 	// TreeScope maps each worktree-relative tree path, without a trailing slash, to its test target at a tree-scoped site.
 	// An empty target means the tree has no tests of its own.
 	// Tree scope is on exactly when it holds a tree.
@@ -67,6 +72,7 @@ func ConfigSpec() configengine.Spec {
 		"verify_attempts":    configengine.CategoryNone,
 		"verify_budget_min":  configengine.CategoryNone,
 		"gate_fixer":         configengine.CategoryNone,
+		"report_dir":         configengine.CategoryNone,
 		"tree_scope":         configengine.CategoryGuard,
 	}
 	retired := map[string]configengine.Category{
@@ -102,6 +108,8 @@ const shedOnlyKeyWayForward = "remove the key from the refused local file, profi
 
 // LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
 // It validates the writer key's model-spec grammar at load time and leaves verify_attempts to its reader.
+// It refuses a report_dir that leaves the worktree or has a records directory in its path.
+// It returns a report_dir it keeps in clean slash form.
 // It returns tree_scope keyed by trimmed tree path and refuses a malformed or repeated tree key wrapping ErrTreeScopeKey.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
@@ -127,6 +135,19 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	if cfg.GateFixer != "" {
 		if _, err := modelspec.Parse(cfg.GateFixer); err != nil {
 			return Config{}, fmt.Errorf("darn config key %q: %w; set a model-spec with \"lym config darn\", or \"\" to turn the fixer off", "gate_fixer", err)
+		}
+	}
+
+	if cfg.ReportDir != "" {
+		if !filepath.IsLocal(cfg.ReportDir) {
+			return Config{}, fmt.Errorf("darn config key %q: %q is not a worktree-relative directory; set one such as docs/research, or \"\" for no report file", "report_dir", cfg.ReportDir)
+		}
+		cfg.ReportDir = path.Clean(filepath.ToSlash(cfg.ReportDir))
+		// Any segment counts, as a hub anchored at a subpath keeps its records at <anchor>/_lym.
+		for _, root := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
+			if slices.Contains(strings.Split(cfg.ReportDir, "/"), root) {
+				return Config{}, fmt.Errorf("darn config key %q: %q lies under a records directory %q, so its report never reaches the parent branch; set one such as docs/research, or \"\" for no report file", "report_dir", cfg.ReportDir, root)
+			}
 		}
 	}
 

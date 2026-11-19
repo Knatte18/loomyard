@@ -233,12 +233,12 @@ func landingDeps(
 		},
 		// RecordLanding records the landing commit in the prime's scratch for the batten run of this worktree's slug.
 		// The run's dobby reads it there.
-		RecordLanding: func(commit string) error {
+		RecordLanding: func(commit string, emptyDiff bool) error {
 			prime, err := primeOfHub(l)
 			if err != nil {
 				return err
 			}
-			return shedrun.WriteLandedCommit(prime, seedSlug(l.WorktreeName), commit)
+			return shedrun.RecordLandedCommit(prime, seedSlug(l.WorktreeName), shedrun.LandedCommit{Commit: commit, EmptyDiff: emptyDiff})
 		},
 		// RecordLandedSize writes the size of the landed diff into the worktree's usage directory.
 		// The landed record rides the run's last status commit.
@@ -294,6 +294,13 @@ func landingDeps(
 				return nil, err
 			}
 			return f.ChangedPaths(from, to)
+		},
+		ChangedCodePaths: func(from, to string) ([]string, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return nil, err
+			}
+			return f.ChangedCodePaths(from, to)
 		},
 		MergeBase: func(ref string) (string, error) {
 			f, err := fabricengine.Open(l)

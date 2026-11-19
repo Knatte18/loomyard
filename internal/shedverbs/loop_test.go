@@ -1566,6 +1566,68 @@ func TestLoop_TerminatingSignalIsMarkedInTheLoopLog(t *testing.T) {
 	}
 }
 
+// TestLoop_EndWithoutAnEnvelopeIsMarkedInTheLoopLog pins the loop-log mark of a loop's own end.
+// The loop ends without an envelope for a reason of its own.
+// It also pins that the loop returns its exit code, and that the pid file a loop leaves records the boot it started in.
+func TestLoop_EndWithoutAnEnvelopeIsMarkedInTheLoopLog(t *testing.T) {
+	tiergate.Require(t, 0)
+	const loopBootID = "boot-a"
+	tests := []struct {
+		name string
+		// arrange readies the fixture so the loop ends without an envelope.
+		arrange  func(t *testing.T, fx *loopFixture)
+		wantMark string
+		wantCode int
+		// wantBootID is whether the pid file left behind is the loop's own, recording loopBootID.
+		wantBootID bool
+	}{
+		{
+			name: "a dead loop's pid file refuses the step",
+			arrange: func(t *testing.T, fx *loopFixture) {
+				if err := WriteLoopPIDRecord(fx.spec.Loop.PIDPath, LoopPIDRecord{LoopID: "dead-0"}); err != nil {
+					t.Fatalf("write the dead loop's pid file: %v", err)
+				}
+			},
+			wantMark: "ends without an envelope: refuses to step: the pid file records a loop that ended without an envelope",
+			wantCode: 1,
+		},
+		{
+			name: "an envelope path the loop cannot write",
+			arrange: func(t *testing.T, fx *loopFixture) {
+				if err := os.MkdirAll(fx.spec.Loop.EnvelopePath, 0o755); err != nil {
+					t.Fatalf("block the envelope path with a directory: %v", err)
+				}
+			},
+			wantMark:   "could not write its envelope: ",
+			wantCode:   0,
+			wantBootID: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newLoopFixture(t, halting(shedengine.StateDone, "", 1))
+			fx.spec.Loop.BootID = func() (string, bool) { return loopBootID, true }
+			tt.arrange(t, fx)
+
+			var out bytes.Buffer
+			if got := clihelp.Execute(stepCmd(stepTexts(), fx.spec), &out, detachedArgs(detachedLoopID)); got != tt.wantCode {
+				t.Errorf("step exit code = %d; want %d", got, tt.wantCode)
+			}
+
+			log, err := os.ReadFile(fx.spec.Loop.LogPath)
+			if want := loopLogMarkPrefix + detachedLoopID + " " + tt.wantMark; err != nil || !strings.Contains(string(log), want) {
+				t.Errorf("loop log = %q, %v; want the mark %q", log, err, want)
+			}
+			if !tt.wantBootID {
+				return
+			}
+			if rec, found, err := ReadLoopPIDRecord(fx.spec.Loop.PIDPath); err != nil || !found || rec.BootID != loopBootID {
+				t.Errorf("pid record = %+v, found %v, %v; want the loop's record with boot id %q", rec, found, err, loopBootID)
+			}
+		})
+	}
+}
+
 func TestLoop_ChildStdoutIsMarkedInTheLoopLog(t *testing.T) {
 	tiergate.Require(t, 0)
 	const ownOutput = "the loop's own output"

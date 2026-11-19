@@ -83,10 +83,12 @@ func (run *Run) loopClassification(outcome Outcome) string {
 // loopAgreesWithState reports whether the fixed mapping allows the loop classification beside the session state:
 // waiting and running read busy, held reads idle-stalled, idle-fresh or asking;
 // done reads idle-done, died reads dead, api-error reads idle-stalled.
-// Two further pairings are expected:
+// Three further pairings are expected:
 // a pending gate entry waiting beside idle-done once every output exists;
-// and a done run beside busy on background work.
-// A turn end counted at once leaves the session running tasks the loop no longer waits on.
+// a done run beside busy on background work;
+// and a held run beside busy on background work.
+// A turn end counted done or held leaves the session running tasks the loop no longer waits on.
+// That holds at once or once its shells pass the wait bound.
 func loopAgreesWithState(loop string, state SessionState, gatePending bool) bool {
 	busyOnBackground := state.Name == SessionBusy && state.Cause == SessionCauseBackground
 	switch loop {
@@ -95,7 +97,7 @@ func loopAgreesWithState(loop string, state SessionState, gatePending bool) bool
 	case loopWaiting:
 		return state.Name == SessionBusy || (gatePending && state.Name == SessionIdleDone)
 	case loopHeld:
-		return state.Name == SessionIdleStalled || state.Name == SessionIdleFresh || state.Name == SessionAsking
+		return state.Name == SessionIdleStalled || state.Name == SessionIdleFresh || state.Name == SessionAsking || busyOnBackground
 	case loopDone:
 		return state.Name == SessionIdleDone || busyOnBackground
 	case loopDied:

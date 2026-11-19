@@ -240,9 +240,11 @@ type Deps struct {
 
 	// RecordLanding records commit as the run's landing commit, so the dobby driving the run can name it.
 	// The commit is the parent pair's head right after a parent-side merge that landed.
+	// emptyDiff reports that the landing changed no code path against the parent head merged into the task worktree.
+	// None of the run's work then reached the parent branch.
 	// The finalize step calls it after the parent-side merge and before the push.
 	// It only logs a failure, of the head read or of the record; nil records nothing.
-	RecordLanding func(commit string) error
+	RecordLanding func(commit string, emptyDiff bool) error
 	// RecordLandedSize records the size of the diff the run landed.
 	// The diff runs from the parent head merged into the task worktree to the landing commit.
 	// The finalize step calls it after recording the landing and before the push.
@@ -361,6 +363,9 @@ type Deps struct {
 	HoldsWork func(base, source string) (bool, error)
 	// ChangedPaths returns the sorted paths that differ between from and to, over the task pair.
 	ChangedPaths func(from, to string) ([]string, error)
+	// ChangedCodePaths returns ChangedPaths' paths less the records paths, over the task pair.
+	// A nil seam makes every landing record as not empty.
+	ChangedCodePaths func(from, to string) ([]string, error)
 	// MergeBase returns the best common ancestor of the task pair's HEAD and ref.
 	MergeBase func(ref string) (string, error)
 	// MergeRecordPath is the told merge record file, in the run's scratch directory.

@@ -89,6 +89,6 @@ wide:
     loom: {discussion_max_bounces: 3, discussion_hard_max_bounces: 4, split_max_bounces: 3, split_hard_max_bounces: 4}
 docs:
   darn:
-    darn: {writer: "sonnet[medium]"}
+    darn: {writer: "sonnet[medium]", report_dir: "docs/research"}
     drift: {scope: "off"}
     loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: "", code_reviewer_model: "opus[medium]"}

@@ -311,8 +311,9 @@ func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T
 	})
 }
 
-// TestLandingDeps_RecordLandingWritesWhereTheDobbyReads asserts the RecordLanding seam writes the commit.
-// It writes it into the prime's scratch of the run named for the pair, where shedrun.ReadLandedCommit reads it.
+// TestLandingDeps_RecordLandingWritesWhereTheDobbyReads pins the RecordLanding seam's write.
+// It writes the commit and its empty-diff flag into the prime's scratch of the run named for the pair.
+// shedrun.ReadLandedCommit reads them there.
 func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -326,13 +327,13 @@ func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
 	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
 		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 
-	if err := deps.RecordLanding("abc123"); err != nil {
+	if err := deps.RecordLanding("abc123", true); err != nil {
 		t.Fatalf("RecordLanding() error = %v; want nil", err)
 	}
 
 	got, err := shedrun.ReadLandedCommit(h.Location, "task")
-	if err != nil || got != "abc123" {
-		t.Errorf("ReadLandedCommit(prime, task) = %q, %v; want abc123, nil", got, err)
+	if want := (shedrun.LandedCommit{Commit: "abc123", EmptyDiff: true}); err != nil || got != want {
+		t.Errorf("ReadLandedCommit(prime, task) = %+v, %v; want %+v, nil", got, err, want)
 	}
 }
 

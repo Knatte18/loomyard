@@ -104,6 +104,26 @@ func TestLoadConfig(t *testing.T) {
 			want:     templateConfig(func(c *Config) { c.GateFixer = "" }),
 		},
 		{
+			name: "a report_dir loads in clean form", seed: true,
+			contents: strings.Replace(ConfigTemplate(), `report_dir: ""`, `report_dir: "docs/research/"`, 1),
+			want:     templateConfig(func(c *Config) { c.ReportDir = "docs/research" }),
+		},
+		{
+			name: "a report_dir outside the worktree is refused", seed: true,
+			contents: strings.Replace(ConfigTemplate(), `report_dir: ""`, `report_dir: "../research"`, 1),
+			wantErr:  []string{`"report_dir"`, `"../research"`, "docs/research"},
+		},
+		{
+			name: "a report_dir under a records directory is refused", seed: true,
+			contents: strings.Replace(ConfigTemplate(), `report_dir: ""`, `report_dir: "_lym/research"`, 1),
+			wantErr:  []string{`"report_dir"`, `"_lym/research"`, "docs/research"},
+		},
+		{
+			name: "a report_dir under a subpath anchor's records directory is refused", seed: true,
+			contents: strings.Replace(ConfigTemplate(), `report_dir: ""`, `report_dir: "backend/_lym/research"`, 1),
+			wantErr:  []string{`"report_dir"`, `"backend/_lym/research"`, "docs/research"},
+		},
+		{
 			name: "invalid gate_fixer spec", seed: true,
 			contents: strings.Replace(ConfigTemplate(), "gate_fixer: sonnet[medium]", "gate_fixer: \"opus[medium\"", 1),
 			wantErr:  []string{`"gate_fixer"`, `"lym config darn"`},

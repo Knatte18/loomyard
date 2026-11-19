@@ -122,6 +122,11 @@ type LoopSpec struct {
 	Signals func() (<-chan os.Signal, func())
 	// Raise ends the loop process by sig once the loop has recorded it in the loop log; nil restores sig's default action and sends it to the process again, and exits with status 128 plus sig's number if the process outlives a second.
 	Raise func(sig os.Signal)
+	// LockGrace is how long the loop waits for the loop lock before it ends without an envelope.
+	// Zero selects the default of a few seconds.
+	LockGrace time.Duration
+	// BootID reports the id of the machine's current boot, and false when it cannot tell; nil selects proc.BootID.
+	BootID func() (string, bool)
 }
 
 // ChildRequest is everything a ChildRunner needs to start one child step.
@@ -198,6 +203,8 @@ func (r childResult) ok() bool {
 // LoopSpec.OnStart runs once in the loop after the start is logged and before the first step.
 // LoopSpec.OnExit runs once at every stop kind but a terminating signal's while the loop steps, after the stop is final and before the envelope is written.
 // A loop that cannot take the lock within the grace period, or that finds the teardown's mark, an undelivered envelope or a dead loop's pid file, returns 1 at once, before any step and without an envelope.
+// It marks the reason in the loop log, as it marks a failed write of its envelope.
+// The pid file records the boot the loop started in, by LoopSpec.BootID.
 // A terminating signal is recorded in the loop log and then ends the process without an envelope, for the waiter's dead-loop stop to report;
 // the loop writes no failed stop and runs no interrupt hook once it has seen the signal.
 // A panic outside the stepping, in a hook or in the code after it, is not recovered and also ends the loop without an envelope.
@@ -206,19 +213,24 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	stopRecordingSignals, endedBySignal := recordTerminatingSignals(loop, loopID)
 	defer stopRecordingSignals()
 	if err := os.MkdirAll(filepath.Dir(loop.LockPath), 0o755); err != nil {
-		logger.Warn("shed: loop could not create its directory", "loop_id", loopID, "error", err.Error())
-		return 1
+		return endWithoutEnvelope(loop, loopID, "could not create its directory: "+err.Error())
 	}
-	held, locked, err := lock.AcquireWriteLockWithin(loop.LockPath, loopLockGrace)
+	lockGrace := loop.LockGrace
+	if lockGrace == 0 {
+		lockGrace = loopLockGrace
+	}
+	held, locked, err := lock.AcquireWriteLockWithin(loop.LockPath, lockGrace)
 	if err != nil || !locked {
-		logger.Warn("shed: loop could not take the loop lock, so another loop owns the run", "loop_id", loopID, "error", errorText(err))
-		return 1
+		reason := "could not take the loop lock, so another loop owns the run"
+		if err != nil {
+			reason += ": " + err.Error()
+		}
+		return endWithoutEnvelope(loop, loopID, reason)
 	}
 	defer held.Release()
 
 	if refusal := loopStartRefusal(loop); refusal != "" {
-		logger.Warn("shed: loop refuses to step", "loop_id", loopID, "reason", refusal)
-		return 1
+		return endWithoutEnvelope(loop, loopID, "refuses to step: "+refusal)
 	}
 	if loop.JobName != "" {
 		release, err := proc.HoldNamedJob(loop.JobName)
@@ -230,10 +242,10 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	}
 
 	first, _ := readStatusFile(spec)
-	pid := LoopPIDRecord{LoopID: loopID, Loop: proc.SelfRecord(), CurrentProducer: first.CurrentProducer, HistoryLength: len(first.History)}
+	bootID, _ := currentBootID(loop)
+	pid := LoopPIDRecord{LoopID: loopID, Loop: proc.SelfRecord(), BootID: bootID, CurrentProducer: first.CurrentProducer, HistoryLength: len(first.History)}
 	if err := WriteLoopPIDRecord(loop.PIDPath, pid); err != nil {
-		logger.Warn("shed: loop could not write its pid file", "loop_id", loopID, "error", err.Error())
-		return 1
+		return endWithoutEnvelope(loop, loopID, "could not write its pid file: "+err.Error())
 	}
 	logger.Info("shed: loop started", "loop_id", loopID, "pid", pid.Loop.PID)
 	if loop.OnStart != nil {
@@ -242,7 +254,7 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	obj := loopObject{FirstProducer: first.CurrentProducer}
 	if loop.ReconcileOrphanedSteps != nil {
 		if note := loop.ReconcileOrphanedSteps(); note != "" {
-			appendLoopLogMark(loop.LogPath, loopLogMark(loopID, "reconciled the steps whose process is gone: "+note))
+			appendLoopLogMark(loop.LogPath, loopLogMark(loopID, reconciledStepsMarkText+note))
 		}
 	}
 	run := stepUntilStop(ctx, spec, loopID, argv, &pid, first, &obj)
@@ -347,6 +359,7 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	}
 	if err := writeLoopEnvelopeFile(loop.EnvelopePath, loopID, buf.Bytes()); err != nil {
 		logger.Warn("shed: loop could not write its envelope", "path", loop.EnvelopePath, "error", err.Error())
+		appendLoopLogMark(loop.LogPath, loopLogMark(loopID, "could not write its envelope: "+err.Error()))
 	} else if err := os.Remove(loop.PIDPath); err != nil {
 		logger.Warn("shed: loop could not remove its pid file", "path", loop.PIDPath, "error", err.Error())
 	}
@@ -525,6 +538,15 @@ func raiseSignal(sig os.Signal) {
 		}
 	}
 	os.Exit(status)
+}
+
+// endWithoutEnvelope logs reason, why loop loopID ends before its first step without an envelope.
+// It also marks the reason in the loop log, where a waiter's stop reads it.
+// It returns the loop's exit code, 1.
+func endWithoutEnvelope(loop LoopSpec, loopID, reason string) int {
+	logger.Warn("shed: loop ends without an envelope", "loop_id", loopID, "reason", reason)
+	appendLoopLogMark(loop.LogPath, loopLogMark(loopID, "ends without an envelope: "+reason))
+	return 1
 }
 
 // loopStartRefusal names the reason a loop that holds the loop lock must not step, or the empty string when it may.

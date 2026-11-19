@@ -25,7 +25,9 @@ func TestLandNotices(t *testing.T) {
 	tearingDown := RunView{Slug: "task", State: runStateRunning, Producer: "Worktree-Teardown", PastLand: true, Landed: true, LandingCommit: commit}
 	unlanded := RunView{Slug: "task", State: runStateDone, Producer: "Worktree-Teardown", PastLand: true}
 	landedNoCommit := RunView{Slug: "task", State: runStateDone, Producer: "Worktree-Teardown", PastLand: true, Landed: true}
+	landedEmpty := RunView{Slug: "task", State: runStateDone, Producer: "Worktree-Teardown", PastLand: true, Landed: true, LandingCommit: commit, EmptyLanding: true}
 	const landedLine = "[dobby notice] task: landed as 0123456789ab"
+	const emptyLandingLine = "[dobby notice] task: landed with an empty diff: no file of its parent branch changed, which stays at 0123456789ab"
 	const unknownCommitLine = "[dobby notice] task: landed, commit unknown"
 	const memberFollowUp = "; add it to the change description, then run `lym beam describe b`, which updates the pull request"
 	const memberLandedLine = landedLine + memberFollowUp
@@ -81,6 +83,7 @@ func TestLandNotices(t *testing.T) {
 		{name: "AllTeardownRowCountsAsPastLand", mode: LandNoticeAll, ticks: [][]RunView{{running}, {tearingDown}, {landed}}, want: []string{landedLine}},
 		{name: "AllUnlandedNamesTheOutcome", mode: LandNoticeAll, ticks: [][]RunView{{running}, {unlanded}}, want: []string{unlandedLine}},
 		{name: "AllLandedWithNoCommitRecorded", mode: LandNoticeAll, ticks: [][]RunView{{running}, {landedNoCommit}}, want: []string{unknownCommitLine}},
+		{name: "AllEmptyLandingIsFlagged", mode: LandNoticeAll, ticks: [][]RunView{{running}, {landedEmpty}}, want: []string{emptyLandingLine}},
 		{name: "AllFirstSeenPastLandSendsNothing", mode: LandNoticeAll, ticks: [][]RunView{{landed}, {landed}}},
 		{name: "PerTaskRequestedSendsAndClearsAfterThePrune", mode: LandNoticePerTask, requested: true, ticks: [][]RunView{{running}, {landed}}, want: []string{landedLine}, wantClears: []string{"task"}},
 		{name: "PerTaskUnrequestedSendsNothing", mode: LandNoticePerTask, ticks: [][]RunView{{running}, {landed}}},
@@ -114,6 +117,7 @@ func TestLandNotices(t *testing.T) {
 		{name: "ADoneMemberEntryIsNotFlagged", mode: LandNoticePerTask, beam: true, pullRequest: true, entryDone: true, ticks: [][]RunView{{running}, {landed}}, want: []string{memberLandedLine}},
 		{name: "AFailedFlagWriteIsRetriedOnTheNextTick", mode: LandNoticePerTask, beam: true, pullRequest: true, failFlags: 1, ticks: [][]RunView{{running}, {running}, {landed}}, want: []string{memberLandedLine}, wantClears: []string{"task"}, wantFlags: []string{"task", "task"}},
 		{name: "AMemberLandedWithNoCommitCarriesTheFollowUp", mode: LandNoticePerTask, beam: true, pullRequest: true, ticks: [][]RunView{{running}, {landedNoCommit}}, want: []string{unknownCommitLine + memberFollowUp}, wantClears: []string{"task"}, wantFlags: []string{"task"}},
+		{name: "AMemberLandedWithAnEmptyDiffCarriesTheFollowUp", mode: LandNoticePerTask, beam: true, pullRequest: true, ticks: [][]RunView{{running}, {landedEmpty}}, want: []string{emptyLandingLine + memberFollowUp}, wantClears: []string{"task"}, wantFlags: []string{"task"}},
 		{name: "ADoneEntryTakenUpUnderAPullRequestCarriesTheFollowUp", mode: LandNoticePerTask, beam: true, pullRequest: true, doneEntryParent: "prime", ticks: [][]RunView{{}, {}}, want: []string{unknownCommitLine + memberFollowUp}, wantClears: []string{"task"}},
 		{name: "OffWithAPullRequestFlagsTheMemberAndSendsNoLine", mode: LandNoticeOff, beam: true, pullRequest: true, ticks: [][]RunView{{running}, {landed}}, wantClears: []string{"task"}, wantFlags: []string{"task"}},
 	}

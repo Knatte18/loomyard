@@ -24,6 +24,9 @@ type LoopPIDRecord struct {
 	LoopID string `json:"loop_id"`
 	// Loop is the loop process's own pid and start time.
 	Loop proc.TreeRecord `json:"loop"`
+	// BootID is the id of the boot the loop started in; empty when unknown.
+	// A stop of the loop that no process marked sets it against the machine's boot id then.
+	BootID string `json:"boot_id,omitempty"`
 	// Child is the in-flight step child's process tree.
 	Child proc.TreeRecord `json:"child"`
 	// TraceID is the trace id the in-flight step child runs under; empty before the first child.

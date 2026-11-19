@@ -74,6 +74,8 @@ type RunView struct {
 	Landed   bool
 	// LandingCommit is the commit the run's landing put on its parent branch, empty when none is recorded.
 	LandingCommit string
+	// EmptyLanding reports that the run's landing changed no code path on its parent branch, so none of its work reached it.
+	EmptyLanding bool
 	// ReachedParent reports whether the run's work already reached its parent branch.
 	// Then only its Land and Worktree-Teardown rows are left.
 	// It is read for a paused run only.

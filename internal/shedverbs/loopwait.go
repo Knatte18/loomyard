@@ -192,35 +192,84 @@ const loopLogMarkPrefix = "lym shed: loop "
 // loopStartingMark is the text of the mark a spawn writes before it starts a loop's process; a loop's lines in the loop log follow its last such mark.
 const loopStartingMark = "starting"
 
+// reconciledStepsMarkText opens the text of the mark a loop writes about the steps it reconciled at its start.
+// The mark is information about the loop's start and records no exit.
+const reconciledStepsMarkText = "reconciled the steps whose process is gone: "
+
 // loopLogMark is the loop log line that records text about the process of loop loopID.
 func loopLogMark(loopID, text string) string {
 	return loopLogMarkPrefix + loopID + " " + text + "\n"
 }
 
 // loopExitEvidence returns the clauses a gone loop's stop detail carries about how loop loopID ended.
-// It reads the loop log at logPath after that loop's last starting mark.
+// It reads the loop log at loop.LogPath after that loop's last starting mark.
 // The first clause lists the marks lym wrote about the loop's processes.
-// Such marks include a terminating signal the loop received and the exit statuses of the loop and its keeper.
-// With no mark it says the exit is not recorded and why:
+// Such marks include a terminating signal the loop received, the reason it ended without an envelope,
+// and the exit statuses of the loop and its keeper.
+// A mark about the steps the loop reconciled at its start is no exit record, so it does not count as one.
+// With no exit mark it says the exit is not recorded and why:
 // the log holds no starting mark of the loop, or no process marked the exit.
+// An unmarked exit also names what ended the loop.
+// It judges by bootID, the id of the boot the loop started in, against the machine's boot id now.
+// bootID is empty when unknown.
+// It then lists the reconciliation marks as the loop's marks.
 // When the loop has output of its own, a second clause carries an excerpt of it; a finished child's output is left out.
 // The excerpt is a Go crash's first lines, or otherwise the last lines.
 // A log with no starting mark for the loop yields the first clause alone, since its lines cannot be told from other loops' lines.
-func loopExitEvidence(logPath, loopID string) string {
-	marks, output, started := loopLogLinesOf(logPath, loopID)
+func loopExitEvidence(loop LoopSpec, loopID, bootID string) string {
+	marks, output, started := loopLogLinesOf(loop.LogPath, loopID)
+	reconciledPrefix := loopLogMarkPrefix + loopID + " " + reconciledStepsMarkText
+	var informational []string
+	exitRecorded := false
+	for _, mark := range marks {
+		if strings.HasPrefix(mark, reconciledPrefix) {
+			informational = append(informational, mark)
+		} else {
+			exitRecorded = true
+		}
+	}
 	var evidence string
 	switch {
-	case len(marks) > 0:
+	case exitRecorded:
 		evidence = "; loop exit: " + strings.Join(marks, " | ")
 	case !started:
 		evidence = "; loop exit: not recorded, since the loop log holds no start mark of loop " + loopID
 	default:
-		evidence = "; loop exit: not recorded, since no process marked the loop's exit, as after a kill of the loop and its keeper that no process can catch or a stop of the machine"
+		evidence = "; loop exit: not recorded, since no process marked the loop's exit" + unmarkedExitCause(loop, bootID)
+		if len(informational) > 0 {
+			evidence += "; loop marks: " + strings.Join(informational, " | ")
+		}
 	}
 	if excerpt := outputExcerpt(output); excerpt != "" {
 		evidence += "; loop log: " + excerpt
 	}
 	return evidence
+}
+
+// unmarkedExitCause returns the clause naming what ended a loop whose exit no process marked.
+// No process can mark a stop of the machine, nor a kill of both the loop and its keeper by a signal no process catches.
+// recordedBootID is the id of the boot the loop started in.
+// A machine whose boot id now differs from it has booted since, which names the stop.
+// One whose id equals it has not, which names the kill.
+// Either id unknown, the recorded one as the empty string, names both.
+// The causes are stated as likely, since a kill followed by a boot cannot be told from a boot that killed the loop.
+func unmarkedExitCause(loop LoopSpec, recordedBootID string) string {
+	if current, known := currentBootID(loop); known && recordedBootID != "" {
+		if current != recordedBootID {
+			return ", and the machine has booted since the loop started, so a stop of the machine likely ended it"
+		}
+		return ", and the machine has not booted since the loop started, so a kill of the loop and its keeper that no process can catch likely ended it, as by SIGKILL or the out-of-memory killer"
+	}
+	return ", as after a kill of the loop and its keeper that no process can catch or a stop of the machine"
+}
+
+// currentBootID returns the id of the machine's current boot through loop.BootID, or proc.BootID when that is nil.
+// It reports false when the id cannot be read.
+func currentBootID(loop LoopSpec) (string, bool) {
+	if loop.BootID == nil {
+		return proc.BootID()
+	}
+	return loop.BootID()
 }
 
 // loopProcessExitRecorded reports whether the loop log at logPath holds the mark of the exit of loop loopID's process.
@@ -569,7 +618,7 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 			}
 		}
 		awaitLoopProcessExitMark(ctx, spec.Loop, rec.LoopID)
-		detail += loopExitEvidence(spec.Loop.LogPath, rec.LoopID)
+		detail += loopExitEvidence(spec.Loop, rec.LoopID, rec.BootID)
 		if inFlight {
 			if _, stderrPath := recordedStopFiles(spec.Loop, rec); stderrPath != "" {
 				if excerpt := stderrExcerpt(stderrPath); excerpt != "" {
@@ -606,7 +655,7 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 // The waiter saw its own keeper exit, so the keeper's exit mark is already written and no wait for it is needed.
 // It writes the run failed while the status file reads running, writes no loop envelope and leaves no pid file to retire.
 func loopExitedEarlyStop(ctx context.Context, spec *Spec, loopID string, out io.Writer) int {
-	detail := fmt.Sprintf("loop %s exited before it recorded itself; its output is in %s", loopID, spec.Loop.LogPath) + loopExitEvidence(spec.Loop.LogPath, loopID)
+	detail := fmt.Sprintf("loop %s exited before it recorded itself; its output is in %s", loopID, spec.Loop.LogPath) + loopExitEvidence(spec.Loop, loopID, "")
 	envelope, _ := loopExitStop(ctx, spec, LoopPIDRecord{LoopID: loopID}, detail)
 	_, _ = out.Write(envelope)
 	return 1

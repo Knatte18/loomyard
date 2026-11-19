@@ -6,6 +6,7 @@ package darnengine
 
 import (
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -30,6 +31,9 @@ const (
 	makeChangeStencil      = "darn-fragment-make-change"
 	makeChangeGatedStencil = "darn-fragment-make-change-gated"
 )
+
+// reportStencil is the passage that has the writer commit the task's report under the configured directory.
+const reportStencil = "darn-fragment-report"
 
 // darnRole is the agent-name role the darn writer's spawn carries.
 const darnRole = "darn"
@@ -83,6 +87,7 @@ type DarnInputs struct {
 // They act only on what the verify gate's fixer leaves.
 // The writer asks its parent for the single run of the test a task's reported failure names.
 // Otherwise the step has them run the gate after each commit.
+// With cfg.ReportDir set, a passage after the step has the writer commit the task's report under that directory.
 // A friction directive that fails to render is logged and left empty, because the note is optional bookkeeping.
 func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ field, value string }{
@@ -120,9 +125,14 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		logger.Warn("darn: friction directive failed, continuing without one", "role", darnRole, "stencil", darnStencilName, "error", err)
 		frictionDirective = ""
 	}
-	makeChange, err := makeChangeList(in.StencilsDir, shuttleengine.NewModelChoice(resolved).Engine, in.GateFixed, in.SubagentModel)
+	engine := shuttleengine.NewModelChoice(resolved).Engine
+	makeChange, err := makeChangeList(in.StencilsDir, engine, in.GateFixed, in.SubagentModel)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: Step 4 list: %w", err)
+	}
+	reportDirective, err := reportPassage(in.StencilsDir, engine, cfg.ReportDir, in.Slug)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: report passage: %w", err)
 	}
 
 	return seatengine.Table{
@@ -138,10 +148,11 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 			"specs_dir":                  in.SpecsDir,
 			"prior_work":                 orNone(in.PriorWork),
 			"make_change":                makeChange,
+			"report_directive":           reportDirective,
 			"pattern_directive":          patternDirective,
 			friction.MarkerName:          frictionDirective,
 		},
-		Optional: []string{"pattern_directive", "project_directive", friction.MarkerName},
+		Optional: []string{"pattern_directive", "project_directive", "report_directive", friction.MarkerName},
 		Seats: []seatengine.Seat{{
 			Stencil:     darnStencilName,
 			ModelChoice: shuttleengine.NewModelChoice(resolved),
@@ -170,6 +181,25 @@ func makeChangeList(stencilsDir, engine string, gateFixed bool, subagentModel st
 		return "", fmt.Errorf("fill stencil %s: %w", name, err)
 	}
 	return strings.TrimSpace(string(filled)), nil
+}
+
+// reportPassage returns the passage that has the writer commit the task's report under reportDir, worded for engine.
+// The passage leads with a blank line, so it follows the Step 4 list on that list's line,
+// and it names `<reportDir>/<slug>.md` as the report's path when the task names none.
+// An empty reportDir returns "".
+func reportPassage(stencilsDir, engine, reportDir, slug string) (string, error) {
+	if reportDir == "" {
+		return "", nil
+	}
+	content, err := stencilstore.ReadForEngine(stencilsDir, engine, reportStencil)
+	if err != nil {
+		return "", err
+	}
+	filled, err := stencil.Fill(content, map[string]string{"report_dir": reportDir, "report_path": path.Join(reportDir, slug+".md")})
+	if err != nil {
+		return "", fmt.Errorf("fill stencil %s: %w", reportStencil, err)
+	}
+	return "\n\n" + strings.TrimSpace(string(filled)), nil
 }
 
 // orNone returns value, or noneToken when value is empty.

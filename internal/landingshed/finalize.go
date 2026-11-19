@@ -725,6 +725,7 @@ func (fz *Finalize) pushRecords(ctx context.Context) *ending {
 }
 
 // recordLanding hands the parent pair's head, the commit the landing put on the parent branch, to `Deps.RecordLanding`.
+// With it goes whether the landed diff is empty.
 // It then hands the landed diff's size to `Deps.RecordLandedSize`.
 // A failed head read or record is logged and never changes the verdict.
 func (fz *Finalize) recordLanding(parentHandle parentMerger) {
@@ -737,11 +738,31 @@ func (fz *Finalize) recordLanding(parentHandle parentMerger) {
 		return
 	}
 	if fz.deps.RecordLanding != nil {
-		if err := fz.deps.RecordLanding(commit); err != nil {
+		if err := fz.deps.RecordLanding(commit, fz.landedDiffEmpty(commit)); err != nil {
 			logger.Warn("landingshed: record the landing commit failed", "producer", finalizeName, "cause", err)
 		}
 	}
 	fz.recordLandedSize(commit)
+}
+
+// landedDiffEmpty reports whether the landing changed no code path against the parent head merged into the task worktree.
+// A records path never counts, so the parent pair's own records commit does not hide an empty landing.
+// Such a landing put none of the run's work on the parent branch, which is logged at Warn.
+// It reports false when no such head is held or the path read fails, which is logged too.
+func (fz *Finalize) landedDiffEmpty(landing string) bool {
+	if fz.parentHeadMerged == "" || fz.deps.ChangedCodePaths == nil {
+		return false
+	}
+	paths, err := fz.deps.ChangedCodePaths(fz.parentHeadMerged, landing)
+	if err != nil {
+		logger.Warn("landingshed: read the landed diff's paths failed, so the landing is recorded as not empty", "producer", finalizeName, "cause", err)
+		return false
+	}
+	if len(paths) > 0 {
+		return false
+	}
+	logger.Warn("landingshed: the landing changed no code path on the parent branch", "producer", finalizeName, "landing", landing)
+	return true
 }
 
 // recordLandedSize hands `Deps.RecordLandedSize` the parent head merged into the task worktree and the landing commit.

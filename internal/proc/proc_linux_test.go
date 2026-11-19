@@ -38,6 +38,20 @@ func TestStartTime(t *testing.T) {
 	}
 }
 
+// TestBootID pins that the boot id is readable, non-empty and the same on every read of one boot.
+func TestBootID(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	first, ok := BootID()
+	if !ok || first == "" {
+		t.Fatalf("BootID() = %q, %v; want a non-empty id and true", first, ok)
+	}
+	if second, ok := BootID(); !ok || second != first {
+		t.Errorf("BootID() again = %q, %v; want %q, true", second, ok, first)
+	}
+}
+
 func TestIsRunning(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

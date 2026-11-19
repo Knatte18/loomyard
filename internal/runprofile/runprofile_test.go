@@ -212,7 +212,8 @@ func TestTemplateLadder(t *testing.T) {
 }
 
 // TestTemplateDocsProfile pins the template's darn-only docs profile:
-// a Sonnet medium writer, one solo Code round with its hard cap and an Opus medium reviewer, and drift scope off.
+// a Sonnet medium writer that commits its report under docs/research.
+// It has one solo Code round with its hard cap and an Opus medium reviewer, and drift scope off.
 // Drift scope is off since a docs task changes no captured value.
 //
 //testtiming:keep pins the docs darn block's full settings map, including its code_reviewer_model, which the lookup tests over a fixture file cannot see
@@ -228,7 +229,7 @@ func TestTemplateDocsProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]any{
-		"darn":  map[string]any{"writer": "sonnet[medium]"},
+		"darn":  map[string]any{"writer": "sonnet[medium]", "report_dir": "docs/research"},
 		"drift": map[string]any{"scope": "off"},
 		"loom":  map[string]any{"code_max_bounces": 1, "code_hard_max_bounces": 2, "code_reviewer_fan": "", "code_reviewer_model": "opus[medium]"},
 	}

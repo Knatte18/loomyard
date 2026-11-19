@@ -563,6 +563,12 @@
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
 // After the parent-side merge and before the push, Finalize hands the landing commit to the told Deps.RecordLanding.
 // The commit is the parent pair's head.
+// With it goes whether the landing changed no code path against the parent head Finalize merged into the task worktree.
+// Finalize reads that through Deps.ChangedCodePaths, which leaves out the records paths,
+// so the records commit Finalize makes on the parent branch never counts as the run's work.
+// A landing that changed no code path put none of the run's work on the parent branch.
+// A landing step run again over a parent that already holds the work leaves the first landing's flag in place.
+// No such head held, or a failed path read, records the landing as not empty.
 // It then hands the parent head it merged into the task worktree and the landing commit to Deps.RecordLandedSize;
 // a failure of either is only logged.
 // A Finalize that read no such parent head in its process, as one resumed past the merge, records no landed size.
