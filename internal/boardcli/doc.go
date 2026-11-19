@@ -180,6 +180,8 @@
 // `intake list` prints `{"issues":[{"number":…,"title":…}]}` for each open issue no entry records.
 // Pull requests are excluded, and no open issue prints `{"issues":[]}`.
 // `--full` prints number, title, body, labels, url, comments and created_at for the same set.
+// Its `comments` is the list of `{"body":…,"created_at":…}` that import carries into the entry's body:
+// oldest first, lym's own import pointers left out.
 //
 // `intake import` prints `{"slug":…,"issue":…,"labels":[…],"dropped":[…]}`.
 // For a fold, `slug` is the entry folded into.

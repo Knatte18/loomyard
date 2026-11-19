@@ -32,11 +32,19 @@ The fork follows `ly:board` for the commands and is bound to these outcomes:
   Its reason names which.
 - A duplicate that adds anything is folded;
   a fold the board refuses because the entry is run-held becomes a new note.
+- The full list carries each issue's comments, and the import carries them into the entry's body.
+  A comment that is a finding apart from its issue also becomes a note of its own,
+  written with `lym board upsert` and `"kind":"note"`, its body quoting the comment and naming the issue.
+  The split happens only when the fork's own import of that issue wrote the board,
+  which is a success or an error carrying a `close` payload;
+  it is skipped when the import prints `recorded`.
 - When an import writes the board but its close fails, it re-runs the error's `close` payload once.
   A second pointer comment from the re-run is accepted.
   A second failure gives the issue a `failed` line with the error and the `close` payload.
 - It writes the board only through `lym board intake` and a `lym board upsert`.
-  That upsert writes only the labels of an entry the fork just folded into, keeping every label the entry carries.
+  An upsert writes only a note split from a comment,
+  or the labels of an entry the fork just folded into, keeping every label the entry carries.
 - It edits no file, sends no message, and merges, promotes, starts or re-scopes nothing.
 - It returns one line per issue:
-  the number, then the new slug, the entry folded into, `closed` or `failed`, then the labels, close reason or error.
+  the number, then the new slug, the entry folded into, `closed` or `failed`, then the labels, close reason or error,
+  then the slug of each note split from a comment.

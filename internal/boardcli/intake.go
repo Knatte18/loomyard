@@ -54,7 +54,9 @@ into an entry and closes it with a pointer, and close closes noise with a stated
 Takes no payload.
 
 Prints {"issues":[...]} with the number and title of each issue.
-With --full, each issue also carries body, labels, url, comments (the comment count) and created_at.
+With --full, each issue also carries body, labels, url, comments and created_at.
+Its comments are each comment's body and created_at, oldest first and without lym's own import pointers:
+the comments import carries into the entry's body.
 The filtering is the same in both modes.
 
 Examples:
@@ -69,7 +71,7 @@ Examples:
 			return intakeList(out, board(), repo, listFull)
 		}),
 	}
-	listCmd.Flags().BoolVar(&listFull, "full", false, "print body, labels, url, comments and created_at too")
+	listCmd.Flags().BoolVar(&listFull, "full", false, "print body, labels, url, the comments and created_at too")
 
 	importCmd := &cobra.Command{
 		Use:         "import {issue, slug|into, title?, brief?, labels?}",
@@ -166,16 +168,23 @@ type intakeIssueSummary struct {
 
 // intakeIssueView is the view of an issue that list --full prints.
 type intakeIssueView struct {
-	Number    int       `json:"number"`
-	Title     string    `json:"title"`
+	Number    int                 `json:"number"`
+	Title     string              `json:"title"`
+	Body      string              `json:"body"`
+	Labels    []string            `json:"labels"`
+	URL       string              `json:"url"`
+	Comments  []intakeCommentView `json:"comments"`
+	CreatedAt time.Time           `json:"created_at"`
+}
+
+// intakeCommentView is one comment of an issue as list --full prints it.
+type intakeCommentView struct {
 	Body      string    `json:"body"`
-	Labels    []string  `json:"labels"`
-	URL       string    `json:"url"`
-	Comments  int       `json:"comments"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 // intakeList prints the open issues of repo that no board entry records, as number and title unless full is set.
+// With full set it also prints each issue's comments, fetching them only for an issue GitHub counts comments on.
 func intakeList(out io.Writer, b *boardengine.Board, repo *hubissues.Repo, full bool) int {
 	issues, err := repo.ListOpenIssues()
 	if err != nil {
@@ -195,13 +204,23 @@ func intakeList(out io.Writer, b *boardengine.Board, repo *hubissues.Repo, full 
 			summaries = append(summaries, intakeIssueSummary{Number: issue.Number, Title: issue.Title})
 			continue
 		}
+		comments := []intakeCommentView{}
+		if issue.Comments > 0 {
+			fetched, err := repo.ListIssueComments(issue.Number)
+			if err != nil {
+				return outputError(out, fmt.Sprintf("issue #%d: %v", issue.Number, err))
+			}
+			for _, comment := range carriedComments(fetched) {
+				comments = append(comments, intakeCommentView{Body: comment.Body, CreatedAt: comment.CreatedAt})
+			}
+		}
 		views = append(views, intakeIssueView{
 			Number:    issue.Number,
 			Title:     issue.Title,
 			Body:      issue.Body,
 			Labels:    issue.Labels,
 			URL:       issue.URL,
-			Comments:  issue.Comments,
+			Comments:  comments,
 			CreatedAt: issue.CreatedAt,
 		})
 	}
@@ -247,14 +266,23 @@ func decodeIssueNumber(fields map[string]json.RawMessage) (int, error) {
 	return number, nil
 }
 
+// carriedComments returns comments, in order, without the import pointers among them.
+// Lym posted those pointers, so they carry nothing.
+func carriedComments(comments []hubissues.IssueComment) []hubissues.IssueComment {
+	var carried []hubissues.IssueComment
+	for _, comment := range comments {
+		if !isImportPointer(comment.Body) {
+			carried = append(carried, comment)
+		}
+	}
+	return carried
+}
+
 // inboxIssue converts a fetched issue and its comments, oldest first, to the boardengine view of it.
-// A comment that is an import pointer is dropped, since lym posted it and it carries nothing.
+// Import pointers are dropped.
 func inboxIssue(issue hubissues.Issue, comments []hubissues.IssueComment) boardengine.InboxIssue {
 	var carried []boardengine.IssueComment
-	for _, comment := range comments {
-		if isImportPointer(comment.Body) {
-			continue
-		}
+	for _, comment := range carriedComments(comments) {
 		carried = append(carried, boardengine.IssueComment{Body: comment.Body, CreatedAt: comment.CreatedAt})
 	}
 	return boardengine.InboxIssue{

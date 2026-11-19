@@ -230,9 +230,11 @@ lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'
 ```
 
 - `list` prints the number and title of each open issue no entry records;
-  `--full` adds body, labels, url, comment count and creation time.
+  `--full` adds body, labels, url, creation time and the comments, each with its body and creation time.
 - `import` with `slug` records the issue as a new note; with `into` it folds the issue into an existing entry.
-  Either way it comments on the issue with a pointer and closes it.
+  Either way the entry's body carries the issue's comments, each under a heading of its own,
+  and `import` comments on the issue with a pointer and closes it.
+  `list --full` and the body leave out lym's own pointer comments.
   A new note gets its type and module labels through `import`'s `labels`.
   `import` prints the slug, issue, labels and dropped labels, not the entry; `lym board get` shows the entry.
   It adds `empty_body` for an issue with a blank body and `local_paths` for one that names files under `.lym/`;
