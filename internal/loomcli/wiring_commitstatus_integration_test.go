@@ -85,7 +85,7 @@ func startForeignMergeInRecords(t *testing.T, recordsSibling string) {
 }
 
 // startStoppedCherryPickInRecords leaves a cherry-pick in progress in the records sibling, with a clean index.
-// It picks an empty commit, which git stops on with CHERRY_PICK_HEAD set, as a weft replay mid-pick leaves it.
+// It picks an empty commit, which git stops on with CHERRY_PICK_HEAD set, as a fabric replay mid-pick leaves it.
 func startStoppedCherryPickInRecords(t *testing.T, recordsSibling string) {
 	t.Helper()
 	current := gitkit.CurrentBranch(t, recordsSibling)
@@ -393,7 +393,7 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
-	// A records cherry-pick in a two-repository hub is fabric's own weft replay.
+	// A records cherry-pick in a two-repository hub is fabric's own replay.
 	// The replay holds the write lock the commit waits on.
 	// The real probe runs while the pick is in progress; the pick then ends, as the replay does, before the commit.
 	// Relies on the step above leaving no merge in progress.
