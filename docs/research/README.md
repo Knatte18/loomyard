@@ -165,6 +165,10 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [testmap-use-cases-2026-11-18](speed/testmap-use-cases-2026-11-18/report.md) — what the per-test coverage maps can do for lym and its agents: every use found in research and practice, ranked, with the top three argued and the rest ruled out.
 - [mutation-trial-2026-11-19](speed/mutation-trial-2026-11-19/report.md) — `lym gate mutate` replayed on 20 landed diffs: mutants run, killed, survived and unjudged, the survivors judged by hand, and the decision to build the `mutation` report step.
 
+## survey — ideas from outside projects
+
+- [pocock-skills-2026-11-19](survey/pocock-skills-2026-11-19/report.md) — what LoomYard could take from Matt Pocock's skills repository: each candidate's landing place, gain, cost and verdict, with the three best written as board notes.
+
 ## tokens — token use, cost and models
 
 - [token-audit-2026-10-22](tokens/token-audit-2026-10-22/report.md) — where Claude tokens went over two weeks of runs.
