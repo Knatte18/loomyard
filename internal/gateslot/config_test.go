@@ -971,8 +971,40 @@ func TestConfig_TierUse(t *testing.T) {
 		if err != nil || !slices.Equal(got.Tiers, []int{0, 1}) || got.Scope != "diff" {
 			t.Errorf("Gate(push) = (%+v, %v); want tiers [0 1] and scope diff", got, err)
 		}
-		if _, err := twoTier.Gate("nope"); err == nil || !strings.Contains(err.Error(), `gates holds no key "nope"`) {
-			t.Errorf("Gate(nope) error = %v; want the no-such-key refusal", err)
+		wantHeld := `gates holds no key "nope"; the keys it holds are batch, card, dangling, empty, finalize, push, webster, webster-fix`
+		if _, err := twoTier.Gate("nope"); err == nil || !strings.Contains(err.Error(), wantHeld) {
+			t.Errorf("Gate(nope) error = %v; want the no-such-key refusal naming the keys the config holds, %q", err, wantHeld)
+		}
+		if _, err := (Config{}).Gate("nope"); err == nil || !strings.Contains(err.Error(), `gates holds no key "nope"; it holds no key at all`) {
+			t.Errorf("Config{}.Gate(nope) error = %v; want the no-such-key refusal saying the config holds no key", err)
+		}
+	})
+
+	t.Run("MeasureCall", func(t *testing.T) {
+		t.Parallel()
+		cfg := Config{
+			Tiers: map[string]Tier{"tier0": {Command: "dotnet test {targets} {args}"}, "tier1": {Command: "dotnet test All.sln {args}"}},
+			Gates: map[string]GateKey{"darn-write": {Tiers: []int{0}, Scope: "diff"}, "whole": {Tiers: []int{1}, Scope: "diff"}, "dangling": {Tiers: []int{2}, Scope: "diff"}},
+		}
+		tests := []struct {
+			name string
+			cfg  Config
+			key  string
+			want string
+		}{
+			{"a key whose tier takes targets names the target", cfg, "darn-write", "lym gate test --gate darn-write <its package or test project> -- <args>"},
+			{"a key whose tiers take no targets names none", cfg, "whole", "lym gate test --gate whole -- <args>"},
+			{"a key the config does not hold falls back to tier0", cfg, "nope", "lym gate test --tier 0 <its package or test project> -- <args>"},
+			{"a key naming an undeclared tier falls back to tier0", cfg, "dangling", "lym gate test --tier 0 <its package or test project> -- <args>"},
+			{"a hub that declares no tier keeps the key with no target", Config{Gates: cfg.Gates}, "darn-write", "lym gate test --gate darn-write -- <args>"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				if got := tt.cfg.MeasureCall(tt.key); got != tt.want {
+					t.Errorf("MeasureCall(%q) = %q; want %q", tt.key, got, tt.want)
+				}
+			})
 		}
 	})
 

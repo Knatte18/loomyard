@@ -312,6 +312,11 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 		if err != nil {
 			return seatengine.Table{}, err
 		}
+		// The measuring call follows the hub's gate config, so the prompt names only a form that config can run.
+		gateCfg, err := gateslot.LoadConfig(dirs)
+		if err != nil {
+			return seatengine.Table{}, err
+		}
 		table, err := darnengine.DarnTable(darnengine.DarnInputs{
 			StencilsDir:        stencilsDir,
 			SpecsDir:           specsDir,
@@ -325,6 +330,7 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 			LanguageSkills:     c.languageSkills,
 			SubagentModel:      subagentModel,
 			GateFixed:          gateFixed,
+			MeasureCall:        gateCfg.MeasureCall(darnWriteGateKey),
 
 			ConditionStopMarkerPath: shedrun.ConditionStopMarker(location, c.runID),
 		}, cfg, registry)

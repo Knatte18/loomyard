@@ -372,12 +372,17 @@ func (c Config) Tier(number int) (Tier, error) {
 // Gate returns the named gate key's tiers and scope.
 // A hub that declares no tier at all gets the key with no tiers.
 // A fresh hub with no tests yet then runs its gates with the key's lints and no tier.
-// It refuses a missing key, an empty list, a hub that declares tiers but no tier0, or an undeclared tier.
+// It refuses a missing key, naming the keys the config holds;
+// an empty list, a hub that declares tiers but no tier0, or an undeclared tier.
 // Each refusal names lym config gate.
 func (c Config) Gate(key string) (GateKey, error) {
 	gate, ok := c.Gates[key]
 	if !ok {
-		return GateKey{}, useRefusal("gates holds no key %q", key)
+		held := "it holds no key at all"
+		if len(c.Gates) > 0 {
+			held = "the keys it holds are " + strings.Join(sortedKeys(c.Gates), ", ")
+		}
+		return GateKey{}, useRefusal("gates holds no key %q; %s", key, held)
 	}
 	if len(gate.Tiers) == 0 {
 		return GateKey{}, useRefusal("gates.%s is empty, and every gate verifies at least one tier", key)
@@ -420,6 +425,26 @@ func (c Config) GateCall(key string, cards ...string) (string, error) {
 // It refuses, with the refusals Gate gives, a key the config cannot run.
 func (c Config) AgentGateCall(key string, cards ...string) (string, error) {
 	return c.renderGateCall(key, false, cards)
+}
+
+// MeasureCall renders the call an agent runs to measure one test class through the named gate key.
+// It is `lym gate test --gate <key>`, then `<its package or test project>` when a tier the key runs takes targets,
+// then `-- <args>` for the words by which the tier's runner selects the class.
+// A key Gate refuses falls back to `lym gate test --tier 0`, whose target word follows tier0's command,
+// so the call names only a form the hub's gate config can run.
+func (c Config) MeasureCall(key string) string {
+	words := []string{"lym", "gate", "test"}
+	tiers := []int{0}
+	if gate, err := c.Gate(key); err == nil {
+		words = append(words, "--gate", key)
+		tiers = gate.Tiers
+	} else {
+		words = append(words, "--tier", "0")
+	}
+	if slices.ContainsFunc(tiers, func(number int) bool { return HoldsTargets(c.Tiers[tierKey(number)].Command) }) {
+		words = append(words, "<its package or test project>")
+	}
+	return strings.Join(append(words, "--", "<args>"), " ")
 }
 
 // MainPackagesFlag is the `lym gate test` flag, without its dashes, that adds the main packages to a --card scope.

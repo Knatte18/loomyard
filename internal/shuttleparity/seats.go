@@ -209,9 +209,13 @@ func buildDarn(env SeatEnv) ([]seatengine.Table, error) {
 		ConditionStopMarkerPath: standInPath(env, "condition-stop-marker"),
 		LanguageSkills:          skills,
 		SubagentModel:           standInModel,
+		MeasureCall:             measureCallStandIn,
 	}, cfg, env.Registry)
 	return []seatengine.Table{table}, err
 }
+
+// measureCallStandIn is the measuring call the darn builder is given, the one a hub with no tier gives its darn-write key.
+const measureCallStandIn = "lym gate test --gate darn-write -- <args>"
 
 func buildDescribe(env SeatEnv) ([]seatengine.Table, error) {
 	cfg, err := landingshed.LoadConfig(env.Dirs, "landing")
