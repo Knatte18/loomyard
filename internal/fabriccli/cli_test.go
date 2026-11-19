@@ -401,56 +401,29 @@ func TestCommand_CloneDestination(t *testing.T) {
 	}
 }
 
-// TestCommand_CloneEngineRefusalReachesEnvelopeUnchanged drives a clone the engine refuses.
-// One row clones a bare weft that carries no recorded binding.
-// The other passes --single-repo with two URLs, which reaches the engine's refusal through the flag's wiring.
+// TestCommand_CloneEngineRefusalReachesEnvelopeUnchanged drives a one-positional clone against a bare weft.
+// That weft carries no recorded binding.
 // The test requires the envelope's error to equal the engine's refusal text exactly.
 func TestCommand_CloneEngineRefusalReachesEnvelopeUnchanged(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
+	fixtures := t.TempDir()
+	weftBare := filepath.ToSlash(makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft"))
 
-	tests := []struct {
-		name       string
-		singleRepo bool
-		secondURL  bool
-		// wantEngineErr is the sentinel the engine's refusal matches, nil when the row pins no sentinel.
-		wantEngineErr error
-	}{
-		{name: "UnboundWeft", wantEngineErr: fabricengine.ErrNoWarpBinding},
-		{name: "SingleRepoWithASecondURL", singleRepo: true, secondURL: true},
+	_, engineErr := fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{WeftURL: weftBare})
+	if !errors.Is(engineErr, fabricengine.ErrNoWarpBinding) {
+		t.Fatalf("CloneHub(%s) error = %v; want errors.Is ErrNoWarpBinding", weftBare, engineErr)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			fixtures := t.TempDir()
-			weftBare := filepath.ToSlash(makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft"))
-			options := fabricengine.CloneOptions{WeftURL: weftBare, SingleRepo: tt.singleRepo}
-			args := []string{"clone", "--into", t.TempDir()}
-			if tt.singleRepo {
-				args = append(args, "--single-repo")
-			}
-			args = append(args, weftBare)
-			if tt.secondURL {
-				options.WarpURL = filepath.ToSlash(makeCLICloneWarpBare(t, fixtures, "clonecli-second-warp"))
-				args = append(args, options.WarpURL)
-			}
 
-			_, engineErr := fabricengine.CloneHub(t.TempDir(), options)
-			if engineErr == nil || (tt.wantEngineErr != nil && !errors.Is(engineErr, tt.wantEngineErr)) {
-				t.Fatalf("CloneHub(%v) error = %v; want a refusal matching %v", options, engineErr, tt.wantEngineErr)
-			}
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(fabriccli.Command(), &out, []string{"clone", "--into", t.TempDir(), weftBare})
+	if exitCode != 1 {
+		t.Fatalf("Execute(clone <weft-url>) = %d; want 1\noutput: %s", exitCode, out.String())
+	}
 
-			var out bytes.Buffer
-			exitCode := clihelp.Execute(fabriccli.Command(), &out, args)
-			if exitCode != 1 {
-				t.Fatalf("Execute(%v) = %d; want 1\noutput: %s", args, exitCode, out.String())
-			}
-
-			result := envelope.RequireErr(t, out.String(), "")
-			if result.Error != engineErr.Error() {
-				t.Errorf("Execute(%v) error = %q; want the engine's %q", args, result.Error, engineErr.Error())
-			}
-		})
+	result := envelope.RequireErr(t, out.String(), "")
+	if result.Error != engineErr.Error() {
+		t.Errorf("Execute(clone <weft-url>) error = %q; want the engine's %q", result.Error, engineErr.Error())
 	}
 }
 

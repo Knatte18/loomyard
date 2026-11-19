@@ -4,17 +4,15 @@
 package fabricengine
 
 import (
+	"fmt"
+
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// MergeStateActive reports whether the weft worktree of l is in a git operation a records commit cannot pass.
-// MergeStateOperation names that operation.
-// In a two-repository worktree only a live MERGE_HEAD or a non-empty conflicted index counts.
-// A cherry-pick, revert or rebase there does not count.
-// Fabric's own weft replay cherry-picks under the write lock the commit waits on.
+// MergeStateActive reports whether the weft worktree of l is mid-merge at the git level.
+// Mid-merge means a live MERGE_HEAD or a non-empty conflicted index.
 // It does not report whether fabric itself has a merge in progress.
-// In a one-repository worktree a cherry-pick, revert or rebase counts,
-// and a merge counts only when its index holds a records path unlike HEAD's.
 //
 // It is weft-only, because warp and weft are independent clones with independent .git directories.
 // The status commit this probe guards runs in the weft worktree alone, so warp-side git state cannot block it.
@@ -25,14 +23,21 @@ import (
 // A check on fabric's own merge record misses git-level merge state that fabric did not start.
 // That is the case this probe exists to catch, and callers of this probe do not hold an open Fabric.
 //
-// A non-nil error is surfaced rather than swallowed: the decision that an unreadable probe means
-// skip belongs to the caller, not to this function.
+// A non-nil error is surfaced rather than swallowed.
+// The decision that an unreadable probe means skip belongs to the caller, not to this function.
 //
 // The probe is read-only, so it returns a plain bool and error, not a result type that embeds a mutation record.
 func MergeStateActive(l *lymcwd.Location) (bool, error) {
-	operation, err := MergeStateOperation(l)
+	repo := gitrepo.New(RecordsWorktree(l))
+
+	mergeHeadPresent, err := repo.MergeHeadPresent()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("fabricengine: check merge head: %w", err)
 	}
-	return operation != "", nil
+	conflicted, err := repo.ConflictedFiles()
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: check conflicted files: %w", err)
+	}
+
+	return mergeHeadPresent || len(conflicted) > 0, nil
 }

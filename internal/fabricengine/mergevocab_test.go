@@ -39,7 +39,6 @@ var pinnedMergeReasons = map[string]string{
 	"mergeReasonAttemptIncomplete":   "merge attempt did not reach both sides",
 	"mergeReasonConcludeLanded":      "merge conclude already landed",
 	"mergeReasonRecordedMergeGone":   "checkout no longer carries the recorded merge",
-	"mergeReasonRecordsUnsettled":    "merge records step unfinished",
 }
 
 // mergeReasonHomeFile names the one file that declares the closed guard-reason set.

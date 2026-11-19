@@ -55,10 +55,6 @@ type CloneOptions struct {
 	// It is required when the weft is a fresh bind;
 	// on a bound weft it must equal the recorded shortname, or record one if the weft has none.
 	Shortname string
-	// SingleRepo clones the one URL as a one-repository hub and creates its marker and board branch.
-	// It refuses a second URL and an origin that already holds the Bolt branch or a records binding.
-	// Without it, one URL over an origin holding the Bolt branch is the one-repository layout all the same.
-	SingleRepo bool
 }
 
 // CloneResult carries the geometry that CloneHub returns once the clone, board worktree and anchor are set up.
@@ -89,15 +85,6 @@ type CloneResult struct {
 	// CloneHub leaves it empty; the wiring that follows the clone fires the event and sets it.
 	// A clone that fails after the event returns no result, so the warning then travels in the error.
 	SeamWarning string
-	// OneRepository is true when the clone took the one-repository layout.
-	// WeftBase is then the prime's own anchor directory, and the prime is its own records worktree.
-	OneRepository bool
-	// hubToken proves that this clone created the hub directory, so a refused push can tear the hub down.
-	hubToken createdToken
-	// primePath is the prime worktree of a one-repository clone.
-	primePath string
-	// pushOwed is true when the clone created the marker and the board branch and origin holds neither yet.
-	pushOwed bool
 }
 
 // CloneHub clones the warp and weft repositories into a new hub directory and returns the resolved geometry.
@@ -109,10 +96,6 @@ type CloneResult struct {
 //
 // opts.WeftURL is required.
 // opts.WarpURL is optional; when empty, it is resolved from the warp binding recorded on the weft candidate.
-//
-// When opts.SingleRepo is set or origin holds the BoltBranchName branch, one URL names a one-repository hub.
-// clone_onerepository.go runs that clone instead of the steps below.
-// With opts.SingleRepo a second URL is refused before anything is created.
 //
 // When opts.WarpURL is set, the hub name is known without the network.
 // The hub-exists check, and under Reset the check that the target is a hub, run before the weft probe.
@@ -157,22 +140,6 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		return CloneResult{}, err
 	}
 	subpathRequestedExplicitly := strings.TrimSpace(opts.Subpath) != ""
-
-	if opts.SingleRepo && opts.WarpURL != "" {
-		return CloneResult{}, fmt.Errorf("--single-repo clones one repository, so it takes one URL, and the second URL %s was given; way forward: give the one repository's URL alone", opts.WarpURL)
-	}
-
-	// One URL over an origin holding the Bolt branch, or with --single-repo, is the one-repository layout.
-	// A failed ls-remote answers no here, so the weft probe below reports the unreachable URL as it always has.
-	if opts.WarpURL == "" && (opts.SingleRepo || originHoldsBolt(cwd, opts.WeftURL)) {
-		oneRepositoryName := DeriveWarpName(opts.WeftURL)
-		if oneRepositoryName == "" {
-			return CloneResult{}, fmt.Errorf("could not derive repo name from URL %s", opts.WeftURL)
-		}
-		oneRepositoryHubPath := HubPath(cwd, oneRepositoryName)
-		rec = NewMutations(oneRepositoryHubPath)
-		return cloneOneRepositoryHub(rec, cwd, oneRepositoryHubPath, oneRepositoryName, opts)
-	}
 
 	var name, hubPath, effective string
 	var writeRecord, derivedFromRecord bool
@@ -297,7 +264,20 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 
-	installPostCheckoutHookNonFatal(hubPath, name)
+	// The post-checkout hook fires drift warnings on every later git checkout in this repo.
+	// It is installed after the warp worktree exists.
+	// Hook installation is non-fatal: a failure is logged and does not abort the clone.
+	// The hook serves usability, not correctness.
+	//
+	// InstallPostCheckoutHook reads one field, WorktreePath(), so it needs a path, not a resolution.
+	// The exclusive create above leaves no marker yet, so the Location answers "." for its anchor.
+	hookLocation, hookErr := lymcwd.NamedWorktree(hubPath, name)
+	if hookErr == nil {
+		hookErr = InstallPostCheckoutHook(hookLocation)
+	}
+	if hookErr != nil {
+		logger.Warn("fabricengine: post-checkout hook install failed (non-fatal)", "verb", "clone", "hub", hubPath, "error", hookErr)
+	}
 
 	// Clone the weft repo into the hub.
 	weftPath := weftname.SiblingPath(hubPath, name)
@@ -443,24 +423,6 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		ShortnameRecorded:   shortnameRecorded,
 		Warning:             shortnameWarning,
 	}, nil
-}
-
-// installPostCheckoutHookNonFatal installs the post-checkout hook.
-// The target is the prime worktree called name of the hub at hubPath.
-// The hook fires drift warnings on every later git checkout in this repo, so it is installed once the worktree exists.
-// Installation is non-fatal: a failure is logged and does not abort the clone.
-// The hook serves usability, not correctness.
-//
-// InstallPostCheckoutHook reads one field, WorktreePath(), so it needs a path, not a resolution.
-// A clone in progress has recorded no marker yet, so the Location answers "." for its anchor.
-func installPostCheckoutHookNonFatal(hubPath, name string) {
-	hookLocation, err := lymcwd.NamedWorktree(hubPath, name)
-	if err == nil {
-		err = InstallPostCheckoutHook(hookLocation)
-	}
-	if err != nil {
-		logger.Warn("fabricengine: post-checkout hook install failed (non-fatal)", "verb", "clone", "hub", hubPath, "error", err)
-	}
 }
 
 // adoptRecordedAnchor validates the anchor a marker records and checks it against the requested subpath.

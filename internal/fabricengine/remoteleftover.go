@@ -81,7 +81,7 @@ type weftLeftover struct {
 // under opts.SkipGit or opts.SkipPush nothing is probed and the branch reads not live.
 // A failed origin read is returned as the error.
 func (t *Topology) RecordsBranchLive(l *lymcwd.Location, slug string, opts AddOptions) (bool, error) {
-	weftBranch := recordsBranchIn(l, t.cfg.BranchPrefix+slug)
+	weftBranch := RecordsBranchName(t.cfg.BranchPrefix + slug)
 	if weftBranchExists(l, weftBranch) {
 		return true, nil
 	}

@@ -844,19 +844,14 @@ func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams
 
 // judgeAgainstOrigin reads the heads origin has in both repositories.
 // It fetches the heads origin moved past their tracking refs, and returns the verdict on each target.
-// It holds the remote-refs lock of the code repository and then of the records repository throughout.
-// It takes the lock once when both are one repository.
-// So a fetch of either repository finishes before origin is read or starts after every verdict.
+// It holds the remote-refs lock of the code repository and then of the records repository throughout,
+// so a fetch of either repository finishes before origin is read or starts after every verdict.
 // The same holds for the tracking-ref write that follows a push's transfer.
 // The locks are held through the ls-remote retries and their sleeps, bounded by opts' RetryBound,
 // so an unreachable origin blocks every fetch and every push's tracking-ref write of both repositories for that bound.
 // A transport failure that outlasts the retry bound returns unreachable true with no verdict and a nil error.
 func judgeAgainstOrigin(targets []originTarget, warpDir, recordsDir string, judgeOnly bool, opts ReconcileOptions) (branches []BranchOutcome, unreachable bool, err error) {
-	for i, dir := range []string{warpDir, recordsDir} {
-		// A one-repository hub holds both sides in one repository, and its lock is not reentrant.
-		if i == 1 && sameDirectory(dir, warpDir) {
-			continue
-		}
+	for _, dir := range []string{warpDir, recordsDir} {
 		release, err := gitrepo.New(dir).HoldRemoteRefs()
 		if err != nil {
 			return nil, false, err

@@ -23,30 +23,6 @@ lym fabric clone --shortname <short> <records-url> <project-url>
 `./deploy-dev` builds the working tree into `.dev-bin` instead, to try a change without touching production.
 `lym fabric clone --help` describes `--shortname`, `--subpath` for a monorepo and `--reset`.
 
-### A hub of one repository
-
-A project can run as one repository instead of two.
-Clone it with one URL:
-
-```bash
-lym fabric clone --shortname <short> --single-repo <project-url>   # a repository with no hub yet
-lym fabric clone <project-url>                                      # an origin that already holds the branch lym-bolt
-```
-
-The layout puts `.lym-anchor` at the root of every code branch and the records under `<anchor>/_lym`.
-Records are committed beside the agents' work and stripped at every fabric merge, so they never reach the parent branch.
-The board lives on the orphan branch `lym-bolt`, which no code branch merges.
-
-Three hazards:
-
-- `--single-repo` cannot recognise the code repository of an existing two-repository hub.
-  Run there, it starts a separate hub over the same code.
-- Switching, resetting or stashing in the prime holds or drops its live records.
-  A prime off the branch `lym.primeBranch` names refuses every records commit until you switch back,
-  and a `git reset` or `git stash` can drop uncommitted records.
-- A prime whose branch refuses direct pushes keeps its records unpushed.
-  The prime's records push also waits while you have unpushed commits on that branch.
-
 ## Work
 
 ```bash

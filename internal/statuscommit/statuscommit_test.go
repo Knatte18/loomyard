@@ -208,7 +208,6 @@ func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 
 // TestNew_PushErrorReturnsNil covers a push that fails with an error that is not owed.
 // The seam returns the error, so the run halts at the transition, and it neither retries nor waits.
-// A failure Protected reads true completes the transition instead, with no retry and no wait.
 // The name is the one the earlier warn-and-continue disposition had.
 func TestNew_PushErrorReturnsNil(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -216,14 +215,11 @@ func TestNew_PushErrorReturnsNil(t *testing.T) {
 
 	pushErr := errors.New("push rejected")
 	tests := []struct {
-		name      string
-		owed      func(error) bool
-		protected func(error) bool
-		wantNil   bool
+		name string
+		owed func(error) bool
 	}{
-		{"OwedReadsFalse", func(error) bool { return false }, nil, false},
-		{"OwedNil", nil, nil, false},
-		{"ProtectedReadsTrue", func(error) bool { return true }, func(err error) bool { return errors.Is(err, pushErr) }, true},
+		{"OwedReadsFalse", func(error) bool { return false }},
+		{"OwedNil", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -237,16 +233,11 @@ func TestNew_PushErrorReturnsNil(t *testing.T) {
 				Push:        func() error { pushes++; return pushErr },
 				Admit:       gate.admit,
 				Owed:        tt.owed,
-				Protected:   tt.protected,
 				Sleep:       func(time.Duration) { t.Error("Sleep was called; want no wait for a push that is not owed") },
 			}
 
 			seam := New(deps, "loom", "loomcli", nil)
-			err := seam("Discussion-Write", "running")
-			if tt.wantNil && err != nil {
-				t.Errorf("seam(...) = %v; want nil -- a protected-only push failure completes the transition", err)
-			}
-			if !tt.wantNil && !errors.Is(err, pushErr) {
+			if err := seam("Discussion-Write", "running"); !errors.Is(err, pushErr) {
 				t.Errorf("seam(...) = %v; want %v -- a push that is not owed halts the run", err, pushErr)
 			}
 			if commits != 1 || pushes != 1 {
@@ -332,105 +323,6 @@ func TestNew_NilPushPanics(t *testing.T) {
 		}
 	}()
 	New(Deps{MergeActive: func() (bool, error) { return false, nil }}, "loom", "loomcli", nil)
-}
-
-// TestNew_MergeOperationWaits covers a one-repository worktree, whose deps set MergeOperation and no MergeActive.
-// A blocking operation, a failed probe or a stalled commit failure holds the transition.
-// It sleeps with the owed-push backoff, then the commit runs again.
-// A wait takes no admission.
-func TestNew_MergeOperationWaits(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	stalledErr := errors.New("prime is off its branch")
-	tests := []struct {
-		name       string
-		operations []operationAnswer
-		commits    []error
-		stalled    func(error) bool
-		wantSleeps []time.Duration
-		wantCommit int
-	}{
-		{
-			name:       "OperationBeforeTheCommitWaits",
-			operations: []operationAnswer{{"merge", nil}, {"merge", nil}, {"", nil}},
-			commits:    []error{nil},
-			wantSleeps: []time.Duration{time.Second, 2 * time.Second},
-			wantCommit: 1,
-		},
-		{
-			name:       "ProbeErrorWaits",
-			operations: []operationAnswer{{"", errors.New("probe unreadable")}, {"", nil}},
-			commits:    []error{nil},
-			wantSleeps: []time.Duration{time.Second},
-			wantCommit: 1,
-		},
-		{
-			name:       "OperationAfterAFailedCommitWaitsAndCommitsAgain",
-			operations: []operationAnswer{{"", nil}, {"cherry-pick", nil}, {"", nil}},
-			commits:    []error{errors.New("commit failed"), nil},
-			wantSleeps: []time.Duration{time.Second},
-			wantCommit: 2,
-		},
-		{
-			name:       "StalledCommitFailureWaitsAndCommitsAgain",
-			operations: []operationAnswer{{"", nil}, {"", nil}, {"", nil}},
-			commits:    []error{stalledErr, nil},
-			stalled:    func(err error) bool { return errors.Is(err, stalledErr) },
-			wantSleeps: []time.Duration{time.Second},
-			wantCommit: 2,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			var gate fakeGate
-			var sleeps []time.Duration
-			probes, commits, pushes := 0, 0, 0
-			deps := Deps{
-				MergeOperation: func() (string, error) {
-					answer := tt.operations[min(probes, len(tt.operations)-1)]
-					probes++
-					return answer.operation, answer.err
-				},
-				Stalled: tt.stalled,
-				Commit: func(msg string) (bool, error) {
-					err := tt.commits[commits]
-					commits++
-					return err == nil, err
-				},
-				Push:  func() error { pushes++; return nil },
-				Admit: gate.admit,
-				Sleep: func(wait time.Duration) {
-					if gate.outstanding != 0 {
-						t.Errorf("admissions held during a wait = %d; want 0", gate.outstanding)
-					}
-					sleeps = append(sleeps, wait)
-				},
-			}
-
-			seam := New(deps, "loom", "loomcli", nil)
-			if err := seam("Discussion-Write", "running"); err != nil {
-				t.Fatalf("seam(...) = %v; want nil once the commit landed", err)
-			}
-			if !reflect.DeepEqual(sleeps, tt.wantSleeps) {
-				t.Errorf("waits = %v; want %v", sleeps, tt.wantSleeps)
-			}
-			if commits != tt.wantCommit || pushes != 1 {
-				t.Errorf("Commit and Push called %d and %d time(s); want %d and 1", commits, pushes, tt.wantCommit)
-			}
-			if gate.outstanding != 0 {
-				t.Errorf("admissions still held = %d; want 0", gate.outstanding)
-			}
-		})
-	}
-}
-
-// operationAnswer is one answer of a stubbed MergeOperation probe.
-type operationAnswer struct {
-	operation string
-	err       error
 }
 
 func TestNew_MergeActiveSkips(t *testing.T) {

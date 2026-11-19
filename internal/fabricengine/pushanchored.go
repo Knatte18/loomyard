@@ -40,8 +40,7 @@ func IsPushRejected(err error) bool {
 
 // IsPushOwed reports whether err is a push that is owed, one a caller retries until it lands.
 // A push is owed when the push lock stayed busy past the wait.
-// It is also owed when every recorded failure it carries is of one of these classes:
-// transport, deferred, teardown_lock or operator_unpushed.
+// It is also owed when every recorded failure it carries is of class transport, deferred or teardown_lock.
 // A bare ErrPairPushRunning is not owed: it comes only from a push with no teardown wait, which records no failure.
 // A rejection, a takeover and a hand-over are not owed.
 func IsPushOwed(err error) bool {
@@ -51,20 +50,10 @@ func IsPushOwed(err error) bool {
 	failures := pushFailuresOf(err)
 	return len(failures) > 0 && !slices.ContainsFunc(failures, func(failed *PushFailedError) bool {
 		switch failed.Record.Class {
-		case PushFailureTransport, PushFailureDeferred, PushFailureTeardownLock, PushFailureOperatorUnpushed:
+		case PushFailureTransport, PushFailureDeferred, PushFailureTeardownLock:
 			return false
 		}
 		return true
-	})
-}
-
-// IsPushProtected reports whether err is a push origin refused as a protected branch.
-// It is true when err carries at least one recorded failure and every one is of class protected.
-// A protected push is not owed.
-func IsPushProtected(err error) bool {
-	failures := pushFailuresOf(err)
-	return len(failures) > 0 && !slices.ContainsFunc(failures, func(failed *PushFailedError) bool {
-		return failed.Record.Class != PushFailureProtected
 	})
 }
 
@@ -155,13 +144,8 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 // A positive wait that runs out also records a failed push of class PushFailureTeardownLock for the records side,
 // and the error is that record's *PushFailedError, which marks the push as owed.
 // The prime's records push takes no teardown lock.
-// A one-repository prime's records push first runs the operator-commit guard.
-// With commits of the operator's own unpushed it pushes nothing.
-// It returns the *PushFailedError of class operator_unpushed, which marks the push as owed.
 // The code side is sent with SyncOptions.AfterRecords set,
 // so a rejection by an origin tip that no transition of the run names resets that tip.
-// A pair whose code worktree is its records worktree, as in a one-repository hub, has one branch.
-// That branch is pushed once, as the records side, and no code side is sent or withheld.
 //
 // Every side that observably advanced is recorded in the returned PushResult.
 // Returns (PushResult{}, nil) immediately, with no lock taken, when opts.SkipGit or opts.SkipPush is true.
@@ -204,9 +188,8 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push PairPush) (res 
 	if err != nil {
 		return PushResult{}, err
 	}
-	oneBranch := warpPath == weftPath
 	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}}
-	if !isPrime && !oneBranch {
+	if !isPrime {
 		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}
 	}
 
@@ -269,19 +252,10 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push PairPush) (res 
 		codePushSkipped = ""
 		if isPrime {
 			codePushSkipped = unpushedCodeBranchNote(warpPath)
-			if err := holdPrimePushForOperator(l.HubPath, weftPath, time.Now()); err != nil {
-				return false, fmt.Errorf("fabricengine: push records side at %s: %w", weftPath, err)
-			}
 			return false, pushRecordsSide()
 		}
 		if err := pushRecordsSide(); err != nil {
-			if oneBranch {
-				return false, err
-			}
 			return false, fmt.Errorf("the code side at %s was withheld until the records side lands, and goes with the next pair push: %w", warpPath, err)
-		}
-		if oneBranch {
-			return false, nil
 		}
 		return false, pushSide(pushSideCode, warpPath)
 	}

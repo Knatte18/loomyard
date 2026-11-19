@@ -226,34 +226,6 @@ func TestChangedPaths_NamesExactlyTheCommittedFiles(t *testing.T) {
 	}
 }
 
-// TestChangedCodePaths_LeavesOutTheRecordsPaths asserts that a records path never reads as a changed code path.
-// A range that changes records alone names nothing.
-func TestChangedCodePaths_LeavesOutTheRecordsPaths(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
-	before := fabricengine.CurrentSHAForTest(t, warpPath)
-	withCode := commitPaths(t, warpPath, "code and records", map[string]string{".lym-anchor": ".\n", "_lym/run/status.json": "1", "code/a.go": "a"})
-	recordsOnly := commitPaths(t, warpPath, "records only", map[string]string{"_lym/run/status.json": "2"})
-
-	got, err := f.ChangedCodePaths(before, withCode)
-	if err != nil {
-		t.Fatalf("ChangedCodePaths(before, withCode) error = %v", err)
-	}
-	if want := []string{"code/a.go"}; !slices.Equal(got, want) {
-		t.Errorf("ChangedCodePaths(before, withCode) = %v; want %v", got, want)
-	}
-
-	none, err := f.ChangedCodePaths(withCode, recordsOnly)
-	if err != nil {
-		t.Fatalf("ChangedCodePaths(withCode, recordsOnly) error = %v", err)
-	}
-	if len(none) != 0 {
-		t.Errorf("ChangedCodePaths(withCode, recordsOnly) = %v; want none", none)
-	}
-}
-
 // TestChangedPathsBothSides_NamesRenamesAndRawPaths asserts that a rename is named by both paths.
 // It also asserts that a non-ASCII path arrives raw and that an empty range names nothing.
 // An unknown ref is an error naming it.

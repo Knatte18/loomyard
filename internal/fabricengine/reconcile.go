@@ -316,11 +316,7 @@ func migrateWeftMarker(rec *Mutations, hubPath, weftPath, slug string, pr *Recon
 		pr.Error = fmt.Sprintf("record the anchor: %v", err)
 		return current, false
 	}
-	if err := refuseMarkerCommitDuringMerge(weftPath); err != nil {
-		pr.Error = fmt.Sprintf("record the anchor: %v", err)
-		return current, false
-	}
-	if err := commitMissingAnchorMarker(rec, weftPath, anchor, "fabric reconcile: record anchor "+anchor); err != nil {
+	if _, err := commitAnchorMarker(rec, weftPath, anchor, "fabric reconcile: record anchor "+anchor); err != nil {
 		pr.Error = fmt.Sprintf("record the anchor: %v", err)
 		return current, false
 	}
@@ -403,11 +399,11 @@ func (t *Topology) reconcileWarpBinding(rec *Mutations, l *lymcwd.Location) (War
 	return WarpBindingOutcomeRecorded, fmt.Sprintf("recorded warp binding %s", origin)
 }
 
-// restoreWeftLockDir recreates an existing records worktree's missing lock directory.
+// restoreWeftLockDir recreates an existing weft worktree's missing .weft lock directory.
 // It records the creation in rec and notes it in pr's Detail, and it never changes pr.Action.
 // A failure sets pr.Error.
 func restoreWeftLockDir(rec *Mutations, weftPath string, pr *ReconcilePairResult) {
-	lockDir := RecordsLockDirPath(weftPath)
+	lockDir := filepath.Join(weftPath, weftLockDirName)
 	if _, err := os.Stat(lockDir); err == nil || !os.IsNotExist(err) {
 		return
 	}
@@ -463,16 +459,12 @@ func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lymcwd.Location,
 // It recreates the worktree from the existing branch, adopts a raw warp worktree, or reports it unmanaged.
 // A missing weft repo (the prime weft checkout that holds the weft gitdir) is diagnosed first and reported by name.
 // Every corrective branch below needs the weft repo.
-// In a one-repository hub the records worktree is the warp worktree, so nothing can be missing and nothing is done.
 func (t *Topology) reconcileMissingWeft(
 	rec *Mutations,
 	warpLayout *lymcwd.Location,
 	warpPath, weftPath, slug, warpBranch string,
 	pr *ReconcilePairResult,
 ) ReconcileAction {
-	if oneRepositoryAt(warpPath) {
-		return ReconcileActionAlreadyHealthy
-	}
 	weftBranch := RecordsBranchName(warpBranch)
 
 	if !weftRepoExists(warpLayout) {
@@ -655,10 +647,6 @@ func readBranch(dir string) (string, error) {
 // checkJunctionHealth reports whether every junction the warp worktree wires is a link resolving to its target.
 // When it is not, reason names the first unhealthy junction found.
 func checkJunctionHealth(warpLayout *lymcwd.Location) (bool, string) {
-	// A one-repository worktree has real `_lym` and `.lym` directories and no junction to repair.
-	if oneRepositoryAt(warpLayout.WorktreePath()) {
-		return true, ""
-	}
 	names, err := RepoWiredNames(warpLayout)
 	if err != nil {
 		return false, fmt.Sprintf("warp junction check unavailable: cannot load fabric.yaml: %v", err)

@@ -225,14 +225,13 @@ func TestFinalize_OverRealHub(t *testing.T) {
 		// The landing commit's subject is the description title, and its body is the description body.
 		// Its credit block is plain lines with no trailer:
 		// the heading, the LoomYard line, and the line of the one engine that ran.
-		// Every fabric merge commit then ends with its own `Fabric-Merge` trailer naming the merged-in pair.
 		msgCmd := exec.Command("git", "log", "-1", "--format=%B")
 		msgCmd.Dir = parentCode
 		msgOut, err := msgCmd.Output()
 		if err != nil {
 			t.Fatalf("git log -1 --format=%%B in %s: %v", parentCode, err)
 		}
-		wantMsg := "A landing title\n\nA landing body.\n\nCreated using\n - LoomYard https://x/loomyard\n - Test Author <test@example.com>\n\nFabric-Merge: task"
+		wantMsg := "A landing title\n\nA landing body.\n\nCreated using\n - LoomYard https://x/loomyard\n - Test Author <test@example.com>"
 		if got := strings.TrimSpace(string(msgOut)); got != wantMsg {
 			t.Errorf("landing commit message = %q; want %q", got, wantMsg)
 		}

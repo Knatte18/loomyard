@@ -40,9 +40,6 @@ const (
 	// PushFailureTeardownLock means a removal or another push of the pair held its teardown lock past the push's wait.
 	// The push is owed and retried once the lock is free.
 	PushFailureTeardownLock PushFailureClass = "teardown_lock"
-	// PushFailureProtected means origin refuses direct pushes to a one-repository prime's branch as a protected branch.
-	// The prime's records stay unpushed until the refusal is lifted.
-	PushFailureProtected PushFailureClass = "protected"
 )
 
 // The repository sides a failed push is recorded against.
@@ -157,8 +154,7 @@ func RecordPushFailure(hubPath string, f FailedPush, now time.Time) error {
 }
 
 // recordPushFailure writes f as the failed-push record of its repository side and branch under the record's lock.
-// It mails a record that is not notified through notify, once per episode; a nil notify mails nothing.
-// A deferred record is mailed only when it names local commits, since a deferral without them settles on its own.
+// It mails a record that is neither notified nor deferred through notify, once per episode; a nil notify mails nothing.
 func recordPushFailure(hubPath string, f FailedPush, now time.Time, notify PushNotifier) error {
 	path := failedPushPath(hubPath, f.Repo, f.Branch)
 	return state.UpdateJSON(path, failedPushLockPath(path), func(cur FailedPush, found bool) (FailedPush, error) {
@@ -171,7 +167,7 @@ func recordPushFailure(hubPath string, f FailedPush, now time.Time, notify PushN
 			f.Runs = unionRuns(cur.Runs, f.Runs)
 		}
 		f.LastSeen = now
-		if f.Notified || (f.Class == PushFailureDeferred && len(f.Commits) == 0) {
+		if f.Notified || f.Class == PushFailureDeferred {
 			return f, nil
 		}
 		if notify == nil {
@@ -274,8 +270,7 @@ func ListFailedPushes(hubPath string) ([]FailedPush, error) {
 }
 
 // FailedPushesOwedBy returns the failed-push records that hold the run slug's push owed, newest last-seen first.
-// A record holds a push owed when its Runs name the slug.
-// Its class must be transport, deferred, teardown_lock or operator_unpushed.
+// A record holds a push owed when its class is transport, deferred or teardown_lock and its Runs name the slug.
 // A record of another class is no owed push, since such a push is no transient failure.
 // A record whose Runs lack the slug is not the run's, even when it records the prime's records branch.
 func FailedPushesOwedBy(hubPath, slug string) ([]FailedPush, error) {
@@ -286,7 +281,7 @@ func FailedPushesOwedBy(hubPath, slug string) ([]FailedPush, error) {
 	var owed []FailedPush
 	for _, record := range records {
 		switch record.Class {
-		case PushFailureTransport, PushFailureDeferred, PushFailureTeardownLock, PushFailureOperatorUnpushed:
+		case PushFailureTransport, PushFailureDeferred, PushFailureTeardownLock:
 			if slices.Contains(record.Runs, slug) {
 				owed = append(owed, record)
 			}
@@ -367,21 +362,6 @@ func FailedPushWayForward(f FailedPush) string {
 			return codeDivergedWayForward(f.RepoPath, f.Branch, f.Prime)
 		}
 		return recordsConflictWayForward(f.RepoPath, f.Branch, f.Paths, f.Commits, pushStep(f))
-	case PushFailureOperatorUnpushed:
-		return fmt.Sprintf("the prime's branch %s holds commits of your own that lym never pushes (%s); "+
-			"run `git push` in %s to send them, running `git merge origin/%s` there first when origin refuses that push because its branch moved; "+
-			"the next records push then carries the records",
-			f.Branch, joinOrNone(f.Commits), f.RepoPath, f.Branch)
-	case PushFailureProtected:
-		if len(f.Commits) > 0 {
-			return fmt.Sprintf("origin refuses direct pushes to %s as a protected branch, and it holds commits of your own that lym never pushes (%s); "+
-				"allow direct pushes to %s for the account lym pushes as, then run `git push` in %s to send those commits, "+
-				"after which the next push carries the records",
-				f.Branch, joinOrNone(f.Commits), f.Branch, f.RepoPath)
-		}
-		return fmt.Sprintf("origin refuses direct pushes to %s as a protected branch; "+
-			"allow direct pushes to %s for the account lym pushes as, then run %s, after which the next push carries what is unpushed",
-			f.Branch, f.Branch, pushStep(f))
 	case PushFailureRewound:
 		return rewoundWayForward(f.RepoPath, f.Branch, f.OriginHead, f.Commits)
 	case PushFailureAnchorChange:
@@ -398,23 +378,9 @@ func FailedPushWayForward(f FailedPush) string {
 			"decide whether the run ends: `lym fabric remove` of the pair at %s, run from the prime, removes the pair and clears this record; "+
 			"once origin's board shows the entry done or removed, `lym cleanup --apply` tears it down instead",
 			f.Branch, pairWorktree)
-	case PushFailureDeferred:
-		if len(f.Commits) > 0 {
-			return localCodeCommitsWayForward(f.RepoPath, f.Branch, f.Commits, pushStep(f))
-		}
-		return fmt.Sprintf("run %s to retry the push", pushStep(f))
 	default:
 		return fmt.Sprintf("run %s to retry the push", pushStep(f))
 	}
-}
-
-// localCodeCommitsWayForward names the merge that settles a one-repository branch whose local commits change code paths.
-// Such commits are never replayed, so the merge keeps them and takes origin's commits in.
-// The merge runs in worktree, and pushVerb is the push step with its directory.
-func localCodeCommitsWayForward(worktree, branch string, commits []string, pushVerb string) string {
-	return fmt.Sprintf("this branch holds local commits that change code paths (%s), which are never rewritten, so origin/%s was not replayed under them; "+
-		"run `git merge origin/%s` in %s, settle any conflict and commit, then run %s, whose push is then a fast-forward and meets no replay",
-		joinOrNone(commits), branch, branch, worktree, pushVerb)
 }
 
 // recordsConflictWayForward names a records branch origin moved past.

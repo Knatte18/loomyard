@@ -93,8 +93,6 @@ type pushJob struct {
 	repo    *gitrepo.Repo
 	branch  string
 	prime   bool
-	// deferredCommits are the local commits a deferred retry left standing because they change code paths.
-	deferredCommits []string
 }
 
 // pushClassified pushes the side at path rebase-free and classifies a failure.
@@ -159,8 +157,7 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 			return job.landed(hadUnpushed, hadUnpushedErr)
 		}
 		pushErr = retryErr
-		var heldPush *PushFailedError
-		if isTakeoverStop(pushErr) || errors.As(pushErr, &heldPush) {
+		if isTakeoverStop(pushErr) {
 			return pushErr
 		}
 	}
@@ -196,15 +193,8 @@ func (j *pushJob) settleRejection(rejected error, retry func() (deferred bool, e
 	}
 	for attempt := 0; ; attempt++ {
 		deferred, retryErr := retry()
-		if deferred {
-			var codeStop *localCodeCommitsStop
-			if errors.As(retryErr, &codeStop) {
-				j.deferredCommits = codeStop.commits
-			}
-			return true, nil
-		}
-		if retryErr == nil {
-			return false, nil
+		if deferred || retryErr == nil {
+			return deferred, nil
 		}
 		if errors.Is(retryErr, errOriginAhead) {
 			return false, rejected
@@ -224,12 +214,12 @@ func (j *pushJob) settleRejection(rejected error, retry func() (deferred bool, e
 // rejectionRetryKind sorts the failure of a retried rejected push.
 // named reports whether a failure class names err.
 // retryable reports whether another attempt may still land the push: true for a bare rejection and for an error no class names, such as a failed fetch.
+// A refusal as a protected branch is not retryable, since no retry lifts the protection.
 func rejectionRetryKind(err error) (named, retryable bool) {
 	var anchorStop *AnchorStopError
 	var refusal *destructiveRefusal
-	var heldPush *PushFailedError
 	switch {
-	case errors.As(err, &anchorStop), errors.Is(err, gitrepo.ErrPushAuthRefused), isTakeoverStop(err), ProtectedBranchRefusal(err), errors.As(err, &heldPush):
+	case errors.As(err, &anchorStop), errors.Is(err, gitrepo.ErrPushAuthRefused), isTakeoverStop(err), ProtectedBranchRefusal(err):
 		return true, false
 	case errors.Is(err, gitrepo.ErrPushRejected):
 		return true, true
@@ -402,16 +392,12 @@ func (j *pushJob) fail(class PushFailureClass, cause error, paths, commits []str
 // The branch's next push retries it.
 // A records side whose worktree holds uncommitted tracked changes records them as the cause.
 // Origin's commits cannot be replayed onto the worktree until those changes are committed or discarded.
-// A deferral caused by local commits that change code paths records those commits, which the notice names.
 func (j *pushJob) deferral() error {
 	cause := errors.New("the push was deferred to the branch's next push")
-	switch {
-	case len(j.deferredCommits) > 0:
-		cause = &localCodeCommitsStop{commits: j.deferredCommits}
-	case j.side == failedPushSideRecords && j.hasUncommittedChanges():
+	if j.side == failedPushSideRecords && j.hasUncommittedChanges() {
 		cause = fmt.Errorf("origin's commits cannot be replayed onto %s until its uncommitted changes are committed or discarded", j.path)
 	}
-	j.record(PushFailureDeferred, cause, nil, j.deferredCommits, "")
+	j.record(PushFailureDeferred, cause, nil, nil, "")
 	return nil
 }
 
@@ -425,8 +411,6 @@ func (j *pushJob) hasUncommittedChanges() bool {
 // classifyFailure records the failure of a push that was run and returns it as a *PushFailedError.
 // An *AnchorStopError is recorded under its own class ahead of the rejection classes, with the way forward it names.
 // That keeps the record from pointing at a merge that would carry the other marker in by hand.
-// A refusal as a protected branch is recorded as PushFailureProtected ahead of the auth and rejection classes.
-// That holds only for the push of a one-repository hub's prime branch; any other branch keeps the class its error gets.
 // An error that matches no named class is returned unchanged and unrecorded, with classified false.
 func (j *pushJob) classifyFailure(err error) (failed error, classified bool) {
 	var conflict *replayConflict
@@ -435,8 +419,6 @@ func (j *pushJob) classifyFailure(err error) (failed error, classified bool) {
 	switch {
 	case errors.As(err, &anchorStop):
 		return j.fail(PushFailureAnchorChange, err, nil, nil, ""), true
-	case ProtectedBranchRefusal(err) && isOneRepositoryPrimeAt(j.path):
-		return j.fail(PushFailureProtected, err, nil, nil, ""), true
 	case errors.Is(err, gitrepo.ErrPushAuthRefused):
 		return j.fail(PushFailureAuth, err, nil, nil, ""), true
 	case errors.Is(err, gitrepo.ErrPushRejected):
@@ -506,12 +488,8 @@ func (j *pushJob) unpushedCommits() []string {
 }
 
 // pairedCodeWorktree returns the code worktree paired with the records worktree at weftPath.
-// In a one-repository hub the records worktree is the code worktree, so it returns weftPath itself.
 // It returns "" when weftPath is no weft sibling.
 func pairedCodeWorktree(hubPath, weftPath string) string {
-	if oneRepositoryAt(weftPath) {
-		return weftPath
-	}
 	slug, ok := WeftWarpSlug(filepath.Base(weftPath))
 	if !ok {
 		return ""
@@ -721,15 +699,11 @@ func goneEntryEnded(hubPath, branch string) (bool, error) {
 // A zero here or an empty runSlug skips that read.
 // It then fetches origin's Bolt branch, and try-acquires the weft write lock, while the caller holds the push lock.
 // A held write lock and an uncommitted change on a path the replay touches report a deferral, with nothing changed.
-// So do local commits of a one-repository worktree that change code paths:
-// the deferral then returns the *localCodeCommitsStop naming them beside deferred true.
 // A replay that stops returns ErrReplayConflict with the conflicting paths,
 // and a second rejection returns gitrepo.ErrPushRejected.
 // A weft whose own anchor marker is empty returns an *AnchorStopError before anything is replayed or changed.
 // So does a weft whose upstream carries commits and another anchor marker.
 // So does a weft that carries a move record while its upstream has commits it lacks.
-// Before it pushes again, a one-repository prime passes the operator-commit guard.
-// The guard's *PushFailedError is returned as it is and ends the retries.
 func retryWeftPush(rec *Mutations, hubPath, weftPath, runSlug string, here MachineNames) (deferred bool, err error) {
 	if stop := emptyMarkerStop(weftPath); stop != nil {
 		return false, stop
@@ -773,7 +747,7 @@ func retryWeftPush(rec *Mutations, hubPath, weftPath, runSlug string, here Machi
 		if err != nil {
 			return false, err
 		}
-		slug, ok := pairSlugOfRecords(weftPath)
+		slug, ok := WeftWarpSlug(filepath.Base(weftPath))
 		if !ok {
 			return false, fmt.Errorf("fabricengine: %s is no weft sibling worktree", weftPath)
 		}
@@ -815,17 +789,10 @@ func retryWeftPush(rec *Mutations, hubPath, weftPath, runSlug string, here Machi
 		if errors.Is(err, ErrReplayDirty) {
 			return true, nil
 		}
-		var codeStop *localCodeCommitsStop
-		if errors.As(err, &codeStop) {
-			return true, codeStop
-		}
 		if err != nil {
 			return false, err
 		}
 		logWeftReplay(weftPath, outcome)
-	}
-	if err := holdPrimePushForOperator(hubPath, weftPath, time.Now()); err != nil {
-		return false, err
 	}
 	return false, repo.PushRebaseFree()
 }

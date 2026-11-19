@@ -113,47 +113,6 @@ func TestFailedPushRecord(t *testing.T) {
 		})
 	}
 
-	t.Run("ProtectedWayForwardNamesTheBranchAndAllowingDirectPushes", func(t *testing.T) {
-		failure := fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/main", Branch: "main", Prime: true, Class: fabricengine.PushFailureProtected}
-
-		got := fabricengine.FailedPushWayForward(failure)
-
-		for _, want := range []string{"allow direct pushes to main", "`git push` in /hub/main"} {
-			if !strings.Contains(got, want) {
-				t.Errorf("FailedPushWayForward(protected) = %q; want it to hold %q", got, want)
-			}
-		}
-	})
-
-	t.Run("OperatorCommitsWayForwardsNameTheCommitsAndTheGitSteps", func(t *testing.T) {
-		tests := []struct {
-			name    string
-			failure fabricengine.FailedPush
-			want    []string
-		}{
-			{
-				"OperatorUnpushed",
-				fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/main", CodeWorktree: "/hub/main", Branch: "main", Class: fabricengine.PushFailureOperatorUnpushed, Commits: []string{"abc123", "def456"}},
-				[]string{"abc123 def456", "`git push` in /hub/main", "`git merge origin/main`"},
-			},
-			{
-				"ProtectedCarryingCommits",
-				fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/main", CodeWorktree: "/hub/main", Branch: "main", Class: fabricengine.PushFailureProtected, Commits: []string{"abc123"}},
-				[]string{"allow direct pushes to main", "`git push` in /hub/main", "abc123"},
-			},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				got := fabricengine.FailedPushWayForward(tt.failure)
-				for _, want := range tt.want {
-					if !strings.Contains(got, want) {
-						t.Errorf("FailedPushWayForward(%s) = %q; want it to hold %q", tt.failure.Class, got, want)
-					}
-				}
-			})
-		}
-	})
-
 	t.Run("OwedByListsTheRunsOwedClassesNewestFirst", func(t *testing.T) {
 		hub := t.TempDir()
 		records := []fabricengine.FailedPush{
@@ -161,8 +120,6 @@ func TestFailedPushRecord(t *testing.T) {
 			{Repo: "records", RepoPath: "/hub/task-weft", Branch: "task-weft", Class: fabricengine.PushFailureDeferred, Runs: []string{"task"}},
 			{Repo: "records", RepoPath: "/hub/main-weft", Branch: "main-weft", Class: fabricengine.PushFailureTeardownLock, Runs: []string{"task", "other"}},
 			{Repo: "code", RepoPath: "/hub/diverged", Branch: "diverged", Class: fabricengine.PushFailureNotFastForward, Runs: []string{"task"}},
-			{Repo: "code", RepoPath: "/hub/main", Branch: "main", Prime: true, Class: fabricengine.PushFailureProtected, Runs: []string{"task"}},
-			{Repo: "records", RepoPath: "/hub/prime", Branch: "prime", Class: fabricengine.PushFailureOperatorUnpushed, Runs: []string{"task"}},
 			{Repo: "records", RepoPath: "/hub/only-other", Branch: "only-other", Class: fabricengine.PushFailureTransport, Runs: []string{"other"}},
 			{Repo: "records", RepoPath: "/hub/no-run", Branch: "no-run", Class: fabricengine.PushFailureTransport},
 		}
@@ -184,7 +141,7 @@ func TestFailedPushRecord(t *testing.T) {
 		}
 
 		for slug, want := range map[string][]string{
-			"task":  {"prime", "main-weft", "task-weft", "task"},
+			"task":  {"main-weft", "task-weft", "task"},
 			"other": {"only-other", "main-weft"},
 			"ghost": nil,
 		} {
@@ -232,11 +189,13 @@ func TestFailedPushRecord(t *testing.T) {
 		}
 	})
 
+	// The record names local commits, so a deferral carrying commits is not mailed either.
 	t.Run("DeferredWritesTheRecordAndNeverMails", func(t *testing.T) {
 		hub := t.TempDir()
 		fake := &fakePushNotifier{hub: hub, posted: true}
 		failure := codePushFailure()
 		failure.Class = fabricengine.PushFailureDeferred
+		failure.Commits = []string{"aaa111", "bbb222"}
 
 		if err := fabricengine.RecordPushFailureNotifyingForTest(hub, failure, base, fake.notify); err != nil {
 			t.Fatalf("RecordPushFailure: %v", err)
@@ -248,33 +207,6 @@ func TestFailedPushRecord(t *testing.T) {
 		records, _ := fabricengine.ListFailedPushes(hub)
 		if len(records) != 1 || records[0].Notified {
 			t.Errorf("records = %+v; want one unnotified record", records)
-		}
-	})
-
-	t.Run("DeferredWithCommitsMailsOnceNamingThemAndTheMerge", func(t *testing.T) {
-		hub := t.TempDir()
-		fake := &fakePushNotifier{hub: hub, posted: true}
-		failure := fabricengine.FailedPush{
-			Repo: "records", RepoPath: "/hub/task", CodeWorktree: "/hub/task", Branch: "task",
-			Class: fabricengine.PushFailureDeferred, Error: "local code commits", Commits: []string{"aaa111", "bbb222"},
-		}
-
-		for i := range 2 {
-			if err := fabricengine.RecordPushFailureNotifyingForTest(hub, failure, base.Add(time.Duration(i)*time.Minute), fake.notify); err != nil {
-				t.Fatalf("RecordPushFailure #%d: %v", i+1, err)
-			}
-		}
-
-		if len(fake.lines) != 1 {
-			t.Fatalf("notifier lines = %q; want one", fake.lines)
-		}
-		for _, want := range []string{"aaa111", "bbb222", "git merge origin/task", "`lym fabric push` in /hub/task"} {
-			if !strings.Contains(fake.lines[0], want) {
-				t.Errorf("notice = %q; want it to name %q", fake.lines[0], want)
-			}
-		}
-		if got := fabricengine.FailedPushWayForward(failure); !strings.Contains(got, "git merge origin/task") {
-			t.Errorf("FailedPushWayForward() = %q; want it to name `git merge origin/task`", got)
 		}
 	})
 

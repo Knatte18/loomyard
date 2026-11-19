@@ -52,19 +52,7 @@ import (
 // so a test can drive the seam's branching from stub closures, with no hub fixture and no git spawn.
 type commitStatusDeps struct {
 	// MergeActive reports whether the status file's fabric sibling worktree is mid-merge at the git level.
-	// The seam skips the transition while it does in a two-repository worktree.
-	// The callers that refuse on a merge in progress read it in both layouts.
 	MergeActive func() (bool, error)
-	// MergeOperation names the git operation that blocks the records commit, and "" for none.
-	// The seam waits for it to end in a one-repository worktree.
-	MergeOperation func() (operation string, err error)
-	// Stalled reports whether a commit failure waits rather than halts the run, a prime off its branch.
-	Stalled func(err error) bool
-	// Protected reports whether a push failure is a protected-branch refusal and nothing else.
-	Protected func(err error) bool
-	// OneRepository reports that the worktree belongs to a one-repository hub,
-	// so the seam waits on MergeOperation in place of skipping on MergeActive.
-	OneRepository bool
 	// Commit commits batten's own status file with msg and reports whether it made a commit.
 	Commit func(msg string) (committed bool, err error)
 	// Push pushes the fabric sibling worktree's unpushed commits and waits for the result.
@@ -173,12 +161,6 @@ func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatu
 		MergeActive: func() (bool, error) {
 			return fabricengine.MergeStateActive(location)
 		},
-		MergeOperation: func() (string, error) {
-			return fabricengine.MergeStateOperation(location)
-		},
-		Stalled:       fabricengine.IsPrimeBranchRefusal,
-		Protected:     fabricengine.IsPushProtected,
-		OneRepository: lymcwd.OneRepository(location.WorktreePath()),
 		Commit: func(msg string) (bool, error) {
 			trailers := []fabricengine.Trailer{{Key: fabricengine.TransitionTrailerKey, Value: shedrun.ResolveRunID(location, runID)}}
 			_, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, battenRunCommitPaths(location, runID), msg, trailers, fabricengine.EnvSyncOptions())
@@ -219,12 +201,8 @@ type commitStatusMarker struct {
 // Evaluation order: the board status write of a row before Run-Shed first, then the no-op-transition skip.
 // The skip returns nil without committing or pushing when the incoming (producer, state) pair matches the marker.
 // Then the statuscommit core applies its dispositions.
-// In a two-repository worktree it skips while a merge is in progress.
-// In a one-repository worktree it waits for a blocking git operation to end.
-// It returns a failed commit as an error.
-// It pushes synchronously and retries an owed push until it lands.
-// It returns any other push failure.
-// A push refused only by a protected branch completes the transition with its records unpushed.
+// It skips while a merge is in progress and returns a failed commit as an error.
+// It pushes synchronously, retries an owed push until it lands, and returns any other push failure.
 //
 // A missing or corrupt marker falls back to committing once rather than erroring:
 // the marker is a cache, and losing it costs one redundant commit, never correctness.
@@ -233,21 +211,14 @@ type commitStatusMarker struct {
 func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath string) func(producer, st string) error {
 	// A failed marker write costs one redundant commit on the next call, the same cost a missing marker costs on read,
 	// so it is logged at warn rather than returned.
-	coreDeps := statuscommit.Deps{
+	core := statuscommit.New(statuscommit.Deps{
 		MergeActive: deps.MergeActive,
-		Stalled:     deps.Stalled,
-		Protected:   deps.Protected,
 		Commit:      deps.Commit,
 		Push:        deps.push,
 		Admit:       deps.Admit,
 		Owed:        deps.Owed,
 		Sleep:       deps.Sleep,
-	}
-	if deps.OneRepository {
-		coreDeps.MergeActive = nil
-		coreDeps.MergeOperation = deps.MergeOperation
-	}
-	core := statuscommit.New(coreDeps, "batten", "battencli", func(producer, st string) {
+	}, "batten", "battencli", func(producer, st string) {
 		if err := state.WriteJSON(markerPath, markerLockPath, commitStatusMarker{Producer: producer, State: st}); err != nil {
 			logger.Warn("battencli: status commit succeeded but the marker write failed; a future call may recommit", "producer", producer, "state", st, "error", err)
 		}

@@ -116,7 +116,7 @@ func (t *Topology) cleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads
 
 	for _, branch := range sortedKeys(tips) {
 		entry := RemoteWarpBranchEntry{Branch: branch}
-		entry.Reason = t.keptReason(l, branch, defaultBranch, weftBranches, archiveTagRefs, checkedOut, openPRHeads)
+		entry.Reason = t.keptReason(branch, defaultBranch, weftBranches, archiveTagRefs, checkedOut, openPRHeads)
 		if entry.Reason == "" {
 			entry.Reason = unlandedReason(repoDir, branch, tips[branch], parent)
 		}
@@ -209,7 +209,7 @@ func (t *Topology) deleteLeftoverUnderLock(rec *Mutations, l *lymcwd.Location, e
 
 // keptReason names the first deletion condition the branch fails before the landed check.
 // It returns the empty string when the branch passes them all.
-func (t *Topology) keptReason(l *lymcwd.Location, branch, defaultBranch string, weftBranches map[string]string, archiveTagRefs []string, checkedOut map[string]bool, openPRHeads map[string]bool) string {
+func (t *Topology) keptReason(branch, defaultBranch string, weftBranches map[string]string, archiveTagRefs []string, checkedOut map[string]bool, openPRHeads map[string]bool) string {
 	if branch == defaultBranch {
 		return "origin's default branch"
 	}
@@ -223,7 +223,7 @@ func (t *Topology) keptReason(l *lymcwd.Location, branch, defaultBranch string, 
 	if !slices.Contains(pairBranchNames(t.cfg, slug), branch) {
 		evidenceTagRefs = nil
 	}
-	if !hasWeftEvidence(slug, recordsBranchIn(l, branch), weftBranches, evidenceTagRefs) {
+	if !hasWeftEvidence(slug, RecordsBranchName(branch), weftBranches, evidenceTagRefs) {
 		return "not fabric-managed: the weft origin holds neither a weft branch nor an archive tag for it"
 	}
 	if checkedOut[branch] {

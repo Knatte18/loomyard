@@ -92,12 +92,6 @@ The entry binds lym's own code only.
   `force` skips neither the commit nor the tag.
 - `Add` replaces a leftover remote weft branch only when an `archive/<slug>/*` tag covers its tip.
 
-### One-repository hub
-
-In a one-repository hub the exclude gets `.lym`, the `.scratch` link and heddle's files, and never `_lym`, `.lym-anchor` or the weft artifact lines.
-The Bolt's render-manifest `.gitignore` stays on `lym-bolt`, which no code branch merges.
-Teardown tags and pushes the branch tip, deletes the branch and the `lym-view/` ref.
-
 ### Destruction chokepoint
 
 `internal/fabricengine/destroy.go` is the only file in `package fabricengine` permitted a destructive primitive.

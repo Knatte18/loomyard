@@ -324,6 +324,41 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	}
 }
 
+// TestCloneHub_BoltCheckoutAdoptsARemoteOnlyBoardBranch asserts that the Bolt checkout starts from origin's board branch.
+// The weft remote's HEAD names another branch here,
+// so the weft clone holds the board branch only as a remote-tracking ref.
+// A checkout that orphan-created the board would drop the history origin holds.
+func TestCloneHub_BoltCheckoutAdoptsARemoteOnlyBoardBranch(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	fixtures := t.TempDir()
+	warpBare := makeBareRemote(t, fixtures, "remote-only-board-warp")
+	weftBare := makeBareRemote(t, fixtures, "remote-only-board-weft")
+	commitFileOnBranch(t, fixtures, weftBare, "main", "board-history.txt", "board\n")
+	seedWeftBranchFromMain(t, fixtures, weftBare, "other")
+	gitkit.Git(t, weftBare, "symbolic-ref", "HEAD", "refs/heads/other")
+
+	res, err := fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{
+		WeftURL:        filepath.ToSlash(weftBare),
+		WarpURL:        filepath.ToSlash(warpBare),
+		Subpath:        ".",
+		ForceBootstrap: true,
+		Shortname:      "tst",
+	})
+	if err != nil {
+		t.Fatalf("CloneHub() error = %v; want nil", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
+
+	if _, statErr := os.Stat(filepath.Join(res.BoardDir, "board-history.txt")); statErr != nil {
+		t.Errorf("board lacks board-history.txt: %v; want the Bolt checkout to hold origin's board commit", statErr)
+	}
+	if got := gitkit.Git(t, res.BoardDir, "rev-parse", "--abbrev-ref", "@{u}"); got != "origin/main" {
+		t.Errorf("board upstream = %q; want %q", got, "origin/main")
+	}
+}
+
 // TestCloneHub_StaleFabricAnchorHardErrors asserts a hard error for a weft remote with a stale marker.
 // The stale marker is ".fabric-anchor" with no ".lym-anchor" beside it; the error names the marker rename as the remedy,
 // and teardownHub removes the hub.

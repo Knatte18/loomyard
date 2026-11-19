@@ -670,7 +670,7 @@ func TestFinalize_RecordsWhetherTheLandedDiffIsEmpty(t *testing.T) {
 			t.Parallel()
 			var recorded []bool
 			deps := newTestDeps(t)
-			deps.ChangedCodePaths = func(from, to string) ([]string, error) {
+			deps.ChangedPaths = func(from, to string) ([]string, error) {
 				if from == "parent0" && to == "landed1" {
 					return tt.landedPaths, tt.pathsErr
 				}
@@ -816,15 +816,6 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			wantMerges:      1,
 			wantInOrder:     []string{"merge already in progress; worktree dirty", "/hub/parent", "merge of task-x", "lym fabric merge --continue", "lym fabric merge --abort", gotoResume, "lym loom resume", "hard-resets the parent's code checkout", "reports status: FAILED and the orch runs it"},
 			wantNotInReason: `"a b.go"`,
-		},
-		{
-			name:            "UnsettledParkedMergeNamesOnlyAbort",
-			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
-			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
-			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeRecordsUnsettled, Verb: fabricengine.MergeVerbMergeIn, Source: "task-x"},
-			wantMerges:      1,
-			wantInOrder:     []string{"merge already in progress; worktree dirty", "/hub/parent", "merge-in of task-x", "lym fabric merge --abort", gotoResume, "lym loom resume"},
-			wantNotInReason: "merge --continue",
 		},
 		{
 			name:            "merge already in progress with an unreadable parked merge names no verb and keeps the way forward",

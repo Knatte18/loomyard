@@ -705,8 +705,8 @@ func resolvePairWarpCheckout(own pathOwnership, target string) (bool, string) {
 	if err != nil {
 		return false, fmt.Sprintf("cannot read the branch checked out at the pair's weft %s: %v", own.weftDir, err)
 	}
-	if wantBranch := recordsBranchAt(target, branch); weftBranch != wantBranch {
-		return false, fmt.Sprintf("the pair's weft %s has %q checked out, not %q, so %s is not the pair's own warp branch", own.weftDir, weftBranch, wantBranch, branch)
+	if weftBranch != RecordsBranchName(branch) {
+		return false, fmt.Sprintf("the pair's weft %s has %q checked out, not %q, so %s is not the pair's own warp branch", own.weftDir, weftBranch, RecordsBranchName(branch), branch)
 	}
 	return true, ""
 }
@@ -818,11 +818,10 @@ func resolvePairWarpBranch(warpBranch, parentBranch, branch string) (bool, strin
 // The two pure name checks run first, so a mismatched name refuses without spawning git;
 // then branch must not be the primary weft branch of l, and an unreadable primary refuses.
 func resolvePairWeftBranch(l *lymcwd.Location, warpBranch, branch string) (bool, string) {
-	if warpBranch == "" || branch != recordsBranchIn(l, warpBranch) {
+	if warpBranch == "" || branch != RecordsBranchName(warpBranch) {
 		return false, fmt.Sprintf("%s is not the pair's own weft branch for %q", branch, warpBranch)
 	}
-	// A one-repository hub names its records branch by the code branch, which carries no "-weft" suffix.
-	if _, ok := WeftWarpSlug(branch); !ok && !oneRepositoryAt(l.WorktreePath()) {
+	if _, ok := WeftWarpSlug(branch); !ok {
 		return false, fmt.Sprintf("%s is not a name fabric's own scheme constructs", branch)
 	}
 	primary, err := primaryWeftBranch(l)
@@ -1635,21 +1634,6 @@ func deleteRemoteBranch(rec *Mutations, req remoteBranchRequest) (deleted bool, 
 	return deleted, err
 }
 
-// deleteViewRefOnOrigin deletes the branch ViewRefPrefix + slug from origin, run in the repository at repoDir.
-// A ref already gone from origin is a success.
-// It appends KindRemoteBranchDeleted to rec only when the delete removed the ref.
-func deleteViewRefOnOrigin(rec *Mutations, repoDir, slug string) error {
-	branch := ViewRefPrefix + slug
-	deleted, err := gitrepo.New(repoDir).DeleteRemoteBranch(originRemoteName, branch)
-	if err != nil {
-		return err
-	}
-	if deleted {
-		rec.AppendRef(KindRemoteBranchDeleted, branch, originRemoteName)
-	}
-	return nil
-}
-
 // updateRemoteBranch is the executor for the leased force push that moves a task pair's own branch on a remote.
 // It runs the pipeline over req.pathReq, then re-reads the checkout's branch.
 // That keeps the parent branch from being moved: only the pair's own branch is pushed.
@@ -2173,15 +2157,6 @@ func resetKeepOrTag(rec *Mutations, repo *gitrepo.Repo, tip string) error {
 // It appends KindRepoAdvanced once HEAD observably moved, with the new tip as the detail.
 // On a refusal or a failure it appends nothing.
 func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto string, commits []string) (dropped []string, err error) {
-	return cherryPickReworded(rec, req, repo, onto, commits, nil)
-}
-
-// cherryPickReworded replays local commits onto a records branch's moved upstream.
-// Each pick is committed under reword(message), where message is the picked commit's own message.
-// A nil reword keeps every message as it is.
-// It runs the same pipeline, reset, picks, drops and tip restore as cherryPickOnto,
-// and a failed reword restores the starting tip the same way a conflicting pick does.
-func cherryPickReworded(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto string, commits []string, reword func(message string) string) (dropped []string, err error) {
 	if err := checkPathRequest(req); err != nil {
 		var refusal *destructiveRefusal
 		if errors.As(err, &refusal) && refusal.Check == CheckDirtiness {
@@ -2243,15 +2218,6 @@ func cherryPickReworded(rec *Mutations, req pathRequest, repo *gitrepo.Repo, ont
 		}
 		if after == before {
 			dropped = append(dropped, commit)
-			continue
-		}
-		if reword == nil {
-			continue
-		}
-		if reworded := reword(detail.Message); reworded != detail.Message {
-			if _, err := gitexec.RunStdin([]string{"commit", "--amend", "--no-verify", "--allow-empty", "--file=-"}, req.target, reworded); err != nil {
-				return nil, errors.Join(fmt.Errorf("reword the replayed commit %s: %w", commit, err), resetBack(false))
-			}
 		}
 	}
 	endTip, err := repo.CurrentSHA()
@@ -2533,31 +2499,4 @@ func (f *Fabric) resetMergeSides(rec *Mutations, warpSHA string) error {
 		force:     true,
 	}
 	return resetHardTo(rec, warpReq, f.code, warpSHA)
-}
-
-// restoreRecordsToHead is the executor that sets the records paths of a merge in progress back to HEAD's.
-// They lie in the checkout at worktree, whose merge staged the source's records there.
-// It runs the pipeline against the checkout and forces it, since the paths hold the merge's own writes.
-// Its caller has proved them untouched since the merge was staged.
-// It restores index and worktree from HEAD, so a path HEAD does not hold is removed too.
-// It appends KindWorktreeReset, with HEAD as the detail, once git restored the paths.
-// It appends nothing on a refusal or a failure.
-func restoreRecordsToHead(rec *Mutations, worktree string, paths []string) error {
-	req := pathRequest{
-		what:      "restore the records paths of a merge to HEAD",
-		container: filepath.Dir(worktree),
-		target:    worktree,
-		ownership: ownedWarpCheckout(worktree),
-		dirtiness: dirtyScopeTracked(),
-		force:     true,
-	}
-	if err := checkPathRequest(req); err != nil {
-		return err
-	}
-	args := append([]string{"restore", "--source=HEAD", "--staged", "--worktree", "--"}, paths...)
-	if _, err := gitexec.RunWithEnv(args, worktree, []string{"GIT_LITERAL_PATHSPECS=1"}); err != nil {
-		return fmt.Errorf("restore the records paths of the merge in %s to HEAD: %w", worktree, err)
-	}
-	rec.Append(KindWorktreeReset, worktree, "HEAD")
-	return nil
 }

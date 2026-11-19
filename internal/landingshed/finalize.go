@@ -584,10 +584,10 @@ func (fz *Finalize) dirtyParentReason(parentHandle parentMerger, guardErr *fabri
 		switch {
 		case err != nil:
 			logger.Warn("landingshed: read the parent pair's parked merge failed", "producer", finalizeName, "cause", err)
-			wayForward = fz.parkedMergeWayForward(checkout, false)
-		case state.Kind == fabricengine.MidMergeParked || state.Kind == fabricengine.MidMergeRecordsUnsettled:
+			wayForward = fz.parkedMergeWayForward(checkout)
+		case state.Kind == fabricengine.MidMergeParked:
 			reason += fmt.Sprintf("; the parked fabric merge is a %s of %s in the parent pair", state.Verb, state.Source)
-			wayForward = fz.parkedMergeWayForward(checkout, state.Kind == fabricengine.MidMergeRecordsUnsettled)
+			wayForward = fz.parkedMergeWayForward(checkout)
 		}
 		return reason + "; way forward: " + wayForward
 	case guardErr.DetachedHead():
@@ -605,15 +605,9 @@ func (fz *Finalize) dirtyParentReason(parentHandle parentMerger, guardErr *fabri
 // "--abort" hard-resets the parent's code checkout,
 // and a plain git commit or stash there would take the staged merge with it,
 // so the operator saves a copy of their own change outside the checkout first.
-// A merge stopped before its records step cannot be continued.
-// So with recordsUnsettled the way forward names the abort alone.
-func (fz *Finalize) parkedMergeWayForward(checkout string, recordsUnsettled bool) string {
-	options := `concludes it with "lym fabric merge --continue" or discards it with "lym fabric merge --abort"`
-	if recordsUnsettled {
-		options = `discards it with "lym fabric merge --abort"`
-	}
-	return fmt.Sprintf(`the party that started that merge, or the orch or the operator when that party is gone, %s in the parent pair, then %s; "--abort" hard-resets the parent's code checkout to the merge's start, so the operator first saves a copy of any change of their own in %s outside it, since a plain git commit or stash there would take the staged merge with it; a session lym refuses the verb from reports status: FAILED and the orch runs it`,
-		options, gotoResumeWayForward, checkout)
+func (fz *Finalize) parkedMergeWayForward(checkout string) string {
+	return fmt.Sprintf(`the party that started that merge, or the orch or the operator when that party is gone, concludes it with "lym fabric merge --continue" or discards it with "lym fabric merge --abort" in the parent pair, then %s; "--abort" hard-resets the parent's code checkout to the merge's start, so the operator first saves a copy of any change of their own in %s outside it, since a plain git commit or stash there would take the staged merge with it; a session lym refuses the verb from reports status: FAILED and the orch runs it`,
+		gotoResumeWayForward, checkout)
 }
 
 // configChangeNotice composes the one-line notice about the task's per-worktree config changes, key by key.
@@ -753,14 +747,13 @@ func (fz *Finalize) recordLanding(parentHandle parentMerger) {
 }
 
 // landedDiffEmpty reports whether the landing changed no code path against the parent head merged into the task worktree.
-// A records path never counts, so the parent pair's own records commit does not hide an empty landing.
 // Such a landing put none of the run's work on the parent branch, which is logged at Warn.
 // It reports false when no such head is held or the path read fails, which is logged too.
 func (fz *Finalize) landedDiffEmpty(landing string) bool {
-	if fz.parentHeadMerged == "" || fz.deps.ChangedCodePaths == nil {
+	if fz.parentHeadMerged == "" || fz.deps.ChangedPaths == nil {
 		return false
 	}
-	paths, err := fz.deps.ChangedCodePaths(fz.parentHeadMerged, landing)
+	paths, err := fz.deps.ChangedPaths(fz.parentHeadMerged, landing)
 	if err != nil {
 		logger.Warn("landingshed: read the landed diff's paths failed, so the landing is recorded as not empty", "producer", finalizeName, "cause", err)
 		return false

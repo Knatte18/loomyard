@@ -155,31 +155,11 @@ func pathWithin(child, parent string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// OneRepository reports whether the worktree rooted at worktreeRoot belongs to a one-repository hub.
-// That holds when AnchorFileName is a regular file at the root,
-// and the root is neither a records sibling nor the Bolt checkout, which carry a marker in a two-repository hub too.
-// It reads the working tree only and spawns no git.
-// Any stat error, absence included, answers false.
-func OneRepository(worktreeRoot string) bool {
-	info, err := os.Stat(filepath.Join(worktreeRoot, AnchorFileName))
-	if err != nil || !info.Mode().IsRegular() {
-		return false
-	}
-	name := filepath.Base(worktreeRoot)
-	if name == BoltDirName {
-		return false
-	}
-	_, isSibling := recordsSiblingOwner(filepath.Dir(worktreeRoot), name)
-	return !isSibling
-}
-
 // readRecordedAnchor reads the recorded lym-anchor subpath marker of the worktree named worktreeName in hub.
 // It reports whether a usable anchor was found.
-// It reads the marker at the worktree's own root first, when the worktree belongs to a one-repository hub.
-// It reads the worktree's own marker next, at the root of its records sibling.
-// It reads the legacy hub-wide marker last, at the root of the Bolt checkout.
-// A root marker is the worktree's anchor: an empty or whitespace-only one is ".".
-// A marker with an invalid anchor value is an error naming the file.
+// It reads the worktree's own marker first, at the root of its records sibling.
+// It reads the legacy hub-wide marker second, at the root of the Bolt checkout.
+// An own marker with an invalid anchor value is an error naming the file.
 // An empty or whitespace-only own marker counts as absent, and the read falls through to the Bolt checkout's marker.
 // An own marker that exists but cannot be read is an error naming the file.
 // It returns ("", false, nil) when neither marker is usable.
@@ -194,20 +174,6 @@ func OneRepository(worktreeRoot string) bool {
 // After that, `lym fabric reconcile` wires a second junction set there.
 // That case returns ErrStaleAnchorMarker so every resolver refuses rather than guessing.
 func readRecordedAnchor(hub, worktreeName string) (anchor string, found bool, err error) {
-	worktreeRoot := filepath.Join(hub, worktreeName)
-	if OneRepository(worktreeRoot) {
-		rootMarker := filepath.Join(worktreeRoot, AnchorFileName)
-		rootData, rootErr := os.ReadFile(rootMarker)
-		if rootErr != nil {
-			return "", false, fmt.Errorf("recorded anchor at %s cannot be read: %w", rootMarker, rootErr)
-		}
-		validated, validateErr := ValidateAnchorRel(string(rootData))
-		if validateErr != nil {
-			return "", false, fmt.Errorf("recorded anchor at %s is unusable: %w", rootMarker, validateErr)
-		}
-		return validated, true, nil
-	}
-
 	ownMarker := filepath.Join(weftname.SiblingPath(hub, worktreeName), AnchorFileName)
 	data, readErr := os.ReadFile(ownMarker)
 	switch {

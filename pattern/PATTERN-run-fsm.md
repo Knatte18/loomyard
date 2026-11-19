@@ -1,8 +1,7 @@
 # PATTERN-run-fsm
 
 Reading or acting on a run's lifecycle state: only `internal/runfsm`'s states and act rule;
-a transition commits and pushes before the run acts, bar a prime push failing `protected`;
-an `operator_unpushed` push is owed;
+a transition commits and pushes before the run acts;
 a run whose record holds another machine's takeover hands over, never replays.
 
 ## States and the act rule
@@ -32,16 +31,9 @@ Held by `TestNew_OrdinaryPath` in `internal/statuscommit` and by `TestPushPairAn
 A push that cannot land because origin is unreachable or a teardown lock is held is owed.
 It holds the run at its transition, and the transition's seam retries it behind the gate.
 `ReadRun` reads it from the failed-push records naming the run into `PushOwed`.
-The act rule's refusal names the owed record's own way forward:
-`lym fabric push` in the owed worktree for a transport failure, and `git push` in the prime for an `operator_unpushed` one.
+The act rule's refusal names the owed record's own way forward, as `FailedPushWayForward` gives it.
 
-An `operator_unpushed` push is owed too:
-a one-repository prime holds its records push while the operator has unpushed commits on its branch.
-A prime push failing as `protected` completes the transition with its records unpushed and is not owed:
-neither `FailedPushesOwedBy` nor `IsPushOwed` reads it, and the next records push of the prime carries the records once direct pushes are allowed.
-
-Held by `TestNew_OwedPushRetriesBehindTheGate`, `TestNew_PushErrorReturnsNil` in `internal/statuscommit`
-and `TestPrimePushGuard` in `internal/fabricengine`.
+Held by `TestNew_OwedPushRetriesBehindTheGate` in `internal/statuscommit`.
 
 ## A takeover hands over
 

@@ -220,7 +220,7 @@ func buildTemplateIn(tb testing.TB, registration *Registration) *hubTemplate {
 		tb.Fatalf("mkdir container: %v", err)
 	}
 
-	hub, primeCwd := cloneHub(tb, registration.Base.Anchor, warpBare, weftBare, container, false)
+	hub, primeCwd := cloneHub(tb, registration.Base.Anchor, warpBare, weftBare, container)
 	for _, slug := range registration.Base.Pairs {
 		AddPair(tb, hub, slug)
 	}

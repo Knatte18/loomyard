@@ -124,21 +124,6 @@ func (f *Fabric) ChangedPaths(from, to string) ([]string, error) {
 	return paths, nil
 }
 
-// ChangedCodePaths returns the paths that differ between from and to in the pair's code repository, leaving out records.
-// A path is left out when it is a records path of to or lies under one, as a one-repository hub keeps its records there.
-// The paths are repository-relative and sorted.
-func (f *Fabric) ChangedCodePaths(from, to string) ([]string, error) {
-	paths, err := f.ChangedPaths(from, to)
-	if err != nil {
-		return nil, err
-	}
-	recordsPaths, err := RecordsPathsAt(f.warpPath, to)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: changed code paths from %s to %s: %w", from, to, err)
-	}
-	return slices.DeleteFunc(paths, func(path string) bool { return underRecordsPath(path, recordsPaths) }), nil
-}
-
 // ChangedPathsBothSides returns the paths that differ between from and to in the pair's code repository.
 // The paths are repository-relative, sorted and deduplicated.
 // A rename is reported by both its old and its new path, so a move out of a tree is seen by the tree it left.
@@ -356,11 +341,6 @@ type FastForwardResult struct {
 // Once none applies, it pulls the weft first; a failure there is logged and does not stop the code side.
 // It then resets the code side to the upstream the fetch returned.
 // opts.SkipGit skips the weft side.
-// In a one-repository worktree the records are committed first under the records locks.
-// Only code paths count as dirt.
-// A local head that is not an ancestor of the upstream is then leveled with the upstream.
-// The leveling replays its records-only commits onto the upstream.
-// Only a local commit that changes a code path, or a replay that stops, is the not-fast-forward refusal.
 func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -376,27 +356,9 @@ func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err e
 	if err := f.code.Fetch(); err != nil {
 		return FastForwardResult{}, err
 	}
-	oneRepo := oneRepositoryAt(f.warpPath)
-	var dirty bool
-	if oneRepo {
-		release, err := f.lockWeftForReplay()
-		if err != nil {
-			return FastForwardResult{}, err
-		}
-		defer release()
-		if err := f.commitReceivingRecords(rec); err != nil {
-			return FastForwardResult{}, err
-		}
-		dirtyReasons, _, err := pairDirtyReason(f)
-		if err != nil {
-			return FastForwardResult{}, err
-		}
-		dirty = len(dirtyReasons) > 0
-	} else {
-		dirty, err = f.warpWorktreeDirty()
-		if err != nil {
-			return FastForwardResult{}, err
-		}
+	dirty, err := f.warpWorktreeDirty()
+	if err != nil {
+		return FastForwardResult{}, err
 	}
 	if dirty {
 		return FastForwardResult{Refusal: FastForwardDirty}, nil
@@ -415,13 +377,10 @@ func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err e
 		return FastForwardResult{}, err
 	}
 	if !isFastForward {
-		if !oneRepo {
-			return FastForwardResult{Refusal: FastForwardNotFastForward}, nil
-		}
-		return f.levelOneRepositoryWithUpstream(rec, localHEAD, upstreamSHA)
+		return FastForwardResult{Refusal: FastForwardNotFastForward}, nil
 	}
 
-	if !opts.SkipGit && !oneRepo {
+	if !opts.SkipGit {
 		f.fastForwardWeft(rec, opts)
 	}
 
@@ -433,34 +392,6 @@ func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err e
 	// The call logs a failure and never fails the move.
 	f.fireTookIn(localHEAD, upstreamSHA)
 	return FastForwardResult{NewHead: upstreamSHA}, nil
-}
-
-// levelOneRepositoryWithUpstream brings a one-repository worktree whose head is no ancestor of upstreamSHA level with it.
-// It replays the local records-only commits onto the upstream, under the records locks its caller holds.
-// A head that is ahead of the upstream, a local commit that changes a code path and a stopped replay are refusals.
-// A refusal returns a nil error and moves nothing.
-func (f *Fabric) levelOneRepositoryWithUpstream(rec *Mutations, localHEAD, upstreamSHA string) (FastForwardResult, error) {
-	ahead, err := f.code.IsAncestor(upstreamSHA, localHEAD)
-	if err != nil {
-		return FastForwardResult{}, err
-	}
-	if ahead {
-		return FastForwardResult{Refusal: FastForwardNotFastForward}, nil
-	}
-	err = f.replayOneRepositoryRecords(rec, upstreamSHA)
-	var codeStop *localCodeCommitsStop
-	if errors.Is(err, ErrReplayConflict) || errors.Is(err, ErrReplayDirty) || errors.As(err, &codeStop) {
-		return FastForwardResult{Refusal: FastForwardNotFastForward}, nil
-	}
-	if err != nil {
-		return FastForwardResult{}, err
-	}
-	newHead, err := f.code.CurrentSHA()
-	if err != nil {
-		return FastForwardResult{}, err
-	}
-	f.fireTookIn(localHEAD, newHead)
-	return FastForwardResult{NewHead: newHead}, nil
 }
 
 // fastForwardWeft pulls the weft during a fast-forward.

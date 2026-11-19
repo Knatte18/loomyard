@@ -126,10 +126,10 @@ func ReadOriginFor(l *lymcwd.Location, slug string) (Origin, bool, error) {
 		}
 		return Origin{}, false, err
 	}
-	lockDir := RecordsLockDirPath(weftPath)
+	lockDir := filepath.Join(weftPath, weftLockDirName)
 	if _, err := os.Stat(lockDir); err != nil {
 		if os.IsNotExist(err) {
-			return Origin{}, false, fmt.Errorf("weft worktree %s has an origin record but its %s lock directory is missing; run `lym fabric reconcile` to restore it; a session lym refuses the verb from reports status: FAILED and the orch runs it", weftPath, filepath.Base(lockDir))
+			return Origin{}, false, fmt.Errorf("weft worktree %s has an origin record but its %s lock directory is missing; run `lym fabric reconcile` to restore it; a session lym refuses the verb from reports status: FAILED and the orch runs it", weftPath, weftLockDirName)
 		}
 		return Origin{}, false, err
 	}

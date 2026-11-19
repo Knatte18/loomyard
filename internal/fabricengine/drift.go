@@ -65,7 +65,7 @@ func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
 
 	// The weft branch must be the suffixed sibling of the warp branch, not merely an equal name.
 	// The uniform fabric scheme is `<warp>/<warp>-weft`.
-	expectedWeftBranch := recordsBranchIn(l, warpBranch)
+	expectedWeftBranch := RecordsBranchName(warpBranch)
 	if weftBranch != expectedWeftBranch {
 		return false, HealthReason{
 			Cause:  CauseBranchMismatch,
@@ -83,11 +83,6 @@ func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
 			Cause:  CauseConfigLoadFailed,
 			Detail: fmt.Sprintf("junction check unavailable: cannot load fabric.yaml: %v", err),
 		}, nil
-	}
-
-	// A one-repository worktree's `_lym` and `.lym` are real directories, so no junction exists to be missing or wrong.
-	if oneRepositoryAt(l.WorktreePath()) {
-		return true, HealthReason{}, nil
 	}
 
 	// Verify every warp junction is valid and points to its correct weft target.

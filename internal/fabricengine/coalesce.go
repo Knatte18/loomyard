@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -122,9 +121,6 @@ func CoalescePushRequest(req PushSpawn, opts SyncOptions, here MachineNames) (re
 // The prime has no such slug, so it reads req.PauseSlug.
 // caller names the public entry point in the error for a missing weft path.
 // The code side goes out with SyncOptions.AfterRecords set, after the records side landed.
-// A warp path equal to the weft path names a one-repository pair, whose one branch is pushed once, as the records side.
-// A one-repository prime's records side first passes the operator-commit guard:
-// with commits of the operator's own unpushed, the side is recorded as owed and left unpushed, and the call returns nil.
 // For the duration of the call it installs a gate deferral.
 // A pause triggers it at the gate before an acquire of the lock:
 // the flags of the owed sides go back, and the process exits.
@@ -133,9 +129,6 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, calle
 	hubRoot := ""
 	if warpPath != "" {
 		hubRoot = filepath.Dir(warpPath)
-	}
-	if warpPath == weftPath {
-		warpPath = ""
 	}
 	rec := NewMutations(hubRoot)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -181,20 +174,10 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, here MachineNames, calle
 		// The records side goes first, and the code side only once the records side landed.
 		recordsLanded := true
 		if beforeWeft != "" {
-			held := holdPrimePushForOperator(hubPath, weftPath, time.Now())
-			var heldPush *PushFailedError
-			switch {
-			case errors.As(held, &heldPush):
-				logger.Warn("fabricengine: prime push held for the operator's commits; records left unpushed", "path", weftPath, "error", held)
-				recordsLanded = false
-			case held != nil:
-				return false, held
-			default:
-				retryWeft := func() (bool, error) { return retryWeftPush(rec, hubPath, weftPath, runSlug, here) }
-				recordsLanded, err = pushSideDetached(rec, hubPath, failedPushSideRecords, weftPath, opts, retryWeft)
-				if err != nil {
-					return false, err
-				}
+			retryWeft := func() (bool, error) { return retryWeftPush(rec, hubPath, weftPath, runSlug, here) }
+			recordsLanded, err = pushSideDetached(rec, hubPath, failedPushSideRecords, weftPath, opts, retryWeft)
+			if err != nil {
+				return false, err
 			}
 		}
 		if recordsLanded && warpPath != "" && beforeWarp != "" {

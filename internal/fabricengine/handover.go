@@ -210,11 +210,7 @@ func OriginBattenStatus(prime *lymcwd.Location, slug string) (status shedengine.
 // a branch the push created is deleted, after the tip is saved under its owner archive tag.
 // A given-up tip thus does not stay on origin.
 // It reports whether the tip was pushed and stands.
-// A one-repository pair has no code tip apart from its records, so it pushes nothing and reports false.
 func pushOwedCodeTip(rec *Mutations, pair *lymcwd.Location) (pushed bool, err error) {
-	if oneRepositoryAt(pair.WorktreePath()) {
-		return false, nil
-	}
 	slug := pair.WorktreeName
 	weftPath := RecordsWorktree(pair)
 	upstream, hasUpstream, err := upstreamSHAAt(weftPath)

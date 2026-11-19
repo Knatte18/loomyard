@@ -47,8 +47,6 @@ func (s anchorSeams) headSHA(weftPath string) (string, error) {
 // It renames `from/.lym` to `to/.lym` when it exists.
 // Then it writes the anchor marker holding `to` through an os.Root at weftPath.
 // All of it is committed in one weft commit spanning from/<names>, to/<names> and the root marker.
-// The commit carries an AnchorChangeTrailerKey trailer naming to,
-// so a reader tells the move from a hand edit of the marker.
 // The caller holds the weft write lock.
 // A name that is not tracked under from is left alone,
 // and a path already standing where a name or `.lym` would land is refused before anything moves.
@@ -120,8 +118,7 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 	if err := seams.runFail(false); err != nil {
 		return false, err
 	}
-	message := appendTrailerLine(fmt.Sprintf("fabric anchor: move the weft from %s to %s", from, to), AnchorChangeTrailerKey, to)
-	commitArgs := append([]string{"commit", "-q", "-m", message, "--"}, specs...)
+	commitArgs := append([]string{"commit", "-q", "-m", fmt.Sprintf("fabric anchor: move the weft from %s to %s", from, to), "--"}, specs...)
 	if _, err := gitexec.RunWithEnv(commitArgs, weftPath, []string{"GIT_LITERAL_PATHSPECS=1"}); err != nil {
 		return false, fmt.Errorf("fabricengine: commit the move of the weft from %s to %s: %w", from, to, err)
 	}

@@ -24,11 +24,6 @@ func TestMergeErrors_PinnedStrings(t *testing.T) {
 			want: "fabricengine: merge preconditions failed: a; b",
 		},
 		{
-			name: "MergeGuardErrorParked",
-			err:  &MergeGuardError{Reasons: []string{mergeReasonRecordsUnsettled}, Parked: true},
-			want: `fabricengine: merge preconditions failed: merge records step unfinished; the merge is left in progress: run "lym fabric merge --abort", then merge again`,
-		},
-		{
 			name: "ErrMergeInRequired",
 			err:  &ErrMergeInRequired{Source: "some-branch"},
 			want: `fabricengine: merge produced conflicts and was aborted; run "lym fabric merge-in" in the source branch's own worktree first, then retry`,

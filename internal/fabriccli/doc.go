@@ -42,14 +42,6 @@
 // The Bolt checkout is a second weft worktree on the warp's unsuffixed default branch.
 // It is adopted when the remote carries board history and orphan-created otherwise.
 //
-// `--single-repo` clones one URL as a one-repository hub.
-// The clone commits the layout marker on the repository's branch and creates the board branch.
-// It pushes both before the hub walk, and a refused push removes the hub so running the clone again starts clean.
-// A clone of one URL over an origin that already holds the board branch takes the same layout without the flag.
-// It commits the hub-wide config on the board branch and the module configs on the repository's branch.
-// It wires real `_lym` and `.lym` directories where a two-repository clone links junctions.
-// A second URL with `--single-repo` is refused by the engine, and the envelope carries its text unchanged.
-//
 // # Add
 //
 // A `lym fabric push` that meets the pair's teardown lock held exclusive pushes nothing.

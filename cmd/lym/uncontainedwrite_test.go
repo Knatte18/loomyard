@@ -59,9 +59,6 @@ var uncontainedWriteAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/clone.go", Why: "the hub scratch directory (in the Bolt checkout's .lym) is created in " +
 		"the Bolt checkout worktree containedWorktreeAdd just added, not the bare hub createExclusiveDir (os.Root) minted, in this " +
 		"same CloneHub call — race-only, not statically pre-plantable"},
-	{Key: "internal/fabricengine/clone_onerepository.go", Why: "the hub scratch directory and the anchor marker are written into the Bolt checkout " +
-		"worktree ensureBoardWorktree just added in the same clone call, a fabric-owned board directory never derived from " +
-		"a caller slug, inside the hub createExclusiveDir minted; race-only, not statically pre-plantable"},
 	{Key: "internal/fabricengine/codebinding.go", Why: "the code-side binding writer writes the code-side binding file into the Bolt checkout records worktree fabric created via " +
 		"containedWorktreeAdd; it is committed onto the records main branch by the caller, and the board directory is fabric-owned, never a " +
 		"caller-derived slug path"},

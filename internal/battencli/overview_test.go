@@ -713,9 +713,11 @@ func TestLoadOverviewThresholds(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("loadOverviewThresholds = %+v, want %+v", got, tt.want)
 			}
-			// The prime is no git repository, so the layout read logs its own warning; only the thresholds warning counts.
 			if warned := strings.Contains(logs.String(), "loading the orch thresholds for the overview failed"); warned != tt.wantWarn {
 				t.Errorf("warned = %v, want %v; log:\n%s", warned, tt.wantWarn, logs.String())
+			}
+			if !tt.wantWarn && strings.Contains(logs.String(), "WARN") {
+				t.Errorf("log holds a warning; want none; log:\n%s", logs.String())
 			}
 		})
 	}

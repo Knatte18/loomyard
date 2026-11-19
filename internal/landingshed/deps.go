@@ -370,9 +370,6 @@ type Deps struct {
 	HoldsWork func(base, source string) (bool, error)
 	// ChangedPaths returns the sorted paths that differ between from and to, over the task pair.
 	ChangedPaths func(from, to string) ([]string, error)
-	// ChangedCodePaths returns ChangedPaths' paths less the records paths, over the task pair.
-	// A nil seam makes every landing record as not empty.
-	ChangedCodePaths func(from, to string) ([]string, error)
 	// MergeBase returns the best common ancestor of the task pair's HEAD and ref.
 	MergeBase func(ref string) (string, error)
 	// MergeRecordPath is the told merge record file, in the run's scratch directory.

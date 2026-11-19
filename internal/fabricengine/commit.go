@@ -101,26 +101,19 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	// The two refusals return different typed errors on purpose.
 	// Fabric has no merge of its own in the foreign case, so *ErrMergeInProgress would misdirect the operator.
 	// *ErrForeignMergeState names what clears that state, plain git, as every merge verb does.
-	// A one-repository worktree commits a records-only list around the merge instead,
-	// so its refusal waits for the file classification below.
-	var mergeRefusal error
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
 		return CommitResult{}, err
 	}
 	if recordExists {
-		mergeRefusal = &ErrMergeInProgress{}
-	} else {
-		foreignState, err := f.foreignMergeStatePresent()
-		if err != nil {
-			return CommitResult{}, err
-		}
-		if foreignState {
-			mergeRefusal = &ErrForeignMergeState{}
-		}
+		return CommitResult{}, &ErrMergeInProgress{}
 	}
-	if mergeRefusal != nil && !oneRepositoryAt(f.warpPath) {
-		return CommitResult{}, mergeRefusal
+	foreignState, err := f.foreignMergeStatePresent()
+	if err != nil {
+		return CommitResult{}, err
+	}
+	if foreignState {
+		return CommitResult{}, &ErrForeignMergeState{}
 	}
 
 	l, err := lymcwd.ResolveWorktree(f.warpPath)
@@ -142,9 +135,6 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	warpFiles, weftFiles, neverCommittedFiles := classifyPaths(l.AnchorRel, routingNames, structuralNeverCommittedDirs, files)
 	if len(neverCommittedFiles) > 0 {
 		return CommitResult{}, fmt.Errorf("fabricengine: refusing to commit %q: paths under %s are never committed", neverCommittedFiles[0], lymdirs.DotLymDirName)
-	}
-	if mergeRefusal != nil && len(warpFiles) > 0 {
-		return CommitResult{}, mergeRefusal
 	}
 	weftSide := (len(weftFiles) > 0 || len(snapshotTags) > 0) && !opts.SkipGit
 

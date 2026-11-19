@@ -82,7 +82,6 @@ func commitAnchorMarker(rec *Mutations, weftPath, anchor, subject string) (strin
 	}
 	if committed {
 		rec.Append(KindCommitCreated, weftPath, sha)
-		forgetLayouts()
 	}
 	return sha, nil
 }
@@ -167,10 +166,7 @@ func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, nam
 		if err != nil {
 			return nil, err
 		}
-		if err := refuseMarkerCommitDuringMerge(weftPath); err != nil {
-			return nil, err
-		}
-		if err := commitMissingAnchorMarker(rec, weftPath, anchor, "fabric add: record anchor "+anchor); err != nil {
+		if _, err := commitAnchorMarker(rec, weftPath, anchor, "fabric add: record anchor "+anchor); err != nil {
 			return nil, err
 		}
 	}
@@ -208,7 +204,6 @@ func retireBoltAnchorMarker(rec *Mutations, l *lymcwd.Location) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	forgetLayouts()
 	if res.Skipped != "" {
 		return fmt.Sprintf("%s%s: %s", boltAnchorKeptPrefix, res.Skipped, res.SkipDetail), nil
 	}

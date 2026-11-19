@@ -103,7 +103,6 @@ var intentionallyNil = map[string]string{
 	"Landing.ReadParentTips":                 "loom-only seam, batten lands no branch",
 	"Landing.HoldsWork":                      "loom-only seam, batten lands no branch",
 	"Landing.ChangedPaths":                   "loom-only seam, batten lands no branch",
-	"Landing.ChangedCodePaths":               "loom-only seam, batten lands no branch",
 	"Landing.MergeBase":                      "loom-only seam, batten lands no branch",
 	"Landing.FixerSeats":                     "loom-only seam, batten lands no branch",
 	"Landing.LineChange":                     "loom-only seam, batten lands no branch",

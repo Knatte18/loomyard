@@ -378,8 +378,6 @@ func writeMoveRecordFile(weftPath string, record MoveRecord) error {
 // when that restore itself fails the record stays, landed is false, and the error names the re-run.
 // A failure after it leaves the record and returns landed true;
 // the error names the re-run that skips the move and finishes the wiring.
-// In a one-repository worktree the move is one records commit on the worktree's own branch, and nothing is linked:
-// the unwire step removes only the scratch link, and the wiring step makes real directories.
 // Apply does nothing for a change with nothing to do.
 func (c *AnchorChange) Apply(rec *Mutations) (landed bool, err error) {
 	if c.NoOp() {
@@ -489,17 +487,13 @@ func (c *AnchorChange) integrate(rec *Mutations) (committed bool, err error) {
 }
 
 // unwireAtSource removes the pair's junctions, their exclude entries, the scratch link and its exclude line at the old anchor.
-// A one-repository worktree has no junction, since its `_lym` and `.lym` are real directories the move renames.
-// Its `.lym` exclude line stays, because the repository's one exclude file serves every worktree.
 func (c *AnchorChange) unwireAtSource(rec *Mutations) error {
 	source, slug := c.locationAt(c.from), c.pair.WorktreeName
-	if !oneRepositoryAt(WorktreePath(source, slug)) {
-		if _, err := unseedLymJunction(rec, source, slug, c.names); err != nil {
-			return err
-		}
-		if _, err := unseedGitExclude(rec, source, slug, c.names, false); err != nil {
-			return err
-		}
+	if _, err := unseedLymJunction(rec, source, slug, c.names); err != nil {
+		return err
+	}
+	if _, err := unseedGitExclude(rec, source, slug, c.names, false); err != nil {
+		return err
 	}
 	if err := unlinkScratchLink(rec, source, slug); err != nil {
 		return err

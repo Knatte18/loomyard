@@ -120,7 +120,6 @@
 // Only the heads origin moved past the local tracking ref are then fetched, one fetch per repository.
 // A judge-only reconcile fetches their objects by SHA into no ref and writes no FETCH_HEAD, so it moves nothing.
 // The reconcile holds each repository's remote-refs lock (`gitrepo.Repo.HoldRemoteRefs`), the code repository's first.
-// A one-repository hub has one repository, and its lock is taken once, since the lock is not reentrant.
 // The locks are held from the ls-remote pair through the last branch verdict.
 // A fetch, or a push's tracking-ref write, of either repository therefore waits for the verdicts.
 // A push transfers outside the lock and writes its tracking ref only after the verdicts.
@@ -1205,8 +1204,7 @@
 // `TakeOverRun` last moves the local branches to origin's tips and drops the hand-over mark through `DropHandOverMark`.
 //
 // `FailedPushesOwedBy` reads the push a run owes.
-// An owed push is a failed-push record whose `Runs` name the run.
-// Its class is transport, deferred, teardown_lock or operator_unpushed.
+// An owed push is a failed-push record of class transport, deferred or teardown_lock whose `Runs` name the run.
 // `OriginCodeTip` reads, with no network call, the code tip the run's last transition on origin names.
 // It reports whether origin's fetched code branch lacks that tip, with the machine and time of the transition.
 // A code-side push sent with `SyncOptions.AfterRecords`, after the run's own records side landed, may reset origin's tip.
@@ -1328,29 +1326,11 @@
 // `IsPushRejected(err)` reads it without importing `gitrepo`.
 // `IsPushOwed(err)` tells a seam whether a failed push is owed, one it retries until it lands.
 // An error wrapping `ErrPushLockBusy` is owed.
-// So is one whose recorded failures are all of class `transport`, `deferred`, `teardown_lock` or `operator_unpushed`.
+// So is one whose recorded failures are all of class `transport`, `deferred` or `teardown_lock`.
 // A bare `ErrPairPushRunning`, a rejection and a hand-over are not owed.
-//
-// A one-repository prime's branch is also the operator's code branch.
-// So its records push runs `holdPrimePushForOperator` first.
-// The guard lists the commits origin's ref of the branch lacks.
-// It keeps each that is neither records-only nor a fabric merge commit.
-// A commit reachable from the second parent of such a merge is dropped while some origin ref holds that parent.
-// A commit message alone admits nothing, so a code commit carrying the merge trailer stays an operator commit.
-// With operator commits left, the push goes unsent.
-// A failed push of class `operator_unpushed` is recorded for the branch.
-// The record names those commits and the runs the unpushed commits carry.
-// Its notice is mailed as a refused push's is.
-// Each of these records pushes passes the guard.
-// They are the prime's pair push, its detached push, its replayed retry and a takeover entry's push.
-// A prime that already holds a `protected` record for the branch records the hold as `protected`, with the commits set.
-// A run in the prime waits at its transition until the operator pushes, since `operator_unpushed` reads as owed.
-// A squash landing's commit and a merge over hand-resolved code conflicts are not fabric merge commits,
-// so each is owed until a landing's push of the parent or the operator's `git push` takes it to origin.
 // `MergeStateActive` is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing.
-// In a two-repository hub it reads a merge alone.
-// A weft cherry-pick, revert or rebase does not count;
-// fabric's own replay cherry-picks under the write lock the commit waits on.
+// A weft cherry-pick, revert or rebase does not count.
+// Fabric's own replay cherry-picks under the write lock the commit waits on.
 // It differs from `Fabric.MergeInProgress` and from the two-sided `foreignMergeStatePresent`.
 // `PairComplete(l)` is the predicate over `Add`'s own post-condition.
 // It lets a caller tell a finished pair creation from one a SIGKILL interrupted partway through.
@@ -1589,11 +1569,6 @@
 // That is an `other` failure too.
 // A `not_fast_forward` way forward names no machine, since no commit names the machine that wrote it.
 // It names paths only when a replay stopped on some.
-// A refusal `ProtectedBranchRefusal` matches, by GitHub's protected-branch wording, is never retried through the backoff.
-// Pushing a one-repository prime's branch, it is class `protected` ahead of the auth and rejection classes.
-// `IsPushProtected` reads that class, and a `protected` record is no owed push.
-// Its way forward names allowing direct pushes to the branch, then the record's push step.
-// The same refusal of any other branch keeps the class it gets otherwise.
 // An auth refusal (`gitrepo.ErrPushAuthRefused`) is class `auth` at once.
 // A transport failure of the push call, or an exhausted push retry, is class `transport`.
 // Any other failure of the push call is class `other`, so no refused push is left to a log line.
@@ -2477,56 +2452,6 @@
 // maintenance an operator registers with `git maintenance start` stays outside lym's control.
 // The gc threshold is not operator configuration.
 //
-// # Records paths of a one-repository hub
-//
-// A one-repository hub keeps its records on the code branch, under `<anchor>/_lym` beside the `.lym-anchor` marker.
-// `RecordsPathsAt` names those paths for a commit:
-// the `_lym` directory of every anchor the marker names at the commit and at its first parent, plus the marker file.
-// `IsRecordsOnlyCommit` reports a commit with at most one parent that changes records paths alone.
-// Its message is never read, so a code change carrying a trailer is never records-only.
-// `IsFabricMergeCommit` reports a two-parent commit carrying `MergeTrailerKey`.
-// Its tree is the first parent's records laid over the clean merge of the two parents with their records removed.
-// `AnchorChangeTrailerKey` marks the commit that moves the anchor.
-// All three read git objects only and write no ref and no worktree file.
-//
-// Fabric reads the layout from git through `oneRepositoryAt`, and no config key or hub file records it.
-// A worktree belongs to a one-repository hub when `.lym-anchor` is committed at its HEAD.
-// For the repository's main worktree and the Bolt checkout, the marker on the `BoltBranchName` branch counts too.
-// The main worktree of a two-repository records repository is a records sibling and never reads as one repository.
-// A path with no worktree on disk reads as two repositories without running git or logging.
-// The answer for a worktree on disk is kept for the process, so a repeated read runs no git;
-// a fabric write that adds or retires a marker drops every kept answer.
-// The bound is the process:
-// a marker another process adds or retires is seen only by a later process.
-// In a one-repository hub a worktree is its own records worktree.
-// `RecordsRepoRoot` is the prime worktree, and a pair's records branch is its code branch.
-// The records locks then sit in the worktree's git directory, so the repository's exclude never gets `.weft/`.
-// `RecordsBranchName` and its callers outside fabric keep the two-repository naming.
-//
-// # Cloning a one-repository hub
-//
-// `CloneHub` takes the one-repository layout for one URL when `CloneOptions.SingleRepo` is set,
-// or when origin holds the `BoltBranchName` branch (clone_onerepository.go).
-// `SingleRepo` with a second URL is refused before anything is created.
-// The URL is cloned as the hub's prime, and `readCloneOrigin` reads from that clone what origin holds.
-// The Bolt checkout is a second worktree of the prime on `BoltBranchName`.
-// `ensureBoardWorktree` adopts origin's branch with its upstream, and creates an orphan when origin has none.
-// Over an origin holding the Bolt branch, the prime's branch must already hold `.lym-anchor` at its root.
-// Otherwise the clone refuses.
-// With `SingleRepo` it refuses an origin that holds the Bolt branch or the records binding.
-// Otherwise it seeds the board with the marker and the shortname, then commits the marker on the prime's branch.
-// The board branch carries its marker first.
-// So the prime reads as a one-repository worktree when its own marker commit takes its lock.
-// Both paths record the prime's branch in the prime repository's config under `PrimeBranchConfigKey`.
-// `CloneHub` pushes nothing.
-// `PushOneRepositoryClone` pushes the prime's branch with its upstream and, once that lands, the board branch.
-// A refused push tears the hub down through `teardownHub`.
-// It returns git's error with a way forward, naming the protection when the remote protects the branch.
-// The result's `OneRepository` tells the wiring that follows.
-// A worktree of such a hub is wired with real `_lym` and `.lym` directories and no junction.
-// Its exclude gets the anchored `.lym` line and the warp exclude list, and never `_lym`, `.lym-anchor` or `.weft/`.
-// The Bolt checkout's commit seeds the `/.lym` line of its own root, so a stage-all never takes hub scratch.
-//
 // **Platform verification: Linux only.**
 // Fabric is written cross-platform,
 // and `internal/fslink` exists because Windows uses directory junctions where other platforms use symlinks,
@@ -2550,90 +2475,6 @@
 // `add`/`remove` slug hygiene; and the `prune` and `clone --reset` ownership refusals.
 // Deciding that Windows is not a goal is a valid resolution, but it must be written down.
 // `internal/fslink` and `PATTERN-lym-files` currently assert the opposite.
-//
-// **One-repository Add.** In a one-repository hub, `Add` makes one worktree on the task branch and no records sibling.
-// The new branch is forked from the parent's tip with the run records left off the disk.
-// An adopted branch gets the same single worktree.
-// Wiring makes `_lym` and `.lym` real directories, so health, reconcile and unwire find no junction to act on.
-// The pair's first records commit holds the origin record and the marker.
-// It also holds the run records' deletion when the fork tracked them.
-// A requested anchor stages the new marker into that commit, which then carries an `Anchor-Change` trailer naming it.
-// A rollback removes the one worktree, and the branch only when `Add` created it.
-//
-// **One-repository records commits.** A records commit there lands on the worktree's own branch,
-// and every commit primitive stages only the paths it is given.
-// Code an agent staged stays staged and out of the commit, and an empty records commit leaves it staged too.
-// A commit waits out a held `index.lock` for up to `indexLockRetryBound` and then fails as a commit failure does.
-// The prime refuses a records commit unless its checked-out branch is the one `lym.primeBranch` names.
-// The refusal is an `*ErrPrimeBranch`, and it leaves the records uncommitted on disk.
-//
-// **One-repository anchor change.** The move of a worktree's anchor is one records commit on its own branch.
-// It renames `_lym` to the new anchor, rewrites `.lym-anchor`, and carries an `Anchor-Change` trailer naming the anchor.
-// Every layout's anchor-change commit carries the trailer.
-// The unwire step removes only the scratch link and its exclude line, and the wiring step makes real directories.
-// A pull whose origin tip carries another anchor stops with `ErrAnchorChange` as in a two-repository hub.
-//
-// **One-repository merges.** Every fabric merge there keeps the receiving side's records.
-// `Merge`, with or without a squash, and `MergeIn` run these steps under the write lock.
-// The receiving worktree's uncommitted records are committed first.
-// A source whose newest edit of `.lym-anchor` carries no `Anchor-Change` trailer is refused with `*ErrMarkerChange`.
-// The merge is staged without committing and never fast-forwards,
-// so a source ahead of the receiver still makes a merge commit.
-// The records paths of both sides are then set back to the receiving HEAD's, in index and worktree.
-// A records path written between the staging and that step refuses the merge as dirty and leaves it parked.
-// The merge record's `records_unsettled` flag then stays set, and the way forward is `lym fabric merge --abort`.
-// A code conflict goes to the conflict handling as before.
-// The conclude commit of every fabric merge, in either layout, carries a `Fabric-Merge` trailer.
-//
-// **One-repository records commits during a merge.** A records commit never skips in a worktree that is mid-merge.
-// The commit primitives, the takeover entry's commit and `Fabric.Commit`'s records-only lists route it.
-// They route it to `commitRecordsAroundMerge`, which holds the write lock the primitives already hold.
-// It builds the commit in a temporary index, moves HEAD onto it, and stages the records paths in the worktree's index.
-// The merge record's `WarpStart` follows HEAD.
-// So concluding the merge carries the records.
-// `MergeAbort` resets to the new commit without reading it as a landed conclude.
-// A merge fabric stopped before its records step takes the worktree's records the merge left alone.
-// It takes HEAD's version of every other.
-// It then aborts that merge to the new commit and deletes the record.
-// So no source records stay in HEAD, index or worktree.
-// A cherry-pick, revert or rebase is refused naming the operation.
-// So is a merge fabric did not start whose index differs from HEAD on a records path.
-// `MergeStateOperation` names that operation and `MergeStateActive` reports whether it is non-empty.
-// `Fabric.Commit` refuses a list holding code paths over any merge state, as before.
-// `MergeAbort` first commits the uncommitted records the same way.
-// `MergeContinue` refuses a merge whose records step is unfinished.
-// `MidMerge` reads that merge as `MidMergeRecordsUnsettled`, and only an abort ends it.
-// The marker commits of `Reconcile` and `Add` refuse with the merge state named.
-// The marker sits outside the anchored records paths.
-//
-// **One-repository push and teardown.** A pair's one branch carries its records and its code.
-// Its push request names the worktree once, as the records side, so the branch is pushed once under one push lock.
-// The pair's teardown lock is held shared through it as before.
-// The retry, the owed-push hold and the failed-push record with its notice stay.
-// The record names the branch once, and its `CodeWorktree` is the pair's own worktree.
-// No code tip is owed apart from the records:
-// `pushOwedCodeTip` pushes nothing and `ReturnToPreviousTransition` returns false, committing nothing.
-// A removal tags the branch tip `archive/<slug>/<tip>` before it deletes the worktree and the branch once.
-// Its detached child then pushes the tag.
-// It deletes the branch on origin leased on the tip the archive read.
-// It also deletes `ViewRefPrefix` followed by the slug there.
-// The branch delete goes through the pair-branch gate, covered by the archive tag.
-// The view ref's delete lives in `destroy.go`, and a ref already gone from origin is a success.
-// A teardown job an older binary wrote carries no `DeleteViewRef` and deletes no view ref.
-//
-// **One-repository replay.** A worktree whose branch and origin's both moved is leveled by a replay of its commits.
-// Only its records-only commits are rewritten, never a commit that changes a code path.
-// A local commit that changes a code path makes the replay move nothing and name those commits.
-// A replayed commit's `Warp-SHA` trailer that names a replayed commit becomes the fork point with origin's tip.
-// Any other trailer stays, so no trailer names code origin added.
-// A rejected push then reads the run's takeover first, and records the stop as a deferred push carrying the commits.
-// The record is notified once, and its way forward is `git merge origin/<branch>`, then `lym fabric push`.
-// A pull returns the stop as a `*WeftStopError`, and the origin reconcile reports the branch diverged.
-// A one-repository pull has no warp arm, since the records arm moves the one branch.
-// `FastForwardPair` and the merge's sync step commit the worktree's records first.
-// They count only code paths as dirt, and refuse only over a local commit that changes a code path.
-// The anchor change's integration carries only the records-only commits, each moved to the new anchor.
-// It stops the same way.
 //
 // **Local bares.** `SeedLocalBares` creates under a directory a bare warp and an empty bare weft, through `gitexec`.
 // The warp holds one commit with a root README on `main`, and its HEAD names `main`; the weft holds no ref.

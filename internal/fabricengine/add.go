@@ -213,12 +213,6 @@ func SourceDirtyPaths(l *lymcwd.Location) ([]string, error) {
 // A failure anywhere rolls the whole pair back, the record with it.
 // An adopted weft branch that already has an origin record keeps its parent fields.
 // With opts.Beam, the record gains the beam mark in an origin commit.
-// In a one-repository hub the pair is one worktree on the task branch, with real `_lym` and `.lym` directories.
-// Add makes no sibling and no second branch there, and the records worktree is the task worktree.
-// The pair's first records commit holds the origin record and the marker.
-// It also holds the run records' deletion when the fork tracked them.
-// With opts.Anchor, that commit also holds the fork's tracked records moved to the new anchor,
-// and it carries an Anchor-Change trailer naming that anchor.
 func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res AddResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -243,10 +237,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		}
 		warpBranch = adoptedBranch
 	}
-	weftBranch := recordsBranchIn(l, warpBranch)
-	// oneRepo is whether the hub keeps its records on the task branch itself:
-	// the pair is then one worktree on one branch, and no records sibling or second branch exists.
-	oneRepo := oneRepositoryAt(l.WorktreePath())
+	weftBranch := RecordsBranchName(warpBranch)
 
 	// A missing branch is not an error; a failed read is.
 	warpBranchExists, existsErr := gitrepo.New(l.WorktreePath()).BranchExists(warpBranch)
@@ -281,16 +272,11 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 			warpTip, warpTipErr = remoteHeadTip(l.WorktreePath(), warpBranch)
 		}()
 	}
-	if oneRepo {
-		// The one branch is probed once, as the warp branch below, so no second probe names it as a weft branch.
-		weftProbe = weftLeftover{live: warpAdopted}
-	} else {
-		probes.Add(1)
-		go func() {
-			defer probes.Done()
-			weftProbe, weftProbeErr = weftLiveness(l, slug, weftBranch, weftBranchAlreadyExists, opts)
-		}()
-	}
+	probes.Add(1)
+	go func() {
+		defer probes.Done()
+		weftProbe, weftProbeErr = weftLiveness(l, slug, weftBranch, weftBranchAlreadyExists, opts)
+	}()
 	// No git call a probe started outlives Add.
 	defer probes.Wait()
 
@@ -340,15 +326,12 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 			return AddResult{}, err
 		}
 		// A weft whose anchor is mid-change has no settled content for the new pair to fork from.
-		// A one-repository worktree has no move record: its anchor change is one commit.
-		if !oneRepo {
-			moveStop, err := moveRecordStop(forkWeft)
-			if err != nil {
-				return AddResult{}, err
-			}
-			if moveStop != nil {
-				return AddResult{}, fmt.Errorf("%w: %s", moveStop, moveStop.WayForward)
-			}
+		moveStop, err := moveRecordStop(forkWeft)
+		if err != nil {
+			return AddResult{}, err
+		}
+		if moveStop != nil {
+			return AddResult{}, fmt.Errorf("%w: %s", moveStop, moveStop.WayForward)
 		}
 	}
 	// A requested anchor other than the fork point's is judged against the fork point's warp checkout,
@@ -396,8 +379,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	weftTarget := RecordsWorktreePath(l, slug)
 	// weftReused is whether an adopt-only add reuses a records worktree that already stands registered on the weft branch.
 	weftReused := false
-	// A one-repository pair's records worktree is the task worktree, which the path check above already judged.
-	if _, statErr := os.Stat(weftTarget); !oneRepo && !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(weftTarget); !os.IsNotExist(statErr) {
 		if opts.AdoptOnly {
 			recordsRoot, rootErr := RecordsRepoRoot(l)
 			if rootErr != nil {
@@ -441,7 +423,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		if _, shaErr := warpRepo.CurrentSHA(); detached || errors.Is(shaErr, gitrepo.ErrNoCommits) {
 			return AddResult{}, fmt.Errorf("cannot spawn weft branch: warp worktree is on a detached HEAD or unborn branch")
 		}
-		parentWeftBranch, parentWorktree = recordsBranchIn(l, parentBranch), l.WorktreeName
+		parentWeftBranch, parentWorktree = RecordsBranchName(parentBranch), l.WorktreeName
 	}
 
 	// A pair over the warp's default branch is a root pair: its record names no parent, and landing a root pair is refused.
@@ -468,11 +450,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	var warpPush addWarpBranch
 	// warpAbsentOnOrigin is whether the warp probe ran and read the branch absent on origin.
 	warpAbsentOnOrigin := false
-	// A one-repository pair is live by its one branch: a local one, or for an adopt-only add origin's.
-	if oneRepo && opts.AdoptOnly && probeWarp && warpTipErr == nil && warpTip != "" {
-		weftOld.live = true
-	}
-	if opts.AdoptOnly && !weftOld.live && !oneRepo {
+	if opts.AdoptOnly && !weftOld.live {
 		return AddResult{}, &ErrNotLive{Branch: weftBranch, Records: true}
 	}
 	if probeWarp {
@@ -533,55 +511,28 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		logger.Info("fabricengine: deleted a directory of git-ignored output at the task worktree path", "verb", "add", "slug", slug, "path", target)
 	}
 
-	var (
-		warpTok   createdToken
-		branchTok createdBranchToken
-		// runRecordsTracked is whether the fork point tracked run records that the new worktree's disk never received.
-		runRecordsTracked bool
-		// forkedOneRepository is whether this step made the one worktree of a one-repository pair together with its new branch.
-		forkedOneRepository bool
-		// movedRecordsPaths are the paths, under the old and the new anchor, of the fork's records a one-repository add moved.
-		movedRecordsPaths []string
-	)
-	if oneRepo && !warpAdopted && warpStart == "" {
-		// The one worktree is made on a new branch forked from the parent's tip, with no run records on its disk.
-		forkedOneRepository = true
-		runRecordsTracked, warpTok, branchTok, err = createWeftWorktreeDroppingRuns(rec, pairAt, slug, warpBranch, parentWeftBranch)
-		warpPush.tok = branchTok
-		if err != nil {
-			// A failure after the worktree was added leaves it and its branch for the rollback to remove.
-			if warpTok.worktree {
-				_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
-			}
-			return AddResult{}, err
+	warpTok, branchTok, err := createGitWorktree(rec, l.WorktreePath(), l.HubPath, target, warpBranch, func(worktreePath string) []string {
+		if warpAdopted {
+			return []string{"worktree", "add", worktreePath, warpBranch}
 		}
-	} else {
-		warpTok, branchTok, err = createGitWorktree(rec, l.WorktreePath(), l.HubPath, target, warpBranch, func(worktreePath string) []string {
-			if warpAdopted {
-				return []string{"worktree", "add", worktreePath, warpBranch}
-			}
-			if warpStart != "" {
-				return []string{"worktree", "add", "--track", "-b", warpBranch, worktreePath, warpStart}
-			}
-			if parent.headSHA != "" {
-				return []string{"worktree", "add", "-b", warpBranch, worktreePath, parent.headSHA}
-			}
-			return []string{"worktree", "add", "-b", warpBranch, worktreePath}
-		})
-		if err != nil {
-			return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed: %w", target, warpBranch, err)
+		if warpStart != "" {
+			return []string{"worktree", "add", "--track", "-b", warpBranch, worktreePath, warpStart}
 		}
+		if parent.headSHA != "" {
+			return []string{"worktree", "add", "-b", warpBranch, worktreePath, parent.headSHA}
+		}
+		return []string{"worktree", "add", "-b", warpBranch, worktreePath}
+	})
+	if err != nil {
+		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed: %w", target, warpBranch, err)
 	}
 	if warpAdopted {
 		// The branch predates this call: rollbackAdd must leave it as it found it.
 		warpPush.adopted = true
 	} else {
-		// The branch was created by this same call, not merely a worktree on it.
+		// The `-b warpBranch` argument to the worktree add above means this same call created a branch, not merely a worktree.
 		// A branch is a ref, so it records via AppendRef rather than Append.
-		// The one-repository fork recorded its branch when it made the worktree.
-		if !forkedOneRepository {
-			rec.AppendRef(KindBranchCreated, warpBranch, refDetail("code", l.WorktreePath(), warpRemote))
-		}
+		rec.AppendRef(KindBranchCreated, warpBranch, refDetail("code", l.WorktreePath(), warpRemote))
 		warpPush.tok = branchTok
 	}
 
@@ -628,10 +579,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	weftAdopted := false
-	if oneRepo {
-		// The worktree above already stands on the adopted branch, so there is no weft branch to resolve.
-		weftAdopted = weftOld.live
-	} else if weftOld.live {
+	if weftOld.live {
 		weftAdopted, _, err = resolveWeftBranch(rec, l, weftBranch, !opts.SkipGit && !opts.SkipPush)
 		if err != nil {
 			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
@@ -642,11 +590,13 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		pairAt = l
 	}
 
+	// runRecordsTracked is whether the fork point tracked run records that step 8 dropped from the new worktree.
+	var runRecordsTracked bool
 	if weftAdopted {
 		// Adopt: git worktree add <path> <branch> (no -b, branch exists), through containedWorktreeAdd,
 		// so a symlink toggled at weftPath cannot carry the worktree outside the hub.
 		// A reused records worktree already stands on the branch, so only the task worktree is made.
-		if !weftReused && !oneRepo {
+		if !weftReused {
 			err := containedWorktreeAdd(weftRepoRoot, l.HubPath, weftPath, func(worktreePath string) []string {
 				return []string{"worktree", "add", worktreePath, weftBranch}
 			})
@@ -680,36 +630,20 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		// so the pair never inherits another run's seed or status.
 		// Step 10c commits the root's deletion.
 		// The adopt path above drops nothing: an existing branch's own records are its own.
-		// A one-repository pair was forked above, in the step that made its one worktree.
-		if !oneRepo {
-			var err error
-			runRecordsTracked, _, _, err = createWeftWorktreeDroppingRuns(rec, pairAt, slug, weftBranch, parentWeftBranch)
-			if err != nil {
-				_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
-				return AddResult{}, err
-			}
+		var err error
+		runRecordsTracked, err = createWeftWorktreeDroppingRuns(rec, pairAt, slug, weftBranch, parentWeftBranch)
+		if err != nil {
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
+			return AddResult{}, err
 		}
 		// A requested anchor moves the forked content before anything is wired or written at the new anchor.
 		// The move commit carries the deletion of the run records the fork left off the disk, so step 10c has none to stage.
 		if anchorTo != "" {
-			if oneRepo {
-				// No sibling holds a move, so the records move on disk and the new marker is staged.
-				// Both ride on the pair's first records commit.
-				forkNames, moveErr := RepoWiredNames(fork)
-				if moveErr == nil {
-					movedRecordsPaths, moveErr = moveForkedRecordsToAnchor(weftPath, fork, anchorTo, forkNames)
-				}
-				if moveErr != nil {
-					_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
-					return AddResult{}, fmt.Errorf("record the anchor %s of %q: %w", anchorTo, slug, moveErr)
-				}
-			} else {
-				if err := moveForkedWeftToAnchor(rec, fork, slug, anchorTo, runRecordsTracked); err != nil {
-					_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
-					return AddResult{}, fmt.Errorf("move the weft of %q to the anchor %s: %w", slug, anchorTo, err)
-				}
-				runRecordsTracked = false
+			if err := moveForkedWeftToAnchor(rec, fork, slug, anchorTo, runRecordsTracked); err != nil {
+				_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
+				return AddResult{}, fmt.Errorf("move the weft of %q to the anchor %s: %w", slug, anchorTo, err)
 			}
+			runRecordsTracked = false
 			movedAt := *fork
 			movedAt.AnchorRel = anchorTo
 			pairAt = &movedAt
@@ -766,40 +700,18 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		// CommitRecordsPaths records the KindCommitCreated entry itself, at its own success site.
 		// The run-records root joins the commit's paths only when the fork tracked it:
 		// git add on an untracked, absent root is a hard pathspec error, which a hub with no run records must not hit.
-		commitAnchor, commitMessage := pairAt.AnchorRel, OriginRecordSubject(slug)
 		commitPaths := []string{OriginRecordRel()}
 		if runRecordsTracked {
 			commitPaths = append(commitPaths, shedrun.RunsRootRel())
 		}
-		if oneRepo {
-			// The marker sits at the worktree root and the run records under the fork point's anchor,
-			// so the paths are scoped one by one and given to the commit relative to the root.
-			commitAnchor = "."
-			commitPaths = ScopedPathspec(pairAt.AnchorRel, []string{OriginRecordRel()})
-			if runRecordsTracked {
-				commitPaths = append(commitPaths, ScopedPathspec(fork.AnchorRel, []string{shedrun.RunsRootRel()})...)
-			}
-			markerTracked, markerErr := PathTracked(weftPath, lymcwd.AnchorFileName)
-			if markerErr != nil {
-				_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
-				return AddResult{}, fmt.Errorf("record parent branch: %w", markerErr)
-			}
-			if markerTracked {
-				commitPaths = append(commitPaths, lymcwd.AnchorFileName)
-			}
-			commitPaths = append(commitPaths, movedRecordsPaths...)
-			if anchorTo != "" {
-				commitMessage = appendTrailerLine(commitMessage, AnchorChangeTrailerKey, anchorTo)
-			}
-		}
-		if _, _, err := CommitRecordsPaths(rec, weftPath, commitAnchor, commitPaths, commitMessage, opts.syncOptions()); err != nil {
+		if _, _, err := CommitRecordsPaths(rec, weftPath, pairAt.AnchorRel, commitPaths, OriginRecordSubject(slug), opts.syncOptions()); err != nil {
 			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("commit parent branch record: %w", err)
 		}
 	}
 
 	// The pair is wired and recorded at its requested anchor: the move is finished.
-	if anchorTo != "" && !oneRepo {
+	if anchorTo != "" {
 		if err := RemoveMoveRecord(weftPath); err != nil {
 			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
 			return AddResult{}, err
@@ -885,10 +797,7 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lymcwd.Location, slug, warpBra
 	// A reused records worktree predates the add and stays.
 	// remote is hardcoded false here:
 	// the add pushes nothing, and an adopted branch's copy on origin is not the add's to delete.
-	// A one-repository pair has no records sibling, no weft branch and no junction:
-	// its one worktree and branch go through the warp steps below.
-	oneRepo := oneRepositoryAt(l.WorktreePath())
-	if !weftReused && !oneRepo {
+	if !weftReused {
 		if _, err := removeWeftWorktree(rec, l, slug, weftBranch, true, !weftBranchAdopted, false, "", t.leftover); err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -901,15 +810,13 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lymcwd.Location, slug, warpBra
 	// must not hard-fail when the repo-wide config is unreadable (Add is
 	// failing already), so a load error falls back to names == nil, which
 	// removes nothing rather than guessing a wiring set.
-	if !oneRepo {
-		names, namesErr := RepoWiredNames(l)
-		if namesErr != nil {
-			names = nil
-		}
-		if err := removeWarpJunction(rec, l, slug, names); err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
+	names, namesErr := RepoWiredNames(l)
+	if namesErr != nil {
+		names = nil
+	}
+	if err := removeWarpJunction(rec, l, slug, names); err != nil {
+		if firstErr == nil {
+			firstErr = err
 		}
 	}
 

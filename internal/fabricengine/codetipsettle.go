@@ -37,11 +37,7 @@ func FetchPairTips(pair *lymcwd.Location) error {
 // It reports false, committing nothing, when origin's records branch holds fewer than two transitions of slug:
 // the first transition names the tip the pair was made at, so nothing earlier can stand in.
 // It pushes nothing.
-// A one-repository pair's code tip is never owed apart from its records, so it reports false and commits nothing.
 func ReturnToPreviousTransition(pair *lymcwd.Location, slug string) (returned bool, err error) {
-	if oneRepositoryAt(pair.WorktreePath()) {
-		return false, nil
-	}
 	recordsDir := RecordsWorktree(pair)
 	repo := gitrepo.New(recordsDir)
 	if err := repo.Fetch(); err != nil {

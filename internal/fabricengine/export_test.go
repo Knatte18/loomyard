@@ -539,8 +539,6 @@ type MergeStateForTest struct {
 	WarpCommitted string
 	WeftCommitted string
 	StartedAt     time.Time
-
-	RecordsUnsettled bool
 }
 
 // toMergeState converts m into the unexported `mergeState` record, so the package can save it.
@@ -559,8 +557,6 @@ func (m MergeStateForTest) toMergeState() *mergeState {
 		WarpCommitted: m.WarpCommitted,
 		WeftCommitted: m.WeftCommitted,
 		StartedAt:     m.StartedAt,
-
-		RecordsUnsettled: m.RecordsUnsettled,
 	}
 }
 
@@ -583,8 +579,6 @@ func fromMergeState(st *mergeState) (MergeStateForTest, bool) {
 		WarpCommitted: st.WarpCommitted,
 		WeftCommitted: st.WeftCommitted,
 		StartedAt:     st.StartedAt,
-
-		RecordsUnsettled: st.RecordsUnsettled,
 	}, true
 }
 
@@ -608,14 +602,6 @@ func LoadMergeStateForTest(f *Fabric) (MergeStateForTest, bool, error) {
 // DeleteMergeStateForTest exposes `f.deleteMergeState` to tests.
 func DeleteMergeStateForTest(f *Fabric) error {
 	return f.deleteMergeState()
-}
-
-// SetAfterMergeStartForTest makes every merge verb f runs afterwards call hook once the merge is staged.
-// The hook runs before the records of the two sides are settled, and only in a one-repository worktree.
-// An error it returns ends the verb with that error, leaving the merge parked as a crash between the steps does.
-// A nil hook restores production.
-func (f *Fabric) SetAfterMergeStartForTest(hook func() error) {
-	f.afterMergeStart = hook
 }
 
 // MergeRecordExistsForTest exposes `f.mergeRecordExists` to tests.

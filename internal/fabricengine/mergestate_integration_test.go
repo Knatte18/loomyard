@@ -89,8 +89,6 @@ func TestMergeState_Record(t *testing.T) {
 			WarpCommitted: "warpcommittedsha",
 			WeftCommitted: "weftcommittedsha",
 			StartedAt:     time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
-
-			RecordsUnsettled: true,
 		}
 
 		// "EveryField" is only true if want populates every field with a non-zero value.

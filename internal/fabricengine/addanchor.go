@@ -1,22 +1,17 @@
 // addanchor.go places a new pair at a requested anchor.
-// A new two-repository pair's weft is forked at the fork point's anchor.
-// It is moved to the requested anchor under a move record.
+// A new pair's weft is forked at the fork point's anchor and moved to the requested anchor under a move record.
 // `Add` removes that record once the pair is wired there.
-// A one-repository pair's records move on disk with no record, and ride on the pair's first records commit.
 
 package fabricengine
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -96,57 +91,6 @@ func moveForkedWeftToAnchor(rec *Mutations, fork *lymcwd.Location, slug, to stri
 	}
 	_, err = moveWeftContent(rec, weftPath, fork.AnchorRel, to, names, anchorSeams{})
 	return err
-}
-
-// moveForkedRecordsToAnchor moves the tracked content of each wired name in names.
-// It moves it from the anchor of fork to the anchor to.
-// It works on disk in the one worktree of a one-repository pair at worktree, and stages the marker holding to.
-// Nothing is committed: it returns the paths under the old and the new anchor that the pair's first records commit takes.
-// A name not tracked under the old anchor is left alone, and a path already standing where a name would land is refused.
-func moveForkedRecordsToAnchor(worktree string, fork *lymcwd.Location, to string, names []string) ([]string, error) {
-	root, err := os.OpenRoot(worktree)
-	if err != nil {
-		return nil, fmt.Errorf("open the worktree root %s: %w", worktree, err)
-	}
-	defer func() { _ = root.Close() }()
-
-	from, toSlash := filepath.ToSlash(fork.AnchorRel), filepath.ToSlash(to)
-	var specs []string
-	for _, name := range names {
-		if name == lymdirs.DotLymDirName {
-			continue
-		}
-		src, dst := anchorJoin(from, name), anchorJoin(toSlash, name)
-		tracked, err := PathTracked(worktree, src)
-		if err != nil {
-			return nil, err
-		}
-		if !tracked {
-			continue
-		}
-		if err := requireAbsent(root, dst); err != nil {
-			return nil, err
-		}
-		specs = append(specs, src)
-		if _, err := root.Lstat(src); errors.Is(err, fs.ErrNotExist) {
-			continue
-		} else if err != nil {
-			return nil, fmt.Errorf("inspect %s in %s: %w", src, worktree, err)
-		}
-		if toSlash != "." {
-			if err := root.MkdirAll(toSlash, 0o755); err != nil {
-				return nil, fmt.Errorf("create %s in %s: %w", toSlash, worktree, err)
-			}
-		}
-		if err := root.Rename(src, dst); err != nil {
-			return nil, fmt.Errorf("move %s to %s in %s: %w", src, dst, worktree, err)
-		}
-		specs = append(specs, dst)
-	}
-	if err := stageNewMarker(worktree, to); err != nil {
-		return nil, err
-	}
-	return specs, nil
 }
 
 // stageNewMarker writes anchor into the marker file of the weft worktree at weftPath and stages it.

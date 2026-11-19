@@ -411,56 +411,6 @@ func TestResolveWithin(t *testing.T) {
 	}
 }
 
-// TestResolveWithin_OneRepository pins ResolveWithin over a checkout whose root commits the anchor marker.
-// The marker at the root alone names the anchor.
-// A checkout named with the records-sibling suffix beside it resolves as itself.
-func TestResolveWithin_OneRepository(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	fix := gitkit.CopyRepo(t)
-	root := fix.Repo
-	beforeMarker := gitkit.RevParse(t, root, "HEAD")
-	gitkit.CommitFile(t, root, lymcwd.AnchorFileName, "backend\n", "record the anchor")
-	suffixedPath := weftname.SiblingPath(filepath.Dir(root), filepath.Base(root))
-	gitkit.Git(t, root, "worktree", "add", "-b", "suffixed", suffixedPath, beforeMarker)
-
-	backendDir := filepath.Join(root, "backend")
-	if err := os.MkdirAll(backendDir, 0o755); err != nil {
-		t.Fatalf("mkdir %s: %v", backendDir, err)
-	}
-
-	wantAnchored, err := lymcwd.ResolveWorktree(root)
-	if err != nil {
-		t.Fatalf("ResolveWorktree(%q) error = %v; want nil", root, err)
-	}
-
-	tests := []struct {
-		name string
-		cwd  string
-		want lymcwd.Location
-	}{
-		{"AnchoredDirectory", backendDir, *wantAnchored},
-		{
-			"SuffixedCheckoutBesideIt", suffixedPath,
-			lymcwd.Location{RepoName: wantAnchored.RepoName, HubPath: wantAnchored.HubPath, WorktreeName: filepath.Base(suffixedPath), AnchorRel: "."},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := lymcwd.ResolveWithin(tt.cwd)
-			if err != nil {
-				t.Fatalf("ResolveWithin(%q) error = %v; want nil", tt.cwd, err)
-			}
-			if *got != tt.want {
-				t.Errorf("ResolveWithin(%q) = %+v; want %+v", tt.cwd, *got, tt.want)
-			}
-		})
-	}
-}
-
 // TestResolveWithin_NoOwnerOrNoMarker pins the two fallbacks of ResolveWithin from a subdirectory.
 // A checkout whose own name ends in the records-sibling suffix resolves as itself.
 // That holds when no worktree of the trimmed name sits beside it.

@@ -40,7 +40,7 @@ func OriginRunStatus(prime *lymcwd.Location, slug string) (status shedengine.Sta
 	}
 	repo := gitrepo.New(recordsRoot)
 	for _, name := range pairBranchNames(cfg, slug) {
-		tip, err := repo.RefSHA(originRefPrefix + recordsBranchIn(prime, name))
+		tip, err := repo.RefSHA(originRefPrefix + RecordsBranchName(name))
 		if errors.Is(err, gitrepo.ErrRefNotFound) {
 			continue
 		}
@@ -111,7 +111,7 @@ func OriginCodeTip(prime *lymcwd.Location, slug string) (CodeTipReading, error) 
 		return CodeTipReading{}, fmt.Errorf("resolve the records repository: %w", err)
 	}
 	for _, name := range pairBranchNames(cfg, slug) {
-		recordsTip, err := gitrepo.New(recordsRoot).RefSHA(originRefPrefix + recordsBranchIn(prime, name))
+		recordsTip, err := gitrepo.New(recordsRoot).RefSHA(originRefPrefix + RecordsBranchName(name))
 		if errors.Is(err, gitrepo.ErrRefNotFound) {
 			continue
 		}

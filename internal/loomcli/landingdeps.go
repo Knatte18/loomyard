@@ -309,13 +309,6 @@ func landingDeps(
 			}
 			return f.ChangedPaths(from, to)
 		},
-		ChangedCodePaths: func(from, to string) ([]string, error) {
-			f, err := fabricengine.Open(l)
-			if err != nil {
-				return nil, err
-			}
-			return f.ChangedCodePaths(from, to)
-		},
 		MergeBase: func(ref string) (string, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {

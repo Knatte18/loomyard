@@ -63,15 +63,6 @@ func Unwire(cwd string, apply bool) (res UnwireVerbResult, err error) {
 
 	slug := filepath.Base(l.WorktreePath())
 
-	// A one-repository worktree links nothing: its `_lym` and `.lym` are real directories, so there is nothing to unwire.
-	if oneRepositoryAt(l.WorktreePath()) {
-		content := "not_present"
-		if _, statErr := os.Stat(WeftLymDirFor(l, slug)); statErr == nil {
-			content = "preserved"
-		}
-		return UnwireVerbResult{Applied: apply, WeftContent: content, GitExclude: "unchanged"}, nil
-	}
-
 	names, err := scanOnDiskJunctionNames(l, slug)
 	if err != nil {
 		return UnwireVerbResult{}, err

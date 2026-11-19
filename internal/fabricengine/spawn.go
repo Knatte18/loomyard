@@ -153,8 +153,6 @@ func SpawnStatusPush(l *lymcwd.Location, gateSlug string) (SpawnResult, error) {
 }
 
 // statusPushRequest builds the detached push request for l's status records.
-// A one-repository pair's records worktree is its code worktree,
-// so its request names that worktree once, as the records side.
 func statusPushRequest(l *lymcwd.Location, gateSlug string) (PushSpawn, error) {
 	isPrime, err := IsPrimeWorktree(l)
 	if err != nil {
@@ -162,9 +160,7 @@ func statusPushRequest(l *lymcwd.Location, gateSlug string) (PushSpawn, error) {
 	}
 	req := PushSpawn{WeftPath: RecordsWorktree(l), PauseSlug: gateSlug, WorkDir: BoltDir(l.HubPath)}
 	if !isPrime {
-		if !oneRepositoryAt(l.WorktreePath()) {
-			req.WarpPath = l.WorktreePath()
-		}
+		req.WarpPath = l.WorktreePath()
 		req.PauseSlug = l.WorktreeName
 		req.TeardownSlug = l.WorktreeName
 		req.ParentLocked = parentLockHeldBy(l)

@@ -120,10 +120,10 @@ func startingMoveStop(slug string) string {
 }
 
 // moveRecordStop returns the stop for a weft worktree that carries a move record, and nil when it does not.
-// The slug is read from the weft's directory name, and from the worktree's own name in a one-repository hub.
+// The slug is read from the weft's directory name.
 // The way forward comes from probing the move lock beside the record.
 func moveRecordStop(weftPath string) (*AnchorStopError, error) {
-	slug, ok := pairSlugOfRecords(weftPath)
+	slug, ok := WeftWarpSlug(filepath.Base(weftPath))
 	if !ok {
 		return nil, fmt.Errorf("fabricengine: %s is no weft sibling worktree", weftPath)
 	}
