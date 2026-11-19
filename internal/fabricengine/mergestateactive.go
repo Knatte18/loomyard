@@ -8,10 +8,13 @@ import (
 )
 
 // MergeStateActive reports whether the weft worktree of l is in a git operation a records commit cannot pass.
-// MergeStateOperation names that operation:
-// a live MERGE_HEAD or a non-empty conflicted index, or a cherry-pick, revert or rebase.
+// MergeStateOperation names that operation.
+// In a two-repository worktree only a live MERGE_HEAD or a non-empty conflicted index counts.
+// A cherry-pick, revert or rebase there does not count.
+// Fabric's own weft replay cherry-picks under the write lock the commit waits on.
 // It does not report whether fabric itself has a merge in progress.
-// In a one-repository worktree a merge counts only when its index holds a records path unlike HEAD's.
+// In a one-repository worktree a cherry-pick, revert or rebase counts,
+// and a merge counts only when its index holds a records path unlike HEAD's.
 //
 // It is weft-only, because warp and weft are independent clones with independent .git directories.
 // The status commit this probe guards runs in the weft worktree alone, so warp-side git state cannot block it.

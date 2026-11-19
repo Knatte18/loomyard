@@ -290,6 +290,7 @@ func seedOneRepositoryBoard(rec *Mutations, boardDir, anchor string) error {
 	}
 	if committed {
 		rec.Append(KindCommitCreated, boardDir, sha)
+		forgetLayouts()
 	}
 	return nil
 }
