@@ -288,14 +288,15 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 		}
 	})
 
-	t.Run("FillsTheReachReportNote", func(t *testing.T) {
+	t.Run("FillsTheReachAndMutationReportNotes", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.ReachReport = func() string { return "No current reach report: none written." }
-		writeStencil(t, env.StencilsDir, "round-rubric", "Reach: {{.reach_report}}\n")
+		env.MutationReport = func() string { return "No current mutation report: none written." }
+		writeStencil(t, env.StencilsDir, "round-rubric", "Reach: {{.reach_report}}\nMutation: {{.mutation_report}}\n")
 
 		profile, _ := captureReview(t, "review-row", stencilCfg, env)
-		if profile.Rubric != "Reach: No current reach report: none written.\n" {
-			t.Errorf("profile.Rubric = %q; want the env's reach report note filled into the marker", profile.Rubric)
+		if profile.Rubric != "Reach: No current reach report: none written.\nMutation: No current mutation report: none written.\n" {
+			t.Errorf("profile.Rubric = %q; want the env's reach and mutation report notes filled into their markers", profile.Rubric)
 		}
 	})
 

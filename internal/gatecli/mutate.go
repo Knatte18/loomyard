@@ -1,4 +1,4 @@
-// mutate.go implements `lym gate mutate`.
+// mutate.go implements `lym gate mutate` and the mutation check it shares with the mutation report step.
 // The verb mutates the lines the worktree's diff changes and lists the mutants no covering test kills.
 // It refreshes the worktree's own coverage maps of the changed packages.
 // It then runs the mutation check inside one gate slot.
@@ -81,7 +81,8 @@ The diff is from --base, else the merge base with the parent branch; a worktree 
 It refreshes the worktree's own coverage maps of the packages holding a changed function under reach_budget_min; the prime refreshes nothing.
 A package is judged only with a fresh map: one the refresh wrote, or a map whose file hashes match the worktree, the hub's shared one in the prime.
 Any other changed package is listed as not judged, with its reason and way forward.
-It places at most one mutant on each changed line of a block a test covers, up to mutation_max_mutants over the changed functions in turn.
+It places at most one mutant on each changed line of a block a test covers, leaving out lines that only log or test another platform.
+It takes up to mutation_max_mutants over the changed functions in turn, spread evenly over them when the cap is short of one each.
 It runs each mutant against the map's tests that cover its block until one fails, inside one gate slot bounded by mutation_budget_min.
 A run past its time bound or the memory cap is unjudged, never a kill; a mutant every covering test passes is a survivor.
 It prints the survivors with the tests of other packages that reach their function, the uncovered changed blocks, the packages not judged and the counts of mutants run, killed, survived and unjudged.
@@ -147,7 +148,7 @@ func runMutate(ctx context.Context, out io.Writer, request mutateRequest) int {
 		return output.Err(out, fmt.Sprintf("gate mutate: cannot read the hub's gate config: %v; way forward: take the step it names, then re-run the same command", err))
 	}
 	cfg = cfg.WithDefaultDir(location.AnchorRel)
-	if cfg.Scoper != "go" {
+	if !cfg.HasGoCoverageMaps() {
 		return output.Ok(out, map[string]any{"note": fmt.Sprintf(noteScoper, cfg.Scoper)})
 	}
 	root := location.WorktreePath()
@@ -176,93 +177,142 @@ func runMutate(ctx context.Context, out io.Writer, request mutateRequest) int {
 	defer stop()
 	stopGuard, guardKilled := guardOwnTests(runCtx, cfg.MemoryQuit(), request.stderr)
 	defer stopGuard()
-	cancelled := func() int {
-		output.Err(out, "gate mutate: the call was cancelled; way forward: re-run the same command")
-		return exitAfterSignal(caught, 1)
-	}
 
-	changed, err := impactset.ChangedPaths(runCtx, root, base)
+	found, err := mutationCall{
+		ctx: runCtx, cfg: cfg, location: location, root: root, module: module, fabric: fabric, prime: prime, base: base,
+		request: request, hubEnv: hubEnv, guardKilled: guardKilled, site: mutateSite,
+	}.run()
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("gate mutate: %v; way forward: re-run the same command", err))
+		if runCtx.Err() != nil {
+			output.Err(out, "gate mutate: the call was cancelled; way forward: re-run the same command")
+			return exitAfterSignal(caught, 1)
+		}
+		return output.Err(out, "gate mutate: "+err.Error())
 	}
-	head := workingTree{root: root}
-	funcs, err := changedFuncsAt(head, fabric, base, module, changed)
-	if err != nil {
-		return output.Err(out, fmt.Sprintf("gate mutate: find the changed functions: %v; way forward: fix the file it names, then re-run the same command", err))
-	}
-	lines, err := changedLinesAt(head, fabric, base, module, changed)
-	if err != nil {
-		return output.Err(out, fmt.Sprintf("gate mutate: find the changed lines: %v; way forward: re-run the same command", err))
-	}
-	answer := map[string]any{"base": base, "prime": prime, "changed_functions": len(funcs)}
-	outcome := newMutateOutcome()
-	if len(funcs) == 0 {
+	answer := map[string]any{"base": base, "prime": prime, "changed_functions": len(found.funcs)}
+	if len(found.funcs) == 0 {
 		answer["note"] = "the diff changes no function, so nothing was mutated"
-		return output.Ok(out, fillMutateAnswer(answer, outcome, []mutateNotJudged{}, nil))
+	}
+	return output.Ok(out, fillMutateAnswer(answer, found))
+}
+
+// mutationCall is one mutation check of a worktree's diff, as `lym gate mutate` and the mutation report step run it.
+type mutationCall struct {
+	ctx      context.Context
+	cfg      gateslot.Config
+	location *lymcwd.Location
+	// root is the worktree root, module the Go module the check judges and fabric the worktree's fabric.
+	root   string
+	module goModule
+	fabric *fabricengine.Fabric
+	// prime is set for a call in the hub's prime, which refreshes no map and reads the shared ones.
+	prime bool
+	// base is the commit the diff is taken from.
+	base string
+	// request holds the go command, the environment, the units and the grace of the builds and runs; its base is not read.
+	request mutateRequest
+	// hubEnv is the hub env module's config, whose variables the check's children start with.
+	hubEnv envconfig.Config
+	// guardKilled reports whether the memory guard killed the process with a pid; nil means it killed none.
+	guardKilled func(pid int) bool
+	// site labels the slot holder record of the check.
+	site string
+}
+
+// mutationFindings is what a mutationCall found.
+type mutationFindings struct {
+	// funcs are the functions the diff changes.
+	funcs   []testreach.ChangedFunc
+	outcome mutateOutcome
+	// notJudged are the changed packages left out before the check for their maps; the check's own are in outcome.
+	notJudged []MutationNotJudged
+	// refreshErrors are the error lines of the maps' refresh.
+	refreshErrors []string
+}
+
+// run finds the functions and lines the diff changes, refreshes the maps of their packages and runs the mutation check.
+// A diff that changes no function mutates nothing and returns findings with no function.
+// The error carries its own way forward.
+// Once the call's context is cancelled the error may be the context's own or one the cancel caused.
+func (c mutationCall) run() (mutationFindings, error) {
+	found := mutationFindings{outcome: newMutateOutcome(), notJudged: []MutationNotJudged{}}
+	changed, err := impactset.ChangedPaths(c.ctx, c.root, c.base)
+	if err != nil {
+		return found, fmt.Errorf("%w; way forward: re-run the same command", err)
+	}
+	head := workingTree{root: c.root}
+	if found.funcs, err = changedFuncsAt(head, c.fabric, c.base, c.module, changed); err != nil {
+		return found, fmt.Errorf("find the changed functions: %w; way forward: fix the file it names, then re-run the same command", err)
+	}
+	lines, err := changedLinesAt(head, c.fabric, c.base, c.module, changed)
+	if err != nil {
+		return found, fmt.Errorf("find the changed lines: %w; way forward: re-run the same command", err)
+	}
+	if len(found.funcs) == 0 {
+		return found, nil
 	}
 
 	step := reachStep{
-		ctx: runCtx, stderr: request.stderr, cfg: cfg, location: location, root: root, environ: request.environ, goBinary: request.goBinary,
-		minuteUnit: request.minuteUnit, secondUnit: request.secondUnit, grace: request.grace, guardKilled: guardKilled,
+		ctx: c.ctx, stderr: c.request.stderr, cfg: c.cfg, location: c.location, root: c.root, environ: c.request.environ, goBinary: c.request.goBinary,
+		minuteUnit: c.request.minuteUnit, secondUnit: c.request.secondUnit, grace: c.request.grace, guardKilled: c.guardKilled,
 	}
 	var refresh ReachReport
-	step.refreshMaps(&refresh, module, funcs, prime)
-	if runCtx.Err() != nil {
-		return cancelled()
+	step.refreshMaps(&refresh, c.module, found.funcs, c.prime)
+	found.refreshErrors = refresh.Errors
+	if err := c.ctx.Err(); err != nil {
+		return found, err
 	}
-	mapsDir, err := coverageMapsDir(location)
+	mapsDir, err := coverageMapsDir(c.location)
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("gate mutate: %v; way forward: re-run the same command", err))
+		return found, fmt.Errorf("%w; way forward: re-run the same command", err)
 	}
-	fresh, notJudged, err := freshMaps(module, mapsDir, prime, changedPackages(module, funcs), refresh)
+	fresh, notJudged, err := freshMaps(c.module, mapsDir, c.prime, changedPackages(c.module, found.funcs), refresh)
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("gate mutate: %v", err))
+		return found, err
 	}
+	found.notJudged = notJudged
 	if len(fresh) == 0 {
-		return output.Ok(out, fillMutateAnswer(answer, outcome, notJudged, refresh.Errors))
+		return found, nil
 	}
-	reader, err := testreach.Open(reachModuleOf(module), testcover.Dir(fabricengine.BoltDir(location.HubPath)), step.worktreeMapsDir(prime))
+	reader, err := testreach.Open(reachModuleOf(c.module), testcover.Dir(fabricengine.BoltDir(c.location.HubPath)), step.worktreeMapsDir(c.prime))
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("gate mutate: read the coverage maps: %v; way forward: re-run the same command", err))
+		return found, fmt.Errorf("read the coverage maps: %w; way forward: re-run the same command", err)
 	}
 
 	holder := &mutationCheck{
-		ctx: runCtx, request: request.checkRequest(), location: location, pool: hubgeom.GateSlots(location), tiers: mappedTierConfigs(cfg),
-		moduleDir:    module.dir,
-		buildTimeout: time.Duration(cfg.RedundancyBuildTimeoutMin) * request.minuteUnit,
-		testTimeout:  time.Duration(cfg.RedundancyTestTimeoutSec) * request.secondUnit,
-		testMemory:   cfg.RedundancyTestMemory(),
-		guardKilled:  guardKilled,
-		env:          gateEnv(request.environ, hubEnv),
-		site:         mutateSite,
+		ctx: c.ctx, request: c.request.checkRequest(), location: c.location, pool: hubgeom.GateSlots(c.location), tiers: mappedTierConfigs(c.cfg),
+		moduleDir:    c.module.dir,
+		buildTimeout: time.Duration(c.cfg.RedundancyBuildTimeoutMin) * c.request.minuteUnit,
+		testTimeout:  time.Duration(c.cfg.RedundancyTestTimeoutSec) * c.request.secondUnit,
+		testMemory:   c.cfg.RedundancyTestMemory(),
+		guardKilled:  c.guardKilled,
+		env:          gateEnv(c.request.environ, c.hubEnv),
+		site:         c.site,
 	}
 	defer holder.close()
 	check := &diffMutation{
-		holder: holder, module: module, reader: reader, fresh: fresh, changedLines: lines,
-		maxMutants: cfg.MutationMaxMutants, budget: time.Duration(cfg.MutationBudgetMin) * request.minuteUnit,
-		outcome: outcome,
+		holder: holder, module: c.module, reader: reader, fresh: fresh, changedLines: lines,
+		maxMutants: c.cfg.MutationMaxMutants, budget: time.Duration(c.cfg.MutationBudgetMin) * c.request.minuteUnit,
+		outcome: found.outcome,
 	}
-	outcome, err = check.run()
+	outcome, err := check.run()
+	found.outcome = outcome
 	if err != nil {
-		if runCtx.Err() != nil {
-			return cancelled()
-		}
-		return output.Err(out, fmt.Sprintf("gate mutate: the mutation check failed: %v; way forward: fix the build or test failure it names, then re-run the same command", err))
+		return found, fmt.Errorf("the mutation check failed: %w; way forward: fix the build or test failure it names, then re-run the same command", err)
 	}
-	return output.Ok(out, fillMutateAnswer(answer, outcome, notJudged, refresh.Errors))
+	return found, nil
 }
 
 // fillMutateAnswer fills answer with what the check found and returns it.
-// notJudged are the changed packages left out before the check, and each package the check could not plan joins them.
-// refreshErrors are the error lines of the maps' refresh.
-func fillMutateAnswer(answer map[string]any, outcome mutateOutcome, notJudged []mutateNotJudged, refreshErrors []string) map[string]any {
-	answer["errors"] = append([]string{}, refreshErrors...)
-	answer["mutants"] = outcome.counts
-	answer["runs"] = outcome.runs
-	answer["survivors"] = outcome.survivors
-	answer["unjudged_mutants"] = outcome.unjudged
-	answer["uncovered_blocks"] = outcome.uncovered
-	answer["not_judged"] = append(notJudged, outcome.notJudged...)
+// The packages left out before the check and each package the check could not plan are listed as not judged together.
+func fillMutateAnswer(answer map[string]any, found mutationFindings) map[string]any {
+	answer["errors"] = append([]string{}, found.refreshErrors...)
+	answer["mutants"] = found.outcome.counts
+	answer["runs"] = found.outcome.runs
+	answer["survivors"] = found.outcome.survivors
+	answer["unjudged_mutants"] = found.outcome.unjudged
+	answer["uncovered_blocks"] = found.outcome.uncovered
+	answer["not_judged"] = append(found.notJudged, found.outcome.notJudged...)
 	return answer
 }
 
@@ -271,12 +321,12 @@ func fillMutateAnswer(answer map[string]any, outcome mutateOutcome, notJudged []
 // A task worktree reads its own maps, and a package the refresh left unrefreshed is not judged for the refresh's reason.
 // The prime reads the hub's shared maps, which the refresh never touches.
 // The error is a map that cannot be read.
-func freshMaps(module goModule, mapsDir string, prime bool, packages []string, refresh ReachReport) (map[string]testcover.Map, []mutateNotJudged, error) {
+func freshMaps(module goModule, mapsDir string, prime bool, packages []string, refresh ReachReport) (map[string]testcover.Map, []MutationNotJudged, error) {
 	fresh := map[string]testcover.Map{}
-	notJudged := []mutateNotJudged{}
+	notJudged := []MutationNotJudged{}
 	for _, pkg := range packages {
 		if reason := unrefreshedReason(refresh.Unrefreshed, pkg); reason != "" && !prime {
-			notJudged = append(notJudged, mutateNotJudged{Package: pkg, Reason: reason})
+			notJudged = append(notJudged, MutationNotJudged{Package: pkg, Reason: reason})
 			continue
 		}
 		m, found, err := testreach.ReadPackageMap(mapsDir, pkg)
@@ -301,7 +351,7 @@ func freshMaps(module goModule, mapsDir string, prime bool, packages []string, r
 				reason = reasonSharedMapStale
 			}
 		}
-		notJudged = append(notJudged, mutateNotJudged{Package: pkg, Reason: reason})
+		notJudged = append(notJudged, MutationNotJudged{Package: pkg, Reason: reason})
 	}
 	return fresh, notJudged, nil
 }

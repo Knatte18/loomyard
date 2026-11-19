@@ -81,7 +81,7 @@ func (s reachStep) run(red, inHub bool) {
 		report = ReachReport{RedGate: true, Note: noteRedGate}
 	case !inHub:
 		report = ReachReport{Note: noteNoHub}
-	case s.cfg.Scoper != "go":
+	case !s.cfg.HasGoCoverageMaps():
 		report = ReachReport{Note: fmt.Sprintf(noteScoper, s.cfg.Scoper)}
 	default:
 		report = s.answer()

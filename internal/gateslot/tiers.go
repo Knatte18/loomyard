@@ -108,7 +108,7 @@ type GateKey struct {
 	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
 	Lints []string `yaml:"lints"`
 	// Reports are the advisory report steps the key's call runs after its lints.
-	// Each is ReportReach or ReportRedundancy; empty runs none.
+	// Each is ReportReach, ReportRedundancy or ReportMutation; empty runs none.
 	// A report step never changes the call's result.
 	Reports []string `yaml:"reports"`
 	// Fixer is the model-spec of the cold fixer that a red agent call of this key hands its verdict to; empty turns it off.
@@ -150,6 +150,12 @@ const ReportReach = "reach"
 // It judges the diff's new and changed tests against the per-package coverage maps.
 // It writes the verdicts to the worktree.
 const ReportRedundancy = "redundancy"
+
+// ReportMutation names the mutation report step a gate key's reports may hold.
+// It mutates the lines the diff changes in the blocks the coverage maps' tests cover, and runs the covering tests.
+// It writes every survivor and the counts to the worktree, and prints one summary line.
+// It runs after every other report step.
+const ReportMutation = "mutation"
 
 // goReadGates are the gate keys the Go verify sites read, in the order TiersValue lists them.
 var goReadGates = []string{"card", "batch", "webster", "parent-align", "finalize", "adopt", "webster-fix", "darn-write", "code-burler-fix", "pr-review"}

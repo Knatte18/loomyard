@@ -954,6 +954,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	} else if got, want := c.env.ReachReport(), "No current reach report: no gate call of this worktree has written one."; got != want {
 		t.Errorf("c.env.ReachReport() = %q; want %q for a worktree with no report", got, want)
 	}
+	if c.env.MutationReport == nil {
+		t.Error("c.env.MutationReport = nil; want the closure over the worktree's mutation report")
+	} else if got, want := c.env.MutationReport(), "No current mutation report: no gate call of this worktree has written one."; got != want {
+		t.Errorf("c.env.MutationReport() = %q; want %q for a worktree with no report", got, want)
+	}
 	// Both seams are nil-legal in the Env, so a dropped assignment would turn the reach turn off unnoticed.
 	if c.env.VerifyReach == nil {
 		t.Error("c.env.VerifyReach = nil; want the loomshed verify gate's pending-report source")

@@ -47,12 +47,14 @@ type Config struct {
 	RedundancyMaxTests int `yaml:"redundancy_max_tests"`
 	// RedundancyBudgetMin is the minutes the redundancy report step may spend on builds and tests once it holds its slot.
 	RedundancyBudgetMin int `yaml:"redundancy_budget_min"`
-	// ReachBudgetMin is the minutes the reach report step and `lym gate mutate` may spend on coverage maps.
+	// ReachBudgetMin is the minutes the reach and mutation report steps and `lym gate mutate` may spend on coverage maps.
 	// They spend it refreshing the worktree's maps, once they hold a slot.
 	ReachBudgetMin int `yaml:"reach_budget_min"`
-	// MutationMaxMutants caps the mutants `lym gate mutate` runs for one diff, spread over the changed functions in turn.
+	// MutationMaxMutants caps the mutants `lym gate mutate` and the mutation report step run for one diff.
+	// They spread it over the changed functions in turn.
 	MutationMaxMutants int `yaml:"mutation_max_mutants"`
-	// MutationBudgetMin is the minutes `lym gate mutate` may spend on its mutant builds and runs once it holds a slot.
+	// MutationBudgetMin is the minutes `lym gate mutate` and the mutation report step may spend on mutant builds and runs.
+	// It counts from the hold of their slot.
 	MutationBudgetMin int `yaml:"mutation_budget_min"`
 	// Tiers are the declared test tiers keyed tier0, tier1, and so on.
 	Tiers map[string]Tier `yaml:"tiers"`
@@ -68,6 +70,15 @@ type Config struct {
 	Build BuildStep `yaml:"build"`
 	// InertPaths are the path patterns of files no test reads, matched by Inert.
 	InertPaths []string `yaml:"inert_paths"`
+}
+
+// scoperHasGoCoverageMaps says, per scoper, whether it works on Go packages, whose coverage maps the gate reads.
+var scoperHasGoCoverageMaps = map[string]bool{"go": true, "none": false, "dotnet": false}
+
+// HasGoCoverageMaps reports whether the config's scoper works on Go packages.
+// A step that reads Go coverage maps judges nothing when it does not.
+func (c Config) HasGoCoverageMaps() bool {
+	return scoperHasGoCoverageMaps[c.Scoper]
 }
 
 // BuildStep is the build a gate call runs once for every tier that sets shared_build.
@@ -535,8 +546,8 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 			}
 		}
 		for _, report := range key.Reports {
-			if report != ReportReach && report != ReportRedundancy {
-				return nil, guidedError{fmt.Errorf("gate config key %q: report %q; want %s or %s; fix it with \"lym config gate\" from the prime%s", path, report, ReportReach, ReportRedundancy, roleClause)}
+			if report != ReportReach && report != ReportRedundancy && report != ReportMutation {
+				return nil, guidedError{fmt.Errorf("gate config key %q: report %q; want %s, %s or %s; fix it with \"lym config gate\" from the prime%s", path, report, ReportReach, ReportRedundancy, ReportMutation, roleClause)}
 			}
 		}
 		if key.Fixer != "" {

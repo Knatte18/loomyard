@@ -7,6 +7,7 @@ package gatecli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -19,8 +20,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -177,9 +181,10 @@ func editMutateCalc(t *testing.T, root, from, to string) {
 }
 
 // mutateGate returns the hub's gate.yaml with the top-level lines extra adds.
+// Its tier0 passes at once, so a gate call runs its report steps.
 func mutateGate(extra string) string {
 	return "slots: 2\nscoper: go\nredundancy_test_timeout_sec: 20\nredundancy_test_memory_mb: 128\n" + extra +
-		"tiers:\n  tier0: {command: x, timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n"
+		"tiers:\n  tier0: {command: 'true', timeout_min: 1, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n"
 }
 
 // lineOf returns the 1-based number of the first line of text that holds needle.
@@ -196,16 +201,16 @@ func lineOf(t *testing.T, text, needle string) int {
 
 // mutateVerbAnswer is the part of a `lym gate mutate` envelope the rows compare.
 type mutateVerbAnswer struct {
-	OK              bool                   `json:"ok"`
-	Error           string                 `json:"error"`
-	Note            string                 `json:"note"`
-	Base            string                 `json:"base"`
-	Mutants         mutateCounts           `json:"mutants"`
-	Runs            int                    `json:"runs"`
-	Survivors       []mutateSurvivor       `json:"survivors"`
-	UnjudgedMutants []mutateUnjudgedMutant `json:"unjudged_mutants"`
-	UncoveredBlocks []mutateUncoveredBlock `json:"uncovered_blocks"`
-	NotJudged       []mutateNotJudged      `json:"not_judged"`
+	OK              bool                     `json:"ok"`
+	Error           string                   `json:"error"`
+	Note            string                   `json:"note"`
+	Base            string                   `json:"base"`
+	Mutants         MutationCounts           `json:"mutants"`
+	Runs            int                      `json:"runs"`
+	Survivors       []MutationSurvivor       `json:"survivors"`
+	UnjudgedMutants []MutationUnjudgedMutant `json:"unjudged_mutants"`
+	UncoveredBlocks []MutationUncoveredBlock `json:"uncovered_blocks"`
+	NotJudged       []MutationNotJudged      `json:"not_judged"`
 }
 
 // runMutateVerb runs the command root over the directory cwd with args and returns its exit code and envelope.
@@ -245,6 +250,26 @@ func unjudgedAt(answer mutateVerbAnswer, line int) string {
 		}
 	}
 	return ""
+}
+
+// mutationStepAt returns the mutation report step of the worktree at root, with its location and its stderr buffer.
+func mutationStepAt(t *testing.T, root string) (mutationStep, *lymcwd.Location, *bytes.Buffer) {
+	t.Helper()
+	location, err := lymcwd.ResolveWorktree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(location))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	step := mutationStep{reach: reachStep{
+		ctx: context.Background(), stderr: &stderr, cfg: cfg.WithDefaultDir(location.AnchorRel), location: location, root: location.WorktreePath(),
+		gateKey: "darn-write", environ: os.Environ(), goBinary: defaultGoBinary,
+		minuteUnit: time.Minute, secondUnit: time.Second, grace: defaultPipeWaitDelay,
+	}}
+	return step, location, &stderr
 }
 
 // TestGateMutate mutates the diffs of a hub's module and reads the verdicts back, with real builds and runs.
@@ -318,7 +343,7 @@ func TestGateMutate(t *testing.T) {
 		requireMutateAnswer(t, code, answer)
 		// Clamp alone changed since afterScale: its condition and its constant, each killed by one run.
 		// Both tests of Clamp cover each mutant's block, so a second run would show in the count.
-		want := mutateCounts{Run: 2, Killed: 2}
+		want := MutationCounts{Run: 2, Killed: 2}
 		if answer.Mutants != want || answer.Runs != 2 || len(answer.Survivors) != 0 || len(answer.UnjudgedMutants) != 0 || len(answer.NotJudged) != 0 {
 			t.Errorf("lym gate mutate --base afterScale = %+v, %d runs, survivors %v, unjudged %v, not judged %v; want %+v from 2 runs and nothing else",
 				answer.Mutants, answer.Runs, answer.Survivors, answer.UnjudgedMutants, answer.NotJudged, want)
@@ -330,7 +355,7 @@ func TestGateMutate(t *testing.T) {
 		code, answer := runMutateVerb(t, Command(), prime, "mutate", "--base", afterTallyHoardSpare)
 		requireMutateAnswer(t, code, answer)
 		// Scale joins Clamp: its two mutants survive, since TestScaleRuns runs Scale and checks nothing.
-		want := mutateCounts{Run: 4, Killed: 2, Survived: 2}
+		want := MutationCounts{Run: 4, Killed: 2, Survived: 2}
 		if answer.Mutants != want || !slices.Equal(survivorLines(answer), []int{scaleLimit, scaleIf}) {
 			t.Fatalf("lym gate mutate --base afterTallyHoardSpare = %+v, survivors on lines %v; want %+v and survivors on lines %v",
 				answer.Mutants, survivorLines(answer), want, []int{scaleLimit, scaleIf})
@@ -352,7 +377,7 @@ func TestGateMutate(t *testing.T) {
 		// Clamp's two mutants and Tally's condition, constant and dropped increment die.
 		// Scale's two survive.
 		// Tally's dropped decrement ends endless at the time bound and Hoard's negated loop at the memory cap.
-		want := mutateCounts{Run: 9, Killed: 5, Survived: 2, Unjudged: 2}
+		want := MutationCounts{Run: 9, Killed: 5, Survived: 2, Unjudged: 2}
 		if answer.Mutants != want || !slices.Equal(survivorLines(answer), []int{scaleLimit, scaleIf}) {
 			t.Errorf("lym gate mutate --base seed = %+v, survivors on lines %v; want %+v and survivors on lines %v",
 				answer.Mutants, survivorLines(answer), want, []int{scaleLimit, scaleIf})
@@ -365,7 +390,7 @@ func TestGateMutate(t *testing.T) {
 			t.Errorf("the negated loop on line %d is unjudged for %q; want the memory cap", hoardLoop, reason)
 		}
 		// Nothing runs Spare, so its changed block is uncovered and holds no mutant.
-		if !slices.Contains(answer.UncoveredBlocks, mutateUncoveredBlock{Package: "calc", File: "calc.go", Function: "Spare"}) {
+		if !slices.Contains(answer.UncoveredBlocks, MutationUncoveredBlock{Package: "calc", File: "calc.go", Function: "Spare"}) {
 			t.Errorf("lym gate mutate uncovered blocks = %v; want Spare's", answer.UncoveredBlocks)
 		}
 		if reason := unjudgedAt(answer, spareReturn); reason != "" || slices.Contains(survivorLines(answer), spareReturn) {
@@ -377,7 +402,7 @@ func TestGateMutate(t *testing.T) {
 		setGate("")
 		code, answer := runMutateVerb(t, Command(), prime, "mutate", "--base", gitkit.RevParse(t, prime, "HEAD"))
 		requireMutateAnswer(t, code, answer)
-		if !strings.Contains(answer.Note, "the diff changes no function") || answer.Mutants != (mutateCounts{}) || answer.Runs != 0 {
+		if !strings.Contains(answer.Note, "the diff changes no function") || answer.Mutants != (MutationCounts{}) || answer.Runs != 0 {
 			t.Errorf("lym gate mutate --base HEAD = note %q, %+v, %d runs; want the changes-no-function note and no mutant", answer.Note, answer.Mutants, answer.Runs)
 		}
 	})
@@ -389,7 +414,7 @@ func TestGateMutate(t *testing.T) {
 		code, answer := runMutateVerb(t, Command(), prime, "mutate", "--base", seed)
 		requireMutateAnswer(t, code, answer)
 		if len(answer.NotJudged) != 1 || answer.NotJudged[0].Package != "calc" || answer.NotJudged[0].Reason != reasonSharedMapStale ||
-			answer.Mutants != (mutateCounts{}) {
+			answer.Mutants != (MutationCounts{}) {
 			t.Errorf("lym gate mutate = %+v, not judged %+v; want calc not judged for %q and no mutant", answer.Mutants, answer.NotJudged, reasonSharedMapStale)
 		}
 	})
@@ -398,11 +423,11 @@ func TestGateMutate(t *testing.T) {
 		name  string
 		max   string
 		base  string
-		want  mutateCounts
+		want  MutationCounts
 		lines []int
 	}{
-		{name: "ACapOfOneRunsOneMutant", max: "1", base: seed, want: mutateCounts{Run: 1, Killed: 1}},
-		{name: "ACapOfTwoOverTwoChangedFunctionsPlansOneMutantInEach", max: "2", base: afterTallyHoardSpare, want: mutateCounts{Run: 2, Killed: 1, Survived: 1}, lines: []int{scaleLimit}},
+		{name: "ACapOfOneRunsOneMutant", max: "1", base: seed, want: MutationCounts{Run: 1, Killed: 1}},
+		{name: "ACapOfTwoOverTwoChangedFunctionsPlansOneMutantInEach", max: "2", base: afterTallyHoardSpare, want: MutationCounts{Run: 2, Killed: 1, Survived: 1}, lines: []int{scaleLimit}},
 	}
 	for _, tt := range capRows {
 		t.Run(tt.name, func(t *testing.T) {
@@ -410,7 +435,7 @@ func TestGateMutate(t *testing.T) {
 			code, answer := runMutateVerb(t, Command(), prime, "mutate", "--base", tt.base)
 			requireMutateAnswer(t, code, answer)
 			// Every planned mutant that the cap leaves out is counted not run.
-			wantAll := mutateCounts{Run: tt.want.Run, Killed: tt.want.Killed, Survived: tt.want.Survived}
+			wantAll := MutationCounts{Run: tt.want.Run, Killed: tt.want.Killed, Survived: tt.want.Survived}
 			notRun := answer.Mutants.NotRun
 			answer.Mutants.NotRun = 0
 			if answer.Mutants != wantAll || !slices.Equal(survivorLines(answer), tt.lines) || notRun == 0 {
@@ -436,7 +461,7 @@ func TestGateMutate(t *testing.T) {
 		requireMutateAnswer(t, code, answer)
 		if len(answer.NotJudged) != 1 || answer.NotJudged[0].Package != "calc" ||
 			!strings.Contains(answer.NotJudged[0].Reason, "uncommitted file") || !strings.Contains(answer.NotJudged[0].Reason, "commit it") ||
-			answer.Mutants != (mutateCounts{}) {
+			answer.Mutants != (MutationCounts{}) {
 			t.Errorf("lym gate mutate = %+v, not judged %+v; want calc not judged for its uncommitted file and no mutant", answer.Mutants, answer.NotJudged)
 		}
 	})
@@ -444,7 +469,7 @@ func TestGateMutate(t *testing.T) {
 	t.Run("APackageWithAStaleWorktreeMapAndCommittedFilesIsRefreshedThenJudged", func(t *testing.T) {
 		code, answer := runMutateVerb(t, Command(), pair, "mutate")
 		requireMutateAnswer(t, code, answer)
-		want := mutateCounts{Run: 1, Killed: 1}
+		want := MutationCounts{Run: 1, Killed: 1}
 		if answer.Mutants != want || len(answer.NotJudged) != 0 || len(answer.Survivors) != 0 {
 			t.Errorf("lym gate mutate = %+v, not judged %+v, survivors %v; want calc refreshed and its one mutant killed: %+v",
 				answer.Mutants, answer.NotJudged, answer.Survivors, want)
@@ -459,7 +484,7 @@ func TestGateMutate(t *testing.T) {
 		t.Cleanup(func() { setGate("") })
 		code, answer := runMutateVerb(t, mutateCmd(defaultGoBinary, time.Millisecond, defaultPipeWaitDelay), pair)
 		requireMutateAnswer(t, code, answer)
-		if answer.Mutants != (mutateCounts{Unjudged: 1}) || len(answer.UnjudgedMutants) != 1 ||
+		if answer.Mutants != (MutationCounts{Unjudged: 1}) || len(answer.UnjudgedMutants) != 1 ||
 			!strings.Contains(answer.UnjudgedMutants[0].Reason, "mutation_budget_min") {
 			t.Errorf("lym gate mutate = %+v, unjudged %+v; want the one planned mutant unjudged for mutation_budget_min", answer.Mutants, answer.UnjudgedMutants)
 		}
@@ -472,8 +497,137 @@ func TestGateMutate(t *testing.T) {
 		code, answer := runMutateVerb(t, mutateCmd(defaultGoBinary, time.Nanosecond, defaultPipeWaitDelay), pair)
 		requireMutateAnswer(t, code, answer)
 		if len(answer.NotJudged) != 1 || answer.NotJudged[0].Package != "calc" || !strings.Contains(answer.NotJudged[0].Reason, "reach_budget_min") ||
-			answer.Mutants != (mutateCounts{}) {
+			answer.Mutants != (MutationCounts{}) {
 			t.Errorf("lym gate mutate = %+v, not judged %+v; want calc not judged past reach_budget_min and no mutant", answer.Mutants, answer.NotJudged)
+		}
+	})
+
+	t.Run("AGateCallListingMutationWritesItsFindingsAndPrintsOneSummaryLine", func(t *testing.T) {
+		setGate("gates:\n  darn-write: {tiers: [0], scope: all, reports: [mutation]}\n")
+		t.Cleanup(func() { setGate("") })
+		var out, stderr bytes.Buffer
+		code := runTest(lymcwd.WithCwd(context.Background(), pair), &out, testRequest{
+			goBinary: defaultGoBinary, samplePeriod: defaultSamplePeriod, preTierCeiling: defaultPreTierCeiling, timeoutUnit: time.Minute,
+			secondUnit: time.Second, rerunDelay: defaultRerunDelay, pipeWaitDelay: defaultPipeWaitDelay, stderr: &stderr, gate: "darn-write",
+		})
+		location, err := lymcwd.ResolveWorktree(pair)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, found, err := ReadMutationReport(location)
+		if code != 0 || err != nil || !found {
+			t.Fatalf("lym gate test --gate darn-write = exit %d, report found %v, error %v, stderr %s; want exit 0 and a report", code, found, err, stderr.String())
+		}
+		// The step refreshes the stale worktree map, and the one mutant of the pair's changed line in Clamp dies.
+		if report.GateKey != "darn-write" || report.Mutants != (MutationCounts{Run: 1, Killed: 1}) || len(report.Functions) != 1 || report.Functions[0].Func != "Clamp" {
+			t.Errorf("mutation report = %+v; want darn-write's, with Clamp's one mutant killed", report)
+		}
+		var summaries []string
+		for _, line := range strings.Split(stderr.String(), "\n") {
+			if strings.HasPrefix(line, "gate test: mutation report: ") {
+				summaries = append(summaries, line)
+			}
+		}
+		want := "gate test: mutation report: 1 mutants run, 1 killed, 0 survived, 0 unjudged, 0 uncovered changed blocks, 0 packages not judged; written to " +
+			mutationReportPath(location)
+		if !slices.Equal(summaries, []string{want}) {
+			t.Errorf("stderr mutation report lines = %q; want only %q", summaries, want)
+		}
+		if matches, err := MutationReportMatches(location, report, gitkit.RevParse(t, pair, "HEAD")); err != nil || !matches {
+			t.Errorf("MutationReportMatches(HEAD) = %v, %v; want the report to hold for the HEAD it was written at", matches, err)
+		}
+		// A commit that changes Clamp again leaves the report naming the Clamp it judged.
+		editMutateCalc(t, pair, "\t\treturn 0 // clamped again\n", "\t\treturn 0 // clamped once more\n")
+		gitkit.Git(t, pair, "commit", "-q", "-a", "-m", "annotate clamp once more")
+		if matches, err := MutationReportMatches(location, report, gitkit.RevParse(t, pair, "HEAD")); err != nil || matches {
+			t.Errorf("MutationReportMatches(a HEAD that changes Clamp again) = %v, %v; want false", matches, err)
+		}
+	})
+
+	t.Run("AGateCallListingMutationWritesTheSurvivorsAndUncoveredBlocksOfItsDiff", func(t *testing.T) {
+		editMutateCalc(t, pair, "limit := 100", "limit := 101")
+		editMutateCalc(t, pair, "return n + 5", "return n + 6")
+		gitkit.Git(t, pair, "commit", "-q", "-a", "-m", "change scale and spare")
+		setGate("gates:\n  darn-write: {tiers: [0], scope: all, reports: [mutation]}\n")
+		t.Cleanup(func() { setGate("") })
+		var out, stderr bytes.Buffer
+		code := runTest(lymcwd.WithCwd(context.Background(), pair), &out, testRequest{
+			goBinary: defaultGoBinary, samplePeriod: defaultSamplePeriod, preTierCeiling: defaultPreTierCeiling, timeoutUnit: time.Minute,
+			secondUnit: time.Second, rerunDelay: defaultRerunDelay, pipeWaitDelay: defaultPipeWaitDelay, stderr: &stderr, gate: "darn-write",
+		})
+		location, err := lymcwd.ResolveWorktree(pair)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, found, err := ReadMutationReport(location)
+		if code != 0 || err != nil || !found {
+			t.Fatalf("lym gate test --gate darn-write = exit %d, report found %v, error %v, stderr %s; want exit 0 and a report", code, found, err, stderr.String())
+		}
+		// Scale's changed constant survives, since TestScaleRuns checks nothing, and Clamp's mutant dies.
+		want := MutationCounts{Run: 2, Killed: 1, Survived: 1}
+		if report.Mutants != want {
+			t.Errorf("mutation report mutants = %+v; want %+v", report.Mutants, want)
+		}
+		if len(report.Survivors) != 1 || report.Survivors[0].File != "calc/calc.go" || report.Survivors[0].Line != scaleLimit || report.Survivors[0].Function != "Scale" {
+			t.Errorf("mutation report survivors = %+v; want the one mutant of calc/calc.go's Scale on line %d", report.Survivors, scaleLimit)
+		}
+		// Nothing runs Spare, so its changed block is uncovered.
+		wantUncovered := []MutationUncoveredBlock{{Package: "calc", File: "calc.go", Function: "Spare"}}
+		if !slices.Equal(report.Uncovered, wantUncovered) {
+			t.Errorf("mutation report uncovered blocks = %v; want %v", report.Uncovered, wantUncovered)
+		}
+	})
+
+	judgesNothing := []struct {
+		name   string
+		red    bool
+		inHub  bool
+		scoper string
+		want   string
+	}{
+		{name: "ARedTier", red: true, inHub: true, want: noteRedGate},
+		{name: "ACallOutsideAHub", want: noteNoHub},
+		{name: "AScoperOtherThanGo", inHub: true, scoper: "none", want: "the hub's scoper is none, not go, so the step judged nothing"},
+	}
+	for _, tt := range judgesNothing {
+		t.Run("TheStepJudgesNothingFor"+tt.name, func(t *testing.T) {
+			step, location, stderr := mutationStepAt(t, pair)
+			if tt.scoper != "" {
+				step.reach.cfg.Scoper = tt.scoper
+			}
+			step.run(tt.red, tt.inHub)
+			report, found, err := ReadMutationReport(location)
+			if err != nil || !found {
+				t.Fatalf("ReadMutationReport = found %v, error %v; want a report", found, err)
+			}
+			wantLine := "gate test: mutation report: " + tt.want + "; written to " + mutationReportPath(location)
+			if report.Note != tt.want || report.RedGate != tt.red || len(report.Functions) != 0 || report.Mutants != (MutationCounts{}) ||
+				strings.TrimSuffix(stderr.String(), "\n") != wantLine {
+				t.Errorf("report = note %q, red gate %v, %d functions, %+v; stderr %q; want note %q, red gate %v, nothing judged and the line %q",
+					report.Note, report.RedGate, len(report.Functions), report.Mutants, stderr.String(), tt.want, tt.red, wantLine)
+			}
+		})
+	}
+
+	t.Run("ARedTierCallKeepsItsExitCodeAndWritesARedGateReport", func(t *testing.T) {
+		red := strings.Replace(mutateGate("gates:\n  darn-write: {tiers: [0], scope: all, reports: [mutation]}\n"), "command: 'true'", "command: 'false'", 1)
+		if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(red), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { setGate("") })
+		var out, stderr bytes.Buffer
+		code := runTest(lymcwd.WithCwd(context.Background(), pair), &out, testRequest{
+			goBinary: defaultGoBinary, samplePeriod: defaultSamplePeriod, preTierCeiling: defaultPreTierCeiling, timeoutUnit: time.Minute,
+			secondUnit: time.Second, rerunDelay: defaultRerunDelay, pipeWaitDelay: defaultPipeWaitDelay, stderr: &stderr, gate: "darn-write",
+		})
+		location, err := lymcwd.ResolveWorktree(pair)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, found, err := ReadMutationReport(location)
+		if code != 1 || err != nil || !found || !report.RedGate || report.Note != noteRedGate {
+			t.Errorf("lym gate test --gate darn-write over a red tier = exit %d, report %+v, found %v, error %v; want exit 1 and a red-gate report with %q",
+				code, report, found, err, noteRedGate)
 		}
 	})
 
@@ -495,11 +649,28 @@ func TestGateMutate(t *testing.T) {
 
 		code, answer := runMutateVerb(t, Command(), prime, "mutate", "--base", base)
 		requireMutateAnswer(t, code, answer)
-		if !slices.Contains(answer.NotJudged, mutateNotJudged{Package: "unmapped", Reason: reasonNoMapToMutate}) {
+		if !slices.Contains(answer.NotJudged, MutationNotJudged{Package: "unmapped", Reason: reasonNoMapToMutate}) {
 			t.Errorf("lym gate mutate not judged = %+v; want unmapped for %q", answer.NotJudged, reasonNoMapToMutate)
 		}
 		if answer.Mutants.Unbuildable != 1 {
 			t.Errorf("lym gate mutate mutants = %+v; want the one mutant of Half counted unbuildable", answer.Mutants)
+		}
+	})
+
+	t.Run("ATaskWorktreeWithNoParentBranchJudgesNothing", func(t *testing.T) {
+		step, location, stderr := mutationStepAt(t, pair)
+		if err := os.Remove(fabricengine.OriginRecordPath(location)); err != nil {
+			t.Fatal(err)
+		}
+		step.run(false, true)
+		report, found, err := ReadMutationReport(location)
+		if err != nil || !found {
+			t.Fatalf("ReadMutationReport = found %v, error %v; want a report", found, err)
+		}
+		wantLine := "gate test: mutation report: " + noteNoParent + "; written to " + mutationReportPath(location)
+		if report.Note != noteNoParent || report.Prime || len(report.Functions) != 0 || strings.TrimSuffix(stderr.String(), "\n") != wantLine {
+			t.Errorf("report = note %q, prime %v, %d functions; stderr %q; want note %q, no function and the line %q",
+				report.Note, report.Prime, len(report.Functions), stderr.String(), noteNoParent, wantLine)
 		}
 	})
 }

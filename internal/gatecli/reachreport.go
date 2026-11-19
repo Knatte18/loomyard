@@ -119,6 +119,20 @@ func ReachReportMatches(location *lymcwd.Location, report ReachReport, rev strin
 	if report.Note != "" || report.RedGate || report.Prime {
 		return false, nil
 	}
+	recorded := make([]string, len(report.Functions))
+	for i, fn := range report.Functions {
+		recorded[i] = reachFunctionIdentity(fn.Package, fn.File, fn.Func, fn.Hash, fn.New)
+	}
+	return changedFunctionsMatch(location, report.ModuleDir, recorded, report.FileHashes, rev)
+}
+
+// changedFunctionsMatch reports whether rev's changed functions are those recorded.
+// The changed functions are those the commit rev changes since the current merge base.
+// recorded holds the reachFunctionIdentity of each, so their hashes must match too.
+// moduleDir is the worktree-relative slash path of the Go module whose functions they are.
+// The Go files of each package fileHashes names must also hash at rev as it records.
+// A worktree with no parent branch never matches.
+func changedFunctionsMatch(location *lymcwd.Location, moduleDir string, recorded []string, fileHashes map[string]map[string]string, rev string) (bool, error) {
 	base, found, err := parentMergeBase(location)
 	if err != nil || !found {
 		return false, err
@@ -132,11 +146,11 @@ func ReachReportMatches(location *lymcwd.Location, report ReachReport, rev strin
 		return false, err
 	}
 	tree := commitTree{fabric: fabric, rev: rev}
-	goMod, found, err := tree.file(path.Join(report.ModuleDir, "go.mod"))
+	goMod, found, err := tree.file(path.Join(moduleDir, "go.mod"))
 	if err != nil || !found {
 		return false, err
 	}
-	module := goModule{rel: report.ModuleDir, path: modfile.ModulePath(goMod)}
+	module := goModule{rel: moduleDir, path: modfile.ModulePath(goMod)}
 	if module.path == "" {
 		return false, nil
 	}
@@ -149,17 +163,13 @@ func ReachReportMatches(location *lymcwd.Location, report ReachReport, rev strin
 		pkg := module.relativePackage(fn.Key.Package)
 		current[i] = reachFunctionIdentity(pkg, path.Join(packageDirOf(module.rel, pkg), fn.Key.File), fn.Key.Func, fn.Hash, fn.New)
 	}
-	recorded := make([]string, len(report.Functions))
-	for i, fn := range report.Functions {
-		recorded[i] = reachFunctionIdentity(fn.Package, fn.File, fn.Func, fn.Hash, fn.New)
-	}
 	slices.Sort(current)
 	slices.Sort(recorded)
 	if !slices.Equal(current, recorded) {
 		return false, nil
 	}
-	for pkg, hashes := range report.FileHashes {
-		atRev, err := goFileHashes(tree, packageDirOf(report.ModuleDir, pkg))
+	for pkg, hashes := range fileHashes {
+		atRev, err := goFileHashes(tree, packageDirOf(moduleDir, pkg))
 		if err != nil {
 			return false, err
 		}

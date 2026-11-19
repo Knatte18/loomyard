@@ -38,7 +38,7 @@ It is stamped with the set of map files in the directory and each one's size and
 
 Rule: A report step's review note: used by a review only when the report matches HEAD's tree.
 
-The redundancy report, and the reach report that follows it, record the tree they judged.
+The redundancy, reach and mutation reports record the tree they judged.
 Code-Review's rubric reads such a report only when it matches the reviewed HEAD's tree,
 and otherwise reads a line saying the report is absent or stale, never a verdict from it.
 A report written in the prime, which has no parent branch, is marked so and never matches a review's HEAD.

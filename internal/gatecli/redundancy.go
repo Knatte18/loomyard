@@ -106,7 +106,7 @@ func (s redundancyStep) run(red, inHub bool) {
 		report = RedundancyReport{RedGate: true, Note: noteRedGate}
 	case !inHub:
 		report = RedundancyReport{Note: noteNoHub}
-	case s.cfg.Scoper != "go":
+	case !s.cfg.HasGoCoverageMaps():
 		report = RedundancyReport{Note: fmt.Sprintf(noteScoper, s.cfg.Scoper)}
 	default:
 		judged, kept := s.judge(path)

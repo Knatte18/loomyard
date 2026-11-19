@@ -33,17 +33,17 @@ const (
 	reasonMutantBuild        = "the package's mutant binary did not build: %v"
 )
 
-// mutateMutant names one mutant by its worktree-relative file, line, operator and function.
-type mutateMutant struct {
+// MutationMutant names one mutant by its worktree-relative file, line, operator and function.
+type MutationMutant struct {
 	File     string `json:"file"`
 	Line     int    `json:"line"`
 	Operator string `json:"operator"`
 	Function string `json:"function"`
 }
 
-// mutateSurvivor is a mutant every covering test passed.
-type mutateSurvivor struct {
-	mutateMutant
+// MutationSurvivor is a mutant every covering test passed.
+type MutationSurvivor struct {
+	MutationMutant
 	// PossibleKillers are the tests of other packages that the maps show reach the mutant's function, a fixed number at most.
 	// They are not run.
 	PossibleKillers []string `json:"possible_killers"`
@@ -51,27 +51,27 @@ type mutateSurvivor struct {
 	MorePossibleKillers int `json:"more_possible_killers,omitempty"`
 }
 
-// mutateUnjudgedMutant is a mutant no verdict was reached for, with why.
-type mutateUnjudgedMutant struct {
-	mutateMutant
+// MutationUnjudgedMutant is a mutant no verdict was reached for, with why.
+type MutationUnjudgedMutant struct {
+	MutationMutant
 	Reason string `json:"reason"`
 }
 
-// mutateUncoveredBlock is a changed block no test of its package's map covers.
-type mutateUncoveredBlock struct {
+// MutationUncoveredBlock is a changed block no test of its package's map covers.
+type MutationUncoveredBlock struct {
 	Package  string `json:"package"`
 	File     string `json:"file"`
 	Function string `json:"function"`
 }
 
-// mutateNotJudged is a changed package the check judged nothing of, with why.
-type mutateNotJudged struct {
+// MutationNotJudged is a changed package the check judged nothing of, with why.
+type MutationNotJudged struct {
 	Package string `json:"package"`
 	Reason  string `json:"reason"`
 }
 
-// mutateCounts is how many mutants the check planned, ran and decided.
-type mutateCounts struct {
+// MutationCounts is how many mutants the check planned, ran and decided.
+type MutationCounts struct {
 	// Run counts the mutants a covering test started on.
 	Run int `json:"run"`
 	// Killed and Survived count the mutants decided, and Unjudged those left without a verdict, run or not.
@@ -86,12 +86,12 @@ type mutateCounts struct {
 
 // mutateOutcome is what a diffMutation found.
 type mutateOutcome struct {
-	survivors []mutateSurvivor
-	unjudged  []mutateUnjudgedMutant
-	uncovered []mutateUncoveredBlock
+	survivors []MutationSurvivor
+	unjudged  []MutationUnjudgedMutant
+	uncovered []MutationUncoveredBlock
 	// notJudged are the packages the check could not plan.
-	notJudged []mutateNotJudged
-	counts    mutateCounts
+	notJudged []MutationNotJudged
+	counts    MutationCounts
 	// runs counts the test processes the check started.
 	runs int
 }
@@ -99,7 +99,7 @@ type mutateOutcome struct {
 // newMutateOutcome returns an outcome whose lists are empty rather than nil, so each prints as a JSON list.
 func newMutateOutcome() mutateOutcome {
 	return mutateOutcome{
-		survivors: []mutateSurvivor{}, unjudged: []mutateUnjudgedMutant{}, uncovered: []mutateUncoveredBlock{}, notJudged: []mutateNotJudged{},
+		survivors: []MutationSurvivor{}, unjudged: []MutationUnjudgedMutant{}, uncovered: []MutationUncoveredBlock{}, notJudged: []MutationNotJudged{},
 	}
 }
 
@@ -174,35 +174,41 @@ type diffMutation struct {
 // run judges every package of the fresh maps inside one gate slot and returns what it found.
 // It waits for the slot, plans every package whatever the budget, takes the mutants the cap allows, and runs them.
 // The error reports a slot, build or run failure, or the context's error once the call is cancelled.
+// An error after the slot is held comes with the findings made up to it; a slot error comes with none.
 func (d *diffMutation) run() (mutateOutcome, error) {
 	if err := d.holder.holdSlot(); err != nil {
-		return mutateOutcome{}, err
+		return d.outcome, err
 	}
 	d.deadline = time.Now().Add(d.budget)
 	var planned []*mutatedPackage
 	for i, pkg := range slices.Sorted(maps.Keys(d.fresh)) {
 		judged, err := d.planPackage(i, pkg)
 		if ctxErr := d.holder.ctx.Err(); ctxErr != nil {
-			return mutateOutcome{}, ctxErr
+			return d.findingsSoFar(), ctxErr
 		}
 		if err != nil {
 			reason := fmt.Sprintf("%v; way forward: fix the failure it names, then run the verb again", err)
-			d.outcome.notJudged = append(d.outcome.notJudged, mutateNotJudged{Package: pkg, Reason: reason})
+			d.outcome.notJudged = append(d.outcome.notJudged, MutationNotJudged{Package: pkg, Reason: reason})
 			continue
 		}
 		planned = append(planned, judged)
 		for _, key := range judged.uncovered {
-			d.outcome.uncovered = append(d.outcome.uncovered, mutateUncoveredBlock{Package: pkg, File: key.File, Function: key.Func})
+			d.outcome.uncovered = append(d.outcome.uncovered, MutationUncoveredBlock{Package: pkg, File: key.File, Function: key.Func})
 		}
 	}
 	d.selectWithinCap(planned)
 	for _, judged := range planned {
 		if err := d.runPackage(judged); err != nil {
-			return mutateOutcome{}, err
+			return d.findingsSoFar(), err
 		}
 	}
+	return d.findingsSoFar(), nil
+}
+
+// findingsSoFar returns the outcome with the test processes started so far counted in.
+func (d *diffMutation) findingsSoFar() mutateOutcome {
 	d.outcome.runs = int(d.runs.Load())
-	return d.outcome, nil
+	return d.outcome
 }
 
 // planPackage builds the coverage binary of the package pkg and plans the mutants of its changed lines.
@@ -247,6 +253,9 @@ func (d *diffMutation) planPackage(index int, pkg string) (*mutatedPackage, erro
 
 // selectWithinCap takes up to maxMutants of the planned mutants, one changed function at a time in turn.
 // The functions go in the order of their package, file and name, and a function's mutants in the order of its plan.
+// Each round takes the next mutant of every function that has one left.
+// A round with more such functions than the cap leaves takes functions spread evenly over that order.
+// So a diff with more changed functions than the cap is sampled evenly across its functions, not on its first functions.
 // The mutants left over count as not run.
 func (d *diffMutation) selectWithinCap(planned []*mutatedPackage) {
 	type group struct {
@@ -274,19 +283,34 @@ func (d *diffMutation) selectWithinCap(planned []*mutatedPackage) {
 	})
 	taken := 0
 	for round := 0; taken < d.maxMutants; round++ {
-		progressed := false
+		var open []group
 		for _, g := range groups {
-			if round < len(g.ids) && taken < d.maxMutants {
-				g.judged.selected[g.ids[round]] = true
-				taken++
-				progressed = true
+			if round < len(g.ids) {
+				open = append(open, g)
 			}
 		}
-		if !progressed {
+		if len(open) == 0 {
 			break
+		}
+		for _, g := range spreadEvenly(open, d.maxMutants-taken) {
+			g.judged.selected[g.ids[round]] = true
+			taken++
 		}
 	}
 	d.outcome.counts.NotRun = total - taken
+}
+
+// spreadEvenly returns items when n covers them all.
+// Otherwise it returns n of them spread evenly over their order, the first included.
+func spreadEvenly[T any](items []T, n int) []T {
+	if n >= len(items) {
+		return items
+	}
+	picked := make([]T, n)
+	for i := range picked {
+		picked[i] = items[i*len(items)/n]
+	}
+	return picked
 }
 
 // runPackage builds one binary holding the package's selected mutants and judges each against its covering tests.
@@ -446,19 +470,19 @@ func (d *diffMutation) record(judged *mutatedPackage, mutant testcover.Mutant, v
 // recordUnjudged adds a mutant left without a verdict to the outcome.
 func (d *diffMutation) recordUnjudged(judged *mutatedPackage, mutant testcover.Mutant, reason string) {
 	d.outcome.counts.Unjudged++
-	d.outcome.unjudged = append(d.outcome.unjudged, mutateUnjudgedMutant{mutateMutant: d.site(judged, mutant), Reason: reason})
+	d.outcome.unjudged = append(d.outcome.unjudged, MutationUnjudgedMutant{MutationMutant: d.site(judged, mutant), Reason: reason})
 }
 
 // site names the mutant by its worktree-relative file, line, operator and function.
-func (d *diffMutation) site(judged *mutatedPackage, mutant testcover.Mutant) mutateMutant {
-	return mutateMutant{
+func (d *diffMutation) site(judged *mutatedPackage, mutant testcover.Mutant) MutationMutant {
+	return MutationMutant{
 		File: path.Join(packageDirOf(d.module.rel, judged.pkg), mutant.File), Line: mutant.Line, Operator: mutant.Operator, Function: mutant.FuncOf(),
 	}
 }
 
 // survivor returns the survivor entry of a mutant, with the tests of other packages that reach its function.
-func (d *diffMutation) survivor(judged *mutatedPackage, mutant testcover.Mutant) mutateSurvivor {
-	entry := mutateSurvivor{mutateMutant: d.site(judged, mutant), PossibleKillers: []string{}}
+func (d *diffMutation) survivor(judged *mutatedPackage, mutant testcover.Mutant) MutationSurvivor {
+	entry := MutationSurvivor{MutationMutant: d.site(judged, mutant), PossibleKillers: []string{}}
 	reaches := d.reader.TestsReaching(testcover.FuncKey{Package: judged.check.importPath, File: mutant.File, Func: mutant.FuncOf()})
 	for _, reach := range reaches {
 		switch {

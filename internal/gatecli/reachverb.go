@@ -146,7 +146,7 @@ func runReach(ctx context.Context, out io.Writer, request reachRequest) int {
 		return output.Err(out, fmt.Sprintf("gate reach: cannot read the hub's gate config: %v; way forward: take the step it names, then re-run the same command", err))
 	}
 	cfg = cfg.WithDefaultDir(location.AnchorRel)
-	if cfg.Scoper != "go" {
+	if !cfg.HasGoCoverageMaps() {
 		return output.Ok(out, map[string]any{"lines": []string{"gate reach: " + fmt.Sprintf(noteScoper, cfg.Scoper)}})
 	}
 	module, err := redundancyModule(cfg, location.WorktreePath())

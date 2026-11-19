@@ -691,6 +691,14 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("--gate with scope diff runs the computed scope", func(t *testing.T) {
+		// The gate declares no reports, so the tier commands are the only invocations the stand-in records.
+		config := scopesConfigWith(t, "go", func(cfg map[string]any) {
+			cfg["gates"] = map[string]any{"pr-review": map[string]any{"tiers": []int{0}, "scope": "diff", "reports": []string{}}}
+		})
+		if err := os.WriteFile(configPath, config, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		defer writeScoper(t, "go")
 		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 5 }\n")
 		g := gate(t, pair, nil, "--gate", "pr-review")
 		wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)

@@ -233,10 +233,12 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 				code, firstFailed = 1, lint.label
 			}
 		}
-		// The report steps run last and never change the code; the reach step runs before the redundancy step.
+		// The report steps run last and never change the code.
+		// The reach step runs first, and the mutation step after the redundancy step.
 		reports := cfg.Gates[request.gate].Reports
 		runsReach, runsRedundancy := slices.Contains(reports, gateslot.ReportReach), slices.Contains(reports, gateslot.ReportRedundancy)
-		if runsReach || runsRedundancy {
+		runsMutation := slices.Contains(reports, gateslot.ReportMutation)
+		if runsReach || runsRedundancy || runsMutation {
 			stopGuard, guardKilled := startMemoryGuard(runCtx, newMemoryGuard(request.memoryQuit, request.stderr), os.Getpid(), exe.request.memoryGuarding)
 			if runsReach {
 				reach := exe.reachStep()
@@ -246,6 +248,11 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			if runsRedundancy {
 				step := exe.redundancyStep()
 				step.guardKilled = guardKilled
+				step.run(red, inHub)
+			}
+			if runsMutation {
+				step := exe.mutationStep()
+				step.reach.guardKilled = guardKilled
 				step.run(red, inHub)
 			}
 			stopGuard()

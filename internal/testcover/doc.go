@@ -71,7 +71,10 @@
 // It keeps at most one mutant per changed line, the first site of this operator order:
 // a negated condition or comparison, a deleted operand of a && or || chain.
 // Then come a dropped statement and a shifted integer or rune constant.
-// A string constant, a line of an embedded file and a dropped call into `internal/logger` get no mutant.
+// A string constant and a line of an embedded file get no mutant.
+// Nor does a site inside a statement that only logs.
+// Such a statement is a call into `internal/logger`, or an if with no call in its condition whose every branch only logs.
+// Nor does a site inside a comparison of `runtime.GOOS` with the name of a platform other than the build context's.
 // A block that holds a changed line and that no covered key names gets none either, and comes back as an uncovered block.
 // A block holds a line when it covers a byte of it that is neither blank nor a lone brace.
 // The plan is a MutantPlan, so WriteOverlay, BuildMutantBinary, UnbuildableMutants and MutantEnv serve it unchanged.

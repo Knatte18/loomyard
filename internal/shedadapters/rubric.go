@@ -20,6 +20,9 @@ const redundancyReportMarker = "redundancy_report"
 // reachReportMarker is the marker the Code-Review rubric carries for the gate's reach report.
 const reachReportMarker = "reach_report"
 
+// mutationReportMarker is the marker the Code-Review rubric carries for the gate's mutation report.
+const mutationReportMarker = "mutation_report"
+
 // RubricNotes are the optional notes a rubric's markers are filled from.
 // A blank note fills its marker as `none`, and a rubric with no such marker ignores it.
 type RubricNotes struct {
@@ -41,6 +44,10 @@ type RubricNotes struct {
 	// It is called only for a rubric carrying the marker, since reading the report matches it against a commit's tree.
 	// Nil and a blank answer render `none`.
 	ReachReport func() string
+	// MutationReport returns the note mutation_report is filled from, the gate's mutation report as review reads it.
+	// It is called only for a rubric carrying the marker, since reading the report matches it against a commit's tree.
+	// Nil and a blank answer render `none`.
+	MutationReport func() string
 }
 
 // ReadRubric reads the rubric stencil name from stencilsDir and strips its stamp banner.
@@ -72,6 +79,10 @@ func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, 
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
 	}
+	mutationReport, err := markerNote([]byte(stripped), mutationReportMarker, notes.MutationReport)
+	if err != nil {
+		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
+	}
 	filled, err := stencil.Fill([]byte(stripped), map[string]string{
 		"specs_dir":            specsDir,
 		"stencils_dir":         stencilsDir,
@@ -82,6 +93,7 @@ func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, 
 		"review_base":          noteOrNone(notes.ReviewBase),
 		redundancyReportMarker: redundancyReport,
 		reachReportMarker:      reachReport,
+		mutationReportMarker:   mutationReport,
 	})
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)

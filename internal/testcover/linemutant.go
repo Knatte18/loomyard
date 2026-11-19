@@ -1,5 +1,6 @@
 // linemutant.go plans the mutants of the lines a diff adds or changes, in the blocks a map's tests cover.
 // It takes the sites PlanMutants scans and keeps one per changed line.
+// It leaves out those that only log or test another platform.
 
 package testcover
 
@@ -13,7 +14,8 @@ import (
 	"strings"
 )
 
-// loggerImportPath is the package whose dropped calls get no line mutant, since a log line changes nothing a test checks.
+// loggerImportPath is the package a statement that only logs calls into.
+// Such a statement gets no line mutant, since a log line changes nothing a test checks.
 const loggerImportPath = "github.com/Knatte18/loomyard/internal/logger"
 
 // PlanLineMutants returns the mutants of the lines changed names, in the blocks covered names.
@@ -24,7 +26,11 @@ const loggerImportPath = "github.com/Knatte18/loomyard/internal/logger"
 // At most one lands on a line: the first site of the operator order.
 // The order is a negated condition or comparison, a deleted operand of a && or || chain.
 // Then come a dropped statement and a shifted integer or rune constant.
-// A string constant, a line of an embedded file and a dropped call into the logger package get none.
+// A string constant and a line of an embedded file get none.
+// Nor does a site inside a statement that only logs:
+// a call into the logger package,
+// or an if statement with no init statement and no call in its condition whose every branch only logs.
+// Nor does a site inside a == or != comparison of runtime.GOOS with another platform's name, which no test here can run.
 // A block that holds a changed line and that covered does not name gets no mutant and comes back in the second result.
 // A block holds a line when it covers a byte of it that is neither blank nor a lone brace,
 // so a block that only shares a brace with a changed line's block does not hold it.
@@ -75,12 +81,12 @@ func (m Mutant) FuncOf() string {
 // mutatesBehavior reports whether the mutant is of a kind a line mutant keeps.
 func (m Mutant) mutatesBehavior() bool {
 	switch {
-	case m.Operator == OperatorChangeEmbeddedLine:
+	case m.noise, m.Operator == OperatorChangeEmbeddedLine:
 		return false
 	case m.Operator == OperatorChangeConstant && m.helper == literalHelper(token.STRING):
 		return false
 	}
-	return m.callee != loggerImportPath
+	return true
 }
 
 // operatorRank orders the operators a line mutant chooses among, the first to be chosen lowest.

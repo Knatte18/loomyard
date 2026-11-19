@@ -78,10 +78,10 @@ var templateDefaults = Config{
 		"parent-align":    {Tiers: []int{0}, Scope: "all", Reports: []string{"reach", "redundancy"}},
 		"finalize":        {Tiers: []int{0}, Scope: "all"},
 		"adopt":           {Tiers: []int{0}, Scope: "all"},
-		"webster-fix":     {Tiers: []int{0}, Scope: "diff"},
-		"darn-write":      {Tiers: []int{0}, Scope: "diff", Reports: []string{"reach", "redundancy"}},
-		"code-burler-fix": {Tiers: []int{0}, Scope: "diff", Reports: []string{"reach", "redundancy"}},
-		"pr-review":       {Tiers: []int{0}, Scope: "diff"},
+		"webster-fix":     {Tiers: []int{0}, Scope: "diff", Reports: []string{"mutation"}},
+		"darn-write":      {Tiers: []int{0}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}},
+		"code-burler-fix": {Tiers: []int{0}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}},
+		"pr-review":       {Tiers: []int{0}, Scope: "diff", Reports: []string{"mutation"}},
 	},
 	Scoper: "none",
 }
@@ -138,6 +138,28 @@ func seedGateConfig(t *testing.T, contents string) string {
 		}
 	}
 	return baseDir
+}
+
+// TestConfig_HasGoCoverageMaps pins that only the go scoper works on Go packages.
+func TestConfig_HasGoCoverageMaps(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		scoper string
+		want   bool
+	}{
+		{"go", true},
+		{"none", false},
+		{"dotnet", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.scoper, func(t *testing.T) {
+			t.Parallel()
+			if got := (Config{Scoper: tt.scoper}).HasGoCoverageMaps(); got != tt.want {
+				t.Errorf("Config{Scoper: %q}.HasGoCoverageMaps() = %v; want %v", tt.scoper, got, tt.want)
+			}
+		})
+	}
 }
 
 // TestResolveCommandDir pins the one base every hub command's dir resolves against:
@@ -298,13 +320,12 @@ func TestLoadConfig(t *testing.T) {
 		{"reach_budget_min zero", baseKeys + "reach_budget_min: 0\n", Config{}, `gate config key "reach_budget_min": 0; want at least 1` + fixIt},
 		{"mutation_max_mutants zero", baseKeys + "mutation_max_mutants: 0\n", Config{}, `gate config key "mutation_max_mutants": 0; want at least 1` + fixIt},
 		{"mutation_budget_min zero", baseKeys + "mutation_budget_min: 0\n", Config{}, `gate config key "mutation_budget_min": 0; want at least 1` + fixIt},
-		{"an unknown report", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, reports: [speed]}\n", Config{}, `gate config key "gates.webster": report "speed"; want reach or redundancy` + fixIt},
-		{"mutation is no report yet", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, reports: [mutation]}\n", Config{}, `gate config key "gates.webster": report "mutation"; want reach or redundancy` + fixIt},
+		{"an unknown report", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, reports: [speed]}\n", Config{}, `gate config key "gates.webster": report "speed"; want reach, redundancy or mutation` + fixIt},
 		{
-			"a key listing reach loads", baseKeys + "gates:\n  finalize: {tiers: [0], scope: all, reports: [reach]}\n",
+			"a key listing every report loads", baseKeys + "gates:\n  finalize: {tiers: [0], scope: all, reports: [reach, redundancy, mutation]}\n",
 			hubWith(func(c *Config) {
 				c.Gates = maps.Clone(templateDefaults.Gates)
-				c.Gates["finalize"] = GateKey{Tiers: []int{0}, Scope: "all", Reports: []string{"reach"}}
+				c.Gates["finalize"] = GateKey{Tiers: []int{0}, Scope: "all", Reports: []string{"reach", "redundancy", "mutation"}}
 			}), "",
 		},
 		{
@@ -321,7 +342,7 @@ func TestLoadConfig(t *testing.T) {
 			baseKeys + "gates:\n  darn-write: {tiers: [0, 1], scope: diff}\n  batch: {tiers: [0], scope: card}\n",
 			hubWith(func(c *Config) {
 				c.Gates = maps.Clone(templateDefaults.Gates)
-				c.Gates["darn-write"] = GateKey{Tiers: []int{0, 1}, Scope: "diff", Reports: []string{"reach", "redundancy"}}
+				c.Gates["darn-write"] = GateKey{Tiers: []int{0, 1}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}}
 			}), "",
 		},
 		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.parent-align": scope card is only for the card and batch keys` + fixIt},

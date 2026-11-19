@@ -913,9 +913,10 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// VerifyMergeBase and ReviewBase are nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
 		ReviewBase:      verifyMergeBase,
-		// RedundancyReport and ReachReport read the gate's reports at each rubric fill, never at wire time.
+		// RedundancyReport, ReachReport and MutationReport read the gate's reports at each rubric fill, never at wire time.
 		RedundancyReport: redundancyReportNote(location),
 		ReachReport:      reachReportNote(location),
+		MutationReport:   mutationReportNote(location),
 		VerifyHold:       verifytree.NewPauseHold(pauseGeom, nil),
 		VerifyReach:      gatecli.ReachPendingOf(location),
 		// GateFixer wraps the Darn-Write, Plan-Write and Discussion-Write gates of a pair run with a cold fixer.

@@ -147,6 +147,17 @@ Read it as evidence for "a behavior the diff adds with no coverage", and for nam
 A function it lists as reached by no test is a candidate, never a finding by itself.
 When it is `none`, or says no current report exists, raise no finding about its absence.
 
+## Mutation report
+
+{{.mutation_report}}
+
+The note above is the advisory report `lym gate test` writes by mutating the lines the diff changes, read only when it still matches HEAD's tree.
+Each survivor is a changed line whose mutant every test covering it passed: a candidate for a missing check, never a finding by itself.
+Read each survivor's line and the tests that cover it.
+When a test could assert what the mutant changes, and that is the diff's own behavior or a contract its doc comment states, file a finding naming the line and the check the tests lack.
+A survivor no test can reasonably kill, such as a log field, a pure cache, a platform-only branch or a channel capacity, is no finding.
+When the note is `none`, or says no current report exists, raise no finding about its absence.
+
 ## Amendment
 
 {{.amendment}}

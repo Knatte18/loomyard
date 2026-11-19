@@ -59,6 +59,7 @@ var nilLegal = map[string]bool{
 	"ReviewBase":                       true,
 	"RedundancyReport":                 true,
 	"ReachReport":                      true,
+	"MutationReport":                   true,
 	"VerifyReach":                      true,
 	"WeaverDeps.Geom.ReachPending":     true,
 	"VerifyTreeScope":                  true,

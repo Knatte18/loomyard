@@ -184,6 +184,7 @@ func reviewRubricNotes(row RowIdentity, env Env, runDir string) (shedadapters.Ru
 		ReviewInput:      shedadapters.ReviewInputNote(runDir),
 		RedundancyReport: env.RedundancyReport,
 		ReachReport:      env.ReachReport,
+		MutationReport:   env.MutationReport,
 	}
 	if env.WebsterRecord != nil {
 		notes.WebsterRecord = env.WebsterRecord()

@@ -827,6 +827,12 @@
 // The marker lists the report's note lines when `gatecli.ReachReportMatches` matches the report against HEAD.
 // Otherwise it is one line saying no current report exists and why; a report written in the prime never matches.
 //
+// The rubric's `mutation_report` marker is filled the same way from the worktree's mutation report.
+// A `lym gate test` call with the `mutation` report step writes that report.
+// The marker lists the report's counts and survivors when the report matches HEAD.
+// `gatecli.MutationReportMatches` decides that match.
+// Otherwise it is one line saying no current report exists and why; a report written in the prime never matches.
+//
 // `wire` also tells the closure `gatecli.ReachPendingOf` builds to the recipe Env's `VerifyReach`.
 // It tells the same closure to the weaver geometry's `ReachPending`.
 // The verify gate of a row whose key lists `reach` and the weaver batch gate then hand the writer the reach note.

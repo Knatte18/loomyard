@@ -152,8 +152,8 @@ type Mutant struct {
 	// helper is the function the site's value passes through, empty for a dropped statement;
 	// args are the arguments the helper takes between the value and the ID.
 	helper, args string
-	// callee is the import path of the callee's package for a dropped call statement, empty for any other site.
-	callee string
+	// noise is set for a site inside a statement that only logs or inside a comparison of runtime.GOOS with another platform.
+	noise bool
 }
 
 // InBlocks reports whether blocks holds one of the mutant's blocks, so a run of those blocks reaches the mutant.
@@ -206,9 +206,8 @@ type site struct {
 	helper, args string
 	// variables names the package-level variables whose value holds the site; it is empty for a site of a function body.
 	variables []string
-	// callee is the import path of the callee's package for a dropped call statement of a package-qualified call.
-	// It is empty for a local or method call and for every other operator.
-	callee string
+	// noise is the Mutant field of the same name.
+	noise bool
 }
 
 // packageFile is one parsed non-test Go file of a package.
@@ -360,7 +359,7 @@ func PlanMutants(dir, importPath string, profile []ProfileBlock, targets BlockSe
 			}
 			plan.Mutants = append(plan.Mutants, Mutant{
 				File: f.name, Line: f.tokenFile.Line(f.tokenFile.Pos(s.start)), lastLine: f.tokenFile.Line(f.tokenFile.Pos(s.end)),
-				Operator: s.operator, Blocks: blocks, start: s.start, end: s.end, helper: s.helper, args: s.args, callee: s.callee,
+				Operator: s.operator, Blocks: blocks, start: s.start, end: s.end, helper: s.helper, args: s.args, noise: s.noise,
 			})
 			plan.sources[f.name] = f.text
 		}
@@ -667,6 +666,8 @@ func variableValueReads(file *ast.File, decls packageDecls) map[string][]string 
 
 // fileSites returns the mutation sites of the function bodies and package-level variable values of file.
 // They are ordered by start, the longer first at one start.
+// A site inside a statement that only logs is marked noise.
+// So is one inside a comparison of runtime.GOOS with another platform.
 func fileSites(file *ast.File, tokenFile *token.File, decls packageDecls) []site {
 	var sites []site
 	add := func(node ast.Node, operator, helper, args string, variables []string) {
@@ -675,14 +676,21 @@ func fileSites(file *ast.File, tokenFile *token.File, decls packageDecls) []site
 			helper: helper, args: args, variables: variables,
 		})
 	}
+	// noise holds the start and end offsets of each node whose sites are marked noise.
+	var noise [][2]int
+	addNoise := func(node ast.Node) {
+		noise = append(noise, [2]int{tokenFile.Offset(node.Pos()), tokenFile.Offset(node.End())})
+	}
 	conditions := map[ast.Expr]bool{}
 	fixed := map[ast.Node]bool{}
 	imported := importedPackages(file)
 	addStatements := func(list []ast.Stmt, locals map[string]bool) {
 		for _, stmt := range list {
+			if logsOnly(stmt, locals, imported) {
+				addNoise(stmt)
+			}
 			if droppable(stmt) {
 				add(stmt, OperatorDropStatement, "", "", nil)
-				sites[len(sites)-1].callee = calleePackage(stmt, locals, imported)
 			}
 		}
 	}
@@ -742,6 +750,9 @@ func fileSites(file *ast.File, tokenFile *token.File, decls packageDecls) []site
 					}
 				case *ast.BinaryExpr:
 					markConstantIntegerExpression(n, locals, decls, fixed)
+					if comparesOtherPlatform(n, locals, imported) {
+						addNoise(n)
+					}
 					if isComparison(n.Op) && !conditions[n] {
 						add(n, OperatorNegateComparison, "lymMutantBool", "", nil)
 					}
@@ -771,10 +782,78 @@ func fileSites(file *ast.File, tokenFile *token.File, decls packageDecls) []site
 			})
 		}
 	}
+	for i := range sites {
+		sites[i].noise = slices.ContainsFunc(noise, func(span [2]int) bool { return span[0] <= sites[i].start && sites[i].end <= span[1] })
+	}
 	slices.SortStableFunc(sites, func(a, b site) int {
 		return cmp.Or(cmp.Compare(a.start, b.start), cmp.Compare(b.end, a.end))
 	})
 	return sites
+}
+
+// logsOnly reports whether stmt does nothing but log.
+// Such a statement is a call into the logger package,
+// or an if statement with no init statement and no call in its condition whose every branch holds only such statements.
+// A call in the condition may have an effect, so such an if is not log-only.
+// locals holds the names the enclosing function declares, and imported the names the file's imports bind.
+func logsOnly(stmt ast.Stmt, locals map[string]bool, imported map[string]string) bool {
+	switch s := stmt.(type) {
+	case *ast.ExprStmt:
+		return calleePackage(s, locals, imported) == loggerImportPath
+	case *ast.IfStmt:
+		if s.Init != nil || holdsCall(s.Cond) || !blockLogsOnly(s.Body, locals, imported) {
+			return false
+		}
+		switch branch := s.Else.(type) {
+		case nil:
+			return true
+		case *ast.BlockStmt:
+			return blockLogsOnly(branch, locals, imported)
+		default:
+			return logsOnly(branch, locals, imported)
+		}
+	}
+	return false
+}
+
+// holdsCall reports whether expr holds a call expression.
+func holdsCall(expr ast.Expr) bool {
+	found := false
+	ast.Inspect(expr, func(n ast.Node) bool {
+		if _, isCall := n.(*ast.CallExpr); isCall {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+// blockLogsOnly reports whether block holds a statement and every statement of it does nothing but log.
+func blockLogsOnly(block *ast.BlockStmt, locals map[string]bool, imported map[string]string) bool {
+	return len(block.List) > 0 && !slices.ContainsFunc(block.List, func(stmt ast.Stmt) bool { return !logsOnly(stmt, locals, imported) })
+}
+
+// comparesOtherPlatform reports whether expr compares runtime.GOOS with a string literal naming another platform.
+// The other platform is any but the one the default build context targets, which the mutants run on.
+// The comparison is == or !=, and runtime is reached through a name the file's imports bind that no local shadows.
+func comparesOtherPlatform(expr *ast.BinaryExpr, locals map[string]bool, imported map[string]string) bool {
+	if expr.Op != token.EQL && expr.Op != token.NEQ {
+		return false
+	}
+	for _, sides := range [][2]ast.Expr{{expr.X, expr.Y}, {expr.Y, expr.X}} {
+		selector, isSelector := sides[0].(*ast.SelectorExpr)
+		literal, isLiteral := sides[1].(*ast.BasicLit)
+		if !isSelector || !isLiteral || literal.Kind != token.STRING || selector.Sel.Name != "GOOS" {
+			continue
+		}
+		pkg, ok := selector.X.(*ast.Ident)
+		if !ok || locals[pkg.Name] || imported[pkg.Name] != "runtime" {
+			continue
+		}
+		platform, err := strconv.Unquote(literal.Value)
+		return err == nil && platform != build.Default.GOOS
+	}
+	return false
 }
 
 // addClauses calls add with each operand of expr when expr is a && or || chain, and with the helper that deletes it:
@@ -810,6 +889,7 @@ func importedPackages(file *ast.File) map[string]string {
 }
 
 // calleePackage returns the import path of the package a call statement calls into, or "" for any other statement.
+// It returns "" too for a local or method call.
 // Only a call through a package name the file imports counts, and a local of that name shadows it.
 func calleePackage(stmt ast.Stmt, locals map[string]bool, imported map[string]string) string {
 	exprStmt, ok := stmt.(*ast.ExprStmt)

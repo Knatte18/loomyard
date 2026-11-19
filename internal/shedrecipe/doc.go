@@ -149,6 +149,7 @@
 // BurlerReview and the Bouncer hand Env.RedundancyReport to the rubric's redundancy_report marker.
 // The rubric reads it only when it carries the marker.
 // They hand Env.ReachReport to the rubric's reach_report marker the same way.
+// They hand Env.MutationReport to its mutation_report marker.
 //
 // # The Drift rows
 //

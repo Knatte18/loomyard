@@ -75,7 +75,7 @@
 // Each run record carries the key as `gate_key`, empty for a call with manual flags.
 // `--gate` opens no flag combination the manual flags lack.
 // The exception is the key's lint and report steps.
-// The Lint steps, Reach report and Redundancy report sections describe them.
+// The Lint steps, Reach report, Redundancy report and Mutation report sections describe them.
 // `--tier` names a tier and may repeat.
 // The default is tier0 when neither `--tier` nor `--upto` is given.
 // A tier another listed tier covers is dropped and named as covered on stderr.
@@ -677,6 +677,36 @@
 // Bound: a map older than the files can make a function read as unreached.
 // So can a test that runs the function in another process.
 //
+// # Mutation report
+//
+// A `--gate` key whose `reports` lists `gateslot.ReportMutation` runs the mutation report step last.
+// It runs after the key's lints in an uncancelled call, under the same memory guard, whatever the key's scope.
+// The step is advisory: every failure it meets is an error line of its report, and it never changes the exit code.
+// It writes `MutationReport` through `internal/state` as `mutation.json` in the worktree's gate directory.
+// It prints one stderr line, which counts the mutants run, killed, survived and unjudged.
+// The line also counts the uncovered changed blocks, the packages not judged and any error lines.
+// It ends with the report's path.
+// A report it cannot write is logged at Warn.
+// A call one of whose runs failed gets a report marked `red_gate` that judges nothing.
+// So does a call outside every hub, a hub whose `scoper` is not `go`, or a task worktree with no parent branch.
+//
+// The step diffs from the base the reach step diffs from, HEAD in the prime, whose report records `prime`.
+// It then runs the refresh and the mutation check of the Mutate verb under the same keys.
+// Its slot holder record carries its own label.
+// Inside an enclosing gate run's slot it takes none.
+// The report holds the counts and every survivor, unjudged mutant, uncovered changed block and package not judged.
+// It also records the changed functions with their hashes and the hashes of the Go files of their packages.
+// `ReadMutationReport` reads a worktree's report.
+// `MutationReportMatches` matches one against a commit by its functions and file hashes, as `ReachReportMatches` does.
+// It never matches a report that judged nothing, a red-gate report or a prime report.
+// `MutationReport.ReviewLines` renders the counts and each survivor with its possible killers for a review.
+// It is cut at a line cap that names the report.
+// A report whose mutation call ended in error records no changed function, so it never matches a diff that changes one.
+// Bound: a survivor is a changed line no covering test checks, or one no test can reasonably check;
+// review tells them apart.
+// Bound: the file hashes cover the Go files of the changed packages only.
+// A change to a non-Go file a package's tests read, such as testdata, leaves the report matching HEAD.
+//
 // # Reach verb
 //
 // `lym gate reach <file>#<Func>` prints the reach note of one function, read from the maps, and changes nothing.
@@ -708,7 +738,7 @@
 //
 // `lym gate mutate [--base <rev>]` mutates the lines the worktree's diff changes.
 // It lists the mutants no covering test kills.
-// It is a hand verb for the mutation trial.
+// It is a hand verb; the mutation report step runs the same refresh and check in a gate call.
 // It changes nothing but the worktree's own coverage maps, which its refresh writes, and the budgets bound its time.
 // The base is `--base`, else the merge base with the parent branch.
 // A worktree with no parent branch and no `--base`, the prime's case, is refused.
@@ -731,6 +761,7 @@
 // A block only a source-checking test covers is therefore uncovered.
 // Each coverage build and plan runs whatever the budget, bounded by `redundancy_build_timeout_min`.
 // `mutation_max_mutants` caps the mutants of the diff, taken one changed function at a time in turn across the packages.
+// A round with more functions than the cap leaves takes functions spread evenly over the order of package, file and name.
 // The rest count as not run.
 // Past `mutation_budget_min` the check starts no further mutant build or run.
 // Every mutant left is unjudged for the budget.
@@ -876,7 +907,7 @@
 // The tier's log and failure report carry the line, and the tier is never rerun.
 // A go-json tier's log and failure report also name the tests that had started and never passed, failed or skipped.
 // `lym gate redundant`, `lym gate mutate` and `lym gate test --map` run the same guard.
-// So do the refresh of the reach report step and the redundancy report step.
+// So do the refresh of the reach report step, the redundancy report step and the mutation report step.
 // It watches their own process tree for the whole call, or for the step alone.
 // It runs beside the kernel cap of `redundancy_test_memory_mb` on each test run, and each kill's line goes to stderr.
 // A test run the guard kills in the redundancy report step or `lym gate redundant` is not judged,

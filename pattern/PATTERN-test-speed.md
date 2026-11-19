@@ -224,7 +224,8 @@ so every run takes its slots, its timeout and its log.
   The `reach` report step refreshes a task worktree's own anchor maps by the same measurement, in the map run's slot ask.
   The map run, the refresh and the `redundancy` step run every test alone under a coverage binary, since coverage counters are process-wide.
   `lym gate redundant` runs each test alone under a binary holding the mutants of its package, one mutant on per run.
-  `lym gate mutate` does the same for the tests covering each mutant of the lines a diff changes, after it refreshed the worktree's own maps.
+  `lym gate mutate` and the `mutation` report step do the same for the tests covering each mutant of a changed line,
+  after they refreshed the worktree's own maps.
 - A card `**Verify:**` line runs through the shared `internal/cardverify` runner,
   and `cmd/testtiming` measures outside the gate because its modes measure what a tier run hides.
 - A site or stencil names a gate key, never a tier list, scope form, test command or target list.
@@ -332,6 +333,12 @@ this section keeps only what is project-specific or stricter here.
   The prime refreshes nothing and answers from the shared maps.
   The step is advisory: it never changes the gate's result.
   Bound: a map older than the files, or a test that runs the function in another process, can make a function read as unreached.
+- A gate key whose `reports` lists `mutation` runs the report step after its other report steps.
+  It runs `lym gate mutate`'s refresh and check over the diff from the reach step's base,
+  and writes `mutation.json` in the worktree's gate directory.
+  The report lists every survivor, unjudged mutant, uncovered changed block and package not judged.
+  The step prints one summary line of their counts, and it never changes the gate's result.
+  Bound: a survivor is a check the diff's tests lack or a line no test can reasonably check, and review tells them apart.
 - A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
   It takes the diff's new and changed top-level tests against the merge base with the parent branch,
   leaving out tier2 and tier3 tests, tests marked `//testtiming:keep` and tests that may run module code in another process.
