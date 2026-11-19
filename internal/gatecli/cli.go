@@ -135,6 +135,7 @@ Examples:
 	cmd.AddCommand(cardVerifyCmd(seams))
 	cmd.AddCommand(redundantCmd(goBinary, timeoutUnit, pipeWaitDelay))
 	cmd.AddCommand(mutateCmd(goBinary, timeoutUnit, pipeWaitDelay))
+	cmd.AddCommand(redFirstCmd(goBinary, samplePeriod, preTierCeiling, timeoutUnit, rerunDelay, pipeWaitDelay))
 	cmd.AddCommand(reachCmd())
 	cmd.AddCommand(runnerCmd(func() *cobra.Command {
 		return newCommand(goBinary, samplePeriod, preTierCeiling, timeoutUnit, rerunDelay, pipeWaitDelay, seams)

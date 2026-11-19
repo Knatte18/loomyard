@@ -87,13 +87,16 @@ the `round` gate's at the Webster-Burler-Fix round gate;
 the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
 
 - `Verify` takes no gate slot and applies no timeout:
-  its command is `lym gate test --wait` calls, which take their own slots and bound themselves.
+  its command is `lym gate test --wait` calls, or the `lym gate red-first` call, which take their own slots and bound themselves.
 - No site verifies a dirty tree: `Verify` refuses one with its paths before running anything.
 - Records are per command, each entry with its tree and its commit;
   a skip requires an entry of the same command naming HEAD's tree.
 - The record is written only by `Verify`, and only after a pass; no prompt names its path.
 - The sites are the webster gate, the Webster-Burler-Fix gate and `lym webster verify`.
   They also include the Code-Burler-Fix, Darn-Write, Harden-Burler-Fix and Drift-Verify gates, Parent-Align and Finalize.
+- The Darn-Write red-first gate is a site too:
+  it runs the `lym gate red-first` call that `gateslot.RedFirstCall` renders for the `darn-write` key through `verifytree.Verify` under the verify hold.
+  That call takes its slots through the in-process tier run, as a `lym gate test --wait` call does.
 - Weaver's plan-level verify, `runVerify`, is a site too: it runs the hub's `webster` call through `verifytree.Verify` under the geometry's pause hold.
 - Weaver's batch strand gates are sites too:
   the `card` and `batch` entries of `batchGateSpec` each run their call through `verifytree.Verify` under the geometry's pause hold.

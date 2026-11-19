@@ -305,7 +305,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 			}
 		}
 		want := map[string]map[any]any{
-			loomshed.NameDarnWrite:     {"clean": 3, "verify": 7, "drift": 3, "description": 3},
+			loomshed.NameDarnWrite:     {"clean": 3, "verify": 7, "red-first": 3, "drift": 3, "description": 3},
 			loomshed.NameCodeBurlerFix: {"clean": 3, "verify": 7},
 			loomshed.NameDescribe:      {"description": 3},
 		}

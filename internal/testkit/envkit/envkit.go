@@ -419,6 +419,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		VerifyCommand:      func(string) (string, error) { return "go test ./...", nil },
 		VerifyTreeScope:    func(string) (string, bool, error) { return "", false, nil },
 		VerifyHold:         verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
+		EntryLabels:        func() ([]string, error) { return nil, nil },
+		RedFirstCommand:    func(key string) string { return "lym gate red-first --gate " + key },
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
 		PreflightHarden:    func() error { return nil },

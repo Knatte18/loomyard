@@ -108,20 +108,23 @@ Examples:
 	return cmd
 }
 
-// diffBase returns the commit the verb diffs from, or a refusal when there is none.
-func (r mutateRequest) diffBase(location *lymcwd.Location, fabric *fabricengine.Fabric) (string, string) {
-	if r.base != "" {
-		if !fabric.CommitExists(r.base) {
-			return "", fmt.Sprintf("gate mutate: --base %q names no commit; way forward: pass the SHA of a commit the repository holds", r.base)
+// verbDiffBase returns the commit a verb diffs from, or a refusal when there is none.
+// requested is the verb's --base value.
+// It is a commit the repository holds, or empty for the merge base with the parent branch.
+// verb labels the refusal, such as "gate mutate".
+func verbDiffBase(location *lymcwd.Location, fabric *fabricengine.Fabric, requested, verb string) (string, string) {
+	if requested != "" {
+		if !fabric.CommitExists(requested) {
+			return "", fmt.Sprintf("%s: --base %q names no commit; way forward: pass the SHA of a commit the repository holds", verb, requested)
 		}
-		return r.base, ""
+		return requested, ""
 	}
 	base, found, err := parentMergeBase(location)
 	switch {
 	case err != nil:
-		return "", fmt.Sprintf("gate mutate: read the merge base with the parent branch: %v; way forward: re-run the same command", err)
+		return "", fmt.Sprintf("%s: read the merge base with the parent branch: %v; way forward: re-run the same command", verb, err)
 	case !found:
-		return "", "gate mutate: the worktree has no parent branch to diff from; way forward: pass --base with the commit to diff from"
+		return "", verb + ": the worktree has no parent branch to diff from; way forward: pass --base with the commit to diff from"
 	}
 	return base, ""
 }
@@ -164,7 +167,7 @@ func runMutate(ctx context.Context, out io.Writer, request mutateRequest) int {
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("gate mutate: %v; way forward: re-run the same command", err))
 	}
-	base, refusal := request.diffBase(location, fabric)
+	base, refusal := verbDiffBase(location, fabric, request.base, "gate mutate")
 	if refusal != "" {
 		return output.Err(out, refusal)
 	}

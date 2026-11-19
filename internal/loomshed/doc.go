@@ -168,6 +168,19 @@
 // It names the attempt and the failed runs so far, and it stops nothing: the attempts go on.
 // Bound: the kept tests and the budget's clock live in the gate, so a restarted driver starts both afresh.
 //
+// The red-first gate (NewRedFirstGate) holds a darn writer's handoff on a bug fix until its test is shown red first.
+// It runs the row's `lym gate red-first --gate <key>` call through verifytree.Verify and reads its exit code.
+// An entry without the `bug` label (gateslot.BugLabel) passes at once and runs nothing.
+// So does a decision record holding an added entry whose title opens gateslot.NoTestSeamTitle.
+// That entry is the parent's recorded stop for a bug no test can reach.
+// Exit 0 passes.
+// Exit gateslot.RedFirstGreenExit fails with the way forward of a test that passed on the merge base.
+// Exit gateslot.RedFirstNoTestExit fails with the way forward of a diff that adds or changes no test;
+// it names the `lym creel post --parent --expect-reply` ask for the parent's no-test-seam record.
+// Exit gateslot.RedFirstUnjudgedExit fails with that same ask, for a hub or a diff the check cannot judge.
+// Any other exit code, a timeout or a runner crash judged no test and fails terminally.
+// A labels or record read error is the gate's returned error.
+//
 // The Plan-Write rotation archives the prior plan.
 // It appends a prior-plan block naming that archive to the respawned session's prompt.
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam,

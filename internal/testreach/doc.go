@@ -19,6 +19,9 @@
 // a function only the base holds is no changed function.
 // A ChangedFunc keys its function as the coverage map's block keys do, `Type.Method` for a method.
 // A file that does not parse is an error naming the file.
+// ChangedTests finds the test functions a diff adds or changes, from the `_test.go` files of the same sets.
+// A test function is a top-level `Test` function `go test` runs as a test, TestMain excepted,
+// and it is matched across the sets as a function is.
 // ChangedLines returns the 1-based lines of a file's head text that a line diff against its base text adds or changes.
 // An empty base marks every line, and a line only the base holds marks none.
 // A rewritten stretch too large for the diff's table marks every head line of the stretch.

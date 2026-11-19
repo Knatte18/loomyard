@@ -588,6 +588,25 @@ func recordWriteDeps(l *lymcwd.Location, record runRecord) loomshed.RecordWriteD
 	}
 }
 
+// entryLabels returns a reader of the labels of the run's board entry for the worktree at l.
+// It opens the board on each call, and an entry the board lacks reads as one with no label.
+func entryLabels(l *lymcwd.Location) func() ([]string, error) {
+	return func() ([]string, error) {
+		board, err := boardengine.OpenHub(l.HubPath)
+		if err != nil {
+			return nil, fmt.Errorf("open the board: %w", err)
+		}
+		task, found, err := board.GetTask(seedSlug(l.WorktreeName))
+		if err != nil {
+			return nil, fmt.Errorf("read the run's board entry: %w", err)
+		}
+		if !found {
+			return nil, nil
+		}
+		return task.Labels, nil
+	}
+}
+
 // writeCarryOver writes entry into the decision record of location's worktree and commits the record alone.
 // An unchanged record commits nothing, and a write or commit error is returned to the caller.
 func writeCarryOver(location *lymcwd.Location, entry discussionparser.CarryOver) error {
@@ -947,6 +966,9 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		MutationReport:   mutationReportNote(location),
 		VerifyHold:       verifytree.NewPauseHold(pauseGeom, nil),
 		VerifyReach:      gatecli.ReachPendingOf(location),
+		// EntryLabels opens the board at each red-first gate arrival, never at wire time.
+		EntryLabels:     entryLabels(location),
+		RedFirstCommand: gateslot.RedFirstCall,
 		// GateFixer wraps the Darn-Write, Plan-Write and Discussion-Write gates of a pair run with a cold fixer.
 		// It reads every value here at wire time and opens nothing.
 		GateFixer: gateFixerSeam(gateFixerInputs{

@@ -301,7 +301,7 @@ github.com/Knatte18/loomyard/
 ├── internal/cleanupcli/          the cleanup CLI command (`lym cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
-├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate test --map`, the per-package coverage maps built on command at the HEAD of the worktree it runs in; `lym gate redundant`, one package's redundancy candidates read from its coverage map and confirmed by mutation; `lym gate reach`, the tests that reach one function, or the landings of a branch that a test reaches, read from the coverage maps; `lym gate mutate`, the mutants of the lines the worktree's diff changes, run against the tests that cover them, a check the gate's `mutation` report step also runs)
+├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate test --map`, the per-package coverage maps built on command at the HEAD of the worktree it runs in; `lym gate redundant`, one package's redundancy candidates read from its coverage map and confirmed by mutation; `lym gate reach`, the tests that reach one function, or the landings of a branch that a test reaches, read from the coverage maps; `lym gate mutate`, the mutants of the lines the worktree's diff changes, run against the tests that cover them, a check the gate's `mutation` report step also runs; `lym gate red-first`, the tests the worktree's diff adds or changes, run once on the merge base's code)
 ├── internal/helpcli/             the help CLI command (`lym help [<command>...]`, `lym help index`)
 ├── internal/shortcutcli/         the top-level operator shortcuts (`lym a`, `lym s`, `lym p`, `lym r`) from one embedded file
 ├── internal/idecli/              the ide CLI command
@@ -989,6 +989,9 @@ User-facing modules each get one `lym <module>` namespace:
   and a run that ends at the cap or its time bound is unjudged, never a kill.
   A mutant every covering test passes is a survivor, listed with the tests of other packages that reach its function;
   the call also lists the changed blocks no test covers and the packages it did not judge, with the reason, and exits 0 once it ran.
+  `lym gate red-first --gate <key> [--base <rev>]` runs the tests the worktree's diff adds or changes, which `internal/testreach` names, once under the key's tiers,
+  with a Go overlay that puts the base's production files back, and exits 0 when one of them fails there;
+  a run in which every one passes, a diff with no test, and a run the check cannot judge (a hub whose scoper is not `go`, or a changed non-Go file of a package) each exit with their own code from `internal/gateslot`.
   `lym gate test --map [<targets>...]` builds the per-package coverage maps of `internal/testcover` over its scope's packages at the HEAD of the worktree it runs in, only on command
   (the `reach` report step's refresh of a task worktree's own maps runs the same measurement under the same build and test bounds and memory cap),
   the hub's shared maps from the prime and a worktree's own, under its `.lym`, from any other worktree:
@@ -1102,6 +1105,9 @@ User-facing modules each get one `lym <module>` namespace:
   `Drift-Expect` seals the changes the task is expected to make.
   One gated `Darn-Write` writer reads the record as its scope, edits, tests and commits;
   its `drift` gate entry checks the code's changes against that expectation.
+  For an entry labelled `bug`, its `red-first` gate entry runs `lym gate red-first` and holds the handoff until a test the diff adds or changes fails on the merge base,
+  unless the parent recorded an added decision titled `No test seam`;
+  the fix's commit carries a `Root-Cause:` trailer that the `Code-Review` perch checks.
   `Drift-Verify` checks the writer's code by containment and has a judge rule on the expected changes.
   The judge also rules on each loosened check, an assertion, tolerance or limit widened in a test existing at the review base, as caused or uncaused.
   An uncaused one makes the row Stuck until a `Loosened-Check` trailer commit or a revert, then `lym loom resume`.

@@ -120,6 +120,10 @@ type Env struct {
 	// Set, the gate runs under the reach turn and its entry carries the re-run mark of a cold fixer's wrap.
 	// Nil leaves the gate as it is.
 	VerifyReach func(gateKey string) (verifytree.ReachPending, bool, error)
+	// EntryLabels is the told reader of the run's board entry labels, read by the "red-first" gate at each arrival.
+	EntryLabels func() ([]string, error)
+	// RedFirstCommand is the told renderer of the red-first call for a row's gate key, read by the "red-first" gate.
+	RedFirstCommand func(gateKey string) string
 	// GateFixer is the told wrap that hands a row's gate failure to a cold fixer; nil leaves every gate as written.
 	// The Darn-Write, Plan-Write and Discussion-Write entries read it for a gate with a "fixer" key.
 	// It receives the row's complete gate spec and returns the spec the row runs.

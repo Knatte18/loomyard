@@ -57,6 +57,10 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "expectation" requires the env.Drift seams Config, TrailerCommit and FileAt;
 // it returns driftengine.NewExpectationGate over them;
 // "judgement" returns driftengine.NewJudgementGate over env.Drift, which reads only its Paths and requires no seam;
+// "red-first" requires the absolute env.WorktreeRoot, env.VerifyDir and env.DecisionRecordPath,
+// and the non-nil env.EntryLabels and env.RedFirstCommand;
+// it returns loomshed.NewRedFirstGate over the call env.RedFirstCommand renders for the row's gate key;
+// the site label is "<row name> red-first gate" and the hold is env.VerifyHold;
 // any other value is an error naming the key and every legal value.
 // A name may appear once per list.
 //
@@ -314,7 +318,22 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		return driftengine.NewExpectationGate(driftDepsFrom(env)), nil
 	case "judgement":
 		return driftengine.NewJudgementGate(driftDepsFrom(env)), nil
+	case "red-first":
+		for _, root := range []struct{ field, value string }{
+			{"WorktreeRoot", env.WorktreeRoot}, {"VerifyDir", env.VerifyDir}, {"DecisionRecordPath", env.DecisionRecordPath},
+		} {
+			if err := requireAbsRoot(entry, root.field, root.value); err != nil {
+				return nil, err
+			}
+		}
+		if err := requireSeam(entry, "EntryLabels", env.EntryLabels); err != nil {
+			return nil, err
+		}
+		if err := requireSeam(entry, "RedFirstCommand", env.RedFirstCommand); err != nil {
+			return nil, err
+		}
+		return loomshed.NewRedFirstGate(env.WorktreeRoot, env.VerifyDir, row+" red-first gate", env.RedFirstCommand(gateKey), env.EntryLabels, env.DecisionRecordPath, env.VerifyHold), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement", name)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q, %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement", "red-first", name)
 	}
 }

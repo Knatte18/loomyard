@@ -60,7 +60,7 @@ func TestResolveGateSpec_AbsentKeyIsUngated(t *testing.T) {
 
 func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 	tiergate.Require(t, 0)
-	for _, name := range []string{"clean", "discussion", "plan", "parts", "description", "drift", "expectation", "judgement"} {
+	for _, name := range []string{"clean", "discussion", "plan", "parts", "description", "drift", "expectation", "judgement", "red-first"} {
 		t.Run(name, func(t *testing.T) {
 			env := reworkTestEnv(t)
 			env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
@@ -371,10 +371,49 @@ func TestResolveGateSpec_UnknownNameListsTheLegalValues(t *testing.T) {
 	for _, unknown := range []string{"bogus", "rework-plan", "parent-review"} {
 		t.Run(unknown, func(t *testing.T) {
 			_, err := resolveGateSpec("Row", gatesCfg(unknown, 1), newTestEnv(t))
-			for _, want := range []string{"clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement"} {
+			for _, want := range []string{"clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement", "red-first"} {
 				assertErrContains(t, err, want)
 			}
 		})
+	}
+}
+
+func TestResolveGateSpec_RedFirstRequiresItsEnv(t *testing.T) {
+	tiergate.Require(t, 0)
+	for _, field := range []string{"WorktreeRoot", "VerifyDir", "DecisionRecordPath", "EntryLabels", "RedFirstCommand"} {
+		t.Run(field, func(t *testing.T) {
+			env := newTestEnv(t)
+			switch field {
+			case "WorktreeRoot":
+				env.WorktreeRoot = "relative/worktree"
+			case "VerifyDir":
+				env.VerifyDir = ""
+			case "DecisionRecordPath":
+				env.DecisionRecordPath = "relative/decision-record.md"
+			case "EntryLabels":
+				env.EntryLabels = nil
+			case "RedFirstCommand":
+				env.RedFirstCommand = nil
+			}
+			_, err := resolveGateSpec("Row", gatesCfg("red-first", 3), env)
+			assertErrContains(t, err, field)
+		})
+	}
+}
+
+func TestResolveGateSpec_RedFirstRendersTheCallOfTheRowsOwnGateKey(t *testing.T) {
+	tiergate.Require(t, 0)
+	env := newTestEnv(t)
+	var asked []string
+	env.RedFirstCommand = func(gateKey string) string {
+		asked = append(asked, gateKey)
+		return "exit 0"
+	}
+	if _, err := resolveRowGateSpec("DarnWrite", "Darn-Write", gatesCfg("red-first", 3), env); err != nil {
+		t.Fatalf("resolveRowGateSpec() error = %v; want nil", err)
+	}
+	if len(asked) != 1 || asked[0] != "darn-write" {
+		t.Errorf("RedFirstCommand asked for %q; want one ask for %q, the gate key of the Darn-Write row", asked, "darn-write")
 	}
 }
 

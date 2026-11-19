@@ -336,6 +336,45 @@ func FailedTests(log string) (failed []FailedTest, ok bool) {
 	return failed, true
 }
 
+// NamedFailedTests returns the failed tests the first failure report in log names, each once, in report order.
+// It reads every `  <package> <test>:` line up to the report's end or its cut line, and passes over every other line.
+// So a report that also holds a cause line or unparsed output still yields its named tests.
+// So does one that names a package failed outside any test.
+// A test under a run that is no tier or guard run has Tier -1.
+// A log with no report yields none.
+func NamedFailedTests(log string) []FailedTest {
+	lines := strings.Split(strings.ReplaceAll(log, "\r\n", "\n"), "\n")
+	start := slices.Index(lines, FailureReportHeader)
+	if start < 0 {
+		return nil
+	}
+	var failed []FailedTest
+	tier := -1
+	for _, line := range lines[start+1:] {
+		if line == "" || strings.HasPrefix(line, failureReportEnd) || strings.HasPrefix(line, ReportCutPrefix) {
+			break
+		}
+		switch {
+		case strings.HasPrefix(line, "    "):
+			// A failure's own output.
+		case strings.HasPrefix(line, "  "):
+			if test, isTest := reportTestLine(line); isTest {
+				test.Tier = tier
+				if !slices.Contains(failed, test) {
+					failed = append(failed, test)
+				}
+			}
+		default:
+			number, isRun := reportRunTier(line)
+			if !isRun {
+				number = -1
+			}
+			tier = number
+		}
+	}
+	return failed
+}
+
 // reportRunTier returns the tier of a failure report's run header, such as `tier1 (exit 1), log <path>:`.
 // A guard run's header names its tier too; any other run, such as a build, vet or lint step, names none.
 func reportRunTier(line string) (int, bool) {
@@ -409,6 +448,32 @@ func TierRunFailures(log string) (failures []string, ok bool) {
 	}
 	closeRun()
 	return failures, header != ""
+}
+
+// PackagesFailedOutsideTests returns the packages the first failure report in log names as failed outside any test.
+// Each comes once, in report order; a compile error of a package's tests is such a failure.
+// A log with no report, and a report cut at its line cap past the last such line, name only what they hold.
+func PackagesFailedOutsideTests(log string) []string {
+	lines := strings.Split(strings.ReplaceAll(log, "\r\n", "\n"), "\n")
+	start := slices.Index(lines, FailureReportHeader)
+	if start < 0 {
+		return nil
+	}
+	var packages []string
+	for _, line := range lines[start+1:] {
+		if line == "" || strings.HasPrefix(line, failureReportEnd) || strings.HasPrefix(line, ReportCutPrefix) {
+			break
+		}
+		if !strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "    ") {
+			continue
+		}
+		failure, isFailure := reportFailureLine(line)
+		pkg, outside := strings.CutSuffix(failure, ReportOutsideAnyTestSuffix)
+		if isFailure && outside && !slices.Contains(packages, pkg) {
+			packages = append(packages, pkg)
+		}
+	}
+	return packages
 }
 
 // reportFailureLine returns the failure a failure report's `  <failure>:` line under a run names, without its colon.

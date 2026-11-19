@@ -102,6 +102,23 @@ Fix such a value in the code yourself.
 When the change is intended, leave it: only the run's parent amends the expectation, at the Stuck that follows.
 `lym drift check` runs the same check on demand.
 
+## A bug entry
+
+When the task's board entry is labelled `bug`, the fix's test must fail before the fix.
+Write a test that reaches the bug through code the merge base already has, so it fails on the merge base and passes with the fix.
+Once you end your turn, the row's red-first gate runs the tests your diff adds or changes once on the merge base's code.
+It fails when every one of them passes there, when the diff adds or changes no test,
+and when it cannot judge them, as on a hub whose scoper is not go or when the diff changes a non-Go file of a package.
+When the bug has no seam a test can reach, or the check cannot judge it, send your parent `lym creel post --parent --expect-reply "<text>"` naming why,
+and ask it to record that with `lym loom decision add` under a title opening `No test seam`; then end your turn to wait.
+
+The commit that fixes the bug records the cause its test confirmed as a trailer line in the last paragraph of its commit message:
+
+`Root-Cause: <the defect in the code that the failing test confirmed>`
+
+Name the defect, never the symptom the entry reports.
+Code-Review reads this line.
+
 {{template "loom-fragment-loosened-check"}}
 
 ## What happens after you hand off

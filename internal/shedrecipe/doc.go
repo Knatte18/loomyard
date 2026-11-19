@@ -201,6 +201,17 @@
 // The shipped darn recipe lists `drift` on Darn-Write after `verify`,
 // and the tapestry recipe lists it on Webster, whose run-level gate carries it.
 //
+// # The red-first gate
+//
+// The `red-first` gate holds the handoff of a run whose board entry is labelled `bug`.
+// It holds it until a test the diff adds or changes fails on the merge base.
+// The parent may instead record a decision titled `No test seam`.
+// That fits a bug no test can reach, or a check that cannot judge the tests.
+// It reads the entry's labels through Env.EntryLabels at each arrival.
+// It runs the call Env.RedFirstCommand renders for the row's gate key.
+// An entry without the label passes at once.
+// The shipped darn recipe lists it on Darn-Write after `verify`.
+//
 // # The gate fixer element
 //
 // An element of a "gates" list may carry the optional key "fixer", a `<module>.<key>` setting read through Env.Setting.

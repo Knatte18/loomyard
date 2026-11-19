@@ -309,6 +309,22 @@
 // TierRunFailures reads every failure of the report, each opened by its run's label.
 // It reports false unless every run the report lists is a tier or guard run.
 // It also reports false for a package that failed outside any test, such as by a compile error, which a rerun repeats.
+// PackagesFailedOutsideTests reads the packages the report names as failed outside any test.
+// NamedFailedTests reads every named failed test of the report, whatever else the report holds.
+//
+// # Red-first call
+//
+// RedFirstCall renders `lym gate red-first --gate <key>`.
+// That call runs the tests a diff adds or changes on its merge base.
+// RedFirstGreenExit is its exit code when every one of those tests passed there.
+// RedFirstNoTestExit is its exit code when the diff adds or changes no test.
+// RedFirstUnjudgedExit is its exit code when it cannot judge the tests:
+// the hub's scoper is not go, or the diff changes a non-Go file of a Go package, which the base run cannot put back.
+// BugLabel is the board label of an entry the call guards.
+// NoTestSeamTitle opens the title of the parent's decision that names a bug no test can reach.
+// That decision lifts the guard.
+// Exit 0 means a test went red on the base;
+// any other code is a refusal or a run that judged none of the tests.
 //
 // # Run log
 //

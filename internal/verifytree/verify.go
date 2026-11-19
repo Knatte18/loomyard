@@ -307,7 +307,7 @@ func parsePorcelainZ(out string) []string {
 // Once the log is written, whatever the exit, every log beyond the newest verifyLogKeep is pruned.
 // The log the landing failure record names is kept.
 // A prune failure is logged and leaves the result unchanged.
-// The command is one `lym gate test --wait` call, or such calls joined by `&&`.
+// The command is one `lym gate test --wait` call, or such calls joined by `&&`, or one `lym gate red-first` call.
 // Those calls take their own slots and bound themselves, so Verify takes no slot and applies no timeout.
 // The pass writes the record only when HEAD still names the tree and commit the run started on,
 // so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.

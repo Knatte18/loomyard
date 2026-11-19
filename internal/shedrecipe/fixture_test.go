@@ -266,16 +266,18 @@ func newTestEnv(t *testing.T) Env {
 	}
 
 	return Env{
-		Cwd:            mustMkdir("cwd"),
-		AnchorPath:     mustMkdir("anchor"),
-		ConfigDirs:     configengine.Dirs{Anchor: filepath.Join(dir, "anchor")},
-		WorktreeRoot:   mustMkdir("worktree"),
-		VerifyDir:      mustMkdir("verify"),
-		VerifyCommand:  func(string) (string, error) { return "go test ./...", nil },
-		StatusPath:     filepath.Join(dir, "status.json"),
-		StatusLockPath: filepath.Join(dir, "status.json.lock"),
-		StencilsDir:    mustMkdir("stencils"),
-		SpecsDir:       mustMkdir("specs"),
+		Cwd:             mustMkdir("cwd"),
+		AnchorPath:      mustMkdir("anchor"),
+		ConfigDirs:      configengine.Dirs{Anchor: filepath.Join(dir, "anchor")},
+		WorktreeRoot:    mustMkdir("worktree"),
+		VerifyDir:       mustMkdir("verify"),
+		VerifyCommand:   func(string) (string, error) { return "go test ./...", nil },
+		EntryLabels:     func() ([]string, error) { return nil, nil },
+		RedFirstCommand: func(key string) string { return "lym gate red-first --gate " + key },
+		StatusPath:      filepath.Join(dir, "status.json"),
+		StatusLockPath:  filepath.Join(dir, "status.json.lock"),
+		StencilsDir:     mustMkdir("stencils"),
+		SpecsDir:        mustMkdir("specs"),
 		// Inside the anchor, as in production.
 		RunRoot:            mustMkdir("anchor/run-root"),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),

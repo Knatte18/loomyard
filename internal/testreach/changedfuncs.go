@@ -111,9 +111,14 @@ func ambiguousNames(sides ...[]declaredFunc) map[string]bool {
 
 // declaredFuncs returns the functions of the production Go files of files that lie in the module, in path order.
 func declaredFuncs(module Module, files FileSet) ([]declaredFunc, error) {
+	return declaredFuncsWhere(module, files, packageImportPath, func(*ast.FuncDecl) bool { return true })
+}
+
+// declaredFuncsWhere returns the functions keep accepts of the files importPath places in the module, in path order.
+func declaredFuncsWhere(module Module, files FileSet, importPath func(Module, string) (string, bool), keep func(*ast.FuncDecl) bool) ([]declaredFunc, error) {
 	var funcs []declaredFunc
 	for _, name := range slices.Sorted(maps.Keys(files)) {
-		pkg, ok := packageImportPath(module, name)
+		pkg, ok := importPath(module, name)
 		if !ok {
 			continue
 		}
@@ -126,7 +131,7 @@ func declaredFuncs(module Module, files FileSet) ([]declaredFunc, error) {
 		inits := 0
 		for _, decl := range parsed.Decls {
 			fn, isFunc := decl.(*ast.FuncDecl)
-			if !isFunc {
+			if !isFunc || !keep(fn) {
 				continue
 			}
 			funcName := funcKeyName(fn)
@@ -154,6 +159,13 @@ func packageImportPath(module Module, name string) (string, bool) {
 	if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 		return "", false
 	}
+	return directoryImportPath(module, name)
+}
+
+// directoryImportPath returns the import path of the directory that holds a file.
+// name is the file's worktree-relative slash path.
+// It reports false for a file outside the module, and for one under testdata or a directory opening with "." or "_".
+func directoryImportPath(module Module, name string) (string, bool) {
 	rel := name
 	if module.Rel != "" && module.Rel != "." {
 		var inside bool

@@ -6,6 +6,8 @@
 // and its verb `redundant` lists one package's redundancy candidates from its map, confirmed by mutation.
 // Its verb `reach` prints the tests that reach one function, or the landings of a branch that a test reaches.
 // Its verb `mutate` mutates the lines the worktree's diff changes and lists the mutants no covering test kills.
+// Its verb `red-first` runs the tests the worktree's diff adds or changes on the base's code.
+// It reports whether any of them failed there.
 //
 // The module is not standalone-capable and does not go through internal/cliwire.
 // It has no target directory, state, plan or stencils to wire, and it resolves hub membership itself.
@@ -820,6 +822,60 @@
 // `errors` holds the error lines of the refresh.
 // It exits 0 once it ran, whatever it found.
 // Bound: a mutant changes the package's own code only, so a test of another package never kills one.
+//
+// # Red-first verb
+//
+// `lym gate red-first --gate <key> [--base <rev>]` proves that a bug fix's test was red before the fix.
+// A gate on a bug fix's writer row runs it as a subprocess and reads its exit code.
+// The base is `--base`, else the merge base with the parent branch, refused as the Mutate verb refuses it.
+// `--gate` is required, and a key the config cannot run is refused with the config's way forward.
+// The refusal for a missing `--gate` comes before hub resolution, as a flag-shape refusal does.
+// A hub whose scoper is not `go` can judge nothing.
+// The verb then refuses, naming the scoper, with exit `gateslot.RedFirstUnjudgedExit`.
+// The way forward is the parent's recorded decision whose title opens `gateslot.NoTestSeamTitle`.
+//
+// `testreach.ChangedTests` finds the tests the diff adds or changes.
+// It compares the `_test.go` files of each package holding a changed one, at the base and in the working tree.
+// A diff with no such test is refused, naming the way forward, with exit `gateslot.RedFirstNoTestExit`.
+// The way forward includes recording a decision for a bug no test can reach.
+// Its title opens `gateslot.NoTestSeamTitle`.
+//
+// The verb then puts the base's production code back with a Go build overlay.
+// It runs the key's tiers once in this process.
+// The overlay maps each changed production `.go` file of the module to a copy of its text at the base.
+// A file the base lacks maps to the empty path, which Go reads as deleted.
+// Test files keep their working-tree text.
+// A changed non-Go file of a package of the module is one the overlay cannot put back.
+// The package may embed or read it.
+// It counts when a Go file lies in its directory or above it, up to the module's root, and it is not under `testdata`.
+// The verb then refuses before any tier runs, naming the paths, with exit `gateslot.RedFirstUnjudgedExit`.
+// The way forward is the same parent decision as for a hub whose scoper is not `go`.
+// The overlay and the copies live in a `lymtemp` directory that the verb removes when it ends.
+// The tiers run through the same code as `lym gate test` over explicit targets in the module's directory.
+// They run once for each package that holds a changed test, so a test of one package never runs by another's name.
+// The target is that package.
+// The words of `{args}` are `-overlay=<file>` and `-run=^(<names>)$`, the names being that package's changed tests.
+// `renderTierCommand` quotes each word through `verifyrun.QuoteArg`.
+// The pattern's `|`, `(`, `)` and `$` reach `go test` whole.
+// The key's lints, scope and report steps never run, and each tier's command must hold `{args}`.
+// The tier run's output and its failure report go to stderr as they come, and the verb keeps them for its verdict.
+// A line first names the base, the tests and the number of files the overlay replaces.
+//
+// The exit code is the contract:
+// - 0 when a changed test failed on the base; the envelope lists the red tests as `<package>.<Name>`.
+// - `gateslot.RedFirstGreenExit` when every changed test passed on the base, which does not show the bug.
+// - `gateslot.RedFirstNoTestExit` when the diff adds or changes no test.
+// - `gateslot.RedFirstUnjudgedExit` when the hub's scoper is not `go`, or the overlay cannot put back a changed file.
+// - 1 for a refusal, and for a run that judged none of the tests, such as a timeout or a crash.
+// - 128 plus the signal number after a terminating signal.
+//
+// A test is red when `gateslot.NamedFailedTests` names its package and name in the output.
+// That holds whatever else the failure report lists, such as a cut line or another package's failure.
+// It is also red when `gateslot.PackagesFailedOutsideTests` names its package.
+// A test that does not build on the base therefore counts as red.
+// Bound: `go.mod` and `go.sum` are not put back.
+// Bound: a test that every tier of the key skips counts as passing.
+// Bound: a `lym` binary a tier prebuilds is built from the working tree, not from the base, and no overlay reaches it.
 //
 // # Failure report
 //

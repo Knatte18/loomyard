@@ -154,6 +154,8 @@ var intentionallyNil = map[string]string{
 	"Darn.LatestOutcome":                     "darn-only seam, batten has no darn segment",
 	"Darn.CheckRecord":                       "darn-only seam, batten has no darn segment",
 	"Darn.CommittedRecord":                   "darn-only seam, batten has no darn segment",
+	"EntryLabels":                            "darn-only seam, batten has no red-first gate",
+	"RedFirstCommand":                        "darn-only seam, batten has no red-first gate",
 	"DiscussionHistory":                      "loom-only seam, batten wires no loom record",
 	"RecordWrite.ReadBody":                   "loom-only seam, batten wires no loom record",
 	"RecordWrite.ReadStored":                 "loom-only seam, batten wires no loom record",
