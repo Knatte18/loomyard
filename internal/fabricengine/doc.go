@@ -2487,6 +2487,9 @@
 // A worktree belongs to a one-repository hub when `.lym-anchor` is committed at its HEAD.
 // For the repository's main worktree and the Bolt checkout, the marker on the `BoltBranchName` branch counts too.
 // The main worktree of a two-repository records repository is a records sibling and never reads as one repository.
+// A path with no worktree on disk reads as two repositories without running git or logging.
+// The answer for a worktree on disk is kept for the process, so a repeated read runs no git;
+// committing or retiring a marker through fabric drops every kept answer.
 // In a one-repository hub a worktree is its own records worktree.
 // `RecordsRepoRoot` is the prime worktree, and a pair's records branch is its code branch.
 // The records locks then sit in the worktree's git directory, so the repository's exclude never gets `.weft/`.

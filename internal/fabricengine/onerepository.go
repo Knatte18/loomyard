@@ -1,4 +1,4 @@
-// onerepository.go reads from git which layout a worktree belongs to.
+// onerepository.go reads from git which layout a worktree belongs to, once per worktree for the process.
 // It also names the records geometry that layout implies.
 // In a one-repository hub a worktree is its own records worktree.
 // Its records branch is its code branch, and its records locks sit in its git directory.
@@ -7,8 +7,11 @@ package fabricengine
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/Knatte18/loomyard/internal/dotgit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -23,23 +26,56 @@ const (
 	recordsLockDirName = "lym-locks"
 )
 
+// layoutAnswers maps the cleaned path of a worktree on disk to whether it belongs to a one-repository hub.
+// A hub's layout is fixed once its marker is committed, so an answer holds for the process;
+// fabric's own marker writes clear the map through forgetLayouts.
+var layoutAnswers sync.Map
+
 // oneRepositoryAt reports whether the worktree at path belongs to a one-repository hub, reading git alone.
+// A path with no `.git` entry is no worktree on disk and answers false without running git or logging.
+// That answer is not kept, so a worktree created there later is read then.
+// Any other answer is kept for the process, and a later call for the same path runs no git.
+// A failed read answers false, is logged at Warn and is not kept,
+// so a path that is no repository keeps the two-repository geometry.
+func oneRepositoryAt(path string) bool {
+	key := filepath.Clean(path)
+	if answer, ok := layoutAnswers.Load(key); ok {
+		return answer.(bool)
+	}
+	if _, err := os.Lstat(filepath.Join(key, ".git")); errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+
+	answer, err := readOneRepositoryLayout(key)
+	if err != nil {
+		logger.Warn("fabricengine: reading the layout of a worktree failed; reading it as two repositories", "path", key, "error", err)
+		return false
+	}
+	layoutAnswers.Store(key, answer)
+	return answer
+}
+
+// forgetLayouts drops every kept layout answer.
+// A write that commits or removes a `.lym-anchor` marker calls it, so the next read sees the new layout.
+func forgetLayouts() {
+	layoutAnswers.Clear()
+}
+
+// readOneRepositoryLayout reads from git whether the worktree at path belongs to a one-repository hub.
 // A repository whose main worktree is a records sibling with its owner beside it is a two-repository records repository.
 // For such a path the answer is false.
 // Otherwise the answer is whether `.lym-anchor` is committed at HEAD of the worktree at path.
 // The repository's main worktree and the Bolt checkout may have a checked-out branch that lacks the marker.
 // For those, a marker committed on the `lym-bolt` branch answers true too.
-// A failed read answers false and is logged at Warn, so a path that is no repository keeps the two-repository geometry.
-func oneRepositoryAt(path string) bool {
+func readOneRepositoryLayout(path string) (bool, error) {
 	geometry, err := dotgit.Read(path)
 	if err != nil {
-		logger.Warn("fabricengine: reading the layout of a worktree failed; reading it as two repositories", "path", path, "error", err)
-		return false
+		return false, err
 	}
 
 	mainWorktree := filepath.Dir(geometry.CommonDir)
 	if owner, isSibling := WeftWarpSlug(filepath.Base(mainWorktree)); isSibling && isDirectory(filepath.Join(filepath.Dir(mainWorktree), owner)) {
-		return false
+		return false, nil
 	}
 
 	repo := gitrepo.New(path)
@@ -48,34 +84,27 @@ func oneRepositoryAt(path string) bool {
 	case headErr == nil:
 		_, found, err := committedMarker(path, "HEAD")
 		if err != nil {
-			logger.Warn("fabricengine: reading the committed anchor marker failed; reading the layout as two repositories", "path", path, "error", err)
-			return false
+			return false, err
 		}
 		if found {
-			return true
+			return true, nil
 		}
 	case !errors.Is(headErr, gitrepo.ErrNoCommits):
-		logger.Warn("fabricengine: reading HEAD failed; reading the layout as two repositories", "path", path, "error", headErr)
-		return false
+		return false, fmt.Errorf("read HEAD: %w", headErr)
 	}
 
 	if filepath.Base(path) != BoltDirName && !sameDirectory(path, mainWorktree) {
-		return false
+		return false, nil
 	}
 	exists, err := repo.BranchExists(BoltBranchName)
 	if err != nil {
-		logger.Warn("fabricengine: looking for the Bolt branch failed; reading the layout as two repositories", "path", path, "error", err)
-		return false
+		return false, fmt.Errorf("look for the %s branch: %w", BoltBranchName, err)
 	}
 	if !exists {
-		return false
+		return false, nil
 	}
 	_, found, err := committedMarker(path, "refs/heads/"+BoltBranchName)
-	if err != nil {
-		logger.Warn("fabricengine: reading the Bolt branch's anchor marker failed; reading the layout as two repositories", "path", path, "error", err)
-		return false
-	}
-	return found
+	return found, err
 }
 
 // recordsBranchAt returns the records branch of branch for the worktree at worktreePath:
