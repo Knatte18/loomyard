@@ -542,6 +542,16 @@
 // The `vstest` counter keeps each test a `Failed <name> [<duration>]` line reports, with no package.
 // It keeps the first lines of the test's block, which hold its error message and stack trace;
 // the block's section headings are left out.
+// A `vstest` invocation whose command holds `{args}` gets its results from a file the gate asks for instead.
+// Its `{args}` open with `--results-directory <dir> --logger trx;LogFilePrefix=gate --blame`, the `dotnet test` spelling,
+// over a fresh `lymtemp` directory, ahead of the call's own words after `--`.
+// Once the command ends, the TRX files there replace the counts and failed tests its console output gave,
+// so a console logger among the call's own words never changes the verdict; the directory is then removed.
+// A test counts as passed for the outcome Passed, failed for Failed, Error, Timeout and Aborted, and skipped otherwise.
+// A failed test keeps the first lines of its error message and stack trace.
+// A failed run prints and logs each run-level message of those files, such as a test host crash with the test
+// the blame collector saw running, and the failure report lists it among the causes.
+// An invocation that wrote no readable TRX file keeps the console counts, as does a command without `{args}`.
 // The record carries each failed test with its first line as `failures`.
 // A `go-json` tier under the `go` scoper fails when a package holding a test under the tier's tag ran none;
 // the tier's command then lacks its tag.
@@ -562,7 +572,7 @@
 // The line covers an invocation whose whole output reported no test.
 // It cannot see a disabled project beside a project that ran.
 // It cannot see a gated class in a project that ran other tests.
-// It cannot name the property behind a skip: the counter reads only each invocation's total.
+// It cannot name the property behind a skip: the line reads only each invocation's total.
 //
 // # Stray files
 //

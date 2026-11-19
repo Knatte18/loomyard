@@ -452,6 +452,7 @@ func (c *goJSONCounter) handle(line []byte, terminated bool) error {
 // vstestCounter passes every line through and sums the counts of the VSTest summary lines.
 // It also reads each failed test's block, which opens with the `Failed <name> [<duration>]` line.
 // The block runs up to a blank line, the next result line or a summary line.
+// An invocation whose results file the gate read has its console counts and failures replaced by the file's.
 type vstestCounter struct {
 	lines  lineReader
 	counts tierCounts
@@ -459,6 +460,43 @@ type vstestCounter struct {
 	failures []runFailure
 	// inFailure is set while the lines read belong to the block of the last failed test.
 	inFailure bool
+	// invocationCounts and invocationFailures are the counts and the number of failures before the invocation in progress.
+	// Its results file replaces whatever its console output added past them.
+	invocationCounts   tierCounts
+	invocationFailures int
+	// runMessages holds the run-level messages of every results file read, in order.
+	runMessages []string
+}
+
+// startInvocation marks the counts and failures so far as those before the invocation about to run.
+func (c *vstestCounter) startInvocation() {
+	c.lines.mu.Lock()
+	defer c.lines.mu.Unlock()
+	c.invocationCounts, c.invocationFailures = c.counts, len(c.failures)
+	c.inFailure = false
+}
+
+// replaceInvocation replaces what the invocation since startInvocation counted from its console output with results.
+func (c *vstestCounter) replaceInvocation(results trxResults) {
+	c.lines.mu.Lock()
+	defer c.lines.mu.Unlock()
+	before := c.invocationCounts
+	c.counts = tierCounts{
+		discovered: before.discovered + results.counts.discovered,
+		passed:     before.passed + results.counts.passed,
+		failed:     before.failed + results.counts.failed,
+		skipped:    before.skipped + results.counts.skipped,
+	}
+	c.failures = append(c.failures[:c.invocationFailures:c.invocationFailures], results.failures...)
+	c.runMessages = append(c.runMessages, results.runMessages...)
+	c.inFailure = false
+}
+
+// RunMessages returns a copy of the run-level messages of every results file read.
+func (c *vstestCounter) RunMessages() []string {
+	c.lines.mu.Lock()
+	defer c.lines.mu.Unlock()
+	return slices.Clone(c.runMessages)
 }
 
 func (c *vstestCounter) Write(p []byte) (int, error) { return c.lines.Write(p) }

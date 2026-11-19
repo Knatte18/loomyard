@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
@@ -104,6 +105,8 @@ func runTierChecked(ctx context.Context, out io.Writer, run tierRun, env []strin
 // and it returns that line for the caller to print.
 // Every command's GOFLAGS then opens with gateslot.TestCacheOffFlag, so `go test` keeps no test result cache.
 // A passing `vstest` invocation that reported no test prints the line naming it to stderr and the log.
+// A failed run prints and logs each run-level message its test results files report, such as a test host crash,
+// and counts it among the causes.
 // A run with no invocation passes at once with nothing discovered.
 func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
 	started := time.Now()
@@ -140,6 +143,14 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 	}
 
 	var causes []string
+	if exit != 0 {
+		// A crashed test host fails the run with no failed test, so its results file's message is the only cause.
+		for _, line := range resultsFileLines(counter, tierName(run.number)) {
+			logBuffer.WriteString(line + "\n")
+			printLine(request.stderr, line)
+			causes = append(causes, line)
+		}
+	}
 	timedOut := ctx.Err() == nil && errors.Is(tierCtx.Err(), context.DeadlineExceeded) && exit != 0
 	if timedOut {
 		exit = 1
@@ -393,6 +404,9 @@ func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Du
 // While a command runs, the process cap watches every process carrying env's run marker, when env sets one,
 // and the memory guard watches its test binaries, when the request turns it on.
 // A tier with memory_mb runs each command under that cap, and a command that cannot be started under it is a refusal.
+// A vstest invocation whose command holds {args} opens them with vstestResultsArgs over a fresh temp directory.
+// Once the command ends, the results files there replace the counts and failures its console output gave,
+// and the directory is removed.
 // After each passing invocation it hands notice the line of noTestNotice, when that line is not empty.
 // It returns that exit code, the commands it rendered, what the guards stopped,
 // and a refusal when a command could not be run at all.
@@ -434,8 +448,20 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 				continue
 			}
 		}
-		command, err := renderTierCommand(run.number, run.tier, invocation.targets, testTargets, invocation.terms, run.args)
+		args, resultsDir := run.args, ""
+		vstest, readsResults := counter.(*vstestCounter)
+		if readsResults && strings.Contains(run.tier.Command, "{args}") {
+			if dir, err := lymtemp.MkdirTemp("gate-vstest-"); err != nil {
+				logger.Warn("gate test: could not make the vstest results directory; the console counts stand", "tier", tierName(run.number), "cause", err)
+			} else {
+				resultsDir = dir
+				args = append(vstestResultsArgs(dir), run.args...)
+				vstest.startInvocation()
+			}
+		}
+		command, err := renderTierCommand(run.number, run.tier, invocation.targets, testTargets, invocation.terms, args)
 		if err != nil {
+			removeResultsDir(resultsDir)
 			return 0, commands, runStops{}, err.Error()
 		}
 		commands = append(commands, command)
@@ -480,6 +506,12 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		}
 		exit = tierExitCodeOf(runErr)
 		logger.Info("gate test: tier command ended", "tier", tierName(run.number), "exit", exit, "error", runErr, "memory_cap_kill", capKilled)
+		if resultsDir != "" {
+			if results, read := readTRXResults(resultsDir); read {
+				vstest.replaceInvocation(results)
+			}
+			removeResultsDir(resultsDir)
+		}
 		if errors.Is(runErr, proc.ErrMemoryCap) && ctx.Err() == nil {
 			return 0, commands, runStops{}, tierMemoryCapRefusal(tierName(run.number), run.tier.MemoryMB, dir, runErr)
 		}
@@ -494,6 +526,16 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		}
 	}
 	return 0, commands, runStops{}, ""
+}
+
+// removeResultsDir removes a vstest invocation's results directory, doing nothing for an empty dir.
+func removeResultsDir(dir string) {
+	if dir == "" {
+		return
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		logger.Warn("gate test: could not remove the vstest results directory", "dir", dir, "cause", err)
+	}
 }
 
 // noTestNotice returns the line of a passing `vstest` invocation whose output reported no test, or "" for any other.

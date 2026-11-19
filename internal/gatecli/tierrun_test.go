@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -439,6 +441,109 @@ func TestRunTierNoTestNotice(t *testing.T) {
 				if !strings.Contains(string(result.log), line+"\n") {
 					t.Errorf("runTier() log = %q; want it to hold %q", result.log, line)
 				}
+			}
+		})
+	}
+}
+
+// TestRunTierReadsTheVSTestResultsFile pins a vstest tier's verdict on the TRX file the gate asks for.
+// The command finds the results directory among its args, copies a fixture TRX file there,
+// prints the summary a detailed console logger prints, which the console counter cannot read, and exits.
+func TestRunTierReadsTheVSTestResultsFile(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the tier command is a POSIX shell script")
+	}
+
+	trx := func(results, runInfo string) string {
+		return `<?xml version="1.0" encoding="utf-8"?>
+<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Results>` + results + `</Results>
+  <ResultSummary outcome="Completed"><RunInfos>` + runInfo + `</RunInfos></ResultSummary>
+</TestRun>
+`
+	}
+	const passed = `<UnitTestResult testName="Ns.Tests.Kept" outcome="Passed" />`
+	const failed = `<UnitTestResult testName="Ns.Tests.Broken" outcome="Failed"><Output><ErrorInfo>
+<Message>Assert.That failed
+  Expected: 1</Message><StackTrace>   at Ns.Tests.Broken() in Tests.cs:line 9</StackTrace></ErrorInfo></Output></UnitTestResult>`
+	const crash = `<RunInfo outcome="Error"><Text>The active test run was aborted. Reason: Test host process crashed : Fatal error.
+The test running when the crash occurred: Ns.Tests.Kept</Text></RunInfo>`
+	crashLine := "gate test: the test results file of tier0 reports: The active test run was aborted. Reason: Test host process crashed : Fatal error.; The test running when the crash occurred: Ns.Tests.Kept"
+	tests := []struct {
+		name         string
+		trx          string
+		exit         int
+		wantRecord   gateslot.RunRecord
+		wantFailures []runFailure
+		// wantLine is the line stderr, the log and the causes hold, or "" when stderr stays empty.
+		wantLine string
+	}{
+		{
+			name:       "ADetailedConsoleLoggerLeavesTheCountsToTheResultsFile",
+			trx:        trx(passed, ""),
+			wantRecord: gateslot.RunRecord{Discovered: 1, Passed: 1},
+		},
+		{
+			name:         "AFailedTestIsReadFromTheResultsFile",
+			trx:          trx(passed+failed, ""),
+			exit:         1,
+			wantRecord:   gateslot.RunRecord{ExitCode: 1, Discovered: 2, Passed: 1, Failed: 1},
+			wantFailures: []runFailure{{test: "Ns.Tests.Broken", lines: []string{"Assert.That failed", "Expected: 1", "at Ns.Tests.Broken() in Tests.cs:line 9"}}},
+		},
+		{
+			name:       "ACrashedTestHostNamesItsCause",
+			trx:        trx("", crash),
+			exit:       1,
+			wantRecord: gateslot.RunRecord{ExitCode: 1},
+			wantLine:   crashLine,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			fixture := filepath.Join(dir, "fixture.trx")
+			if err := os.WriteFile(fixture, []byte(tt.trx), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			seen := filepath.Join(dir, "results-dir")
+			command := fmt.Sprintf(`set -- {args}; while [ "$1" != --results-directory ]; do shift; done; printf %%s "$2" > %q; cp %q "$2/gate_net8.0_1.trx"; echo 'Total tests: 1'; echo '     Passed: 1'; exit %d`, seen, fixture, tt.exit)
+			var stderr bytes.Buffer
+			request := testRequest{root: dir, stderr: &stderr, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay, args: []string{"--logger", "console;verbosity=detailed"}}
+			run := tierRun{number: 0, tier: gateslot.Tier{Command: command, Counter: counterVSTest, TimeoutMin: 1}, invocations: []invocation{{dir: dir}}, args: request.args}
+
+			result := runTier(context.Background(), io.Discard, run, []string{"PATH=" + os.Getenv("PATH")}, request)
+
+			if result.refusal != "" {
+				t.Fatalf("runTier() refusal = %q; want none", result.refusal)
+			}
+			got := result.record
+			want := tt.wantRecord
+			if got.ExitCode != want.ExitCode || got.Discovered != want.Discovered || got.Passed != want.Passed || got.Failed != want.Failed || got.Skipped != want.Skipped {
+				t.Errorf("runTier() record = exit %d, discovered %d, passed %d, failed %d, skipped %d; want exit %d, discovered %d, passed %d, failed %d, skipped %d",
+					got.ExitCode, got.Discovered, got.Passed, got.Failed, got.Skipped, want.ExitCode, want.Discovered, want.Passed, want.Failed, want.Skipped)
+			}
+			if diff := cmp.Diff(tt.wantFailures, result.failures, cmp.AllowUnexported(runFailure{})); diff != "" {
+				t.Errorf("runTier() failures mismatch (-want +got):\n%s", diff)
+			}
+			wantStderr := ""
+			if tt.wantLine != "" {
+				wantStderr = tt.wantLine + "\n"
+				if !slices.Contains(result.causes, tt.wantLine) || !strings.Contains(string(result.log), tt.wantLine+"\n") {
+					t.Errorf("runTier() causes = %q, log = %q; want both to hold %q", result.causes, result.log, tt.wantLine)
+				}
+			}
+			if stderr.String() != wantStderr {
+				t.Errorf("runTier() stderr = %q; want %q", stderr.String(), wantStderr)
+			}
+			resultsDir, err := os.ReadFile(seen)
+			if err != nil {
+				t.Fatalf("read the results directory the command saw: %v", err)
+			}
+			if _, err := os.Stat(string(resultsDir)); !os.IsNotExist(err) {
+				t.Errorf("results directory %s after the run: stat error %v; want it removed", resultsDir, err)
 			}
 		})
 	}
