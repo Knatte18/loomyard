@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -173,32 +174,94 @@ func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins the rerun's flaky note naming the failing package and every verify site's gate label and attempt; the run-level verify-gate test observes only the pass
+// TestVerifyGate_FlakyFailurePassesOnRerunWithNote pins a first-run failure whose rerun passes.
+// The gate passes, and the applied notes keep the first run's log path and output tail in the friction note.
+// A first run that names no failing test is a failure of the verify command, never a flaky test.
+//
+//testtiming:keep pins the rerun's flaky notes with the first run's log and output, and every verify site's gate label and attempt; the run-level verify-gate test observes only the pass
 func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
 	tiergate.Require(t, 0)
-	f := &gateFake{
-		outcome: outcomeDone,
-		command: "go test ./...",
-		results: []verifytree.Result{failedResult(), passedResult()},
-		logs:    []string{failingPackageLog},
-	}
-	notes := &VerifyGateNotes{}
-	gate := newVerifyGate(t.TempDir(), 3, notes, testFixPromptPath, f.seams())
+	t.Parallel()
 
-	res, err := gate()
-	if err != nil || !res.Passed {
-		t.Fatalf("gate() = %+v, %v; want a pass on rerun", res, err)
+	tests := []struct {
+		name      string
+		firstLog  string
+		wantWarns []string
+		// wantNote are the lines the friction note holds.
+		wantNote []string
+		// wantSummary is the summary.md line that lists the failure.
+		wantSummary string
+	}{
+		{
+			name:        "a failing package",
+			firstLog:    "    tmuxkit: a stray entry\n" + failingPackageLog,
+			wantWarns:   []string{"integration verify: flaky failures passed or vanished on rerun: example.com/mod/internal/a"},
+			wantNote:    []string{"(flaky):", "- example.com/mod/internal/a, first run's log /verify/verify-1.log", "      tmuxkit: a stray entry"},
+			wantSummary: "- `example.com/mod/internal/a`",
+		},
+		{
+			name:        "a verify command that named no failing test",
+			firstLog:    "gate test: failed runs: build (exit 1)\n",
+			wantWarns:   []string{"integration verify: the verify command failed naming no failing test and passed on rerun; first run's log: /verify/verify-1.log"},
+			wantNote:    []string{"The verify command failed its first run naming no failing test", "- first run's log /verify/verify-1.log", "  gate test: failed runs: build (exit 1)"},
+			wantSummary: "- `/verify/verify-1.log`",
+		},
 	}
-	if f.verifyCalls != 2 {
-		t.Errorf("verify ran %d time(s); want the run and one rerun", f.verifyCalls)
-	}
-	if want := []string{"example.com/mod/internal/a"}; !reflect.DeepEqual(notes.Flaky(), want) {
-		t.Errorf("notes.Flaky() = %v; want %v", notes.Flaky(), want)
-	}
-	for _, site := range f.sites {
-		if site.Label != "webster gate" || site.Attempt != 1 {
-			t.Errorf("verify site = %+v; want label %q, attempt 1", site, "webster gate")
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := &gateFake{
+				outcome: outcomeDone,
+				command: "go test ./...",
+				results: []verifytree.Result{failedResult(), passedResult()},
+				logs:    []string{tt.firstLog},
+			}
+			frictionDir := filepath.Join(t.TempDir(), "friction")
+			notes := &VerifyGateNotes{frictionDir: frictionDir}
+			gate := newVerifyGate(t.TempDir(), 3, notes, testFixPromptPath, f.seams())
+
+			res, err := gate()
+			if err != nil || !res.Passed {
+				t.Fatalf("gate() = %+v, %v; want a pass on rerun", res, err)
+			}
+			if f.verifyCalls != 2 {
+				t.Errorf("verify ran %d time(s); want the run and one rerun", f.verifyCalls)
+			}
+			for _, site := range f.sites {
+				if site.Label != "webster gate" || site.Attempt != 1 {
+					t.Errorf("verify site = %+v; want label %q, attempt 1", site, "webster gate")
+				}
+			}
+
+			websterDir := t.TempDir()
+			if err := os.WriteFile(summaryparser.Path(websterDir), []byte("# S\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			warnings, err := notes.Apply(websterDir)
+			if err != nil {
+				t.Fatalf("Apply() error = %v", err)
+			}
+			if !reflect.DeepEqual(warnings, tt.wantWarns) {
+				t.Errorf("Apply() warnings = %q; want %q", warnings, tt.wantWarns)
+			}
+			note, err := os.ReadFile(filepath.Join(frictionDir, "webster-verify-triage.md"))
+			if err != nil {
+				t.Fatalf("read friction note: %v", err)
+			}
+			for _, want := range tt.wantNote {
+				if !strings.Contains(string(note), want) {
+					t.Errorf("friction note = %q; want %q in it", note, want)
+				}
+			}
+			summary, err := os.ReadFile(summaryparser.Path(websterDir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Contains(strings.Split(string(summary), "\n"), tt.wantSummary) {
+				t.Errorf("summary = %q; want the line %q", summary, tt.wantSummary)
+			}
+		})
 	}
 }
 
@@ -290,8 +353,8 @@ func TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 			if tt.wantHang == "" {
 				return
 			}
-			if flaky := notes.Flaky(); len(flaky) != 0 {
-				t.Errorf("notes.Flaky() = %v; want none for a hang", flaky)
+			if flaky := notes.flakyFailures(); len(flaky) != 0 {
+				t.Errorf("notes.flakyFailures() = %v; want none for a hang", flaky)
 			}
 			if !strings.Contains(res.Findings, "not re-run") || !strings.Contains(res.Findings, tt.wantHang) {
 				t.Errorf("findings = %q; want them to say the step was not re-run and name %q", res.Findings, tt.wantHang)

@@ -989,6 +989,8 @@
 // A failure is parsed from the log and rerun once:
 // a rerun pass passes the gate, and the identities that failed once are flaky.
 // Run reports them after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
+// The friction note keeps each one's first-run log path and output tail.
+// A first run that named no failing test is reported as a failure of the verify command, never as a flaky test.
 // A failure that survives the rerun returns findings.
 // Each failure goes to a fixer.
 // The cold fixer takes the failure that reaches the attempt budget;

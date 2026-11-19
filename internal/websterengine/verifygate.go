@@ -35,7 +35,7 @@ const verifyGateSite = "webster gate"
 const verifyGateCrashFindingsPrefix = "The verify command's test runner crashed"
 
 // VerifyGateNotes collects what a gate's evaluations observed that is not a failure:
-// the identities that failed once and passed on rerun, and the commits made above the pre-fix head.
+// the failures that passed on rerun, each with its first run's log, and the commits made above the pre-fix head.
 // It is applied after the gate's wait, so a flaky pass reaches the warnings, summary.md and a friction note,
 // and the fixer's commits reach summary.md.
 // It also holds the fixer the latest failure went to, which the re-prompt line names.
@@ -43,7 +43,7 @@ type VerifyGateNotes struct {
 	frictionDir string
 
 	mu      sync.Mutex
-	flaky   []string
+	flaky   []flakyFailure
 	commits []CommitLogEntry
 	fixer   string
 }
@@ -93,38 +93,39 @@ func (n *VerifyGateNotes) FixCommits() []CommitLogEntry {
 	return kept
 }
 
-// addFlaky records ids as flaky, skipping any already recorded.
-func (n *VerifyGateNotes) addFlaky(ids []string) {
+// addFlaky records failures, parsed from the first run's log, as flaky, skipping any identity already recorded.
+func (n *VerifyGateNotes) addFlaky(failures []VerifyFailure, log string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	for _, id := range ids {
+	for _, failure := range failures {
 		found := false
 		for _, have := range n.flaky {
-			found = found || have == id
+			found = found || have.failure.ID == failure.ID
 		}
 		if !found {
-			n.flaky = append(n.flaky, id)
+			n.flaky = append(n.flaky, flakyFailure{failure: failure, log: log})
 		}
 	}
 }
 
-// Flaky returns the identities recorded as flaky, in first-seen order.
-func (n *VerifyGateNotes) Flaky() []string {
+// flakyFailures returns the failures recorded as flaky, in first-seen order.
+func (n *VerifyGateNotes) flakyFailures() []flakyFailure {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	return append([]string(nil), n.flaky...)
+	return append([]flakyFailure(nil), n.flaky...)
 }
 
-// Apply writes the flaky identities into the summary.md under websterDir and a friction note.
+// Apply writes the flaky failures into the summary.md under websterDir and a friction note.
 // It returns the warnings that name them.
-// It writes the flaky identities only when some were flaky, and returns no warnings otherwise.
+// It writes the flaky failures only when some were flaky, and returns no warnings otherwise.
 // It then appends the fixer's commits to summary.md.
 // The gate's wait precedes this call, so the section lands after Master's last rewrite of summary.md.
 // The friction note is best-effort: a failed note is logged and never fails the run.
 func (n *VerifyGateNotes) Apply(websterDir string) ([]string, error) {
 	var warnings []string
-	if flaky := n.Flaky(); len(flaky) > 0 {
-		if err := AppendIntegrationTriage(websterDir, flaky); err != nil {
+	if flaky := n.flakyFailures(); len(flaky) > 0 {
+		ids, commandLogs := splitFlaky(flaky)
+		if err := AppendIntegrationTriage(websterDir, ids, commandLogs); err != nil {
 			return nil, err
 		}
 		if err := writeTriageFrictionNote(n.frictionDir, flaky); err != nil {
@@ -480,13 +481,14 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 			return failHung(res, firstOutput, hang)
 		}
 		first := runplan.ParseVerifyRun(firstOutput, false)
+		firstLog := res.Log
 		res, err = s.verify(site, command)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: verify gate: %w", err)
 		}
 		switch res.Status {
 		case verifytree.StatusPassed, verifytree.StatusSkipped:
-			notes.addFlaky(failureIDs(first))
+			notes.addFlaky(first, firstLog)
 			logger.Warn("websterengine: verify gate failures passed on rerun", "flaky", strings.Join(failureIDs(first), ", "))
 			return pass()
 		case verifytree.StatusDirty:
