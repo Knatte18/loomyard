@@ -136,11 +136,11 @@ func TestWriteHaltNote_NamesAnomalyProducerReasonAndHistory(t *testing.T) {
 
 	history := []shedengine.HistoryEntry{
 		{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-01-01T00:00:00Z"},
-		{Producer: loomshed.NameWebster, Outcome: shedengine.Stuck, At: "2026-01-01T00:00:01Z"},
+		{Producer: loomshed.NameWebster, Outcome: shedengine.Stuck, At: "2026-01-01T00:00:01Z", RoutedTo: "Plan-Write"},
 	}
 	historyRows := []string{
-		"- Preflight / " + string(shedengine.Done) + " / 2026-01-01T00:00:00Z",
-		"- " + loomshed.NameWebster + " / " + string(shedengine.Stuck) + " / 2026-01-01T00:00:01Z",
+		"- Preflight / " + string(shedengine.Done) + " / 2026-01-01T00:00:00Z\n",
+		"- " + loomshed.NameWebster + " / " + string(shedengine.Stuck) + " / 2026-01-01T00:00:01Z / routed to Plan-Write\n",
 	}
 	tests := []struct {
 		name     string

@@ -46,6 +46,18 @@ func TestRenderParse(t *testing.T) {
 	}{
 		{name: "blocked note with anomaly and history", note: blocked, golden: blockedGolden},
 		{name: "no history", note: Note{Producer: "P", State: "failed", Reason: "r", TraceFile: "t"}, wantContain: "history:\nno history entries\n"},
+		{
+			name: "a routine stuck row names the producer it handed the run on to",
+			note: Note{
+				Producer:       "Code-Burler-Review",
+				State:          "failed",
+				Reason:         "r",
+				HistoryEntries: 1,
+				TraceFile:      "t",
+				History:        []Row{{Producer: "Code-Bouncer", Outcome: "stuck", At: "2026-01-02T03:04:05Z", RoutedTo: "Code-Burler-Review"}},
+			},
+			wantContain: "history:\n- Code-Bouncer / stuck / 2026-01-02T03:04:05Z / routed to Code-Burler-Review\n",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

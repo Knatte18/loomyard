@@ -70,7 +70,7 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 		note.Anomaly = string(kind)
 	}
 	for _, h := range n.History {
-		note.History = append(note.History, haltnote.Row{Producer: h.Producer, Outcome: string(h.Outcome), At: h.At})
+		note.History = append(note.History, haltnote.Row{Producer: h.Producer, Outcome: string(h.Outcome), At: h.At, RoutedTo: h.RoutedTo})
 	}
 
 	if err := os.WriteFile(path, haltnote.Render(note), 0o644); err != nil {

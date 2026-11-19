@@ -212,6 +212,13 @@ func TestInputBoxText(t *testing.T) {
 		{"styled typed text followed by faint text", plainBox(styledBox("❯ hello \x1b[2mworld\x1b[0m")), "hello world", true},
 		{"styled faint paste placeholder", plainBox(styledBox("❯ \x1b[2m[Pasted text #1 +4 lines]\x1b[0m")), "[Pasted text #1 +4 lines]", true},
 		{"styled faint placeholder beside a lone percent mark", plainBox(styledBox("❯ \x1b[2mTry this\x1b[0m %")), "", true},
+		{
+			"a label too long for the pane cuts the top rule to the label and one glyph",
+			"✻ Sautéed for 6m 33s · done 11:15\n ly:creel-slack-post-silent-when-off:code-burler… ─\n❯ \n" + rule + "\n  ⏵⏵ bypass permissions on (shift+tab to cycle) ·\n",
+			"",
+			true,
+		},
+		{"a cut label with no rule glyph after it is no top rule", " ly:creel-slack-post-silent-when-off:code-burler…\n❯ \n" + rule + "\n", "", false},
 	}
 	c := &Claude{}
 	for _, tt := range tests {

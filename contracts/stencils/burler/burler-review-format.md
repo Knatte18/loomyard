@@ -42,9 +42,14 @@ Frontmatter rules, all strict:
 - Every `id` is unique within the file.
 - A `BLOCKING` verdict requires at least one `BLOCKING`-severity finding.
 - Never write `APPROVED` while any finding is `BLOCKING` — a self-contradictory review file must never happen and must never look approved.
-- `summary` must be valid YAML.
-  If it needs to contain a `"` character (e.g. quoting a misspelled word or an error message), the ENTIRE value must be one double-quoted string covering the whole line — never a quoted fragment followed by unquoted trailing prose. `summary: "capital" is misspelled as "captial"` is INVALID YAML (the value ends at the first closing quote, and everything after it breaks the parse).
-  Either quote the whole line (`summary: "\"capital\" is misspelled as \"captial\""`) or, simpler, just don't use literal quote characters in the summary (`summary: capital is misspelled as captial`).
+- Every value must be valid YAML.
+  A value that holds `: ` (a colon followed by a space) must be ONE double-quoted string covering the whole value;
+  so must a value that opens with `"`, `'`, a backtick, `[`, `{`, `*`, `&`, `!`, `|`, `>`, `%`, `@` or `#`.
+  Inside it, escape each `"` and `\` with a backslash: `fix: "Print the \"creel: warning:\" line"`.
+  An unquoted `summary: the refusal prints a creel: warning: line` is INVALID YAML, and the round cannot read the review.
+- Never write a quoted fragment followed by unquoted trailing prose.
+  `summary: "capital" is misspelled as "captial"` is INVALID YAML (the value ends at the first closing quote, and everything after it breaks the parse).
+  Either quote the whole value (`summary: "\"capital\" is misspelled as \"captial\""`) or leave the quote characters out (`summary: capital is misspelled as captial`).
 - Omit `findings` entirely when you found nothing.
   Never invent a finding to pad the list.
 - In a cluster round, each finding also carries an `origin:` key — `lens:<name>` for a finding kept from a named fork, or `handler` for one you found yourself.

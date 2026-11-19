@@ -116,7 +116,7 @@ func ParseReview(content []byte) (Verdict, []Finding, error) {
 
 	var parsed reviewHeader
 	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
-		return "", nil, fmt.Errorf("burler: review file frontmatter is not valid YAML: %w%s", err, quotedSummaryHint(header))
+		return "", nil, fmt.Errorf("burler: review file frontmatter is not valid YAML: %w%s", err, quotingHint(header, err))
 	}
 
 	verdict, err := parseVerdict(parsed.Verdict)
@@ -263,13 +263,23 @@ func ReviewGateEntry(reviewPath string) shuttleengine.GateEntry {
 // malformedQuotedSummary matches a `summary:` line whose value opens with a double-quoted fragment.
 // The value then carries more, unquoted content on the same line: `summary: "capital" is misspelled as "captial"`.
 // That is invalid YAML, since a quoted scalar must end the value.
-var malformedQuotedSummary = regexp.MustCompile(`(?m)^\s*summary:\s*"[^"]*"\s*\S`)
+// The match stays on one line, so a fully quoted summary never matches, and the fragment skips backslash-escaped quotes.
+// A `#` after the closing quote opens a YAML comment,
+// so a fully quoted summary with a trailing comment never matches either.
+var malformedQuotedSummary = regexp.MustCompile(`(?m)^[ \t]*summary:[ \t]*"(?:[^"\\]|\\.)*"[ \t]*[^\s#]`)
 
-// quotedSummaryHint returns a diagnostic suffix for a header with a quoted summary fragment and trailing prose.
+// unquotedColonError is the text the YAML parser's error carries when a plain value holds a colon followed by a space.
+const unquotedColonError = "mapping values are not allowed"
+
+// quotingHint returns a diagnostic suffix for a header that parseErr refused, or "" when no hint fits.
+// It covers a quoted summary fragment followed by trailing prose, and a plain value holding a colon followed by a space.
 // The suffix points the reviewer or the operator at the fix instead of a bare YAML parser error.
-func quotedSummaryHint(header string) string {
+func quotingHint(header string, parseErr error) string {
 	if malformedQuotedSummary.MatchString(header) {
 		return " (a summary containing a \" character must be ONE double-quoted string covering the whole value, not a quoted fragment followed by trailing prose)"
+	}
+	if strings.Contains(parseErr.Error(), unquotedColonError) {
+		return " (a value holding \": \" must be ONE double-quoted string covering the whole value, with each \" and \\ inside it escaped by a backslash)"
 	}
 	return ""
 }
