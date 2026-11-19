@@ -91,7 +91,7 @@ func runTierCopies(ctx context.Context, run tierRun, env []string, request testR
 		running.Add(1)
 		go func() {
 			defer running.Done()
-			results[i] = runTier(ctx, io.Discard, run, env, copyRequest)
+			results[i] = runTierCommands(ctx, io.Discard, run, env, copyRequest)
 		}()
 	}
 	running.Wait()
@@ -162,6 +162,7 @@ func (e *execution) printStartedLines(run tierRun, result tierResult) {
 }
 
 // addFailedRuns adds the failed run of the tier run that ended red as result to the call's failed runs, one per red copy.
+// The stray-file failure belongs to the copies together, so a copies run lists it as one more failed run.
 func (e *execution) addFailedRuns(run tierRun, result tierResult, logPath string) {
 	if len(result.copies) == 0 {
 		e.failed = append(e.failed, tierFailedRun(run, result, logPath, e.request.root))
@@ -174,5 +175,8 @@ func (e *execution) addFailedRuns(run tierRun, result tierResult, logPath string
 		failed := tierFailedRun(run, one, logPath, e.request.root)
 		failed.label = copyLabel(runLabel(run), i+1)
 		e.failed = append(e.failed, failed)
+	}
+	if result.strayLine != "" {
+		e.failed = append(e.failed, failedRun{label: runLabel(run), outcome: "exit 1", log: logPath, causes: []string{result.strayLine}})
 	}
 }

@@ -562,6 +562,22 @@
 // It cannot see a gated class in a project that ran other tests.
 // It cannot name the property behind a skip: the counter reads only each invocation's total.
 //
+// # Stray files
+//
+// A tier run with an invocation lists the worktree's untracked, non-ignored files before and after it.
+// The listing is taken through `git ls-files`.
+// The first listing is taken once per tier run, before its first attempt,
+// so a rerun after a shortage or a crash is held to it as well.
+// A file the second listing holds and the first lacks fails the run with exit 1, a failing run keeping its own code.
+// Such a file is one a test wrote outside its own temp directory, as a lock beside a record whose path was empty.
+// A line naming at most `strayFilesListed` of the files goes to stderr and the log before the summary line.
+// Each name is a quoted string, so a name with a newline or a comma stays one item.
+// The line gives the way forward: move the write under the test's temp directory and remove the files.
+// A `--copies` run is listed once around all its copies,
+// and the failure report lists its stray-file failure as a failed run of its own.
+// A worktree git cannot list, such as a directory outside every repository, is not checked.
+// Bound: a file another process makes in the worktree while the tier runs fails the run as well.
+//
 // # Lint steps
 //
 // A `--gate` key's `lints` run in the key's order after every tier, vet and guard run of an uncancelled call.

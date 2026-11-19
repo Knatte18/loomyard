@@ -59,11 +59,41 @@ type tierResult struct {
 	failures []runFailure
 	causes   []string
 	unparsed []string
+	// strayLine is the stray-file line the run failed on, empty when it left no new untracked file.
+	strayLine string
 	// copies holds the result of each copy when the tier ran as --copies copies; empty for a tier run that ran once.
 	copies []tierResult
 }
 
-// runTier runs the tier of run in ctx with its slots held.
+// runTier runs the tier of run in ctx with its slots held, once or as copies.
+// A request with copiesRun above 0 runs that many copies of the tier side by side, each under the same bounds.
+// A run with an invocation lists the worktree's untracked, non-ignored files before and after it.
+// It fails when the run left a file the first listing lacked.
+// A worktree git cannot list is not checked.
+func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
+	before, listed := untrackedBeforeRun(run, request.root)
+	return runTierChecked(ctx, out, run, env, request, before, listed)
+}
+
+// runTierChecked runs the tier of run in ctx with its slots held, once or as copies, and fails it on a stray file.
+// before is the worktree's untracked, non-ignored files from before the tier's first attempt.
+// listed says that listing could be taken; without it the run is not checked.
+// A caller that reruns the tier passes the same listing to every attempt,
+// so a file an earlier attempt left still fails the run.
+func runTierChecked(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest, before map[string]bool, listed bool) tierResult {
+	var result tierResult
+	if request.copiesRun > 0 {
+		result = runTierCopies(ctx, run, env, request)
+	} else {
+		result = runTierCommands(ctx, out, run, env, request)
+	}
+	if !listed || result.refusal != "" {
+		return result
+	}
+	return checkStrayFiles(result, before, tierName(run.number), request)
+}
+
+// runTierCommands runs the tier of run once in ctx with its slots held.
 // It prebuilds `lym` when the tier asks.
 // Each invocation's command then runs through the platform shell as a tied child.
 // The run stops at the first non-zero exit.
@@ -75,11 +105,7 @@ type tierResult struct {
 // Every command's GOFLAGS then opens with gateslot.TestCacheOffFlag, so `go test` keeps no test result cache.
 // A passing `vstest` invocation that reported no test prints the line naming it to stderr and the log.
 // A run with no invocation passes at once with nothing discovered.
-// A request with copiesRun above 0 runs that many copies of the tier side by side instead, each under these same bounds.
-func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
-	if request.copiesRun > 0 {
-		return runTierCopies(ctx, run, env, request)
-	}
+func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
 	started := time.Now()
 	timeout := time.Duration(run.tier.TimeoutMin) * request.timeoutUnit
 	record := gateslot.RunRecord{Tier: run.number, ScopeForm: run.scopeForm, Slots: run.tier.Slots, GuardStep: run.guardStep, Start: started}

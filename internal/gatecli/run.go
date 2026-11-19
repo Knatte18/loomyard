@@ -625,8 +625,9 @@ func (e *execution) runGreenAware(run tierRun) runEnd {
 				return result
 			}
 		}
+		before, listed := untrackedBeforeRun(run, e.request.root)
 		return retryTier(e.ctx, e.request.stderr, runLabel(run), e.request.rerunDelay, func() tierResult {
-			return runTier(e.ctx, e.out, run, env, e.request)
+			return runTierChecked(e.ctx, e.out, run, env, e.request, before, listed)
 		}, func(first tierResult) {
 			first.record.WaitStart = waitStart
 			e.writeRecord(first.record, first.log, tierName(run.number))
