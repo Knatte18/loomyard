@@ -282,6 +282,29 @@ func prReviewSmallMax(l *lymcwd.Location) func() (int, error) {
 	}
 }
 
+// prReviewSendBackEdge reports whether the run's PR-Review row can send findings back.
+// When it cannot, the reason comes with the answer.
+// A recipe with no PR-Review row answers that it cannot.
+// The landing seams are wired before the run's shed is built.
+// The recipe's landing rows refuse to build without them.
+func (c *loomCLI) prReviewSendBackEdge() (bool, string, error) {
+	row, hasRow, err := loomrecipe.EngineRow(c.recipe, prReviewEngine)
+	if err != nil {
+		return false, "", err
+	}
+	if !hasRow {
+		return false, "this run's recipe has no PR-Review row", nil
+	}
+	if err := c.wireLanding(); err != nil {
+		return false, "", err
+	}
+	shed, err := c.newShed()
+	if err != nil {
+		return false, "", err
+	}
+	return sendBackEdge(shed.Producers, row)
+}
+
 // prFindingsCmd builds the `pr-findings` subcommand.
 func (c *loomCLI) prFindingsCmd() *cobra.Command {
 	return &cobra.Command{
@@ -317,21 +340,8 @@ Example:
 				frictionDir:    c.frictionDir,
 				stencilsDir:    c.runDeps.Geom.StencilsDir,
 				smallMax:       prReviewSmallMax(c.location),
-				edge: func() (bool, string, error) {
-					row, hasRow, err := loomrecipe.EngineRow(c.recipe, prReviewEngine)
-					if err != nil {
-						return false, "", err
-					}
-					if !hasRow {
-						return false, "this run's recipe has no PR-Review row", nil
-					}
-					shed, err := c.newShed()
-					if err != nil {
-						return false, "", err
-					}
-					return sendBackEdge(shed.Producers, row)
-				},
-				commit: pullRequestRecordCommitter(newPrePushCheck(c.location, shedrun.SelfRunID), c.location),
+				edge:           c.prReviewSendBackEdge,
+				commit:         pullRequestRecordCommitter(newPrePushCheck(c.location, shedrun.SelfRunID), c.location),
 			})
 			clihelp.SetExit(cmd.Context(), code)
 			return nil

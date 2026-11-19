@@ -39,7 +39,7 @@
 // A recipe with a SamplerSession row loads the hub's `sampler.yaml` strictly in `wire`.
 // `wire` refuses a malformed file before any row builds, and it fills the row's seams from `samplerDeps`.
 // The row's entry stamp counts the times the run entered it, from the status file and the rows that route into it.
-// `wireLanding` is passed through by both the `run` and `step` building paths,
+// `wireLanding` is passed through by the `run` and `step` building paths and by `pr-findings`' send-back edge,
 // and `status` and `pause` never pass through it.
 // It fills the session's start and stop, its liveness and its process registration as for PR-Review's session.
 // It also fills the watch on the row's record that wakes the wait.
@@ -605,6 +605,7 @@
 // or the findings plus those already fixed in place exceed `pr_review_small_max`.
 // The edge can fire when the PR-Review row declares a reroute and its target's entry gate holds.
 // The target's budget must also be above 0.
+// The verb reads the edge from the run's shed, which it builds with the landing seams wired.
 // A send-back copies the file to the run's scratch directory, writes a friction note and marks the pull-request record.
 // A set that stays is only counted, once per file, and the agent fixes it.
 // It is refused while the task worktree has uncommitted paths.

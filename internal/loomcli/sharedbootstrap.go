@@ -435,8 +435,8 @@ func (c *loomCLI) wireLanding() error {
 	c.env.Landing.PullRequest.SessionLive = sessionLiveness(c.reed.Status)
 	c.env.Landing.PullRequest.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
 	// The sampler run's session is checked for liveness and registered, and its row wakes on its record's file event.
-	// The building paths pass through here; status and pause never do.
-	// So the watch opens only for a run that drives the row.
+	// The building paths and pr-findings' send-back edge pass through here; status and pause never do.
+	// The edge's process exits right after it reads the shed, so its watch is never waited on.
 	if recipeHasEngine(c.recipe, samplerSessionEngine) {
 		c.env.Sampler.Sessions = c.runner
 		c.env.Sampler.SessionLive = sessionLiveness(c.reed.Status)
